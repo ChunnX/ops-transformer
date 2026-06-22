@@ -27,11 +27,11 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
 __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
     __ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ pseShiftType *pseUb, __ubuf__ T *maxUb, __ubuf__ T *maxUbStart,
     __ubuf__ T *srcUb, __ubuf__ T *expSumUb, __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb,
-    __ubuf__ uint32_t *maskUbUnroll, __ubuf__ uint32_t *dropMaskUb, const uint32_t nPadding, const uint32_t blockStride,
-    const uint32_t repeatStride, const uint32_t oriTailN, const uint32_t tailN, const float dScale,
-    uint32_t pltOriTailN, uint32_t pltTailN, float divValue, const uint16_t m, const uint32_t pseStride,
-    const float slopes, const float posShift, const T scale, const float dScaleQK, const T minValue,
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
+    __ubuf__ uint32_t *maskUbUnroll, __ubuf__ uint32_t *dropMaskUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
+    const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN,
+    const uint32_t tailN, const float dScale, uint32_t pltOriTailN, uint32_t pltTailN, float divValue, const uint16_t m,
+    const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
+    const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -72,6 +72,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
     RegTensor<half> vreg_pse_f16_src;
     RegTensor<half> vreg_pse_f16;
     RegTensor<half> vreg_pse_f16_unroll;
+    // mxfp8
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
 
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
@@ -194,6 +196,9 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
         if constexpr (hasSink) {
             Max(vreg_input_max, vreg_input_max, vreg_sink_input, preg_all);
         }
+        Muls(vreg_input_max, vreg_input_max, INV_LN2, preg_all);
+        Truncate<T, RoundMode::CAST_CEIL>(vreg_input_max, vreg_input_max, preg_all);
+        Muls(vreg_input_max, vreg_input_max, LN2, preg_all);
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), vreg_input_max, ureg_max, 1);
     }
     StoreUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
@@ -337,6 +342,9 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
         }
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
+    Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_all_b8);
+    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
+                                                              vreg_p_scale_f8e8m0, preg_all_b8);
 }
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
           bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
@@ -346,11 +354,11 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     __ubuf__ T *srcUb, __ubuf__ T *expMaxUb, __ubuf__ T *inMaxUb, __ubuf__ T *expSumUb, __ubuf__ T *inExpSumUb,
     __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpExpSumUb2, __ubuf__ T *tmpMaxUb, __ubuf__ T *tmpMaxUb2,
     __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb, __ubuf__ uint32_t *maskUbUnroll,
-    __ubuf__ uint32_t *dropMaskUb, const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride,
-    const uint32_t oriTailN, const uint32_t tailN, const float dScale, uint32_t pltOriTailN, uint32_t pltTailN,
-    float divValue, const uint16_t m, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
-    const float dScaleQK, const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f,
-    const float pScale = 1.0f)
+    __ubuf__ uint32_t *dropMaskUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t nPadding,
+    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN, const uint32_t tailN,
+    const float dScale, uint32_t pltOriTailN, uint32_t pltTailN, float divValue, const uint16_t m,
+    const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
+    const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -391,6 +399,13 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     RegTensor<half> vreg_pse_f16_src;
     RegTensor<half> vreg_pse_f16;
     RegTensor<half> vreg_pse_f16_unroll;
+    // mxfp8
+    RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
+    RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_pad;
+    RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
 
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
@@ -403,6 +418,9 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
     MaskReg preg_compare;
     MaskReg preg_compare_unroll;
+    uint32_t maskLen = 128;
+    MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+    MaskReg preg_all_b8_half = CreateMask<int8_t, MaskPattern::ALL>();
 
     MaskReg preg1;
     MaskReg preg2 = CreateMask<int8_t, MaskPattern::ALLF>();
@@ -513,6 +531,9 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
         if constexpr (hasSink) {
             Max(vreg_input_max, vreg_input_max, vreg_sink_input, preg_all);
         }
+        Muls(vreg_input_max, vreg_input_max, INV_LN2, preg_all);
+        Truncate<T, RoundMode::CAST_CEIL>(vreg_input_max, vreg_input_max, preg_all);
+        Muls(vreg_input_max, vreg_input_max, LN2, preg_all);
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max,
                                                                  1);
     }
@@ -606,7 +627,6 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
             RegTensor<fp8_e4m3fn_t> vreg_exp_odd_f8e4m3;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_tmp_f8e4m3;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3;
-            RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
             MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
             uint32_t maskLen = 128;
             MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
@@ -675,7 +695,23 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     Mul(first_loop_sum, vreg_exp_max, first_loop_sum, preg_all);
     Add(vreg_exp_sum, first_loop_sum, vreg_exp_sum_brc, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_sum, preg_all);
+    // pScale update
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst0;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_dst1;
+    Duplicate(vreg_p_scale, static_cast<float>(1.0f));
+    Mul(vreg_p_scale, vreg_exp_max, vreg_p_scale, preg_all);
+    Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all_b16);
+    Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_all_b16);
+    Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
+       (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
+    Duplicate(vreg_p_scale_f8e8m0_1, 0x7f, preg_all_b8);
+    DeInterleave(vreg_p_scale_f8e8m0_dst0, vreg_p_scale_f8e8m0_dst1, vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_1);
+    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
+                                                              vreg_p_scale_f8e8m0_dst0, preg_all_b8);
 }
+
 // no update, 64 < originN <= 128
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
           bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
@@ -685,10 +721,11 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop, const uint16_t m, const uint32_t originN,
-    const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
-    const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
+    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop,
+    const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift,
+    const T scale, const float dScaleQK, const T minValue, float keepProb,
+    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
+    const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (65*16*2/32)，单位block, low 16bits: repeatStride (1)
@@ -712,12 +749,11 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(
     __ubuf__ T *tmpMaxUb2 = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesTensor.GetPhyAddr();
-
+    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
 
     __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
     __ubuf__ uint32_t *maskUbUnroll = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize);
     __ubuf__ uint32_t *dropMaskUb = (__ubuf__ uint32_t *)dropTensor.GetPhyAddr();
-
 
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     const uint32_t oriTailN = originN - floatRepSize;
@@ -731,15 +767,15 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128Mxfp8Fullquant(
         ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
                                                                   pseMode, hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
             expUb, x_expUb, pseUb, maxUb, maxUbStart, srcUb, expSumUb, indexesUb, maskUb, maskUbUnroll, dropMaskUb,
-            nPadding, blockStride, repeatStride, oriTailN, tailN, dScale, pltOriTailN, pltTailN, divValue, m, pseStride,
-            slopes, posShift, scale, dScaleQK, minValue, deSCaleKValue, sinkValue, pScale);
+            pScaleSubLoop0Ub, nPadding, blockStride, repeatStride, oriTailN, tailN, dScale, pltOriTailN, pltTailN,
+            divValue, m, pseStride, slopes, posShift, scale, dScaleQK, minValue, deSCaleKValue, sinkValue, pScale);
     } else {
         ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
                                                                   pseMode, hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
             expUb, x_expUb, pseUb, maxUb, maxUbStart, srcUb, expMaxUb, inMaxUb, expSumUb, inExpSumUb, tmpExpSumUb,
-            tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb, maskUbUnroll, dropMaskUb, nPadding, blockStride,
-            repeatStride, oriTailN, tailN, dScale, pltOriTailN, pltTailN, divValue, m, pseStride, slopes, posShift,
-            scale, dScaleQK, minValue, deSCaleKValue, sinkValue, pScale);
+            tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb, maskUbUnroll, dropMaskUb, pScaleSubLoop0Ub, nPadding,
+            blockStride, repeatStride, oriTailN, tailN, dScale, pltOriTailN, pltTailN, divValue, m, pseStride, slopes,
+            posShift, scale, dScaleQK, minValue, deSCaleKValue, sinkValue, pScale);
     }
 }
 } // namespace FaVectorApi
