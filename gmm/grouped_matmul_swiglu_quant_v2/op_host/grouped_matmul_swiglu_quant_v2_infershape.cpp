@@ -146,7 +146,8 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
             context->SetOutputDataType(1, DataType::DT_FLOAT8_E8M0);
         }  else {
             OP_LOGE(context->GetNodeName(),
-                    "In mx quant mode, quantMode should be 2, but actual value is %ld.", *quantMode);
+                    "In mx quant mode, the dtype of weightScale should be FLOAT8_E8M0, but actual dtype is %s.",
+                    ge::TypeUtils::DataTypeToSerialString(weightScaleDtype).c_str());
             return GRAPH_FAILED;
         }
     } else if (*quantMode == QUANT_MODE_PERTOKEN_TYPE) {
