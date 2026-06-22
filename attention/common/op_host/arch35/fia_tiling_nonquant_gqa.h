@@ -73,6 +73,7 @@ private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
     bool CheckS1OutSplit();
+    int64_t CalcRequiredL2Size();
     void SplitOutSeq();
     void ComputeTilingData();
     void GenTilingKey();

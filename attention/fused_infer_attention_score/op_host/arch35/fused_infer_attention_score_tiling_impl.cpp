@@ -1187,6 +1187,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
         }
 
         enableS1OutSplit = CheckS1OutSplit(fiaInfo);
+        OP_LOGD(fiaInfo.opName, "enableS1OutSplit:%d", enableS1OutSplit);
         if (enableS1OutSplit) {
             SplitOutSeq(fiaInfo);
         } else {
