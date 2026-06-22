@@ -218,16 +218,6 @@
   </tr>
   <tr>
     <td>attention</td>
-    <td><a href="../../attention/mixed_quant_sparse_flash_mla/README.md">mixed_quant_sparse_flash_mla</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
     <td>✓</td>
     <td>✓</td>
