@@ -594,12 +594,18 @@ __simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T * sumUb, __ubuf__ T * maxU
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_compare;
 
+    uint32_t negInfBits = NEGATIVE_INF_FP32;
+    T negInf = *reinterpret_cast<T*>(&negInfBits);
+
     Duplicate(vreg_max_value, maxValue);
     // 注意：当m大于64的时候需要开启循环
     LoadAlign(vreg_max, maxUb);
     LoadAlign(vreg_sum, sumUb);
     Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
     Select(vreg_sum_new, vreg_max_value, vreg_sum, preg_compare);
+    // Also check for -inf (BMM1 with -inf key produces ±inf, not NEGATIVE_MIN_VALUE)
+    Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, negInf, preg_all);
+    Select(vreg_sum_new, vreg_max_value, vreg_sum_new, preg_compare);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)sumUb, vreg_sum_new, preg_all);
 }

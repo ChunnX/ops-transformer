@@ -368,10 +368,10 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxInit
     this->tPipe->InitBuffer(this->sumBrdcst, 1, SOFTMAX_BRDCST_BUF_SIZE); // [64, 8] SUMBRDCST_SIZE:2048
     this->tPipe->InitBuffer(this->softmaxMaxBuf[0], SOFTMAX_ROW_BUF_SIZE); // [64, 1] SOFTMAXMAXBUF_SIZE:256
     this->tPipe->InitBuffer(this->softmaxMaxBuf[1], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 1 is second buffer
-    this->tPipe->InitBuffer(this->softmaxMaxBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 2 is the third buffer
+    this->tPipe->InitBuffer(this->softmaxMaxBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] the third buffer
     this->tPipe->InitBuffer(this->softmaxExpBuf[0], SOFTMAX_ROW_BUF_SIZE); // [64, 1] SOFTMAXEXPBUF_SIZE:256
     this->tPipe->InitBuffer(this->softmaxExpBuf[1], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 1 is second buffer
-    this->tPipe->InitBuffer(this->softmaxExpBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] 2 is the third buffer
+    this->tPipe->InitBuffer(this->softmaxExpBuf[2], SOFTMAX_ROW_BUF_SIZE); // [64, 1] the third buffer
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -395,7 +395,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitOutputS
         uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
         if constexpr (POST_QUANT) {
             InitOutput<half>(this->attentionOutInitGm[constInfo.aivIdx * initParams.singleCoreSize / 2],
-                singleInitOutputSize / 2, 0.0); // 2: 将内容一分为二
+                singleInitOutputSize / 2, 0.0); // 将内容一分为二
         } else {
             InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize],
                 singleInitOutputSize, 0.0);
@@ -1037,13 +1037,11 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
     attenOut = vec2ResUb.template ReinterpretCast<OUTPUT_T>();
     int64_t dSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (!IsSameType<Q_T, VEC2_RES_T>::value) {
-        if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<Q_T, float>::value) {
-            if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-                int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-                LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2MaxBufOffset];
-                InvalidLineUpdate<T, dTemplateAlign64>(vec2ResUb, vec2ResUb, maxTensor, runInfo.vec2S1RealSize,
-                    dSizeAligned64, this->negativeFloatScalar, 0.0);
-            }
+        if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+            int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
+            LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2MaxBufOffset];
+            InvalidLineUpdate<T, dTemplateAlign64>(vec2ResUb, vec2ResUb, maxTensor, runInfo.vec2S1RealSize,
+                dSizeAligned64, this->negativeFloatScalar, 0.0);
         }
         if constexpr (!POST_QUANT) {
             RowInvalid(vec2ResUb, vec2S1Idx, runInfo, dSizeAligned64, constInfo);
