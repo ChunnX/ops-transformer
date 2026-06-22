@@ -227,9 +227,32 @@ bool KvCompressEpilogTilingArch35::GetCacheViewLayout(
 
 ge::graphStatus KvCompressEpilogTilingArch35::GetKvCacheLayout()
 {
-    kvCacheRowStride_ = kvCacheCol_;
+    // Reading B: headDim(每 token 行宽)由 cache 自身决定, 不再等于算子计算的 kvCacheCol。
+    // 连续场景取 cache 尾轴为 headDim(行宽=行步长); 4D paged view 下由 stride 推出 rowStride 覆盖。
+    auto cacheShapePtr = context_->GetInputShape(KV_COMPRESS_CACHE_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, cacheShapePtr);
+
+    // 4D-only 契约校验: cache 的逻辑(origin/view) shape 必须恰为 4D [blockNum, blockSize, 1, headDim]。
+    //   连续 4D tensor 与 4D 分页 strided view 的 origin shape 均为该 4D 逻辑形状(GetShape());
+    //   strided view 的 storage shape 可能是底层扁平 buffer, 故此处用逻辑 shape 做维数门禁,
+    //   与 GetCacheViewLayout 经 inputShape->GetShape() 读取的 viewShape 同源。
+    const auto &cacheLogicalShape = cacheShapePtr->GetShape();
+    OP_CHECK_IF(cacheLogicalShape.GetDimNum() != CACHE_VIEW_DIM_NUM,
+              OP_LOGE(context_->GetNodeName(),
+                       "cache must be 4D [blockNum, blockSize, 1, headDim], got dimNum=%zu",
+                       cacheLogicalShape.GetDimNum()),
+              return ge::GRAPH_FAILED);
+    OP_CHECK_IF(cacheLogicalShape.GetDim(CACHE_ONE_DIM) != CACHE_ONE_DIM_VALUE,
+              OP_LOGE(context_->GetNodeName(),
+                       "cache dim2 (second-to-last) must be 1 (one compressed vector per token), got %ld",
+                       cacheLogicalShape.GetDim(CACHE_ONE_DIM)),
+              return ge::GRAPH_FAILED);
+
+    const auto &cacheStorage = cacheShapePtr->GetStorageShape();
+    int64_t cacheLastDim = cacheStorage.GetDim(cacheStorage.GetDimNum() - 1);
+    kvCacheRowStride_ = cacheLastDim;
     kvCacheBlockSize_ = 1;
-    kvCacheBlockStride_ = kvCacheCol_;
+    kvCacheBlockStride_ = cacheLastDim;
 
     int64_t viewBlockSize = 0;
     int64_t viewRowStride = 0;
@@ -273,12 +296,26 @@ ge::graphStatus KvCompressEpilogTilingArch35::DoOpTiling()
         }
         concatCol = d_ - SLICE_SIZE + SLICE_SIZE * 2 + scaleCol_ * scaleBytes;
     }
-    kvCacheCol_ = RoundUp(concatCol, KV_CACHE_ROW_ALIGN);
+    // Reading B: pad 后的总长度(kvCacheCol)由算子自身对齐决定, 与 cache headDim 解耦。
+    //   - FP8 量化 E8M0(mode1): 总长度不限制, 不补齐 (kvCacheCol = concatCol);
+    //   - 其他模式(mode0 bf16 / mode2 hif8+fp4): pad 后总长度按 32B 对齐。
+    if (quantMode_ == QUANT_MODE_GROUP_QUANT_E8M0) {
+        kvCacheCol_ = concatCol;
+    } else {
+        kvCacheCol_ = RoundUp(concatCol, BLOCK_SIZE);
+    }
     padCol = kvCacheCol_ - concatCol;
 
     if (GetKvCacheLayout() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    // Reading B 校验: cache headDim(行宽=行步长) 必须能容纳算子写出的 kvCacheCol(pad 后总长度),
+    // 即 headDim >= kvCacheCol, 否则散写越界到下一行。(kvCacheCol >= concatCol, 故同时保证容纳 concat 数据)
+    OP_CHECK_IF(kvCacheCol_ > kvCacheRowStride_,
+              OP_LOGE(context_->GetNodeName(),
+                       "cache headDim(%ld) must be >= padded length kvCacheCol(%ld)", kvCacheRowStride_, kvCacheCol_),
+              return ge::GRAPH_FAILED);
 
     int64_t minRowPerCore = 1;
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);

@@ -65,10 +65,15 @@ constexpr int64_t SLICE_SIZE = 64;
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
-// 4D paged cache view [blockNum, blockSize, 1, headDim]
+// 4D-only cache contract: cache 逻辑 shape 必须恰为 4D [blockNum, blockSize, 1, headDim]。
+//   - dim0 blockNum: 仅此维支持非连续(分页); dim1 blockSize: 每 block 的 token 数;
+//   - dim2 固定为 1 (每 token 写出一个压缩向量, 该轴不支持为变量);
+//   - dim3 headDim: 每 token 行宽(行步长), 须 >= 算子写出的 kvCacheCol。
 constexpr size_t CACHE_VIEW_DIM_NUM = 4;
 constexpr size_t CACHE_BLOCKNUM_DIM = 0;
 constexpr size_t CACHE_BLOCKSIZE_DIM = 1;
+constexpr size_t CACHE_ONE_DIM = 2;       // 倒数第二维, 必须 == 1
+constexpr int64_t CACHE_ONE_DIM_VALUE = 1;
 // per_block量化,每128个f16需要量化出一个scale, 因此切分尾轴时，以128为factor进行切分
 
 // ---------- TilingData Structure ----------

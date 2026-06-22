@@ -15,18 +15,28 @@
 
 ## 功能说明
 
-- 接口功能：在KV Cache的Epilog阶段，对KV Cache进行原地压缩更新。将`bfloat16`的激活值按逐组动态量化（Group-wise Dynamic Quantization）压缩为FP8（以`uint8`打包）格式，并按`slotMapping`散写到cache，值为 -1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)两种量化模式。
+- 接口功能：在KV Cache的Epilog阶段，对KV Cache进行原地压缩更新。将`bfloat16`激活值量化压缩后，按`slotMapping`散写到cache，值为 -1的token跳过不处理。`x`尾轴`d`的后64列为rope段、前`d-64`列为nope段。支持三种量化模式：group(bf16 scale)、group(e8m0 scale)、rope hifloat8静态 + nope FLOAT4_E2M1动态。
 
 - 计算公式：
 
-  对`x`的最后一维（d轴）按每64个元素一组计算每组的amax，并量化为目标dtype，记第g组为$x_g$：
+  对`x`的最后一维（d轴）按组计算每组的amax，并量化为目标dtype，记第g组为$x_g$：
 
-  $$
-  scale_g = \frac{\max(|x_g|)}{FP8\_MAX}, \quad q_i = \mathrm{round}\left(\frac{x_i}{scale_g}\right)
-  $$
+  - 场景1（quantMode=0）：group(64)量化为FP8，`scale`存储为`bfloat16`；rope段保留`bfloat16`。
 
-  - 场景1（quantMode=0）：group量化，`scale`存储为`bfloat16`。
-  - 场景2（quantMode=1）：group量化，`scale`存储为`float8_e8m0`，`roundScale=true`时`scale`向上取到2的幂。
+    $$
+    scale_g = \frac{\max(|x_g|)}{FP8\_MAX}, \quad q_i = \mathrm{round}\left(\frac{x_i}{scale_g}\right)
+    $$
+
+  - 场景2（quantMode=1）：同场景1，但`scale`存储为`float8_e8m0`，`roundScale=true`时`scale`向上取到2的幂。
+
+  - 场景3（quantMode=2）：rope段（后64列）做hifloat8**静态**量化，nope段（前d-64列）做per-group **FLOAT4_E2M1 动态**量化（`FP4\_MAX=6.0`），`scale`以`bfloat16`写出，`roundScale`不生效：
+
+    $$
+    rope_i = \mathrm{hifloat8}(x_i \cdot xScale), \qquad
+    scale_g = \frac{\max(|x_g|)}{FP4\_MAX}, \quad nope_i = \mathrm{FLOAT4\_E2M1}\left(\frac{x_i}{scale_g}\right)
+    $$
+
+    每行cache字节布局：`[rope hifloat8 64B][nope fp4 (d-64)/2 B][nope bf16 scale nGroup*2 B][pad至128]`，`nGroup=(d-64)/quantGroupSize`。
 
 - 示例：
 
@@ -126,7 +136,7 @@ aclnnStatus aclnnKvCompressEpilog(
       <td>quantGroupSize（int64_t）</td>
       <td>输入</td>
       <td>量化分组大小。</td>
-      <td>默认值为64。</td>
+      <td>默认值为64。quantMode=2时仅支持16/32/64，且要求(d-64) % quantGroupSize == 0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -136,7 +146,7 @@ aclnnStatus aclnnKvCompressEpilog(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>量化模式。</td>
-      <td>枚举值支持0、1，其中0表示group量化（scale存储为bfloat16），1表示group量化（scale存储为float8_e8m0）。默认值为1。</td>
+      <td>枚举值支持0、1、2，其中0表示group量化（scale存储为bfloat16），1表示group量化（scale存储为float8_e8m0），2表示rope段hifloat8静态量化 + nope段FLOAT4_E2M1动态量化（scale存储为bfloat16）。默认值为1。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -146,7 +156,7 @@ aclnnStatus aclnnKvCompressEpilog(
       <td>roundScale（bool）</td>
       <td>输入</td>
       <td>group模式下是否对每组scale向上取到2的幂。</td>
-      <td>默认值为true。</td>
+      <td>默认值为true。quantMode=2下不生效。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -155,7 +165,7 @@ aclnnStatus aclnnKvCompressEpilog(
     <tr>
       <td>xScale（float）</td>
       <td>输入</td>
-      <td>预留参数，当前未使用。</td>
+      <td>quantMode=2时为rope段hifloat8静态量化的缩放系数；quantMode=0/1下预留未使用。</td>
       <td>默认值为1.0。</td>
       <td>-</td>
       <td>-</td>
@@ -244,6 +254,7 @@ aclnnStatus aclnnKvCompressEpilog(
 - 确定性计算：aclnnKvCompressEpilog默认确定性实现。
 - slotMapping的维度应等于x的维度减1，即slotMapping为x除最后一维外的所有维度展平。
 - x的最后一维（d轴）需满足d % 64 == 0且d > 64，按每64个元素一组进行逐组量化。
+- quantMode=2时，quantGroupSize仅支持16/32/64，且nope段长度(d-64)需能被quantGroupSize整除；x需为bfloat16。
 - slotMapping中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 
 ## 调用示例

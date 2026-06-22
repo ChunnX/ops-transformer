@@ -52,8 +52,10 @@ private:
     GlobalTensor<U> slotMappingGm;
     GlobalTensor<T1> kvCacheGm;
 
-    TQue<QuePosition::VECIN, 1> xQue;
-    TQue<QuePosition::VECOUT, 1> kvCacheQue;
+    // xQue 深度 2: Process() 预取流水在启动期连续 2 次 EnQue(循环外预热块 + 循环内预取下一块)
+    // 后才首次 DeQue, 队列需容纳 2 个在队 tensor; 深度 1 时大 bs(rowOuterLoop>1)下同步不足会精度错乱。
+    TQue<QuePosition::VECIN, 2> xQue;
+    TQue<QuePosition::VECOUT, 1> kvCacheQue;  // 始终 EnQue/DeQue 交替, 深度 1; InitBuffer 2 为 double buffer
     TBuf<QuePosition::VECCALC> kvCacheScaleBuf;
     TBuf<TPosition::VECCALC> scratchBuf;  // mode2(QUANT_MODE_HIF8_FP4) G16/G32 行内 scratch, 仅 mode2 InitBuffer
 

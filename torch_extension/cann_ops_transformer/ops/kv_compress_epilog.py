@@ -55,7 +55,9 @@ def npu_kv_compress_epilog(cache, x, slot_mapping, *, quant_group_size=64,
     cache（函数式语义，底层 aclnn 接口为原地实现）。
 
     Args:
-        cache (Tensor): 当前层的 KV Cache 向量缓存，dtype 为 uint8，shape 为 [num_slots, kvCacheCol]。
+        cache (Tensor): 当前层的分页 KV Cache，dtype 为 uint8，仅支持四维 shape [blockNum, blockSize, 1, headDim]
+            (num_slots = blockNum*blockSize)；headDim 须 >= 算子每行写出的 kvCacheCol，行内余下字节保持原值；
+            仅在 blockNum 维支持非连续(分页)。
         x (Tensor): 待量化的激活输入，dtype 为 bfloat16，shape 为 [bs, d]，d 需满足 d % 64 == 0 且 d > 64。
         slot_mapping (Tensor): token 到 cache slot 的索引映射，dtype 为 int32 或 int64，shape 为 [bs]，
             元素取值范围 [-1, num_slots - 1]，-1 表示跳过该 token。维度需等于 x 的维度减 1。

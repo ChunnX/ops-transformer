@@ -56,9 +56,16 @@ def npu_indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     （函数式语义，底层 aclnn 接口为原地实现）。
 
     Args:
-        cache (Tensor): 当前层的 KV Cache 向量缓存，shape 为 [num_slots, d]。dtype 支持
-            float8_e4m3fn/float8_e5m2/uint8/float4_e2m1/float4_e1m2（MX-FP4 模式下为 uint8，每字节打包 2 个 fp4 值）。
-        cache_scale (Tensor): 每块量化的 scale 因子，shape 为 [num_slots, CeilDiv(d, 128)]。dtype 支持
+        cache (Tensor): 当前层的分页 KV Cache，**仅支持四维** shape `[blockNum, blockSize, 1, headDim]`
+            （num_slots = blockNum*blockSize），倒数第二维固定为 1。算子按 slot_mapping 把每 token 的量化结果
+            写入对应行前部，**headDim 须 >= d**（MX-FP4 以 fp4 元素计），行内余下保持原值；仅在 blockNum 维支持
+            非连续（分页）。dtype 支持 float8_e4m3fn/float8_e5m2/uint8/float4_e2m1/float4_e1m2
+            （MX-FP4 模式每字节打包 2 个 fp4 值）。
+        cache_scale (Tensor): 每块量化的 scale 因子，**仅支持四维** shape `[blockNum, blockSize, 1, scaleHeadDim]`，
+            **scaleHeadDim >= scaleCol**（MX-FP8/MX-FP4 = CeilDiv(d, 32)，Normal/HiFloat8 = 1）。
+            **所有量化模式（含 HiFloat8/quant_mode=2）均校验，无例外**；HiFloat8 模式 scaleCol=1，故
+            scaleHeadDim >= 1（kernel 在 HiFloat8 下仍按 scaleCol=1 为每 token 写出一个 float scale，
+            必须提供合法 cache_scale）。dtype 支持
             float32（Normal/HiFloat8 模式）或 float8_e8m0（MX-FP8/MX-FP4 模式）。
         x (Tensor): 待量化的激活输入，dtype 为 float16 或 bfloat16，shape 为 [bs, d]，d 需满足 d % 32 == 0。
         slot_mapping (Tensor): token 到 cache slot 的索引映射，dtype 为 int32，shape 为 [bs]，元素取值范围
