@@ -76,9 +76,12 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
 template <QFA_LAYOUT LAYOUT_Q>
 __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
 {
-    if constexpr (LAYOUT_Q == QFA_LAYOUT::BNSD || LAYOUT_Q == QFA_LAYOUT::BSND) {
-        return GmFormat::BNGSD;
-    } else if constexpr (LAYOUT_Q == QFA_LAYOUT::TND) {
+    if constexpr (LAYOUT_Q == QFA_LAYOUT::BNSD) {
+        return GmFormat::BNGSD2;
+    } else if constexpr (LAYOUT_Q == QFA_LAYOUT::BSND) {
+        return GmFormat::NBSGD2;
+    }
+    else if constexpr (LAYOUT_Q == QFA_LAYOUT::TND) {
         return GmFormat::NTGD;
     }
 }
@@ -311,7 +314,7 @@ public:
             constInfo.dSize / MXFP_GROUP_SIZE, qSeqLensTool, queryScaleGm, dequantScaleQuery);
         InitKScaleBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize,
             constInfo.dSize / MXFP_GROUP_SIZE, kvSeqLensTool, keyScaleGm, dequantScaleKey);
-        InitVScaleBuffer(constInfo.bSize, constInfo.s2Size / (2 * MXFP_GROUP_SIZE), constInfo.n2Size, constInfo.blockSize,
+        InitVScaleBuffer(constInfo.bSize, (constInfo.s2Size + 63) / 64 * 64 / (2 * MXFP_GROUP_SIZE), constInfo.n2Size, constInfo.blockSize,
             2 * constInfo.dSize, kvSeqLensTool, valueScaleGm, dequantScaleValue);
     }
 
@@ -476,7 +479,10 @@ public:
         }
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
-        InitL0BufferForReduceSum();
+        if (info.isLastSecondS2Loop) {
+            InitL0BufferForReduceSum();
+        }
+        
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(const RunInfo &runInfo)
@@ -552,6 +558,8 @@ private:
             qScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, qSeqLensTool.seqUsedParser);
         } else if constexpr (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             qScaleGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, qSeqLensTool.cuSeqLensParser);
+        } else if constexpr (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_NBSGD2) {
+            qScaleGmTensor.offsetCalculator.Init(n2Size, batchSize, gSize, qSeqSize, headDim, qSeqLensTool.seqUsedParser);
         }
     }
 
