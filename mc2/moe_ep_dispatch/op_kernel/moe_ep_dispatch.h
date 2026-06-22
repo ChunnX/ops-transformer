@@ -319,6 +319,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
     LocalTensor<int16_t> subTensorInt16 = subExpBuf_.Get<int16_t>();
     LocalTensor<int16_t> dstTensorInt16 = dstExpBuf_.Get<int16_t>();
     LocalTensor<int16_t> tempTensorInt16 = topkIdsBuf_.Get<int16_t>();
+    LocalTensor<int16_t> invalidMaskInt16 = tempBuf_.Get<int16_t>();
     LocalTensor<half> tempTensor = topkIdsBuf_.Get<half>();
     LocalTensor<half> subTensorHalf = subExpBuf_.Get<half>();
     LocalTensor<half> tmpHalf = subTensorHalf[Ceil(calCnt / axisK_, UB_STRIDE)];
@@ -329,17 +330,20 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCntP
     SumParams axisKSumParams{calCnt / axisK_, innerAlign, axisK_};
 
     Duplicate<int16_t>(subTensorInt16, static_cast<int16_t>(moeExpertNumPerRank_), calCnt);
-    Div(tempTensorInt16, expertIdsTensor, subTensorInt16, calCnt);
-    Mins(subTensorInt16, expertIdsTensor, static_cast<int16_t>(0), calCnt); // 有效->0 无效->负数
-    Add(dstTensorInt16, tempTensorInt16, subTensorInt16, calCnt);
+    Div(dstTensorInt16, expertIdsTensor, subTensorInt16, calCnt);
+    // 筛选无效expert id
+    Mins(tempTensorInt16, expertIdsTensor, static_cast<int16_t>(0), calCnt); // 有效->0 无效->负数
+    Abs(subTensorInt16, tempTensorInt16, calCnt);
+    Mins(invalidMaskInt16, subTensorInt16, static_cast<int16_t>(1), calCnt);
 
     for (uint32_t dstRankId = startRankId; dstRankId < endRankId; dstRankId++) {
         // 筛选出发送到目标卡的token
         uint64_t rsvdCnt = 0;
         Subs(subTensorInt16, dstTensorInt16, static_cast<int16_t>(dstRankId), calCnt);
         Abs(tempTensorInt16, subTensorInt16, calCnt);
-        Mins(subTensorInt16, tempTensorInt16, static_cast<int16_t>(1), calCnt); // 目标 0 非目标/无效 1
-        Cast(tempTensor, subTensorInt16, RoundMode::CAST_NONE, calCnt);
+        Mins(subTensorInt16, tempTensorInt16, static_cast<int16_t>(1), calCnt); // 目标 0 非目标 1
+        Max(tempTensorInt16, subTensorInt16, invalidMaskInt16, calCnt);  // 去除无效值影响
+        Cast(tempTensor, tempTensorInt16, RoundMode::CAST_NONE, calCnt);
         Sum(subTensorHalf, tempTensor, axisKSumParams);
         CompareScalar(gatherMaskTensorInt8, subTensorHalf, static_cast<half>(axisK_), AscendC::CMPMODE::LT, calCnt / axisK_);
         GatherMask(tmpHalf, subTensorHalf, maskTensorInt16, true, mask, {1, 1, 0, 0}, rsvdCnt);
