@@ -888,6 +888,434 @@ __simd_callee__ inline void ExpSub16(
     ExpSub(vreg_exp_odd8, vreg_input_x16, vreg_max, preg_all);
 }
 
+template<typename T, typename T2, typename TS, PseTypeEnum pseMode, bool hasAtten>
+__simd_callee__ inline void ProcessAttenStoreMax16(
+    RegTensor<float> &vreg_input_max,
+    RegTensor<float> &vreg_min,
+    RegTensor<float> &vreg_sel1, &vreg_sel2, &vreg_sel3, &vreg_sel4, &vreg_sel5, &vreg_sel6, &vreg_sel7, &vreg_sel8,
+    RegTensor<float> &vreg_sel9, &vreg_sel10, &vreg_sel11, &vreg_sel12, &vreg_sel13, &vreg_sel14, &vreg_sel15, &vreg_sel16,
+    RegTensor<float> &vreg_sel9_new, &vreg_sel10_new, &vreg_sel11_new, &vreg_sel12_new,
+    RegTensor<float> &vreg_sel13_new, &vreg_sel14_new, &vreg_sel15_new, &vreg_sel16_new,
+    RegTensor<float> &vreg_input_x1, &vreg_input_x2, &vreg_input_x3, &vreg_input_x4,
+    RegTensor<float> &vreg_input_x5, &vreg_input_x6, &vreg_input_x7, &vreg_input_x8,
+    RegTensor<float> &vreg_input_x9, &vreg_input_x10, &vreg_input_x11, &vreg_input_x12,
+    RegTensor<float> &vreg_input_x13, &vreg_input_x14, &vreg_input_x15, &vreg_input_x16,
+    __ubuf__ T *&srcUb, const uint16_t i, const uint32_t s2BaseSize,
+    MaskReg &preg_all,
+    MaskReg &preg_ori_tail_n1, &preg_ori_tail_n2, &preg_ori_tail_n3, &preg_ori_tail_n4,
+    MaskReg &preg_ori_tail_n5, &preg_ori_tail_n6, &preg_ori_tail_n7, &preg_ori_tail_n8,
+    MaskReg &preg_compare1, &preg_compare2, &preg_compare3, &preg_compare4, &preg_compare5, &preg_compare6, &preg_compare7, &preg_compare8,
+    MaskReg &preg_compare9, &preg_compare10, &preg_compare11, &preg_compare12, &preg_compare13, &preg_compare14, &preg_compare15, &preg_compare16,
+    __ubuf__ uint32_t *&maskUb1, *&maskUb2, *&maskUb3, *&maskUb4,
+    __ubuf__ uint32_t *&maskUb5, *&maskUb6, *&maskUb7, *&maskUb8,
+    __ubuf__ uint32_t *&maskUb9, *&maskUb10, *&maskUb11, *&maskUb12,
+    __ubuf__ uint32_t *&maskUb13, *&maskUb14, *&maskUb15, *&maskUb16,
+    const uint32_t nPadding)
+{
+    LoadAttenMask16(preg_compare1, preg_compare2, preg_compare3, preg_compare4,
+        preg_compare5, preg_compare6, preg_compare7, preg_compare8,
+        preg_compare9, preg_compare10, preg_compare11, preg_compare12,
+        preg_compare13, preg_compare14, preg_compare15, preg_compare16,
+        maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, maskUb7, maskUb8,
+        maskUb9, maskUb10, maskUb11, maskUb12, maskUb13, maskUb14, maskUb15, maskUb16,
+        nPadding);
+
+    ApplyAttenMaskSelect16(vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+        vreg_sel5, vreg_sel6, vreg_sel7, vreg_sel8,
+        vreg_sel9, vreg_sel10, vreg_sel11, vreg_sel12,
+        vreg_sel13, vreg_sel14, vreg_sel15, vreg_sel16,
+        vreg_min,
+        vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+        vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+        vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+        vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+        preg_compare1, preg_compare2, preg_compare3, preg_compare4,
+        preg_compare5, preg_compare6, preg_compare7, preg_compare8,
+        preg_compare9, preg_compare10, preg_compare11, preg_compare12,
+        preg_compare13, preg_compare14, preg_compare15, preg_compare16);
+
+    Select(vreg_sel9_new, vreg_sel9, vreg_min, preg_ori_tail_n1);
+    Select(vreg_sel10_new, vreg_sel10, vreg_min, preg_ori_tail_n2);
+    Select(vreg_sel11_new, vreg_sel11, vreg_min, preg_ori_tail_n3);
+    Select(vreg_sel12_new, vreg_sel12, vreg_min, preg_ori_tail_n4);
+    Select(vreg_sel13_new, vreg_sel13, vreg_min, preg_ori_tail_n5);
+    Select(vreg_sel14_new, vreg_sel14, vreg_min, preg_ori_tail_n6);
+    Select(vreg_sel15_new, vreg_sel15, vreg_min, preg_ori_tail_n7);
+    Select(vreg_sel16_new, vreg_sel16, vreg_min, preg_ori_tail_n8);
+
+    StoreAlign16<T>(vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+        vreg_sel5, vreg_sel6, vreg_sel7, vreg_sel8,
+        vreg_sel9_new, vreg_sel10_new, vreg_sel11_new, vreg_sel12_new,
+        vreg_sel13_new, vreg_sel14_new, vreg_sel15_new, vreg_sel16_new,
+        srcUb, i, s2BaseSize, preg_all);
+
+    MaxReduce16(vreg_input_max,
+        vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
+        vreg_sel5, vreg_sel6, vreg_sel7, vreg_sel8,
+        vreg_sel9_new, vreg_sel10_new, vreg_sel11_new, vreg_sel12_new,
+        vreg_sel13_new, vreg_sel14_new, vreg_sel15_new, vreg_sel16_new,
+        preg_all);
+}
+
+template<typename T, PseTypeEnum pseMode, bool hasAtten>
+__simd_callee__ inline void ProcessStoreMax16(
+    RegTensor<float> &vreg_input_max,
+    RegTensor<float> &vreg_min,
+    RegTensor<float> &vreg_input_x1, RegTensor<float> &vreg_input_x2,
+    RegTensor<float> &vreg_input_x3, RegTensor<float> &vreg_input_x4,
+    RegTensor<float> &vreg_input_x5, RegTensor<float> &vreg_input_x6,
+    RegTensor<float> &vreg_input_x7, RegTensor<float> &vreg_input_x8,
+    RegTensor<float> &vreg_input_x9, RegTensor<float> &vreg_input_x10,
+    RegTensor<float> &vreg_input_x11, RegTensor<float> &vreg_input_x12,
+    RegTensor<float> &vreg_input_x13, RegTensor<float> &vreg_input_x14,
+    RegTensor<float> &vreg_input_x15, RegTensor<float> &vreg_input_x16,
+    RegTensor<float> &vreg_input_x9_new, RegTensor<float> &vreg_input_x10_new,
+    RegTensor<float> &vreg_input_x11_new, RegTensor<float> &vreg_input_x12_new,
+    RegTensor<float> &vreg_input_x13_new, RegTensor<float> &vreg_input_x14_new,
+    RegTensor<float> &vreg_input_x15_new, RegTensor<float> &vreg_input_x16_new,
+    __ubuf__ T *&srcUb, const uint16_t i, const uint32_t s2BaseSize,
+    MaskReg &preg_all,
+    MaskReg &preg_ori_tail_n1, MaskReg &preg_ori_tail_n2,
+    MaskReg &preg_ori_tail_n3, MaskReg &preg_ori_tail_n4,
+    MaskReg &preg_ori_tail_n5, MaskReg &preg_ori_tail_n6,
+    MaskReg &preg_ori_tail_n7, MaskReg &preg_ori_tail_n8)
+{
+    Select(vreg_input_x9_new, vreg_input_x9, vreg_min, preg_ori_tail_n1);
+    Select(vreg_input_x10_new, vreg_input_x10, vreg_min, preg_ori_tail_n2);
+    Select(vreg_input_x11_new, vreg_input_x11, vreg_min, preg_ori_tail_n3);
+    Select(vreg_input_x12_new, vreg_input_x12, vreg_min, preg_ori_tail_n4);
+    Select(vreg_input_x13_new, vreg_input_x13, vreg_min, preg_ori_tail_n5);
+    Select(vreg_input_x14_new, vreg_input_x14, vreg_min, preg_ori_tail_n6);
+    Select(vreg_input_x15_new, vreg_input_x15, vreg_min, preg_ori_tail_n7);
+    Select(vreg_input_x16_new, vreg_input_x16, vreg_min, preg_ori_tail_n8);
+
+    StoreAlign16<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+        vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+        vreg_input_x9_new, vreg_input_x10_new, vreg_input_x11_new, vreg_input_x12_new,
+        vreg_input_x13_new, vreg_input_x14_new, vreg_input_x15_new, vreg_input_x16_new,
+        srcUb, i, s2BaseSize, preg_all);
+
+    MaxReduce16(vreg_input_max,
+        vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+        vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+        vreg_input_x9_new, vreg_input_x10_new, vreg_input_x11_new, vreg_input_x12_new,
+        vreg_input_x13_new, vreg_input_x14_new, vreg_input_x15_new, vreg_input_x16_new,
+        preg_all);
+}
+
+template<typename T2, typename OUTPUT_T, PseTypeEnum pseMode>
+__simd_callee__ inline void ProcessPseBody16(
+    RegTensor<float> &vreg_pse1, &vreg_pse2, &vreg_pse3, &vreg_pse4, &vreg_pse5, &vreg_pse6, &vreg_pse7, &vreg_pse8,
+    RegTensor<float> &vreg_pse9, &vreg_pse10, &vreg_pse11, &vreg_pse12, &vreg_pse13, &vreg_pse14, &vreg_pse15, &vreg_pse16,
+    RegTensor<float> &vreg_alibi1, &vreg_alibi2, &vreg_alibi3, &vreg_alibi4, &vreg_alibi5, &vreg_alibi6, &vreg_alibi7, &vreg_alibi8,
+    RegTensor<float> &vreg_alibi9, &vreg_alibi10, &vreg_alibi11, &vreg_alibi12, &vreg_alibi13, &vreg_alibi14, &vreg_alibi15, &vreg_alibi16,
+    RegTensor<float> &vreg_input_x1, &vreg_input_x2, &vreg_input_x3, &vreg_input_x4,
+    RegTensor<float> &vreg_input_x5, &vreg_input_x6, &vreg_input_x7, &vreg_input_x8,
+    RegTensor<float> &vreg_input_x9, &vreg_input_x10, &vreg_input_x11, &vreg_input_x12,
+    RegTensor<float> &vreg_input_x13, &vreg_input_x14, &vreg_input_x15, &vreg_input_x16,
+    __ubuf__ OUTPUT_T *&pseUb, const uint16_t i, const uint32_t pseStride, const float slopes,
+    MaskReg &preg_all, MaskReg &preg_all_b16,
+    MaskReg &preg_ori_tail_n1, &preg_ori_tail_n2, &preg_ori_tail_n3, &preg_ori_tail_n4,
+    MaskReg &preg_ori_tail_n5, &preg_ori_tail_n6, &preg_ori_tail_n7, &preg_ori_tail_n8)
+{
+    if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
+        pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+        if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+            ComputePseInnerMulAddSqrt16(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
+                vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
+                vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+                vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
+                vreg_alibi9, vreg_alibi10, vreg_alibi11, vreg_alibi12,
+                vreg_alibi13, vreg_alibi14, vreg_alibi15, vreg_alibi16,
+                slopes, preg_all);
+        } else {
+            ComputePseInnerMulAdd16(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
+                vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
+                vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+                vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
+                vreg_alibi9, vreg_alibi10, vreg_alibi11, vreg_alibi12,
+                vreg_alibi13, vreg_alibi14, vreg_alibi15, vreg_alibi16,
+                slopes, preg_all);
+        }
+    } else {
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            LoadCastPseBf16_16(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
+                vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
+                pseUb, i, pseStride, preg_all_b16);
+        } else if constexpr (IsSameType<T2, half>::value) {
+            LoadCastPseF16_16(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
+                vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
+                pseUb, i, pseStride, preg_all_b16);
+        }
+    }
+    AddPseToInput16(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+        vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+        vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+        vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+        vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+        vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
+        vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
+        preg_all, preg_ori_tail_n1, preg_ori_tail_n2,
+        preg_ori_tail_n3, preg_ori_tail_n4,
+        preg_ori_tail_n5, preg_ori_tail_n6,
+        preg_ori_tail_n7, preg_ori_tail_n8);
+}
+
+template<typename T, typename T2, typename OUTPUT_T, typename TS, PseTypeEnum pseMode, bool hasAtten>
+__simd_callee__ inline void ProcessFirstPass1024(
+    UnalignRegForStore &ureg_max, MaskReg &preg_all, MaskReg &preg_all_b16,
+    __ubuf__ TS *&maxUb,
+    __ubuf__ T *&srcUb, __ubuf__ OUTPUT_T *&pseUb,
+    __ubuf__ uint32_t *&maskUb1, __ubuf__ uint32_t *&maskUb2,
+    __ubuf__ uint32_t *&maskUb3, __ubuf__ uint32_t *&maskUb4,
+    __ubuf__ uint32_t *&maskUb5, __ubuf__ uint32_t *&maskUb6,
+    __ubuf__ uint32_t *&maskUb7, __ubuf__ uint32_t *&maskUb8,
+    __ubuf__ uint32_t *&maskUb9, __ubuf__ uint32_t *&maskUb10,
+    __ubuf__ uint32_t *&maskUb11, __ubuf__ uint32_t *&maskUb12,
+    __ubuf__ uint32_t *&maskUb13, __ubuf__ uint32_t *&maskUb14,
+    __ubuf__ uint32_t *&maskUb15, __ubuf__ uint32_t *&maskUb16,
+    const uint16_t m, const uint32_t s2BaseSize, const uint32_t pseStride,
+    const T scale, const float slopes, const float posShift, const T minValue,
+    const uint32_t nPadding,
+    uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltOriTailN3, uint32_t pltOriTailN4,
+    uint32_t pltOriTailN5, uint32_t pltOriTailN6, uint32_t pltOriTailN7, uint32_t pltOriTailN8,
+    uint32_t pltTailN1, uint32_t pltTailN2, uint32_t pltTailN3, uint32_t pltTailN4,
+    uint32_t pltTailN5, uint32_t pltTailN6, uint32_t pltTailN7, uint32_t pltTailN8)
+{
+    RegTensor<float> vreg_min;
+    VREG_FLOAT_DECL_16(vreg_sel);
+    RegTensor<float> vreg_sel9_new, vreg_sel10_new, vreg_sel11_new, vreg_sel12_new;
+    RegTensor<float> vreg_sel13_new, vreg_sel14_new, vreg_sel15_new, vreg_sel16_new;
+
+    VREG_FLOAT_DECL_16(vreg_input_x);
+    RegTensor<float> vreg_input_x9_new, vreg_input_x10_new, vreg_input_x11_new, vreg_input_x12_new;
+    RegTensor<float> vreg_input_x13_new, vreg_input_x14_new, vreg_input_x15_new, vreg_input_x16_new;
+
+    RegTensor<float> vreg_input_max;
+
+    VREG_FLOAT_DECL_16(vreg_pse);
+
+    VREG_FLOAT_DECL_16(vreg_alibi);
+
+    MaskReg preg_tail_n1 = UpdateMask<TS>(pltTailN1), preg_ori_tail_n1 = UpdateMask<TS>(pltOriTailN1);
+    MaskReg preg_tail_n2 = UpdateMask<TS>(pltTailN2), preg_ori_tail_n2 = UpdateMask<TS>(pltOriTailN2);
+    MaskReg preg_tail_n3 = UpdateMask<TS>(pltTailN3), preg_ori_tail_n3 = UpdateMask<TS>(pltOriTailN3);
+    MaskReg preg_tail_n4 = UpdateMask<TS>(pltTailN4), preg_ori_tail_n4 = UpdateMask<TS>(pltOriTailN4);
+    MaskReg preg_tail_n5 = UpdateMask<TS>(pltTailN5), preg_ori_tail_n5 = UpdateMask<TS>(pltOriTailN5);
+    MaskReg preg_tail_n6 = UpdateMask<TS>(pltTailN6), preg_ori_tail_n6 = UpdateMask<TS>(pltOriTailN6);
+    MaskReg preg_tail_n7 = UpdateMask<TS>(pltTailN7), preg_ori_tail_n7 = UpdateMask<TS>(pltOriTailN7);
+    MaskReg preg_tail_n8 = UpdateMask<TS>(pltTailN8), preg_ori_tail_n8 = UpdateMask<TS>(pltOriTailN8);
+
+    VREG_PREG_COMPARE_DECL_16();
+
+    Duplicate(vreg_min, minValue);
+    if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
+                    pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+        InitAlibiOffsets(vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+            vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
+            vreg_alibi9, vreg_alibi10, vreg_alibi11, vreg_alibi12,
+            vreg_alibi13, vreg_alibi14, vreg_alibi15, vreg_alibi16,
+            posShift, preg_all);
+    }
+    for (uint16_t i = 0; i < m; ++i) {
+        LoadInput16<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+            vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+            vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+            vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+            srcUb, i, s2BaseSize);
+
+        if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
+            ScaleInput16(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+                scale, preg_all, preg_ori_tail_n1, preg_ori_tail_n2,
+                preg_ori_tail_n3, preg_ori_tail_n4, preg_ori_tail_n5, preg_ori_tail_n6,
+                preg_ori_tail_n7, preg_ori_tail_n8);
+        }
+        if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
+            ProcessPseBody16<T2, OUTPUT_T, pseMode>(
+                vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4, vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12, vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
+                vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4, vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
+                vreg_alibi9, vreg_alibi10, vreg_alibi11, vreg_alibi12, vreg_alibi13, vreg_alibi14, vreg_alibi15, vreg_alibi16,
+                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+                pseUb, i, pseStride, slopes,
+                preg_all, preg_all_b16,
+                preg_ori_tail_n1, preg_ori_tail_n2, preg_ori_tail_n3, preg_ori_tail_n4,
+                preg_ori_tail_n5, preg_ori_tail_n6, preg_ori_tail_n7, preg_ori_tail_n8);
+        }
+        if constexpr (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
+            ScaleInput16(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+                scale, preg_all, preg_ori_tail_n1, preg_ori_tail_n2,
+                preg_ori_tail_n3, preg_ori_tail_n4, preg_ori_tail_n5, preg_ori_tail_n6,
+                preg_ori_tail_n7, preg_ori_tail_n8);
+        }
+
+        if constexpr (hasAtten == 1) {
+            ProcessAttenStoreMax16<T, T2, TS, pseMode, hasAtten>(vreg_input_max, vreg_min,
+                vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4, vreg_sel5, vreg_sel6, vreg_sel7, vreg_sel8,
+                vreg_sel9, vreg_sel10, vreg_sel11, vreg_sel12, vreg_sel13, vreg_sel14, vreg_sel15, vreg_sel16,
+                vreg_sel9_new, vreg_sel10_new, vreg_sel11_new, vreg_sel12_new,
+                vreg_sel13_new, vreg_sel14_new, vreg_sel15_new, vreg_sel16_new,
+                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+                srcUb, i, s2BaseSize, preg_all,
+                preg_ori_tail_n1, preg_ori_tail_n2, preg_ori_tail_n3, preg_ori_tail_n4,
+                preg_ori_tail_n5, preg_ori_tail_n6, preg_ori_tail_n7, preg_ori_tail_n8,
+                preg_compare1, preg_compare2, preg_compare3, preg_compare4, preg_compare5, preg_compare6, preg_compare7, preg_compare8,
+                preg_compare9, preg_compare10, preg_compare11, preg_compare12, preg_compare13, preg_compare14, preg_compare15, preg_compare16,
+                maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, maskUb7, maskUb8,
+                maskUb9, maskUb10, maskUb11, maskUb12, maskUb13, maskUb14, maskUb15, maskUb16,
+                nPadding);
+        } else {
+            ProcessStoreMax16<T, pseMode, hasAtten>(vreg_input_max, vreg_min,
+                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+                vreg_input_x9_new, vreg_input_x10_new, vreg_input_x11_new, vreg_input_x12_new,
+                vreg_input_x13_new, vreg_input_x14_new, vreg_input_x15_new, vreg_input_x16_new,
+                srcUb, i, s2BaseSize, preg_all,
+                preg_ori_tail_n1, preg_ori_tail_n2, preg_ori_tail_n3, preg_ori_tail_n4,
+                preg_ori_tail_n5, preg_ori_tail_n6, preg_ori_tail_n7, preg_ori_tail_n8);
+        }
+        StoreUnAlign<TS, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ TS *&)maxUb), vreg_input_max, ureg_max, 1);
+    }
+    StoreUnAlignPost<TS, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ TS *&)maxUb), ureg_max, 0);
+}
+
+template<typename T, bool hasDrop>
+__simd_callee__ inline void ProcessTail1024NoUpdate(
+    UnalignRegForStore &ureg_max, __ubuf__ T *&maxUb, MaskReg &preg_all)
+{
+    StoreUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb), ureg_max, 0);
+    if constexpr (hasDrop == 1) {
+        RegTensor<float> vreg_zero;
+        Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_zero, 0.0f, preg_all);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+template<typename T>
+__simd_callee__ inline void ProcessTail1024Update(
+    UnalignRegForStore &ureg_max, __ubuf__ T *&tmpMaxUb,
+    __ubuf__ T *&tmpMaxUb2, __ubuf__ T *&inMaxUb,
+    MaskReg &preg_all)
+{
+    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
+    RegTensor<float> vreg_in_max;
+    RegTensor<float> vreg_input_max;
+    RegTensor<float> vreg_max_new;
+    LoadAlign(vreg_in_max, inMaxUb);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    LoadAlign(vreg_input_max, tmpMaxUb2);
+    Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(((__ubuf__ T *&)tmpMaxUb2), vreg_max_new, preg_all);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+template<typename T, typename T2>
+__simd_callee__ inline void ProcessExpCastStoreLoop1024(
+    RegTensor<float> &vreg_max_brc,
+    __ubuf__ T *&srcUb, __ubuf__ T2 *&expUb1, __ubuf__ T2 *&expUb2, __ubuf__ T2 *&expUb3, __ubuf__ T2 *&expUb4,
+    __ubuf__ T2 *&expUb5, __ubuf__ T2 *&expUb6, __ubuf__ T2 *&expUb7, __ubuf__ T2 *&expUb8,
+    __ubuf__ T *&expSumUb, const uint16_t i, const uint32_t s2BaseSize,
+    const uint32_t blockStride, const uint32_t repeatStride,
+    UnalignRegForStore &ureg_exp_sum,
+    MaskReg &preg_all, MaskReg &preg_all_b16)
+{
+    VREG_FLOAT_DECL_16(vreg_input_x);
+    VREG_FLOAT_DECL_EXP_PAIRS(vreg_exp);
+    RegTensor<float> vreg_exp_sum1;
+
+    LoadInputDinterleave8<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+        vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+        vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+        vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+        srcUb, i, s2BaseSize);
+
+    ExpSub16(vreg_exp_even1, vreg_exp_odd1, vreg_exp_even2, vreg_exp_odd2,
+        vreg_exp_even3, vreg_exp_odd3, vreg_exp_even4, vreg_exp_odd4,
+        vreg_exp_even5, vreg_exp_odd5, vreg_exp_even6, vreg_exp_odd6,
+        vreg_exp_even7, vreg_exp_odd7, vreg_exp_even8, vreg_exp_odd8,
+        vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
+        vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
+        vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
+        vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
+        vreg_max_brc, preg_all);
+
+    ExpSumReduceStore1024<float, T2>(vreg_exp_sum1,
+        vreg_exp_even1, vreg_exp_odd1, vreg_exp_even2, vreg_exp_odd2,
+        vreg_exp_even3, vreg_exp_odd3, vreg_exp_even4, vreg_exp_odd4,
+        vreg_exp_even5, vreg_exp_odd5, vreg_exp_even6, vreg_exp_odd6,
+        vreg_exp_even7, vreg_exp_odd7, vreg_exp_even8, vreg_exp_odd8,
+        ureg_exp_sum, expSumUb, preg_all);
+
+    if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        CastStoreExpBf16_1024<T2>(vreg_exp_even1, vreg_exp_odd1,
+            vreg_exp_even2, vreg_exp_odd2, vreg_exp_even3, vreg_exp_odd3,
+            vreg_exp_even4, vreg_exp_odd4, vreg_exp_even5, vreg_exp_odd5,
+            vreg_exp_even6, vreg_exp_odd6, vreg_exp_even7, vreg_exp_odd7,
+            vreg_exp_even8, vreg_exp_odd8,
+            expUb1, expUb2, expUb3, expUb4, expUb5, expUb6, expUb7, expUb8,
+            blockStride, repeatStride, preg_all, preg_all_b16);
+    } else if constexpr (IsSameType<T2, half>::value) {
+        CastStoreExpF16_1024<T2>(vreg_exp_even1, vreg_exp_odd1,
+            vreg_exp_even2, vreg_exp_odd2, vreg_exp_even3, vreg_exp_odd3,
+            vreg_exp_even4, vreg_exp_odd4, vreg_exp_even5, vreg_exp_odd5,
+            vreg_exp_even6, vreg_exp_odd6, vreg_exp_even7, vreg_exp_odd7,
+            vreg_exp_even8, vreg_exp_odd8,
+            expUb1, expUb2, expUb3, expUb4, expUb5, expUb6, expUb7, expUb8,
+            blockStride, repeatStride, preg_all, preg_all_b16);
+    }
+}
+
+template<typename T, typename T2>
+__simd_callee__ inline void ProcessSecondPass1024(
+    UnalignRegForStore &ureg_exp_sum, MaskReg &preg_all, MaskReg &preg_all_b16,
+    __ubuf__ T *&maxStartBuf,
+    __ubuf__ T2 *&expUb1, __ubuf__ T2 *&expUb2, __ubuf__ T2 *&expUb3, __ubuf__ T2 *&expUb4,
+    __ubuf__ T2 *&expUb5, __ubuf__ T2 *&expUb6, __ubuf__ T2 *&expUb7, __ubuf__ T2 *&expUb8,
+    __ubuf__ T *&expSumUb,
+    __ubuf__ T *&srcUb, const uint16_t m, const uint32_t s2BaseSize,
+    const uint32_t blockStride, const uint32_t repeatStride,
+    MaskReg &storeMask)
+{
+    RegTensor<float> vreg_max_brc;
+
+    for (uint16_t i = 0; i < m; ++i) {
+        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
+            vreg_max_brc, maxStartBuf + i);
+        ProcessExpCastStoreLoop1024<T, T2>(vreg_max_brc, srcUb,
+            expUb1, expUb2, expUb3, expUb4, expUb5, expUb6, expUb7, expUb8,
+            expSumUb, i, s2BaseSize,
+            blockStride, repeatStride, ureg_exp_sum,
+            preg_all, storeMask);
+    }
+    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
+}
+
 } // namespace FaVectorApi
 
 #endif // VF_BASIC_BLOCK_UNALIGNED1024_COMMON_H
