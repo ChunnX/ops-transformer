@@ -482,12 +482,23 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     ComputeGradAlphaAndBias(bsLen, n_);
     CopyOutAlphaAndBias(blockIdx_, blockIdx_ * n_);
     //grad_Z_pre ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
+    LocalTensor<U> gradZLocal = gradZBuf_.Get<U>();
+    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
+        int64_t curBsIdx = bsOffset + bsLoop;
+        U invRms = invRmsLocal(bsLoop);
+        ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPre_, invRms, n_, curBsIdx * k_);
+    }
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, hcBeforeNormOffset + n_, alphaPost_, n_);
     CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
     ComputeSigmoidGrad(bsLen, n_, NUMTWO);
     ComputeGradAlphaAndBias(bsLen, n_);
     CopyOutAlphaAndBias(blockIdx_ + usedAivNum_, blockIdx_ * n_ + usedAivNum_ * n_);
-    //grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
+    // grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
+    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
+        int64_t curBsIdx = bsOffset + bsLoop;
+        U invRms = invRmsLocal(bsLoop);
+        ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPost_, invRms, n_, curBsIdx * k_ + n_);
+    }
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, hcBeforeNormOffset + 2 * n_, alphaRes_, 2 * n_);
     invRmsQue_.FreeTensor(invRmsLocal);
 }
