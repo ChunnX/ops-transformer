@@ -14,6 +14,13 @@
 #include "kernel_operator.h"
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
 
+#ifndef QKV_RRC_LAYOUT_NTD
+#define QKV_RRC_LAYOUT_NTD 0
+#endif
+#ifndef QKV_RRC_LAYOUT_TND
+#define QKV_RRC_LAYOUT_TND 1
+#endif
+
 namespace QkvRmsNormRopeCacheWithKScale {
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;

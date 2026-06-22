@@ -16,9 +16,15 @@
 namespace optiling {
 namespace QkvRmsNormRopeCacheWithKScale {
 
+#ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128 128
+#endif
+#ifndef QKV_RRC_LAYOUT_NTD
 #define QKV_RRC_LAYOUT_NTD 0
+#endif
+#ifndef QKV_RRC_LAYOUT_TND
 #define QKV_RRC_LAYOUT_TND 1
+#endif
 #ifndef ASCENDC_TPL_4_BW
 #define ASCENDC_TPL_4_BW 4
 #endif

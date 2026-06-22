@@ -16,6 +16,7 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
+template <uint32_t INPUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors,
@@ -210,7 +211,7 @@ private:
     uint64_t aRotL1BufferUseId_;
     LocalTensor<bfloat16_t> aRotL1Pool_;
     QkvRmsNormRopeCacheWithKScaleCube cube_;
-    QkvRmsNormRopeCacheWithKScaleVec vec_;
+    QkvRmsNormRopeCacheWithKScaleVec<INPUT_LAYOUT> vec_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

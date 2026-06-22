@@ -51,7 +51,7 @@ qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gam
         workspace,
     };
 
-    QkvRmsNormRopeCacheWithKScaleController controller;
+    QkvRmsNormRopeCacheWithKScaleController<INPUT_LAYOUT> controller;
     controller.Process(tensors, tilingData);
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
