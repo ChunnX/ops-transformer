@@ -380,43 +380,31 @@ ge::graphStatus MhcPostTilingBase::CheckShapeConsistency()
 
 ge::graphStatus MhcPostTilingBase::CheckParam()
 {
-    if (socVer_ == SOC_VER_950_CODE){
-        OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckNullptr failed"),
+
+    OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckNullptr failed"),
                 return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(CheckDataType() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckDataType failed"),
-                    return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(CheckShapeConsistency() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeConsistency failed"),
-                    return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeAllPositive failed"),
-                return ge::GRAPH_FAILED);
-    }else{
-        OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckNullptr failed"),
+    OP_CHECK_IF(CheckDataType() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckDataType failed"),
                 return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(CheckDataType() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckDataType failed"),
+    OP_CHECK_IF(CheckShapeConsistency() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeConsistency failed"),
                 return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(CheckShapeConsistency() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeConsistency failed"),
+    OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeAllPositive failed"),
                 return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeAllPositive failed"),
-                return ge::GRAPH_FAILED);
-        
+    
+    if (socVer_ != SOC_VER_950_CODE){
         int64_t n = xShape.GetDim(N_DIM_IDX);
 
         OP_CHECK_IF(c <= 0 || c >= 100000 || c % 128 != 0,
-                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                                "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
-                    return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
+                return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(n != N_SIZE_4,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "n must be %ld, but got %ld", N_SIZE_4, n),
                 return ge::GRAPH_FAILED);
     }
-
 
     return ge::GRAPH_SUCCESS;
 }
