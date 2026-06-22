@@ -22,6 +22,13 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "kv_quant_sparse_flash_attention_common.h"
 
+struct Position {
+    uint32_t bIdx;
+    uint32_t n2Idx;
+    uint32_t s2Idx;
+    uint32_t dIdx;
+};
+
 struct PAShape {
     uint32_t blockSize;
     uint32_t headNum;             // 一般为kv的head num，对应n2
@@ -32,21 +39,13 @@ struct PAShape {
     uint32_t copyRowNumAlign;
 };
 
-struct Position {
-    uint32_t bIdx;
-    uint32_t n2Idx;
-    uint32_t s2Idx;
-    uint32_t dIdx;
-};
-
 // 场景：query、queryRope、key、value GM to L1
 // GM按ND格式存储
 // L1按NZ格式存储
 // GM的行、列、列的stride
 template <typename T>
 __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor,
-                                        uint32_t rowAct,
-                                        uint32_t rowAlign,
+                                        uint32_t rowAct, uint32_t rowAlign,
                                         uint32_t col,       // D
                                         uint32_t colStride) // D or N*D
 {
@@ -54,12 +53,12 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = rowAct;       // nd矩阵的行数
     // T为int4场景下，dValue = col / 2，srcDValue = colStride / 2
-    nd2nzPara.dValue = col;          // nd矩阵的列数
     nd2nzPara.srcDValue = colStride; // 同一nd矩阵相邻行起始地址间的偏移
+    nd2nzPara.dValue = col;          // nd矩阵的列数
     nd2nzPara.dstNzC0Stride = rowAlign;
     nd2nzPara.dstNzNStride = 1;
-    nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
+    nd2nzPara.srcNdMatrixStride = 0;
     DataCopy(l1Tensor, gmTensor, nd2nzPara);
 }
 
@@ -102,8 +101,8 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
                       reaminRowCnt * shape.headDim + startPos.dIdx;
         }
 
-        uint32_t dValue = shape.actHeadDim;
         uint32_t srcDValue = dStride;
+        uint32_t dValue = shape.actHeadDim;
         LocalTensor<T> tmpDstTensor = dstTensor[copyFinishRowCnt * blockElementCnt];
         GlobalTensor<T> tmpSrcTensor = srcTensor[offset];
 
@@ -164,6 +163,10 @@ private:
     static constexpr uint32_t L0B_PP_SIZE = (32 * 1024);
     static constexpr uint32_t L0C_PP_SIZE = (64 * 1024);
 
+    // m <> mte1 EventID
+    static constexpr uint32_t L0AB_EVENT0 = EVENT_ID3;
+    static constexpr uint32_t L0AB_EVENT1 = EVENT_ID4;
+
     // mte2 <> mte1 EventID
     // L1 3buf, 使用3个eventId
     static constexpr uint32_t L1_EVENT0 = EVENT_ID2;
@@ -173,10 +176,6 @@ private:
     static constexpr uint32_t L1_EVENT4 = EVENT_ID6;
     static constexpr uint32_t L1_EVENT5 = EVENT_ID7;
     static constexpr uint32_t L1_EVENT6 = EVENT_ID1;
-
-    // m <> mte1 EventID
-    static constexpr uint32_t L0AB_EVENT0 = EVENT_ID3;
-    static constexpr uint32_t L0AB_EVENT1 = EVENT_ID4;
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
     static constexpr uint32_t mte21QPIds[4] = {L1_EVENT0, L1_EVENT1, L1_EVENT2, L1_EVENT3}; // mte12复用
@@ -209,8 +208,8 @@ private:
     GlobalTensor<OUT_T> attentionOutGm;
 
     // block_table
-    GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> topKGm;
+    GlobalTensor<int32_t> blockTableGm;
 
     TBuf<TPosition::A1> bufQPL1;
     TBuf<TPosition::A1> bufKVL1;
@@ -218,11 +217,11 @@ private:
     TBuf<TPosition::B2> tmpBufL0B;
     TBuf<TPosition::CO1> tmpBufL0C;
 
-    LocalTensor<Q_T> l1QPTensor;
-    LocalTensor<Q_T> l1KVTensor;
     LocalTensor<K_ROPE_T> aL0TensorPingPong;
     LocalTensor<K_ROPE_T> bL0TensorPingPong;
     LocalTensor<MM_OUT_T> cL0TensorPingPong;
+    LocalTensor<Q_T> l1QPTensor;
+    LocalTensor<Q_T> l1KVTensor;
 
     // L0AB m <> mte1 EventID
     __aicore__ inline uint32_t Mte1MmABEventId(uint32_t idx)
@@ -334,6 +333,8 @@ template <typename QSFAT> __aicore__ inline void QSFAMatmulService<QSFAT>::Updat
 
 template <typename QSFAT> __aicore__ inline void QSFAMatmulService<QSFAT>::AllocEventID()
 {
+    SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
+    SetFlag<HardEvent::M_MTE1>(L0AB_EVENT1);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
@@ -341,12 +342,12 @@ template <typename QSFAT> __aicore__ inline void QSFAMatmulService<QSFAT>::Alloc
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
-    SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
-    SetFlag<HardEvent::M_MTE1>(L0AB_EVENT1);
 }
 
 template <typename QSFAT> __aicore__ inline void QSFAMatmulService<QSFAT>::FreeEventID()
 {
+    WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
+    WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT1);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT0);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT2);
@@ -354,8 +355,6 @@ template <typename QSFAT> __aicore__ inline void QSFAMatmulService<QSFAT>::FreeE
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT4);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT5);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT6);
-    WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0);
-    WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT1);
 }
 
 template <typename QSFAT>
@@ -365,13 +364,13 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::CopyGmToL1(LocalTensor<K_ROPE_T
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
-    nd2nzPara.nValue = srcN; // 行数
     nd2nzPara.dValue = srcD;
+    nd2nzPara.nValue = srcN; // 行数
     nd2nzPara.srcDValue = srcDstride;
     nd2nzPara.dstNzC0Stride = (srcN + 15) / 16 * 16; // 对齐到16 单位block
     nd2nzPara.dstNzNStride = 1;
-    nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
+    nd2nzPara.srcNdMatrixStride = 0;
     DataCopy(l1Tensor, gmSrcTensor, nd2nzPara);
 }
 
@@ -411,8 +410,8 @@ QSFAMatmulService<QSFAT>::CopyInMm1BToL1(LocalTensor<K_ROPE_T> &bL1Tensor, const
     mm1Nd2NzParamsForB.nValue = nActCopyRowCount;
     mm1Nd2NzParamsForB.dValue = headSize;
     mm1Nd2NzParamsForB.srcDValue = dStride;
-    mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.dstNzNStride = 1;
+    mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.srcNdMatrixStride = 0;
     mm1Nd2NzParamsForB.dstNzMatrixStride = 0;
     DataCopy(bL1Tensor[copyStartRowCnt * blockElementCnt], keyGm[keyGmBaseOffset], mm1Nd2NzParamsForB);
@@ -436,8 +435,8 @@ QSFAMatmulService<QSFAT>::CopyInMm1BRopeToL1(LocalTensor<K_ROPE_T> &bL1Tensor, c
     mm1Nd2NzParamsForB.nValue = nActCopyRowCount;
     mm1Nd2NzParamsForB.dValue = headSize;
     mm1Nd2NzParamsForB.srcDValue = dStride;
-    mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.dstNzNStride = 1;
+    mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.srcNdMatrixStride = 0;
     mm1Nd2NzParamsForB.dstNzMatrixStride = 0;
     DataCopy(bL1Tensor[copyStartRowCnt * blockElementCnt], kRopeGm[kRopeGmBaseOffset], mm1Nd2NzParamsForB);
@@ -463,17 +462,17 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::LoadDataMm1A(LocalTensor<K_ROPE
     loadData3DParams.kExtension = kSize; // K
     loadData3DParams.mStartPt = 0;
     loadData3DParams.kStartPt = 0;
-    loadData3DParams.strideW = 1;
     loadData3DParams.strideH = 1;
+    loadData3DParams.strideW = 1;
     loadData3DParams.filterW = 1;
     loadData3DParams.filterSizeW = (1 >> 8) & 255;
     loadData3DParams.filterH = 1;
     loadData3DParams.filterSizeH = (1 >> 8) & 255;
-    loadData3DParams.dilationFilterW = 1;
     loadData3DParams.dilationFilterH = 1;
-    loadData3DParams.enTranspose = 0;
+    loadData3DParams.dilationFilterW = 1;
     loadData3DParams.fMatrixCtrl = 0;
     loadData3DParams.channelSize = kSize; // Cin=K
+    loadData3DParams.enTranspose = 0;
     LoadData<K_ROPE_T, LOAD3DV2_CONFIG>(aL0Tensor, srcTensor, loadData3DParams);
 }
 
@@ -521,8 +520,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::CopyInMm2BToL1(
     mm1Nd2NzParamsForB.nValue = nActCopyRowCount;
     mm1Nd2NzParamsForB.dValue = copyColumnCount;
     mm1Nd2NzParamsForB.srcDValue = step;
-    mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.dstNzNStride = 1;
+    mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.srcNdMatrixStride = 0;
     mm1Nd2NzParamsForB.dstNzMatrixStride = 0;
     DataCopy(bL1Tensor[copyStartRowCnt * blockElementCnt], valueGm[valueGmBaseOffset + copyStartColumnCount],
@@ -692,8 +691,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::ComputeMm1(const RunInfo &info,
                     mmadParams.m = mL1SizeAlign;
                     mmadParams.n = nL1SizeAlign;
                     mmadParams.k = kL0Size;
-                    mmadParams.cmatrixInitVal = (kL1 == 0 && kL0 == 0);
                     mmadParams.cmatrixSource = false;
+                    mmadParams.cmatrixInitVal = (kL1 == 0 && kL0 == 0);
                     mmadParams.unitFlag =
                         (kL1 == 1 && kL0 == (kL0Loops - 1)) ? 0b11 : 0b10; // 累加最后一次翻转flag, 表示可以搬出
                     Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
@@ -787,8 +786,8 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::ComputeMm2(const RunInfo &info,
                 }
                 if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
                     DataCopyParams copyParams;
-                    copyParams.blockCount = nL1Size / BLOCK_ELEMENT_NUM;
                     copyParams.blockLen = kL0Size;
+                    copyParams.blockCount = nL1Size / BLOCK_ELEMENT_NUM;
                     copyParams.srcStride = constInfo.s2BaseSize - kL0Size;
                     copyParams.dstStride = kL0SizeAlign - kL0Size;
                     DataCopy(bL1Tensor[(qsfaKL1 - qsfaKOffset) * 128 * N_SPLIT_SIZE], kvMergeGm_[info.loop % 4 *
@@ -845,14 +844,14 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::ComputeMm2(const RunInfo &info,
                     loadData3DParamsForB.kExtension = nL1SizeAlign; // 在目的操作数width维度的传输长度
                     loadData3DParamsForB.mStartPt = 0;              // 卷积核在目的操作数width维度的起点
                     loadData3DParamsForB.kStartPt = 0;              // 卷积核在目的操作数height维度的起点
-                    loadData3DParamsForB.strideW = 1;
                     loadData3DParamsForB.strideH = 1;
+                    loadData3DParamsForB.strideW = 1;
                     loadData3DParamsForB.filterW = 1;
                     loadData3DParamsForB.filterSizeW = false; // 是否在filterW的基础上将卷积核width增加256个元素
                     loadData3DParamsForB.filterH = 1;
                     loadData3DParamsForB.filterSizeH = false; // 是否在filterH的基础上将卷积核height增加256个元素
-                    loadData3DParamsForB.dilationFilterW = 1; // 卷积核width膨胀系数
                     loadData3DParamsForB.dilationFilterH = 1; // 卷积核height膨胀系数
+                    loadData3DParamsForB.dilationFilterW = 1; // 卷积核width膨胀系数
                     loadData3DParamsForB.enTranspose = 1;     // 是否启用转置功能
                     // 使用FMATRIX_LEFT还是使用FMATRIX_RIGHT，=0使用FMATRIX_LEFT，=1使用FMATRIX_RIGHT 1
                     loadData3DParamsForB.fMatrixCtrl = 0;

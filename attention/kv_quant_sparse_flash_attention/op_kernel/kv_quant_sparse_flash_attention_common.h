@@ -68,11 +68,6 @@ template <typename T> __aicore__ inline T QSFAAlign(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
-{
-    return (a > b) ? (b) : (a);
-}
-
 template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
 {
     if constexpr (IsSameType<T, int4b_t>::value) {
@@ -80,6 +75,11 @@ template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
     }
     size_t n = (32 / sizeof(T));
     return (s + n - 1) / n * n;
+}
+
+template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
+{
+    return (a > b) ? (b) : (a);
 }
 
 struct RunInfo {
@@ -90,6 +90,8 @@ struct RunInfo {
     uint32_t s2Idx;
     uint32_t bn2IdxInCurCore;
     uint32_t curSInnerLoopTimes;
+    uint32_t s2BatchOffset;
+
     uint64_t tndBIdxOffsetForQ;
     uint64_t tndBIdxOffsetForKV;
     uint64_t tensorAOffset;
@@ -97,13 +99,11 @@ struct RunInfo {
     uint64_t tensorARopeOffset;
     uint64_t tensorBRopeOffset;
     uint64_t attenOutOffset;
-    uint64_t attenMaskOffset;
     uint64_t topKBaseOffset;
+    uint64_t attenMaskOffset;
+
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
-    bool isFirstSInnerLoop;
-    bool isChangeBatch;
-    uint32_t s2BatchOffset;
     uint32_t gSize;
     uint32_t s1Size;
     uint32_t s2Size;
@@ -114,16 +114,19 @@ struct RunInfo {
     uint32_t tndCoreStartKVSplitPos;
     bool isBmm2Output;
     bool isValid = false;
-
+    bool isFirstSInnerLoop;
+    bool isChangeBatch;
     static constexpr uint32_t n2Idx = 0;
+
     uint64_t actS1Size = 1;
     uint64_t curActualSeqLenOri = 0ULL;
+    uint64_t actS2Size = 1;
 
     uint32_t gS1Idx;
-    uint64_t actS2Size = 1;
     uint32_t actMBaseSize;
-    bool isLastS2Loop;
     int32_t nextTokensPerBatch = 0;
+    bool isLastS2Loop;
+    uint8_t resv[3];
     int64_t threshold;
 };
 
@@ -131,16 +134,16 @@ struct ConstInfo {
     // CUBE与VEC核间同步的模式
     static constexpr uint32_t QSFA_SYNC_MODE2 = 2;
     // BUFFER的字节数
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
     static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
     static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
     static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
     static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
     // FP32的0值和极大值
     static constexpr float FLOAT_ZERO = 0;
     static constexpr float FLOAT_MAX = 3.402823466e+38F;
@@ -149,18 +152,18 @@ struct ConstInfo {
     uint32_t preLoadNum = 0U;
     uint32_t nBufferMBaseSize = 0U;
     // CUBE和VEC的核间同步EventID
-    uint32_t syncV1NupdateC2 = 0U;
     uint32_t syncV0C1 = 0U;
     uint32_t syncC1V1 = 0U;
     uint32_t syncV1C2 = 0U;
     uint32_t syncC2V2 = 0U;
     uint32_t syncC2V1 = 0U;
+    uint32_t syncV1NupdateC2 = 0U;
 
     uint32_t mmResUbSize = 0U;   // Matmul1输出结果GM上的大小
     uint32_t vec1ResUbSize = 0U; // Vector1输出结果GM上的大小
     uint32_t bmm2ResUbSize = 0U; // Matmul2输出结果GM上的大小
-    uint64_t batchSize = 0ULL;
     uint64_t gSize = 0ULL;
+    uint64_t batchSize = 0ULL;
     uint64_t qHeadNum = 0ULL;
     uint64_t kvHeadNum;
     uint64_t headDim;
@@ -176,9 +179,9 @@ struct ConstInfo {
     bool needInit = false;
 
     // FlashDecoding
-    uint32_t actualCombineLoopSize = 0U; // FlashDecoding场景, S2在核间切分的最大份数
     uint64_t combineLseOffset = 0ULL;
     uint64_t combineAccumOutOffset = 0ULL;
+    uint32_t actualCombineLoopSize = 0U; // FlashDecoding场景, S2在核间切分的最大份数
 
     uint32_t actualLenDimsQ = 0U;   // query的actualSeqLength 的维度
     uint32_t actualLenDimsKV = 0U;  // KV 的actualSeqLength 的维度
@@ -192,15 +195,15 @@ struct ConstInfo {
     uint32_t gS1Start = 0U;
     uint32_t gS1End = 0U;
 
-    uint32_t tndFDCoreArrLen = 0U;     // TNDFlashDecoding相关分核信息array的长度
-    uint32_t coreStartKVSplitPos = 0U; // TNDFlashDecoding kv起始位置
-
     uint32_t mBaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
 
+    uint32_t tndFDCoreArrLen = 0U;     // TNDFlashDecoding相关分核信息array的长度
+    uint32_t coreStartKVSplitPos = 0U; // TNDFlashDecoding kv起始位置
+
     // sparse attr
-    int64_t sparseBlockSize = 0;
     uint32_t sparseBlockCount = 0;
+    int64_t sparseBlockSize = 0;
 
     // attention模式与量化模式
     ATTENTION_MODE attentionMode = ATTENTION_MODE::MLA_ABSORB;
