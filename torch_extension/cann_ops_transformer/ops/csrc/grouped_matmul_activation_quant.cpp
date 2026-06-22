@@ -322,10 +322,11 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
         tuningConfigRef = at::IntArrayRef(tuningConfig.value());
     }
 
-    TensorWrapper xWrapper = {x, xAclDtype};
-    TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
+    TensorWithFormatWrapper xWrapper = {x, xAclDtype, ACL_FORMAT_ND};
+    TensorWithFormatWrapper groupListWrapper = {groupList, ACL_INT64, ACL_FORMAT_ND};
+    TensorWithFormatWrapper xScaleWrapper = {xScale, xScaleAclDtype, ACL_FORMAT_ND};
     TensorListWithFormatWrapper weightWrapper = {weightRef, weightAclDtype, ACL_FORMAT_FRACTAL_NZ};
-    TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
+    TensorListWithFormatWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype, ACL_FORMAT_ND};
     TensorListWrapper biasWrapper = {biasRef, ACL_FLOAT};
     TensorWithFormatWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue), ACL_FORMAT_ND};
     TensorWithFormatWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0, ACL_FORMAT_ND};
@@ -334,7 +335,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     char *roundModePtr = const_cast<char *>(roundMode.c_str());
 
     ACLNN_CMD(aclnnGroupedMatmulActivationQuantWeightNz,
-        xWrapper, groupList, weightWrapper, weightScaleWrapper, biasWrapper, xScaleWrapper,
+        xWrapper, groupListWrapper, weightWrapper, weightScaleWrapper, biasWrapper, xScaleWrapper,
         activationTypePtr, weightLayout.transpose, groupListType, tuningConfigRef, quantModePtr, yDtypeValue,
         roundModePtr, scaleAlg, dstTypeMax, yWrapper, yScaleWrapper);
     return std::tie(y, yScale);
