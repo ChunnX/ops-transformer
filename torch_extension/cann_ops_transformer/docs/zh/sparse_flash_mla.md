@@ -222,8 +222,8 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
 
 ## 确定性计算
 
-默认支持确定性计算。
-默认支持batch invariance。
+- 默认支持确定性计算。
+- 默认支持batch invariance。
 
 ## 调用说明
 
