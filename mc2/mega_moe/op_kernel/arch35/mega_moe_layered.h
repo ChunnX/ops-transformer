@@ -480,7 +480,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
             PipeBarrier<PIPE_ALL>(); //todo:后续优化
             if (curRankId != rankId_) {
-                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset;
+                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId);// + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 // GM_ADDR remoteNotifyAddr = ;//todo
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
