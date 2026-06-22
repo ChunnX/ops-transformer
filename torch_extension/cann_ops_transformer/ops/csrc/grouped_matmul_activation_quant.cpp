@@ -34,7 +34,6 @@ constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
 constexpr int64_t DIM_3 = 3;
-constexpr int64_t DIM_4 = 4;
 constexpr int64_t MX_GROUP_SIZE = 64;
 constexpr int64_t MAX_GROUP_NUM = 1024;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
@@ -128,10 +127,8 @@ bool IsNonTransWeightLayout(const at::Tensor &weightTensor, const at::Tensor &we
     int64_t n)
 {
     return weightTensor.size(DIM_0) == e &&
-        weightTensor.size(DIM_1) == CeilDiv(n, 32) &&
-        weightTensor.size(DIM_2) == CeilDiv(k, 16) &&
-        weightTensor.size(DIM_3) == 16 &&
-        weightTensor.size(DIM_4) == 32 &&
+        weightTensor.size(DIM_1) == k &&
+        weightTensor.size(DIM_2) == n &&
         weightScaleTensor.size(DIM_0) == e &&
         weightScaleTensor.size(DIM_1) == CeilDiv(k, MX_GROUP_SIZE) &&
         weightScaleTensor.size(DIM_2) == n &&
@@ -142,10 +139,8 @@ bool IsTransWeightLayout(const at::Tensor &weightTensor, const at::Tensor &weigh
     int64_t n)
 {
     return weightTensor.size(DIM_0) == e &&
-        weightTensor.size(DIM_1) == CeilDiv(k, 32) &&
-        weightTensor.size(DIM_2) == CeilDiv(n, 16) &&
-        weightTensor.size(DIM_3) == 16 &&
-        weightTensor.size(DIM_4) == 32 &&
+        weightTensor.size(DIM_1) == n &&
+        weightTensor.size(DIM_2) == k &&
         weightScaleTensor.size(DIM_0) == e &&
         weightScaleTensor.size(DIM_1) == n &&
         weightScaleTensor.size(DIM_2) == CeilDiv(k, MX_GROUP_SIZE) &&
@@ -167,9 +162,9 @@ WeightLayout InferWeightLayout(const at::Tensor &weightTensor, const at::Tensor 
 
     TORCH_CHECK(false,
         "weight and weight_scale shape must match one of the supported WeightNz layouts: "
-        "non-transposed weight (E, ceil(N / 32), ceil(K / 16), 16, 32), "
+        "non-transposed logical weight (E, K, N), "
         "weight_scale (E, ceil(K / 64), N, 2); "
-        "transposed weight (E, ceil(K / 32), ceil(N / 16), 16, 32), "
+        "transposed logical weight (E, N, K), "
         "weight_scale (E, N, ceil(K / 64), 2).");
     return {false, 0};
 }
@@ -187,17 +182,43 @@ void CheckBias(const c10::optional<std::vector<at::Tensor>> &biasOptional)
         "bias must be None or an empty tensor list in current MXFP8 mode.");
 }
 
-at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, c10::SmallVector<at::Tensor, 1> &weightVec)
+std::vector<int64_t> GetExpectedWeightStorageShape(const WeightLayout &weightLayout, int64_t e, int64_t k)
+{
+    if (weightLayout.transpose) {
+        return {e, CeilDiv(k, 32), CeilDiv(weightLayout.n, 16), 16, 32};
+    }
+    return {e, CeilDiv(weightLayout.n, 32), CeilDiv(k, 16), 16, 32};
+}
+
+bool IsSameShape(const std::vector<int64_t> &actual, const std::vector<int64_t> &expected)
+{
+    if (actual.size() != expected.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < actual.size(); ++i) {
+        if (actual[i] != expected[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const WeightLayout &weightLayout,
+    int64_t e, int64_t k, c10::SmallVector<at::Tensor, 1> &weightVec)
 {
     at::Tensor weightForNz = weight[DIM_0];
+    TORCH_CHECK(at_npu::native::get_npu_format(weightForNz) == ACL_FORMAT_FRACTAL_NZ,
+        "weight must be FRACTAL_NZ format. Please call torch_npu.npu_format_cast(weight, 29) before this op.");
+
+    auto expectedStorageShape = GetExpectedWeightStorageShape(weightLayout, e, k);
     auto storageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
-    bool needFixNzDesc = at_npu::native::get_npu_format(weightForNz) != ACL_FORMAT_FRACTAL_NZ ||
-                         storageSizes.size() != static_cast<size_t>(weightForNz.dim());
+    bool needFixNzDesc = !IsSameShape(storageSizes, expectedStorageShape);
     if (needFixNzDesc) {
         weightForNz = weightForNz.clone();
         auto &desc = torch_npu::NPUBridge::GetNpuStorageImpl(weightForNz)->npu_desc_;
         desc.npu_format_ = ACL_FORMAT_FRACTAL_NZ;
-        desc.storage_sizes_ = op_infer::array_to_small_vector(weightForNz.sizes());
+        desc.storage_sizes_ = op_infer::array_to_small_vector(
+            c10::IntArrayRef(expectedStorageShape.data(), expectedStorageShape.size()));
     }
     weightVec.clear();
     weightVec.emplace_back(weightForNz);
@@ -248,8 +269,8 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TORCH_CHECK(x.dim() == 2, "x must be 2D, but got ", x.dim(), "D.");
     TORCH_CHECK(xScale.dim() == 3, "x_scale must be 3D, but got ", xScale.dim(), "D.");
     TORCH_CHECK(groupList.dim() == 1, "group_list must be 1D, but got ", groupList.dim(), "D.");
-    TORCH_CHECK(weightTensor.dim() == 5,
-        "weight must be a 5D WeightNz tensor, but got ", weightTensor.dim(), "D.");
+    TORCH_CHECK(weightTensor.dim() == 3,
+        "weight must be a 3D logical tensor, but got ", weightTensor.dim(), "D.");
     TORCH_CHECK(weightScaleTensor.dim() == 4, "weight_scale must be 4D, but got ", weightScaleTensor.dim(), "D.");
     TORCH_CHECK(groupList.scalar_type() == at::kLong, "group_list dtype must be torch.int64.");
 
@@ -285,7 +306,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
         x.options().dtype(at::ScalarType::Float8_e8m0fnu));
 
     c10::SmallVector<at::Tensor, 1> weightVec;
-    at::TensorList weightRef = PrepareWeightList(weight, weightVec);
+    at::TensorList weightRef = PrepareWeightList(weight, weightLayout, e, k, weightVec);
     at::TensorList weightScaleRef = weightScale;
     at::TensorList biasRef;
     if (biasOptional.has_value()) {
