@@ -177,6 +177,57 @@ void CheckBias(const c10::optional<std::vector<at::Tensor>> &biasOptional)
         "bias must be None or an empty tensor list in current MXFP8 mode.");
 }
 
+struct TensorWithFormatWrapper {
+    const at::Tensor &tensor;
+    aclDataType dtype;
+    aclFormat format;
+};
+
+struct TensorListWithFormatWrapper {
+    const at::TensorList &tensorList;
+    aclDataType dtype;
+    aclFormat format;
+};
+
+aclTensor *ConvertType(const TensorWithFormatWrapper &tensorWrapper)
+{
+    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+    if (aclCreateTensor == nullptr || !tensorWrapper.tensor.defined()) {
+        return nullptr;
+    }
+
+    const at::Tensor &tensor = tensorWrapper.tensor;
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(tensor.strides());
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(tensor.sizes());
+    c10::SmallVector<int64_t, MAX_DIM_NUM> storageDims = op_infer::array_to_small_vector(tensor.sizes());
+    if (!IsOpInputBaseFormat(tensor)) {
+        auto storageSizes = at_npu::native::get_npu_storage_sizes(tensor);
+        storageDims = op_infer::array_to_small_vector(c10::IntArrayRef(storageSizes.data(), storageSizes.size()));
+    }
+
+    return aclCreateTensor(wrapperShape.data(), tensor.sizes().size(), tensorWrapper.dtype, wrapperStride.data(),
+        tensor.storage_offset(), tensorWrapper.format, storageDims.data(), storageDims.size(),
+        const_cast<void *>(tensor.storage().data()));
+}
+
+aclTensorList *ConvertType(const TensorListWithFormatWrapper &tensorListWrapper)
+{
+    if (tensorListWrapper.tensorList.size() == 0) {
+        return nullptr;
+    }
+    static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
+    if (aclCreateTensorList == nullptr) {
+        return nullptr;
+    }
+
+    std::vector<const aclTensor *> tensorList(tensorListWrapper.tensorList.size());
+    for (size_t i = 0; i < tensorList.size(); ++i) {
+        tensorList[i] = ConvertType(
+            TensorWithFormatWrapper{tensorListWrapper.tensorList[i], tensorListWrapper.dtype, tensorListWrapper.format});
+    }
+    return aclCreateTensorList(tensorList.data(), tensorList.size());
+}
+
 std::vector<int64_t> GetExpectedWeightStorageShape(const WeightLayout &weightLayout, int64_t e, int64_t k)
 {
     if (weightLayout.transpose) {
@@ -311,11 +362,11 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     }
 
     TensorWrapper xWrapper = {x, xAclDtype};
-    TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
+    TensorWithFormatWrapper xScaleWrapper = {xScale, xScaleAclDtype, ACL_FORMAT_ND};
     TensorListWrapper weightWrapper = {weightRef, weightAclDtype};
-    TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
+    TensorListWithFormatWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype, ACL_FORMAT_ND};
     TensorWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue)};
-    TensorWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0};
+    TensorWithFormatWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0, ACL_FORMAT_ND};
     PrintTorchTensorFormats(x, groupList, weightTensor, weightScaleTensor, xScale, y, yScale);
     char *activationTypePtr = const_cast<char *>(activationType.c_str());
     char *quantModePtr = const_cast<char *>(quantMode.c_str());
