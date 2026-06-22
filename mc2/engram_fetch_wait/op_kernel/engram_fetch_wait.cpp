@@ -16,7 +16,7 @@ __global__ __aicore__ void engram_fetch_wait(GM_ADDR bufferHandle, GM_ADDR works
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     if (TILING_KEY_IS(0)) {
         TPipe pipe;
-        EngramFetchWaitArch35 op;
+        EngramFetchWaitImpl::EngramFetchWaitArch35 op;
         op.Init(bufferHandle, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
