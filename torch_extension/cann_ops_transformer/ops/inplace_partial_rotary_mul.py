@@ -32,6 +32,18 @@ class InplacePartialRotaryMulOpBuilder(OpBuilder):
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def inplace_partial_rotary_mul_meta(x, r1, r2, rotary_mode, partial_slice):
+            torch._check(
+                x.dim() == 4,
+                lambda: f"Input tensor x's dim num should be 4, actual {x.dim()}."
+            )
+            torch._check(
+                rotary_mode == "interleave",
+                lambda: "rotary_mode only supports 'interleave'."
+            )
+            torch._check(
+                len(partial_slice) == 2,
+                lambda: "partial_slice must contain exactly two integers."
+            )
             return
 
 
@@ -41,9 +53,25 @@ op_module = inplace_partial_rotary_mul_op_builder.load()
 
 
 @impl(AS_LIBRARY, inplace_partial_rotary_mul_op_builder.name, "PrivateUse1")
-def inplace_partial_rotary_mul(x, r1, r2, rotary_mode, partial_slice):
+def _inplace_partial_rotary_mul(x, r1, r2, rotary_mode, partial_slice):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     op_module.inplace_partial_rotary_mul(x, r1, r2, rotary_mode, partial_slice)
+
+
+def inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode, partial_slice):
+    """
+    Applies partial rotary position embedding to ``x`` in-place on NPU.
+
+    Args:
+        x (Tensor): Input tensor to be modified in-place.
+        r1 (Tensor): Cosine component tensor.
+        r2 (Tensor): Sine component tensor.
+        rotary_mode (str): Only ``"interleave"`` is currently supported.
+        partial_slice (List[int]): Two-element slice range along the head
+            dimension.
+    """
+    return torch.ops.cann_ops_transformer.inplace_partial_rotary_mul(
+        x, r1, r2, rotary_mode=rotary_mode, partial_slice=partial_slice)
