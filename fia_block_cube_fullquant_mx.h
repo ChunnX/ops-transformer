@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_block_cube_fullquant_mx.h
@@ -244,6 +244,7 @@ public:
         uint64_t gmQScaleOffset = tIdx * dBaseSize / MXFP_GROUP_SIZE * n2Size +
                                   n2Idx * bSize * s1Size * dBaseSize / MXFP_GROUP_SIZE * n2Size
                                   + gIdxStart * dBaseSize / MXFP_GROUP_SIZE;
+        constexpr uint32_t qSlotSize = 128 * 128 + 128 * 128 / 32;
 
         // Dn2NzParams dn2nzPara;
         // dn2nzPara.dnNum = 1;                 // ND矩阵的个数
@@ -254,9 +255,6 @@ public:
         // dn2nzPara.dstNzC0Stride = dBaseSize / MXFP_GROUP_SIZE / 2;
         // dn2nzPara.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
         // dn2nzPara.dstNzMatrixStride = dBaseSize / MXFP_GROUP_SIZE / 2;
-
-        constexpr uint32_t qSlotSize = 128 * 128 + 128 * 128 / 32;
-        LocalTensor<float8_e4m3_t> q1Tensor = L1_Q.Get<float8_e4m3_t>()[(q1use) * qSlotSize];
         Dn2NzParams dn2nzPara;
         dn2nzPara.dnNum = 1;
         dn2nzPara.nValue = dBaseSize / MXFP_GROUP_SIZE / 2;
@@ -266,10 +264,14 @@ public:
         dn2nzPara.dstNzC0Stride = dBaseSize / MXFP_GROUP_SIZE / 2;
         dn2nzPara.dstNzNStride = 1;
         dn2nzPara.dstNzMatrixStride = dBaseSize / MXFP_GROUP_SIZE / 2;
-        LocalTensor<bfloat16_t> q1ScaleTensor = q1Tensor[qScaleOffset].template ReinterpretCast<bfloat16_t>();
-        GlobalTensor<bfloat16_t> gmQScaleTensor;
-        gmQScaleTensor.SetGlobalBuffer((__gm__ bfloat16_t *)((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset));
-        DataCopy(q1ScaleTensor, gmQScaleTensor, dn2nzPara);
+
+        LocalTensor<float8_e8m0_t> q1ScaleTensor = L1_Q.Get<float8_e8m0_t>()[q1use * qSlotSize + qScaleOffset];
+        LocalTensor<bfloat16_t> q1ScaleTensorCast = q1ScaleTensor.template ReinterpretCast<bfloat16_t>();
+        GlobalTensor<float8_e8m0_t> gmQScaleTensor;
+        gmQScaleTensor.SetGlobalBuffer((__gm__ float8_e8m0_t *)deScaleQGm + gmQScaleOffset);
+        GlobalTensor<bfloat16_t> gmQScaleTensorCast;
+        gmQScaleTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(gmQScaleTensor.GetPhyAddr())));
+        DataCopy(q1ScaleTensorCast, gmQScaleTensorCast, dn2nzPara);
     }
 
     __aicore__ inline void gm_l1_k(uint64_t s2Idx, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop, int ivkuse)
@@ -334,7 +336,7 @@ public:
 
 
         constexpr uint32_t kvSlotSize = 128 * 256 + 128 * 256 / 32;
-        LocalTensor<float8_e4m3_t> kv1Tensor = L1_KV.Get<float8_e4m3_t>()[ivkuse * kvSlotSize];
+        LocalTensor<float8_e8m0_t> kv1ScaleTensor = L1_KV.Get<float8_e8m0_t>()[ivkuse * kvSlotSize + 256 * 128];
         DataCopyParams intriParamsKScale;
         intriParamsKScale.blockCount = 1;
         intriParamsKScale.blockLen = 32;
@@ -344,7 +346,6 @@ public:
         gmKScaleTensor.SetGlobalBuffer((__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset));
         // copy_gm_to_cbuf_align_v2((__cbuf__ float8_e8m0_t *)kv1[ivkuse] + 256 * dBaseSize, (__gm__ float8_e8m0_t *)(deScaleKGm + gmKScaleOffset), 0, 16,
         //                          dBaseSize / MXFP_GROUP_SIZE / 2 * 32, 0, 0, true, cacheMode, 0, dBaseSize / MXFP_GROUP_SIZE / 2 * 32);
-        LocalTensor<float8_e8m0_t> kv1ScaleTensor = kv1Tensor[256 * 128];
         DataCopy(kv1ScaleTensor, gmKScaleTensor, intriParamsKScale);
     }
 
@@ -472,7 +473,7 @@ public:
         fixpipeParams.params.dstNdStride = 0;
         */
         LocalTensor<float> srcTensor = L0_C.Get<float>()[l0c_iduse * 128 * 256];
-
+        PipeBarrier<PIPE_FIX>();
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = 256;
         fixpipeParams.mSize = (actMSize + 1) >> 1 << 1;
@@ -606,7 +607,7 @@ public:
         // intriParams.dstStride = 0;
         // intriParams.srcStride = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 - 256 / MXFP_DIVISOR_SIZE;
         constexpr uint32_t kvSlotSize = 128 * 256 + 128 * 256 / 32;
-        LocalTensor<float8_e4m3_t> kv1Tensor = L1_KV.Get<float8_e4m3_t>()[ivkuse * kvSlotSize];
+        LocalTensor<float8_e8m0_t> kv1VScaleTensor = L1_KV.Get<float8_e8m0_t>()[ivkuse * kvSlotSize + 256 * dVBaseSize];
         DataCopyParams intriParamsVScale;
         intriParamsVScale.blockCount = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32;
         intriParamsVScale.blockLen = 256 / MXFP_DIVISOR_SIZE;
@@ -614,7 +615,6 @@ public:
         intriParamsVScale.srcStride = dVBaseSize * MXFP_MULTI_BASE_SIZE / 32 - 256 / MXFP_DIVISOR_SIZE;
         GlobalTensor<float8_e8m0_t> gmVScaleTensor;
         gmVScaleTensor.SetGlobalBuffer((__gm__ float8_e8m0_t *)(deScaleVGm + gmVScaleOffset));
-        LocalTensor<float8_e8m0_t> kv1VScaleTensor = kv1Tensor[256 * dVBaseSize];
         DataCopy(kv1VScaleTensor, gmVScaleTensor, intriParamsVScale);
     }
 
@@ -647,15 +647,15 @@ public:
         loadData2DParamsA.mStartPosition = 0;
         loadData2DParamsA.kStartPosition = 0;
         loadData2DParamsA.ifTranspose = false;
-        loadData2DParamsA.mStep = ((actMSize + 15) >> 4 << 4) >> 4;
+        loadData2DParamsA.mStep = 2;
         loadData2DParamsA.kStep = 8;
         loadData2DParamsA.srcStride = 8;
-        loadData2DParamsA.dstStride = ((actMSize + 15) >> 4 << 4) >> 4;
+        loadData2DParamsA.dstStride = 2;
 
         LoadData2DMxParams loadData2DMxParamsA;
         loadData2DMxParamsA.xStartPosition = 0;
         loadData2DMxParamsA.yStartPosition = 0;
-        loadData2DMxParamsA.xStep = ((actMSize + 15) >> 4 << 4) >> 4;
+        loadData2DMxParamsA.xStep = 2;
         loadData2DMxParamsA.yStep = 4;
         loadData2DMxParamsA.srcStride = 4;
         loadData2DMxParamsA.dstStride = 4;
@@ -746,15 +746,15 @@ public:
         LocalTensor<float> srcTensor = L0_C.Get<float>()[l0c_iduse * 128 * 256];
 
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = (dVBaseSize + 7) >> 3 << 3;
-        fixpipeParams.mSize = (actMSize + 1) >> 1 << 1;
-        fixpipeParams.srcStride = ((((actMSize + 1) >> 1 << 1) + 15) / 16) * 16;
-        fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+        fixpipeParams.nSize = 128;
+        fixpipeParams.mSize = 32;
+        fixpipeParams.srcStride = 32;
+        fixpipeParams.dstStride = 128;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-
+        PipeBarrier<PIPE_FIX>();
         Fixpipe<float, float, PFA_CFG_ROW_MAJOR_UB>(mm2Res, srcTensor, fixpipeParams);
     }
 

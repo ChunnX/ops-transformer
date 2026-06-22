@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_block_vec_fullquant_mx.h
@@ -162,9 +162,9 @@ public:
 
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = 8;
-        dataCopyParams.blockLen = 16;
-        dataCopyParams.srcStride = 49;
-        dataCopyParams.dstStride = 112;
+        dataCopyParams.blockLen = (uint16_t)16;
+        dataCopyParams.srcStride =(uint16_t) 49;
+        dataCopyParams.dstStride = (uint16_t)112;
 
         DataCopy(dstTensor, srcTensor, dataCopyParams);
 
@@ -465,8 +465,8 @@ public:
             DataCopyExtParams dataCopyParams;
             dataCopyParams.blockCount = blockCount;
             dataCopyParams.blockLen = 256;
-            dataCopyParams.srcStride = srcStride;
-            dataCopyParams.dstStride = dstStride;
+            dataCopyParams.srcStride = srcStride; //改了报错
+            dataCopyParams.dstStride = dstStride; 
             DataCopyPadExtParams<uint8_t> padParams{true, 0, 0, 1U};
             DataCopyPad(attenMaskTensor, attenMaskGmTensor, dataCopyParams, padParams);
         }
@@ -610,7 +610,7 @@ public:
         // CopyAttentionOut(ubTensor, gmCoord);
 
         uint32_t blockCount = 8;
-        uint32_t blockLen = 128;
+        uint32_t blockLen = 128; // 改了报错
         uint32_t srcStride = 0;
         uint32_t dstStride = 0;
 
@@ -626,14 +626,23 @@ public:
         uint64_t attenOutGmbaseOffset = tIdx * 8 * 8 * 128 + n2Idx * 8 * 128;
         uint64_t gmOffset = attenOutGmbaseOffset;
         uint64_t ubOffset = 0;
+        uint32_t unitOfBytes = 1;
+        uint32_t burstLength = blockLen;
+        uint32_t srcStride310 = 0;
+        srcStride310 = static_cast<uint32_t>(srcStride) * 32
+                       + burstLength; // UB   DataCopy:32Bytes, DataCopyPad:32Bytes
+        // srcstride should be 32B aligned
+        srcStride310 = DivCeil(srcStride310, 32) * 32;
+    
+        uint64_t dstStride310 = dstStride + burstLength; // GM   DataCopy:32Bytes, DataCopyPad:1Byte
 
         GlobalTensor<OUTPUT_T> outputGmTensor;
         outputGmTensor.SetGlobalBuffer((__gm__ OUTPUT_T*)(attentionOutGm + gmOffset));
-        LocalTensor<OUTPUT_T> outputLocalTensor(attenOutUb + ubOffset);
+        LocalTensor<OUTPUT_T> outputLocalTensor = UB_stage2OutBuf.Get<OUTPUT_T>()[ubOffset];
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = blockCount;
         dataCopyParams.blockLen = blockLen;
-        dataCopyParams.srcStride = srcStride;
+        dataCopyParams.srcStride = srcStride; //改了也有问题
         dataCopyParams.dstStride = dstStride;
         DataCopy(outputGmTensor, outputLocalTensor, dataCopyParams);
 
@@ -641,15 +650,16 @@ public:
         ubOffset = ((uint64_t)8) * ((uint64_t)128);
         GlobalTensor<OUTPUT_T> outputGmTensor2;
         outputGmTensor2.SetGlobalBuffer((__gm__ OUTPUT_T*)(attentionOutGm + gmOffset));
-        LocalTensor<OUTPUT_T> outputLocalTensor2(attenOutUb + ubOffset);
+        LocalTensor<OUTPUT_T> outputLocalTensor2 = UB_stage2OutBuf.Get<OUTPUT_T>()[ubOffset];
+        // LocalTensor<OUTPUT_T> outputLocalTensor2(attenOutUb + ubOffset);
         DataCopy(outputGmTensor2, outputLocalTensor2, dataCopyParams);
     }
 
-    template <typename DST_TYPE, typename SRC_TYPE, RoundMode roundMode>
-    __simd_vf__ inline void CastIntrinsicsImplVF_MX(__ubuf__ DST_TYPE *dst, __ubuf__ SRC_TYPE *src, const uint32_t calCount)
-    {
-        CastImpl(dst, src, roundMode, calCount);
-    }
+    // template <typename DST_TYPE, typename SRC_TYPE, RoundMode roundMode>
+    // __simd_vf__ inline void CastIntrinsicsImplVF_MX(__ubuf__ DST_TYPE *dst, __ubuf__ SRC_TYPE *src, const uint32_t calCount)
+    // {
+    //     CastImpl(dst, src, roundMode, calCount);
+    // }
 
     __aicore__ inline void Bmm2ResCastAndCopyOut(__ubuf__ float *vec2ResUb, uint32_t mStartVec, uint32_t bIdx, uint32_t n2Idx,
                                                 uint32_t vecMbaseIdx, uint32_t mloop)
@@ -666,13 +676,13 @@ public:
         // Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, actVecMSize * dSizeAligned64);
         using DstPrimType = PrimT<OUTPUT_T>;
         using SrcPrimType = PrimT<float>;
-        // CastImpl((__ubuf__ DstPrimType*)attenOut, (__ubuf__ SrcPrimType*)vec2ResUb, RoundMode::CAST_ROUND, actVecMSize * dSizeAligned64);
+        CastImpl((__ubuf__ DstPrimType*)attenOut, (__ubuf__ SrcPrimType*)vec2ResUb, RoundMode::CAST_ROUND, actVecMSize * dSizeAligned64);
 
-        using DST_TYPE = typename CastParam::CastTypeTrait<DstPrimType>::RealType;
-        using SRC_TYPE = typename CastParam::CastTypeTrait<SrcPrimType>::RealType;
-        __ubuf__ DST_TYPE* dst = reinterpret_cast<__ubuf__ DST_TYPE*>(attenOut);
-        __ubuf__ SRC_TYPE* src = reinterpret_cast<__ubuf__ SRC_TYPE*>(vec2ResUb);
-        CastIntrinsicsImplVF_MX<DST_TYPE, SRC_TYPE, RoundMode::CAST_ROUND>(dst, src, actVecMSize * dSizeAligned64);
+        // using DST_TYPE = typename CastParam::CastTypeTrait<DstPrimType>::RealType;
+        // using SRC_TYPE = typename CastParam::CastTypeTrait<SrcPrimType>::RealType;
+        // __ubuf__ DST_TYPE* dst = reinterpret_cast<__ubuf__ DST_TYPE*>(attenOut);
+        // __ubuf__ SRC_TYPE* src = reinterpret_cast<__ubuf__ SRC_TYPE*>(vec2ResUb);
+        // CastIntrinsicsImplVF_MX<DST_TYPE, SRC_TYPE, RoundMode::CAST_ROUND>(dst, src, actVecMSize * dSizeAligned64);
 
         // SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         // WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
@@ -711,7 +721,8 @@ public:
             struct DataCopyParams repeatParams;
             repeatParams.blockLen = vec2CalcSize / AscendCUtils::GetC0Count(sizeof(PrimType));
             LocalTensor<T> dstLocal = UB_stage2OutBuf.Get<T>();
-            LocalTensor<T> srcLocal((__ubuf__ T*)mm2ResTensor.GetPhyAddr());
+            // LocalTensor<T> srcLocal = ((__ubuf__ T*)mm2ResTensor.GetPhyAddr());
+            LocalTensor<T> srcLocal = mm2ResTensor;
             DataCopyParams dataCopyParams;
             dataCopyParams.blockCount = 1;
             dataCopyParams.blockLen = 256;
@@ -790,10 +801,10 @@ public:
         tPipePtr->InitBuffer(UB_firstLoopSum, 256);
         tPipePtr->InitBuffer(UB_common, 512);
 
-        tPipePtr->InitBuffer(UB_stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
+        tPipePtr->InitBuffer(UB_stage2OutBuf, 64 * 128 * 4);
 
         tPipePtr->InitBuffer(UB_vselrIndexes0, 128);
-        tPipePtr->InitBuffer(UB_vselrIndexes1, 64);
+        tPipePtr->InitBuffer(UB_vselrIndexes1, 128);
 
         // constexpr auto orderMode = std::integral_constant<::Order, static_cast<::Order>(order)>();
         // vci((__ubuf__ uint8_t *)vselrIndexesUB[0], 2, orderMode);
