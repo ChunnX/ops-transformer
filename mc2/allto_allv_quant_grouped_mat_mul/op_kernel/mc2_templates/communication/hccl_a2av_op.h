@@ -505,24 +505,32 @@ public:
                 DataCopyPad(ubBuf, outputPermuteSrcBuffer_[srcOffset + tileStart],
                             dataCopyParams, dataCopyPadParams);
                 int32_t readEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
-                SetFlag<HardEvent::MTE2_MTE3>(readEvent);
-                WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
+                permutePipe->SetFlag<HardEvent::MTE2_MTE3>(readEvent);
+                permutePipe->WaitFlag<HardEvent::MTE2_MTE3>(readEvent);
 
-                // [READ] 验证 src → UB 读取成功
+                // [READ] 直接读 UB 验证 + DumpTensor
                 if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && pairIdx < 2U && tile == 0UL) {
-                    AscendC::printf("[READ] turn=%u pair=%u tileStart=%lu\n", turnIdx, pairIdx, tileStart);
+                    AscendC::printf("[READ] turn=%u pair=%u ub[0..3]=%f,%f,%f,%f\n",
+                        turnIdx, pairIdx,
+                        (float)ubBuf.GetValue(0), (float)ubBuf.GetValue(1),
+                        (float)ubBuf.GetValue(2), (float)ubBuf.GetValue(3));
                     AscendC::DumpTensor(ubBuf, 700U + turnIdx * 8U + pairIdx, 16U);
                 }
 
                 DataCopyPad(outputPermuteDstBuffer_[dstOffset + tileStart], ubBuf, dataCopyParams);
                 int32_t writeEvent = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
-                SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
-                WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                permutePipe->SetFlag<HardEvent::MTE3_MTE2>(writeEvent);
+                permutePipe->WaitFlag<HardEvent::MTE3_MTE2>(writeEvent);
 
-                // [WRITE] 验证 UB → dst 写入成功
+                // [WRITE] 直接读 dst GM 验证 + DumpTensor
                 if (blockIdx == 0U && subBlockIdx == 0U && turnIdx < 2U && tile == 0UL && pairIdx < 4U) {
-                    AscendC::printf("[WRITE] turn=%u pair=%u dstOff=%lu tileStart=%lu tileLen=%lu\n",
-                        turnIdx, pairIdx, dstOffset, tileStart, tileLen);
+                    hcclDataType dstV0 = outputPermuteDstBuffer_.GetValue(dstOffset + tileStart);
+                    hcclDataType dstV1 = outputPermuteDstBuffer_.GetValue(dstOffset + tileStart + 1);
+                    hcclDataType dstV2 = outputPermuteDstBuffer_.GetValue(dstOffset + tileStart + 2);
+                    hcclDataType dstV3 = outputPermuteDstBuffer_.GetValue(dstOffset + tileStart + 3);
+                    AscendC::printf("[WRITE] turn=%u pair=%u dst[0..3]=%f,%f,%f,%f\n",
+                        turnIdx, pairIdx,
+                        (float)dstV0, (float)dstV1, (float)dstV2, (float)dstV3);
                     AscendC::DumpTensor(outputPermuteDstBuffer_[dstOffset + tileStart], 400U + turnIdx * 8U + pairIdx, 16U);
                 }
             }
