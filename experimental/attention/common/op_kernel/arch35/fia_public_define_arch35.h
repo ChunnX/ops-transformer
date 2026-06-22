@@ -89,6 +89,7 @@ struct RunInfoX {
     uint32_t actMSizeAlign32; // GS1 方向上长度对齐
     uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
     uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+    uint32_t validBandCopySkip = 0;
 
     bool shouldDealInitToken = false;
 
