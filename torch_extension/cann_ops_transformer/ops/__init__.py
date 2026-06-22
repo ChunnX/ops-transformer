@@ -36,3 +36,6 @@ from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from . import graph_convert as _graph_convert
 from .causal_conv1d_fn import causal_conv1d_fn
 from .causal_conv1d_update import causal_conv1d_update
+from .causal_conv1d_fn import npu_causal_conv1d_fn, causal_conv1d_fn
+from .causal_conv1d_update import npu_causal_conv1d_update, causal_conv1d_update
+from .elastic_buffer import ElasticBuffer
