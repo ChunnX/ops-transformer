@@ -5,6 +5,7 @@ import argparse
 import importlib.util
 import os
 import sys
+import types
 import traceback
 
 import numpy as np
@@ -19,7 +20,19 @@ if TORCH_EXTENSION_DIR not in sys.path:
     sys.path.insert(0, TORCH_EXTENSION_DIR)
 
 
+def install_lightweight_package_stub():
+    package_name = "cann_ops_transformer"
+    if package_name in sys.modules:
+        return
+    package_dir = os.path.join(TORCH_EXTENSION_DIR, "cann_ops_transformer")
+    package = types.ModuleType(package_name)
+    package.__file__ = os.path.join(package_dir, "__init__.py")
+    package.__path__ = [package_dir]
+    sys.modules[package_name] = package
+
+
 def load_grouped_matmul_activation_quant():
+    install_lightweight_package_stub()
     op_module_path = os.path.join(
         TORCH_EXTENSION_DIR,
         "cann_ops_transformer",
