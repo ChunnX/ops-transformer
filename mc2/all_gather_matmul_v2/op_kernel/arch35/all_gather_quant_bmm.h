@@ -162,7 +162,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
 
     constexpr uint32_t dataNumPerByte = IsMxFp4 ? PF4_DATA_NUM_PER_BYTE : 1;
     uint64_t tileSendCount = static_cast<uint64_t>(tilingM) *
-                             static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte)); // 整块总共搬运数据个数
+        static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte)); // 整块总共搬运数据个数
     uint64_t tailSendCount =
         static_cast<uint64_t>(tailM) * static_cast<uint64_t>(CeilDiv(tilingKa, dataNumPerByte)); // 尾块总共搬运数据个数
     uint64_t stride = tileSendCount * static_cast<uint64_t>(tileCnt) +
@@ -199,6 +199,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
                                                     scaleStride, repeat);
     }
 
+    // 对于mxfp4场景，实际传输数据量需要做减半处理，已在前面代码中进行处理
     for (uint32_t i = 0U; i < tileCnt; i++) {
         handleList_[i] = hcclAllgather_.template AllGather<true>(aGM, gatherOut, tileSendCount, dataType_,
                                                                  stride, repeat);
@@ -258,11 +259,12 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
  * @return void
 */
 template <typename AType, typename BType, typename BiasType, typename X2ScaleType, typename CType, bool ATrans,
-           bool BTrans, bool IsMxFp4,  uint8_t ServerMode>
-__aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
-                                         CType, ATrans, BTrans, IsMxFp4, ServerMode>::MatmulKernelComputeGather(
-    GM_ADDR aGM, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& qMmv3Tiling, uint32_t count, bool isLast,
-    bool isTail)
+          bool BTrans, bool IsMxFp4, uint8_t ServerMode>
+__aicore__ inline void
+AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, IsMxFp4,
+                  ServerMode>::MatmulKernelComputeGather(GM_ADDR aGM,
+                                                         DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &qMmv3Tiling,
+                                                         uint32_t count, bool isLast, bool isTail)
 {
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
@@ -332,10 +334,6 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
     // 只做本卡计算时，aGM_从本地获取；计算远端卡数据时，aGM_为gather来的数据
     if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
         aGM_ = gatherOut_;
-        // // MXFP4: 半字节，地址偏移除2 (存疑)
-        // if constexpr (IsMxFp4) {
-        //     aGM_ = aGM_ / PF4_DATA_NUM_PER_BYTE;
-        // }
         if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
             // 计算其他片数据前先wait scale1
             hcclAllgather_.Wait(handleList_[SCALE1_HANDLE_IDX]);
