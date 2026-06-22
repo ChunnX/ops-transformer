@@ -133,19 +133,19 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadcast>:
         if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
             HalfGradAlignVF<TDY, TCOS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
                                                    tilingData_->sliceLength,
-                                                   static_cast<uint16_t>(bUbLength), 1);
+                                                   1, static_cast<uint16_t>(bUbLength));
         } else if (tilingData_->rotaryMode == ROTARY_MODE_INTERLEAVE) {
             InterleaveModeGradVF<TDY, TCOS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
                                                         tilingData_->sliceLength,
-                                                        static_cast<uint16_t>(bUbLength), 1);
+                                                        1, static_cast<uint16_t>(bUbLength));
         } else if (tilingData_->rotaryMode == ROTARY_MODE_QUARTER) {
             QuarterGradAlignVF<TDY, TCOS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
                                                       tilingData_->sliceLength,
-                                                      static_cast<uint16_t>(bUbLength), 1);
+                                                      1, static_cast<uint16_t>(bUbLength));
         } else {
             DeepSeekInterleaveModeGradVF<TDY, TCOS>(sinBuffer, cosBuffer, inBuffer, outBuffer,
                                                             tilingData_->sliceLength,
-                                                            static_cast<uint16_t>(bUbLength), 1);
+                                                            1, static_cast<uint16_t>(bUbLength));
         }
     } else {
         auto *inUb = (__local_mem__ TDY *)inBuffer.GetPhyAddr();
