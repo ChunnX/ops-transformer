@@ -5,8 +5,8 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | Ascend 950PR/Ascend 950DT |      √     |
-| Atlas A3训练系列产品/Atlas A3推理系列产品     |    x     |
-| Atlas A2训练系列产品/Atlas A2推理系列产品 |    x     |
+| Atlas A3训练系列产品/Atlas A3推理系列产品     |    √     |
+| Atlas A2训练系列产品/Atlas A2推理系列产品 |    √     |
 | Atlas 200I/500 A2推理产品                      |    x     |
 | Atlas推理系列产品                              |    x     |
 | Atlas训练系列产品                              |    x     |
@@ -57,15 +57,15 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 ## aclnnLightningIndexerV2MetadataGetWorkspaceSize
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
-  <col style="width: 150px">
+  <table style="undefined;table-layout: fixed; width: 1450px"><colgroup>
+  <col style="width: 240px">
+  <col style="width: 120px">
+  <col style="width: 333px">
+  <col style="width: 160px">
   <col style="width: 100px">
-  <col style="width: 350px">
-  <col style="width: 200px">
   <col style="width: 100px">
-  <col style="width: 100px">
-  <col style="width: 190px">
-  <col style="width: 100px">
+  <col style="width: 170px">
+  <col style="width: 140px">
   </colgroup>
   <thead>
     <tr>
@@ -82,8 +82,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cuSeqlensQOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
-      <td>支持空Tensor</td>
+      <td>表示不同Batch中Query的有效Sequence Length。</td>
+      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B+1，)</td>
@@ -92,8 +92,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cuSeqlensKOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中Key的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
-      <td>支持空Tensor</td>
+      <td>表示不同Batch中Key的有效Sequence Length。</td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B+1，)</td>
@@ -103,7 +103,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>sequsedQOptional</td>
       <td>输入</td>
       <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor</td>
+      <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B，)</td>
@@ -113,7 +113,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>sequsedKOptional</td>
       <td>输入</td>
       <td>表示不同Batch中Key实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor</td>
+      <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B，)</td>
@@ -122,8 +122,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cmpResidualKOptional</td>
       <td>输入</td>
-      <td>预留参数，表示不同Batch中Key的Sequence Length的余数，当前不影响算子计算效果。</br>如果cmpRatio不为1，且mask为3，则必须传入cmpResidualKOptional。</td>
-      <td>支持空Tensor</td>
+      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
+      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(B，)</td>
@@ -133,7 +133,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>numHeadsQ</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
-      <td>支持非负数</td>
+      <td>当前仅支持32/64。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -143,7 +143,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>numHeadsK</td>
       <td>输入</td>
       <td>表示Key的head个数。</td>
-      <td>支持非负数</td>
+      <td>当前仅支持1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -153,7 +153,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>headDim</td>
       <td>输入</td>
       <td>注意力头的维度。</td>
-      <td>支持非负数</td>
+      <td>当前仅支持128。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -163,7 +163,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>topk</td>
       <td>输入</td>
       <td>表示从Query中筛选出的关键稀疏token的个数。</td>
-      <td>支持非负数</td>
+      <td>当前仅支持[1, 2048]</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -173,7 +173,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>batchSize</td>
       <td>输入</td>
       <td>表示Batch数量。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td><ul><li>支持非负数。</li><li>建议值为0。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -183,7 +183,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maxSeqlenQ</td>
       <td>输入</td>
       <td>表示Query的最长Sequence Length。</td>
-      <td>取值范围≥-1，-1表示任意可能长度</br>建议值为-1</td>
+      <td><ul><li>取值范围≥-1，-1表示任意可能长度。</li><li>建议值为-1。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -193,7 +193,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maxSeqlenK</td>
       <td>输入</td>
       <td>表示Key的最长Sequence Length。</td>
-      <td>取值范围≥-1，-1表示任意可能长度</br>建议值为-1</td>
+      <td><ul><li>取值范围≥-1，-1表示任意可能长度。</li><li>建议值为-1。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -203,7 +203,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>layoutQOptional</td>
       <td>输入</td>
       <td>表示Query的排列格式。</td>
-      <td>支持BSND、TND</br>建议值为BSND</td>
+      <td><ul><li>支持 BSND、TND。</li><li>建议值为BSND。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -213,7 +213,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>layoutKOptional</td>
       <td>输入</td>
       <td>表示Key的排列格式。</td>
-      <td>支持BSND、TND、PA_BBND</br>建议值为BSND</td>
+      <td><ul><li>支持 BSND、TND、PA_BBND。</li><li>建议值为BSND。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -223,7 +223,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maskMode</td>
       <td>输入</td>
       <td>表示sparse模式。</td>
-      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景 </br>建议值为0</td>
+      <td><ul><li>0: No mask。</li><li>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li><li>建议值为0。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -232,8 +232,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cmpRatio</td>
       <td>输入</td>
-      <td>预留参数，表示Key的压缩率，当前不影响算子计算效果。</br>建议值1，表示无压缩。</td>
-      <td>取值范围[1，128]</td>
+      <td>表示Key的压缩率。</td>
+      <td><ul><li>取值范围[1，128]</li><li>建议值1，表示无压缩。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -275,6 +275,38 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 - **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    第一段接口完成入参校验，出现以下场景时报错：
+
+    <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+    <col style="width: 319px">
+    <col style="width: 144px">
+    <col style="width: 671px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
+        <td>561101</td>
+        <td>创建aclOpExecutor失败。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_INNER_NULLPTR</td>
+        <td>561103</td>
+        <td>参数workspaceSize、executor是空指针，或参数cuSeqlensQOptional、cuSeqlensKOptional、sequsedQOptional、sequsedKOptional、cmpResidualKOptional进行Contiguous处理后为空指针。</td>
+      </tr>
+      <tr>
+        <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="2">161002</td>
+        <td>参数cuSeqlensQOptional、cuSeqlensKOptional、sequsedQOptional、sequsedKOptional、cmpResidualKOptional、numHeadsQ、numHeadsK、headDim、topk、quantMode、batchSize、maxSeqlenQ、maxSeqlenK、layoutQOptional、layoutKOptional、maskMode、cmpRatio的规格不在支持范围内。</td>
+      </tr>
+    </tbody>
+    </table>
 
 ## aclnnLightningIndexerV2Metadata
 - **参数说明：**
