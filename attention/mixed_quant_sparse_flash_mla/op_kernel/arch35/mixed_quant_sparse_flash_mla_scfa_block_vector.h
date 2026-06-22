@@ -896,7 +896,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
             (runInfo.mRealSize - runInfo.halfMRealSize)],
             stage1CastTensor, {s2BaseSize / 16, (uint16_t)runInfo.halfMRealSize,
             (uint16_t)(vec1Srcstride - runInfo.halfMRealSize),
-            (uint16_t)(s1BaseSize - runInfo.halfMRealSize)});
+            (uint16_t)(Align16Func(runInfo.mRealSize) - runInfo.halfMRealSize)});
     }
 
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
