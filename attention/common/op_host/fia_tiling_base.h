@@ -21,6 +21,7 @@
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
 #include <tiling/platform/platform_ascendc.h>
+#include "platform/soc_spec.h"
 #include "err/ops_err.h"
 #include "platform/soc_spec.h"
 
