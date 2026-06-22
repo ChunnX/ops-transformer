@@ -463,7 +463,7 @@ public:
 
         // GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
-        protocol == CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         // 获取URMA(UBC_CTP)协议的通信资源，存入hcommHandle_和urmacclBuffer_
         GetUrmaCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
