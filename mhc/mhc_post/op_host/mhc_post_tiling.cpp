@@ -56,6 +56,8 @@ static const int64_t DIM_NUM_2 = 2;
 static const int64_t DIM_NUM_3 = 3;
 static const int64_t DIM_NUM_4 = 4;
 
+constexpr uint8_t N_DIM_IDX = 2;
+
 class MhcPostTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MhcPostTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
@@ -378,6 +380,7 @@ ge::graphStatus MhcPostTilingBase::CheckShapeConsistency()
 
 ge::graphStatus MhcPostTilingBase::CheckParam()
 {
+
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckNullptr failed"),
                 return ge::GRAPH_FAILED);
 
@@ -389,6 +392,19 @@ ge::graphStatus MhcPostTilingBase::CheckParam()
 
     OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeAllPositive failed"),
                 return ge::GRAPH_FAILED);
+    
+    if (socVer_ != SOC_VER_950_CODE){
+        int64_t n = xShape.GetDim(N_DIM_IDX);
+
+        OP_CHECK_IF(c <= 0 || c >= 100000 || c % 128 != 0,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                            "c must be > 0, < 100000 and divisible by 128, but got %ld", c),
+                return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(n != N_SIZE_4,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "n must be %ld, but got %ld", N_SIZE_4, n),
+                return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
