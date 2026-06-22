@@ -355,16 +355,15 @@ __aicore__ inline void DeepSeekInterleaveModeGradVF(const LocalTensor<TCOS> &sin
 template <typename TDY, typename TCOS, bool IsBroadcast>
 __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ TDY *in, __local_mem__ TCOS *cos,
                                              __local_mem__ TCOS *sin, __local_mem__ TDY *out,
-                                             uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
+                                             uint16_t sLength, uint16_t bLength, uint16_t nLength, uint32_t dLen,
                                              int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dHalfSize = dLen / HALF_INTERLEAVE_COEF;
-    uint32_t dLen32 = static_cast<uint32_t>(dLen);
     uint16_t dLoopCount = (dHalfSize + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
 
-    int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
-    int32_t nStepUb = ubFactorS * dLen32;
-    int32_t nStepCosUb = ubFactorS * dLen32;
+    int32_t bStepUb = ubFactorN * ubFactorS * dLen;
+    int32_t nStepUb = ubFactorS * dLen;
+    int32_t nStepCosUb = ubFactorS * dLen;
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> inPart1Reg, inPart2Reg, cosPart1Reg, cosPart2Reg, sinPart1Reg, sinPart2Reg;
@@ -375,8 +374,8 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ TDY *in, __local_mem__
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
                     uint32_t count = dHalfSize;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen;
                     if constexpr (IsBroadcast) {
                         currCosUb = cos + sIdx * dLen;
                         currSinUb = sin + sIdx * dLen;
@@ -421,16 +420,15 @@ __aicore__ inline void BatchHalfGradAlignVF(__local_mem__ TDY *in, __local_mem__
 template <typename TDY, typename TCOS, bool IsBroadcast>
 __aicore__ inline void BatchQuarterGradAlignVF(
     __local_mem__ TDY *in, __local_mem__ TCOS *cos, __local_mem__ TCOS *sin,
-    __local_mem__ TDY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
+    __local_mem__ TDY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, uint32_t dLen,
     int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t dQuarterSize = dLen / QUARTER_MODE_COEF;
-    uint32_t dLen32 = static_cast<uint32_t>(dLen);
     uint16_t dLoopCount = (dQuarterSize + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
 
-    int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
-    int32_t nStepUb = ubFactorS * dLen32;
-    int32_t nStepCosUb = ubFactorS * dLen32;
+    int32_t bStepUb = ubFactorN * ubFactorS * dLen;
+    int32_t nStepUb = ubFactorS * dLen;
+    int32_t nStepCosUb = ubFactorS * dLen;
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> inPart1Reg, inPart2Reg, inPart3Reg, inPart4Reg;
@@ -443,8 +441,8 @@ __aicore__ inline void BatchQuarterGradAlignVF(
             for (uint16_t nIdx = 0; nIdx < nLength; nIdx++) {
                 for (uint16_t sIdx = 0; sIdx < sLength; sIdx++) {
                     uint32_t count = dQuarterSize;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen;
                     if constexpr (IsBroadcast) {
                         currCosUb = cos + sIdx * dLen;
                         currSinUb = sin + sIdx * dLen;
@@ -507,17 +505,16 @@ __aicore__ inline void BatchQuarterGradAlignVF(
 template <typename TDY, typename TCOS, bool IsBroadcast>
 __aicore__ inline void BatchInterleaveModeGradVF(
     __local_mem__ TDY *in, __local_mem__ TCOS *cos, __local_mem__ TCOS *sin,
-    __local_mem__ TDY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
+    __local_mem__ TDY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, uint32_t dLen,
     int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t loopSize = 2 * VL_FLOAT32_SIZE;
-    uint32_t dLen32 = static_cast<uint32_t>(dLen);
-    uint16_t dLoopCount = (dLen32 + loopSize - 1) / loopSize;
+    uint16_t dLoopCount = (dLen + loopSize - 1) / loopSize;
 
-    uint32_t halfNum = dLen32 / HALF_INTERLEAVE_COEF;
+    uint32_t halfNum = dLen / HALF_INTERLEAVE_COEF;
     uint32_t part1Num = (dLoopCount - 1) * VL_FLOAT32_SIZE;
     uint32_t part2Num = part1Num;
-    uint32_t tailNum = dLen32 - part1Num - part2Num;
+    uint32_t tailNum = dLen - part1Num - part2Num;
     if (tailNum > VL_FLOAT32_SIZE) {
         part1Num += VL_FLOAT32_SIZE;
         part2Num += (tailNum - VL_FLOAT32_SIZE);
@@ -525,9 +522,9 @@ __aicore__ inline void BatchInterleaveModeGradVF(
         part1Num += tailNum;
     }
 
-    int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
-    int32_t nStepUb = ubFactorS * dLen32;
-    int32_t nStepCosUb = ubFactorS * dLen32;
+    int32_t bStepUb = ubFactorN * ubFactorS * dLen;
+    int32_t nStepUb = ubFactorS * dLen;
+    int32_t nStepCosUb = ubFactorS * dLen;
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> inPart1Reg, inPart2Reg;
@@ -542,8 +539,8 @@ __aicore__ inline void BatchInterleaveModeGradVF(
                     uint32_t halfCnt = halfNum;
                     uint32_t part1Cnt = part1Num;
                     uint32_t part2Cnt = part2Num;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen;
                     if constexpr (IsBroadcast) {
                         currCosUb = cos + sIdx * dLen;
                         currSinUb = sin + sIdx * dLen;
@@ -594,19 +591,17 @@ __aicore__ inline void BatchInterleaveModeGradVF(
 template <typename TDY, typename TCOS, bool IsBroadcast>
 __aicore__ inline void BatchDeepSeekInterleaveModeGradVF(
     __local_mem__ TDY *in, __local_mem__ TCOS *cos, __local_mem__ TCOS *sin,
-    __local_mem__ TDY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen,
+    __local_mem__ TDY *out, uint16_t sLength, uint16_t bLength, uint16_t nLength, uint32_t dLen,
     int64_t ubFactorS, int64_t ubFactorN)
 {
     uint32_t loopSize = HALF_INTERLEAVE_COEF * VL_FLOAT32_SIZE;
-    uint16_t dLoopCount = AscendC::Ceil(static_cast<uint32_t>(dLen), loopSize);
-    uint32_t dHalfSize = static_cast<uint32_t>(dLen) / HALF_INTERLEAVE_COEF;
-    uint32_t dLen32 = static_cast<uint32_t>(dLen);
-
+    uint16_t dLoopCount = AscendC::Ceil(dLen, loopSize);
+    uint32_t dHalfSize = dLen / HALF_INTERLEAVE_COEF;
     // output mask: part1/part2 for the two interleaved output blocks per iteration
-    uint32_t halfNum = dLen32 / HALF_INTERLEAVE_COEF;
+    uint32_t halfNum = dLen / HALF_INTERLEAVE_COEF;
     uint32_t part1Num = (dLoopCount - 1) * VL_FLOAT32_SIZE;
     uint32_t part2Num = part1Num;
-    uint32_t tailNum = dLen32 - part1Num - part2Num;
+    uint32_t tailNum = dLen - part1Num - part2Num;
     if (tailNum > VL_FLOAT32_SIZE) {
         part1Num += VL_FLOAT32_SIZE;
         part2Num += (tailNum - VL_FLOAT32_SIZE);
@@ -614,9 +609,9 @@ __aicore__ inline void BatchDeepSeekInterleaveModeGradVF(
         part1Num += tailNum;
     }
 
-    int32_t bStepUb = ubFactorN * ubFactorS * dLen32;
-    int32_t nStepUb = ubFactorS * dLen32;
-    int32_t nStepCosUb = ubFactorS * dLen32;
+    int32_t bStepUb = ubFactorN * ubFactorS * dLen;
+    int32_t nStepUb = ubFactorS * dLen;
+    int32_t nStepCosUb = ubFactorS * dLen;
 
     __VEC_SCOPE__ {
         MicroAPI::RegTensor<float> vregIn, vregHalfIn, vregCos, vregHalfCos, vregSin, vregHalfSin, vregOut, vregHalfOut;
@@ -629,8 +624,8 @@ __aicore__ inline void BatchDeepSeekInterleaveModeGradVF(
                     uint32_t halfCnt = halfNum;
                     uint32_t part1Cnt = part1Num;
                     uint32_t part2Cnt = part2Num;
-                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
-                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen32;
+                    currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen;
+                    currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dLen;
                     if constexpr (IsBroadcast) {
                         currCosUb = cos + sIdx * dLen;
                         currSinUb = sin + sIdx * dLen;
