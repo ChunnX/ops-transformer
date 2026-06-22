@@ -484,7 +484,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 // GM_ADDR remoteNotifyAddr = ;//todo
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
-                // hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_)); // todo:后续优化
+                hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_)); // todo:后续优化
             }
         }
     }
