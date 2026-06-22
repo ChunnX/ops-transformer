@@ -89,6 +89,7 @@ private:
     GlobalTensor<U>  normOutGm_;
 
     GlobalTensor<U>  xFp32Ws_;
+    GlobalTensor<U>  gradXWs_;
     GlobalTensor<U>  gradAlphaWs_;
     GlobalTensor<U>  gradBiasWs_;
     GlobalTensor<U>  gradXFromHinWs_;
@@ -239,7 +240,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     int64_t wsGradAlphaOffset_ = AlignUp(bsLoopDataLen_ * n_ * c_ * FP32_BYTE_SIZE, ALIGN_256) / FP32_BYTE_SIZE;
     int64_t wsGradBiasOffset_ = wsGradAlphaOffset_ + AlignUp(64 * FP32_BYTE_SIZE, ALIGN_256) / FP32_BYTE_SIZE;
     int64_t wsGradXFromHinOffset_ = wsGradBiasOffset_ + AlignUp(n_ * FP32_BYTE_SIZE, ALIGN_256) / FP32_BYTE_SIZE;
-    // gradXWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));       //后需添加偏移计算
+    gradXWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));       //后需添加偏移计算
     // xFp32Ws_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));
     gradHcBeforeNormWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));
     gradNormOutWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));
@@ -1055,7 +1056,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         LocalTensor<U> gradXFromMatMulLocal = hPreAndGradHPostQue_.AllocTensor<U>();
         CopyIn<U>(xLocal, xFp32Ws_[calcOffset], 0, calcCount, 0, 0);
         CopyIn<U>(gradXFromHinLocal, gradXFromHinWs_[calcOffset], 0, calcCount, 0, 0);
-        CopyIn<U>(gradXFromMatMulLocal, gradXGm_[calcOffset], 0, calcCount, 0, 0);
+        CopyIn<U>(gradXFromMatMulLocal, gradXWs_[calcOffset], 0, calcCount, 0, 0);
         Add(xFp32Local, xLocal, gradXFromHinLocal, calcCount);
         Add(xFp32Local, xFp32Local, gradXFromMatMulLocal, calcCount);
         if constexpr(!std::is_same<X_T, U>::value){
@@ -1147,7 +1148,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     mm1_.SetTensorB(phiGm_);
     mm1_.SetHF32(true, 1);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false> (gradXGm_[taskOffset * (n_ * c_)], 1);
+    mm1_.template IterateAll<false> (gradXWs_[taskOffset * (n_ * c_)], 1);
     mm1_.End();
 }
 
