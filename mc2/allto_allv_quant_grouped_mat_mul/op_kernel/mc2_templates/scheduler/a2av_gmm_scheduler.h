@@ -44,14 +44,14 @@ public:
         e_ = tilingData_->taskTilingInfo.e;
         gmmxScaleGm_ = gmmxScaleGM;
         isScaleBatchMode_ = e_ >= SCALE_COMM_BATCH_THRESHOLD;
+        isCombinedMode_ = tilingData_->taskTilingInfo.combineExpertSize > 1U;
         // workspace偏移
         uint64_t workspaceOffset = 0;
-        // x通信输出区域：isPermuteOut=true时不占用workspace
-        if (!tilingData_->isPermuteOut) {
-            uint64_t commOutLen =
-                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
-                              PACK_FACTOR) * X_TYPE_SIZE,
-                      TENSOR_LIST_SIZE);
+        uint64_t commOutLen =
+            Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
+                          PACK_FACTOR) * X_TYPE_SIZE,
+                  TENSOR_LIST_SIZE);
+        if (isCombinedMode_ || !tilingData_->isPermuteOut) {
             commOutGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += commOutLen;
         } else {
@@ -69,16 +69,27 @@ public:
             uint64_t permuteScaleOutSize = Align(tilingData_->taskTilingInfo.A * scaleAxis, TENSOR_LIST_SIZE);
             gmmxScaleCommOutGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += permuteScaleOutSize;
-            // scale permuteOut区域：MX场景scale重排后的输出
-            // 当单卡专家数大于等于32时需要重排
-            if (isScaleBatchMode_) {
+            if (isScaleBatchMode_ && !isCombinedMode_) {
                 gmmxScalePermuteOutGm_ = workspaceGM + workspaceOffset;
                 workspaceOffset += permuteScaleOutSize;
             } else {
                 gmmxScalePermuteOutGm_ = gmmxScaleCommOutGm_;
             }
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_, gmmxScalePermuteOutGm_);
-            computeScaleGm_ = gmmxScalePermuteOutGm_;
+            computeScaleGm_ = isCombinedMode_ ? gmmxScaleCommOutGm_ : gmmxScalePermuteOutGm_;
+        }
+        if (isCombinedMode_) {
+            uint64_t combinedGroupListSize = sizeof(int64_t) *
+                tilingData_->taskTilingInfo.combineExpertSize * tilingData_->taskTilingInfo.epWorldSize;
+            combinedGroupListGm_ = workspaceGM + workspaceOffset;
+            workspaceOffset += combinedGroupListSize;
+            uint64_t yOffsetListSize = sizeof(int64_t) *
+                tilingData_->taskTilingInfo.combineExpertSize * tilingData_->taskTilingInfo.epWorldSize;
+            yOffsetListGm_ = workspaceGM + workspaceOffset;
+            workspaceOffset += yOffsetListSize;
+            if (tilingData_->isPermuteOut) {
+                commOp.InitOutputPermuteBuffer(commOutGm_, permuteOutOptionalGM);
+            }
         }
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         if (tilingData_->isNeedMM != 0) {
@@ -96,7 +107,9 @@ public:
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
         }
-        if constexpr (MX_QUANT_MODE) {
+        if (isCombinedMode_) {
+            ProcessCombinedExpertMode();
+        } else if constexpr (MX_QUANT_MODE) {
             if (isScaleBatchMode_) {
                 ProcessScaleCommBatchMode();
             } else {
@@ -152,6 +165,45 @@ private:
         }
     }
 
+    __aicore__ inline void ProcessCombinedExpertMode()
+    {
+        uint32_t commTurn = tilingData_->taskTilingInfo.commTurn;
+        uint32_t combineExpertSize = tilingData_->taskTilingInfo.combineExpertSize;
+        bool isPermuteOut = tilingData_->isPermuteOut;
+
+        for (uint32_t turnIdx = 0U; turnIdx < commTurn; turnIdx++) {
+            uint32_t realCombineSize = (turnIdx == commTurn - 1U) ?
+                (e_ - turnIdx * combineExpertSize) : combineExpertSize;
+            commOp.LaunchCombinedAic(turnIdx, realCombineSize);
+            if constexpr (MX_QUANT_MODE) {
+                commOp.LaunchScaleCombinedAic(turnIdx, realCombineSize);
+            }
+        }
+
+        for (uint32_t turnIdx = 0U; turnIdx < commTurn; turnIdx++) {
+            uint32_t realCombineSize = (turnIdx == commTurn - 1U) ?
+                (e_ - turnIdx * combineExpertSize) : combineExpertSize;
+            commOp.WaitCombinedAic(turnIdx);
+
+            if (isPermuteOut) {
+                uint32_t notifyFlagId = NOTIFY_FLAG_ID_BASE + (turnIdx % FLAG_ID_ROTATE_COUNT);
+                if ASCEND_IS_AIC {
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(notifyFlagId);
+                }
+                if ASCEND_IS_AIV {
+                    CrossCoreWaitFlag(notifyFlagId);
+                    commOp.PermuteOutput(turnIdx, realCombineSize);
+                }
+            }
+
+            if constexpr (MX_QUANT_MODE) {
+                commOp.WaitScaleCombinedAic(turnIdx);
+            }
+
+            computeOp.ProcessCombined(turnIdx, realCombineSize, combinedGroupListGm_, yOffsetListGm_);
+        }
+    }
+
     CommOpType commOp;
     ComputeOpType computeOp;
     LocalComputeOpType localComputeOp;
@@ -161,9 +213,15 @@ private:
     GM_ADDR gmmxScaleCommOutGm_ = nullptr;
     GM_ADDR computeScaleGm_ = nullptr;
     GM_ADDR computeWorkspaceGm_ = nullptr;
+    GM_ADDR combinedGroupListGm_ = nullptr;
+    GM_ADDR yOffsetListGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
     bool isScaleBatchMode_ = false;
+    bool isCombinedMode_ = false;
+
+    static constexpr uint32_t NOTIFY_FLAG_ID_BASE = 8U;
+    static constexpr uint32_t FLAG_ID_ROTATE_COUNT = 3U;
 };
 }; // namespace MC2KernelTemplate
 #endif
