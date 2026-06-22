@@ -58,6 +58,7 @@ private:
     GlobalTensor<int64_t> numRecvPerExpertGm_;
 
     GlobalTensor<XType> recvXGm_;
+    GlobalTensor<int32_t> recvTopkIdxGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> cachedRecvSrcMetadataGm_;   // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
@@ -110,7 +111,6 @@ private:
     uint32_t numLocalExperts_{0};
     uint32_t aivNum_{0};
     uint32_t axisK_{0};
-    uint32_t axisKAlign_{0};
     uint32_t axisH_{0};
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
