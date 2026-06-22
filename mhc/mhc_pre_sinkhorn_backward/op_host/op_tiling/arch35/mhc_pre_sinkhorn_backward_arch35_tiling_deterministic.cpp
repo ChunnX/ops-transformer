@@ -61,10 +61,10 @@ using namespace AscendC;
 
 bool MhcPreSinkhornBackwardArch35DeterminiticTiling::IsCapable()
 {
-    auto isDeterministic = (context_->GetDeterministic() == 1);
-    if (!isDeterministic) {
-        return false;
-    }
+    // auto isDeterministic = (context_->GetDeterministic() == 1);
+    // if (!isDeterministic) {
+    //     return false;
+    // }
     
     return true;
 }
@@ -80,39 +80,44 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
-    matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
-    matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
+    // matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
+    // matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
 
-    mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bf16DataType);
-    mm1Tiling.SetOrgShape(mm1M_, mm1N_, mm1K_);
-    mm1Tiling.SetShape(mm1M_, mm1N_, mm1K_);
-    mm1Tiling.SetBias(false);
-    mm1Tiling.SetBufferSpace(-1, -1, -1);
-    mm1Tiling.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
-    if (mm1Tiling.GetTiling(tilingData->mm1TilingData) == -1) {
-        return ge::GRAPH_FAILED;
-    }
+    // mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
+    // mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
+    // mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bf16DataType);
+    // mm1Tiling.SetOrgShape(mm1M_, mm1N_, mm1K_);
+    // mm1Tiling.SetShape(mm1M_, mm1N_, mm1K_);
+    // mm1Tiling.SetBias(false);
+    // mm1Tiling.SetBufferSpace(-1, -1, -1);
+    // mm1Tiling.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
+    // if (mm1Tiling.GetTiling(tilingData->mm1TilingData) == -1) {
+    //     return ge::GRAPH_FAILED;
+    // }
 
-    mm2Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType, true);
-    mm2Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm2Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm2Tiling.SetOrgShape(mm2M_, mm2N_, mm2K_);
-    mm2Tiling.SetShape(mm2M_, mm2N_, mm2K_);
-    mm2Tiling.SetBias(false);
-    mm2Tiling.SetBufferSpace(-1, -1, -1);
-    mm2Tiling.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
-    if (mm2Tiling.GetTiling(tilingData->mm2TilingData) == -1) {
-        return ge::GRAPH_FAILED;
-    }
+    // mm2Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType, true);
+    // mm2Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
+    // mm2Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
+    // mm2Tiling.SetOrgShape(mm2M_, mm2N_, mm2K_);
+    // mm2Tiling.SetShape(mm2M_, mm2N_, mm2K_);
+    // mm2Tiling.SetBias(false);
+    // mm2Tiling.SetBufferSpace(-1, -1, -1);
+    // mm2Tiling.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN);
+    // if (mm2Tiling.GetTiling(tilingData->mm2TilingData) == -1) {
+    //     return ge::GRAPH_FAILED;
+    // }
 
     tilingData->batchSize = batchSize_;
     tilingData->seqLength = seqLength_;
     tilingData->c = c_;
     tilingData->n = n_;
     tilingData->aivNum = coreNumAiv_;
+    tilingData->usedAivNum = usedAivNum_;
+    tilingData->cLoopDataLen = cLoopDataLen_;
+    tilingData->bsLoopDataLen = bsLoopDataLen_;
     tilingData->skIterCount = skIterCount_;
+    tilingData->bsTaskCount = bsTaskCount_;
+    tilingData->tailBsTaskCount = tailBsTaskCount_;
     tilingData->eps = hcEps_;
 
     return ge::GRAPH_SUCCESS;  
@@ -121,11 +126,12 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
 {
     int64_t totalBs = batchSize_ * seqLength_;
-    bsTaskCount_ = totalBs / coreNumAiv_;
-    tailBsTaskCount_ = totalBs - bsTaskCount_ * coreNumAiv_;
-    cLoopDataLen_ = c_
+    // bs切分: 计算实际使用的核数，不超过totalBs
+    usedAivNum_ = std::min(static_cast<int64_t>(coreNumAiv_), totalBs);
+    bsTaskCount_ = totalBs / usedAivNum_;
+    tailBsTaskCount_ = totalBs - bsTaskCount_ * (usedAivNum_ - 1);
     constexpr int64_t FP32_BYTE_SIZE = 4;
-
+    
     int64_t nAlignFp32 = AlignUp(n_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
     int64_t cAlignFp32 = AlignUp(c_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
     int64_t cAlignFp16 = AlignUp(c_ * BF16_BYTE_SIZE, ALIGN_32) / BF16_BYTE_SIZE;
@@ -146,8 +152,8 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     cLoopDataLen_ = c_;
     tile_ = bsLoopDataLen_;
     
-    OP_LOGI(opName, "DoUbTiling: totalBs=%lld, bsTaskCount=%lld, tailBsTaskCount=%lld, bsLoopDataLen=%lld, cLoopDataLen=%lld, nAlign=%lld, cAlign=%lld",
-        totalBs, bsTaskCount_, tailBsTaskCount_, bsLoopDataLen_, cLoopDataLen_, nAlignFp32, cAlignFp32);
+    OP_LOGI(opName, "DoUbTiling: totalBs=%lld, usedAivNum=%lld, bsTaskCount=%lld, tailBsTaskCount=%lld, bsLoopDataLen=%lld, cLoopDataLen=%lld, nAlign=%lld, cAlign=%lld",
+        totalBs, usedAivNum_, bsTaskCount_, tailBsTaskCount_, bsLoopDataLen_, cLoopDataLen_, nAlignFp32, cAlignFp32);
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::DoOpTiling()
