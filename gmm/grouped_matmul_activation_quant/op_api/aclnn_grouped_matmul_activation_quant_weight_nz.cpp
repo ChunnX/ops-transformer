@@ -266,22 +266,22 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                op::ToString(groupList->GetStorageFormat()).GetString(),
                op::ToString(wScale->GetStorageFormat()).GetString(), op::ToString(y->GetStorageFormat()).GetString(),
                op::ToString(yScale->GetStorageFormat()).GetString());
-    CHECK_COND(x->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(!op::IsPrivateFormat(x->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], x only supports ND, but got %s.", OP_NAME,
                op::ToString(x->GetStorageFormat()).GetString());
-    CHECK_COND(xScaleOptional->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(!op::IsPrivateFormat(xScaleOptional->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], xScaleOptional only supports ND, but got %s.", OP_NAME,
                op::ToString(xScaleOptional->GetStorageFormat()).GetString());
-    CHECK_COND(groupList->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(!op::IsPrivateFormat(groupList->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], groupList only supports ND, but got %s.", OP_NAME,
                op::ToString(groupList->GetStorageFormat()).GetString());
-    CHECK_COND(wScale->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(!op::IsPrivateFormat(wScale->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], weightScale only supports ND, but got %s.", OP_NAME,
                op::ToString(wScale->GetStorageFormat()).GetString());
-    CHECK_COND(y->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(!op::IsPrivateFormat(y->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], y only supports ND, but got %s.", OP_NAME,
                op::ToString(y->GetStorageFormat()).GetString());
-    CHECK_COND(yScale->GetStorageFormat() == op::Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(!op::IsPrivateFormat(yScale->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], yScale only supports ND, but got %s.", OP_NAME,
                op::ToString(yScale->GetStorageFormat()).GetString());
     CHECK_COND(IsNzFormat(w), ACLNN_ERR_PARAM_INVALID,
@@ -322,6 +322,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclTensor *y, aclTensor *yScale,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    GmmaqPrint("In op [%s], zsl0622!!!", OP_NAME);
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
                    DFX_IN(x, groupList, weight, weightScale, biasOptional, xScaleOptional),
