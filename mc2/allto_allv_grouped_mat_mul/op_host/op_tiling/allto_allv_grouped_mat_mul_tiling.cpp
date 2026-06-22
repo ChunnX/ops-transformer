@@ -597,13 +597,13 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMmShapeDims(const gert::TilingContext* 
 ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr,
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epWorldSizePtr == nullptr,
-        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "epWorldSize"), return ge::GRAPH_FAILED);
     int64_t rankDim = *epWorldSizePtr;
     const size_t maxLength = 6UL;
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
@@ -618,7 +618,8 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
         }
         OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
+            "'', 'ai_cpu', 'ccu'");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -641,11 +642,8 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     mc2tiling::HcclDataType alltoallvHcclDataType =
         mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
     OP_TILING_CHECK(alltoallvHcclDataType == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(context_->GetNodeName(),
-            "GmmX dtype[%s] is unsupported by HCCL, "
-            "expected INT8/UINT8/INT16/UINT16/INT32/UINT32/"
-            "FLOAT16/FLOAT/BFLOAT16/HIFLOAT8/FLOAT8_E4M3FN/FLOAT8_E5M2.",
-            ge::TypeUtils::DataTypeToSerialString(gmmXDataType_).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmXDataType",
+            Ops::Base::ToString(gmmXDataType_).c_str(), "supported HCCL data types"),
         return ge::GRAPH_FAILED);
     uint8_t alltoAllvDataType = static_cast<uint8_t>(alltoallvHcclDataType);
 
