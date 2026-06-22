@@ -50,12 +50,14 @@ bool BSASelectBlockMaskTilingBase::AnalyzeAttrs()
     }
     sparsity = *sparsityPtr;
 
-    OP_CHECK_IF(sparsity <= SPARSITY_MIN || sparsity >= SPARSITY_MAX,
-        OP_LOGE(opName, "sparsity[%f] out of range (0, 1).", sparsity), return false);
+    OP_CHECK_IF(sparsity < SPARSITY_MIN || sparsity > SPARSITY_MAX,
+        OP_LOGE(opName, "sparsity[%f] out of range [0.3, 0.98].", sparsity), return false);
 
-    // TODO: Re-enable BottomK after fixing known correctness issues in that path.
-    // For now, always use TopK even when sparsity > 0.5.
-    sparsityMode = static_cast<uint8_t>(SparsityMode::TOP_K);
+    if (sparsity <= 0.5f) {
+        sparsityMode = static_cast<uint8_t>(SparsityMode::TOP_K);
+    } else {
+        sparsityMode = static_cast<uint8_t>(SparsityMode::BOTTOM_K);
+    }
 
     auto blockShapeTensor = context_->GetOptionalInputTensor(BLOCK_SHAPE_INPUT_INDEX);
     if (blockShapeTensor != nullptr) {
@@ -149,17 +151,13 @@ bool BSASelectBlockMaskTilingBase::AnalyzeLayout()
 
     OP_CHECK_IF(dSize != D_SIZE_128,
         OP_LOGE(opName, "headDim must be 128, got[%u].", dSize), return false);
-    OP_CHECK_IF(numHeads < HEAD_NUM_MIN,
-        OP_LOGE(opName, "numHeads[%u] must be greater than or equal to 1.", numHeads), return false);
+    OP_CHECK_IF(numHeads < HEAD_NUM_MIN || numHeads > HEAD_NUM_MAX,
+        OP_LOGE(opName, "numHeads[%u] out of range [1, 40].", numHeads), return false);
 
     xBlocks = BSACeilDivision(maxQSeqlen, static_cast<uint32_t>(blockShapeX));
     yBlocks = BSACeilDivision(maxKvSeqlen, static_cast<uint32_t>(blockShapeY));
 
     uint64_t totalXY = static_cast<uint64_t>(xBlocks) * yBlocks;
-    OP_CHECK_IF(totalXY <= 1,
-        OP_LOGE(opName, "xBlocks[%u] * yBlocks[%u] must be greater than 1 for TopK selection.",
-                xBlocks, yBlocks), return false);
-
     if (sparsityMode == static_cast<uint8_t>(SparsityMode::TOP_K)) {
         topKValue = static_cast<uint64_t>(std::round(sparsity * totalXY));
     } else {
@@ -201,13 +199,17 @@ void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
     uint32_t rowsPerCore = baseRows + (extraCores > 0 ? 1 : 0);
     
     // yBlocks 分核（用于 Key 池化阶段）
-    uint32_t activeYCoreNum = std::min(yBlocks, coreNum);
-    uint32_t baseYRows = yBlocks / activeYCoreNum;
-    uint32_t extraYCores = yBlocks % activeYCoreNum;
+    // uint32_t activeYVecCoreNum = std::min(yBlocks, coreNum);
+    
+    // vec : cube = 2:1
+    uint32_t activeYVecCoreNum = std::min(yBlocks, activeCoreNum * 2);
+    uint32_t baseYRows = yBlocks / activeYVecCoreNum;
+    uint32_t extraYCores = yBlocks % activeYVecCoreNum;
     uint32_t yBlocksPerCore = baseYRows + (extraYCores > 0 ? 1 : 0);
 
     multiCoreParams_->set_coreNum(coreNum);
     multiCoreParams_->set_activeCoreNum(activeCoreNum);
+    multiCoreParams_->set_activeYCoreNum(activeYVecCoreNum);
     multiCoreParams_->set_rowsPerCore(rowsPerCore);
     multiCoreParams_->set_extraCores(extraCores);
     multiCoreParams_->set_totalRows(xBlocks);
@@ -217,13 +219,13 @@ void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
 
 void BSASelectBlockMaskTilingBase::CalcOutputParams()
 {
-    uint64_t qCmpSize = static_cast<uint64_t>(xBlocks) * dSize * sizeof(float);
-    uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * sizeof(float);
-    uint64_t attnScoreSize = static_cast<uint64_t>(xBlocks) * yBlocks * 2;  // FP16: 2 bytes per element
-    uint64_t softmaxTmpSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
+    uint64_t qCmpSize = static_cast<uint64_t>(xBlocks) * dSize * (sizeof(float) / 2);
+    uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * (sizeof(float) / 2);
+    uint64_t attnScoreFp16Size = static_cast<uint64_t>(xBlocks) * yBlocks * (sizeof(float) / 2);  // FP16: 2 bytes per element
+    uint64_t scoreFp32Size = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
 
     uint64_t sortLen = static_cast<uint64_t>(xBlocks) * yBlocks;
-    uint64_t tileLen = std::min(static_cast<uint64_t>(7168), std::max(static_cast<uint64_t>(128), sortLen));
+    uint64_t tileLen = std::min(static_cast<uint64_t>(7168), sortLen);
     uint64_t totalTileNum = (sortLen + tileLen - 1) / tileLen;
     uint64_t topkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * aivNum + aivNum + aivNum) * sizeof(int32_t);
     uint64_t topkTileDataSize = static_cast<uint64_t>(totalTileNum) * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
@@ -233,11 +235,11 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
 
     outputParams_->set_qCmpSize(qCmpSize);
     outputParams_->set_kCmpSize(kCmpSize);
-    outputParams_->set_attnScoreSize(attnScoreSize);
-    outputParams_->set_softmaxTmpSize(softmaxTmpSize);
+    outputParams_->set_attnScoreSize(attnScoreFp16Size);
+    outputParams_->set_softmaxTmpSize(scoreFp32Size);
     outputParams_->set_topkWorkspaceSize(topkWorkspaceSize);
     outputParams_->set_maskSize(maskSize);
-    outputParams_->set_totalWorkspaceSize(qCmpSize + kCmpSize + attnScoreSize + softmaxTmpSize +
+    outputParams_->set_totalWorkspaceSize(qCmpSize + kCmpSize + attnScoreFp16Size + scoreFp32Size +
                                           topkWorkspaceSize + maskSize);
 }
 

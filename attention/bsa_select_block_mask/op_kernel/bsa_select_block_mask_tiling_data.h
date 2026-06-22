@@ -124,6 +124,7 @@ public:
     uint32_t yBlocksPerCore;
     uint32_t extraYCores;
     uint32_t rsvd0;
+    uint32_t activeYVecCoreNum; // 池化步骤k的vec分核
 
     uint32_t get_coreNum() const { return coreNum; }
     void set_coreNum(uint32_t v) { this->coreNum = v; }
@@ -139,6 +140,8 @@ public:
     void set_yBlocksPerCore(uint32_t v) { this->yBlocksPerCore = v; }
     uint32_t get_extraYCores() const { return extraYCores; }
     void set_extraYCores(uint32_t v) { this->extraYCores = v; }
+    uint32_t get_activeYCoreNum() const { return activeYVecCoreNum; }
+    void set_activeYCoreNum(uint32_t v) { this->activeYVecCoreNum = v; }
 };
 
 class BSAOutputParams {

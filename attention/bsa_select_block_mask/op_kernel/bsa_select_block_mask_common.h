@@ -20,11 +20,13 @@ static constexpr uint32_t VEC_ALIGN_SIZE = 32;
 static constexpr uint32_t CUBE_MATRIX_SIZE = 256;
 static constexpr uint32_t AIC_AIV_RATIO = 2;
 static constexpr uint32_t FLOAT_DATA_BLOCK_NUM = 8;
+static constexpr uint32_t FP16_DATA_BLOCK_NUM = 16;
 static constexpr uint32_t FLOAT_REPEAT_NUM = 64;
 static constexpr uint32_t D_SIZE = 128;
 static constexpr uint32_t Q_CHUNK_SIZE = 128;
 static constexpr uint32_t K_CHUNK_SIZE = 128;
 static constexpr uint32_t REPEAT_SIZE = 256;
+static constexpr uint32_t BROC_BASE_NUM = 8;
 static constexpr uint32_t BYTE_SIZE = 8;
 static constexpr uint16_t XOR_OP_VALUE_16 = 0x8000;
 static constexpr uint32_t HALF_SAFE_MAX = 2048;
@@ -71,7 +73,9 @@ struct BSAConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32 * 1024;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_60K = 60 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 64 * 1024;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_120K = 120 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_192K = 192 * 1024;
 
     uint32_t aicIdx;
@@ -110,6 +114,7 @@ struct BSAConstInfo {
     uint64_t softmaxTmpOffset;
     uint64_t topkWorkspaceOffset;
     uint64_t maskOffset;
+    uint32_t activeYVecCoreNum;
 };
 
 struct BSARunInfo {
