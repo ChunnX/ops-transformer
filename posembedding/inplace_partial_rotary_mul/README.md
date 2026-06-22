@@ -114,3 +114,4 @@
 | 调用方式           | 调用样例                                                                                    | 说明                                                                                                  |
 |----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_inplace_partial_rotary_mul](./examples/test_aclnn_inplace_partial_rotary_mul.cpp) | 通过[aclnnInplacePartialRotaryMul](./docs/aclnnInplacePartialRotaryMul.md)接口方式调用InplacePartialRotaryMul算子。             |
+| 图模式调用 | [test_geir_inplace_partial_rotary_mul](./examples/test_geir_inplace_partial_rotary_mul.cpp) | 通过[算子IR](./op_graph/inplace_partial_rotary_mul_proto.h)构图方式调用InplacePartialRotaryMul算子。 |
