@@ -188,6 +188,10 @@ private:
         GlobalTensor<INPUT_T> &keyValueGm, GlobalTensor<INPUT_T> &tempKeyValueGm);
     __aicore__ inline GlobalTensor<INPUT_T> GetKeyGm(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline GlobalTensor<INPUT_T> GetValueGm(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void LoadKeyToL1Nz(LocalTensor<INPUT_T> &mm1BTensor, RunInfo<isInfer> &runInfo,
+        ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void FixpipeBmm1NdToUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+        Buffer<BufferType::L0C> &mm1ResL0C, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
 
     __aicore__ inline void IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
@@ -917,6 +921,58 @@ FANoQuantBlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo<isInfer> &runInfo,
     }
 }
 
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::LoadKeyToL1Nz(
+    LocalTensor<INPUT_T> &mm1BTensor, RunInfo<isInfer> &runInfo,
+    ConstInfo<isInfer, hasRope> &constInfo)
+{
+    if constexpr (enableKVPrefix) {
+        if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
+            runInfo.prefixOffset = this->keySharedPrefixGm.offsetCalculator.GetOffset(
+                0, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->keySharedPrefixGm.gmTensor[runInfo.prefixOffset],
+                                   runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+        } else {
+            runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
+                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
+                coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.prefixLoopCount * s2BaseSize, 0);
+            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
+                                   constInfo.dSize, constInfo.mm1Kb);
+        }
+    } else {
+        runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
+            coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+        CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
+                               constInfo.dSize, constInfo.mm1Kb);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::FixpipeBmm1NdToUb(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    Buffer<BufferType::L0C> &mm1ResL0C, RunInfo<isInfer> &runInfo,
+    ConstInfo<isInfer, hasRope> &constInfo)
+{
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3;
+    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1;
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+    fixpipeParams.dstStride = s2BaseSize;
+    fixpipeParams.dualDstCtl = 1;
+    fixpipeParams.params.ndNum = 1;
+    fixpipeParams.params.srcNdStride = 0;
+    fixpipeParams.params.dstNdStride = 0;
+
+    if constexpr (isInfer && Q_FORMAT != GmFormat::BNGSD) {
+        bool isS1Odd = (constInfo.s1Size % 2) != 0;
+        if (IsGS1Merge(constInfo) && isS1Odd) {
+            fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
+        }
+    }
+
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams);
+}
+
 /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
@@ -1036,25 +1092,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
             GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
         }
     } else {
-        if constexpr (enableKVPrefix) {
-            if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
-                runInfo.prefixOffset = this->keySharedPrefixGm.offsetCalculator.GetOffset(
-                    0, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->keySharedPrefixGm.gmTensor[runInfo.prefixOffset],
-                                       runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
-            } else {
-                runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
-                    coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
-                    coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.prefixLoopCount * s2BaseSize, 0);
-                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
-                                       constInfo.dSize, constInfo.mm1Kb);
-            }
-        } else {
-            runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
-                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
-                                   constInfo.dSize, constInfo.mm1Kb);
-        }
+        LoadKeyToL1Nz(mm1BTensor, runInfo, constInfo);
         if constexpr (hasRope) {
             uint32_t dstNzC0Stride = (runInfo.s2RealSize + 15) >> 4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数;
             if constexpr (isFp8) {
@@ -1111,24 +1149,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
 
     outputBuf.WaitCrossCore();
 
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C->UB
-    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
-    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
-    fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
-    fixpipeParams.params.ndNum = 1;
-    fixpipeParams.params.srcNdStride = 0;
-    fixpipeParams.params.dstNdStride = 0;
-
-    if constexpr (isInfer && Q_FORMAT != GmFormat::BNGSD) {
-        bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
-        if (IsGS1Merge(constInfo) && isS1Odd) {
-            fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
-        }
-    }
-
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
+    FixpipeBmm1NdToUb(outputBuf, mm1ResL0C, runInfo, constInfo);
     mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放
     outputBuf.SetCrossCore();
 }
@@ -1618,25 +1639,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1BTensor, mm1BGmTensor, blockTableGm, kvLayout, shape, startPos);
     } else {
-        if constexpr (enableKVPrefix) {
-            if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
-                runInfo.prefixOffset = this->keySharedPrefixGm.offsetCalculator.GetOffset(
-                    0, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->keySharedPrefixGm.gmTensor[runInfo.prefixOffset],
-                                       runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
-            } else {
-                runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
-                    coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
-                    coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.prefixLoopCount * s2BaseSize, 0);
-                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
-                                       constInfo.dSize, constInfo.mm1Kb);
-            }
-        } else {
-            runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
-                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
-                                   constInfo.dSize, constInfo.mm1Kb);
-        }
+        LoadKeyToL1Nz(mm1BTensor, runInfo, constInfo);
     }
     mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
 
@@ -1667,24 +1670,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
 
     outputBuf.WaitCrossCore();
 
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
-    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
-    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
-    fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
-    fixpipeParams.params.ndNum = 1;
-    fixpipeParams.params.srcNdStride = 0;
-    fixpipeParams.params.dstNdStride = 0;
-
-    if constexpr (isInfer && Q_FORMAT != GmFormat::BNGSD) {
-        bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
-        if (IsGS1Merge(constInfo) && isS1Odd) { 
-            fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
-        }
-    }
-
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
+    FixpipeBmm1NdToUb(outputBuf, mm1ResL0C, runInfo, constInfo);
     mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
     outputBuf.SetCrossCore();
 }
@@ -1851,24 +1837,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
     outputBuf.WaitCrossCore();
 
     mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C->UB
-    fixpipeParams.nSize = (runInfo.s2RealSize + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
-    fixpipeParams.mSize = (runInfo.s1RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
-    fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
-    fixpipeParams.params.ndNum = 1;
-    fixpipeParams.params.srcNdStride = 0;
-    fixpipeParams.params.dstNdStride = 0;
-
-    if constexpr (isInfer && Q_FORMAT != GmFormat::BNGSD) {
-        bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
-        if (IsGS1Merge(constInfo) && isS1Odd) {
-            fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
-        }
-    }
-
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
+    FixpipeBmm1NdToUb(outputBuf, mm1ResL0C, runInfo, constInfo);
     mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放
     outputBuf.SetCrossCore();
 }

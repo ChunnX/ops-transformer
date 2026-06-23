@@ -135,15 +135,21 @@ static bool CheckDynamicScalesDim(const gert::TilingContext *context,
             OP_LOGE_WITH_INVALID_INPUT(nodeName, "dynamicScalesShape"), return false);
     if ((quantMode == static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT))) {
         // quantMode 2: 1dim, the same in A2/A3/A5
-        OP_TILING_CHECK(dynamicScalesStorageShape->GetStorageShape().GetDimNum() != DYNAMIC_SCALE_ONE_DIM_NUM,
-            OP_LOGE(nodeName, "dynamicScalesShape dims must be %u when quantMode=%u, but current dim num is %lu.",
-            DYNAMIC_SCALE_ONE_DIM_NUM, quantMode, dynamicScalesStorageShape->GetStorageShape().GetDimNum()), return false);
+        if (dynamicScalesStorageShape->GetStorageShape().GetDimNum() != DYNAMIC_SCALE_ONE_DIM_NUM) {
+            std::string dimStr = std::to_string(dynamicScalesStorageShape->GetStorageShape().GetDimNum()) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "dynamicScales", dimStr.c_str(),
+                (std::to_string(DYNAMIC_SCALE_ONE_DIM_NUM) + "D").c_str());
+            return false;
+        }
         OP_LOGD(nodeName, "dynamicScales dim0 = %ld", dynamicScalesStorageShape->GetStorageShape().GetDim(0));
     } else {
         // MX/PERGROUP
-        OP_TILING_CHECK(dynamicScalesStorageShape->GetStorageShape().GetDimNum() != DYNAMIC_SCALE_TWO_DIM_NUM,
-            OP_LOGE(nodeName, "dynamicScalesShape dims must be %u when quantMode=%u, but current dim num is %lu.",
-            DYNAMIC_SCALE_TWO_DIM_NUM, quantMode, dynamicScalesStorageShape->GetStorageShape().GetDimNum()), return false);
+        if (dynamicScalesStorageShape->GetStorageShape().GetDimNum() != DYNAMIC_SCALE_TWO_DIM_NUM) {
+            std::string dimStr = std::to_string(dynamicScalesStorageShape->GetStorageShape().GetDimNum()) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "dynamicScales", dimStr.c_str(),
+                (std::to_string(DYNAMIC_SCALE_TWO_DIM_NUM) + "D").c_str());
+            return false;
+        }
         OP_LOGD(nodeName, "dynamicScales dim0=%ld, dim1=%ld",
             dynamicScalesStorageShape->GetStorageShape().GetDim(0),
             dynamicScalesStorageShape->GetStorageShape().GetDim(1));
@@ -159,22 +165,31 @@ static bool CheckScaleTensorDim(const gert::TilingContext *context, const char *
         OP_TILING_CHECK(scalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scalesShape"), return false);
         if (quantMode != static_cast<uint32_t>(QuantModeA5::STATIC_QUANT)) {
             // the cond is compatible with A2/A3 because static quant is only supported on A5
-            OP_TILING_CHECK(scalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                OP_LOGE(nodeName, "scales dims must be 2 when quantMode=%u, but current dim num is %lu.",
-                quantMode, scalesStorageShape->GetStorageShape().GetDimNum()), return false);
+            if (scalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS) {
+                std::string dimStr = std::to_string(scalesStorageShape->GetStorageShape().GetDimNum()) + "D";
+                OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "scales", dimStr.c_str(), "2D");
+                return false;
+            }
             OP_LOGD(nodeName, "scales dim0 = %ld", scalesStorageShape->GetStorageShape().GetDim(0));
             OP_LOGD(nodeName, "scales dim1 = %ld", scalesStorageShape->GetStorageShape().GetDim(1));
         } else {
-            OP_TILING_CHECK((scalesStorageShape->GetStorageShape().GetDimNum() != ONE_DIM)
-                && (scalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS),
-                OP_LOGE(nodeName, "scalesShape dims must be 1 or 2 when quantMode is 1, but current dim num is %lu.",
-                scalesStorageShape->GetStorageShape().GetDimNum()), return false);
+            size_t scalesDimNum = scalesStorageShape->GetStorageShape().GetDimNum();
+            if ((scalesDimNum != ONE_DIM) && (scalesDimNum != TWO_DIMS)) {
+                std::string dimStr = std::to_string(scalesDimNum) + "D";
+                OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "scales", dimStr.c_str(), "1D or 2D");
+                return false;
+            }
             // additional check for hif8 quant
             auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
-            OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandXDesc"), return false);
-            OP_TILING_CHECK((expandXDesc->GetDataType() == ge::DT_HIFLOAT8) && (scalesStorageShape->GetStorageShape().GetDimNum() != ONE_DIM),
-                OP_LOGE(nodeName, "scalesShape dims must be 1 when x dtype is hif8 in static quant, but current dim num is %lu.",
-                scalesStorageShape->GetStorageShape().GetDimNum()), return false);
+            if (expandXDesc == nullptr) {
+                OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandXDesc");
+                return false;
+            }
+            if ((expandXDesc->GetDataType() == ge::DT_HIFLOAT8) && (scalesDimNum != ONE_DIM)) {
+                std::string dimStr = std::to_string(scalesDimNum) + "D";
+                OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "scales", dimStr.c_str(), "1D");
+                return false;
+            }
             OP_LOGD(nodeName, "scales dim0 = %ld", scalesStorageShape->GetStorageShape().GetDim(0));
             if (scalesStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) {
                 OP_LOGD(nodeName, "scales dim1 = %ld", scalesStorageShape->GetStorageShape().GetDim(1));
@@ -318,24 +333,40 @@ static bool CheckTensorDim(const gert::TilingContext *context, const char *nodeN
 static ge::graphStatus CheckQuantModeAndScales(const gert::TilingContext *context, const char *nodeName,
     bool isScales, const uint32_t quantMode, DispatchV2Config &config)
 {
-    OP_TILING_CHECK(!isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT)),
-        OP_LOGE(nodeName, "The scales should not be nullptr when quantMode is %u.",
-        quantMode), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)),
-        OP_LOGE(nodeName, "The scales should be nullptr when quantMode is %u.",
-        quantMode), return ge::GRAPH_FAILED);
+    if (!isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT))) {
+        std::string reason = "scales must be provided when quantMode is STATIC_QUANT";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
+            "not provided", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT))) {
+        std::string reason = "scales must be nullptr when quantMode is MX_QUANT";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
+            "provided", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     auto xDesc = context->GetInputDesc(config.xIndex);
-    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))
+    if (xDesc == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc");
+        return ge::GRAPH_FAILED;
+    }
+    std::string xDtypeStr = Ops::Base::ToString(xDesc->GetDataType());
+    if (!isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))
         && ((xDesc->GetDataType() == ge::DT_HIFLOAT8) || (xDesc->GetDataType() == ge::DT_FLOAT8_E5M2)
         || (xDesc->GetDataType() == ge::DT_FLOAT8_E4M3FN) || (xDesc->GetDataType() == ge::DT_FLOAT4_E2M1)
-        || (xDesc->GetDataType() == ge::DT_FLOAT4_E1M2)),
-        OP_LOGE(nodeName, "The scales should not be nullptr when quantMode is %u and X datatype is %s.",
-        quantMode, Ops::Base::ToString(xDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))
-        && ((xDesc->GetDataType() == ge::DT_BF16) || (xDesc->GetDataType() == ge::DT_FLOAT16)),
-        OP_LOGE(nodeName, "The scales should be nullptr when quantMode is %u and X datatype is %s.",
-        quantMode, Ops::Base::ToString(xDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+        || (xDesc->GetDataType() == ge::DT_FLOAT4_E1M2))) {
+        std::string reason = "scales must be provided when quantMode is NON_QUANT and x dtype is " + xDtypeStr;
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
+            "not provided", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))
+        && ((xDesc->GetDataType() == ge::DT_BF16) || (xDesc->GetDataType() == ge::DT_FLOAT16))) {
+        std::string reason = "scales must be nullptr when quantMode is NON_QUANT and x dtype is " + xDtypeStr;
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
+            "provided", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -424,20 +455,23 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
     auto xDesc = context->GetInputDesc(config.xIndex); // nullptr前面已check过
     auto xDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
     if (xDescFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(nodeName, "x format is invalid.");
+        std::string fmtStr = Ops::Base::ToString(xDescFormat);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", fmtStr.c_str(), "ND");
         return false;
     }
     auto expertIdDesc = context->GetInputDesc(config.expertIdsIndex);
     auto expertIdDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdDesc->GetStorageFormat()));
     if (expertIdDescFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(nodeName, "expertId format is invalid.");
+        std::string fmtStr = Ops::Base::ToString(expertIdDescFormat);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expert_ids", fmtStr.c_str(), "ND");
         return false;
     }
     if (isScales) {
         auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
         auto scalesDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scalesDesc->GetStorageFormat()));
         if (scalesDescFormat == ge::FORMAT_FRACTAL_NZ) {
-            OP_LOGE(nodeName, "scales format is invalid.");
+            std::string fmtStr = Ops::Base::ToString(scalesDescFormat);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "scales", fmtStr.c_str(), "ND");
             return false;
         }
     }
@@ -445,7 +479,8 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
         auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
         auto xActiveMaskDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat()));
         if (xActiveMaskDescFormat == ge::FORMAT_FRACTAL_NZ) {
-            OP_LOGE(nodeName, "xActiveMask format is invalid.");
+            std::string fmtStr = Ops::Base::ToString(xActiveMaskDescFormat);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "xActiveMask", fmtStr.c_str(), "ND");
             return false;
         }
     }
@@ -453,7 +488,8 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
         auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
         auto elasticInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(elasticInfoDesc->GetStorageFormat()));
         if (elasticInfoDescFormat == ge::FORMAT_FRACTAL_NZ) {
-            OP_LOGE(nodeName, "elasticInfo format is invalid.");
+            std::string fmtStr = Ops::Base::ToString(elasticInfoDescFormat);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "elastic_info", fmtStr.c_str(), "ND");
             return false;
         }
     }
@@ -461,46 +497,53 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
         auto performanceInfoDesc = context->GetOptionalInputDesc(config.performanceInfoIndex);
         auto performanceInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(performanceInfoDesc->GetStorageFormat()));
         if (performanceInfoDescFormat == ge::FORMAT_FRACTAL_NZ) {
-            OP_LOGE(nodeName, "performanceInfoDesc format is invalid.");
+            std::string fmtStr = Ops::Base::ToString(performanceInfoDescFormat);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "performance_info", fmtStr.c_str(), "ND");
             return false;
         }
     }
     auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
     auto expandXDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat()));
     if (expandXDescFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(nodeName, "expandX format is invalid.");
+        std::string fmtStr = Ops::Base::ToString(expandXDescFormat);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expandX", fmtStr.c_str(), "ND");
         return false;
     }
     if (quantMode >= static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) {
         auto dynamicScalesDesc = context->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX);
         auto dynamicScalesDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(dynamicScalesDesc->GetStorageFormat()));
         if (dynamicScalesDescFormat == ge::FORMAT_FRACTAL_NZ) {
-            OP_LOGE(nodeName, "dynamicScales format is invalid.");
+            std::string fmtStr = Ops::Base::ToString(dynamicScalesDescFormat);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "dynamicScales", fmtStr.c_str(), "ND");
             return false;
         }
     }
     auto assistInfoDesc = context->GetOutputDesc(OUTPUT_ASSIST_INFO_INDEX);
     auto assistInfoDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(assistInfoDesc->GetStorageFormat()));
     if (assistInfoDescFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(nodeName, "assistInfoForCombine format is invalid.");
+        std::string fmtStr = Ops::Base::ToString(assistInfoDescFormat);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "assistInfoForCombine", fmtStr.c_str(), "ND");
         return false;
     }
     auto expertTokenNumsDesc = context->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
     auto expertTokenNumsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertTokenNumsDesc->GetStorageFormat()));
     if (expertTokenNumsDescFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(nodeName, "expertTokenNums format is invalid.");
+        std::string fmtStr = Ops::Base::ToString(expertTokenNumsDescFormat);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertTokenNums", fmtStr.c_str(), "ND");
         return false;
     }
     auto epRecvCountsDesc = context->GetOutputDesc(OUTPUT_EP_RECV_COUNTS_INDEX);
     auto epRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(epRecvCountsDesc->GetStorageFormat()));
     if (epRecvCountsDescFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(nodeName, "epRecvCounts format is invalid.");
+        std::string fmtStr = Ops::Base::ToString(epRecvCountsDescFormat);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epRecvCounts", fmtStr.c_str(), "ND");
         return false;
     }
     auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
     auto tpRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(tpRecvCountsDesc->GetStorageFormat()));
     if (tpRecvCountsDescFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(nodeName, "tpRecvCounts format is invalid.");
+        std::string fmtStr = Ops::Base::ToString(tpRecvCountsDescFormat);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tpRecvCounts", fmtStr.c_str(), "ND");
         return false;
     }
     return true;
@@ -578,28 +621,57 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
         maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A3;
     }
     int64_t maxTpworldsize = isLayered ? MAX_TP_WORLD_SIZE_LAYERED : MAX_TP_WORLD_SIZE;
-    OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize),
-        OP_LOGE(nodeName, "epWorldSize", MIN_EP_WORLD_SIZE, maxEpworldsize, epWorldSize), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((isLayered && (epWorldSize % RANK_NUM_PER_NODE != 0)),     // 校验epWorldSize是否是16整数倍
-        OP_LOGE(nodeName, "epWorldSize should be %u Aligned, but got %ld.", RANK_NUM_PER_NODE, epWorldSize), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*tpWorldSizePtr < 0) || (*tpWorldSizePtr > maxTpworldsize),
-        OP_LOGE(nodeName, "tpWorldSize", maxTpworldsize, *tpWorldSizePtr), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
-        OP_LOGE(nodeName, "epRankId is invalid, only support [0, %ld), but got epRankId=%ld.",
-        epWorldSize, *epRankIdPtr), return ge::GRAPH_FAILED);
+    if ((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize)) {
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize",
+            std::to_string(epWorldSize).c_str(),
+            (std::string("[") + std::to_string(MIN_EP_WORLD_SIZE) + "," +
+             std::to_string(maxEpworldsize) + "]").c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (isLayered && (epWorldSize % RANK_NUM_PER_NODE != 0)) {
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize",
+            std::to_string(epWorldSize).c_str(),
+            (std::string("a multiple of ") + std::to_string(RANK_NUM_PER_NODE)).c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((*tpWorldSizePtr < 0) || (*tpWorldSizePtr > maxTpworldsize)) {
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpWorldSize",
+            std::to_string(*tpWorldSizePtr).c_str(),
+            (std::string("[0,") + std::to_string(maxTpworldsize) + "]").c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize)) {
+        std::string reason = "epRankId should be in [0, epWorldSize)";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "ep_rank_id",
+            std::to_string(*epRankIdPtr).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     if (*tpWorldSizePtr > 1) {
         auto groupTpPtr = attrs->GetAttrPointer<char>(static_cast<int64_t>(config.attrGroupTpIndex));
-        OP_TILING_CHECK((*tpRankIdPtr < 0) || (*tpRankIdPtr >= *tpWorldSizePtr),
-            OP_LOGE(nodeName, "tpRankId is invalid, only support [0, %ld), but got tpRankId=%ld.",
-            *tpWorldSizePtr, *tpRankIdPtr), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((groupTpPtr == nullptr) || (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-            (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-            OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupTpPtr"), return ge::GRAPH_FAILED);
+        if ((*tpRankIdPtr < 0) || (*tpRankIdPtr >= *tpWorldSizePtr)) {
+            std::string reason = "tpRankId should be in [0, tpWorldSize)";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "tp_rank_id",
+                std::to_string(*tpRankIdPtr).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
+        if (groupTpPtr == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupTpPtr");
+            return ge::GRAPH_FAILED;
+        }
+        size_t groupTpLen = strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH);
+        if (groupTpLen == 0 || groupTpLen == MAX_GROUP_NAME_LENGTH) {
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "groupTp",
+                std::to_string(groupTpLen).c_str(),
+                (std::string("length in (0, ") + std::to_string(MAX_GROUP_NAME_LENGTH) + ")").c_str());
+            return ge::GRAPH_FAILED;
+        }
         groupTp = std::string(groupTpPtr);
     } else {
-        OP_TILING_CHECK(*tpRankIdPtr != 0,
-            OP_LOGE(nodeName, "tpRankId is invalid, NoTp mode only support 0, but got tpRankId=%ld.", *tpRankIdPtr),
-            return ge::GRAPH_FAILED);
+        if (*tpRankIdPtr != 0) {
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "tp_rank_id",
+                std::to_string(*tpRankIdPtr).c_str(), "0");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -615,12 +687,16 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(
     auto expertTokenNumsTypePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrExpertTokenNumsTypeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     if (config.isMc2Context) {
-        OP_TILING_CHECK((strcmp(commAlgPtr, "hierarchy") == 0),
-            OP_LOGE(nodeName, "commAlgPtr %s doesn't support comm with context.", commAlgPtr),
-            return ge::GRAPH_FAILED);
+        if (strcmp(commAlgPtr, "hierarchy") != 0) {
+            OP_LOGE_WITH_INVALID_ATTR(nodeName, "comm_alg", commAlgPtr, "\"hierarchy\"");
+            return ge::GRAPH_FAILED;
+        }
     }
-    OP_TILING_CHECK(*expertShardPtr != 0,
-        OP_LOGE(nodeName, "expertShardType", *expertShardPtr), return ge::GRAPH_FAILED);
+    if (*expertShardPtr != 0) {
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertShardType",
+            std::to_string(*expertShardPtr).c_str(), "0");
+        return ge::GRAPH_FAILED;
+    }
 
     if (CheckQuantModePtr(quantModePtr, nodeName) == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
