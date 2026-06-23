@@ -47,7 +47,7 @@ class TestCustomStemIndexer(TestCase):
         vbias = vbias.repeat(b, kv_heads, 1) * 1000.0
         q_seq_lens = torch.tensor([q_len], dtype=torch.int32)
         kv_seq_lens = torch.tensor([kv_len], dtype=torch.int32)
-        num_prompt_tokens = torch.tensor([q_len], dtype=torch.int32)
+        num_prompt_tokens = torch.tensor([kv_len], dtype=torch.int32)
 
         case = {
             "case_id": "SI_MANUAL_001",
@@ -58,7 +58,7 @@ class TestCustomStemIndexer(TestCase):
             "kv_heads": kv_heads,
             "q_seq_lens": [q_len],
             "kv_seq_lens": [kv_len],
-            "num_prompt_tokens": [q_len],
+            "num_prompt_tokens": [kv_len],
             "causal": causal,
             "alpha": alpha,
             "stem_block_size": stem_block_size,

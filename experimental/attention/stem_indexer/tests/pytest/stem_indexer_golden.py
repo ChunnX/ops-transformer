@@ -150,7 +150,7 @@ def get_metadata_attrs(case):
 
 
 def is_decode_case(q_len, kv_len, prompt_len):
-    return q_len == 1 and prompt_len >= max(kv_len - 1, 0)
+    return q_len == 1 and prompt_len >= kv_len
 
 
 def calc_topk_budget(case, q_block_idx, q_block_num, kv_block_num, prompt_len):
