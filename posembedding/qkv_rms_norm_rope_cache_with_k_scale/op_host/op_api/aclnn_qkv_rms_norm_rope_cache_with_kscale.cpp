@@ -41,8 +41,9 @@ namespace {
 
 static aclnnStatus Contiguous(const aclTensor *&qkv, const aclTensor *&qGamma, const aclTensor *&kGamma,
                               const aclTensor *&cosSin, const aclTensor *&slotMapping, const aclTensor *&cuSeqLen,
-                              const aclTensor *&optionalQRotation, const aclTensor *&optionalKRotation,
-                              const aclTensor *&optionalVScale, aclOpExecutor *executor)
+                              const aclTensor *&actualSeqLens, const aclTensor *&optionalQRotation,
+                              const aclTensor *&optionalKRotation, const aclTensor *&optionalVScale,
+                              aclOpExecutor *executor)
 {
     qkv = l0op::Contiguous(qkv, executor);
     CHECK_RET(qkv != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -62,6 +63,9 @@ static aclnnStatus Contiguous(const aclTensor *&qkv, const aclTensor *&qGamma, c
     cuSeqLen = l0op::Contiguous(cuSeqLen, executor);
     CHECK_RET(cuSeqLen != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
+    actualSeqLens = l0op::Contiguous(actualSeqLens, executor);
+    CHECK_RET(actualSeqLens != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
     optionalQRotation = l0op::Contiguous(optionalQRotation, executor);
     CHECK_RET(optionalQRotation != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
@@ -79,9 +83,10 @@ static aclnnStatus Contiguous(const aclTensor *&qkv, const aclTensor *&qGamma, c
 aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma, const aclTensor *cosSin,
     const aclTensor *slotMapping, aclTensor *kCache, aclTensor *vCache, aclTensor *kScaleCache,
-    const aclTensor *cuSeqLen, const aclTensor *optionalQRotation, const aclTensor *optionalKRotation,
-    const aclTensor *optionalVScale, const aclIntArray *headNums, float epsilon, aclTensor *qOut,
-    aclTensor *qScale, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *cuSeqLen, const aclTensor *actualSeqLens, const aclTensor *optionalQRotation,
+    const aclTensor *optionalKRotation, const aclTensor *optionalVScale, const aclIntArray *headNums,
+    const char *inputLayout, float epsilon, aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     using namespace QkvRmsNormRopeCacheWithKScaleCheck;
 
@@ -95,10 +100,12 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     params.vCache = vCache;
     params.kScaleCache = kScaleCache;
     params.cuSeqLen = cuSeqLen;
+    params.actualSeqLens = actualSeqLens;
     params.optionalQRotation = optionalQRotation;
     params.optionalKRotation = optionalKRotation;
     params.optionalVScale = optionalVScale;
     params.headNums = headNums;
+    params.inputLayout = inputLayout;
     params.epsilon = epsilon;
     params.qOut = qOut;
     params.qScale = qScale;
@@ -107,7 +114,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
 
     L2_DFX_PHASE_1(aclnnQkvRmsNormRopeCacheWithKScale,
                    DFX_IN(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                          optionalQRotation, optionalKRotation, optionalVScale, headNums, epsilon),
+                          actualSeqLens, optionalQRotation, optionalKRotation, optionalVScale, headNums, inputLayout,
+                          epsilon),
                    DFX_OUT(qOut, qScale, kCache, vCache, kScaleCache));
 
     QkvRmsNormRopeCacheWithKScaleChecker checker;
@@ -119,7 +127,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
     CHECK_RET(Contiguous(params.qkv, params.qGamma, params.kGamma, params.cosSin,
-                         params.slotMapping, params.cuSeqLen, params.optionalQRotation,
+                         params.slotMapping, params.cuSeqLen, params.actualSeqLens, params.optionalQRotation,
                          params.optionalKRotation, params.optionalVScale,
                          l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
@@ -147,9 +155,9 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
 
     auto l0Outs = l0op::QkvRmsNormRopeCacheWithKScale(
         params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping,
-        kCacheView, vCacheView, kScaleCacheView, params.cuSeqLen,
+        kCacheView, vCacheView, kScaleCacheView, params.cuSeqLen, params.actualSeqLens,
         params.optionalQRotation, params.optionalKRotation, params.optionalVScale,
-        params.headNums, params.epsilon, params.qOut, params.qScale, l0Executor);
+        params.headNums, params.inputLayout, params.epsilon, params.qOut, params.qScale, l0Executor);
 
     CHECK_RET(std::get<0>(l0Outs) != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(std::get<1>(l0Outs) != nullptr, ACLNN_ERR_INNER_NULLPTR);

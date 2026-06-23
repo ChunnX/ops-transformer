@@ -14,6 +14,13 @@
 #include "kernel_operator.h"
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
 
+#ifndef QKV_RRC_LAYOUT_NTD
+#define QKV_RRC_LAYOUT_NTD 0
+#endif
+#ifndef QKV_RRC_LAYOUT_TND
+#define QKV_RRC_LAYOUT_TND 1
+#endif
+
 namespace QkvRmsNormRopeCacheWithKScale {
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -170,6 +177,7 @@ struct GlobalTensors {
     GM_ADDR vCache;
     GM_ADDR kScaleCache;
     GM_ADDR cuSeqLen;
+    GM_ADDR actualSeqLens;
     GM_ADDR qRotation;
     GM_ADDR kRotation;
     GM_ADDR vScale;
@@ -322,6 +330,14 @@ __aicore__ inline uint32_t GetAicCubeIndex()
 __aicore__ inline uint32_t GetAivCubeIndex()
 {
     return GetBlockIdx() / QKV_RRC_MIX_AIV_PER_AIC;
+}
+
+__aicore__ inline uint32_t GetCubeIndex()
+{
+    if ASCEND_IS_AIC {
+        return GetAicCubeIndex();
+    }
+    return GetAivCubeIndex();
 }
 
 } // namespace QkvRmsNormRopeCacheWithKScale

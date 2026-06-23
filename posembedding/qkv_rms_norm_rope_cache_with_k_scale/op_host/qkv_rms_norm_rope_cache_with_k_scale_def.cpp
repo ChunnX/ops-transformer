@@ -44,6 +44,11 @@ public:
             .DataType(int32Types)
             .Format(ndFormats)
             .UnknownShapeFormat(ndFormats);
+        this->Input("actual_seq_lens")
+            .ParamType(REQUIRED)
+            .DataType(int32Types)
+            .Format(ndFormats)
+            .UnknownShapeFormat(ndFormats);
         this->Input("q_rotation")
             .ParamType(OPTIONAL)
             .DataType(bf16Types)
@@ -67,6 +72,7 @@ public:
             .UnknownShapeFormat(ndFormats);
 
         this->Attr("head_nums").AttrType(REQUIRED).ListInt();
+        this->Attr("inputLayout").AttrType(REQUIRED).String();
         this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
         this->AICore().AddConfig("ascend950");

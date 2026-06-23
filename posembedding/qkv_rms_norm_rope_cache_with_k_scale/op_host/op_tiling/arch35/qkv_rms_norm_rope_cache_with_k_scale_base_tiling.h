@@ -12,7 +12,6 @@
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_BASE_TILING_H_
 
 #include <cstdint>
-#include <string>
 
 #include "op_host/tiling_base.h"
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
@@ -38,6 +37,7 @@ struct ContractInput {
     uint64_t maxSeqLen = 0;
     uint64_t blockNum = 0;
     uint64_t blockSize = 0;
+    uint64_t inputLayout = 0;
 
     TensorContractInfo qkv;
     TensorContractInfo qGamma;
@@ -48,6 +48,7 @@ struct ContractInput {
     TensorContractInfo vCache;
     TensorContractInfo kScaleCache;
     TensorContractInfo cuSeqLen;
+    TensorContractInfo actualSeqLens;
     TensorContractInfo qRotation;
     TensorContractInfo kRotation;
     TensorContractInfo vScale;
@@ -101,11 +102,9 @@ public:
     static constexpr uint64_t DIM_TILE_FAST = 128;
     static constexpr uint64_t AIV_PER_AIC = 2;
 
-    static ge::graphStatus ValidateContractInput(const ContractInput &input,
-                                                 const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+    static ge::graphStatus ValidateContractInput(const ContractInput &input)
         __attribute__((visibility("default")));
-    static ge::graphStatus BuildContractTiling(const ContractInput &input, uint64_t aicNum, ContractTiling &tiling,
-                                               const std::string &opName = "QkvRmsNormRopeCacheWithKScale")
+    static ge::graphStatus BuildContractTiling(const ContractInput &input, uint64_t aicNum, ContractTiling &tiling)
         __attribute__((visibility("default")));
     explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {
@@ -129,56 +128,60 @@ private:
     void Reset();
 
     static uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads);
-    static ge::graphStatus ValidateHeadNums(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateScalarInputs(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateDtype(const std::string &opName, const char *tensorName,
-                                         const TensorContractInfo &tensor, ge::DataType expected);
-    static ge::graphStatus ValidateDtypes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateShapeInputsForDerivedFields(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateShapeRanks(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateNonCacheShapes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateCacheShapes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateShapes(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateStrides(const ContractInput &input, const std::string &opName);
-    static ge::graphStatus ValidateMinimumTokenTileFeasible(const ContractInput &input, const std::string &opName);
-    static bool TrySelectTokenTile(const ContractTiling &tiling, uint64_t tokenTile, const std::string &opName,
-                                   TokenTileSelection &selection);
-    static ge::graphStatus SelectTokenTile(const ContractTiling &tiling, const std::string &opName,
-                                           TokenTileSelection &selection);
-    static void FillContractTiling(const ContractInput &input, uint64_t aicNum, const TokenTileSelection &selection,
-                                   ContractTiling &tiling);
-    static ge::graphStatus MakeContiguousStrideInfo(const gert::Shape &shape, const std::string &opName,
+    ge::graphStatus ValidateHeadNums() const;
+    ge::graphStatus ValidateScalarInputs() const;
+    ge::graphStatus ValidateDtype(const char *tensorName, const TensorContractInfo &tensor,
+                                  ge::DataType expected) const;
+    ge::graphStatus ValidateDtypes() const;
+    ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
+                                      uint64_t expectedRank) const;
+    ge::graphStatus ValidateShapeInputsForDerivedFields() const;
+    ge::graphStatus ValidateNonCacheShapeRanks() const;
+    ge::graphStatus ValidateQkvAndGammaShapes() const;
+    ge::graphStatus ValidatePositionInputShapes() const;
+    ge::graphStatus ValidateRotationAndScaleShapes() const;
+    ge::graphStatus ValidateNonCacheShapes() const;
+    ge::graphStatus ValidateCacheShapes() const;
+    ge::graphStatus ValidateShapes() const;
+    ge::graphStatus ValidateStrides() const;
+    ge::graphStatus ValidateMinimumTokenTileFeasible() const;
+    bool TrySelectTokenTile(uint64_t tokenTile, TokenTileSelection &selection) const;
+    ge::graphStatus SelectTokenTile(TokenTileSelection &selection) const;
+    void FillContractTiling(const TokenTileSelection &selection);
+    ge::graphStatus ValidateContractInput() const;
+    ge::graphStatus BuildContractTiling();
+    static ge::graphStatus MakeContiguousStrideInfo(gert::TilingContext *context, const gert::Shape &shape,
                                                     gert::Stride &strideInfo);
     static const char *DtypeName(ge::DataType dtype);
-    static ge::graphStatus ToTensorInfo(gert::TilingContext *context, const std::string &opName, const char *tensorName,
-                                        size_t index, TensorContractInfo &info);
-    static ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, const std::string &opName, size_t index,
-                                             TensorContractInfo &info);
-    static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, size_t index);
-    static void LogTensorInfo(const std::string &opName, const char *tensorName, const TensorContractInfo &info);
-    static void LogContractInput(const std::string &opName, const ContractInput &input, uint64_t aicNum, float epsilon);
-    static ge::graphStatus SetWorkspace(gert::TilingContext *context, const std::string &opName,
+    static ge::graphStatus ToTensorInfo(gert::TilingContext *context, const char *tensorName, uint64_t index,
+                                        TensorContractInfo &info);
+    static void LogCacheInputShapeQuery(gert::TilingContext *context, uint64_t index, bool inputIsView,
+                                        const gert::Shape &storageShapeInfo, const gert::Shape &logicalShapeInfo);
+    static ge::graphStatus FillViewCacheTensorInfo(gert::TilingContext *context, uint64_t index, ge::DataType dtype,
+                                                   const gert::Shape &logicalShapeInfo, TensorContractInfo &info);
+    static ge::graphStatus FillContiguousCacheTensorInfo(gert::TilingContext *context, uint64_t index, ge::DataType dtype,
+                                                         const gert::Shape &storageShapeInfo, TensorContractInfo &info);
+    static ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, uint64_t index, TensorContractInfo &info);
+    static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, uint64_t index);
+    static const char *InputLayoutName(uint64_t inputLayout);
+    void LogTensorInfo(const char *tensorName, const TensorContractInfo &info) const;
+    void LogContractInput() const;
+    static ge::graphStatus SetWorkspace(gert::TilingContext *context,
                                         const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
-                                        size_t &workspaceSize);
-    static void LogTilingData(const std::string &opName, const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
-                              const ContractTiling &contractTiling, uint64_t tilingKey, uint64_t blockDim,
-                              size_t dataSize, size_t workspaceSize);
-    static ge::graphStatus ParseHeadNumsAttr(gert::TilingContext *context, const std::string &opName,
-                                             ContractInput &input);
-    static float ParseEpsilonAttr(gert::TilingContext *context);
-    static void FillShapeDerivedFields(const std::string &opName, ContractInput &input);
-    static ge::graphStatus FillRequiredTensorInputs(gert::TilingContext *context, const std::string &opName,
-                                                    ContractInput &input);
-    static void FillOptionalTensorInputs(gert::TilingContext *context, ContractInput &input);
-    static ge::graphStatus BuildContractInput(gert::TilingContext *context, const std::string &opName,
-                                              ContractInput &input, float &epsilon);
-    static void FillTilingData(const ContractInput &input, const ContractTiling &contractTiling, float epsilon,
-                               QkvRmsNormRopeCacheWithKScaleTilingData &tilingData);
-    static ge::graphStatus ValidateCompileInfo(const std::string &opName,
-                                               const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo);
-    static ge::graphStatus CopyRawTilingData(gert::TilingContext *context, const std::string &opName,
+                                        uint64_t &workspaceSize);
+    void LogTilingData() const;
+    ge::graphStatus ParseHeadNumsAttr();
+    ge::graphStatus ParseInputLayoutAttr();
+    float ParseEpsilonAttr() const;
+    ge::graphStatus FillShapeDerivedFields();
+    ge::graphStatus FillRequiredTensorInputs();
+    void FillOptionalTensorInputs();
+    ge::graphStatus BuildContractInput();
+    void FillTilingData();
+    ge::graphStatus ValidateCompileInfo(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo) const;
+    static ge::graphStatus CopyRawTilingData(gert::TilingContext *context,
                                              const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
-                                             size_t &tilingDataSize);
+                                             uint64_t &tilingDataSize);
 
     const QkvRmsNormRopeCacheWithKScaleCompileInfo *compileInfo_ = nullptr;
     ContractInput input_;
@@ -186,7 +189,7 @@ private:
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData_;
     uint64_t aicNum_ = 0;
     float epsilon_ = 1e-6f;
-    size_t tilingDataSize_ = 0;
+    uint64_t tilingDataSize_ = 0;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale
