@@ -163,9 +163,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
 
-    hitCountOffset_ = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-
-    hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace + hitCountOffset_));
+    hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace));
 
     uint32_t ubTokenBytes     = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
@@ -386,9 +384,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     GM_ADDR slotAddr = srcRankBase + (int64_t)(slotStart + localSlot) * perSlotBytes_;
                     GlobalTensor<XType> srcTokenTensor;
                     srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
-                    DataCopyExtParams tokenCopyParams{1U,
-                        static_cast<uint32_t>(axisH_ * sizeof(XType)), 0U, 0U, 0U};
-                    DataCopyPadExtParams<XType> tokenPadParams{false, 0, 0, 0};
+                    DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+                    DataCopyPadParams tokenPadParams{false, 0, 0, 0};
                     DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
                     PipeBarrier<PIPE_MTE2>();
 

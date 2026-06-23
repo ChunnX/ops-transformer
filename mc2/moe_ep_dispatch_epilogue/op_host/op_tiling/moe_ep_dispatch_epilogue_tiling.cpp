@@ -444,11 +444,11 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
-    uint64_t prefixSumBytes = ALIGN_UP(static_cast<uint64_t>(info.cfg.epWorldSize) * sizeof(int32_t), 8UL)
-                            + static_cast<uint64_t>(info.cfg.numLocalExperts) * sizeof(int64_t);
+    
     uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * info.cfg.numLocalExperts * sizeof(int32_t);
-    uint64_t rowStartBytes = static_cast<uint64_t>(aivNum) * info.cfg.numLocalExperts * sizeof(int64_t);
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + prefixSumBytes + hitCountBytes + rowStartBytes;
+    uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL)/ WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U);
     context->SetTilingKey(tilingKey);
