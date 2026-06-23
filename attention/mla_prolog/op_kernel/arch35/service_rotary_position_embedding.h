@@ -168,8 +168,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
 
         uint8_t blockNumPerRow = ropeParams.col / (ALIGN_BLOCK_SIZE / sizeof(C));
         // row  col stride
-        Rectangle rectangleParams{static_cast<uint32_t>(ropeParams.row), static_cast<uint32_t>(ropeParams.col),
-                                  static_cast<uint32_t>(ropeParams.col)};
+        Rectangle rectangleParams{static_cast<uint32_t>(ropeParams.row), static_cast<uint32_t>(ropeParams.col), static_cast<uint32_t>(ropeParams.col)};
         if constexpr (std::is_same<T, float>::value) {
             Dequant(kFp32Local, kFp32Local, scaleLocal, deQuantScale, rectangleParams);
         } else {

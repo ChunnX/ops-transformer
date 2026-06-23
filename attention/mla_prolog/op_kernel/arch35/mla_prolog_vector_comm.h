@@ -362,8 +362,7 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     PipeBarrier<PIPE_V>();
     Brcb(scaleReciprocalBrcb, scaleReciprocal, CeilDivT(row, 8UL), {1, 8});
     PipeBarrier<PIPE_V>();
-    RowMuls(outputLocal, inputLocal, scaleReciprocalBrcb,
-            Rectangle{static_cast<uint32_t>(row), static_cast<uint32_t>(col), static_cast<uint32_t>(col)});
+    RowMuls(outputLocal, inputLocal, scaleReciprocalBrcb, Rectangle{static_cast<uint32_t>(row), static_cast<uint32_t>(col), static_cast<uint32_t>(col)});
     PipeBarrier<PIPE_V>();
 }
 
