@@ -146,7 +146,12 @@ inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     } else {
         auto attrs = context->GetAttrs();
         auto cclBuffSizePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(3)); // 3为V3算子中ccl_buffer_size的index
-        OP_TILING_CHECK(cclBuffSizePtr == nullptr || *cclBuffSizePtr < 0, OP_LOGE(nodeName, "cclBuffSizePtr is invalid."), return ge::GRAPH_FAILED);
+        if (cclBuffSizePtr == nullptr) {
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "cclBuffSizePtr");
+            return ge::GRAPH_FAILED;
+        }
+        OP_TILING_CHECK(*cclBuffSizePtr < 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBuffSizePtr",
+            std::to_string(*cclBuffSizePtr).c_str(), "should be >= 0"), return ge::GRAPH_FAILED);
         maxWindowSizeEp = *cclBuffSizePtr - MB_SIZE;
         hcclBufferSizeEp = *cclBuffSizePtr;
     }
