@@ -493,6 +493,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatc
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+    PRINTF("ResetUrmaDispatchStateDone: rankId=%u\n", rankId_);
 }
 
 // ===============================================================================================
@@ -1421,19 +1422,37 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
     if constexpr(g_coreType == AIC) {
         return;
     }
+    PRINTF("CrossRankSyncInWorldSize BEGIN: rankId=%u, aivCoreIdx=%u, blockAivNum=%u, worldSize=%u\n",
+        rankId_, aivCoreIdx_, blockAivNum_, worldSize_);
     __gm__ int32_t* syncRank = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr);
     __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
         48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
+    if (aivCoreIdx_ < 4) {
+        PRINTF("CrossRankSyncInWorldSize count ready: rankId=%u, aivCoreIdx=%u, count=%d\n",
+            rankId_, aivCoreIdx_, count);
+    }
     for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
         __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
+        if (aivCoreIdx_ < 4) {
+            PRINTF("CrossRankSyncInWorldSize wait peer begin: rankId=%u, aivCoreIdx=%u, peerRank=%d, count=%d\n",
+                rankId_, aivCoreIdx_, i, count);
+        }
         WriteGmByPassDCache(syncRemoteAddr, count);
         auto syncCheck = syncRank + i * 16;
         GmSignalWaitBarrier(syncCheck, count);
+        if (aivCoreIdx_ < 4) {
+            PRINTF("CrossRankSyncInWorldSize wait peer done: rankId=%u, aivCoreIdx=%u, peerRank=%d, count=%d\n",
+                rankId_, aivCoreIdx_, i, count);
+        }
     }
     WriteGmByPassDCache(syncCount, count);
     PipeBarrier<PIPE_ALL>();
+    PRINTF("CrossRankSyncInWorldSize before SyncAll: rankId=%u, aivCoreIdx=%u, count=%d\n",
+        rankId_, aivCoreIdx_, count);
     SyncAll<true>();
+    PRINTF("CrossRankSyncInWorldSize END: rankId=%u, aivCoreIdx=%u, count=%d\n",
+        rankId_, aivCoreIdx_, count);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -1450,30 +1469,64 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     }
     // QuantProcessInRank();        // 对本卡token的量化
     ResetUrmaDispatchState();// 清理 URMA 一级通信 workspace/relay ready 状态
+    PRINTF("Process after ResetUrmaDispatchState: rankId=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+        rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_);
     if constexpr(g_coreType == AIV) {
+        PRINTF("Process before local AIV SyncAll: rankId=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+            rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        PRINTF("Process after local AIV SyncAll: rankId=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+            rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_);
     }
+    PRINTF("Process before CrossRankSyncInWorldSize: rankId=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+        rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_);
     CrossRankSyncInWorldSize();  // 全卡同步
+    PRINTF("Process after CrossRankSyncInWorldSize: rankId=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+        rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_);
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+    PRINTF("Process before DispatchBuffInit: rankId=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+        rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_);
     DispatchBuffInit();
+    PRINTF("Process after DispatchBuffInit: rankId=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+        rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_);
     GMMAddrInfo gmmAddrInfo;
     TupleShape initShape;
     Get<N_VALUE>(initShape) = hiddenDim_;
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     ExpertLoopState gmm1State{initShape, initOffset};
+    PRINTF("Process before expert loop: rankId=%u, expertPerRank=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+        rankId_, expertPerRank_, blockIdx_, aivCoreIdx_, subBlockIdx_);
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
+        PRINTF("Process expert loop enter: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+            rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
         if constexpr(g_coreType == AIV) {
+            PRINTF("Process AIV before subBlock check: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+                rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
             if (subBlockIdx_ == 1) {
+                PRINTF("Process before Level1DispatchUrma: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+                    rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
                 Level1DispatchUrma(localExpertId); // 一级通信：本轮 localExpertId 的 token 写入各 server relay 区
+                PRINTF("Process after Level1DispatchUrma: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+                    rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
+                PRINTF("Process before SendCntCal: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+                    rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
                 SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
+                PRINTF("Process after SendCntCal: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+                    rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
             }
         }
+        PRINTF("Process before UpdateGroupParams GMM1: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+            rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
         if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
+            PRINTF("Process UpdateGroupParams GMM1 skip: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+                rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
             continue;
         }
+        PRINTF("Process after UpdateGroupParams GMM1: rankId=%u, localExpertId=%d, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u\n",
+            rankId_, localExpertId, blockIdx_, aivCoreIdx_, subBlockIdx_);
         UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
