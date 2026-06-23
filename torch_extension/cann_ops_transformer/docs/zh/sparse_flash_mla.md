@@ -2,7 +2,7 @@
 
 ## 产品支持情况
 
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -208,6 +208,8 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
     - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
     - `ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
     - PageAttention的block_size支持16的倍数，且不超过1024。
+  - 产品型号约束如下：
+    - <term>Ascend 950PR/Ascend 950DT</term>：`num_heads_q`/`num_heads_kv`不支持1。
   - C1A：
     - 仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1。
     - 不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
