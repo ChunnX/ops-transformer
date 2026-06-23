@@ -1140,7 +1140,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensorSingleXMultiWeightSing
     for (size_t i = 0; i < numWeight_; ++i) {
         auto wShapePtr = context->GetDynamicInputShape(WEIGHT_IDX, i);
         OP_CHECK_IF(wShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "wShapePtr is nullptr."), return false);
-        auto wShape = wShapePtr->GetOriginShape();
+        auto wShape = wShapePtr->GetStorageShape();
         size_t wDimNum = wShape.GetDimNum();
         OP_CHECK_IF(wDimNum < GroupedMatmul::MIN_ND_DIM,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight",
