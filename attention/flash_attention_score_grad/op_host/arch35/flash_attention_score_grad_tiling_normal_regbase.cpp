@@ -295,6 +295,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
         (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
          fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
         (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
+         fBaseParams.s2 >= 1024 &&
          (fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED)));
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
