@@ -198,8 +198,6 @@ private:
         LocalTensor<OUTPUT_T> &attenOut);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void InitLseOutputSingleCore(ConstInfo &constInfo);
-    __aicore__ inline void GetActualSeqLenKV(ConstInfo &constInfo, GlobalTensor<INPUT_T> &keyGm, 
-        __gm__ int32_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqKvLen);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
                                              RunInfo &runInfo, ConstInfo &constInfo);
 };
@@ -915,25 +913,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(
     RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::GetActualSeqLenKV(ConstInfo &constInfo, 
-    GlobalTensor<INPUT_T> &keyGm, __gm__ int32_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqLen)
-{
-    int64_t s2InCurrentBatch = constInfo.s2Size;
-    if (constInfo.isKvContinuous == 0) {
-        ListTensorDesc keyListTensorDesc((__gm__ void *)keyGm.GetPhyAddr());
-        AscendC::TensorDesc<__gm__ uint8_t> kvTensorDesc;
-        uint64_t dimInfo[4];
-        kvTensorDesc.SetShapeAddr(&dimInfo[0]);
-        keyListTensorDesc.GetDesc(kvTensorDesc, boIdx);
-    }
-    if (constInfo.isActualLenDimsKVNull) {
-        actualSeqLen = s2InCurrentBatch;
-    } else {
-        actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[boIdx];
-    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
