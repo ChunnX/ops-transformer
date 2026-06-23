@@ -407,11 +407,11 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 #endif
 
 #ifdef DETECTION_TIME
-            AscendC::PipeBarrier<PIPE_ALL>();                       // 1.清空流水线，确保之前的任务不干扰本次测量
-            int64_t g0 = AscendC::GetSystemCycle();                 // 2.记录起始时间
+        AscendC::PipeBarrier<PIPE_ALL>();                       // 1.清空流水线，确保之前的任务不干扰本次测量
+        int64_t g0 = AscendC::GetSystemCycle();                 // 2.记录起始时间
 #endif
         hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
-        hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
+        //hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
 #ifdef DETECTION_TIME
         AscendC::PipeBarrier<PIPE_ALL>();
         int64_t g1 = AscendC::GetSystemCycle();

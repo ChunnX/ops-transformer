@@ -1231,7 +1231,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
             int64_t g0 = AscendC::GetSystemCycle();                 // 2.记录起始时间
 #endif
             hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
-            hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
+            //hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
 #ifdef DETECTION_TIME
             AscendC::PipeBarrier<PIPE_ALL>();                       // 3.
             int64_t g1 = AscendC::GetSystemCycle();
