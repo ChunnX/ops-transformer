@@ -750,11 +750,17 @@ class OpFileNotExistsError(Exception):
         return f"File aic-*-ops-info.ini does not exist in directory {super().__str__()}"
 
 
-def get_ops_info_files(opsinfo_dir: List[str]) -> List[str]:
-    """Get all ops info files."""
+def get_ops_info_files(opsinfo_dir: List[str], compute_unit: List[str] = None) -> List[str]:
+    """Get ops info files for specified compute units."""
     ops_info_files = []
     for _dir in opsinfo_dir:
-        ops_info_files.extend(glob.glob(f'{_dir}/aic-*-ops-info.ini'))
+        if compute_unit:
+            for cu in compute_unit:
+                ini_file = f'{_dir}/aic-{cu}-ops-info.ini'
+                if os.path.exists(ini_file):
+                    ops_info_files.append(ini_file)
+        else:
+            ops_info_files.extend(glob.glob(f'{_dir}/aic-*-ops-info.ini'))
     return sorted(ops_info_files)
 
 
@@ -785,7 +791,7 @@ if __name__ == '__main__':
 
     ops_infos = []
     if args.opsinfo_dir:
-        ops_infos.extend(get_ops_info_files(args.opsinfo_dir))
+        ops_infos.extend(get_ops_info_files(args.opsinfo_dir, args.compute_unit))
         if not ops_infos:
             raise OpFileNotExistsError(args.opsinfo_dir)
     else:
