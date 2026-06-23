@@ -20,7 +20,7 @@
 #include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
-#include "../../op_kernel/arch35/matmul_reduce_scatter_v2_c_tiling.h"
+#include "../../op_kernel/matmul_reduce_scatter_v2_c_tiling.h"
 
 namespace optiling {
 // Input

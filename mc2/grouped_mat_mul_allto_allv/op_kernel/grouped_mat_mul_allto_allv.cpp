@@ -12,7 +12,7 @@
  * \file grouped_mat_mul_allto_allv.cpp
  */
 #include "grouped_mat_mul_allto_allv_tiling.h"
-#include "../grouped_mat_mul_allto_allv_tiling_key.h"
+#include "grouped_mat_mul_allto_allv_tiling_key.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #endif
 
-#include "../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 
 #if defined(CONST_TILING)
 #define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \

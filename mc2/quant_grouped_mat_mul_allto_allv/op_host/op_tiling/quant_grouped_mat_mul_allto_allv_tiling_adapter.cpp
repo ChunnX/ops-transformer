@@ -26,7 +26,9 @@ using namespace Mc2Tiling::Mc2GroupedMatmul;
 
 namespace Mc2Tiling {
 
-const std::vector<uint32_t> QUANT_MODE_MP = {0, 0, 1, 2, 4, 5, 3}; // 不量化 pertensor perchannel pertoken pergroup perblock mx; 分别对应gmm中各量化的移位数
+const std::vector<uint32_t> QUANT_MODE_MP = {0, 0, 1, 2, 4, 5, 3};
+// 不量化 pertensor perchannel pertoken pergroup perblock mx;
+// 分别对应gmm中各量化的移位数
 
 ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetCommonInputParams(const QuantGmmAlltoAllvParamsInfo& params)
 {
@@ -49,7 +51,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetCommonInputParams(const Q
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params, uint64_t gmmX)
+ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameters(
+    const QuantGmmAlltoAllvParamsInfo& params, uint64_t gmmX)
 {
     inputParams_.mSize = gmmX;
     inputParams_.kSize = params.H1;
@@ -78,7 +81,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameter
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetSharedExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params)
+ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetSharedExpertInputParameters(
+    const QuantGmmAlltoAllvParamsInfo& params)
 {
     inputParams_.mSize = params.Bs;
     inputParams_.kSize = params.H2;
