@@ -10,15 +10,13 @@ WARMUP, BENCH = 3, 5
 
 CASES = [
     {"B": 1, "S1": 1,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
-     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=1  (baseline)"},
-    {"B": 1, "S1": 2,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
-     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=2"},
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "BSND S1=1"},
     {"B": 1, "S1": 4,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
-     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=4"},
-    {"B": 1, "S1": 8,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
-     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=8"},
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "BSND S1=4"},
     {"B": 1, "S1": 16, "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
-     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "S1=16"},
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "BSND S1=16"},
+    {"B": 1, "S1": 64, "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "BSND S1=64"},
 ]
 
 
@@ -75,6 +73,14 @@ def call_tl(q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr, cfg):
         actual_seq_lengths_key=[cfg["S2"]] * cfg["B"], sparse_mode=3)
 
 
+def call_off(q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr, cfg):
+    return torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
+        q, k, qi, ki, w, si, sm_max, sm_sum, scale,
+        query_rope=qr, key_rope=kr,
+        actual_seq_qlen=[cfg["S1"]]*cfg["B"], actual_seq_klen=[cfg["S2"]]*cfg["B"],
+        layout="BSND", sparse_mode=3, pre_tokens=65536, next_tokens=65536)
+
+
 def bench(fn, warmup=WARMUP, iters=BENCH):
     for _ in range(warmup):
         fn(); torch.npu.synchronize()
@@ -89,13 +95,13 @@ def bench(fn, warmup=WARMUP, iters=BENCH):
 
 def main():
     print("=" * 60)
-    print("Multi-S1 性能测试 (0622.py, BSND)")
-    print("注意: S1>1 官方算子可能卡住，只测 TileLang 性能和内在一致性")
+    print("Multi-S1 BSND 测试 (0623.py)")
     print("=" * 60)
     for i, cfg in enumerate(CASES):
         print(f"\n--- [{i}] {cfg['desc']} ---")
         q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr = gen_inputs(cfg)
 
+        # TileLang
         try:
             torch.npu.synchronize()
             dqi, dki, dw, loss = call_tl(q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr, cfg)
@@ -103,13 +109,27 @@ def main():
         except Exception as e:
             print(f"  TileLang FAIL: {e}")
             continue
-
         has_nan = dqi.isnan().any().item() or dki.isnan().any().item() or dw.isnan().any().item()
         has_inf = dqi.isinf().any().item() or dki.isinf().any().item() or dw.isinf().any().item()
-        print(f"  NaN:{has_nan} Inf:{has_inf} loss={loss.float().item():.6e}")
+        print(f"  TL NaN:{has_nan} Inf:{has_inf} loss={loss.float().item():.6e}")
+
+        # Official
+        try:
+            torch.npu.synchronize()
+            dqi_o, dki_o, dw_o, loss_o = call_off(q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr, cfg)
+            torch.npu.synchronize()
+            for name, tl, off in [("dQI", dqi, dqi_o), ("dKI", dki, dki_o), ("dW", dw, dw_o)]:
+                d = (tl.float() - off.float()).abs()
+                re = (d / (off.float().abs() + 1e-6)).mean().item()
+                print(f"  {name}: max={d.max().item():.3e} rel={re:.3e}")
+            la = abs(loss.float().item() - loss_o.float().item())
+            lr = la / (abs(loss_o.float().item()) + 1e-6)
+            print(f"  Loss: abs={la:.3e} rel={lr:.3e}")
+        except Exception as e:
+            print(f"  Official: {type(e).__name__}")
 
         avg, med, mn = bench(lambda: call_tl(q, k, qi, ki, w, si, sm_max, sm_sum, scale, qr, kr, cfg))
-        print(f"  Perf: avg={avg*1e3:.3f}ms med={med*1e3:.3f}ms min={mn*1e3:.3f}ms")
+        print(f"  TL perf: med={med*1e3:.3f}ms")
 
 
 if __name__ == "__main__":

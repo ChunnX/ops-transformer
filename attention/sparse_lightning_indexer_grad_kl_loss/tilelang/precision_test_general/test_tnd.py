@@ -9,6 +9,8 @@ sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_los
 WARMUP, BENCH = 3, 5
 
 CASES = [
+    {"S1": 1,    "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
+     "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "TND S1=1 (equiv BSND baseline)"},
     {"S1": 64,   "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,
      "DQuery": 512, "DQueryIndex": 128, "d_rope": 64, "K": 2048, "desc": "TND S1=64"},
     {"S1": 128,  "S2": 2048, "N1": 128, "N2": 1, "Nidx1": 64, "Nidx2": 1,

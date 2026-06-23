@@ -241,7 +241,10 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("FIX", 1)
 
             # ============================================================
-            # V scope 1a: P_reduced + ReduceSumY — per-core, own K block only
+            # V scope 1: All vector ops merged (reduce memory)
+            # - P_reduced, ReduceSumY for MY K block
+            # - Global SoftmaxI (all cores execute)
+            # - dWeight, reluGrad, Loss for MY K block
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(1)
@@ -256,6 +259,15 @@ def tilelang_grad_kl_loss_single_kernel(
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
+                rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                rsy_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
+                rsy_max_ub = T.alloc_ub(16, calc_dtype)
+                rsy_sum_ub = T.alloc_ub(16, calc_dtype)
+                rsy_chunk_max_ub = T.alloc_ub(16, calc_dtype)
+                rsy_chunk_sum_ub = T.alloc_ub(16, calc_dtype)
+                max_pair_ub = T.alloc_ub((2, 16), calc_dtype)
+                eps_sum_ub = T.alloc_ub(16, calc_dtype)
+                softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
@@ -265,7 +277,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
                     T.barrier_all()
 
-                    # P_reduced for MY K block (per-core, no cross-core dependency)
+                    # P_reduced for MY K block (only local block, no cross-core dependency)
                     T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
                     T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
                     for g_id in range(G):
@@ -282,39 +294,20 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY for MY K block only — cross-scope barrier ensures safety
-                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm2_ub)
-                    T.tile.fill(rsy_reduce_ub, 0)
-                    for g_id in range(g_num):
-                        T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub)
-                        T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
-                        T.barrier_all()
-                        for i in range(vector_baseg):
-                            T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
-                        T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
-                        T.barrier_all()
-                    T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                    # ReduceSumY for ALL K blocks (redundant across cores, avoids cross-core sync)
+                    for n_rsy in T.serial(n_num):
+                        T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_rsy * n_block:(n_rsy + 1) * n_block], bmm2_ub)
+                        T.tile.fill(rsy_reduce_ub, 0)
+                        for g_id in range(g_num):
+                            T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub)
+                            T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
+                            T.barrier_all()
+                            for i in range(vector_baseg):
+                                T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
+                            T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
+                            T.barrier_all()
+                        T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
 
-                T.set_cross_flag("V", 8)
-
-            # ============================================================
-            # V scope 1b: Global SoftmaxI + dWeight + reluGrad + Loss
-            # cross_flag("V",8) ensures all cores have written ReduceSumY
-            # ============================================================
-            with T.Scope("V"):
-                T.wait_cross_flag(8)
-
-                rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
-                rsy_max_ub = T.alloc_ub(16, calc_dtype)
-                rsy_sum_ub = T.alloc_ub(16, calc_dtype)
-                rsy_chunk_max_ub = T.alloc_ub(16, calc_dtype)
-                rsy_chunk_sum_ub = T.alloc_ub(16, calc_dtype)
-                max_pair_ub = T.alloc_ub((2, 16), calc_dtype)
-                eps_sum_ub = T.alloc_ub(16, calc_dtype)
-                softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-
-                for s1_id in T.serial(s1_start, s1_end):
                     # Global SoftmaxI (all cores execute - must traverse all K blocks)
                     T.tile.fill(rsy_max_ub, -1e30)
                     T.barrier_all()
@@ -355,7 +348,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_sum_ub[0])
                         T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_iter * n_block:(n_idx_iter + 1) * n_block])
 
-                    # dWeight, reluGrad for MY K block
+                    # dWeight, reluGrad for MY K block (same V scope, no cross flag)
                     bmm2_ub2 = T.alloc_ub((Nidx1, n_block), calc_dtype)
                     diff_ub = T.alloc_ub(n_block, calc_dtype)
                     p_reduced_chunk_ub2 = T.alloc_ub(n_block, calc_dtype)
@@ -379,7 +372,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(ones_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
-                    # dWeight, reluGrad for MY K block
+                    # dWeight, reluGrad for MY K block - TRUE PARALLEL
                     T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm2_ub2)
                     T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub2)
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_chunk_ub2)
