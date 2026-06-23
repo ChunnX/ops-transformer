@@ -139,7 +139,8 @@ __aicore__ inline void CombineTokensWithUrmaSend(
     if (startRankId >= endRankId || processRankNum == 0) {
         return;
     }
-
+    AscendC::Asprintf("CombineTokensWithUrmaSend: aivIdx=%d,aivNum=%d, rankId=%d, startRankId=%d, endRankId=%d, processRankNum=%d\n",
+        aivIdx,aivNum, rankId, startRankId, endRankId, processRankNum);
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, processRankNum );
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t), processRankNum);
 
