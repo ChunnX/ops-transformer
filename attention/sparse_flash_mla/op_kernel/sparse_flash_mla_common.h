@@ -41,7 +41,7 @@ constexpr SoftmaxConfig SMLA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, Sof
 
 template <typename Q_T, typename KV_T, typename OUT_T, const bool FLASH_DECODE = false,
           SMLA_LAYOUT LAYOUT_T = SMLA_LAYOUT::BSND, SMLA_LAYOUT KV_LAYOUT_T = SMLA_LAYOUT::PA_BBND,
-          int TEMPLATE_MODE = 0, typename... Args>
+          int TEMPLATE_MODE = 0, const bool HEAD_RATIO_ONE = false, typename... Args>
 struct SMLAType {
     using queryType = Q_T;
     using kvType = KV_T;
@@ -51,6 +51,7 @@ struct SMLAType {
     static constexpr SMLA_LAYOUT kvLayout = KV_LAYOUT_T;
     static constexpr bool pageAttention = (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND);
     static constexpr int templateMode = TEMPLATE_MODE;
+    static constexpr bool headRatioOne = HEAD_RATIO_ONE;
 };
 
 // ================================Util functions==================================

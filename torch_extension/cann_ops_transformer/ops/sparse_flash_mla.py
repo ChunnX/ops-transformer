@@ -52,7 +52,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
             "float softmax_scale=1.0, int cmp_ratio=1, "
             "int ori_mask_mode=4, int cmp_mask_mode=3, "
             "int ori_win_left=127, int ori_win_right=0, "
-            "str layout_q=\"BSND\", str layout_kv=\"PA_BBND\", "
+            "str layout_q=\"BSND\", str layout_kv=\"BSND\", "
             "int topk_value_mode=1, bool return_softmax_lse=False) -> (Tensor, Tensor)"
         ]
  
@@ -91,7 +91,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                                                 softmax_scale=1.0, cmp_ratio=1,
                                                 ori_mask_mode=4, cmp_mask_mode=3,
                                                 ori_win_left=127, ori_win_right=0,
-                                                layout_q='BSND', layout_kv='PA_BBND',
+                                                layout_q='BSND', layout_kv='BSND',
                                                 topk_value_mode=1, return_softmax_lse=False):
             key_headnum = ori_kv.shape[1] if layout_kv == "TND" else ori_kv.shape[2]
             if layout_q == "BSND":
@@ -194,7 +194,7 @@ def sparse_flash_mla(q,
                                     softmax_scale=1.0, cmp_ratio=1,
                                     ori_mask_mode=4, cmp_mask_mode=3,
                                     ori_win_left=127, ori_win_right=0,
-                                    layout_q='BSND', layout_kv='PA_BBND',
+                                    layout_q='BSND', layout_kv='BSND',
                                     topk_value_mode=1, return_softmax_lse=False):
     """
     dispatcher implementation for NPU.
