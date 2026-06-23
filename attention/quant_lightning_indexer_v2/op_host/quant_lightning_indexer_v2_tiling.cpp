@@ -165,6 +165,7 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     static const int64_t key_stride0 = -1;
 
     opParamInfo_.quantMode = attrs->GetAttrPointer<int32_t>(ATTR_QUANT_MODE_INDEX);
+    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_Q_INDEX);
     opParamInfo_.layOutQuery = attrs->GetStr(ATTR_QUERY_LAYOUT_INDEX);
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
     opParamInfo_.sparseCount = attrs->GetAttrPointer<int32_t>(ATTR_TOPK_INDEX);
@@ -191,6 +192,9 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     }
     if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "returnValue is:%s", *opParamInfo_.returnValue ? "true" : "false");
+    }
+    if (opParamInfo_.maxSeqlenQ != nullptr) {
+        OP_LOGI(context_->GetNodeName(), "maxSeqlenQ  is:%d", *opParamInfo_.maxSeqlenQ);
     }
     if (opParamInfo_.quantMode != nullptr) {
         OP_LOGI(context_->GetNodeName(), "query_quant_mode mode is:%d", *opParamInfo_.quantMode);
@@ -252,8 +256,9 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
             OP_CHECK_IF(*opParamInfo_.quantMode != 2, OP_LOGE(opName_, "input attr quant_mode only supported 2."),
                return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(*opParamInfo_.quantMode != 1, OP_LOGE(opName_, "input attr quant_mode only supported 1."),
-               return ge::GRAPH_FAILED);
+        OP_CHECK_IF((*opParamInfo_.quantMode != 1) && (*opParamInfo_.quantMode != 4),
+            OP_LOGE(opName_, "input attr quant_mode only supported 1 and 4."),
+            return ge::GRAPH_FAILED);
     }
     
     OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
@@ -824,31 +829,51 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
     uint32_t kShapeDim = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
     uint32_t qDequantScaleShapeDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDimNum();
     uint32_t kDequantScaleShapeDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(qDequantScaleShapeDim != (qShapeDim - 1),
-               OP_LOGE(opName_, "the dim num of query_dequant_scale's shape should be %u, but now is %u",
-                         qShapeDim - 1, qDequantScaleShapeDim),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(kDequantScaleShapeDim != (kShapeDim - 1),
-               OP_LOGE(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u", kShapeDim - 1,
-                         kDequantScaleShapeDim),
-               return ge::GRAPH_FAILED);
-    // check q scale
-    for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
-        uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
-        uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
-        OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
-                   OP_LOGE(opName_, "query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same", i,
-                             dimValueQueryScale, i, dimValueQuery),
-                   return ge::GRAPH_FAILED);
-    }
-    // check k scale
-    for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
-        uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(i);
-        uint32_t dimValueKey = opParamInfo_.key.shape->GetStorageShape().GetDim(i);
-        OP_CHECK_IF(dimValueKeyScale != dimValueKey,
-                   OP_LOGE(opName_, "key_dequant_scale's shape[%u] %u and key's shape[%u] %u is not same", i,
-                             dimValueKeyScale, i, dimValueKey),
-                   return ge::GRAPH_FAILED);
+
+    if (*opParamInfo_.quantMode == 4) {
+        OP_CHECK_IF(qDequantScaleShapeDim != 1,
+            OP_LOGE(opName_, "when quant_mode is 4, query_dequant_scale shape dim should be 1, but now is %u",
+                qDequantScaleShapeDim),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(kDequantScaleShapeDim != 1,
+            OP_LOGE(opName_, "when quant_mode is 4, key_dequant_scale shape dim should be 1, but now is %u",
+                kDequantScaleShapeDim),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(0) != 1,
+            OP_LOGE(opName_, "when quant_mode is 4, query_dequant_scale's shape[0] should be 1, but now is %u",
+                opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(0)),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(0) != 1,
+            OP_LOGE(opName_, "when quant_mode is 4, key_dequant_scale's shape[0] should be 1, but now is %u",
+                opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(0)),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(qDequantScaleShapeDim != (qShapeDim - 1),
+            OP_LOGE(opName_, "the dim num of query_dequant_scale's shape should be %u, but now is %u",
+                qShapeDim - 1, qDequantScaleShapeDim),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(kDequantScaleShapeDim != (kShapeDim - 1),
+            OP_LOGE(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u",
+                kShapeDim - 1, kDequantScaleShapeDim),
+            return ge::GRAPH_FAILED);
+        // check q scale
+        for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
+            uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
+            uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
+            OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
+                OP_LOGE(opName_, "query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same", i,
+                    dimValueQueryScale, i, dimValueQuery),
+                return ge::GRAPH_FAILED);
+        }
+        // check k scale
+        for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
+            uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(i);
+            uint32_t dimValueKey = opParamInfo_.key.shape->GetStorageShape().GetDim(i);
+            OP_CHECK_IF(dimValueKeyScale != dimValueKey,
+                OP_LOGE(opName_, "key_dequant_scale's shape[%u] %u and key's shape[%u] %u is not same", i,
+                    dimValueKeyScale, i, dimValueKey),
+                return ge::GRAPH_FAILED);
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -881,6 +906,7 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     QLIV2Info.sparseCount = *opParamInfo_.sparseCount;
     QLIV2Info.cmpRatio = *opParamInfo_.cmpRatio;
     QLIV2Info.returnValue = *opParamInfo_.returnValue;
+    QLIV2Info.maxSeqlenQ = (opParamInfo_.maxSeqlenQ != nullptr) ? *opParamInfo_.maxSeqlenQ : -1;
 
     if (opParamInfo_.keyStride0 != -1) {
         QLIV2Info.keyStride0 = opParamInfo_.keyStride0;
@@ -994,8 +1020,10 @@ ge::graphStatus QuantLightningIndexerV2Tiling::DoTiling(QLIV2TilingInfo *tilingI
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.set_returnValue(tilingInfo->returnValue);
+    tilingData_.set_maxSeqlenQ(tilingInfo->maxSeqlenQ);
     tilingData_.set_keyStride0(tilingInfo->keyStride0);
     tilingData_.set_keyDequantScaleStride0(tilingInfo->keyDequantScaleStride0);
+    tilingData_.set_quantMode(*tilingInfo->opParamInfo.quantMode);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

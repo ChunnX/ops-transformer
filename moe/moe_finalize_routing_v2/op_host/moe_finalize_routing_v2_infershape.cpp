@@ -142,7 +142,7 @@ inline ge::graphStatus SetUnknownRank(gert::Shape* outShape)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckExpandedXShape(gert::InferShapeContext* context,
+static ge::graphStatus CheckExpandedXShape(const gert::InferShapeContext* context,
                                            int64_t dropPadMode,
                                            gert::Shape* outShape,
                                            const gert::Shape** outExpandedXShape,
@@ -183,7 +183,7 @@ static ge::graphStatus CheckExpandedXShape(gert::InferShapeContext* context,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckExpandedRowIdxShape(gert::InferShapeContext* context,
+static ge::graphStatus CheckExpandedRowIdxShape(const gert::InferShapeContext* context,
                                                 gert::Shape* outShape,
                                                 const gert::Shape** outRowIdxShape,
                                                 bool& earlyReturn)
@@ -210,7 +210,7 @@ static ge::graphStatus CheckExpandedRowIdxShape(gert::InferShapeContext* context
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckOptionalInputShape(gert::InferShapeContext* context,
+static ge::graphStatus CheckOptionalInputShape(const gert::InferShapeContext* context,
                                                size_t inputIndex,
                                                const char* inputName,
                                                gert::Shape* outShape,
@@ -242,7 +242,7 @@ static ge::graphStatus CheckOptionalInputShape(gert::InferShapeContext* context,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckCrossInputConsistency(gert::InferShapeContext* context,
+static ge::graphStatus CheckCrossInputConsistency(const gert::InferShapeContext* context,
                                                   int64_t dropPadMode,
                                                   int64_t lastDimExpandedX,
                                                   const gert::Shape* expandedXShape,

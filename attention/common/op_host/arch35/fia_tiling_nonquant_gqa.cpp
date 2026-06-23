@@ -198,6 +198,7 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     if (fiaInfo_->isMaxWorkspace) {
         // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
         CalcMaxWorkspaceSize();
+        // tiling下沉场景需传入有效Tilingkey，FE会严格校验tilingkey
         GenTilingKey();
         CalcNumBlocks(platformInfo_.aicNum);
 
@@ -962,6 +963,17 @@ void FiaTilingNonQuantArch35::SetFATilingData()
     tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit || needInit_;
+
+    if (!fiaInfo_->isTensorV1) {
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
+        if (fiaInfo_->kRopeStrides != nullptr) {
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
+        }
+    }
 }
 
 ge::graphStatus FiaTilingNonQuantArch35::SetTilingData(FusedInferAttentionScoreTilingData &tilingData)

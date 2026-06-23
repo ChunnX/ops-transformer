@@ -84,12 +84,22 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
+    int64_t bsPerCoreMM1 = AlignUp(batchSize_ * seqLength_, coreNumAic_);
+    int64_t bsPerCoreMM2 = AlignUp(n_ * n_ + 2 * n_, coreNumAic_);
+
+    mm1K_ = n_ * n_ + 2 * n_;
+    mm1M_ = bsPerCoreMM1;
+    mm1N_ = n_ * c_;
+    mm2K_ = batchSize_ * seqLength_;
+    mm2M_ = bsPerCoreMM2;
+    mm2N_ = n_ * c_;
+
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
 
     mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bf16DataType);
+    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetOrgShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetBias(false);
@@ -260,6 +270,12 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DumpTilingInfo()
     info << "skIterCount: " << skIterCount_ << std::endl;
     info << "bsTaskCount: " << bsTaskCount_ << std::endl;
     info << "tailBsTaskCount: " << tailBsTaskCount_ << std::endl;
+    info << "cBlockLoops: " << cBlockLoops_ << std::endl;
+    info << "cBlockTailLoops: " << cBlockTailLoops_ << std::endl;
+    info << "cBlockCount: " << cBlockCount_ << std::endl;
+    info << "cBlockTailCount: " << cBlockTailCount_ << std::endl;
+    info << "cBlockTailTailCount: " << cBlockTailTailCount_ << std::endl;
+    info << "finalUsedAivNum: " << finalUsedAivNum_ << std::endl;
     info << "mm1K: " << mm1K_ << std::endl;
     info << "mm1M: " << mm1M_ << std::endl;
     info << "mm1N: " << mm1N_ << std::endl;
@@ -267,7 +283,7 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DumpTilingInfo()
     info << "mm2M: " << mm2M_ << std::endl;
     info << "mm2N: " << mm2N_ << std::endl;
 
-    OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());    
+    OP_LOGI(opName, "Tiling info is: %s", info.str().c_str());
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::DoLibApiTiling()

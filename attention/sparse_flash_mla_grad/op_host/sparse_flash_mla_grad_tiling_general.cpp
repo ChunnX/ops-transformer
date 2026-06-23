@@ -180,7 +180,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = sysLen;
     workspaces[0] += selectedKWorkspaceLen * currentUseCoreNum;
-    workspaces[0] += mm12WorkspaceLen * 2 * currentUseCoreNum;
+    workspaces[0] += mm12WorkspaceLen * 4 * currentUseCoreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen;
 
     if (tmpData.mode == SMLAG_SCFA_MODE) {
@@ -196,7 +196,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
 
     int64_t workspaceOffsets = selectedKWorkspaceLen * currentUseCoreNum;
-    workspaceOffsets += mm12WorkspaceLen * 2 * currentUseCoreNum;
+    workspaceOffsets += mm12WorkspaceLen * 4 * currentUseCoreNum;
     tilingData.postTilingData.set_dqWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + dqWorkspaceLen;
     tilingData.postTilingData.set_dkWorkSpaceOffset(workspaceOffsets);

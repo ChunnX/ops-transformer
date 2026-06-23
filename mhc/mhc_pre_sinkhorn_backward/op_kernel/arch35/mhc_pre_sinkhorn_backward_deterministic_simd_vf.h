@@ -192,7 +192,7 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U* zAddr, __local_me
         AscendC::MicroAPI::MaskReg valueMaskReg;
         AscendC::MicroAPI::UnalignRegForStore unStoreZReg;
 
-        for (uint16_t j = 0; j < bsLen; j++) {
+        for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
             AscendC::MicroAPI::UnalignReg unAlignNormOutForwardReg;
             AscendC::MicroAPI::UnalignReg unAlignBiasReg;
             auto biasAddrStart = biasAddr;
@@ -229,7 +229,7 @@ __aicore__ inline void ComputeForwardPart(__local_mem__ U* hcBeformNormAddr, __l
         AscendC::MicroAPI::MaskReg valueMaskReg;
         AscendC::MicroAPI::UnalignRegForStore unStoreNormOutForwardReg;
 
-        for (uint16_t j = 0; j < bsLen; j++) {
+        for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
             auto normOutForwardAddrStart = normOutForwardAddr + j * colLen;
             auto hcBeformNormAddrStart = hcBeformNormAddr + j * cLenAlign;
             U invRms = *(invRmsAddr + j);

@@ -69,7 +69,7 @@ private:
     using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
     using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U, true>;
     using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
-    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
+    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
     using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
 
     matmul::MatmulImpl<A0Type, BType, C1Type, C1Type, MHC_PRE_GRAD_MM1_CFG> mm1_;
@@ -495,12 +495,26 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     ComputeGradAlphaAndBias(bsLen, n_);
     CopyOutAlphaAndBias(blockIdx_, blockIdx_ * n_);
     //grad_Z_pre ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
+    LocalTensor<U> gradZLocal = gradZBuf_.Get<U>();
+    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
+        int64_t curBsIdx = bsOffset + bsLoop;
+        U invRms = invRmsLocal(bsLoop);
+        ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPre_, invRms, n_, curBsIdx * k_);
+    }
+
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, hcBeforeNormOffset + n_, alphaPost_, n_);
     CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
     ComputeSigmoidGrad(bsLen, n_, NUMTWO);
     ComputeGradAlphaAndBias(bsLen, n_);
-    CopyOutAlphaAndBias(blockIdx_ + usedAivNum_, blockIdx_ * n_ + usedAivNum_ * n_);
-    //grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
+    CopyOutAlphaAndBias(blockIdx_ + 64, blockIdx_ * n_ + 64 * n_);
+
+    // grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
+    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
+        int64_t curBsIdx = bsOffset + bsLoop;
+        U invRms = invRmsLocal(bsLoop);
+        ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPost_, invRms, n_, curBsIdx * k_ + n_);
+    }
+
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, hcBeforeNormOffset + 2 * n_, alphaRes_, 2 * n_);
     invRmsQue_.FreeTensor(invRmsLocal);
 }
@@ -599,7 +613,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         AscendC::MicroAPI::MaskReg valueMaskReg;
         AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
 
-        for (uint16_t i = 0; i < info.bsLen; i++) {
+        for (uint16_t i = 0; i < static_cast<uint16_t>(info.bsLen); i++) {
             auto gradHPreStart = gradHPreAddr + i * n_;
             uint32_t maskLen = static_cast<uint32_t>(info.cLen);
             for (uint16_t j = 0; j < loopCnt; j++) {
@@ -607,7 +621,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
                 valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
                 AscendC::MicroAPI::DataCopy<GRADHIN_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHInReg, gradHInStart);
                 AscendC::MicroAPI::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHInCastReg, gradHInReg, valueMaskReg);
-                for (uint16_t k = 0; k < info.n; k++) {
+                for (uint16_t k = 0; k < static_cast<uint16_t>(info.n); k++) {
                     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::SCALAR_LOAD>();
                     U hPre = *(hPreAddr + i * info.n + k);
                     U gradHPre = *(gradHPreStart + k);
