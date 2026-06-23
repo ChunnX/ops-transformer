@@ -1866,7 +1866,12 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         uint32_t N = context->GetDynamicInputTensor(WEIGHT_INDEX, 0)->GetStorageShape().GetDim(TWO);
         uint32_t K = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(1);
         uint32_t M = TWO * context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(0);
-
+        
+        uint32_t quantGroupNum = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(DIM_NUM_1);
+        if (quantGroupNum > 1) {
+            OP_LOGW(context->GetNodeName(), "W4A8 autotiling: The quantGroupNum is %u, which is invalid. "
+                "The expected value is 1 (only support perchannel)", quantGroupNum);
+        }
         const auto transposeWeightPtr = attr->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
         const auto transposeXPtr = attr->GetAttrPointer<bool>(ATTR_INDEX_TRANS_X);
         auto transposeWeight = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
