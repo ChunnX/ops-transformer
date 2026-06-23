@@ -76,10 +76,6 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetPlatformInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     ubSize_ = static_cast<int64_t>(ubSizePlatForm);
     OP_CHECK_IF((ubSize_ <= 0), OP_LOGE(context_->GetNodeName(), "Failed to get ub size."), return ge::GRAPH_FAILED);
-<<<<<<< HEAD
-    ubBlock_ = Ops::Base::GetUbBlockSize(context_);
-=======
->>>>>>> 0b84638727de1f28c366c18d5a5e378e540b6eae
     return ge::GRAPH_SUCCESS;
 }
 
