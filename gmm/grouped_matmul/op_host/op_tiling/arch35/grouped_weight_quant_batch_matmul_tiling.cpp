@@ -244,30 +244,30 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDimSingleXSingleWeightSingl
     }
     if (IsA16W4ND()) {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_SCALE_IDX, idx, 2, "antiquantScale"),
-                    OP_LOGE(context->GetNodeName(), "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, the "
+                    OP_LOGE(context->GetNodeName(), "When x-weight is bf16/fp16-int4/int32 and groupType is 0, the "
                                                     "dimension of antiquantScale does not match the expected value."),
                     return false);
         if (hasBias_) {
             OP_CHECK_IF(!CheckTensorDimEqualTarget(context, BIAS_IDX, idx, 2, "bias"),
-                        OP_LOGE(context->GetNodeName(), "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, "
+                        OP_LOGE(context->GetNodeName(), "When x-weight is bf16/fp16-int4/int32 and groupType is 0, "
                                                         "the dimension of bias does not match the expected value."),
                         return false);
         }
     } else {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_SCALE_IDX, idx, 4, "antiquantScale"),
-                    OP_LOGE(context->GetNodeName(), "When x-weight is float8_e8m0-float4_e2m1 and grouptype is 0, the "
+                    OP_LOGE(context->GetNodeName(), "When x-weight is float8_e8m0-float4_e2m1 and groupType is 0, the "
                                                     "dimension of antiquantScale does not match the expected value."),
                     return false);
     }
     if (hasBias_) {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, BIAS_IDX, idx, 2, "bias"),
-                    OP_LOGE(context->GetNodeName(), "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, "
+                    OP_LOGE(context->GetNodeName(), "When x-weight is bf16/fp16-int4/int32 and groupType is 0, "
                                                     "the dimension of bias does not match the expected value."),
                     return false);
     }
     if (hasAntiquantOffset_) {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_OFFSET_IDX, idx, 2, "antiquantOffset"),
-                    OP_LOGE(context->GetNodeName(), "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, the "
+                    OP_LOGE(context->GetNodeName(), "When x-weight is bf16/fp16-int4/int32 and groupType is 0, the "
                                                     "dimension of antiquantOffset does not match the expected value."),
                     return false);
     }
@@ -847,14 +847,14 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckAntiQuantDtype() const
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(OP_NAME, "antiquantScale, x",
                 ge::TypeUtils::DataTypeToSerialString(antiquantScaleDtype_) + ", " +
                 ge::TypeUtils::DataTypeToSerialString(xDType_),
-                "The dtype of antiquantScale must be same with dtype of x"),
+                "The dtype of antiquantScale must be the same as the dtype of x"),
             return false);
         if (hasAntiquantOffset_) {
             OP_CHECK_IF(antiquantOffsetDtype_ != xDType_,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(OP_NAME, "antiquantOffset, x",
-                    ge::TypeUtils::DataTypeToSerialString(antiquantOffsetDtype_) + " and " +
+                    ge::TypeUtils::DataTypeToSerialString(antiquantOffsetDtype_) + ", " +
                     ge::TypeUtils::DataTypeToSerialString(xDType_),
-                    "The dtype of antiquantOffset must be same with dtype of x"),
+                    "The dtype of antiquantOffset must be the same as the dtype of x"),
                 return false);
         }
     }
@@ -927,7 +927,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem() const
             OP_CHECK_IF((splitItem_ != 2 && splitItem_ != 3),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "splitItem",
                     std::to_string(splitItem_),
-                    "When grouptype is 0, splititem must be 2 or 3"),
+                    "When groupType is 0, splitItem must be 2 or 3"),
                 return false);
         }
     }
