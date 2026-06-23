@@ -44,9 +44,9 @@ struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr;
     GM_ADDR maskRecvPtr;             // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
     GM_ADDR quantTokenScalePtr;      // 量化结果，包括data+scale
-    GM_ADDR relayTokenDataPtr;       // URMA 一级通信接收区, 布局 [srcServer][tokenId][token+scale+meta]
+    int64_t relayTokenDataPtr;       // URMA 一级通信接收区, 布局 [srcServer][tokenId][token+scale+meta]
     GM_ADDR combineSendPtr;
-    GM_ADDR URMAmaskRecvPtr;
+    int64_t URMAmaskRecvPtr;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)
     {
