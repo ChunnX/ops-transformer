@@ -618,8 +618,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
             GlobalTensor<uint8_t> workspaceSrcGlobal;
             GlobalTensor<uint8_t> relayDstGlobal;
             LocalTensor<uint8_t> copyTmpBytes = copyTmpTensors_[0].template ReinterpretCast<uint8_t>();
-            DataCopyExtParams tokenCopyParams{1U, mxQuantTokenScaleAlignBytes_, 0U, 0U, 0U};
-            DataCopyPadExtParams<uint8_t> tokenCopyPad{false, 0U, 0U, 0U};
+            uint32_t recordPayloadBytes = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
+            DataCopyExtParams recordCopyParams{1U, recordPayloadBytes, 0U, 0U, 0U};
+            DataCopyPadExtParams<uint8_t> recordCopyPad{false, 0U, 0U, 0U};
 
             while (true) {
                 int32_t endCount = ReadGmByPassDCache(countPtr);
