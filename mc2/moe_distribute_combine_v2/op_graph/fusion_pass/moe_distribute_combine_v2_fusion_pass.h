@@ -31,9 +31,9 @@ private:
                                      int64_t &hccl_buff_size, const ge::TensorDesc &tensorDesc,
                                      ge::GNode &fusionNode);
     ge::graphStatus AddAttr(ge::GNode &moeDistributeCombineNode, ge::GNode &fusionNode,
-                            int64_t &hccl_buff_size);
+                            int64_t &hccl_buff_size) const;
     ge::graphStatus AddEdge(ge::Graph &graph, ge::GNode &moeNodePtr, ge::GNode &fusionNode,
-                            ge::GNode &contextNodePtr);
+                            ge::GNode &contextNodePtr) const;
     ge::graphStatus FusionNode(ge::Graph &graph, ge::GNode &moeDistributeCombineNode,
                                ge::GNode &contextNode, int64_t &hccl_buff_size,
                                const ge::TensorDesc &tensorDesc);
