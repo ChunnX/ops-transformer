@@ -45,6 +45,7 @@ constexpr int64_t blockShapeX = 128;
 constexpr int64_t blockShapeY = 128;
 constexpr int64_t qBlockNum = (qSeqlen + blockShapeX - 1) / blockShapeX;
 constexpr int64_t kvBlockNum = (kvSeqlen + blockShapeY - 1) / blockShapeY;
+constexpr double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
 } // namespace
 
 // ============================================================================
@@ -65,7 +66,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, normal)
     auto actualSeqLengthsKv = IntArrayDesc(vector<int64_t>{kvSeqlen});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -112,7 +112,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, unsupported_q_dtype)
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -159,7 +158,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, unsupported_kv_dtype)
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -206,7 +204,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, block_shape_wrong_dim)
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY, 1});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -253,7 +250,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, block_shape_data_contains_negative)
     auto blockShape = IntArrayDesc(vector<int64_t>{-1, -1});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -298,7 +294,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, inputLayout_is_null)
     auto blockSparseMask =
         TensorDesc({batch, numHeads, qBlockNum, kvBlockNum}, ACL_INT8, ACL_FORMAT_ND).Value(vector<int8_t>{1});
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -345,7 +340,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, unsupported_qInputLayout)
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
     char qInputLayout[] = "BSH";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -392,7 +386,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, unsupported_kvInputLayout)
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BSH";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -439,7 +432,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, qInputLayout_kvInputLayout_not_equal)
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "TND";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -486,7 +478,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, blockSparseMask_wrong_dim)
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -538,7 +529,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, qDequantScale_wrong_dim)
     auto actualSeqLengthsKv = IntArrayDesc(vector<int64_t>{kvSeqlen});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -590,7 +580,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, kDequantScale_wrong_dim)
     auto actualSeqLengthsKv = IntArrayDesc(vector<int64_t>{kvSeqlen});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -642,7 +631,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, vDequantScale_wrong_dim)
     auto actualSeqLengthsKv = IntArrayDesc(vector<int64_t>{kvSeqlen});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnBlockSparseAttentionV2,
@@ -689,7 +677,6 @@ TEST_F(aclnn_block_sparse_attention_v2_ut, unsupported_innerPrecise)
     auto blockShape = IntArrayDesc(vector<int64_t>{blockShapeX, blockShapeY});
     char qInputLayout[] = "BNSD";
     char kvInputLayout[] = "BNSD";
-    double scaleValue = 1.0 / sqrt(static_cast<double>(headDim));
     int64_t innerPrecise = 2;
     auto attentionOut = TensorDesc({batch, numHeads, qSeqlen, headDim}, ACL_FLOAT16, ACL_FORMAT_ND);
 
