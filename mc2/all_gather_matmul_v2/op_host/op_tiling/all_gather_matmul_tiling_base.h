@@ -24,7 +24,7 @@
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "../../op_kernel/arch35/all_gather_matmul_tiling_arch35.h"
+#include "../../op_kernel/all_gather_matmul_tiling_arch35.h"
 
 namespace optiling {
 constexpr size_t INPUT_X1 = 0;
@@ -80,7 +80,7 @@ protected:
     bool AnalyzeInputs();
     bool SetCommAlgo();
     // tiling
-    void DoAllGatherTiling(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling, 
+    void DoAllGatherTiling(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling,
                            ::TCubeTiling& tailTiling, uint32_t& debugMode, uint32_t& dataType);
     void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
     void DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg);
@@ -108,7 +108,7 @@ protected:
     void SetTilingArgsDim();
     void SetTilingArgsDataType();
     void SetTilingArgsGatherStatus();
-    void SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling, 
+    void SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling,
                                  ::TCubeTiling& tailTiling, uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();
 

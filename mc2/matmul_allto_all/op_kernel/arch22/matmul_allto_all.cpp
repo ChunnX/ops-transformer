@@ -21,8 +21,8 @@
 #include "matmul_allto_all_tiling_key.h"
 #include "matmul_allto_all_tiling.h"
 #include "matmul_allto_all.h"
-#include "../arch35/matmul_allto_all_pipeline.h" // A3调用kernel模板库
-#include "../arch35/matmul_allto_all_arch35.h"   // A3非量化与A5共用流水
+#include "../matmul_allto_all_pipeline.h" // A3调用kernel模板库
+#include "../matmul_allto_all_arch35.h"   // A3非量化与A5共用流水
 
 using namespace AscendC;
 using namespace matmul_allto_all_910b_tiling_key;
@@ -52,7 +52,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
     } while (0)
 #endif
 
-template<bool MM_ALLTO_ALL_TRANS_X2, bool MM_ALLTO_ALL_HAS_BIAS, int MM_ALLTO_ALL_BIAS_DTYPE, 
+template<bool MM_ALLTO_ALL_TRANS_X2, bool MM_ALLTO_ALL_HAS_BIAS, int MM_ALLTO_ALL_BIAS_DTYPE,
             int MM_ALLTO_ALL_SOC_VERSION>
 __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,
                                             GM_ADDR x1_scale, GM_ADDR x2_scale,

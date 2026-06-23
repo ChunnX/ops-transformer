@@ -26,7 +26,7 @@
 #include "all_gather_matmul_base.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_cube_on_the_fly.h"
 #include "../../../common/op_kernel/mc2_quant_batch_matmul.h"
-#include "all_gather_matmul_tiling_arch35.h"
+#include "../all_gather_matmul_tiling_arch35.h"
 
 /**
  * 1、依赖tiling结构QuantBatchMatmulV3TilingData
@@ -44,7 +44,7 @@ public:
     __aicore__ inline AllGatherQuantBmm() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1, GM_ADDR dequantGM2, GM_ADDR biasGM,
                                 GM_ADDR scaleGM, GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM,
-                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, __gm__ void* mc2InitTiling, 
+                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, __gm__ void* mc2InitTiling,
                                 __gm__ void* mc2CcTiling, TPipe* tPipe);
     __aicore__ inline void Process();
 private:
@@ -103,7 +103,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
                                 GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1,
                                 GM_ADDR dequantGM2, GM_ADDR biasGM, GM_ADDR scaleGM, GM_ADDR cGM,
                                 GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM,
-                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, __gm__ void* mc2InitTiling, 
+                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, __gm__ void* mc2InitTiling,
                                 __gm__ void* mc2CcTiling, TPipe* tPipe)
 {
     auto &&cfg = tilingData->param;

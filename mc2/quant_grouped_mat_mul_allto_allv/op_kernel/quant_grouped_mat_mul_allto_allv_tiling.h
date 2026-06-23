@@ -16,7 +16,7 @@
 #define QUANT_GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H__
 
 
-#include "../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
+#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 
 #pragma once
 
@@ -30,7 +30,8 @@ using MC2KernelTemplate::TaskTilingInfo;
  * 算子级 workspace 分为三部分:
  *   [0, wsGmmOutputSize)                              → 路由专家 GMM 输出缓冲, 传给 GmmComputeOp.Init 的 y 参数
  *   [wsGmmOutputSize, + wsGmmComputeWorkspaceSize)    → 路由专家 GmmComputeOp 内部空间, 传给 GmmComputeOp.Init 的 tempAddr 参数
- *   [+, + wsSharedGmmComputeWorkspaceSize)            → 共享专家 SharedGmmComputeOp 内部空间, 传给 SharedGmmComputeOp.Init 的 tempAddr 参数
+ *   [+, + wsSharedGmmComputeWorkspaceSize)            → 共享专家 SharedGmmComputeOp 内部空间,
+ *                                                     传给 SharedGmmComputeOp.Init 的 tempAddr 参数
  *
  * GmmComputeOp / SharedGmmComputeOp workspace 内部布局 (由各自内部管理, tiling 侧仅需计算并分配总大小):
  *   [0, 64)                   ptrTable:  4 × 16B GetTensorAddr 双重间接指针表 (x, weight, scaleB, y)

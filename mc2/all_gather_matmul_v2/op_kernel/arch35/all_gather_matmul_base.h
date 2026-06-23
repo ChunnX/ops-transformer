@@ -24,7 +24,7 @@
 #include "lib/matmul_intf.h"
 #include "common.h"
 #include "lib/hccl/hccl.h"
-#include "all_gather_matmul_tiling_arch35.h"
+#include "../all_gather_matmul_tiling_arch35.h"
 
 namespace AllGatherMatmulImpl
 {
@@ -67,7 +67,7 @@ public:
         rankId_ = hccl_.GetRankId();
         // 计算scale1的数据个数及地址偏移
         nBlockSizeCnt_ = (tileInfo_.mmTiling->matmulTiling.Ka + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
-        oneCommBlockSizeOffset_ = static_cast<uint64_t>(tileInfo_.mmTiling->matmulTiling.M / PERBLOCK_BLOCK_SIZE) * 
+        oneCommBlockSizeOffset_ = static_cast<uint64_t>(tileInfo_.mmTiling->matmulTiling.M / PERBLOCK_BLOCK_SIZE) *
                                   nBlockSizeCnt_ * sizeof(float);
         oneRankBlockSizeCnt_ = static_cast<uint64_t>(paramInTiling_->rankM / PERBLOCK_BLOCK_SIZE) * nBlockSizeCnt_;
         oneRankBlockSizeOffset_ = oneRankBlockSizeCnt_ * sizeof(float);
@@ -77,7 +77,7 @@ public:
         gatherX1Addr_ = addrs_->gatherOut;
         if ((paramInTiling_->gatherLen != 0) || (!addrs_->gatherOut)) {
             // 留出scale1的偏移空间
-            uint64_t gatherScale1Offest = static_cast<uint64_t>(paramInTiling_->rankDim) * 
+            uint64_t gatherScale1Offest = static_cast<uint64_t>(paramInTiling_->rankDim) *
                                           static_cast<uint64_t>(oneRankBlockSizeOffset_);
             gatherX1Addr_ = addrs_->workspaceGM + gatherScale1Offest;
             addrs_->workspaceGM += paramInTiling_->gatherLen;
@@ -94,7 +94,7 @@ protected:
     {
         if (notifyFlag_) {
             uint8_t repeat = 1;
-            
+
             // 先进行scale1通信的prepare工作
             GM_ADDR sendBuffer = quantAddrs_->scale2GM;
             GM_ADDR recvBuffer = gatherScale1Addr_;

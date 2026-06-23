@@ -24,7 +24,7 @@
 #include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
-#include "matmul_reduce_scatter_v2_c_tiling.h"
+#include "../matmul_reduce_scatter_v2_c_tiling.h"
 #include "../../../common/op_kernel/reduce_sum_cast_fp32.h"
 
 #define TEMPLATE_CLASS_PARAMS \
@@ -52,13 +52,13 @@ private:
     __aicore__ inline void InnerProcess();
     __aicore__ inline void Compute(GM_ADDR recvGMAddr, Mc2MatMulV3TilingData& tiling, const uint32_t count,
                                    GM_ADDR sendGMAddr, const bool isLast, const bool isTail);
-    __aicore__ inline void MatMulV3Compute(GM_ADDR recvGMAddr, Mc2MatMulV3TilingData& tiling, const uint32_t count, 
+    __aicore__ inline void MatMulV3Compute(GM_ADDR recvGMAddr, Mc2MatMulV3TilingData& tiling, const uint32_t count,
                                            GM_ADDR sendGMAddr, const bool isLast, const bool isTail);
     __aicore__ inline void PostProcess();
     __aicore__ inline void ExecuteAicMatMulPipeline(Mc2MatMulV3TilingData& tiling, const uint32_t count,
                                                     const bool isLast, const bool isTail);
     __aicore__ inline void ExecuteAivCommReducePipeline(GM_ADDR recvGMAddr, GM_ADDR sendGMAddr,
-                                                        Mc2MatMulV3TilingData& tiling, 
+                                                        Mc2MatMulV3TilingData& tiling,
                                                         const uint32_t count, const bool isTail);
     __aicore__ inline void CubeNotifyVector();
     __aicore__ inline void VecWaitCube();
@@ -172,14 +172,14 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Compute
  */
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::ExecuteAicMatMulPipeline(
-    Mc2MatMulV3TilingData& tiling, 
+    Mc2MatMulV3TilingData& tiling,
     const uint32_t count,
     const bool isLast,
-    const bool isTail) 
+    const bool isTail)
 {
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
-    
+
     // 初始化Matmul
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     mmv3.Init(aGM_, bGM_, sendBuf_, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
@@ -191,7 +191,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
         // AIC 侧做完 Matmul 计算后通知 AIV 进行后处理
         CubeNotifyVector();
     }
-    
+
     mmv3.End();
 }
 
@@ -202,9 +202,9 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
     GM_ADDR recvGMAddr,
     GM_ADDR sendGMAddr,
-    Mc2MatMulV3TilingData& tiling, 
-    const uint32_t count, 
-    const bool isTail) 
+    Mc2MatMulV3TilingData& tiling,
+    const uint32_t count,
+    const bool isTail)
 {
     auto&& cfg = tilingData_->param;
 
@@ -232,7 +232,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
         currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
     );
-    
+
     // 移动指针准备下一轮
     currSendPtr += rankSliceBytes;
     currRecvPtr += rankSliceBytes;
@@ -242,12 +242,12 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     for (uint32_t i = 0; i < count - 1; i++) {
         // 1. 等待上一轮 (i) 通信结束
         if (GetBlockIdx() == 0) {
-            hccl_.Wait(handles_[i + handleShift]); 
+            hccl_.Wait(handles_[i + handleShift]);
         }
         SyncAll<true>();
 
         // 2. 启动下一轮 (i+1) 通信
-        VecWaitCube(); 
+        VecWaitCube();
         handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
             currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
         );
@@ -269,10 +269,10 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
 
     // --- Epilogue: 处理最后一轮 ---
     uint32_t lastIdx = count - 1;
-    
+
     // 等待最后一轮通信结束
     if (GetBlockIdx() == 0) {
-        hccl_.Wait(handles_[lastIdx + handleShift]); 
+        hccl_.Wait(handles_[lastIdx + handleShift]);
     }
     SyncAll<true>();
 
@@ -289,7 +289,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::MatMulV3Compute(
     GM_ADDR recvGMAddr,
-    Mc2MatMulV3TilingData& tiling, 
+    Mc2MatMulV3TilingData& tiling,
     const uint32_t count,
     GM_ADDR sendGMAddr,
     const bool isLast,
