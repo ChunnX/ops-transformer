@@ -60,3 +60,120 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic)
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
+
+TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueInvalidEpWorldSize)
+{
+    int64_t numTokens = 512;
+    int64_t topK = 4;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
+
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc dstSlotDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerRankDesc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerExpertDesc = TensorDesc({8}, ACL_INT64, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeEpDispatchEpilogue,
+                        INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, nullptr,
+                              1, 0, 8, 1024, cclBufferSize, 1),
+                        OUTPUT(TensorDesc({2048, 4096}, ACL_BF16, ACL_FORMAT_ND),
+                               TensorDesc({2048, topK}, ACL_INT32, ACL_FORMAT_ND),
+                               TensorDesc({2048}, ACL_FLOAT, ACL_FORMAT_ND),
+                               TensorDesc({2048, 3}, ACL_INT32, ACL_FORMAT_ND), nullptr));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueInvalidNumExperts)
+{
+    int64_t numTokens = 512;
+    int64_t topK = 4;
+    int64_t epWorldSize = 4;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
+
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc dstSlotDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerExpertDesc = TensorDesc({33 / epWorldSize}, ACL_INT64, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeEpDispatchEpilogue,
+                        INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, nullptr,
+                              epWorldSize, 0, 33, 1024, cclBufferSize, 1),
+                        OUTPUT(TensorDesc({4096, 4096}, ACL_BF16, ACL_FORMAT_ND),
+                               TensorDesc({4096, topK}, ACL_INT32, ACL_FORMAT_ND),
+                               TensorDesc({4096}, ACL_FLOAT, ACL_FORMAT_ND),
+                               TensorDesc({4096, 3}, ACL_INT32, ACL_FORMAT_ND), nullptr));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueCachedMode)
+{
+    int64_t numTokens = 512;
+    int64_t topK = 4;
+    int64_t epWorldSize = 4;
+    int64_t numExperts = 32;
+    int64_t numMaxTokensPerRank = 512;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
+    int64_t numLocalExperts = numExperts / epWorldSize;
+    int64_t hidden = 4096;
+    int64_t upperA = epWorldSize * numMaxTokensPerRank;
+
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc dstSlotDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerExpertDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);
+
+    TensorDesc recvXDesc = TensorDesc({upperA, hidden}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc recvTopkIdxDesc = TensorDesc({upperA, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc recvTopkWeightsDesc = TensorDesc({upperA}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc recvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeEpDispatchEpilogue,
+                        INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, nullptr,
+                              epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
+                        OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueSmallShape)
+{
+    int64_t numTokens = 128;
+    int64_t topK = 4;
+    int64_t epWorldSize = 2;
+    int64_t numExperts = 16;
+    int64_t numMaxTokensPerRank = 128;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
+    int64_t numLocalExperts = numExperts / epWorldSize;
+    int64_t hidden = 2048;
+    int64_t upperA = epWorldSize * numMaxTokensPerRank;
+
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc dstSlotDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerExpertDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);
+
+    TensorDesc recvXDesc = TensorDesc({upperA, hidden}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc recvTopkIdxDesc = TensorDesc({upperA, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc recvTopkWeightsDesc = TensorDesc({upperA}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc recvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeEpDispatchEpilogue,
+                        INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, nullptr,
+                              epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
+                        OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}

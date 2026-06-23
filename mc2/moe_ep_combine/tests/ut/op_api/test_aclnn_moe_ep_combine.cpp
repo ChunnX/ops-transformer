@@ -114,3 +114,77 @@ TEST_F(L2AclnnMoeEpCombineTest, TestCombineBiasRejected)
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
+
+TEST_F(L2AclnnMoeEpCombineTest, TestCombineInvalidEpWorldSize)
+{
+    int64_t numTokens = 512;
+    int64_t hidden = 4096;
+    int64_t topK = 4;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
+
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc xDesc = TensorDesc({1024, hidden}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc dstSlotDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc recvSrcMetaDesc = TensorDesc({1024, 3}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerRankDesc = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeEpCombine,
+                        INPUT(contextDesc, xDesc, dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, TensorDesc(),
+                              nullptr, nullptr, 1, 0, 8, 1024, cclBufferSize),
+                        OUTPUT(TensorDesc({numTokens, hidden}, ACL_BF16, ACL_FORMAT_ND), TensorDesc()));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnMoeEpCombineTest, TestCombineInvalidNumExperts)
+{
+    int64_t numTokens = 512;
+    int64_t hidden = 4096;
+    int64_t topK = 4;
+    int64_t epWorldSize = 8;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
+
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc xDesc = TensorDesc({4096, hidden}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc dstSlotDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc recvSrcMetaDesc = TensorDesc({4096, 3}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeEpCombine,
+                        INPUT(contextDesc, xDesc, dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, TensorDesc(),
+                              nullptr, nullptr, epWorldSize, 0, 63, 1024, cclBufferSize),
+                        OUTPUT(TensorDesc({numTokens, hidden}, ACL_BF16, ACL_FORMAT_ND), TensorDesc()));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnMoeEpCombineTest, TestCombineNullX)
+{
+    int64_t numTokens = 512;
+    int64_t hidden = 4096;
+    int64_t topK = 4;
+    int64_t epWorldSize = 8;
+    int64_t numExperts = 64;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
+
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc dstSlotDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc recvSrcMetaDesc = TensorDesc({4096, 3}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc numRecvPerRankDesc = TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeEpCombine,
+                        INPUT(contextDesc, TensorDesc(), dstSlotDesc, recvSrcMetaDesc, numRecvPerRankDesc, TensorDesc(),
+                              nullptr, nullptr, epWorldSize, 0, numExperts, 1024, cclBufferSize),
+                        OUTPUT(TensorDesc({numTokens, hidden}, ACL_BF16, ACL_FORMAT_ND), TensorDesc()));
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
