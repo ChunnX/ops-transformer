@@ -44,18 +44,12 @@ def test_compressor_process(filepath, device_id=0):
     kv_state = test_data['kv_state']
     score_state = test_data['score_state']
     ape = test_data['ape']
-    norm_weight = test_data['norm_weight']
-    rope_sin = test_data['rope_sin']
-    rope_cos = test_data['rope_cos']
     block_table = test_data['block_table']
     cu_seqlens = test_data['cu_seqlens']
     seqused = test_data['seqused']
     start_pos = test_data['start_pos']
-    rope_head_dim = test_data['rope_head_dim']
     cmp_ratio = test_data['cmp_ratio']
     coff = test_data['coff']
-    norm_eps = test_data['norm_eps']
-    rotary_mode = test_data['rotary_mode']
     cache_mode = test_data['cache_mode']
 
     is_contiguous_flag = True
@@ -112,18 +106,12 @@ def test_compressor_process(filepath, device_id=0):
                 wgate.npu(),
                 state_cache,
                 ape.npu(),
-                norm_weight.npu(), 
-                rope_sin.npu(),
-                rope_cos.npu(),
-                rope_head_dim = rope_head_dim,
                 cmp_ratio = cmp_ratio,
                 state_block_table = kv_block_table,
                 cu_seqlens = cu_seqlens,
                 seqused = seqused,
                 start_pos = start_pos,
                 coff = coff,
-                norm_eps = norm_eps,
-                rotary_mode = rotary_mode,
                 cache_mode = cache_mode
             )
     return cpu_result, kv_mask_result, npu_result ,cpu_kv_state, update_kv, cpu_score_state, update_score, state_cache, params

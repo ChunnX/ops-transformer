@@ -52,9 +52,9 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
         # 定义必需的列名
         required_columns = [
-            'Testcase_Name', 'batch_size', 'hidden_size', 'Seq_len', 'head_dim', 'block_size', 'rope_head_dim', 'cmp_ratio',
-            'coff', 'norm_eps', 'start_p', 'rotary_mode', 'cache_mode', 'layout_x', 'data_type', 'cu_seqlens', 'seqused', 'start_pos',
-            'x_datarange','wkv_datarange','wgate_datarange','ape_datarange','norm_weight_datarange','kv_state_datarange','score_state_datarange'
+            'Testcase_Name', 'batch_size', 'hidden_size', 'Seq_len', 'head_dim', 'block_size', 'cmp_ratio',
+            'coff', 'start_p', 'cache_mode', 'layout_x', 'data_type', 'cu_seqlens', 'seqused', 'start_pos',
+            'x_datarange','wkv_datarange','wgate_datarange','ape_datarange','kv_state_datarange','score_state_datarange'
         ]
 
         # 检查是否缺少必要列
@@ -72,12 +72,9 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['Seq_len'], 
                 row['head_dim'], 
                 row['block_size'], 
-                row['rope_head_dim'], 
                 row['cmp_ratio'], 
                 row['coff'], 
-                row['norm_eps'], 
                 row['start_p'], 
-                row['rotary_mode'], 
                 row['cache_mode'],
                 row['layout_x'], 
                 row['data_type'], 
@@ -88,7 +85,6 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['wkv_datarange'], 
                 row['wgate_datarange'], 
                 row['ape_datarange'], 
-                row['norm_weight_datarange'], 
                 row['kv_state_datarange'], 
                 row['score_state_datarange']
             ))
@@ -109,32 +105,26 @@ class Generalized_operator():
                 update_kv_position,
                 update_score_position,
                 ape,
-                norm_weight, 
-                rope_sin,
-                rope_cos,
                 block_table,
                 cu_seqlens,
                 seqused,
                 start_pos,
-                rope_head_dim,
                 cmp_ratio,
                 coff,
-                norm_eps,
-                rotary_mode,
                 cache_mode):
         return cpu_compressor(
-            x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape, norm_weight, rope_sin, rope_cos,
+            x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape,
             block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
-            rope_head_dim=rope_head_dim, cmp_ratio=cmp_ratio, coff=coff, norm_eps=norm_eps, rotary_mode=rotary_mode,cache_mode=cache_mode)
+            cmp_ratio=cmp_ratio, coff=coff,cache_mode=cache_mode)
 
 
 def compressor_output_single(data_case):
     casename = data_case[0]
     params = data_case[1:]
 
-    batch_size, hidden_size, Seq_len, head_dim, block_size, rope_head_dim, cmp_ratio, coff, norm_eps, \
-    start_p, rotary_mode,cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, x_datarange, wkv_datarange,  \
-    wgate_datarange, ape_datarange, norm_weight_datarange, kv_state_datarange, score_state_datarange = params
+    batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
+    start_p, cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, x_datarange, wkv_datarange,  \
+    wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange = params
 
     if data_type == 'FP16':
         data_type =  torch.float16
@@ -172,7 +162,6 @@ def compressor_output_single(data_case):
     wkv_datarange = [float(x.strip()) for x in wkv_datarange.split(',')]
     wgate_datarange = [float(x.strip()) for x in wgate_datarange.split(',')]
     ape_datarange = [float(x.strip()) for x in ape_datarange.split(',')]
-    norm_weight_datarange = [float(x.strip()) for x in norm_weight_datarange.split(',')]
     kv_state_datarange = [float(x.strip()) for x in kv_state_datarange.split(',')]
     score_state_datarange = [float(x.strip()) for x in score_state_datarange.split(',')]
 
@@ -239,9 +228,6 @@ def compressor_output_single(data_case):
         if len(cu_seqlens) != (batch_size + 1):
             print(f"Error: the len of cu_seqlens is {len(cu_seqlens)}, it should be equal to batch_size({batch_size}) + 1")
             return
-    if head_dim < rope_head_dim:
-        print(f"Error: head_dim >= rope_head_dim, but head_dim is {head_dim}, rope_head_dim is {rope_head_dim}")
-        return
     if bs_combine_flag:
         for i in range(batch_size):
             if start_pos[i] + (cu_seqlens[i + 1] - cu_seqlens[i]) > S_max:
@@ -330,20 +316,13 @@ def compressor_output_single(data_case):
     # other input
     if layout_x == "TH":
         x_shape = (cu_seqlens[-1], hidden_size)
-        rope_sin_shape = (min(x_shape[0], x_shape[0] // cmp_ratio + batch_size), rope_head_dim)
-        rope_cos_shape = rope_sin_shape
     else:
         x_shape = (batch_size, Seq_len, hidden_size)
-        rope_sin_shape = (batch_size, (Seq_len + cmp_ratio - 1) // cmp_ratio, rope_head_dim)
-        rope_cos_shape = rope_sin_shape
 
     x = torch.tensor(np.random.uniform(x_datarange[0], x_datarange[1], x_shape)).to(data_type)
     wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     ape = torch.tensor(np.random.uniform(ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim))).to(torch.float32)
-    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(torch.float32)
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32)
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32)
     ### ======================== gen input data finish =============================
     ### ======================== execute cpu start =================================
     cpu_kv_state = kv_state.clone()
@@ -361,18 +340,12 @@ def compressor_output_single(data_case):
                                         update_kv,
                                         update_score,
                                         ape,
-                                        norm_weight, 
-                                        rope_sin,
-                                        rope_cos,
                                         block_table = block_table,
                                         cu_seqlens = cu_seqlens,
                                         seqused = seqused,
                                         start_pos = start_pos,
-                                        rope_head_dim = rope_head_dim,
                                         cmp_ratio = cmp_ratio,
                                         coff = coff,
-                                        norm_eps = norm_eps,
-                                        rotary_mode = rotary_mode,
                                         cache_mode = cache_mode)
     update_kv = cpu_kv_state != kv_state
     update_score = cpu_score_state != score_state
@@ -391,18 +364,12 @@ def compressor_output_single(data_case):
         "kv_state":kv_state,
         "score_state":score_state,
         "ape":ape,
-        "norm_weight":norm_weight, 
-        "rope_sin":rope_sin,
-        "rope_cos":rope_cos,
         "block_table":block_table,
         "cu_seqlens":cu_seqlens,
         "seqused":seqused,
         "start_pos":start_pos,
-        "rope_head_dim":rope_head_dim,
         "cmp_ratio":cmp_ratio,
         "coff":coff,
-        "norm_eps":norm_eps,
-        "rotary_mode":rotary_mode,
         "cache_mode":cache_mode
     }
     return  casename, output_tensors
