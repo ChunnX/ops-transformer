@@ -20,7 +20,7 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 
 #define BSA_LAYOUT_BSND 0
-#define BSA_LAYOUT_TND 1
+#define BSA_LAYOUT_TND 2
 #define BSA_LAYOUT_NTD 5
 
 #define BSA_KV_LAYOUT_CONTIGUOUS 0

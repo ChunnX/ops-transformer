@@ -83,7 +83,7 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
         runParam.qBScalarOffset = prefixSeqQlenAddr[runParam.boIdx] * constInfo.n2G;
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     } else if constexpr (layout == BSALayout::NTD) {
-        runParam.qBScalarOffset = constInfo.t1Size * runParam.n2oIdx * (constInfo.gSize + runParam.goIdx) + prefixSeqQlenAddr[runParam.boIdx];
+        runParam.qBScalarOffset = constInfo.t1Size * (runParam.n2oIdx * constInfo.gSize + runParam.goIdx) + prefixSeqQlenAddr[runParam.boIdx];
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     }
 
