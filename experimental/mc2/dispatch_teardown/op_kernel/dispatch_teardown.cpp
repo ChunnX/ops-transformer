@@ -60,17 +60,29 @@ extern "C" __global__ __aicore__ void dispatch_teardown(
                     AscendC::GetBlockIdx(), expectVal);
 
     // ============ 忙等：每轮重新从 GM 搬 32B 到 UB，读 slot0，直到 == expectVal ============
+    //   [T4] sanity 上限：CCU 若始终没写 1（建链失败 / 地址错 / DMA 没落）就不死等——超限带诊断退出，
+    //   让 host 校验 done!=1 显式 FAIL，而非静默卡死成 aicore timeout（核内兜底，与 §24 host 侧熔断互补）。
+    constexpr uint64_t POLL_MAX_SPINS = 1000000000UL;   // 远超任何合法等待，仅作死等熔断阈值
     int32_t v = 0;
-    do {
+    bool ready = false;
+    for (uint64_t spins = 0; spins < POLL_MAX_SPINS; ++spins) {
         AscendC::DataCopy(ub, statusGt, STATUS_BLOCK_INT32);  // GM -> UB（MTE2，每轮重取）
         AscendC::PipeBarrier<PIPE_ALL>();                     // 等 DMA 落地，scalar 再读 UB（[T3] cache 敏感）
         v = ub.GetValue(STATUS_READY_SLOT);
-    } while (v != expectVal);
+        if (v == expectVal) { ready = true; break; }
+    }
+    if (!ready) {
+        AscendC::printf("[dispatch_teardown] blk=%d TIMEOUT: status[0]=%d != expect=%d —— CCU 未写就绪位，不写 done（host 将判 FAIL）\n",
+                        AscendC::GetBlockIdx(), v, expectVal);
+        return;   // 不写 done → done 保持 0 → host 校验 done!=1 → 显式 FAIL，而非死等
+    }
 
     AscendC::printf("[dispatch_teardown] blk=%d got ready=%d, write done\n",
                     AscendC::GetBlockIdx(), v);
 
-    // ============ 收到就绪：写 done[0] = 1，供 host 校验“teardown 已往下走” ============
+    // ============ 收到就绪：写 done = {1,0,...}（先清 0 整块 UB 再置 slot0=1，免 done[1..7] 残留 status 旧值）============
+    AscendC::Duplicate(ub, 0, STATUS_BLOCK_INT32);      // 清 0：否则上面 poll 留在 ub 的 status[1..7] 会随 32B DataCopy 一起写进 done
+    AscendC::PipeBarrier<PIPE_ALL>();
     ub.SetValue(STATUS_READY_SLOT, 1);
     AscendC::PipeBarrier<PIPE_ALL>();
     AscendC::DataCopy(doneGt, ub, STATUS_BLOCK_INT32);  // UB -> GM
