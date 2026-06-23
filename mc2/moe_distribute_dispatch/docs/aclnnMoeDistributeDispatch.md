@@ -15,19 +15,14 @@
 
 ## 功能说明
 
-- 接口功能：对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
+- 接口功能：对Token数据进行量化（可选），进行EP（Expert Parallelism）域的AllToAllV通信。TP（Tensor Parallelism）域通信当前版本不再支持，TP相关参数为预留参数。
 
 - 计算公式：
 
     - 情形1：如果quantMode=0（非量化场景）：
 
     $$
-    allToAllXOut = AllToAllV(X)\\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(X), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(X)
     $$
 
     - 情形2：如果quantMode=2（pertoken动态量化场景）：
@@ -38,16 +33,8 @@
     quantOut = CastToInt8(xFp32 \times dynamicScalesValue) \\
     allToAllXOut = AllToAllV(quantOut) \\
     allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(X), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases} \\
-    dynamicScalesOut =
-    \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(quantOut) \\
+    dynamicScalesOut = allToAllDynamicScalesOut
     $$
 
 >注意该接口必须与aclnnMoeDistributeCombine配套使用。
@@ -215,7 +202,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <tr>
     <td>groupTp</td>
     <td>输入</td>
-    <td>TP通信域名称（数据并行通信域）。</td>
+    <td>TP通信域名称（预留参数，当前版本不支持）。</td>
     <td>不能和groupEp相同。</td>
     <td>STRING</td>
     <td>-</td>
@@ -355,8 +342,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <tr>
     <td>tpRecvCounts</td>
     <td>输出</td>
-    <td>从TP通信域各卡接收的token数（对应aclnnMoeDistributeCombine中的tpSendCounts）。</td>
-    <td>若有TP域通信则有该输出，若无TP域通信则无该输出，有TP域通信时要求为1D Tensor。</td>
+    <td>从TP通信域各卡接收的token数（预留输出，当前版本不支持，传空指针即可）。</td>
+    <td>若无TP域通信时无该输出。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>-</td>
@@ -792,12 +779,12 @@ aclnnStatus aclnnMoeDistributeDispatch(
         std::vector<int64_t> expertIdsShape{BS, K};
         std::vector<int64_t> scalesShape{(sharedExpertRankNum > 0) ? 1 + moeExpertNum : moeExpertNum, H};
         std::vector<int64_t> expertScalesShape{BS, K};
-        std::vector<int64_t> expandXShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * A, H};
-        std::vector<int64_t> dynamicScalesShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * A};
+        std::vector<int64_t> expandXShape{A, H};
+        std::vector<int64_t> dynamicScalesShape{A};
         std::vector<int64_t> expandIdxShape{BS * K};
         std::vector<int64_t> expertTokenNumsShape{localExpertNum};
-        std::vector<int64_t> epRecvCountsShape{(TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1) * localExpertNum * EP_WORLD_SIZE};
-        std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE > 0 ? TP_WORLD_SIZE : 1};
+        std::vector<int64_t> epRecvCountsShape{localExpertNum * EP_WORLD_SIZE};
+        std::vector<int64_t> tpRecvCountsShape{1};
         std::vector<int64_t> expandScalesShape{A};
 
         long long xShapeSize = GetShapeSize(xShape);
@@ -1144,8 +1131,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
         if (!rank_table_file && !first_rank_id) {
             LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
             EP_WORLD_SIZE = 8;
-            TP_WORLD_SIZE = 2;
-            DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
+            TP_WORLD_SIZE = 1;
+            DEV_NUM = EP_WORLD_SIZE;
             int ret = run_example_on_A3A5();
         }
         else if (rank_table_file && !first_rank_id) {
