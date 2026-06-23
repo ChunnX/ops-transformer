@@ -250,7 +250,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
         static_cast<uint32_t>(ALIGN_512));
     sendWorkspaceRecordBytes_ = relayRecordBytes_;
     sendWorkspaceServerBytes_ = static_cast<uint32_t>(ALIGN_32) + m_ * sendWorkspaceRecordBytes_;
-    sendDedupStrideBytes_ = Ops::Base::CeilAlign(m_ * sizeof(int32_t), static_cast<uint32_t>(ALIGN_32));
+    sendDedupStrideBytes_ = Ops::Base::CeilAlign(static_cast<uint32_t>(m_ * sizeof(int32_t)),
+        static_cast<uint32_t>(ALIGN_32));
 }
 
 // =================================================================================================
