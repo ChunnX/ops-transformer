@@ -233,8 +233,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr -
         params_.peermemInfo.rankSyncInWorldPtr);
-    relayWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.relayTokenDataPtr -
-        params_.peermemInfo.rankSyncInWorldPtr);
+    // relayWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.relayTokenDataPtr -
+    //     params_.peermemInfo.rankSyncInWorldPtr);
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
     compareCount_ = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_256)) / sizeof(int32_t);
@@ -639,7 +639,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
                     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
                     GM_ADDR dstAddr = GetUrmaAddrByRankId(mc2Context_,
-                        targetServerForSender * rankPerServer_ + rankInServer_) + relayWinOffset_ + relayOffset;
+                        targetServerForSender * rankPerServer_ + rankInServer_) + params_.peermemInfo.relayTokenDataPtr + relayOffset;
 
                     if (targetServerForSender == serverId_) {
                         workspaceSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(recordAddr));
@@ -882,7 +882,8 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenToCopyTmp(uint32_t relayRank,
     uint64_t remoteCopyOffset, int32_t bufferIdx, uint32_t copyInNum)
 {
-    GM_ADDR remoteRecordAddr = GetUrmaAddrByRankId(mc2Context_, relayRank) + relayWinOffset_ + remoteCopyOffset;
+    GM_ADDR remoteRecordAddr = GetUrmaAddrByRankId(mc2Context_, relayRank) +
+        params_.peermemInfo.relayTokenDataPtr + remoteCopyOffset;
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
     if (relayRank == rankId_) {
         __gm__ int32_t* readyFlag = reinterpret_cast<__gm__ int32_t*>(remoteRecordAddr + flagOffset);
