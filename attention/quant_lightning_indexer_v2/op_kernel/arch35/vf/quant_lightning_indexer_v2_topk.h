@@ -128,11 +128,11 @@ public:
 
     __aicore__ inline void TopK(LocalTensor<uint16_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
                                     LocalTensor<uint16_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx,
-                                        uint32_t s2LoopNum, bool isNeedLD)
+                                        uint32_t s2LoopNum, bool isNeedLD, bool returnValueFlag, uint32_t outputIdxOffset)
     {
         // true: 开启返回hisValueLocal
         if (s2LoopNum == 1) {
-            if (isNeedLD) {
+            if (isNeedLD || returnValueFlag) {
                 topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                     idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
             } else {
@@ -141,6 +141,9 @@ public:
             }
             PipeBarrier<PIPE_V>();
             Cast(indicesOutLocal, tmpIndexLocal, RoundMode::CAST_NONE, topK);
+            if (outputIdxOffset != 0) {
+                topkb16gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
+            }
             return;
         }
         if (loopIdx == 0 && !isNeedLD) {
@@ -180,6 +183,9 @@ public:
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
                 QLIV2Common::Align(topK, (uint32_t)256));
+        }
+        if (outputIdxOffset != 0) {
+            topkb16gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
         }
     }
     __aicore__ inline void LdTopK(LocalTensor<uint16_t>& mrgValueLocal, LocalTensor<uint32_t> indexLocal,

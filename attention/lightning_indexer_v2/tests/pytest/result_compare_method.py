@@ -262,28 +262,28 @@ def check_result(expect, result, topk_value, params):
         cu_seqlens_q = [cu_seqlens_q]
     elif isinstance(cu_seqlens_q, list):
         cu_seqlens_q = cu_seqlens_q
-    else:
+    elif cu_seqlens_q is not None:
         cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
     
     if isinstance(cu_seqlens_k, int):
         cu_seqlens_k = [cu_seqlens_k]
     elif isinstance(cu_seqlens_k, list):
         cu_seqlens_k = cu_seqlens_k
-    else:
+    elif cu_seqlens_k is not None:
         cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
 
     if isinstance(seqused_q, int):
         seqused_q = [seqused_q]
     elif isinstance(seqused_q, list):
         seqused_q = seqused_q
-    else:
+    elif seqused_q is not None:
         seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
     
     if isinstance(seqused_k, int):
         seqused_k = [seqused_k]
     elif isinstance(seqused_k, list):
         seqused_k = seqused_k
-    else:
+    elif seqused_k is not None:
         seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
 
     npu_pass = True
@@ -409,28 +409,28 @@ def check_result_return_value(expect, result, params):
         cu_seqlens_q = [cu_seqlens_q]
     elif isinstance(cu_seqlens_q, list):
         cu_seqlens_q = cu_seqlens_q
-    else:
+    elif cu_seqlens_q is not None:
         cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
     
     if isinstance(cu_seqlens_k, int):
         cu_seqlens_k = [cu_seqlens_k]
     elif isinstance(cu_seqlens_k, list):
         cu_seqlens_k = cu_seqlens_k
-    else:
+    elif cu_seqlens_k is not None:
         cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
 
     if isinstance(seqused_q, int):
         seqused_q = [seqused_q]
     elif isinstance(seqused_q, list):
         seqused_q = seqused_q
-    else:
+    elif seqused_q is not None:
         seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
     
     if isinstance(seqused_k, int):
         seqused_k = [seqused_k]
     elif isinstance(seqused_k, list):
         seqused_k = seqused_k
-    else:
+    elif seqused_k is not None:
         seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
 
     if layout_query == 'TND':

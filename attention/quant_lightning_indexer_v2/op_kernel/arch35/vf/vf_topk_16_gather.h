@@ -351,6 +351,28 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
     }
 }
 
+__simd_vf__ void IndicesAddOffsetVF(__ubuf__ uint32_t* indicesOutBuf, uint32_t outputIdxOffset, uint32_t vfLoop)
+{
+    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    MicroAPI::RegTensor<uint32_t> outIndices;
+
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(outIndices, indicesOutBuf + i * 64);
+        MicroAPI::Adds(outIndices, outIndices, outputIdxOffset, pregB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(indicesOutBuf + i * 64, outIndices, pregB32);
+    }
+}
+
+__aicore__ inline void IndicesAddOffset(const LocalTensor<uint32_t>& indicesOutLocal,
+                                        uint32_t outputIdxOffset, uint32_t topK)
+{
+    __ubuf__ uint32_t* indicesOutBuf = (__ubuf__ uint32_t*)indicesOutLocal.GetPhyAddr();
+    const uint16_t repeatSize32 = 64;
+    uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
+    IndicesAddOffsetVF(indicesOutBuf, outputIdxOffset, topkLoopNum32);
+}
+
 /**
  * @brief LiTopKVF 对一个validLen的输入进行topk算法，输出idx_tmp
  * @param tmpIdxLocal Temp阶段输出的TopKIndex;如果s2SeqLen < 16K作为最终输出 validLen * 2B
