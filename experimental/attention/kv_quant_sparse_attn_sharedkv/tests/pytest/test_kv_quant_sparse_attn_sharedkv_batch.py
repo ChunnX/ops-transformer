@@ -26,7 +26,7 @@ import check_valid_param
 from batch import kv_quant_sparse_attn_sharedkv_process
 import utils
 
-testcase_path = "qsas_testcase"
+testcase_path = "/home/z00957671/code_cann/0622/testcast"
 result_path = Path('result.xlsx')
 device_id=0
 

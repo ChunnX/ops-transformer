@@ -91,17 +91,17 @@ private:
     uint32_t l0ABBufId = 0;
     uint32_t l0CBufId = 0;
     uint32_t l1QBufId = 0;
-    uint32_t l1KLoadBufId = 0;
-    uint32_t l1KMatmul1BufId = 0;
-    uint32_t l1KMatmul2BufId = 0;
+    uint32_t l1KLoadBufIdMte1 = 0;
+    uint32_t l1KLoadBufIdMte2 = 0;
+    uint32_t l1KMatmul1BufIdMte2 = 0;
+    uint32_t l1KMatmul2BufIdMte1 = 0;
     uint32_t l0ABMToMte1FlagId = 3; // {0, 1}, 用于L0AB
     uint32_t l0ABMte1ToMFlagId = 3; // {0, 1}, 用于L0AB
     uint32_t l0CFixToMFlagId = 0; // {0, 1}, 用于L0C
     uint32_t l0CMToFixFlagId = 0; // {0, 1}, 用于L0C
     uint32_t l1QMte1ToMte2FlagId = 0; // {0, 1, 2}, 用于l1Q
     uint32_t l1QMte2ToMte1FlagId = 0; // {0, 1, 2}, 用于l1Q
-    uint32_t l1KMte1ToMte2FlagId = 3; // {3, 4, 5}, 用于l1K
-    uint32_t l1KMte2ToMte1FlagId = 3; // {3, 4, 5}, 用于l1K
+
     /* =====================LocalBuffer变量==================== */
     TBuf<TPosition::A1> l1QBuffers;
     TBuf<TPosition::A2> mmL0ABuffers;
@@ -151,9 +151,6 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManag
     SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId); // {0, 1, 2}, 用于l1Q
     SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 1);
     SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2);
-    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId); // {3, 4, 5}, 用于l1K
-    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 1);
-    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + 2);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
@@ -218,7 +215,9 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
     }
 
     // 加载当前轮的右矩阵到L1
-    WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KLoadBufId);
+    get_buf(PIPE_MTE2, l1KLoadBufIdMte1, false);
+    rls_buf(PIPE_MTE2, l1KLoadBufIdMte1, false);
+    l1KLoadBufIdMte1 = (l1KLoadBufIdMte1 + 1) % 3;
     LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
     v0ResGm.WaitCrossCore();
     if constexpr (IS_SPLIT_G) {
@@ -226,9 +225,15 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
         CrossCoreWaitFlag<0, PIPE_MTE2>(10);
     }
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-    DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
-    SetFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KLoadBufId);
-    l1KLoadBufId = (l1KLoadBufId + 1) % 3;
+    DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * (constInfo.dSize >> 1));
+    get_buf(PIPE_MTE2, l1KLoadBufIdMte2, true);
+    rls_buf(PIPE_MTE2, l1KLoadBufIdMte2, true);
+
+    l1KLoadBufIdMte2 = (l1KLoadBufIdMte2 + 1) % 6;
+    DataCopy(dst[Align16Func(runInfo.s2RealSize) * (constInfo.dSize >> 1)], v0ResGmTensor[Align16Func(runInfo.s2RealSize) * (constInfo.dSize >> 1)], Align16Func(runInfo.s2RealSize) * (constInfo.dSize >> 1));
+    get_buf(PIPE_MTE2, l1KLoadBufIdMte2, true);
+    rls_buf(PIPE_MTE2, l1KLoadBufIdMte2, true);
+    l1KLoadBufIdMte2 = (l1KLoadBufIdMte2 + 1) % 6;
 }
  	
 
@@ -240,8 +245,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
     bool notLastTwoLoop, RunInfo &runInfoNext,
     RunInfo &runInfo, ConstInfo &constInfo)
 {
-    WaitFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KMatmul1BufId);
-    l1KMatmul1BufId = (l1KMatmul1BufId + 1) % 3;
+    get_buf(PIPE_MTE1, l1KMatmul1BufIdMte2, false);
+    rls_buf(PIPE_MTE1, l1KMatmul1BufIdMte2, false);
     WaitFlag<HardEvent::FIX_M>(l0CFixToMFlagId + l0CBufId);
 
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
@@ -261,6 +266,11 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
         inputRightBuf.GetTensor<Q_T>(),
         mmL0ATensor, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
         param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
+
+    l1KMatmul1BufIdMte2 = (l1KMatmul1BufIdMte2 + 1) % 6;
+    get_buf(PIPE_MTE1, l1KMatmul1BufIdMte2, false);
+    rls_buf(PIPE_MTE1, l1KMatmul1BufIdMte2, false);
+    l1KMatmul1BufIdMte2 = (l1KMatmul1BufIdMte2 + 1) % 6;
 
     curL1QBufId = (curL1QBufId + 1) % 3;
     if (unlikely(runInfo.s2LoopCount == 0)) {
@@ -330,8 +340,9 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
 
     SetFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
     WaitFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
-    SetFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KMatmul2BufId);
-    l1KMatmul2BufId = (l1KMatmul2BufId + 1) % 3;
+    get_buf(PIPE_MTE1, l1KMatmul2BufIdMte1, true);
+    rls_buf(PIPE_MTE1, l1KMatmul2BufIdMte1, true);
+    l1KMatmul2BufIdMte1 = (l1KMatmul2BufIdMte1 + 1) % 3;
 
     outputBuf.WaitCrossCore(); //占用
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
