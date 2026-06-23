@@ -21,6 +21,7 @@
     3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
 ## 函数原型
+
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnLightningIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnLightningIndexerV2Metadata"执行计算
 
 ``` cpp
@@ -55,6 +56,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 ```
 
 ## aclnnLightningIndexerV2MetadataGetWorkspaceSize
+
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1450px"><colgroup>
@@ -309,6 +311,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     </table>
 
 ## aclnnLightningIndexerV2Metadata
+
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -352,6 +355,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
   - aclnnLightningIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
@@ -375,6 +379,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     - 必传cuSeqlensQOptional、cuSeqlensKOptional参数
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ``` cpp
