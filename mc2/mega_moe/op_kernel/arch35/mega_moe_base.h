@@ -48,12 +48,9 @@ struct PeermemInfo {
     GM_ADDR combineSendPtr;
     GM_ADDR URMAmaskRecvPtr;
     __aicore__ inline PeermemInfo() = default;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
-        uint32_t rankSizePerServer = 0)
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)
     {
         rankSyncInWorldPtr = base;
-        uint32_t rankPerServer = (rankSizePerServer == 0) ? tilingData->epWorldSize : rankSizePerServer;
-        uint32_t serverNum = Ops::Base::CeilDiv(tilingData->epWorldSize, rankPerServer);
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
         // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
