@@ -859,8 +859,13 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Expert
     DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
 
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    for (uint32_t loop = 0; loop < sendCntNum_; loop++) {
-        uint32_t tkIndex = startTokenId_ + ((loop + epRankId_) % sendCntNum_);
+    uint32_t permStride = sendCntNum_ / 2U + 1U;
+    if (((sendCntNum_ & 1U) == 0U) && ((permStride & 1U) == 0U)) {
+        permStride++;
+    }
+    uint32_t rankOffset = (epRankId_ * sendCntNum_) / epWorldSize_;
+    for (uint32_t loop = 0U; loop < sendCntNum_; loop++) {
+        uint32_t tkIndex = startTokenId_ + ((loop * permStride + rankOffset) % sendCntNum_);
         uint32_t baseOffset = (tkIndex - startTokenId_) * EXPAND_IDX_INFO;
         uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));
         uint32_t toRankId = rankIdExpandIdx;
