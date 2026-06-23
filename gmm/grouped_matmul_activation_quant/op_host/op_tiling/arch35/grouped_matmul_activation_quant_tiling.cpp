@@ -67,6 +67,19 @@ constexpr uint8_t ACTIVATION_TYPE_GELU_TANH = 2;
 constexpr char ACTIVATION_TYPE_GELU_TANH_STR[] = "gelu_tanh";
 constexpr uint64_t MAX_BASE_M = 128UL;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0f;
+
+std::string ShapeToDebugString(const gert::Shape &shape)
+{
+    std::string result = "[";
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            result += ", ";
+        }
+        result += std::to_string(shape.GetDim(i));
+    }
+    result += "]";
+    return result;
+}
 } // namespace
 
 void GroupedMatmulActivationQuantTiling950::Reset()
@@ -124,6 +137,11 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
     auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
     std::string quantMode(quantModePtr);
+    OP_LOGD(context_->GetNodeName(),
+            "GMMAQ AnalyzeAttrs: activationType=%s, quantMode=%s, yDtype=%ld, roundMode=%s, scaleAlg=%ld, "
+            "transposeWeight=%d, groupListType=%d.",
+            activationTypePtr, quantMode.c_str(), *yDtypePtr, roundModePtr, *scaleAlgPtr,
+            static_cast<int>(inputParams_.transB), inputParams_.groupListType);
     OP_CHECK_IF(quantMode != "MX",
                 OP_LOGE(context_->GetNodeName(), "quant_mode only supports MX, actual is %s.", quantMode.c_str()),
                 return false);
@@ -259,8 +277,23 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
                     wScaleStorageShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "input shape is nullptr."), return false);
     OP_CHECK_IF(!SetGroupNum(GROUP_LIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
-    OP_CHECK_IF(!SetMKN(xStorageShape->GetOriginShape(), wStorageShape->GetOriginShape()),
-                OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    const auto &xShape = xStorageShape->GetOriginShape();
+    const auto &wShape = wStorageShape->GetOriginShape();
+    const auto &weightStorageShape = wStorageShape->GetStorageShape();
+    const auto &xScaleShape = xScaleStorageShape->GetOriginShape();
+    const auto &wScaleShape = wScaleStorageShape->GetOriginShape();
+    const auto &weightScaleStorageShape = wScaleStorageShape->GetStorageShape();
+    OP_LOGD(context_->GetNodeName(),
+            "GMMAQ AnalyzeInputs before SetMKN: xOrigin=%s, xStorage=%s, weightOrigin=%s, weightStorage=%s, "
+            "xScaleOrigin=%s, weightScaleOrigin=%s, weightScaleStorage=%s, transB=%d, groupNum=%lu.",
+            ShapeToDebugString(xShape).c_str(), ShapeToDebugString(xStorageShape->GetStorageShape()).c_str(),
+            ShapeToDebugString(wShape).c_str(), ShapeToDebugString(weightStorageShape).c_str(),
+            ShapeToDebugString(xScaleShape).c_str(), ShapeToDebugString(wScaleShape).c_str(),
+            ShapeToDebugString(weightScaleStorageShape).c_str(), static_cast<int>(inputParams_.transB),
+            inputParams_.groupNum);
+    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    OP_LOGD(context_->GetNodeName(), "GMMAQ AnalyzeInputs after SetMKN: M=%lu, K=%lu, N=%lu.",
+            inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
     OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
                 OP_LOGE(inputParams_.opName, "N must be a multiple of %u, actual is %u.", N_SIZE_ALIGN,
                         static_cast<uint32_t>(inputParams_.nSize)),
