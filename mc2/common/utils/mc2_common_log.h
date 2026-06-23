@@ -23,13 +23,16 @@
 #include <vector>
 
 #include "base/err_msg.h"
-#include "log/log.h"
 #include "securec.h"
 #if __has_include("error_manager/error_manager.h")
 #include "error_manager/error_manager.h"
 #else
 #include "err_mgr.h"
 #endif
+
+// Forward compatibility: includes log/log.h and provides OP_LOGE_LIBOPAPI_REPORT and
+// OP_LOGE_FOR_* macros (EZ0008-EZ0034) when using an older log.h.
+#include "mc2_log_compat.h"
 
 struct ErrorResult {
     operator bool() const

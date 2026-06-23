@@ -264,6 +264,12 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
 {
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
+
+    // 尾块使用独立 tiling，需将preCoreNum_归零，避免沿用整块累计值导致核偏移计算溢出
+    if (isTail) {
+        preCoreNum_ = 0;
+    }
+
     if ((GetBlockIdx() >= qMmv3Tiling.matmulTiling.usedCoreNum) || (cfg.rankN == 0)) {
         uint32_t shift = isTail ? cfg.tileCnt : 0;
         if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
@@ -355,8 +361,6 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Se
     }
 
     if (cfg.tailM) {
-        // reset preCoreNum_
-        preCoreNum_ = 0;
         if (debugMode_ == MC2_DEBUG_ONLY_CUBE) {
             DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tileTilingData = tilingData_->quantBmmv3TailTiling;
             uint64_t tileM = tileTilingData.matmulTiling.M;

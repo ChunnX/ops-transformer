@@ -44,23 +44,27 @@ inline uint32_t SectionStreamK::Compute(const DeviceInfo &deviceInfo, const IBas
 
     auto implResult = impl.Compute(deviceInfo, baseInfo);
 
-    SectionStreamKFaResult tmpFa(deviceInfo.aicCoreMaxNum);
-    tmpFa.usedCoreNum = implResult.usedCoreNum;
-    tmpFa.bN2End = implResult.bN2End;
-    tmpFa.gS1End = implResult.gS1End;
-    tmpFa.s2End = implResult.s2End;
-    tmpFa.firstFdDataWorkspaceIdx = implResult.firstFdDataWorkspaceIdx;
-    result.sectionFaResult = tmpFa;
-    SectionStreamKFdResult tmpFd(deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum);
-    tmpFd.usedVecNum = implResult.usedVecNum;
-    tmpFd.bN2Idx = implResult.bN2Idx;
-    tmpFd.gS1Idx = implResult.mIdx;
-    tmpFd.workspaceIdx = implResult.workspaceIdx;
-    tmpFd.s2SplitNum = implResult.s2SplitNum;
-    tmpFd.taskIdx = implResult.taskIdx;
-    tmpFd.mStart = implResult.mStart;
-    tmpFd.mLen = implResult.mLen;
-    result.sectionFdResult = tmpFd;
+    result.sectionNum = implResult.size();
+    for (size_t i = 0; i < result.sectionNum; ++i) {
+        SectionStreamKFaResult tmpFa(deviceInfo.aicCoreMaxNum);
+        tmpFa.usedCoreNum = implResult[i].usedCoreNum;
+        tmpFa.bN2End = implResult[i].bN2End;
+        tmpFa.gS1End = implResult[i].gS1End;
+        tmpFa.s2End = implResult[i].s2End;
+        tmpFa.firstFdDataWorkspaceIdx = implResult[i].firstFdDataWorkspaceIdx;
+        result.sectionFaResult.emplace_back(tmpFa);
+
+        SectionStreamKFdResult tmpFd(deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum);
+        tmpFd.usedVecNum = implResult[i].usedVecNum;
+        tmpFd.bN2Idx = implResult[i].bN2Idx;
+        tmpFd.gS1Idx = implResult[i].mIdx;
+        tmpFd.workspaceIdx = implResult[i].workspaceIdx;
+        tmpFd.s2SplitNum = implResult[i].s2SplitNum;
+        tmpFd.taskIdx = implResult[i].taskIdx;
+        tmpFd.mStart = implResult[i].mStart;
+        tmpFd.mLen = implResult[i].mLen;
+        result.sectionFdResult.emplace_back(tmpFd);
+    }
 
     return SECTION_STREAM_K_SUCCESS;
 }

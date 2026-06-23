@@ -19,13 +19,13 @@ import random
 import torch
 import torch_npu
 
-# Register npu_sparse_flash_mla and npu_quant_lightning_indexer_v2_metadata via PTA
+# Register sparse_flash_mla and sparse_flash_mla_metadata via PTA
 TORCH_EXT_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                  '../../../../torch_extension'))
 if TORCH_EXT_PATH not in sys.path:
     sys.path.insert(0, TORCH_EXT_PATH)
-from npu_ops_transformer.ops import sparse_flash_mla as _smla_registration  # noqa: F401
-from npu_ops_transformer.ops import quant_lightning_indexer_v2_metadata as _metadata_registration  # noqa: F401
+from cann_ops_transformer.ops import sparse_flash_mla as _smla_registration  # noqa: F401
+from cann_ops_transformer.ops import sparse_flash_mla_metadata as _metadata_registration  # noqa: F401
 
 class Network(torch.nn.Module):
     def __init__(self):
@@ -72,12 +72,13 @@ def call_npu(input_data):
     layout_q = tensor_input['layout_q'] if type(tensor_input['layout_q']) == type('TND') else tensor_input['layout_q'][0]
     layout_kv = tensor_input['layout_kv']
     max_seqlen_q = metadata_input['max_seqlen_q']
-    ori_max_s2 = metadata_input['max_seqlen_kv']
+    max_seqlen_ori_kv = metadata_input['max_seqlen_ori_kv']
+    max_seqlen_cmp_kv = metadata_input['max_seqlen_cmp_kv']
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
-    ori_topk_length = metadata_input['ori_topk_length'].unsqueeze(-1).npu() if metadata_input['ori_topk_length'] is not None else None
-    cmp_topk_length = metadata_input['cmp_topk_length'].unsqueeze(-1).npu() if metadata_input['cmp_topk_length'] is not None else None
+    ori_topk_length = None
+    cmp_topk_length = None
     return_softmax_lse = params.get('return_softmax_lse')
 
     # 将需要上NPU的tensor搬到NPU
@@ -89,8 +90,8 @@ def call_npu(input_data):
         cmp_block_table = cmp_block_table.npu()
 
     # 生成 metadata
-    print("npu_sparse_flash_mla_metadata...")
-    metadata = torch.ops.npu_ops_transformer.npu_sparse_flash_mla_metadata(
+    print("sparse_flash_mla_metadata...")
+    metadata = torch.ops.cann_ops_transformer.sparse_flash_mla_metadata(
         num_heads_q=N1,
         num_heads_kv=N2,
         head_dim=D,
@@ -105,10 +106,10 @@ def call_npu(input_data):
         cmp_topk_length=cmp_topk_length,
         batch_size=B,
         max_seqlen_q=max_seqlen_q,
-        # max_seqlen_ori_kv=max_seqlen_ori_kv,
-        # max_seqlen_cmp_kv=max_seqlen_cmp_kv,
-        ori_topk=K,
-        # cmp_topk=cmp_topk,
+        max_seqlen_ori_kv=max_seqlen_ori_kv,
+        max_seqlen_cmp_kv=max_seqlen_cmp_kv,
+        ori_topk=K if ori_sparse_indices is not None else 0,
+        cmp_topk=K if cmp_sparse_indices is not None else 0,
         cmp_ratio=cmp_ratio if cmp_ratio is not None else 1,
         ori_mask_mode=ori_mask_mode,
         cmp_mask_mode=cmp_mask_mode if cmp_mask_mode is not None else 3,
@@ -117,12 +118,11 @@ def call_npu(input_data):
         layout_q=layout_q,
         layout_kv=layout_kv,
         has_ori_kv=ori_kv != None,
-        has_cmp_kv=cmp_kv != None,
-        batch_invariant=0)
+        has_cmp_kv=cmp_kv != None)
 
-    # 统一调用 npu_sparse_flash_mla，所有参数可选带默认值
-    print("npu_sparse_flash_mla...")
-    npu_result, softmax_lse = torch.ops.npu_ops_transformer.npu_sparse_flash_mla(q,
+    # 统一调用 sparse_flash_mla，所有参数可选带默认值
+    print("sparse_flash_mla...")
+    npu_result, softmax_lse = torch.ops.cann_ops_transformer.sparse_flash_mla(q,
                                                             ori_kv=ori_kv,
                                                             cmp_kv=cmp_kv,
                                                             ori_sparse_indices=ori_sparse_indices,
@@ -149,9 +149,8 @@ def call_npu(input_data):
                                                             layout_q=layout_q,
                                                             layout_kv=layout_kv,
                                                             topk_value_mode=1,
-                                                            return_softmax_lse=return_softmax_lse if return_softmax_lse is not None else False,
-                                                            batch_invariant=0)
-    print("npu_sparse_flash_mla end")
+                                                            return_softmax_lse=return_softmax_lse if return_softmax_lse is not None else False)
+    print("sparse_flash_mla end")
 
     torch.npu.synchronize()
     return npu_result, softmax_lse

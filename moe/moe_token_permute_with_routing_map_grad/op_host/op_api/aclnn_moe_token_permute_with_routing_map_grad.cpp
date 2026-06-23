@@ -24,6 +24,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/platform.h"
 #include "aclnn_moe_token_permute_with_routing_map_grad.h"
+#include "acl/acl_rt.h"
 #include "level0/sort.h"
 #include "level0/zero_op.h"
 #ifdef BUILD_OPEN_PROJECT_API
@@ -390,14 +391,16 @@ aclnnStatus ProcessDropAndPadTokensGrad(
     constexpr bool descending = false;
     constexpr bool stable = true;
     const aclTensor* indexAddOut = nullptr;
-
+    int64_t deterministicValue = 0;
+    aclError aclRet = aclrtGetSysParamOpt(ACL_OPT_DETERMINISTIC, &deterministicValue);
     // 当设备类型为A2或A3且index为int32类型时，切为InplaceIndexAddWithSorted算子
     bool useNewOp = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
                      GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93 ||
                      GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) &&
                     tokensNum < MAX_SORT_SHAPE_DIM &&
                     (zeroTokensGradOut->GetDataType() == op::DataType::DT_BF16 ||
-                     zeroTokensGradOut->GetDataType() == op::DataType::DT_FLOAT16);
+                     zeroTokensGradOut->GetDataType() == op::DataType::DT_FLOAT16 ||
+                     deterministicValue);
     #ifdef BUILD_OPEN_PROJECT_API
         if (useNewOp) {
             const aclTensor* indicesViewFloat =

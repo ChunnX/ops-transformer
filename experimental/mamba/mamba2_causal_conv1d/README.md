@@ -1,8 +1,8 @@
-# mamba2_causal_conv1d 算子说明
+# mamba2_causal_conv1d算子说明
 
 ### 功能和实现说明
 
-基于状态空间模型（SSM）的因果卷积，实现 MambaV2 Prefill 阶段的因果卷积计算。计算流程包含 kernel_size=4 的 depthwise conv1d 和 SiLU 激活。本算子采用纯 Vector 实现 conv1d，并融合 bias 和 SiLU 运算以提升性能。
+基于状态空间模型（SSM）的因果卷积，实现MambaV2 Prefill阶段的因果卷积计算。计算流程包含kernel_size=4的depthwise conv1d和SiLU激活。本算子采用纯Vector实现conv1d，并融合bias和SiLU运算以提升性能。
 
 **计算流**  
 
@@ -41,7 +41,7 @@ out = torch.ops.npu_ops_transformer_ext.mamba2_causal_conv1d(x, w, b)
 
 **测试方法**
 
-见当前目录 tests/
+见当前目录tests/
 
 ```
 python test_causal_conv1d.py

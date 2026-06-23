@@ -39,8 +39,8 @@
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv)
 
 #define PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...) \
-    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutPFATypeValue[inOutLayoutType][0]); \
-    constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutPFATypeValue[inOutLayoutType][1]); \
+    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]); \
+    constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]); \
     constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1); \
     constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2); \
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d); \
@@ -206,6 +206,8 @@ static constexpr ConfigParams ConfigValue[] ={
 #define AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION 5
 #define PerBlock 17
 #define FULLQUANT_MODE_PER_TOKEN_HEAD 18
+#define FULLQUANT_MODE_QKV_MXFP8_PREFILL 19
+#define FULLQUANT_MODE_QKV_MXFP8_DECODE 20
 #define FullQuantMode 30
 #define NoQuantMode 31
 
@@ -221,6 +223,12 @@ static constexpr ConfigParams ConfigValue[] ={
 #define PFAMatMulType_MM_IFA_MLA_PA 3
 #define PFAMatMulType_MM_PA_D512 4
 #define PFAMatMulType_MM_DN 5
+
+#define KvLayoutType_NO_PA 0
+#define KvLayoutType_ENABLE_PA 1
+#define KvLayoutType_PA_BBH 1
+#define KvLayoutType_PA_BNBD 2
+#define KvLayoutType_PA_NZ 3
 
 // SplitCoreModeEnum
 #define SplitCoreMode_SPLIT_NBS_VECTOR 0

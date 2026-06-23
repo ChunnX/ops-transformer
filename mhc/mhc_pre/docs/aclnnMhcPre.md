@@ -93,7 +93,7 @@ aclnnStatus aclnnMhcPre(
       <td>输入</td>
       <td>待计算数据，表示网络中mHC层的输入数据。</td>
       <td>不能为空Tensor。</td>
-      <td>BFLOAT16 或 FLOAT16</td>
+      <td>BFLOAT16或FLOAT16</td>
       <td>ND</td>
       <td>[B,S,n,D] 或 [T,n,D]</td>
       <td>√</td>
@@ -163,7 +163,7 @@ aclnnStatus aclnnMhcPre(
       <td>输出</td>
       <td>输出的h_in作为Attention/MLP层的输入。</td>
       <td>不能为空Tensor。</td>
-      <td>BFLOAT16 或 FLOAT16</td>
+      <td>BFLOAT16或FLOAT16</td>
       <td>ND</td>
       <td>[B,S,D] 或 [T,D]</td>
       <td>-</td>

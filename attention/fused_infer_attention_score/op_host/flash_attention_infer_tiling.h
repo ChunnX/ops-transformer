@@ -93,7 +93,7 @@ namespace optiling{
     TILING_DATA_FIELD_DEF_STRUCT(coreNode, coreInfo)
     TILING_DATA_FIELD_DEF_STRUCT(splitNode, splitInfo)
     END_TILING_DATA_DEF
-    
+
     const uint32_t SIZE_OF_16BIT = 2;
     const uint32_t SIZE_OF_32BIT = 4;
     const uint32_t N_SPLIT_HELPER = 2;
@@ -174,7 +174,7 @@ namespace optiling{
             this->blockNum_ = blockNum;
         }
         uint32_t GetCoreNum() {
-            return this->blockNum_; 
+            return this->blockNum_;
         }
         uint64_t GetTilingKey();
     private:
@@ -262,7 +262,7 @@ namespace optiling{
         faTilingData.valueStrides.set_bnStride(faInfo_.valueBnStride);
     }
 
-    uint64_t FAInferTiling::GetTilingKey() 
+    uint64_t FAInferTiling::GetTilingKey()
     {
         constexpr uint64_t SPLIT_FUSE_BASE_KEY = 5000000000000000000;
         constexpr uint64_t PAGED_CACHE_KEY = 10000000;
@@ -287,7 +287,7 @@ namespace optiling{
         } else if (faInfo_.maskType == MaskType::SWA_MASK) {
             tilingKey += static_cast<uint64_t>(COMP_SWA_MASK_KEY);
         } else if (faInfo_.maskType == MaskType::FULL_MASK) {
-            tilingKey += static_cast<uint64_t>(FULL_MASK_KEY); 
+            tilingKey += static_cast<uint64_t>(FULL_MASK_KEY);
         }
         if (faInfo_.layout == "TND") {
             tilingKey += static_cast<uint64_t>(LAYOUTQ_TND_KEY);
@@ -399,7 +399,7 @@ namespace optiling{
         p.curQNBlockNum = p.qNBlockNumPerGroup * faInfo_.kvHeads;
         p.curQSBlockTile = GetQSBlockTile(p.kvSeqlen);
         p.curQSBlockNum = (p.qSeqlen + p.curQSBlockTile - 1) / p.curQSBlockTile;
-        p.curKSBlockTile = GetKSBlockTile(p.kvSeqlen); 
+        p.curKSBlockTile = GetKSBlockTile(p.kvSeqlen);
         p.curKSBlockNum = (p.kvSeqlen + p.curKSBlockTile - 1) / p.curKSBlockTile;
         return p;
     }
@@ -409,7 +409,7 @@ namespace optiling{
         uint32_t nowN1Idx = 0;
         uint32_t nowS1Idx = 0;
         uint32_t nowS2Idx = 0;
-        
+
         for (uint32_t coreIdx = 0; coreIdx < blockNum_; coreIdx++) {
             faTilingData.coreInfo.get_startBIdx()[coreIdx] = 0;
             faTilingData.coreInfo.get_startN1Idx()[coreIdx] = 0;
@@ -446,7 +446,7 @@ namespace optiling{
             };
 
             while (nowS2Idx < p.curKSBlockNum && resTaskNum > 0) {
-                p = getBatchParams(nowBIdx, groupSize); 
+                p = getBatchParams(nowBIdx, groupSize);
                 uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
                 uint32_t remainingKV = (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile : (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
                 uint64_t singleS2Task = remainingQ * remainingKV;
@@ -460,7 +460,7 @@ namespace optiling{
                 faTilingData.coreInfo.get_endS1Idx()[coreIdx] = nowS1Idx;
                 faTilingData.coreInfo.get_endS2Idx()[coreIdx] = nowS2Idx;
             }
-            
+
             advanceCounters();
             if (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum <= 0) continue;
             if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
@@ -492,7 +492,7 @@ namespace optiling{
                     break;
                 }
             }
-            
+
             advanceCounters();
             if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
             p = getBatchParams(nowBIdx, groupSize);
@@ -521,7 +521,7 @@ namespace optiling{
             }
 
             if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
-            
+
             faTilingData.coreInfo.get_endBIdx()[coreIdx] = nowBIdx;
             faTilingData.coreInfo.get_endN1Idx()[coreIdx] = nowN1Idx;
             faTilingData.coreInfo.get_endS1Idx()[coreIdx] = nowS1Idx;
@@ -567,10 +567,10 @@ namespace optiling{
 
             for (int32_t BIdx = startBIdx; BIdx <= endBIdx; BIdx++) {
                 BatchParams p = getBatchParams(BIdx, groupSize);
-                
+
                 int32_t curStartN1 = (BIdx == startBIdx) ? startN1Idx : 0;
                 int32_t curEndN1 = (BIdx == endBIdx) ? endN1Idx : p.curQNBlockNum - 1;
-                
+
                 for (int32_t N1Idx = curStartN1; N1Idx <= curEndN1; N1Idx++) {
                     int32_t curStartS1 = (BIdx == startBIdx && N1Idx == startN1Idx) ? startS1Idx : 0;
                     int32_t curEndS1 = (BIdx == endBIdx && N1Idx == endN1Idx) ? endS1Idx : p.curQSBlockNum - 1;
@@ -609,8 +609,8 @@ namespace optiling{
                                     faTilingData.splitInfo.get_lseTaskOffset()[splitIdx] = currentLseTaskOffset;
                                     faTilingData.splitInfo.get_oTaskOffset()[splitIdx] = currentOTaskOffset;
                                 }
-                                prevBIdx = BIdx; 
-                                prevN1Idx = N1Idx; 
+                                prevBIdx = BIdx;
+                                prevN1Idx = N1Idx;
                                 prevS1Idx = S1Idx;
                             }
                             if (splitIdx >= 0 && splitIdx < (int32_t)(blockNum_ + 1)) {
@@ -642,12 +642,12 @@ namespace optiling{
 
         for (int32_t batchIdx = 0; batchIdx < faInfo_.batch; batchIdx++) {
             BatchParams p = getBatchParams(batchIdx, groupSize);
-            totalTaskNum += faInfo_.numHeads * p.qSeqlen * p.kvSeqlen;
+            totalTaskNum += static_cast<uint64_t>(faInfo_.numHeads) * p.qSeqlen * p.kvSeqlen;
         }
         uint64_t perCoreTaskNum = (totalTaskNum + blockNum_ - 1) / blockNum_;
         fillCoreInfoForFlashDecode(faTilingData, groupSize, perCoreTaskNum);
         fillSplitInfoForFlashDecode(faTilingData, groupSize);
-    }    
+    }
 
     void FAInferTiling::SplitCoreDecodeBS1GN2(FAInferTilingData &faTilingData)
     {
@@ -685,7 +685,7 @@ namespace optiling{
             tailKvNBlockTile = 0;
             tailLoopTaskNumRework = 0;
         }
-        
+
         faTilingData.set_mainLoopTaskNum(mainLoopTaskNum);
         faTilingData.set_tailLoopTaskNum(tailLoopTaskNumRework);
         faTilingData.set_tailStartBatch(tailStartBatch);

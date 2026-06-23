@@ -107,8 +107,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     int64_t nextGs1Idx, int64_t gS1StartIdx)
 {
     // 计算每个基本块可以拷贝多少行s
-    runParam.qSNumInOneBlock = (constInfo.gSize <= 64) ? \
-        (constInfo.s1BaseSize / constInfo.gSize) : 1;
+    runParam.qSNumInOneBlock = 1;
     runParam.gs1LoopStartIdx = gS1StartIdx;
     if (runParam.nextTokensPerBatchOri < 0) {
         int64_t gs1LoopStartIdx = runParam.nextTokensPerBatchOri * (-1) / runParam.qSNumInOneBlock *

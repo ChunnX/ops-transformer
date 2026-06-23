@@ -17,6 +17,8 @@ namespace optiling {
 namespace flash_attn {
 namespace fa_tiling_util {
 
+constexpr int64_t MAX_SEQ_LEN_DEFAULT = 2147483647;
+
 // layout 枚举值，与 FaLayout 一致，供外部算子使用
 constexpr uint32_t LAYOUT_BSH = 0;
 constexpr uint32_t LAYOUT_BSND = 0;
@@ -35,8 +37,8 @@ constexpr uint32_t DSIZE_256 = 256;
  * @brief 根据算子参数决定 sOuter / sInner 切块大小，纯函数，不依赖任何类。
  *
  * @param vHeadDim   V 的 head dim
- * @param s1Size     Q 的序列长度
- * @param s2Size     KV 的序列长度
+ * @param maxSeqQ    Q 的 max sequence length，-1 表示未知（按极大值处理）
+ * @param maxSeqKv   KV 的 max sequence length，-1 表示未知（按极大值处理）
  * @param maskMode   mask 模式（0/2/4 等）
  * @param winLeft    左侧窗口
  * @param winRight   右侧窗口
@@ -44,13 +46,20 @@ constexpr uint32_t DSIZE_256 = 256;
  * @param sOuterFactor [out] sOuter 切块大小
  * @param sInnerFactor [out] sInner 切块大小
  */
-inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t s1Size, int64_t s2Size, int32_t maskMode, int64_t winLeft,
-                                  int64_t winRight, uint32_t qLayout, uint32_t &sOuterFactor, uint32_t &sInnerFactor)
+inline void AdjustSinnerAndSouter(uint32_t vHeadDim, int64_t maxSeqQ, int64_t maxSeqKv, int32_t maskMode,
+                                  int64_t winLeft, int64_t winRight, uint32_t qLayout, uint32_t &sOuterFactor,
+                                  uint32_t &sInnerFactor)
 {
+    if (maxSeqQ == -1) {
+        maxSeqQ = MAX_SEQ_LEN_DEFAULT;
+    }
+    if (maxSeqKv == -1) {
+        maxSeqKv = MAX_SEQ_LEN_DEFAULT;
+    }
     sOuterFactor = SOUTER_64;
     sInnerFactor = SINNER_128;
 
-    bool checkQueryAndValueS = s1Size <= SOUTER_64 && s2Size > SINNER_128;
+    bool checkQueryAndValueS = maxSeqQ <= SOUTER_64 && maxSeqKv > SINNER_128;
 
     if (vHeadDim <= DSIZE_128) {
         int64_t winLeftTmp = winLeft;

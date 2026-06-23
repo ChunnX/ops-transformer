@@ -52,13 +52,13 @@ protected:
     __aicore__ inline void DumpGmZero(GlobalTensor<float> &gm, int64_t num);
     __aicore__ inline void CalRowsumAndSftCopyIn(const int64_t dyGmOffset, const int64_t lseGmOffset, const int32_t processM);
     __aicore__ inline void CalAttenMsk(const int32_t processM, const RunInfo &runInfo, const float maskVal);
-    __aicore__ inline void CalSoftmax(const int32_t loopIdx, const int32_t processM, const int64_t mm12Addr,
+    __aicore__ inline void CalSoftmax(const int32_t processM, const int64_t mm12Addr,
                                       const int64_t mm345Addr, const RunInfo &runInfo, const int32_t mOffset, const int64_t s1Index);
-    __aicore__ inline void CalSoftmaxGrad(const int32_t loopIdx, const int32_t processM, const int64_t mm12Addr,
+    __aicore__ inline void CalSoftmaxGrad(const int32_t processM, const int64_t mm12Addr,
                                           const int64_t mm345Addr, const RunInfo &runInfo);
     __aicore__ inline void CalSub(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, int32_t baseM,
                                   int32_t baseN);
-    __aicore__ inline void CalDsinks(const int32_t loopIdx, const int32_t processM, const RunInfo &runInfo, const int32_t mOffset);
+    __aicore__ inline void CalDsinks(const int32_t processM, const RunInfo &runInfo, const int32_t mOffset);
 
 protected:
     // core info
@@ -301,10 +301,12 @@ __aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_k
     usedWorkspaceLen += selectedKWorkspaceLen * usedCoreNum;
     // mm1 与 p 复用workspace
     int64_t mm1Addr = usedWorkspaceLen / sizeof(float) + cubeBlockIdx * mm12WorkspaceLen / sizeof(float);
+    usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     int64_t pAddr = usedWorkspaceLen / sizeof(T1) + cubeBlockIdx * mm12WorkspaceLen / sizeof(T1);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     // mm2 与 ds 复用workspace
     int64_t mm2Addr = usedWorkspaceLen / sizeof(float) + cubeBlockIdx * mm12WorkspaceLen / sizeof(float);
+    usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     int64_t dsAddr = usedWorkspaceLen / sizeof(T1) + cubeBlockIdx * mm12WorkspaceLen / sizeof(T1);
     usedWorkspaceLen += mm12WorkspaceLen * usedCoreNum;
     // post
@@ -555,7 +557,7 @@ __aicore__ inline void VecOp<SMLAGT>::CalAttenMsk(const int32_t processM, const 
 }
 
 template <typename SMLAGT>
-__aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t loopIdx, const int32_t processM, const int64_t mm12Addr,
+__aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t processM, const int64_t mm12Addr,
                                                 const int64_t mm345Addr, const RunInfo &runInfo, 
                                                 const int32_t mOffset, const int64_t s1Index)
 {
@@ -642,7 +644,7 @@ __aicore__ inline void VecOp<SMLAGT>::CalSoftmax(const int32_t loopIdx, const in
 }
 
 template <typename SMLAGT>
-__aicore__ inline void VecOp<SMLAGT>::CalSoftmaxGrad(const int32_t loopIdx, const int32_t processM,
+__aicore__ inline void VecOp<SMLAGT>::CalSoftmaxGrad(const int32_t processM,
                                                     const int64_t mm12Addr, const int64_t mm345Addr, const RunInfo &runInfo)
 {
     int64_t dataSize = processM * actualSelS2Align;
@@ -688,7 +690,7 @@ __aicore__ inline void VecOp<SMLAGT>::CalSoftmaxGrad(const int32_t loopIdx, cons
 }
 
 template <typename SMLAGT>
-__aicore__ inline void VecOp<SMLAGT>::CalDsinks(const int32_t loopIdx, const int32_t processM, const RunInfo &runInfo, const int32_t mOffset)
+__aicore__ inline void VecOp<SMLAGT>::CalDsinks(const int32_t processM, const RunInfo &runInfo, const int32_t mOffset)
 {
     if (MODE != SMLAG_SCFA_MODE && curActualRight - curActualLeft == 0) {
         return;
@@ -841,14 +843,20 @@ __aicore__ inline void VecOp<SMLAGT>::GatherKV(const int64_t n2Index, uint64_t c
 template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::Process(const RunInfo &runInfo)
 {
-    int32_t gloop = (dimG + params.sftBaseM - 1) / params.sftBaseM;
+    int32_t totalLines = dimG * runInfo.curS1Basic;
+    int32_t firstCoreLines = CeilDiv(totalLines, 2);
+
+    int32_t curCoreBegin = subBlockIdx == 0 ? 0 : firstCoreLines;
+    int32_t curCoreEnd = subBlockIdx == 0 ? firstCoreLines : totalLines;
+
     int32_t processM = params.sftBaseM;
-    int32_t tailM = dimG % params.sftBaseM;
     int64_t dataSize = processM * params.sftBaseN;
-    int64_t dyGmOffset = runInfo.dyGmOffset;
-    int64_t lseGmOffset = runInfo.lseGmOffset;
-    int64_t mm12Addr = runInfo.mm12GmOffset;
-    int64_t mm345Addr = runInfo.mm345GmOffset;
+
+    int64_t dyGmOffset = runInfo.dyGmOffset + curCoreBegin * dimDv;
+    int64_t lseGmOffset = runInfo.lseGmOffset + curCoreBegin;
+    int64_t mm12Addr = runInfo.mm12GmOffset + curCoreBegin * params.sftBaseN;
+    int64_t mm345Addr = runInfo.mm345GmOffset + curCoreBegin * params.sftBaseN;
+
     int32_t mOffset = 0;
     int64_t s1Index = runInfo.s1Index;
 
@@ -862,36 +870,35 @@ __aicore__ inline void VecOp<SMLAGT>::Process(const RunInfo &runInfo)
     }
     SET_FLAG(MTE3, MTE2, mte2WaitMte3);
     SET_FLAG(V, MTE2, mte2WaitV);
-    for (int32_t s1Basic = 0; s1Basic < runInfo.curS1Basic; s1Basic++) {
-        processM = params.sftBaseM;
-        mOffset = 0;
+    for (int32_t curLine = curCoreBegin; curLine < curCoreEnd;) {
+        s1Index = curLine / dimG + runInfo.s1Index;
+        mOffset = curLine % dimG;
+        processM = mOffset + params.sftBaseM > dimG ? dimG - mOffset : params.sftBaseM;
+        processM = curLine + processM > curCoreEnd ? curCoreEnd - curLine : processM;
+        
         dataSize = processM * params.sftBaseN;
-        for (int32_t i = 0; i < gloop; i++) {
-            if (i == gloop - 1 && tailM != 0) {
-                processM = tailM;
-                dataSize = tailM * params.sftBaseN;
-            }
-            CalRowsumAndSftCopyIn(dyGmOffset, lseGmOffset, processM);
-            dyGmOffset += (processM * dimDv);
-            lseGmOffset += processM;
+        CalRowsumAndSftCopyIn(dyGmOffset, lseGmOffset, processM);
+        dyGmOffset += (processM * dimDv);
+        lseGmOffset += processM;
 
-            CalSoftmax(i, processM, mm12Addr, mm345Addr, runInfo, mOffset, s1Index);
-            CalSoftmaxGrad(i, processM, mm12Addr, mm345Addr, runInfo);
-            CalDsinks(i, processM, runInfo, mOffset);
-            SET_FLAG(V, MTE2, mte2WaitV);
-            SET_FLAG(MTE3, MTE2, mte2WaitMte3);
-            mm12Addr += dataSize;
-            mm345Addr += dataSize;
-            mOffset += processM;
-        }
-        s1Index++;
+        CalSoftmax(processM, mm12Addr, mm345Addr, runInfo, mOffset, s1Index);
+        CalSoftmaxGrad(processM, mm12Addr, mm345Addr, runInfo);
+        CalDsinks(processM, runInfo, mOffset);
+        SET_FLAG(V, MTE2, mte2WaitV);
+        SET_FLAG(MTE3, MTE2, mte2WaitMte3);
+
+        mm12Addr += dataSize;
+        mm345Addr += dataSize;
+        curLine += processM;
     }
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         if (!runInfo.isOri) {
             Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f/(float)dimG, actualSelS2);
             SET_FLAG(V, MTE3, mte3WaitV);
             WAIT_FLAG(V, MTE3, mte3WaitV);
+            SetAtomicAdd<float>();
             DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor, {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
+            SetAtomicNone();
             SET_FLAG(MTE3, V, runInfo.vWaitMte3Proc);
         }
     }

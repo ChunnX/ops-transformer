@@ -13,11 +13,11 @@
 
 ## 功能说明
 
-- 接口功能：Swin Transformer网络模型完成 Q、K、V 的计算。  
+- 接口功能：Swin Transformer网络模型完成Q、K、V的计算。  
 - 计算公式：  
 
   q/k/v = (Quant(Layernorm(x).transpose)  * weight).dequant.transpose.split
-  其中，weight 是 Q、K、V 三个矩阵权重的拼接。
+  其中，weight是Q、K、V三个矩阵权重的拼接。
 
 ## 函数原型
 
@@ -185,7 +185,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
     <tr>
       <td>epsilon（double）</td>
       <td>输入</td>
-      <td>layernorm 计算除0保护值。</td>
+      <td>layernorm计算除0保护值。</td>
       <td>为了保证精度，取值建议小于等于1e-4。</td>
       <td>double</td>
       <td>-</td>
@@ -195,7 +195,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
     <tr>
       <td>oriHeight（int64_t）</td>
       <td>输入</td>
-      <td>layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为hWinSize的整数倍。</td>
+      <td>layernorm中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为hWinSize的整数倍。</td>
       <td>-</td>
       <td>int</td>
       <td>-</td>
@@ -205,7 +205,7 @@ aclnnStatus aclnnSwinTransformerLnQkvQuant(
     <tr>
       <td>oriWeight（int64_t）</td>
       <td>输入</td>
-      <td>layernorm 中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为wWinSize的整数倍。</td>
+      <td>layernorm中S轴transpose的维度；oriHeight*oriWeight需等于输入x的第二维S的大小，且为wWinSize的整数倍。</td>
       <td>-</td>
       <td>int</td>
       <td>-</td>
@@ -442,7 +442,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -549,7 +549,7 @@ int main() {
   ret = aclnnSwinTransformerLnQkvQuant(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSwinTransformerLnQkvQuant failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
