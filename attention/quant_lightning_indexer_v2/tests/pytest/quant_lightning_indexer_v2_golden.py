@@ -141,7 +141,6 @@ class GeneralizedQLIV2:
         self.sparse_count = sparse_count
         self.sparse_mode = sparse_mode
         self.cmp_ratio = cmp_ratio
-        self.w_dtype = torch.bfloat16
         self.return_value = return_value
 
         if layout_query == "BSND":
@@ -644,7 +643,6 @@ class GeneralizedQLIV2:
         block_num = self.block_num
         q_dtype = self.qk_dtype
         k_dtype = self.qk_dtype
-        w_dtype = self.w_dtype
         actual_seq_dtype = self.actual_seq_dtype
         cmp_ratio = self.cmp_ratio
 
