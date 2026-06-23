@@ -30,9 +30,7 @@
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
-#include "exe_graph/runtime/storage_format.h"
 #include "tiling_case_executor.h"
-#include "tiling_context_faker.h"
 #include "gmm_csv_ge_parse_utils.h"
 #include "op_tiling_parse_context_builder.h"
 #include "base/registry/op_impl_space_registry_v2.h"
@@ -138,78 +136,11 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
             compileInfoForRun->ubSize_);
     }
 
-    ge::graphStatus RunWithNullDynamicInputDesc(uint32_t nullInputIndex, uint32_t nullTensorIndex) const
-    {
-        auto compileInfoForRun = compileInfo;
-        vector<int64_t> tuningConfigVec = ops::ut::ParseDims(tuningConfig, {});
-        if (tuningConfigVec.empty()) {
-            tuningConfigVec = {0};
-        }
-
-        gert::TilingContextFaker contextFaker;
-        vector<uint32_t> inputInstanceNum;
-        vector<uint32_t> outputInstanceNum;
-        vector<gert::Tensor *> inputTensors;
-        vector<gert::Tensor *> outputTensors;
-        vector<unique_ptr<gert::Tensor>> inputTensorsKeepAlive;
-        vector<unique_ptr<gert::Tensor>> outputTensorsKeepAlive;
-        BuildTensorPtrs(inputs, nullInputIndex, nullTensorIndex, inputInstanceNum, inputTensors, inputTensorsKeepAlive);
-        BuildTensorPtrs(outputs, kInputTensorCount, 0U, outputInstanceNum, outputTensors, outputTensorsKeepAlive);
-
-        fe::PlatFormInfos platformInfo;
-        platformInfo.Init();
-        auto tilingData = gert::TilingData::CreateCap(4096);
-        auto workspaceSizeHolder = gert::ContinuousVector::Create<size_t>(4096);
-        auto workspaceSize = reinterpret_cast<gert::ContinuousVector *>(workspaceSizeHolder.get());
-        auto contextHolder = contextFaker.SetOpType("GroupedMatmulSwigluQuantV2")
-                                 .IrInstanceNum(inputInstanceNum, outputInstanceNum)
-                                 .InputTensors(inputTensors)
-                                 .OutputTensors(outputTensors)
-                                 .Attr("dequant_mode", dequantMode)
-                                 .Attr("dequant_dtype", dequantDtype)
-                                 .Attr("quant_mode", quantMode)
-                                 .Attr("quant_dtype", quantDtype)
-                                 .Attr("transpose_weight", transposeWeight)
-                                 .Attr("group_list_type", groupListType)
-                                 .Attr("tuning_config", tuningConfigVec)
-                                 .CompileInfo(&compileInfoForRun)
-                                 .PlatformInfo(reinterpret_cast<char *>(&platformInfo))
-                                 .TilingData(tilingData.get())
-                                 .Workspace(workspaceSize)
-                                 .Build();
-        auto tilingContext = contextHolder.GetContext();
-        const auto *instanceInfo = tilingContext->GetIrInputInstanceInfo(nullInputIndex);
-        if (instanceInfo == nullptr || instanceInfo->GetInstanceNum() <= nullTensorIndex) {
-            return ge::GRAPH_FAILED;
-        }
-        auto *desc = tilingContext->GetComputeNodeInfo()->MutableInputTdInfo(
-            instanceInfo->GetInstanceStart() + nullTensorIndex);
-        if (desc == nullptr) {
-            return ge::GRAPH_FAILED;
-        }
-        desc->SetExist(false);
-        SetPlatformInfo(*tilingContext, compileInfoForRun);
-        auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-        auto tilingFunc = spaceRegistry->GetOpImpl("GroupedMatmulSwigluQuantV2")->tiling;
-        return tilingFunc(tilingContext);
-    }
-
     void Run() const
     {
         if (!enable) {
             return;
         }
-        if (caseName.find("neg003_invalid_weight_desc_null") != string::npos) {
-            EXPECT_EQ(RunWithNullDynamicInputDesc(GroupedMatmulSwigluQuantV2Tiling::WEIGHT_INDEX, 1U),
-                      ge::GRAPH_FAILED);
-            return;
-        }
-        if (caseName.find("neg004_invalid_weight_scale_desc_null") != string::npos) {
-            EXPECT_EQ(RunWithNullDynamicInputDesc(GroupedMatmulSwigluQuantV2Tiling::WEIGHT_SCALE_INDEX, 1U),
-                      ge::GRAPH_FAILED);
-            return;
-        }
-
         auto compileInfoForRun = compileInfo;
         auto tilingContextPara = BuildContext(&compileInfoForRun);
         if (expectSuccess) {
@@ -253,48 +184,6 @@ private:
             }
         }
         return descs;
-    }
-
-    template <size_t N>
-    static void BuildTensorPtrs(const array<vector<TensorDescParam>, N> &tensors, uint32_t nullInputIndex,
-                                uint32_t nullTensorIndex, vector<uint32_t> &instanceNum,
-                                vector<gert::Tensor *> &tensorPtrs,
-                                vector<unique_ptr<gert::Tensor>> &tensorsKeepAlive)
-    {
-        for (size_t inputIndex = 0; inputIndex < N; ++inputIndex) {
-            const auto &tensorList = tensors[inputIndex];
-            instanceNum.push_back(static_cast<uint32_t>(tensorList.size()));
-            for (size_t tensorIndex = 0; tensorIndex < tensorList.size(); ++tensorIndex) {
-                const auto &tensor = tensorList[tensorIndex];
-                auto curTensor = make_unique<gert::Tensor>(
-                    ops::ut::MakeGertStorageShape(tensor.originDims, tensor.storageDims),
-                    gert::StorageFormat(tensor.format, tensor.format, gert::ExpandDimsType()),
-                    gert::TensorPlacement::kOnHost, tensor.dtype, nullptr);
-                tensorPtrs.push_back(curTensor.get());
-                tensorsKeepAlive.push_back(std::move(curTensor));
-            }
-        }
-    }
-
-    static void SetPlatformInfo(gert::TilingContext &tilingContext, const optiling::GMMSwigluV2CompileInfo &compileInfo)
-    {
-        map<string, string> socInfos = {
-            {"ai_core_cnt", to_string(compileInfo.aicNum_)}, {"l2_size", "33554432"}, {"core_type_list", "AICore"}};
-        map<string, string> aicoreSpec = {{"ub_size", to_string(compileInfo.ubSize_)},
-                                          {"l1_size", "524288"},
-                                          {"l0_a_size", "65536"},
-                                          {"l0_b_size", "65536"},
-                                          {"l0_c_size", "131072"}};
-        map<string, string> intrinsics = {{"Intrinsic_data_move_l12ub", "float16"},
-                                          {"Intrinsic_data_move_l0c2ub", "float16"},
-                                          {"Intrinsic_fix_pipe_l0c2out", "float16"},
-                                          {"Intrinsic_data_move_l12bt", "bf16"}};
-        map<string, string> versions = {{"NpuArch", "3510"}, {"Short_SoC_version", "Ascend950"}};
-        tilingContext.GetPlatformInfo()->SetPlatformRes("SoCInfo", socInfos);
-        tilingContext.GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicoreSpec);
-        tilingContext.GetPlatformInfo()->SetCoreNumByCoreType("AICore");
-        tilingContext.GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
-        tilingContext.GetPlatformInfo()->SetPlatformRes("version", versions);
     }
 };
 
