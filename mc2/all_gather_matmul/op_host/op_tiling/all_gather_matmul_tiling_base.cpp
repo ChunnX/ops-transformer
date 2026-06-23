@@ -13,6 +13,8 @@
  * \brief
  */
 #include "all_gather_matmul_tiling_base.h"
+#include "mc2_log.h"
+#include "ops_utils.h"
 
 using namespace AscendC;
 using namespace ge;
