@@ -197,6 +197,7 @@ private:
     using CostTable = Table<int64_t, BLOCK_MAX_TYPE, BLOCK_MAX_TYPE>;
 private:
     inline static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
+    inline static uint32_t CalcEffectiveL2Byte(uint32_t maxS2, uint32_t headDim);
     inline CostTable CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
         uint32_t s2TailSize);
     static inline Range<uint32_t> CalcCoreRange(uint32_t sectionIdx, const ComputeContext &computeContext);
@@ -279,6 +280,7 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
 
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     GridInfo &gridInfo = computeContext.gridInfo;
+    uint32_t maxS2 = 0U;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         uint32_t s1Size = baseInfo.GetQuerySeqSize(bIdx);
         uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
@@ -290,28 +292,23 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         if (gridInfo.mBaseNum[bIdx] != 0U && gridInfo.s2BaseNum[bIdx] != 0U) {
             gridInfo.isEmpty = false;
         }
-    }
-
-    // 计算所有head的最大数据量，用于判断是否需要开启section切分
-    int64_t maxHeadTokenCost = 0U;
-    int64_t headDim = static_cast<int64_t>(baseInfo.GetHeadDim());
-    for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
-        int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
-        int64_t tokenCost = s2Size * headDim *
-            static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
-        if (tokenCost > maxHeadTokenCost) {
-            maxHeadTokenCost = tokenCost;
+        if (s2Size > maxS2) {
+            maxS2 = s2Size;
         }
     }
 
-    // 如果L2未设置，或者最大单个head数据量不超过每个核可用的L2容量，则不进行section切分
-    if (m_param.l2Byte == 0U || maxHeadTokenCost <= m_param.l2Byte / computeContext.deviceInfo.aicCoreMaxNum) {
+    // 根据 S2*Dim 计算实际可用的 L2 大小
+    uint32_t effectiveL2Byte = CalcEffectiveL2Byte(maxS2, baseInfo.GetHeadDim());
+
+    // 如果有效L2为0，则不进行section切分
+    if (effectiveL2Byte == 0U) {
         gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
         gridInfo.sectionNum = 1;
         return;
     }
 
     // calc section
+    int64_t headDim = static_cast<int64_t>(baseInfo.GetHeadDim());
     int64_t tokenSize = 0L;
     uint32_t bn2Idx = 0U;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
@@ -319,7 +316,7 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
             int64_t tokenCost = s2Size * headDim *
                 static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
-            if (!IsWithinTolerance(static_cast<int64_t>(m_param.l2Byte), 0L, tokenSize + tokenCost) && tokenSize != 0) {
+            if (!IsWithinTolerance(static_cast<int64_t>(effectiveL2Byte), 0L, tokenSize + tokenCost) && tokenSize != 0) {
                 gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
                 gridInfo.sectionNum++;
                 tokenSize = 0L;
@@ -468,6 +465,17 @@ inline int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
     int64_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     int64_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
+}
+
+inline uint32_t SectionStreamKImpl::CalcEffectiveL2Byte(uint32_t maxS2, uint32_t headDim)
+{
+    // L2(MB) = 16 * ceil(S2*Dim / 600000)
+    int64_t s2Dim = static_cast<int64_t>(maxS2) * headDim;
+    if (s2Dim <= 262144) { // 2048*128: 不需要section切分
+        return 0U;
+    }
+    int64_t l2MB = 16 * ((s2Dim + 599999) / 600000);
+    return static_cast<uint32_t>(l2MB) * 1024U * 1024U;
 }
 
 inline Range<uint32_t> SectionStreamKImpl::CalcCoreRange(uint32_t sectionIdx, const ComputeContext &computeContext)
