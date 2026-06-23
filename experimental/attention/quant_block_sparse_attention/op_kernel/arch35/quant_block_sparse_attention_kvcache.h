@@ -80,7 +80,10 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
     }
     // 计算query偏移量
     if constexpr (layout == BSALayout::TND) {
-        runParam.qBScalarOffset = (runParam.boIdx == 0) ? 0 : actualSeqQlenAddr[runParam.boIdx - 1] * constInfo.n2G;
+        runParam.qBScalarOffset = (runParam.boIdx == 0) ? 0 : actualSeqQlenAddr[runParam.boIdx] * constInfo.n2G;
+        runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
+    } else if constexpr (layout == BSALayout::NTD) {
+        runParam.qBScalarOffset = (runParam.boIdx == 0) ? 0 : constInfo.t1Size * runParam.n2oIdx * (constInfo.gSize + runParam.goIdx) + actualSeqQlenAddr[runParam.boIdx];
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     } else if constexpr (layout == BSALayout::NTD) {
         runParam.qBScalarOffset = 0;

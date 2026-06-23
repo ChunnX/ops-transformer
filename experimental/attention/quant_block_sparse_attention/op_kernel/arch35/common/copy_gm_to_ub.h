@@ -93,6 +93,15 @@ private:
             int64_t n1Idx = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx;
             int64_t qScaleOffset = runInfo.qBScalarOffset + runInfo.sOuterOffset * constInfo.n1Size + n1Idx;
             DataCopyPad(dstTensor, srcTensor[qScaleOffset], dataCopyParams, dataCopyPadParams);
+        } else if (GM_FORMAT == BSALayout::NTD) {
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = 1;
+            dataCopyParams.blockLen = runInfo.halfS1RealSize * sizeof(float);
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
+            DataCopyPadExtParams<T> dataCopyPadParams{};
+            int64_t qScaleOffset = runInfo.qBScalarOffset + runInfo.sOuterOffset;
+            DataCopyPad(dstTensor, srcTensor[qScaleOffset], dataCopyParams, dataCopyPadParams);
         } else if (GM_FORMAT == BSALayout::BSND) {
 
         } else if (GM_FORMAT == BSALayout::BNSD) {

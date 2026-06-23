@@ -24,7 +24,7 @@ static constexpr MicroAPI::CastTrait castTraitFp16_32_update = {MicroAPI::RegLay
 constexpr uint16_t REDUCE_SIZE = 1;
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
-    __ubuf__ float * expMaxUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
+    __ubuf__ float * expMaxUb, const uint16_t m, const uint16_t d,
     const float deScaleV, const float deScaleVPre)
 {
     constexpr uint16_t floatRepSize = 64;
@@ -65,17 +65,16 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float * dstUb, __ubuf__ floa
  * ************************************************************************************************* */
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __aicore__ inline void FlashUpdateBasic(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor,
+    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
     const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
 {
     __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
     __ubuf__ float * curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
     __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
     __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
-    __ubuf__ float * rowMaxUb = (__ubuf__ T*)rowMaxTensor.GetPhyAddr();
 
     FlashUpdateBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre>(
-        dstUb, curUb, preUb, expMaxUb, rowMaxUb, m, d, deScaleV, deScaleVPre);
+        dstUb, curUb, preUb, expMaxUb, m, d, deScaleV, deScaleVPre);
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre>
@@ -174,14 +173,14 @@ __aicore__ inline void FlashUpdateGeneral(const LocalTensor<T>& dstTensor, const
  */
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre>
 __aicore__ inline void FlashUpdateNew(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
-    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor, const uint16_t m, const uint16_t d,
+    const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor, const uint16_t m, const uint16_t d,
     const float deScaleV, const float deScaleVPre)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdate, T must be float");
 
     constexpr uint16_t floatRepSize = 64;
     if constexpr(srcD % floatRepSize == 0) {
-        FlashUpdateBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre>(dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor,
+        FlashUpdateBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre>(dstTensor, curTensor, preTensor, expMaxTensor,
         m, d, deScaleV, deScaleVPre);
     } else {
 
@@ -192,7 +191,7 @@ __aicore__ inline void FlashUpdateNew(const LocalTensor<T>& dstTensor, const Loc
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ float * curUb, __ubuf__ float * preUb,
-    __ubuf__ float * expMaxUb, __ubuf__ float * expSumUb, __ubuf__ float * rowMaxUb, const uint16_t m, const uint16_t d,
+    __ubuf__ float * expMaxUb, __ubuf__ float * expSumUb, const uint16_t m, const uint16_t d,
     const float deScaleV, const float deScaleVPre)
 {
     RegTensor<float> vreg_exp_max;
@@ -238,7 +237,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T>& dstTensor,
     const LocalTensor<T>& curTensor, const LocalTensor<T>& preTensor,
-    const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& expSumTensor,
     const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
 {
     __ubuf__ float * dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
@@ -246,10 +245,9 @@ __aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T>& dstTensor,
     __ubuf__ float * preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
     __ubuf__ float * expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
     __ubuf__ float * expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
-    __ubuf__ float * rowMaxUb = (__ubuf__ T*)rowMaxTensor.GetPhyAddr();
 
     FlashUpdateLastBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre>(
-        dstUb, curUb, preUb, expMaxUb, expSumUb, rowMaxUb, m, d, deScaleV, deScaleVPre);
+        dstUb, curUb, preUb, expMaxUb, expSumUb, m, d, deScaleV, deScaleVPre);
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre>
@@ -357,7 +355,7 @@ __aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T>& dstTensor,
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre>
 __aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor,
     const LocalTensor<T>& curTensor, const LocalTensor<T>& preTensor,
-    const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& rowMaxTensor, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& expSumTensor,
     uint16_t m, uint16_t d, const float deScaleV, const float deScaleVPre)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdateLast, T must be float");
@@ -365,7 +363,7 @@ __aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor,
     constexpr uint16_t floatRepSize = 64;
     if constexpr(srcD % floatRepSize == 0) {
         FlashUpdateLastBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre>(
-            dstTensor, curTensor, preTensor, expMaxTensor, rowMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
+            dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
     } else {
         FlashUpdateLastGeneral<T, INPUT_T, OUTPUT_T, REDUCE_SIZE, isUpdatePre>(
             dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
