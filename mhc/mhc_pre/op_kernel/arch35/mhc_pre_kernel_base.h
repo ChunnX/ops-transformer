@@ -376,13 +376,11 @@ public:
         float alphaPre = alphaGm_.GetValue(kAlphaPreIndex);
         float alphaPost = alphaGm_.GetValue(kAlphaPostIndex);
 
-  
         for (uint64_t i = 0; i < N_; ++i) {
             alphaInUb_.SetValue(i, alphaPre);
             alphaInUb_.SetValue(i + N_, alphaPost);
         }
 
-  
         if (hasResi_) {
             float alphaComb = alphaGm_.GetValue(kAlphaCombIndex);
             for (uint64_t i = 0; i < N_; ++i) {

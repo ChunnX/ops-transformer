@@ -102,41 +102,44 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
         return GRAPH_FAILED);
 
     int64_t alphaDimSize = alphaShape->GetDim(0);
+    // alphaDimSize only can be 2 or 3
     OP_CHECK_IF(alphaDimSize != 2 && alphaDimSize != 3,
                 OP_LOGE(context->GetNodeName(), "Alpha dim[0] must be 2 or 3, got %ld", alphaDimSize),
                 return GRAPH_FAILED);
-
+    // has residual
     bool hasResi = (alphaDimSize == 3);
 
     gert::Shape *outShapes[6] = {context->GetOutputShape(OUT_H_IN_INDEX),   context->GetOutputShape(OUT_H_POST_INDEX),
                                  context->GetOutputShape(OUT_H_RES_INDEX),  context->GetOutputShape(OUT_INV_RMS_INDEX),
                                  context->GetOutputShape(OUT_MM_RES_INDEX), context->GetOutputShape(OUT_H_PRE_INDEX)};
     if (xDim == BSND_DIM_NUM) {
+        // b,s,n,d
         uint64_t b = xShape->GetDim(0), s = xShape->GetDim(1), n = xShape->GetDim(2), d = xShape->GetDim(3);
-        uint64_t matK = hasResi ? (n * n + 2 * n) : (2 * n);
-        SetShape3D(outShapes[0], b, s, d);
-        SetShape3D(outShapes[1], b, s, n);
+        uint64_t matN = hasResi ? (n * n + 2 * n) : (2 * n);
+        SetShape3D(outShapes[OUT_H_IN_INDEX], b, s, d);
+        SetShape3D(outShapes[OUT_H_POST_INDEX], b, s, n);
         if (hasResi) {
-            SetShape4D(outShapes[2], b, s, n, n);
+            SetShape4D(outShapes[OUT_H_RES_INDEX], b, s, n, n);
         } else {
-            SetShape1D(outShapes[2], 0);
+            SetShape1D(outShapes[OUT_H_RES_INDEX], 0);
         }
-        SetShape2D(outShapes[3], b, s);
-        SetShape3D(outShapes[4], b, s, matK);
-        SetShape3D(outShapes[5], b, s, n);
+        SetShape2D(outShapes[OUT_INV_RMS_INDEX], b, s);
+        SetShape3D(outShapes[OUT_MM_RES_INDEX], b, s, matN);
+        SetShape3D(outShapes[OUT_H_PRE_INDEX], b, s, n);
     } else {
+        // t,n,d
         uint64_t t = xShape->GetDim(0), n = xShape->GetDim(1), d = xShape->GetDim(2);
-        uint64_t matK = hasResi ? (n * n + 2 * n) : (2 * n);
-        SetShape2D(outShapes[0], t, d);
-        SetShape2D(outShapes[1], t, n);
+        uint64_t matN = hasResi ? (n * n + 2 * n) : (2 * n);
+        SetShape2D(outShapes[OUT_H_IN_INDEX], t, d);
+        SetShape2D(outShapes[OUT_H_POST_INDEX], t, n);
         if (hasResi) {
-            SetShape3D(outShapes[2], t, n, n);
+            SetShape3D(outShapes[OUT_H_RES_INDEX], t, n, n);
         } else {
-            SetShape1D(outShapes[2], 0);
+            SetShape1D(outShapes[OUT_H_RES_INDEX], 0);
         }
-        SetShape1D(outShapes[3], t);
-        SetShape2D(outShapes[4], t, matK);
-        SetShape2D(outShapes[5], t, n);
+        SetShape1D(outShapes[OUT_INV_RMS_INDEX], t);
+        SetShape2D(outShapes[OUT_MM_RES_INDEX], t, matN);
+        SetShape2D(outShapes[OUT_H_PRE_INDEX], t, n);
     }
 
     OP_LOGD(context->GetNodeName(), "End to do InferShape MhcPre");
