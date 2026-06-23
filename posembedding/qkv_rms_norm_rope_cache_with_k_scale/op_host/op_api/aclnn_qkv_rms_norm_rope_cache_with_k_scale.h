@@ -11,13 +11,14 @@
 #ifndef OP_API_INC_LEVEL2_ACLNN_QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_H_
 #define OP_API_INC_LEVEL2_ACLNN_QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_H_
 
-#include "aclnn/acl_meta.h"
+#include "aclnn/aclnn_base.h"
+#include "aclnn_util.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
+ACLNN_API aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma, const aclTensor *cosSin,
     const aclTensor *slotMapping, aclTensor *kCache, aclTensor *vCache, aclTensor *kScaleCache,
     const aclTensor *cuSeqLen, const aclTensor *actualSeqLens, const aclTensor *optionalQRotation,
@@ -25,7 +26,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQkvRmsNormRopeCacheWithK
     const char *inputLayout, float epsilon, aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
+ACLNN_API aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
