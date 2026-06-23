@@ -481,7 +481,19 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
         flashDecodeFlag_ = (result.fdRes.fdNum > 0);
     }
 
-    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo));
+    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) ||
+                                   IsActualSeqLengthsKVHasZero(baseInfo));
+}
+
+bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo)
+{
+    for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
+        uint32_t s2Size = split_core_v2::GetS2SeqSize(bIdx, baseInfo);
+        if (s2Size == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool FiaTilingFullQuantMxArch35::IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo)
