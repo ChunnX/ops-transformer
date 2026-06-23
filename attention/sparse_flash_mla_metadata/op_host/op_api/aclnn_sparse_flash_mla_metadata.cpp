@@ -14,7 +14,7 @@
  */
 
 #include "aclnn_sparse_flash_mla_metadata.h"
-#include "sparse_flash_mla_metadata.h"
+#include "l0_sparse_flash_mla_metadata.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn/aclnn_base.h"
