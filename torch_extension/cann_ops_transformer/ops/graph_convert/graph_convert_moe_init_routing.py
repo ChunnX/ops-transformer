@@ -114,8 +114,8 @@ if _TORCHAIR_AVAILABLE:
             .output("expanded_topk_weight", "DT_FLOAT")
         )
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_moe_init_routing.default)
-    def convert_npu_moe_init_routing(
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.moe_init_routing.default)
+    def convert_moe_init_routing(
         x: Tensor,
         expert_idx: Tensor,
         *,

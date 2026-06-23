@@ -18,13 +18,13 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class _MoeInitRoutingOpBuilder(OpBuilder):
     def __init__(self):
-        super(_MoeInitRoutingOpBuilder, self).__init__("npu_moe_init_routing")
+        super(_MoeInitRoutingOpBuilder, self).__init__("moe_init_routing")
 
     def sources(self):
         return ['ops/csrc/moe_init_routing.cpp']
 
     def schema(self) -> str:
-        return "npu_moe_init_routing(Tensor x, Tensor expert_idx, " \
+        return "moe_init_routing(Tensor x, Tensor expert_idx, " \
             "*, Tensor? scale=None, Tensor? offset=None, Tensor? topk_weight=None, " \
             "int active_num=-1, int expert_capacity=-1, int expert_num=-1, " \
             "int drop_pad_mode=0, int expert_tokens_num_type=0, bool expert_tokens_num_flag=False, " \
@@ -33,7 +33,7 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_init_routing_meta(x, expert_idx, scale=None, offset=None, topk_weight=None,
+        def moe_init_routing_meta(x, expert_idx, scale=None, offset=None, topk_weight=None,
                                        active_num=-1, expert_capacity=-1, expert_num=-1,
                                        drop_pad_mode=0, expert_tokens_num_type=0, expert_tokens_num_flag=False,
                                        quant_mode=-1, active_expert_range=None, row_idx_type=0):
@@ -92,11 +92,11 @@ _op_module = _moe_init_routing_op_builder.load()
 
 
 @impl(AS_LIBRARY, _moe_init_routing_op_builder.name, "PrivateUse1")
-def npu_moe_init_routing_dispatch(x, expert_idx, scale=None, offset=None, topk_weight=None,
+def moe_init_routing_dispatch(x, expert_idx, scale=None, offset=None, topk_weight=None,
                                     active_num=-1, expert_capacity=-1, expert_num=-1,
                                     drop_pad_mode=0, expert_tokens_num_type=0, expert_tokens_num_flag=False,
                                     quant_mode=-1, active_expert_range=None, row_idx_type=0):
-    return _op_module.npu_moe_init_routing(x, expert_idx, scale, offset, topk_weight,
+    return _op_module.moe_init_routing(x, expert_idx, scale, offset, topk_weight,
                                             active_num, expert_capacity, expert_num, drop_pad_mode,
                                             expert_tokens_num_type, expert_tokens_num_flag, quant_mode,
                                             active_expert_range, row_idx_type)
@@ -136,7 +136,7 @@ def moe_init_routing(x: torch.Tensor, expert_idx: torch.Tensor,
         A tuple of (expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum,
                     expanded_scale, expanded_topk_weight).
     """
-    return torch.ops.cann_ops_transformer.npu_moe_init_routing(
+    return torch.ops.cann_ops_transformer.moe_init_routing(
         x, expert_idx, scale=scale, offset=offset, topk_weight=topk_weight,
         active_num=active_num, expert_capacity=expert_capacity, expert_num=expert_num,
         drop_pad_mode=drop_pad_mode, expert_tokens_num_type=expert_tokens_num_type,
