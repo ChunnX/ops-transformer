@@ -155,25 +155,72 @@ s2Tail = total - (s2Loop - 1) * 128;  // 尾块有效数
 
 ## 4. 核间流水排布
 
-### 4.1 多核划分策略
+### 4.1 动机与问题
 
-> Sequence Length / Head / Batch 等维度如何划分到多个 AI Core。
+第 3 章把地址计算向量化后，标量（scalar）耗时大幅下降，但端到端总耗时并未随之明显下降——cube 利用率（MFU）依旧偏低（N=128、SCFA 下，prefill 约 46%、decode 约 41%）。可见仅压低 scalar 不足以兑现端到端收益：
 
-### 4.2 流水阶段定义
+| N=128 SCFA prefill（S1=1024, S2=8192） | AIV scalar (µs) | 端到端耗时 (µs) | MFU |
+|---|---:|---:|---:|
+| 向量化前 | 649.5 | 708.5 | 53.8% |
+| 向量化后 | 428.1 | 704.2 | 53.7% |
+| **Δ** | **−34%** | **−0.6%** | **≈持平** |
 
-> 描述各流水阶段（如 LoadKV → Compute → Store）及其依赖关系。
+scalar 被砍掉约三分之一（−221µs），但端到端耗时与 MFU 几乎没动（−0.6%；MFU 53.8% → 53.7%）。
 
-![核间流水排布](fig/inter_core_pipeline.png)
+本章从**核间流水排布**入手——加深流水、并改写右矩阵在两核之间的传递方式，把右矩阵的产出与送达更早地排到前序计算之前，从而把端到端耗时降下来。
 
-### 4.3 流水排布时序图
+### 4.2 v0preload：加深软件流水（N=128）
 
-> 各 AI Core 在时间轴上的任务分配，展示 overlap 情况。
+每个 S2 基本块都要用到一份 **bf16 的反量化 KV**（`s2BaseSize=128 × D=512`，合计 **128KB**），由 AIV 的 `ProcessVec0` 算出后从 UB 搬到 L1 右矩阵缓冲 `l1RightBuffers`。这份右矩阵从产出一直存活到被 bmm2 消费——既作为 bmm1 的右矩阵（当 K，算 Q·Kᵀ），又作为 bmm2 的右矩阵（当 V，算 P·V）。
 
-![流水时序图](fig/pipeline_timeline.png)
+**修改前（3 级流水）**：`PRELOAD_NUM = 2`、`runInfo[3]`，同一时刻最多 3 份任务在执行。取数（`IterateLoadQK`）与产出（`ProcessVec0`）处于同一个流水级、未被前置预取——AIC 必须等 `ProcessVec0`（AIV 产出右矩阵）完成并跨核同步后才能取数：
 
-### 4.4 负载均衡与调优
+```
+vec0(t) + load(t)   // 产出右矩阵后同级取数（load 未前置）
+bmm1(t-1)           // Q·Kᵀ
+bmm2(t-2)           // P·V
+```
 
-> 如何处理尾部不均衡、Bank Conflict、通信隐藏等实际问题。
+**修改后（4 级流水）**：v0preload 把 `PRELOAD_NUM` 提到 3、`runInfo[4]`，多预取一拍，同一时刻 4 份右矩阵分处四个阶段：
+
+```
+vec0(t)        // AIV 算出第 t 块右矩阵（ProcessVec0）
+load(t-1)      // AIC 预取第 t-1 块（IterateLoadQK）
+bmm1(t-2)      // Q·Kᵀ
+bmm2(t-3)      // P·V
+```
+
+这样 AIC 可以提前一个 tile 发起 `IterateLoadQK`。注意：虽然 4 份任务在执行，但任一时刻 L1 上只需保留 3 份右矩阵——处于 load / bmm1 / bmm2 三个阶段的那 3 份需驻留 L1 供 cube 读取，而处于 vec0 阶段（正在产出）的第 4 份此刻还在 UB / GM 的 `v0ResGm`、尚未进 L1，因此 `l1RightBuffers` 的 3 个槽（`taskIdMod3` 轮转）正好够用。
+
+N=128 的右矩阵本就经 GM 在两个 AIC 之间传递（G=128 跨 2 个 AIC，各算 64 头），不涉及 L1 容量问题，因此是验证流水加深收益的理想场景。
+
+### 4.3 推广到 N=64：核间同步重构
+
+N=128 因右矩阵本就经 GM 中转，第 4 份天然能放进 GM；N=64 原先由 AIV 把右矩阵从 UB 直接搬到 L1（`CopyOutKvUb2L1`），没有走 GM 进行数据中转，加深到 4 级就得给第 4 份找落脚处。
+
+但 **L1 已被占满**，放不下第 4 个 128KB 的右矩阵槽——L1 共 512KB，分配为：右矩阵区 `l1RightBuffers` `3×128KB = 384KB`、P 缓冲 `l1P` `2×16KB = 32KB`、Q 缓冲 `l1Q` `96KB`，合计 `384 + 32 + 96 = 512KB`。
+
+**为了在 N=64 使能该优化，需要把右矩阵也改走 GM 中转**：`ProcessVec0` 算出后由 `CopyOutKvUb2Gm` 写到 GM 上的 `v0ResGm`，AIC 用时再经 `IterateLoadQK` 从 GM `DataCopy` 回某个 `l1RightBuffers` 槽——用充裕的 GM 承接放不进 L1 的第 4 份。3 个 L1 槽仍按 `taskIdMod3` 复用（每份右矩阵在槽内存活 ≤3 轮：load→bmm1→bmm2），L1 分配不变。
+
+随之**核间同步从「L1 跨核」改为「GM 跨核」**：barrier 由「右矩阵写完 L1」（`CopyOutKvUb2L1` 的 `CROSS_CORE_SYNC_FORWARD`，AIC 在 `MTE1` 等待）前移到「AIC 预取」（`CopyOutKvUb2Gm` 的 `CROSS_CORE_SYNC_BACKWARD`，AIC 在 `IterateLoadQK` 内以 `MTE2` 等待后再 `DataCopy`），使 AIC 能提前发起 GM→L1 预取、与前序 cube 计算 overlap。这条改写同时统一了代码：N=64 与 N=128 不再按 `IS_SPLIT_G` 分作两条路径，双主循环 `ProcessMainLoopN64`/`ProcessMainLoopN128` 也合并为单一 `ProcessMainLoop`。
+
+### 4.4 性能数据
+
+**N=128**：SCFA 平均加速 **25.3%**、CFA **27.7%**（整体 MFU 49.1% → 65.7% / 67.9%）；SWA 性能持平。
+
+| 典型例子（N=128, SCFA） | before(µs) | after(µs) | 加速 | MFU 前→后 |
+|---|---:|---:|---:|---:|
+| prefill | 10212.13 | 7734.07 | 24.3% | 56.0%→74.0% |
+| decode | 132.69 | 101.39 | 23.6% | 50.5%→66.1% |
+
+**N=64**：SCFA 平均加速 **24.4%**、CFA **42.8%**、SWA **19.5%**（整体 MFU 33.5 / 36.6 / 28.8% → 44.3 / 64.1 / 35.8%）。
+
+| 典型例子（N=64, SCFA） | before(µs) | after(µs) | 加速 | MFU 前→后 |
+|---|---:|---:|---:|---:|
+| prefill | 8422.47 | 6174.28 | 26.7% | 34.0%→46.3% |
+| decode | 113.69 | 79.15 | 30.4% | 29.5%→42.3% |
+
+**收益来自核间流水的改善。** profiling 对比修改前后各流水段的忙碌耗时：cube MAC、AIV scalar、AIV vec 等各计算段均无下降，甚至 cube、vec 的 MTE2（搬运）耗时还略有增加；但端到端耗时仍明显下降——说明收益来自流水把各段更好地 overlap 掩盖。
 
 ---
 
@@ -205,3 +252,10 @@ s2Tail = total - (s2Loop - 1) * 128;  // 尾块有效数
 | GM | Global Memory，全局存储 |
 | UB | Unified Buffer，统一缓冲区 |
 | KV Cache | Key-Value 缓存 |
+| AIC | AI Cube，矩阵计算核（执行 bmm1/bmm2） |
+| AIV | AI Vector，向量计算核（产出右矩阵/反量化 KV） |
+| L1 | 片上 L1 缓冲（存右矩阵 `l1RightBuffers`、P、Q） |
+| bmm1 / bmm2 | 批量矩阵乘：bmm1 = Q·Kᵀ，bmm2 = P·V |
+| 右矩阵 | bmm 的右操作数，即反量化后的 KV（每块 128KB），由 AIV 产出 |
+| v0preload | 本章优化：加深软件流水预取右矩阵，掩盖核间交付延迟 |
+| MFU | 理论 cube 矩阵乘耗时 / 实测内核耗时，越高越接近计算瓶颈 |
