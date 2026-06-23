@@ -141,22 +141,8 @@ class GeneralizedQLIV2:
         self.sparse_count = sparse_count
         self.sparse_mode = sparse_mode
         self.cmp_ratio = cmp_ratio
-        self.w_dtype = dequant_dtype
+        self.w_dtype = torch.bfloat16
         self.return_value = return_value
-
-        if layout_query == "BSND":
-            self.q_shape = [batch_size, q_seq, q_head_num, head_dim]
-            self.w_shape = [batch_size, q_seq, q_head_num]
-            self.q_tnd_flag = 0
-        elif layout_query == "TND":
-            self.q_shape = [q_t_size, q_head_num, head_dim]
-            self.w_shape = [q_t_size, q_head_num]
-            self.q_tnd_flag = 1
-
-        if layout_key == "BSND":
-            self.k_shape = [batch_size, k_seq, k_head_num, head_dim]
-        elif layout_key == "TND":
-            self.k_shape = [k_t_size, k_head_num, head_dim]
 
         if layout_query == "BSND":
             self.out_shape = [batch_size, q_seq, k_head_num, sparse_count]
@@ -179,11 +165,11 @@ class GeneralizedQLIV2:
         k_scale_bnsd_tensor = self.k_scale_bnsd_tensor
         cmp_ratio = self.cmp_ratio
 
-        out_shape_bnsd = copy.deepcopy(self.q_bnsd_shape)
+        out_shape_bnsd = list(q_bnsd_tensor.shape)
         out_shape_bnsd[1] = n2
         out_shape_bnsd[-1] = self.sparse_count
 
-        out_shape_bnss = copy.deepcopy(self.q_bnsd_shape)
+        out_shape_bnss = list(q_bnsd_tensor.shape)
         out_shape_bnss[1] = n2
         out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k))
 
@@ -227,39 +213,26 @@ class GeneralizedQLIV2:
                 pass
         return y, y_value
 
-    def trans_shape_to_bnsd(self, tensor, shape, layout, headnums=None, act_seq=None, is_weights=False, tensor_name=None):
-        if layout in ["BSND"]:
-            B = shape[0]
-            S = shape[1]
-            N = shape[2]
+    def trans_shape_to_bnsd(self, tensor, layout, headnums=None, act_seq=None, tensor_name=None):
+        if layout == "BSND":
+            B = tensor.shape[0]
+            S = tensor.shape[1]
+            N = tensor.shape[2]
             D = 1
-            if is_weights:
+            if len(tensor.shape) == 3:
                 tensor = torch.unsqueeze(tensor, dim=-1)
             else:
-                D = shape[3]
+                D = tensor.shape[3]
             tensor = tensor.reshape(B, S, N, D).permute(0, 2, 1, 3)
-            return tensor, [B, N, S, D]
-        elif layout == "BSN":
-            print("shape", shape)
-            B = shape[0]
-            S = shape[1]
-            N = shape[2]
-            if is_weights:
-                D = 1
-                tensor = torch.unsqueeze(tensor, dim=-1)  # 补D轴
-                tensor = tensor.reshape(B, S, N, D).permute(0, 2, 1, 3)
-                return tensor, [B, N, S, D]
-            else:
-                tensor = tensor.reshape(B, S, N).permute(0, 2, 1)
-                return tensor, [B, N, S]
-        elif layout in ["TND"]:
-            T = shape[0]
-            N = shape[1]
+            return tensor
+        elif layout == "TND":
+            T = tensor.shape[0]
+            N = tensor.shape[1]
             D = 1
-            if is_weights:
+            if len(tensor.shape) == 2:
                 tensor = torch.unsqueeze(tensor, dim=-1)
             else:
-                D = shape[2]
+                D = tensor.shape[2]
             B = len(act_seq)
             S = max(act_seq)
             new_tensor = torch.zeros((B, N, S, D), dtype=tensor.dtype)
@@ -272,26 +245,13 @@ class GeneralizedQLIV2:
                 for n_index in range(N):
                     new_tensor[b_index, n_index, 0:act_s, :] = tensor[t_start:t_end, n_index, :]
                 t_start += act_s
-            return new_tensor, [B, N, S, D]
-        elif layout == "TN":
-            T = shape[0]
-            N = shape[1]
-            D = 1
-            B = len(act_seq)
-            S = max(act_seq)
-            new_tensor = torch.zeros((B, N, S), dtype=tensor.dtype)
-            t_start = 0
-            for b_index in range(B):
-                act_s = act_seq[b_index]
-                t_end = t_start + act_s
-                if act_s == 0:
-                    continue
-                for n_index in range(N):
-                    new_tensor[b_index, n_index, 0:act_s] = tensor[t_start:t_end, n_index]
-                t_start += act_s
-            return new_tensor, [B, N, S]
+            return new_tensor
+        elif layout == "PA_BSND":
+            if len(tensor.shape) == 3:
+                tensor = torch.unsqueeze(tensor, dim=-1)
+            return tensor
         else:
-            return tensor, shape
+            return tensor
 
     def trans_tnd_actseq(self,list):
         list_len = len(list)
@@ -377,7 +337,7 @@ class GeneralizedQLIV2:
         cur_k = self.cur_k
         cur_wt = self.cur_wt.to(dtype=torch.float32)
         cur_q_scale = self.cur_q_scale.to(dtype=torch.float32)
-        cur_k_scale = self.cur_k_scale.to(dtype=torch.float32)
+        cur_k_scale = self.cur_k_scale.to(dtype=torch.float32).squeeze(-1)
         sparse_count = self.sparse_count
         sparse_mode = self.sparse_mode
         cmp_ratio = self.cmp_ratio
@@ -513,7 +473,7 @@ class GeneralizedQLIV2:
         cur_k = self.cur_k
         cur_wt = self.cur_wt.to(dtype=torch.float16)
         cur_q_scale = self.cur_q_scale.to(dtype=torch.float16)
-        cur_k_scale = self.cur_k_scale.to(dtype=torch.float16)
+        cur_k_scale = self.cur_k_scale.to(dtype=torch.float16).unsqueeze(-1)
         sparse_count = self.sparse_count
         sparse_mode = self.sparse_mode
         cmp_ratio = self.cmp_ratio
@@ -604,7 +564,7 @@ class GeneralizedQLIV2:
         else:
             return tensor
 
-    def broadcast_n_axis(self,n1, n2, temp_tensor, input_dtype):
+    def broadcast_n_axis(self, n1, n2, temp_tensor):
         g = n1 // n2
         temp_shape = temp_tensor.shape
         B = temp_shape[0]
@@ -614,7 +574,7 @@ class GeneralizedQLIV2:
         for i in range(n1):
             j = i // g
             modify_tensor[:, i:i + 1, :, :] = temp_tensor[:, j:j + 1, :, :]
-        return modify_tensor, modify_tensor.shape
+        return modify_tensor
 
     def broadcast_d_axis(self, temp_tensor):
         """MXFP8: 将 scale 的 D/32 维度广播到完整 D 维度"""
@@ -656,6 +616,7 @@ class GeneralizedQLIV2:
             act_k = actualSeqLengthsK[i] *  cmp_ratio + cmp_residual_k[i]
             atten_masks = self.create_mask(m_shape, act_k, S1)
             re_mask_batch.append(atten_masks)
+        re_mask_batch = [np.array(x) for x in re_mask_batch]
         re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
         cpu_mask = torch.from_numpy(re_mask_np)
         return cpu_mask, next_tokens_list
@@ -674,7 +635,6 @@ class GeneralizedQLIV2:
         sparse_count = self.sparse_count
         sparse_mode = self.sparse_mode
         out_shape = self.out_shape
-        q_shape = self.q_shape
         head_dim = self.head_dim
         q_head_num = self.q_head_num
         k_head_num = self.k_head_num
@@ -684,7 +644,6 @@ class GeneralizedQLIV2:
         block_num = self.block_num
         q_dtype = self.qk_dtype
         k_dtype = self.qk_dtype
-        w_shape = self.w_shape
         w_dtype = self.w_dtype
         actual_seq_dtype = self.actual_seq_dtype
         cmp_ratio = self.cmp_ratio
@@ -695,12 +654,10 @@ class GeneralizedQLIV2:
             actual_seq_lengths_query = self.trans_tnd_actseq(actual_seq_lengths_query)
             self.actual_seq_lengths_query = torch.tensor(actual_seq_lengths_query)
             actualSeqLengths_q = self.actual_seq_lengths_query
-            q_scale_shape = [q_t_size, q_head_num]
 
         elif layout_query == "BSND":
             self.actual_seq_lengths_query = actual_seq_lengths_query
             actualSeqLengths_q = self.actual_seq_lengths_query
-            q_scale_shape = [batch_size, q_seq, q_head_num]
 
         if layout_key == "TND":
             if len(actual_seq_lengths_key) == batch_size + 1:
@@ -708,24 +665,14 @@ class GeneralizedQLIV2:
             actual_seq_lengths_key = self.trans_tnd_actseq(actual_seq_lengths_key)
             self.actual_seq_lengths_key = torch.tensor(actual_seq_lengths_key)
             actualSeqLengths_k = self.actual_seq_lengths_key
-            layout_key_scale = "TN"
-            k_shape = self.k_shape
-            k_scale_shape = [k_t_size, k_head_num]
 
         elif layout_key == "BSND":
             self.actual_seq_lengths_key = actual_seq_lengths_key
             actualSeqLengths_k = self.actual_seq_lengths_key
-            layout_key_scale = "BSN"
-            k_shape = self.k_shape
-            k_scale_shape = [batch_size, k_seq, k_head_num]
 
         elif layout_key == "PA_BBND":
             self.actual_seq_lengths_key = actual_seq_lengths_key
             actualSeqLengths_k = self.actual_seq_lengths_key
-            layout_key_scale = layout_key
-            k_max_s2 = math.floor(max(actualSeqLengths_k))
-            k_shape = [batch_size, k_head_num, k_max_s2, head_dim]
-            k_scale_shape = [batch_size, k_head_num, k_max_s2]
         query = query.cpu()
         key = key.cpu()
         weights = weights.cpu()
@@ -734,34 +681,30 @@ class GeneralizedQLIV2:
 
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
-        q_bnsd_tensor, q_bnsd_shape = self.trans_shape_to_bnsd(query, q_shape, layout_query,
-                                                        q_head_num, actualSeqLengths_q)
-
-        ## BSND/TND/ -> BNSD
-        k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(key, k_shape, layout_key,
-                                                        k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
-
-
-
-        k_scale_bnsd_tensor, k_scale_bnsd_shape = self.trans_shape_to_bnsd(key_dequant_scale, k_scale_shape,
-                                                                    layout_key_scale,
-                                                                    k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
-
-        ## BSN1 -> BNS1   TN1 -> BNS1
-        is_weights = True
-        wt_bnsd_tensor, wt_bnsd_shape = self.trans_shape_to_bnsd(weights, w_shape, layout_query,
-                                                            q_head_num, actualSeqLengths_q, is_weights)
+        q_bnsd_tensor = self.trans_shape_to_bnsd(query,
+            layout_query, q_head_num, actualSeqLengths_q)
 
         # BSN1 -> BNS1
-        q_scale_bnsd_tensor, q_scale_bnsd_shape = self.trans_shape_to_bnsd(query_dequant_scale, q_scale_shape,
-                                                                    layout_query,
-                                                                    q_head_num, actualSeqLengths_q, is_weights)
+        q_scale_bnsd_tensor = self.trans_shape_to_bnsd(query_dequant_scale,
+            layout_query, q_head_num, actualSeqLengths_q)
+
+        ## BSND/TND/ -> BNSD
+        k_bnsd_tensor = self.trans_shape_to_bnsd(key,
+            layout_key, k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
+
+        k_scale_bnsd_tensor = self.trans_shape_to_bnsd(key_dequant_scale,
+            layout_key, k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
+
+        ## BSN1 -> BNS1   TN1 -> BNS1
+        wt_bnsd_tensor = self.trans_shape_to_bnsd(weights,
+            layout_query, q_head_num, actualSeqLengths_q)
+
         # 将 k n2轴 广播为 n1
         if q_head_num != k_head_num:
-            k_bnsd_tensor, k_bnsd_shape = self.broadcast_n_axis(q_head_num, k_head_num, k_bnsd_tensor, k_dtype)
+            k_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_bnsd_tensor)
             # MXFP8场景：kScale 也需要 N 轴广播
             if mxfp8_flag == 1:
-                k_scale_bnsd_tensor, k_scale_bnsd_shape = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_bnsd_tensor, k_dtype)
+                k_scale_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_bnsd_tensor)
 
         # MXFP8场景：scale 的 D 轴为 D/32，需要广播到完整 D 维度
         if mxfp8_flag == 1:
@@ -769,18 +712,13 @@ class GeneralizedQLIV2:
             k_scale_bnsd_tensor = self.broadcast_d_axis(k_scale_bnsd_tensor)
 
         self.q_bnsd_tensor = q_bnsd_tensor
-        self.q_bnsd_shape = q_bnsd_shape
         self.k_bnsd_tensor = k_bnsd_tensor
-        self.k_bnsd_shape = k_bnsd_shape
         self.wt_bnsd_tensor = wt_bnsd_tensor
-        self.wt_bnsd_shape = wt_bnsd_shape
         self.q_scale_bnsd_tensor = q_scale_bnsd_tensor
-        self.q_scale_bnsd_shape = q_scale_bnsd_shape
         self.k_scale_bnsd_tensor = k_scale_bnsd_tensor
-        self.k_scale_bnsd_shape = k_scale_bnsd_shape
         # 生成mask, sparse_mode=3时使能
-        m_shape_std = [q_bnsd_shape[2], k_bnsd_shape[2]] #m_shape应该是[s1,s2]
-        batch = q_bnsd_shape[0]
+        m_shape_std = [q_bnsd_tensor.shape[2], k_bnsd_tensor.shape[2]] #m_shape应该是[s1,s2]
+        batch = q_bnsd_tensor.shape[0]
         m_tensor = []
         if sparse_mode == 3:
             m_tensor, next_tokens_list = self.create_mask_right_down(m_shape_std, actualSeqLengths_q, actualSeqLengths_k, batch)
@@ -791,7 +729,7 @@ class GeneralizedQLIV2:
         self.m_tensor = m_tensor
         y, y_value = self.cal_atten_bnsd()
         # TND & PA 需要传入out_shape为BNSD
-        out_shape_bnsd = copy.deepcopy(self.q_bnsd_shape)
+        out_shape_bnsd = list(q_bnsd_tensor.shape)
         out_shape_bnsd[1] = k_head_num
         out_shape_bnsd[-1] = sparse_count
         y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, actualSeqLengths_q)
