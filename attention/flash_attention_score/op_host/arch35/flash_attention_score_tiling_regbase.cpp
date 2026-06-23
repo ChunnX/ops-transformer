@@ -19,6 +19,9 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::CheckContext()
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
     size_t idx = 0;
+    if (idx == 0) {
+        
+    }
     auto scaleValuePtr = attrs->GetAttrPointer<float>(idx++);
     auto keepProbPtr = attrs->GetAttrPointer<float>(idx++);
     auto preTokensPtr = attrs->GetAttrPointer<int64_t>(idx++);
