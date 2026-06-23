@@ -383,7 +383,11 @@ class AdpBuilder(opdesc_parser.OpDesc):
         super().__init__(op_type)
 
 
-    def write_adapt(self: any, impl_path, path: str, op_compile_option_all: list = None):
+    def write_adapt(self: any, impl_path, path: str, op_compile_option_all: list = None, ini_soc: str = None, compute_unit: list = None):
+        # For MC2 ops, only process if ini_soc matches target compute_unit
+        if len(self.mc2_ctx) > 0 and ini_soc and compute_unit:
+            if ini_soc not in compute_unit:
+                return
         self._build_paradefault()
         if os.environ.get('BUILD_BUILTIN_OPP') != '1' and impl_path != "":
             src_file = os.path.join(impl_path, self.op_file + '.cpp')
@@ -732,14 +736,22 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write(GLZ_API.format(self.op_type, self.op_intf, argsdef, argsval, self.op_type))
 
 
-def write_scripts(cfgfile: str, cfgs: dict, dirs: dict, ops: list = None, op_compile_option:list = None):
+def write_scripts(cfgfile: str, cfgs: dict, dirs: dict, ops: list = None, op_compile_option:list = None, compute_unit: list = None):
     batch_lists = cfgs.get(const_var.REPLAY_BATCH).split(';')
     iterator_lists = cfgs.get(const_var.REPLAY_ITERATE).split(';')
     file_map = {}
+    
+    # extract SOC from ini filename: aic-ascend910b-ops-info.ini -> ascend910b
+    ini_soc = None
+    filename = os.path.basename(cfgfile)
+    match = re.match(r'aic-([\w]+)-ops-info\.ini', filename)
+    if match:
+        ini_soc = match.group(1)
+    
     op_descs = opdesc_parser.get_op_desc(cfgfile, batch_lists, iterator_lists, AdpBuilder,\
                                          ops, dirs.get(const_var.AUTO_GEN_DIR))
     for op_desc in op_descs:
-        op_desc.write_adapt(dirs.get(const_var.CFG_IMPL_DIR), dirs.get(const_var.CFG_OUT_DIR), op_compile_option)
+        op_desc.write_adapt(dirs.get(const_var.CFG_IMPL_DIR), dirs.get(const_var.CFG_OUT_DIR), op_compile_option, ini_soc, compute_unit)
         file_map[op_desc.op_type] = op_desc.op_file
     return file_map
 
@@ -793,4 +805,4 @@ if __name__ == '__main__':
     COMPUTE_UNIT = args.compute_unit
     ENABLE_EXPERIMENTAL = args.enable_experimental
     for ops_info in ops_infos:
-        write_scripts(cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir)
+        write_scripts(cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir, compute_unit=args.compute_unit)
