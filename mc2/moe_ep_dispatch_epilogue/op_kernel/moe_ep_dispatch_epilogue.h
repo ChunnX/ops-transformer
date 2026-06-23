@@ -149,7 +149,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     numLocalExperts_ = tilingData->cfg.numLocalExperts;
     aivNum_ = tilingData->aivNum;
     axisK_ = tilingData->cfg.topK;
-    axisKAlign_ = Ceil(axisK_ * (uint32_t)sizeof(int32_t), UB_ALIGN) / (uint32_t)sizeof(int32_t);
     axisH_ = tilingData->cfg.hidden;
     epWorldSize_ = tilingData->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
@@ -164,6 +163,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
     cachedRecvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)cachedRecvSrcMetadata);
     recvXGm_.SetGlobalBuffer((__gm__ XType*)recvX);
+    recvTopkIdxGm_.SetGlobalBuffer((__gm__ int32_t*)recvTopkIdx);
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
 
@@ -374,8 +374,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
             srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
             DataCopyExtParams metaCopyParams{static_cast<uint16_t>(slotCntPerAiv), metaBytes_,
                 perSlotBytes_ - metaBytes_, 0, 0};
-            DataCopyPadExtParams<int32_t> metaPadParams{
-                true, 0, static_cast<uint8_t>(paddedMetaElems_ - (2 * axisKAlign_ + 2)), 0};
+            DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
             DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
             PipeBarrier<PIPE_MTE2>();
 
@@ -403,7 +402,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     DataCopyExtParams topkIdxOutParams{1U, static_cast<uint32_t>(axisK_ * sizeof(int32_t)),
                         0U, 0U, 0U};
                     DataCopyPad(recvTopkIdxGm_[(int64_t)globalRow * axisK_], ubMeta_[metaBase], topkIdxOutParams);
-                    int32_t weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
+                    PipeBarrier<PIPE_MTE3>();
+                    float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
                     ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
                         ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
