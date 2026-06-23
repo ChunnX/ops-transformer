@@ -108,50 +108,45 @@ constexpr uint32_t MLA_PROLOG_DIM_NUM_4 = 4;
 constexpr uint32_t HEAD_SIZE1 = 7168;
 constexpr uint32_t HEAD_SIZE2 = 7680;
 
-constexpr char CACHE_MODE_BSND[] {"BSND"};
-constexpr char CACHE_MODE_TND[] {"TND"};
-constexpr char CACHE_MODE_PA_BSND[] {"PA_BSND"};
-constexpr char CACHE_MODE_PA_NZ[] {"PA_NZ"};
-constexpr char CACHE_MODE_PA_BLK_BSND[] {"PA_BLK_BSND"};
-constexpr char CACHE_MODE_PA_BLK_NZ[] {"PA_BLK_NZ"};
+constexpr char CACHE_MODE_BSND[]{"BSND"};
+constexpr char CACHE_MODE_TND[]{"TND"};
+constexpr char CACHE_MODE_PA_BSND[]{"PA_BSND"};
+constexpr char CACHE_MODE_PA_NZ[]{"PA_NZ"};
+constexpr char CACHE_MODE_PA_BLK_BSND[]{"PA_BLK_BSND"};
+constexpr char CACHE_MODE_PA_BLK_NZ[]{"PA_BLK_NZ"};
 
-constexpr char V1_OP_NAME[] {"MlaProlog"};
-constexpr char V2_OP_NAME[] {"MlaPrologV2"};
-constexpr char V3_OP_NAME[] {"MlaPrologV3"};
+constexpr char V1_OP_NAME[]{"MlaProlog"};
+constexpr char V2_OP_NAME[]{"MlaPrologV2"};
+constexpr char V3_OP_NAME[]{"MlaPrologV3"};
 
 
-constexpr uint32_t CACHE_MODE_LEN = std::max({sizeof(CACHE_MODE_BSND), 
-                                              sizeof(CACHE_MODE_TND), 
-                                              sizeof(CACHE_MODE_PA_BSND),
-                                              sizeof(CACHE_MODE_PA_NZ),
-                                              sizeof(CACHE_MODE_PA_BLK_BSND),
-                                              sizeof(CACHE_MODE_PA_BLK_NZ)});
+constexpr uint32_t CACHE_MODE_LEN =
+    std::max({sizeof(CACHE_MODE_BSND), sizeof(CACHE_MODE_TND), sizeof(CACHE_MODE_PA_BSND), sizeof(CACHE_MODE_PA_NZ),
+              sizeof(CACHE_MODE_PA_BLK_BSND), sizeof(CACHE_MODE_PA_BLK_NZ)});
 
-constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
-                                            sizeof(V2_OP_NAME), 
-                                            sizeof(V3_OP_NAME)});
+constexpr uint32_t OP_NAME_LEN = std::max({sizeof(V1_OP_NAME), sizeof(V2_OP_NAME), sizeof(V3_OP_NAME)});
 
 struct MlaPrologBaseShapeInfo {
-    uint32_t bSize = 0;         // B
-    uint32_t s1Size = 0;        // S1
-    uint32_t tSize = 0;         // T
-    uint32_t s2Size = 0;        // S2
-    uint32_t heSize = 0;        // He
-    uint32_t hcqSize = 0;       // Hcq
-    uint32_t hckvSize = 0;      // Hckv
-    uint32_t headSizeQc = 0;    // N * D
-    uint32_t headSizeQr = 0;    // N * Dr
-    uint32_t headSizeUqQr = 0;  // N * (D + Dr)
-    uint32_t nSize = 0;         // N
-    uint32_t nkvSize = 0;       // Nkv
-    uint32_t dSize = 0;         // D
+    uint32_t bSize = 0;        // B
+    uint32_t s1Size = 0;       // S1
+    uint32_t tSize = 0;        // T
+    uint32_t s2Size = 0;       // S2
+    uint32_t heSize = 0;       // He
+    uint32_t hcqSize = 0;      // Hcq
+    uint32_t hckvSize = 0;     // Hckv
+    uint32_t headSizeQc = 0;   // N * D
+    uint32_t headSizeQr = 0;   // N * Dr
+    uint32_t headSizeUqQr = 0; // N * (D + Dr)
+    uint32_t nSize = 0;        // N
+    uint32_t nkvSize = 0;      // Nkv
+    uint32_t dSize = 0;        // D
     uint32_t blockNum = 0;
     uint32_t blockSize = 0;
-    uint32_t drSize = 0;        // Dr
-    uint32_t dtileSize = 0;     // Dtile
+    uint32_t drSize = 0;    // Dr
+    uint32_t dtileSize = 0; // Dtile
 };
 
-enum class CACHE_MODE:uint8_t {
+enum class CACHE_MODE : uint8_t {
     BSND = 0,
     PA_BSND = 1,
     PA_NZ = 2,
@@ -160,18 +155,18 @@ enum class CACHE_MODE:uint8_t {
     TND = 5
 };
 
-enum class EMPTY_TENSOR_MODE:uint8_t {
+enum class EMPTY_TENSOR_MODE : uint8_t {
     NON_EMPTY = 0,
     EMPTY_CACHE = 1,
     EMPTY_QUERY = 2
 };
 
-enum class ACTUAL_SEQ_MODE:uint8_t {
+enum class ACTUAL_SEQ_MODE : uint8_t {
     DISABLED = 0,
     EN_Q_LEN = 1,
 };
 
-enum class QUANT_MODE:int8_t {
+enum class QUANT_MODE : int8_t {
     ERROR_MODE = -1,
     NO_QUANT = 0,
     PARTIAL_QUANT_KV_NO_QUANT = 1,
@@ -191,7 +186,7 @@ enum class QUANT_MODE:int8_t {
     HIF8_FULL_QUANT_KV_QUANT_PER_TILE = 15
 };
 
-enum class WEIGHT_QUANT_MODE:uint8_t {
+enum class WEIGHT_QUANT_MODE : uint8_t {
     NO_QUANT = 0,
     PARTIAL_QUANT = 1,
     FULL_QUANT = 2,
@@ -200,24 +195,24 @@ enum class WEIGHT_QUANT_MODE:uint8_t {
     HIF8_FULL_QUANT = 5
 };
 
-enum class KV_QUANT_MODE:uint8_t {
+enum class KV_QUANT_MODE : uint8_t {
     NO_QUANT = 0,
     PER_TENSOR = 1,
     PER_CHANNEL = 2,
     PER_TILE = 3
 };
 
-enum class QUERY_QUANT_MODE:uint8_t {
+enum class QUERY_QUANT_MODE : uint8_t {
     NO_QUANT = 0,
     PER_TOKEN_HEAD = 1
 };
 
-enum class CKVKR_REPO_MODE:uint8_t {
+enum class CKVKR_REPO_MODE : uint8_t {
     DIVIDE = 0,
     COMBINE = 1
 };
 
-enum class QUANT_SCALE_REPO_MODE:uint8_t {
+enum class QUANT_SCALE_REPO_MODE : uint8_t {
     DIVIDE = 0,
     COMBINE = 1
 };
@@ -241,11 +236,9 @@ struct BaseParaInfo {
     const gert::StorageShape *shape;
 };
 
-struct RequiredParaInfo : BaseParaInfo {
-};
+struct RequiredParaInfo : BaseParaInfo {};
 
-struct OptionalParaInfo : BaseParaInfo {
-};
+struct OptionalParaInfo : BaseParaInfo {};
 
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t NUM_BYTES_BF16 = 2;
@@ -345,6 +338,11 @@ private:
     ge::graphStatus GenTilingKey() const;
 
     NpuArch GetCurNpuArch() const;
+    CACHE_MODE ResolveCacheMode() const;
+    EMPTY_TENSOR_MODE ResolveEmptyTensorMode() const;
+    ge::graphStatus ResolveActualSeqMode();
+    void ResolveSplitMFlag();
+    bool IsMxfp8QuantMode() const;
 
     MlaPrologBaseShapeInfo baseShapeInfo_;
     MlaPrologScenarioInfo scenarioInfo_;
@@ -382,7 +380,7 @@ private:
 
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
-    bool enableGroupComputeOpt_ = false;    // 低延时场景算例分组标记
+    bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;
@@ -400,6 +398,6 @@ private:
 
 ge::graphStatus TilingPrepareForMlaProlog(gert::TilingParseContext *context);
 MLA_EXTERN_C ge::graphStatus TilingMlaProlog(gert::TilingContext *context);
-} // optiling
+} // namespace optiling
 
 #endif // MLA_PROLOG_TILING_H
