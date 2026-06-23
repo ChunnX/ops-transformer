@@ -311,10 +311,10 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(skGradBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(expGradBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
         if (blockIdx_ == 0) {
-            InitGlobalMemory(gradAlphaGm_, 3, U(0));
-            InitGlobalMemory(gradAlphaWs_, 3 * usedAivNum_, U(0));
-            InitGlobalMemory(gradBiasGm_, n_, U(0));
-            InitGlobalMemory(gradBiasWs_, 2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_, U(0));
+            InitOutput<U>(gradAlphaGm_, 3, U(0));
+            InitOutput<U>(gradAlphaWs_, 3 * usedAivNum_, U(0));
+            InitOutput<U>(gradBiasGm_, n_ * n_ + 2 * n_, U(0));
+            InitOutput<U>(gradBiasWs_, 2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_, U(0));
         }
         SyncAll();
     }
