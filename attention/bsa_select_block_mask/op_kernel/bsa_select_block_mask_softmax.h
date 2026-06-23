@@ -397,7 +397,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
         scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
         {static_cast<uint16_t>(actualQExcuteRow),
             static_cast<uint32_t>(kChunkSize * sizeof(float)),
-            static_cast<uint32_t>((constInfo.yBlocks - 1) * sizeof(float)),
+            static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)),
             0,
             0},
         {true, 0, static_cast<uint8_t>(kChunkSizeAlign - kChunkSize), SOFTMAX_NEG_INF});
@@ -628,7 +628,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
             scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
             {static_cast<uint16_t>(actualQExcuteRow),
                 static_cast<uint32_t>(kChunkSize * sizeof(float)),
-                static_cast<uint32_t>((constInfo.yBlocks - 1) * sizeof(float)),
+                static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)),
                 0,
                 0},
             {true, 0, static_cast<uint8_t>(kChunkSizeAlign32 - kChunkSize), SOFTMAX_NEG_INF});
@@ -638,7 +638,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
             scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
             {static_cast<uint16_t>(actualQExcuteRow),
                 static_cast<uint32_t>(kChunkSize * sizeof(float)),
-                static_cast<uint32_t>((constInfo.yBlocks - 1) * sizeof(float)),
+                static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(float)),
                 1,
                 0},
             {true, 0, static_cast<uint8_t>(kChunkSizeAlign32 - kChunkSize), SOFTMAX_NEG_INF});
@@ -706,7 +706,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
         {static_cast<uint16_t>(actualQExcuteRow),
             static_cast<uint32_t>(kChunkSize * sizeof(half)),
             0,
-            static_cast<uint32_t>((constInfo.yBlocks -1) * sizeof(half)),
+            static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(half)),
             0});  // FIX: add missing semicolon after closing brace
 
     uint32_t yBlocks = constInfo.yBlocks;
@@ -722,7 +722,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
         {static_cast<uint16_t>(actualQExcuteRow),
             static_cast<uint32_t>(kChunkSize * sizeof(half)),
             0,
-            static_cast<uint32_t>((constInfo.yBlocks -1) * sizeof(half)),
+            static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(half)),
             0});  // FIX: add missing semicolon after closing brace
 }
 
