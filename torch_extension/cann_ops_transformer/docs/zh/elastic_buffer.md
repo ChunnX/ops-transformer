@@ -4,15 +4,13 @@
 
 | 产品 | 是否支持 |
 |------|:--------:|
-| <term>Ascend 910_93</term> | √ |
 | <term>Ascend 950DT</term> | √ |
-| <term>Ascend 910PR</term> | √ |
 
 ## 功能说明
 
 - **API功能**：
 
-  ElasticBuffer 用于分布式 Engram 存储管理，支持将本 rank 的表分片写入 host pinned 共享段，以及通过 RDMA 从远端 rank 抓取 Engram 数据。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint接口说明) 配套使用。
+  ElasticBuffer 用于分布式 Engram 存储管理，支持将本 rank 的表分片写入 host pinned 共享段，以及通过 RDMA 从远端 rank 抓取 Engram 数据。需与 [get_engram_storage_size_hint]配套使用。
 
 ## ElasticBuffer 类接口原型
 
@@ -79,7 +77,7 @@ class ElasticBuffer:
 
 **输入参数**：
 - **num_entries** (`int`)：必选参数，Engram storage 的条目数，必须非负。
-- **hidden_size** (`int`)：必选参数，每个条目的隐藏维度，必须 128 对齐且非负。
+- **hidden_size** (`int`)：必选参数，每个条目的隐藏维度，必须 128 数量对齐且非负。
 - **dtype** (`torch.dtype`)：可选参数，数据类型，默认为 `torch.bfloat16`。仅在此处用于按 dtype 计算字节数。
 
 **输出**：
@@ -89,7 +87,7 @@ class ElasticBuffer:
 
 - **参数对齐约束**：
   - `num_cpu_bytes` 必须为 2MB 对齐（即能被 `2 × 1024 × 1024` 整除）。
-  - `hidden_size` 必须为 128 对齐。
+  - `hidden_size` 必须为 128 数量对齐。
   - `get_engram_storage_size_hint` 返回值自动满足 2MB 对齐。
 
 - **维度约束**：
