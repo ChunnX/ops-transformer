@@ -484,12 +484,51 @@ function(add_ops_src_copy)
         set(_BUILD_FLAG ${SRC_COPY_DST}/${DOING_TARGET_NAME}.done)
         set(SYNC_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SRC_COPY_DST}
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
         )
-        if (BELONG_MC2_OPS)
+        if (BELONG_MC2_OPS AND EXISTS "${SRC_COPY_SRC}/op_kernel")
+            file(GLOB OP_KERNEL_ENTRIES LIST_DIRECTORIES true "${SRC_COPY_SRC}/op_kernel/*")
+            foreach(_entry ${OP_KERNEL_ENTRIES})
+                get_filename_component(_entry_name "${_entry}" NAME)
+                if(_entry_name MATCHES "^arch")
+                    list(FIND ARCH_DIRECTORY "${_entry_name}" _arch_idx)
+                    if(NOT _arch_idx EQUAL -1)
+                        list(APPEND SYNC_COMMANDS
+                            COMMAND ${CMAKE_COMMAND} -E copy_directory "${_entry}" "${SRC_COPY_DST}/${_entry_name}"
+                        )
+                    endif()
+                else()
+                    if(IS_DIRECTORY "${_entry}")
+                        list(APPEND SYNC_COMMANDS
+                            COMMAND ${CMAKE_COMMAND} -E copy_directory "${_entry}" "${SRC_COPY_DST}/${_entry_name}"
+                        )
+                    else()
+                        list(APPEND SYNC_COMMANDS
+                            COMMAND ${CMAKE_COMMAND} -E copy "${_entry}" "${SRC_COPY_DST}/${_entry_name}"
+                        )
+                    endif()
+                endif()
+            endforeach()
+            file(GLOB NON_KERNEL_FILES LIST_DIRECTORIES false "${SRC_COPY_SRC}/*")
+            foreach(_file ${NON_KERNEL_FILES})
+                get_filename_component(_file_name "${_file}" NAME)
+                if(NOT _file_name STREQUAL "op_kernel")
+                    list(APPEND SYNC_COMMANDS
+                        COMMAND ${CMAKE_COMMAND} -E copy "${_file}" "${SRC_COPY_DST}/${_file_name}"
+                    )
+                endif()
+            endforeach()
+            file(GLOB NON_KERNEL_DIRS LIST_DIRECTORIES true "${SRC_COPY_SRC}/*")
+            foreach(_dir ${NON_KERNEL_DIRS})
+                get_filename_component(_dir_name "${_dir}" NAME)
+                if(NOT _dir_name STREQUAL "op_kernel")
+                    list(APPEND SYNC_COMMANDS
+                        COMMAND ${CMAKE_COMMAND} -E copy_directory "${_dir}" "${SRC_COPY_DST}/${_dir_name}"
+                    )
+                endif()
+            endforeach()
+        else()
             list(APPEND SYNC_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
-                COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
             )
         endif()
         list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
