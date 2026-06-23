@@ -58,7 +58,6 @@ private:
     GlobalTensor<int64_t> numRecvPerExpertGm_;
 
     GlobalTensor<XType> recvXGm_;
-    GlobalTensor<int32_t> recvTopkIdxGm_;
     GlobalTensor<float> recvTopkWeightsGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> cachedRecvSrcMetadataGm_;   // cached 路径专用：来自上一轮 dispatch 的 recv_src_metadata
@@ -161,7 +160,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
     cachedRecvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)cachedRecvSrcMetadata);
     recvXGm_.SetGlobalBuffer((__gm__ XType*)recvX);
-    recvTopkIdxGm_.SetGlobalBuffer((__gm__ int32_t*)recvTopkIdx);
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
 
@@ -392,9 +390,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     PipeBarrier<PIPE_MTE2>();
 
                     DataCopy(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, axisH_);
-                    DataCopyExtParams topkIdxOutParams{1U, static_cast<uint32_t>(axisK_ * sizeof(int32_t)),
-                        0U, 0U, 0U};
-                    DataCopyPad(recvTopkIdxGm_[(int64_t)globalRow * axisK_], ubMeta_[metaBase], topkIdxOutParams);
                     PipeBarrier<PIPE_MTE3>();
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
