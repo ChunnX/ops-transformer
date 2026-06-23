@@ -3415,6 +3415,9 @@ protected:
 
     bool IsCapable() override
     {
+        if (dSize != d2Size) {  // D不等长(d != dv): S1S2 支持并主动接住
+            return true;
+        }
         if (s2Size > s2sizeLimitMin) {
             return true;
         }
