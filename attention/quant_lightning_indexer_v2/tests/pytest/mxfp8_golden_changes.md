@@ -614,6 +614,113 @@ re_mask_batch = [np.array(x) for x in re_mask_batch]
 re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
 ```
 
+### 5.7 `qliv2_output_single` shape 推导整改
+
+**问题**: V2 的 `qliv2_output_single` 函数中，shape 推导与数据生成混合在每个 layout 分支内，每个分支都重复写完整 shape，且 cpu golden forward 调用分散在各分支中。
+
+**修改**: 将 shape 推导与数据生成分离，统一在分支外生成 tensor 和调用 forward。
+
+#### Shape 推导与数据生成分离
+
+```python
+# 修改前：每个分支内直接写死 shape 生成 tensor
+if layout_query == "BSND":
+    if hifp8mode == 1:
+        query = torch.tensor(np.random.uniform(..., (batch_size, q_seq, q_head_num, head_dim))).to(torch.float)
+        query = trans_float_tensor_to_hifuint8(query, ...)
+        ...
+    elif mxfp8_flag == 1:
+        query = torch.tensor(np.random.uniform(..., (batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype)
+        ...
+    else:
+        query = torch.tensor(np.random.uniform(..., (batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype)
+        ...
+    weights = torch.tensor(np.random.uniform(..., (batch_size, q_seq, q_head_num))).to(weight_dtype)
+
+# 修改后：先推导 shape，再统一生成
+# 1. Shape 推导
+if layout_query == "BSND":
+    query_shape = [batch_size, q_seq, q_head_num, head_dim]
+    query_dequant_scale_shape = [batch_size, q_seq, q_head_num]
+    weights_shape = [batch_size, q_seq, q_head_num]
+elif layout_query == "TND":
+    query_shape = [q_t_size, q_head_num, head_dim]
+    query_dequant_scale_shape = [q_t_size, q_head_num]
+    weights_shape = [q_t_size, q_head_num]
+
+# 2. MXFP8 scale shape 动态 append
+if dequant_dtype == torch.float8_e8m0fnu:
+    mxfp8_flag = 1
+    query_dequant_scale_shape.append(head_dim // 32)
+    key_dequant_scale_shape.append(head_dim // 32)
+
+# 3. 统一数据生成（使用 shape 变量）
+if hifp8mode == 1:
+    query = torch.tensor(np.random.uniform(..., query_shape)).to(torch.float)
+    query = trans_float_tensor_to_hifuint8(query, ...)
+    ...
+elif mxfp8_flag == 1:
+    query = torch.tensor(np.random.uniform(..., query_shape)).to(qk_dtype)
+    query_dequant_scale = float_to_e8m0(torch.tensor(np.random.uniform(..., query_dequant_scale_shape)))
+    ...
+else:
+    query = torch.tensor(np.random.uniform(..., query_shape)).to(qk_dtype)
+    ...
+weights = torch.tensor(np.random.uniform(..., weights_shape)).to(weight_dtype)
+```
+
+#### PA_BBND 使用中间变量和动态 shape
+
+```python
+# 修改前：直接用 key_bnsd/key_dequant_scale_bns，shape 写死
+key_bnsd = torch.tensor(np.random.uniform(..., (batch_size, k_head_num, k_max_s2, head_dim))).to(qk_dtype)
+key_dequant_scale_bns = torch.tensor(np.random.uniform(..., (batch_size, k_head_num, k_max_s2))).to(dequant_dtype)
+...
+key_expand[:,:,:k_max_s2,:] = key_bnsd
+...
+key_dequant_scale_expand = torch.zeros((batch_size, k_head_num, k_max_block_num_per_batch * block_size, head_dim // 32), dtype=dequant_dtype)
+key_dequant_scale_expand[:,:,:k_max_s2,:] = key_dequant_scale_bns
+
+# 修改后：使用 key_cpu/key_dequant_scale_cpu 中间变量，shape 动态推导
+key_cpu = key
+key_dequant_scale_cpu = key_dequant_scale
+...
+key_expand[:,:,:k_max_s2,:] = key_cpu
+...
+key_dequant_scale_expand_shape = [batch_size, k_head_num, k_max_block_num_per_batch * block_size]
+key_dequant_scale_block_shape = [block_num, block_size, k_head_num]
+if mxfp8_flag == 1:
+    key_dequant_scale_expand_shape.append(head_dim // 32)
+    key_dequant_scale_block_shape.append(head_dim // 32)
+key_dequant_scale_expand = torch.zeros(key_dequant_scale_expand_shape, dtype=dequant_dtype)
+if mxfp8_flag == 1:
+    key_dequant_scale_expand[:,:,:k_max_s2,:] = key_dequant_scale_cpu
+else:
+    key_dequant_scale_expand[:,:,:k_max_s2] = key_dequant_scale_cpu
+```
+
+#### cpu golden forward 统一调用
+
+```python
+# 修改前：每个 layout 分支内各自调用 forward
+if layout_key == "BSND":
+    ...
+    cpu_result, topk_value = test_qliv2.forward(query, key, weights, ...)
+elif layout_key == "TND":
+    ...
+    cpu_result, topk_value = test_qliv2.forward(query, key, weights, ...)
+elif layout_key == "PA_BBND":
+    ...
+    cpu_result, topk_value = test_qliv2.forward(query, key_bnsd, weights, ...)
+
+# 修改后：统一在分支外调用，传入 key_cpu/key_dequant_scale_cpu
+# cpu golden 生成
+cpu_result, topk_value = test_qliv2.forward(
+    query, key_cpu, weights, query_dequant_scale, key_dequant_scale_cpu,
+    actual_seq_lengths_query, actual_seq_lengths_key, block_table, mxfp8_flag)
+cpu_result, _ = torch.sort(cpu_result)
+```
+
 ---
 
 ## 六、关键设计决策总结
@@ -630,3 +737,4 @@ re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
 | `trans_shape_to_bnsd` 去 shape 参数 | 从 tensor 自身推导维度，简化调用链 |
 | fp8 的 k_scale `.squeeze(-1)` | 消除末尾多余维度，确保广播正确 |
 | int8 的 k_scale `.unsqueeze(-1)` | 补齐末尾维度，确保维度匹配 |
+| `qliv2_output_single` shape 推导分离 | 先推导 shape 再统一生成 tensor，消除分支内重复代码 |
