@@ -168,9 +168,10 @@ bool CheckWeightScaleFormat(const gert::TilingContext& context, uint32_t tensorI
     OP_CHECK_IF(desc == nullptr || !desc->IsExist(),
         OP_LOGE(opName, "Dynamic input desc of weightScale[%u] is nullptr.", tensorIndex), return false);
     auto wScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
-    if (unlikely(wScaleFormat != ge::FORMAT_ND && wScaleFormat != ge::FORMAT_NCHW)) {
+    if (unlikely(wScaleFormat != ge::FORMAT_ND && wScaleFormat != ge::FORMAT_NCHW &&
+                 wScaleFormat != ge::FORMAT_NCL)) {
         OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weightScale",
-            ge::TypeUtils::FormatToSerialString(wScaleFormat), "ND or NCHW");
+            ge::TypeUtils::FormatToSerialString(wScaleFormat), "ND, NCHW or NCL");
         return false;
     }
     return true;
