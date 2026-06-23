@@ -6,7 +6,10 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
+
+#ifndef MATMUL_REDUCE_SCATTER_V2_TILING_COMMON_H
+#define MATMUL_REDUCE_SCATTER_V2_TILING_COMMON_H
 
 /*!
  * \file matmul_reduce_scatter_v2_tiling_common.h
@@ -17,4 +20,6 @@
 namespace optiling {
 ge::graphStatus MatmulReduceScatterTilingV2Func(gert::TilingContext *context);
 }  // namespace optiling
+
+#endif // MATMUL_REDUCE_SCATTER_V2_TILING_COMMON_H
 

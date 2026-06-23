@@ -14,9 +14,7 @@
  */
 #include "matmul_reduce_scatter_tiling_a5.h"
 #include "vector"
-#include "ops_utils.h"
 #include "graph/utils/type_utils.h"
-#include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -64,7 +62,7 @@ namespace optiling {
     }
 
     struct MatmulReduceScatterCompileInfo {};
-    static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext *context)
+    static ge::graphStatus TilingParseForMatmulReduceScatter(const gert::TilingParseContext *context)
     {
         (void)context;
         return ge::GRAPH_SUCCESS;

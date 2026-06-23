@@ -16,9 +16,7 @@
 #define MC2_MATMUL_REDUCE_SCATTER_TILING_BASE_H
 
 #include "vector"
-#include "ops_utils.h"
 #include "graph/utils/type_utils.h"
-#include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -45,7 +43,7 @@ public:
                                                        mc2tiling::TilingArgs& args);
     ge::graphStatus GetReduceScatterFormulateTileCnt(const gert::TilingContext* ctx,
         MatmulReduceScatterTilingData& tilingData, mc2tiling::TilingArgs& args);
-    bool IsDeterministic();
+    bool IsDeterministic() const;
     virtual CutResult GetCutResult(MatmulReduceScatterTilingData& tilingData,
                                    mc2tiling::TilingArgs& args) = 0;
     virtual ge::graphStatus CheckValidRank(const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
