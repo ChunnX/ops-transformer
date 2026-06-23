@@ -289,10 +289,17 @@ def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, head
 
 def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
                          sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths):
+    # 向量化版本（采纳 MR!40 的 einops 思路把 query token 维度批量进 matmul），
+    # 但严格保留参考实现的数据流以保证逐位一致：
+    #  - 标度在 QK matmul 之后乘到 score 上（q_scale*k_scale*softmax_scale），不在 matmul 前缩放 q/k；
+    #  - 沿 KV 轴按「2 个 sparse block」(s2LoopCount*2) 分块的 online/flash FP8 量化（运行中局部 max）；
+    #  - 按 sparse_indices 中 block 的出现顺序拼接 positions（random/reverse/tail 非物理升序）来分块；
+    #  - 实际长度掩码（q>=q_len、kv>=kv_len 无效；causal 对角线为 kv_len - q_len）；
+    #  - 全掩码空行：输出 0、lse = EMPTY_LSE。
     query = query.to(torch.float32)
     dense_key = dense_key.to(torch.float32)
     dense_value = dense_value.to(torch.float32)
-    
+
     layout_q = case["layout_q"]
     batch = case["B"]
     n1 = case["N1"]
@@ -300,6 +307,12 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
     group = n1 // n2
     head_dim = case["D"]
     output_dtype = case["output_dtype"]
+    fp8_dtype = _fp8_dtype()
+    softmax_scale = float(case["softmax_scale"])
+    p_scale_value = float(p_scale[0].item())
+    sparse_q_block_size = case["sparse_q_block_size"]
+    chunk_pos = 2 * case["sparse_kv_block_size"]  # kernel 每次 s2 迭代处理 2 个 kv block
+    neg_inf = float("-inf")
 
     if layout_q == "BSND":
         attention_out = torch.zeros((batch, case["S1"], n1, head_dim), dtype=output_dtype)
@@ -309,71 +322,107 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
         attention_out = torch.zeros((total_q, n1, head_dim), dtype=output_dtype)
         softmax_lse = torch.full((n1, total_q), EMPTY_LSE, dtype=torch.float32)
 
-    p_scale_value = float(p_scale[0].item())
+    qb_max = math.ceil(case["S1"] / sparse_q_block_size)
     for batch_idx in range(batch):
-        for q_idx in range(q_lengths[batch_idx]):
-            qb_idx = q_idx // case["sparse_q_block_size"]
-            for head_idx in range(n1):
-                n2_idx = head_idx // group
+        q_len = q_lengths[batch_idx]
+        kv_len = kv_lengths[batch_idx]
+        for head_idx in range(n1):
+            n2_idx = head_idx // group
+            v_scale_value = float(v_scale[n2_idx].item())
+            for qb_idx in range(qb_max):
+                q_start = qb_idx * sparse_q_block_size
+                if q_start >= q_len:
+                    break
+                q_end = min(q_start + sparse_q_block_size, q_len)
+                q_indices = list(range(q_start, q_end))
+
                 positions = _positions_from_sparse(
-                    case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_lengths[batch_idx])
+                    case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len)
                 if not positions:
                     continue
 
-                valid_mask = _mask_positions(case, q_idx, positions, q_lengths[batch_idx], kv_lengths[batch_idx])
-                if not bool(valid_mask.any()):
-                    continue
+                # gather q 向量（批量），shape (nq, D)
+                if layout_q == "BSND":
+                    q_block = query[batch_idx, q_start:q_end, head_idx].to(torch.float32)
+                    q_scale_block = q_scale[batch_idx, q_start:q_end, head_idx].to(torch.float32)
+                else:
+                    base = int(cu_seqlens_q[batch_idx].item())
+                    q_block = query[base + q_start:base + q_end, head_idx].to(torch.float32)
+                    q_scale_block = q_scale[base + q_start:base + q_end, head_idx].to(torch.float32)
+                nq = q_block.shape[0]
 
-                q_vec = _get_query(query, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx).to(torch.float32)
-                k_mat = dense_key[batch_idx, positions, n2_idx].to(torch.float32)
-                v_mat = dense_value[batch_idx, positions, n2_idx].to(torch.float32)
-                q_scale_value = _get_q_scale(q_scale, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx).to(torch.float32)
-                k_scale_vec = _get_k_scale(k_scale, layout_q, cu_seqlens_kv, batch_idx, positions, n2_idx).to(torch.float32)
-                scores = torch.matmul(q_vec, k_mat.transpose(0, 1))
-                scores = scores * q_scale_value * k_scale_vec * float(case["softmax_scale"])
+                # gather k/v/k_scale（按 positions 顺序），与参考一致使用 dense（padded S2）矩阵
+                pos_tensor = torch.as_tensor(positions, dtype=torch.long)
+                k_mat = dense_key[batch_idx, pos_tensor, n2_idx].to(torch.float32)      # (npos, D)
+                v_mat = dense_value[batch_idx, pos_tensor, n2_idx].to(torch.float32)    # (npos, D)
+                # k_scale：与参考 _get_k_scale 一致，TND 用 cu_seqlens 偏移；长度与 KV 矩阵一致
+                if layout_q == "BSND":
+                    k_scale_vec = k_scale[batch_idx, pos_tensor, n2_idx].to(torch.float32)  # (npos,)
+                else:
+                    kbase = int(cu_seqlens_kv[batch_idx].item())
+                    k_scale_vec = k_scale[kbase + pos_tensor, n2_idx].to(torch.float32)     # (npos,)
+
+                npos = pos_tensor.shape[0]
+                # valid_mask: (nq, npos) — causal/actlen，与参考 _mask_positions 一致
+                if case["mask_mode"] == 0:
+                    valid_mask = torch.ones((nq, npos), dtype=torch.bool)
+                elif case["mask_mode"] == 3:
+                    q_idx_col = torch.as_tensor(q_indices, dtype=torch.long).view(nq, 1)
+                    limit = q_idx_col + (kv_len - q_len)            # (nq,1)
+                    valid_mask = pos_tensor.view(1, npos) <= limit  # (nq, npos)
+                else:
+                    raise ValueError(f"unsupported mask_mode: {case['mask_mode']}")
+
+                # scores: (nq, npos)，标度在 matmul 之后施加（保持 FP8 桶一致）
+                scores = torch.matmul(q_block, k_mat.transpose(0, 1))
+                scores = scores * q_scale_block.view(nq, 1) * k_scale_vec.view(1, npos) * softmax_scale
                 scores = torch.where(valid_mask, scores, torch.full_like(scores, MASK_VALUE))
 
-                # flash-attention fp8 数据流：量化未归一化的 exp(s-max)（量级 O(1)、fp8 友好），
-                # PV 之后再除以 fp32 行和 l。不能对归一化概率(~1/N)做 fp8 量化——小值舍入会带来
-                # 与硬件不符的系统性误差（如均匀注意力下 N 非 2 的幂时输出偏离 1.0）。
-                #
-                # 必须严格复刻 kernel 的 online(flash) 数据流：kernel 每个 s2LoopCount 处理「2 个
-                # sparse block」(s2LoopCount*2 读 idx1/idx2)，在该 chunk 内用「运行中的局部 max」做
-                # FP8 量化，再用 exp(m_old-m_new) 在线缩放累加器。若像单遍 softmax 那样用「全局 max」
-                # 量化全部 P，则当 sparseLen>2(≥2 个 s2 迭代) 且全局 max 不在首个 chunk 时，首 chunk 的
-                # exp(s-局部max) 被 FP8 舍入后无法靠后续 fp32 缩放还原 → 输出系统性偏差(随 block 数增大)，
-                # 而 lse(=max+log(sum)) 与量化无关故不受影响。详见 qb0/qb1 位精确、qb2/qb3 发散的定位。
-                fp8_dtype = _fp8_dtype()
-                v_scale_value = float(v_scale[n2_idx].item())
-                chunk_pos = 2 * case["sparse_kv_block_size"]  # kernel 每次 s2 迭代处理 2 个 kv block
-                npos = scores.shape[-1]
-                neg_inf = float("-inf")
-                m_run = neg_inf
-                l_run = 0.0
-                acc = torch.zeros(head_dim, dtype=torch.float32)
+                # 按 2-block chunk 的 online/flash FP8 数据流，向量化到 q 维
+                m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
+                l_run = torch.zeros((nq,), dtype=torch.float32)
+                acc = torch.zeros((nq, head_dim), dtype=torch.float32)
                 for c0 in range(0, npos, chunk_pos):
                     c1 = min(c0 + chunk_pos, npos)
-                    s_c = scores[c0:c1]
-                    vm_c = valid_mask[c0:c1]
-                    if not bool(vm_c.any()):
-                        continue
-                    chunk_max = float(s_c[vm_c].max().item())
-                    m_new = chunk_max if m_run == neg_inf else max(m_run, chunk_max)
-                    rescale = 0.0 if m_run == neg_inf else math.exp(m_run - m_new)
-                    p_c = torch.exp(s_c - m_new)
+                    s_c = scores[:, c0:c1]
+                    vm_c = valid_mask[:, c0:c1]
+                    # 每行的局部 max（在该 chunk 内的有效位置上）；行内无有效位置时记为 -inf
+                    masked_scores = torch.where(vm_c, s_c, torch.full_like(s_c, neg_inf))
+                    chunk_max = masked_scores.max(dim=-1).values            # (nq,)
+                    chunk_has = vm_c.any(dim=-1)                            # (nq,)
+                    run_started = m_run != neg_inf
+                    # m_new：未开始的行取 chunk_max（若该 chunk 无有效则保持 -inf）；已开始的行取 max
+                    m_new = torch.where(run_started, torch.maximum(m_run, chunk_max), chunk_max)
+                    # 该 chunk 对此行无有效位置 -> 此行本轮不更新
+                    m_new = torch.where(chunk_has, m_new, m_run)
+                    rescale = torch.where(run_started, torch.exp(m_run - m_new), torch.zeros_like(m_run))
+                    rescale = torch.where(torch.isfinite(rescale), rescale, torch.zeros_like(rescale))
+                    p_c = torch.exp(s_c - m_new.view(nq, 1))
                     p_c = torch.where(vm_c, p_c, torch.zeros_like(p_c))
+                    # 仅对本轮有有效位置的行参与量化累加；其余行贡献 0
+                    p_c = torch.where(chunk_has.view(nq, 1), p_c, torch.zeros_like(p_c))
                     p_quant = (p_c / p_scale_value).to(fp8_dtype).to(torch.float32)
-                    pv = torch.matmul(p_quant, v_mat[c0:c1]) * p_scale_value * v_scale_value
-                    acc = acc * rescale + pv
-                    l_run = l_run * rescale + float(p_c.sum().item())
-                    m_run = m_new
-                attn = acc / l_run
-                _set_output(attention_out, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, attn.to(output_dtype))
-                _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx,
-                         torch.logsumexp(scores[valid_mask], dim=-1))
+                    pv = torch.matmul(p_quant, v_mat[c0:c1]) * p_scale_value * v_scale_value  # (nq, D)
+                    acc = acc * rescale.view(nq, 1) + pv
+                    l_run = l_run * rescale + p_c.sum(dim=-1)
+                    m_run = torch.where(chunk_has, m_new, m_run)
+
+                # any_valid 行：写回 attn=acc/l_run；空行保持 0 / EMPTY_LSE
+                any_valid = valid_mask.any(dim=-1)                          # (nq,)
+                safe_l = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
+                attn = acc / safe_l.view(nq, 1)                            # (nq, D)
+                # lse = logsumexp(scores[valid]) per row
+                lse_scores = torch.where(valid_mask, scores, torch.full_like(scores, neg_inf))
+                lse = torch.logsumexp(lse_scores, dim=-1)                  # (nq,)
+
+                for li, q_idx in enumerate(q_indices):
+                    if not bool(any_valid[li].item()):
+                        continue
+                    _set_output(attention_out, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx,
+                                attn[li].to(output_dtype))
+                    _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, lse[li])
 
     return attention_out, softmax_lse
-
 
 def save_test_case(input_data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
