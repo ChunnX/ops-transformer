@@ -19,6 +19,11 @@
 namespace op_api {
 using namespace at_npu::native;
 
+ inline TensorWrapper make_wrapper(const at::Tensor& tensor, aclDataType tensor_acltype)
+{
+    return {tensor, tensor_acltype};
+}
+
 // npu tensor max size
 const int SIZE = 8;
 const int DIM_0 = 0;
@@ -132,11 +137,27 @@ std::tuple<at::Tensor, at::Tensor> quant_lightning_indexer(
     char *query_layout_ptr = const_cast<char *>(query_layout_str.c_str());
     char *key_layout_ptr = const_cast<char *>(key_layout_str.c_str());
 
-    ACLNN_CMD(aclnnQuantLightningIndexerV2, query, key,
-        weights, query_dequant_scale, key_dequant_scale, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
-        cmp_residual_k, block_table, output_idx_offset, metadata, topk, quant_mode,
-        max_seqlen_q, query_layout_ptr, key_layout_ptr, mask_mode, cmp_ratio, return_value,
-        sparse_indices_out, sparse_values_out);
+    if (quant_mode == 4) {
+        //  hifp8接收数据类型为Uint8
+        TORCH_CHECK(query.scalar_type() == at::kByte,
+            "When quant_mode is 4, query must be hifp8 type");
+        TORCH_CHECK(key.scalar_type() == at::kByte,
+            "When quant_mode is 4, key must be hifp8 type");
+        TensorWrapper query_wrapper = make_wrapper(query, ACL_HIFLOAT8);
+        TensorWrapper key_wrapper = make_wrapper(key, ACL_HIFLOAT8);
+        ACLNN_CMD(aclnnQuantLightningIndexerV2, query_wrapper, key_wrapper,
+            weights, query_dequant_scale, key_dequant_scale, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+            cmp_residual_k, block_table, output_idx_offset, metadata, topk, quant_mode,
+            max_seqlen_q, query_layout_ptr, key_layout_ptr, mask_mode, cmp_ratio, return_value,
+            sparse_indices_out, sparse_values_out);
+    } else {
+        ACLNN_CMD(aclnnQuantLightningIndexerV2, query, key,
+            weights, query_dequant_scale, key_dequant_scale, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+            cmp_residual_k, block_table, output_idx_offset, metadata, topk, quant_mode,
+            max_seqlen_q, query_layout_ptr, key_layout_ptr, mask_mode, cmp_ratio, return_value,
+            sparse_indices_out, sparse_values_out);
+    }
+
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);
 }
 // Bind the C++ function to Python module
