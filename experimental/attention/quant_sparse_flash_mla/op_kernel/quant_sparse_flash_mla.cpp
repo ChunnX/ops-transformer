@@ -37,7 +37,8 @@ using namespace AscendC;
         op.Process();                                                                             \
     } while (0)
 
-template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int KV_DTYPE>
+template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int KV_DTYPE,
+        int IS_VEC_S2PHYADDR>
  __global__ __aicore__ void quant_sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV,
     __gm__ uint8_t *cmpKV, __gm__ uint8_t *qDescale, __gm__ uint8_t *oriKVDescale,
     __gm__ uint8_t *cmpKVDescale, __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
@@ -55,6 +56,6 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
         QSMLA_OP_IMPL(BaseApi::QuantSparseFlashMlaScfa, QuantSparseFlashMlaTilingData, hifloat8_t,
             hifloat8_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
             static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
-            static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
+            static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G, IS_VEC_S2PHYADDR);
     }
 }
