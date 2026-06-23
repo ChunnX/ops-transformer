@@ -102,11 +102,10 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
-    GM_ADDR gmmOutPtr;
-    GM_ADDR rowGroupCompletePtr;
     GM_ADDR cumsumInfoPtr;
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
+    GM_ADDR rowGroupCompletePtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -147,16 +146,18 @@ struct WorkspaceInfo {
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
 
-        // Quantization-only workspace buffers
-        gmmOutPtr = nullptr;
+        cumsumInfoPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize), ALIGN_32) *
+            tilingData->aicNum;
+        gmm1MmadResPtr = base + workspaceSize;
+        workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
+        gmm2MmadResPtr = base + workspaceSize;
+        workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+
+        // Combine-quant-only workspace buffers
         rowGroupCompletePtr = nullptr;
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-            // GMM2 output buffer (bf16)
-            gmmOutPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h), ALIGN_512);
-
-            // Row group completion counters
             rowGroupCompletePtr = base + workspaceSize;
             int64_t maxTokensPerExpert = static_cast<int64_t>(tilingData->bs) * tilingData->epWorldSize;
             int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, DISPATCH_WAVE_TILE_M);
@@ -166,15 +167,6 @@ struct WorkspaceInfo {
                 maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
             workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
         }
-
-        cumsumInfoPtr = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(
-            static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize), ALIGN_32) *
-            tilingData->aicNum;
-        gmm1MmadResPtr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->hiddenDim;
-        gmm2MmadResPtr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->maxOutputSize * tilingData->h;
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

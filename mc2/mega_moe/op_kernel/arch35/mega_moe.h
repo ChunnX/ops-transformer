@@ -864,7 +864,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
 // ==================================================================================
 // UpdateGlobalBuffer：更新当前 expert 的 GMM 地址视图。
 //                     GMM1 始终写 gmm1MmadResPtr；
-//                     GMM2 默认写 gmm2MmadResPtr，在 combine-quant 路径下改写到 gmmOutPtr。
+//                     GMM2 始终写 gmm2MmadResPtr。
 // ==================================================================================
 template <TemplateMegaMoeTypeClass>
 template <AddrUpdateMode Mode>
@@ -899,10 +899,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
             params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
-    }
-    if constexpr (Mode == AddrUpdateMode::kGmm2 && CombineQuantMode != COMBINE_NO_QUANT) {
-        gmmAddrInfo.gmm2OutGlobal = params_.workspaceInfo.gmmOutPtr +
-                                    Get<IDX_Y2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
     }
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
                                 Get<IDX_FLAG_OFFSET>(state.baseOffset) * INT_CACHELINE;

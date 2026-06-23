@@ -839,7 +839,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
 
 template <typename Policy, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
     typename ElementMxScaleB, typename ExtraArgs>
-__aicore__ inline void GroupMatmulA8W4Impl(const Params& params,
+__aicore__ inline void GroupMatmulImplA8W4(const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
     uint32_t& startBlockIdx, ExtraArgs& args)
 {
@@ -904,7 +904,7 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     (void)vecSetSyncCom;
     using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;
     Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{swigluQuantOp};
-    Detail::GroupMatmulA8W4Impl<Detail::Gmm1PolicyA8W4, ElementA, ElementB, ElementC, ElementMxScaleA,
+    Detail::GroupMatmulImplA8W4<Detail::Gmm1PolicyA8W4, ElementA, ElementB, ElementC, ElementMxScaleA,
         ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
@@ -917,7 +917,7 @@ __aicore__ inline void GroupMatmul2CombineA8W4(
 {
     (void)vecSetSyncCom2;
     Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx};
-    Detail::GroupMatmulA8W4Impl<Detail::Gmm2PolicyA8W4, ElementA, ElementB, ElementC, ElementMxScaleA,
+    Detail::GroupMatmulImplA8W4<Detail::Gmm2PolicyA8W4, ElementA, ElementB, ElementC, ElementMxScaleA,
         ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
