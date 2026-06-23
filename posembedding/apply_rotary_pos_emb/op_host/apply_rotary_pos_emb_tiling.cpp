@@ -264,12 +264,12 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
             shapeMsg.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (params.cosDim3 != LASTDIM_64 && params.cosDim3 != LASTDIM_128) {
-        std::string shapeStr = ToString(cosShape);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos",
-            shapeStr.c_str(), "The last dim of input cos should be 64 or 128");
-        return ge::GRAPH_FAILED;
-    }
+    // if (params.cosDim3 != LASTDIM_64 && params.cosDim3 != LASTDIM_128) {
+    //     std::string shapeStr = ToString(cosShape);
+    //     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos",
+    //         shapeStr.c_str(), "The last dim of input cos should be 64 or 128");
+    //     return ge::GRAPH_FAILED;
+    // }
     if (params.qDim3 < params.cosDim3) {
         std::string shapeMsg = ToString(qShape) + " and " + ToString(cosShape);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and cos",
@@ -277,12 +277,12 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
             "The last dim of input query should be greater than or equal to the last dim of input cos");
         return ge::GRAPH_FAILED;
     }
-    if (params.qDim3 != LASTDIM_128 && params.qDim3 != LASTDIM_64) {
-        std::string shapeStr = ToString(qShape);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "query",
-            shapeStr.c_str(), "The last dim of input query should be 64 or 128");
-        return ge::GRAPH_FAILED;
-    }
+    // if (params.qDim3 != LASTDIM_128 && params.qDim3 != LASTDIM_64) {
+    //     std::string shapeStr = ToString(qShape);
+    //     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "query",
+    //         shapeStr.c_str(), "The last dim of input query should be 64 or 128");
+    //     return ge::GRAPH_FAILED;
+    // }
     if (params.coscNum != 1) {
         std::string reasonMsg =
             "The N axis of input cos should be 1, "
