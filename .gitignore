@@ -41,7 +41,9 @@ third_party/
 !cmake/third_party/ops-tensor.cmake
 
 # ai
-.agents/
+.agents/*
+!.agents/skills/
+!.agents/skills/**
 .opencode/
 .claude/
 
