@@ -113,7 +113,7 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
                                  context->GetOutputShape(OUT_MM_RES_INDEX), context->GetOutputShape(OUT_H_PRE_INDEX)};
     if (xDim == BSND_DIM_NUM) {
         uint64_t b = xShape->GetDim(0), s = xShape->GetDim(1), n = xShape->GetDim(2), d = xShape->GetDim(3);
-        uint64_t matK = hasResi ? (n * n + 2 * n) : (2 * n);
+        uint64_t matN = hasResi ? (n * n + 2 * n) : (2 * n);
         SetShape3D(outShapes[0], b, s, d);
         SetShape3D(outShapes[1], b, s, n);
         if (hasResi) {
@@ -122,11 +122,11 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
             SetShape1D(outShapes[2], 0);
         }
         SetShape2D(outShapes[3], b, s);
-        SetShape3D(outShapes[4], b, s, matK);
+        SetShape3D(outShapes[4], b, s, matN);
         SetShape3D(outShapes[5], b, s, n);
     } else {
         uint64_t t = xShape->GetDim(0), n = xShape->GetDim(1), d = xShape->GetDim(2);
-        uint64_t matK = hasResi ? (n * n + 2 * n) : (2 * n);
+        uint64_t matN = hasResi ? (n * n + 2 * n) : (2 * n);
         SetShape2D(outShapes[0], t, d);
         SetShape2D(outShapes[1], t, n);
         if (hasResi) {
@@ -135,7 +135,7 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
             SetShape1D(outShapes[2], 0);
         }
         SetShape1D(outShapes[3], t);
-        SetShape2D(outShapes[4], t, matK);
+        SetShape2D(outShapes[4], t, matN);
         SetShape2D(outShapes[5], t, n);
     }
 

@@ -543,11 +543,12 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(uint64_
                 uint32_t maskOffset = tIdx * mnConfig_.n + vfBlockIdx * eleNumPerVf_;
                 uint32_t alphaOffset = vfBlockIdx * eleNumPerVf_;
                 uint32_t biasOffset = vfBlockIdx * eleNumPerVf_;
+                uint32_t curOffset = MhcPreUtils::Min(mnConfig_.n - vfBlockIdx * eleNumPerVf_, static_cast<uint64_t>(eleNumPerVf_));
                 MicroAPI::MaskReg curMask = MicroAPI::UpdateMask<P>(curLen);
 
-                MicroAPI::LoadAlign<P>(matmulResReg, matmulPtr + maskOffset);
-                MicroAPI::LoadAlign<P>(biasInReg, biasInPtr + biasOffset);
-                MicroAPI::LoadAlign<P>(alphaInReg, alphaInPtr + alphaOffset);
+                MicroAPI::Load<P>(matmulResReg, matmulPtr + maskOffset);
+                MicroAPI::Load<P>(biasInReg, biasInPtr + biasOffset);
+                MicroAPI::Load<P>(alphaInReg, alphaInPtr + alphaOffset);
 
                 MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, curMask);
                 MicroAPI::Mul(matmulResReg, matmulResReg, invRmsBroadReg, curMask);
@@ -556,7 +557,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(uint64_
 
                 MicroAPI::Add(matmulResReg, matmulResReg, biasInReg, curMask);
 
-                MicroAPI::StoreAlign<P>(matmulPtr + maskOffset, matmulResReg, curMask);
+                MicroAPI::Store<P>(matmulPtr + maskOffset, matmulResReg, curOffset);
             }
         }
     }
@@ -586,6 +587,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::HMixProcess(uint64_t
 {
     uint32_t mmResGmBlockNum = Ceil(matrixInfo_.nD, chunNDSize_);
     uint32_t computeLen = lenT * mnConfig_.n;
+    // align to 32B
+    uint32_t alignLen = MhcPreUtils::Align(computeLen, 8);
     uint64_t HMixOffset = (globalOffsetM_ + offsetT) * mnConfig_.n;
 
     LocalTensor<P> hMixLocal = xInQueue_.template AllocTensor<P>();
@@ -593,7 +596,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::HMixProcess(uint64_t
     copyParams.blockCount = static_cast<uint16_t>(mmResGmBlockNum);
     copyParams.blockLen = uint32_t(computeLen * sizeof(P));
     copyParams.srcStride = uint32_t((mnConfig_.curSingleCoreM * mnConfig_.curSingleCoreN - computeLen) * sizeof(P));
-    copyParams.dstStride = uint32_t(0);
+    copyParams.dstStride = uint32_t((alignLen - computeLen) * sizeof(P) / MhcPreUtils::UB_ALIGN_SIZE);
     DataCopyPadExtParams<P> copyPadParams{true, 0, 0, 0};
     DataCopyPad(hMixLocal, tempMMResGm_[HMixOffset], copyParams, copyPadParams);
     xInQueue_.EnQue(hMixLocal);
@@ -602,7 +605,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::HMixProcess(uint64_t
     uint64_t addOffset = 0;
     for(uint32_t mmResGmBlockIdx = 1; mmResGmBlockIdx < mmResGmBlockNum; mmResGmBlockIdx++)
     {
-        addOffset += computeLen;
+        addOffset += alignLen;
         Add(hMixLocal, hMixLocal, hMixLocal[addOffset], computeLen);
         PipeBarrier<PIPE_V>();
     }
