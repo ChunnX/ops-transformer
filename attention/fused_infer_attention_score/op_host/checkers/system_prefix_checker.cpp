@@ -33,7 +33,7 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDim(const FiaTilingInfo &f
     // 校验keySharedPrefix和valueSharedPrefix的的维度
     auto &keySharedPrefixTensor = fiaInfo.opParamInfo.keySharedPrefix.tensor;
     auto &valueSharedPrefixTensor = fiaInfo.opParamInfo.valueSharedPrefix.tensor;
-    if (keySharedPrefixTensor == nullptr || valueSharedPrefixTensor == nullptr) {
+    if (fiaInfo.sysPrefixFlag) {
         // 若keySharedPrefix或valueSharedPrefix的shape为空，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
@@ -357,7 +357,7 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
             "prefix must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/TND_NTD/NTD_TND"),
         return ge::GRAPH_FAILED);
     // 不支持PFA MLA场景
-    OP_CHECK_IF((enablePFAMLA || enablePFARope),
+    OP_CHECK_IF((enablePFAMLA || enableIFAMLA || enablePFARope),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
             "prefix must be empty in PFA MLA scenario"),
         return ge::GRAPH_FAILED);
@@ -543,10 +543,7 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquant(const FiaTilingInfo &
 // multipara
 ge::graphStatus SystemPrefixChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckSharedPrefixDim(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckSharedPrefixDataType(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckSharedPrefixShape(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckActualSharedPrefixLenData(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckActualSharedPrefixLenData(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -554,9 +551,6 @@ ge::graphStatus SystemPrefixChecker::CheckSinglePara(const FiaTilingInfo &fiaInf
 
 ge::graphStatus SystemPrefixChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckSharedPrefixExistence(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -577,6 +571,12 @@ ge::graphStatus SystemPrefixChecker::CheckCrossFeature(const FiaTilingInfo &fiaI
 
 ge::graphStatus SystemPrefixChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
+    if (ge::GRAPH_SUCCESS != CheckSharedPrefixDim(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckSharedPrefixDataType(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckSharedPrefixShape(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckSharedPrefixExistence(fiaInfo)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
