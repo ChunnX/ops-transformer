@@ -42,22 +42,19 @@ struct MhcPreSinkhornBackwardArch35DeterminiticTilingData {
     int64_t seqLength = 0;
     int64_t c = 0;
     int64_t n = 0;
-    int64_t aivNum = 0;
     int64_t usedAivNum = 0;
     int64_t cLoopDataLen = 0;
     int64_t bsLoopDataLen = 0;
     int64_t skIterCount = 0;
     int64_t bsTaskCount = 0;
     int64_t tailBsTaskCount = 0;
-    // 切c
-    int64_t cLoopsPerBS = 0; // 单个BS，切C循环次数
-    int64_t cCountPerBS = 0; // 单个BS，切C时，一次运算的元素个数，需对齐
-    int64_t cTailPerBS = 0; // 单个BS，切C时尾循环处理元素个数
+    //reset后
     int64_t cBlockLoops = 0; // B*S*N*C，切核，总循环次数
     int64_t cBlockTailLoops = 0; // B*S*N*C，切核，尾核循环次数
     int64_t cBlockCount = 0; // B*S*N*C，切核，普通核尾循环处理元素个数
-    int64_t cBlockTailCount = 0; // B*S*N*C，切核，尾核循环次数
+    int64_t cBlockTailCount = 0; // B*S*N*C，切核，普通核尾核循环次数
     int64_t cBlockTailTailCount = 0; // B*S*N*C，切核，尾核尾循环处理个数
+    int64_t finalUsedAivNum = 0;
     float eps = 0;
     TCubeTiling mm1TilingData;
     TCubeTiling mm2TilingData;

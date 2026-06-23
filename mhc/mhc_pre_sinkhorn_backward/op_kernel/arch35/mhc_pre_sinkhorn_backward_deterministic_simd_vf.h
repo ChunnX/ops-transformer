@@ -54,8 +54,8 @@ __aicore__ inline void CopyIn(const LocalTensor<PARAM_T>& dstTensor, const Globa
                                 uint32_t ubStride, uint32_t gmStride)
 {
     DataCopyExtParams copyParams = {
-        static_cast<uint16_t>(repTime), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(gmStride), static_cast<uint32_t>(ubStride)};
+        static_cast<uint16_t>(repTime), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(gmStride),
+        static_cast<uint32_t>(ubStride), static_cast<uint32_t>(0)};
     DataCopyPadExtParams<PARAM_T> padParams = {
         false, static_cast<uint8_t>(0), static_cast<uint8_t>(0), static_cast<PARAM_T>(0)};
     DataCopyPad(dstTensor, srcTensor, copyParams, padParams);
@@ -67,8 +67,8 @@ __aicore__ inline void CopyOut(const GlobalTensor<PARAM_T>& dstTensor, const Loc
                                 uint32_t ubStride, uint32_t gmStride)
 {
     DataCopyExtParams copyParams = {
-        static_cast<uint16_t>(repTime), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(gmStride), static_cast<uint32_t>(ubStride)};
+        static_cast<uint16_t>(repTime), static_cast<uint32_t>(dataLen * sizeof(PARAM_T)), static_cast<uint32_t>(ubStride),
+        static_cast<uint32_t>(gmStride), static_cast<uint32_t>(0)};
     DataCopyPad(dstTensor, srcTensor, copyParams);
 }
 
@@ -209,7 +209,6 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U* zAddr, __local_me
                 AscendC::MicroAPI::Muls(zReg, normOutForwardReg, alpha, valueMaskReg);
                 AscendC::MicroAPI::Add(zReg, zReg, biasReg, valueMaskReg);
                 MicroAPI::StoreUnAlign<U>(zAddrStart, zReg, unStoreZReg, vfLen);
-
             }
             MicroAPI::StoreUnAlignPost<U>(zAddrStart, unStoreZReg, 0);
         }

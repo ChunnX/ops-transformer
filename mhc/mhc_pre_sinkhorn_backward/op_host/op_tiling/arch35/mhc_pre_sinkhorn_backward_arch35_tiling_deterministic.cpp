@@ -18,6 +18,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "mhc_pre_sinkhorn_backward_arch35_tiling_deterministic.h"
 #include "log/log.h"
+#include "platform/platform_info.h"
 
 using namespace AscendC;
 namespace optiling {
@@ -49,6 +50,9 @@ constexpr uint8_t BF16_BYTE_SIZE = 2;
 constexpr int64_t ALPHA_SIZE_3 = 3;
 constexpr int64_t N_SIZE_4 = 4;
 constexpr int64_t ALIGN_32 = 32;
+constexpr int64_t FP32_BYTE_SIZE = 4;
+constexpr uint64_t UB_RESERVE_SIZE = 256;
+constexpr int64_t WS_BUFFER_INTERVAL = 1024;
 
 template<typename T>
 constexpr T AlignUp(T value, T align) {
@@ -111,9 +115,25 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     tilingData->seqLength = seqLength_;
     tilingData->c = c_;
     tilingData->n = n_;
-    tilingData->aivNum = coreNumAiv_;
+    tilingData->usedAivNum = usedAivNum_;
     tilingData->skIterCount = skIterCount_;
+    tilingData->cLoopDataLen = cLoopDataLen_;
+    tilingData->bsLoopDataLen = bsLoopDataLen_;
+    tilingData->bsTaskCount = bsTaskCount_;
+    tilingData->tailBsTaskCount = tailBsTaskCount_;
+    tilingData->cBlockLoops = cBlockLoops_;
+    tilingData->cBlockTailLoops = cBlockTailLoops_;
+    tilingData->cBlockCount = cBlockCount_;
+    tilingData->cBlockTailCount = cBlockTailCount_;
+    tilingData->cBlockTailTailCount = cBlockTailTailCount_;
+    tilingData->finalUsedAivNum = finalUsedAivNum_;
     tilingData->eps = hcEps_;
+
+    int64_t cBlockLoops_{0};
+    int64_t cBlockTailLoops_{0};
+    int64_t cBlockCount_{0};
+    int64_t cBlockTailCount_{0};
+    int64_t cBlockTailTailCount_{0};
 
     return ge::GRAPH_SUCCESS;  
 }
@@ -121,33 +141,68 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
 {
     int64_t totalBs = batchSize_ * seqLength_;
-    bsTaskCount_ = totalBs / coreNumAiv_;
-    tailBsTaskCount_ = totalBs - bsTaskCount_ * coreNumAiv_;
-    cLoopDataLen_ = c_
-    constexpr int64_t FP32_BYTE_SIZE = 4;
-
-    int64_t nAlignFp32 = AlignUp(n_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
-    int64_t cAlignFp32 = AlignUp(c_ * FP32_BYTE_SIZE, ALIGN_32) / FP32_BYTE_SIZE;
-    int64_t cAlignFp16 = AlignUp(c_ * BF16_BYTE_SIZE, ALIGN_32) / BF16_BYTE_SIZE;
-    
-    int64_t hPreBuffer = nAlignFp32 * FP32_BYTE_SIZE;
-    int64_t xBuffer = cAlignFp16 * n_ * BF16_BYTE_SIZE;
-    int64_t gradHinBuffer = cAlignFp16 * BF16_BYTE_SIZE;
-    int64_t xFp32Buffer = cAlignFp32 * n_ * FP32_BYTE_SIZE;
-    int64_t gradXFromHinBuffer = cAlignFp32 * n_ * FP32_BYTE_SIZE;
-    int64_t gradHPreBuffer = nAlignFp32 * FP32_BYTE_SIZE;
-    
-    int64_t totalUbPerBs = (hPreBuffer + xBuffer + gradHinBuffer + xFp32Buffer + gradXFromHinBuffer + gradHPreBuffer) * DOUBLE_BUFFER;
-    int64_t maxBsLoopDataLen = static_cast<int64_t>(ubSize_ * 0.9 / totalUbPerBs);
-    
-    bsLoopDataLen_ = std::min(maxBsLoopDataLen, bsTaskCount_);
-    bsLoopDataLen_ = std::max(bsLoopDataLen_, static_cast<int64_t>(1));
-    
+    bsTaskCount_ = Ops::Base::CeilDiv(totalBs, coreNumAiv_);
+    usedAivNum_ = Ops::Base::CeilDiv(totalBs, bsTaskCount_);
+    tailBsTaskCount_ = totalBs - bsTaskCount_ * (usedAivNum - 1);
     cLoopDataLen_ = c_;
-    tile_ = bsLoopDataLen_;
-    
-    OP_LOGI(opName, "DoUbTiling: totalBs=%lld, bsTaskCount=%lld, tailBsTaskCount=%lld, bsLoopDataLen=%lld, cLoopDataLen=%lld, nAlign=%lld, cAlign=%lld",
-        totalBs, bsTaskCount_, tailBsTaskCount_, bsLoopDataLen_, cLoopDataLen_, nAlignFp32, cAlignFp32);
+    bsLoopDataLen_ = bsTaskCount_;
+    ubBlock_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)) - UB_RESERVE_SIZE;
+    auto restSize = static_cast<int64_t>(-1);
+ 
+    while (restSize > 0) {
+        int64_t occupy = DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +   //x
+                        DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n * FP32_BYTE_SIZE, ubBlock_) +                     //h_pre And grad_h_pre
+                        DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +         //grad_h_in
+                        DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +               //hc_before_norm
+                        DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +                         //inv_rms
+                        DOUBLE_BUFFER * bsLoopDataLen_ * n_* Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +     //xFP32
+                        DOUBLE_BUFFER * bsLoopDataLen_ * n_* Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +     //grad_x_from_in
+                        DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +               //grad_h_res
+                        Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + ubBlock_ +                                     //grad_alpha And grad_bias
+                        Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                                    //grad_h_pre
+                        Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //grad_z
+                        Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                                                //bias
+                        Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //norm_out_forward
+                        Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //z
+                        Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf1_
+                        Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf2_
+                        2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpDiv3Buf_
+                        2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpMulBuf_
+                        2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //sumOutBuf_
+                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //normOutBuf_
+                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResBuf_
+                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResMaxBuf_
+                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResMaxIdxBuf_
+                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //gradXRowNormedBuf_
+                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //skGradBuf_
+                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);                                //expGradBuf_
+
+        restSize = ubSize_ - occupy;
+        if (restSize <= 0 && bsLoopDataLen_ > 1) {
+            bsLoopDataLen_--;
+        } else {
+            cLoopDataLen_--;
+        }
+    }
+
+    //final
+    auto bsncTaskCount = Ops::Base::CeilDiv(totalBs * n_ * c_, coreNumAiv_);
+    finalUsedAivNum_ = Ops::Base::CeilDiv(totalBs * n_ * c_, bsncTaskCount);
+    auto tailBsncTaskCount_ = totalBs * n_ * c_ - bsncTaskCount * (finalUsedAivNum_ - 1);
+    cBlockCount_ = bsncTaskCount;
+    cBlockTailCount_ = tailBsncTaskCount_;
+    restSize = static_cast<int64_t>(-1);
+    while (restSize > 0) {
+        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_);
+        restSize = ubSize_ - occupy;
+        if (restSize < 0 && cBlockCount_ > 1) {
+            cBlockCount_--;
+        }
+    }
+    cBlockLoops_ = CeilDiv(bsncTaskCount, cBlockCount_);
+    cBlockTailLoops_ = CeilDiv(tailBsncTaskCount_, cBlockCount_);
+    cBlockTailCount_ = bsncTaskCount - cBlockCount_ * (cBlockLoops_ - 1);
+    cBlockTailTailCount_ = tailBsncTaskCount_ - cBlockCount_ * (cBlockTailLoops_ - 1);
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::DoOpTiling()
@@ -176,36 +231,35 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-    size_t gradHat2Workspace = batchSize_ * seqLength_ * n_ * c_ * 10 * sizeof(float);
+    size_t userWorkspaceSize = batchSize_ * seqLength_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                            //xFP32
+                                3 * usedAicNum_ * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +                                       //gradAlpha
+                                (2 * usedAicNum_ * n_ + usedAicNum_ * n_ * n_) * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +        //gradBias
+                                batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3  + 3 * WS_BUFFER_INTERVAL +             //gradXFrom
+                                batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +           //grad_hc_before_norm
+                                batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;            //grad_norm_out
+
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
-    size_t usrWorkSpaceSize = gradHat2Workspace;
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(currentWorkspace == nullptr, OP_LOGE(opName, "fail to GetWorkspaceSizes"), return ge::GRAPH_FAILED);
-    currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
+    currentWorkspace[0] = systemWorkspaceSize + userWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
 }
 
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DumpTilingInfo()
 {
-
-    mm1K_ = n_ * n_ + 2 * n_;
-    mm1M_ = tile_ * 2;
-    mm1N_ = n_ * c_;
-
-    mm2K_ = tile_ * 2;
-    mm2M_ = n_ * n_ + 2 * n_;
-    mm2N_ = n_ * c_;
     std::ostringstream info;
     info << "batchSize: " << batchSize_ << std::endl;
     info << "seqLength: " << seqLength_ << std::endl;
     info << "c: " << c_ << std::endl;
     info << "n: " << n_ << std::endl;
-    info << "c0: " << c0_ << std::endl;
-    info << "c1: " << c1_ << std::endl;
     info << "aivNum: " << coreNumAiv_ << std::endl;
+    info << "usedAivNum: " << usedAivNum_ << std::endl;
+    info << "cLoopDataLen: " << cLoopDataLen_ << std::endl;
+    info << "bsLoopDataLen: " << bsLoopDataLen_ << std::endl;
     info << "skIterCount: " << skIterCount_ << std::endl;
-    info << "tileSize: " << tile_ << std::endl;
+    info << "bsTaskCount: " << bsTaskCount_ << std::endl;
+    info << "tailBsTaskCount: " << tailBsTaskCount_ << std::endl;
     info << "mm1K: " << mm1K_ << std::endl;
     info << "mm1M: " << mm1M_ << std::endl;
     info << "mm1N: " << mm1N_ << std::endl;

@@ -44,7 +44,6 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
 
 private:
-    ge::graphStatus CheckShape(int64_t batchSize, int64_t seqLength, int64_t n, int64_t c);
     ge::graphStatus SetTilingData();
     void DoUbTiling();
 
@@ -53,30 +52,14 @@ private:
     int64_t tailBsTaskCount_{0};
     int64_t bsLoopDataLen_{0};
     int64_t cLoopDataLen_{0};
-    // uint64_t coreNumAic_{0};
-    // uint64_t coreNumAiv_{0};
-    // uint64_t ubSize_{0};
-
-    // int64_t batchSize_{0};
-    // int64_t seqLength_{0};
-    // int64_t n_{0};
-    // int64_t c_{0};
-    // int64_t c0_{0};
-    // int64_t c1_{0};
-    // int64_t coreTaskCount_{0};
-    // int64_t tile_{0};
-    // int64_t tileUB_{0};
-    // int64_t skIterCount_{0};
-    // float hcEps_{0};
-
-    // int64_t mm1K_{0};
-    // int64_t mm1M_{0};
-    // int64_t mm1N_{0};
-    // int64_t mm2K_{0};
-    // int64_t mm2M_{0};
-    // int64_t mm2N_{0};
-
-    // const char* opName = "MhcPreSinkhornBackward";
+    int64_t ubBlock_{0};
+    int64_t usedAivNum_{0};
+    int64_t cBlockLoops_{0};
+    int64_t cBlockTailLoops_{0};
+    int64_t cBlockCount_{0};
+    int64_t cBlockTailCount_{0};
+    int64_t cBlockTailTailCount_{0};
+    int64_t finalUsedAivNum_{0};
 };
 
 } //namespace optiling
