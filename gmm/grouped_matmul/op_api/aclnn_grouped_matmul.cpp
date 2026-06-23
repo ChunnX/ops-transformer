@@ -2583,6 +2583,9 @@ static void SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &params, 
           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)))) {
         (*params.weight)[0]->SetStorageShape(nZShape);
+        for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
+            (*params.weight)[idx]->SetStorageShape(nZShape);
+        }
     }
     SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode);
   }
@@ -2743,7 +2746,9 @@ static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, op::Shape w
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
          (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)))) {
-        (*params.weight)[0]->SetStorageShape(wqbmmNzShape);
+        for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
+            (*params.weight)[idx]->SetStorageShape(wqbmmNzShape);
+        }
     }
     return ACLNN_SUCCESS;
 }
