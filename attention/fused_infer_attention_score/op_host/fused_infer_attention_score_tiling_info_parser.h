@@ -99,7 +99,7 @@ public:
     ge::graphStatus GetFullQuantMode();
     ge::graphStatus GetOldIfaGqaFlag();
     ge::graphStatus GetAntiQuantInfo();
-    TilingKeyLayout MapStringToLayout(FiaLayout &layoutString) const;
+    TilingKeyLayout MapStringToLayout(const FiaLayout &layoutString) const;
     void GenerateAxisInfo(FiaTilingInfo &fiaInfo);
     void GenerateDtypeInfo(FiaTilingInfo &fiaInfo);
     void GenerateFeatureInfo(FiaTilingInfo &fiaInfo);
@@ -173,7 +173,7 @@ public:
     std::vector<int32_t> kvSize_ = {};
 
     bool emptyTensorFlag_ = false;
-    bool isSameSeqAllKVTensor_ = true;
+    bool isSameSeqAllKVTensor_ = true; // 所有 batch 的 kv tensor 是否具有相同的序列长度
     bool isSameActualseq_ = true;
     bool attenMaskFlag_ = false;
     bool needInit_ = false;
