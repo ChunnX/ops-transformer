@@ -10,25 +10,21 @@
 
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
-#include <string>
-
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
-
 ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     OP_LOGD(context, "QkvRmsNormRopeCacheWithKScale tiling start.");
-    return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
+    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    const std::string opName = context->GetNodeName();
     auto compileInfo = context->GetCompiledInfo<QkvRmsNormRopeCacheWithKScaleCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
     auto platformInfo = context->GetPlatformInfo();
@@ -41,14 +37,14 @@ ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseCon
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, compileInfo->l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfo->l0cSize);
     compileInfo->opWorkspaceSize = static_cast<uint64_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
-    OP_LOGD(opName.c_str(),
-            "QkvRmsNormRopeCacheWithKScale tiling prepare resources: aicNum=%u aivNum=%u ubSize=%lu l1Size=%lu "
-            "l0cSize=%lu opWorkspaceSize=%lu.",
-            compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size, compileInfo->l0cSize,
-            compileInfo->opWorkspaceSize);
+    OP_LOGD(context,
+            "QkvRmsNormRopeCacheWithKScale tiling prepare resources: aicNum=%u aivNum=%u ubSize=%llu "
+            "l1Size=%llu l0cSize=%llu opWorkspaceSize=%llu.",
+            compileInfo->aicNum, compileInfo->aivNum, compileInfo->ubSize, compileInfo->l1Size,
+            compileInfo->l0cSize, compileInfo->opWorkspaceSize);
     OP_CHECK_IF(compileInfo->aicNum == 0 || compileInfo->aivNum == 0 || compileInfo->ubSize == 0 ||
                     compileInfo->l1Size == 0 || compileInfo->l0cSize == 0,
-                OP_LOGE(opName.c_str(), "invalid platform resource for QkvRmsNormRopeCacheWithKScale."),
+                OP_LOGE(context, "invalid platform resource for QkvRmsNormRopeCacheWithKScale."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

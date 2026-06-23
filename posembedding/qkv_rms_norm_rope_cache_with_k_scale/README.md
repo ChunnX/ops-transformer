@@ -55,15 +55,30 @@ Current state:
 
 ## Q/K rotation split status
 
-The public host/API input contract has split the former single `rotation` input
-into two optional BF16 ND tensors that are required by the D=128 fast-path host
-contract:
+The public host/API contract adds `actual_seq_lens` for per-batch history
+lengths and splits the former single `rotation` input into two optional BF16 ND
+tensors that are required by the D=128 fast-path host contract:
 
 | Index | Input | Shape |
 |---:|---|---|
-| 9 | `q_rotation` | `[headDim, headDim]` |
-| 10 | `k_rotation` | `[headDim, headDim]` |
-| 11 | `v_scale` | `[numVHeads]` |
+| 9 | `actual_seq_lens` | `[batch]` |
+| 10 | `q_rotation` | `[headDim, headDim]` |
+| 11 | `k_rotation` | `[headDim, headDim]` |
+| 12 | `v_scale` | `[numVHeads]` |
+
+`cu_seq_len` is the prefix sum for the tokens in the current invocation.
+`actual_seq_lens` stores each batch sequence length after the current tokens are
+appended. The kernel derives each batch history offset as
+`max(actual_seq_lens[batch] - (cu_seq_len[batch + 1] - cu_seq_len[batch]), 0)`
+and adds it to the local token position before indexing the full `cos_sin`
+table. For example, `cu_seq_len=[0,17,18]` and
+`actual_seq_lens=[8209,1]` means batch0 uses RoPE positions `8192..8208`,
+while batch1 starts from position `0`.
+
+The required `inputLayout` attribute is case-sensitive and only accepts `NTD`
+or `TND`. `qkv`, `q_out`, and `q_scale` keep the same N/T layout: `NTD` uses
+`qkv=[Nq+Nk+Nv,T,D]`, `q_out=[Nq,T,D]`, `q_scale=[Nq,T]`; `TND` uses
+`qkv=[T,Nq+Nk+Nv,D]`, `q_out=[T,Nq,D]`, `q_scale=[T,Nq]`.
 
 Both rotation tensors must be present and BF16; missing inputs report
 `missing_q_rotation` or `missing_k_rotation`. Existing callers that used one
