@@ -81,6 +81,16 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
+    int64_t bsPerCoreMM1 = AlignUp(batchSize_ * seqLength_, coreNumAic_);
+    int64_t bsPerCoreMM2 = AlignUp(n_ * n_ + 2 * n_, coreNumAic_);
+
+    mm1K_ = n_ * n_ + 2 * n_;
+    mm1M_ = bsPerCoreMM1;
+    mm1N_ = n_ * c_;
+    mm2K_ = batchSize_ * seqLength_;
+    mm2M_ = bsPerCoreMM2;
+    mm2N_ = n_ * c_;
+
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
 
