@@ -12,8 +12,8 @@
  * \file matmul_all_reduce_base.h
  * \brief
  */
-#ifndef MATMUL_ALL_REDUCE_BASE_H
-#define MATMUL_ALL_REDUCE_BASE_H
+#ifndef MATMUL_ALL_REDUCE_BASE_ARCH35_H
+#define MATMUL_ALL_REDUCE_BASE_ARCH35_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -31,4 +31,4 @@ using namespace AscendC;
 template <typename XType, typename YType, Mc2CoreType CoreType, bool basedA2aRsAg, int commMode>
 class MatmulAllReduceBase{};
 } // namespace MatmulAllReduceImpl
-#endif // MATMUL_ALL_REDUCE_BASE_H
+#endif // MATMUL_ALL_REDUCE_BASE_ARCH35_H

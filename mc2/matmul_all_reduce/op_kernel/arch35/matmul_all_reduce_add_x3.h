@@ -75,14 +75,14 @@ public:
         PipeBarrier<PIPE_V>();
 #else
         if (std::is_same<T, bfloat16_t>::value) {
-            LocalTensor<float> outFp32LocalTmp = tempQueOutFp32_.Get<float>();
-            LocalTensor<float> addFp32LocalTmp = tempQueAddFp32_.Get<float>();
-            Cast(outFp32LocalTmp, xLocal, RoundMode::CAST_NONE, calcCnt);
-            Cast(addFp32LocalTmp, yLocal, RoundMode::CAST_NONE, calcCnt);
+            LocalTensor<float> outFp32Tmp = tempQueOutFp32_.Get<float>();
+            LocalTensor<float> addFp32Tmp = tempQueAddFp32_.Get<float>();
+            Cast(outFp32Tmp, xLocal, RoundMode::CAST_NONE, calcCnt);
+            Cast(addFp32Tmp, yLocal, RoundMode::CAST_NONE, calcCnt);
             PipeBarrier<PIPE_V>();
-            Add(outFp32LocalTmp, outFp32LocalTmp, addFp32LocalTmp, calcCnt);
+            Add(outFp32Tmp, outFp32Tmp, addFp32Tmp, calcCnt);
             PipeBarrier<PIPE_V>();
-            Cast(zLocal, outFp32LocalTmp, RoundMode::CAST_RINT, calcCnt);
+            Cast(zLocal, outFp32Tmp, RoundMode::CAST_RINT, calcCnt);
             PipeBarrier<PIPE_V>();
         } else if (std::is_same<T, half>::value) {
             Add(zLocal, xLocal, yLocal, calcCnt);

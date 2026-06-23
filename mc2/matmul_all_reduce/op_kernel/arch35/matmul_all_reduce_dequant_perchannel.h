@@ -68,27 +68,27 @@ public:
             aivAddOneIndex = dequantAivCoreNum_ - (dequantM_ % dequantAivCoreNum_);
         }
 
-        uint32_t vectorIndex = GetBlockIdx();                 // [0, 23]
+        uint32_t vecIdx = GetBlockIdx();                 // [0, 23]
         uint32_t singleAivM = dequantM_ / dequantAivCoreNum_; // 单核要计算的总行数（多次循环累计）
         if (singleAivM == 0) { // M小于核数，singleAivM为0，核计算行数更新及偏移计算
             uint32_t usedAivCoreIndex = dequantAivCoreNum_ - aivAddOneIndex;
-            if (vectorIndex < usedAivCoreIndex) {
+            if (vecIdx < usedAivCoreIndex) {
                 singleAivM = singleAivM + 1;
-                blockAddrOffset = static_cast<int64_t>(vectorIndex) * static_cast<int64_t>(singleAivM) *
+                blockAddrOffset = static_cast<int64_t>(vecIdx) * static_cast<int64_t>(singleAivM) *
                                   static_cast<int64_t>(dequantN_);
             } else {
                 // 不用计算的核直接返回
                 return;
             }
         } else { // M大于核数，singleAivM>0，核计算行数更新及偏移计算
-            if ((aivAddOneIndex < dequantAivCoreNum_ + 1) && (vectorIndex >= aivAddOneIndex)) {
+            if ((aivAddOneIndex < dequantAivCoreNum_ + 1) && (vecIdx >= aivAddOneIndex)) {
                 // 多算一行
                 singleAivM = singleAivM + 1;
-                blockAddrOffset = (static_cast<int64_t>(vectorIndex) * static_cast<int64_t>(singleAivM) -
+                blockAddrOffset = (static_cast<int64_t>(vecIdx) * static_cast<int64_t>(singleAivM) -
                                    static_cast<int64_t>(aivAddOneIndex)) *
                                   static_cast<int64_t>(dequantN_);
             } else {
-                blockAddrOffset = static_cast<int64_t>(vectorIndex) * static_cast<int64_t>(singleAivM) *
+                blockAddrOffset = static_cast<int64_t>(vecIdx) * static_cast<int64_t>(singleAivM) *
                                   static_cast<int64_t>(dequantN_);
             }
         }
