@@ -261,10 +261,15 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
                     "The value of layout string length must be equal to "
                     "dims of input query, key and value"),
                 return false);
-    OP_CHECK_IF(!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)||
-               !Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape),
+    OP_CHECK_IF(layoutLen != 3UL && layoutLen != 4UL,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
                    "The value of input layout must be in BSH, SBH, BSND, BNSD or TND"), return false);
+    if (!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)) {
+        return false;
+    }
+    if (!Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)) {
+        return false;
+    }
     if (s1Size > std::numeric_limits<int32_t>::max() || s2Size > std::numeric_limits<int32_t>::max()) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "s1Size, s2Size", std::to_string(s1Size) + ", " +
             std::to_string(s2Size),
@@ -475,6 +480,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
             inputParamsRegbase_->set_layoutType(static_cast<uint8_t>(LayoutType::LAYOUT_TND));
             tilingKeyLayout = LayoutType::LAYOUT_TND;
         } else {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
+                "The value of input layout must be in BSH, SBH or TND");
             return false;
         }
         OP_CHECK_IF((h1 == 0) || (h2 == 0) || (h3 == 0),
@@ -559,6 +566,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
             inputParamsRegbase_->set_layoutType(static_cast<uint8_t>(LayoutType::LAYOUT_BNSD));
             tilingKeyLayout = LayoutType::LAYOUT_BNSD;
         } else {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
+                "The value of input layout must be in BSND or BNSD");
             return false;
         }
     }
@@ -817,8 +826,11 @@ bool FlashAttentionScoreTilingRegbase::Analyze2DimAttenOptionalInput(AttenMaskSh
     } else {
         std::string attenMaskShapeStr = Ops::Base::ToString(attenMaskStorageShape);
         std::string expected1 = "[" + std::to_string(s1Size) + ", " + std::to_string(s2Size) + "]";
-        std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
-        std::string reason = "The shape of atten_mask must be " + expected1 + " or " + expected2;
+        std::string reason = "The shape of atten_mask must be " + expected1;
+        if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
+            std::string expected2 = "[" + std::to_string(accumS1) + ", " + std::to_string(accumS2) + "]";
+            reason += " or " + expected2;
+        }
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "atten_mask",
             attenMaskShapeStr.c_str(), reason.c_str());
         return false;
