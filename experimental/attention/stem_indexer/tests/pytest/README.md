@@ -15,9 +15,13 @@
 
 ```text
 test_stem_indexer_paramset.py
+excel/stem_indexer_cases.xlsx
 ```
 
-case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点和设计原因。当前pytest single直接读取该参数表。
+case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点和设计原因。
+`excel/stem_indexer_cases.xlsx`记录同一批case，作为批量模式生成`.pt`文件的输入。
+
+当前共有60条case，其中single模式直接读取`ENABLED_PARAMS`，batch模式按QLI风格读取Excel并生成`.pt`文件。
 
 ## 当前覆盖点
 
@@ -31,6 +35,9 @@ case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点�
 - GQA组合：`q_heads`为32/64，`kv_heads`为2/4/8。
 - 多batch变长、prefill/decode混合、单token decode。
 - OAM `vbias`影响选块、`scoreScale=1/64`路径。
+- `num_prompt_tokens`不能整除`stem_block_size`。
+- 动态TopK small/medium/large分段边界：55/56/159/160 blocks。
+- `curS2Len == initial + dynamicTopK + window`和刚越过该边界的短路2路径。
 - 参数非法负例。
 
 ## Metadata说明
@@ -50,8 +57,13 @@ test_stem_indexer_paramset.py        # single用例参数表
 stem_indexer_golden.py               # CPU侧golden实现
 result_compare_method.py             # sparse输出比较
 test_stem_indexer_single.py          # single主执行入口
+test_stem_indexer_batch.py           # batch主执行入口
 test_npu_stem_indexer.py             # 参考LI写法的普通单case脚本
 pytest.ini                           # pytest标记
+excel/stem_indexer_cases.xlsx        # batch用例表
+batch/stem_indexer_pt_save.py        # 读取Excel并生成pt
+batch/stem_indexer_pt_loadprocess.py # 读取pt并调用算子
+batch/replace_path.py                # 替换batch pytest中的pt路径
 ```
 
 ## 使用方法
@@ -62,7 +74,23 @@ pytest.ini                           # pytest标记
 bash test_run.sh single
 ```
 
-当前只保留`single`模式，完整白盒用例集都由该入口执行。
+批量测试：
+
+```bash
+bash test_run.sh batch
+```
+
+batch模式流程与QLI保持一致：
+
+```text
+1. 读取excel/stem_indexer_cases.xlsx。
+2. 生成每条case的.pt文件，保存输入、metadata和CPU golden。
+3. pytest逐个读取.pt文件并调用NPU算子。
+4. 与.pt中保存的golden比对。
+5. 生成result.xlsx记录批量执行结果。
+```
+
+`.pt`文件和`result.xlsx`是本地生成产物，不需要提交。
 
 普通单case脚本可直接执行：
 

@@ -10,7 +10,13 @@
 # -----------------------------------------------------------------------------------------------------------
 
 # ====================== 配置区======================
+PATH1="./excel/*"
+PATH2="./pt_path"
+
+STEM_INDEXER_PT_SAVE_SCRIPT="./batch/stem_indexer_pt_save.py"
 TEST_STEM_INDEXER_SINGLE_SCRIPT="test_stem_indexer_single.py"
+TEST_STEM_INDEXER_BATCH_SCRIPT="test_stem_indexer_batch.py"
+REPLACE_PATH_SCRIPT="./batch/replace_path.py"
 
 # ====================== 执行区======================
 
@@ -20,20 +26,54 @@ run_single() {
     python3 -m pytest -rA -s $TEST_STEM_INDEXER_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
+# 用例批量生成调试
+run_batch() {
+    echo "===== 执行用例批量生成测试 ====="
+
+    echo -e "\n===== 第一步：执行stem_indexer_pt_save.py ====="
+    python3 $STEM_INDEXER_PT_SAVE_SCRIPT $PATH1 $PATH2
+    if [ $? -ne 0 ]; then
+        echo "stem_indexer_pt_save.py 执行失败，退出"
+        exit 1
+    fi
+
+    echo -e "\n===== 第二步：替换test_stem_indexer_batch.py中的路径 ====="
+    python3 $REPLACE_PATH_SCRIPT $TEST_STEM_INDEXER_BATCH_SCRIPT $PATH2
+    if [ $? -ne 0 ]; then
+        echo "替换路径失败，退出"
+        exit 1
+    fi
+
+    echo -e "\n===== 第三步：执行pytest命令 ====="
+    python3 -m pytest -rA -s $TEST_STEM_INDEXER_BATCH_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    pytest_status=$?
+    if [ -f "${TEST_STEM_INDEXER_BATCH_SCRIPT}.bak" ]; then
+        cp "${TEST_STEM_INDEXER_BATCH_SCRIPT}.bak" $TEST_STEM_INDEXER_BATCH_SCRIPT
+    fi
+    if [ $pytest_status -ne 0 ]; then
+        echo "pytest执行失败"
+        exit 1
+    fi
+
+    echo -e "\n=====执行完成！====="
+}
+
 # 显示帮助信息
 show_help() {
     echo "用法: $0 [参数]"
     echo "参数说明："
     echo "  single    执行单算子用例调测"
+    echo "  batch     执行用例批量生成调测"
     echo "  help      显示本帮助信息"
     echo "示例："
     echo "  $0 single  # 执行single模式"
+    echo "  $0 batch   # 执行batch模式"
 }
 
 # ====================== 主逻辑 ======================
 # 检查传入的参数数量
 if [ $# -ne 1 ]; then
-    echo "错误：必须传入且仅传入一个参数（single/help）"
+    echo "错误：必须传入且仅传入一个参数（single/batch/help）"
     show_help
     exit 1
 fi
@@ -43,11 +83,14 @@ case "$1" in
     single)
         run_single
         ;;
+    batch)
+        run_batch
+        ;;
     help)
         show_help
         ;;
     *)
-        echo "错误：未知参数 '$1'，仅支持 single/help"
+        echo "错误：未知参数 '$1'，仅支持 single/batch/help"
         show_help
         exit 1
         ;;
