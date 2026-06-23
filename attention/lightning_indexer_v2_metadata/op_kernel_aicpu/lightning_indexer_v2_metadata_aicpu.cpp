@@ -253,9 +253,9 @@ uint64_t LightningIndexerV2MetadataCpuKernel::GetRevertS2Size(uint32_t bIdx)
     uint32_t cmpS2Size = GetS2SeqSize(bIdx);
     if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
         const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
-        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_ + residualPtr[bIdx];
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_) + residualPtr[bIdx];
     } else {
-        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_;
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_);
     }
 }
 
