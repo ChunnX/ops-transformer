@@ -4,11 +4,11 @@
 
 | 产品                                                                            | 是否支持 |
 | :------------------------------------------------------------------------------ | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                                                | √       | 
+| <term>Ascend 950DT</term>                                                | √       | 
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        | ×       |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | ×       |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         | ×       |
-| <term>Atlas 推理系列产品</term>                                                | ×       |
+| <term>Atlas 推理系列产品</term>                                                  | ×       |
 | <term>Atlas 训练系列产品</term>                                                 | ×       |
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
@@ -126,7 +126,7 @@ aclnnStatus aclnnQuantReduceScatter(
         <td>output</td>
         <td>输出</td>
         <td>公式中的输出output。</td>
-        <td><ul><li>不支持空Tensor。</li><li>当x的shape是(BS,H)的时候，output的shape必须为(BS/rankNum,H); 当x的shape是(B,S,H)的时候，output的shape必须为(B*S/rankNum,H)。rankNum表示通信域大小。</li></ul></td>
+        <td><ul><li>不支持空Tensor。</li><li>当x的shape是(BS,H)的时候，output的shape必须为(BS/rankNum,H);当x的shape是(B,S,H)的时候，output的shape必须为(B*S/rankNum,H)。rankNum表示通信域大小。</li></ul></td>
         <td>FLOAT、FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>
@@ -238,10 +238,10 @@ aclnnStatus aclnnQuantReduceScatter(
 
 - 当x的数据类型为FLOAT8_E4M3FN, FLOAT8_E5M2并且scales的数据类型为FLOAT8_E8M0时，输入数据的量化方式为mx量化。
 - 当x的数据类型为INT8、HIFLOAT8、FLOAT8_E4M3FN, FLOAT8_E5M2并且scales的数据类型为FLOAT时，输入数据的量化方式为pertoken-pergroup量化(groupSize=128)。
-- 只在Ascend950系列平台使能。
+- 只在Ascend950系列平台开启。
 - 不支持空tensor输入。
 - 通信引擎约束：
-  - Ascend950PR/Ascend950DT: 仅支持UB-Memory通信。
+  - Ascend950DT: 仅支持UB-Memory通信。
 - 通信域大小支持2、4、8。
 - 通信域使用约束：同一通信域内仅允许连续执行`aclnnQuantAllReduce`和`aclnnQuantReduceScatter`算子，且该通信域中不允许有其他通信算子。
 - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求满足`HCCL_BUFFSIZE`>= 2 * (`xDataSize` + `scalesDataSize + 1`)。其中`xDataSize`为输入`x`的数据大小，计算公式为：`xDataSize = BS * H * 1 (Byte)`，`scalesDataSize`为`scales`的数据大小，当量化方式为pertoken-pergroup量化时，计算公式为：`scalesDataSize = BS * H / 128 * 4 (Byte)`，当量化方式为mx量化时，计算公式为：`scalesDataSize = BS * H / 32 * 1 (Byte)`。
@@ -251,7 +251,7 @@ aclnnStatus aclnnQuantReduceScatter(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-- <term>Atlas A5 训练系列产品/Atlas A5 推理系列产品</term>：
+- <term>Atlas A5训练系列产品/Atlas A5推理系列产品</term>：
 
     ```Cpp
     #include <thread>
@@ -368,7 +368,7 @@ aclnnStatus aclnnQuantReduceScatter(
         ret = aclnnQuantReduceScatter(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQuantReduceScatter failed. ret = %d \n", ret);
                 return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
                 return ret);

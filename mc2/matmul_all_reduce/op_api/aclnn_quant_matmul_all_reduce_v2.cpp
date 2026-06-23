@@ -18,6 +18,7 @@
 #include "matmul_all_reduce_util.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -42,7 +43,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV2GetWorkspaceSize(
     // dequantScale转为uint64
     auto dequant = const_cast<aclTensor*>(dequantScale);
     if (dequant == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantMatmulAllReduce, dequant is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV2", "dequantScale");
         return ACLNN_ERR_INNER;
     }
     if (dequant->GetDataType() == op::DataType::DT_INT64) {
@@ -63,18 +64,13 @@ aclnnStatus aclnnQuantMatmulAllReduceV2(
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_API_CHECK(ret != ACLNN_SUCCESS, {
-        OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduceV2LaunchTask fail, ret: %d.", ret);
+        OP_LOGE_LIBOPAPI_REPORT("aclnnQuantMatmulAllReduceV2", "QuantMatmulAllReduceV2LaunchTask fail, ret: %d.", ret);
         return ACLNN_ERR_INNER;
     });
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};

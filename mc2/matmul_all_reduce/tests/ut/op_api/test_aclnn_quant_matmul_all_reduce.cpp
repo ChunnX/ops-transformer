@@ -11,9 +11,41 @@
 #include <gtest/gtest.h>
 #include "matmul_all_reduce_api_ut_param.h"
 #include "op_api_ut_common/op_api_ut.h"
+#include "op_api_ut_common/tensor_desc.h"
 #include "../../../op_api/aclnn_quant_matmul_all_reduce.h"
 
 namespace MatmulAllReduceUT {
+
+namespace {
+
+void RunQuantMatmulAllReduceUt(
+    op::SocVersion soc, const TensorDesc& x1, const TensorDesc& x2, const aclTensor* bias, const aclTensor* x3,
+    const TensorDesc& dequantScale, const TensorDesc& output, aclnnStatus expectResult)
+{
+    op::SetPlatformSocVersion(soc);
+    const char* group = "group";
+    const char* reduceOp = "sum";
+    int64_t commTurn = 0;
+    int64_t streamMode = 1;
+    uint64_t workspace_size = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(
+        aclnnQuantMatmulAllReduce,
+        INPUT(x1, x2, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode),
+        OUTPUT(output)
+    );
+    auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    if (expectResult == ACLNN_SUCCESS) {
+        EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
+        if (aclnnRet != ACLNN_ERR_PARAM_NULLPTR && executor != nullptr) {
+            aclnnQuantMatmulAllReduce(nullptr, workspace_size, executor, nullptr);
+        }
+    } else {
+        EXPECT_EQ(expectResult, aclnnRet);
+    }
+}
+
+} // namespace
 
 class AclnnQuantMatmulAllReduceTest : public testing::TestWithParam<MatmulAllReduceApiUtParam> {
 protected:
@@ -31,6 +63,7 @@ protected:
 TEST_P(AclnnQuantMatmulAllReduceTest, param)
 {
     auto param = GetParam();
+    op::SetPlatformSocVersion(param.soc);
     auto ut = OP_API_UT(
         aclnnQuantMatmulAllReduce,
         INPUT(param.x1, param.x2, param.bias, param.x3, param.dequantScale, param.group.c_str(), param.reduceOp.c_str(),
@@ -42,7 +75,7 @@ TEST_P(AclnnQuantMatmulAllReduceTest, param)
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
-        if (aclnnRet == ACLNN_SUCCESS) {
+        if (aclnnRet != ACLNN_ERR_PARAM_NULLPTR && executor != nullptr) {
             aclnnQuantMatmulAllReduce(nullptr, workspace_size, executor, nullptr);
         }
     } else {
@@ -56,5 +89,48 @@ INSTANTIATE_TEST_SUITE_P(
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceApiUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<MatmulAllReduceApiUtParam>
 );
+
+class AclnnQuantMatmulAllReduceExtraTest : public testing::Test {};
+
+TEST_F(AclnnQuantMatmulAllReduceExtraTest, NzFormatWeightX2)
+{
+    TensorDesc x1 = {{32, 64}, ACL_INT8, ACL_FORMAT_ND};
+    TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {1, 1, 64, 128}};
+    TensorDesc dequantScale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
+    TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
+    RunQuantMatmulAllReduceUt(
+        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, dequantScale, output, ACLNN_SUCCESS);
+}
+
+TEST_F(AclnnQuantMatmulAllReduceExtraTest, Ascend310PPreTransposedWeight)
+{
+    TensorDesc x1 = {{32, 64}, ACL_INT8, ACL_FORMAT_ND};
+    TensorDesc x2 = {{64, 128}, ACL_INT8, ACL_FORMAT_ND, {}, 0, {1, 1, 64, 128}};
+    TensorDesc dequantScale = {{128}, ACL_INT64, ACL_FORMAT_ND};
+    TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
+    RunQuantMatmulAllReduceUt(
+        op::SocVersion::ASCEND310P, x1, x2, nullptr, nullptr, dequantScale, output, ACLNN_SUCCESS);
+}
+
+TEST_F(AclnnQuantMatmulAllReduceExtraTest, Int64DequantScale)
+{
+    TensorDesc x1 = {{16, 32}, ACL_INT8, ACL_FORMAT_ND};
+    TensorDesc x2 = {{32, 16}, ACL_INT8, ACL_FORMAT_ND};
+    TensorDesc dequantScale = {{16}, ACL_INT64, ACL_FORMAT_ND};
+    TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
+    RunQuantMatmulAllReduceUt(
+        op::SocVersion::ASCEND910B, x1, x2, nullptr, nullptr, dequantScale, output, ACLNN_SUCCESS);
+}
+
+TEST_F(AclnnQuantMatmulAllReduceExtraTest, LaunchApiCoverage)
+{
+    (void)aclnnQuantMatmulAllReduce(nullptr, 0, nullptr, nullptr);
+}
+
+TEST_F(AclnnQuantMatmulAllReduceExtraTest, Ascend950LaunchCcuCommMode)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    (void)aclnnQuantMatmulAllReduce(nullptr, 0, nullptr, nullptr);
+}
 
 } // namespace MatmulAllReduceUT

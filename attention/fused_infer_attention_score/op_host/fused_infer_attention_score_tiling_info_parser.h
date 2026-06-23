@@ -33,6 +33,7 @@ public:
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
+    ge::graphStatus GetStrides();
     void GetOptionalInputParaMaskInfo();
     void GetOptionalInputParaActualSeqLengthInfo();
     void GetOptionalInputParaPageAttentionInfo();
@@ -132,6 +133,13 @@ public:
     uint32_t ropeHeadDim_ = 0;
     uint32_t queryTSize_ = 0; // 仅TND/NTD时生效
     uint32_t keyTSize_ = 0;
+    // 增加strides参数，预计5个，k/v/krope/kscale/vscale
+    const gert::Stride *keyStrides_ = nullptr;
+    const gert::Stride *valueStrides_ = nullptr;
+    const gert::Stride *kRopeStrides_ = nullptr;
+    const gert::Stride *kScaleStrides_ = nullptr;
+    const gert::Stride *vScaleStrides_ = nullptr;
+    bool isTensorV1_ = false;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
     MlaMode mlaMode_ = MlaMode::NO_MLA;

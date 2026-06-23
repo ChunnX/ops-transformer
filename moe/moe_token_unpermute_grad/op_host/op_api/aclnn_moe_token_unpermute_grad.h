@@ -27,7 +27,7 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
-    const aclTensor* permuteTokens, const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
+    const aclTensor* permuteTokensOptional, const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
     const aclTensor* probsOptional, bool paddedMode, const aclIntArray* restoreShapeOptional,
     aclTensor* permutedTokensGradOut, aclTensor* probsGradOut, uint64_t* workspaceSize, aclOpExecutor** executor);
 /* @brief aclnnMoeTokenUnpermuteGrad的第二段接口，用于执行计算。 */

@@ -660,7 +660,7 @@ __aicore__ inline void CalCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, in
     // 按照相邻B或者N拼接成一个完整S1S2
     int64_t nNew = n + 1;
     if (m != n) {
-        nNew = (n - m + 2) + (n + 1);
+        nNew = (n - m + NUM_TWO) + (n + 1);
     }
     int64_t bNew = b >> 1;
     CalDenseSwizzleIndex(k, m, nNew, bNew, j, r, coordinate);
@@ -673,16 +673,15 @@ __aicore__ inline void CalCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, in
     int64_t y = coordinate.s2Idx;
     if (m == n) {
         if (y >= x + 1) {
-            y = (n << 1) - m - y + 2;
+            y = (n << 1) - m - y + NUM_TWO;
             x = m + 1 - x;
             w = (w << 1);
         } else {
             w = (w << 1) - 1;
         }
     } else {
-        // n = n + 1;
         if (y >= x + (n + 1) - m + 1) {
-            y = ((n + 1) << 1) - m - y + 2;
+            y = ((n + 1) << 1) - m - y + NUM_TWO;
             x = m + 1 - x;
             w = (w << 1);
         } else {
@@ -1312,7 +1311,7 @@ __aicore__ inline void CalBandIndex(const BandInfo &bandInfo, int64_t j, int64_t
 template <bool isAlign = false>
 __aicore__ inline int64_t GetPrefixByBidx(const __gm__ uint8_t *actualSeqQlenAddr,
                                           const __gm__ uint8_t *actualSeqKvlenAddr,
-                                          const int64_t (&prefix)[DETER_PREFIX_NUM], int64_t bIdx, int64_t step)
+                                          const __gm__ int64_t *prefix, int64_t bIdx, int64_t step)
 {
     int64_t w = bIdx / step;
 
@@ -1443,7 +1442,7 @@ __aicore__ inline void UpdateMNPQ(int64_t actualCalcS1Token, int64_t actualCalcS
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void
 CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
-                        const uint64_t (&tndS2BlockPrefixSum)[129], int64_t b, int64_t n2, int64_t g, int64_t j,
+                        const __gm__ uint64_t *tndS2BlockPrefixSum, int64_t b, int64_t n2, int64_t g, int64_t j,
                         int64_t k, int64_t r, int64_t &deltaCnt, CoordinateInfo &coordinateInfo)
 {
     j -= 1;
@@ -1487,7 +1486,7 @@ CalTNDDenseSwizzleIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ ui
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN, const uint8_t DETER_SPARSE_TYPE = DETER_DENSE, const bool IS_N_EQUAL = true>
 __aicore__ inline void
 CalTNDDenseIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
-                 const int64_t (&prefix)[DETER_PREFIX_NUM], int64_t deterMaxRound, int64_t b, int64_t n2, int64_t g, int64_t j,
+                 const __gm__ int64_t *prefix, int64_t deterMaxRound, int64_t b, int64_t n2, int64_t g, int64_t j,
                  int64_t r, uint8_t flag, int64_t step, CoordinateInfo &coordinateInfo)
 {
     coordinateInfo.batchId = -1;
@@ -1676,8 +1675,8 @@ __aicore__ inline void UpdataCausalMN(CoordinateInfo &coordinateInfo, int64_t &m
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void
 CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
-                  const int64_t (&prefix0)[DETER_PREFIX_NUM], const int64_t (&prefix1)[DETER_PREFIX_NUM],
-                  const int64_t (&prefix2)[DETER_PREFIX_NUM], int64_t b, int64_t N1, int64_t k, int64_t j, int64_t r,
+                  const __gm__ int64_t *prefix0, const __gm__ int64_t *prefix1,
+                  const __gm__ int64_t *prefix2, int64_t b, int64_t N1, int64_t k, int64_t j, int64_t r,
                   int64_t step, CoordinateInfo &coordinateInfo)
 {
     int64_t maxRoundIndex = b > DETER_PREFIX_THRESHOLD ? Ceil<int64_t>(b + 1, step) : b + 1;
@@ -1803,8 +1802,8 @@ CalTNDCausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t 
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void
 CalTNDGQACausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
-                     const int64_t (&prefix0)[DETER_PREFIX_NUM], const int64_t (&prefix1)[DETER_PREFIX_NUM],
-                     const int64_t (&prefix2)[DETER_PREFIX_NUM], int64_t b, int64_t g, int64_t N2, int64_t k, int64_t j, int64_t r,
+                     const __gm__ int64_t *prefix0, const __gm__ int64_t *prefix1,
+                     const __gm__ int64_t *prefix2, int64_t b, int64_t g, int64_t N2, int64_t k, int64_t j, int64_t r,
                      int64_t step, bool coreDivide, CoordinateInfo &coordinateInfo)
 {
     int64_t maxRoundIndex = b > DETER_PREFIX_THRESHOLD ? Ceil<int64_t>(b + 1, step) : b + 1;
@@ -1889,7 +1888,7 @@ CalTNDGQACausalIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8
     }
 }
 
-__aicore__ inline int64_t BinarySearch(const int64_t (&prefix)[DETER_PREFIX_NUM], int64_t b, int64_t rThreshold,
+__aicore__ inline int64_t BinarySearch(const __gm__ int64_t *prefix, int64_t b, int64_t rThreshold,
                                        int64_t step)
 {
     int64_t w = 0;
@@ -2027,7 +2026,7 @@ __aicore__ inline void CalPosWholeBatch(int64_t m, int64_t n, int64_t p, int64_t
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void
 CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
-                const int64_t (&prefix0)[DETER_PREFIX_NUM], const int64_t (&prefix1)[DETER_PREFIX_NUM], int64_t b,
+                const __gm__ int64_t *prefix0, const __gm__ int64_t *prefix1, int64_t b,
                 int64_t N1, int64_t k, int64_t j, int64_t r, int64_t step, CoordinateInfo &coordinateInfo)
 {
     int64_t maxRoundIndex = b > DETER_PREFIX_THRESHOLD ? Ceil<int64_t>(b + 1, step) : b + 1;
@@ -2137,7 +2136,7 @@ CalTNDBandIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *a
 template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
 __aicore__ inline void
 CalTNDGQABandIndex(const __gm__ uint8_t *actualSeqQlenAddr, const __gm__ uint8_t *actualSeqKvlenAddr,
-                   const int64_t (&prefix0)[DETER_PREFIX_NUM], const int64_t (&prefix1)[DETER_PREFIX_NUM], int64_t b,
+                   const __gm__ int64_t *prefix0, const __gm__ int64_t *prefix1, int64_t b,
                    int64_t g, int64_t N2, int64_t k, int64_t j, int64_t r, int64_t step, CoordinateInfo &coordinateInfo)
 {
     int64_t maxRoundIndex = b > DETER_PREFIX_THRESHOLD ? Ceil<int64_t>(b + 1, step) : b + 1;

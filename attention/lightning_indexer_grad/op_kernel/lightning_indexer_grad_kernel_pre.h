@@ -73,8 +73,8 @@ template <typename LIGT>
 __aicore__ inline void LIGVectorPre<LIGT>::DoSplitOnGM(uint32_t coreNum, uint32_t gmSize, uint32_t &PreBlockTotal,
                                                     int64_t &initSize, int64_t &Offset)
 {
-    uint32_t PreBlockFactor = (gmSize + coreNum - 1) / coreNum;
-    PreBlockTotal = (gmSize + PreBlockFactor - 1) / PreBlockFactor;
+    uint32_t PreBlockFactor = CeilDiv(gmSize, coreNum);
+    PreBlockTotal = CeilDiv(gmSize, PreBlockFactor);
     int64_t PreTailNumTmp = gmSize % PreBlockFactor;
     uint32_t PreBlockTail = PreTailNumTmp == 0 ? PreBlockFactor : PreTailNumTmp;
     initSize = cBlockIdx == PreBlockTotal - 1 ? PreBlockTail : PreBlockFactor;

@@ -62,8 +62,6 @@ public:
 private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
-    bool CheckS1OutSplit();
-    void SplitOutSeq();
     void ComputeTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
@@ -72,10 +70,6 @@ private:
     void UpdateTilingKeyKvLayout();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
-    void GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
-                            int64_t &winRightsLeftUp);
-    void FixParamWithRowInvalid(int64_t &cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
-                                int64_t &winRightsLeftUp);
     void InitImplParam();
     void PrintAllTilingData();
     void CalcMaxWorkspaceSize();
@@ -99,7 +93,6 @@ private:
     std::vector<int64_t> cuSeqLengthsQ_ = {};
     std::vector<int64_t> cuSeqLengthsKV_ = {};
     bool needInit_ = false;
-    bool enableS1OutSplit = false;
     uint64_t tilingKey_ = 0;
     uint64_t workspaceSize_ = 0;
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;

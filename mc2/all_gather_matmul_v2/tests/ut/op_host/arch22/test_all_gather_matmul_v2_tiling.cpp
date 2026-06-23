@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 #include "../all_gather_matmul_v2_host_ut_param.h"
 #include "mc2_tiling_case_executor.h"
+#include "../../../../op_host/op_tiling/arch22/tiling_func.h"
 
 namespace all_gather_matmul_v2_ut {
 
@@ -71,5 +72,17 @@ INSTANTIATE_TEST_SUITE_P(
     AllGatherMatmulV2, AllGatherMatmulV2Arch22TilingTest,
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV2TilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     GetCaseInfoString<AllGatherMatmulV2TilingUtParam>);
+
+TEST(AllGatherMatmulV2TilingFuncTest, CeilDevNormal)
+{
+    EXPECT_EQ(CeilDev(10, 3), 4);
+    EXPECT_EQ(CeilDev(9, 3), 3);
+    EXPECT_EQ(CeilDev(1, 128), 1);
+}
+
+TEST(AllGatherMatmulV2TilingFuncTest, CeilDevZeroDivisor)
+{
+    EXPECT_EQ(CeilDev(10, 0), 0);
+}
 
 } // namespace all_gather_matmul_v2_ut

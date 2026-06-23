@@ -15,6 +15,16 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+if("${CONDITION_UNIT}" STREQUAL "ascend950")
+    set(sparse_flash_mla_grad_depends attention/common CACHE INTERNAL "Dependencies for sparse_flash_mla_grad")
+    add_ops_compile_options(
+        OP_NAME sparse_flash_mla_grad
+        COMPUTE_UNIT Ascend950PR_9599
+        OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
+    )
+endif()
+
 if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
         OP_NAME SparseFlashMlaGrad
@@ -24,4 +34,12 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     )
 else()
     add_modules_sources(OPTYPE sparse_flash_mla_grad ACLNNTYPE aclnn)
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
+    add_tiling_modules()
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ./arch35/sparse_flash_mla_grad_tiling_bs1_regbase.cpp
+        ./arch35/sparse_flash_mla_grad_tiling_bs1_regbase.h
+    )
 endif()

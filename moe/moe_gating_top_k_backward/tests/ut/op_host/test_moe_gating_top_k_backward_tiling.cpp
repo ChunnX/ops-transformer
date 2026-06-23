@@ -123,7 +123,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_succ_03)
         },
         &compileInfo);
     uint64_t expectTilingKey = 1;
-    string expectTilingData = "64 64 64 64 1 64 1 64 4096 192 10 2 0 1 3376546329611206656 ";
+    string expectTilingData = "64 64 64 63 2 1 2 1 4096 192 10 2 0 1 3376546329611206656 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }

@@ -17,9 +17,9 @@
 #include <kernel_operator.h>
 #endif
 
-#include "../gmm_infra/detail/alignment.hpp"
-#include "../gmm_infra/detail/dependent_false.hpp"
-#include "../gmm_infra/detail/macros.hpp"
+#include "../gmm_infra/detail/gmm_alignment.hpp"
+#include "../gmm_infra/detail/gmm_dependent_false.hpp"
+#include "../gmm_infra/detail/gmm_macros.hpp"
 
 namespace Catlass {
 

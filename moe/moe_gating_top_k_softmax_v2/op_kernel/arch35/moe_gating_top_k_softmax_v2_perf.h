@@ -527,13 +527,11 @@ private:
                 if (this->softmaxFlag == 1) {
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
                 }
-                TopKFP32Perf(
-                    topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize],
+                TopKFP32Perf(topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize],
                     softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
             } else {
                 if (tilingData->col < CONSTANT_EIGHT) {
-                    Cast(
-                        tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, tilingData->colBytesAlign, curRowsNum,
+                    Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, tilingData->colBytesAlign, curRowsNum,
                         {1, 1, 1, 1});
                 } else {
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
@@ -545,11 +543,9 @@ private:
                 if (this->softmaxFlag == 1) {
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
                 }
-                TopKFP32Perf(
-                    topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize],
+                TopKFP32Perf(topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize],
                     softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
-                Cast(
-                    topKOutsLocal.ReinterpretCast<T>(), topKOutsLocal.ReinterpretCast<float>(), RoundMode::CAST_RINT,
+                Cast(topKOutsLocal.ReinterpretCast<T>(), topKOutsLocal.ReinterpretCast<float>(), RoundMode::CAST_RINT,
                     curRowsNum * tilingData->k);
             }
         } else {

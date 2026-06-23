@@ -86,7 +86,7 @@ ge::Format Mc2GetInputStorageFormat(const gert::TilingContext* context, size_t i
     auto desc = context->GetInputDesc(id);
     OP_TILING_CHECK(
         desc == nullptr,
-        OP_LOGE("weight_quant_batch_matmul_v2_tiling", "get input[%zu] Desc is null!", id),
+        OP_LOGE_WITH_INVALID_INPUT("weight_quant_batch_matmul_v2_tiling", ("input" + std::to_string(id)).c_str()),
         return ge::FORMAT_NULL);
     return static_cast<ge::Format>(GetPrimaryFormat(desc->GetStorageFormat()));
 }

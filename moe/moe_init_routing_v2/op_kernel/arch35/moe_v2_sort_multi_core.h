@@ -44,6 +44,8 @@ private:
                                           int64_t loopOffset);
     __aicore__ inline void InitMoeMrgSortOut(MoeV2MrgsortOut *sorter, int64_t listNum, int64_t coreOffset);
     __aicore__ inline void InitExpertTokensGlobalMemory();
+    __aicore__ inline void InitBuffers(GM_ADDR expertIdx, GM_ADDR expertTokensCountOrCumsum,
+                                       GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace);
 
 private:
     GlobalTensor<T> expertIdxGm;
@@ -87,6 +89,59 @@ __aicore__ inline void MoeV2SortMultiCore<T>::InitExpertTokensGlobalMemory()
             InitOutput(expertTokensBeforeCapacityGm, currentCoreExpert, 0);
         }
     }
+}
+
+template <typename T>
+__aicore__ inline void MoeV2SortMultiCore<T>::InitBuffers(GM_ADDR expertIdx, GM_ADDR expertTokensCountOrCumsum,
+                                                          GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace)
+{
+    expertIdxGm.SetGlobalBuffer((__gm__ T *)expertIdx + this->blockIdx * this->vbsTilingData->perCoreElements,
+                                this->sortTotalLength);
+    sortedexpertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace),
+                                      Align(this->totalLength, sizeof(int32_t)));
+    expandDstToSrcRowGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace) +
+                                            Align(this->totalLength, sizeof(int32_t)),
+                                        Align(this->totalLength, sizeof(int32_t)));
+
+    if (this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE ||
+        this->expertTokensBeforeCapacityFlag == EXERPT_TOKENS_BEFORE_CAPACITY) {
+        this->perCoreExpert = Align((this->expertNum + this->coreNum - 1) / this->coreNum, sizeof(int32_t));
+        this->needInitExpertCore = (this->expertNum + this->perCoreExpert - 1) / this->perCoreExpert;
+        this->currentCoreExpert = this->perCoreExpert;
+        if (this->blockIdx == needInitExpertCore - 1) {
+            this->currentCoreExpert = this->expertNum - (this->needInitExpertCore - 1) * this->perCoreExpert;
+        }
+    }
+    if (this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE) {
+        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum +
+                                                        this->blockIdx * this->perCoreExpert,
+                                                    this->currentCoreExpert);
+    }
+    if (this->expertTokensBeforeCapacityFlag == EXERPT_TOKENS_BEFORE_CAPACITY) {
+        expertTokensBeforeCapacityGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensBeforeCapacity +
+                                                     this->blockIdx * this->perCoreExpert, this->currentCoreExpert);
+    }
+
+    int64_t kvFactor = 2;
+    workspaceGms[0].SetGlobalBuffer((__gm__ float *)workspace + Align(this->totalLength, sizeof(int32_t)) * 2,
+                                    Align(this->totalLength, sizeof(int32_t)) * kvFactor);
+    workspaceGms[1].SetGlobalBuffer((__gm__ float *)workspace +
+                                        Align(this->totalLength, sizeof(int32_t)) * (kvFactor + 2),
+                                    Align(this->totalLength, sizeof(int32_t)) * kvFactor);
+
+    int64_t bufferSize = Ceil(Max(this->sortOutTilingData->oneLoopMaxElements * MAX_MRGSORT_LIST, sortCoreLoopElements),
+                              ONE_REPEAT_SORT_NUM) *
+                         ONE_REPEAT_SORT_NUM * sizeof(int32_t) * kvFactor;
+    if constexpr (IsSameType<T, int64_t>::value) {
+        pipe->InitBuffer(sortDataCopyInQueue, bufferNum, bufferSize / kvFactor * 3);
+    } else {
+        pipe->InitBuffer(sortDataCopyInQueue, bufferNum, bufferSize);
+    }
+    pipe->InitBuffer(sortDataCopyOutQueue, bufferNum, bufferSize);
+    pipe->InitBuffer(sortedBuffer, bufferSize);
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) && !defined(__DAV_C220__)
+    pipe->InitBuffer(tempBuffer, bufferSize);
+#endif
 }
 
 template <typename T>
@@ -337,7 +392,6 @@ __aicore__ inline void MoeV2SortMultiCore<T>::Init(GM_ADDR expertIdx, GM_ADDR ex
     this->expertTokensCountOrCumsumFlag = tilingData->expertTokensCountOrCumsumFlag;
     this->expertTokensBeforeCapacityFlag = tilingData->expertTokensBeforeCapacityFlag;
 
-    // VBS param init
     if (this->blockIdx == this->vbsTilingData->needCoreNum - 1) {
         sortCoreLoops = this->vbsTilingData->lastCoreLoops;
         sortCoreLoopElements = this->vbsTilingData->lastCorePerLoopElements;
@@ -349,54 +403,7 @@ __aicore__ inline void MoeV2SortMultiCore<T>::Init(GM_ADDR expertIdx, GM_ADDR ex
     }
 
     this->pipe = tPipe;
-    expertIdxGm.SetGlobalBuffer((__gm__ T *)expertIdx + this->blockIdx * tilingData->vbsComputeParamsOp.perCoreElements,
-                                this->sortTotalLength);
-    sortedexpertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace),
-                                      Align(this->totalLength, sizeof(int32_t)));
-    expandDstToSrcRowGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace) +
-                                            Align(this->totalLength, sizeof(int32_t)),
-                                        Align(this->totalLength, sizeof(int32_t)));
-
-    if (this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE ||
-        this->expertTokensBeforeCapacityFlag == EXERPT_TOKENS_BEFORE_CAPACITY) {
-        this->perCoreExpert = Align((this->expertNum + this->coreNum - 1) / this->coreNum, sizeof(int32_t));
-        this->needInitExpertCore = (this->expertNum + this->perCoreExpert - 1) / this->perCoreExpert;
-        this->currentCoreExpert = this->perCoreExpert;
-        if (this->blockIdx == needInitExpertCore - 1) {
-            this->currentCoreExpert = this->expertNum - (this->needInitExpertCore - 1) * this->perCoreExpert;
-        }
-    }
-    if (this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE) {
-        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum +
-                                                        this->blockIdx * this->perCoreExpert,
-                                                    this->currentCoreExpert);
-    }
-    if (this->expertTokensBeforeCapacityFlag == EXERPT_TOKENS_BEFORE_CAPACITY) {
-        expertTokensBeforeCapacityGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensBeforeCapacity +
-                                                         this->blockIdx * this->perCoreExpert,
-                                                     this->currentCoreExpert);
-    }
-    // key and value
-    int64_t kvFactor = 2;
-    workspaceGms[0].SetGlobalBuffer((__gm__ float *)workspace + Align(this->totalLength, sizeof(int32_t)) * 2,
-                                    Align(this->totalLength, sizeof(int32_t)) * kvFactor);
-    workspaceGms[1].SetGlobalBuffer((__gm__ float *)workspace +
-                                        Align(this->totalLength, sizeof(int32_t)) * (kvFactor + 2),
-                                    Align(this->totalLength, sizeof(int32_t)) * kvFactor);
-
-    int64_t bufferSize = Ceil(Max(this->sortOutTilingData->oneLoopMaxElements * MAX_MRGSORT_LIST, sortCoreLoopElements),
-                              ONE_REPEAT_SORT_NUM) *
-                         ONE_REPEAT_SORT_NUM * sizeof(int32_t) * kvFactor;
-    if constexpr (IsSameType<T, int64_t>::value) {
-        pipe->InitBuffer(sortDataCopyInQueue, bufferNum, bufferSize / kvFactor * 3);
-    } else {
-        pipe->InitBuffer(sortDataCopyInQueue, bufferNum, bufferSize);
-    }
-    pipe->InitBuffer(sortDataCopyOutQueue, bufferNum, bufferSize);
-    pipe->InitBuffer(sortedBuffer, bufferSize);
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) && !defined(__DAV_C220__)
-    pipe->InitBuffer(tempBuffer, bufferSize);
-#endif
+    InitBuffers(expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity, workspace);
 }
 
 template <typename T>

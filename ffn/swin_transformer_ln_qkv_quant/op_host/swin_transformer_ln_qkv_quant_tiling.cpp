@@ -327,6 +327,9 @@ ge::graphStatus SwinTransformerLnQkvQuantTilingCompute::IsSupport(gert::TilingCo
     if (sLength * hLength == 0) {
         return ge::GRAPH_FAILED;
     }
+    if ((headNum < 1) || (headNum > 32)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

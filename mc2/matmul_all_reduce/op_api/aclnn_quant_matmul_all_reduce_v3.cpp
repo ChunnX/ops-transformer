@@ -17,6 +17,7 @@
 #include "aclnnInner_matmul_all_reduce.h"
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -64,11 +65,11 @@ static bool CheckDtypeValid(
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* commQuantScale1Optional,
     const aclTensor* commQuantScale2Optional, const aclTensor* output)
 {
-    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto& dequantDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
                                           DTYPE_SUPPORT_LIST_DEQUANT_310P :
                                           DTYPE_SUPPORT_LIST_DEQUANT;
 
-    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto& outDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
                                       DTYPE_SUPPORT_LIST_310P :
                                       DTYPE_SUPPORT_LIST;
 
@@ -76,14 +77,14 @@ static bool CheckDtypeValid(
     // 对于量化来说，x1,x2只为INT8
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_QUANT, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeSupport, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeSupport, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeList, return false);
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeSupport, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeList, return false);
         // 检查x3和output的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
     }
@@ -116,11 +117,11 @@ static bool CheckDtypeValid(
 static bool CheckAttr(const char* reduceOp, int64_t streamMode)
 {
     if (strcmp(reduceOp, REDUCE_OP_SUM) != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceV3", "reduceOp", reduceOp, "\"sum\"");
         return false;
     }
     if (streamMode != NUM_ACL_STOP_ON_FAILURE) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected streamMode to be 1, but got %ld.", streamMode);
+        OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceV3", "streamMode", std::to_string(streamMode).c_str(), "\"1\"");
         return false;
     }
     return true;
@@ -150,7 +151,12 @@ static bool CheckShape(
         return true;
     }
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+    if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAllReduceV3", "x2",
+            (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+            "The shape of x2 must be 2D.");
+        return false;
+    }
 
     uint64_t x2Dim0 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     uint64_t x2Dim1 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
@@ -159,10 +165,9 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
-            op::ToString(x1->GetViewShape()).GetString(), x2ShapeStr.GetString());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnQuantMatmulAllReduceV3", "x1",
+            op::ToString(x1->GetViewShape()).GetString(),
+            std::string("The shape [last dim] of x1 must be equal to first dim of x2, but x2 shape is " + std::string(x2ShapeStr.GetString())).c_str());
         return false;
     }
 
@@ -173,7 +178,12 @@ static bool CheckShape(
 
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
-        OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
+        if (bias->GetViewShape().GetDimNum() != ONE_DIM) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAllReduceV3", "bias",
+                (std::to_string(bias->GetViewShape().GetDimNum()) + "D").c_str(),
+                "The shape of bias must be 1D.");
+            return false;
+        }
         op::Shape biasShape;
         biasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
@@ -192,11 +202,10 @@ static bool CheckShape(
                                       dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
         !(scaleLen == DIM_LEN_TWO && dequantScale->GetViewShape().GetDim(0) == NUM_ONE &&
           dequantScale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Expected dequantScale be [1] or [n] or [1,n], last dim of dequantScale should be %ld or 1, "
-            "but got dequantScale shape: %s.",
-            output->GetViewShape().GetDim(x1Len - 1), op::ToString(dequantScale->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE("aclnnQuantMatmulAllReduceV3", "dequantScale",
+            op::ToString(dequantScale->GetViewShape()).GetString(),
+            std::string("[1] or [n] or [1,n], last dim should be " +
+                std::to_string(output->GetViewShape().GetDim(x1Len - 1)) + " or 1").c_str());
         return false;
     }
 
@@ -210,9 +219,9 @@ static bool CheckShape(
             x1M *= x1->GetViewShape().GetDim(dim);
         }
         if (!(pertokenScaleLen == DIM_LEN_ONE && pertokenScale->GetViewShape().GetDim(0) == x1M)) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID, "Expected pertokenScale be [%ld], but got pertokenScale shape: %s.", x1M,
-                op::ToString(pertokenScale->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPE("aclnnQuantMatmulAllReduceV3", "pertokenScale",
+                op::ToString(pertokenScale->GetViewShape()).GetString(),
+                std::string("[" + std::to_string(x1M) + "]").c_str());
             return false;
         }
     }
@@ -220,7 +229,7 @@ static bool CheckShape(
     // commQuantScale1、commQuantScale2必须同时存在，且shape为[1，n]或[n]
     if ((commQuantScale1Optional != nullptr && commQuantScale2Optional == nullptr) ||
         (commQuantScale1Optional == nullptr && commQuantScale2Optional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "comm_quantScale_1 and comm_quant_scale_2 should both not be nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV3", "commQuantScale1,commQuantScale2");
         return false;
     }
     if (commQuantScale1Optional != nullptr && commQuantScale2Optional != nullptr) {
@@ -231,12 +240,10 @@ static bool CheckShape(
         const size_t commQuantScale1OptionalLen = commQuantScale1Optional->GetViewShape().GetDimNum();
         const size_t commQuantScale2OptionalLen = commQuantScale2Optional->GetViewShape().GetDimNum();
         if (commQuantScale1OptionalLen != commQuantScale2OptionalLen) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID,
-                "Expected commQuantScale1 and commQuantScale2 have the same shape, "
-                "but got commQuantScale1 shape: %s, commQuantScale2 shape: %s.",
-                op::ToString(commQuantScale1Optional->GetViewShape()).GetString(),
-                op::ToString(commQuantScale2Optional->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnQuantMatmulAllReduceV3", "commQuantScale1,commQuantScale2",
+                (std::string(op::ToString(commQuantScale1Optional->GetViewShape()).GetString()) + "," +
+                 std::string(op::ToString(commQuantScale2Optional->GetViewShape()).GetString())).c_str(),
+                "The shapes of commQuantScale1,commQuantScale2 must be the same");
             return false;
         }
         uint64_t commQuantScale1Dim0 = commQuantScale1Optional->GetViewShape().GetDim(0);
@@ -252,12 +259,10 @@ static bool CheckShape(
                commQuantScale2Dim0 == x2Dim1)) &&
             (!(commQuantScale1OptionalLen == TWO_DIMS && commQuantScale1Dim0 == 1 && commQuantScale2Dim0 == 1 &&
                commQuantScale1Dim1 == x2Dim1 && commQuantScale2Dim1 == x2Dim1))) {
-            OP_LOGE(
-                ACLNN_ERR_PARAM_INVALID,
-                "Expected commQuantScale1 and commQuantScale2 be [n] or [1,n], last dim should be %ld, "
-                "but got commQuantScale1 shape: %s, commQuantScale2 shape: %s.",
-                x2Dim1, op::ToString(commQuantScale1Optional->GetViewShape()).GetString(),
-                op::ToString(commQuantScale2Optional->GetViewShape()).GetString());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("aclnnQuantMatmulAllReduceV3", "commQuantScale1,commQuantScale2",
+                (std::string(op::ToString(commQuantScale1Optional->GetViewShape()).GetString()) + "," +
+                 std::string(op::ToString(commQuantScale2Optional->GetViewShape()).GetString())).c_str(),
+                std::string("The shapes of commQuantScale1,commQuantScale2 must be [n] or [1,n], last dim must be " + std::to_string(x2Dim1)).c_str());
             return false;
         }
     }
@@ -337,7 +342,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     // dequantScale转为uint64
     auto dequant = const_cast<aclTensor*>(dequantScale);
     if (dequant == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QuantMatmulAllReduce, dequant is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV3", "dequantScale");
         return ACLNN_ERR_INNER;
     }
     if (dequant->GetDataType() == op::DataType::DT_INT64) {
@@ -353,16 +358,17 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     auto tempX2 = x2;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
         if(x2->GetTensor() == nullptr){
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
+            OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceV3", "x2");
             return ACLNN_ERR_INNER_NULLPTR;
         }
         tempX2 = CopyTensor(x2);
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
+    const char* commModePtr = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, const_cast<char*>(commModePtr),
         output, workspaceSize, executor);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
@@ -370,7 +376,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != nullptr && executor != nullptr && *executor != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 4U); // 4 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 5U); // 5 is input irIndex
         }
@@ -387,19 +393,14 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_LOGD("QuantMatmulAllReduce, aclnnQuantMatmulAllReduceV3 ret %d", ret);
 
     if (ret != 0) {
-        OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduce, This is an error in launch aicore");
+        OP_LOGE_LIBOPAPI_REPORT("aclnnQuantMatmulAllReduceV3", "QuantMatmulAllReduce, This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
 

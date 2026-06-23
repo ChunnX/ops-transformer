@@ -46,6 +46,7 @@ private:
     ge::graphStatus CheckSparseMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
@@ -56,6 +57,7 @@ private:
 private:
     bool enableIFAMLA = false;
     bool isIFAFlag = false;
+    bool enableMXFP8 = false;
 };
 
 }  // namespace optiling

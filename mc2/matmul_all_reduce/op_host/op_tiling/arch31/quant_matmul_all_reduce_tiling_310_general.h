@@ -34,38 +34,39 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             bool transposeMatch = (tilingProcesser_.args_.isATrans == 0 && tilingProcesser_.args_.isBTrans == 1);
             OP_TILING_CHECK(
                 !transposeMatch,
-                VECTOR_INNER_ERR_REPORT_TILING(
-                    tilingProcesser_.opName_, "310P QuantMatmulAllReduce only support tranA = false && transB = true"),
+                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "transA and transB",
+                    (std::string("transA=") + std::to_string(tilingProcesser_.args_.isATrans) +
+                     ", transB=" + std::to_string(tilingProcesser_.args_.isBTrans)).c_str(),
+                    "transA=false, transB=true"),
                 return ge::GRAPH_FAILED);
             constexpr int64_t K_ALIGN_SIZE_A8W8_310 = 32;
             bool kAligned = (tilingProcesser_.args_.kValue % K_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !kAligned,
-                VECTOR_INNER_ERR_REPORT_TILING(
-                    tilingProcesser_.opName_, "310P QuantMatmulAllReduce dim k should be 32 bytes aligned, but k is %d",
-                    static_cast<int32_t>(tilingProcesser_.args_.kValue)),
+                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "x1",
+                    std::to_string(tilingProcesser_.args_.kValue).c_str(),
+                    "should be 32 bytes aligned"),
                 return ge::GRAPH_FAILED);
             constexpr int64_t N_ALIGN_SIZE_A8W8_310 = 16;
             bool nAligned = (tilingProcesser_.args_.nValue % N_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !nAligned,
-                VECTOR_INNER_ERR_REPORT_TILING(
-                    tilingProcesser_.opName_, "310P QuantMatmulAllReduce dim n should be 16 aligned, but n is %d",
-                    static_cast<int32_t>(tilingProcesser_.args_.nValue)),
+                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "x2",
+                    std::to_string(tilingProcesser_.args_.nValue).c_str(),
+                    "should be 16 aligned"),
                 return ge::GRAPH_FAILED);
             auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
             OP_TILING_CHECK(
                 weightTensor == nullptr,
-                VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
+                OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"),
                 return ge::GRAPH_FAILED);
             auto format = weightTensor->GetStorageFormat();
             bool isWeightNZ = GetPrimaryFormat(format) == ge::Format::FORMAT_FRACTAL_NZ;
             OP_TILING_CHECK(
                 !isWeightNZ,
-                VECTOR_INNER_ERR_REPORT_TILING(
-                    tilingProcesser_.opName_,
-                    "310P QuantMatmulAllReduce weight format should be FRACTAL_NZ, code:%d, but input format is %d",
-                    static_cast<int32_t>(ge::Format::FORMAT_FRACTAL_NZ), static_cast<int32_t>(format)),
+                OP_LOGE_FOR_INVALID_FORMAT(tilingProcesser_.opName_, "x2",
+                    std::to_string(static_cast<int32_t>(format)).c_str(),
+                    std::to_string(static_cast<int32_t>(ge::Format::FORMAT_FRACTAL_NZ)).c_str()),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         }

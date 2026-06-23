@@ -169,7 +169,7 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
-    topkOp_.InitBuffers(topkSharedTmpLocal_);
+    topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
     //刷-1
     Duplicate(kScaleUB_, static_cast<SCALE_T>(0), 2 * s2BaseSize_ * 16);

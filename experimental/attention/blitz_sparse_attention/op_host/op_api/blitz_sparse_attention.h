@@ -36,8 +36,12 @@ const aclTensor *BlitzSparseAttention(
     int64_t numKeyValueHeads, // kv_n
     int64_t sparseMode,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
+    const aclIntArray *blockShape,
     const aclTensor *attentionOut,
-    aclOpExecutor *executor);
+    const aclTensor *softmaxLse,
+    aclOpExecutor *executor,
+    const aclTensor **softmaxLseOutRet = nullptr);
 }
 
 #endif /* OP_API_INC_LEVEL0_OP_BLITZ_SPARSE_ATTENTION_OP_H_ */

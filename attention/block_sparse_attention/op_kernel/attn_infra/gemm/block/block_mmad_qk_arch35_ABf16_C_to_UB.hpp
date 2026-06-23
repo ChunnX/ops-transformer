@@ -114,6 +114,8 @@ public:
     static constexpr uint32_t MAX_L1_STAGES = 3; // 编译期常量，为静态L1Tensor数组开辟准备。取一个buffer份数的极大值
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
 
+    static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
+
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, Mm1L1TileHelper &mm1L1TileHelper)
     {
@@ -271,7 +273,8 @@ public:
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                     uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
-                    Arch::CrossCoreFlag mm1ToSmFlag)
+                    Arch::CrossCoreFlag mm1ToSmFlag,
+                    uint64_t deqScalar = 0)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
         CopyL0CToDst copyL0CToDstSub0;
@@ -402,8 +405,13 @@ public:
                         tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
                 auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,
                         tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
-                copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, false);
-                copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, true);
+                if constexpr (FULL_QUANT_FP8) {
+                    copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
+                    copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
+                } else {
+                    copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, false);
+                    copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, true);
+                }
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             }
         }

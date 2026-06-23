@@ -39,6 +39,7 @@ namespace ge {
 * @li trans_gmm_weight: A boolean value. Indicating whether gmm_weight is transposed.
 * @li trans_mm_weight: A boolean value. Indicating whether mm_weight is transposed.
 * @li permute_out_flag: A boolean value. Indicating whether to perform permutation.
+* @li comm_mode: A String value. Indicating communication type.
 
 * @par Outputs:
 * @li gmm_y: A matrix tensor of shape [A, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
@@ -62,6 +63,7 @@ REG_OP(AlltoAllvGroupedMatMul)
       .ATTR(trans_gmm_weight, Bool, false)
       .ATTR(trans_mm_weight, Bool, false)
       .ATTR(permute_out_flag, Bool, false)
+      .ATTR(comm_mode, String, "")
       .OP_END_FACTORY_REG(AlltoAllvGroupedMatMul)
 
 }  // namespace ge

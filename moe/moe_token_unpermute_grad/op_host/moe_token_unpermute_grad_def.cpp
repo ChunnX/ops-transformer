@@ -31,7 +31,7 @@ public:
     explicit MoeTokenUnpermuteGrad(const char* name) : OpDef(name)
     {
         this->Input("permuted_tokens")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType(tokenTypes)
             .Format(formats)
             .UnknownShapeFormat(formats)

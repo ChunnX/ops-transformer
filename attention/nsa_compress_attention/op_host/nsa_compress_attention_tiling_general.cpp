@@ -950,10 +950,19 @@ protected:
     {
         size_t *workspaces = context_->GetWorkspaceSizes(1);
         int64_t mm1BaseCount = NSA_BASE_S1G_SIZE * alignedS2;
-        size_t pWorkspaceSize = static_cast<size_t>(mm1BaseCount * sizeof(float) * NSA_DOUBLE_BUFFER * aicNum); //alignedS2是S2最大值
-        size_t stage1ResWorkspaceSize = static_cast<size_t>(mm1BaseCount * sizeof(inputDtype) * aicNum);
-        size_t impScoreWorkspaceSize = static_cast<size_t>((NSA_BASE_S1G_SIZE / gSize) * CeilDiv(static_cast<uint64_t>(alignedS2), tilingData.importanceScoreParams.get_isM()) * sizeof(float) * NSA_DOUBLE_BUFFER * aicNum);
-        workspaces[0] = pWorkspaceSize + impScoreWorkspaceSize + stage1ResWorkspaceSize + WORK_SPACE_RESERVE_SIZE;
+
+        uint64_t pWorkspaceSize64 =
+            static_cast<uint64_t>(mm1BaseCount) * sizeof(float) * NSA_DOUBLE_BUFFER * static_cast<uint64_t>(aicNum);
+        uint64_t stage1ResWorkspaceSize64 =
+            static_cast<uint64_t>(mm1BaseCount) * sizeof(inputDtype) * static_cast<uint64_t>(aicNum);
+        uint64_t baseS1G = static_cast<uint64_t>(NSA_BASE_S1G_SIZE) / static_cast<uint64_t>(gSize);
+        uint64_t alignedS2Div = CeilDiv(static_cast<uint64_t>(alignedS2), tilingData.importanceScoreParams.get_isM());
+        uint64_t impScoreWorkspaceSize64 =
+            baseS1G * alignedS2Div * sizeof(float) * NSA_DOUBLE_BUFFER * static_cast<uint64_t>(aicNum);
+
+        uint64_t totalWorkspace64 =
+            pWorkspaceSize64 + impScoreWorkspaceSize64 + stage1ResWorkspaceSize64 + WORK_SPACE_RESERVE_SIZE;
+        workspaces[0] = static_cast<size_t>(totalWorkspace64);
         return ge::GRAPH_SUCCESS;
     }
 

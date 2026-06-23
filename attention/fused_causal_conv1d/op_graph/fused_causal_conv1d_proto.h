@@ -49,7 +49,6 @@ namespace ge {
  * @li residual_connection: A optional int. Whether to use residual connection: 0 (no), 1 (yes).
  * @li block_size: A optional int. APC block size, supports 128/256.
  * @li conv_mode: A optional int. Convolution mode: 0 (Qwen3-Next), 1 (Pangu v2).
- * @li inplace: A optional bool. false: non-inplace (output y), true: inplace (write back to x).
  *
  * @par Outputs:
  * @li conv_states: Updated cache state tensor. Same shape and type as input conv_states.

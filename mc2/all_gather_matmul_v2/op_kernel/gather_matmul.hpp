@@ -164,7 +164,7 @@ public:
         BlockMmad blockMmad(resource);
 
         AscendC::GlobalTensor<ElementC> gmDst = outputTypeInt32 ? gmWorkSpace : gmC;
-        uint64_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
+        uint64_t dstSt = params.rankIdx * static_cast<uint64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
             if (loopIdx % coreNum != coreIdx) {
                 continue;
@@ -212,7 +212,7 @@ public:
     {
         FixpipeBlockMmad fixpipeBlockMmad(resource);
 
-        uint64_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
+        uint64_t dstSt = params.rankIdx * static_cast<uint64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
             if (loopIdx % coreNum != coreIdx) {
                 continue;
@@ -262,9 +262,9 @@ public:
 
         int32_t otherRankNum = params.rankSize;
         int32_t blockM = params.pValue * L1TileShape::M;
-        int32_t blockSize = blockM * kAlign;
-        int32_t outputBlockSize = blockM * params.problemShape.n();
-        uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
+        uint64_t blockSize = static_cast<uint64_t>(blockM) * kAlign;
+        uint64_t outputBlockSize = static_cast<uint64_t>(blockM) * params.problemShape.n();
+        uint64_t mnSize = static_cast<uint64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
@@ -348,9 +348,9 @@ public:
         AscendC::GlobalTensor<ElementC> gmDst = outputTypeInt32 ? gmWorkSpace : gmC;
         int32_t otherRankNum = params.rankSize;
         int32_t blockM = params.pValue * L1TileShape::M;
-        int32_t blockSize = blockM * kAlign;
-        int32_t outputBlockSize = blockM * params.problemShape.n();
-        uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
+        uint64_t blockSize = static_cast<uint64_t>(blockM) * kAlign;
+        uint64_t outputBlockSize = static_cast<uint64_t>(blockM) * params.problemShape.n();
+        uint64_t mnSize = static_cast<uint64_t>(params.problemShape.m()) * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;

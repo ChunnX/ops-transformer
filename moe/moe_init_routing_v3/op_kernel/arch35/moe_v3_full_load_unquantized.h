@@ -32,8 +32,14 @@ public:
 protected:
     __aicore__ inline void ScatterOutX();
     __aicore__ inline void GatherOutX();
+    __aicore__ inline void ProcessDropPadMode();
+    __aicore__ inline void GatherOutXScatterLoop(const LocalTensor<int32_t>& expandedRowIdx,
+                                                  const LocalTensor<T>& xLocal, int64_t startRowIdx,
+                                                  int64_t outputRows, int64_t inFactor);
     __aicore__ inline void ScatterOutScale();
     __aicore__ inline void GatherOutScale();
+    __aicore__ inline void ZeroOutX();
+    __aicore__ inline void ZeroOutScale();
 
 private:
     TQue<QuePosition::VECIN, 1> xCopyInQueue_;
@@ -88,6 +94,11 @@ MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, G
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
 {
+    if (this->dropPadMode_ == DROP_PAD_MODE) {
+        ProcessDropPadMode();
+        return;
+    }
+
     if (this->blockIdx_ < this->needCoreNum_) {
         this->CopyIn();
         this->SortCompute();
@@ -113,6 +124,39 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
             }
         }
 
+        this->FreeLocalTensor();
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::ProcessDropPadMode()
+{
+    if (this->blockIdx_ < this->needCoreNum_) {
+        this->CopyIn();
+        this->SortCompute();
+
+        if (this->blockIdx_ == 0) {
+            this->CopyOutRowIdx();
+        }
+
+        if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
+            this->ComputeExpertTokenCount();
+            this->CopyExpertCountToOutput();
+        }
+
+        this->ZeroOutX();
+        if (this->isInputScale_) {
+            this->ZeroOutScale();
+        }
+    }
+#ifndef __CCE_KT_TEST__
+    AscendC::SyncAll();
+#endif
+    if (this->blockIdx_ < this->needCoreNum_) {
+        this->GatherOutX();
+        if (this->isInputScale_) {
+            this->GatherOutScale();
+        }
         this->FreeLocalTensor();
     }
 }
@@ -182,6 +226,8 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
     int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
     int64_t inFactor = Align(this->cols_, sizeof(T));
+    int64_t outputRows = this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ :
+                         Min(this->actualExpertIdxNum_, this->activeNum_);
 
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
 
@@ -194,17 +240,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
         SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
         xCopyInQueue_.EnQue(xLocal);
         LocalTensor<T> xOutLocal = xCopyInQueue_.DeQue<T>();
-        int64_t curIndex = startRowIdx;
-        int64_t k = 0;
-        for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
-            for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
-                int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-                if (outIndex < this->activeNum_) {
-                    DataCopyPad(expandedXGm_[outIndex * this->cols_], xOutLocal[(i - this->startXRow_) * inFactor],
-                                copyParams);
-                }
-            }
-        }
+        GatherOutXScatterLoop(expandedRowIdx, xOutLocal, startRowIdx, outputRows, inFactor);
         xCopyInQueue_.FreeTensor(xOutLocal);
     } else {
         DataCopyExtParams dataXCopyParams{static_cast<uint16_t>(rowLength),
@@ -213,21 +249,30 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
         LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
         DataCopyPad(xLocal, xGm_[this->startXRow_ * this->cols_], dataXCopyParams, padParams);
         SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
-        int64_t curIndex = startRowIdx;
-        int64_t k = 0;
-        for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
-            for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
-                int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-                if (outIndex < this->activeNum_) {
-                    DataCopyPad(expandedXGm_[outIndex * this->cols_], xLocal[(i - this->startXRow_) * inFactor],
-                                copyParams);
-                }
-            }
-        }
+        GatherOutXScatterLoop(expandedRowIdx, xLocal, startRowIdx, outputRows, inFactor);
         xCopyInQueue_.FreeTensor(xLocal);
     }
 
     this->expandedRowIdxQueue_.template EnQue<int32_t>(expandedRowIdx);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutXScatterLoop(
+    const LocalTensor<int32_t>& expandedRowIdx, const LocalTensor<T>& xLocal,
+    int64_t startRowIdx, int64_t outputRows, int64_t inFactor)
+{
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
+    int64_t curIndex = startRowIdx;
+    int64_t k = 0;
+    for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
+        for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
+            int32_t outIndex = expandedRowIdx.GetValue(curIndex);
+            if (outIndex >= 0 && outIndex < outputRows) {
+                DataCopyPad(expandedXGm_[outIndex * this->cols_], xLocal[(i - this->startXRow_) * inFactor],
+                            copyParams);
+            }
+        }
+    }
 }
 
 template <typename T>
@@ -271,6 +316,8 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
 
     int64_t curIndex = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t k = 0;
+    int64_t outputRows = this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ :
+ 	                     Min(this->actualExpertIdxNum_, this->activeNum_);
 
     for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
@@ -278,7 +325,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
         SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
         for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
             int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-            if (outIndex < this->activeNum_) {
+            if (outIndex >= 0 && outIndex < outputRows) {
                 DataCopyPad(expandedScaleGm_[outIndex], scaleLocal, copyParams);
             }
         }
@@ -286,6 +333,45 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
 
     this->expandedRowIdxQueue_.template EnQue<int32_t>(expandedRowIdx);
     scaleCopyInQueue_.FreeTensor(scaleLocal);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutX()
+{
+    int64_t perCoreRows = Ceil(this->outputRows_, this->needCoreNum_);
+    int64_t startRow = this->blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, this->outputRows_);
+    if (startRow >= endRow) {
+        return;
+    }
+    int64_t rowCount = endRow - startRow;
+
+    if constexpr (IsSameType<T, hifloat8_t>::value) {
+        GlobalTensor<uint8_t> zeroGm;
+        zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                               rowCount * this->cols_);
+        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
+    } else {
+        GlobalTensor<T> zeroGm;
+        zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                               rowCount * this->cols_);
+        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutScale()
+{
+    int64_t perCoreRows = Ceil(this->outputRows_, this->needCoreNum_);
+    int64_t startRow = this->blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, this->outputRows_);
+    if (startRow >= endRow) {
+        return;
+    }
+    int64_t rowCount = endRow - startRow;
+    GlobalTensor<float> scaleZeroGm;
+    scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, rowCount);
+    InitGlobalMemory(scaleZeroGm, rowCount, 0.0f);
 }
 
 } // namespace MoeInitRoutingV3

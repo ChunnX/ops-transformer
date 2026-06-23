@@ -67,6 +67,7 @@ TEST_P(AlltoAllMatmulArch35TilingTest, param)
          {"transpose_x1", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transposeX1)},
          {"transpose_x2", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transposeX2)},
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)},
          {"alltoallout_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.alltoalloutFlag)}});
 
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,

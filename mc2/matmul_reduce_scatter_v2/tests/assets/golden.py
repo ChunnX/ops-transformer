@@ -36,7 +36,7 @@ def matmul_reduce_scatter_v2_golden(
     group_size=0,
     is_amax_out=False,
     y_dtype=0,
-    comm_mode="aicpu",
+    comm_mode="ai_cpu",
     **kwargs
 ):
     x1_dtype = kwargs.get('x1_dtype', 'bf16')

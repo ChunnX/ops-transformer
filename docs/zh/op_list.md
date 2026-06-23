@@ -86,7 +86,17 @@
     <td>AI Core</td>
     <td>训练场景下计算注意力的反向输出，即FlashAttentionScore的反向计算。</td>
   </tr>
-    <tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/fused_causal_conv1d/README.md">fused_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
+  </tr>
+  <tr>
     <td>attention</td>
     <td><a href="../../attention/fused_floyd_attention/README.md">fused_floyd_attention</a></td>
     <td>✓</td>
@@ -138,6 +148,36 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/indexer_quant_cache/README.md">indexer_quant_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>在Indexer注意力机制的Epilog阶段对KV Cache进行原地逐块动态量化压缩更新，支持MX-FP8、Normal、HiFloat8、MX-FP4四种量化模式。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/inplace_fused_causal_conv1d/README.md">inplace_fused_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/kv_compress_epilog/README.md">kv_compress_epilog</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>在KV Cache的Epilog阶段对缓存进行原地逐组动态量化压缩更新，将bfloat16激活值压缩为FP8格式并按slotMapping散写。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/kv_quant_sparse_flash_attention/README.md">kv_quant_sparse_flash_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -168,6 +208,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/lightning_indexer_v2/README.md">lightning_indexer_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/masked_causal_conv1d/README.md">masked_causal_conv1d</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -186,7 +236,17 @@
     <td>AI Core</td>
     <td>对hidden层的token之间进行一维分组卷积操作的反向梯度计算。</td>
   </tr>
-    <tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/mixed_quant_sparse_flash_mla/README.md">mixed_quant_sparse_flash_mla</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。</td>
+  </tr>
+  <tr>
     <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
     <td>✓</td>
@@ -235,16 +295,6 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/fused_causal_conv1d/README.md">fused_causal_conv1d</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -398,6 +448,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/sparse_flash_mla/README.md">sparse_flash_mla</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>支持Sliding Window Attention（SWA）、Compressed Flash Attention（CFA）和Sparse Compressed Flash Attention（SCFA）。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/sparse_flash_mla_grad/README.md">sparse_flash_mla_grad</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -428,6 +488,16 @@
   </tr>
   <tr>
     <td>ffn</td>
+    <td><a href="../../experimental/ffn/swiglu_gated_mlp/README.md">swiglu_gated_mlp</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成融合SwiGLU门控MLP计算，包括首个MatMul、SwiGLU激活和第二个MatMul。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
     <td><a href="../../ffn/ffn_worker_scheduler/README.md">ffn_worker_scheduler</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -454,7 +524,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>完成fp16权重场景下的Swin Transformer 网络模型的Q、K、V 的计算。</td>
+    <td>完成fp16权重场景下的Swin Transformer网络模型的Q、K、V的计算。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -464,7 +534,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>Swin Transformer 网络模型 完成 Q、K、V 的计算。</td>
+    <td>Swin Transformer网络模型 完成Q、K、V的计算。</td>
   </tr>
   <tr>
     <td>gmm</td>
@@ -814,7 +884,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
+    <td>MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
   </tr>
   <tr>
     <td>moe</td>
@@ -1144,7 +1214,17 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>针对单输入 x 进行旋转位置编码。</td>
+    <td>针对单输入x进行旋转位置编码。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/inplace_partial_rotary_mul/README.md">inplace_partial_rotary_mul</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。</td>
   </tr>
   <tr>
     <td>posembedding</td>

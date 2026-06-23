@@ -111,7 +111,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
     auto kCacheDesc = context_->GetInputDesc(INDEX_INPUT_KEY_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheDesc);
     ge::DataType kCacheDType = kCacheDesc->GetDataType();
-    ge::Format kCacheFormat = kCacheDesc->GetFormat().GetStorageFormat();
 
     // 校验数据类型是否合法
     OP_CHECK_IF((KV_SUPPORT_DTYPE.find(kCacheDType) == KV_SUPPORT_DTYPE.end()),
@@ -121,9 +120,11 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
     uint32_t kCacheDTypeByteSize = tilingDataTypeByteTable.find(kCacheDType)->second;
     keyByteSize_ = kCacheDTypeByteSize;
 
-    auto kCacheStoreShape = context_->GetInputShape(INDEX_INPUT_KEY_CACHE);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, kCacheStoreShape);
-    kCacheShape_ = EnsureNotScalar(kCacheStoreShape->GetStorageShape());
+    // 非连续场景下输入可能为view，必须通过GetTensorInfo获取逻辑shape与stride。
+    // 不能直接用GetStorageShape：view的物理shape会退化(如降为1维)，导致维度校验误判。
+    OP_CHECK_IF(GetTensorInfo(kCacheShape_, kCacheStride_, INDEX_INPUT_KEY_CACHE) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_, "get key_cache tensor info failed."), return ge::GRAPH_FAILED);
+    kCacheShape_ = EnsureNotScalar(kCacheShape_);
     kCacheDimNum_ = kCacheShape_.GetDimNum();
     // 检查形状是否合法
     OP_CHECK_IF(kCacheDimNum_ != 4,
@@ -144,17 +145,53 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputKeyCache()
                     OP_LOGE(context_, "key_cache.shape[3](%ld) must align and equal to 32B, please check.",
                             kCacheShape_.GetDim(kCacheDimNum_ - 1)),
                     return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(kCacheFormat != ge::Format::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(context_, "key_cache format should be FRACTAL_NZ when cache_mode is PA_NZ, please check."),
-                    return ge::GRAPH_FAILED);
         // 2 is blockSize_ dim
         blockSize_ = kCacheShape_.GetDim(2);
-    } else {
-        OP_CHECK_IF(kCacheFormat != ge::Format::FORMAT_ND,
-                    OP_LOGE(context_, "key_cache format should be ND when cache_mode is Norm, please check."),
-                    return ge::GRAPH_FAILED);
     }
+
+    // ===== 非连续支持: stride信息已在前面GetTensorInfo中获取 =====
+    if (kCacheStride_.GetDimNum() > 0) {
+        // 校验最后一轴必须连续
+        OP_CHECK_IF(kCacheStride_.GetStride(kCacheDimNum_ - 1) != 1,
+                    OP_LOGE(context_, "key_cache last dim stride must be 1, but got %ld.",
+                            kCacheStride_.GetStride(kCacheDimNum_ - 1)),
+                    return ge::GRAPH_FAILED);
+
+        // 判断连续性 (size为1的轴stride不影响连续性)
+        int64_t contigStride = 1;
+        isKCacheContiguous_ = true;
+        for (int i = static_cast<int>(kCacheDimNum_) - 1; i >= 0; i--) {
+            if (kCacheShape_.GetDim(i) != 1 && kCacheStride_.GetStride(i) != contigStride) {
+                isKCacheContiguous_ = false;
+            }
+            contigStride *= kCacheShape_.GetDim(i);
+        }
+
+        if (!isKCacheContiguous_) {
+            if (isCacheModeNorm_) {
+                // ND模式: 判断具体哪些轴非连续
+                int64_t expectedStride1 = kCacheShape_.GetDim(2) * kCacheShape_.GetDim(3);
+                int64_t expectedStride2 = kCacheShape_.GetDim(3);
+                isKCacheSlotNonContig_ = (kCacheStride_.GetStride(1) != expectedStride1);
+                isKCacheHeadNonContig_ = (kCacheStride_.GetStride(2) != expectedStride2);
+            } else {
+                // NZ模式: 仅支持dim0(blockNum)非连续
+                int64_t expectedStride1 = kCacheShape_.GetDim(2) * kCacheShape_.GetDim(3);
+                int64_t expectedStride2 = kCacheShape_.GetDim(3);
+                OP_CHECK_IF(kCacheStride_.GetStride(1) != expectedStride1,
+                            OP_LOGE(context_, "NZ key_cache only supports non-contiguous on dim0. "
+                                    "stride[1]=%ld, expected=%ld.", kCacheStride_.GetStride(1), expectedStride1),
+                            return ge::GRAPH_FAILED);
+                OP_CHECK_IF(kCacheStride_.GetStride(2) != expectedStride2,
+                            OP_LOGE(context_, "NZ key_cache only supports non-contiguous on dim0. "
+                                    "stride[2]=%ld, expected=%ld.", kCacheStride_.GetStride(2), expectedStride2),
+                            return ge::GRAPH_FAILED);
+            }
+        }
+    } else {
+        isKCacheContiguous_ = true;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -163,7 +200,6 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
     auto vCacheDesc = context_->GetInputDesc(INDEX_INPUT_VALUE_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context_, vCacheDesc);
     ge::DataType vCacheDType = vCacheDesc->GetDataType();
-    ge::Format vCacheFormat = vCacheDesc->GetFormat().GetStorageFormat();
 
     // 校验数据类型是否合法
     OP_CHECK_IF((KV_SUPPORT_DTYPE.find(vCacheDType) == KV_SUPPORT_DTYPE.end()),
@@ -172,9 +208,10 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
     uint32_t vCacheDTypeByteSize = tilingDataTypeByteTable.find(vCacheDType)->second;
     valueByteSize_ = vCacheDTypeByteSize;
 
-    auto vCacheStoreShape = context_->GetInputShape(INDEX_INPUT_VALUE_CACHE);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, vCacheStoreShape);
-    vCacheShape_ = EnsureNotScalar(vCacheStoreShape->GetStorageShape());
+    // 非连续场景下value_cache可能为view，必须通过GetTensorInfo获取逻辑shape与stride。
+    OP_CHECK_IF(GetTensorInfo(vCacheShape_, vCacheStride_, INDEX_INPUT_VALUE_CACHE) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_, "get value_cache tensor info failed."), return ge::GRAPH_FAILED);
+    vCacheShape_ = EnsureNotScalar(vCacheShape_);
     vCacheDimNum_ = vCacheShape_.GetDimNum();
     // 检查形状是否合法
     OP_CHECK_IF(vCacheDimNum_ != 4,
@@ -187,16 +224,11 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
         OP_CHECK_IF(vCacheShape_.GetDim(vCacheDimNum_ - 1) * valueByteSize_ != BLOCK_SIZE,
                     OP_LOGE(context_, "value_cache last dimension must align and equal to 32B, please check."),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            vCacheFormat != ge::Format::FORMAT_FRACTAL_NZ,
-            OP_LOGE(context_, "value_cache format should be FRACTAL_NZ when cache_mode is PA_NZ, please check."),
-            return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(vCacheFormat != ge::Format::FORMAT_ND,
-                    OP_LOGE(context_, "value_cache format should be ND when cache_mode is Norm, please check."),
-                    return ge::GRAPH_FAILED);
     }
-    for (size_t i = 0; i < vCacheDimNum_ - 1; i++) {
+    // key_cache与value_cache的num_blocks(dim0)数值无需相等: kernel用同一blockId分别乘
+    // 各自的stride索引, 不依赖dim0相等(与scatter Norm模式CheckNormal行为对齐)。
+    // 此处仅校验非尾轴中除dim0外的维度(ND: dim1/dim2; NZ: dim2, 跳过dim1)。
+    for (size_t i = 1; i < vCacheDimNum_ - 1; i++) {
         if (!isCacheModeNorm_ && i == DIM_ONE) {
             continue;
         }
@@ -207,6 +239,47 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputValueCache()
                             i, vCacheShape_.GetDim(i), i, kCacheShape_.GetDim(i)),
                     return ge::GRAPH_FAILED);
     }
+
+    // ===== 非连续支持: valueCache stride信息已在前面GetTensorInfo中获取 =====
+    if (vCacheStride_.GetDimNum() > 0) {
+        OP_CHECK_IF(vCacheStride_.GetStride(vCacheDimNum_ - 1) != 1,
+                    OP_LOGE(context_, "value_cache last dim stride must be 1, but got %ld.",
+                            vCacheStride_.GetStride(vCacheDimNum_ - 1)),
+                    return ge::GRAPH_FAILED);
+
+        int64_t contigStride = 1;
+        isVCacheContiguous_ = true;
+        for (int i = static_cast<int>(vCacheDimNum_) - 1; i >= 0; i--) {
+            if (vCacheShape_.GetDim(i) != 1 && vCacheStride_.GetStride(i) != contigStride) {
+                isVCacheContiguous_ = false;
+            }
+            contigStride *= vCacheShape_.GetDim(i);
+        }
+
+        if (!isVCacheContiguous_) {
+            if (isCacheModeNorm_) {
+                int64_t expectedStride1 = vCacheShape_.GetDim(2) * vCacheShape_.GetDim(3);
+                int64_t expectedStride2 = vCacheShape_.GetDim(3);
+                isVCacheSlotNonContig_ = (vCacheStride_.GetStride(1) != expectedStride1);
+                isVCacheHeadNonContig_ = (vCacheStride_.GetStride(2) != expectedStride2);
+            } else {
+                // NZ模式: 仅支持dim0非连续
+                int64_t expectedStride1 = vCacheShape_.GetDim(2) * vCacheShape_.GetDim(3);
+                int64_t expectedStride2 = vCacheShape_.GetDim(3);
+                OP_CHECK_IF(vCacheStride_.GetStride(1) != expectedStride1,
+                            OP_LOGE(context_, "NZ value_cache only supports non-contiguous on dim0. "
+                                    "stride[1]=%ld, expected=%ld.", vCacheStride_.GetStride(1), expectedStride1),
+                            return ge::GRAPH_FAILED);
+                OP_CHECK_IF(vCacheStride_.GetStride(2) != expectedStride2,
+                            OP_LOGE(context_, "NZ value_cache only supports non-contiguous on dim0. "
+                                    "stride[2]=%ld, expected=%ld.", vCacheStride_.GetStride(2), expectedStride2),
+                            return ge::GRAPH_FAILED);
+            }
+        }
+    } else {
+        isVCacheContiguous_ = true;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -291,9 +364,10 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
                 OP_LOGE(context_, FORMAT_KEY_VALUE_NOT_SUPPORTED, "key"),
                 return ge::GRAPH_FAILED);
 
-    auto keyStoreShape = context_->GetInputShape(INDEX_INPUT_KEY);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, keyStoreShape);
-    keyShape_ = EnsureNotScalar(keyStoreShape->GetStorageShape());
+    // 非连续场景下key可能为view，必须通过GetTensorInfo获取逻辑shape与stride。
+    OP_CHECK_IF(GetTensorInfo(keyShape_, keyOutStride_, INDEX_INPUT_KEY) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_, "get key tensor info failed."), return ge::GRAPH_FAILED);
+    keyShape_ = EnsureNotScalar(keyShape_);
     size_t keyDimNum = keyShape_.GetDimNum();
 
     uint32_t keyDimExpect = (isCacheModeNorm_) ? uint32_t(DIM_THREE) : uint32_t(DIM_TWO);
@@ -310,6 +384,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
     if (isCacheModeNorm_) {
         // ND
         hiddenSizeK_ = keyShape_.GetDim(DIM_ONE) * keyShape_.GetDim(DIM_TWO) * keyByteSize_;
+        numHeadsK_ = keyShape_.GetDim(DIM_ONE);
         for (size_t i = 1; i < keyDimNum; i++) {
             OP_CHECK_IF(keyShape_.GetDim(i) != kCacheShape_.GetDim(i + 1),
                         OP_LOGE(context_,
@@ -321,6 +396,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
     } else {
         // NZ
         hiddenSizeK_ = keyShape_.GetDim(DIM_ONE) * keyByteSize_;
+        numHeadsK_ = 0; // NZ模式不需要numHeads
         uint64_t kCacheShape1 = kCacheShape_.GetDim(DIM_ONE);
         uint64_t kCacheShape3 = kCacheShape_.GetDim(DIM_THREE) * keyByteSize_;
         uint64_t hiddenSizeKCache = kCacheShape1 * kCacheShape3;
@@ -332,6 +408,22 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputKey()
                             hiddenSizeK_, kCacheShape1, kCacheShape3, hiddenSizeKCache),
                     return ge::GRAPH_FAILED);
     }
+
+    // ===== 非连续支持: key输出stride已在前面GetTensorInfo中获取 (ND和NZ模式都支持) =====
+    if (keyOutStride_.GetDimNum() > 0) {
+        // 判断连续性 (size为1的轴stride不影响连续性)
+        int64_t contigStride = 1;
+        isKeyOutContiguous_ = true;
+        for (int i = static_cast<int>(keyDimNum) - 1; i >= 0; i--) {
+            if (keyShape_.GetDim(i) != 1 && keyOutStride_.GetStride(i) != contigStride) {
+                isKeyOutContiguous_ = false;
+            }
+            contigStride *= keyShape_.GetDim(i);
+        }
+    } else {
+        isKeyOutContiguous_ = true;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -346,9 +438,10 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
                 OP_LOGE(context_, FORMAT_KEY_VALUE_NOT_SUPPORTED, "value"),
                 return ge::GRAPH_FAILED);
 
-    auto valueStoreShape = context_->GetInputShape(INDEX_INPUT_VALUE);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, valueStoreShape);
-    valueShape_ = EnsureNotScalar(valueStoreShape->GetStorageShape());
+    // 非连续场景下value可能为view，必须通过GetTensorInfo获取逻辑shape与stride。
+    OP_CHECK_IF(GetTensorInfo(valueShape_, valueOutStride_, INDEX_INPUT_VALUE) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_, "get value tensor info failed."), return ge::GRAPH_FAILED);
+    valueShape_ = EnsureNotScalar(valueShape_);
     size_t valueDimNum = valueShape_.GetDimNum();
 
     // 检查形状是否合法
@@ -367,6 +460,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
     if (isCacheModeNorm_) {
         // ND
         hiddenSizeV_ = valueShape_.GetDim(DIM_ONE) * valueShape_.GetDim(DIM_TWO) * valueByteSize_;
+        numHeadsV_ = valueShape_.GetDim(DIM_ONE);
         for (size_t i = 1; i < valueDimNum; i++) {
             OP_CHECK_IF(valueShape_.GetDim(i) != vCacheShape_.GetDim(i + 1),
                         OP_LOGE(context_,
@@ -378,6 +472,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
     } else {
         // NZ
         hiddenSizeV_ = valueShape_.GetDim(DIM_ONE) * valueByteSize_;
+        numHeadsV_ = 0;
         uint64_t vCacheShape1 = vCacheShape_.GetDim(DIM_ONE);
         uint64_t vCacheShape3 = vCacheShape_.GetDim(DIM_THREE) * valueByteSize_;
         uint64_t hiddenSizeVCache = vCacheShape1 * vCacheShape3;
@@ -389,6 +484,21 @@ ge::graphStatus GatherPaKvCacheTiling::GetInputOutputValue()
                             hiddenSizeV_, vCacheShape1, vCacheShape3, hiddenSizeVCache),
                     return ge::GRAPH_FAILED);
     }
+
+    // ===== 非连续支持: value输出stride已在前面GetTensorInfo中获取 (ND和NZ模式都支持) =====
+    if (valueOutStride_.GetDimNum() > 0) {
+        int64_t contigStride = 1;
+        isValueOutContiguous_ = true;
+        for (int i = static_cast<int>(valueDimNum) - 1; i >= 0; i--) {
+            if (valueShape_.GetDim(i) != 1 && valueOutStride_.GetStride(i) != contigStride) {
+                isValueOutContiguous_ = false;
+            }
+            contigStride *= valueShape_.GetDim(i);
+        }
+    } else {
+        isValueOutContiguous_ = true;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -500,6 +610,68 @@ ge::graphStatus GatherPaKvCacheTiling::DoOpTiling()
     tilingData_.set_maxUbHiddenSize(maxUbHiddenSize);
     tilingData_.set_kvCacheBlockSize(blockSize_);
 
+    // ===== 非连续支持: 设置stride字段到TilingData =====
+    uint32_t nonContigFlag = 0;
+    if (!isKCacheContiguous_) {
+        nonContigFlag |= (1 << 0);
+        if (isKCacheSlotNonContig_) nonContigFlag |= (1 << 4);
+        if (isKCacheHeadNonContig_) nonContigFlag |= (1 << 5);
+    }
+    if (!isVCacheContiguous_) {
+        nonContigFlag |= (1 << 1);
+        if (isVCacheSlotNonContig_) nonContigFlag |= (1 << 6);
+        if (isVCacheHeadNonContig_) nonContigFlag |= (1 << 7);
+    }
+    if (!isKeyOutContiguous_)   nonContigFlag |= (1 << 2);
+    if (!isValueOutContiguous_) nonContigFlag |= (1 << 3);
+
+    tilingData_.set_nonContiguousFlag(nonContigFlag);
+
+    // keyCache stride (元素粒度)
+    if (!isKCacheContiguous_) {
+        tilingData_.set_kCacheStride0(kCacheStride_.GetStride(0));
+        tilingData_.set_kCacheStride1(kCacheStride_.GetStride(1));
+        tilingData_.set_kCacheStride2(kCacheStride_.GetStride(2));
+    } else {
+        // 连续时填充连续stride值
+        tilingData_.set_kCacheStride0(static_cast<int64_t>(blockSize_) * hiddenSizeK_);
+        tilingData_.set_kCacheStride1(hiddenSizeK_);
+        tilingData_.set_kCacheStride2(isCacheModeNorm_ ? kCacheShape_.GetDim(3) : kCacheShape_.GetDim(3));
+    }
+
+    // valueCache stride
+    if (!isVCacheContiguous_) {
+        tilingData_.set_vCacheStride0(vCacheStride_.GetStride(0));
+        tilingData_.set_vCacheStride1(vCacheStride_.GetStride(1));
+        tilingData_.set_vCacheStride2(vCacheStride_.GetStride(2));
+    } else {
+        tilingData_.set_vCacheStride0(static_cast<int64_t>(blockSize_) * hiddenSizeV_);
+        tilingData_.set_vCacheStride1(hiddenSizeV_);
+        tilingData_.set_vCacheStride2(isCacheModeNorm_ ? vCacheShape_.GetDim(3) : vCacheShape_.GetDim(3));
+    }
+
+    // key/value输出stride (ND和NZ模式都支持)
+    if (!isKeyOutContiguous_) {
+        tilingData_.set_keyOutStride0(keyOutStride_.GetStride(0));
+        tilingData_.set_keyOutStride1(keyOutStride_.GetStride(1));
+    } else {
+        tilingData_.set_keyOutStride0(static_cast<int64_t>(keyShape_.GetDim(0)) > 0 ?
+            static_cast<int64_t>(hiddenSizeK_) : 0);
+        tilingData_.set_keyOutStride1(hiddenSizeK_);
+    }
+
+    if (!isValueOutContiguous_) {
+        tilingData_.set_valueOutStride0(valueOutStride_.GetStride(0));
+        tilingData_.set_valueOutStride1(valueOutStride_.GetStride(1));
+    } else {
+        tilingData_.set_valueOutStride0(static_cast<int64_t>(valueShape_.GetDim(0)) > 0 ?
+            static_cast<int64_t>(hiddenSizeV_) : 0);
+        tilingData_.set_valueOutStride1(hiddenSizeV_);
+    }
+
+    tilingData_.set_numHeadsK(numHeadsK_);
+    tilingData_.set_numHeadsV(numHeadsV_);
+
     // 根据属性设置tilingkey
     for (const auto &item : tilingKeyTable) {
         if (item.isCacheModeNorm == isCacheModeNorm_ && item.isSeqLenCumSum == isSeqLenCumSum_ &&
@@ -537,6 +709,38 @@ ge::graphStatus GatherPaKvCacheTiling::PostTiling()
     workspaces[0] = workspaceSize_;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GatherPaKvCacheTiling::GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx)
+{
+    auto xStorageShape = context_->GetInputShape(idx);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xStorageShape);
+    shape = xStorageShape->GetStorageShape();
+    stride.SetDimNum(shape.GetDimNum());
+    int32_t maxDim = static_cast<int32_t>(shape.GetDimNum()) - 1;
+    int64_t xStride = 1;
+    for (int32_t j = maxDim; j >= 0; --j) {
+        stride.SetStride(j, xStride);
+        xStride *= shape.GetDim(j);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GatherPaKvCacheTiling::GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx)
+{
+    bool isView = context_->InputIsView(idx);
+    if (isView) {
+        auto *inputStride = context_->GetInputStride(idx);
+        if (inputStride == nullptr || inputStride->GetDimNum() == 0) {
+            return GetContiguousTensorInfo(shape, stride, idx);
+        } else {
+            stride = *inputStride;
+            shape = context_->GetInputShape(idx)->GetShape();
+        }
+    } else {
+        return GetContiguousTensorInfo(shape, stride, idx);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

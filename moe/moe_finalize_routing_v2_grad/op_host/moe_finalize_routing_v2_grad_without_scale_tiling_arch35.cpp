@@ -48,22 +48,14 @@ protected:
 
 ge::graphStatus MoeFinalizeRoutingV2GradWithoutScaleRegbase::CheckOptionalInputDtype()
 {
-    OP_CHECK_IF(
-        ((scalesType_ != ge::DT_FLOAT) && (scalesType_ != ge::DT_BF16) && (scalesType_ != ge::DT_FLOAT16)),
-        OP_LOGE(nodeName_, "scales dtype must be FLOAT or FLOAT16 or BFLOAT16."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        (expandedXType_ != gradYType_), OP_LOGE(nodeName_, "expanded_x and grad_y dtype must be same."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        (expandedRowIdxType_ != ge::DataType::DT_INT32),
-        OP_LOGE(nodeName_, "expanded_row_idx dtype only support int32."), return ge::GRAPH_FAILED);
-    if (isBiasExist_) {
-        OP_CHECK_IF(
-            (biasType_ != gradYType_), OP_LOGE(nodeName_, "bias and grad_y dtype must be same."),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            (expertIdxType_ != expandedRowIdxType_),
-            OP_LOGE(nodeName_, "expert_idx and expanded_row_idx dtype must be same."), return ge::GRAPH_FAILED);
+    if (CheckScalesDtypeForDavid() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckExpandedXAndRowIdxDtype() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckBiasExpertIdxDtype() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -79,7 +71,9 @@ ge::graphStatus MoeFinalizeRoutingV2GradWithoutScaleRegbase::CalcTilingKey()
     }
 
     OP_CHECK_IF(
-        (hiddenPrePart_ <= 0), OP_LOGE(nodeName_, "hiddenPrePart_ is less than 0."),
+        (hiddenPrePart_ <= 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "hiddenPrePart", std::to_string(hiddenPrePart_).c_str(), "hiddenPrePart must be greater than 0"),
         return ge::GRAPH_FAILED);
 
     if (hidden_ <= hiddenPrePart_) {

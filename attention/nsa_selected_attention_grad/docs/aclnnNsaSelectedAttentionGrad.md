@@ -218,7 +218,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
       <td>scaleValue</td>
       <td>输入</td>
       <td>缩放系数scale。</td>
-      <td>一般为 D^-0.5。</td>
+      <td>一般为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
       <td>-</td>
@@ -422,10 +422,10 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   - N1：取值范围为1\~128。表示query的headNum。N1必须为N2的整数倍。
   - N2：取值范围为1\~128。表示key、value的headNum。
   - G：取值范围为1\~32。G = N1 / N2
-  - S：取值范围为1\~128K。对于key、value的S 必须大于等于selectedBlockSize * selectedBlockCount, 且必须为selectedBlockSize的整数倍。
+  - S：取值范围为1\~128K。对于key、value的S必须大于等于selectedBlockSize * selectedBlockCount,且必须为selectedBlockSize的整数倍。
   - D：取值范围为192或128，支持K和V的D（HeadDim）不相等。
   - selectedBlockSize支持<=128且满足16的整数倍。
-  - selectedBlockCount：支持[1~128]。 总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
+  - selectedBlockCount：支持[1~128]。总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
   - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectedBlockCount * selectedBlockSize`
 - 关于softmaxMax与softmaxSum参数shape的约束：\[T1, N1, 8\]。
 - 关于topkIndices参数shape的约束：[T1, N2, selectedBlockCount]。
@@ -496,7 +496,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -634,7 +634,7 @@ int main() {
     ret = aclnnNsaSelectedAttentionGrad(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaSelectedAttentionGrad failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

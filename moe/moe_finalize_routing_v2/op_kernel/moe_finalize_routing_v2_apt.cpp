@@ -12,7 +12,7 @@
  * \file moe_finalize_routing_v2_apt.cpp
  * \brief
  */
-#include "arch35/moe_finalize_routing_v2_tiling_arch35.h"
+#include "arch35/moe_finalize_routing_v2_tiling_struct.h"
 #include "arch35/moe_finalize_routing_v2_h_full_load.h"
 #include "arch35/moe_finalize_routing_v2_h_partial_load.h"
 #include "arch35/moe_finalize_routing_v2_row_k_h_full_load.h"

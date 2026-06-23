@@ -321,18 +321,20 @@ public:
 
                 stageId = (stageId + 1 < WORKSPACE_STAGES) ? (stageId + 1) : 0;
             }
-            int32_t token_total = params.commUtil.p_value * L1TileShape::M * params.problemShape.n();
+            int64_t token_total =
+                static_cast<int64_t>(params.commUtil.p_value) * L1TileShape::M * params.problemShape.n();
             if (commIdx == commCount - 1) {
                 token_total = (params.problemShape.m() - (commIdx * L1TileShape::M * params.commUtil.p_value)) *
                               params.problemShape.n();
             }
-            int32_t token_per_rank = token_total / params.commUtil.rank_size;
+            int64_t token_per_rank = token_total / params.commUtil.rank_size;
 
             params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
             params.commUtil.CrossRankSyncV1(FLAG_ZERO_IDX, commIdx + 1);
             params.commUtil.SetAndWaitAivSync(flag_idx + WORKSPACE_STAGES);
 
-            int32_t rank_offset = params.problemShape.m() * params.problemShape.n() / params.commUtil.rank_size;
+            int64_t rank_offset =
+                static_cast<int64_t>(params.problemShape.m()) * params.problemShape.n() / params.commUtil.rank_size;
             if (params.commUtil.aiv_idx == 0 && params.commUtil.core_idx < params.commUtil.rank_size) {
                 int64_t src_offset =
                     flag_idx * params.commUtil.gm_a_pingpong_size +

@@ -14,7 +14,6 @@
  */
 #ifndef COMMON_ADD_RMS_NORM_H_
 #define COMMON_ADD_RMS_NORM_H_
-#include <iostream>
 
 #include "add_rms_norm/op_host/add_rms_norm_tiling.h"
 #include "context_transfer.h"

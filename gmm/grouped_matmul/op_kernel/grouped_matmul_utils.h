@@ -179,6 +179,8 @@ constexpr int32_t STATIC_TILING_STEP_KA_KB = 4;
 constexpr uint64_t DOUBLE_BUFFER_L0A_L0B = 2;
 constexpr uint32_t STATIC_TILING_MAX_K = 8192;
 constexpr uint32_t STATIC_TILING_MAX_SINGLE_N = 1024;
+constexpr uint32_t GROUP_LIST_TYPE_SPARSE = 2;
+constexpr uint32_t SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET = 1;
 
 template<class AT_, class BT_, class CT_, class BiasT_, const auto& MM_CFG = CFG_MDL>
 struct MMType {
@@ -307,6 +309,8 @@ __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t 
             int32_t offset = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
             splitValue = offset - preOffset;
             preOffset = offset;
+        } else if (gmmBaseParams->groupListType == GROUP_LIST_TYPE_SPARSE) {
+            splitValue = static_cast<int32_t>(groupListGm.GetValue(groupIdx + SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET));
         } else {
             splitValue = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
         }

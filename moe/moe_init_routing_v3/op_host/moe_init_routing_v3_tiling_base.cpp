@@ -34,14 +34,20 @@ static ge::graphStatus TilingPrepareForMoeInitRountingV3(gert::TilingParseContex
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF((compileInfo->aivNum <= 0), OP_LOGE(context, "TilingPrepareForMoeInitRountingV3 fail to get core num."),
+    OP_CHECK_IF((compileInfo->aivNum <= 0),
+                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "compileInfo->aivNum",
+                                                        std::to_string(compileInfo->aivNum),
+                                                        "failed to get core num"),
                  return ge::GRAPH_FAILED);
 
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     compileInfo->ubSize = static_cast<int64_t>(ubSize);
     compileInfo->socVersion = ascendcPlatform.GetSocVersion();
-    OP_CHECK_IF((compileInfo->ubSize <= 0), OP_LOGE(context, "TilingPrepareForMoeInitRountingV3 fail to get ub size."),
+    OP_CHECK_IF((compileInfo->ubSize <= 0),
+                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "ubSize",
+                                                        std::to_string(compileInfo->ubSize),
+                                                        "failed to get ub size"),
                  return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

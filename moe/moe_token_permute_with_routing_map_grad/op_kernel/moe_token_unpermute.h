@@ -239,7 +239,9 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutTok
     bool needCopyIn = false;
     float prob_value = 0;
     T2 acl_token_idx = this->indicesLocal.GetValue(start_token);
-    if constexpr (PROBS) {
+    if (acl_token_idx < 0) {
+        needCopyIn = false;  // 哨兵值 -1，跳过
+    } else if constexpr (PROBS) {
         prob_value = this->probs_tensor.GetValue(start_token);
         needCopyIn = acl_token_idx < this->num_out_tokens && prob_value != 0;
     } else {
@@ -257,7 +259,9 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutTok
     // 处理剩余的Token数据
     for (int64_t token_index = start_token + 1; token_index < end_token; ++token_index) {
         acl_token_idx = this->indicesLocal.GetValue(token_index);
-        if constexpr (PROBS) {
+        if (acl_token_idx < 0) {
+            needCopyIn = false;  // 哨兵值 -1，跳过
+        } else if constexpr (PROBS) {
             prob_value = this->probs_tensor.GetValue(token_index);
             needCopyIn = acl_token_idx < this->num_out_tokens && prob_value != 0;
         } else {

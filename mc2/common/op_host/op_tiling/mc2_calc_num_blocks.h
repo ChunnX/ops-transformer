@@ -28,11 +28,11 @@ inline uint64_t GetNumBlocks(const uint64_t aicNum, const uint64_t aivNum, const
     }
     OP_TILING_CHECK(
         (numBlocks == 0U),
-        OP_LOGE(
-            debugDesc, 
-            "platform info is invalid: aicNum is %lu, aivNum is %lu, "
-            "the value of numBlocks=min(aicNum, aivNum/2) should not be 0.",
-            aicNum, aivNum),
+        OP_LOGE_FOR_INVALID_VALUE(
+            debugDesc,
+            "aicNum, aivNum",
+            (std::to_string(aicNum) + ", " + std::to_string(aivNum)).c_str(),
+            "numBlocks=min(aicNum, aivNum/2) should not be 0"),
         return ge::GRAPH_FAILED
     );
     return numBlocks;

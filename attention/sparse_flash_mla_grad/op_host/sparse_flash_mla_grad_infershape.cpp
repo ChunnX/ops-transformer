@@ -24,11 +24,11 @@ namespace smlag {
 
 enum class InputIndex : uint32_t {
     QUERY = 0,
-    ORI_KV,
-    CMP_KV,
     ATTENTION_OUT_GRAD,
     ATTENTION_OUT,
     LSE,
+    ORI_KV,
+    CMP_KV,
     ORI_SPARSE_INDICES,
     CMP_SPARSE_INDICES,
     CU_SEQLENS_Q,
@@ -62,8 +62,7 @@ enum class AttrIndex : uint32_t {
     ORI_WIN_LEFT,
     ORI_WIN_RIGHT,
     LAYOUT_Q,
-    LAYOUT_KV,
-    DETERMINISTIC
+    LAYOUT_KV
 };
 
 ge::graphStatus InferShape4SparseFlashMlaGrad(gert::InferShapeContext *context)

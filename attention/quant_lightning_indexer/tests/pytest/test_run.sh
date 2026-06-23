@@ -9,6 +9,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set -euo pipefail
+
 # ====================== 配置区======================
 # 需要读取的用例excel表格路径，如下：
 PATH1="./excel/*"
@@ -96,5 +98,3 @@ case "$1" in
         exit 1
         ;;
 esac
-
-exit 0

@@ -21,7 +21,7 @@
 #include <tuple>
 #include "common/op_host/op_tiling/hash.h"
 #include "graph/utils/type_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "quant_batch_matmul_v3_tiling_cache.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
@@ -299,18 +299,21 @@ bool Mc2QuantBatchMatmulV3BasicTiling::CheckUseBasicTiling()
         OP_LOGD(inputParams_.opName, "get mSizePerNpu: %lu", inputParams_.mSizePerNpu);
         OP_TILING_CHECK(
             inputParams_.mSizePerNpu > inputParams_.mSize,
-            CUBE_INNER_ERR_REPORT(inputParams_.opName, "when M in each Npu(%lu) should not bigger than total M(%lu)",
-                                  inputParams_.mSizePerNpu, inputParams_.mSize),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "mSizePerNpu",
+                std::to_string(inputParams_.mSizePerNpu).c_str(),
+                "M in each Npu must not be bigger than total M."),
             return false);
 
         OP_TILING_CHECK(inputParams_.transA,
-                        CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                                              "cannot support non-continuous M with transpose_x1 true"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
+                            "true",
+                            "Cannot support non-continuous M with transpose_x1 true."),
                         return false);
 
         OP_TILING_CHECK(inputParams_.batchA > 1 || inputParams_.batchB > 1 || inputParams_.batchC > 1,
-                        CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                                              "cannot support non-continuous M with batch axis"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
+                            (std::to_string(inputParams_.batchA) + ", " + std::to_string(inputParams_.batchB) + ", " + std::to_string(inputParams_.batchC)).c_str(),
+                            "The value of M must be continuous when batch axis is used."),
                         return false);
         return true;
     }
@@ -349,8 +352,9 @@ uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTotalCnt(uint64_t baseM, uint64_t 
     uint64_t totalCnt = 1;  // 1 最少核数即最少计算一个base块
     OP_TILING_CHECK(
         baseM < BLOCK_CUBE || baseN < BLOCK_CUBE,
-        CUBE_INNER_ERR_REPORT(inputParams_.opName, "baseM(%lu) or baseN(%lu) is less than 16 when m(%lu) n(%lu)", baseM,
-                              baseN, inputParams_.mSize, inputParams_.nSize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "baseM and baseN",
+            (std::to_string(baseM) + " and " + std::to_string(baseN)).c_str(),
+            "baseM and baseN must be at least 16."),
         return 1UL);
     uint64_t mCnt = inputParams_.GetTotalBaseMCnt(baseM);     // m方向需要的轮数
     uint64_t nCnt = ops::CeilDiv(inputParams_.nSize, baseN);  // n方向需要的轮数
@@ -664,7 +668,9 @@ bool Mc2QuantBatchMatmulV3BasicTiling::GetBaseK(uint64_t baseM, uint64_t baseN)
             return true;
         }
     }
-    OP_LOGE(inputParams_.opName, "cannot find any baseK when baseM(%lu) and baseN(%lu)", baseM, baseN);
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "baseK",
+        std::to_string(baseK).c_str(),
+        "The value of baseK must be valid.");
     return false;
 }
 
@@ -757,11 +763,12 @@ bool Mc2QuantBatchMatmulV3BasicTiling::ProcessBNZDecode()
     Int4LowerAxisAlign(basicTiling_.baseM, basicTiling_.baseN);
     basicTiling_.usedCoreNum = std::min(coreNum, ops::CeilDiv(inputParams_.nSize, basicTiling_.baseN));
     OP_TILING_CHECK(basicTiling_.usedCoreNum <= 0,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "usedCoreNum is 0 when m(%lu) n(%lu) in incre",
-                                          inputParams_.mSize, inputParams_.nSize),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "usedCoreNum",
+                        std::to_string(basicTiling_.usedCoreNum).c_str(),
+                        "usedCoreNum must be greater than 0."),
                     return false);
     OP_TILING_CHECK(!GetBaseK(basicTiling_.baseM, basicTiling_.baseN),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "GetBaseK failed"), return false);
+                    OP_LOGE(inputParams_.opName, "GetBaseK failed"), return false);
     return true;
 }
 
@@ -825,7 +832,7 @@ bool Mc2QuantBatchMatmulV3BasicTiling::SetBase(const std::vector<uint64_t> &mBas
         }
     }
     OP_TILING_CHECK(!GetBaseK(basicTiling_.baseM, basicTiling_.baseN),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "GetBaseK failed"), return false);
+                    OP_LOGE(inputParams_.opName, "GetBaseK failed"), return false);
     return true;
 }
 
@@ -906,7 +913,7 @@ bool Mc2QuantBatchMatmulV3BasicTiling::CalcL0Tiling()
             break;
     }
 
-    OP_TILING_CHECK(!ret, CUBE_INNER_ERR_REPORT(inputParams_.opName, "set L0 base failed"), return false);
+    OP_TILING_CHECK(!ret, OP_LOGE(inputParams_.opName, "set L0 base failed"), return false);
     // calc db for l0c
     if (CheckDbL0c()) {
         basicTiling_.dbL0c = NUM_DB;
@@ -951,7 +958,7 @@ bool Mc2QuantBatchMatmulV3BasicTiling::CalcL1Tiling()
     basicTiling_.stepKa = basicTiling_.depthA1 / NUM_DB;
     basicTiling_.stepKb = basicTiling_.depthB1 / NUM_DB;
     OP_TILING_CHECK(!GetStepK(basicTiling_.stepKa, basicTiling_.stepKb),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "GetStepK failed"), return false);
+                    OP_LOGE(inputParams_.opName, "GetStepK failed"), return false);
     basicTiling_.depthA1 = basicTiling_.stepKa * NUM_DB;
     basicTiling_.depthB1 = basicTiling_.stepKb * NUM_DB;
     return true;
@@ -960,7 +967,9 @@ bool Mc2QuantBatchMatmulV3BasicTiling::CalcL1Tiling()
 bool Mc2QuantBatchMatmulV3BasicTiling::GetStepK(uint64_t &stepKa, uint64_t &stepKb) const
 {
     OP_TILING_CHECK(stepKa == 0 || stepKb == 0,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "stepKa(%lu) or stepKb(%lu) is 0", stepKa, stepKb),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "stepKa and stepKb",
+                        (std::to_string(stepKa) + " and " + std::to_string(stepKb)).c_str(),
+                        "stepKa and stepKb must not be 0."),
                     return false);
     uint64_t kL1 = GetSizeWithDataType(std::min(stepKa, stepKb) * basicTiling_.baseK, inputParams_.aDtype);
     // 小k极其容易全载，导致MTE2与（MTE1/MMAD）串行，考虑拆分DB加载
@@ -1267,8 +1276,8 @@ bool Mc2QuantBatchMatmulV3BasicTiling::DoBasicTiling()
     }
     OP_LOGD(inputParams_.opName, "Do basic tiling.");
     ResetBase(compileInfo_.l0cSize);
-    OP_TILING_CHECK(!CalcL0Tiling(), CUBE_INNER_ERR_REPORT(inputParams_.opName, "CalcL0Tiling failed"), return false);
-    OP_TILING_CHECK(!CalcL1Tiling(), CUBE_INNER_ERR_REPORT(inputParams_.opName, "CalcL1Tiling failed"), return false);
+    OP_TILING_CHECK(!CalcL0Tiling(), OP_LOGE(inputParams_.opName, "CalcL0Tiling failed"), return false);
+    OP_TILING_CHECK(!CalcL1Tiling(), OP_LOGE(inputParams_.opName, "CalcL1Tiling failed"), return false);
 
     // 基本块与L2切分融合
     basicTiling_.mTileCntl2 = 1;
@@ -1350,7 +1359,7 @@ void Mc2QuantBatchMatmulV3BasicTiling::SetMatmulTilingFromBasicTiling()
 ge::graphStatus Mc2QuantBatchMatmulV3BasicTiling::DoLibApiTiling()
 {
     OP_TILING_CHECK(IsTilingDataInvalid(),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "check tilingData invalid failed"),
+                    OP_LOGE(inputParams_.opName, "check tilingData invalid failed"),
                     return ge::GRAPH_FAILED);
     SetMatmulTilingFromBasicTiling();
     PrintTilingData();
@@ -1372,10 +1381,6 @@ uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTilingKey() const
 
 void Mc2QuantBatchMatmulV3BasicTiling::PrintBasicTiling() const
 {
-    if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     const BasicTiling &tiling = basicTiling_;
     std::stringstream ss;
     ss << "m_size_per_npu: " << inputParams_.mSizePerNpu << "m_size: " << inputParams_.mSize

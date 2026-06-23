@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under
  * the terms and conditions of CANN Open Software License Agreement Version 2.0
  * (the "License"). Please refer to the License for details. You may not use
@@ -60,31 +60,34 @@ int Init(int32_t deviceId, aclrtStream *stream) {
 static void DumpMeta(void* data) {
     int32_t sectionNum = static_cast<int32_t>(((int32_t*)data)[0]);
     optiling::detail::FaMetaData faMetadata(data, sectionNum);
-    printf("sectionNum:%d\n",sectionNum);
+    printf("sectionNum:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_SECTION_NUM_INDEX));
+    printf("isFd:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_IS_FD_INDEX));
+    printf("mBaseSize:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_M_BASE_SIZE_INDEX));
+    printf("s2BaseSize:%d\n", faMetadata.GetHeadMedata(optiling::HEAD_S2_BASE_SIZE_INDEX));
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         // FA Metadata Generate
         printf("sectionIdx:%d\n",sectionId);
         for (size_t i = 0; i < AIC_CORE_NUM; ++i) {
             // FA start
-            printf("bn2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
-            printf("m start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_M_START_INDEX));
-            printf("s2 start: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX));
+            printf("bn2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX));
+            printf("m start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX));
+            printf("s2 start: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX));
             // FA end
-            printf("bn2 end: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX));
-            printf("m end: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
-            printf("s2 end: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX));
+            printf("bn2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX));
+            printf("m end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
+            printf("s2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX));
             // FA idx
-            printf("first fd data ws idx: %d\n",faMetadata.getFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
+            printf("first fd data ws idx: %d\n",faMetadata.GetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         }
 
         // FD Metadata Generate
         for (size_t i = 0; i < AIV_CORE_NUM; ++i) {
-            printf("bn2 idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
-            printf("m idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX));
-            printf("fd workspace idx: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX));
-            printf("fd workspace num: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX));
-            printf("m start: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_M_START_INDEX));
-            printf("m num: %d\n",faMetadata.getFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX));
+            printf("bn2 idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
+            printf("m idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX));
+            printf("fd workspace idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX));
+            printf("fd workspace num: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX));
+            printf("m start: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_M_START_INDEX));
+            printf("m num: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX));
         }
     }
 }
@@ -150,7 +153,6 @@ int main() {
     int32_t sparseMode = 3;
     int32_t attentionMode = 0;
     bool return_softmax_lse = false;
-
 
     int64_t metadataSize = ((36 + 72) * batchSize * numKeyValueHeads + 1) * 16;
     int64_t alignedSize = ((metadataSize + 4095) / 4096) * 4096;

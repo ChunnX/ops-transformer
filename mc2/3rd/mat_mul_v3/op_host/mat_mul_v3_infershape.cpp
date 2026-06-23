@@ -14,7 +14,7 @@
  */
 
 #include "common/op_host/matmul_common_infershape.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace gert;
 namespace {
@@ -82,9 +82,9 @@ bool UpdateOutputShapeByBias(const std::string& op_name, gert::Shape* shape_out,
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) != UNKNOWN_DIM) {
             OP_CHECK_IF(
                 shape_bias_new.GetDim(bias_dim - 1) != shape_out->GetDim(1),
-                OP_LOGE(
-                    op_name, "The dimension of n [%ld] and bias [%ld] tensors must be the same", shape_out->GetDim(1),
-                    shape_bias_new.GetDim(bias_dim - 1)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "bias",
+                    (std::to_string(shape_bias_new.GetDim(bias_dim - 1))).c_str(),
+                    "The shape dim of bias must be the same as the n dimension of output."),
                 return false);
         }
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) == UNKNOWN_DIM) {
@@ -102,9 +102,14 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
     auto shape_out = context->GetOutputShape(0);
     auto tensor_x1 = context->GetInputDesc(0);
     auto attrs = context->GetAttrs();
-    OP_CHECK_IF(
-        shape_x1 == nullptr || shape_x2 == nullptr || shape_out == nullptr || tensor_x1 == nullptr || attrs == nullptr,
-        CUBE_INNER_ERR_REPORT(op_name, "shape or attrs is null"), return ge::GRAPH_FAILED);
+    if (shape_x1 == nullptr || shape_x2 == nullptr || shape_out == nullptr || tensor_x1 == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(op_name, "x1 or x2 or output");
+        return ge::GRAPH_FAILED;
+    }
+    if (attrs == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(op_name, "attrs");
+        return ge::GRAPH_FAILED;
+    }
     auto shape_bias = context->GetOptionalInputShape(MATMUL_BIAS_IDX);
     if (CheckIsUnknownDimNum(*shape_x1) && CheckIsUnknownDimNum(*shape_x2) && (shape_bias == nullptr || CheckIsUnknownDimNum(*shape_bias))) {
         shape_out->SetDimNum(1);
@@ -115,7 +120,7 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
     const bool* trans_a = attrs->GetAttrPointer<bool>(0);
     const bool* trans_b = attrs->GetAttrPointer<bool>(1);
     OP_CHECK_IF(
-        trans_a == nullptr || trans_b == nullptr, CUBE_INNER_ERR_REPORT(op_name, "attribute is null"),
+        trans_a == nullptr || trans_b == nullptr, OP_LOGE_WITH_INVALID_INPUT(op_name, "attrs"),
         return ge::GRAPH_FAILED);
 
     OP_LOGD(
@@ -149,7 +154,8 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
 
     OP_LOGD(op_name, "check the input shape length.");
     if (shape_x1_new.GetDimNum() != MATMUL_MIN_SHAPE_SIZE && shape_x1_new.GetDimNum() != MATMUL_MAX_SHAPE_SIZE) {
-        CUBE_INNER_ERR_REPORT(op_name, "first input dim num[%zu] is not 2 or 4!", shape_x1_new.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM(op_name, "x1",
+            (std::to_string(shape_x1_new.GetDimNum()) + "D").c_str(), "2D or 4D");
         return ge::GRAPH_FAILED;
     }
 
@@ -170,9 +176,10 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
     if (shape_x1_new.GetDim(idx_k_a) != UNKNOWN_DIM && shape_x2_new.GetDim(idx_k_b) != UNKNOWN_DIM) {
         OP_CHECK_IF(
             shape_x1_new.GetDim(idx_k_a) != shape_x2_new.GetDim(idx_k_b),
-            CUBE_INNER_ERR_REPORT(
-                op_name, "The k-axis of a(%ld) and b(%ld) tensors must be the same", shape_x1_new.GetDim(idx_k_a),
-                shape_x2_new.GetDim(idx_k_b)),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(op_name, "x1 and x2",
+                (std::to_string(shape_x1_new.GetDim(idx_k_a)) + " and " +
+                 std::to_string(shape_x2_new.GetDim(idx_k_b))).c_str(),
+                "The k dimension of x1 must be equal to the k dimension of x2"),
             return ge::GRAPH_FAILED);
     }
 

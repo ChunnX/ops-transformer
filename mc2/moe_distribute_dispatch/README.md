@@ -4,27 +4,22 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
-- 算子功能：对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
+- 算子功能：对Token数据进行量化（可选），进行EP（Expert Parallelism）域的AllToAllV通信。TP（Tensor Parallelism）域通信当前版本不再支持，TP相关参数为预留参数。
 - 计算公式：
 
     - 情形1：如果quaneMode=0（非量化场景）：
 
     $$
-    allToAllXOut = AllToAllV(X)\\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(X), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(X)
     $$
 
     - 情形2：如果quaneMode=2（pertoken动态量化场景）：
@@ -35,16 +30,8 @@
     quantOut = CastToInt8(xFp32 \times dynamicScalesValue) \\
     allToAllXOut = AllToAllV(quantOut) \\
     allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(X), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases} \\
-    dynamicScalesOut =
-    \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(quantOut) \\
+    dynamicScalesOut = allToAllDynamicScalesOut
     $$
 
     注意该算子必须与`MoeDistributeCombine`配套使用。
@@ -134,21 +121,21 @@
 <tr>
 <td>groupTp</td>
 <td>可选属性</td>
-<td><li>TP通信域名称（数据并行通信域）。</li><li>默认值为""。</li></td>
+<td><li>TP通信域名称（预留参数，当前版本不支持）。</li><li>默认值为""。</li></td>
 <td>STRING</td>
 <td>ND</td>
 </tr>
 <tr>
 <td>tpWorldSize</td>
 <td>可选属性</td>
-<td><li>TP通信域大小。</li><li>默认值为0。</li></td>
+<td><li>TP通信域大小（预留参数，当前版本不支持，仅支持传0或1）。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
 <tr>
 <td>tpRankId</td>
 <td>可选属性</td>
-<td><li>TP域本卡ID。</li><li>默认值为0。</li></td>
+<td><li>TP域本卡ID（预留参数，当前版本不支持，仅支持传0）。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
@@ -183,7 +170,7 @@
 <tr>
 <td>globalBS</td>
 <td>可选属性</td>
-<td><li>EP域全局的batch size大小，各rank BS一致时，globalBS = BS * epWorldSize 或 0；各rank BS不一致时，globalBS = maxBS * epWorldSize（maxBS为单rank BS最大值）。</li><li>默认值为0。</li></td>
+<td><li>EP域全局的batch size大小，各rank BS一致时，globalBS = BS * epWorldSize或0；各rank BS不一致时，globalBS = maxBS * epWorldSize（maxBS为单rank BS最大值）。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
@@ -232,7 +219,7 @@
 <tr>
 <td>tpRecvCounts</td>
 <td>输出</td>
-<td>从TP通信域各卡接收的token数（对应MoeDistributeCombine中的tpSendCounts）；若有TP域通信则有该输出，若无TP域通信则无该输出。</td>
+<td>从TP通信域各卡接收的token数（预留输出，当前版本不支持，传空指针即可）；若无TP域通信则无该输出。</td>
 <td>INT32</td>
 <td>ND</td>
 </tr>
@@ -250,17 +237,17 @@
     * 支持`FLOAT16`、`BFLOAT16`数据类型。
     * `quantMode`属性仅支持0和2。
     * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`属性。
-    * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，`tpRecvCounts`为无效内容。
+    * 仅支持EP域，不支持TP域通信，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，`tpRecvCounts`为无效内容。
     * 仅设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，`expandScales`内容有效。
 
-* <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+* <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * 不支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`HIFLOAT8`、`FLOAT8_E8M0`数据类型。
     * `quantMode`属性仅支持0和2。
     * 不支持`expandScales`。
 
-* <term>Ascend 950PR/Ascend 950DT</term>：
+* <term>Ascend 950DT</term>：
     * 不支持`expandScales`。
-    * 当前不支持TP域通信，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpSendCounts`为无效内容。
+    * 当前不支持TP域通信，`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpSendCounts`为无效内容。
 
 ## 约束说明
 
@@ -286,6 +273,9 @@
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
+- 通信方式约束：
+  - <term>Ascend 950DT</term>：仅支持UB Memory通信。
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围(0, 7168]，且保证是32的整数倍。
@@ -297,10 +287,10 @@
     - `quantMode`相关约束：
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
             - 输入`scales`可传入空指针。
-            - 若输入`scales`传入有效数据时，其shape为 (`moeExpertNum`, `H`)。
+            - 若输入`scales`传入有效数据时，其shape为(`moeExpertNum`, `H`)。
     - 组网约束：多机场景仅支持交换机组网，不支持双机直连组网。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值为7168。
@@ -311,10 +301,10 @@
     - `quantMode`相关约束：
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
             - 输入`scales`可传入空指针。
-            - 若输入`scales`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
-            - 若输入`scales`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+            - 若输入`scales`传入有效数据且存在共享专家卡时，其shape为(`sharedExpertNum` + `moeExpertNum`, `H`)。
+            - 若输入`scales`传入有效数据且不存在共享专家卡时，其shape为(`moeExpertNum`, `H`)。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950DT</term>：
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值为7168。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
@@ -324,8 +314,8 @@
     - `quantMode`相关约束：
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
             - 输入`scales`可传入空指针。
-            - 若输入`scales`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
-            - 若输入`scales`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+            - 若输入`scales`传入有效数据且存在共享专家卡时，其shape为(`sharedExpertNum` + `moeExpertNum`, `H`)。
+            - 若输入`scales`传入有效数据且不存在共享专家卡时，其shape为(`moeExpertNum`, `H`)。
 
 ## 调用说明
 

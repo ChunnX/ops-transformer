@@ -179,12 +179,12 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
         uint64_t startK = (loopToken + startTaskId) * tokenSizeK_;
         uint64_t blocksIdx = static_cast<uint64_t>(slotValue) / tilingData_->blockSize;
         uint64_t blocksOffset = static_cast<uint64_t>(slotValue) - tilingData_->blockSize * blocksIdx;
-        uint64_t cacheStartK = blocksIdx * tilingData_->blockSize * tokenSizeK_ + blocksOffset * lastDimK_;
+        uint64_t cacheStartK = blocksIdx * tilingData_->keyCacheStride0 + blocksOffset * lastDimK_;
 
         CopyToCacheNzK(startK, cacheStartK);
         if constexpr (InOutMode == DUAL_IN_OUT) {
             uint64_t startV = (loopToken + startTaskId) * tokenSizeV_;
-            uint64_t cacheStartV = blocksIdx * tilingData_->blockSize * tokenSizeV_ + blocksOffset * lastDimV_;
+            uint64_t cacheStartV = blocksIdx * tilingData_->valueCacheStride0 + blocksOffset * lastDimV_;
             CopyToCacheNzV(startV, cacheStartV);
         }
     }

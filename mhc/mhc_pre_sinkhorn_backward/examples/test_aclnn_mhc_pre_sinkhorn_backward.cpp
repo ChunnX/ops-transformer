@@ -288,7 +288,7 @@ void FreeDeviceMemory(Tensors &tensors)
 
 int main()
 {
-    int32_t device_id = 7;
+    int32_t device_id = 0;
     aclrtContext context = nullptr;
     aclrtStream stream = nullptr;
     Tensors tensors;

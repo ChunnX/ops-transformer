@@ -35,6 +35,7 @@ public:
   __aicore__ inline void CalFirstToken(const float prob_value, const int64_t h_length);
   __aicore__ inline void CalToken(const float prob_value, const int64_t h_length);
   __aicore__ inline void CopyOut(const int64_t out_token_index, const int64_t h_index, const int64_t h_length);
+  __aicore__ inline bool IsValidInputIndex(const T2 in_token_index);
 
   TPipe pipe;
   TQue<QuePosition::VECIN, 1> tokens_inque, indices_inque, probs_inque;
@@ -220,6 +221,12 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMap<T1, T2, T3, PROBS>:
 }
 
 template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline bool KernelMoeTokenUnpermuteWithRoutingMap<T1, T2, T3, PROBS>::IsValidInputIndex(
+    const T2 in_token_index) {
+  return in_token_index >= 0 && in_token_index < this->num_out_tokens;
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
 __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMap<T1, T2, T3, PROBS>::CalPartOutToken(const int64_t start_token,
                                                                                    const int64_t h_index,
                                                                                    const int64_t h_length,
@@ -231,11 +238,12 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMap<T1, T2, T3, PROBS>:
   bool needCopyIn = false;
   float prob_value = 0;
   T2 acl_token_idx = this->indicesLocal.GetValue(start_token);
+  bool validIndex = IsValidInputIndex(acl_token_idx);
   if constexpr (PROBS){
     prob_value = this->probs_tensor.GetValue(start_token);
-    needCopyIn = acl_token_idx < this->num_out_tokens && prob_value != 0;
+    needCopyIn = validIndex && prob_value != 0;
   }else{
-    needCopyIn = acl_token_idx < this->num_out_tokens;
+    needCopyIn = validIndex;
   }
   // 处理第一个Token数据
   if (needCopyIn) {
@@ -249,11 +257,12 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMap<T1, T2, T3, PROBS>:
   // 处理剩余的Token数据
   for (int64_t token_index = start_token + 1; token_index < end_token; ++token_index) {
     acl_token_idx = this->indicesLocal.GetValue(token_index);
+    validIndex = IsValidInputIndex(acl_token_idx);
     if constexpr (PROBS){
       prob_value = this->probs_tensor.GetValue(token_index);
-      needCopyIn = acl_token_idx < this->num_out_tokens && prob_value != 0;
+      needCopyIn = validIndex && prob_value != 0;
     }else{
-      needCopyIn = acl_token_idx < this->num_out_tokens;
+      needCopyIn = validIndex;
     }
     if (needCopyIn) {
       CopyTokenIn(acl_token_idx, h_index, h_length);

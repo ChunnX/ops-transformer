@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-/* *
+/**
  * 算子功能：实现AlltoAllv + GroupedMatMul 融合计算
  * @brief 计算AlltoAllv + GroupedMatMul 融合计算所需的workspace大小。
  *

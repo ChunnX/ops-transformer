@@ -83,7 +83,6 @@ public:
         this->Attr("residual_connection").AttrType(REQUIRED).Int();    // 0: no residual  1: with residual
         this->Attr("block_size").AttrType(REQUIRED).Int();             // when APC enabled, it can not be set to 0
         this->Attr("conv_mode").AttrType(REQUIRED).Int();              // 0: for Qwen and Pangu7B  1: for Pangu
-        this->Attr("inplace").AttrType(REQUIRED).Bool();               // false: non_inplace  true: inplace
         OpAICoreConfig config_950;
         config_950.DynamicCompileStaticFlag(true)
 			.DynamicFormatFlag(false)

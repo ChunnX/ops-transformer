@@ -223,11 +223,11 @@ __aicore__ inline void MatmulComputeWeightQuant<
     A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
     hasAntiQuantOffset>::ComputeWithL2CacheEven(int32_t mTileIndex, uint32_t index, uint8_t enAtomic)
 {
-    for (int32_t nTileIndex = 0; nTileIndex < this->block.tilingL2.nTileCntL2; nTileIndex++) {
-        this->block.UpdateBlockCnt(0, mTileIndex, nTileIndex);
+    for (int32_t nTileIdx = 0; nTileIdx < this->block.tilingL2.nTileCntL2; nTileIdx++) {
+        this->block.UpdateBlockCnt(0, mTileIndex, nTileIdx);
         for (uint32_t j = 0; j < this->block.blockCnt; j++) {
             if (index < this->block.totalTileCnt) {
-                this->block.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>(mTileIndex, nTileIndex);
+                this->block.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>(mTileIndex, nTileIdx);
                 this->mm.SetSingleShape(
                     this->block.singleCoreM, this->block.singleCoreN, this->block.tiling.singleCoreK);
                 this->mm.SetTensorA(this->aGlobal[this->block.offset.offsetA], this->block.isTransposeA);

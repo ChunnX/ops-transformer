@@ -17,6 +17,8 @@
 #include <iostream>
 #include "infer_shape_context_faker.h"
 #include "infer_shape_case_executor.h"
+#include "infer_datatype_context_faker.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 
 class MoeGatingTopK : public testing::Test
 {
@@ -138,4 +140,136 @@ TEST_F(MoeGatingTopK, moe_gating_top_k_infer_shape_03)
                                                       });
     std::vector<std::vector<int64_t>> expectOutputShape = {{-1, 8}, {-1, 8}, {-1, -1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MoeGatingTopK, moe_gating_top_k_infer_shape_fail_01)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeGatingTopK",
+                                                      {
+                                                        {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{256}, {256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+                                                      });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(MoeGatingTopK, moe_gating_top_k_infer_shape_fail_02)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeGatingTopK",
+                                                      {
+                                                        {{{16}, {16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{256}, {256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                                                      });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(MoeGatingTopK, moe_gating_top_k_infer_shape_fail_03)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeGatingTopK",
+                                                      {
+                                                        {{{1, 2, 3}, {1, 2, 3}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{256}, {256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                                                      });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(MoeGatingTopK, moe_gating_top_k_infer_shape_fail_04)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeGatingTopK",
+                                                      {
+                                                        {{{-3, 256}, {-3, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{256}, {256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                                                      });
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, {});
+}
+
+TEST_F(MoeGatingTopK, moe_gating_top_k_infer_datatype_00)
+{
+    ge::DataType xType = ge::DT_FLOAT16;
+    ge::DataType biasType = ge::DT_FLOAT16;
+    ge::DataType yType = ge::DT_UNDEFINED;
+    ge::DataType expertType = ge::DT_UNDEFINED;
+    ge::DataType outType = ge::DT_UNDEFINED;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(2, 3)
+                             .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&xType, &biasType})
+                             .OutputDataTypes({&yType, &expertType, &outType})
+                             .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeGatingTopK")->infer_datatype;
+    ASSERT_NE(inferDtypeFunc, nullptr);
+    auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+    EXPECT_EQ(inferDtypeFunc(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), ge::DT_FLOAT16);
+    EXPECT_EQ(context->GetOutputDataType(1), ge::DT_INT32);
+    EXPECT_EQ(context->GetOutputDataType(2), ge::DT_FLOAT);
+}
+
+TEST_F(MoeGatingTopK, moe_gating_top_k_infer_datatype_01)
+{
+    ge::DataType xType = ge::DT_FLOAT;
+    ge::DataType biasType = ge::DT_FLOAT;
+    ge::DataType yType = ge::DT_UNDEFINED;
+    ge::DataType expertType = ge::DT_UNDEFINED;
+    ge::DataType outType = ge::DT_UNDEFINED;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(2, 3)
+                             .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&xType, &biasType})
+                             .OutputDataTypes({&yType, &expertType, &outType})
+                             .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeGatingTopK")->infer_datatype;
+    ASSERT_NE(inferDtypeFunc, nullptr);
+    auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+    EXPECT_EQ(inferDtypeFunc(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), ge::DT_FLOAT);
+    EXPECT_EQ(context->GetOutputDataType(1), ge::DT_INT32);
+    EXPECT_EQ(context->GetOutputDataType(2), ge::DT_FLOAT);
 }

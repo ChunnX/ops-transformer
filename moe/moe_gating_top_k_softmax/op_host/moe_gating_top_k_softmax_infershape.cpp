@@ -60,7 +60,7 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmax(gert::InferShapeContext* c
 
     const int64_t gatingDimNum = gatingShape->GetDimNum();
     if (gatingDimNum != SIZE_2 && gatingDimNum != SIZE_3) {
-        OP_LOGE(context->GetNodeName(), "x dimensions not equal 2 and 3!");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(gatingDimNum), "2 or 3");
         return ge::GRAPH_FAILED;
     }
 
@@ -72,7 +72,9 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmax(gert::InferShapeContext* c
     const int64_t k = *kPtr;
 
     if (k <= 0 || k > MAX_K || (!IsUnknownShape(gatingShape) && k > gatingShape->GetDim(gatingDimNum - 1))) {
-        OP_LOGE(context->GetNodeName(), "k value error!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "k", std::to_string(k),
+            "k value error!");
         return ge::GRAPH_FAILED;
     }
 

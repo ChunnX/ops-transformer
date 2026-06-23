@@ -35,7 +35,7 @@ def all_gather_matmul_v2_inputs(
     is_gather_out: bool = True,
     is_amax_out: bool = False,
     y_dtype: int = -1,
-    comm_mode: str = "aicpu",
+    comm_mode: str = "ai_cpu",
     **kwargs
 ):
     """

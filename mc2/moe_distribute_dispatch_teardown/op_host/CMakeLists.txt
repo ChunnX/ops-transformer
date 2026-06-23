@@ -29,4 +29,7 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=off
         )
     endif()
+else() # 回黄host
+    add_mc2_modules_sources(OPTYPE moe_distribute_dispatch_teardown moe_distribute_dispatch_teardown ACLNNTYPE aclnn aclnn_inner)
+    set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()

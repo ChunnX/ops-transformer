@@ -130,6 +130,7 @@ public:
         : context_(context), baseShapeInfo_(baseShapeInfo), scenarioInfo_(scenarioInfo) {}
     ge::graphStatus CheckSingleRequiredParam() const;
     ge::graphStatus CheckCacheMode() const;
+    ge::graphStatus CheckQuantMode() const;
     ge::graphStatus CheckDims() const;
     ge::graphStatus CheckParamByScenario();
     ge::graphStatus CheckSpecialScenarioParamShape();
@@ -144,6 +145,9 @@ private:
     bool CheckAttrsNotNull() const;
     bool CheckAttrsRange() const;
     bool CheckCacheModeParamShape() const;
+    ge::graphStatus CheckHcqSize() const;
+    ge::graphStatus CheckDSize() const;
+    ge::graphStatus CheckDtileSize() const;
     // ==================================单参数校验==================================
     bool IsSingleParamValid(const BaseParaInfo &param, const std::string &paramName,
                             const std::set<ge::DataType> &expectedDtype,

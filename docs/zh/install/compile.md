@@ -18,11 +18,12 @@
 | protobuf | 25.1.0 | [protobuf-25.1.tar.gz](https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz) |
 | abseil-cpp | 20230802.1 | [abseil-cpp-20230802.1.tar.gz](https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz) |
 | opbase(自CANN 9.0.0及以后版本需要下载) | master | [opbase](https://gitcode.com/cann/opbase) |
-| cann-cmake | master-007 | [cmake-master-007.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-007.tar.gz) |
+| cann-cmake | master-026 | [cmake-master-026.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-026.tar.gz) |
+| ops-tensor(自CANN 9.1.0及以后版本需要下载) | master | [ops-tensor](https://gitcode.com/cann/ops-tensor) |
 
 若您的编译环境可以访问网络，请参考[联网编译](#联网编译)，编译脚本会自动联网下载第三方软件。否则，请参考[未联网编译](#未联网编译)手动下载第三方软件。
 
-准备好开源第三方软件后，可采用如下编译方式，请按需选择：
+## 算子包形态介绍
 
 - **自定义算子包**：
 
@@ -76,7 +77,8 @@
     ```
 
     自定义算子包安装路径为```${ASCEND_HOME_PATH}/opp/vendors```，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann。
-    > 说明：如果部署算子包时通过配置--install-path参数指定了算子包的安装目录，则在使用自定义算子前，需要执行source \$\{install-path\}/vendors/${vendor_name}/bin/set_env.bash命令，set_env.bash脚本中将自定义算子包的安装路径追加到环境变量ASCEND_CUSTOM_OPP_PATH中，使自定义算子在当前环境中生效。
+    
+    如果部署算子包时通过配置--install-path参数指定了算子包的安装目录，则在使用自定义算子前，需要执行```source ${install-path}/vendors/${vendor_name}/bin/set_env.bash```命令，set_env.bash脚本中将自定义算子包的安装路径追加到环境变量ASCEND_CUSTOM_OPP_PATH中，使自定义算子在当前环境中生效。
 
 3. **（可选）删除自定义算子包**
 
@@ -124,7 +126,7 @@
 
 #### ops-transformer静态库
 
-> 说明：静态库仅支持Atlas A2、Atlas A3系列产品。experimental算子暂不支持使用静态库。
+> 说明：静态库仅支持Atlas A2、Atlas A3、Atlas A5系列产品。experimental算子暂不支持使用静态库。
 
 1. **编译ops-transformer静态库**
 
@@ -134,7 +136,7 @@
     bash build.sh --pkg --static --soc=${soc_version}
     ```
 
-    \$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"。
+    \$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Atlas A5系列产品使用"ascend950"。
     若提示如下信息，说明编译并压缩成功。
 
     ```bash
@@ -274,15 +276,15 @@ Global Environment TearDown
 
 ## FAQ
 
-### 本地编译报错 "ERROR: No matching distribution found for setuptools>=40.8.0"
+### 本地编译报错"ERROR: No matching distribution found for setuptools>=40.8.0"
 
 ```
 Could not fetch URL XXX (Caused by SSLError(SSLCertVerificationError))
 ERROR: Could not find a version that satisfies the requirement setuptools>=40.8.0 (from versions: none)
 ERROR: No matching distribution found for setuptools>=40.8.0
 ```
-1、检查[环境部署](docs/zh/install/quick_install.md)中根目录requirements.txt中python三方库依赖是否齐全
+1、检查[环境部署](./quick_install.md)中根目录requirements.txt中python三方库依赖是否齐全
 
-2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf 指定的pip源是否可用
+2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf指定的pip源是否可用
 
 

@@ -574,6 +574,110 @@ TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_large_
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
 }
 
+// A16W4 ND场景 - K=0但M和N非0时应报错
+TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_k0_mn_not_zero)
+{
+    size_t M = 256;
+    size_t K = 0;    // K=0
+    size_t N = 512;
+    size_t E = 2;
+    optiling::GMMCompileInfo compileInfo = {
+        32,                                      // aicNum
+        64,                                      // aivNum
+        262144,                                  // ubSize
+        524288,                                  // l1Size
+        196608,                                  // l2Size
+        262144,                                  // l0CSize
+        65536,                                   // l0ASize
+        65536,                                   // l0BSize
+        platform_ascendc::SocVersion::ASCEND950, // ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", // op_name
+        {
+            // input info
+            {{{M, K}, {M, K}}, ge::DT_BF16, ge::FORMAT_ND},       // x: K=0, M=256 (非0)
+            {{{E, K, N}, {E, K, N}}, ge::DT_INT4, ge::FORMAT_ND}, // weight: K=0, N=512 (非0)
+            {{{E, N}, {E, N}}, ge::DT_BF16, ge::FORMAT_ND},       // bias
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // scale
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // offset
+            {{{E, N}, {E, N}}, ge::DT_BF16, ge::FORMAT_ND},       // antiquantScale
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},               // antiquantOffset
+            {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},            // groupList
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
+        },
+        {// output info
+         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            // attr
+            {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+        },
+        &compileInfo);
+    TilingInfo tilingInfo;
+    // K=0 但 M 和 N 非 0，应该返回 false
+    EXPECT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+// A16W4 ND场景 - K=0且M=0时应通过（空tensor场景）
+TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a16w4_bf16_nd_k0_m0)
+{
+    size_t M = 0;    // M=0
+    size_t K = 0;    // K=0
+    size_t N = 512;
+    size_t E = 2;
+    optiling::GMMCompileInfo compileInfo = {
+        32,                                      // aicNum
+        64,                                      // aivNum
+        262144,                                  // ubSize
+        524288,                                  // l1Size
+        196608,                                  // l2Size
+        262144,                                  // l0CSize
+        65536,                                   // l0ASize
+        65536,                                   // l0BSize
+        platform_ascendc::SocVersion::ASCEND950, // ASCEND950
+        NpuArch::DAV_3510,
+    };
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", // op_name
+        {
+            // input info
+            {{{M, K}, {M, K}}, ge::DT_BF16, ge::FORMAT_ND},       // x: M=0, K=0
+            {{{E, K, N}, {E, K, N}}, ge::DT_INT4, ge::FORMAT_ND}, // weight: K=0, N=512
+            {{{E, N}, {E, N}}, ge::DT_BF16, ge::FORMAT_ND},       // bias
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // scale
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // offset
+            {{{E, N}, {E, N}}, ge::DT_BF16, ge::FORMAT_ND},       // antiquantScale
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},               // antiquantOffset
+            {{{E}, {E}}, ge::DT_INT64, ge::FORMAT_ND},            // groupList
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},              // perTokenScale
+        },
+        {// output info
+         {{{M}, {N}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            // attr
+            {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+        },
+        &compileInfo);
+    TilingInfo tilingInfo;
+    // K=0 但 M=0，空tensor场景，CheckEmptyTensor 应通过
+    EXPECT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
 // A8W4 NZ场景 - groupsize=256
 TEST_F(GroupedWeightQuantBatchMatmulTilingTest, test_tiling_a8w4_nz_groupsize_256)
 {

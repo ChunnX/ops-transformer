@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
+- 接口功能：融合GroupedMatmul、dequant、swiglu和quant，详细解释见计算公式。
 
   相较于[aclnnGroupedMatmulSwigluQuant](../../grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)接口，**此接口新增：**
     
@@ -40,7 +40,7 @@
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
         * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数。
+        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
 
@@ -49,7 +49,7 @@
 
       - **计算过程**
 
-        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$。
+        - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$。
 
           >例子：假设groupList=[3,4,4,6]、groupListType=cumsum或groupList=[3,1,0,2]、groupListType=count。
           >
@@ -68,7 +68,7 @@
           >
           >则第一个输出Q的shape为[30，:]，其中Q[18:，：]的部分不会进行更新和初始化，其中数据为显存空间申请时的原数据。
           >
-          >同理，第二个输出Q的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
+          >同理，第二个输出Q_scale的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
           >
           >即输出的Q[:grouplist[-1],:]和Q\_scale[:grouplist[-1]]为有效数据部分。
 
@@ -123,10 +123,10 @@
 
         - 3.根据分组确定的入参进行如下计算：
 
-          - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位 两部分的$\mathbb{Z_4}$
+          - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位两部分的$\mathbb{Z_4}$
             $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor$
             $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
-          - 3.2.做矩阵乘时，使能per-channel或per-group量化
+          - 3.2.做矩阵乘时，开启per-channel或per-group量化
             per-channel：
 
             $C\_high_{i} = (X\_high\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
@@ -145,7 +145,7 @@
 
             $C_{i,act}, gate_{i} = split(C_{i})$
 
-            $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp; 其中$Swish(x)=\frac{x}{1+e^{-x}}$
+            $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp;其中$Swish(x)=\frac{x}{1+e^{-x}}$
 
         - 3.量化输出结果
 
@@ -170,7 +170,7 @@
         * $X∈\mathbb{Z_4}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_4}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
         * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数。
+        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
         * $smoothScale∈\mathbb{R}^{E \times N/2}(逐channel)或\mathbb{R}^{E}(逐tensor)$：平滑缩放因子，E是专家个数，N是输出维度。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
@@ -180,7 +180,7 @@
 
       - **计算过程**
 
-        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$。
+        - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$。
           - 分组逻辑与A8W8相同。
 
         - 2.根据分组确定的入参进行如下计算：
@@ -212,15 +212,15 @@
 
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $w\_scale∈\mathbb{R}^{E \times ceil(K / 64) \times N \times 2}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度, N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M \times ceil(K / 64) \times 2}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数，K是特征维度。
+        * $w\_scale∈\mathbb{R}^{E \times ceil(K / 64) \times N \times 2}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度， N是输出维度。
+        * $x\_scale∈\mathbb{R}^{M \times ceil(K / 64) \times 2}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数，K是特征维度。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
 
         * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
         * $Q\_scale∈\mathbb{R}^{M \times ceil((N / 2) / 64) \times 2}$：量化缩放因子。
       - **计算过程**
-        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
+        - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$
 
         - 2.根据分组确定的入参进行如下计算：
 
@@ -259,15 +259,15 @@
 
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度, N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数，K是特征维度。
+        * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度， N是输出维度。
+        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数，K是特征维度。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
 
         * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
         * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
       - **计算过程**
-        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
+        - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$
  	 
  	         - 2.根据分组确定的入参进行如下计算：
  	 
@@ -277,7 +277,7 @@
  	 
  	           $S_{i}=Swish(C_{i,act})\odot gate_{i}$，其中$Swish(x)=\frac{x}{1+e^{-x}}$
  	           
- 	           其中,$xScale_{i}$代表的是对应token对应的量化因子
+ 	           其中，$xScale_{i}$代表的是对应token对应的量化因子
  	         - 3.量化输出结果
  	 
  	           $Q\_scale_{i} = \frac{max(|S_{i}|)}{max(type)}$
@@ -491,7 +491,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td>tuningConfig</td>
         <td rowspan="1">可选输入</td>
         <td>用于算子预估M/E的大小，走不同的算子模板，以适配不同场景性能要求。</td>
-        <td>数组，传入的第一个数字表示各个专家处理的token数的预期值，用于优化tiling，A4W4 右矩阵NZ输入时使能，其他输入请传入空指针。</td>
+        <td>数组，传入的第一个数字表示各个专家处理的token数的预期值，用于优化tiling，A4W4 右矩阵NZ输入时开启，其他输入请传入空指针。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -1027,7 +1027,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     }
 
     int main() {
-        // 1. （固定写法）device/stream初始化，参考acl API手册
+        // 1.（固定写法）device/stream初始化，参考acl API手册
         // 根据自己的实际device填写deviceId
         int32_t deviceId = 0;
         aclrtStream stream;
@@ -1127,7 +1127,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         CHECK_RET(ret == ACL_SUCCESS, 
         LOG_PRINT("aclnnGroupedMatmulSwigluQuantV2 failed. ERROR: %d\n", ret); return ret);
 
-        // 4. （固定写法）同步等待任务执行结束
+        // 4.（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -1397,7 +1397,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         ret = aclnnGroupedMatmulSwigluQuantV2(workspaceAddr, workspaceSize, executor, stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulSwigluQuantV2 failed. ERROR: %d\n", ret); return ret);
 
-        // 4. （固定写法）同步等待任务执行结束
+        // 4.（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -1424,7 +1424,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 
     int main()
     {
-        // （固定写法）device/stream初始化，参考AscendCL对外接口列表
+        //（固定写法）device/stream初始化，参考AscendCL对外接口列表
         // 根据自己的实际device填写deviceId
         int32_t deviceId = 0;
         aclrtStream stream;
@@ -1435,4 +1435,3 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         return 0;
     }
     ```
-    

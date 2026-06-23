@@ -4,7 +4,7 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                       |    ×     |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
@@ -15,11 +15,11 @@
 
 - **接口功能**：MhcPreSinkhornBackward是MhcPreSinkhorn的反向算子。计算对应的梯度反向传播。
 
-- **计算公式**：
+- **计算公式**：  
 
-    - **第一部分计算H_res_grad**：设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{gradHRes}$（`gradHRes` 为输入参数，即正向输出 `h_res` 的梯度），共进行 $\mathbf{num\_iters}$（Sinkhorn迭代次数，对应`sk_iter_count`，当前仅支持20）次迭代。
+    - **第一部分计算H_res_grad**：设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{gradHRes}$（`gradHRes`为输入参数，即正向输出`h_res`的梯度），共进行 $\mathbf{num\_iters}$（Sinkhorn迭代次数，对应`sk_iter_count`，当前仅支持20）次迭代。
     
-        - **前 $\mathbf{num\_iters} - 1$ 次迭代**：对迭代编号 $i = \mathbf{num\_iters} - 1, \mathbf{num\_iters} - 2, \dots, 1$，依次执行，其中 $\mathbf{sumOut}$（对应输入参数 `sumOut`）为Sinkhorn变换正向计算保存的中间sum结果，$\mathbf{normOut}$（对应输入参数 `normOut`）为Sinkhorn变换正向计算保存的中间norm结果，$\mathbf{dotProd}_k$ 为第 $k$ 次点积计算结果（中间变量）：
+        - **前 $\mathbf{num\_iters} - 1$ 次迭代**：对迭代编号 $i = \mathbf{num\_iters} - 1, \mathbf{num\_iters} - 2, \dots, 1$，依次执行，其中 $\mathbf{sumOut}$（对应输入参数`sumOut`）为Sinkhorn变换正向计算保存的中间sum结果，$\mathbf{normOut}$（对应输入参数`normOut`）为Sinkhorn变换正向计算保存的中间norm结果，$\mathbf{dotProd}_k$ 为第 $k$ 次点积计算结果（中间变量）：
         
           $$
           \begin{aligned}
@@ -47,7 +47,7 @@
           \end{aligned}
           $$
     
-    - **输入**：$\mathbf{gradHin} \in [B, S, C]$（`gradHin` 为输入参数，即输出 `h_in` 的梯度）
+    - **输入**：$\mathbf{gradHin} \in [B, S, C]$（`gradHin`为输入参数，即输出`h_in`的梯度）
     
     - **输出组合梯度计算**：
     
@@ -76,7 +76,7 @@
             \mathbf{hPre} = \text{Sigmoid}(\mathbf{alphaPre} \cdot \mathbf{hPre1} + \mathbf{biasPre}) + \mathbf{hcEps}
             $$
             
-            其中 $\mathbf{alphaPre}$ 为输入参数 `alpha` 的第一个元素（对应H_pre的缩放系数），$\mathbf{biasPre}$ 为输入参数 `bias` 的前N个元素，$\mathbf{hcEps}$ 为输入参数 `hcEps`（数值稳定性参数）。
+            其中 $\mathbf{alphaPre}$ 为输入参数`alpha`的第一个元素（对应H_pre的缩放系数），$\mathbf{biasPre}$ 为输入参数`bias`的前N个元素，$\mathbf{hcEps}$ 为输入参数`hcEps`（数值稳定性参数）。
           
           - 反向计算：
             
@@ -98,7 +98,7 @@
             \mathbf{hPost} = \text{Sigmoid}(\mathbf{alphaPost} \cdot \mathbf{hPost1} + \mathbf{biasPost}) \times 2
             $$
             
-            其中 $\mathbf{alphaPost}$ 为输入参数 `alpha` 的第二个元素，$\mathbf{biasPost}$ 为输入参数 `bias` 的中间N个元素。
+            其中 $\mathbf{alphaPost}$ 为输入参数`alpha`的第二个元素，$\mathbf{biasPost}$ 为输入参数`bias`的中间N个元素。
           
           - 反向计算：
             
@@ -111,7 +111,7 @@
             \end{aligned}
             $$
             
-            其中 $\mathbf{gradHPost}$ 为输入参数（输出 `h_post` 的梯度）。
+            其中 $\mathbf{gradHPost}$ 为输入参数（输出`h_post`的梯度）。
         
         - **残差连接反向（H_res）**：
         
@@ -121,7 +121,7 @@
             \mathbf{hRes} = \mathbf{alphaRes} \cdot \mathbf{hRes1} + \mathbf{biasRes}
             $$
             
-            其中 $\mathbf{alphaRes}$ 为输入参数 `alpha` 的第三个元素，$\mathbf{biasRes}$ 为输入参数 `bias` 的后 $N^2$ 个元素。
+            其中 $\mathbf{alphaRes}$ 为输入参数`alpha`的第三个元素，$\mathbf{biasRes}$ 为输入参数`bias`的后 $N^2$ 个元素。
           
           - 反向计算：
             
@@ -176,10 +176,10 @@
             
             $$
             \begin{aligned}
-            \mathbf{xRsGrad} &= \mathbf{hMixGrad} @ \mathbf{phi} \quad ([B,S,NC]) \\
-            \mathbf{X} &= \text{Reshape}(\mathbf{xRs}, [B \cdot S, NC]) \\
+            \mathbf{xRsGrad} &= \mathbf{hMixGrad} @ \mathbf{phi} \quad ([B,S,N \cdot C]) \\
+            \mathbf{X} &= \text{Reshape}(\mathbf{xRs}, [B \cdot S, N \cdot C]) \\
             \mathbf{G} &= \text{Reshape}(\mathbf{hMixGrad}, [B \cdot S, 2N+N^2]) \\
-            \mathbf{phiGrad} &= \mathbf{G}^T @ \mathbf{X} \quad ([2N+N^2, NC])
+            \mathbf{phiGrad} &= \mathbf{G}^T @ \mathbf{X} \quad ([2N+N^2, N \cdot C])
             \end{aligned}
             $$
         
@@ -205,7 +205,7 @@
       - 正向公式：
         
         $$
-        \mathbf{invRms} = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}\mathbf{x}_i^2 + \mathbf{eps}}}, \quad 其中\ n = N \times C
+        \mathbf{invRms} = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}\mathbf{x}_i^2 + \mathbf{eps}}}, \quad其中\ n = N \times C
         $$
         
         其中 $\mathbf{eps}$ 为RMS归一化的数值稳定性参数。
@@ -226,12 +226,12 @@
       | 符号 | 含义 |
       |------|------|
       | $\mathbf{grad}_{\text{curr}}$ | 当前梯度（迭代中间变量） |
-      | $\mathbf{sumOut}_k$ | 第 $k$ 次迭代的sum结果（对应输入参数 `sumOut`） |
-      | $\mathbf{normOut}_k$ | 第 $k$ 次迭代的norm结果（对应输入参数 `normOut`） |
+      | $\mathbf{sumOut}_k$ | 第 $k$ 次迭代的sum结果（对应输入参数`sumOut`） |
+      | $\mathbf{normOut}_k$ | 第 $k$ 次迭代的norm结果（对应输入参数`normOut`） |
       | $\mathbf{dotProd}_k$ | 第 $k$ 次点积计算结果（中间变量） |
-      | $\mathbf{gradHin}$ | 输出 `h_in` 的梯度（输入参数） |
-      | $\mathbf{gradHPost}$ | 输出 `h_post` 的梯度（输入参数） |
-      | $\mathbf{gradHRes}$ | 输出 `h_res` 的梯度（输入参数） |
+      | $\mathbf{gradHin}$ | 输出`h_in`的梯度（输入参数） |
+      | $\mathbf{gradHPost}$ | 输出`h_post`的梯度（输入参数） |
+      | $\mathbf{gradHRes}$ | 输出`h_res`的梯度（输入参数） |
       | $\mathbf{x}$ | 前向输入x（输入参数） |
       | $\mathbf{hPre}$ | 前向保存的中间结果h_pre（输入参数） |
       | $\mathbf{hMix}$ | 线性投影层输出（中间变量） |
@@ -312,8 +312,8 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>gradHin(aclTensor *)</td>
         <td>输入</td>
         <td>输出h_in的梯度。</td>
-        <td>不支持空Tensor。</td>
-        <td>BFLOAT16 </td>
+        <td>支持空Tensor。</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(B,S,C)</td>
         <td>√</td>
@@ -322,7 +322,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>gradHPost(aclTensor *)</td>
         <td>输入</td>
         <td>输出h_post的梯度。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,N)</td>
@@ -332,18 +332,18 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>gradHRes(aclTensor *)</td>
         <td>输入</td>
         <td>输出h_res的梯度。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N,N)</td>
+        <td>(B,S,N*N)或(B,S,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
         <td>x(aclTensor *)</td>
         <td>输入</td>
         <td>前向输入x。</td>
-        <td>不支持空Tensor。</td>
-        <td>BFLOAT16 </td>
+        <td>支持空Tensor。</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(B,S,N,C)</td>
         <td>√</td>
@@ -352,17 +352,17 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>phi(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数phi。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(2N+N^2, ND)</td>
+        <td>(2N+N^2, N*C)</td>
         <td>√</td>
     </tr>
     <tr>
         <td>alpha(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数alpha。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(3)</td>
@@ -372,7 +372,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>bias(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数bias。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2)</td>
@@ -382,7 +382,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>hPre(aclTensor *)</td>
         <td>输入</td>
         <td>前向保存的中间结果h_pre。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,N)</td>
@@ -392,7 +392,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>hcBeforeNorm(aclTensor *)</td>
         <td>输入</td>
         <td>前向保存的中间结果hc_before_norm。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,N*N+2*N)</td>
@@ -402,7 +402,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>invRms(aclTensor *)</td>
         <td>输入</td>
         <td>前向保存的中间结果inv_rms。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(B,S,1)</td>
@@ -412,7 +412,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>sumOut(aclTensor *)</td>
         <td>输入</td>
         <td>Sinkhorn变换正向计算保存的中间sum结果。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2*sk_iter_count,B,S,N)</td>
@@ -422,7 +422,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>normOut(aclTensor *)</td>
         <td>输入</td>
         <td>Sinkhorn变换正向计算保存的中间norm结果。</td>
-        <td>不支持空Tensor。</td>
+        <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2*sk_iter_count,B,S,N,N)</td>
@@ -443,7 +443,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>输出</td>
         <td>输入x的梯度。</td>
         <td>-</td>
-        <td>BFLOAT16</td>
+        <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>(B,S,N,C)</td>
         <td>-</td>
@@ -455,7 +455,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(2N+N^2, ND)</td>
+        <td>(2N+N^2, N*C)</td>
         <td>-</td>
     </tr>
     <tr>
@@ -540,7 +540,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>sk_iter_count不等于20。</td>
       </tr>
       <tr>
-        <td>C不符合大于0 小于 100000 且可以被128整除的要求。</td>
+        <td>C不符合大于0 小于100000 且可以被128整除的要求。</td>
       </tr>
         </tbody>
     </table>
@@ -887,7 +887,7 @@ void FreeDeviceMemory(Tensors &tensors)
 
 int main()
 {
-    int32_t device_id = 5;
+    int32_t device_id = 0;
     aclrtContext context = nullptr;
     aclrtStream stream = nullptr;
     Tensors tensors;

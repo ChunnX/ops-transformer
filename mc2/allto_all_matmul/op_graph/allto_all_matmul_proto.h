@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -22,8 +22,10 @@ namespace ge {
  * @brief Fusion op of alltoall and matmul.
  * @par Inputs:
  * two inputs, including:
- * @li x1: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format supports ND.
- * @li x2: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format supports ND.
+ * @li x1: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format
+ * supports ND.
+ * @li x2: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format
+ * supports ND.
  * @li bias: A matrix Tensor. The type support bfloat16, float16, float. The format supports ND.
  * @li x1_scale: A matrix Tensor. The type support float, float8_e8m0. The format supports ND.
  * @li x2_scale: A matrix Tensor. The type support float, float8_e8m0. The format supports ND.
@@ -33,21 +35,27 @@ namespace ge {
  *
  * @par Outputs:
  * @li y: A matrix Tensor. The type support bfloat16, float16, float. The format supports ND.
- * @li all2all_out: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The format supports ND.
+ * @li all2all_out: A matrix Tensor. The type support bfloat16, float16, float8_e4m3fn, float8_e5m2, float4_e2m1. The
+ * format supports ND.
  *
  * @par Attributes:
  * @li group: A string. Communication domain identifier.
- * @li world_size: An int. Default: -1.
+ * @li world_size: An int.
  * @li all2all_axes: An ListInt. Indicate the data direction for All2All communication. Default: {-2, -1}.
  * @li y_dtype: An int. Declare the output dtype. Default: static_cast<int64_t>(ge::DT_UNDEFINED) 为28.
- * @li x1_quant_mode: An int. Quantization mode of x1, which support 0(non-quant), 7(dynamic-pertoken-quant), 6(mx-quant). Default: 0.
- * @li x2_quant_mode: An int. Quantization mode of x2, which support 0(non-quant), 2(perchannel-quant), 6(mx-quant). Default: 0.
+ * @li x1_quant_mode: An int. Quantization mode of x1, which support 0(non-quant), 7(dynamic-pertoken-quant),
+ * 6(mx-quant). Default: 0.
+ * @li x2_quant_mode: An int. Quantization mode of x2, which support 0(non-quant), 2(perchannel-quant), 6(mx-quant).
+ * Default: 0.
  * @li comm_quant_mode: An int. Quantitative types for communication. Default: 0.
- * @li x1_quant_dtype: An int. Quantization type of the left matrix input to Matmul after communication. Default: static_cast<int64_t>(ge::DT_UNDEFINED) 为28.
- * @li comm_quant_dtype: An int. Quantization type of x1 input before communication. Default: static_cast<int64_t>(ge::DT_UNDEFINED) 为28.
+ * @li x1_quant_dtype: An int. Quantization type of the left matrix input to Matmul after communication. Default:
+ * static_cast<int64_t>(ge::DT_UNDEFINED) 为28.
+ * @li comm_quant_dtype: An int. Quantization type of x1 input before communication. Default:
+ * static_cast<int64_t>(ge::DT_UNDEFINED) 为28.
  * @li transpose_x1: A bool. Whether x1 is transposed. Default: false.
  * @li transpose_x2: A bool. Whether x2 is transposed. Default: false.
  * @li group_size: An int. Default: 0.
+ * @li comm_mode: A string. Communication engine. Default: "default".
  * @li alltoall_out_flag: A bool. Default: true.
  */
 REG_OP(AlltoAllMatmul)
@@ -73,8 +81,9 @@ REG_OP(AlltoAllMatmul)
     .ATTR(transpose_x1, Bool, false)
     .ATTR(transpose_x2, Bool, false)
     .ATTR(group_size, Int, 0)
+    .ATTR(comm_mode, String, "")
     .ATTR(alltoall_out_flag, Bool, true)
     .OP_END_FACTORY_REG(AlltoAllMatmul)
-} // namespace ge
+}  // namespace ge
 
-#endif // ALLTO_ALL_MATMUL_PROTO_H
+#endif  // ALLTO_ALL_MATMUL_PROTO_H

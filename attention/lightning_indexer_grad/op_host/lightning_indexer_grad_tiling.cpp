@@ -42,6 +42,9 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     context_->SetBlockDim(blockDim);
+    OP_CHECK_IF(blockDim <= 0,
+            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "blockDim must be greater than 0."),
+            return ge::GRAPH_FAILED);
 
     uint64_t workspaceOffset = ascendcPlatform.GetLibApiWorkSpaceSize();;
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
@@ -84,8 +87,16 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
         headDim = static_cast<uint32_t>(opParamInfo.query.shape->GetStorageShape().GetDim(DIM_IDX_FOUR));
         seqlenK = static_cast<uint32_t>(opParamInfo.key.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
         headNumK = static_cast<uint32_t>(opParamInfo.key.shape->GetStorageShape().GetDim(DIM_IDX_THREE));
-        groupNum = headNumQ / headNumK;
         topK = static_cast<uint32_t>(opParamInfo.dy.shape->GetStorageShape().GetDim(dyShapeDim - 1));
+        OP_CHECK_IF((batch <= 0) || (seqlenQ <= 0) || (seqlenK <= 0) ||
+                (headNumQ <= 0) || (headNumK <= 0) || (topK <= 0) || (topK > MAX_TOPK),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                "invalid shape: batch, seqlenQ, seqlenK, headNumQ, headNumK and topK must be > 0, "
+                "and topK must be <= %lu, but got "
+                "batch=%u, seqlenQ=%u, seqlenK=%u, headNumQ=%u, headNumK=%u, topK=%u",
+                    MAX_TOPK, batch, seqlenQ, seqlenK, headNumQ, headNumK, topK),
+                return ge::GRAPH_FAILED);
+        groupNum = headNumQ / headNumK;
         dkSize = batch * seqlenK * headNumK * headDim;
         inputLayout = LAYOUT_BSND;
     } else if (std::string(opParamInfo.layout) == "TND") {
@@ -93,9 +104,11 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
         opParamInfo.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX);
         opParamInfo.actualSeqLengthsK.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_K_INDEX);
         opParamInfo.actualSeqLengthsK.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_K_INDEX);
-        OP_CHECK_IF(opParamInfo.actualSeqLengthsQ.tensor == nullptr || opParamInfo.actualSeqLengthsK.tensor == nullptr,
+        OP_CHECK_IF(opParamInfo.actualSeqLengthsQ.tensor == nullptr ||
+                opParamInfo.actualSeqLengthsK.tensor == nullptr,
             OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                "TND layout requires actual_seq_lengths_query and actual_seq_lengths_key to be provided, but got null."),
+                "TND layout requires actual_seq_lengths_query and actual_seq_lengths_key to be provided, "
+                "but got null."),
             return ge::GRAPH_FAILED);
 
         batch = static_cast<uint32_t>(opParamInfo.actualSeqLengthsQ.tensor->GetShapeSize());
@@ -104,21 +117,32 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
         headDim = static_cast<uint32_t>(opParamInfo.query.shape->GetStorageShape().GetDim(DIM_IDX_THREE));
         seqlenK = static_cast<uint32_t>(opParamInfo.key.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
         headNumK = static_cast<uint32_t>(opParamInfo.key.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
-        groupNum = headNumQ / headNumK;
         topK = static_cast<uint32_t>(opParamInfo.dy.shape->GetStorageShape().GetDim(dyShapeDim - 1));
+        OP_CHECK_IF((batch <= 0) || (seqlenQ <= 0) || (seqlenK <= 0) ||
+                (headNumQ <= 0) || (headNumK <= 0) || (topK <= 0) || (topK > MAX_TOPK),
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                "invalid shape: batch, seqlenQ, seqlenK, headNumQ, headNumK and topK must be > 0, "
+                "and topK must be <= %lu, but got "
+                "batch=%u, seqlenQ=%u, seqlenK=%u, headNumQ=%u, headNumK=%u, topK=%u",
+                    MAX_TOPK, batch, seqlenQ, seqlenK, headNumQ, headNumK, topK),
+                return ge::GRAPH_FAILED);
+        groupNum = headNumQ / headNumK;
         dkSize = seqlenK * headNumK * headDim;
         inputLayout = LAYOUT_TND;
     } else {
-        OP_LOGE(context_, "only support layout is BSND and TND.\n", opParamInfo.layout);
+        OP_LOGE(context_, "only support layout is BSND and TND, but got %s.\n", opParamInfo.layout);
         return ge::GRAPH_FAILED; 
     }
 
     uint32_t dkCoreSize = seqlenK * headDim;
     // check headDim, groupNum, headNumK
-    OP_CHECK_IF((headDim != MAX_HEADIM) || (groupNum > MAX_GROUPNUM) || (headNumK != LIMIT_HEADNUMK),
+    OP_CHECK_IF((headDim != MAX_HEADIM) || (groupNum <= 0) ||
+            (groupNum > MAX_GROUPNUM) || (headNumK != LIMIT_HEADNUMK),
             OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), 
-            "only support headDim is %lu, groupNum is %lu, headNumK is %lu, but current headDim is %lu, groupNum is %lu, headNumK is %lu",
-                MAX_HEADIM, MAX_GROUPNUM, LIMIT_HEADNUMK, headDim, groupNum, headNumK),
+            "only support headDim is %lu, groupNum is in range [1, %lu], headNumK is %lu, "
+            "but current headDim is %lu, groupNum is %lu, headNumK is %lu",
+                MAX_HEADIM, MAX_GROUPNUM, LIMIT_HEADNUMK, static_cast<uint64_t>(headDim),
+                static_cast<uint64_t>(groupNum), static_cast<uint64_t>(headNumK)),
             return ge::GRAPH_FAILED);
     
     // check sparseMode

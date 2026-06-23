@@ -277,6 +277,7 @@ aclnnStatus aclnnGroupedMatmulAddV2(
 
 - 确定性说明：aclnnGroupedMatmulAddV2默认确定性实现。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
+- x和weight中每一组tensor的最后一维大小都应小于65536。$x$的最后一维指当x不转置时$x$的K轴或当x转置时$x$的M轴。$weight$的最后一维指当weight不转置时$weight$的N轴或当weight转置时$weight$的K轴。
 - 支持的输入类型组合为：
   - x为FLOAT16、weight为FLOAT16、y为FLOAT32。
   - x为BFLOAT16、weight为BFLOAT16、y为FLOAT32。
@@ -454,7 +455,7 @@ int aclnnGroupedMatmulAddV2Test(int32_t deviceId, aclrtStream &stream) {
     ret = aclnnGroupedMatmulAddV2(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulAddV2 failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -471,7 +472,7 @@ int aclnnGroupedMatmulAddV2Test(int32_t deviceId, aclrtStream &stream) {
 }
 int main()
 {
-    // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

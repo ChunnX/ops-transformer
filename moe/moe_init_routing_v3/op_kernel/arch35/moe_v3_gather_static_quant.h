@@ -22,7 +22,6 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 constexpr int64_t BUFFER_NUM = 2;
-constexpr int64_t DROPLESS_MODE = 0;
 
 template <typename T>
 class MoeV3GatherStaticQuant {

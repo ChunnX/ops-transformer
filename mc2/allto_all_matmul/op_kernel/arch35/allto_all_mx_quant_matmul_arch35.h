@@ -266,7 +266,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.computationContext->additionalData.x1Scale =
         transX1ScaleGM1_ + mc2Tiling_.tileCnt * mc2Tiling_.tileM * tempScaleKBytes;
     pipeLineContext_.computationContext->additionalData.x1ScaleOffset =
-        static_cast<uint64_t>(mc2Tiling_.tileM) * tempScaleKBytes;
+        static_cast<uint64_t>(mc2Tiling_.tailM) * tempScaleKBytes;
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
     pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTailTilingData);
 

@@ -17,17 +17,20 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
+#include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
 
-#ifdef BUILD_OPEN_PROJECT
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
+#if __has_include("version/hcomm_version.h")
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#else
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
+#endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
-#endif
 #endif
 
 
@@ -41,7 +44,7 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *expandX, const aclTensor *expertIds,
     const aclTensor *assistInfoForCombine, const aclTensor *epSendCounts, const aclTensor *expertScales,
@@ -77,7 +80,7 @@ bool CombineCheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
     OP_CHECK_NULL(assistInfoForCombine, return false);
 
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "groupEp Name is Empty.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombine", "groupEp");
         return false;
     }
     return true;
@@ -91,19 +94,30 @@ aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expert
               ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupEp",
+            std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
+            std::string("groupEp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupTp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupTp",
+            std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
+            std::string("groupTp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
+static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, size_t maxCopyLen)
+{
+    if (src != nullptr) {
+        (void)strncpy_s(dst, dstSize, src, maxCopyLen);
+    }
+}
+
 static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool is950, const char *commAlg)
 {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     if (is950) {
         CommType type = CommType::AIV;
         if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
@@ -144,15 +158,20 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
                                        groupTp, xOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-
     const aclTensor *performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
+    char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(groupEpBuf, HCCL_GROUP_NAME_MAX, groupEp, HCCL_GROUP_NAME_MAX - 1);
+    char groupTpBuf[HCCL_GROUP_NAME_MAX] = {0};
     const char *groupTpCombineV2Temp = groupTp;
     if (is910B) {
         groupTpCombineV2Temp = "";
     } else if (is950) {
         performanceInfoOptionalCombineV2Temp = nullptr;
     }
+    SafeCopyGroupBuf(groupTpBuf, HCCL_GROUP_NAME_MAX, groupTpCombineV2Temp, HCCL_GROUP_NAME_MAX - 1);
+    char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(commAlgBuf, HCCL_GROUP_NAME_MAX, commAlg, HCCL_GROUP_NAME_MAX - 1);
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
@@ -160,14 +179,13 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
-            const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char *>(groupTpCombineV2Temp),
-            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-            commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
-            xOut, workspaceSize, executor);
+            groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf, tpWorldSize, tpRankId, expertShardType,
+            sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlgBuf,
+            zeroExpertNum, copyExpertNum, constExpertNum, xOut, workspaceSize, executor);
     } else {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
-        const char *opName = "moe_distribute_dispatch_combine_v2";
+        const char *opName = "moe_distribute_v2";
         auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
@@ -176,7 +194,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId,
             moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
-            globalBs, outDtype, commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum,
+            globalBs, outDtype, commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum,
             constExpertNum, xOut, workspaceSize, executor);
 #endif
     }
@@ -188,7 +206,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                           aclrtStream stream)
 {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (is950) {
         void *arg = NnopbaseGetUserHandle(executor);

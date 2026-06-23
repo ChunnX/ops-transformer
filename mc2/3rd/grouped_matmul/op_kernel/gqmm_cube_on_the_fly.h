@@ -142,10 +142,12 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
         mxScaleBGlobal_.SetGlobalBuffer(MC2_GROUPED_MATMUL::GetTensorAddr<fp8_e8m0_t>(0, scaleTensorPtr_) +
             block_.params_.wScaleGroupAddrOffset);
     } else {
-        __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + groupIdx;
-        if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE) &&
+        if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT) &&
+            gmmQuantParams_->bQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT)) {
+        } else if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE) &&
             gmmQuantParams_->bQuantMode ==
             static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // doubleScale, M_SPLIT
+            __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + groupIdx;
             float scaleBValue = *((__gm__ float *)scaleB);
             float scaleAValue = *((__gm__ float *)perTokenScalePtr_ + groupIdx);
             float deqScale = scaleBValue * scaleAValue;
@@ -155,6 +157,7 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
             gmmQuantParams_->bQuantMode ==
             static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // pertensor, M_SPLIT
             if constexpr (!IsSameType<scaleType, uint64_t>::value && !IsSameType<scaleType, int64_t>::value) {
+                __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + groupIdx;
                 uint32_t uint32Scale = 0;
                 if constexpr (IsSameType<scaleType, bfloat16_t>::value) {
                     uint16_t uint16Scale = *((__gm__ uint16_t *)scaleB);
@@ -165,6 +168,7 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlob
                 }
                 scaleScalar_ = uint32Scale & DEQ_SCALE_MUL;
             } else {
+                __gm__ scaleType *scaleB = MC2_GROUPED_MATMUL::GetTensorAddr<scaleType>(0, scaleTensorPtr_) + groupIdx;
                 scaleScalar_ = *((__gm__ uint64_t *)scaleB);
             }
         } else if (gmmQuantParams_->bQuantMode ==
@@ -317,19 +321,22 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAnd
         return;
     }
     mm_.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN, block_.params_.k);
-    if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
-        mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], aTrans);
-        mm_.SetTensorScaleB(mxScaleBGlobal_[block_.offset_.offsetScale], bTrans);
-    } else {
-        if (gmmQuantParams_->bQuantMode ==
-            static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) { // perTensor && doubleScale
-            mm_.SetQuantScalar(scaleScalar_);
+    if (gmmQuantParams_->aQuantMode != static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT) ||
+        gmmQuantParams_->bQuantMode != static_cast<uint32_t>(Mc2QuantUtils::QuantMode::DEFAULT)) {
+        if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
+            mm_.SetTensorScaleA(scaleAGlobal_[block_.offset_.offsetPerTokenScale], aTrans);
+            mm_.SetTensorScaleB(mxScaleBGlobal_[block_.offset_.offsetScale], bTrans);
         } else {
-            mm_.SetQuantVector(scaleBGlobal_[block_.offset_.offsetScale]);
+            if (gmmQuantParams_->bQuantMode ==
+                static_cast<uint32_t>(Mc2QuantUtils::QuantMode::PERTENSOR_MODE)) {
+                mm_.SetQuantScalar(scaleScalar_);
+            } else {
+                mm_.SetQuantVector(scaleBGlobal_[block_.offset_.offsetScale]);
+            }
         }
-    }
-    if (gmmQuantParams_->hasBias) {
-        mm_.SetBias(biasGlobal_[block_.offset_.offsetBias]);
+        if (gmmQuantParams_->hasBias) {
+            mm_.SetBias(biasGlobal_[block_.offset_.offsetBias]);
+        }
     }
     mm_.SetTensorA(xGlobal_[block_.offset_.offsetA], aTrans);
     mm_.SetTensorB(wGlobal_[block_.offset_.offsetB], bTrans);

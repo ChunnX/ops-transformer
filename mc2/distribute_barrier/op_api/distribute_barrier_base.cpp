@@ -19,16 +19,19 @@
 #include "common/utils/op_mc2_def.h"
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
+#include "mc2_log_compat.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnnInner_distribute_barrier.h"
 #include "distribute_barrier_base.h"
 
-#ifdef BUILD_OPEN_PROJECT
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
+#if __has_include("version/hcomm_version.h")
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#else
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
+#endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
-#endif
 #endif
 
 using namespace op;
@@ -52,7 +55,7 @@ bool BarrierCheckNullStatus(const aclTensor* xRef, const char* group)
     // 检查必选入参出参为非空
     OP_CHECK_NULL(xRef, return false);
     if (group == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name is Empty.");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnDistributeBarrier", "group");
         return false;
     }
     return true;
@@ -64,8 +67,9 @@ aclnnStatus BarrierCheckParams(const aclTensor* xRef, const char* group)
     CHECK_RET(BarrierCheckNullStatus(xRef, group), ACLNN_ERR_PARAM_NULLPTR);
     auto groupStrnLen = strnlen(group, HCCL_GROUP_NAME_MAX);
     if ((groupStrnLen >= HCCL_GROUP_NAME_MAX) || (groupStrnLen == 0)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name length in range (0, HCCL_GROUP_NAME_MAX), but it's %zu.",
-                groupStrnLen);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnDistributeBarrier", "group",
+            std::to_string(groupStrnLen).c_str(),
+            "The value of group must be in the range (0, HCCL_GROUP_NAME_MAX)");
         return false;
     }
     return ACLNN_SUCCESS;
@@ -83,17 +87,22 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     aclnnStatus ret = ACLNN_ERR_INNER;
 
+    char groupBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (group != nullptr) {
+        (void)strncpy_s(groupBuf, HCCL_GROUP_NAME_MAX, group, HCCL_GROUP_NAME_MAX - 1);
+    }
+    aclTensor *xRefBuf = const_cast<aclTensor*>(xRef);
     if (!is950) {
-        getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef),
-            timeOut, elasticInfo, const_cast<char*>(group), worldSize, workspaceSize, executor);
+        getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(xRefBuf,
+            timeOut, elasticInfo, groupBuf, worldSize, workspaceSize, executor);
     } else {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char* opName = "distribute_barrier_extend";
         ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierExtendGetWorkspaceSize(mc2Context,
-            const_cast<aclTensor*>(xRef), timeOut, elasticInfo, const_cast<char*>(group),
+            xRefBuf, timeOut, elasticInfo, groupBuf,
             worldSize, workspaceSize, executor);
 #endif
     }
@@ -108,15 +117,14 @@ aclnnStatus aclnnDistributeBarrierBase(void* workspace, uint64_t workspaceSize,
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     if (is950) {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         OP_LOGD("aclnn_disrtibute_barrier_extend inner start");
         return aclnnInnerDistributeBarrierExtend(workspace, workspaceSize, executor, stream);
-#endif
-    } else {
-        return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
-                                           stream);
     }
+#endif
+    return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
+                                       stream);
 }
 #ifdef __cplusplus
 }

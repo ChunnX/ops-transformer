@@ -1749,7 +1749,8 @@ FlashAttentionScoreGradS1s2Bn2gs1s2<T1, T2, IS_ATTEN_MASK, IS_PSE, IS_DROP, MM_O
                 LocalTensor<uint8_t> attenMaskUbPreuint8 =
                     tmpBuffer.GetWithOffset<uint8_t>(8 * 1024 / sizeof(uint8_t), ubTmpBufferOffset);
                 uint32_t s2ExtendPadAlign = (s2Extend + 31) / 32 * 32; // attenmask做pad时会32对齐，故加31/32做ceil
-                int32_t maskNum = s1ExtendSubGraph * s2ExtendPadAlign / 2; // 除2数据量按照uint16类型折半
+                int64_t maskNum = static_cast<int64_t>(s1ExtendSubGraph) *
+                    static_cast<int64_t>(s2ExtendPadAlign) / 2; // 除2数据量按照uint16类型折半
 
                 int32_t mte2WaitV = static_cast<int32_t>(isPing ?
                                      eventIdList.structMte2WaitVPing : eventIdList.structMte2WaitVPong);

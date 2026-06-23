@@ -10,6 +10,11 @@
 
 cmake_minimum_required(VERSION 3.16)
 include(cmake/fetch_cann_cmake.cmake)
+if(DEFINED RULE_LAUNCH AND RULE_LAUNCH)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${RULE_LAUNCH})
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ${RULE_LAUNCH})
+endif()
+
 project(cann_ops-transformer)
 
 set(CMAKE_C_FLAGS_RELEASE "")
@@ -45,10 +50,10 @@ set(ASCEND_COMPUTE_UNIT           "ascend910b"           CACHE   STRING   "soc t
 set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING   "operators that need to be compiled")
 set(ARCH_DIRECTORY                ""                           CACHE   STRING   "arch directory that need to be compiled")
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
-set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;kirinx90;kirin9030" CACHE STRING "all soc list")
+set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62;kirinx90;kirin9030" CACHE STRING "all soc list")
 
-#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62cm12a:arch38,kirinx90:arch22,kirin9030:arch22
-set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22
+set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62 kirinx90 kirin9030)
 set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
@@ -125,6 +130,10 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
+include(cmake/third_party/ops-tensor.cmake)
+if(DOWNLOAD_OPS_TEST_KIT)
+  include(cmake/third_party/ops_test_kit.cmake)
+endif()
 include(cmake/config.cmake)
 add_cann_third_party(json)
 
@@ -152,8 +161,8 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
         add_cann_third_party(eigen)
-        include(cmake/third_party/abseil-cpp.cmake)
-        include(cmake/third_party/ascend_protobuf.cmake)
+        add_cann_third_party(abseil-cpp)
+        add_cann_third_party(protobuf)
 
 
         include(cmake/custom_build.cmake)
@@ -329,6 +338,7 @@ add_subdirectory(ffn)
 list(APPEND OP_LIST "ffn")
 list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/ffn/ffn)
 add_subdirectory(attention)
+add_subdirectory(mhc)
 list(APPEND OP_LIST ${COMPILED_OPS})
 list(REMOVE_DUPLICATES OP_LIST)
 list(APPEND OP_DIR_LIST ${COMPILED_OP_DIRS})

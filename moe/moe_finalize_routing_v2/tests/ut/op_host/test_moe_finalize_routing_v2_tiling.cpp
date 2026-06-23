@@ -8,12 +8,49 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <iostream>
+#include <map>
 #include <gtest/gtest.h>
 #include "../../../op_host/moe_finalize_routing_v2_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include "op_tiling_parse_context_builder.h"
+#include "base/registry/op_impl_space_registry_v2.h"
+#include "platform/platform_infos_def.h"
 
 using namespace std;
+
+namespace {
+void SetupParsePlatformInfo(fe::PlatFormInfos* platformInfo)
+{
+    platformInfo->Init();
+    map<string, string> socInfos = {
+        {"ai_core_cnt", "64"},
+        {"l2_size", "33554432"},
+        {"core_type_list", "AICore"},
+    };
+    map<string, string> aicoreSpec = {
+        {"ub_size", "65536"},
+        {"l0_a_size", "65536"},
+        {"l0_b_size", "65536"},
+        {"l0_c_size", "131072"},
+        {"l1_size", "524288"},
+        {"bt_size", "0"},
+    };
+    map<string, string> intrinsics = {
+        {"Intrinsic_data_move_l12ub", "float16"},
+        {"Intrinsic_data_move_l0c2ub", "float16"},
+    };
+    map<string, string> versions = {
+        {"NpuArch", "2201"},
+        {"Short_SoC_version", "Ascend910B"},
+    };
+    platformInfo->SetPlatformRes("SoCInfo", socInfos);
+    platformInfo->SetPlatformRes("AICoreSpec", aicoreSpec);
+    platformInfo->SetCoreNumByCoreType("AICore");
+    platformInfo->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
+    platformInfo->SetPlatformRes("version", versions);
+}
+} // namespace
 
 class MoeFinalizeRoutingTilingV2 : public testing::Test
 {
@@ -28,6 +65,26 @@ protected:
         std::cout << "MoeFinalizeRoutingTilingV2 TearDown" << std::endl;
     }
 };
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_membase_reset_twice) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+                                            {
+                                                {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{16}, {16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{16, 1}, {16, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{16, 1}, {16, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {{{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+                                            {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+                                            &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20015, "", expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20015, "", expectWorkspaces);
+}
 
 TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_float) {
     optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
@@ -751,4 +808,380 @@ TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRoutingTilingV2_20049_allBias_noBi
     string expectTilingData = "64 61 0 0 670 142 142 142 0 0 0 0 208 11 1 11 11 10 1 10 10 0 0 3 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_network_float) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+                                            {
+                                                {{{4096 * 4, 5120}, {4096 * 4, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096 * 4}, {4096 * 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{8, 5120}, {8, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 4}, {4096, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 4}, {4096, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {{{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+                                            {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+                                            &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, optiling::DTYPE_FLOAT_CUTH_NETWORK_V2, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_network_float_no_bias) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+                                            {
+                                                {{{4096 * 4, 5120}, {4096 * 4, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096 * 4}, {4096 * 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 4}, {4096, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 4}, {4096, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {{{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+                                            {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+                                            &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20034, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_float_db_no_bias) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+                                            {
+                                                {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{16}, {16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{16, 1}, {16, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{16, 1}, {16, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {{{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+                                            {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+                                            &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20034, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_float16_bigk_no_bias) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+                                            {
+                                                {{{1024, 16}, {1024, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{64, 16}, {64, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{64, 16}, {64, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                {{{64, 16}, {64, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {{{{64, 16}, {64, 16}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+                                            {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+                                            &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20035, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_network_tiny_ub) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 8192};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+                                            {
+                                                {{{4096 * 4, 5120}, {4096 * 4, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096 * 4}, {4096 * 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{8, 5120}, {8, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 4}, {4096, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                {{{4096, 4}, {4096, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+                                            },
+                                            {{{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+                                            {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+                                            &compileInfo);
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", expectWorkspaces);
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRoutingV2_tiling_data_field_accessors) {
+    optiling::MoeFinalizeRoutingV2TilingData tilingData;
+    tilingData.set_totalCoreNum(64);
+    tilingData.set_usedCoreNum(40);
+    tilingData.set_skip2IsNull(1);
+    tilingData.set_biasRowNum(8);
+    tilingData.set_totalRowNum(4096);
+    tilingData.set_H(5120);
+    tilingData.set_normalH(2560);
+    tilingData.set_unnormalH(2560);
+    tilingData.set_hSliceNum(1);
+    tilingData.set_normalK(256);
+    tilingData.set_unnormalK(2);
+    tilingData.set_kSliceNum(2);
+    tilingData.set_K(258);
+    tilingData.set_normalCoreHandleNum(128);
+    tilingData.set_normalCoreLoopNum(4);
+    tilingData.set_normalCoreHandleNumPerLoop(32);
+    tilingData.set_normalCoreHandleNumTailLoop(32);
+    tilingData.set_tailCoreHandleNum(64);
+    tilingData.set_tailCoreLoopNum(2);
+    tilingData.set_tailCoreHandleNumPerLoop(32);
+    tilingData.set_tailCoreHandleNumTailLoop(32);
+    tilingData.set_tilingKey(optiling::DTYPE_FLOAT_DB_ALL_BIAS_V2);
+    tilingData.set_skip1IsNull(0);
+    tilingData.set_dropPadMode(1);
+    tilingData.set_scalesIsNull(0);
+
+    EXPECT_EQ(tilingData.get_totalCoreNum(), 64);
+    EXPECT_EQ(tilingData.get_dropPadMode(), 1);
+    EXPECT_EQ(tilingData.get_scalesIsNull(), 0);
+
+    const size_t dataSize = tilingData.GetDataSize();
+    ASSERT_GT(dataSize, 0U);
+    std::vector<uint8_t> buf(dataSize);
+    tilingData.SaveToBuffer(buf.data(), buf.size());
+
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo;
+    compileInfo.aivNum = 40;
+    compileInfo.ubSize = 65536;
+    EXPECT_EQ(compileInfo.aivNum, 40);
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_cut_h_float_k2) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{4096 * 2, 8934}, {4096 * 2, 8934}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096 * 2}, {4096 * 2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4096, 8934}, {4096, 8934}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 8934}, {4096, 8934}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{8, 8934}, {8, 8934}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 2}, {4096, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 2}, {4096, 2}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{4096, 8934}, {4096, 8934}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20006, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_cut_h_fp16_k4) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{4096 * 4, 32768}, {4096 * 4, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4096 * 4}, {4096 * 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4096, 32768}, {4096, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4096, 32768}, {4096, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 32768}, {8, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4096, 4}, {4096, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4096, 4}, {4096, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{4096, 32768}, {4096, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20010, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_cut_h_fp16_k8) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{4096 * 4, 32768}, {4096 * 4, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{4096 * 4}, {4096 * 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2048, 32768}, {2048, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2048, 32768}, {2048, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8, 32768}, {8, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2048, 8}, {2048, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2048, 8}, {2048, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{2048, 32768}, {2048, 32768}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20013, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_cut_hk_fp16) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{1024 * 258, 8936}, {1024 * 258, 8936}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024 * 258}, {1024 * 258}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1024, 8936}, {1024, 8936}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024, 8936}, {1024, 8936}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{340, 8936}, {340, 8936}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024, 258}, {1024, 258}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024, 258}, {1024, 258}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{1024, 8936}, {1024, 8936}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20001, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_cut_hk_bf16) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{1024 * 258, 8936}, {1024 * 258, 8936}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1024 * 258}, {1024 * 258}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1024, 8936}, {1024, 8936}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1024, 8936}, {1024, 8936}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{340, 8936}, {340, 8936}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1024, 258}, {1024, 258}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{1024, 258}, {1024, 258}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{1024, 8936}, {1024, 8936}}, ge::DT_BF16, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20002, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_cut_h_bfloat16_k4) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{4096 * 4, 8934}, {4096 * 4, 8934}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096 * 4}, {4096 * 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4096, 8934}, {4096, 8934}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 8934}, {4096, 8934}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{8, 8934}, {8, 8934}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 4}, {4096, 4}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{4096, 4}, {4096, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{4096, 8934}, {4096, 8934}}, ge::DT_BF16, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20011, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_network_float_key) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{4096 * 4, 5120}, {4096 * 4, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096 * 4}, {4096 * 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{8, 5120}, {8, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 4}, {4096, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 4}, {4096, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20018, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_load_h_float) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 8192};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{512, 1024}, {512, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{32, 1024}, {32, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{32, 1024}, {32, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 1024}, {16, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{32, 16}, {32, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{32, 16}, {32, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{32, 1024}, {32, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo,
+        "Ascend910B", 64, 8192);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20012, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_all_bias_bf16_mix_float_scales) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{256, 64}, {256, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{256}, {256}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16, 64}, {16, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{16, 64}, {16, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{16, 64}, {16, 64}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{16, 16}, {16, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 16}, {16, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{16, 64}, {16, 64}}, ge::DT_BF16, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20043, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_310p_float_success) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{64, 64}, {64, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 4}, {16, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{16, 64}, {16, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)}},
+        &compileInfo,
+        "Ascend310P", 64, 65536);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {16 * 1024 * 1024});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, MoeFinalizeRouting_tiling_network_optimized_cuth_fail) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {40, 4096};
+    gert::TilingContextPara tilingContextPara("MoeFinalizeRoutingV2",
+        {
+            {{{4096 * 4, 5120}, {4096 * 4, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096 * 4}, {4096 * 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{8, 5120}, {8, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 4}, {4096, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4096, 4}, {4096, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{4096, 5120}, {4096, 5120}}, ge::DT_FLOAT, ge::FORMAT_ND},},
+        {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo,
+        "Ascend910B", 64, 4096);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX, "", {16777216});
+}
+
+TEST_F(MoeFinalizeRoutingTilingV2, TilingParse_Success) {
+    optiling::MoeFinalizeRoutingCompileInfoV2 compileInfo = {0, 0};
+    fe::PlatFormInfos platformInfo;
+    SetupParsePlatformInfo(&platformInfo);
+
+    const char* compileInfoString =
+        R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false, )"
+        R"("Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, )"
+        R"("Intrinsic_data_move_out2l1_nd2nz": false, "UB_SIZE": 65536, "L2_SIZE": 33554432, )"
+        R"("L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, )"
+        R"("CORE_NUM": 64, "socVersion": "Ascend910B"}})";
+
+    gert::OpTilingParseContextBuilder builder;
+    auto holder = builder.OpType("MoeFinalizeRoutingV2")
+                      .OpName("MoeFinalizeRoutingV2")
+                      .IONum(7, 1)
+                      .CompiledJson(compileInfoString)
+                      .CompiledInfo(&compileInfo)
+                      .PlatformInfo(reinterpret_cast<char*>(&platformInfo))
+                      .Build();
+    auto parseContext = holder.GetContext();
+    ASSERT_NE(parseContext, nullptr);
+
+    SetupParsePlatformInfo(parseContext->GetPlatformInfo());
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MoeFinalizeRoutingV2");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext*>(parseContext));
+    EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
+    EXPECT_GT(compileInfo.aivNum, 0);
+    EXPECT_GT(compileInfo.ubSize, 0);
 }

@@ -91,6 +91,7 @@ struct QuantGmmAlltoAllvTilingUtParam {
     int64_t mmWeightQuantMode = 0;
 
     int64_t groupSize = 0;
+    std::string commMode = "default";
 
     bool transGmmWeight = false;
     bool transMmWeight = false;
@@ -155,6 +156,7 @@ struct QuantGmmAlltoAllvTilingUtParam {
         this->mmWeightQuantMode = SafeStoll(ReadMap(csvMap, "mmWeightQuantMode", "0"));
 
         this->groupSize = SafeStoll(ReadMap(csvMap, "groupSize", "0"));
+        this->commMode = ReadMap(csvMap, "commMode", "ccu");
 
         this->transGmmWeight = StrToBoolIgnoreCase(ReadMap(csvMap, "transGmmWeight", "false"));
         this->transMmWeight = StrToBoolIgnoreCase(ReadMap(csvMap, "transMmWeight", "false"));

@@ -65,7 +65,8 @@ TEST_P(MatmulAlltoAllArch35TilingTest, param)
          {"comm_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.commQuantDtype)},
          {"transpose_x1", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transposeX1)},
          {"transpose_x2", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transposeX2)},
-         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)}});
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)}});
 
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,
                                                param.soc);

@@ -45,7 +45,7 @@
      // bit: 20-13 S2TemplateType
      ASCENDC_TPL_UINT_DECL(S2TemplateNum, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST, 128),
      // bit: 32-21 DTemplateType
-     ASCENDC_TPL_UINT_DECL(DTemplateNum, ASCENDC_TPL_12_BW, ASCENDC_TPL_UI_LIST, 576),
+     ASCENDC_TPL_UINT_DECL(DTemplateNum, ASCENDC_TPL_12_BW, ASCENDC_TPL_UI_LIST, 512, 576),
      // bit: 33 IsRope
      //      0: DISABLE
      //      1: ENABLE
@@ -62,7 +62,7 @@
         ASCENDC_TPL_BOOL_SEL(IsTnd, 0, 1),
         ASCENDC_TPL_UINT_SEL(GTemplateNum, ASCENDC_TPL_UI_LIST, 128),
         ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
-        ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 576),
+        ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 512, 576),
         ASCENDC_TPL_BOOL_SEL(IsRope, 0, 1),
         ASCENDC_TPL_BOOL_SEL(Deterministic, 0, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(sfagTilingWithTemplate)

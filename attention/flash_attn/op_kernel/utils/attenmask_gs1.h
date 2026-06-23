@@ -178,7 +178,7 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32
     }
     uint64_t offset = 0;
     int64_t delta = nextToken + s1StartIdx - info.s2StartIdx;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
@@ -194,7 +194,7 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPre(MaskInfo &info, uin
                        static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算token
     int64_t delta = -preToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(info.s2StartIdx) - 1;
     uint64_t offset = 0;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
@@ -268,7 +268,7 @@ template <typename T>
 __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
                                              uint32_t s1StartIdx, uint32_t s1EndIdx, bool isPre = false)
 {
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     uint64_t maskOffset = ComputeAttenMaskOffset(info, s1StartIdx, isPre);
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
@@ -285,7 +285,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
 {
     int32_t s1StartIdx = info.gs1StartIdx % info.s1Size;
     int32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) % info.s1Size + 1;
-    uint32_t attenMaskS2Stride = Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
+    uint32_t attenMaskS2Stride = AttentionCommon::Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
     if (info.gs1dealNum <= info.s1Size) {
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
@@ -340,7 +340,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t remainRowCount = info.gs1dealNum - headGSize;
     uint32_t midS1Count = remainRowCount / info.gSize;
     uint32_t tailGSize = remainRowCount % info.gSize;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     uint32_t attenMaskS2Stride = attenMaskSizeAlign + 32 * info.attenMaskDstStride;
 
     // ub-head

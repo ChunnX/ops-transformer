@@ -17,7 +17,7 @@
 #include <dlfcn.h>
 #include <limits.h>
 #include <unistd.h>
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace Ops {
 namespace MC2 {
@@ -25,6 +25,12 @@ LegacyCommonMgr::LegacyCommonMgr()
 {
     std::string soPath;
     if (GetLegacyCommonSoPath(soPath)) {
+        char canonicalPath[PATH_MAX] = {0};
+        if (realpath(soPath.c_str(), canonicalPath) == nullptr) {
+            OP_LOGW("LegacyCommonMgr", "Fail to canonicalize so path [%s].", soPath.c_str());
+            return;
+        }
+        soPath = canonicalPath;
         if (access(soPath.c_str(), R_OK) != 0) {
             OP_LOGW("LegacyCommonMgr", "so file [%s] is not accessible (no read permission or not exist).",
                     soPath.c_str());

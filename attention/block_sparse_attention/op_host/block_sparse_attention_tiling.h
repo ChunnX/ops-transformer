@@ -75,17 +75,17 @@ TILING_DATA_FIELD_DEF(uint32_t, avgRowNumPerSubCore);
 TILING_DATA_FIELD_DEF(uint32_t, preActivateSubCoreNum);
 
 
-// query Layout: 0=TND, 1=BNSD
+// query Layout: 0=TND, 1=BNSD, 2=BSND
 TILING_DATA_FIELD_DEF(uint32_t, queryLayout);
 
-// KV Cache Layout: 0=TND, 1=BNSD
+// KV Cache Layout: 0=TND, 1=BNSD, 2=BSND
 TILING_DATA_FIELD_DEF(uint32_t, kvCacheLayout);
 
-// BNSD格式的最大序列长度（用于计算stride）
+// BNSD/BSND格式的最大序列长度（用于计算stride）
 // 当actualSeqLengths为nullptr时，maxQSeqlen也用作统一的qseqlen值
-TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen);  // BNSD格式Q的第三维（S维度），或统一的qseqlen值
+TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen);  // BNSD/BSND格式Q的S维度，或统一的qseqlen值
 // 当actualSeqLengthsKv为nullptr时，maxKvSeqlen也用作统一的kvseqlen值
-TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen);  // BNSD格式KV的第三维（S维度），或统一的kvseqlen值
+TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen);  // BNSD/BSND格式KV的S维度，或统一的kvseqlen值
 TILING_DATA_FIELD_DEF(uint32_t, useUniformQSeqlen);  // 是否使用统一的qseqlen值（1=是，0=否）
 TILING_DATA_FIELD_DEF(uint32_t, useUniformKvSeqlen);  // 是否使用统一的kvseqlen值（1=是，0=否）
 
@@ -132,16 +132,18 @@ struct OptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-// KVCache Layout枚举
-enum RFAKvCacheLayout : uint32_t {
-    TND = 0,   // [T, N, D] format
-    BNSD = 1   // [B, N, S, D] format
+// Q Input Layout枚举
+enum BSAQInputLayout : uint32_t {
+    TND_Q = 0,   // [T, N, D] format
+    BNSD_Q = 1,  // [B, N, S, D] format
+    BSND_Q = 2   // [B, S, N, D] format
 };
 
-// Q Input Layout枚举
-enum RFAQInputLayout : uint32_t {
-    TND_Q = 0,  // [T, N, D] format
-    BNSD_Q = 1  // [B, N, S, D] format
+// KVCache Layout枚举
+enum BSAKvCacheLayout : uint32_t {
+    TND_KV = 0,   // [T, N, D] format
+    BNSD_KV = 1,  // [B, N, S, D] format
+    BSND_KV = 2   // [B, S, N, D] format
 };
 
 // inner prec 枚举
@@ -169,17 +171,24 @@ private:
     ge::graphStatus ParseRequiredTensors(gert::TilingContext *bsaContext);
     ge::graphStatus ParseOptionalTensors(gert::TilingContext *bsaContext);
     ge::graphStatus CheckQKVDtype(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckAttentionOutDtype(gert::TilingContext *bsaContext);
     ge::graphStatus CheckQKVDimVal(gert::TilingContext *bsaContext,
         uint32_t kHeads, uint32_t vHeads, uint32_t kHeadDim, uint32_t vHeadDim);
     ge::graphStatus ParseQKVInTND(gert::TilingContext *bsaContext);
     ge::graphStatus ParseQKVInBNSD(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseQKVInBSND(gert::TilingContext *bsaContext);
     ge::graphStatus ParseSeqlensInTND(gert::TilingContext *bsaContext);
-    ge::graphStatus ParseSeqlensInBNSD(gert::TilingContext *bsaContext);
+    ge::graphStatus ParseSeqlensInNonTND(gert::TilingContext *bsaContext);
     ge::graphStatus ParseSeqlens(gert::TilingContext *bsaContext);
     ge::graphStatus ParseSparsePattern(gert::TilingContext *bsaContext);
     ge::graphStatus ParseAttenMask(gert::TilingContext *bsaContext);
     ge::graphStatus ParseBlockTable(gert::TilingContext *bsaContext);
     ge::graphStatus CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape);
+    ge::graphStatus ValidateGenericDequantScale(gert::TilingContext *bsaContext, const int parameterIndex);
+    ge::graphStatus ValidateQDequantScale(gert::TilingContext *bsaContext);
+    ge::graphStatus ValidateKDequantScale(gert::TilingContext *bsaContext);
+    ge::graphStatus ValidateVDequantScale(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckBlockShapeQuantConstraint(gert::TilingContext *bsaContext);
     ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *bsaContext);
     // 950 exclusive
     uint32_t GetCurQSTileNum950(int64_t curQSeqlen);
@@ -233,8 +242,8 @@ private:
     uint64_t selectNumIdxSize_ = 0;
     uint64_t selectIdxSize_ = 0;
     
-    RFAKvCacheLayout kvCacheLayout_ = RFAKvCacheLayout::TND;
-    RFAQInputLayout qInputLayout_ = RFAQInputLayout::TND_Q;
+    BSAQInputLayout qInputLayout_ = BSAQInputLayout::TND_Q;
+    BSAKvCacheLayout kvCacheLayout_ = BSAKvCacheLayout::TND_KV;
     
     uint32_t blockDim_ = 20;
     uint32_t aivNum_ = 0;
@@ -244,10 +253,10 @@ private:
     uint64_t workSpaceSize_ = 0;
     uint64_t libapiSize_ = 0;
     
-    uint32_t maxQSeqlen_ = 0;  // BNSD格式Q的第三维（S维度）
-    uint32_t maxKvSeqlen_ = 0;  // BNSD格式KV的第三维（S维度）
+    uint32_t maxQSeqlen_ = 0;  // BNSD/BSND格式Q的S维度
+    uint32_t maxKvSeqlen_ = 0;  // BNSD/BSND格式KV的S维度
     int64_t totalTokensT_ = 0;  // TND格式Q的第一维（T维度，总token数）
-    int64_t totalTokensKv_ = 0;  // TND格式KV的第一维（T维度，总token数
+    int64_t totalTokensKv_ = 0;  // TND格式KV的第一维（T维度，总token数）
 
     // mask2idx tile info
     uint32_t xBlockNumAligned_;
@@ -273,6 +282,7 @@ private:
     uint32_t pL1BufNum_;
     
     ge::DataType dataType_ = ge::DT_FLOAT16;
+    ge::DataType attentionOutDataType_ = ge::DT_FLOAT16;
 
     BlockSparseAttentionTilingData *tilingData_ = nullptr;
 };

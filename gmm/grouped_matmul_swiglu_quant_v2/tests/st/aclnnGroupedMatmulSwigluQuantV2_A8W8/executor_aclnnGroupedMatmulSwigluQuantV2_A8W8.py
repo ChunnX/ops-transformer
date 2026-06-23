@@ -157,6 +157,8 @@ class AclnnGroupedMatmulSwigluQuant(BaseApi):
             weight.shape[0], x.shape[0], seed)
         E, K, N = weight.shape[0], weight.shape[1], weight.shape[2]
         if self.device == 'pyaclnn':
+            input_data.kwargs['smoothScale'] = TensorPtr()
+            input_data.kwargs['weightAssistMatrix'] = ctypes.POINTER(AclTensorList)()
             input_data.kwargs['groupList'] = groupList.npu()
             input_data.kwargs['weight'][0]  = weight.reshape(E, K // 16, 16, N // 32, 32).permute(0, 3, 1, 2, 4).contiguous().npu()
 
@@ -194,8 +196,7 @@ class AclnnGroupedMatmulSwigluQuant(BaseApi):
 
         x = input_data.kwargs['x']
         weight = input_data.kwargs['weight'][0]
-        E, N, K = weight.shape[0], weight.shape[1], weight.shape[2]
-        
+
         weightScale = input_data.kwargs['weightScale'][0]
         xScale = input_data.kwargs['xScale']
         groupList = input_data.kwargs['groupList']

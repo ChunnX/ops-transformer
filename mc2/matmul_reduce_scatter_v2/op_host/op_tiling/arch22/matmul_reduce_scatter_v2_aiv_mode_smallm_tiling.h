@@ -16,6 +16,10 @@
 #ifndef DECISION_RULES_H
 #define DECISION_RULES_H
 
+#include <cstdint>
+
+#include "register/op_def_registry.h"
+
 namespace Tiling_Small_M {
 enum class FeatureType {
     M_VALUE = 0,       // m的数值大小

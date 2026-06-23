@@ -367,8 +367,8 @@
 ## 约束说明
 
 - shape格式字段含义及约束
-    - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
+    - tokenNum：tokenNum表示输入样本批量大小，取值范围：0~256
+    - hiddenSize：hiddenSize表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
     - headNum：表示多头数，取值范围：1~128
     - blockNum：PagedAttention场景下的块数，取值范围：192
     - blockSize：PagedAttention场景下的块大小，取值范围：128
@@ -377,4 +377,4 @@
     - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
     - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
 - rope模式约束
-    - mla_preprocess 算子中的 Rotary Embedding（RoPE）操作采用 half 模式，暂不支持 interleave 模式
+    - mla_preprocess算子中的Rotary Embedding（RoPE）操作采用half模式，暂不支持interleave模式

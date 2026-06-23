@@ -43,7 +43,7 @@
   gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j]
   $$
 
-  (2) scalesOptional不为空指针, biasOptional为空指针：
+  (2) scalesOptional不为空指针， biasOptional为空指针：
 
   $$
   gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i]
@@ -53,7 +53,7 @@
   gradScalesOut[i] = sum(expandedXOptional[expandedRowIdx[i]][j] * gradY[i / K][j])
   $$
 
-  (3) scalesOptional不为空指针, biasOptional不为空指针：
+  (3) scalesOptional不为空指针， biasOptional不为空指针：
   
   $$
   gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i]

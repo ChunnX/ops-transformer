@@ -22,7 +22,7 @@ namespace ge {
  * @brief Backwards calculation of RotaryPositionEmbedding.
  * @par Inputs:
  * @li dy: A 3D or 4D tensor which represents the gradient of output "y" in RotaryPositionEmbedding, format
- * supports ND, and data type must be float16, float or bfloat16.
+ * supports ND, and data type must be float16, float32 or bfloat16.
  * @li cos: A 3D or 4D tensor which is input "cos" in RotaryPositionEmbedding, format supports ND, data type must be
  * the same as "dy", and shape must be the same as "sin".
  * @li sin: A 3D or 4D tensor which is input "sin" in RotaryPositionEmbedding, format supports ND, data type must be

@@ -13,7 +13,6 @@
  * \brief
  */
 #include <cmath>
-#include <iostream>
 #include <map>
 #include <string>
 #include "mc2_log.h"

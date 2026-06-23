@@ -161,7 +161,7 @@ static ge::graphStatus ValidateScaleAndBias(const InferShapeContext *context, co
                         OPS_REPORT_CUBE_INNER_ERR(op_name, "bias is not supported."), return ge::GRAPH_FAILED);
         }
     } else {
-        OP_LOGE(op_name, "scale shape is not support");
+        OP_LOGE(op_name, "scale shape is not supported");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -191,7 +191,7 @@ static ge::graphStatus ValidateSharedInputAndLogit(const InferShapeContext *cont
             context->GetOptionalInputShape(sharedInputOptionIndex)->GetDim(1) != xAndWParams.n,
             OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input's shape is wrong."), return ge::GRAPH_FAILED);
         bsdp = context->GetOptionalInputShape(sharedInputOptionIndex)->GetDim(0);
-        OP_CHECK_IF(bsdp <= 0, OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input first dim must bigger than 0 ."),
+        OP_CHECK_IF(bsdp <= 0, OPS_REPORT_CUBE_INNER_ERR(op_name, "shared_input first dim must be greater than 0."),
             return ge::GRAPH_FAILED);
     }
     
@@ -257,7 +257,7 @@ static ge::graphStatus ValidateOffsetShape(const InferShapeContext *context, con
     auto shape_offset = context->GetOptionalInputShape(offsetOptionIndex);
     if (shape_offset != nullptr) {
         if (shape_offset->GetDimNum() != threeDimNum) {
-            OP_LOGE(op_name, "offset shape is not support");
+            OP_LOGE(op_name, "offset shape is not supported");
             return ge::GRAPH_FAILED;
         }
         OP_CHECK_IF(shape_offset->GetDim(0) != xAndWParams.e || shape_offset->GetDim(1) != 1 || shape_offset->GetDim(2) != xAndWParams.n,
@@ -366,7 +366,7 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(scaleOptionIndex) != ge::DT_FLOAT8_E8M0),
             OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(),
-                                      "The MXFP4/MXFP8 InputDataType of scale is wrong.Supported type:FlOAT8_E8M0"),
+                                      "The MXFP4/MXFP8 InputDataType of scale is wrong.Supported type:FLOAT8_E8M0"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             (context->GetOptionalInputDataType(groupListOptionIndex) != ge::DT_INT64),
@@ -386,7 +386,7 @@ static ge::graphStatus ValidateFailedDataType(const gert::InferDataTypeContext *
         OP_CHECK_IF((context->GetOptionalInputDataType(pertokenScaleOptionIndex) != ge::DT_FLOAT8_E8M0),
                     OPS_REPORT_CUBE_INNER_ERR(
                         context->GetNodeName(),
-                        "The MXFP4/MXFP8 InputDataType of pertokenscale is wrong.Supported type:FlOAT8_E8M0"),
+                        "The MXFP4/MXFP8 InputDataType of pertokenscale is wrong.Supported type:FLOAT8_E8M0"),
                     return ge::GRAPH_FAILED);
     }
 

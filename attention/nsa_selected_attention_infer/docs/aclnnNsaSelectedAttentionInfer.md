@@ -373,7 +373,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
         <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
       </tr>
       <tr>
-        <!-- 合并单元格添加 merged-cell 类实现上下居中 -->
+        <!-- 合并单元格添加merged-cell类实现上下居中 -->
         <td class="merged-cell" rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
         <td class="merged-cell" rowspan="2">161002</td>
         <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualKvSeqLenOptional、output的数据类型不在支持的范围内。</td>
@@ -526,7 +526,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 int main(int argc, char **argv)
 {
-    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -534,7 +534,7 @@ int main(int argc, char **argv)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2. 构造输入与输出，需要根据API的接口自定义构造
-    // 如果需要修改shape值，需要同步修改../scripts/fa_generate_data.py中 test_nsa_selected_attention_infer 分支下生成
+    // 如果需要修改shape值，需要同步修改../scripts/fa_generate_data.py中test_nsa_selected_attention_infer分支下生成
     // query、key、value对应的shape值，并重新gen data，再执行
 
     int64_t batch = 1;
@@ -660,7 +660,7 @@ int main(int argc, char **argv)
     ret = aclnnNsaSelectedAttentionInfer(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaSelectedAttentionInfer failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaSelectedAttentionInfer aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     LOG_PRINT("aclnn execute success : %d\n", ret);
@@ -676,7 +676,7 @@ int main(int argc, char **argv)
         std::cout << "index: " << i << ": " << static_cast<float>(resultData[i]) << std::endl;
     }
 
-    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改; 释放device资源
+    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改;释放device资源
     aclDestroyTensor(queryTensor);
     aclDestroyTensor(keyTensor);
     aclDestroyTensor(valueTensor);

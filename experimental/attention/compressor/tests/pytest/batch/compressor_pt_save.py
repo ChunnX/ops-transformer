@@ -106,6 +106,8 @@ class Generalized_operator():
                 wgate,
                 kv_state,
                 score_state,
+                update_kv_position,
+                update_score_position,
                 ape,
                 norm_weight, 
                 rope_sin,
@@ -121,7 +123,7 @@ class Generalized_operator():
                 rotary_mode,
                 cache_mode):
         return cpu_compressor(
-            x, wkv, wgate, kv_state, score_state, ape, norm_weight, rope_sin, rope_cos,
+            x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape, norm_weight, rope_sin, rope_cos,
             block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
             rope_head_dim=rope_head_dim, cmp_ratio=cmp_ratio, coff=coff, norm_eps=norm_eps, rotary_mode=rotary_mode,cache_mode=cache_mode)
 
@@ -339,13 +341,16 @@ def compressor_output_single(data_case):
     wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     ape = torch.tensor(np.random.uniform(ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim))).to(torch.float32)
-    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(data_type)
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(data_type)
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(data_type)
+    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(torch.float32)
+    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32)
+    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32)
     ### ======================== gen input data finish =============================
     ### ======================== execute cpu start =================================
     cpu_kv_state = kv_state.clone()
     cpu_score_state = score_state.clone()
+
+    update_kv = torch.zeros((cpu_kv_state.shape[0],cpu_kv_state.shape[1],cpu_kv_state.shape[2]), dtype=torch.bool)
+    update_score = torch.zeros((cpu_score_state.shape[0],cpu_score_state.shape[1],cpu_score_state.shape[2]), dtype=torch.bool)
 
     test_operator = Generalized_operator()
     cpu_result, kv_mask_result = test_operator.forward( x,
@@ -353,6 +358,8 @@ def compressor_output_single(data_case):
                                         wgate,
                                         cpu_kv_state,
                                         cpu_score_state,
+                                        update_kv,
+                                        update_score,
                                         ape,
                                         norm_weight, 
                                         rope_sin,
@@ -367,8 +374,6 @@ def compressor_output_single(data_case):
                                         norm_eps = norm_eps,
                                         rotary_mode = rotary_mode,
                                         cache_mode = cache_mode)
-    update_kv = cpu_kv_state != kv_state
-    update_score = cpu_score_state != score_state
 
     output_tensors = {
         "params":params,

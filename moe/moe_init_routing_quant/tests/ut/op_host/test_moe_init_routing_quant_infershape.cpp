@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 #include <iostream>
 #include "infer_shape_context_faker.h"
+#include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace {
@@ -435,5 +436,111 @@ TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_26)
     std::vector<int64_t> expandedExpertShape = {};
     MoeInitRoutingQuantInfo ioInfoT = {xShape, rowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
     ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 5};  // active_num=5
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_invalid_x_dim)
+{
+    gert::StorageShape xShape = {{2, 3, 4}, {2, 3, 4}};
+    gert::StorageShape RowIdxShape = {{2, 4}, {2, 4}};
+    gert::StorageShape expertIdxShape = {{2, 4}, {2, 4}};
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 8};
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_invalid_row_idx_dim)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{2, 4, 1}, {2, 4, 1}};
+    gert::StorageShape expertIdxShape = {{2, 4}, {2, 4}};
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 8};
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_invalid_expert_idx_dim)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{2, 4}, {2, 4}};
+    gert::StorageShape expertIdxShape = {{2, 4, 1}, {2, 4, 1}};
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 8};
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_invalid_x_neg_dim)
+{
+    gert::StorageShape xShape = {{-3, 3}, {-3, 3}};
+    gert::StorageShape RowIdxShape = {{2, 4}, {2, 4}};
+    gert::StorageShape expertIdxShape = {{2, 4}, {2, 4}};
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 8};
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_datatype_01)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto dataTypeFunc = spaceRegistry->GetOpImpl("MoeInitRoutingQuant")->infer_datatype;
+    ASSERT_NE(dataTypeFunc, nullptr);
+
+    ge::DataType inputRef = ge::DT_FLOAT;
+    ge::DataType outputRef = ge::DT_INT8;
+    ge::DataType idxRef = ge::DT_INT32;
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .IrInputNum(3)
+                             .NodeIoNum(3, 3)
+                             .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(2, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&inputRef, &idxRef, &idxRef})
+                             .OutputDataTypes({&outputRef, &idxRef, &idxRef})
+                             .Build();
+    auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+    EXPECT_EQ(dataTypeFunc(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), ge::DT_INT8);
+    EXPECT_EQ(context->GetOutputDataType(1), ge::DT_INT32);
+    EXPECT_EQ(context->GetOutputDataType(2), ge::DT_INT32);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_invalid_row_idx_neg_dim)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{-3, 4}, {-3, 4}};
+    gert::StorageShape expertIdxShape = {{2, 4}, {2, 4}};
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 8};
+    ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingQuant, moe_init_routing_quant_infer_shape_invalid_expert_idx_neg_dim)
+{
+    gert::StorageShape xShape = {{2, 3}, {2, 3}};
+    gert::StorageShape RowIdxShape = {{2, 4}, {2, 4}};
+    gert::StorageShape expertIdxShape = {{-3, 4}, {-3, 4}};
+    std::vector<int64_t> expandedXShape = {};
+    std::vector<int64_t> expandedRowIdxShape = {};
+    std::vector<int64_t> expandedExpertShape = {};
+    MoeInitRoutingQuantInfo ioInfoT = {xShape, RowIdxShape, expertIdxShape, expandedXShape, expandedRowIdxShape, expandedExpertShape,
+    ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, ge::DT_INT8, ge::DT_INT32, ge::DT_INT32, 8};
     ExeTestCase(ioInfoT, ge::GRAPH_FAILED);
 }

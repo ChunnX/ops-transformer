@@ -315,6 +315,10 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::V0Prologue(uint32_t curNdLen, 
 template <class T, class P>
 __aicore__ inline void MhcPreKernelSplitBS<T, P>::V0PostProcess(uint32_t curblock, uint32_t tBlockNum)
 {
+    if (vectorOffset_.singleCoreM == 0) {
+        return;
+    }
+
     this->VFDoV0ProcessInvRms((__ubuf__ P *)invRmsUb_.GetPhyAddr(), vectorOffset_.singleCoreM, scaleMean_,
                         matrixInfo_.normEps);
     this->DataCopyOutInvRmsUb(vectorOffset_.singleCoreM, vectorOffset_.offsetMStart);
@@ -323,10 +327,10 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::V0PostProcess(uint32_t curbloc
 template <class T, class P>
 __aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Process(uint64_t curBlock, uint64_t tBlockNum)
 {
+    AscendC::CrossCoreWaitFlag(SYNC_C2V1);
     if (vectorOffset_.singleCoreM <= 0) {
         return;
     }
-    AscendC::CrossCoreWaitFlag(SYNC_C2V1);
     uint64_t lenT = 0;
     uint64_t lenD = 0;
     uint64_t singleCoreOffset = 0;

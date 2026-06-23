@@ -12,7 +12,6 @@
  * \file reduce_scatter_formulaic_tiling.cpp
  * \brief
  */
-#include <iostream>
 #include "mc2_log.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 

@@ -56,12 +56,12 @@ const static int64_t ONE_CORE_SORT_BUFFER = 6;
 const static int64_t EXPERT_TOKENS_COUNT = 2;
 const static int64_t SIMT_UB_SIZE_BYTE = 40960;
 
-#define CHECK_FAIL(context, cond, ...)                      \
-    do {                                                    \
-        if (cond) {                                         \
-            OP_LOGE(context->GetNodeName(), ##__VA_ARGS__); \
-            return ge::GRAPH_FAILED;                        \
-        }                                                   \
+#define CHECK_FAIL(context, cond, log_func) \
+    do {                                    \
+        if (cond) {                         \
+            log_func;                       \
+            return ge::GRAPH_FAILED;        \
+        }                                   \
     } while (0)
 
 #define CHECK_NULL(context, ptr, ...)                                                                    \
@@ -97,7 +97,8 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(
-        platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"),
+        platformInfo == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "platformInfo", "nullptr", "fail to get platform info"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -123,13 +124,19 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::CheckTokenCount(int64_t num, co
     auto expertTokensDesc = context_->GetOutputDesc(num);
     CHECK_NULL(context_, expertTokensDesc, tag);
     auto dt = expertTokensDesc->GetDataType();
-    CHECK_FAIL(context_, dt != ge::DT_INT32, "The data type of %s should be int32.", tag);
+    CHECK_FAIL(context_, dt != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), tag, Ops::Base::ToString(dt).c_str(), "INT32"));
 
     const gert::Shape expertTokensShape = expertTokensShapePtr->GetStorageShape();
     size_t expertTokensDimNum = expertTokensShape.GetDimNum();
-    CHECK_FAIL(context_, expertTokensDimNum != DIM_ONE, "The dim number of %s should be 1.", tag);
+    std::string dimStr = std::to_string(expertTokensDimNum) + "D";
+    CHECK_FAIL(context_, expertTokensDimNum != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), tag, dimStr.c_str(), "1D"));
     CHECK_FAIL(
-        context_, expertTokensShape.GetDim(0) != expertNum, "The first dim of %s should be %ld.", tag, expertNum);
+        context_, expertTokensShape.GetDim(0) != expertNum,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), tag,
+            Ops::Base::ToString(expertTokensShape).c_str(),
+            "The first dim should be expertNum"));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -146,31 +153,46 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::CheckOutShape()
 
     size_t expandedXDimNum = expandedXShape.GetDimNum();
     if (dropPadMode > 0) {
-        CHECK_FAIL(context_, expandedXDimNum != DIM_THREE, "The dim number of expandedX should be 3.");
+        std::string dimStr = std::to_string(expandedXDimNum) + "D";
+        CHECK_FAIL(context_, expandedXDimNum != DIM_THREE,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expandedX", dimStr.c_str(), "3D"));
         CHECK_FAIL(
-            context_, expandedXShape.GetDim(0) != expertNum, "The first dim of expandedX should be %ld.", expertNum);
+            context_, expandedXShape.GetDim(0) != expertNum,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expandedX",
+                Ops::Base::ToString(expandedXShape).c_str(), "The first dim of expandedX should be expertNum"));
         CHECK_FAIL(
-            context_, expandedXShape.GetDim(1) != expertCapacity, "The second dim of expandedX should be %ld.",
-            expertCapacity);
+            context_, expandedXShape.GetDim(1) != expertCapacity,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expandedX",
+                Ops::Base::ToString(expandedXShape).c_str(), "The second dim of expandedX should be expertCapacity"));
         CHECK_FAIL(
             context_, expandedXShape.GetDim(NUM_TWO) != moeInitRoutingTilingData.get_cols(),
-            "The third dim of expandedX should be %ld.", moeInitRoutingTilingData.get_cols());
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expandedX",
+                Ops::Base::ToString(expandedXShape).c_str(), "The third dim of expandedX should be cols"));
     } else {
-        CHECK_FAIL(context_, expandedXDimNum != DIM_TWO, "The dim number of expandedX should be 2.");
+        std::string dimStr = std::to_string(expandedXDimNum) + "D";
+        CHECK_FAIL(context_, expandedXDimNum != DIM_TWO,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expandedX", dimStr.c_str(), "2D"));
         int64_t firstDim = moeInitRoutingTilingData.get_n() * moeInitRoutingTilingData.get_k();
         firstDim = activateNum == 0 ? firstDim : std::min(firstDim, activateNum);
         CHECK_FAIL(
-            context_, expandedXShape.GetDim(0) != firstDim, "The first dim of expandedX should be %ld.", firstDim);
+            context_, expandedXShape.GetDim(0) != firstDim,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expandedX",
+                Ops::Base::ToString(expandedXShape).c_str(),
+                "The first dim of expandedX should be n * k or activeNum"));
         CHECK_FAIL(
             context_, expandedXShape.GetDim(1) != moeInitRoutingTilingData.get_cols(),
-            "The second dim of expandedX should be %ld.", moeInitRoutingTilingData.get_cols());
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expandedX",
+                Ops::Base::ToString(expandedXShape).c_str(), "The second dim of expandedX should be cols"));
     }
 
     size_t expandedRowIdxDimNum = expandedRowIdxShape.GetDimNum();
-    CHECK_FAIL(context_, expandedRowIdxDimNum != DIM_ONE, "The dim number of expandedRowIdx should be 1.");
+    std::string expandedRowIdxDimStr = std::to_string(expandedRowIdxDimNum) + "D";
+    CHECK_FAIL(context_, expandedRowIdxDimNum != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expandedRowIdx", expandedRowIdxDimStr.c_str(), "1D"));
     CHECK_FAIL(
-        context_, expandedRowIdxShape.GetDim(0) != totalLength, "The first dim of expandedRowIdx should be %ld.",
-        totalLength);
+        context_, expandedRowIdxShape.GetDim(0) != totalLength,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expandedRowIdx",
+            Ops::Base::ToString(expandedRowIdxShape).c_str(), "The first dim of expandedRowIdx should be totalLength"));
 
     if (dropPadMode == 0 && expertTokensCountOrCumsumFlag != 0) {
         if (CheckTokenCount(OUTOUT_EXPERT_TOKENS_COUNT_OR_CUMSUM, "expertTokensCountOrCumsum") == ge::GRAPH_FAILED) {
@@ -231,29 +253,59 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
     size_t xDimNnum = xShape.GetDimNum();
     size_t expertIdxDimNum = expertIdxShape.GetDimNum();
     CHECK_FAIL(
-        context_, xDimNnum != DIM_TWO || expertIdxDimNum != DIM_TWO, "The dim number of x and expertIdx should be 2.");
+        context_, xDimNnum != DIM_TWO || expertIdxDimNum != DIM_TWO,
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context_->GetNodeName(), "x and expertIdx",
+            (std::to_string(xDimNnum) + " and " + std::to_string(expertIdxDimNum)).c_str(),
+            "The dim number of x and expertIdx should be 2"));
     CHECK_FAIL(
-        context_, xShape.GetDim(0) != expertIdxShape.GetDim(0), "The first dim of x and expertIdx should be equal.");
-    CHECK_FAIL(context_, xShape.GetDim(0) < 0, "The first dim of x cannot be less than 0.");
-    CHECK_FAIL(context_, xShape.GetDim(1) < 0, "The second dim of x cannot be less than 0.");
-    CHECK_FAIL(context_, expertIdxShape.GetDim(0) < 0, "The first dim of expertIdx cannot be less than 0.");
-    CHECK_FAIL(context_, expertIdxShape.GetDim(1) < 0, "The second dim of expertIdx cannot be less than 0.");
-    CHECK_FAIL(context_, activateNum < 0, "The activeNum cannot be less than 0.");
-    CHECK_FAIL(context_, expertCapacity < 0, "The expertCapacity cannot be less than 0.");
-    CHECK_FAIL(context_, expertNum < 0, "The expertNum cannot be less than 0.");
-    CHECK_FAIL(context_, dropPadMode < 0 || dropPadMode > 1, "The dropPadMode should be 0 or 1.");
+        context_, xShape.GetDim(0) != expertIdxShape.GetDim(0),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and expertIdx",
+            (std::to_string(xShape.GetDim(0)) + " and " + std::to_string(expertIdxShape.GetDim(0))).c_str(),
+            "The first dim of x and expertIdx should be equal"));
+    CHECK_FAIL(context_, xShape.GetDim(0) < 0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "x", Ops::Base::ToString(xShape).c_str(),
+            "The first dim of x cannot be less than 0"));
+    CHECK_FAIL(context_, xShape.GetDim(1) < 0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "x", Ops::Base::ToString(xShape).c_str(),
+            "The second dim of x cannot be less than 0"));
+    CHECK_FAIL(context_, expertIdxShape.GetDim(0) < 0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expertIdx",
+            Ops::Base::ToString(expertIdxShape).c_str(), "The first dim of expertIdx cannot be less than 0"));
+    CHECK_FAIL(context_, expertIdxShape.GetDim(1) < 0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expertIdx",
+            Ops::Base::ToString(expertIdxShape).c_str(), "The second dim of expertIdx cannot be less than 0"));
+    CHECK_FAIL(context_, activateNum < 0,
+        OP_LOGE_WITH_INVALID_ATTR(
+            context_->GetNodeName(), "activeNum", std::to_string(activateNum).c_str(), "greater than or equal to 0"));
+    CHECK_FAIL(context_, expertCapacity < 0,
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expertCapacity",
+            std::to_string(expertCapacity).c_str(), "greater than or equal to 0"));
+    CHECK_FAIL(context_, expertNum < 0,
+        OP_LOGE_WITH_INVALID_ATTR(
+            context_->GetNodeName(), "expertNum", std::to_string(expertNum).c_str(), "greater than or equal to 0"));
+    CHECK_FAIL(context_, dropPadMode < 0 || dropPadMode > 1,
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "dropPadMode",
+        std::to_string(dropPadMode).c_str(), "0 or 1"));
     CHECK_FAIL(
         context_, dropPadMode > 0 && (expertCapacity < 1 || expertNum < 1),
-        "The expertCapacity and expertNum should be greater than 0 when dropPadMode is 1");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "expertCapacity and expertNum",
+            (std::to_string(expertCapacity) + " and " + std::to_string(expertNum)).c_str(),
+            "The expertCapacity and expertNum should be greater than 0 when dropPadMode is 1"));
     CHECK_FAIL(
         context_, expertTokensCountOrCumsumFlag < 0 || expertTokensCountOrCumsumFlag > EXPERT_TOKENS_COUNT,
-        "The expertTokensCountOrCumsumFlag should be 0, 1 or 2.");
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expertTokensCountOrCumsumFlag",
+            std::to_string(expertTokensCountOrCumsumFlag).c_str(), "0, 1 or 2"));
     CHECK_FAIL(
         context_, expertTokensCountOrCumsumFlag > 0 && expertNum <= 0,
-        "The expertNum should be greater than 0 when expertTokensCountOrCumsumFlag is greater than 0");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "expertNum", std::to_string(expertNum).c_str(),
+            "The expertNum should be greater than 0 when expertTokensCountOrCumsumFlag is greater than 0"));
     CHECK_FAIL(
         context_, dropPadMode > 0 && expertCapacity > xShape.GetDim(0),
-        "The first dim of x cannot be less than expertCapacity");
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and expertCapacity",
+            (std::to_string(xShape.GetDim(0)) + " and " + std::to_string(expertCapacity)).c_str(),
+            "The first dim of x cannot be less than expertCapacity"));
     if (dropPadMode == 1) {
         // droppad场景下不输出expertTokensCountOrCumsum
         expertTokensCountOrCumsumFlag = 0;
@@ -467,7 +519,7 @@ void InnerMoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(InnerMoeV2VBSCo
         perCoreElements -= SORT32_ALIGN_ELEMENT;
     } while (tilingData->get_lastCoreLastLoopElements() <= 0 && perCoreElements > 0);
     OP_CHECK_IF(tilingData->get_lastCoreLastLoopElements() <= 0,
-                    OP_LOGE(opName, "vbs tiling failed"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "vbs tiling", "failed", "vbs tiling failed"),
                     ;);
 }
 

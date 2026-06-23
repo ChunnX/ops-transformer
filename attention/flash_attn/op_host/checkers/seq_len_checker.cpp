@@ -155,19 +155,17 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FaTilingInfo &faInfo)
 {
-    OP_CHECK_IF(
-        faInfo.maxSeqQ != -1,
-        OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) is currently not effective, only -1 is supported.", faInfo.maxSeqQ),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(faInfo.maxSeqQ < -1,
+                OP_LOGE(faInfo.opName, "max_seqlen_q must be -1 or >= 0, but got %ld.", faInfo.maxSeqQ),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FaTilingInfo &faInfo)
 {
-    OP_CHECK_IF(
-        faInfo.maxSeqKv != -1,
-        OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) is currently not effective, only -1 is supported.", faInfo.maxSeqKv),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(faInfo.maxSeqKv < -1,
+                OP_LOGE(faInfo.opName, "max_seqlen_kv must be -1 or >= 0, but got %ld.", faInfo.maxSeqKv),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

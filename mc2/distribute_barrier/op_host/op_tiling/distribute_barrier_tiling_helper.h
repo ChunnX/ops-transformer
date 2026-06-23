@@ -21,7 +21,6 @@
 #include "graph/utils/type_utils.h"
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
-using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
 constexpr uint64_t INIT_TILINGKEY = 10000UL;
@@ -46,7 +45,8 @@ constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 
 const int64_t MIN_WORLD_SIZE = 2;
-const int64_t MAX_WORLD_SIZE = 384;
+const int64_t MAX_WORLD_SIZE_A3 = 384;
+const int64_t MAX_WORLD_SIZE_A5 = 1024;
 
 struct DistributeBarrierConfig {
     uint32_t contextIndex = INPUT_CONTEXT_EXTEND_INDEX; // 根据disributeBarrierExtend算子原型标志位初始化context索引

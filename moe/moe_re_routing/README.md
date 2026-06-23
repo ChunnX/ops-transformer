@@ -136,7 +136,7 @@
 
 - Tensor中shape使用的变量说明：
   - A：表示token个数，取值要求Sum(expert_token_num_per_rank)=A。
-  - H：表示token长度，取值要求 0 < H < 16384。
+  - H：表示token长度，取值要求0 < H < 16384。
   - N：表示卡数，取值无限制。
   - E：表示卡上的专家数，取值无限制。
 - 输入值域限制

@@ -290,7 +290,7 @@ protected:
 
     int32_t innerReduceNum;
     int32_t innerMaskNum;
-    int32_t innerMatResNum;
+    int64_t innerMatResNum;
     int64_t innerMatResNumVec;
     int64_t maskInputNum;
 
