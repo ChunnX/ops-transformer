@@ -23,20 +23,20 @@
 #include "../../../sparse_flash_attention/op_kernel/arch35/common/util_regbase.h"
 #endif
 
-#if __has_include("../../common/op_kernel/buffers_policy.h")
-#include "../../common/op_kernel/buffers_policy.h"
+#if __has_include("../../common/op_kernel/buffer.h")
+#include "../../common/op_kernel/buffer.h"
 #else
-#include "../../common/buffers_policy.h"
+#include "../../common/buffer.h"
 #endif
 #if __has_include("../../common/op_kernel/buffer_manager.h")
 #include "../../common/op_kernel/buffer_manager.h"
 #else
 #include "../../common/buffer_manager.h"
 #endif
-#if __has_include("../../common/op_kernel/buffer.h")
-#include "../../common/op_kernel/buffer.h"
+#if __has_include("../../common/op_kernel/buffers_policy.h")
+#include "../../common/op_kernel/buffers_policy.h"
 #else
-#include "../../common/buffer.h"
+#include "../../common/buffers_policy.h"
 #endif
 
 constexpr uint64_t BLOCK_BYTE = 32;
