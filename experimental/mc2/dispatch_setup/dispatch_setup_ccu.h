@@ -20,17 +20,21 @@
  *
  *  状态区契约（与 dispatch_teardown AIV 唯一耦合点，字节级必须一致）：
  *    - statusGm：专用 GM buffer（对标参考 commCmdInfo），int32 元素，值 1 表示就绪；
- *    - 单 die / R=1 时只有 1 个 int32 槽（len = R*sizeof(int32) = 4 字节）；
+ *    - R 个 int32 槽（2-die R=2 → len = R*sizeof(int32) = 8 字节）；teardown 只判 slot0；
  *    - LocalCopyNb 是裸字节 DMA，状态字保持 4 字节 int32，【不】受 CCU Variable/
  *      Load/Store 恒 8 字节规则约束（那条规则只管 LoadVariable/StoreVariable）。
  *
- *  a6-TODO（闭源、需手抄校准；本机为 a5 只作参考、不在此编译）：
- *    [T1] LocalCopyNb 在 a6 是 6 参签名 (dst, src, len, CcuBuf*, bufCount, event)，
- *         且 UB 暂存 buf 必须 CreateBlockCcuBuf(1U,&buf) 块分配（a5 头签名不同）。
- *    [T2] WaitEvent：a6 参考用 event_.SetMask(1U)+WaitEvent(event_) 1 参形式；
- *         a5 头是 WaitEvent(event, mask) 2 参。本文件按 a6 参考写。
- *    [T3] CcuKernelSignature 的构造：此处用默认构造，若 a6 需带 name/attrs 唯一化
- *         键，按 a6 头补。
+ *  a6 契约（多数已坐实，来源标注；本机 a5 只作参考、kernel.cpp 不在 a5 编）：
+ *    [T1✓] LocalCopyNb 在 a6 是 6 参 (dst, src, len, CcuBuf*, bufCount, event)——技术总监 2026-06-23 确认
+ *          a6 即 6 参；a5 头是 4 参 (dst,src,len,event)（a5 ccu_kernel.h:151）→ a5/a6 真分叉，
+ *          故含 6 参 LocalCopyNb 的本 kernel 全程 a6-only（CMake DISPATCH_CCU_A6 门控，a5 不编）。
+ *          UB 暂存 buf 用 CreateBlockCcuBuf(1U,&buf) 块分配——CcuKernel 基类提供（a5 ccu_kernel.h:119）。
+ *    [T2✓] WaitEvent 是 1 参 WaitEvent(event)（a5 ccu_kernel.h:124 实测，旧注"a5 是 2 参"系误记，已纠）；
+ *          CcuRep::CompletedEvent::SetMask(uint32_t) 坐实存在（a5 ccu_datatype_v1.h:158）。a6 同源、上板终验。
+ *    [T11] CcuKernelSignature：默认构造；若 a6 需 name/attrs 唯一化键按 a6 头补（待 a6 确认，非编译阻断）。
+ *    [✓] CcuKernel 基类坐实声明全部 builder（CreateVariable/LocalAddr/RemoteAddr/CompletedEvent/CcuBuf/
+ *        BlockCcuBuf/Load/WaitEvent/LocalCopyNb，a5 ccu_kernel.h:104-165）→ 直接继承 CcuKernel（不走
+ *        Mc2CcuKernelBase）正确——后者只多 4 个 0.5RTT 接口，本地自写用不到。
  */
 
 #ifndef DISPATCH_SETUP_CCU_H
@@ -66,7 +70,7 @@ public:
     CcuKernelArgDispatchSetup(uint32_t epWorldSize, uint32_t epRankId)
         : epWorldSize(epWorldSize), epRankId(epRankId) {}
 
-    // 见 ccu_demo.h：签名用于框架生成 kernel 唯一键。最小版用默认构造（[T3]）。
+    // 见 ccu_demo.h：签名用于框架生成 kernel 唯一键。最小版用默认构造（[T11]）。
     CcuKernelSignature GetKernelSignature() const override {
         return CcuKernelSignature();
     }
