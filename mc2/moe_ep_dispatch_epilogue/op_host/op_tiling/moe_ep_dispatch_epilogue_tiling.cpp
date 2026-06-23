@@ -206,9 +206,8 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         return ge::GRAPH_FAILED);
     const int64_t numTokens = dstSlotShape->GetStorageShape().GetDim(0);
     const int64_t topK = dstSlotShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK((numTokens <= 0) || (numTokens > BS_UPPER_BOUND),
-        OP_LOGE(nodeName, "dstBufferSlotIdx dim0(numTokens) must be in (0, %ld], got %ld.",
-            BS_UPPER_BOUND, numTokens),
+    OP_TILING_CHECK(numTokens <= 0,
+        OP_LOGE(nodeName, "dstBufferSlotIdx dim0(numTokens) must be positive, got %ld.", numTokens),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((topK <= 0) || (topK > K_MAX),
         OP_LOGE(nodeName, "dstBufferSlotIdx dim1(topK) must be in (0, %ld], got %ld.", K_MAX, topK),
