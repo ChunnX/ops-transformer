@@ -337,7 +337,7 @@ private:
     uint32_t aivCoreNum_ = optiling::AIV_CORE_MAX_NUM;
 
     // attr
-    std::string socVersion_ = "Ascend950";
+    std::string socVersion_ = "";
     int64_t oriPreToken_ = 0;
     int64_t oriNextToken_ = 0;
     int64_t cmpPreToken_ = 0;
