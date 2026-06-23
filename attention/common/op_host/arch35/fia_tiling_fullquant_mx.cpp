@@ -480,7 +480,8 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
         CalcNumBlocks(result.usedCoreNum);
         flashDecodeFlag_ = (result.fdRes.fdNum > 0);
     }
-    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) || IsActualSeqLengthsKVHasZero(baseInfo));
+    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) || 
+                                   IsActualSeqLengthsKVHasZero(baseInfo));
 }
 
 bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo) {
