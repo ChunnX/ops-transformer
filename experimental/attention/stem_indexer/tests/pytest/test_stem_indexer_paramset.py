@@ -23,9 +23,9 @@ ENABLED_PARAMS = [
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 8,
-        'q_seq_lens': [1024],
-        'kv_seq_lens': [2048],
-        'num_prompt_tokens': [1024],
+        'q_seq_lens': [3968],
+        'kv_seq_lens': [7296],
+        'num_prompt_tokens': [3968],
         'causal': True,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -263,9 +263,9 @@ ENABLED_PARAMS = [
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 8,
-        'q_seq_lens': [2048],
-        'kv_seq_lens': [4096],
-        'num_prompt_tokens': [2048],
+        'q_seq_lens': [7296],
+        'kv_seq_lens': [32768],
+        'num_prompt_tokens': [7296],
         'causal': True,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -719,9 +719,9 @@ ENABLED_PARAMS = [
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 2,
-        'q_seq_lens': [1024],
-        'kv_seq_lens': [4096],
-        'num_prompt_tokens': [1024],
+        'q_seq_lens': [32768],
+        'kv_seq_lens': [7296],
+        'num_prompt_tokens': [7296],
         'causal': False,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -743,9 +743,9 @@ ENABLED_PARAMS = [
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 2,
-        'q_seq_lens': [1024],
-        'kv_seq_lens': [4096],
-        'num_prompt_tokens': [1024],
+        'q_seq_lens': [262144],
+        'kv_seq_lens': [128],
+        'num_prompt_tokens': [128],
         'causal': False,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -805,19 +805,19 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_034 decode_causal_s2_two_loop_tail
-    # 覆盖: decode；causal；S1=1；S2跨两个基本块并带尾块
-    # 设计: 单token decode下保持较长KV，验证causal有效S2和多S2 loop合并。
+    # SI_WB_034 decode_causal_s2_8192_blocks
+    # 覆盖: decode；causal；S1=1；S2达到8192个block
+    # 设计: 单token decode下保持超长KV，验证causal有效S2和多S2 loop合并。
     {
         'case_id': 'SI_WB_034',
-        'testcase_name': 'decode_causal_s2_two_loop_tail',
+        'testcase_name': 'decode_causal_s2_8192_blocks',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 2,
         'q_seq_lens': [1],
-        'kv_seq_lens': [33409],
-        'num_prompt_tokens': [33408],
+        'kv_seq_lens': [1048576],
+        'num_prompt_tokens': [1048575],
         'causal': True,
         'alpha': 0.5,
         'stem_block_size': 128,
@@ -1021,19 +1021,19 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_043 gqa_q64_kv2_noncausal_s2_tail
-    # 覆盖: q_heads=64；kv_heads=2；g=32；non-causal；S2多loop尾块
-    # 设计: 组合大G和长S2尾块，验证GQA映射和ProcessTopK多S2合并。
+    # SI_WB_043 gqa_q64_kv2_noncausal_s2_2048_blocks
+    # 覆盖: q_heads=64；kv_heads=2；g=32；non-causal；S2达到2048个block
+    # 设计: 组合大G和长S2，验证GQA映射和ProcessTopK多S2合并。
     {
         'case_id': 'SI_WB_043',
-        'testcase_name': 'gqa_q64_kv2_noncausal_s2_tail',
+        'testcase_name': 'gqa_q64_kv2_noncausal_s2_2048_blocks',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 64,
         'kv_heads': 2,
-        'q_seq_lens': [512],
-        'kv_seq_lens': [33408],
-        'num_prompt_tokens': [512],
+        'q_seq_lens': [128],
+        'kv_seq_lens': [262144],
+        'num_prompt_tokens': [128],
         'causal': False,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -1384,19 +1384,19 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_058 batch20_decode_q64_kv2_prompt_tail
-    # 覆盖: batch=20；q64/kv2；decode；长KV尾块
-    # 设计: 大G decode路径下，验证prompt长度与kv长度错开一位时的metadata和golden对齐。
+    # SI_WB_058 decode_q64_kv2_16k_blocks
+    # 覆盖: batch=1；q64/kv2；decode；KV长度达到16384个block
+    # 设计: 大G decode路径下覆盖超长KV，验证prompt长度与kv长度错开一位时的metadata和golden对齐。
     {
         'case_id': 'SI_WB_058',
-        'testcase_name': 'batch20_decode_q64_kv2_prompt_tail',
+        'testcase_name': 'decode_q64_kv2_16k_blocks',
         'expected_result': 'PASS',
-        'batch_size': 20,
+        'batch_size': 1,
         'q_heads': 64,
         'kv_heads': 2,
-        'q_seq_lens': [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        'kv_seq_lens': [12289, 12290, 12291, 12292, 12293, 12294, 12295, 12296, 12297, 12298, 12299, 12300, 12301, 12302, 12303, 12304, 12305, 12306, 12307, 12308],
-        'num_prompt_tokens': [12288, 12289, 12290, 12291, 12292, 12293, 12294, 12295, 12296, 12297, 12298, 12299, 12300, 12301, 12302, 12303, 12304, 12305, 12306, 12307],
+        'q_seq_lens': [1],
+        'kv_seq_lens': [2097152],
+        'num_prompt_tokens': [2097151],
         'causal': True,
         'alpha': 0.5,
         'stem_block_size': 128,
