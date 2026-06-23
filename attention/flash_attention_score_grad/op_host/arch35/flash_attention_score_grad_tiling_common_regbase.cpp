@@ -218,135 +218,6 @@ ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams)
-{
-    auto deqScaleQShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_Q));
-    auto deqScaleKShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_K));
-    auto deqScaleVShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_V));
-    auto deqScaleDyShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_DY));
-    if (deqScaleQShape != nullptr && deqScaleKShape != nullptr
-        && deqScaleVShape != nullptr && deqScaleDyShape != nullptr) {
-        auto deqScaleQStorageShape = deqScaleQShape->GetStorageShape();
-        auto deqScaleKStorageShape = deqScaleKShape->GetStorageShape();
-        auto deqScaleVStorageShape = deqScaleVShape->GetStorageShape();
-        auto deqScaleDyStorageShape = deqScaleDyShape->GetStorageShape();
-
-        int64_t deqScaleQDimNum = deqScaleQStorageShape.GetDimNum();
-        if (deqScaleQDimNum != 0) {
-            OP_CHECK_IF(deqScaleQDimNum != DEQUANT_SCALE_SHAPE_DIM,
-                OP_LOGE(context_, "Invalid deqScaleQ dimNum [%ld], only support 4 dims.", deqScaleQDimNum),
-                return ge::GRAPH_FAILED);
-            int64_t deqScaleQDim0 = deqScaleQStorageShape.GetDim(INPUT_DIM_0);
-            int64_t deqScaleQDim1 = deqScaleQStorageShape.GetDim(INPUT_DIM_1);
-            int64_t deqScaleQDim2 = deqScaleQStorageShape.GetDim(INPUT_DIM_2);
-            int64_t deqScaleQDim3 = deqScaleQStorageShape.GetDim(INPUT_DIM_3);
-            OP_CHECK_IF(deqScaleQDim0 != fBaseParams.b || deqScaleQDim1 != fBaseParams.n1 ||
-                deqScaleQDim2 != (fBaseParams.s1 + QUANT_BLOCK_S1_SIZE - 1) / QUANT_BLOCK_S1_SIZE || deqScaleQDim3 != 1,
-                OP_LOGE(context_,"Invalid deqScaleQ shape [%ld,%ld,%ld,%ld], only support [B,N1,ceil(S1/512),1].",
-                    deqScaleQDim0, deqScaleQDim1, deqScaleQDim2, deqScaleQDim3),
-                return ge::GRAPH_FAILED);
-        }
-        int64_t deqScaleKDimNum = deqScaleKStorageShape.GetDimNum();
-        if (deqScaleKDimNum != 0) {
-            OP_CHECK_IF(deqScaleKDimNum != DEQUANT_SCALE_SHAPE_DIM,
-                OP_LOGE(context_, "Invalid deqScaleK dimNum [%ld], only support 4 dims.", deqScaleKDimNum),
-                return ge::GRAPH_FAILED);
-            int64_t deqScaleKDim0 = deqScaleKStorageShape.GetDim(INPUT_DIM_0);
-            int64_t deqScaleKDim1 = deqScaleKStorageShape.GetDim(INPUT_DIM_1);
-            int64_t deqScaleKDim2 = deqScaleKStorageShape.GetDim(INPUT_DIM_2);
-            int64_t deqScaleKDim3 = deqScaleKStorageShape.GetDim(INPUT_DIM_3);
-            OP_CHECK_IF(deqScaleKDim0 != fBaseParams.b || deqScaleKDim1 != fBaseParams.n2 ||
-                deqScaleKDim2 != (fBaseParams.s2 + QUANT_BLOCK_S2_SIZE - 1) / QUANT_BLOCK_S2_SIZE || deqScaleKDim3 != 1,
-                OP_LOGE(context_, "Invalid deqScaleK shape [%ld,%ld,%ld,%ld], only support [B,N2,ceil(S2/512),1].",
-                    deqScaleKDim0, deqScaleKDim1, deqScaleKDim2, deqScaleKDim3),
-                return ge::GRAPH_FAILED);
-        }
-
-        OP_CHECK_IF(deqScaleKStorageShape != deqScaleVStorageShape,
-            OP_LOGE(context_, "deqScaleKShape and deqScaleVShape are not equal, only support [B,N2,ceil(S2/512),1]"),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(deqScaleQStorageShape != deqScaleDyStorageShape,
-            OP_LOGE(context_, "deqScaleQShape and deqScaleDyShape are not equal, only support [B,N1,ceil(S1/512),1]"),
-            return ge::GRAPH_FAILED);
-    }
-
-    // new intercept
-    if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
-        OP_CHECK_IF(fBaseParams.d != ALIGN128,
-            OP_LOGE(context_, "Scenario HIFP8, headDim must be 128."),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(fBaseParams.n1 != fBaseParams.n2,
-            OP_LOGE(context_, "Scenario HIFP8, Nq and Nkv must be equal."),
-            return ge::GRAPH_FAILED);
-        auto deqScaleDsShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_DS_IDX));
-        auto deqScalePShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_P_IDX));
-        bool tmpDsNull = deqScaleDsShape == nullptr;
-        bool tmpPNull = deqScalePShape == nullptr;
-        OP_LOGD(context_, "tmpDsNull = %d, tmpPNull = %d.", tmpDsNull, tmpPNull);
-        OP_CHECK_IF((deqScaleDsShape == nullptr || deqScalePShape == nullptr),
-            OP_LOGE(context_, "Scenario HIFP8, ds_scale or p_scale must not be null."),
-            return ge::GRAPH_FAILED);
-        auto deqScaleDsStorageShape = deqScaleDsShape->GetStorageShape();
-        auto deqScalePStorageShape = deqScalePShape->GetStorageShape();
-        int64_t deqScaleDsDimNum = deqScaleDsStorageShape.GetDimNum();
-        int64_t deqScalePDimNum = deqScalePStorageShape.GetDimNum();
-        if (deqScaleDsDimNum == 1) {
-            int64_t deqScaleDsDim0 = deqScaleDsStorageShape.GetDim(INPUT_DIM_0);
-            OP_CHECK_IF((deqScaleDsDim0 != 1),
-                OP_LOGE(context_, "Scenario HIFP8, ds_scale shape must be [1]."),
-                return ge::GRAPH_FAILED);
-        } else {
-            OP_LOGE(context_, "Scenario HIFP8, ds_scale shape must be [1].");
-            return ge::GRAPH_FAILED;
-        }
-        if (deqScalePDimNum == 1) {
-            int64_t deqScalePDim0 = deqScalePStorageShape.GetDim(INPUT_DIM_0);
-            OP_CHECK_IF((deqScalePDim0 != 1),
-                OP_LOGE(context_, "Scenario HIFP8, p_scale shape must be [1]."),
-                return ge::GRAPH_FAILED);
-        } else {
-            OP_LOGE(context_, "Scenario HIFP8, p_scale shape must be [1].");
-            return ge::GRAPH_FAILED;
-        }
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams)
-{
-    auto yInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::ATTENTION_IN));
-    auto deqScaleQInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_Q));
-    auto deqScaleKInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_K));
-    auto deqScaleVInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_V));
-    auto deqScaleDyInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_DY));
-    if (yInput != nullptr) {
-        auto yInputDtype = yInput->GetDataType();
-        bool isYInputNotValid = (fBaseParams.queryType == ge::DT_HIFLOAT8 && yInputDtype != ge::DT_BF16);
-        OP_CHECK_IF(isYInputNotValid,
-            OP_LOGE(context_,
-            "Scenario HIFP8, Invalid attentionIn Datatype:%s, only support BF16", 
-            ge::TypeUtils::DataTypeToSerialString(yInputDtype).c_str()),
-            return ge::GRAPH_FAILED);
-    }
-    if (deqScaleQInput != nullptr && deqScaleKInput != nullptr
-        && deqScaleVInput != nullptr && deqScaleDyInput != nullptr) {
-        auto deqScaleQDtype = deqScaleQInput->GetDataType();
-        auto deqScaleKDtype = deqScaleKInput->GetDataType();
-        auto deqScaleVDtype = deqScaleVInput->GetDataType();
-        auto deqScaleDyDtype = deqScaleDyInput->GetDataType();
-        OP_CHECK_IF(deqScaleQDtype != ge::DT_FLOAT || deqScaleKDtype != ge::DT_FLOAT ||
-            deqScaleVDtype != ge::DT_FLOAT || deqScaleDyDtype != ge::DT_FLOAT,
-            OP_LOGE(context_, 
-                "Invalid deqScaleDType [deqScaleQDtype:%s, deqScaleKDtype:%s, deqScaleVDtype:%s, deqScaleDyDtype:%s], only support FLOAT32.", 
-                ge::TypeUtils::DataTypeToSerialString(deqScaleQDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(deqScaleKDtype).c_str(),
-                ge::TypeUtils::DataTypeToSerialString(deqScaleVDtype).c_str(),
-                ge::TypeUtils::DataTypeToSerialString(deqScaleDyDtype).c_str()),
-            return ge::GRAPH_FAILED);
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 bool CheckIsLargeInvalidBlk(const FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     if ((fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL)) &&
@@ -1100,112 +971,18 @@ ge::graphStatus ProcessDropoutInfo(gert::TilingContext *context_, FuzzyBaseInfoP
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams)
-{
-    if (fBaseParams.queryType == ge::DT_HIFLOAT8) {
-        auto queryShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY));
-        auto keyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::KEY));
-        auto valueShape = context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE));
-        auto dyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::DY));
-        auto attentionInShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::ATTENTION_IN));
-        if (queryShape == nullptr || keyShape == nullptr ||
-            valueShape == nullptr || dyShape == nullptr || 
-            attentionInShape == nullptr) {
-            OP_LOGE(context_, "Scenario HIFP8, q, k, v, dy or y must not be null.");
-            return ge::GRAPH_FAILED;
-        }
-        auto attentionInShapeDim = attentionInShape->GetStorageShape().GetDimNum();
-        auto queryShapeDim = queryShape->GetStorageShape().GetDimNum();
-        auto dyShapeDim = dyShape->GetStorageShape().GetDimNum();
-        auto keyShapeDim = keyShape->GetStorageShape().GetDimNum();
-        auto valueShapeDim = valueShape->GetStorageShape().GetDimNum();
-        if (attentionInShapeDim != queryShapeDim || dyShapeDim != queryShapeDim || keyShapeDim != queryShapeDim ||
-            valueShapeDim != queryShapeDim) {
-            OP_LOGE(context_, "Scenario HIFP8, The dimnum of y %zu, dy %zu, key %zu, value %zu, should be equal to query %zu",
-                    attentionInShapeDim, dyShapeDim, keyShapeDim, valueShapeDim, queryShapeDim);
-            return ge::GRAPH_FAILED;
-        }
-        for (uint32_t dimIdx = 0; dimIdx < queryShapeDim; dimIdx++) {
-            if ((queryShape->GetStorageShape().GetDim(dimIdx) != dyShape->GetStorageShape().GetDim(dimIdx)) ||
-                (queryShape->GetStorageShape().GetDim(dimIdx) != attentionInShape->GetStorageShape().GetDim(dimIdx))) {
-                OP_LOGE(context_, "Scenario HIFP8, The y[%u] : %zu, dy[%u] : %zu, should be equal to query[%u] : %zu",
-                    dimIdx, attentionInShape->GetStorageShape().GetDim(dimIdx), dimIdx,
-                    dyShape->GetStorageShape().GetDim(dimIdx), dimIdx, queryShape->GetStorageShape().GetDim(dimIdx));
-                return ge::GRAPH_FAILED;
-            }
-            if ((keyShape->GetStorageShape().GetDim(dimIdx) != valueShape->GetStorageShape().GetDim(dimIdx))) {
-                OP_LOGE(context_, "Scenario HIFP8, The key[%u] : %zu, should be equal to value[%u] : %zu",
-                    dimIdx, keyShape->GetStorageShape().GetDim(dimIdx), dimIdx,
-                    valueShape->GetStorageShape().GetDim(dimIdx));
-                return ge::GRAPH_FAILED;
-            }
-        }
-        const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
-        OP_CHECK_IF(inputLayout == nullptr,
-            OP_LOGE(context_, "Scenario HIFP8, inputLayout is null."),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(strcmp(inputLayout, "BSND") != 0,
-            OP_LOGE(context_, "Scenario HIFP8, inputLayout must be BSND."),
-            return ge::GRAPH_FAILED);
-        if (!((fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ1 && fBaseParams.n1 == HIFP8_ADMIT_N1 && fBaseParams.d == ALIGN128 &&
-            fBaseParams.s2 == HIFP8_ADMIT_SEQ1 && fBaseParams.n2 == HIFP8_ADMIT_N1 && fBaseParams.d1 == ALIGN128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ3 && fBaseParams.n1 == HIFP8_ADMIT_N3 && fBaseParams.d == ALIGN128 &&
-            fBaseParams.s2 == HIFP8_ADMIT_SEQ3 && fBaseParams.n2 == HIFP8_ADMIT_N3 && fBaseParams.d1 == ALIGN128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ1 && fBaseParams.n1 == HIFP8_ADMIT_N2 && fBaseParams.d == ALIGN128 &&
-            fBaseParams.s2 == HIFP8_ADMIT_SEQ1 && fBaseParams.n2 == HIFP8_ADMIT_N2 && fBaseParams.d1 == ALIGN128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ3 && fBaseParams.n1 == HIFP8_ADMIT_N4 && fBaseParams.d == ALIGN128 &&
-            fBaseParams.s2 == HIFP8_ADMIT_SEQ3 && fBaseParams.n2 == HIFP8_ADMIT_N4 && fBaseParams.d1 == ALIGN128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ2 && fBaseParams.n1 == HIFP8_ADMIT_N1 && fBaseParams.d == ALIGN128 &&
-            fBaseParams.s2 == HIFP8_ADMIT_SEQ2 && fBaseParams.n2 == HIFP8_ADMIT_N1 && fBaseParams.d1 == ALIGN128) ||
-            (fBaseParams.b == 1 && fBaseParams.s1 == HIFP8_ADMIT_SEQ4 && fBaseParams.n1 == HIFP8_ADMIT_N3 && fBaseParams.d == ALIGN128 &&
-            fBaseParams.s2 == GM_ALIGN && fBaseParams.n2 == HIFP8_ADMIT_N3 && fBaseParams.d1 == ALIGN128))) {
-            OP_LOGE(context_, "Scenario HIFP8, query & key shape only support{[1, 54000, 5, 128], [1, 54000, 5, 128]}, {[1, 9360, 40, 128], [1, 9360, 40, 128]}, {[1, 54000, 10, 128], [1, 54000, 10, 128]}, {[1, 9360, 80, 128], [1, 9360, 80, 128]}, {[1, 57600, 5, 128], [1, 57600, 5, 128]}, {[1, 7200, 40, 128], [1, 512, 40, 128]}.");
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-
 ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     DetermineMode(fBaseParams);
     if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
         fBaseParams.queryType == ge::DT_UINT8 || fBaseParams.queryType == ge::DT_INT8 ||
-        fBaseParams.queryType == ge::DT_QINT8) {
+        fBaseParams.queryType == ge::DT_QINT8 || fBaseParams.queryType == ge::DT_HIFLOAT8) {
         auto queryDType = context_->GetInputDesc(0)->GetDataType();
-        OP_LOGE("ProcessQuantInfo", "In the 8-bit scenario, only HIFP8 is supported, but got %s",
+        OP_LOGE("ProcessQuantInfo", "In the 8-bit scenario, The dtype of query is invalid, but got %s",
                 ge::TypeUtils::DataTypeToSerialString(queryDType).c_str());
         return ge::GRAPH_FAILED;
     }
-    // hifp8 shape whitelist
-    auto quantShapeRet = QuantShapeValidCheck(context_, fBaseParams);
-    if (quantShapeRet != ge::GRAPH_SUCCESS) {
-        return quantShapeRet;
-    }
     fBaseParams.outDtype = fBaseParams.inputDtype;
-    if (context_->GetAttrs()->GetAttrNum() > OUTDTYPE_ATTR_IDX &&
-        (fBaseParams.queryType == ge::DT_HIFLOAT8)) {
-        int64_t outDType = *(context_->GetAttrs()->GetAttrPointer<int>(OUTDTYPE_ATTR_IDX));
-        if (outDType == 1) {
-            fBaseParams.outDtype = DtypeEnum::BFLOAT16;
-        } else {
-            OP_LOGE("ProcessQuantInfo", "Scenario HIFP8, outDType value only support bf16, but got %ld, try setting it to 1(bf16)",
-                outDType);
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        // 非FP8场景无需check scale
-        return ge::GRAPH_SUCCESS;
-    }
-    auto quantScaleShapeCheckRet = QuantScaleShapeValidCheck(context_, fBaseParams);
-    if (quantScaleShapeCheckRet != ge::GRAPH_SUCCESS) {
-        return quantScaleShapeCheckRet;
-    }
-    auto quantScaleDtypeCheckRet = QuantScaleDtypeValidCheck(context_, fBaseParams);
-    if (quantScaleDtypeCheckRet != ge::GRAPH_SUCCESS) {
-        return quantScaleDtypeCheckRet;
-    }
     return ge::GRAPH_SUCCESS;
 }
 
