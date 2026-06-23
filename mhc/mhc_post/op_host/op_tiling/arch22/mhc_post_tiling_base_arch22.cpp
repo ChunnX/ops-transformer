@@ -145,7 +145,9 @@ ge::graphStatus MhcPostTilingBaseArch22::GetShapeAttrsInfo()
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", "null", "input shape cannot be null"),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckParam failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", "invalid", "CheckParam failed"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -416,8 +418,9 @@ ge::graphStatus MhcPostTilingBaseArch22::CheckShapeConsistency()
         d_ = xShape_->GetDim(DIM_3);
         totalItems_ = b_ * s_;
         OP_LOGI(context_, "BSND format: B=%ld, S=%ld, n=%ld, D=%ld, totalItems=%ld", b_, s_, n_, d_, totalItems_);
-        OP_CHECK_IF(CheckShape4D() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShape4D failed"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(CheckShape4D() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x", "invalid", "CheckShape4D failed"),
+            return ge::GRAPH_FAILED);
     } else if (dimNum == DIM_NUM_3) {
         // TND format: (T, n, D)
         b_ = 1;  // Not used in TND format
@@ -426,8 +429,9 @@ ge::graphStatus MhcPostTilingBaseArch22::CheckShapeConsistency()
         n_ = xShape_->GetDim(DIM_1);
         d_ = xShape_->GetDim(DIM_2);
         OP_LOGI(context_, "TND format: T=%ld, n=%ld, D=%ld", totalItems_, n_, d_);
-        OP_CHECK_IF(CheckShape3D() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShape3D failed"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(CheckShape3D() != ge::GRAPH_SUCCESS,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x", "invalid", "CheckShape3D failed"),
+            return ge::GRAPH_FAILED);
     } else {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x",
             std::to_string(dimNum).c_str(), "dimNum must be 3 (TND format) or 4 (BSND format)");
@@ -440,17 +444,22 @@ ge::graphStatus MhcPostTilingBaseArch22::CheckShapeConsistency()
 
 ge::graphStatus MhcPostTilingBaseArch22::CheckParam()
 {
-    OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckNullptr failed"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", "null", "CheckNullptr failed"),
+        return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(CheckDataType() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckDataType failed"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckDataType() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x", "invalid", "CheckDataType failed"),
+        return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(CheckShapeConsistency() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeConsistency failed"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckShapeConsistency() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", "invalid", "CheckShapeConsistency failed"),
+        return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeAllPositive failed"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", "non-positive",
+            "CheckShapeAllPositive failed"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

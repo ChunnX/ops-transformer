@@ -23,6 +23,7 @@
 namespace optiling {
 static ge::graphStatus TilingForMhcPost(gert::TilingContext *context)
 {
+    OP_CHECK_IF(context == nullptr, OP_LOGE("MhcPost", "context is null"), return ge::GRAPH_FAILED);
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 

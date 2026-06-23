@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mhc_post_regbase_kernel.h
+ * \file mhc_post_regbase.h
  * \brief MhcPost kernel implementation
  * Formula: x_{l+1} = (H_{l}^{res})^{T} * x_l + h_{l}^{out} * H_{t}^{post}
  *          where: (H_{l}^{res})^{T} * x_l represents matrix multiplication with transposed h_res

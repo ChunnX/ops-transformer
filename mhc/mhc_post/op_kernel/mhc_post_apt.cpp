@@ -17,7 +17,7 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "arch35/mhc_post.h"
-#include "arch35/mhc_post_regbase_kernel.h"
+#include "arch35/mhc_post_regbase.h"
 
 using namespace AscendC;
 using namespace MhcPost;
