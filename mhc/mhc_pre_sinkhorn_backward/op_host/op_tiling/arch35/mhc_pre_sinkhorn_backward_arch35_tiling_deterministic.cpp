@@ -243,8 +243,8 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
     size_t userWorkspaceSize = batchSize_ * seqLength_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                            //xFP32
-                                3 * usedAicNum_ * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +                                       //gradAlpha
-                                (2 * usedAicNum_ * n_ + usedAicNum_ * n_ * n_) * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +        //gradBias
+                                3 * usedAivNum_ * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +                                       //gradAlpha
+                                (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +        //gradBias
                                 batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3  + 3 * WS_BUFFER_INTERVAL +             //gradXFrom
                                 batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +           //grad_hc_before_norm
                                 batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;            //grad_norm_out
