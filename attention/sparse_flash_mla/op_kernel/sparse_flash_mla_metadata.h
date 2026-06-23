@@ -24,6 +24,7 @@ namespace optiling {
 constexpr uint32_t AIC_CORE_MAX_NUM = 36;
 constexpr uint32_t AIV_CORE_MAX_NUM = 72;
 constexpr uint32_t SMLA_METADATA_TOTAL_SIZE = 1024;
+constexpr uint32_t SMLA_META_SIZE = SMLA_METADATA_TOTAL_SIZE;
 using SMLA_METADATA_T = int32_t;
 
 constexpr uint32_t FA_METADATA_SIZE = 9;
