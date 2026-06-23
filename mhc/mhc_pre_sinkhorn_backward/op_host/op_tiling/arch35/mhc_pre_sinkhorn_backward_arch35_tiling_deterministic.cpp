@@ -19,6 +19,8 @@
 #include "mhc_pre_sinkhorn_backward_arch35_tiling_deterministic.h"
 #include "log/log.h"
 #include "platform/platform_info.h"
+#include "util/math_util.h"
+#include "util/platform_util.h"
 
 using namespace AscendC;
 namespace optiling {
@@ -84,8 +86,8 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
-    int64_t bsPerCoreMM1 = AlignUp(batchSize_ * seqLength_, coreNumAic_);
-    int64_t bsPerCoreMM2 = AlignUp(n_ * n_ + 2 * n_, coreNumAic_);
+    int64_t bsPerCoreMM1 = Ops::Base::CeilAlign(batchSize_ * seqLength_, static_cast<int64_t>(coreNumAic_));
+    int64_t bsPerCoreMM2 = Ops::Base::CeilAlign(n_ * n_ + 2 * n_, static_cast<int64_t>(coreNumAic_));
 
     mm1K_ = n_ * n_ + 2 * n_;
     mm1M_ = bsPerCoreMM1;
@@ -152,9 +154,9 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
 {
     int64_t totalBs = batchSize_ * seqLength_;
-    bsTaskCount_ = Ops::Base::CeilDiv(totalBs, coreNumAiv_);
+    bsTaskCount_ = Ops::Base::CeilDiv(totalBs, static_cast<int64_t>(coreNumAiv_));
     usedAivNum_ = Ops::Base::CeilDiv(totalBs, bsTaskCount_);
-    tailBsTaskCount_ = totalBs - bsTaskCount_ * (usedAivNum - 1);
+    tailBsTaskCount_ = totalBs - bsTaskCount_ * (usedAivNum_ - 1);
     cLoopDataLen_ = c_;
     bsLoopDataLen_ = bsTaskCount_;
     ubBlock_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)) - UB_RESERVE_SIZE;
@@ -162,7 +164,7 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
  
     while (restSize > 0) {
         int64_t occupy = DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +   //x
-                        DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n * FP32_BYTE_SIZE, ubBlock_) +                     //h_pre And grad_h_pre
+                        DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                     //h_pre And grad_h_pre
                         DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +         //grad_h_in
                         DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +               //hc_before_norm
                         DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +                         //inv_rms
@@ -197,7 +199,7 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     }
 
     //final
-    auto bsncTaskCount = Ops::Base::CeilDiv(totalBs * n_ * c_, coreNumAiv_);
+    auto bsncTaskCount = Ops::Base::CeilDiv(totalBs * n_ * c_, static_cast<int64_t>(coreNumAiv_));
     finalUsedAivNum_ = Ops::Base::CeilDiv(totalBs * n_ * c_, bsncTaskCount);
     auto tailBsncTaskCount_ = totalBs * n_ * c_ - bsncTaskCount * (finalUsedAivNum_ - 1);
     cBlockCount_ = bsncTaskCount;
@@ -210,8 +212,8 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
             cBlockCount_--;
         }
     }
-    cBlockLoops_ = CeilDiv(bsncTaskCount, cBlockCount_);
-    cBlockTailLoops_ = CeilDiv(tailBsncTaskCount_, cBlockCount_);
+    cBlockLoops_ = Ops::Base::CeilDiv(bsncTaskCount, cBlockCount_);
+    cBlockTailLoops_ = Ops::Base::CeilDiv(tailBsncTaskCount_, cBlockCount_);
     cBlockTailCount_ = bsncTaskCount - cBlockCount_ * (cBlockLoops_ - 1);
     cBlockTailTailCount_ = tailBsncTaskCount_ - cBlockCount_ * (cBlockTailLoops_ - 1);
 }
