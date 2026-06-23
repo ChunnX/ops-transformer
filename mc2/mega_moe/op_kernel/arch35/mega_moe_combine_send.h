@@ -144,8 +144,8 @@ __aicore__ inline void CombineTokensWithUrmaSend(
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, processRankNum );
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t), processRankNum);
 
-    Duplicate<int32_t>(sendTokenCnt, 0 , processRankNum);
-    Duplicate<int32_t>(totalTokenCnt, 0 , processRankNum);
+    // Duplicate<int32_t>(sendTokenCnt, 0 , processRankNum);
+    // Duplicate<int32_t>(totalTokenCnt, 0 , processRankNum);
     // // AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
     // // AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
     PipeBarrier<PIPE_ALL>();// todo:
