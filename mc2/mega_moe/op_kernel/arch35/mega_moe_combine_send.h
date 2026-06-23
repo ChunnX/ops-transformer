@@ -167,29 +167,29 @@ __aicore__ inline void CombineTokensWithUrmaSend(
 
     uint32_t processRank = 0;
     // Phase 2: 逐 rank 统计应收 token 总数 (从 mask count 累加)
-    for (uint32_t index = startRankId; index < endRankId; index++) {
-        if (index == rankId) {
-            processRank++;
-            continue;
-        }
-        uint32_t cnt = 0;
-        for (uint32_t expertIdx = 0; expertIdx < expertPerRank; expertIdx++) {
-            maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context, rankId) +
-                static_cast<uint64_t>(expertIdx) * worldSize * maskSlotSize +
-                static_cast<uint64_t>(index) * maskSlotSize));
-            AscendC::DataCopy(slotCopyTensor, maskSrcGlobal, slotCopyStride);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-            cnt += slotReadTensor.GetValue(countWordIdx);
-        }
-        // 修正: CeilAlign 返回类型与 L1_TILE_N 一致, 用 uint32_t
-        uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), 
-                                    static_cast<int64_t>(L1_TILE_N)));
-        totalTokenCnt.SetValue(index - startRankId, totalDataBlockCnt);
-        if(totalDataBlockCnt == 0) {
-            processRank++;
-        }
-    }
+    // for (uint32_t index = startRankId; index < endRankId; index++) {
+    //     if (index == rankId) {
+    //         processRank++;
+    //         continue;
+    //     }
+    //     uint32_t cnt = 0;
+    //     for (uint32_t expertIdx = 0; expertIdx < expertPerRank; expertIdx++) {
+    //         maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context, rankId) +
+    //             static_cast<uint64_t>(expertIdx) * worldSize * maskSlotSize +
+    //             static_cast<uint64_t>(index) * maskSlotSize));
+    //         AscendC::DataCopy(slotCopyTensor, maskSrcGlobal, slotCopyStride);
+    //         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+    //         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+    //         cnt += slotReadTensor.GetValue(countWordIdx);
+    //     }
+    //     // 修正: CeilAlign 返回类型与 L1_TILE_N 一致, 用 uint32_t
+    //     uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), 
+    //                                 static_cast<int64_t>(L1_TILE_N)));
+    //     totalTokenCnt.SetValue(index - startRankId, totalDataBlockCnt);
+    //     if(totalDataBlockCnt == 0) {
+    //         processRank++;
+    //     }
+    // }
 
     // // Phase 3: 轮询 notify, 收到后 urma 发送
     // uint32_t rankIndex = 0;
