@@ -543,11 +543,12 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(uint64_
                 uint32_t maskOffset = tIdx * mnConfig_.n + vfBlockIdx * eleNumPerVf_;
                 uint32_t alphaOffset = vfBlockIdx * eleNumPerVf_;
                 uint32_t biasOffset = vfBlockIdx * eleNumPerVf_;
+                uint32_t curOffset = MhcPreUtils::Min(mnConfig_.n - vfBlockIdx * eleNumPerVf_, static_cast<uint64_t>(eleNumPerVf_));
                 MicroAPI::MaskReg curMask = MicroAPI::UpdateMask<P>(curLen);
 
-                MicroAPI::LoadAlign<P>(matmulResReg, matmulPtr + maskOffset);
-                MicroAPI::LoadAlign<P>(biasInReg, biasInPtr + biasOffset);
-                MicroAPI::LoadAlign<P>(alphaInReg, alphaInPtr + alphaOffset);
+                MicroAPI::Load<P>(matmulResReg, matmulPtr + maskOffset);
+                MicroAPI::Load<P>(biasInReg, biasInPtr + biasOffset);
+                MicroAPI::Load<P>(alphaInReg, alphaInPtr + alphaOffset);
 
                 MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, curMask);
                 MicroAPI::Mul(matmulResReg, matmulResReg, invRmsBroadReg, curMask);
@@ -556,7 +557,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(uint64_
 
                 MicroAPI::Add(matmulResReg, matmulResReg, biasInReg, curMask);
 
-                MicroAPI::StoreAlign<P>(matmulPtr + maskOffset, matmulResReg, curMask);
+                MicroAPI::Store<P>(matmulPtr + maskOffset, matmulResReg, curOffset);
             }
         }
     }
