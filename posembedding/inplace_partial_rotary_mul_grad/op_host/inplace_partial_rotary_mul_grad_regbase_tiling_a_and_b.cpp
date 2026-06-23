@@ -92,16 +92,10 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAAndB::ComputeUbFactor()
         numOfDAvailable /= UB_FACTOR;
         ubFactorB_ = std::min(blockFactorB_, numOfDAvailable);
     } else {
-        // BROADCAST_BSN: cos+sin buffer 有 ubFactorB_ 行，需按实际 buffer 大小约束
-        // 总 UB = 4 * ubFactorB_ * (alignDy*sizeof(DT_DY) + alignCos*sizeof(DT_COS))
-        int64_t dAlign = Ops::Base::CeilAlign(sliceLength_ * maxTypeSize / dSplitCoef_, this->blockSize_) *
-                         dSplitCoef_;
-        int64_t perUbUnit = 4 * (dAlign * (typeSize + cosTypeSize));
-        int64_t numOfUbUnits = Ops::Base::FloorDiv(static_cast<int64_t>(aicoreParams_.ubSize), perUbUnit);
-        OP_CHECK_IF(numOfUbUnits < 1,
-                    OP_LOGE(context_, "D too big, ub=%ld, need=%ld.", aicoreParams_.ubSize, perUbUnit),
-                    return ge::GRAPH_FAILED);
-        ubFactorB_ = std::min(blockFactorB_, numOfUbUnits);
+        // BROADCAST_BSN: cos+sin single buffer，对齐 reference rope_grad_regbase_tiling_a_and_b
+        numOfDAvailable -= 1;
+        numOfDAvailable /= DOUBLE_BUFFER;
+        ubFactorB_ = std::min(blockFactorB_, numOfDAvailable);
     }
     ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);
     return ge::GRAPH_SUCCESS;
