@@ -97,7 +97,6 @@ struct MoeV2GatherOutComputeTilingData {
   int64_t perLoopCols = 0;
   int64_t lastLoopCols = 0;
   int64_t colLoops = 0;
-  int64_t scatterMode = 0;
 };
 #pragma pack()
 
