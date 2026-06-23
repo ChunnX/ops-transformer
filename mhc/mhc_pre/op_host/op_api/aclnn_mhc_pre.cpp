@@ -315,7 +315,7 @@ static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t 
 {
     auto phiShape = phiTensor->GetViewShape();
     if (phiShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be n^2+2n=%ld, but got %ld", n2Plus2n,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", n2Plus2n,
                 phiShape.GetDim(0));
         return false;
     }
@@ -330,7 +330,7 @@ static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n)
 {
     auto biasShape = biasTensor->GetViewShape();
     if (biasShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be n^2+2n=%ld, but got %ld", n2Plus2n,
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", n2Plus2n,
                 biasShape.GetDim(0));
         return false;
     }

@@ -280,7 +280,6 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
                     outHpostShape->GetDim(DIM_1) != s || outHpostShape->GetDim(DIM_2) != n,
                 OP_LOGE(context_->GetNodeName(), "OutHpost shape (B,S,N) mismatch with X"), return ge::GRAPH_FAILED);
 
-    // 是否还要校验 没有Resi输出 还要给shape吗
     if (hasResi_) {
         auto outHresShapePtr = context_->GetOutputShape(OUT_H_RES_INDEX);
         auto outHresShape = &outHresShapePtr->GetStorageShape();
@@ -300,7 +299,7 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_3 || outMmresShape->GetDim(DIM_0) != b ||
                     outMmresShape->GetDim(DIM_1) != s || outMmresShape->GetDim(DIM_2) != matN_,
-                OP_LOGE(context_->GetNodeName(), "OutMmRes shape (B,S,matK) mismatch, expected matK=%lu", matN_),
+                OP_LOGE(context_->GetNodeName(), "OutMmRes shape (B,S,matN) mismatch, expected matN=%lu", matN_),
                 return ge::GRAPH_FAILED);
 
     auto outHpreShapePtr = context_->GetOutputShape(OUT_H_PRE_INDEX);
@@ -343,7 +342,7 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_2 || outMmresShape->GetDim(DIM_0) != t ||
                     outMmresShape->GetDim(DIM_1) != matN_,
-                OP_LOGE(context_->GetNodeName(), "OutMmRes shape (T,matK) mismatch, expected matK=%lu", matN_),
+                OP_LOGE(context_->GetNodeName(), "OutMmRes shape (T,matN) mismatch, expected matN=%lu", matN_),
                 return ge::GRAPH_FAILED);
 
     auto outHpreShapePtr = context_->GetOutputShape(OUT_H_PRE_INDEX);
