@@ -70,7 +70,7 @@ private:
     __aicore__ inline void SendToken(GM_ADDR localWorkspaceAddr, GM_ADDR remoteRankWinAddr, 
                                     uint32_t tokenIndex, uint32_t dstRankId);
     __aicore__ inline void SendWeightData(GM_ADDR localRankWeightAddr,  GM_ADDR remoteRankWeightAddr, 
-                                    uint32_t tokenIndex, uint32_t dstRankId, uint32_t topkId);
+                                    uint32_t tokenIndex, uint32_t dstRankId);
     __aicore__ inline void SetStatus(GM_ADDR localRankStateAddr,  GM_ADDR remoteRankStateAddr, uint32_t tokenIndex, uint32_t dstRankId);
     __aicore__ inline bool WaitDispatch(uint32_t tokenIndex, uint32_t copyCount, uint32_t beginIndex);
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
@@ -209,12 +209,6 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
         }
         actualA_ += numRecvPerExpertGm_.GetValue(i);
     }
-
-    if constexpr (HasTopkWeight == 1) {
-        topkWeightsOptionalGm_.SetGlobalBuffer((__gm__ float *)topkWeightsOptional);
-        combinedTopkWeightsGm_.SetGlobalBuffer((__gm__ float *)combinedTopkWeightsOptional);
-    }
-
     ubXBytes_ = ALIGN_UP(2 * axisH_ * sizeof(XType), 32);
     uint32_t XTypeAlign32Size = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     uint32_t ubAccBytes = axisH_ * sizeof(float);
@@ -227,14 +221,13 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);  // 32
     tpipe_->InitBuffer(xQueue_, 1, XTypeAlign32Size);
     tpipe_->InitBuffer(weightQueue_, 1, sizeof(float)); 
-    if constexpr (HasTopkWeight == 1) {
-        tpipe_->InitBuffer(ubWeightedBuf_, ubWeightBytes);
-    }
-
     ubX_ = ubXBuf_.Get<XType>();
     ubAccFp32_ = ubAccFp32Buf_.Get<float>();
     ubTmpFp32_ = ubTmpFp32Buf_.Get<float>();
     if constexpr (HasTopkWeight == 1) {
+        topkWeightsOptionalGm_.SetGlobalBuffer((__gm__ float *)topkWeightsOptional);
+        combinedTopkWeightsGm_.SetGlobalBuffer((__gm__ float *)combinedTopkWeightsOptional);
+        tpipe_->InitBuffer(ubWeightedBuf_, ubWeightBytes);
         ubWeighted_ = ubWeightedBuf_.Get<float>();
     }
 }
@@ -290,7 +283,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendTok
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendWeightData(
-    GM_ADDR localRankWeightAddr,  GM_ADDR remoteRankWeightAddr, uint32_t tokenIndex, uint32_t dstRankId, uint32_t topkId)
+    GM_ADDR localRankWeightAddr,  GM_ADDR remoteRankWeightAddr, uint32_t tokenIndex, uint32_t dstRankId)
 {
     // 处理单个token：
     // 1. 从输入GM读取token数据到UB
@@ -304,9 +297,9 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendWei
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams weightCommuOutParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
 
-    // 从GM读取token到UB
+    // 从GM读取WeightData到UB
     weightTmpTensor_ = weightQueue_.AllocTensor<float>();
-    DataCopyPad(weightTmpTensor_, topkWeightsOptionalGm_[tokenIndex * topK_ + topkId], weightCommuOutParams, padParams);
+    DataCopyPad(weightTmpTensor_, topkWeightsOptionalGm_[tokenIndex], weightCommuOutParams, padParams);
     weightQueue_.EnQue(weightTmpTensor_);
     weightTmpTensor_ = weightQueue_.DeQue<float>();
     // 写入目标rank的窗口
@@ -371,7 +364,7 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPha
                     (src_token_idx * topK_ + src_topK_idx) * sizeof(float);
                 GM_ADDR remoteRankWeightAddr = GetUrmaWinAddrByRankId(src_rank, STATE_WIN_SIZE) + 
                     (src_token_idx * topK_ + src_topK_idx) * sizeof(float);
-                SendWeightData(localRankWeightAddr, remoteRankWeightAddr, tokenIndex, src_rank, src_topK_idx);  
+                SendWeightData(localRankWeightAddr, remoteRankWeightAddr, tokenIndex, src_rank); 
             }
             SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);  
             PipeBarrier<PIPE_MTE3>();
