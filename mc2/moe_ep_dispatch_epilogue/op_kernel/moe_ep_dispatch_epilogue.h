@@ -73,7 +73,7 @@ private:
     LocalTensor<int32_t> ubTopkIds_;
     LocalTensor<int32_t> ubTargetExpertId_;
     LocalTensor<int32_t> ubSubExpertId_;
-    LocalTensor<float> ubReduceWork_;
+    LocalTensor<int32_t> ubReduceWork_;
     LocalTensor<int32_t> ubRecvCnt_;
     LocalTensor<int64_t> ubExpertPfx_;
     LocalTensor<int32_t> ubHitCountFull_;
@@ -216,7 +216,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     ubTopkIds_   = ubTopkIdsBuf_.Get<int32_t>();
     ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
     ubSubExpertId_ = ubSubExpertIdBuf_.Get<int32_t>();
-    ubReduceWork_ = ubReduceWorkBuf_.Get<float>();
+    ubReduceWork_ = ubReduceWorkBuf_.Get<int32_t>();
     ubRecvCnt_   = ubRecvCntBuf_.Get<int32_t>();
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
     ubHitCountFull_ = ubHitCountFullBuf_.Get<int32_t>();
@@ -310,13 +310,11 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
             
             Sub(ubSubExpertId_, ubTopkIds_, ubTargetExpertId_, calCnt);
             
-            LocalTensor<float> tmpFp32 = ubSubExpertId_.ReinterpretCast<float>();
-            LocalTensor<float> tmpOutFp32 = ubTargetExpertId_.ReinterpretCast<float>();
-            Abs(tmpOutFp32, tmpFp32, calCnt);
-            
+            Abs(ubTargetExpertId_, ubSubExpertId_, calCnt);
+
             Mins(ubSubExpertId_, ubTargetExpertId_, 1, calCnt);
-            
-            ReduceSum<float>(tmpOutFp32, tmpFp32, ubReduceWork_, calCnt);
+
+            ReduceSum<int32_t>(ubTargetExpertId_, ubSubExpertId_, ubReduceWork_, calCnt);
             SyncFunc<AscendC::HardEvent::V_S>();
 
             int32_t curOtherExpertCnt = ubTargetExpertId_(0);
