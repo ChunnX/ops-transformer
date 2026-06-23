@@ -27,14 +27,14 @@ using namespace matmul;
 
 TEMPLATE_INTF
 __aicore__ inline int64_t CalculateActualS1Size(RunParamStr& runParam,
-    const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* actualSeqQlenAddr)
+    const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* prefixSeqQlenAddr)
 {
     int64_t actualS1Size = 0;
     if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
         if (constInfo.isActualLenDimsNull) {
             actualS1Size = constInfo.s1Size;
         } else {
-            actualS1Size = (bIdx == 0) ? actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
+            actualS1Size = prefixSeqQlenAddr[bIdx + 1] - prefixSeqQlenAddr[bIdx];
         }
     }
     
@@ -43,14 +43,14 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr& runParam,
 
 TEMPLATE_INTF
 __aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
-    const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* actualSeqKvlenAddr)
+    const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* prefixSeqKvlenAddr)
 {
     int64_t actualS2Size = 0;
     if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
         if (constInfo.isActualLenDimsNull) {
             actualS2Size = constInfo.s2Size;
         } else {
-            actualS2Size = (bIdx == 0) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[bIdx] - actualSeqKvlenAddr[bIdx - 1];
+            actualS2Size = prefixSeqKvlenAddr[bIdx + 1] - prefixSeqKvlenAddr[bIdx];
         }
     }
     return actualS2Size;
@@ -59,14 +59,14 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
     const AttenMaskInfo &attenMaskInfo,
-    GlobalTensor<INPUT_T>& keyGm, __gm__ int32_t *actualSeqQlenAddr,
-    __gm__ int32_t *actualSeqKvlenAddr)
+    GlobalTensor<INPUT_T>& keyGm, __gm__ int32_t *prefixSeqQlenAddr,
+    __gm__ int32_t *prefixSeqKvlenAddr)
 {
     // 计算实际序列长度
     runParam.actualS1Size = CalculateActualS1Size<TEMPLATE_INTF_ARGS>(
-        runParam, constInfo, runParam.boIdx, actualSeqQlenAddr);
+        runParam, constInfo, runParam.boIdx, prefixSeqQlenAddr);
     runParam.actualS2Size = CalculateActualS2Size<TEMPLATE_INTF_ARGS>(
-        runParam, constInfo, runParam.boIdx, actualSeqKvlenAddr);
+        runParam, constInfo, runParam.boIdx, prefixSeqKvlenAddr);
 
     if constexpr (hasAtten) {
         runParam.preTokensPerBatch = attenMaskInfo.preTokens;
@@ -80,10 +80,10 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
     }
     // 计算query偏移量
     if constexpr (layout == BSALayout::TND) {
-        runParam.qBScalarOffset = (runParam.boIdx == 0) ? 0 : actualSeqQlenAddr[runParam.boIdx] * constInfo.n2G;
+        runParam.qBScalarOffset = prefixSeqQlenAddr[runParam.boIdx] * constInfo.n2G;
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     } else if constexpr (layout == BSALayout::NTD) {
-        runParam.qBScalarOffset = (runParam.boIdx == 0) ? 0 : constInfo.t1Size * runParam.n2oIdx * (constInfo.gSize + runParam.goIdx) + actualSeqQlenAddr[runParam.boIdx];
+        runParam.qBScalarOffset = constInfo.t1Size * runParam.n2oIdx * (constInfo.gSize + runParam.goIdx) + prefixSeqQlenAddr[runParam.boIdx];
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     }
 
@@ -135,24 +135,18 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstInfo &constInfo,
-    int32_t bIdx, __gm__ int32_t *actualSeqQlenAddr)
+    int32_t bIdx, __gm__ int32_t *prefixSeqQlenAddr)
 {
-    int64_t actualSeqLen = 0;
-    int64_t seqOffset = 0;
-    if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
-        actualSeqLen = (bIdx == 0) ? actualSeqQlenAddr[0] : runParam.actualS1Size;
-        seqOffset = (bIdx == 0) ? 0 : actualSeqQlenAddr[bIdx - 1];
-    }
+    int64_t seqOffset = prefixSeqQlenAddr[bIdx];
+
     if ASCEND_IS_AIC {
         if constexpr (layout == BSALayout::TND) {
             runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
                 runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
         } else if constexpr (layout == BSALayout::NTD) {
-            int64_t ntdActualSeqLen = (bIdx == 0) ? actualSeqQlenAddr[1] :
-                (actualSeqQlenAddr[bIdx + 1] - actualSeqQlenAddr[bIdx]);
-            runParam.tensorQOffset = runParam.n2oIdx * (int64_t)constInfo.gSize * ntdActualSeqLen * constInfo.dSize +
-                runParam.goIdx * (int64_t)ntdActualSeqLen * constInfo.dSize +
-                runParam.cubeSOuterOffset * constInfo.dSize;
+            runParam.tensorQOffset = runParam.n2oIdx * constInfo.gSize * constInfo.t1Size * constInfo.dSize +
+                                     runParam.goIdx * constInfo.t1Size * constInfo.dSize +
+                                     (seqOffset + runParam.cubeSOuterOffset) * constInfo.dSize;
         }
     } else {
         if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
@@ -183,11 +177,11 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
-    uint32_t sOuterLoopIdx, __gm__ int32_t *actualSeqQlenAddr)
+    uint32_t sOuterLoopIdx, __gm__ int32_t *prefixSeqQlenAddr)
 {
     // 后续的函数依赖 sOuterOffset
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
-    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, actualSeqQlenAddr);
+    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, prefixSeqQlenAddr);
 }
 
 TEMPLATE_INTF
