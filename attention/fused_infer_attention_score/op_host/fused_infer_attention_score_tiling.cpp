@@ -27,6 +27,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "../../incre_flash_attention/op_host/incre_flash_attention_tiling_impl.h"
 #include "arch35/fused_infer_attention_score_tiling_v4.h"
+#include "arch38/fused_infer_attention_score_tiling_arch38.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -995,6 +996,25 @@ ge::graphStatus CheckSparseModeParams(const gert::TilingContext *context, int64_
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
+{
+    auto attrs = context->GetAttrs();
+    int32_t blockSize = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX)));
+    auto blockTable = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
+    auto tempK = context->GetInputShape(KEY_INDEX);
+    auto tempV = context->GetInputShape(VALUE_INDEX);
+
+    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_4) != 16),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_3) != blockSize) ||
+                    (tempV->GetStorageShape().GetDim(DIM_3) != blockSize),
+                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                            "The four dimension of kv should to be :%ld.", blockSize),
+                                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention)
 {
     const gert::StorageShape* queryShape = context->GetInputShape(QUERY_INDEX);
@@ -1012,11 +1032,19 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                 "When input layout is TND and paged cache is not used, K and V must have three dims"),
                 return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(kDimNum != 3U || vDimNum != 3U,
+    } else if (kDimNum == 3U || vDimNum == 3U) {
+ 	         OP_CHECK_IF(kDimNum != vDimNum,
+ 	             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+ 	                 "When input layout is TND and paged cache and kvnd is used, the K and V must have three dims"),
+ 	                 return ge::GRAPH_FAILED);
+    } else if (kDimNum == 5U || vDimNum == 5U) {
+        OP_CHECK_IF(kDimNum != vDimNum,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "When input layout is TND and paged cache is used, the cache shape must be BsBnH"),
+                "When input layout is TND and paged cache and kvnz is used, the K and V must have five dims"),
                 return ge::GRAPH_FAILED);
+        if (CheckKVNzShape(context) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
 
     const gert::Tensor* actSeqLenData = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
@@ -1148,9 +1176,16 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     } else {
         int64_t kvHeadNum = *(attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX));
         int64_t inputBlockSize = *(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX));
-        tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) / kvHeadNum;
-        tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) / kvHeadNum;
-        int64_t cacheBlockSize = tempK->GetStorageShape().GetDim(DIM_1);
+        int64_t cacheBlockSize = 0;
+        if (tempK->GetStorageShape().GetDimNum() == 3U) {
+            tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) / kvHeadNum;
+            tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) / kvHeadNum;
+            cacheBlockSize = tempK->GetStorageShape().GetDim(DIM_1);
+        } else if (tempK->GetStorageShape().GetDimNum() == 5U) {
+            tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) * 16;
+            tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) * 16;
+            cacheBlockSize = tempK->GetStorageShape().GetDim(DIM_3);
+        }
         OP_CHECK_IF(inputBlockSize != cacheBlockSize,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                 "When paged cache is used, the first dim of K and V must be consistent with input blockSize attr"),
@@ -1343,6 +1378,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
     auto tempQ = context->GetInputShape(QUERY_INDEX);
     auto tempK = context->GetInputShape(KEY_INDEX);
+    auto tempV = context->GetInputShape(VALUE_INDEX);
     auto actualQSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
     auto actualKvSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
     auto blockTable = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
@@ -1385,6 +1421,12 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     faInfo.learnableSinkFlag = learnableSinkFlag;
     faInfo.innerPrecise = innerPrecise;
     if (faInfo.pagedCacheFlag) {
+        constexpr int64_t HEAD_SIZE_ALIGN_16 = 16;
+        bool isHeadSizeAligned = (tempQ->GetStorageShape().GetDim(DIM_2) % HEAD_SIZE_ALIGN_16 == 0);
+        if (tempK->GetStorageShape().GetDimNum() == 5U && tempV->GetStorageShape().GetDimNum() == 5U &&
+            isHeadSizeAligned) {
+            faInfo.kvcacheNzFlag = true;
+        }
         faInfo.maxNumBlocksPerBatch = blockTable->GetStorageShape().GetDim(DIM_1);
     }
     if (faInfo.layout == "TND") {
@@ -1413,7 +1455,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.isTilingSink = false;
         int64_t maxQSeqlen = 0;
         int64_t minQSeqlen = INT64_MAX;
-        int64_t minKVSeqlen = INT64_MAX;
+        int64_t maxKVSeqlen = 0;
         for (int32_t batchIdx = 0; batchIdx < batch; batchIdx++) {
             int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
             int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
@@ -1433,17 +1475,20 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
             if (qSeqlen < minQSeqlen) {
                 minQSeqlen = qSeqlen;
             }
-            if (kvSeqlen < minKVSeqlen) {
-                minKVSeqlen = kvSeqlen;
+            if (kvSeqlen > maxKVSeqlen) {
+                maxKVSeqlen = kvSeqlen;
             }
         }
         uint32_t numTasks = faInfo.batch * faInfo.kvHeads;
-        bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (minKVSeqlen >= aicoreNum * 512);
-        bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (minKVSeqlen >= 1024);
-        if ((!faInfo.lseFlag) && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) && !(faInfo.maskType == MaskType::SWA_MASK) && (!faInfo.learnableSinkFlag) && !(faInfo.innerPrecise == 1) &&
+        bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (maxKVSeqlen >= aicoreNum * 512);
+        bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024);
+        if ((faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) &&
+            !(faInfo.maskType == MaskType::SWA_MASK) &&
+            (!faInfo.learnableSinkFlag) &&
+            !(faInfo.innerPrecise == 1) &&
             (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) &&
             (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) &&
-            (minKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
+            (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
             (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
             (isLongSeq || isShortSeq)) {
             faInfo.flashDecodeFlag = true; 
@@ -1514,6 +1559,18 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
             bool isFAIDSize = (tempD <= 256 && tempKD <= 256 && tempVD <= 256) &&
                     (tempD == tempKD && tempD == tempVD);
             bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) && 
+                    (blockSize <= MAX_BLOCK_SIZE);
+            if (isFAIDSize && blockSizeSupported) {
+                usingFAI = true;
+            }
+        } else if (kvDimNum == 5U) {
+            int64_t tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) * 16;
+            int64_t tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) * 16;
+            int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_3);
+            bool isFAIDSize = (tempD <= 256U && tempKD <= 256 && tempVD <= 256) &&
+                    (tempD == tempKD && tempD == tempVD) && (blockSize % BLOCK_SIZE_ALIGN_16 == 0);
+            isFAIDSize = isFAIDSize && !(tempD == 64 || tempD == 128);
+            bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
                     (blockSize <= MAX_BLOCK_SIZE);
             if (isFAIDSize && blockSizeSupported) {
                 usingFAI = true;
@@ -2171,6 +2228,8 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         return TilingFusedInferAttentionScoreV4(context);
+    } else if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) {
+        return TilingFusedInferAttentionScoreArch38(context);
     } else {
         return TilingFusedInferAttentionScore(context);
     }
