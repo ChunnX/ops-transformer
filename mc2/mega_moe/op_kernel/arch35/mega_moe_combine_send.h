@@ -93,6 +93,7 @@ __aicore__ inline void CombineTokensWithUrma(
         GM_ADDR dataAddr = params.workspaceInfo.combineSendDataPtr +
                         static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
         int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
+        Ascend::printf("CombineTokensWithUrma  rankId=%d, processRankId=%d, cnt=%d\n", params.rankId, toRankId, cnt);
         AscendC::PipeBarrier<PIPE_ALL>();
         // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
         gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
@@ -140,8 +141,8 @@ __aicore__ inline void CombineTokensWithUrmaSend(
     if (startRankId >= endRankId || processRankNum == 0) {
         return;
     }
-    AscendC::printf("CombineTokensWithUrmaSend: aivIdx=%d,aivNum=%d, rankId=%d, startRankId=%d, endRankId=%d, processRankNum=%d\n",
-        aivIdx,aivNum, rankId, startRankId, endRankId, processRankNum);
+    //AscendC::printf("CombineTokensWithUrmaSend: aivIdx=%d,aivNum=%d, rankId=%d, startRankId=%d, endRankId=%d, processRankNum=%d\n",
+        //aivIdx,aivNum, rankId, startRankId, endRankId, processRankNum);
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, cntTensorLength / sizeof(int32_t));
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + cntTensorLength, cntTensorLength / sizeof(int32_t));
     
@@ -186,7 +187,7 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         // 修正: CeilAlign 返回类型与 L1_TILE_N 一致, 用 uint32_t
         uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), 
                                     static_cast<int64_t>(L1_TILE_N)));
-        printf("rankId=%d, processRankId=%d, cnt=%d, totalDataBlockCnt=%d\n", rankId, index, cnt, totalDataBlockCnt);
+        //printf("rankId=%d, processRankId=%d, cnt=%d, totalDataBlockCnt=%d\n", rankId, index, cnt, totalDataBlockCnt);
         totalTokenCnt.SetValue(index - startRankId, totalDataBlockCnt);
         if(totalDataBlockCnt == 0) {
             processRank++;
@@ -268,7 +269,7 @@ __aicore__ inline void CombineTokensWithUrmaSend(
             continue;
         }
         hcomm.Drain(GetUrmaCommHandle(mc2Context, dr, rankId));
-        PipeBarrier<PIPE_ALL>();1
+        PipeBarrier<PIPE_ALL>();
     }
     printf("complete drain\n");
 }
