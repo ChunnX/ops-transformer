@@ -19,6 +19,10 @@ import numpy as np
 import math
 import ctypes
 import copy
+import os
+import subprocess
+import tempfile
+import struct
 import cann_ops_transformer
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
@@ -807,6 +811,127 @@ def trans_prefix_actseq(self,list):
                 raise ValueError(f'PA场景下act seq 为非递减数列 act_seq ={list}')
         return list_new
 
+
+def _load_metadata_from_cpu(batch_size, cu_seqlens_q, cu_seqlens_k,
+                            seqused_q_list, seqused_k_list,
+                            cmp_residual_k_list,
+                            max_seqlen_q, max_seqlen_k,
+                            q_head_num, k_head_num, head_dim, topk,
+                            quant_mode, layout_query, layout_key,
+                            sparse_mode, cmp_ratio):
+    """
+    Generate metadata by running the cpu_test binary instead of the NPU op.
+
+    1. Writes a config file from the current test case parameters
+    2. Calls the cpu_test binary
+    3. Reads the raw metadata binary output
+    4. Returns a torch.int32 tensor of shape [1024]
+    """
+    # --- Locate binary, auto-build if missing ---
+    pytest_dir = os.path.dirname(os.path.abspath(__file__))
+    cpu_test_dir = os.path.join(pytest_dir, "cpu_test")
+    binary_path = os.path.join(cpu_test_dir, "build", "qli_v2_metadata_test")
+    if not os.path.isfile(binary_path):
+        print(f"[cpu_test] Binary not found, auto-building...")
+        build_dir = os.path.join(cpu_test_dir, "build")
+        os.makedirs(build_dir, exist_ok=True)
+        cmake_cfg = subprocess.run(
+            ["cmake", "-S", cpu_test_dir, "-B", build_dir],
+            capture_output=True, text=True
+        )
+        if cmake_cfg.returncode != 0:
+            raise RuntimeError(
+                f"cmake configure failed:\n{cmake_cfg.stderr}"
+            )
+        cmake_build = subprocess.run(
+            ["cmake", "--build", build_dir],
+            capture_output=True, text=True
+        )
+        if cmake_build.returncode != 0:
+            raise RuntimeError(
+                f"cmake build failed:\n{cmake_build.stderr}"
+            )
+        if not os.path.isfile(binary_path):
+            raise FileNotFoundError(
+                f"Build succeeded but binary not found at {binary_path}"
+            )
+        print(f"[cpu_test] Build OK: {binary_path}")
+
+    # --- Detect soc_version ---
+    soc_version = os.environ.get("SOC_VERSION", "Ascend950")
+
+    # --- Prepare tensor data as Python lists ---
+    if cu_seqlens_q is not None:
+        cu_sq = [int(x) for x in cu_seqlens_q]
+    else:
+        cu_sq = [0] * (batch_size + 1)
+
+    if cu_seqlens_k is not None:
+        cu_sk = [int(x) for x in cu_seqlens_k]
+    else:
+        cu_sk = [0] * (batch_size + 1)
+
+    sq = [int(x) for x in seqused_q_list] if seqused_q_list else [0] * batch_size
+    sk = [int(x) for x in seqused_k_list] if seqused_k_list else [0] * batch_size
+    crk = [int(x) for x in cmp_residual_k_list] if cmp_residual_k_list else [0] * batch_size
+
+    # --- Write config file ---
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False,
+                                     dir=pytest_dir) as f:
+        config_path = f.name
+        f.write(f"soc_version = {soc_version}\n")
+        f.write(f"batch_size = {batch_size}\n")
+        f.write(f"max_seqlen_q = {int(max_seqlen_q)}\n")
+        f.write(f"max_seqlen_k = {int(max_seqlen_k)}\n")
+        f.write(f"num_heads_q = {q_head_num}\n")
+        f.write(f"num_heads_k = {k_head_num}\n")
+        f.write(f"head_dim = {head_dim}\n")
+        f.write(f"topk = {topk}\n")
+        f.write(f"quant_mode = {quant_mode}\n")
+        f.write(f"layout_q = {layout_query}\n")
+        f.write(f"layout_k = {layout_key}\n")
+        f.write(f"mask_mode = {sparse_mode}\n")
+        f.write(f"cmp_ratio = {cmp_ratio}\n")
+        f.write(f"cu_seqlens_q = {cu_sq}\n")
+        f.write(f"cu_seqlens_k = {cu_sk}\n")
+        f.write(f"seqused_q = {sq}\n")
+        f.write(f"seqused_k = {sk}\n")
+        f.write(f"cmp_residual_k = {crk}\n")
+
+    # --- Run binary ---
+    with tempfile.NamedTemporaryFile(suffix='.bin', delete=False,
+                                     dir=pytest_dir) as f:
+        meta_out_path = f.name
+
+    try:
+        env = os.environ.copy()
+        env["METADATA_OUTPUT"] = meta_out_path
+        result = subprocess.run(
+            [binary_path, config_path],
+            capture_output=True, text=True, env=env, timeout=30
+        )
+        if result.returncode != 0:
+            print(f"[cpu_test stdout]\n{result.stdout}")
+            print(f"[cpu_test stderr]\n{result.stderr}")
+            raise RuntimeError(
+                f"cpu_test binary failed with return code {result.returncode}"
+            )
+
+        # --- Read raw metadata (1024 x int32 = 4096 bytes) ---
+        with open(meta_out_path, 'rb') as f:
+            raw_data = f.read()
+
+        metadata_values = list(struct.unpack(f'{len(raw_data) // 4}i', raw_data))
+        metadata = torch.tensor(metadata_values, dtype=torch.int32)
+        return metadata
+
+    finally:
+        # Cleanup temp files
+        if os.path.exists(config_path):
+            os.unlink(config_path)
+        if os.path.exists(meta_out_path):
+            os.unlink(meta_out_path)
+
 def qliv2_output_single(params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,\
     block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
@@ -1066,24 +1191,27 @@ def qliv2_output_single(params):
     # max_seqlen 从个体长度中取
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
-    metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
-                                    cu_seqlens_q = cu_seqlens_query,
-                                    cu_seqlens_k = cu_seqlens_key,
-                                    seqused_q = seqused_q_tensor,
-                                    seqused_k = seqused_k_tensor,
-                                    cmp_residual_k = cmp_residual_k_for_npu,
-                                    batch_size = batch_size,
-                                    max_seqlen_q = max_seqlen_q_meta,
-                                    max_seqlen_k = max_seqlen_k_meta,
-                                    num_heads_q = q_head_num,
-                                    num_heads_k = k_head_num,
-                                    head_dim = head_dim,
-                                    topk = sparse_count,
-                                    quant_mode = quant_mode,
-                                    mask_mode = sparse_mode,
-                                    layout_q = layout_query,
-                                    layout_k = layout_key,
-                                    cmp_ratio = cmp_ratio)
+
+    # Use cpu_test binary to generate metadata (instead of NPU op)
+    metadata = _load_metadata_from_cpu(
+        batch_size=batch_size,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        seqused_q_list=lengths_q_list,
+        seqused_k_list=lengths_k_list,
+        cmp_residual_k_list=cmp_residual_k_for_cpu,
+        max_seqlen_q=max_seqlen_q_meta,
+        max_seqlen_k=max_seqlen_k_meta,
+        q_head_num=q_head_num,
+        k_head_num=k_head_num,
+        head_dim=head_dim,
+        topk=sparse_count,
+        quant_mode=quant_mode,
+        layout_query=layout_query,
+        layout_key=layout_key,
+        sparse_mode=sparse_mode,
+        cmp_ratio=cmp_ratio,
+    )
 
     metadata = metadata.npu()
     npu_result, _ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,

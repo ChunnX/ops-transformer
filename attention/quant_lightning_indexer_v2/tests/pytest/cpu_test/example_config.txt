@@ -1,0 +1,51 @@
+# ============================================================
+# QLI V2 Metadata - Example Config File
+# ============================================================
+# Format: key = value
+#   - Lines starting with '#' are comments
+#   - Tensors use array syntax: key = [v1, v2, v3, ...]
+#   - If a tensor is omitted, it will be auto-generated:
+#       seqused_q      -> [max_seqlen_q*1, max_seqlen_q*2, ...]
+#       seqused_k      -> [max_seqlen_k*1, max_seqlen_k*2, ...]
+#       cu_seqlens_q   -> prefix_sum(seqused_q), starting with 0
+#       cu_seqlens_k   -> prefix_sum(seqused_k), starting with 0
+#       cmp_residual_k -> [0, 0, ...]
+# ============================================================
+
+# --- Required Attributes ---
+soc_version   = Ascend950
+num_heads_q   = 8
+num_heads_k   = 1
+head_dim      = 128
+topk          = 8
+
+# --- Optional Attributes ---
+batch_size    = 2
+max_seqlen_q  = 4
+max_seqlen_k  = 128
+layout_q      = BSND
+layout_k      = BSND
+mask_mode     = 3
+cmp_ratio     = 1
+quant_mode    = 0
+aic_core_num  = 36
+aiv_core_num  = 72
+
+# --- Input Tensors ---
+# seqused_q: actual query sequence length per batch, shape [batch_size]
+seqused_q = [4, 8]
+
+# seqused_k: actual key sequence length per batch, shape [batch_size]
+seqused_k = [128, 256]
+
+# cu_seqlens_q: cumulative query sequence lengths, shape [batch_size+1]
+# If omitted, auto-computed as prefix sum of seqused_q
+cu_seqlens_q = [0, 4, 12]
+
+# cu_seqlens_k: cumulative key sequence lengths, shape [batch_size+1]
+# If omitted, auto-computed as prefix sum of seqused_k
+cu_seqlens_k = [0, 128, 384]
+
+# cmp_residual_k: compression residual per batch, shape [batch_size]
+# If omitted, defaults to all zeros
+cmp_residual_k = [0, 0]
