@@ -93,7 +93,7 @@ __aicore__ inline void CombineTokensWithUrma(
         GM_ADDR dataAddr = params.workspaceInfo.combineSendDataPtr +
                         static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
         int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
-        Ascend::printf("CombineTokensWithUrma  rankId=%d, processRankId=%d, cnt=%d\n", params.rankId, toRankId, cnt);
+        printf("CombineTokensWithUrma  rankId=%d, processRankId=%d, cnt=%d\n", params.rankId, toRankId, cnt);
         AscendC::PipeBarrier<PIPE_ALL>();
         // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
         gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
