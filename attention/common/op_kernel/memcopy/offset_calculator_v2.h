@@ -285,11 +285,12 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T, bool WITH_ZERO_HEAD>
+template <GmFormat FORMAT, typename ACTLEN_T, bool WITH_ZERO_HEAD, typename TensorType>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH_ZERO_HEAD> {
     GmLayout<FORMAT> gmLayout;
     using SeqLensQParserType = ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD>;
     SeqLensQParserType actualSeqLensQParser;
+    TensorType tensor_;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
@@ -306,11 +307,40 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
     }
 
+    __aicore__ inline void Init(TensorType tensor, GlobalTensor<ACTLEN_T> actualSeqLengthsGmQ, uint32_t actualLenQDims)
+    {
+        actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualLenQDims);
+        tensor_ = tensor;
+    }
+
+    __aicore__ inline void Init(TensorType tensor, const SeqLensQParserType& parser)
+    {
+        actualSeqLensQParser = parser;
+        tensor_ = tensor;
+    }
+
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t gIdx, uint32_t s1Idx, uint32_t dIdx)
     {
         uint64_t tIdx = actualSeqLensQParser.GetTBase(bIdx) + s1Idx;
         uint64_t offset = tIdx * GetStrideT() + n2Idx * GetStrideN2() + gIdx * GetStrideG() + dIdx * GetStrideD();
         return offset;
+    }
+
+    __aicore__ inline auto GetCoord(uint32_t bIdx, uint32_t n2Idx, uint32_t gIdx, uint32_t s1Idx, uint32_t dIdx)
+    {
+        /*
+            Init(gmTensor) ==> Layout ==> Shape / Stride ==> Coord
+            替代 offset 和 GmLayout
+        */
+        auto layout = tensor_.Layout();
+        auto shape = layout.Shape();
+        auto stride = layout.Stride();
+        auto numHead = AscendC::Te::Get<3>(shape);
+        auto leftUpCoord = AscendC::Te::MakeCoord(
+            actualSeqLensQParser.GetActualSeqLength(bIdx) + gS1Idx,
+            n2Idx * dDealSize
+        ); 
+        return leftUpCoord;
     }
 
     // Get Stride
