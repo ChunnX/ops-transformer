@@ -4,7 +4,7 @@ import json
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from .st_cases import CaseResult
 from .timing import TimingCollector
@@ -14,7 +14,12 @@ class ResultReporter:
     def __init__(self, out_dir: Path | str):
         self.out_dir = Path(out_dir)
 
-    def write(self, results: Iterable[CaseResult], timings: TimingCollector | None = None) -> None:
+    def write(
+        self,
+        results: Iterable[CaseResult],
+        timings: TimingCollector | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         start = time.perf_counter()
         result_list = list(results)
         self.out_dir.mkdir(parents=True, exist_ok=True)
@@ -27,6 +32,8 @@ class ResultReporter:
         summary = {"total": len(result_list)}
         for status in ("passed", "failed", "error", "unsupported", "skipped"):
             summary[status] = counts.get(status, 0)
+        if metadata:
+            summary.update(metadata)
         if timings is not None:
             timings.add("report_write_ms", (time.perf_counter() - start) * 1000.0)
             summary["timings"] = timings.to_json_dict()

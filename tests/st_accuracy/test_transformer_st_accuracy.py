@@ -1,4 +1,5 @@
 import json
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -7,19 +8,29 @@ from pathlib import Path
 
 from scripts.st_accuracy import run_st_accuracy
 from scripts.st_accuracy import coverage as coverage_module
+from scripts.st_accuracy import runner as runner_module
 from scripts.st_accuracy import st_cases as st_cases_module
 from scripts.st_accuracy import taxonomy as taxonomy_module
 from scripts.st_accuracy.adapters import get_adapter
 from scripts.st_accuracy.inventory import discover_operators
 from scripts.st_accuracy.inventory import Operator
 from scripts.st_accuracy.native import NativeRunner
+from scripts.st_accuracy.report import ResultReporter
 from scripts.st_accuracy.runner import CaseSelector
-from scripts.st_accuracy.st_cases import StCase, load_cases
+from scripts.st_accuracy.st_cases import CaseResult, StCase, load_cases
 
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def _native_runner_sources() -> str:
+    paths = [
+        Path("scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp"),
+        Path("scripts/st_accuracy/native/attention_runner.inc"),
+    ]
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths if path.exists())
 
 
 def _write_json(path: Path, payload) -> None:
@@ -414,6 +425,140 @@ class TransformerStAccuracyTest(unittest.TestCase):
 
         self.assertTrue(opapi_lib.as_posix().endswith("/opp/vendors/custom_transformer/op_api/lib/libcust_opapi.so"))
 
+    def test_native_runner_binary_cache_is_shared_across_output_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / "scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp", "int main() { return 0; }\n")
+
+            first = NativeRunner(repo_root=root, out_dir=root / "run_a", vendor="custom", soc="ascend910b", device=0)
+            second = NativeRunner(repo_root=root, out_dir=root / "run_b", vendor="custom", soc="ascend910b", device=0)
+
+        self.assertEqual(first.binary, second.binary)
+        self.assertIn("native_cache", first.binary.as_posix())
+        self.assertNotIn("run_a/native", first.binary.as_posix())
+        self.assertNotIn("run_b/native", first.binary.as_posix())
+
+    def test_native_runner_load_diagnostics_include_opapi_source_and_hash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / "scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp", "int main() { return 0; }\n")
+            _write(root / "build/libcust_opapi.so", "fake opapi")
+            runner = NativeRunner(repo_root=root, out_dir=root / "out", vendor="custom", soc="ascend910b", device=0)
+
+            diagnostics = runner.load_diagnostics()
+
+        expected_hash = hashlib.sha256(b"fake opapi").hexdigest()
+        self.assertEqual(diagnostics["opapi_lib"]["source"], "build")
+        self.assertTrue(diagnostics["opapi_lib"]["exists"])
+        self.assertEqual(diagnostics["opapi_lib"]["sha256"], expected_hash)
+        self.assertTrue(diagnostics["opapi_lib"]["path"].endswith("build/libcust_opapi.so"))
+        self.assertEqual(diagnostics["runner_binary"]["cache_key"], runner.cache_key)
+
+    def test_result_reporter_writes_native_metadata_to_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "report"
+            ResultReporter(out_dir).write(
+                [
+                    CaseResult(
+                        op_name="op",
+                        api="Api",
+                        case_id=0,
+                        json_path="op/tests/st/aclnnApi/all.json",
+                        status="passed",
+                    )
+                ],
+                metadata={"native": {"runner_binary": {"cache_key": "abc"}}},
+            )
+
+            summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(summary["native"]["runner_binary"]["cache_key"], "abc")
+
+    def test_run_cases_exposes_native_diagnostics_metadata(self):
+        class FakeAdapter:
+            name = "Fake"
+
+            def supports(self, case):
+                return True, ""
+
+        class FakeNativeRunner:
+            def __init__(self, **_kwargs):
+                pass
+
+            def run_many(self, items):
+                return [case.to_result(status="passed", message="ok") for case, _adapter in items]
+
+            def load_diagnostics(self):
+                return {"runner_binary": {"cache_key": "fake-cache"}}
+
+        case = StCase(
+            op_name="fake_op",
+            category="attention",
+            op_path=Path("attention/fake_op"),
+            api_dir="aclnnFake",
+            aclnn_name="Fake",
+            json_path=Path("attention/fake_op/tests/st/aclnnFake/all.json"),
+            case_id=0,
+            raw={"inputs": []},
+        )
+        original_get_adapter = runner_module.get_adapter
+        original_native_runner = runner_module.NativeRunner
+        metadata = {}
+
+        runner_module.get_adapter = lambda _name: FakeAdapter()
+        runner_module.NativeRunner = FakeNativeRunner
+        try:
+            results = runner_module.run_cases(
+                [case],
+                repo_root=Path("."),
+                out_dir=Path("build/st_accuracy/fake"),
+                vendor="custom",
+                soc="ascend910b",
+                device=0,
+                execute=True,
+                run_metadata=metadata,
+            )
+        finally:
+            runner_module.get_adapter = original_get_adapter
+            runner_module.NativeRunner = original_native_runner
+
+        self.assertEqual([result.status for result in results], ["passed"])
+        self.assertEqual(metadata["native"]["runner_binary"]["cache_key"], "fake-cache")
+
+    def test_adapter_utils_expose_shared_case_helpers(self):
+        from scripts.st_accuracy import adapter_utils
+
+        case = StCase(
+            op_name="fake_op",
+            category="attention",
+            op_path=Path("attention/fake_op"),
+            api_dir="aclnnFake",
+            aclnn_name="Fake",
+            json_path=Path("attention/fake_op/tests/st/aclnnFake/all.json"),
+            case_id=0,
+            raw={
+                "inputs": [
+                    {"name": "x", "type": "tensor", "dtype": "fp16", "shape": [2, 3], "range_values": [-1.0, 1.0]},
+                    {"name": "alpha", "type": "scalar", "dtype": "fp32", "range_values": 0.5},
+                    {"name": "enabled", "type": "attr", "dtype": "bool", "range_values": True},
+                ]
+            },
+        )
+
+        self.assertEqual(adapter_utils.numel([2, 3]), 6)
+        self.assertEqual(adapter_utils.item_by_name(adapter_utils.tensor_items(case), "x")["dtype"], "fp16")
+        self.assertEqual(adapter_utils.scalar_items(case)[0]["name"], "alpha")
+        self.assertIs(adapter_utils.bool_attr_value(case.flat_inputs, "enabled"), True)
+
+    def test_attention_adapters_are_registered_from_dedicated_module(self):
+        from scripts.st_accuracy import attention_adapters
+
+        lightning = get_adapter("aclnnLightningIndexer")
+        recurrent = get_adapter("RecurrentGatedDeltaRule")
+
+        self.assertIsInstance(lightning, attention_adapters.LightningIndexerAdapter)
+        self.assertIsInstance(recurrent, attention_adapters.RecurrentGatedDeltaRuleAdapter)
+
     def test_lightning_indexer_adapter_supports_case_and_serializes_batch_fields(self):
         case = StCase(
             op_name="lightning_indexer",
@@ -520,7 +665,7 @@ class TransformerStAccuracyTest(unittest.TestCase):
             )
 
     def test_attention_native_runner_declares_golden_comparison_paths(self):
-        source = Path("scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp").read_text(encoding="utf-8")
+        source = _native_runner_sources()
 
         self.assertIn("GoldenLightningIndexer", source)
         self.assertIn("CompareLightningIndexerResult", source)
@@ -530,13 +675,13 @@ class TransformerStAccuracyTest(unittest.TestCase):
         self.assertIn("CompareRecurrentGatedDeltaRuleResult(outHost", source)
 
     def test_lightning_indexer_native_runner_uses_empty_values_shape_when_values_are_disabled(self):
-        source = Path("scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp").read_text(encoding="utf-8")
+        source = _native_runner_sources()
 
         self.assertIn("valuesShape = args.returnValues ? outShape : std::vector<int64_t>{0}", source)
         self.assertIn("CreateGeneratedTensorByDtype(args.dtype, valuesShape", source)
 
     def test_attention_native_runner_reports_internal_stage_timings(self):
-        source = Path("scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp").read_text(encoding="utf-8")
+        source = _native_runner_sources()
 
         self.assertIn("NativeStageTimings", source)
         self.assertIn("PrintStageTimingsJson", source)
@@ -550,6 +695,36 @@ class TransformerStAccuracyTest(unittest.TestCase):
             "compare_ms",
         ):
             self.assertIn(timing_key, source)
+
+    def test_attention_native_runner_is_split_into_included_file(self):
+        main_source = Path("scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp").read_text(encoding="utf-8")
+        attention_source = Path("scripts/st_accuracy/native/attention_runner.inc").read_text(encoding="utf-8")
+
+        self.assertIn('#include "attention_runner.inc"', main_source)
+        self.assertIn("GoldenLightningIndexer", attention_source)
+        self.assertIn("RunLightningIndexerWithStream", attention_source)
+        self.assertIn("GoldenRecurrentGatedDeltaRule", attention_source)
+        self.assertIn("RunRecurrentGatedDeltaRuleWithStream", attention_source)
+
+    def test_native_runner_cache_context_hashes_attention_split_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            main_source = '#include "attention_runner.inc"\nint main() { return 0; }\n'
+            attention_source = "// attention split\n"
+            _write(root / "scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp", main_source)
+            _write(root / "scripts/st_accuracy/native/attention_runner.inc", attention_source)
+
+            runner = NativeRunner(repo_root=root, out_dir=root / "out", vendor="custom", soc="ascend910b", device=0)
+
+        source_files = {item["path"]: item["sha256"] for item in runner.compile_context["source_files"]}
+        self.assertEqual(
+            source_files["scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp"],
+            hashlib.sha256(main_source.encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            source_files["scripts/st_accuracy/native/attention_runner.inc"],
+            hashlib.sha256(attention_source.encode("utf-8")).hexdigest(),
+        )
 
 
 if __name__ == "__main__":

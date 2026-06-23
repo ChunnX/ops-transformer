@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from .adapters import get_adapter
 from .native import NativeRunner
@@ -51,6 +51,7 @@ def run_cases(
     device: int,
     execute: bool = True,
     timings: TimingCollector | None = None,
+    run_metadata: dict[str, Any] | None = None,
 ) -> list[CaseResult]:
     native_runner = NativeRunner(repo_root=repo_root, out_dir=out_dir, vendor=vendor, soc=soc, device=device, timings=timings)
     results: list[CaseResult | None] = []
@@ -73,6 +74,8 @@ def run_cases(
 
     if executable:
         batch_results = native_runner.run_many([(case, adapter) for _index, case, adapter in executable])
+        if run_metadata is not None:
+            run_metadata["native"] = native_runner.load_diagnostics()
         for (index, _case, _adapter), result in zip(executable, batch_results):
             results[index] = result
 

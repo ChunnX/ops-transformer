@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -43,8 +44,13 @@ class NativeRunner:
         self.soc = soc
         self.device = device
         self.timings = timings
-        self.source = repo_root / "scripts" / "st_accuracy" / "native" / "st_accuracy_aclnn_runner.cpp"
-        self.binary = out_dir / "native" / "st_accuracy_aclnn_runner"
+        self.source_dir = repo_root / "scripts" / "st_accuracy" / "native"
+        self.source = self.source_dir / "st_accuracy_aclnn_runner.cpp"
+        self.source_files = [self.source, self.source_dir / "attention_runner.inc"]
+        self.compile_context = self._build_compile_context()
+        self.cache_key = self._build_cache_key(self.compile_context)
+        self.cache_dir = repo_root / "build" / "st_accuracy" / "native_cache" / self.cache_key
+        self.binary = self.cache_dir / "st_accuracy_aclnn_runner"
 
     def run(self, case: StCase, adapter: Adapter) -> CaseResult:
         return self.run_many([(case, adapter)])[0]
@@ -112,39 +118,34 @@ class NativeRunner:
         return self.timings.measure(key)
 
     def _ensure_built(self) -> None:
-        if self.binary.is_file() and self.binary.stat().st_mtime >= self.source.stat().st_mtime:
+        if self.binary.is_file():
             return
-        ascend_home = os.environ.get("ASCEND_HOME_PATH", "/usr/local/Ascend/ascend-toolkit/latest")
-        vendor_root = Path(ascend_home) / "opp" / "vendors" / f"{self.vendor}_transformer" / "op_api"
-        include_path = Path(ascend_home) / "include"
-        lib_path = Path(ascend_home) / "lib64"
-        vendor_include = vendor_root / "include"
-        vendor_lib = vendor_root / "lib"
         self.binary.parent.mkdir(parents=True, exist_ok=True)
         cmd = [
-            "g++",
+            self.compile_context["compiler"],
             str(self.source),
-            "-std=c++17",
-            "-O2",
+            self.compile_context["std_flag"],
+            self.compile_context["opt_flag"],
             "-Wno-psabi",
             "-I",
-            str(include_path),
+            self.compile_context["include_path"],
             "-I",
-            str(include_path / "aclnnop"),
+            self.compile_context["aclnnop_include_path"],
             "-I",
-            str(vendor_include),
+            self.compile_context["vendor_include_path"],
             "-L",
-            str(vendor_lib),
+            self.compile_context["vendor_lib_path"],
             "-L",
-            str(lib_path),
+            self.compile_context["lib_path"],
             "-lascendcl",
             "-lnnopbase",
             "-ldl",
             "-o",
             str(self.binary),
-            f"-Wl,-rpath={vendor_lib}",
+            f"-Wl,-rpath={self.compile_context['vendor_lib_path']}",
         ]
         subprocess.run(cmd, cwd=self.repo_root, check=True)
+        self._write_build_manifest(cmd)
 
     def _write_batch_file(self, items: list[tuple[StCase, Adapter]]) -> Path:
         batch_file = self.out_dir / "native" / "batch_cases.tsv"
@@ -291,11 +292,108 @@ class NativeRunner:
         return "\t".join(f"{key}={value}" for key, value in fields.items())
 
     def _vendor_opapi_lib(self) -> Path:
+        return self._opapi_lib_with_source()[0]
+
+    def _opapi_lib_with_source(self) -> tuple[Path, str]:
         build_lib = self.repo_root / "build" / "libcust_opapi.so"
         if build_lib.is_file():
-            return build_lib
+            return build_lib, "build"
         ascend_home = os.environ.get("ASCEND_HOME_PATH", "/usr/local/Ascend/ascend-toolkit/latest")
-        return Path(ascend_home) / "opp" / "vendors" / f"{self.vendor}_transformer" / "op_api" / "lib" / "libcust_opapi.so"
+        return (
+            Path(ascend_home)
+            / "opp"
+            / "vendors"
+            / f"{self.vendor}_transformer"
+            / "op_api"
+            / "lib"
+            / "libcust_opapi.so",
+            "vendor",
+        )
+
+    def load_diagnostics(self) -> dict[str, Any]:
+        opapi_lib, opapi_source = self._opapi_lib_with_source()
+        manifest_path = self.cache_dir / "manifest.json"
+        return {
+            "vendor": self.vendor,
+            "soc": self.soc,
+            "runner_binary": {
+                "path": self.binary.as_posix(),
+                "exists": self.binary.is_file(),
+                "cache_key": self.cache_key,
+                "cache_dir": self.cache_dir.as_posix(),
+                "source_sha256": self.compile_context["source_sha256"],
+                "source_files": self.compile_context["source_files"],
+                "manifest_path": manifest_path.as_posix(),
+            },
+            "opapi_lib": {
+                "path": opapi_lib.as_posix(),
+                "source": opapi_source,
+                "exists": opapi_lib.is_file(),
+                "sha256": _sha256_file(opapi_lib),
+            },
+        }
+
+    def _build_compile_context(self) -> dict[str, Any]:
+        ascend_home = Path(os.environ.get("ASCEND_HOME_PATH", "/usr/local/Ascend/ascend-toolkit/latest"))
+        vendor_root = ascend_home / "opp" / "vendors" / f"{self.vendor}_transformer" / "op_api"
+        include_path = ascend_home / "include"
+        source_files = self._source_file_hashes()
+        return {
+            "source_sha256": _aggregate_source_sha256(source_files),
+            "source_files": source_files,
+            "vendor": self.vendor,
+            "soc": self.soc,
+            "compiler": "g++",
+            "std_flag": "-std=c++17",
+            "opt_flag": "-O2",
+            "ascend_home": ascend_home.as_posix(),
+            "include_path": include_path.as_posix(),
+            "aclnnop_include_path": (include_path / "aclnnop").as_posix(),
+            "lib_path": (ascend_home / "lib64").as_posix(),
+            "vendor_include_path": (vendor_root / "include").as_posix(),
+            "vendor_lib_path": (vendor_root / "lib").as_posix(),
+        }
+
+    def _source_file_hashes(self) -> list[dict[str, str | None]]:
+        files: list[dict[str, str | None]] = []
+        for source_file in self.source_files:
+            files.append(
+                {
+                    "path": source_file.relative_to(self.repo_root).as_posix(),
+                    "sha256": _sha256_file(source_file),
+                }
+            )
+        return files
+
+    def _build_cache_key(self, compile_context: dict[str, Any]) -> str:
+        payload = json.dumps(compile_context, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
+
+    def _write_build_manifest(self, cmd: list[str]) -> None:
+        manifest = {
+            "cache_key": self.cache_key,
+            "binary": self.binary.as_posix(),
+            "compile_context": self.compile_context,
+            "compile_command": cmd,
+        }
+        with (self.cache_dir / "manifest.json").open("w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+
+
+def _sha256_file(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _aggregate_source_sha256(source_files: list[dict[str, str | None]]) -> str:
+    payload = json.dumps(source_files, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _tensor_list_shapes_arg(values: list[dict[str, Any]]) -> str:

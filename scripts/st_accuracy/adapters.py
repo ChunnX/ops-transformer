@@ -1,78 +1,54 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import reduce
-from operator import mul
 from typing import Any
 
+from .adapter_utils import ACL_DTYPE_ATTR_TO_NAME
+from .adapter_utils import ACL_DTYPE_NAME_TO_ATTR
+from .adapter_utils import BOOL_UNARY_DTYPES
+from .adapter_utils import CAST_NUMEL_LIMIT
+from .adapter_utils import CHUNK_CAT_DTYPES
+from .adapter_utils import DIVS_NUMEL_LIMIT
+from .adapter_utils import FLOAT_DTYPES
+from .adapter_utils import FLOAT_OR_INTEGER_DTYPES
+from .adapter_utils import FLOAT_OR_SIGNED_INTEGER_DTYPES
+from .adapter_utils import GLOBAL_MAX_POOL_NUMEL_LIMIT
+from .adapter_utils import INTEGER_OUTPUT_RANGES
+from .adapter_utils import MASKED_SELECT_NUMEL_LIMIT
+from .adapter_utils import REDUCE_VAR_DTYPES
+from .adapter_utils import REDUCE_VAR_MEAN_DTYPES
+from .adapter_utils import ROUND_DTYPES
+from .adapter_utils import SCALAR_CLIP_DTYPES
+from .adapter_utils import SPLIT_WITH_SIZE_DTYPES
+from .adapter_utils import SPLIT_WITH_SIZE_NUMEL_LIMIT
+from .adapter_utils import SUPPORTED_DTYPES
+from .adapter_utils import TENSOR_LIST_NUMEL_LIMIT
+from .adapter_utils import TRUNC_DTYPES
+from .adapter_utils import Adapter
+from .adapter_utils import attr_value as _attr_value
+from .adapter_utils import bool_attr_value as _bool_attr_value
+from .adapter_utils import broadcast_shape as _broadcast_shape
+from .adapter_utils import broadcast_shape_many as _broadcast_shape_many
+from .adapter_utils import broadcastable as _broadcastable
+from .adapter_utils import int_attr_value as _int_attr_value
+from .adapter_utils import int_attr_values as _int_attr_values
+from .adapter_utils import is_numeric_range as _is_numeric_range
+from .adapter_utils import item_by_name as _item_by_name
+from .adapter_utils import numel as _numel
+from .adapter_utils import numeric_range_bounds as _numeric_range_bounds
+from .adapter_utils import numeric_scalar_value as _numeric_scalar_value
+from .adapter_utils import scalar_by_name as _scalar_by_name
+from .adapter_utils import scalar_items as _scalar_items
+from .adapter_utils import shape_values as _shape_values
+from .adapter_utils import support_binary_tensors as _support_binary_tensors
+from .adapter_utils import support_dtype_attr_matches_tensor as _support_dtype_attr_matches_tensor
+from .adapter_utils import support_scalars as _support_scalars
+from .adapter_utils import support_unary_tensor as _support_unary_tensor
+from .adapter_utils import tensor_items as _tensor_items
+from .adapter_utils import tensor_list_items as _tensor_list_items
+from .attention_adapters import LightningIndexerAdapter
+from .attention_adapters import RecurrentGatedDeltaRuleAdapter
 from .st_cases import StCase
-
-
-SUPPORTED_DTYPES = {"fp32", "fp64", "fp16", "bf16", "int32", "int64", "int16", "int8", "uint8", "bool"}
-FLOAT_DTYPES = {"fp32", "fp64", "fp16", "bf16"}
-INTEGER_DTYPES = {"int32", "int64", "int16", "int8", "uint8"}
-SIGNED_INTEGER_DTYPES = {"int32", "int64", "int16", "int8"}
-FLOAT_OR_INTEGER_DTYPES = FLOAT_DTYPES | INTEGER_DTYPES
-FLOAT_OR_SIGNED_INTEGER_DTYPES = FLOAT_DTYPES | SIGNED_INTEGER_DTYPES
-ROUND_DTYPES = FLOAT_DTYPES | {"int32", "int64"}
-TRUNC_DTYPES = {"fp32", "fp16", "bf16"}
-BOOL_UNARY_DTYPES = {"fp32", "fp16", "bf16"}
-SCALAR_CLIP_DTYPES = FLOAT_OR_INTEGER_DTYPES
-GLOBAL_MAX_POOL_NUMEL_LIMIT = 10_000_000
-DIVS_NUMEL_LIMIT = 10_000_000
-CAST_NUMEL_LIMIT = 10_000_000
-TENSOR_LIST_NUMEL_LIMIT = 10_000_000
-MASKED_SELECT_NUMEL_LIMIT = 10_000_000
-SPLIT_WITH_SIZE_NUMEL_LIMIT = 10_000_000
-CHUNK_CAT_DTYPES = {"fp32", "fp16", "bf16"}
-SPLIT_WITH_SIZE_DTYPES = {"fp32", "fp16", "int64", "int32", "int16", "int8", "bool"}
-REDUCE_VAR_DTYPES = {"fp32", "fp16", "bf16"}
-REDUCE_VAR_MEAN_DTYPES = {"fp32", "fp16"}
-ACL_DTYPE_ATTR_TO_NAME = {
-    0: "fp32",
-    1: "fp16",
-    2: "int8",
-    3: "int32",
-    4: "uint8",
-    6: "int16",
-    9: "int64",
-    11: "fp64",
-    12: "bool",
-    27: "bf16",
-}
-ACL_DTYPE_NAME_TO_ATTR = {name: code for code, name in ACL_DTYPE_ATTR_TO_NAME.items()}
-INTEGER_OUTPUT_RANGES = {
-    "int8": (-(2**7), 2**7 - 1),
-    "uint8": (0, 2**8 - 1),
-    "int16": (-(2**15), 2**15 - 1),
-    "int32": (-(2**31), 2**31 - 1),
-    "int64": (-(2**63), 2**63 - 1),
-}
-
-
-@dataclass(frozen=True)
-class Adapter:
-    name: str
-    tensor_inputs: int
-    scalar_inputs: int
-    supported_dtypes: frozenset[str] = frozenset(SUPPORTED_DTYPES)
-
-    def supports(self, case: StCase) -> tuple[bool, str]:
-        inputs = case.flat_inputs
-        tensors = [item for item in inputs if item.get("type") == "tensor"]
-        scalars = [item for item in inputs if item.get("type") == "scalar"]
-        if len(tensors) != self.tensor_inputs:
-            return False, f"{self.name} expects {self.tensor_inputs} tensor inputs"
-        if len(scalars) != self.scalar_inputs:
-            return False, f"{self.name} expects {self.scalar_inputs} scalar inputs"
-        for item in tensors + scalars:
-            dtype = str(item.get("dtype"))
-            if dtype not in self.supported_dtypes:
-                return False, f"dtype {dtype} is not supported by V1 native runner"
-            shape = item.get("shape")
-            if shape is not None and _numel(shape) <= 0:
-                return False, "zero-sized tensors are not supported by V1 native runner"
-        return True, ""
 
 
 @dataclass(frozen=True)
@@ -1150,450 +1126,6 @@ class ChannelShuffleAdapter(Adapter):
             return False, "aclnnChannelShuffle channels attr is invalid"
         if channels % groups != 0:
             return False, "aclnnChannelShuffle channels must be divisible by groups"
-        return True, ""
-
-
-def _numel(shape: Any) -> int:
-    if not isinstance(shape, list):
-        return 1
-    if not shape:
-        return 1
-    try:
-        return int(reduce(mul, (int(dim) for dim in shape), 1))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _tensor_items(case: StCase) -> list[dict[str, Any]]:
-    return case.tensor_items
-
-
-def _tensor_list_items(case: StCase) -> list[dict[str, Any]]:
-    return case.tensor_list_items
-
-
-def _scalar_items(case: StCase) -> list[dict[str, Any]]:
-    return case.scalar_items
-
-
-def _scalar_by_name(scalars: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
-    for scalar in scalars:
-        if scalar.get("name") == name:
-            return scalar
-    return None
-
-
-def _item_by_name(items: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
-    for item in items:
-        if item.get("name") == name:
-            return item
-    return None
-
-
-def _support_binary_tensors(
-    name: str, tensors: list[dict[str, Any]], supported_dtypes: set[str] | frozenset[str] = SUPPORTED_DTYPES
-) -> tuple[bool, str]:
-    for tensor in tensors:
-        supported, reason = _support_unary_tensor(name, tensor, supported_dtypes)
-        if not supported:
-            return supported, reason
-    dtypes = {str(tensor.get("dtype")) for tensor in tensors}
-    if len(dtypes) != 1:
-        return False, f"{name} mixed tensor dtype promotion is not supported by native runner"
-    if not _broadcastable(tensors[0].get("shape"), tensors[1].get("shape")):
-        return False, f"{name} input shapes are not broadcastable"
-    return True, ""
-
-
-def _support_unary_tensor(
-    name: str,
-    tensor: dict[str, Any],
-    supported_dtypes: set[str] | frozenset[str],
-    allow_zero_sized: bool = False,
-    allow_range_fallback: bool = False,
-) -> tuple[bool, str]:
-    dtype = str(tensor.get("dtype"))
-    if dtype not in supported_dtypes:
-        return False, f"dtype {dtype} is not supported by {name} native runner"
-    shape = tensor.get("shape")
-    if shape is not None and _numel(shape) <= 0 and not allow_zero_sized:
-        return False, "zero-sized tensors are not supported by V2 elementwise native runner"
-    range_values = tensor.get("range_values")
-    if not _is_numeric_range(range_values) and not (allow_range_fallback and _is_fallback_range_metadata(range_values)):
-        return False, f"{name} non-numeric range is not supported by native runner"
-    return True, ""
-
-
-def _shape_values(value: Any) -> list[int] | None:
-    if not isinstance(value, list):
-        return None
-    shape: list[int] = []
-    for dim in value:
-        if isinstance(dim, bool) or not isinstance(dim, int):
-            return None
-        shape.append(dim)
-    return shape
-
-
-def _support_scalars(name: str, scalars: list[dict[str, Any]]) -> tuple[bool, str]:
-    for scalar in scalars:
-        dtype = str(scalar.get("dtype"))
-        if dtype not in SUPPORTED_DTYPES:
-            return False, f"scalar dtype {dtype} is not supported by {name} native runner"
-        if not _is_numeric_range(scalar.get("range_values")):
-            return False, f"{name} scalar non-numeric range is not supported by native runner"
-    return True, ""
-
-
-def _broadcastable(a: Any, b: Any) -> bool:
-    return _broadcast_shape(a, b) is not None
-
-
-def _broadcast_shape(a: Any, b: Any) -> list[int] | None:
-    shape_a = _shape_values(a)
-    shape_b = _shape_values(b)
-    if shape_a is None or shape_b is None:
-        return None
-    rank = max(len(shape_a), len(shape_b))
-    result: list[int] = []
-    for index in range(rank):
-        a_dim = 1 if index < rank - len(shape_a) else shape_a[index - (rank - len(shape_a))]
-        b_dim = 1 if index < rank - len(shape_b) else shape_b[index - (rank - len(shape_b))]
-        if a_dim != b_dim and a_dim != 1 and b_dim != 1:
-            return None
-        result.append(max(a_dim, b_dim))
-    return result
-
-
-def _broadcast_shape_many(shapes: list[Any]) -> list[int] | None:
-    result: Any = []
-    for shape in shapes:
-        result = _broadcast_shape(result, shape)
-        if result is None:
-            return None
-    return result
-
-
-def _is_numeric_range(value: Any) -> bool:
-    if _is_number(value):
-        return True
-    if isinstance(value, list) and value:
-        return all(_is_number(item) for item in value[:2])
-    if isinstance(value, dict):
-        mean = value.get("mean")
-        return isinstance(mean, list) and bool(mean) and all(_is_number(item) for item in mean[:2])
-    return False
-
-
-def _is_fallback_range_metadata(value: Any) -> bool:
-    if _is_nonfinite_sentinel(value):
-        return True
-    if isinstance(value, list) and value:
-        prefix = value[:2]
-        return any(_is_nonfinite_sentinel(item) for item in prefix) and all(
-            _is_number(item) or _is_nonfinite_sentinel(item) for item in prefix
-        )
-    if isinstance(value, dict):
-        mean = value.get("mean")
-        if isinstance(mean, list) and mean:
-            prefix = mean[:2]
-            return any(_is_nonfinite_sentinel(item) for item in prefix) and all(
-                _is_number(item) or _is_nonfinite_sentinel(item) for item in prefix
-            )
-    return False
-
-
-def _is_nonfinite_sentinel(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    return value.strip().lower() in {"inf", "+inf", "-inf", "infinity", "+infinity", "-infinity", "nan", "+nan", "-nan"}
-
-
-def _numeric_range_bounds(value: Any) -> tuple[float, float] | None:
-    if _is_number(value):
-        numeric = float(value)
-        return numeric, numeric
-    if isinstance(value, list) and value and all(_is_number(item) for item in value[:2]):
-        low = float(value[0])
-        high = float(value[1] if len(value) > 1 else value[0])
-        return min(low, high), max(low, high)
-    if isinstance(value, dict):
-        mean = value.get("mean")
-        if isinstance(mean, list) and mean and all(_is_number(item) for item in mean[:2]):
-            low = float(mean[0])
-            high = float(mean[1] if len(mean) > 1 else mean[0])
-            return min(low, high), max(low, high)
-    return None
-
-
-def _is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _numeric_scalar_value(value: Any) -> float | None:
-    if _is_number(value):
-        return float(value)
-    if isinstance(value, list) and value and _is_number(value[0]):
-        return float(value[0])
-    if isinstance(value, dict):
-        mean = value.get("mean")
-        if isinstance(mean, list) and mean and _is_number(mean[0]):
-            return float(mean[0])
-    return None
-
-
-def _attr_value(inputs: list[dict[str, Any]], name: str) -> Any:
-    for item in inputs:
-        if item.get("type") == "attr" and item.get("name") == name:
-            return item.get("range_values")
-    return None
-
-
-def _bool_attr_value(inputs: list[dict[str, Any]], name: str, default: bool | None = None) -> bool | None:
-    value = _attr_value(inputs, name)
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    return None
-
-
-def _coerce_int_attr_value(value: Any, allow_range_list: bool = False) -> int | None:
-    if isinstance(value, list):
-        if len(value) == 1 or allow_range_list:
-            value = value[0] if value else None
-        else:
-            return None
-    if isinstance(value, bool) or not isinstance(value, int):
-        return None
-    return value
-
-
-def _int_attr_values(
-    inputs: list[dict[str, Any]],
-    name: str,
-    accepted_types: set[str] | None = None,
-    allow_range_list: bool = False,
-) -> list[int] | None:
-    if accepted_types is None:
-        accepted_types = {"attrs"}
-    values: list[int] = []
-    for item in inputs:
-        if item.get("type") not in accepted_types or item.get("name") != name:
-            continue
-        value = _coerce_int_attr_value(item.get("range_values"), allow_range_list)
-        if value is None:
-            return None
-        values.append(value)
-    return values
-
-
-def _int_attr_value(inputs: list[dict[str, Any]], name: str, allow_range_list: bool = False) -> int | None:
-    value = _attr_value(inputs, name)
-    return _coerce_int_attr_value(value, allow_range_list)
-
-
-def _support_dtype_attr_matches_tensor(name: str, inputs: list[dict[str, Any]], tensor_dtype: str) -> tuple[bool, str]:
-    dtype_attr = _int_attr_value(inputs, "dtype")
-    if dtype_attr is None:
-        return False, f"{name} dtype attr is invalid"
-    if ACL_DTYPE_ATTR_TO_NAME.get(dtype_attr) != tensor_dtype:
-        return False, f"{name} dtype attr different from tensor dtype is not supported"
-    return True, ""
-
-
-def _string_attr_value(inputs: list[dict[str, Any]], name: str, default: str | None = None) -> str | None:
-    value = _attr_value(inputs, name)
-    if value is None:
-        return default
-    if isinstance(value, str):
-        return value
-    return None
-
-
-def _named_tensor(case: StCase, name: str) -> dict[str, Any] | None:
-    return _item_by_name(_tensor_items(case), name)
-
-
-def _support_attention_tensor(
-    api_name: str,
-    tensor: dict[str, Any] | None,
-    name: str,
-    supported_dtypes: set[str],
-    require_numeric_range: bool = True,
-) -> tuple[bool, str]:
-    if tensor is None:
-        return False, f"{api_name} missing tensor {name}"
-    dtype = str(tensor.get("dtype"))
-    if dtype not in supported_dtypes:
-        return False, f"{api_name} tensor {name} dtype {dtype} is not supported"
-    shape = tensor.get("shape")
-    if not isinstance(shape, list) or not shape or _numel(shape) <= 0:
-        return False, f"{api_name} tensor {name} shape is invalid"
-    if require_numeric_range and "value" not in tensor and not _is_numeric_range(tensor.get("range_values")):
-        return False, f"{api_name} tensor {name} range is not numeric"
-    return True, ""
-
-
-@dataclass(frozen=True)
-class LightningIndexerAdapter(Adapter):
-    def supports(self, case: StCase) -> tuple[bool, str]:
-        inputs = case.flat_inputs
-        query = _named_tensor(case, "query")
-        key = _named_tensor(case, "key")
-        weights = _named_tensor(case, "weights")
-        for tensor, name, dtypes in (
-            (query, "query", {"fp16", "bf16"}),
-            (key, "key", {"fp16", "bf16"}),
-            (weights, "weights", {"fp16", "bf16", "fp32"}),
-        ):
-            supported, reason = _support_attention_tensor(self.name, tensor, name, dtypes)
-            if not supported:
-                return supported, reason
-
-        layout_query = _string_attr_value(inputs, "layoutQuery", default="BSND")
-        layout_key = _string_attr_value(inputs, "layoutKey", default="BSND")
-        if layout_query not in {"BSND", "TND"}:
-            return False, "LightningIndexer layoutQuery must be BSND or TND"
-        if layout_key not in {"BSND", "TND", "PA_BSND"}:
-            return False, "LightningIndexer layoutKey must be BSND, TND, or PA_BSND"
-        if layout_key != "PA_BSND" and layout_key != layout_query:
-            return False, "LightningIndexer non-PA layoutQuery and layoutKey must match"
-
-        query_shape = query.get("shape")
-        key_shape = key.get("shape")
-        weights_shape = weights.get("shape")
-        if layout_query == "BSND":
-            if len(query_shape) != 4 or len(weights_shape) != 3:
-                return False, "LightningIndexer BSND query/weights shapes are invalid"
-            n1 = int(query_shape[2])
-            dim = int(query_shape[3])
-            if weights_shape[:3] != query_shape[:3]:
-                return False, "LightningIndexer weights shape must match query B/S/N1"
-        else:
-            if len(query_shape) != 3 or len(weights_shape) != 2:
-                return False, "LightningIndexer TND query/weights shapes are invalid"
-            n1 = int(query_shape[1])
-            dim = int(query_shape[2])
-            if weights_shape != query_shape[:2]:
-                return False, "LightningIndexer TND weights shape must match query T/N1"
-            if _named_tensor(case, "actualSeqLengthsQuery") is None:
-                return False, "LightningIndexer TND requires actualSeqLengthsQuery"
-
-        if n1 < 1 or n1 > 64:
-            return False, "LightningIndexer query N1 must be in [1, 64]"
-        if dim != 128:
-            return False, "LightningIndexer head dim must be 128"
-
-        if layout_key == "PA_BSND":
-            if len(key_shape) != 4:
-                return False, "LightningIndexer PA_BSND key shape must be 4D"
-            block_size = int(key_shape[1])
-            n2 = int(key_shape[2])
-            key_dim = int(key_shape[3])
-            if block_size <= 0 or block_size > 1024 or block_size % 16 != 0:
-                return False, "LightningIndexer PA_BSND block size must be a 16 multiple in (0, 1024]"
-            if _named_tensor(case, "actualSeqLengthsKey") is None or _named_tensor(case, "blockTable") is None:
-                return False, "LightningIndexer PA_BSND requires actualSeqLengthsKey and blockTable"
-        elif layout_key == "BSND":
-            if len(key_shape) != 4:
-                return False, "LightningIndexer BSND key shape must be 4D"
-            n2 = int(key_shape[2])
-            key_dim = int(key_shape[3])
-        else:
-            if len(key_shape) != 3:
-                return False, "LightningIndexer TND key shape must be 3D"
-            n2 = int(key_shape[1])
-            key_dim = int(key_shape[2])
-            if _named_tensor(case, "actualSeqLengthsKey") is None:
-                return False, "LightningIndexer TND requires actualSeqLengthsKey"
-        if n2 != 1:
-            return False, "LightningIndexer key N2 must be 1"
-        if key_dim != 128:
-            return False, "LightningIndexer key head dim must be 128"
-
-        sparse_count = _int_attr_value(inputs, "sparseCount")
-        if sparse_count is None:
-            return False, "LightningIndexer sparseCount attr is invalid"
-        if not ((1 <= sparse_count <= 2048) or sparse_count in {3072, 4096, 5120, 6144, 7168, 8192}):
-            return False, "LightningIndexer sparseCount is out of supported range"
-        sparse_mode = _int_attr_value(inputs, "sparseMode")
-        if sparse_mode not in {0, 3}:
-            return False, "LightningIndexer sparseMode must be 0 or 3"
-        return_values = _bool_attr_value(inputs, "returnValues", default=False)
-        if return_values is None:
-            return False, "LightningIndexer returnValues attr is invalid"
-        return True, ""
-
-
-@dataclass(frozen=True)
-class RecurrentGatedDeltaRuleAdapter(Adapter):
-    def supports(self, case: StCase) -> tuple[bool, str]:
-        required = {
-            "query": {"bf16"},
-            "key": {"bf16"},
-            "value": {"bf16"},
-            "beta": {"bf16"},
-            "stateRef": {"bf16"},
-            "actualSeqLengths": {"int32"},
-            "ssmStateIndices": {"int32"},
-            "numAcceptedTokens": {"int32"},
-        }
-        for name, dtypes in required.items():
-            supported, reason = _support_attention_tensor(
-                self.name,
-                _named_tensor(case, name),
-                name,
-                dtypes,
-                require_numeric_range=name not in {"actualSeqLengths", "ssmStateIndices", "numAcceptedTokens"},
-            )
-            if not supported:
-                return supported, reason
-
-        for name in ("g", "gk"):
-            tensor = _named_tensor(case, name)
-            if tensor is not None:
-                supported, reason = _support_attention_tensor(self.name, tensor, name, {"fp32"})
-                if not supported:
-                    return supported, reason
-
-        query_shape = _named_tensor(case, "query").get("shape")
-        key_shape = _named_tensor(case, "key").get("shape")
-        value_shape = _named_tensor(case, "value").get("shape")
-        beta_shape = _named_tensor(case, "beta").get("shape")
-        state_shape = _named_tensor(case, "stateRef").get("shape")
-        if len(query_shape) != 3 or len(key_shape) != 3 or len(value_shape) != 3:
-            return False, "RecurrentGatedDeltaRule query/key/value must be 3D"
-        if len(beta_shape) != 2 or len(state_shape) != 4:
-            return False, "RecurrentGatedDeltaRule beta/stateRef shapes are invalid"
-        if query_shape != key_shape:
-            return False, "RecurrentGatedDeltaRule query and key shapes must match"
-
-        total_t, nk, dk = [int(v) for v in query_shape]
-        value_t, nv, dv = [int(v) for v in value_shape]
-        block_num, state_nv, state_dv, state_dk = [int(v) for v in state_shape]
-        if total_t != value_t or beta_shape != [total_t, nv]:
-            return False, "RecurrentGatedDeltaRule value/beta T/Nv must match query/value"
-        if [state_nv, state_dv, state_dk] != [nv, dv, dk]:
-            return False, "RecurrentGatedDeltaRule stateRef Nv/Dv/Dk must match value/query"
-        if block_num <= 0:
-            return False, "RecurrentGatedDeltaRule BlockNum must be positive"
-        if nk <= 0 or nv <= 0 or dk <= 0 or dv <= 0:
-            return False, "RecurrentGatedDeltaRule dimensions must be positive"
-        if nk > 256 or nv > 256 or dk > 256 or dv > 256:
-            return False, "RecurrentGatedDeltaRule dimensions exceed documented limits"
-        if nv % nk != 0:
-            return False, "RecurrentGatedDeltaRule native golden requires Nv to be divisible by Nk"
-
-        g = _named_tensor(case, "g")
-        if g is not None and g.get("shape") != [total_t, nv]:
-            return False, "RecurrentGatedDeltaRule g shape must be [T, Nv]"
-        gk = _named_tensor(case, "gk")
-        if gk is not None and gk.get("shape") != [total_t, nv, dk]:
-            return False, "RecurrentGatedDeltaRule gk shape must be [T, Nv, Dk]"
-        scale = _attr_value(case.flat_inputs, "scaleValue")
-        if not _is_number(scale):
-            return False, "RecurrentGatedDeltaRule scaleValue attr is invalid"
         return True, ""
 
 
