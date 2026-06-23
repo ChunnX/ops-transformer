@@ -164,7 +164,7 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     group = n1 // n2
     qb_max = math.ceil(case["S1"] / case["sparse_q_block_size"])
     sparse_count = case["sparse_count"]
-    sparse_indices = torch.zeros((batch, n1, qb_max, sparse_count), dtype=torch.int32)
+    sparse_indices = torch.full((batch, n1, qb_max, sparse_count), fill_value=-1, dtype=torch.int32)
     sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
 
     for batch_idx in range(batch):

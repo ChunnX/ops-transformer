@@ -374,7 +374,9 @@ __aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb,
     if constexpr (hasAtten) {
         int64_t maskOffset = 0;
         if (sparseBlkIdx == -1) {
-            Duplicate<uint8_t>(attenMaskUb[offset], 0, s2Len * (constInfo.s1BaseSize >> 1));
+            // 丢弃块：s2Len(=s2SparseBlkRealSize)为0，必须按整块宽度(kvSparseBlockSize)清零该段，
+            // 否则该段 mask 未初始化，vf 读到未初始化 mask + cube 未写过的 stale/NaN bmm1 区域 → NaN/随时序漂移。
+            Duplicate<uint8_t>(attenMaskUb[offset], 0, constInfo.kvSparseBlockSize * (constInfo.s1BaseSize >> 1));
         } else {
             if (needAtten) {
                 maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, sparseBlkIdx == runInfo.sparseBlkIdx1);
