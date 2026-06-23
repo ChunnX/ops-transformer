@@ -98,7 +98,7 @@ attention:
       - attention/flash_attention_score/docs
       - attention/flash_attention_score/README.md
     ut_cov_exclude:
-      - attention/flash_attention_score
+      # - attention/flash_attention_score
     test:
       ut: True
     options:
