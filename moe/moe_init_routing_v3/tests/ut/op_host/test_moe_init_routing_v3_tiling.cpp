@@ -827,7 +827,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_43)
     string expectTilingData = "40 1000 2880 4 0 256 256 -1 0 1 0 256 1 0 0 0 4000 0 0 0 0 4 992 1 992 992 1024 1 1024 1024 1984 0 1504 40 100 100 1 100 100 1 100 100 40 25 100 1 100 100 1 100 100 2 2800 80 0 40 100 100 100 100 100 100 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 100 100 100 100 100 100 1 1 ";
     std::vector<size_t> expectWorkspaces = {16892832};
     RunNormalCaseNoQuant(1000, 2880, 4, 0, 4000, 0, 1, false, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
-                  ge::GRAPH_SUCCESS, 1300000, expectTilingData, expectWorkspaces);
+                  ge::GRAPH_SUCCESS, 1100000, expectTilingData, expectWorkspaces);
 }
 
 // ========== ComputeCountingSortTiling UT测试用例 ==========
@@ -1330,7 +1330,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_ep_zero)
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1300000, "", {});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1100000, "", {});
 
 }
 
@@ -1508,7 +1508,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_static_q
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1301000, "", {});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1111000, "", {});
 
 }
 
@@ -1544,7 +1544,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_dynamic_
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1300000, "", {});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1120000, "", {});
 
 }
 
@@ -1579,7 +1579,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_droppad_
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1300000, "", {});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1120100, "", {});
 
 }
 
@@ -1694,7 +1694,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_fullload
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1300000, "", {});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1110000, "", {});
 
 }
 
@@ -1745,7 +1745,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_dynamic_
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1300000, "", {});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1120000, "", {});
 
 }
 
@@ -1844,7 +1844,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_counting_sort_dynamic_
         },
         &compileInfo);
 
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1301000, "", {});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1121000, "", {});
 
 }
 
