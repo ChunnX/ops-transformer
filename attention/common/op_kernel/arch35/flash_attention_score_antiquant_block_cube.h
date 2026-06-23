@@ -43,6 +43,7 @@ public:
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<Q_T> &l1Tensor, const GlobalTensor<Q_T> &gmTensor, 
         uint32_t ndNum, uint32_t nValue, uint32_t dValue, uint32_t srcNdMatrixStride, uint32_t srcDValue, uint32_t dstNzC0Stride, uint32_t dstNzMatrixStride);
+    __aicore__ inline void PrepareMm1Input(Buffer<BufferType::L1> &mm1A, RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void IterateBmm1(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
         Buffer<BufferType::L1> &mm1B, LocalTensor<T> &outputTensor, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void IterateBmm2(const int64_t &subTaskId, const RunInfo<isInfer> &runInfo, Buffer<BufferType::L1> &inputBufA,
@@ -115,11 +116,9 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::CopyToL1Nd
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm1(
-        RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
-        Buffer<BufferType::L1> &mm1B, LocalTensor<T> &outputTensor, ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::PrepareMm1Input(
+        Buffer<BufferType::L1> &mm1A, RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, ConstInfo<isInfer, hasRope> &constInfo)
 {
-    Buffer<BufferType::L1> mm1A;
     if (unlikely(runInfo.s2LoopCount == 0)) {
         mm1A = mm1AL1Buffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用
@@ -141,6 +140,15 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm
         mm1A = mm1AL1Buffers.GetPre();
         mm1A.Set<HardEvent::MTE2_MTE1>();
     }
+}
+
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::IterateBmm1(
+        RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
+        Buffer<BufferType::L1> &mm1B, LocalTensor<T> &outputTensor, ConstInfo<isInfer, hasRope> &constInfo)
+{
+    Buffer<BufferType::L1> mm1A;
+    PrepareMm1Input(mm1A, runInfo, runParam, constInfo);
     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(VC_L1_EVENT[subTaskId % 2]); // 2 is double buffer
     CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + VC_L1_EVENT[subTaskId % 2]); // 16 is Vec num, 2 is double buffer
 
