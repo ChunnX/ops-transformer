@@ -712,7 +712,7 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
     FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf);
 
     // filter
-    AscendC::Duplicate(tmpIdxLocal, (uint16_t)(0), SICommon::Align(topK, (uint32_t)64));
+    AscendC::Duplicate(tmpIdxLocal, (uint32_t)(0), SICommon::Align(topK, (uint32_t)64));
     // 输出大于k-value的值idx
     FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
     // 输出等于k-value的值idx
