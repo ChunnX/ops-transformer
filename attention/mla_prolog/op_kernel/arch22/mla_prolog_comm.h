@@ -263,21 +263,21 @@ struct MMParams {
 };
 
 struct MMBufParams {
-    uint32_t aL1BufIter = 0;
-    uint32_t bL1BufIter = 0;
-    TBuffAddr aL1BufAddr;
-    TBuffAddr bL1BufAddr;
     uint32_t aL0BufIter = 0;
     uint32_t bL0BufIter = 0;
     uint32_t cL0BufIter = 0;
     TBuffAddr aL0BufAddr;
     TBuffAddr bL0BufAddr;
     TBuffAddr cL0BufAddr;
+    uint32_t aL1BufIter = 0;
+    uint32_t bL1BufIter = 0;
+    TBuffAddr aL1BufAddr;
+    TBuffAddr bL1BufAddr;
 };
 
 struct AicOffset {
-    int64_t weightDqOffset = 0;
     int64_t dequantScaleWDqOffset = 0;
+    int64_t weightDqOffset = 0;
     int64_t cqResOffset = 0;
     int64_t rmsNormCqResOffset = 0;
     int64_t dequantScaleWDkvKrOffset = 0;
@@ -313,8 +313,8 @@ struct AivOffset {
 };
 
 struct UsedBlockParams {
-    uint32_t blockStartIdx;
     uint32_t blockEndIdx;
+    uint32_t blockStartIdx;
 };
 
 struct CkvkrParams {
@@ -328,8 +328,8 @@ struct CkvkrParams {
 
 
 struct RopeQrSplitNParams {
-    int64_t ropeQrOffset;
     int64_t ropeQrResOffset;
+    int64_t ropeQrOffset;
     uint32_t inputOffsetRope;
     uint32_t deqScaleOffset;
     uint32_t outputOffsetRope;
@@ -343,8 +343,8 @@ struct RopeQrSplitNParams {
 struct DequantQcQrSplitNParams {
     int64_t mmQnPreDequantOffset;
     int64_t mmQnPreDequantResOffset;
-    uint32_t inputOffset;
     uint32_t outputOffset;
+    uint32_t inputOffset;
     uint32_t srcStride;
     uint32_t dstStride;
 };
