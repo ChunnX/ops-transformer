@@ -131,7 +131,6 @@ WeightQuantMMAllReduceTilingKeyParams WeightQuantAsTilingTransferHelper::GetWeig
         tplParam.biasIsExist = true;
         tplParam.isBiasFp32 = true;
     }
-    tplParam.weightFormat= static_cast<uint8_t>(Mc2WeightFormat::ND);
     return tplParam;
 }
 
@@ -229,15 +228,14 @@ uint64_t WeightQuantMatmulAllReduceTilingA5::GetTilingKey() const
         WeightQuantTPLPatams_.antiQuantType,        \
         WeightQuantTPLPatams_.quantType,            \
         WeightQuantTPLPatams_.hasAntiQuantOffset,   \
-        WeightQuantTPLPatams_.isBiasFp32,           \
-        WeightQuantTPLPatams_.weightFormat);
+        WeightQuantTPLPatams_.isBiasFp32);
     OP_LOGD(opName_, "Mc2MatmulAllReduce: transB, biasIsExist is: [%d,%d].",                \
             WeightQuantTPLPatams_.transB, WeightQuantTPLPatams_.biasIsExist);
     OP_LOGD(opName_, "Mc2MatmulAllReduce: templateCustom, antiQuantType, quantType, "       \
-            "hasAntiQuantOffset, isBiasFp32, weightFormat is: [%u, %u,%u,%d,%d,%u].",       \
+            "hasAntiQuantOffset, isBiasFp32 is: [%u, %u,%u,%d,%d].",                          \
             WeightQuantTPLPatams_.templateCustom, WeightQuantTPLPatams_.antiQuantType,      \
             WeightQuantTPLPatams_.quantType, WeightQuantTPLPatams_.hasAntiQuantOffset,      \
-            WeightQuantTPLPatams_.isBiasFp32, WeightQuantTPLPatams_.weightFormat);
+            WeightQuantTPLPatams_.isBiasFp32);
     OP_LOGD(opName_, "Mc2MatmulAllReduce: weight_quant_TilingKey=%lu.", tilingKey);
     return tilingKey;
 }
