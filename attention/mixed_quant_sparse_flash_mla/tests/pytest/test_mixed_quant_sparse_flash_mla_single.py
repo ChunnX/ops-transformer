@@ -106,12 +106,14 @@ def qsmla(param_combinations):
     test_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(params, save_pt=save_pt, save_path=pt_save_path)
 
     # 获得cpu结果(真值)和算子结果（测试值）
+    npu_error_msg = None
     try:
         npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
-        print("NPU ERROR：", e)
+        npu_error_msg = str(e)
+        print("NPU ERROR：", npu_error_msg)
         result = "NPU ERROR"
         fulfill_percent = 0
 
@@ -119,8 +121,10 @@ def qsmla(param_combinations):
 
     utils.save_result(test_data['params'], result, fulfill_percent, result_path)
 
-    if result in ("NPU ERROR", "Failed"):
-        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
+    if result == "Failed":
+        pytest.fail(f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
+    if result == "NPU ERROR":
+        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {npu_error_msg}")
 
 def _gen_testcase_id(params, idx):
     name = params.get('Testcase_Name')

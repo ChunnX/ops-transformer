@@ -88,27 +88,27 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
 
     print("test_data:", params)
     print("mixed_quant_sparse_flash_mla_metadata...")
-    layout_kv_qsas = metadata_input['layout_kv']
-    if layout_kv_qsas == "PA_BBND":
-        layout_kv_qsas = "PA_ND"
     metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
                                 num_heads_q = metadata_input['num_heads_q'],
                                 num_heads_kv = metadata_input['num_heads_kv'],
                                 head_dim = metadata_input['head_dim'],
-                                quant_mode = metadata_input['kv_quant_mode'],
                                 cu_seqlens_q=metadata_input['cu_seqlens_q'].npu() if op_input['cu_seqlens_q'] is not None else torch.tensor([]).npu(),
                                 cu_seqlens_ori_kv = op_input['cu_seqlens_ori_kv'].npu() if op_input['cu_seqlens_ori_kv'] is not None else torch.tensor([]).npu(),
                                 cu_seqlens_cmp_kv = op_input['cu_seqlens_cmp_kv'].npu() if op_input['cu_seqlens_cmp_kv'] is not None else torch.tensor([]).npu(),
                                 seqused_q=op_input['seqused_q'].npu() if op_input['seqused_q'] is not None else torch.tensor([]).npu(),
-                                seqused_ori_kv = metadata_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else torch.tensor([]).npu(),
-                                seqused_cmp_kv = op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
+                                seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
+                                seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
+                                ori_topk_length=None,
+                                cmp_topk_length=None,
+                                quant_mode=op_input['kv_quant_mode'],
                                 batch_size = metadata_input['batch_size'],
                                 max_seqlen_q = metadata_input['max_seqlen_q'],
-                                # max_seqlen_kv = metadata_input['max_seqlen_ori_kv'],
-                                # max_seqlen_ori_kv=metadata_input['max_seqlen_ori_kv'],
-                                # max_seqlen_cmp_kv=metadata_input['max_seqlen_cmp_kv'],
+                                max_seqlen_ori_kv = metadata_input['max_seqlen_ori_kv'],
+                                max_seqlen_cmp_kv = metadata_input['max_seqlen_cmp_kv'],
+                                ori_topk = 0,
                                 cmp_topk = metadata_input['topk'],
+                                rope_head_dim=op_input['rope_head_dim'],
                                 cmp_ratio = metadata_input['cmp_ratio'],
                                 ori_mask_mode = metadata_input['ori_mask_mode'],
                                 cmp_mask_mode = metadata_input['cmp_mask_mode'],
@@ -154,36 +154,6 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                                 return_softmax_lse=op_input.get('return_softmax_lse', False))
 
     torch.npu.synchronize()
-    print("mixed_quant_sparse_flash_mla...")
-    npu_result = npu_mode(
-                                q=op_input['q'].npu() if op_input['q'] is not None else None,
-                                ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
-                                cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,
-                                cmp_sparse_indices=op_input['cmp_sparse_indices'].npu() if op_input['cmp_sparse_indices'] is not None else None,
-                                ori_block_table=op_input['ori_block_table'].npu() if op_input['ori_block_table'] is not None else None,
-                                cmp_block_table=op_input['cmp_block_table'].npu() if op_input['cmp_block_table'] is not None else None,
-                                cu_seqlens_q=op_input['cu_seqlens_q'].npu() if op_input['cu_seqlens_q'] is not None else None,
-                                seqused_q=op_input['seqused_q'].npu() if op_input['seqused_q'] is not None else torch.tensor([]).npu(),
-                                seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
-                                seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
-                                cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
-                                ori_topk_length=None,
-                                cmp_topk_length=None,
-                                sinks=op_input['sinks'].npu() if op_input['sinks'] is not None else None,
-                                metadata=metadata,
-                                quant_mode=op_input['kv_quant_mode'],
-                                rope_head_dim=op_input['rope_head_dim'],
-                                softmax_scale=op_input['softmax_scale'],
-                                cmp_ratio=op_input['cmp_ratio'],
-                                ori_mask_mode=op_input['ori_mask_mode'],
-                                cmp_mask_mode=op_input['cmp_mask_mode'],
-                                ori_win_left=op_input['ori_win_left'],
-                                ori_win_right=op_input['ori_win_right'],
-                                layout_q=op_input['layout_q'],
-                                layout_kv=op_input['layout_kv'],
-                                topk_value_mode=op_input.get('topk_value_mode', 1),
-                                return_softmax_lse=op_input.get('return_softmax_lse', False))
-    return npu_result, cpu_output
 
 def test_qsmla_quant_process_ci(test_data, device_id=0):
     params = test_data['params']
@@ -194,27 +164,27 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
 
     print("test_data:", params)
     print("mixed_quant_sparse_flash_mla_metadata...")
-    layout_kv_qsas = metadata_input['layout_kv']
-    if layout_kv_qsas == "PA_BBND":
-        layout_kv_qsas = "PA_ND"
     metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
                                 num_heads_q = metadata_input['num_heads_q'],
                                 num_heads_kv = metadata_input['num_heads_kv'],
                                 head_dim = metadata_input['head_dim'],
-                                quant_mode = metadata_input['kv_quant_mode'],
                                 cu_seqlens_q=metadata_input['cu_seqlens_q'].npu() if op_input['cu_seqlens_q'] is not None else torch.tensor([]).npu(),
                                 cu_seqlens_ori_kv = op_input['cu_seqlens_ori_kv'].npu() if op_input['cu_seqlens_ori_kv'] is not None else torch.tensor([]).npu(),
                                 cu_seqlens_cmp_kv = op_input['cu_seqlens_cmp_kv'].npu() if op_input['cu_seqlens_cmp_kv'] is not None else torch.tensor([]).npu(),
                                 seqused_q=op_input['seqused_q'].npu() if op_input['seqused_q'] is not None else torch.tensor([]).npu(),
-                                seqused_ori_kv = metadata_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else torch.tensor([]).npu(),
-                                seqused_cmp_kv = op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
+                                seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
+                                seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
                                 cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
+                                ori_topk_length=None,
+                                cmp_topk_length=None,
+                                quant_mode=op_input['kv_quant_mode'],
                                 batch_size = metadata_input['batch_size'],
                                 max_seqlen_q = metadata_input['max_seqlen_q'],
-                                # max_seqlen_kv = metadata_input['max_seqlen_ori_kv'],
-                                # max_seqlen_ori_kv=metadata_input['max_seqlen_ori_kv'],
-                                # max_seqlen_cmp_kv=metadata_input['max_seqlen_cmp_kv'],
+                                max_seqlen_ori_kv = metadata_input['max_seqlen_ori_kv'],
+                                max_seqlen_cmp_kv = metadata_input['max_seqlen_cmp_kv'],
+                                ori_topk = 0,
                                 cmp_topk = metadata_input['topk'],
+                                rope_head_dim=op_input['rope_head_dim'],
                                 cmp_ratio = metadata_input['cmp_ratio'],
                                 ori_mask_mode = metadata_input['ori_mask_mode'],
                                 cmp_mask_mode = metadata_input['cmp_mask_mode'],
