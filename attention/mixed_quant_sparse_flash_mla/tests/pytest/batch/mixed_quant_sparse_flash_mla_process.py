@@ -88,7 +88,6 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
 
     print("test_data:", params)
     print("mixed_quant_sparse_flash_mla_metadata...")
-    layout_kv_qsas = metadata_input['layout_kv']
     metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
                                 num_heads_q = metadata_input['num_heads_q'],
                                 num_heads_kv = metadata_input['num_heads_kv'],
@@ -165,7 +164,6 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
 
     print("test_data:", params)
     print("mixed_quant_sparse_flash_mla_metadata...")
-    layout_kv_qsas = metadata_input['layout_kv']
     metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
                                 num_heads_q = metadata_input['num_heads_q'],
                                 num_heads_kv = metadata_input['num_heads_kv'],
