@@ -145,6 +145,21 @@ void FreeResource(aclTensor *query, aclTensor *key, aclTensor *maskOut,
     aclFinalize();
 }
 
+void FreeOutputResource(aclTensor *qCompOut, aclTensor *kCompOut, aclTensor *scoreOut, aclTensor *softmaxOut,
+                        void *qCompOutDeviceAddr, void *kCompOutDeviceAddr,
+                        void *scoreOutDeviceAddr, void *softmaxOutDeviceAddr)
+{
+    if (qCompOut) aclDestroyTensor(qCompOut);
+    if (kCompOut) aclDestroyTensor(kCompOut);
+    if (scoreOut) aclDestroyTensor(scoreOut);
+    if (softmaxOut) aclDestroyTensor(softmaxOut);
+
+    if (qCompOutDeviceAddr) aclrtFree(qCompOutDeviceAddr);
+    if (kCompOutDeviceAddr) aclrtFree(kCompOutDeviceAddr);
+    if (scoreOutDeviceAddr) aclrtFree(scoreOutDeviceAddr);
+    if (softmaxOutDeviceAddr) aclrtFree(softmaxOutDeviceAddr);
+}
+
 int main() {
     LOG_PRINT("=== BSASelectBlockMask ACLNN Test ===\n");
     
@@ -182,9 +197,17 @@ int main() {
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
     aclTensor *maskOutTensor = nullptr;
+    aclTensor *qCompOutTensor = nullptr;
+    aclTensor *kCompOutTensor = nullptr;
+    aclTensor *scoreOutTensor = nullptr;
+    aclTensor *softmaxOutTensor = nullptr;
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
     void *maskOutDeviceAddr = nullptr;
+    void *qCompOutDeviceAddr = nullptr;
+    void *kCompOutDeviceAddr = nullptr;
+    void *scoreOutDeviceAddr = nullptr;
+    void *softmaxOutDeviceAddr = nullptr;
     void *workspaceAddr = nullptr;
 
     std::vector<int64_t> queryShape = {batch, numHeads, qSeqlen, headDim};
@@ -206,6 +229,39 @@ int main() {
     std::vector<int8_t> maskOutHostData(maskOutSize, 0);
     ret = CreateAclTensor(maskOutHostData, maskOutShape, &maskOutDeviceAddr, aclDataType::ACL_INT8, &maskOutTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create maskOut tensor\n");
+              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+
+    std::vector<int64_t> qCompOutShape = {batch, numHeads, xBlocks, headDim};
+    std::vector<int64_t> kCompOutShape = {batch, numHeads, yBlocks, headDim};
+    std::vector<int64_t> scoreOutShape = {batch, numHeads, xBlocks, yBlocks};
+    std::vector<int64_t> softmaxOutShape = {batch, numHeads, xBlocks, yBlocks};
+
+    std::vector<float> qCompOutHostData(GetShapeSize(qCompOutShape), 0.0f);
+    ret = CreateAclTensor(qCompOutHostData, qCompOutShape, &qCompOutDeviceAddr,
+                          aclDataType::ACL_FLOAT, &qCompOutTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create qCompOut tensor\n");
+              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+
+    std::vector<float> kCompOutHostData(GetShapeSize(kCompOutShape), 0.0f);
+    ret = CreateAclTensor(kCompOutHostData, kCompOutShape, &kCompOutDeviceAddr,
+                          aclDataType::ACL_FLOAT, &kCompOutTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create kCompOut tensor\n");
+              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+
+    std::vector<float> scoreOutHostData(GetShapeSize(scoreOutShape), 0.0f);
+    ret = CreateAclTensor(scoreOutHostData, scoreOutShape, &scoreOutDeviceAddr,
+                          aclDataType::ACL_FLOAT, &scoreOutTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create scoreOut tensor\n");
+              FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
+                           maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
+
+    std::vector<op::fp16_t> softmaxOutHostData(GetShapeSize(softmaxOutShape), 0.0f);
+    ret = CreateAclTensor(softmaxOutHostData, softmaxOutShape, &softmaxOutDeviceAddr,
+                          aclDataType::ACL_FLOAT16, &softmaxOutTensor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create softmaxOut tensor\n");
               FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
                            maskOutDeviceAddr, workspaceAddr, deviceId, &stream); return ret);
 
@@ -255,6 +311,10 @@ int main() {
             scaleValue,
             static_cast<double>(sparsity),
             maskOutTensor,
+            qCompOutTensor,
+            kCompOutTensor,
+            scoreOutTensor,
+            softmaxOutTensor,
             &workspaceSize,
             &executor);
 
@@ -401,6 +461,9 @@ int main() {
     }
 
     aclDestroyIntArray(blockShape);
+    FreeOutputResource(qCompOutTensor, kCompOutTensor, scoreOutTensor, softmaxOutTensor,
+                       qCompOutDeviceAddr, kCompOutDeviceAddr,
+                       scoreOutDeviceAddr, softmaxOutDeviceAddr);
     FreeResource(queryTensor, keyTensor, maskOutTensor, queryDeviceAddr, keyDeviceAddr,
                  maskOutDeviceAddr, workspaceAddr, deviceId, &stream);
     
