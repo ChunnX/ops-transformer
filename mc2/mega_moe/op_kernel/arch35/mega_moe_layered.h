@@ -430,13 +430,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline uint64_t MegaMoe<TemplateMegaMoeTypeFunc>::SendWorkspaceServerOffset(uint32_t targetServer)
+__aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendWorkspaceServerOffset(uint32_t targetServer)
 {
     return static_cast<uint64_t>(targetServer) * static_cast<uint64_t>(sendWorkspaceServerBytes_);
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline uint64_t MegaMoe<TemplateMegaMoeTypeFunc>::RelayTokenOffset(uint32_t sourceServer,
+__aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeTypeFunc>::RelayTokenOffset(uint32_t sourceServer,
     uint32_t tokenId)
 {
     return (static_cast<uint64_t>(sourceServer) * static_cast<uint64_t>(m_) + tokenId) *
@@ -449,7 +449,7 @@ __aicore__ inline uint64_t MegaMoe<TemplateMegaMoeTypeFunc>::RelayTokenOffset(ui
 // count 只在整次 dispatch 开始前清零；localExpertId 轮次之间保留，后一轮继续顺序追加。
 // ===============================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetUrmaDispatchState()
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatchState()
 {
     if constexpr(g_coreType == AIC) {
         return;
@@ -496,7 +496,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetUrmaDispatchState(
 // record 布局: [quantToken | scales | padding] + meta[32B]，meta[0]=tokenId，meta[1]=ready flag。
 // ===============================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantTokenToWorkspaceRecord(uint32_t tokenIdx,
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWorkspaceRecord(uint32_t tokenIdx,
     GM_ADDR recordAddr)
 {
     uint32_t xInBytes = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
@@ -555,7 +555,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantTokenToWorkspaceRe
 // sender 核：按 slot 顺序消费本轮新增记录 -> 写目标 server 内相对位置相同 rank 的 relay 接收区。
 // ===============================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Level1DispatchUrma(int32_t localExpertId)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrma(int32_t localExpertId)
 {
     uint32_t senderCoreNum = (serverNum_ < blockNum_) ? serverNum_ : blockNum_;
     bool isSenderCore = blockIdx_ < senderCoreNum;
