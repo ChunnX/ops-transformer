@@ -228,4 +228,70 @@ TEST_F(MoeEpDispatchArch35TilingTest, SmallHidden)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 1);
 }
 
+// Non-cached with doCpuSync=false (no host-pinned counter write)
+TEST_F(MoeEpDispatchArch35TilingTest, NonCachedNoCpuSync)
+{
+    struct MoeEpDispatchCompileInfo {};
+    MoeEpDispatchCompileInfo compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "MoeEpDispatch",
+        {
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{512, 8}, {512, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{512, 8}, {512, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8}, {8}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{512, 8}, {512, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"num_experts", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(200 * 1024 * 1024)},
+         {"expert_alignment", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"hp_Counter_AddrPtr", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo, "Ascend950", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 1);
+}
+
+// ExpertAlignment > 1
+TEST_F(MoeEpDispatchArch35TilingTest, ExpertAlignmentGT1)
+{
+    struct MoeEpDispatchCompileInfo {};
+    MoeEpDispatchCompileInfo compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "MoeEpDispatch",
+        {
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{512, 4096}, {512, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{512, 4}, {512, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{512, 4}, {512, 4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16}, {16}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{512, 4}, {512, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"num_experts", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(200 * 1024 * 1024)},
+         {"expert_alignment", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+         {"do_cpu_sync", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"hp_Counter_AddrPtr", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo, "Ascend950", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 1);
+}
+
 } // namespace MoeEpDispatchUT
