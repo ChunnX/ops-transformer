@@ -655,7 +655,7 @@ void SplitFD(FAMetaData &result)
     fdRes.fdUsedVecNum = curCoreIndex;
 }
 
-void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam param)
+void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param)
 {
     OP_LOGI("FusedInferAttentionScore", "========== BaseInfo ==========\n");
     OP_LOGI("FusedInferAttentionScore", "bSize: %u\n", baseInfo.bSize);
@@ -733,10 +733,10 @@ void LogSplitCoreResult(const FAMetaData &result)
 
 void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, FAMetaData &result)
 {
-    //打印baseInfo,param信息
+    // 打印baseInfo,param信息
     LogSplitCoreInput(baseInfo, param);
     SplitContext splitContext(baseInfo, param);
-    
+
     // 1、划分基本块，统计信息
     CalcSplitInfo(splitContext);
     // 全空case
@@ -773,7 +773,7 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     }
     result.usedCoreNum = std::max(result.usedCoreNum, 1U); // 至少使用1个core
 
-    //打印分核结果信息
+    // 打印分核结果信息
     LogSplitCoreResult(result);
 }
 } // namespace split_core_v2
