@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_qkv_rms_norm_rope_cache_with_kscale.h"
+#include "aclnn_qkv_rms_norm_rope_cache_with_k_scale.h"
 
 #include <dlfcn.h>
 #include <vector>
 
-#include "qkv_rms_norm_rope_cache_with_kscale.h"
-#include "qkv_rms_norm_rope_cache_with_kscale_checker.h"
+#include "qkv_rms_norm_rope_cache_with_k_scale.h"
+#include "qkv_rms_norm_rope_cache_with_k_scale_checker.h"
 #include "aclnn_kernels/contiguous.h"
 
 #include "acl/acl.h"
