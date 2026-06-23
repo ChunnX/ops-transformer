@@ -122,6 +122,7 @@ bool FiaTilingNonQuantArch35::IsCapable()
         fiaInfo_->isOutQuantEnable ||  // 使能后量化
         fiaInfo_->learnableSinkFlag || // 使能sink
         fiaInfo_->isQKVDDifferent ||   // D<=128情况下，D不等长
+        fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST ||                    // 使能tensorlist
         (fiaInfo_->sparseMode == SPARSE_MODE_ALL_MASK || fiaInfo_->sparseMode == SPARSE_MODE_LEFT_UP ||
          fiaInfo_->sparseMode == SPARSE_MODE_BAND) ||                               // sparse mode=1/2/4
         (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) || // sparse mode=0且传入mask
