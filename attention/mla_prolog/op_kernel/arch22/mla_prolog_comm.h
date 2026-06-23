@@ -27,18 +27,18 @@ using namespace AscendC;
 namespace MlaProlog {
 
 template <typename T>
-__aicore__ inline T CeilDivT(T num1, T num2)
+__aicore__ inline T CeilDivT(T dividend, T divisor)
 {
-    if (num2 == 0) {
+    if (divisor == 0) {
         return static_cast<T>(0);
     }
-    return (num1 + num2 - 1) / num2;
+    return (dividend + divisor - 1) / divisor;
 }
 
 template <typename T>
-__aicore__ inline T Align(T num, T rnd)
+__aicore__ inline T Align(T value, T alignment)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
+    return (((alignment) == 0) ? 0 : (((value) + (alignment)-1) / (alignment) * (alignment)));
 }
 
 enum class CACHE_MODE : std::uint8_t {
@@ -90,17 +90,17 @@ enum class ROPE_MODE : std::uint8_t {
 constexpr uint64_t BYTE_BLOCK = 32UL;
 constexpr uint8_t ALIGN_BLOCK_SIZE = 32; // 32B对齐
 constexpr uint32_t BLOCK_CUBE_SIZE = 16; // L1上m轴16对齐
-constexpr uint32_t REPEAT_BLOCK_BYTE = 256;
 constexpr uint32_t REPEAT_STRIDE_UP_BOUND = 256; // repeat stride 不能超过256
-constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(float);
+constexpr uint32_t REPEAT_BLOCK_BYTE = 256;
 constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(half);
+constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(float);
 constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
 constexpr uint32_t MAX_UB_SIZE = 192 * 1024;      // 最大的UB大小
 constexpr uint32_t DIM_HEAD_SIZE_QCQR = 192;      // 算力分组方案D + Dr = 192
-constexpr uint32_t QC_CORE_NUM = 8;               // 算力分组方案QC占用8核
 constexpr uint32_t QR_CORE_NUM = 4;               // 算力分组方案QR占用4核
-constexpr uint32_t INT8_AFULLLOAD_MAX_MSIZE = 64; // 计算mmQcQr时，int8类型的A矩阵在msize小于等于64可以全载L1
+constexpr uint32_t QC_CORE_NUM = 8;               // 算力分组方案QC占用8核
 constexpr uint32_t BF16_AFULLLOAD_MAX_MSIZE = 32; // 计算mmQcQr时，bf16类型的A矩阵在msize小于等于32可以全载L1
+constexpr uint32_t INT8_AFULLLOAD_MAX_MSIZE = 64; // 计算mmQcQr时，int8类型的A矩阵在msize小于等于64可以全载L1
 constexpr uint32_t ONE_BYTE_TYPE_SIZE = 1;        // 数据类型int8_t大小为1字节
 constexpr uint32_t K_STEP_SIZE_32 = 32; // for move left or right
 constexpr uint32_t SHIFTS_UNIT = 4;
@@ -108,19 +108,19 @@ constexpr uint32_t UNIT_SIZE = 512;
 constexpr uint32_t ROUND_UP_UNIT = 15;       // for round up
 constexpr uint32_t MAX_SYNC_FLAG_COUNT = 15; // 同一个flagId的计数器最多设置15次
 
-constexpr int SYNC_MODE_ALL_CUBE = 0x0;
-constexpr int SYNC_MODE_CUBE_VEC = 0x2;
 constexpr int SYNC_MODE_ALL_VEC = 0x0;
+constexpr int SYNC_MODE_CUBE_VEC = 0x2;
+constexpr int SYNC_MODE_ALL_CUBE = 0x0;
 
+constexpr int FINISH_MM_QR = 0x8; // 算力分组场景
 constexpr int FINISH_MM_CQ = 0x6;
 constexpr int FINISH_MM_CKVKR = 0x6;
 constexpr int FINISH_MM_QCQR = 0x6;
-constexpr int FINISH_MM_QR = 0x8; // 算力分组场景
 constexpr int FINISH_MM_QC = 0x6; // 算力分组场景
 constexpr int FINISH_MM_ALL = 0x7;
 
-constexpr int FINISH_VEC_RMSNORM_CQ = 0x6;
 constexpr int FINISH_VEC_DEQUANT_QC = 0x6;
+constexpr int FINISH_VEC_RMSNORM_CQ = 0x6;
 constexpr int FINISH_VEC_CKVKR = 0x9;
 constexpr int FINISH_VEC_ALL = 0x7;
 
@@ -136,12 +136,9 @@ constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
 
 class NoneType {};
 
-// mte2 <> mte1
-#define SCALE_EVENT EVENT_ID3
-#define A_EVENT0 EVENT_ID4
-#define A_EVENT1 EVENT_ID5
-#define B_EVENT0 EVENT_ID6
-#define B_EVENT1 EVENT_ID7
+// fix <> m
+#define L0C_EVENT0 EVENT_ID3
+#define L0C_EVENT1 EVENT_ID4
 
 // m <> mte1
 #define L0A_EVENT0 EVENT_ID3
@@ -149,12 +146,15 @@ class NoneType {};
 #define L0B_EVENT0 EVENT_ID5
 #define L0B_EVENT1 EVENT_ID6
 
-// fix <> m
-#define L0C_EVENT0 EVENT_ID3
-#define L0C_EVENT1 EVENT_ID4
+// mte2 <> mte1
+#define SCALE_EVENT EVENT_ID3
+#define A_EVENT0 EVENT_ID4
+#define A_EVENT1 EVENT_ID5
+#define B_EVENT0 EVENT_ID6
+#define B_EVENT1 EVENT_ID7
 
-constexpr uint32_t L1_A_SIZE = 128 * 1024; // 512 / 4
 constexpr uint32_t L1_B_SIZE = 128 * 1024; // 512 / 4
+constexpr uint32_t L1_A_SIZE = 128 * 1024; // 512 / 4
 constexpr uint32_t L0A_PP_SIZE = 32 * 1024;
 constexpr uint32_t L0B_PP_SIZE = 32 * 1024;
 constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
@@ -210,8 +210,8 @@ template <typename X_T, typename W_T, typename C_T, typename D_S, CACHE_MODE C_M
           bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE,
           bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
 struct MLAPType {
-    using mmInputType = X_T; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = W_T;
+    using mmInputType = X_T; // tokenX的类型与weight的类型一致
     using mmQnInputType = bfloat16_t; // matmul计算Qn的输入类型
     using mmCqOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t,
                                                      bfloat16_t>::type; // matmul计算Cq的输出类型
@@ -222,8 +222,8 @@ struct MLAPType {
     using mmQnOutputType = bfloat16_t;                                    // matmul计算Qn的输出类型
     using rmsNormGammaType = bfloat16_t;                                  // gamma的输入类型
     using rmsNormComputType = float;
-    using rmsNormCqOutputType = W_T;
     using rmsNormCkvOutputType = C_T;
+    using rmsNormCqOutputType = W_T;
     using ropeSinCosType = bfloat16_t; // sin cos的输入类型
     using ropeComputType = float;
     using ropeOutputType = bfloat16_t;
@@ -263,21 +263,21 @@ struct MMParams {
 };
 
 struct MMBufParams {
-    uint32_t aL1BufIter = 0;
-    uint32_t bL1BufIter = 0;
-    TBuffAddr aL1BufAddr;
-    TBuffAddr bL1BufAddr;
     uint32_t aL0BufIter = 0;
     uint32_t bL0BufIter = 0;
     uint32_t cL0BufIter = 0;
     TBuffAddr aL0BufAddr;
     TBuffAddr bL0BufAddr;
     TBuffAddr cL0BufAddr;
+    uint32_t aL1BufIter = 0;
+    uint32_t bL1BufIter = 0;
+    TBuffAddr aL1BufAddr;
+    TBuffAddr bL1BufAddr;
 };
 
 struct AicOffset {
-    int64_t weightDqOffset = 0;
     int64_t dequantScaleWDqOffset = 0;
+    int64_t weightDqOffset = 0;
     int64_t cqResOffset = 0;
     int64_t rmsNormCqResOffset = 0;
     int64_t dequantScaleWDkvKrOffset = 0;
@@ -313,8 +313,8 @@ struct AivOffset {
 };
 
 struct UsedBlockParams {
-    uint32_t blockStartIdx;
     uint32_t blockEndIdx;
+    uint32_t blockStartIdx;
 };
 
 struct CkvkrParams {
@@ -328,8 +328,8 @@ struct CkvkrParams {
 
 
 struct RopeQrSplitNParams {
-    int64_t ropeQrOffset;
     int64_t ropeQrResOffset;
+    int64_t ropeQrOffset;
     uint32_t inputOffsetRope;
     uint32_t deqScaleOffset;
     uint32_t outputOffsetRope;
@@ -343,8 +343,8 @@ struct RopeQrSplitNParams {
 struct DequantQcQrSplitNParams {
     int64_t mmQnPreDequantOffset;
     int64_t mmQnPreDequantResOffset;
-    uint32_t inputOffset;
     uint32_t outputOffset;
+    uint32_t inputOffset;
     uint32_t srcStride;
     uint32_t dstStride;
 };
@@ -394,8 +394,8 @@ constexpr MatmulConfig CFG_MDL_EXCEED_INIT{.doNorm = false,
 template <uint8_t modeId, pipe_t pipe>
 __aicore__ inline void WaitAllCore(uint16_t flagId)
 {
-    CrossCoreSetFlag<modeId, pipe>(flagId);
-    CrossCoreWaitFlag(flagId);
+    AscendC::CrossCoreSetFlag<modeId, pipe>(flagId);
+    AscendC::CrossCoreWaitFlag(flagId);
 }
 }
 #endif

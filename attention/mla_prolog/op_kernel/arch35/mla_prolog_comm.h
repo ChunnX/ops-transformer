@@ -41,59 +41,59 @@ __aicore__ inline T Align(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-enum class CACHE_MODE : std::uint8_t {
-    ND = static_cast<std::uint8_t>(0), // BSND or TND
-    PA_BSND = static_cast<std::uint8_t>(1),
-    PA_NZ = static_cast<std::uint8_t>(2),
-    PA_BLK_BSND = static_cast<std::uint8_t>(3),
-    PA_BLK_NZ = static_cast<std::uint8_t>(4),
-    PA_BS = static_cast<std::uint8_t>(5)
+enum class CACHE_MODE : uint8_t {
+    ND = static_cast<uint8_t>(0), // BSND or TND
+    PA_BSND = static_cast<uint8_t>(1),
+    PA_NZ = static_cast<uint8_t>(2),
+    PA_BLK_BSND = static_cast<uint8_t>(3),
+    PA_BLK_NZ = static_cast<uint8_t>(4),
+    PA_BS = static_cast<uint8_t>(5)
 };
 
-enum class SCENARIO : std::uint8_t {
-    RESERVED = static_cast<std::uint8_t>(0),
-    NO_QUANT = static_cast<std::uint8_t>(1),
-    QUANT = static_cast<std::uint8_t>(2)
+enum class SCENARIO : uint8_t {
+    RESERVED = static_cast<uint8_t>(0),
+    NO_QUANT = static_cast<uint8_t>(1),
+    QUANT = static_cast<uint8_t>(2)
 };
 
-enum class QUANT_MODE : std::uint8_t {
-    NO_QUANT = static_cast<std::uint8_t>(0),
-    PARTIAL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(1),
-    PARTIAL_QUANT_KV_QUANT_PER_CHANNEL = static_cast<std::uint8_t>(2),
-    FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(3),
-    FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(4),
-    PARTIAL_QUANT_KV_QUANT_PERTILE = static_cast<std::uint8_t>(5),
-    FULL_QUANT_KV_QUANT_PERTILE = static_cast<std::uint8_t>(6),
-    MXFP8_FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(7),
-    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(8),
-    MXFP8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<std::uint8_t>(9),
-    FP8_FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(10),
-    FP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(11),
-    HIF8_FULL_QUANT_KV_NO_QUANT = static_cast<std::uint8_t>(12),
-    HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<std::uint8_t>(13),
-    FP8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<std::uint8_t>(14),
-    HIF8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<std::uint8_t>(15)
+enum class QUANT_MODE : uint8_t {
+    NO_QUANT = static_cast<uint8_t>(0),
+    PARTIAL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(1),
+    PARTIAL_QUANT_KV_QUANT_PER_CHANNEL = static_cast<uint8_t>(2),
+    FULL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(3),
+    FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<uint8_t>(4),
+    PARTIAL_QUANT_KV_QUANT_PERTILE = static_cast<uint8_t>(5),
+    FULL_QUANT_KV_QUANT_PERTILE = static_cast<uint8_t>(6),
+    MXFP8_FULL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(7),
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<uint8_t>(8),
+    MXFP8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<uint8_t>(9),
+    FP8_FULL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(10),
+    FP8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<uint8_t>(11),
+    HIF8_FULL_QUANT_KV_NO_QUANT = static_cast<uint8_t>(12),
+    HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR = static_cast<uint8_t>(13),
+    FP8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<uint8_t>(14),
+    HIF8_FULL_QUANT_KV_QUANT_PER_TILE = static_cast<uint8_t>(15)
 };
 
-enum class EMPTY_TENSOR_MODE : std::uint8_t {
-    NON_EMPTY = static_cast<std::uint8_t>(0),
-    EMPTY_CACHE = static_cast<std::uint8_t>(1),
-    EMPTY_QUERY = static_cast<std::uint8_t>(2),
+enum class EMPTY_TENSOR_MODE : uint8_t {
+    NON_EMPTY = static_cast<uint8_t>(0),
+    EMPTY_CACHE = static_cast<uint8_t>(1),
+    EMPTY_QUERY = static_cast<uint8_t>(2),
 };
 
-enum class ACTUAL_SEQ_MODE : std::uint8_t {
-    DISABLED = static_cast<std::uint8_t>(0),
-    EN_Q_LEN = static_cast<std::uint8_t>(1),
+enum class ACTUAL_SEQ_MODE : uint8_t {
+    DISABLED = static_cast<uint8_t>(0),
+    EN_Q_LEN = static_cast<uint8_t>(1),
 };
 
-enum class SPLIT_M_MODE : std::uint8_t {
-    DISABLED = static_cast<std::uint8_t>(0),
-    ENABLED = static_cast<std::uint8_t>(1),
+enum class SPLIT_M_MODE : uint8_t {
+    DISABLED = static_cast<uint8_t>(0),
+    ENABLED = static_cast<uint8_t>(1),
 };
 
-enum class ROPE_MODE : std::uint8_t {
-    INTERLEAVE_HALF = static_cast<std::uint8_t>(0),
-    HALF = static_cast<std::uint8_t>(1),
+enum class ROPE_MODE : uint8_t {
+    INTERLEAVE_HALF = static_cast<uint8_t>(0),
+    HALF = static_cast<uint8_t>(1),
 };
 
 constexpr uint64_t BYTE_BLOCK = 32UL;
