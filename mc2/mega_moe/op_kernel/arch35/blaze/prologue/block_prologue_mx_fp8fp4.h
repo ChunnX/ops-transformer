@@ -208,9 +208,12 @@ protected:
     // [64KB-192KB): 8-bit weight quad buffers
     static constexpr uint64_t WEIGHT_8BIT_TOTAL_SIZE = 128 * KB;
 
-    // Compile-time verification: active use stays within the 248KB UB hardware limit.
+    // UB hardware usable ceiling: TOTAL_UB_SIZE (256KB) minus ~8KB system reserved.
+    static constexpr uint64_t UB_MAX_USABLE_SIZE = 248 * KB;
+
+    // Compile-time verification: active use stays within the UB hardware usable ceiling.
     static_assert(
-        WEIGHT_4BIT_TOTAL_SIZE + WEIGHT_8BIT_TOTAL_SIZE <= 248 * KB,
+        WEIGHT_4BIT_TOTAL_SIZE + WEIGHT_8BIT_TOTAL_SIZE <= UB_MAX_USABLE_SIZE,
         "UB buffer total must not exceed 248KB hardware limit");
 
     // === UB Buffer Base Offsets ===
@@ -265,12 +268,13 @@ __aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue()
 }
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline uint64_t BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CalcDynamicKBlock(uint64_t mL1Size, uint64_t nL1Size) const
+__aicore__ inline uint64_t BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CalcDynamicKBlock(uint64_t mL1Size,
+                                                                                      uint64_t nL1Size) const
 {
     return (mL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD &&
-                nL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
-                    MX_FP8FP4_L1_K_CONFIG_512 :
-                    MX_FP8FP4_L1_K_CONFIG_256;
+            nL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
+               MX_FP8FP4_L1_K_CONFIG_512 :
+               MX_FP8FP4_L1_K_CONFIG_256;
 }
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
@@ -375,7 +379,8 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::CopyGmToUb(
     const GMWeightBaseTensorType& gmWeightBaseTensor, const Weight4BitTensorType& weight4BitTensor)
 {
     if (mte2RealK > 0) {
-        auto gmSliceTensor = gmWeightBaseTensor.Slice(AscendC::Te::MakeCoord(kOffset, param.nOffset), AscendC::Te::MakeShape(mte2RealK, param.nL1Size));
+        auto gmSliceTensor = gmWeightBaseTensor.Slice(AscendC::Te::MakeCoord(kOffset, param.nOffset),
+                                                      AscendC::Te::MakeShape(mte2RealK, param.nL1Size));
         auto copyGM2UBWeight = AscendC::Te::MakeCopy(Blaze::Gemm::Tile::CopyGM2UBWeight{});
         AscendC::Te::Copy(copyGM2UBWeight, weight4BitTensor, gmSliceTensor);
     }
@@ -429,28 +434,34 @@ __aicore__ inline void BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::FinalizeVectorCo
 // === Tensor Creation Helper Function Implementations ===
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeWeight4BitTensor(uint64_t mte2RealK, uint64_t nL1Size)
+__aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeWeight4BitTensor(uint64_t mte2RealK,
+                                                                                     uint64_t nL1Size)
 {
-    return AscendC::Te::MakeTensor(
-        AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, InType>(WEIGHT_4BIT_OFFSETS[ubMte2LoopIdx_ & (kUbMte2BufferNum - 1)]),
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ZNLayoutPtn, AscendC::Std::Int<32>>{}(static_cast<int64_t>(mte2RealK), static_cast<int64_t>(nL1Size)));
+    return AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, InType>(
+                                       WEIGHT_4BIT_OFFSETS[ubMte2LoopIdx_ & (kUbMte2BufferNum - 1)]),
+                                   AscendC::Te::FrameLayoutFormat<AscendC::Te::ZNLayoutPtn, AscendC::Std::Int<32>>{}(
+                                       static_cast<int64_t>(mte2RealK), static_cast<int64_t>(nL1Size)));
 }
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeWeight8BitTensor(uint64_t mte2RealK, uint64_t nL1Size)
+__aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeWeight8BitTensor(uint64_t mte2RealK,
+                                                                                     uint64_t nL1Size)
 {
     return AscendC::Te::MakeTensor(
-        AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, OutType>(WEIGHT_8BIT_OFFSETS[ubComputeLoopIdx_ & (WEIGHT_8BIT_BUFFER_NUM - 1)]),
+        AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, OutType>(
+            WEIGHT_8BIT_OFFSETS[ubComputeLoopIdx_ & (WEIGHT_8BIT_BUFFER_NUM - 1)]),
         Blaze::Gemm::Weight8BitUBLayout<OutType, WEIGHT_8BIT_LAYOUT_INNER_SIZE>{}(mte2RealK, nL1Size));
 }
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTensor(
-    uint64_t l1RealLen, uint64_t nL1Size)
+__aicore__ inline auto BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::MakeL1WeightTensor(uint64_t l1RealLen, uint64_t nL1Size)
 {
-    auto l1BaseLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::ZNLayoutPtn, AscendC::Te::LayoutTraitDefault<OutType>>(l1RealLen, nL1Size);
-    return AscendC::Te::MakeTensor(
-        AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, OutType>(L1_WEIGHT_OFFSETS[cvLoopIdx_ & (DOUBLE_BUFFER - 1)]), l1BaseLayout);
+    auto l1BaseLayout =
+        AscendC::Te::MakeFrameLayout<AscendC::Te::ZNLayoutPtn, AscendC::Te::LayoutTraitDefault<OutType>>(l1RealLen,
+                                                                                                         nL1Size);
+    return AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, OutType>(
+                                       L1_WEIGHT_OFFSETS[cvLoopIdx_ & (DOUBLE_BUFFER - 1)]),
+                                   l1BaseLayout);
 }
 
 #undef BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION
