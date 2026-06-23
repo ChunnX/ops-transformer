@@ -548,43 +548,42 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
                                                                  GlobalTensor<float> &outDstGm, uint64_t srcOffset,
                                                                  uint64_t dstOffset, uint64_t outDstOffset, uint32_t actualLen)
 {
-    uint32_t dSize = constInfo.dSize;
-
-
+  uint32_t dSize = constInfo.dSize;
     uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / 128;
     uint32_t loops = (actualLen + maxLen - 1) / maxLen;
     uint32_t tailLen = actualLen % maxLen == 0 ? maxLen : actualLen % maxLen;
+
     DataCopyExtParams copyInParams;
 
-    uint32_t loopIdx = 0;
+    // poolOutTemp layout: 9 rows of dSize elements each
+    // Rows 0-7: store per-chunk ReduceSum results (raw sums, NOT means)
+    // Row 8 (offset 8*dSize): store intermediate ReduceSum merge result
+    // Using ReduceSum throughout eliminates mean-of-means bug and Add precision loss
 
-    //  outTemp 内存示意图
-    //  |0|1  -   7|8| outTemp= (8+1) * 128
-    //  当outTemp存储满时会对outTemp进行一次reduceMean
-    //  由于输入和输出不能重叠，所有outTemp头或者尾部会进行存储一轮outTemp的ReduceMean的结果
-    //  当1表示上轮结果存储在在tmp的尾部，该次结果应该存在头部；当0表示上轮结果存储在在tmp的头部，该次结果应该存在尾部
-    //  特殊情况：还没有对outTemp进行 reduceMean时候当finalOutLocation也是0
-    uint32_t finalOutLocation = 0;
-    bool isFirstMerge = true; // 是否是首次对outTemp进行 reduceMean
     uint32_t loopNum = 0;
+    uint32_t finalOutLocation = 0;
+    bool isFirstMerge = true;
     uint32_t bufferId = 0;
     event_t eventId;
+    // Clear poolOutTemp rows 0-7 to prevent stale data from contaminating merge ReduceSum (Bug3 fix)
+    Duplicate(poolOutTemp[0], static_cast<T>(0), 8 * dSize);
+    AscendC::PipeBarrier<PIPE_V>();
 
     SetFlag<HardEvent::V_MTE2>(eventPing);
     SetFlag<HardEvent::V_MTE2>(eventPong);
 
-    for(loopIdx = 0; loopIdx < loops; loopIdx++) {
+    for (uint32_t loopIdx = 0; loopIdx < loops; loopIdx++) {
         loopNum++;
 
         bufferId = loopIdx % BUFFER;
-        eventId = bufferId == 0 ?  eventPing : eventPong;
+        eventId = bufferId == 0 ? eventPing : eventPong;
 
-        uint32_t inputGmOffset = loopIdx * maxLen + srcOffset;
+        uint32_t inputGmOffset = loopIdx * maxLen * dSize + srcOffset;
         uint32_t excuteLen = (loopIdx == (loops - 1) ? tailLen : maxLen);
 
         WaitFlag<HardEvent::V_MTE2>(eventId);
 
-        // Step 1: DataCopyPad GM→UB，搬入 excuteLen × D 个 IN_T 元素到 poolInputUb[bufferId]
+        // Step 1: DataCopyPad GM->UB
         copyInParams.blockLen = excuteLen * dSize * sizeof(IN_T);
         copyInParams.blockCount = 1;
         copyInParams.srcStride = 0;
@@ -595,41 +594,42 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
         SetFlag<HardEvent::MTE2_V>(eventId);
         WaitFlag<HardEvent::MTE2_V>(eventId);
 
-        // Step 2: Cast 全部 [actualLen, D] IN_T → FP32 到 poolInFp32Ub
+        // Step 2: Cast IN_T -> FP32
         Cast(poolInFp32Ub[bufferId], poolInputUb[bufferId], RoundMode::CAST_NONE, excuteLen * dSize);
         AscendC::PipeBarrier<PIPE_V>();
 
-         // Step 3: 使用 ReduceSum 沿 seqlen 维度求和
+        // Step 3: ReduceSum per chunk (raw sum, NOT mean)
         uint32_t shape[] = {excuteLen, dSize};
-        bool isSrcInnerPad = excuteLen % FLOAT_DATA_BLOCK_NUM == 0 ? true : false;
-        constexpr bool isReuseSource = true;
+        bool isSrcInnerPad = true; // dSize=128 always 32B aligned (inner axis), not dependent on reduce dim
 
-        // outTemp 的位置
+        // Determine output row offset in poolOutTemp (same logic as original)
         uint32_t outTempOffset = ((loopNum - 1) % 8 + 1) * dSize;
         if (finalOutLocation == 0 && isFirstMerge) {
-            // 当0表示上轮outTemp的reduce结果存储在在tmp的头部，该次结果应该存在尾部
-            // 特殊情况：还没有对outTemp进行 reduceMean时候当finalOutLocation也是0
             outTempOffset = ((loopNum - 1) % 8) * dSize;
         }
 
-        AscendC::ReduceMean<T, AscendC::Pattern::Reduce::RA, true>(poolOutTemp[outTempOffset], poolInFp32Ub[bufferId], reduceSharedTemp[bufferId], shape, isSrcInnerPad);
+        // ReduceSum (NOT ReduceMean) - accumulate raw sum for this chunk
+        AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, true>(
+            poolOutTemp[outTempOffset], poolInFp32Ub[bufferId], reduceSharedTemp[bufferId], shape, isSrcInnerPad);
         AscendC::PipeBarrier<PIPE_V>();
 
-        // poolTemp 存储满了就进行reduceMean
-        // 如果首次poolTemp reduceMean需要循环8次, 其他时候7次
+        // Intermediate merge: ReduceSum over stored rows when poolOutTemp is full
         if ((isFirstMerge && loopNum == 8) || (!isFirstMerge && (loopNum % 7 == 0))) {
             if (isFirstMerge) {
                 isFirstMerge = false;
             }
-            uint32_t tempOutOffset =  finalOutLocation == 0 ? 8 * dSize : 0;
-            uint32_t tempInOffset =  finalOutLocation == 0 ? 0 : 1 * dSize;
-            auto outTensor = poolOutTemp[tempOutOffset];
-            auto inputTensor = poolOutTemp[tempInOffset];
+            uint32_t mergeOutOffset = finalOutLocation == 0 ? 8 * dSize : 0;
+            uint32_t mergeInOffset = finalOutLocation == 0 ? 0 : 1 * dSize;
 
             uint32_t mergeShape[] = {8, dSize};
-            // isReuseSource = true;
-            AscendC::ReduceMean<T, AscendC::Pattern::Reduce::RA, true>(outTensor, inputTensor, reduceSharedTemp[bufferId], mergeShape, isSrcInnerPad);
+            bool mergeIsSrcInnerPad = true; // dSize=128 always aligned (Bug#3 fix)
+
+            // ReduceSum for merge (accumulate raw sums, NOT mean-of-means)
+            AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, true>(
+                poolOutTemp[mergeOutOffset], poolOutTemp[mergeInOffset],
+                reduceSharedTemp[bufferId], mergeShape, mergeIsSrcInnerPad);
             AscendC::PipeBarrier<PIPE_V>();
+
             finalOutLocation = 1 - finalOutLocation;
             loopNum = 0;
         }
@@ -640,35 +640,46 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
     WaitFlag<HardEvent::V_MTE2>(eventPing);
     WaitFlag<HardEvent::V_MTE2>(eventPong);
 
-    // poolTemp 没存储满，但循环结束了
+    // Final merge: ReduceSum over remaining rows in poolOutTemp
     if (loopNum != 0) {
-        uint32_t tempOutOffset =  finalOutLocation == 0 ? 8 * dSize : 0;
-        uint32_t tempInOffset =  finalOutLocation == 0 ? 0 : 1 * dSize;
-        auto outTensor = poolOutTemp[tempOutOffset];
-        auto inputTensor = poolOutTemp[tempInOffset];
+        uint32_t mergeOutOffset = finalOutLocation == 0 ? 8 * dSize : 0;
+        uint32_t mergeInOffset = finalOutLocation == 0 ? 0 : 1 * dSize;
 
-        uint32_t rDim = isFirstMerge ? loopNum : loopNum;
-        uint32_t shape[] = {rDim, dSize};
-        bool isSrcInnerPad = rDim % FLOAT_DATA_BLOCK_NUM == 0 ? true : false;
-        constexpr bool isReuseSource = true;
-        // isReuseSource = true;
-        AscendC::ReduceMean<T, AscendC::Pattern::Reduce::RA, true>(outTensor, inputTensor, reduceSharedTemp[bufferId], shape, isSrcInnerPad);
+        uint32_t rDim = loopNum;
+        uint32_t finalShape[] = {rDim, dSize};
+        bool finalIsSrcInnerPad = true; // dSize=128 always 32B aligned (inner axis)
+
+        AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, true>(
+            poolOutTemp[mergeOutOffset], poolOutTemp[mergeInOffset],
+            reduceSharedTemp[bufferId], finalShape, finalIsSrcInnerPad);
         AscendC::PipeBarrier<PIPE_V>();
+
         finalOutLocation = 1 - finalOutLocation;
-    } 
+    }
 
-    // step3: cast fp32 to IN_T
-    uint32_t tempOutOffset =  finalOutLocation == 0 ? 8 * dSize : 0;
-    auto outTensor = poolOutTemp[tempOutOffset];
+    // Get the final accumulated sum from poolOutTemp
+    uint32_t finalOffset = finalOutLocation == 0 ? 8 * dSize : 0;
+    auto sumTensor = poolOutTemp[finalOffset];
 
-    Cast(poolOutCast, outTensor, RoundMode::CAST_NONE, dSize);
+    // Step 4: Divide accumulated sum by actualLen (hardware Cast avoids prohibited int->float C++ cast)
+    LocalTensor<int32_t> lenInt32Ub = reduceSharedTemp[0].ReinterpretCast<int32_t>();
+    Duplicate(lenInt32Ub, static_cast<int32_t>(actualLen), static_cast<int32_t>(dSize));
+    AscendC::PipeBarrier<PIPE_V>();
+    LocalTensor<T> lenFloatUb = reduceSharedTemp[0].ReinterpretCast<T>()[dSize]; // use offset within reduceSharedTemp[0] (Bug1 fix: reduceSharedTemp[1] was OOB)
+    Cast(lenFloatUb, lenInt32Ub, RoundMode::CAST_NONE, dSize);
+    AscendC::PipeBarrier<PIPE_V>();
+    Div(poolOut, sumTensor, lenFloatUb, static_cast<int32_t>(dSize));
     AscendC::PipeBarrier<PIPE_V>();
 
-    eventId = bufferId == 0 ?  eventPing : eventPong;
+    // Step 5: Cast FP32 -> IN_T
+    Cast(poolOutCast, poolOut, RoundMode::CAST_NONE, dSize);
+    AscendC::PipeBarrier<PIPE_V>();
+
+    eventId = bufferId == 0 ? eventPing : eventPong;
     SetFlag<HardEvent::V_MTE3>(eventId);
     WaitFlag<HardEvent::V_MTE3>(eventId);
 
-    // Step 4: 直接写 FP32 到输出 tensor (无 Cast)
+    // Step 6: Write to GM
     DataCopyExtParams copyOutCastParams;
     copyOutCastParams.blockLen = dSize * sizeof(IN_T);
     copyOutCastParams.blockCount = 1;
@@ -681,7 +692,6 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
     copyOutParams.blockCount = 1;
     copyOutParams.srcStride = 0;
     copyOutParams.dstStride = 0;
-    // 调试用
-    DataCopyPad(outDstGm[outDstOffset], outTensor, copyOutParams);
+    DataCopyPad(outDstGm[outDstOffset], poolOut, copyOutParams);
 }
 #endif // BSA_SELECT_BLOCK_MASK_POOL_H
