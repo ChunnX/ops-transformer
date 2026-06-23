@@ -90,7 +90,8 @@ public:
     __aicore__ inline void CopyOutAttentionOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                int64_t vec2S1Idx, int64_t vec2CalcSize);
     __aicore__ inline void InitFDBuffers(ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr);
+    __aicore__ inline void FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm,
+                                              __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr);
 
     template <typename VEC2_RES_T>
     __aicore__ inline void PostQuant(ConstInfo<isInfer, hasRope> &constInfo, RunInfo<isInfer> &runInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t dSizeAligned64);
@@ -105,6 +106,8 @@ public:
 private:
     __aicore__ inline void InitOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitLseOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void GetActualSeqLenQ(ConstInfo<isInfer, hasRope> &constInfo, __gm__ int64_t *actualSeqQlenAddr,
+                                            int64_t boIdx, int64_t &actualSeqLenQ);
     __aicore__ inline void GetActualSeqLenKV(ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm, 
         __gm__ int64_t *actualSeqKvlenAddr, int64_t boIdx, int64_t &actualSeqKvLen);
     __aicore__ inline void MlaBnsdWithActqLseCopyOut(LocalTensor<float> &lseUb, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, DataCopyExtParams &intriParams1);
@@ -394,7 +397,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitFDBuffers(Cons
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo,
-    GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr)
+    GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr)
 {
     int64_t bIdx = constInfo.aivIdx / constInfo.n2Size;
     int64_t n2Idx = constInfo.aivIdx % constInfo.n2Size;
@@ -402,13 +405,19 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::FlashDecodeCompute
     if (constInfo.aivIdx >= batchSize * constInfo.n2Size) {
         return;
     }
-    int64_t actualSeqLen;
-    GetActualSeqLenKV(constInfo, keyGm, actualSeqKvlenAddr, bIdx, actualSeqLen);
-    if (actualSeqLen == 0) {
+    int64_t actualSeqLenQ, actualSeqLenKv;
+    GetActualSeqLenQ(constInfo, actualSeqQlenAddr, bIdx, actualSeqLenQ);
+    GetActualSeqLenKV(constInfo, keyGm, actualSeqKvlenAddr, bIdx, actualSeqLenKv);
+    if (actualSeqLenQ == 0 || actualSeqLenKv == 0) {
         return;
     }
     uint64_t attenOutOffset = (uint64_t)bIdx * constInfo.n2GDv + n2Idx * constInfo.gDv;
-    constInfo.actualCombineLoopSize = (actualSeqLen + constInfo.sInnerLoopSize - 1) / constInfo.sInnerLoopSize;
+    if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)) {
+        if (bIdx > 0) {
+            attenOutOffset = (uint64_t)actualSeqQlenAddr[bIdx - 1] * constInfo.n2GDv + n2Idx * constInfo.gDv;
+        }
+    }
+    constInfo.actualCombineLoopSize = (actualSeqLenKv + constInfo.sInnerLoopSize - 1) / constInfo.sInnerLoopSize;
     CombineSplitKVRes(constInfo, attenOutOffset, bIdx, n2Idx);
 }
 
@@ -517,6 +526,30 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CopyOutAttentionOu
         Bmm2FDOut(vec2ResUb, runInfo, constInfo, vec2S1Idx, vec2CalcSize);
     } else {
         this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::GetActualSeqLenQ(ConstInfo<isInfer, hasRope> &constInfo,
+                                                                               __gm__ int64_t *actualSeqQlenAddr,
+                                                                               int64_t boIdx, int64_t &actualSeqLenQ)
+{
+    int64_t s1InCurrentBatch = constInfo.s1Size;
+    if (constInfo.isActualLenDimsNull) {
+        actualSeqLenQ = s1InCurrentBatch;
+    } else {
+        actualSeqLenQ = (constInfo.actualSeqLenSize == 1) ? actualSeqQlenAddr[0] : actualSeqQlenAddr[boIdx];
+        if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)) {
+            if (boIdx > 0) {
+                actualSeqLenQ -= actualSeqQlenAddr[boIdx - 1];
+            }
+        }
+    }
+    if (constInfo.isQHasLeftPadding) {
+        int64_t qLeftPaddingSize = constInfo.s1Size - actualSeqLenQ - constInfo.queryRightPaddingSize;
+        if (qLeftPaddingSize < 0) {
+            actualSeqLenQ = 0;
+        }
     }
 }
 
