@@ -188,18 +188,24 @@ ge::graphStatus RopeGradRegBaseTilingClassBAB::SplitUb()
 
 void RopeGradRegBaseTilingClassBAB::PrintTilingData()
 {
+    std::cout << "=== PostTiling RopeGrad BAB ===" << std::endl
+              << "  B=" << b_ << " S=" << s_ << " D=" << d_ << " N=" << n_ << std::endl
+              << "  blockNumB=" << blockNumB_ << " blockFactorB=" << blockFactorB_ << " blockNumS=" << blockNumS_
+              << " blockFactorS=" << blockFactorS_ << std::endl
+              << "  ubFactorS=" << ubFactorS_ << " ubFactorB=" << ubFactorB_ << " ubLoopNumN=" << ubLoopNumN_
+              << " ubFactorN=" << ubFactorN_ << " ubTailFactorN=" << ubTailFactorN_ << std::endl
+              << "  usedCoreNum=" << usedCoreNum_ << " rotaryMode=" << static_cast<int64_t>(rotaryMode_)
+              << " dSplitCoef=" << dSplitCoef_ << std::endl
+              << "  dCosFlag=" << dCosFlag_ << " tilingKey=" << tilingKey_ << std::endl;
+
     OP_LOGI(context_->GetNodeName(),
-            "RopeGradRegBaseTilingBAB tilingData: useCoreNum is %ld,"
-            "B is %ld, S is %ld, D is %ld, N is %ld, blockNumB %ld,"
-            "blockFactorB_ is %ld, blockNumS %ld, blockFactorS is %ld, ubFactorS is %ld, ubFactorB is %ld,"
-            "ubLoopNumN is %ld, ubFactorN is %ld, ubTailFactorN is %ld, rotaryMode is %ld, tilingKey is %ld",
-            usedCoreNum_, tilingData_->ropeGradParams.b, tilingData_->ropeGradParams.s, tilingData_->ropeGradParams.d,
-            tilingData_->ropeGradParams.n, tilingData_->ropeGradParams.blockNumB,
-            tilingData_->ropeGradParams.blockFactorB, tilingData_->ropeGradParams.blockNumS,
-            tilingData_->ropeGradParams.blockFactorS, tilingData_->ropeGradParams.ubFactorS,
-            tilingData_->ropeGradParams.ubFactorB, tilingData_->ropeGradParams.ubLoopNumN,
-            tilingData_->ropeGradParams.ubFactorN, tilingData_->ropeGradParams.ubTailFactorN,
-            tilingData_->ropeGradParams.rotaryMode, tilingKey_);
+            "RopeGradRegBaseTilingBAB tilingData: B=%ld S=%ld D=%ld N=%ld "
+            "blockNumB=%ld blockFactorB=%ld blockNumS=%ld blockFactorS=%ld "
+            "ubFactorS=%ld ubFactorB=%ld ubLoopNumN=%ld ubFactorN=%ld ubTailFactorN=%ld "
+            "usedCoreNum=%ld rotaryMode=%ld dSplitCoef=%ld dCosFlag=%u tilingKey=%lu",
+            b_, s_, d_, n_, blockNumB_, blockFactorB_, blockNumS_, blockFactorS_, ubFactorS_, ubFactorB_, ubLoopNumN_,
+            ubFactorN_, ubTailFactorN_, usedCoreNum_, static_cast<int64_t>(rotaryMode_), dSplitCoef_, dCosFlag_,
+            tilingKey_);
     return;
 }
 
