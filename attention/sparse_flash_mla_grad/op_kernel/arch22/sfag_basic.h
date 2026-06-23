@@ -285,9 +285,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::Process(
 
             int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
             CrossCoreWaitFlag(taskMod1 == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
-            if (subBlockIdx == 0) {
-                vecOp.Process(runInfo[1 - mmPingPongIdx]);
-            }
+            vecOp.Process(runInfo[1 - mmPingPongIdx]);
             CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
 
             CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
@@ -336,9 +334,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::VecCompute(VecOp<SMLA
     if (runInfo[mmPingPongIdx].task > 0) {
         int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
         CrossCoreWaitFlag(taskMod1 == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
-        if (subBlockIdx == 0) {
-            vecOp.Process(runInfo[1 - mmPingPongIdx]);
-        }
+        vecOp.Process(runInfo[1 - mmPingPongIdx]);
         CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
 
         if (scatterRunInfo.changeS1) {

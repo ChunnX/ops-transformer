@@ -25,9 +25,26 @@ struct MmadAtlasA2PreloadFixpipeQuant : public MmadAtlasA2 {
     static constexpr bool ENABLE_SHUFFLE_K = ENABLE_SHUFFLE_K_;
 };
 
+// ------------------------------------------------------------------
+// A2 dispatch policy for INT8 / BF16 / FP16 (no FixPipe quant path).
+// Used on Atlas A2 (910B) hardware.
+// ------------------------------------------------------------------
 template <uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
           uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
 struct MmadAtlasA2PreloadAsyncFixpipe
+    : public MmadAtlasA2PreloadAsync<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                     ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_> {};
+
+// ------------------------------------------------------------------
+// A3 dispatch policy for INT8 / BF16 / FP16 (with FixPipe quant).
+// Used on Atlas A3 (910_93) hardware.  The corresponding BlockMmad
+// specialization lives in utils/block_mmad_preload_async_fixpipe_quant.hpp
+// and adds CopyL1ToFP (FixPipe-based per-channel dequant) that the A2
+// variant lacks.
+// ------------------------------------------------------------------
+template <uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
+          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
+struct MmadAtlasA3PreloadAsyncFixpipeQuant
     : public MmadAtlasA2PreloadAsync<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
                                      ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_> {};
 
@@ -38,40 +55,38 @@ struct MmadAtlasA2W4A4MatmulPerChannelDequant
                                                  ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_> {};
 
 // ------------------------------------------------------------------
-// Unified dispatch-policy & BlockMmad selector (used by the unified
-// MegaMoe kernel).
+// Unified dispatch-policy & BlockMmad selector.
 //
-// Goal: keep a SINGLE name for the dispatch policy and BlockMmad in the
-// caller; switch the underlying primitive purely from the weight element
-// type (`BType_`). The selection matches what the three legacy
-// implementations historically used:
-//   - BType_ == int4b_t  -> W4A4 path  -> MmadAtlasA2W4A4MatmulPerChannelDequant
-//                                           + BlockMmad with QuantTileCopy
-//                                             (ScaleGranularity::PER_CHANNEL)
-//   - other (int8 / bf16 / fp16) -> MmadAtlasA2PreloadAsyncFixpipe
-//                                           + BlockMmad with default tile copy
+// IS_A2_ : true  → A2 hardware (910B)   → MmadAtlasA2PreloadAsyncFixpipe
+//          false → A3 hardware (910_93) → MmadAtlasA3PreloadAsyncFixpipeQuant
 //
-// The caller no longer carries a `std::conditional_t<isW4A8, …, …>` in its
-// own scope: it just spells the element type and gets back the right
-// BlockMmad shape.
+// W4A8 (int4b_t weight) always uses MmadAtlasA2W4A4MatmulPerChannelDequant
+// on both architectures — the per-channel dequant is handled by the
+// WithCallback variant regardless of hardware.
 // ------------------------------------------------------------------
-template <typename BType_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
-          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
+template <typename BType_, bool IS_A2_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_,
+          uint32_t L0B_STAGES_, uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
 struct MmadDispatchPolicyFor {
     // For W4A4 we need the WithCallback variant so the per-channel scale
     // can be applied during fixpipe.
     using type =
-        std::conditional_t<std::is_same_v<BType_, AscendC::int4b_t>,
-                           MmadAtlasA2W4A4MatmulPerChannelDequant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
-                                                                  L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-                           MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
-                                                          L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>>;
+        std::conditional_t<
+            std::is_same_v<BType_, AscendC::int4b_t>,
+            MmadAtlasA2W4A4MatmulPerChannelDequant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
+                                                    L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+            std::conditional_t<
+                IS_A2_,
+                MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
+                                                L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+                MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_,
+                                                    L0B_STAGES_, L0C_STAGES_, ENABLE_UNIT_FLAG_,
+                                                    ENABLE_SHUFFLE_K_>>>;
 };
 
-template <typename BType_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
-          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
+template <typename BType_, bool IS_A2_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_,
+          uint32_t L0B_STAGES_, uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
 using MmadDispatchPolicyFor_t =
-    typename MmadDispatchPolicyFor<BType_, PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+    typename MmadDispatchPolicyFor<BType_, IS_A2_, PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
                                    ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>::type;
 } // namespace Catlass::Gemm
 

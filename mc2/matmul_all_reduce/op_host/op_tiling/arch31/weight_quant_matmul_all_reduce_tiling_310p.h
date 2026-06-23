@@ -82,9 +82,6 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
 
         void PrintTilingData(bool debugLevel)
         {
-            if (debugLevel && CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-                return;
-            }
             std::stringstream ss;
             ss << " cubeNumBlocksN: " << static_cast<uint32_t>(tilingData_->cubeBlockDimN)
                << " cubeNumBlocksM: " << static_cast<uint32_t>(tilingData_->cubeBlockDimM)

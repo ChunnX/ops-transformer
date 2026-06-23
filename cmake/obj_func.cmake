@@ -474,7 +474,7 @@ function(add_opbase_modules)
 
   if(OPS_BASE_UTIL_SRC)
     add_library(opbase_util_objs OBJECT ${OPS_BASE_UTIL_SRC})
-    target_include_directories(opbase_util_objs PRIVATE ${OP_TILING_INCLUDE})
+    target_include_directories(opbase_util_objs PRIVATE ${OP_TILING_INCLUDE} ${ASCEND_DIR}/pkg_inc)
     target_compile_options(opbase_util_objs
         PRIVATE
         $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private

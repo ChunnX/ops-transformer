@@ -434,8 +434,8 @@ protected:
     virtual bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, MultiCoreParams &multiCoreParams);
     void SetPrefixSparseStartIdx(const std::vector<std::vector<int64_t>> &sparseValidArray,
                                  MultiCoreParams &multiCoreParams);
-    void PrintSparseMaxMinLoadPerCore(const std::vector<int64_t> &sparseValidArray, int64_t *sparseStartIdx,
-                                      int32_t validAivNum, int64_t avgLoadSize);
+    int64_t PrintSparseMaxMinLoadPerCore(const std::vector<int64_t> &sparseValidArray, int64_t *sparseStartIdx,
+                                         int32_t validAivNum, int64_t avgLoadSize);
     bool PartitionSparseData(const std::vector<int64_t> &sparseRollingArray, int64_t sparseRollingArraySum,
                              int64_t sparseArraySize, int64_t loadMaxEachCore, std::vector<int64_t> &partitionResult);
     SparseEnum GetPrefixNList(std::ostringstream &failReason);
@@ -2468,23 +2468,21 @@ bool FlashAttentionScoreTilingBase::SetSparseStartIdx(const std::vector<int64_t>
         sparseStartIdx[idx] = lastValidPartitionResult[idx];
     }
 
-    if (CheckLogLevel(OP, DLOG_DEBUG) == 1) {
-        PrintSparseMaxMinLoadPerCore(sparseValidArray, sparseStartIdx, validCoreNum,
-                                     CeilDivision(loadTotal, validCoreNum));
-    }
+    OP_LOGD(context_, "%ld", PrintSparseMaxMinLoadPerCore(sparseValidArray, sparseStartIdx, validCoreNum,
+                                                          CeilDivision(loadTotal, validCoreNum)));
     return true;
 }
 
-void FlashAttentionScoreTilingBase::PrintSparseMaxMinLoadPerCore(const std::vector<int64_t> &sparseValidArray,
-                                                                 int64_t *sparseStartIdx, int32_t validAivNum,
-                                                                 int64_t avgLoadSize)
+int64_t FlashAttentionScoreTilingBase::PrintSparseMaxMinLoadPerCore(const std::vector<int64_t> &sparseValidArray,
+                                                                    int64_t *sparseStartIdx, int32_t validAivNum,
+                                                                    int64_t avgLoadSize)
 {
     int64_t maxLoadSize = 0;
     int64_t minLoadSize = std::numeric_limits<int64_t>::max();
     int64_t totalSize = tilingData->multiCoreParams.get_totalSize();
     int64_t s1OuterSize = tilingData->coreParams.get_s1OuterSize();
     if (s1OuterSize == 0) {
-        return;
+        return 0;
     }
     for (int64_t idx = 0; idx < validAivNum; ++idx) {
         int64_t startIdx = sparseStartIdx[idx];
@@ -2524,6 +2522,7 @@ void FlashAttentionScoreTilingBase::PrintSparseMaxMinLoadPerCore(const std::vect
 
     OP_LOGD(context_, "[%s]each core load: max[%ld], min[%ld], avg[%ld]", templateName, maxLoadSize, minLoadSize,
               avgLoadSize);
+    return 0;
 }
 
 void FlashAttentionScoreTilingBase::SetSparseParams()

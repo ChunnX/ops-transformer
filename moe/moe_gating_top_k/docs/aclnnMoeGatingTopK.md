@@ -15,21 +15,21 @@
 
 ## 功能说明
 
-- 算子功能：MoE计算中，对输入x做Sigmoid或者SoftMax计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
+- 算子功能：MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
 - 计算公式：                                                                                                                           
    
   **Step 1: 归一化**                                                                                                                 
                 
   根据normType对输入x做归一化：
 
-  $$
-  normOut = 
-  \begin{cases}
-      SoftMax(x),      & normType = 0 \\
-      Sigmoid(x),      & normType = 1 \\
-      Softplus(x),     & normType = 2\ (仅<term>Ascend 950PR/Ascend 950DT</term>支持)
-  \end{cases}
-  $$
+$$
+normOut =
+\begin{cases}
+    \text{SoftMax}(x),      & normType = 0 \\
+    \text{Sigmoid}(x),      & normType = 1 \\
+    \sqrt{\text{Softplus}(x)},     & normType = 2\quad \text{(仅Ascend 950PR/Ascend 950DT支持)}
+\end{cases}
+$$
 
   **Step 2: 加偏置**
 
@@ -424,7 +424,7 @@ aclnnStatus aclnnMoeGatingTopK(
     * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
 * 其他限制：
     * groupSelectMode取值0和1，0表示使用最大值对group进行排序， 1表示使用topk2的sum值对group进行排序。
-    * normType取值0和1，0表示使用Softmax函数，1表示使用Sigmoid函数。
+    * normType取值0、1和2（仅<term>Ascend 950PR/Ascend 950DT</term> 支持），0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
     * normType取值为1时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
     * outFlag取值true和false，true表示输出，false表示不输出。
 

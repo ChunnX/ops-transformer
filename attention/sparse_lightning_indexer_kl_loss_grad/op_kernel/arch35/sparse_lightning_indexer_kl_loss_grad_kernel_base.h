@@ -605,7 +605,7 @@ __aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType,
     constInfo.syKBaseSize = Min(1024, constInfo.syKBaseSize);
     constInfo.pKBaseSize = Min(1024, constInfo.pKBaseSize);
     constInfo.pKBaseSize = 128;
-    constInfo.syKBaseSize = 256;
+    constInfo.syKBaseSize = 128;
     constInfo.pScaler = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.gSizeQuery));
     constInfo.totalNum = ((__gm__ uint32_t *)metadataGm)[0];
     constInfo.formerCoreProcessNNum = ((__gm__ uint32_t *)metadataGm)[1];
@@ -635,7 +635,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseLightningIndexerKLLossGradKernelBase<CubeBlockType, VecBlockType>::InitMMResBuf()
 {
     l1BufferManager.Init(pipe, L1_MAX_SIZE);
-    sYL1Buf.Init(l1BufferManager, 128 * 576 * sizeof(INPUT_T));
+    sYL1Buf.Init(l1BufferManager, 128 * 256 * sizeof(INPUT_T));
     reluGradResL1Buf.Init(l1BufferManager, 64 * 256 * sizeof(INPUT_T));
     ubBufferManager.Init(pipe, UB_MAX_SIZE);
     bmm1Buffers.Init(ubBufferManager, 32 * 256 * sizeof(T));

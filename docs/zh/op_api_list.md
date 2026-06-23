@@ -61,10 +61,10 @@
 |[aclnnFFN](../../ffn/ffn/docs/aclnnFFN.md)|该FFN算子提供MoeFFN和FFN的计算功能。|默认非确定性实现，支持配置开启| - |
 |[aclnnFFNV2](../../ffn/ffn/docs/aclnnFFNV2.md)|该FFN算子提供MoeFFN和FFN的计算功能。|默认非确定性实现，支持配置开启| - |
 |[aclnnFFNV3](../../ffn/ffn/docs/aclnnFFNV3.md)|该FFN算子提供MoeFFN和FFN的计算功能。|默认非确定性实现，支持配置开启| - |
-|[aclnnFlashAttentionScore](../../attention/flash_attention_score/docs/aclnnFlashAttentionScore.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| - |
-|[aclnnFlashAttentionScoreV2](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV2.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| - |
-|[aclnnFlashAttentionScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV3.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。|默认确定性实现| - |
-|[aclnnFlashAttentionScoreV4](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV4.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。|-| 默认确定性实现 |
+|[aclnnFlashAttentionScore](../../attention/flash_attention_score/docs/aclnnFlashAttentionScore.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| 默认确定性实现 |
+|[aclnnFlashAttentionScoreV2](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV2.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| 默认确定性实现 |
+|[aclnnFlashAttentionScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV3.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。|默认确定性实现| 默认确定性实现 |
+|[aclnnFlashAttentionScoreV4](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV4.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。|默认确定性实现| 默认确定性实现 |
 |[aclnnFlashAttentionScoreGrad](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionScoreGrad.md)|训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
 |[aclnnFlashAttentionScoreGradV2](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionScoreGradV2.md)|训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScoreV2](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV2.md)的反向计算。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
 |[aclnnFlashAttentionScoreGradV3](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionScoreGradV3.md)|训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionScoreV3.md)的反向计算。|默认非确定性实现，支持配置开启| 默认非确定性实现，支持配置开启 |
@@ -78,7 +78,7 @@
 |[aclnnFlashAttentionVarLenScoreV2](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV2.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnFlashAttentionVarLenScoreV3](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV3.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnFlashAttentionVarLenScoreV4](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV4.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。|默认确定性实现| 默认确定性实现 |
-|[aclnnFlashAttentionVarLenScoreV5](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV5.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。|默认确定性实现| - |
+|[aclnnFlashAttentionVarLenScoreV5](../../attention/flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV5.md)|训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。|默认确定性实现| 默认确定性实现 |
 |[aclnnFusedInferAttentionScoreV4](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV4.md)|适配Decode & Prefill场景的FlashAttention算子。|默认确定性实现| - |
 |[aclnnFusedInferAttentionScoreV5](../../attention/fused_infer_attention_score/docs/aclnnFusedInferAttentionScoreV5.md)|适配增量&全量推理场景的FlashAttention算子。|默认确定性实现| 默认确定性实现 |
 |[aclnnGatherPaKvCache](../../attention/gather_pa_kv_cache/docs/aclnnGatherPaKvCache.md)|根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。|默认确定性实现| 默认确定性实现 |
@@ -214,8 +214,8 @@
 |[aclnnScatterPaKvCache](../../attention/scatter_pa_kv_cache/docs/aclnnScatterPaKvCache.md)|更新KvCache中指定位置的key和value。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashAttention](../../attention/sparse_flash_attention/docs/aclnnSparseFlashAttention.md)|根据sparse_indices选取重要性较高的key和value进行attention运算，得到attention_out输出。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启| 默认确定性实现 |
-|[aclnnSparseFlashMla](../../attention/sparse_flash_mla/docs/aclnnSparseFlashMla.md)|支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。|默认确定性实现| - |
-|[aclnnSparseFlashMlaMetadata](../../attention/sparse_flash_mla/docs/aclnnSparseFlashMla.md)|aclnnSparseFlashMla接口的前置接口，用于计算aclnnSparseFlashMla的负载均衡。|默认确定性实现| - |
+|[aclnnSparseFlashMla](../../attention/sparse_flash_mla/docs/aclnnSparseFlashMla.md)|支持C1A、C4A、C128A三类Attention计算场景。|默认确定性实现| 默认确定性实现 |
+|[aclnnSparseFlashMlaMetadata](../../attention/sparse_flash_mla_metadata/docs/aclnnSparseFlashMlaMetadata.md)|生成aclnnSparseFlashMla主算子使用的任务切分metadata。|默认确定性实现| 默认确定性实现 |
 |[aclnnSparseFlashMlaGrad](../../attention/sparse_flash_mla_grad/docs/aclnnSparseFlashMlaGrad.md)|计算SparseFlashMla训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。|默认非确定性实现，不支持配置开启| - |
 |[aclnnSparseLightningIndexerGradKLLoss](../../attention/sparse_lightning_indexer_grad_kl_loss/docs/aclnnSparseLightningIndexerGradKLLoss.md)|LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，不支持配置开启| 默认确定性实现 |
 |[aclnnSparseLightningIndexerKLLossGrad](../../attention/sparse_lightning_indexer_kl_loss_grad/docs/aclnnSparseLightningIndexerKLLossGrad.md)|LightningIndexer的反向算子，支持输出Loss计算所需Index部分的分数。|默认非确定性实现，不支持配置开启| 默认确定性实现 |

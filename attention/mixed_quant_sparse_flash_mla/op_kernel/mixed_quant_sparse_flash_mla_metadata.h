@@ -21,10 +21,10 @@
 namespace optiling {
 
 // Constants
-constexpr uint32_t AIC_CORE_NUM = 36;
-constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t QSMLA_META_SIZE = 1024;
-using QSMLA_METADATA_T = int32_t;
+constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t MQSMLA_METADATA_TOTAL_SIZE = 1024;
+using MQSMLA_METADATA_T = int32_t;
 
 constexpr uint32_t FA_METADATA_SIZE = 9;
 constexpr uint32_t FD_METADATA_SIZE = 8;
@@ -60,7 +60,7 @@ constexpr uint32_t FD_M_NUM_INDEX = 6;
 __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV = false)
 {
     if (isAIV) {
-        return FA_METADATA_SIZE * AIC_CORE_NUM + FD_METADATA_SIZE * coreIdx + metaIdx;
+        return FA_METADATA_SIZE * AIC_CORE_MAX_NUM + FD_METADATA_SIZE * coreIdx + metaIdx;
     } else {
         return FA_METADATA_SIZE * coreIdx + metaIdx;
     }
@@ -68,13 +68,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct QSMLAMetaData {
-        uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
-        uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
+    struct MqsmlaMetadata {
+        uint32_t faMetadata[AIC_CORE_MAX_NUM][FA_METADATA_SIZE];
+        uint32_t fdMetadata[AIV_CORE_MAX_NUM][FD_METADATA_SIZE];
     };
 };
 
-static_assert(QSMLA_META_SIZE * sizeof(QSMLA_METADATA_T) >= sizeof(detail::QSMLAMetaData));
+static_assert(MQSMLA_METADATA_TOTAL_SIZE * sizeof(MQSMLA_METADATA_T) >= sizeof(detail::MqsmlaMetadata));
 };
 
 #endif // MIXED_QUANT_SPARSE_FLASH_MLA_METADATA_H

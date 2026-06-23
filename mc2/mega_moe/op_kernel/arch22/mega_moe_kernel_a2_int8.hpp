@@ -163,7 +163,6 @@ public:
         if ASCEND_IS_AIV {
             coreIdx = get_block_idx() + get_subblockid() * get_block_num();
             coreNum = get_block_num() * get_subblockdim();
-            serverId_ = RuntimeRank(params) / SERVER_RANK_SIZE_A2;
         }
         initBuffer(params);
     }
@@ -206,8 +205,11 @@ private:
         shmem.initShmem(tmpContext);
         qp_info_ = reinterpret_cast<__gm__ HcclAiRMAInfo *>(
             reinterpret_cast<__gm__ HcclA2CombineOpParam *>(shmem.WinContext_)->aiRMAInfo);
+        const int32_t rank = RuntimeRank(params);
+        serverId_ = static_cast<int32_t>(rank / SERVER_RANK_SIZE_A2);
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
+
         cumsumMM.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrcumsumMM));
         gmA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(shmem() + peermemInfo.offsetA));
         gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC));
@@ -219,6 +221,7 @@ private:
         tokenPerExpertLayout = Layout3D(AlignUp(params.EP * params.expertPerRank, ALIGN_128), params.expertPerRank);
         preSumBeforeRankForDispatch.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrSumBeforeRankForDispatch));
         preSumBeforeRankForCombine.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspaceInfo.ptrSumBeforeRankForCombine));
+        gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool*>(params.ptrXActiveMask));
     }
 
     template<typename T>
@@ -908,19 +911,65 @@ private:
     }
 
     CATLASS_DEVICE
+    void ApplyXActiveMask(Params const &params)
+    {
+        if (params.ptrXActiveMask == nullptr) {
+            return;
+        }
+        int32_t m = params.problemShape.m();
+        int32_t topK = params.topK;
+        int32_t expertNum = params.expertPerRank * params.EP;
+        AscendC::GlobalTensor<int32_t> expertIdxGm;
+        expertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.expertIdx));
+
+        int32_t totalElements = m * topK;
+        int32_t base = totalElements / coreNum;
+        int32_t rem = totalElements % coreNum;
+
+        int32_t startIdx = coreIdx * base + (coreIdx < rem ? coreIdx : rem);
+        int32_t endIdx = (coreIdx + 1) * base + (coreIdx + 1 < rem ? coreIdx + 1 : rem);
+
+        AscendC::LocalTensor<int32_t> tmpExpertIdx = resource.ubBuf.template GetBufferByByte<int32_t>(0);
+        int32_t copySize = endIdx - startIdx;
+
+        AscendC::DataCopyPad(tmpExpertIdx[0], expertIdxGm[startIdx],
+                             {1, static_cast<uint16_t>(copySize * sizeof(int32_t)), 0, 0}, {});
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+
+        for (int32_t i = 0; i < copySize; ++i) {
+            int32_t tokenIdx = (startIdx + i) / topK;
+            bool isActive = gmXActiveMask(tokenIdx);
+            if (!isActive) {
+                tmpExpertIdx.SetValue(i, expertNum);
+            }
+        }
+
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::DataCopyPad(expertIdxGm[startIdx], tmpExpertIdx[0],
+                             {1, static_cast<uint16_t>(copySize * sizeof(int32_t)), 0, 0, 0});
+        AscendC::SyncAll<true>();
+    }
+
+    CATLASS_DEVICE
     void DispatchAndCombine(Params const &params)
     {
         icache_preload(8);
         int64_t localTokenPerExpertOffset = peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
         GM_ADDR localTokenPerExpert = shmem.windowsOutAddr() + localTokenPerExpertOffset;     // Place the entire communication matrix in peermem
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
+
+        ApplyXActiveMask(params);
         //---initRouting------
         moe_init_routing_quant_v2<ElementD2>(reinterpret_cast<GM_ADDR> (params.ptrA), params.expertIdx,
         params.moeInitRoutingQuantV2Scale, params.moeInitRoutingQuantV2Offset, shmem.windowsOutAddr() + peermemInfo.offsetA,
         workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity,
         shmem.windowsOutAddr() + peermemInfo.offsetPeerPerTokenScale,
         params.ptrWorkspace + expandedRowIdxOffset,
-        &params.moeInitRoutingQuantV2TilingData, params.initRoutingQuantTilingKey);
+        &params.moeInitRoutingQuantV2TilingData, params.initRoutingQuantTilingKey,
+        static_cast<int64_t>(512));
 
         AscendC::SyncAll<true>();
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
@@ -1066,7 +1115,9 @@ private:
             LayoutC layoutC{dequantSum1, params.problemShape.n()};
             int64_t gmOffsetC = layoutC.GetOffset(offsetC);
             int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-            blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore], gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], params.epilogueCoreNum);
+            blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
+                           gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore],
+                           params.epilogueCoreNum, params.swigluLimit);
         }
         AscendC::SyncAll<true>();
         // Synchronization signal: SwiGLU notifies GMM2 [1]
@@ -1084,7 +1135,9 @@ private:
                 LayoutC layoutC{dequantLen, params.problemShape.n()};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
-                blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore], gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], coreNum);
+                blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
+                               gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore],
+                               coreNum, params.swigluLimit);
             }
             AscendC::SyncAll<true>();
             // Synchronization signal: SwiGLU notifies GMM2 [2]
@@ -1350,6 +1403,8 @@ private:
 
     AscendC::GlobalTensor<ElementPerTokenScale> gmPerTokenScale1;
     AscendC::GlobalTensor<ElementPerTokenScale> gmPerTokenScale2;
+
+    AscendC::GlobalTensor<bool> gmXActiveMask;
 
     AscendC::GlobalTensor<int32_t> tokenPerExpert;
     AscendC::GlobalTensor<int32_t> cumsumMM;
