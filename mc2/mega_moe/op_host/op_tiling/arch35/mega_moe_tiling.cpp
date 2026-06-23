@@ -49,12 +49,12 @@ namespace {
     const static int64_t MIN_BS = 1LL;
     const static int64_t MAX_BS = 512LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
-    const static int64_t MAX_EXPERT_PER_RANK = 16LL;
+    const static int64_t MAX_EXPERT_PER_RANK = 1024LL;
     const static int64_t H_BASE = 1024LL;
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
-    const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
+    const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -873,9 +873,9 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         return ge::GRAPH_FAILED);
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(xDim1 != 4LL * H_BASE && xDim1 != 5LL * H_BASE && xDim1 != 7LL * H_BASE,
+    OP_TILING_CHECK(xDim1 <= 1LL * H_BASE || xDim1 >= 7LL * H_BASE ,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
-            "only support 4k/5k/7k"),
+            "only support 1k-7k"),
         return ge::GRAPH_FAILED);
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
