@@ -37,6 +37,8 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, \
                                   int32_t QuantMode, int32_t CombineQuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode, CombineQuantMode
+constexpr int32_t GMM1_CREDIT_FLAG = 8;
+constexpr int32_t GMM1_DISPATCH_CREDITS = 8;
 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
@@ -779,6 +781,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
                 expertRevNumsGloablTensor_[offsetInCnt]);
             Get<M_VALUE>(state.problemShape) = expertRevNumsGloablTensor_.GetValue(offsetInCnt);
             CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(3);
+            CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG + 16);
         }
         if constexpr (g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 0) {
@@ -1127,9 +1130,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     ExpertLoopState gmm1State{initShape, initOffset};
+    if constexpr (g_coreType == AscendC::AIC) {
+        for (int c = 0; c < GMM1_DISPATCH_CREDITS; c++) {
+            CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG + 16);
+        }
+    }
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
+                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG);  // 消费 1 信用: 领先 AIC ≤ 信用数
                 SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
             }
         }
@@ -1149,6 +1158,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     EndSync(vecSetSyncCom_);
+    if constexpr(g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            for (int c = 0; c < GMM1_DISPATCH_CREDITS; c++) {
+                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(GMM1_CREDIT_FLAG);
+            }
+        }
+    }
     if constexpr(g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
