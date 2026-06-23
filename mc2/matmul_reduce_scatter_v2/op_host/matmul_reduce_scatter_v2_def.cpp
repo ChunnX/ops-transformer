@@ -109,7 +109,7 @@ class MatmulReduceScatterV2 : public OpDef {
     this->Attr("group_size").AttrType(OPTIONAL).Int(0);
     this->Attr("is_amax_out").AttrType(OPTIONAL).Bool(false);
     this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
-    this->Attr("comm_mode").AttrType(REQUIRED).String("aicpu");
+    this->Attr("comm_mode").AttrType(REQUIRED).String("ai_cpu");
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)

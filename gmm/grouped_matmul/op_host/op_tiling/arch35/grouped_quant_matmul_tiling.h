@@ -279,7 +279,7 @@ protected:
         context_->GetRawTilingData()->SetDataSize(sizeof(tilingData));
         return ge::GRAPH_SUCCESS;
     }
-    void LogQuantParams(const GroupedMatmulTilingData::GMMQuantParams &params) const;
+    int64_t LogQuantParams(const GroupedMatmulTilingData::GMMQuantParams &params) const;
     GQmmBasicTiling basicTiling_;
     GQmmInputInfo &inputParams_;
 

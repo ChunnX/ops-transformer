@@ -822,7 +822,7 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, hcclServerType);
-    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMTYPE: [%d,%d,%d,0,%d], TilingKey is [%lu].",
+    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE: [%d,%d,%d,0,%d], TilingKey is [%lu].",
             MX_QUANT_MODE, x2TransposeFlag, biasDType, hcclServerType, tilingKey);
     return tilingKey;
 }

@@ -54,6 +54,11 @@ constexpr uint32_t FD_M_NUM_INDEX = 6;
 struct stridesParams {
     uint64_t bnStride = 0;
     uint64_t n2Stride = 0;
+
+    void set_bnStride(uint64_t bnStride) {this->bnStride = bnStride;}
+    uint64_t get_bnStride() const {return bnStride;}
+    void set_n2Stride(uint64_t n2Stride) {this->n2Stride = n2Stride;}
+    uint64_t get_n2Stride() const {return n2Stride;}
 };
 
 struct FiaBaseParams {

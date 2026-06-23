@@ -185,18 +185,16 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(this->gatherTbuf, SLIGradConstInfo::BUFFER_SIZE_BYTE_9K * 2);
     pipe->InitBuffer(this->gatherOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_9K * 2);
     pipe->InitBuffer(this->reduceSumOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(this->weightInQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_64 * 2);
-    pipe->InitBuffer(this->lseInQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_256);
-    pipe->InitBuffer(this->mulsResQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_512);
+    pipe->InitBuffer(this->weightInQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_256);
     pipe->InitBuffer(this->reluQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->reluGradQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_16K);
-    pipe->InitBuffer(this->dwQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_128);
-    pipe->InitBuffer(this->dwOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_64 * 2);
+    pipe->InitBuffer(this->dwQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_256);
+    pipe->InitBuffer(this->dwOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_256);
     pipe->InitBuffer(this->softmaxReduceSumOutQue, 1, SLIGradConstInfo::BUFFER_SIZE_BYTE_64);
     gatherKeyUb = gatherTbuf.Get<INPUT_T>();
     gatherKeyIndexUb = gatherKeyUb;
     auto dwUb = this->dwQue.template AllocTensor<T>();
-    Duplicate(dwUb, 0.0f, 32);
+    Duplicate(dwUb, 0.0f, 64);
     this->dwQue.template FreeTensor(dwUb);
 }
 
@@ -596,7 +594,6 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     if (kRunInfo.s2SingleIdx == 0) {
         CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
     }
-    auto mulsResUb = this->mulsResQue.template AllocTensor<T>();
     auto reluUb = this->reluQue.template AllocTensor<T>();
     auto reluGradUb = this->reluGradQue.template AllocTensor<INPUT_T>();
     LocalTensor<T> weightInUb = weightInQue.template AllocTensor<T>();
@@ -618,8 +615,6 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(
         WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
         ReduceSumVf(softmaxReduceSumTensor, softmaxTensor, constInfo.kSize);
     }
-    this->mulsResQue.template EnQue(mulsResUb);
-    this->mulsResQue.template DeQue<T>();
     dataCopyParams.blockCount = runInfo.nIndexSize;
     dataCopyParams.blockLen = VEC_P_BASESIZE * sizeof(T);
     dataCopyParams.srcStride = (constInfo.kSizeAlign128 - VEC_P_BASESIZE) * sizeof(T);
@@ -664,7 +659,6 @@ __aicore__ inline void SligBlockVec<TEMPLATE_ARGS>::ProcessVector6(
         DataCopyPad(dWeightGm[runInfo.weightOffset], dwOutTensor, dataCopyParams1);
         this->dwOutQue.template FreeTensor(dwOutTensor);
     }
-    this->mulsResQue.template FreeTensor(mulsResUb);
     this->reluGradQue.template FreeTensor(reluGradUb);
     this->reluQue.template FreeTensor(reluUb);
     this->weightInQue.template FreeTensor(weightInUb);

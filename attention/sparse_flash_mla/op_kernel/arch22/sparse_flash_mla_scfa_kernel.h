@@ -87,8 +87,9 @@ public:
                                 __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
                                 __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
                                 __gm__ uint8_t* cuSeqlensKV, __gm__ uint8_t *cuSeqlensCmpKV,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *sinks,
-                                __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV,
+                                __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV,
+                                __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                                 const SparseFlashMlaTilingData *__restrict tiling, __gm__ uint8_t *gmTiling,
                                 TPipe *tPipe);
@@ -100,6 +101,7 @@ private:
     static constexpr bool FLASH_DECODE = SMLAT::flashDecode;
     static constexpr SMLA_LAYOUT LAYOUT_T = SMLAT::layout;
     static constexpr SMLA_LAYOUT KV_LAYOUT_T = SMLAT::kvLayout;
+    static constexpr bool HEAD_RATIO_ONE = SMLAT::headRatioOne;
 
     static constexpr uint32_t PRELOAD_NUM = 2;
     static constexpr uint32_t N_BUFFER_M_BASIC_SIZE = 256;
@@ -111,7 +113,6 @@ private:
     static constexpr uint32_t SYNC_V1_C2_FLAG = 8;
     static constexpr uint32_t SYNC_C2_V2_FLAG = 9;
 
-    static constexpr uint64_t kvHeadNum = 1ULL;
     static constexpr uint64_t headDim = 512ULL;
 
     static constexpr uint32_t dbWorkspaceRatio = PRELOAD_NUM;
@@ -150,6 +151,7 @@ private:
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<int32_t> actualSeqLengthsCmpKVGm;
+    GlobalTensor<int32_t> cmpResidualKVGm;
 
     // workspace
     GlobalTensor<MM1_OUT_T> mm1ResGm;
@@ -180,6 +182,8 @@ private:
                                       RunInfo &info);
     __aicore__ inline int32_t GetActualSeqLenQ(uint32_t bIdx);
     __aicore__ inline int32_t GetActualSeqLenKV(uint32_t bIdx);
+    __aicore__ inline int32_t GetActualSeqLenCmpKV(uint32_t bIdx, int32_t actualOriS2Size);
+    __aicore__ inline int32_t GetCmpMaskS2Size(uint32_t bIdx, int32_t actualOriS2Size, int32_t actualCmpS2Size);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx, uint32_t &n2Idx);
     // ================================Mm1==============================================
     __aicore__ inline void ComputeMm1(const RunInfo &info);
@@ -198,7 +202,9 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::InitTilingData()
 
     // baseParams
     constInfo.batchSize = tilingData->baseParams.batchSize;
-    constInfo.qHeadNum = constInfo.gSize = tilingData->baseParams.nNumOfQInOneGroup;
+    constInfo.gSize = tilingData->baseParams.nNumOfQInOneGroup;
+    constInfo.kvHeadNum = (tilingData->baseParams.kvHeadNum == 0) ? 1 : tilingData->baseParams.kvHeadNum;
+    constInfo.qHeadNum = constInfo.gSize * constInfo.kvHeadNum;
     constInfo.kvSeqSize = tilingData->baseParams.kvSeqSize;
     constInfo.qSeqSize = tilingData->baseParams.qSeqSize;
     constInfo.oriMaxBlockNumPerBatch = tilingData->baseParams.oriMaxBlockNumPerBatch;
@@ -207,7 +213,6 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::InitTilingData()
     constInfo.paOriBlockSize = tilingData->baseParams.oriBlockSize;
     constInfo.paCmpBlockSize = tilingData->baseParams.cmpBlockSize;
     constInfo.outputLayout = static_cast<SMLA_LAYOUT>(tilingData->baseParams.outputLayout);
-    constInfo.kvHeadNum = kvHeadNum;
     constInfo.headDim = headDim;
     constInfo.oriMaskMode = tilingData->baseParams.oriMaskMode;
     constInfo.oriKvStride0 = tilingData->baseParams.oriKvStride0;
@@ -216,6 +221,8 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::InitTilingData()
 
     constInfo.actualLenDimsQ = tilingData->baseParams.actualLenDimsQ;
     constInfo.actualLenDimsKV = tilingData->baseParams.actualLenDimsKV;
+    constInfo.actualLenDimsCmpKV = tilingData->baseParams.actualLenDimsCmpKV;
+    constInfo.cmpResidualKVSize = tilingData->baseParams.cmpResidualKVSize;
     constInfo.returnSoftmaxLse = tilingData->baseParams.returnSoftmaxLse;
     // innerSplitParams
     constInfo.mBaseSize = constInfo.gSize;
@@ -234,6 +241,7 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::InitTilingData()
     constInfo.sparseBlockSize = 1; // sparseBlockSize 固定为1
     constInfo.cmpMaskMode = tilingData->cmpParams.cmpMaskMode;
     constInfo.cmpKvStride0 = tilingData->cmpParams.cmpKvStride0;
+    constInfo.cmpSeqSize = tilingData->cmpParams.cmpKvSeqSize;
 }
 
 template <typename SMLAT>
@@ -265,7 +273,10 @@ SparseFlashMlaScfa<SMLAT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, _
 {
     if (constInfo.actualLenDimsKV != 0) {
         actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsKV, constInfo.actualLenDimsKV);
-        actualSeqLengthsCmpKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsCmpKV, constInfo.actualLenDimsKV);
+    }
+    if (constInfo.actualLenDimsCmpKV != 0) {
+        actualSeqLengthsCmpKVGm.SetGlobalBuffer(
+            (__gm__ int32_t *)actualSeqLengthsCmpKV, constInfo.actualLenDimsCmpKV);
     }
     if (constInfo.actualLenDimsQ != 0) {
         actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ, constInfo.actualLenDimsQ);
@@ -282,22 +293,24 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::InitAllZeroOutput(uint32_t bId
         uint32_t tBase = actualSeqLengthsQGm.GetValue(bIdx);
         uint32_t s1Count = tempLoopInfo.actS1Size;
 
-        uint64_t attenOutOffset = (tBase + s1Idx) * kvHeadNum * constInfo.gSize * headDim + // T轴、s1轴偏移
-                                  n2Idx * constInfo.gSize * headDim;                        // N2轴偏移
+        uint64_t attenOutOffset = (tBase + s1Idx) * constInfo.kvHeadNum * constInfo.gSize *
+                                      constInfo.headDim +
+                                  n2Idx * constInfo.gSize * constInfo.headDim;
         uint64_t lseOffset = (tBase + s1Idx) * constInfo.gSize  + // T轴、s1轴偏移
                                 n2Idx * constInfo.qSeqSize * constInfo.gSize; // N2轴偏移
-        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * headDim, 0);
+        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * constInfo.headDim, 0);
         if (constInfo.returnSoftmaxLse) {
             matmul::InitOutput<T>(softmaxLseGm[lseOffset], constInfo.gSize, 0);
         }
     } else if (constInfo.outputLayout == SMLA_LAYOUT::BSND) {
-        uint64_t attenOutOffset = bIdx * constInfo.qSeqSize * kvHeadNum * constInfo.gSize * headDim +
-                                  s1Idx * kvHeadNum * constInfo.gSize * headDim + // B轴、S1轴偏移
-                                  n2Idx * constInfo.gSize * headDim;              // N2轴偏移
+        uint64_t attenOutOffset = bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.gSize *
+                                      constInfo.headDim +
+                                  s1Idx * constInfo.kvHeadNum * constInfo.gSize * constInfo.headDim +
+                                  n2Idx * constInfo.gSize * constInfo.headDim;
         uint64_t lseOffset = bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.gSize  + // B轴偏移
                     n2Idx  * constInfo.qSeqSize * constInfo.gSize + // N2轴偏移
                     s1Idx * constInfo.gSize; // S1轴偏移
-        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * headDim, 0);
+        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * constInfo.headDim, 0);
         if (constInfo.returnSoftmaxLse) {
             matmul::InitOutput<T>(softmaxLseGm[lseOffset], constInfo.gSize, 0);
         }
@@ -348,14 +361,54 @@ __aicore__ inline int32_t SparseFlashMlaScfa<SMLAT>::GetActualSeqLenKV(uint32_t 
         }
         return actualSeqLengthsKVGm.GetValue(bIdx);
     } else if constexpr(KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
+        tempLoopInfo.actualSeqKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.kvSeqSize);
+        if (constInfo.actualLenDimsKV != 0) {
+            return actualSeqLengthsKVGm.GetValue(bIdx);
+        }
         return static_cast<int32_t>(constInfo.kvSeqSize);
     } else if constexpr(KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         int32_t actualSeqKVPrefixSum = actualSeqLengthsKVGm.GetValue(bIdx);
         int32_t actualSeqKVNextSum = actualSeqLengthsKVGm.GetValue(bIdx + 1);
-        tempLoopInfo.actualSeqCmpKVPrefixSum = actualSeqLengthsCmpKVGm.GetValue(bIdx);
         tempLoopInfo.actualSeqKVPrefixSum = actualSeqKVPrefixSum;
         return actualSeqKVNextSum - actualSeqKVPrefixSum;
     }
+}
+
+template <typename SMLAT>
+__aicore__ inline int32_t SparseFlashMlaScfa<SMLAT>::GetActualSeqLenCmpKV(uint32_t bIdx, int32_t actualOriS2Size)
+{
+    (void)actualOriS2Size;
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
+        int32_t actualSeqCmpKVPrefixSum = actualSeqLengthsCmpKVGm.GetValue(bIdx);
+        int32_t actualSeqCmpKVNextSum = actualSeqLengthsCmpKVGm.GetValue(bIdx + 1);
+        tempLoopInfo.actualSeqCmpKVPrefixSum = actualSeqCmpKVPrefixSum;
+        return actualSeqCmpKVNextSum - actualSeqCmpKVPrefixSum;
+    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+        tempLoopInfo.actualSeqCmpKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.cmpSeqSize);
+        if (constInfo.actualLenDimsCmpKV != 0) {
+            return actualSeqLengthsCmpKVGm.GetValue(bIdx);
+        }
+        return static_cast<int32_t>(constInfo.cmpSeqSize);
+    } else {
+        tempLoopInfo.actualSeqCmpKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.cmpSeqSize);
+        if (constInfo.actualLenDimsCmpKV != 0) {
+            return actualSeqLengthsCmpKVGm.GetValue(bIdx);
+        }
+        return (constInfo.cmpSeqSize != 0) ? static_cast<int32_t>(constInfo.cmpSeqSize) :
+            actualOriS2Size / static_cast<int32_t>(constInfo.cmpRatio);
+    }
+}
+
+template <typename SMLAT>
+__aicore__ inline int32_t SparseFlashMlaScfa<SMLAT>::GetCmpMaskS2Size(uint32_t bIdx, int32_t actualOriS2Size,
+                                                                      int32_t actualCmpS2Size)
+{
+    (void)actualOriS2Size;
+    int32_t residual = 0;
+    if (constInfo.cmpResidualKVSize != 0) {
+        residual = cmpResidualKVGm.GetValue(bIdx);
+    }
+    return actualCmpS2Size * static_cast<int32_t>(constInfo.cmpRatio) + residual;
 }
 
 template <typename SMLAT>
@@ -370,7 +423,8 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::GetSparseActualSeqLen()
 
     // 对于cmp部分还有top k, tempLoopInfo.actS2Size只针对cmp
     int32_t thresHold = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
-    tempLoopInfo.actCmpS2Size = Min(constInfo.sparseBlockCount * constInfo.sparseBlockSize, thresHold);
+    tempLoopInfo.actCmpS2Size = Min(tempLoopInfo.actCmpS2Size,
+        Min(constInfo.sparseBlockCount * constInfo.sparseBlockSize, Max(thresHold, 0)));
 }
 
 template <typename SMLAT>
@@ -391,7 +445,8 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
     __gm__ uint8_t* cuSeqlensKV, __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ,
-    __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+    __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV,
+    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace, const SparseFlashMlaTilingData *__restrict tiling, __gm__ uint8_t *gmTiling,
     TPipe *tPipe)
 {
@@ -412,9 +467,9 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::Init(
         InitActualSeqLen(seqUsedQ, cuSeqlensKV, cuSeqlensCmpKV);
     } else if ((KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND || KV_LAYOUT_T == SMLA_LAYOUT::BSND)
                 && LAYOUT_T == SMLA_LAYOUT::TND) {
-        InitActualSeqLen(cuSeqlensQ, seqUsedKV);
+        InitActualSeqLen(cuSeqlensQ, seqUsedKV, seqUsedCmpKV);
     } else if ((KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND || KV_LAYOUT_T == SMLA_LAYOUT::BSND)) {
-        InitActualSeqLen(seqUsedQ, seqUsedKV);
+        InitActualSeqLen(seqUsedQ, seqUsedKV, seqUsedCmpKV);
     }
 
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
@@ -425,6 +480,9 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::Init(
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     oriKvGm.SetGlobalBuffer((__gm__ KV_T *)oriKV);
     cmpKvGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
+    if (constInfo.cmpResidualKVSize != 0) {
+        cmpResidualKVGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKV, constInfo.cmpResidualKVSize);
+    }
 
     if (sinks != nullptr) {
         sinksGm.SetGlobalBuffer((__gm__ SINKS_T *)sinks);
@@ -552,7 +610,9 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::CalcParams(uint32_t loop, uint
     uint64_t tndBIdxOffsetForCmpKV = tempLoopInfo.actualSeqCmpKVPrefixSum * constInfo.kvHeadNum * constInfo.headDim;
 
     if (info.isFirstSInnerLoop) {
-        tensorACoreOffset = tndBIdxOffsetForQ + info.gS1Idx * constInfo.headDim;
+        uint64_t s1HeadOffset = (info.gS1Idx / constInfo.gSize) * constInfo.qHeadNum;
+        uint64_t qHeadOffset = info.n2Idx * constInfo.gSize + info.gS1Idx % constInfo.gSize;
+        tensorACoreOffset = tndBIdxOffsetForQ + (s1HeadOffset + qHeadOffset) * constInfo.headDim;
         tensorBCoreOffset = tndBIdxOffsetForKV + info.n2Idx * constInfo.headDim; // 当前为PA场景，该变量失效
         tensorCmpBCoreOffset = tndBIdxOffsetForCmpKV + info.n2Idx * constInfo.headDim;
         if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {                            // B,S1,N2 K
@@ -594,18 +654,22 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::CalcParams(uint32_t loop, uint
         }
         info.s2StartPoint = 0;
         info.cmpS2IdLimit = (tempLoopInfo.cmpMaskRight + tempLoopInfo.s1EndIdx + 1) / constInfo.cmpRatio;
+        if constexpr (HEAD_RATIO_ONE) {
+            info.v0S2Start = static_cast<int32_t>(s2Offset);
+            info.v0S2DealSize = static_cast<int32_t>(info.actualSingleProcessSInnerSize);
+        } else {
+            info.v0S2Start = 0;
+            if (s2LoopIdx + 1 == tempLoopInfo.s2LoopTimes && s2LoopIdx == 2) {
+                info.v0S2Start = 512;
+            }
+            info.v0S2DealSize = 512;
+        }
     }
 
     info.actualSingleProcessSInnerSizeAlign = SMLAAlign(info.actualSingleProcessSInnerSize, SMLAVectorBlock<SMLAT>::BYTE_BLOCK);
     if (info.isOriOnly) {
         info.v0S2Start = 0;
         info.v0S2DealSize = 0;
-    } else {
-        info.v0S2Start = 0;
-        if (s2LoopIdx + 1 == tempLoopInfo.s2LoopTimes && s2LoopIdx == 2) { // tail
-            info.v0S2Start = 512;
-        }
-        info.v0S2DealSize = 512;
     }
 }
 
@@ -619,6 +683,11 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::ComputeMm1(const RunInfo &info
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
         cubeBlock.ComputeMm1(info, mSplitInfo);
+        if constexpr (HEAD_RATIO_ONE) {
+            event_t eventIdFixWait = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
+            SetFlag<HardEvent::FIX_M>(eventIdFixWait);
+            WaitFlag<HardEvent::FIX_M>(eventIdFixWait);
+        }
         CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC1V1);
     }
 }
@@ -632,8 +701,17 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::ComputeMm2(const RunInfo &info
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
-        CrossCoreWaitFlag(constInfo.syncV1C2);
+        if constexpr (HEAD_RATIO_ONE) {
+            CrossCoreWaitFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
+        } else {
+            CrossCoreWaitFlag(constInfo.syncV1C2);
+        }
         cubeBlock.ComputeMm2(info, mSplitInfo);
+        if constexpr (HEAD_RATIO_ONE) {
+            event_t eventIdFixWait = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
+            SetFlag<HardEvent::FIX_M>(eventIdFixWait);
+            WaitFlag<HardEvent::FIX_M>(eventIdFixWait);
+        }
         CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V2);
     }
 }
@@ -662,8 +740,8 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::Process()
 template <typename SMLAT>
 __aicore__ inline void SparseFlashMlaScfa<SMLAT>::GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx, uint32_t &n2Idx)
 {
-    bIdx = bN2Idx / kvHeadNum;
-    n2Idx = bN2Idx % kvHeadNum;
+    bIdx = bN2Idx / constInfo.kvHeadNum;
+    n2Idx = bN2Idx % constInfo.kvHeadNum;
 }
 
 template <typename SMLAT>
@@ -704,6 +782,7 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::ProcessBalance()
         gS1LoopEnd = isS1ZeroAndLastBatch ? gS1LoopEnd + 1 : gS1LoopEnd;
         for (uint32_t gS1LoopIdx = constInfo.gS1Start; gS1LoopIdx < gS1LoopEnd; gS1LoopIdx++) {
             tempLoopInfo.actOriS2Size = GetActualSeqLenKV(tempLoopInfo.bIdx);
+            tempLoopInfo.actCmpS2Size = GetActualSeqLenCmpKV(tempLoopInfo.bIdx, tempLoopInfo.actOriS2Size);
             // 计算需要的数据, 避免重复计算
             tempLoopInfo.gS1Idx = gS1LoopIdx * constInfo.mBaseSize;
             tempLoopInfo.s1StartIdx = tempLoopInfo.gS1Idx / constInfo.gSize;
@@ -716,7 +795,9 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::ProcessBalance()
             tempLoopInfo.oriMaskLeft = Max(tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size +
                                                static_cast<int32_t>(tempLoopInfo.s1EndIdx) - constInfo.oriWinLeft,
                                            0);
-            tempLoopInfo.cmpMaskRight = tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size;
+            int32_t cmpMaskS2Size = GetCmpMaskS2Size(
+                tempLoopInfo.bIdx, tempLoopInfo.actOriS2Size, tempLoopInfo.actCmpS2Size);
+            tempLoopInfo.cmpMaskRight = cmpMaskS2Size - tempLoopInfo.actS1Size;
             GetSparseActualSeqLen();
             UpdateInnerLoopCond();
 
@@ -790,38 +871,77 @@ __aicore__ inline void SparseFlashMlaScfa<SMLAT>::PreloadPipeline(uint32_t loop,
     RunInfo &extraInfo1 = extraInfo[(loop + 1) % SMLA_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
 
     CalcParams(loop, cmpLoop, s2Start, s2LoopIdx, extraInfo0);
-    if (extraInfo0.isValid) {
-        if ASCEND_IS_AIC {
-            if (!extraInfo0.isOriOnly) {
-                CrossCoreWaitFlag(constInfo.syncV0C1);
-            }
-            ComputeMm1(extraInfo0);
-        } else {
-            if (extraInfo0.isFirstSInnerLoop) {
-                CrossCoreWaitFlag(3);
-            }
-            vectorBlock.ProcessVec0L(extraInfo0);
-            if (!extraInfo0.isOriOnly) {
-                CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
-            }
-        }
-    }
-    if (extraInfo2.isValid) {
-        if ASCEND_IS_AIV {
-            vectorBlock.ProcessVec1L(extraInfo2);
-        }
-        if ASCEND_IS_AIC {
-            ComputeMm2(extraInfo2);
-            if (extraInfo2.isLastS2Loop) {
-                CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE2>(3);
+    if constexpr (!HEAD_RATIO_ONE) {
+        if (extraInfo0.isValid) {
+            if ASCEND_IS_AIC {
+                if (!extraInfo0.isOriOnly) {
+                    CrossCoreWaitFlag(constInfo.syncV0C1);
+                }
+                ComputeMm1(extraInfo0);
+            } else {
+                if (extraInfo0.isFirstSInnerLoop) {
+                    CrossCoreWaitFlag(3);
+                }
+                vectorBlock.ProcessVec0L(extraInfo0);
+                if (!extraInfo0.isOriOnly) {
+                    CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
+                }
             }
         }
-    }
-    if (extraInfo1.isValid) {
-        if ASCEND_IS_AIV {
-            vectorBlock.ProcessVec2L(extraInfo1);
+        if (extraInfo2.isValid) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec1L(extraInfo2);
+            }
+            if ASCEND_IS_AIC {
+                ComputeMm2(extraInfo2);
+                if (extraInfo2.isLastS2Loop) {
+                    CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE2>(3);
+                }
+            }
         }
-        extraInfo1.isValid = false;
+        if (extraInfo1.isValid) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec2L(extraInfo1);
+            }
+            extraInfo1.isValid = false;
+        }
+    } else {
+        if (extraInfo0.isValid) {
+            if ASCEND_IS_AIV {
+                if (extraInfo0.isFirstSInnerLoop) {
+                    CrossCoreWaitFlag(3);
+                }
+                vectorBlock.ProcessVec0L(extraInfo0);
+                if (!extraInfo0.isOriOnly) {
+                    CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
+                }
+            }
+        }
+        if (extraInfo2.isValid) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec1L(extraInfo2);
+            }
+            if ASCEND_IS_AIC {
+                ComputeMm2(extraInfo2);
+                if (extraInfo2.isLastS2Loop) {
+                    CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE2>(3);
+                }
+            }
+        }
+        if (extraInfo1.isValid) {
+            if ASCEND_IS_AIV {
+                vectorBlock.ProcessVec2L(extraInfo1);
+            }
+            extraInfo1.isValid = false;
+        }
+        if (extraInfo0.isValid) {
+            if ASCEND_IS_AIC {
+                if (!extraInfo0.isOriOnly) {
+                    CrossCoreWaitFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
+                }
+                ComputeMm1(extraInfo0);
+            }
+        }
     }
 }
 
