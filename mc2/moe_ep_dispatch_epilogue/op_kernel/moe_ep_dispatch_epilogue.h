@@ -398,12 +398,14 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     PipeBarrier<PIPE_MTE3>();
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
-                    ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
-                        ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
-                    ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 1,
-                        ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
-                    ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 2,
-                        static_cast<int32_t>(topkIdx));
+                    if constexpr (!IsCached) {
+                        ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
+                            ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
+                        ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 1,
+                            ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
+                        ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 2,
+                            static_cast<int32_t>(topkIdx));
+                    }
                     stageIdx++;
                     localWrittenRow++;
                 }
@@ -415,7 +417,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
             DataCopyExtParams metaOutParams{1U,
                 static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
-            DataCopyPad(recvSrcMetadataGm_[expertRowStart * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
+            if constexpr (!IsCached) {
+                DataCopyPad(recvSrcMetadataGm_[expertRowStart * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
+            }
             PipeBarrier<PIPE_MTE3>();
         }
     }
