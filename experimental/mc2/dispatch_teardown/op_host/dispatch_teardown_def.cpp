@@ -37,10 +37,10 @@ class DispatchTeardown : public OpDef {
         .ExtendCfgInfo("jitCompile.flag", "static_false")
         .ExtendCfgInfo("opFile.value", "dispatch_teardown");
     // 多平台：同一份源同时声明 a5(ascend950) 与 a6 的 aicore 配置，build.sh --soc 选哪个用哪个。
-    //   ★ a6 串必须与 build.sh 的 SUPPORT_COMPUTE_UNIT_SHORT 白名单 token【一字不差】，
-    //     且与命令行 --soc 同一串（确认是 ascend_910_96 还是 ascend910_96，以白名单实际为准）。
+    //   ★ a6 串必须与 build.sh 的 SUPPORT_COMPUTE_UNIT_SHORT 白名单 token【一字不差】、与命令行 --soc 同一串。
+    //     [T8✓] 技术总监 2026-06-23 在 a6 实证：白名单/--soc token = ascend910_96（kernel 落 kernel/ascend910_96/）。
     this->AICore().AddConfig("ascend950", aicore_config);        // a5
-    this->AICore().AddConfig("ascend_910_96", aicore_config);    // a6（按白名单 token 校准）
+    this->AICore().AddConfig("ascend910_96", aicore_config);     // a6（技术总监 a6 验证过的 token）
   }
 };
 

@@ -37,7 +37,7 @@ HcclResult CcuKernelDispatchSetup::Algorithm()
     // ============ 段 10. 本卡状态区置 1（把 oneBuf 整块 LocalCopyNb 到状态区）============
     //   dst = 状态区起址（偏移 0），token = 状态区 token；
     //   src = oneBuf（host 已填 R 个 int32=1），token = oneBuf token；
-    //   len = R * sizeof(int32) 字节（单 die R=1 → 4 字节）。
+    //   len = R * sizeof(int32) 字节（2-die R=2 → 8 字节）；teardown 只判 slot0，写满 R 槽对齐基线 ready[0..R)。
     readyDst_.addr  = statusAddrVar_;     // 偏移 0，直接取状态区起址（Address = Variable）
     readyDst_.token = statusTokenVar_;
     readySrc_.addr  = oneBufAddrVar_;
@@ -48,8 +48,9 @@ HcclResult CcuKernelDispatchSetup::Algorithm()
     lenBytesVar = static_cast<uint64_t>(epWorldSize_) * DISPATCH_STATUS_DTYPE_BYTES;
 
 #ifdef DISPATCH_CCU_A6
-    // ===== a6-only 真实写：a5 hcomm 头无 6 参 LocalCopyNb / 1 参 WaitEvent / CompletedEvent::SetMask，====
-    //   故 a5 编译时整体屏蔽；a6 上定义 -DDISPATCH_CCU_A6 即启用。[T1][T2]
+    // ===== a6-only 真实写：a5 hcomm 头的 LocalCopyNb 是 4 参（无 6 参形式，a5 ccu_kernel.h:151），====
+    //   故含 6 参 LocalCopyNb 的本段在 a5 编不过 → 整体屏蔽；a6（技术总监确认 6 参）上 -DDISPATCH_CCU_A6 启用。
+    //   注：1 参 WaitEvent + CcuRep::CompletedEvent::SetMask a5/a6 都有（a5 ccu_kernel.h:124 / ccu_datatype_v1.h:158）。[T1✓][T2✓]
     // DMA 前 SetMask 指定本次占用的 event 位（bit0）。
     event_.SetMask(1U);
     CHK_RET(LocalCopyNb(readyDst_, readySrc_, lenBytesVar, &localCopyBuf_, 1U, event_));
@@ -60,7 +61,7 @@ HcclResult CcuKernelDispatchSetup::Algorithm()
     //   3) 若 DMA 在飞时 kernel 就结束 → UB→GM 可能没写完 / 暂存 buf 被复用踩脏 → statusGm 永远到不了 1
     //      → teardown 的 poll 死等（项目头号卡死类）。故必须等其落地再 return。
     //   代价≈0：它是段10最后一条、后面只 return，无可重叠对象；删它省不到延迟、却换丢写风险，纯亏。
-    //   [T3] 仅当 a6 SE 明确「kernel 结束会 drain 在飞 DMA 且暂存 buf 保持有效」时才可考虑去掉，且收益≈0。
+    //   （可选优化，非 a6 待办项）仅当 a6 SE 明确「kernel 结束会 drain 在飞 DMA 且暂存 buf 保持有效」时才可考虑去掉，且收益≈0。
     event_.SetMask(1U);
     CHK_RET(WaitEvent(event_));
 #else

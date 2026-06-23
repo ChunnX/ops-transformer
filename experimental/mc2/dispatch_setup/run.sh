@@ -1,7 +1,8 @@
 #!/bin/bash
 # ===========================================================================================================
 # dispatch_min 一键构建脚本 —— dispatch_setup(CCU 写状态位) + dispatch_teardown(AIV aclnn 等状态位)
-#   单 die、两条流、写/等状态位串行同步。本机为 a5(仅编译验证)；最终目标 a6 编译跑通。
+#   2 die / 2 rank（MPI）、每 rank 两条流、写/等状态位串行同步。本机为 a5(仅编译验证)；最终目标 a6 编译跑通。
+#   2-die 理由：CCU 容器(ccuContainer)由库内部在【CCU 扩展模式 + rank_size>=2】下创建，单 rank 不建容器。
 #
 # 用法：
 #   TARGET=a5 ./run.sh      # 默认。a5 骨架验证：CCU 围栏关、不装包、链散装 libcust_opapi.so（已实测 build OK）
@@ -68,14 +69,21 @@ ls -la "${HERE}/build/dispatch_min_driver"
 # ---- 3. 运行提示（仅 a6 + TARGET=a6 有意义）----
 cat <<EOF
 
-==== 运行（仅 a6 且 TARGET=a6；a5 骨架 CCU 关、teardown 会死等状态位，勿运行）====
-  # (1) §8 清场
+==== 运行（仅 a6 且 TARGET=a6；2 die / mpirun -n 2；a5 骨架 CCU 关、teardown 会死等状态位，勿运行）====
+  # (1) §8 清场（2 die 用 dev0/dev1）
   npu-smi info; pkill -9 python; sleep 3; npu-smi info
-  # (2) 单 die rank table：device_ip 取自 hccn_tool -i 0 -ip -g
-  cp ${HERE}/rank_table.json.tmpl ${HERE}/rank_table.json   # 编辑把 FILL_NPU_DEVICE_IP 换成本卡 ip
-  # (3) 运行库路径（CANN lib64 + 散装 opapi 目录；装了包则只需 CANN lib64）
+  # (2) 运行库路径（CANN lib64 + 散装 opapi 目录；装了包则只需 CANN lib64）
   export LD_LIBRARY_PATH=${CANN_PATH}/lib64:${OPS_ROOT}/build:\$LD_LIBRARY_PATH
-  # (4) 跑
-  ${HERE}/build/dispatch_min_driver ${HERE}/rank_table.json
-  # 期望: [driver] PASS: teardown observed status==1 (done=1)
+  # (2.5) ★ teardown 自定义算子【设备侧二进制】路径——必须 .run --force 装包，且让 runtime 找到，否则
+  #       报 errno 161002 "basePath.empty / May not set ASCEND_CUSTOM_OPP_PATH"（libcust_opapi.so 只是 host 入口）：
+  export ASCEND_CUSTOM_OPP_PATH=\${ASCEND_OPP_PATH}/vendors/custom_transformer   # 路径以 .run --force 实际落点为准
+  # (3) 跑：2 die / 2 rank，MPI 起 2 进程（root 取 rootInfo→MPI_Bcast 广播；每 rank dev=rank、各自本地写+轮询）
+  mpirun --allow-run-as-root -n 2 ${HERE}/build/dispatch_min_driver
+  # 期望: [rank 0] PASS: teardown observed status==1 (done=1)  且  [rank 1] PASS: ...(done=1)  两 rank 各自 PASS
+
+  # ★ 若仍报 [HcclCcuKernelRegister] ccuContainer is nullptr，按序排查：
+  #   (a) -DDISPATCH_CCU_A6=ON 是否生效（config.hcclOpExpansionMode 那行才会编进去）；
+  #   (b) 是否 2 rank（mpirun -n 2）——单 rank 不建 CCU 容器；
+  #   (c) CCU 扩展模式值（默认 6=ccu_sched；基线若用 ccu_ms 则 cmake ... -DDISPATCH_CCU_EXPANSION_MODE=5）；
+  #   取值按 a6 基线数组约定（hccl_test_common.cc:36/:867），非 a5 头枚举（CCU_MS=4/CCU_SCHED=5）。
 EOF
