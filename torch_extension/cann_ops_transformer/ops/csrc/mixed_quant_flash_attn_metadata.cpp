@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attn_metadata.cpp
+ * \file mixed_quant_flash_attn_metadata.cpp
  * \brief
  */
 
