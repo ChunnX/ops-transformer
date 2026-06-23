@@ -37,7 +37,7 @@ public:
 
         this->Attr("hidden_size").AttrType(REQUIRED).Int();
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
-        this->Attr("output_dtype").AttrType(OPTIONAL).Int(1);
+        this->Attr("output_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_BF16)); // 默认值为bf16，check一下对应的枚举值
 
         OpAICoreConfig aicore_config_950;
         aicore_config_950.DynamicCompileStaticFlag(true)
