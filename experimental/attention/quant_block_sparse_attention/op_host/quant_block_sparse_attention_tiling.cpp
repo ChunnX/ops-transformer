@@ -29,7 +29,7 @@ namespace optiling {
 namespace {
 constexpr const char *kOpName = "QuantBlockSparseAttention";
 constexpr uint32_t BSA_LAYOUT_Q_BSND_VALUE = 0U;
-constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 1U;
+constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 2U;
 constexpr uint32_t BSA_LAYOUT_Q_NTD_VALUE = 5U;
 constexpr uint32_t BSA_LAYOUT_KV_PA_BNSD_VALUE = 1U;
 constexpr uint32_t BSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE = 0U;

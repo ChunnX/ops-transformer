@@ -48,7 +48,7 @@ constexpr size_t DIM_SPARSE_COUNT = 3U;
 constexpr size_t DIM_KV_HEAD_DIM = 3U;
 constexpr size_t DIM_V_DESCALE_N2 = 0U;
 constexpr uint32_t BSA_LAYOUT_Q_BSND_VALUE = 0U;
-constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 1U;
+constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 2U;
 constexpr uint32_t BSA_LAYOUT_Q_NTD_VALUE = 5U;
 } // namespace
 
