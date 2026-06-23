@@ -548,9 +548,9 @@ struct ConfigA8W4 {
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE_C>>;
 
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, AscendC::Std::tuple<ElementA, ElementMxScaleA>, AscendC::Std::tuple<MakeLayoutA, MakeLayoutScaleA>,
-        AscendC::Std::tuple<ElementB, ElementMxScaleB>, AscendC::Std::tuple<MakeLayoutB, MakeLayoutScaleB>, ElementC,
-        MakeLayoutC, void, void>;
+        DispatchPolicy, AscendC::Std::tuple<ElementA, ElementMxScaleA>,
+        AscendC::Std::tuple<MakeLayoutA, MakeLayoutScaleA>, AscendC::Std::tuple<ElementB, ElementMxScaleB>,
+        AscendC::Std::tuple<MakeLayoutB, MakeLayoutScaleB>, ElementC, MakeLayoutC, void, void>;
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using LayoutAType = decltype(MakeLayoutA{}(uint32_t {}, uint32_t {}));
     using LayoutBType = decltype(MakeLayoutB{}(uint32_t {}, uint32_t {}));
