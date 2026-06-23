@@ -18,6 +18,8 @@
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "../../sparse_flash_mla/op_kernel/sparse_flash_mla_metadata.h"
+#include <cstring>
+#include <string>
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,10 +40,44 @@ inline constexpr int64_t SMLA_CMP_RATIO_LOWER_BOUND = 1;
 inline constexpr int64_t SMLA_CMP_RATIO_UPPER_BOUND = 128;
 inline constexpr int64_t SMLA_NUM_HEADS_Q_LOWER_BOUND = 1;
 inline constexpr int64_t SMLA_NUM_HEADS_Q_UPPER_BOUND = 128;
+inline const std::string SMLA_A2_A3_PLATFORM_LOG = "A2/A3";
+inline const std::string SMLA_A5_PLATFORM_LOG = "A5";
+
+inline bool IsPowerOfTwoInRangeSmla(int64_t value, int64_t minValue, int64_t maxValue)
+{
+    return value >= minValue && value <= maxValue && ((value & (value - 1)) == 0);
+}
+
+inline bool IsA5Smla(const char *socVersion)
+{
+    return socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr;
+}
+
+inline bool IsCmpRatioSupportSmla(bool isA5, bool hasCmpKv, int64_t cmpTopk, int64_t cmpRatio)
+{
+    if (!hasCmpKv) {
+        return cmpRatio == 1;
+    }
+    if (isA5) {
+        return cmpRatio >= SMLA_CMP_RATIO_LOWER_BOUND && cmpRatio <= SMLA_CMP_RATIO_UPPER_BOUND;
+    }
+    return (cmpTopk > 0) ? (cmpRatio == 4) : (cmpRatio == 128);
+}
 
 inline bool IsTensorExistSmla(const aclTensor *tensor)
 {
     return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0);
+}
+
+aclnnStatus CheckReservedOptionalTensorSmla(const aclTensor *tensor, const char *tensorName)
+{
+    if (!IsTensorExistSmla(tensor)) {
+        return ACLNN_SUCCESS;
+    }
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "%s is reserved and does not support non-empty tensor on %s", tensorName,
+            SMLA_A2_A3_PLATFORM_LOG.c_str());
+    return ACLNN_ERR_PARAM_INVALID;
 }
 
 int64_t GetDimNumSmla(const aclTensor *tensor)
@@ -100,6 +136,29 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_kv should only be 1, but got %lld", numHeadsKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (numHeadsQ % numHeadsKv != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "num_heads_q should be divisible by num_heads_kv, but got %lld and %lld", numHeadsQ, numHeadsKv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    int64_t headRatio = numHeadsQ / numHeadsKv;
+    bool isA5 = IsA5Smla(socVersion);
+    if (isA5) {
+        if (headRatio < SMLA_NUM_HEADS_Q_LOWER_BOUND || headRatio > SMLA_NUM_HEADS_Q_UPPER_BOUND) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "num_heads_q / num_heads_kv should be in [%lld, %lld] on %s, but got %lld",
+                    SMLA_NUM_HEADS_Q_LOWER_BOUND, SMLA_NUM_HEADS_Q_UPPER_BOUND,
+                    SMLA_A5_PLATFORM_LOG.c_str(), headRatio);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (!IsPowerOfTwoInRangeSmla(
+        headRatio, SMLA_NUM_HEADS_Q_LOWER_BOUND, SMLA_NUM_HEADS_Q_UPPER_BOUND)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "num_heads_q / num_heads_kv should be power of two in [%lld, %lld] on %s, but got %lld",
+                SMLA_NUM_HEADS_Q_LOWER_BOUND, SMLA_NUM_HEADS_Q_UPPER_BOUND,
+                SMLA_A2_A3_PLATFORM_LOG.c_str(), headRatio);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // head_dim: 512
     if (headDim != 512) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "head_dim should only be 512, but got %lld", headDim);
@@ -111,25 +170,42 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_topk should be >= 0, but got %lld", oriTopk);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        // ori_mask_mode: 0, 3, or 4
-        if (oriMaskMode != static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
-            oriMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL) &&
-            oriMaskMode != static_cast<int64_t>(SparseModeSmla::BAND)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_mask_mode should be 0, 3 or 4, but got %lld",
-                oriMaskMode);
+        if (!isA5 && oriTopk != 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "ori_topk is reserved and should only be 0 on %s, but got %lld",
+                    SMLA_A2_A3_PLATFORM_LOG.c_str(), oriTopk);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        // ori_win_left >= -1
-        if (oriWinLeft < -1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_win_left should be >= -1, but got %lld",
-                oriWinLeft);
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        // ori_win_right >= -1
-        if (oriWinRight < -1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_win_right should be >= -1, but got %lld",
-                oriWinRight);
-            return ACLNN_ERR_PARAM_INVALID;
+        if (isA5) {
+            // ori_mask_mode: 0, 3, or 4
+            if (oriMaskMode != static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
+                oriMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL) &&
+                oriMaskMode != static_cast<int64_t>(SparseModeSmla::BAND)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "When has_ori_kv is true, ori_mask_mode should be 0, 3 or 4 on %s, but got %lld",
+                        SMLA_A5_PLATFORM_LOG.c_str(), oriMaskMode);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            // A5 treats -1 as unlimited window; only values less than -1 are invalid.
+            if (oriWinLeft < -1 || oriWinRight < -1) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "When has_ori_kv is true, ori_win_left and ori_win_right should be -1(unlimited) or "
+                        "non-negative on %s, "
+                        "but got %lld and %lld", SMLA_A5_PLATFORM_LOG.c_str(), oriWinLeft, oriWinRight);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        } else {
+            if (oriMaskMode != static_cast<int64_t>(SparseModeSmla::BAND)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ori_mask_mode should only be 4 on %s, but got %lld",
+                        SMLA_A2_A3_PLATFORM_LOG.c_str(), oriMaskMode);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            if (oriWinLeft != 127 || oriWinRight != 0) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "ori_win_left and ori_win_right should only be 127 and 0 on %s, but got %lld and %lld",
+                        SMLA_A2_A3_PLATFORM_LOG.c_str(), oriWinLeft, oriWinRight);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
         }
     }
     if (hasCmpKv) {
@@ -138,19 +214,42 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_topk should be >= 0, but got %lld", cmpTopk);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        // cmp_mask_mode: 0 or 3
-        if (cmpMaskMode != static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
-            cmpMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_mask_mode should be 0 or 3, but got %lld",
-                cmpMaskMode);
+        if (!isA5 && cmpTopk != 0 && cmpTopk != 512 && cmpTopk != 1024) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_topk should be 0, 512 or 1024 on %s, but got %lld",
+                    SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpTopk);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        // cmp_ratio: 1~128
-        if (cmpRatio < SMLA_CMP_RATIO_LOWER_BOUND || cmpRatio > SMLA_CMP_RATIO_UPPER_BOUND) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio should be in [%lld, %lld], "
-                "but got %lld", SMLA_CMP_RATIO_LOWER_BOUND, SMLA_CMP_RATIO_UPPER_BOUND, cmpRatio);
+        if (isA5) {
+            // cmp_mask_mode: 0 or 3
+            if (cmpMaskMode != static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
+                cmpMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "When has_cmp_kv is true, cmp_mask_mode should be 0 or 3 on %s, but got %lld",
+                        SMLA_A5_PLATFORM_LOG.c_str(), cmpMaskMode);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        } else {
+            if (cmpMaskMode != static_cast<int64_t>(SparseModeSmla::RIGHT_DOWN_CAUSAL)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_mask_mode should only be 3 on %s, but got %lld",
+                        SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpMaskMode);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+        if (!IsCmpRatioSupportSmla(isA5, hasCmpKv, cmpTopk, cmpRatio)) {
+            if (isA5) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be in [1, 128] on %s, but got %lld",
+                        SMLA_A5_PLATFORM_LOG.c_str(), cmpRatio);
+            } else {
+                int64_t expectedCmpRatio = (cmpTopk > 0) ? 4 : 128;
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be %lld on %s, but got %lld",
+                        expectedCmpRatio, SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+            }
             return ACLNN_ERR_PARAM_INVALID;
         }
+    } else if (!isA5 && !IsCmpRatioSupportSmla(isA5, hasCmpKv, cmpTopk, cmpRatio)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cmp_ratio should be 1 on %s when has_cmp_kv is false, but got %lld",
+                SMLA_A2_A3_PLATFORM_LOG.c_str(), cmpRatio);
+        return ACLNN_ERR_PARAM_INVALID;
     }
     if (layoutQOptional == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
@@ -169,6 +268,11 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     if ((strcmp(layoutKvOptional, "BSND") != 0) && (strcmp(layoutKvOptional, "TND") != 0) &&
         (strcmp(layoutKvOptional, "PA_BBND") != 0)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BBND!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (strcmp(layoutKvOptional, "PA_BBND") != 0 && strcmp(layoutQOptional, layoutKvOptional) != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_q and layout_kv only support BSND/BSND, TND/TND, "
+                "BSND/PA_BBND or TND/PA_BBND, but got %s/%s", layoutQOptional, layoutKvOptional);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 核数校验
@@ -343,10 +447,17 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                  const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
                                  const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
                                  const aclTensor *cmpTopkLengthOptional, int64_t batchSize, const char *layoutQOptional,
-                                 const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metadata)
+                                 const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, bool isA5,
+                                 const aclTensor *metadata)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     int64_t dimNum = -1;
+    if (!isA5) {
+        if (CheckReservedOptionalTensorSmla(oriTopkLengthOptional, "ori_topk_length") != ACLNN_SUCCESS ||
+            CheckReservedOptionalTensorSmla(cmpTopkLengthOptional, "cmp_topk_length") != ACLNN_SUCCESS) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
     // 校验 cu_seqlens_q
     if (IsTensorExistSmla(cuSeqlensQOptional)) {
         // 校验 cu_seqlens_q 维度
@@ -412,7 +523,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // 校验 ori_topk_length
-        if (IsTensorExistSmla(oriTopkLengthOptional)) {
+        if (!isA5 && IsTensorExistSmla(oriTopkLengthOptional)) {
             // 校验 ori_topk_length 维度
             dimNum = GetDimNumSmla(oriTopkLengthOptional);
             if (strcmp(layoutQOptional, "TND") == 0) {
@@ -487,7 +598,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // 校验 cmp_topk_length
-        if (IsTensorExistSmla(cmpTopkLengthOptional)) {
+        if (!isA5 && IsTensorExistSmla(cmpTopkLengthOptional)) {
             // 校验 cmp_topk_length 维度
             dimNum = GetDimNumSmla(cmpTopkLengthOptional);
             if (strcmp(layoutQOptional, "TND") == 0) {
@@ -535,8 +646,8 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
     // 校验 q/kv 维度一致性
     int64_t queryBatchSize = GetQueryBatchSizeSmla(sequsedQOptional, cuSeqlensQOptional, layoutQOptional, batchSize);
     if (hasOriKv) {
-        int64_t oriKvBatchSize = GetOriKvBatchSizeSmla(sequsedOriKvOptional, cuSeqlensOriKvOptional, layoutKvOptional,
-                                                       batchSize);
+        int64_t oriKvBatchSize = GetOriKvBatchSizeSmla(
+            sequsedOriKvOptional, cuSeqlensOriKvOptional, layoutKvOptional, batchSize);
         if (queryBatchSize != oriKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, the batch_size obtained from q should be "
                     "the same as that obtained from ori_kv, but got %lld and %lld", queryBatchSize,
@@ -545,8 +656,8 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
         }
     }
     if (hasCmpKv) {
-        int64_t cmpKvBatchSize = GetCmpKvBatchSizeSmla(sequsedCmpKvOptional, cuSeqlensCmpKvOptional, layoutKvOptional,
-                                                       batchSize);
+        int64_t cmpKvBatchSize = GetCmpKvBatchSizeSmla(
+            sequsedCmpKvOptional, cuSeqlensCmpKvOptional, layoutKvOptional, batchSize);
         if (queryBatchSize != cmpKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, the batch_size obtained from q should be "
                     "the same as that obtained from cmp_kv, but got %lld and %lld", queryBatchSize,
@@ -577,6 +688,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                                uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
                                const aclTensor *metaData)
 {
+    bool isA5 = IsA5Smla(socVersion);
     if (CheckSingleParamSmla(batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, numHeadsQ, numHeadsKv, headDim,
                              oriTopk, cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
                              layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, aicCoreNum, aivCoreNum,
@@ -588,7 +700,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
         CheckConsistencySmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                              sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                              cmpTopkLengthOptional, batchSize, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
-                             metaData) == ACLNN_SUCCESS) {
+                             isA5, metaData) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;

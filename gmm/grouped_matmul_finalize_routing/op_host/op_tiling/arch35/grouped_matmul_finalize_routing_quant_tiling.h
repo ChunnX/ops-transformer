@@ -104,8 +104,8 @@ private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    void PrintQuantParams() override;
-    void PrintMatmulParams();
+    int64_t LogQuantParams() const;
+    int64_t LogMatmulParams() const;
     bool SetQuantModeForGMMFinalizeRouting();
 
     bool CheckOptionalAttr();

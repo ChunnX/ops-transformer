@@ -183,6 +183,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
     constInfo.maxSeqlenQ = tilingData->maxSeqlenQ;
+    constInfo.quantMode = tilingData->quantMode;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
@@ -330,15 +331,15 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx,
     GlobalTensor<uint32_t> &metadataGm)
 {
-    uint32_t liCoreEnableIndex = GetAttrAbsIndex(cubeCoreIdx, LI_CORE_ENABLE_INDEX);
-    uint32_t bN2StartIndex = GetAttrAbsIndex(cubeCoreIdx, LI_BN2_START_INDEX);
-    uint32_t mStartIndex = GetAttrAbsIndex(cubeCoreIdx, LI_M_START_INDEX);
-    uint32_t s2StartIndex = GetAttrAbsIndex(cubeCoreIdx, LI_S2_START_INDEX);
-    uint32_t bN2EndIndex = GetAttrAbsIndex(cubeCoreIdx, LI_BN2_END_INDEX);
-    uint32_t mEndIndex = GetAttrAbsIndex(cubeCoreIdx, LI_M_END_INDEX);
-    uint32_t s2EndIndex = GetAttrAbsIndex(cubeCoreIdx, LI_S2_END_INDEX);
+    uint32_t liCoreEnableIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_CORE_ENABLE_INDEX);
+    uint32_t bN2StartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_BN2_START_INDEX);
+    uint32_t mStartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_M_START_INDEX);
+    uint32_t s2StartIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_S2_START_INDEX);
+    uint32_t bN2EndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_BN2_END_INDEX);
+    uint32_t mEndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_M_END_INDEX);
+    uint32_t s2EndIndex = GetAttrAbsIndex(cubeCoreIdx, QLI_V2_S2_END_INDEX);
 
-    uint32_t liZeroCoreEnableIndex = GetAttrAbsIndex(0, LI_CORE_ENABLE_INDEX);
+    uint32_t liZeroCoreEnableIndex = GetAttrAbsIndex(0, QLI_V2_CORE_ENABLE_INDEX);
     if (metadataGm.GetValue(liZeroCoreEnableIndex) == 0) {
         isUsedCoreEqZero = true;
     }
@@ -401,10 +402,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         }
     }
     uint32_t ldFirstWorkSpaceIndex =
-        GetAttrAbsIndex(cubeCoreIdx, LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX, false); // LD 第一个workspace的索引
+        GetAttrAbsIndex(cubeCoreIdx, QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX, false); // LD 第一个workspace的索引
     ldInfo.saveWorkSpaceIdx = metadataGm.GetValue(ldFirstWorkSpaceIndex);
     if ASCEND_IS_AIV {
-        uint32_t ldCoreEnableIndex = GetAttrAbsIndex(vecCoreIdx, LD_CORE_ENABLE_INDEX, true);
+        uint32_t ldCoreEnableIndex = GetAttrAbsIndex(vecCoreIdx, QLD_V2_CORE_ENABLE_INDEX, true);
         ldInfo.isLdCoreEnable = metadataGm.GetValue(ldCoreEnableIndex);
 
         if (!ldInfo.isLdCoreEnable) {
@@ -412,12 +413,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         }
 
         // LD 参数信息
-        uint32_t ldBn2IdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_BN2_IDX_INDEX, true);
-        uint32_t ldMIdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_IDX_INDEX, true);
-        uint32_t ldWorkspaceIdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_WORKSPACE_IDX_INDEX, true);
-        uint32_t ldWorkspaceNumINDEX = GetAttrAbsIndex(vecCoreIdx, LD_WORKSPACE_NUM_INDEX, true);
-        uint32_t ldMstartIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_START_INDEX, true);
-        uint32_t ldMNumIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_NUM_INDEX, true);
+        uint32_t ldBn2IdxIndex = GetAttrAbsIndex(vecCoreIdx, QLD_V2_BN2_IDX_INDEX, true);
+        uint32_t ldMIdxIndex = GetAttrAbsIndex(vecCoreIdx, QLD_V2_M_IDX_INDEX, true);
+        uint32_t ldWorkspaceIdxIndex = GetAttrAbsIndex(vecCoreIdx, QLD_V2_WORKSPACE_IDX_INDEX, true);
+        uint32_t ldWorkspaceNumINDEX = GetAttrAbsIndex(vecCoreIdx, QLD_V2_WORKSPACE_NUM_INDEX, true);
+        uint32_t ldMstartIndex = GetAttrAbsIndex(vecCoreIdx, QLD_V2_M_START_INDEX, true);
+        uint32_t ldMNumIndex = GetAttrAbsIndex(vecCoreIdx, QLD_V2_M_NUM_INDEX, true);
 
         ldInfo.bn2Idx = metadataGm.GetValue(ldBn2IdxIndex);
         ldInfo.bIdx = ldInfo.bn2Idx / constInfo.kHeadNum;
@@ -513,7 +514,6 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
     offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(int32_t);
 
     if ASCEND_IS_AIV {
-        vectorService.InitParams(constInfo, ldInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         weightsGm.SetGlobalBuffer((__gm__ float *)weights);
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
@@ -521,6 +521,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
         vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
+        vectorService.InitParams(constInfo, ldInfo, tiling);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query);

@@ -108,11 +108,12 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
             is_arn ? static_cast<size_t>(MC2AddRmsNormInputIdx::K_SCALE) : static_cast<size_t>(MC2InputIdx::K_SCALE);
         const int64_t* p = attrs->GetInt(static_cast<size_t>(MmAllReduceAttrIdx::K_ANTIQUANT_GROUP_SIZE));
         const int64_t group_size = (p != nullptr ? *p : 0);
-        OPS_CHECK(
-            CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
-                ge::GRAPH_SUCCESS,
-            OP_LOGE(context->GetNodeName(), "Failed to check antiquant scale shape."),
-            return ge::GRAPH_FAILED);
+        if (CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
+                ge::GRAPH_SUCCESS) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "scale", "invalid",
+                "antiquant scale shape check failed");
+            return ge::GRAPH_FAILED;
+        }
     }
     shape.output_dim = dim_num_x1;
     OP_LOGD(kInnerDebug, "Matmul x1 dim %zu s %ld m %ld n %ld k %ld.", dim_num_x1, shape.s, shape.m, shape.n, shape.k);
@@ -143,10 +144,10 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
 {
     OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "context"), return ge::GRAPH_FAILED);
     MatmulShapeInfo shape;
-    OPS_CHECK(
-        InferShapeForMatmul(context, shape, true) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "Failed to infer shape for matmul all reduce."),
-        return ge::GRAPH_FAILED);
+    if (InferShapeForMatmul(context, shape, true) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context->GetNodeName(), "Failed to infer shape for matmul all reduce.");
+        return ge::GRAPH_FAILED;
+    }
     size_t residual_idx = static_cast<size_t>(MC2AddRmsNormInputIdx::K_RESIDUAL);
     if (context->GetComputeNodeInputNum() != static_cast<size_t>(MC2AddRmsNormInputIdx::K_MAX) &&
         context->GetOptionalInputShape(static_cast<size_t>(MC2AddRmsNormInputIdx::K_BIAS)) == nullptr) {

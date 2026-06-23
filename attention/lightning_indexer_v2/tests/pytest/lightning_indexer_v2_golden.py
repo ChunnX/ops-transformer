@@ -20,7 +20,7 @@ import math
 import ctypes
 import copy
 import cann_ops_transformer
-from cann_ops_transformer.ops import lightning_indexer_v2, lightning_indexer_metadata
+from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
@@ -120,7 +120,7 @@ class GeneralizedLIV2:
                     curr_actualSeq_k = seqused_k[b_idx]
                 else:
                     curr_actualSeq_k = cu_seqlens_k[b_idx]
-            elif self.layout_key == "PA_BSND":
+            elif self.layout_key == "PA_BBND":
                 curr_actualSeq_k = seqused_k[b_idx]
             elif self.layout_key == "BSND":
                 if seqused_k is not None:
@@ -502,7 +502,7 @@ class GeneralizedLIV2:
             actualSeqLengths_k = actual_seq_lengths_key
             k_shape = self.k_shape
 
-        elif layout_key == "PA_BSND":
+        elif layout_key == "PA_BBND":
             self.actual_seq_lengths_key = seqused_k
             actualSeqLengths_k = self.actual_seq_lengths_key
             k_max_s2 = math.floor(max(actualSeqLengths_k))
@@ -631,7 +631,7 @@ def liv2_output_single(params):
         block_table = None
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
 
-    elif layout_key == "PA_BSND":
+    elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)
         k_max_s2 = math.floor(max(seqused_k))
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
@@ -696,7 +696,7 @@ def liv2_output_single(params):
             for b_idx in range(batch_size):
                 seqlen.append(cu_seqlens_q[b_idx + 1] - cu_seqlens_k[b_idx])
             max_seqlen_k = max(seqlen).item()
-    elif layout_key == "PA_BSND":
+    elif layout_key == "PA_BBND":
         max_seqlen_k = max(seqused_k).item()
     else:
         if seqused_k is not None:
@@ -723,7 +723,7 @@ def liv2_output_single(params):
 
     # metadata = metadata.npu()
     metadata = None
-    npu_result, npu_topk_value = lightning_indexer_v2(query, key, weights,
+    npu_result, npu_topk_value = lightning_indexer(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
                                              seqused_q = seqused_q,
