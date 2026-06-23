@@ -18,20 +18,20 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class _MoeReRoutingOpBuilder(OpBuilder):
     def __init__(self):
-        super(_MoeReRoutingOpBuilder, self).__init__("npu_moe_re_routing")
+        super(_MoeReRoutingOpBuilder, self).__init__("moe_re_routing")
 
     def sources(self):
         return ['ops/csrc/moe_re_routing.cpp']
 
     def schema(self) -> str:
-        return "npu_moe_re_routing(Tensor tokens, Tensor expert_token_num_per_rank, " \
+        return "moe_re_routing(Tensor tokens, Tensor expert_token_num_per_rank, " \
             "*, Tensor? per_token_scales=None, Tensor? expert_topk_weight=None, " \
             "int expert_token_num_type=1, int idx_type=0) " \
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_re_routing_meta(tokens, expert_token_num_per_rank,
+        def moe_re_routing_meta(tokens, expert_token_num_per_rank,
                                      per_token_scales=None, expert_topk_weight=None,
                                      expert_token_num_type=1, idx_type=0):
             torch._check(tokens.dim() == 2,
@@ -74,10 +74,10 @@ _op_module = _moe_re_routing_op_builder.load()
 
 
 @impl(AS_LIBRARY, _moe_re_routing_op_builder.name, "PrivateUse1")
-def npu_moe_re_routing_dispatch(tokens, expert_token_num_per_rank,
+def moe_re_routing_dispatch(tokens, expert_token_num_per_rank,
                                  per_token_scales=None, expert_topk_weight=None,
                                  expert_token_num_type=1, idx_type=0):
-    return _op_module.npu_moe_re_routing(tokens, expert_token_num_per_rank, per_token_scales,
+    return _op_module.moe_re_routing(tokens, expert_token_num_per_rank, per_token_scales,
                                           expert_topk_weight, expert_token_num_type, idx_type)
 
 
@@ -109,7 +109,7 @@ def moe_re_routing(tokens: torch.Tensor, expert_token_num_per_rank: torch.Tensor
         A tuple of (permute_tokens, permute_per_token_scales, permute_token_idx,
                     expert_token_num, permute_topk_weight).
     """
-    return torch.ops.cann_ops_transformer.npu_moe_re_routing(
+    return torch.ops.cann_ops_transformer.moe_re_routing(
         tokens, expert_token_num_per_rank, per_token_scales=per_token_scales,
         expert_topk_weight=expert_topk_weight, expert_token_num_type=expert_token_num_type,
         idx_type=idx_type)
