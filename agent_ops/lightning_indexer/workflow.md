@@ -3,11 +3,11 @@
 Reproduce package and accuracy:
 
 ```bash
-bash build.sh --pkg --soc=ascend910b --ops=lightning_indexer,recurrent_gated_delta_rule --vendor_name=custom -j16 -O3
-bash build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet
 export LD_LIBRARY_PATH=/usr/local/Ascend/cann-9.0.0/opp/vendors/custom_transformer/op_api/lib:${LD_LIBRARY_PATH}
-python3 scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --soc ascend910b --out build/st_accuracy/<tag>
+python3 scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --vendor custom --soc ascend910b --device 0 --out build/st_accuracy/<tag>
 ```
+
+The real device `scripts/st_accuracy run` path now builds and installs the selected ops' `custom_transformer` package before native execution. Use `--no-execute` only for static serialization checks.
 
 Run focused host tests:
 

@@ -11,7 +11,7 @@
 - 不得为了制造性能提升而删减必要计算、改变算子语义、只测有利 case、遗漏回退 case、混用旧安装产物、用单次最优样本代表结果或跨环境直接比较。
 - 性能优化只有同时满足精度验证正常、目标 case 提升、代表性矩阵无稳定回退、profiling 确认加载新产物，才可写成有效优化。
 - `build.sh --opkernel` 只代表编译 kernel binary，不代表运行时 vendor 目录、op_api、op_host tiling、op info 和 kernel config 已更新。改动涉及 tiling/opdef/op_api/metadata 时默认重新 `--pkg` 并安装。
-- 当前仓库已有从 `ops-math` 迁移并裁剪的 `scripts/st_accuracy`，当前只优先覆盖 `attention/lightning_indexer` 与 `attention/recurrent_gated_delta_rule`。native runner 对这两个算子包含 host golden compare；设备执行依赖已安装的 `custom_transformer` package。当前已有 `.agents/skills` 性能优化 skills；仍没有 `scripts/agent_context` 基建。当前已为两个优化算子建立轻量 `agent_ops/` 账本，账本只记录摘要、命令、hash 和结论，不长期保存 raw profiling dump。
+- 当前仓库已有从 `ops-math` 迁移并裁剪的 `scripts/st_accuracy`，当前只优先覆盖 `attention/lightning_indexer` 与 `attention/recurrent_gated_delta_rule`。native runner 对这两个算子包含 host golden compare；真实设备侧 `run` 必须强制重新 `--pkg` 构建并安装 selected ops 的 `custom_transformer` package，`--no-execute`、`coverage` 和 `taxonomy` 不能写成设备侧精度通过。当前已有 `.agents/skills` 性能优化 skills；仍没有 `scripts/agent_context` 基建。当前已为两个优化算子建立轻量 `agent_ops/` 账本，账本只记录摘要、命令、hash 和结论，不长期保存 raw profiling dump。
 - 后续算子性能开发、调试和文档账本更新默认基于 `br_tang_dev`；某个算子完成闭环后，只把核心算子代码、必要测试和最小可复核说明合入 `master`，再从 `master` 提交到主仓库。
 
 ## 性能优化默认闭环

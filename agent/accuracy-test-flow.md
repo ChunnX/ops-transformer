@@ -172,7 +172,8 @@ pytest -s
 
 - ST 资产可用于后续构造端到端精度或功能回归。
 - 当前 `scripts/st_accuracy` 是两个重点 attention 算子的局部 runner，已为 `lightning_indexer` 和 `recurrent_gated_delta_rule` 接入 native ACLNN 调用与 host golden compare；因此不能把 ST 写成“一条命令全量执行全仓库”的能力。
-- 已在当前 910B/aarch64 环境构建并安装 `custom_transformer` 后完成两个重点算子的设备侧 ST：18 passed、0 failed、0 error、0 unsupported。输出目录为 `build/st_accuracy/device_full_after_case_fix`。
+- 真实设备侧 `scripts/st_accuracy run` 会先对 selected case 的 op 集合强制执行 `build.sh --pkg` 并安装最新 `custom_transformer` 包，再进入 native runner；`coverage`、`taxonomy` 和 `run --no-execute` 不触发 package/install，也不能写成设备侧精度通过。
+- 已在当前 910B/aarch64 环境完成两个重点算子的强制 package ST：18 passed、0 failed、0 error、0 unsupported。输出目录为 `build/st_accuracy/force_pkg_device`，`prepare_pkg_ms=104151.404`。
 - `RecurrentGatedDeltaRule` 当前默认 ST case 使用唯一 `ssmStateIndices`。重复 state index 会使 `stateRef` 原地更新产生覆盖/顺序依赖，后续如需覆盖该边界，应单独确认官方语义后再建专项 case。
 
 ## CI 批量 UT 脚本

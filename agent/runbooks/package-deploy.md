@@ -38,6 +38,12 @@ bash build.sh --opkernel --soc=ascend910b --ops=<op_name> -j16 -O3
 
 如果无法确认同步结果，退回 full package。
 
+## ST Accuracy Package Gate
+
+`scripts/st_accuracy run` 的真实设备侧路径默认使用 full package。只要没有 `--no-execute` 且筛选后存在 case，runner 会先对 selected case 的 op 集合执行 `build.sh --pkg --vendor_name=custom` 并安装最新 `custom_transformer` 包，再调用 native runner。
+
+不要用 `--opkernel` 快速路径替代真实 ST 精度 run 的 package gate。`run --no-execute`、`coverage` 和 `taxonomy` 不触发 package/install，它们只能作为静态链路证据。
+
 ## Vendor Risk
 
 custom package 的示例 vendor 是 `custom_transformer`。风险包括：

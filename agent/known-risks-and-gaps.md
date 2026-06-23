@@ -54,6 +54,8 @@
 
 运行 example 或 profiling 时，如果 `ASCEND_CUSTOM_OPP_PATH`、`ASCEND_OPP_PATH`、`LD_LIBRARY_PATH` 配置不正确，可能加载系统原始算子而不是当前修改后的 custom package。后续优化必须确认加载路径。
 
+针对 `scripts/st_accuracy`，真实设备侧 `run` 已内置 selected case 对应算子的 `--pkg` build/install gate，可作为 ST 精度的 package/load 前置保障；`list`、`coverage`、`taxonomy` 和 `run --no-execute` 不触发 package/install，只能作为静态链路证据。example、profiling 或手工二进制仍需独立确认实际加载路径和产物 hash。
+
 ### 编译目录会被清理
 
 `build.sh` 的常规 clean 会删除 `build/` 和 `output/`。不要把手动记录、profiling 对比表或临时 patch 放在这些目录。

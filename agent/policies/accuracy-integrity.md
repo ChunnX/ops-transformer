@@ -21,6 +21,7 @@
 - 不为了通过精度而改变输入 shape、dtype、attrs、range 或随机种子。
 - 不把 `unsupported` 写成精度通过。`unsupported` 只表示当前 runner 或包声明不执行。
 - 不用 example 正常退出替代 golden 对比，除非该 example 明确实现了语义比较。
+- 不使用旧 custom package、旧 vendor 目录或无法证明来源的 op_api/kernel 产物写成当前修改后的设备侧精度通过。
 
 ## Required Wording
 
@@ -29,6 +30,7 @@
 - “当前 runner-supported scope passed”：只在 selected case 与预期支持范围一致，且 `failed=0,error=0` 时使用。
 - “example smoke passed”：只表示样例调用链路成功，不能自动表示精度充分。
 - “pytest/ST passed”：必须附带命令、case 范围和关键 summary。
+- “scripts/st_accuracy device run passed”：必须确认真实 `run` 已触发 package/install，或明确记录等价的 package/load 证据；`coverage`、`taxonomy` 和 `--no-execute` 只能写成静态链路通过。
 
 禁止表述：
 

@@ -85,6 +85,13 @@ bash build.sh --pkg --soc=ascend910b --ops=lightning_indexer,recurrent_gated_del
 - package sha256: `4d8f2567a0f2e9b8422e1d098db12f8b8dc9b0c50bba7a2a79d97af5742eca0c`
 - installed op_api sha256: `7da7964e25974ba1af76afdd0cbdcd4836e34c157c3a16d29878f0266b2b0f30`
 
+2026-06-23 已将 `scripts/st_accuracy run` 的真实设备路径收紧为强制 package/install，并重新验证两个重点算子：
+
+- command: `python3 scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --vendor custom --soc ascend910b --device 0 --out build/st_accuracy/force_pkg_device`
+- package sha256: `1230df03307d0aa62611ad054860434f206f4f4ac2d02fb3b1c82d00e321da5a`
+- installed/build op_api sha256: `7da7964e25974ba1af76afdd0cbdcd4836e34c157c3a16d29878f0266b2b0f30`
+- `prepare_pkg_ms=104151.404`
+
 ## Accuracy State
 
 静态可见验证入口：
@@ -101,7 +108,9 @@ bash build.sh --pkg --soc=ascend910b --ops=lightning_indexer,recurrent_gated_del
 - `scripts/st_accuracy` 已迁移为两个重点 attention 算子的局部 runner，不代表全仓库 ST coverage 已建立。
 - 当前 native runner 对 `LightningIndexer` 比较 `sparseIndicesOut` 和可选 `sparseValuesOut`；对 `RecurrentGatedDeltaRule` 比较 `out` 和原地更新后的 `stateRef`。
 - `coverage --ops lightning_indexer,recurrent_gated_delta_rule`：18 executable、0 unsupported。
-- 已安装 `custom_transformer` 后，本次迁移验证 `run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/migration_device`：18 passed、0 failed、0 error、0 unsupported。
+- 真实设备侧 `run` 已强制 package/install selected ops，不能再用旧 custom package 绕过精度 gate；`coverage`、`taxonomy` 和 `run --no-execute` 不触发 package/install。
+- 强制 package 验证 `run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/force_pkg_device`：18 passed、0 failed、0 error、0 unsupported。
+- 历史迁移验证 `run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/migration_device`：18 passed、0 failed、0 error、0 unsupported。
 - 根因记录：最初设备执行失败是因为当前 CANN OPP 只存在 `custom_math`，没有 `/usr/local/Ascend/cann-9.0.0/opp/vendors/custom_transformer/op_api/lib/libcust_opapi.so`；构建并安装本仓库 custom package 后解决。
 - `RecurrentGatedDeltaRule` 默认 ST 矩阵使用唯一 `ssmStateIndices`；重复 state index 会引入 `stateRef` 原地更新的覆盖/顺序依赖，不纳入默认批量通过矩阵。
 - example 是否做 golden 对比取决于单个算子源码。

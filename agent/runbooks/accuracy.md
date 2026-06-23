@@ -104,16 +104,9 @@ python3 scripts/st_accuracy/run_st_accuracy.py run \
   --out build/st_accuracy/static_no_execute
 ```
 
-设备侧执行前需要先构建/安装 custom package：
+真实设备侧执行会强制构建并安装 selected case 对应的 custom package：
 
 ```bash
-bash build.sh --pkg \
-  --soc=ascend910b \
-  --ops=lightning_indexer,recurrent_gated_delta_rule \
-  --vendor_name=custom \
-  -j16 -O3
-
-bash build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet
 export LD_LIBRARY_PATH=/usr/local/Ascend/cann-9.0.0/opp/vendors/custom_transformer/op_api/lib:${LD_LIBRARY_PATH}
 
 python3 scripts/st_accuracy/run_st_accuracy.py run \
@@ -124,6 +117,8 @@ python3 scripts/st_accuracy/run_st_accuracy.py run \
   --out build/st_accuracy/two_attention_ops
 ```
 
+当前 `scripts/st_accuracy run` 的真实设备路径不允许跳过 package/install gate：只要没有 `--no-execute` 且筛选后存在 case，框架会先对 selected case 的 op 集合执行 `build.sh --pkg --vendor_name=custom` 并安装最新 `custom_transformer` 包，再进入 native runner。`list`、`coverage`、`taxonomy` 和 `run --no-execute` 不安装 package，因为它们不产生设备侧精度结论。
+
 当前 runner 只能写成两个重点 attention 算子的局部 ST 能力，不能外推为全仓库统一 ST coverage。
 
 判断：
@@ -133,7 +128,7 @@ python3 scripts/st_accuracy/run_st_accuracy.py run \
 - native C++ runner 会为 `LightningIndexer` 比较 `sparseIndicesOut`，并在 `returnValues=true` 时比较 `sparseValuesOut`。
 - native C++ runner 会为 `RecurrentGatedDeltaRule` 比较 `out` 和原地更新后的 `stateRef`。
 - 如果结果是缺少 `custom_transformer` op_api 库，只能写成运行环境未满足，不能写成算子失败或精度通过；根因通常是尚未构建/安装本仓库 custom package，而不是官方算子源码缺失。
-- 当前已验证的两个重点算子结果：安装 `custom_transformer` 后，`run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/device_full_after_case_fix` 为 18 passed、0 failed、0 error、0 unsupported。
+- 当前已验证的两个重点算子结果：强制 package/install 后，`run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/force_pkg_device` 为 18 passed、0 failed、0 error、0 unsupported，`prepare_pkg_ms=104151.404`。
 - `RecurrentGatedDeltaRule` 默认矩阵不包含重复 `ssmStateIndices`，因为该场景会让 `stateRef` 原地更新存在覆盖/顺序依赖，应作为后续专项边界研究。
 
 ## CI Reference

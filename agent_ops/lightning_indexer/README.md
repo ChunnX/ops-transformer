@@ -25,6 +25,12 @@ Migration verification on `br_tang_dev` (2026-06-22):
 - op_host UT: `build.sh -u --ophost_test --soc=ascend910b --ops=lightning_indexer,recurrent_gated_delta_rule -j16`, 16 passed
 - ST accuracy: `scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/migration_device`, 18 passed, 0 failed, 0 error, 0 unsupported
 
+Forced-package ST validation (2026-06-23):
+- command: `python3 scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --vendor custom --soc ascend910b --device 0 --out build/st_accuracy/force_pkg_device`
+- package sha256: `1230df03307d0aa62611ad054860434f206f4f4ac2d02fb3b1c82d00e321da5a`
+- installed/build op_api sha256: `7da7964e25974ba1af76afdd0cbdcd4836e34c157c3a16d29878f0266b2b0f30`
+- result: 18 passed, 0 failed, 0 error, 0 unsupported; `prepare_pkg_ms=104151.404`
+
 Outcome:
 - ST matrix cases improved by 22.72% to 51.59% median `Task Duration(us)`.
 - README PA large was flat at +0.39% after resampling and is treated as noise-band neutral, not a stable gain.

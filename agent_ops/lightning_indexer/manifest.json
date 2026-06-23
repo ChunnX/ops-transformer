@@ -30,6 +30,15 @@
     "accuracy_command": "python3 scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/migration_device",
     "accuracy_summary": "18 passed, 0 failed, 0 error, 0 unsupported, 0 skipped"
   },
+  "forced_package_st_validation": {
+    "date": "2026-06-23",
+    "command": "python3 scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --vendor custom --soc ascend910b --device 0 --out build/st_accuracy/force_pkg_device",
+    "summary": "18 passed, 0 failed, 0 error, 0 unsupported, 0 skipped",
+    "prepare_pkg_ms": 104151.404,
+    "package_sha256": "1230df03307d0aa62611ad054860434f206f4f4ac2d02fb3b1c82d00e321da5a",
+    "opapi_sha256": "7da7964e25974ba1af76afdd0cbdcd4836e34c157c3a16d29878f0266b2b0f30",
+    "runner_cache_key": "b251c21a1d70a8f7ba89dd56"
+  },
   "performance": {
     "baseline_root": "artifacts/perf_baseline/msprof_baseline_direct_20260617_0320",
     "candidate_root": "artifacts/perf_candidate/li_rgdr_blockdim_20260617_0442",

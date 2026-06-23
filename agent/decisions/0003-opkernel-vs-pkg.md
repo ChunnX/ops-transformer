@@ -15,6 +15,7 @@ Accepted.
 - 涉及 `op_host`、tiling key、TilingData、workspace、opdef、dtype/format、infer shape、`op_host_aclnn*`、`op_graph` 或 package metadata 的改动，必须走 full package。
 - 仅涉及 `op_kernel/` 或 binary config 的改动，可以用 `--opkernel` 做快速编译，但必须显式同步新 binary/config 到运行时 vendor 目录，并记录同步证据。
 - 如果无法确认运行加载的是新产物，不能写成有效性能结果。
+- `scripts/st_accuracy run` 的真实设备侧精度验证必须走 full package/install gate；`--opkernel` 快速路径不能替代该 ST 精度 gate。
 
 ## Consequences
 
