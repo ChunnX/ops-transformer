@@ -20,7 +20,12 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
   - [4.1 分组方式](#41-分组方式)
   - [4.2 计算公式](#42-计算公式)
   - [4.3 版本演进](#43-版本演进)
-- [5. 接口调用](#5-接口调用)
+- [5. 参数说明](#5-参数说明)
+- [6. 约束说明](#6-约束说明)
+  - [6.1 公共约束](#61-公共约束)
+  - [6.2 Atlas A3/A2 训练系列产品](#62-atlas-a3a2-训练系列产品)
+  - [6.3 Ascend 950PR/Ascend 950DT](#63-ascend-950prascend-950dt)
+- [7. 接口调用](#7-接口调用)
 
 ---
 
@@ -128,7 +133,201 @@ GroupedMatmul 是分组矩阵乘算子，支持按 M 轴或 K 轴对输入张量
 
 ---
 
-## 5. 接口调用
+## 5. 参数说明
+
+> 标注规则：
+> - <sup>1</sup>：仅 <term>Ascend 950PR/950DT</term> 不支持
+> - <sup>2</sup>：仅 <term>Atlas A3/A2</term> 不支持
+
+| 参数名 | 输入/输出 | 描述 | 数据类型 | 数据格式 |
+|--------|:---:|------|----------|:---:|
+| x | 输入 | 公式中的输入 $x$ | FLOAT、FLOAT16、INT16<sup>1</sup>、INT8、INT4<sup>1</sup>、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup> | ND |
+| weight | 输入 | 公式中的 $weight$ | FLOAT、FLOAT16、INT16<sup>1</sup>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup> | ND/NZ |
+| biasOptional | 可选输入 | 公式中的 $bias$ | FLOAT、FLOAT16、INT32、BFLOAT16<sup>2</sup> | ND |
+| scaleOptional | 可选输入 | 公式中的 $scale$，代表量化参数中的缩放因子 | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<sup>2</sup>、INT64<sup>2</sup> | ND |
+| offsetOptional | 可选输入 | 公式中的 $offset$，代表量化参数中的偏移量 | FLOAT | ND |
+| antiquantScaleOptional | 可选输入 | 公式中的 $antiquant\_scale$，代表伪量化参数中的缩放因子 | FLOAT16、BFLOAT16 | ND |
+| antiquantOffsetOptional | 可选输入 | 公式中的 $antiquant\_offset$，代表伪量化参数中的偏移量 | FLOAT16、BFLOAT16 | ND |
+| perTokenScaleOptional | 可选输入 | 公式中的 $per\_token\_scale$，代表量化参数中由 x 量化引入的缩放因子 | FLOAT、FLOAT8_E8M0<sup>2</sup> | ND |
+| groupListOptional | 可选输入 | 代表输入和输出分组轴方向的 matmul 大小分布 | INT64 | ND |
+| activationInputOptional | 可选输入 | 代表激活函数的反向输入，当前只支持传入 nullptr | — | — |
+| activationQuantScaleOptional | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入 nullptr | — | — |
+| activationQuantOffsetOptional | 可选输入 | 激活函数量化偏移量（预留参数），当前只支持传入 nullptr | — | — |
+| <abbr title="代表输出是否要做 Tensor 切分：0/1=多 Tensor 输出；2/3=单 Tensor 输出">splitItem</abbr> | 属性 | 代表输出是否要做 Tensor 切分 | INT64 | — |
+| <abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr> | 属性 | 代表需要分组的轴 | INT64 | — |
+| <abbr title="代表 groupList 输入的分组方式：0=累积和；1=各组大小；2=[组索引, 组大小] 对">groupListType</abbr> | 属性 | 代表 groupList 输入的分组方式 | INT64 | — |
+| <abbr title="代表激活函数类型：0=NONE/1=ReLU/2=GELU_TANH/4=FAST_GELU/5=SILU">actType</abbr> | 属性 | 代表激活函数类型 | INT64 | — |
+| tuningConfigOptional | 可选输入 | 第一个数代表各个专家处理的 token 数的预期值；第二个数代表 A8W4 可选开启 weight 先转置的 NZ 格式；第三个数代表允许额外使用的内存空间 | INT64 | — |
+| out | 输出 | 公式中的输出 $y$ | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND |
+| activationFeatureOutOptional | 输出 | 激活函数的输入数据，当前只支持传入 nullptr | — | — |
+| dynQuantScaleOutOptional | 输出 | 动态量化缩放因子，当前只支持传入 nullptr | — | — |
+
+- **<term>Ascend 950PR/Ascend 950DT</term>**：
+  - 上表数据类型列中的角标 <sup>1</sup> 代表该系列不支持的数据类型。
+  - 输入参数 x、weight 均不支持 INT16 类型，且 x 不支持 INT4 类型。
+  - 输入参数 x、weight，输出参数 out 在非量化场景支持最多 1024 个 Tensor，在伪量化支持最多 128 个 Tensor，在全量化场景最多支持 1 个 Tensor。
+- **<term>Atlas A3/A2 训练系列产品</term>**：
+  - 上表数据类型列中的角标 <sup>2</sup> 代表该系列不支持的数据类型。
+  - 不支持 FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0 类型。
+  - 输入参数 biasOptional 不支持 BFLOAT16。
+  - 输入参数 scaleOptional 不支持 INT64 类型。
+  - 输入参数 x、weight，输出参数 out 支持最多 128 个 Tensor。
+- **<term>Kirin X90/Kirin 9030 处理器系列产品</term>**：
+  - 不支持 BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT8_E8M0、HIFLOAT8 类型。
+
+---
+
+## 6. 约束说明
+
+**确定性计算**：GroupedMatmul 默认提供确定性实现。
+
+> 各场景详细约束请参见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#5-约束说明)。
+
+### 6.1 公共约束
+
+- x/weight 中每组 Tensor 的最后一维 < 65536。
+  - $x_i$ 最后一维：x 不转置时为 K 轴，x 转置时为 M 轴。
+  - $weight_i$ 最后一维：weight 不转置时为 N 轴，weight 转置时为 K 轴。
+- x/weight 转置时对应 Tensor 必须 [非连续](../../../docs/zh/context/非连续的Tensor.md)。
+- weight 为 [FRACTAL_NZ](../../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ 格式要求。
+- perTokenScaleOptional：通常仅 1 维，长度与 x 的 M 一致。仅支持 x/weight/out 均为单 Tensor 场景。
+- groupListOptional：out 中 TensorList 长度为 1 时，groupList 约束输出数据有效范围，未指定部分不参与更新。
+- groupListType=0：groupListOptional 须为非负单调非递减数列（累积和）。
+  groupListType=1：须为非负数列（各组大小）。
+  groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]）。
+
+<a id="62-atlas-a3a2-训练系列产品"></a>
+
+### 6.2 Atlas A3/A2 训练系列产品
+
+> "—" 表示该参数在当前场景下必须传空（nullptr）
+
+<details>
+<summary>数据类型速查表</summary>
+
+| 类型 | x | weight | bias | scale | antiquantScale | antiquantOffset | perTokenScale | groupList | out |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 非量化 | FLOAT | FLOAT (ND) | FLOAT/null | — | — | — | — | INT64 | FLOAT |
+| 非量化 | FLOAT16 | FLOAT16 (ND/NZ) | FLOAT16/null | — | — | — | — | INT64 | FLOAT16 |
+| 非量化 | BFLOAT16 | BFLOAT16(ND/NZ) | FLOAT/null | — | — | — | — | INT64 | BFLOAT16 |
+| 伪量化-A16W8 | FLOAT16 | INT8 (ND) | FLOAT16/null | — | FLOAT16 | FLOAT16 | — | INT64 | FLOAT16 |
+| 伪量化-A16W8 | BFLOAT16 | INT8 (ND) | FLOAT/null | — | BFLOAT16 | BFLOAT16 | — | INT64 | BFLOAT16 |
+| 伪量化-A16W4 | FLOAT16 | INT4 (ND) | FLOAT16/null | — | FLOAT16 | FLOAT16 | — | INT64 | FLOAT16 |
+| 伪量化-A16W4 | BFLOAT16 | INT4 (ND) | FLOAT/null | — | BFLOAT16 | BFLOAT16 | — | INT64 | BFLOAT16 |
+| 伪量化-A8W4 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | — | FLOAT/null | FLOAT | INT64 | BFLOAT16/FLOAT16 |
+| 全量化-A8W8 | INT8 | INT8 (ND/NZ) | INT32/null | UINT64/BFLOAT16/FLOAT | — | — | —/FLOAT | INT64 | INT8/BFLOAT16/FLOAT16/INT32 |
+| 全量化-A4W4 | INT4 | INT4 (ND/NZ) | — | UINT64 | — | — | FLOAT/null | INT64 | FLOAT16/BFLOAT16 |
+
+> 其余参数（offset、activationXxx 等）在各场景下均须传空，详见 [aclnnGroupedMatmulV5 约束说明](docs/aclnnGroupedMatmulV5.md#53-atlas-a3a2-训练系列产品)。
+
+</details>
+
+<details>
+<summary>groupType 支持场景</summary>
+
+> x、weight、y 输入为 aclTensorList。"单" = 单元素 TensorList，"多" = 多元素 TensorList。
+
+| groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
+|:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
+| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x 不转置；weight 可转置（统一） | x 2-6维（维度一致），weight 2维，y 同 x |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传 | x 不转置；weight 可转置（A8W4/A4W4 不可） | weight 3维，x/y 2维 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传 | x 不转置；weight 可转置（统一） | x/weight/y 2维；weight N 轴相等 |
+| 0 | 多 | 多 | 单 | 2/3 | 可选 | x 不转置；weight 可转置（统一） | x/weight/y 2维；weight N 轴相等 |
+| 2 | 单 | 单 | 单 | 2/3 | 必须传 | x 必须转置；weight 不转置 | x/weight 2维，y 3维；bias 传空 |
+| 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x 必须转置；weight 不转置 | x/weight/y 2维；weight 最大 128 组；bias 传空 |
+
+</details>
+
+<a id="63-ascend-950prascend-950dt"></a>
+
+### 6.3 Ascend 950PR/Ascend 950DT
+
+- groupType：支持 M 轴分组（0）和不分组（-1）。非量化/全量化额外支持 K 轴分组（2）。
+- groupListType：支持 0、1、2。仅全量化 groupType=0 时支持 groupListType=2。
+- tuningConfigOptional：不支持。
+- actType（0~5）：
+  - 非量化/伪量化仅支持 0。
+  - 全量化下 x/weight=INT8、静态 T-C 或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
+
+<details>
+<summary>数据类型速查表</summary>
+
+**非量化：**
+
+| groupType | x | weight | biasOptional | out |
+|:---:|:---:|:---:|:---|:---|
+| -1/0/2 | BFLOAT16 | BFLOAT16 | BFLOAT16/FLOAT32/null | BFLOAT16 |
+| -1/0/2 | FLOAT16 | FLOAT16 | FLOAT16/FLOAT32/null | FLOAT16 |
+| -1/0/2 | FLOAT32 | FLOAT32 | FLOAT32/null | FLOAT32 |
+
+**静态量化：**
+
+| groupType | x | weight | biasOptional | scaleOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|
+| 0 | INT8 | INT8 | INT32/null | UINT64/INT64 | BFLOAT16/FLOAT16/INT8 |
+| 0 | INT8 | INT8 | INT32/null | null/UINT64/INT64 | INT32 |
+| 0 | INT8 | INT8 | INT32/BFLOAT16/FLOAT32/null | BFLOAT16/FLOAT32 | BFLOAT16 |
+| 0 | INT8 | INT8 | INT32/FLOAT16/FLOAT32/null | FLOAT32 | FLOAT16 |
+| 0 | HIFLOAT8 | HIFLOAT8 | null | UINT64/INT64 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0/2 | HIFLOAT8 | HIFLOAT8 | null | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | UINT64/INT64 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+
+**动态量化（T-T/T-C/K-T/K-C）：**
+
+| groupType | x | weight | biasOptional | scaleOptional | perTokenScaleOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|:---|
+| 0 | INT8 | INT8 | INT32/BFLOAT16/FLOAT32/null | BFLOAT16/FLOAT32 | FLOAT32 | BFLOAT16 |
+| 0 | INT8 | INT8 | INT32/FLOAT16/FLOAT32/null | FLOAT32 | FLOAT32 | FLOAT16 |
+| 0/2 | HIFLOAT8 | HIFLOAT8 | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+
+**动态量化（MX）：**
+
+| groupType | x | weight | biasOptional | scaleOptional | perTokenScaleOptional | out |
+|:---:|:---:|:---:|:---:|:---:|:---|:---|
+| 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT8_E8M0 | FLOAT8_E8M0 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0 | FLOAT4_E2M1 | FLOAT4_E2M1 | FLOAT32/null | FLOAT8_E8M0 | FLOAT8_E8M0 | BFLOAT16/FLOAT16/FLOAT32 |
+
+**动态量化（G-B）：**
+
+| groupType | x | weight | scaleOptional | perTokenScaleOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|
+| 0/2 | HIFLOAT8 | HIFLOAT8 | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+| 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
+
+**伪量化：**
+
+| groupType | x | weight | biasOptional | antiquantScaleOptional | antiquantOffsetOptional | out |
+|:---:|:---:|:---:|:---|:---|:---|:---|
+| -1/0 | BFLOAT16 | INT8/INT4 | BFLOAT16/FLOAT32/null | BFLOAT16 | BFLOAT16/null | BFLOAT16 |
+| -1/0 | FLOAT16 | INT8/INT4 | FLOAT16/null | FLOAT16 | FLOAT16/null | FLOAT16 |
+| 0 | BFLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | BFLOAT16/FLOAT32/null | BFLOAT16 | null | BFLOAT16 |
+| 0 | FLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | FLOAT16/null | FLOAT16 | null | FLOAT16 |
+
+- weight 为 FLOAT8 系列时，antiquantOffsetOptional 仅支持空指针或空 TensorList，weight 仅支持转置。
+
+</details>
+
+<details>
+<summary>groupType 支持场景</summary>
+
+> x、weight、y 输入为 aclTensorList。"单" = 单元素 TensorList，"多" = 多元素 TensorList。
+
+| groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
+|:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
+| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x 不转置；weight 可转置（统一） | 非量化 x/out 2维，伪量化 x 2~6维；weight 2维；仅非量化/伪量化；仅 ND 进 ND 出 |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传 | x 不转置；weight 可转置 | weight 3维 `(g,N,K)` 或 `(g,K,N)`；x/out 2维；bias 2维 `(g,N)`；最多 1024 组；仅 ND 出 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传（长度 ≤1024） | x 不转置；weight 可转置（统一） | x/weight/y 2维；weight N 轴相等；仅 ND 进 ND 出；仅非量化 |
+| 0 | 多 | 多 | 单 | 2 | 可选 | x 不转置；weight 可转置（统一） | x/weight/y 2维；weight N 轴相等；仅 ND 进 ND 出；仅非量化 |
+| 2 | 单 | 单 | 单 | 2/3 | 必须传 | x 必须转置；weight 不转置 | x/weight 2维 `(K,M)`/`(K,N)`；y 3维 `(g,M,N)`；bias 传空；仅 ND 进 ND 出；仅非量化/量化 |
+| 2 | 单 | 多 | 多 | 0/1 | 可选 | x 必须转置；weight 不转置 | x/weight/y 2维 `(M,N)`；weight 最大 128 组；不支持 bias；仅 ND 进 ND 出；仅非量化 |
+
+</details>
+
+---
+
+## 7. 接口调用
 
 | 调用方式 | 接口文档 | 调用样例 | 说明 |
 |----------|----------|----------|------|
