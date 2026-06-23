@@ -28,7 +28,6 @@ operator_group_2:
   - kv_rms_norm_rope_cache
   - grouped_matmul_finalize_routing
   - grouped_matmul_swiglu_quant_v2
-  - grouped_matmul_activation_quant
   - quant_grouped_matmul_inplace_add
   - fused_infer_attention_score,10-8
 operator_group_3:

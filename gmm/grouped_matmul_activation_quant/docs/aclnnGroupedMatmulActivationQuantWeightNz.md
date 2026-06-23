@@ -45,7 +45,7 @@
         * $groupList$：分组索引列表，按groupListType解释为cumsum或count。
         * $weight$：分组weight矩阵。
         * $weightScale$：weight矩阵量化因子。
-        * $biasOptional$：MXFP8场景下必须为空，支持nullptr或空tensorlist。
+        * $bias$：MXFP8场景下必须为空，支持nullptr或空tensorlist。
         * $xScaleOptional$：左矩阵量化因子，对应公式中的$xScale$。
 
       - **输出**：
@@ -144,7 +144,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     const aclTensor     *groupList,
     const aclTensorList *weight,
     const aclTensorList *weightScale,
-    const aclTensorList *biasOptional,
+    const aclTensorList *bias,
     const aclTensor     *xScaleOptional,
     const char          *activationType,
     bool                 transposeWeight,
@@ -219,7 +219,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>weight</td>
         <td rowspan="1">输入</td>
         <td>表示weight矩阵，对应公式中的weight。</td>
-        <td>动态输入，仅支持tensorlist，不支持单Tensor；当前仅支持长度为1的tensorlist。</td>
+        <td>tensorList长度支持[1, 1024]。接口会将该参数按昇腾亲和数据排布格式（FRACTAL_NZ）解析。</td>
         <td>FLOAT8_E4M3FN</td>
         <td>FRACTAL_NZ</td>
         <td>5</td>
@@ -229,17 +229,17 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>weightScale</td>
         <td rowspan="1">输入</td>
         <td>表示weight矩阵的量化因子，对应公式中的weightScale。</td>
-        <td>动态输入，仅支持tensorlist，不支持单Tensor；当前仅支持长度为1的tensorlist。</td>
+        <td>tensorList长度支持[1, 1024]。</td>
         <td>FLOAT8_E8M0</td>
         <td>ND</td>
         <td>4</td>
         <td>√</td>
       </tr>
       <tr>
-        <td>biasOptional</td>
-        <td rowspan="1">可选输入</td>
+        <td>bias</td>
+        <td rowspan="1">输入</td>
         <td>表示偏置。</td>
-        <td>动态可选输入，仅支持tensorlist，不支持单Tensor；MXFP8场景下必须为空，支持nullptr或空tensorlist。</td>
+        <td>tensorList长度支持[1, 1024]。MXFP8场景下必须为空，支持nullptr或空tensorlist。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -398,9 +398,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         - 当M和N均不为0时，不支持K为0。
       - roundMode仅支持"rint"。
       - scaleAlg仅支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
-      - weight、weightScale、biasOptional均为dynamic tensorlist形式，不支持单Tensor。
-      - 当前weight和weightScale仅支持tensorlist长度为1。
-      - MXFP8场景下biasOptional必须为空，支持nullptr或空tensorlist。
+      - MXFP8场景下bias必须为空，支持nullptr或空tensorlist。
       - tuningConfig和dstTypeMax为预留参数，当前暂不使用。
 
 - **返回值**
@@ -430,7 +428,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>参数不满足约束，例如activationType不是"gelu_tanh"，biasOptional非空，输入数据类型或数据格式不支持，shape维度不匹配，或属性值不在支持范围内。</td>
+      <td>参数不满足约束，例如activationType不是"gelu_tanh"，bias非空，输入数据类型或数据格式不支持，shape维度不匹配，或属性值不在支持范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -735,7 +733,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         aclTensor *groupList = nullptr;
         aclTensorList *weight = nullptr;
         aclTensorList *weightScale = nullptr;
-        aclTensorList *biasOptional = nullptr;
+        aclTensorList *bias = nullptr;
         aclTensor *xScaleOptional = nullptr;
         aclTensor *y = nullptr;
         aclTensor *yScale = nullptr;
@@ -812,7 +810,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         void *workspaceAddr = nullptr;
 
         ret = aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
-            x, groupList, weight, weightScale, biasOptional, xScaleOptional, activationType,
+            x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
             transposeWeight, groupListType, tuningConfig, quantMode, yDtype,
             roundMode, scaleAlg, dstTypeMax, y, yScale, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,

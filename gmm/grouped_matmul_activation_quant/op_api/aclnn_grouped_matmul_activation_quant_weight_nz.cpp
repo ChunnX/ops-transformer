@@ -103,6 +103,25 @@ bool IsNzFormat(const aclTensor *tensor)
            ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ;
 }
 
+bool IsEmptyTensorList(const aclTensorList *tensorList)
+{
+    if (tensorList == nullptr || tensorList->Size() == 0) {
+        return true;
+    }
+    if (tensorList->Size() != SINGLE_TENSOR_SIZE || (*tensorList)[FIRST_TENSOR_INDEX] == nullptr) {
+        return false;
+    }
+    const auto &shape = (*tensorList)[FIRST_TENSOR_INDEX]->GetViewShape();
+    return shape.GetDimNum() == 1 && shape.GetDim(DIM_0) == 0;
+}
+
+void NormalizeEmptyTensorList(const aclTensorList *&tensorList)
+{
+    if (IsEmptyTensorList(tensorList)) {
+        tensorList = nullptr;
+    }
+}
+
 aclnnStatus CheckTensorList(const aclTensorList *tensorList, const char *name)
 {
     CHECK_COND(tensorList != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [%s] must not be nullptr.",
@@ -112,6 +131,26 @@ aclnnStatus CheckTensorList(const aclTensorList *tensorList, const char *name)
                OP_NAME, name, tensorList->Size());
     CHECK_COND((*tensorList)[FIRST_TENSOR_INDEX] != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                "In op [%s], [%s][0] must not be nullptr.", OP_NAME, name);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CreateEmptyTensorList(const aclDataType dataType, const aclTensorList *&tensorList,
+                                  aclOpExecutor *executor, const char *name)
+{
+    if (tensorList != nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    std::vector<aclTensor *> emptyTensors;
+    aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<DataType>(dataType));
+    CHECK_RET(emptyTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    emptyTensors.emplace_back(emptyTensor);
+    tensorList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
+    CHECK_RET(tensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    GmmaqPrint("In op [%s], create empty tensorList for %s. size=%zu, dtype=%s, format=%s, shape=%s.",
+               OP_NAME, name, tensorList->Size(),
+               op::ToString((*tensorList)[FIRST_TENSOR_INDEX]->GetDataType()).GetString(),
+               op::ToString((*tensorList)[FIRST_TENSOR_INDEX]->GetStorageFormat()).GetString(),
+               op::ToString((*tensorList)[FIRST_TENSOR_INDEX]->GetViewShape()).GetString());
     return ACLNN_SUCCESS;
 }
 
@@ -185,7 +224,7 @@ aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, cons
 }
 
 aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const aclTensorList *weight,
-                        const aclTensorList *weightScale, const aclTensorList *biasOptional,
+                        const aclTensorList *weightScale, const aclTensorList *bias,
                         const aclTensor *xScaleOptional, const char *activationType,
                         bool transposeWeight, int64_t groupListType, const char *quantMode, int64_t yDtype,
                         const char *roundMode, int64_t scaleAlg, float dstTypeMax, const aclTensor *y,
@@ -233,10 +272,10 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
     CHECK_COND(std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) <= FLOAT_EPS, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], dstTypeMax only supports 0.0 in current MX quant mode, but got %f.",
                OP_NAME, dstTypeMax);
-    CHECK_COND(biasOptional == nullptr || biasOptional->Size() == 0, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(IsEmptyTensorList(bias), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], non-empty bias is not supported in current MX quant mode.", OP_NAME);
-    GmmaqPrint("In op [%s], basic attribute check passed. biasOptional size=%zu.", OP_NAME,
-               biasOptional == nullptr ? 0UL : biasOptional->Size());
+    GmmaqPrint("In op [%s], basic attribute check passed. bias size=%zu.", OP_NAME,
+               bias == nullptr ? 0UL : bias->Size());
 
     const aclTensor *w = (*weight)[FIRST_TENSOR_INDEX];
     const aclTensor *wScale = (*weightScale)[FIRST_TENSOR_INDEX];
@@ -331,14 +370,14 @@ extern "C" {
 
 aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclTensor *x,
     const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
-    const aclTensorList *biasOptional, const aclTensor *xScaleOptional, const char *activationType,
+    const aclTensorList *bias, const aclTensor *xScaleOptional, const char *activationType,
     bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode, int64_t yDtype,
     const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclTensor *y, aclTensor *yScale,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
-                   DFX_IN(x, groupList, weight, weightScale, biasOptional, xScaleOptional),
+                   DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional),
                    DFX_OUT(y, yScale));
     GmmaqPrint("In op [%s], GetWorkspaceSize start. activationType=%s, quantMode=%s, roundMode=%s, "
                "transposeWeight=%d, groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
@@ -350,7 +389,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     const char *effectiveQuantMode = ResolveQuantMode(x == nullptr ? DataType::DT_UNDEFINED : x->GetDataType(),
                                                       quantMode);
-    CHECK_RET(CheckParams(x, groupList, weight, weightScale, biasOptional, xScaleOptional, activationType,
+    CHECK_RET(CheckParams(x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
                           transposeWeight, groupListType, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax, y,
                           yScale) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
@@ -377,14 +416,13 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
 
     CHECK_RET(PrepareTensorListContiguous(weightScale, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
-    if (biasOptional == nullptr) {
-        GmmaqPrint("In op [%s], biasOptional is nullptr, allocate empty tensorList.", OP_NAME);
-        biasOptional = uniqueExecutor->AllocTensorList(nullptr, 0);
-        CHECK_RET(biasOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
+    NormalizeEmptyTensorList(bias);
+    CHECK_RET(CreateEmptyTensorList(aclDataType::ACL_FLOAT, bias, uniqueExecutor.get(), "bias") ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
 
     GmmaqPrint("In op [%s], call l0op::GroupedMatmulActivationQuant.", OP_NAME);
-    auto result = l0op::GroupedMatmulActivationQuant(x, groupList, weight, weightScale, biasOptional, xScaleOptional,
+    auto result = l0op::GroupedMatmulActivationQuant(x, groupList, weight, weightScale, bias, xScaleOptional,
         activationType, transposeWeight, groupListType, tuningConfig, effectiveQuantMode, yDtype, roundMode, scaleAlg,
         dstTypeMax, uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
