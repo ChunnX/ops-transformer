@@ -185,7 +185,7 @@ TEST_PARAMS = {
         "seqused_k": [[512]], # PA场景每个batch的实际token数
         "cmp_residual_k": [None],
         "max_seqlen_q": [-1],
-        "quant_mode": [3],
+        "quant_mode": [1],
         "layout_query": ["BSND"],
         "layout_key":["BSND"],
         "sparse_count": [128],

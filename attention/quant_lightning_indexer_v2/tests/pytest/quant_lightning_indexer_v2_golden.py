@@ -1177,6 +1177,8 @@ def qliv2_output_single(params):
                                                     return_value = return_value)
 
     npu_result = npu_result.cpu()
+    npu_result, _ = torch.sort(npu_result)
+    cpu_result, _ = torch.sort(cpu_result)
 
     # if hifp8mode == 1:
     #     npu_result,_ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
