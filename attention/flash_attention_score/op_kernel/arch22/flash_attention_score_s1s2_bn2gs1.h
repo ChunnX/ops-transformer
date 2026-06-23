@@ -1096,7 +1096,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
         }
     }
 
-    bmm1.SetOrgShape(extraInfo.s1RealSize, extraInfo.s2RealSize, this->mm1Ka1, this->mm1Kb1, extraInfo.s2RealSize);
+    bmm1.SetOrgShape(extraInfo.s1RealSize, this->mm1Kb, this->mm1Ka1, this->mm1Kb1, extraInfo.s2RealSize);
     this->Bmm1SetTensorA(extraInfo, bmm1);
     this->SetBmm1TensorB(extraInfo, bmm1);
     if constexpr (enableL1Reuse) {
@@ -2142,7 +2142,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
     }
 
     int64_t vCoreOffset = bOffset + n2Offset + s2Offset;
-    this->bmm2.SetOrgShape(extraInfo.s1RealSize, this->d2Size, this->s2AlignedSize, extraInfo.mm2Kb, this->d2Size);
+    this->bmm2.SetOrgShape(extraInfo.s1RealSize, this->mm2Kb, extraInfo.s2AlignedSize, this->mm2Kb, this->d2Size);
     this->bmm2.SetTensorA(this->stage1Res[extraInfo.taskIdMod2]);
     this->bmm2.SetTensorB(this->valueGm[vCoreOffset]);
     this->bmm2.SetTail(extraInfo.s1RealSize, this->d2Size, extraInfo.s2RealSize);
