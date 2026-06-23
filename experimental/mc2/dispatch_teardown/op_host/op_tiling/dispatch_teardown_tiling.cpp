@@ -37,7 +37,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     size_t *workspaces = context->GetWorkspaceSizes(1);
     workspaces[0] = 0U;
 
-    context->SetTilingKey(1UL);
+    context->SetTilingKey(0UL);   // ★ 单 kernel 无 TILING_KEY 分支 → 只注册在 key 0；设成 1 会让 runtime 按 key 1 取函数
+                                  //   取不到 → rtsFuncGetByEntry funcEntry=1 invalid(107000)。单变体算子就该用 key 0。
     return ge::GRAPH_SUCCESS;
 }
 
