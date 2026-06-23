@@ -32,8 +32,8 @@ namespace {
 constexpr int64_t batch = 1;
 constexpr int64_t qSeqlen = 128;
 constexpr int64_t kvSeqlen = 128;
-constexpr int64_t numHeads = 1;
-constexpr int64_t numKvHeads = numHeads;
+constexpr int64_t numHeads = 2;
+constexpr int64_t numKvHeads = 1;
 constexpr int64_t headDim = 128;
 constexpr int64_t blockShapeX = 128;
 constexpr int64_t blockShapeY = 128;
