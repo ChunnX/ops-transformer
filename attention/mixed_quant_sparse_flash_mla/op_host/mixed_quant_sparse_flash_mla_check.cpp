@@ -196,7 +196,7 @@ ge::graphStatus QSMLATilingCheck::CheckKvContiguous() const
             qsmlaInfo_.oriKvStorageShape, kvLayout_, ORI_KV_NAME) != ge::GRAPH_SUCCESS) {
                     return ge::GRAPH_FAILED;
             }
-    } 
+    }
     if (!qsmlaInfo_.cmpKvStrides.empty()) {
         if (ValidateKvContiguous(opName_, qsmlaInfo_.cmpKvStrides,
             qsmlaInfo_.cmpKvStorageShape, kvLayout_, CMP_KV_NAME) != ge::GRAPH_SUCCESS) {
