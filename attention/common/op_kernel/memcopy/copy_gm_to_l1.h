@@ -39,12 +39,12 @@ public:
         if constexpr ((GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
-            // auto &offsetCalculator = srcTensor.offsetCalculator;
-            // if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-            //     ProcessGS1(dstTensor, srcTensor, gmCoord);
-            // } else {
-            //     ProcessContinuous(dstTensor, srcTensor, gmCoord);
-            // }
+            auto &offsetCalculator = srcTensor.offsetCalculator;
+            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
+                ProcessGS1(dstTensor, srcTensor, gmCoord);
+            } else {
+                ProcessContinuous(dstTensor, srcTensor, gmCoord);
+            }
         } else if constexpr (GM_FORMAT == GmFormat::NGTD) {
             // ProcessGS1(dstTensor, srcTensor, gmCoord);
         }
@@ -61,13 +61,10 @@ private:
         uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
         uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % offsetCalculator.GetDimG();
 
-        // uint64_t queryGmbaseOffset =
-        //     offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
-
         auto srcTileTensor = srcTensor.gmTensor.Slice(
             AscendC::Te::MakeCoord(
-                gmCoord.bIdx * offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx) + gmCoord.gS1Idx, // AscendC::Te::MakeCoord(runInfo.gS1Idx, runInfo.bIdx), 
-                gmCoord.n2Idx * gmCoord.dDealSize // AscendC::Te::MakeCoord(0, runInfo.n2Idx)
+                gmCoord.bIdx * offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx) + gmCoord.gS1Idx,
+                gmCoord.n2Idx * gmCoord.dDealSize
             ), 
             AscendC::Te::MakeShape(s1IdxEnd - s1IdxStart, gmCoord.dDealSize)
         );
@@ -110,78 +107,78 @@ private:
         // }
     }
 
-    // template <typename FaGmTensorType>
-    // __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor,
-    //                                          FaGmTensorType &srcTensor, GmCoord &gmCoord)
-    // {
-    //     // B*N2*GS1*D
-    //     auto &offsetCalculator = srcTensor.offsetCalculator;
-    //     uint32_t gIdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimS1();
-    //     uint32_t s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
+    template <typename FaGmTensorType>
+    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor,
+                                             FaGmTensorType &srcTensor, GmCoord &gmCoord)
+    {
+        // B*N2*GS1*D
+        auto &offsetCalculator = srcTensor.offsetCalculator;
+        uint32_t gIdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimS1();
+        uint32_t s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
 
-    //     uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart, gmCoord.dIdx);
-    //     CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.gS1DealSize, gmCoord.dDealSize,
-    //                            offsetCalculator.GetDimD(), dstTensor.rowCount);
-    // }
+        uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart, gmCoord.dIdx);
+        CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.gS1DealSize, gmCoord.dDealSize,
+                               offsetCalculator.GetDimD(), dstTensor.rowCount);
+    }
 
-    // template <typename FaGmTensorType>
-    // __aicore__ inline void ProcessGS1(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-    //                                   GmCoord &gmCoord)
-    // {
-    //     // N2*G*T(BS1)*D
-    //     auto &offsetCalculator = srcTensor.offsetCalculator;
-    //     uint64_t s1Size = 0;
-    //     if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-    //         s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-    //     } else {
-    //         if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
-    //             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
-    //         } else {
-    //             s1Size = offsetCalculator.GetDimS1();
-    //         }
-    //     }
+    template <typename FaGmTensorType>
+    __aicore__ inline void ProcessGS1(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
+                                      GmCoord &gmCoord)
+    {
+        // N2*G*T(BS1)*D
+        auto &offsetCalculator = srcTensor.offsetCalculator;
+        uint64_t s1Size = 0;
+        if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
+            s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
+        } else {
+            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
+                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
+            } else {
+                s1Size = offsetCalculator.GetDimS1();
+            }
+        }
 
-    //     uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
-    //     uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
-    //     uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;
-    //     uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % s1Size;
+        uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
+        uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
+        uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;
+        uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % s1Size;
 
-    //     uint64_t queryGmbaseOffset =
-    //         offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0, gmCoord.dIdx);
+        uint64_t queryGmbaseOffset =
+            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0, gmCoord.dIdx);
 
-    //     // 处理第一个S
-    //     uint32_t headSize = 0;
-    //     if (gIdxStart == gIdxEnd) {
-    //         headSize = s1IdxEnd - s1IdxStart;
-    //     } else {
-    //         headSize = s1Size - s1IdxStart;
-    //     }
+        // 处理第一个S
+        uint32_t headSize = 0;
+        if (gIdxStart == gIdxEnd) {
+            headSize = s1IdxEnd - s1IdxStart;
+        } else {
+            headSize = s1Size - s1IdxStart;
+        }
 
-    //     uint64_t offset = queryGmbaseOffset + s1IdxStart * offsetCalculator.GetDimD();
-    //     CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], headSize, gmCoord.dDealSize,
-    //                            offsetCalculator.GetStrideS1(), dstTensor.rowCount);
+        uint64_t offset = queryGmbaseOffset + s1IdxStart * offsetCalculator.GetDimD();
+        CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], headSize, gmCoord.dDealSize,
+                               offsetCalculator.GetStrideS1(), dstTensor.rowCount);
 
-    //     if (gIdxEnd - gIdxStart >= 1) {
-    //         // 处理中间块
-    //         uint64_t gmOffset = queryGmbaseOffset + offsetCalculator.GetStrideG();
-    //         uint32_t blockElementCnt = 32 / sizeof(Q_T);
-    //         uint64_t l1Offset = headSize * blockElementCnt;
+        if (gIdxEnd - gIdxStart >= 1) {
+            // 处理中间块
+            uint64_t gmOffset = queryGmbaseOffset + offsetCalculator.GetStrideG();
+            uint32_t blockElementCnt = 32 / sizeof(Q_T);
+            uint64_t l1Offset = headSize * blockElementCnt;
 
-    //         if (gIdxEnd - gIdxStart > 1) {
-    //             CopyMultiMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gIdxEnd - gIdxStart - 1,
-    //                                   offsetCalculator.GetStrideG(), s1Size * blockElementCnt, s1Size,
-    //                                   gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);
-    //             gmOffset += (gIdxEnd - gIdxStart - 1) * offsetCalculator.GetStrideG();
-    //             l1Offset += (gIdxEnd - gIdxStart - 1) * s1Size * blockElementCnt;
-    //         }
+            if (gIdxEnd - gIdxStart > 1) {
+                CopyMultiMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gIdxEnd - gIdxStart - 1,
+                                      offsetCalculator.GetStrideG(), s1Size * blockElementCnt, s1Size,
+                                      gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);
+                gmOffset += (gIdxEnd - gIdxStart - 1) * offsetCalculator.GetStrideG();
+                l1Offset += (gIdxEnd - gIdxStart - 1) * s1Size * blockElementCnt;
+            }
 
-    //         // 处理尾块
-    //         if (s1IdxEnd > 0) {
-    //             CopySingleMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], s1IdxEnd,
-    //                                    gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);
-    //         }
-    //     }
-    // }
+            // 处理尾块
+            if (s1IdxEnd > 0) {
+                CopySingleMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], s1IdxEnd,
+                                       gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);
+            }
+        }
+    }
 };
 
 // ----------------------------------------------CopyKvGmToL1--------------------------------
