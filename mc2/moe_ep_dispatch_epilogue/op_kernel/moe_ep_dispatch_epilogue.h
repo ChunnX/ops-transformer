@@ -220,7 +220,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     DataCopyExtParams expertPfxCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int64_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int64_t> expertPfxPadParams{false, 0U, 0U, 0};
     DataCopyPad(ubExpertPfx_, numRecvPerExpertGm_, expertPfxCopyParams, expertPfxPadParams);
-    PipeBarrier<PIPE_MTE2>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint32_t expertSum = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
         expertSum += static_cast<uint32_t>(ubExpertPfx_.GetValue(localExpertIdx));
@@ -230,14 +230,14 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     DataCopyExtParams recvCntCopyParams{1U, static_cast<uint32_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> recvCntPadParams{false, 0U, 0U, 0};
     DataCopyPad(ubRecvCnt_, numRecvPerRankGm_, recvCntCopyParams, recvCntPadParams);
-    PipeBarrier<PIPE_MTE2>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 }
 
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Process()
 {
+    AscendC::printf("Start DispatchEpilogue kernel Process\n");
     ComputePrefixSums();
-
     CountHits();
     SyncAll<true>();
 
@@ -253,6 +253,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Process()
     if (aivId_ == 0) {
         CopyInputsToOutputs();
     }
+    AscendC::printf("End DispatchEpilogue kernel Process\n");
 }
 
 template <typename XType, uint32_t IsCached>
@@ -264,11 +265,13 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::ComputePrefixSum
         ubExpertPfx_.SetValue(localExpertIdx, cumulativeRowOffset);
         cumulativeRowOffset += expertTokenCnt;
     }
+    SyncFunc<AscendC::HardEvent::S_V>();
 }
 
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
 {
+    AscendC::printf("---------CountHits start--------.\n");
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
 
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
@@ -285,13 +288,14 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
 
         GlobalTensor<int32_t> srcTopkIdsGm;
         srcTopkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(firstSlotAddrThisAiv + metaOffset_));
+
         uint32_t topkBytes = axisK_ * sizeof(int32_t);
         DataCopyExtParams topkCopyParams{static_cast<uint16_t>(slotCntPerAiv),
             static_cast<uint32_t>(topkBytes), static_cast<int64_t>(perSlotBytes_ - topkBytes), 0, 0};
         DataCopyPadExtParams<int32_t> topkPadParams{true, 0,
             static_cast<uint8_t>(paddedTopkElems_ - axisK_), -1};
         DataCopyPad(ubTopkIds_, srcTopkIdsGm, topkCopyParams, topkPadParams);
-        PipeBarrier<PIPE_MTE2>();
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
 
         int32_t calCnt = static_cast<int32_t>(slotCntPerAiv * paddedTopkElems_);
         for (uint32_t localExpertId = 0; localExpertId < numLocalExperts_; ++localExpertId) {
@@ -321,7 +325,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
 
     DataCopyExtParams hitCountCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(hitCountGm_[(int64_t)aivId_ * numLocalExperts_], ubHitCount_, hitCountCopyParams);
-    PipeBarrier<PIPE_MTE3>();
 }
 
 template <typename XType, uint32_t IsCached>
@@ -330,16 +333,14 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
     DataCopyExtParams hitCountFullCopyParams{1U,
         static_cast<uint32_t>(aivNum_ * numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> hitCountFullPadParams{false, 0U, 0U, 0};
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopyPad(ubHitCountFull_, hitCountGm_, hitCountFullCopyParams, hitCountFullPadParams);
-    PipeBarrier<PIPE_MTE2>();
-
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    
     Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
-    PipeBarrier<PIPE_V>();
     for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
         Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * numLocalExperts_], RoundMode::CAST_NONE, numLocalExperts_);
-        PipeBarrier<PIPE_V>();
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
-        PipeBarrier<PIPE_V>();
     }
 
     // Per-expert outer loop: accumulate weights/metadata into UB staging buffers,
@@ -367,7 +368,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                 perSlotBytes_ - metaBytes_, 0, 0};
             DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
             DataCopyPad(ubMeta_, srcMetaGm, metaCopyParams, metaPadParams);
-            PipeBarrier<PIPE_MTE2>();
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
 
             for (uint32_t localSlot = 0; localSlot < slotCntPerAiv; ++localSlot) {
                 uint32_t metaBase = localSlot * paddedMetaElems_;
@@ -381,7 +382,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     if (localExpertId != targetExpert) { continue; }
 
                     uint32_t globalRow = static_cast<uint32_t>(expertRowStart + localWrittenRow);
-                    if (globalRow >= expertSum_) { continue; }
 
                     GM_ADDR slotAddr = srcRankBase + (int64_t)(slotStart + localSlot) * perSlotBytes_;
                     GlobalTensor<XType> srcTokenTensor;
@@ -390,10 +390,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                         static_cast<uint32_t>(axisH_ * sizeof(XType)), 0U, 0U, 0U};
                     DataCopyPadExtParams<XType> tokenPadParams{false, 0, 0, 0};
                     DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
-                    PipeBarrier<PIPE_MTE2>();
+                    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 
                     DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
-                    PipeBarrier<PIPE_MTE3>();
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
                     if constexpr (!IsCached) {
@@ -412,13 +411,12 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
 
         if (stageIdx > 0) {
             DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(stageIdx * sizeof(float)), 0U, 0U, 0U};
-            DataCopyExtParams metaOutParams{1U,
-                static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
             if constexpr (!IsCached) {
+                 DataCopyExtParams metaOutParams{1U,
+                    static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
                 DataCopyPad(recvSrcMetadataGm_[expertRowStart * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
             }
-            PipeBarrier<PIPE_MTE3>();
         }
     }
 }
@@ -435,9 +433,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyInputsToOutp
             static_cast<uint32_t>(expertSum_ * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
         DataCopyPad(ubMeta_, cachedRecvSrcMetadataGm_, copyParams, padParams);
-        PipeBarrier<PIPE_MTE2>();
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
         DataCopyPad(recvSrcMetadataGm_, ubMeta_, copyParams);
-        PipeBarrier<PIPE_MTE3>();
     }
 }
 
