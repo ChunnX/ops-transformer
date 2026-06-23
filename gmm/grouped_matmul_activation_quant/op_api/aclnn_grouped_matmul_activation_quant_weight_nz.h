@@ -20,7 +20,7 @@ extern "C" {
 
 ACLNN_API aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclTensor *x,
     const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
-    const aclTensorList *biasOptional, const aclTensor *xScaleOptional, const char *activationType,
+    const aclTensorList *bias, const aclTensor *xScaleOptional, const char *activationType,
     bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode, int64_t yDtype,
     const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclTensor *y, aclTensor *yScale,
     uint64_t *workspaceSize, aclOpExecutor **executor);

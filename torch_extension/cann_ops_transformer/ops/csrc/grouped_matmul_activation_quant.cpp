@@ -171,9 +171,9 @@ void CheckTensorList(const std::vector<at::Tensor> &tensorList, const char *name
     TORCH_CHECK(tensorList[0].defined(), name, "[0] must be a defined tensor.");
 }
 
-void CheckBias(const c10::optional<std::vector<at::Tensor>> &biasOptional)
+void CheckBias(const c10::optional<std::vector<at::Tensor>> &bias)
 {
-    TORCH_CHECK(!biasOptional.has_value() || biasOptional.value().empty(),
+    TORCH_CHECK(!bias.has_value() || bias.value().empty(),
         "bias must be None or an empty tensor list in current MXFP8 mode.");
 }
 
@@ -274,7 +274,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     const std::vector<at::Tensor> &weightScale,
     const at::Tensor &groupList,
     const c10::optional<at::Tensor> &xScaleOptional,
-    const c10::optional<std::vector<at::Tensor>> &biasOptional,
+    const c10::optional<std::vector<at::Tensor>> &bias,
     std::string activationType,
     int64_t groupListType,
     const c10::optional<std::vector<int64_t>> &tuningConfig,
@@ -290,7 +290,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
 {
     CheckTensorList(weight, "weight");
     CheckTensorList(weightScale, "weight_scale");
-    CheckBias(biasOptional);
+    CheckBias(bias);
     TORCH_CHECK(xScaleOptional.has_value() && xScaleOptional.value().defined(),
         "x_scale must be provided in current MXFP8 mode.");
     TORCH_CHECK(activationType == "gelu_tanh", "activation_type only supports gelu_tanh, but got ", activationType, ".");
@@ -351,8 +351,8 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     at::TensorList weightRef = PrepareWeightList(weight, weightLayout, e, k, weightVec);
     at::TensorList weightScaleRef = weightScale;
     at::TensorList biasRef;
-    if (biasOptional.has_value()) {
-        biasRef = at::TensorList(biasOptional.value());
+    if (bias.has_value()) {
+        biasRef = at::TensorList(bias.value());
     } else {
         biasRef = at::TensorList();
     }
