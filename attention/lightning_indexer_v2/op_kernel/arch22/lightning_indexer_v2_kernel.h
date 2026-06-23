@@ -268,7 +268,7 @@ __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLenKey(uin
         // TND
         return (actualSeqLengthsGm.GetValue(bIdx + 1) - actualSeqLengthsGm.GetValue(bIdx)) * cmpRatio + residualK;
     }
-    // PA_BSND
+    // PA_BBND
     return usedSeqLengthsKGm.GetValue(bIdx) * cmpRatio + residualK;
 }
 

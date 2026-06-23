@@ -1381,10 +1381,6 @@ uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTilingKey() const
 
 void Mc2QuantBatchMatmulV3BasicTiling::PrintBasicTiling() const
 {
-    if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     const BasicTiling &tiling = basicTiling_;
     std::stringstream ss;
     ss << "m_size_per_npu: " << inputParams_.mSizePerNpu << "m_size: " << inputParams_.mSize
