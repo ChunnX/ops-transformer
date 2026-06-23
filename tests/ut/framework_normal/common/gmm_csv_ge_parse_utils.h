@@ -57,7 +57,6 @@ inline ge::Format ParseGeFormat(const std::string &format)
         {"NCHW", ge::FORMAT_NCHW},
         {"NDC1HWC0", ge::FORMAT_NDC1HWC0},
         {"FRACTAL_NZ", ge::FORMAT_FRACTAL_NZ},
-        {"FRACTAL_NZ_C0_32", ge::FORMAT_FRACTAL_NZ_C0_32},
     };
     const auto it = formatMap.find(Trim(format));
     return it == formatMap.end() ? ge::FORMAT_ND : it->second;
