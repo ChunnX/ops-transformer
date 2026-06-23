@@ -16,13 +16,14 @@ class BSARadixTopKService {
 public:
     using T = float;
     using IN_T = typename BSAT::inputT;
+    using SCORE_T = half;
     using OUT_T = typename BSAT::outputT;
 
     __aicore__ inline BSARadixTopKService() {};
     __aicore__ inline void InitParams(const BSAConstInfo &constInfo,
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitGM(GlobalTensor<IN_T> &attnScoreGm,
+    __aicore__ inline void InitGM(GlobalTensor<SCORE_T> &attnScoreGm,
                                    GlobalTensor<int32_t> &topkWorkspaceGm,
                                    GlobalTensor<uint8_t> &maskTmpGm,
                                    GlobalTensor<uint8_t> &maskOutGmU8);
@@ -91,7 +92,7 @@ private:
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
-    GlobalTensor<IN_T> attnScoreGmLocal;
+    GlobalTensor<SCORE_T> attnScoreGmLocal;
     GlobalTensor<int32_t> topkWorkspaceGmLocal;
     GlobalTensor<uint8_t> maskTmpGmLocal;
     GlobalTensor<uint8_t> maskOutGmU8Local;
@@ -215,7 +216,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
-    GlobalTensor<IN_T> &attnScoreGm,
+    GlobalTensor<SCORE_T> &attnScoreGm,
     GlobalTensor<int32_t> &topkWorkspaceGm,
     GlobalTensor<uint8_t> &maskTmpGm,
     GlobalTensor<uint8_t> &maskOutGmU8)
@@ -270,7 +271,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitAttnScoreGmForRobustness(u
         uint64_t globalTileId = tileStartId_ + tileId;
         uint64_t curTileLen = (tileId + 1 == tileNum_) ? tailTileLen_ : tileLen_;
         uint64_t offset = baseOffset + globalTileId * tileLen_;
-        AscendC::InitOutput(attnScoreGmLocal[offset], curTileLen, static_cast<IN_T>(0.0f));
+        AscendC::InitOutput(attnScoreGmLocal[offset], curTileLen, static_cast<SCORE_T>(0.0f));
         PipeBarrier<PIPE_ALL>();
 
         uint64_t oneLen = curTileLen >= 64 ? 8 : (curTileLen >= 16 ? 4 : 1);
@@ -278,7 +279,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitAttnScoreGmForRobustness(u
         if (oneStart + oneLen > curTileLen) {
             oneStart = curTileLen > oneLen ? curTileLen - oneLen : 0;
         }
-        AscendC::InitOutput(attnScoreGmLocal[offset + oneStart], oneLen, static_cast<IN_T>(1.0f));
+        AscendC::InitOutput(attnScoreGmLocal[offset + oneStart], oneLen, static_cast<SCORE_T>(1.0f));
 
         uint64_t gap = curTileLen >= 64 ? 16 : 4;
         uint64_t setStart = oneStart + oneLen + gap;
@@ -288,7 +289,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitAttnScoreGmForRobustness(u
             for (uint64_t i = 0; i < 4; ++i) {
                 uint64_t pos = setStart + jitter + i * stride;
                 if (pos < curTileLen) {
-                    IN_T targetValue = (i % 2 == 0) ? static_cast<IN_T>(2.0f) : static_cast<IN_T>(-2.0f);
+                    SCORE_T targetValue = (i % 2 == 0) ? static_cast<SCORE_T>(2.0f) : static_cast<SCORE_T>(-2.0f);
                     attnScoreGmLocal.SetValue(offset + pos, targetValue);
                 }
             }
@@ -433,14 +434,14 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(
     TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen)
 {
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
-        LocalTensor<IN_T> xLocal = xBuf.Get<IN_T>();
-        int32_t ubOffset = (sizeof(IN_T) == 2) ? tileLen_ : 0;
+        LocalTensor<SCORE_T> xLocal = xBuf.Get<SCORE_T>();
+        int32_t ubOffset = (sizeof(SCORE_T) == 2) ? tileLen_ : 0;
         uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
-        if constexpr (IsSameType<IN_T, bfloat16_t>::value) {
+        if constexpr (IsSameType<SCORE_T, bfloat16_t>::value) {
             Muls(xLocal[ubOffset].template ReinterpretCast<half>(),
                  xLocal[ubOffset].template ReinterpretCast<half>(), (half)-1, alignLen);
         } else {
-            Muls(xLocal[ubOffset], xLocal[ubOffset], (IN_T)-1, alignLen);
+            Muls(xLocal[ubOffset], xLocal[ubOffset], static_cast<SCORE_T>(-1), alignLen);
         }
         PipeBarrier<PIPE_V>();
     }
@@ -452,13 +453,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(
 {
     (void)roundId;
     (void)tileId;
-    LocalTensor<IN_T> xLocalB16 = xBuf.Get<IN_T>();
+    LocalTensor<SCORE_T> xLocalB16 = xBuf.Get<SCORE_T>();
     LocalTensor<int16_t> xLocalInt16 = xLocalB16[tileLen_].template ReinterpretCast<int16_t>();
 
     LocalTensor<int16_t> signMaskTensor = outValueBuf_.Get<int16_t>();
     LocalTensor<int16_t> tempTensor = outIndexBuf_.Get<int16_t>();
 
-    uint64_t calcLen = curTileLen * (sizeof(IN_T) / sizeof(int16_t));
+    uint64_t calcLen = curTileLen * (sizeof(SCORE_T) / sizeof(int16_t));
     uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(UB_BLOCK_SIZE / sizeof(int16_t)));
     LocalTensor<int16_t> temp1 = tempTensor[curTileLenAlign];
 
@@ -480,7 +481,7 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen)
 {
     LocalTensor<int16_t> xLocalInt16 = xBuf.Get<int16_t>();
-    uint64_t calcLen = curTileLen * (sizeof(IN_T) / sizeof(int16_t));
+    uint64_t calcLen = curTileLen * (sizeof(SCORE_T) / sizeof(int16_t));
     LocalTensor<int32_t> maskTensor = outValueBuf_.Get<int32_t>();
 
     Duplicate<int16_t>(maskTensor.ReinterpretCast<int16_t>(), andMask16_, curTileLen);
@@ -624,16 +625,16 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::CopyIn(
     TBuf<TPosition::VECIN>& xBuf, uint64_t dataNum, uint64_t xOffset)
 {
-    LocalTensor<IN_T> xLocal = xBuf.Get<IN_T>();
+    LocalTensor<SCORE_T> xLocal = xBuf.Get<SCORE_T>();
     int32_t ubOffset = 0;
-    if constexpr (sizeof(IN_T) == 2) {
+    if constexpr (sizeof(SCORE_T) == 2) {
         ubOffset = tileLen_;
     }
-    uint64_t xAlign = UB_BLOCK_SIZE / sizeof(IN_T);
+    uint64_t xAlign = UB_BLOCK_SIZE / sizeof(SCORE_T);
     uint8_t xPadNum = static_cast<uint8_t>((xAlign - dataNum % xAlign) % xAlign);
     DataCopyExtParams xCopyParams{
-        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(IN_T) * dataNum), 0, 0, 0};
-    DataCopyPadExtParams<IN_T> xPadParams{true, 0, xPadNum, 0};
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(SCORE_T) * dataNum), 0, 0, 0};
+    DataCopyPadExtParams<SCORE_T> xPadParams{true, 0, xPadNum, 0};
     DataCopyPad(xLocal[ubOffset], attnScoreGmLocal[xOffset], xCopyParams, xPadParams);
 }
 
