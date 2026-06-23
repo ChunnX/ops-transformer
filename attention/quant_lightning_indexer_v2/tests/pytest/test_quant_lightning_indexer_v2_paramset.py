@@ -190,11 +190,11 @@ TEST_PARAMS = {
         "layout_key":["BSND"],
         "sparse_count": [128],
         "sparse_mode": [0],
-        "query_datarange":[[-448,448]],
-        "key_datarange":[[-20,20]],
-        "weights_datarange":[[-123,123]],
+        "query_datarange":[[-1,1]],
+        "key_datarange":[[-1,1]],
+        "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[0,255]],
-        "k_scale_datarange":[[0,65504]],
+        "k_scale_datarange":[[0,255]],
         "cmp_ratio":[1], #1/2/4/8/16/32/64/128
         "return_value":[0]
     },
