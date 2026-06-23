@@ -111,9 +111,9 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetShapeAttrsInfo()
     seqLength_ = xShape.GetDim(SEQ_LENGTH_DIM_IDX);
     n_ = xShape.GetDim(N_DIM_IDX);
     c_ = xShape.GetDim(C_DIM_IDX);
+    skIterCount_ = skSumShape.GetDim(ITER_COUNT_IDX) / 2;
     OP_CHECK_IF(CheckShape(batchSize_, seqLength_, n_, c_) != ge::GRAPH_SUCCESS,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "CheckShape failed"), return ge::GRAPH_FAILED);
-    skIterCount_ = skSumShape.GetDim(ITER_COUNT_IDX) / 2;
     OP_CHECK_IF(
         skIterCount_ != 20,
         OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "sk_iter_count must be 20, but got %ld", skIterCount_),
@@ -377,7 +377,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-
+    ubSize_ = ubSize_ - 32 * 1024;
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 

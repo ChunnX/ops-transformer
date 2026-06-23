@@ -13,12 +13,12 @@
  * \brief tiling data struct
  */
 
-#ifndef MHC_PRE_SINKHORN_BACKWARD_DATA_ARCH32_H
-#define MHC_PRE_SINKHORN_BACKWARD_DATA_ARCH32_H
+#ifndef MHC_PRE_SINKHORN_BACKWARD_DATA_ARCH22_H
+#define MHC_PRE_SINKHORN_BACKWARD_DATA_ARCH22_H
 
 #include <cstdint>
 
-struct MhcPreSinkhornBackwardArch32TilingData {
+struct MhcPreSinkhornBackwardArch22TilingData {
     int64_t batchSize = 0;
     int64_t seqLength = 0;
     int64_t c = 0;
@@ -37,4 +37,4 @@ struct MhcPreSinkhornBackwardArch32TilingData {
     TCubeTiling mm2TilingData;
 };
 
-#endif // MHC_PRE_SINKHORN_BACKWARD_DATA_ARCH32_H
+#endif // MHC_PRE_SINKHORN_BACKWARD_DATA_ARCH22_H

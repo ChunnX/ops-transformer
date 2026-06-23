@@ -17,7 +17,7 @@
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "arch35/mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
-#include "arch32/mhc_pre_sinkhorn_backward_arch32_tiling.h"
+#include "arch22/mhc_pre_sinkhorn_backward_arch22_tiling.h"
 #include "mhc_pre_sinkhorn_backward_tiling.h"
 #include "log/log.h"
 
@@ -38,7 +38,7 @@ static ge::graphStatus Tiling4MhcPreSinkhornBackward(gert::TilingContext* contex
         return TilingRegistry::GetInstance().DoTilingImpl(context);
     }
 
-    return TilingMhcPreSinkhornBackwardArch32(context);
+    return TilingMhcPreSinkhornBackwardArch22(context);
 }
 
 static ge::graphStatus TilingPrepare4MhcPreSinkhornBackward(gert::TilingParseContext* context)
