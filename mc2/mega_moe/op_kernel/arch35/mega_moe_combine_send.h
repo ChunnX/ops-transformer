@@ -186,25 +186,32 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         // 修正: CeilAlign 返回类型与 L1_TILE_N 一致, 用 uint32_t
         uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), 
                                     static_cast<int64_t>(L1_TILE_N)));
+        printf("rankId=%d, processRankId=%d, cnt=%d, totalDataBlockCnt=%d\n", rankId, index, cnt, totalDataBlockCnt);
         totalTokenCnt.SetValue(index - startRankId, totalDataBlockCnt);
         if(totalDataBlockCnt == 0) {
             processRank++;
         }
     }
 
-    // Phase 3: 轮询 notify, 收到后 urma 发送
+
     uint32_t rankIndex = 0;
+    uint32_t cnt = 0;
     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
     while (true) {
-        // 跳过已完成的 rank
-        // 修正: 用 GetValue 访问 LocalTensor (原代码误用 sendTokenCnt(rankIndex))
         while ((rankIndex + startRankId == rankId) || sendTokenCnt.GetValue(rankIndex) == totalTokenCnt.GetValue(rankIndex)) {
             rankIndex = (rankIndex + 1) % processRankNum;
         }
+        cnt++;
         // 读 notify count
         __gm__ int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineSendNotifyPtr + (rankIndex + startRankId) * sizeof(int32_t));
         uint32_t curCnt = ReadGmByPassDCache(notifyAddr);
         uint32_t completeCnt = sendTokenCnt.GetValue(rankIndex);
+        if (cnt % 100000 == 0) {
+            printf("rankId=%d, processRankId=%d, curCnt=%d, completeCnt=%d\n", rankId, rankIndex + startRankId, curCnt, completeCnt);
+        }
+        if (cnt >= 30000000) {
+            break;
+        }
         if (curCnt > completeCnt) {
             uint32_t needCnt = curCnt - completeCnt;
             uint32_t index = completeCnt;
@@ -250,7 +257,7 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         }
         rankIndex = (rankIndex + 1) % processRankNum;
     }
-
+    printf("complete while\n");
     // Phase 4: drain 本核负责的 rank 的 urma 发送 (仅 startRankId..endRankId-1)
     for (uint32_t dr = startRankId; dr < endRankId; ++dr) {
         if (dr == rankId) {
@@ -258,6 +265,7 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         }
         hcomm.Drain(GetUrmaCommHandle(mc2Context, dr, rankId));
     }
+    printf("complete drain\n");
 }
 
 
