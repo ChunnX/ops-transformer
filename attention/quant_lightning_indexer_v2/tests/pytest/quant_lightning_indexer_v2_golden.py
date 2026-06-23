@@ -1261,6 +1261,8 @@ def qliv2_output_single(params):
                                                     cmp_ratio = cmp_ratio,
                                                     return_value = return_value)
 
+    npu_result = npu_result.cpu()
+
     # if hifp8mode == 1:
     #     npu_result,_ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
     #                                                 query_dequant_scale,
