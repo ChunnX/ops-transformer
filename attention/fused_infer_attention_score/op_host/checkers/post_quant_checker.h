@@ -38,11 +38,11 @@ private:
     ge::graphStatus CheckExistenceQuantScale2(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureAttenOut(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureQueryDType(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckFeatureLayout(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureOutputEqual(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeaturePrefix(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureRowValid(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckAntiquantNotSupport(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckMultiParaLayout(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckMultiParaQuantOffset2(const FiaTilingInfo &fiaInfo) const;
 private:
 };

@@ -189,9 +189,9 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaI
     // When antiquantMode is 0 or 1 and data type of key/value is int8 scenario, leftpadding is not supported.
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         if (fiaInfo.s1Size > 1) {
-            int64_t keyAntiquantMode = 0;
+            uint32_t keyAntiquantMode = 0;
             if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-                keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
+                keyAntiquantMode = fiaInfo.keyAntiquantMode;
             }
             OP_CHECK_IF(
                 (keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
