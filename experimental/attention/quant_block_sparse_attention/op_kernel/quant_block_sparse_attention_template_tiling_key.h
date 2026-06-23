@@ -25,7 +25,7 @@
 
 #define BSA_KV_LAYOUT_CONTIGUOUS 0
 #define BSA_KV_LAYOUT_PA_ND 1
-#define BSA_KV_LAYOUT_PA_BNSD BSA_KV_LAYOUT_PA_ND
+#define BSA_KV_LAYOUT_PA_BNSD 3
 
 #define BSA_MASK_NONE 0
 #define BSA_MASK_CAUSAL 3
@@ -39,7 +39,7 @@ ASCENDC_TPL_ARGS_DECL(QuantBlockSparseAttention,
                       ASCENDC_TPL_UINT_DECL(LAYOUT_T, BSA_TPL_4_BW, ASCENDC_TPL_UI_LIST, BSA_LAYOUT_BSND,
                                             BSA_LAYOUT_TND, BSA_LAYOUT_NTD),
                       ASCENDC_TPL_UINT_DECL(KV_LAYOUT_T, BSA_TPL_4_BW, ASCENDC_TPL_UI_LIST, BSA_KV_LAYOUT_CONTIGUOUS,
-                                            BSA_KV_LAYOUT_PA_ND),
+                                            BSA_KV_LAYOUT_PA_BNSD),
                       ASCENDC_TPL_UINT_DECL(MASK_MODE, BSA_TPL_4_BW, ASCENDC_TPL_UI_LIST, BSA_MASK_NONE,
                                             BSA_MASK_CAUSAL),
                       ASCENDC_TPL_BOOL_DECL(RETURN_SOFTMAX_LSE, 0, 1), );
@@ -48,7 +48,7 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(QKV_DTYPE, ASCENDC_TPL
                                      ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, BSA_LAYOUT_BSND,
                                                           BSA_LAYOUT_TND, BSA_LAYOUT_NTD),
                                      ASCENDC_TPL_UINT_SEL(KV_LAYOUT_T, ASCENDC_TPL_UI_LIST, BSA_KV_LAYOUT_CONTIGUOUS,
-                                                          BSA_KV_LAYOUT_PA_ND),
+                                                          BSA_KV_LAYOUT_PA_BNSD),
                                      ASCENDC_TPL_UINT_SEL(MASK_MODE, ASCENDC_TPL_UI_LIST, BSA_MASK_NONE,
                                                           BSA_MASK_CAUSAL),
                                      ASCENDC_TPL_BOOL_SEL(RETURN_SOFTMAX_LSE, 0, 1), ), );
