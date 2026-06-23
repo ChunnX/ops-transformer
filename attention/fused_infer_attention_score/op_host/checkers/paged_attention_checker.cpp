@@ -547,13 +547,14 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
         }
 
         // mxfp8 仅支持blocksize等于512或者1024
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT &&
-            (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
-                std::to_string(fiaInfo.blockSize).c_str(),
-                "In MXFP8 fullquant scenario, when page attention is enabled, block_size must be 512 or 1024");
-            return ge::GRAPH_FAILED;
-        }
+        OP_CHECK_IF(
+            fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT &&
+            (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8),
+            OP_LOGE(fiaInfo.opName,
+                    "In MXFP8 fullquant scenario, when page attention enable, "
+                    "blockSize(%d) should be %u or %u.",
+                    fiaInfo.blockSize, BLOCK_SIZE_FOR_MXFP8, BLOCK_SIZE_1024_FOR_MXFP8),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -566,8 +567,11 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     const string inputLayout = fiaInfo.opParamInfo.layOut;
     const uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
-        OP_CHECK_IF(dimNum == 3, OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key", "3D(BnBsH)",
-            "In MXFP8 fullquant scenario, when Page Attention is enabled, the layout of key cannot be BnBsH"),
+        OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
+                    return ge::GRAPH_FAILED);
+    } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
+        OP_CHECK_IF(dimNum == 4, OP_LOGE(fiaInfo.opName, "When page attention enable and input layout is %s, "
+                "PA BnNBsD is not supported.", inputLayout.c_str()),
             return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         if (dimNum == 4) {
