@@ -164,8 +164,9 @@ public:
             coreOffset_ = CalcKvCoreOffset(batchStart); // 计算累加和
         }
 
-        uint32_t keyCacheOffset = 0;
-        uint32_t valueCacheOffset = 0;
+        // 偏移量用64位: 大hiddenSize且token多时, 字节偏移可超过uint32上限(4GB)导致回绕写错地址。
+        uint64_t keyCacheOffset = 0;
+        uint64_t valueCacheOffset = 0;
         for (uint32_t i = batchStart; i < batchEnd; i++) {
             T_INDEX seqLen;
             uint32_t batchOffset, accumSeqLen;
@@ -202,7 +203,7 @@ public:
             uint32_t blockCount = CeilDivision(seqLen, blockSize_);
 
             // 搬运key
-            uint32_t keyOffset = (nonContiguousFlag_ & (1 << 2)) ?
+            uint64_t keyOffset = (nonContiguousFlag_ & (1 << 2)) ?
                 (batchOffset * keyOutStride0_ * sizeof(DTYPE_KEY)) :
                 (batchOffset * hiddenSizeK_);
             for (int j = 0; j < blockCount; j++) {
@@ -247,7 +248,7 @@ public:
             }
 
             // 搬运value
-            uint32_t valueOffset = (nonContiguousFlag_ & (1 << 3)) ?
+            uint64_t valueOffset = (nonContiguousFlag_ & (1 << 3)) ?
                 (batchOffset * valueOutStride0_ * sizeof(DTYPE_VALUE)) :
                 (batchOffset * hiddenSizeV_);
 
@@ -330,7 +331,7 @@ private:
         return coreOffset;
     }
 
-    __aicore__ inline void DataCopyFromeCache(uint32_t curLen, uint32_t scrOffset, uint32_t dstOffset,
+    __aicore__ inline void DataCopyFromeCache(uint32_t curLen, uint64_t scrOffset, uint64_t dstOffset,
                                               bool isFulledWithZero, bool isKey)
     {
         // 小shape情况
