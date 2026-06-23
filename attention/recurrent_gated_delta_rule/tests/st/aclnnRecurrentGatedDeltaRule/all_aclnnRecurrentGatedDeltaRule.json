@@ -1,0 +1,152 @@
+[
+  {
+    "id": 0,
+    "name": "RGDR_BF16_EXAMPLE_SHAPE_G_GK",
+    "aclnn_name": "RecurrentGatedDeltaRule",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [4, 4, 32], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [4, 4, 32], "range_values": [-0.5, 0.5]},
+      {"name": "value", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32], "range_values": [-0.5, 0.5]},
+      {"name": "beta", "type": "tensor", "dtype": "bf16", "shape": [4, 8], "range_values": [0.0, 0.5]},
+      {"name": "stateRef", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32, 32], "range_values": [-0.25, 0.25]},
+      {"name": "actualSeqLengths", "type": "tensor", "dtype": "int32", "shape": [2], "value": [2, 2]},
+      {"name": "ssmStateIndices", "type": "tensor", "dtype": "int32", "shape": [4], "value": [0, 1, 2, 3]},
+      {"name": "g", "type": "tensor", "dtype": "fp32", "shape": [4, 8], "range_values": [-0.1, 0.1]},
+      {"name": "gk", "type": "tensor", "dtype": "fp32", "shape": [4, 8, 32], "range_values": [-0.1, 0.1]},
+      {"name": "numAcceptedTokens", "type": "tensor", "dtype": "int32", "shape": [2], "value": [1, 1]},
+      {"name": "scaleValue", "type": "attr", "dtype": "float", "range_values": 1.0}
+    ]
+  },
+  {
+    "id": 1,
+    "name": "RGDR_BF16_NULL_G_GK",
+    "aclnn_name": "RecurrentGatedDeltaRule",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [4, 4, 32], "range_values": [-0.4, 0.4]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [4, 4, 32], "range_values": [-0.4, 0.4]},
+      {"name": "value", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32], "range_values": [-0.4, 0.4]},
+      {"name": "beta", "type": "tensor", "dtype": "bf16", "shape": [4, 8], "range_values": [0.1, 0.6]},
+      {"name": "stateRef", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32, 32], "range_values": [-0.2, 0.2]},
+      {"name": "actualSeqLengths", "type": "tensor", "dtype": "int32", "shape": [2], "value": [2, 2]},
+      {"name": "ssmStateIndices", "type": "tensor", "dtype": "int32", "shape": [4], "value": [0, 1, 2, 3]},
+      {"name": "numAcceptedTokens", "type": "tensor", "dtype": "int32", "shape": [2], "value": [1, 1]},
+      {"name": "scaleValue", "type": "attr", "dtype": "float", "range_values": 1.0}
+    ]
+  },
+  {
+    "id": 2,
+    "name": "RGDR_BF16_VARLEN_BATCH",
+    "aclnn_name": "RecurrentGatedDeltaRule",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [6, 4, 32], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [6, 4, 32], "range_values": [-0.5, 0.5]},
+      {"name": "value", "type": "tensor", "dtype": "bf16", "shape": [6, 8, 32], "range_values": [-0.5, 0.5]},
+      {"name": "beta", "type": "tensor", "dtype": "bf16", "shape": [6, 8], "range_values": [0.0, 0.5]},
+      {"name": "stateRef", "type": "tensor", "dtype": "bf16", "shape": [6, 8, 32, 32], "range_values": [-0.25, 0.25]},
+      {"name": "actualSeqLengths", "type": "tensor", "dtype": "int32", "shape": [3], "value": [1, 3, 2]},
+      {"name": "ssmStateIndices", "type": "tensor", "dtype": "int32", "shape": [6], "value": [0, 1, 2, 3, 4, 5]},
+      {"name": "g", "type": "tensor", "dtype": "fp32", "shape": [6, 8], "range_values": [-0.1, 0.1]},
+      {"name": "gk", "type": "tensor", "dtype": "fp32", "shape": [6, 8, 32], "range_values": [-0.1, 0.1]},
+      {"name": "numAcceptedTokens", "type": "tensor", "dtype": "int32", "shape": [3], "value": [1, 2, 1]},
+      {"name": "scaleValue", "type": "attr", "dtype": "float", "range_values": 1.0}
+    ]
+  },
+  {
+    "id": 3,
+    "name": "RGDR_BF16_NON_MONOTONIC_STATE_INDEX",
+    "aclnn_name": "RecurrentGatedDeltaRule",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [4, 4, 32], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [4, 4, 32], "range_values": [-0.5, 0.5]},
+      {"name": "value", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32], "range_values": [-0.5, 0.5]},
+      {"name": "beta", "type": "tensor", "dtype": "bf16", "shape": [4, 8], "range_values": [0.0, 0.5]},
+      {"name": "stateRef", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32, 32], "range_values": [-0.25, 0.25]},
+      {"name": "actualSeqLengths", "type": "tensor", "dtype": "int32", "shape": [2], "value": [2, 2]},
+      {"name": "ssmStateIndices", "type": "tensor", "dtype": "int32", "shape": [4], "value": [3, 2, 1, 0]},
+      {"name": "g", "type": "tensor", "dtype": "fp32", "shape": [4, 8], "range_values": [-0.1, 0.1]},
+      {"name": "gk", "type": "tensor", "dtype": "fp32", "shape": [4, 8, 32], "range_values": [-0.1, 0.1]},
+      {"name": "numAcceptedTokens", "type": "tensor", "dtype": "int32", "shape": [2], "value": [1, 1]},
+      {"name": "scaleValue", "type": "attr", "dtype": "float", "range_values": 1.0}
+    ]
+  },
+  {
+    "id": 4,
+    "name": "RGDR_BF16_ACCEPTED_TOKENS_PARTIAL",
+    "aclnn_name": "RecurrentGatedDeltaRule",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [6, 4, 32], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [6, 4, 32], "range_values": [-0.5, 0.5]},
+      {"name": "value", "type": "tensor", "dtype": "bf16", "shape": [6, 8, 32], "range_values": [-0.5, 0.5]},
+      {"name": "beta", "type": "tensor", "dtype": "bf16", "shape": [6, 8], "range_values": [0.0, 0.5]},
+      {"name": "stateRef", "type": "tensor", "dtype": "bf16", "shape": [6, 8, 32, 32], "range_values": [-0.25, 0.25]},
+      {"name": "actualSeqLengths", "type": "tensor", "dtype": "int32", "shape": [2], "value": [3, 3]},
+      {"name": "ssmStateIndices", "type": "tensor", "dtype": "int32", "shape": [6], "value": [0, 1, 2, 3, 4, 5]},
+      {"name": "g", "type": "tensor", "dtype": "fp32", "shape": [6, 8], "range_values": [-0.1, 0.1]},
+      {"name": "gk", "type": "tensor", "dtype": "fp32", "shape": [6, 8, 32], "range_values": [-0.1, 0.1]},
+      {"name": "numAcceptedTokens", "type": "tensor", "dtype": "int32", "shape": [2], "value": [2, 1]},
+      {"name": "scaleValue", "type": "attr", "dtype": "float", "range_values": 1.0}
+    ]
+  },
+  {
+    "id": 5,
+    "name": "RGDR_BF16_DK_DV_64",
+    "aclnn_name": "RecurrentGatedDeltaRule",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [2, 4, 64], "range_values": [-0.25, 0.25]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [2, 4, 64], "range_values": [-0.25, 0.25]},
+      {"name": "value", "type": "tensor", "dtype": "bf16", "shape": [2, 8, 64], "range_values": [-0.25, 0.25]},
+      {"name": "beta", "type": "tensor", "dtype": "bf16", "shape": [2, 8], "range_values": [0.0, 0.5]},
+      {"name": "stateRef", "type": "tensor", "dtype": "bf16", "shape": [2, 8, 64, 64], "range_values": [-0.1, 0.1]},
+      {"name": "actualSeqLengths", "type": "tensor", "dtype": "int32", "shape": [1], "value": [2]},
+      {"name": "ssmStateIndices", "type": "tensor", "dtype": "int32", "shape": [2], "value": [0, 1]},
+      {"name": "g", "type": "tensor", "dtype": "fp32", "shape": [2, 8], "range_values": [-0.05, 0.05]},
+      {"name": "gk", "type": "tensor", "dtype": "fp32", "shape": [2, 8, 64], "range_values": [-0.05, 0.05]},
+      {"name": "numAcceptedTokens", "type": "tensor", "dtype": "int32", "shape": [1], "value": [1]},
+      {"name": "scaleValue", "type": "attr", "dtype": "float", "range_values": 0.125}
+    ]
+  },
+  {
+    "id": 6,
+    "name": "RGDR_BF16_NK_EQ_NV_MULTI_HEAD",
+    "aclnn_name": "RecurrentGatedDeltaRule",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32], "range_values": [-0.5, 0.5]},
+      {"name": "value", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32], "range_values": [-0.5, 0.5]},
+      {"name": "beta", "type": "tensor", "dtype": "bf16", "shape": [4, 8], "range_values": [0.0, 0.5]},
+      {"name": "stateRef", "type": "tensor", "dtype": "bf16", "shape": [4, 8, 32, 32], "range_values": [-0.25, 0.25]},
+      {"name": "actualSeqLengths", "type": "tensor", "dtype": "int32", "shape": [2], "value": [2, 2]},
+      {"name": "ssmStateIndices", "type": "tensor", "dtype": "int32", "shape": [4], "value": [0, 1, 2, 3]},
+      {"name": "g", "type": "tensor", "dtype": "fp32", "shape": [4, 8], "range_values": [-0.1, 0.1]},
+      {"name": "gk", "type": "tensor", "dtype": "fp32", "shape": [4, 8, 32], "range_values": [-0.1, 0.1]},
+      {"name": "numAcceptedTokens", "type": "tensor", "dtype": "int32", "shape": [2], "value": [1, 1]},
+      {"name": "scaleValue", "type": "attr", "dtype": "float", "range_values": 1.0}
+    ]
+  },
+  {
+    "id": 7,
+    "name": "RGDR_BF16_SINGLE_BATCH_LEN8",
+    "aclnn_name": "RecurrentGatedDeltaRule",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [8, 4, 32], "range_values": [-0.4, 0.4]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [8, 4, 32], "range_values": [-0.4, 0.4]},
+      {"name": "value", "type": "tensor", "dtype": "bf16", "shape": [8, 8, 32], "range_values": [-0.4, 0.4]},
+      {"name": "beta", "type": "tensor", "dtype": "bf16", "shape": [8, 8], "range_values": [0.0, 0.5]},
+      {"name": "stateRef", "type": "tensor", "dtype": "bf16", "shape": [8, 8, 32, 32], "range_values": [-0.2, 0.2]},
+      {"name": "actualSeqLengths", "type": "tensor", "dtype": "int32", "shape": [1], "value": [8]},
+      {"name": "ssmStateIndices", "type": "tensor", "dtype": "int32", "shape": [8], "value": [0, 1, 2, 3, 4, 5, 6, 7]},
+      {"name": "g", "type": "tensor", "dtype": "fp32", "shape": [8, 8], "range_values": [-0.1, 0.1]},
+      {"name": "gk", "type": "tensor", "dtype": "fp32", "shape": [8, 8, 32], "range_values": [-0.1, 0.1]},
+      {"name": "numAcceptedTokens", "type": "tensor", "dtype": "int32", "shape": [1], "value": [4]},
+      {"name": "scaleValue", "type": "attr", "dtype": "float", "range_values": 1.0}
+    ]
+  }
+]

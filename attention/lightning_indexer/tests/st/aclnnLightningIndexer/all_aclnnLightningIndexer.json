@@ -1,0 +1,170 @@
+[
+  {
+    "id": 0,
+    "name": "LI_BSND_BSND_FP16_SMALL_SPARSE0_VALUES",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "fp16", "shape": [1, 2, 1, 128], "range_values": [-1.0, 1.0]},
+      {"name": "key", "type": "tensor", "dtype": "fp16", "shape": [1, 4, 1, 128], "range_values": [-1.0, 1.0]},
+      {"name": "weights", "type": "tensor", "dtype": "fp16", "shape": [1, 2, 1], "range_values": [0.25, 1.0]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 2},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": true}
+    ]
+  },
+  {
+    "id": 1,
+    "name": "LI_BSND_BSND_BF16_SMALL_SPARSE0_INDICES",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [2, 3, 2, 128], "range_values": [-0.75, 0.75]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [2, 8, 1, 128], "range_values": [-0.75, 0.75]},
+      {"name": "weights", "type": "tensor", "dtype": "bf16", "shape": [2, 3, 2], "range_values": [0.1, 0.9]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 4},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": false}
+    ]
+  },
+  {
+    "id": 2,
+    "name": "LI_BSND_BSND_FP16_WEIGHT_FP32",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "fp16", "shape": [1, 3, 2, 128], "range_values": [-1.0, 1.0]},
+      {"name": "key", "type": "tensor", "dtype": "fp16", "shape": [1, 6, 1, 128], "range_values": [-1.0, 1.0]},
+      {"name": "weights", "type": "tensor", "dtype": "fp32", "shape": [1, 3, 2], "range_values": [0.2, 0.8]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 2},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": true}
+    ]
+  },
+  {
+    "id": 3,
+    "name": "LI_BSND_BSND_FP16_SPARSE3_CAUSAL",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "fp16", "shape": [1, 4, 1, 128], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "fp16", "shape": [1, 4, 1, 128], "range_values": [-0.5, 0.5]},
+      {"name": "weights", "type": "tensor", "dtype": "fp16", "shape": [1, 4, 1], "range_values": [0.3, 1.0]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 2},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 3},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": true}
+    ]
+  },
+  {
+    "id": 4,
+    "name": "LI_TND_TND_FP16_VARLEN",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "fp16", "shape": [5, 2, 128], "range_values": [-1.0, 1.0]},
+      {"name": "key", "type": "tensor", "dtype": "fp16", "shape": [7, 1, 128], "range_values": [-1.0, 1.0]},
+      {"name": "weights", "type": "tensor", "dtype": "fp16", "shape": [5, 2], "range_values": [0.2, 0.9]},
+      {"name": "actualSeqLengthsQuery", "type": "tensor", "dtype": "int32", "shape": [2], "value": [2, 5]},
+      {"name": "actualSeqLengthsKey", "type": "tensor", "dtype": "int32", "shape": [2], "value": [3, 7]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "TND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "TND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 3},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": false}
+    ]
+  },
+  {
+    "id": 5,
+    "name": "LI_TND_TND_BF16_VARLEN_VALUES",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [4, 1, 128], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [6, 1, 128], "range_values": [-0.5, 0.5]},
+      {"name": "weights", "type": "tensor", "dtype": "bf16", "shape": [4, 1], "range_values": [0.2, 1.0]},
+      {"name": "actualSeqLengthsQuery", "type": "tensor", "dtype": "int32", "shape": [2], "value": [1, 4]},
+      {"name": "actualSeqLengthsKey", "type": "tensor", "dtype": "int32", "shape": [2], "value": [3, 6]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "TND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "TND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 2},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": true}
+    ]
+  },
+  {
+    "id": 6,
+    "name": "LI_PA_BSND_FP16_BLOCK16",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "fp16", "shape": [1, 2, 1, 128], "range_values": [-1.0, 1.0]},
+      {"name": "key", "type": "tensor", "dtype": "fp16", "shape": [2, 16, 1, 128], "range_values": [-1.0, 1.0]},
+      {"name": "weights", "type": "tensor", "dtype": "fp16", "shape": [1, 2, 1], "range_values": [0.2, 1.0]},
+      {"name": "actualSeqLengthsKey", "type": "tensor", "dtype": "int32", "shape": [1], "value": [32]},
+      {"name": "blockTable", "type": "tensor", "dtype": "int32", "shape": [1, 2], "value": [0, 1]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "PA_BSND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 4},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": false}
+    ]
+  },
+  {
+    "id": 7,
+    "name": "LI_PA_BSND_BF16_MULTI_BATCH",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "bf16", "shape": [2, 2, 2, 128], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "bf16", "shape": [4, 16, 1, 128], "range_values": [-0.5, 0.5]},
+      {"name": "weights", "type": "tensor", "dtype": "bf16", "shape": [2, 2, 2], "range_values": [0.2, 1.0]},
+      {"name": "actualSeqLengthsKey", "type": "tensor", "dtype": "int32", "shape": [2], "value": [32, 32]},
+      {"name": "blockTable", "type": "tensor", "dtype": "int32", "shape": [2, 2], "value": [0, 1, 2, 3]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "PA_BSND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 4},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": false}
+    ]
+  },
+  {
+    "id": 8,
+    "name": "LI_BSND_BSND_FP16_LONG_KEY_2048",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "fp16", "shape": [1, 1, 1, 128], "range_values": [-0.25, 0.25]},
+      {"name": "key", "type": "tensor", "dtype": "fp16", "shape": [1, 2048, 1, 128], "range_values": [-0.25, 0.25]},
+      {"name": "weights", "type": "tensor", "dtype": "fp16", "shape": [1, 1, 1], "range_values": [1.0, 1.0]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 128},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": false}
+    ]
+  },
+  {
+    "id": 9,
+    "name": "LI_BSND_BSND_FP16_MULTI_HEAD",
+    "aclnn_name": "LightningIndexer",
+    "standard": {"acc": "default", "perf": "not_key"},
+    "inputs": [
+      {"name": "query", "type": "tensor", "dtype": "fp16", "shape": [1, 2, 8, 128], "range_values": [-0.5, 0.5]},
+      {"name": "key", "type": "tensor", "dtype": "fp16", "shape": [1, 16, 1, 128], "range_values": [-0.5, 0.5]},
+      {"name": "weights", "type": "tensor", "dtype": "fp16", "shape": [1, 2, 8], "range_values": [0.1, 1.0]},
+      {"name": "layoutQuery", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "layoutKey", "type": "attr", "dtype": "str", "range_values": "BSND"},
+      {"name": "sparseCount", "type": "attr", "dtype": "int64", "range_values": 4},
+      {"name": "sparseMode", "type": "attr", "dtype": "int64", "range_values": 0},
+      {"name": "returnValues", "type": "attr", "dtype": "bool", "range_values": true}
+    ]
+  }
+]
