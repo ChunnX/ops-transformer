@@ -42,7 +42,7 @@
 
 | 参数名           | 输入/输出/属性 | 描述                                                             | 数据类型      | 数据格式 |
 | ---------------- | -------------- |----------------------------------------------------------------| ------------- | -------- |
-| cache            | 输入/输出      | 当前层的KV Cache向量缓存，原地更新，即公式中的量化目标。     | UINT8         | ND       |
+| cache            | 输入/输出      | 当前层的分页KV Cache，原地更新，即公式中的量化目标。仅支持四维`[blockNum, blockSize, 1, headDim]`，headDim须 ≥ kvCacheCol，仅blockNum维支持非连续。     | UINT8         | ND       |
 | x                | 输入           | 待量化的激活输入，即公式中`x`。shape为[bs, d]。                                | BFLOAT16      | ND       |
 | slot_mapping     | 输入           | token到cache slot的索引映射，值为 -1表示跳过该token。shape为[bs]。              | INT32、INT64  | ND       |
 | cache            | 输出           | 原地更新后的KV Cache，与输入`cache`为同一tensor。                            | UINT8         | ND       |
@@ -53,8 +53,9 @@
 
 ## 约束说明
 
+- `cache`仅支持四维`[blockNum, blockSize, 1, headDim]`（num_slots = blockNum × blockSize），倒数第二维固定为1；仅在blockNum维支持非连续（分页）。headDim须 ≥ 每行写出字节数kvCacheCol。
 - `slot_mapping`的维度应等于`x`的维度减1，即`slot_mapping`为`x`除最后一维外的所有维度展平。
-- `x`的最后一维（d轴）需满足`d % 64 == 0`且`d > 64`，按每64个元素一组进行逐组量化。
+- `x`的最后一维（d轴）需满足`d % 64 == 0`且`64 < d ≤ 8192`，按每64个元素一组进行逐组量化。
 - `quant_mode=2`时，`quant_group_size`仅支持16/32/64，且nope段长度`(d-64)`需能被`quant_group_size`整除；`x`需为`bfloat16`。
 - `slot_mapping`中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 

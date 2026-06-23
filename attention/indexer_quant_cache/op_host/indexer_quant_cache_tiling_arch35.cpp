@@ -60,6 +60,7 @@ constexpr int64_t ATTR_QUANT_MODE_INDEX = 0;
 constexpr int64_t ATTR_ROUND_SCALE_INDEX = 1;
 constexpr int64_t ATTR_SCALE_INDEX = 2;
 constexpr int64_t BLOCK_SIZE = 32;
+constexpr int64_t D_LENGTH_FULL_LOAD = 8192;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t FP4_PACK_NUM = 2;   // MX-FP4: 2 fp4 values packed per byte
@@ -194,6 +195,10 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
     OP_CHECK_IF(d_ <= 0 || d_ % BLOCK_SIZE != 0,
                   OP_LOGE(context_->GetNodeName(),
                           "the last dim (d) of x should be 32-aligned, got %ld", d_),
+                  return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(d_ > D_LENGTH_FULL_LOAD,
+                  OP_LOGE(context_->GetNodeName(), "input x tail dimension must less than 8192, got %ld", d_),
                   return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,

@@ -28,7 +28,7 @@ npu_indexer_quant_cache(Tensor cache, Tensor cache_scale, Tensor x, Tensor slot_
 |--------|-----------|------|----------|----------|
 | cache | 输入 | 当前层的分页KV Cache，**仅支持四维shape** `[blockNum, blockSize, 1, headDim]`（num_slots = blockNum × blockSize），**headDim须 ≥ d**（MX-FP4以fp4元素计）。在**blockNum维支持非连续**（分页）。MX-FP4模式下cache为FP4（每字节打包2个fp4值）。 | FLOAT8_E4M3FN、FLOAT8_E5M2、UINT8、FLOAT4_E2M1、FLOAT4_E1M2 | $ND$ |
 | cache_scale | 输入 | 每块量化的scale因子，**仅支持四维shape** `[blockNum, blockSize, 1, scaleHeadDim]`，**scaleHeadDim须 ≥ scaleCol**；含HiFloat8/quant_mode=2在内的所有量化模式均校验（scaleCol取值与HiFloat8规则详见约束说明）。 | FLOAT、FLOAT8_E8M0 | $ND$ |
-| x | 输入 | 待量化的激活输入，shape为[bs, d]，d需满足d % 32 == 0。 | FLOAT16、BFLOAT16 | $ND$ |
+| x | 输入 | 待量化的激活输入，shape为[bs, d]，d需满足d % 32 == 0且d ≤ 8192。 | FLOAT16、BFLOAT16 | $ND$ |
 | slot_mapping | 输入 | token到cache slot的索引映射，shape为[bs]，元素取值范围[-1, num_slots - 1]，-1表示跳过该token；维度需等于x的维度减1。 | INT32 | $ND$ |
 | quant_mode | 可选属性 | 量化模式：0=MX-FP8、1=Normal、2=HiFloat8、3=MX-FP4。默认值1。 | INT | - |
 | round_scale | 可选属性 | MX-FP8模式（quant_mode=0）下是否对scale进行舍入。默认值True。 | BOOL | - |

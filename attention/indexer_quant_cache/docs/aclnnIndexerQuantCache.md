@@ -255,6 +255,7 @@ aclnnStatus aclnnIndexerQuantCache(
   - **cache.headDim ≥ d**（MX-FP4模式以fp4元素计，d个fp4值占 ⌈d/2⌉ 字节）。
   - **cacheScale.headDim ≥ scaleCol**，scaleCol：MX-FP8/MX-FP4（quantMode=0/3）为 ⌈d/32⌉；Normal/HiFloat8（quantMode=1/2）为 1。
   - 示例：d=128、quantMode=0 → scaleCol=4 → cache.headDim ≥ 128 且 cacheScale.headDim ≥ 4。
+- x的最后一维（d轴）须能被32整除（即32的正整数倍）且 d ≤ 8192。
 - slotMapping的维度应等于x的维度减1，即slotMapping为x除最后一维外的所有维度展平。
 - slotMapping中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 

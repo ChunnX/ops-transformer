@@ -29,7 +29,7 @@ npu_kv_compress_epilog(Tensor cache, Tensor x, Tensor slot_mapping, *, int quant
 | 参数名 | 输入/输出 | 说明 | 数据类型 | 数据格式 |
 |--------|-----------|------|----------|----------|
 | cache | 输入 | 当前层的分页KV Cache，**仅支持四维shape** `[blockNum, blockSize, 1, headDim]`（num_slots = blockNum × blockSize），**headDim须 ≥ kvCacheCol**（kvCacheCol计算见约束说明）。在**blockNum维支持非连续**（分页）。 | UINT8 | $ND$ |
-| x | 输入 | 待量化的激活输入，shape为[bs, d]，d需满足d % 64 == 0且d > 64。 | BFLOAT16 | $ND$ |
+| x | 输入 | 待量化的激活输入，shape为[bs, d]，d需满足d % 64 == 0且64 < d ≤ 8192。 | BFLOAT16 | $ND$ |
 | slot_mapping | 输入 | token到cache slot的索引映射，shape为[bs]，元素取值范围[-1, num_slots - 1]（num_slots = blockNum × blockSize），-1表示跳过该token；维度需等于x的维度减1。 | INT32、INT64 | $ND$ |
 | quant_group_size | 可选属性 | 量化分组大小，默认值64。quant_mode=0/1时内核固定按64处理；quant_mode=2时仅支持16/32/64，且要求(d-64) % quant_group_size == 0。 | INT | - |
 | quant_mode | 可选属性 | 量化模式：0=group(bf16 scale)、1=group(e8m0 scale)、2=rope hifloat8静态 + nope FLOAT4_E2M1动态。默认值1。 | INT | - |
@@ -53,7 +53,7 @@ npu_kv_compress_epilog(Tensor cache, Tensor x, Tensor slot_mapping, *, int quant
   - 对齐规则：quant_mode=1不补齐，kvCacheCol = concatCol；quant_mode=0/2按32B对齐，kvCacheCol = ⌈concatCol / 32⌉ × 32。
   - 示例：d=512、quant_mode=1 → kvCacheCol=583 → headDim ≥ 583（示例中取640）。
 - slot_mapping的维度应等于x的维度减1，即slot_mapping为x除最后一维外的所有维度展平。
-- x的最后一维（d轴）需满足d % 64 == 0且d > 64，按每64个元素一组进行逐组量化。
+- x的最后一维（d轴）需满足d % 64 == 0且64 < d ≤ 8192，按每64个元素一组进行逐组量化。
 - quant_mode=2时，quant_group_size仅支持16/32/64，且nope段长度(d-64)需能被quant_group_size整除。
 - slot_mapping中值为-1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 - 支持图模式（torchair）调用：经graph_convert注册的GE converter下沉为KvCompressEpilog算子，eager与图模式结果一致。

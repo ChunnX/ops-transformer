@@ -39,14 +39,14 @@
 - 示例：
 
   ```
-  cache shape:        [2048, 384]
+  cache shape:        [128, 16, 1, 384]   # 4D [blockNum, blockSize, 1, headDim], num_slots=2048, headDim≥kvCacheCol(=323)
   x shape:            [1024, 256]
   slot_mapping shape: [1024]
   quantGroupSize = 64
   quantMode = 1
   roundScale = true
   xScale = 1.0
-  cache out shape:    [2048, 384]   (原地更新)
+  cache out shape:    [128, 16, 1, 384]   (原地更新)
   ```
 
 ## 函数原型
@@ -103,18 +103,18 @@ aclnnStatus aclnnKvCompressEpilog(
     <tr>
       <td>cacheRef（aclTensor*）</td>
       <td>输入/输出</td>
-      <td>表示当前层的KV Cache向量缓存，原地更新，对应计算公式中的量化目标。</td>
-      <td><li>不支持空Tensor。</li><li>既是输入也是输出。</li></td>
+      <td>表示当前层的分页KV Cache向量缓存，原地更新，对应计算公式中的量化目标。仅支持四维，headDim须 ≥ 每行写出长度kvCacheCol，仅blockNum维支持非连续（详见约束说明）。</td>
+      <td><li>不支持空Tensor。</li><li>既是输入也是输出。</li><li>仅支持四维[blockNum, blockSize, 1, headDim]，dim2固定为1。</li></td>
       <td>UINT8</td>
       <td>ND</td>
-      <td>[num_slots, kvCacheCol]</td>
+      <td>[blockNum, blockSize, 1, headDim]</td>
       <td>×</td>
     </tr>
     <tr>
       <td>x（const aclTensor*）</td>
       <td>输入</td>
       <td>待量化的激活输入，对应计算公式中x。</td>
-      <td><li>不支持空Tensor。</li><li>最后一维d需满足d % 64 == 0且d > 64。</li></td>
+      <td><li>不支持空Tensor。</li><li>最后一维d需满足d % 64 == 0且64 < d ≤ 8192。</li></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>[bs, d]</td>
@@ -250,8 +250,10 @@ aclnnStatus aclnnKvCompressEpilog(
 ## 约束说明
 
 - 确定性计算：aclnnKvCompressEpilog默认确定性实现。
+- **cache仅支持四维shape** `[blockNum, blockSize, 1, headDim]`（num_slots = blockNum × blockSize），倒数第二维固定为1，不支持其他维数；仅在blockNum维支持非连续（分页）。
+- **headDim约束**：cache末维headDim须 ≥ 每行写出字节数kvCacheCol = 对齐(concatCol)。concatCol：quantMode=0/1为(d-64)+128+⌈(d-64)/64⌉×scaleBytes（mode0=2、mode1=1）；quantMode=2为64+(d-64)/2+((d-64)/quantGroupSize)×2。对齐：quantMode=1不补齐，quantMode=0/2按32B对齐。示例：d=256、quantMode=1 → kvCacheCol=323 → headDim ≥ 323。
 - slotMapping的维度应等于x的维度减1，即slotMapping为x除最后一维外的所有维度展平。
-- x的最后一维（d轴）需满足d % 64 == 0且d > 64，按每64个元素一组进行逐组量化。
+- x的最后一维（d轴）需满足d % 64 == 0且64 < d ≤ 8192，按每64个元素一组进行逐组量化。
 - quantMode=2时，quantGroupSize仅支持16/32/64，且nope段长度(d-64)需能被quantGroupSize整除；x需为bfloat16。
 - slotMapping中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 
@@ -325,7 +327,7 @@ int main() {
     CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2.构造输入与输出，需要根据API的接口自定义构造
-    std::vector<int64_t> cacheShape = {2048, 384};  // KV Cache（uint8 打包）
+    std::vector<int64_t> cacheShape = {128, 16, 1, 384};  // 4D 分页KV Cache [blockNum,blockSize,1,headDim]，num_slots=2048
     std::vector<int64_t> xShape = {1024, 256};      // 待量化激活
     std::vector<int64_t> slotShape = {1024};        // slot 索引映射
     void* cacheDeviceAddr = nullptr;

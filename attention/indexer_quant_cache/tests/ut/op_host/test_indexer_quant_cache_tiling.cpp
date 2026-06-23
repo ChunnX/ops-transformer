@@ -306,3 +306,52 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_scale_non4d_rejected)
     );
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
+
+// d tail 维上界 (mirror kv_compress_epilog D_LENGTH_FULL_LOAD=8192):
+//   d=8192 (32 对齐, 边界) -> GRAPH_SUCCESS。mode0 MX-FP8: scaleCol=CeilDiv(8192,32)=256。
+TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_d_eq_8192_ok)
+{
+    gert::TilingContextPara para("IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 8192}, {2048, 1, 1, 8192}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{2048, 1, 1, 256}, {2048, 1, 1, 256}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {{{1024, 8192}, {1024, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        nullptr, "Ascend950"
+    );
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
+}
+
+// d=8224 (32 对齐: 8224=32*257, 但 > 8192) -> GRAPH_FAILED (超过 D_LENGTH_FULL_LOAD 上界)。
+TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_d_gt_8192_rejected)
+{
+    gert::TilingContextPara para("IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 8224}, {2048, 1, 1, 8224}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{2048, 1, 1, 257}, {2048, 1, 1, 257}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {{{1024, 8224}, {1024, 8224}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        nullptr, "Ascend950"
+    );
+    ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+}
