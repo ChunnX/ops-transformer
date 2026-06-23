@@ -589,9 +589,24 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     constexpr uint32_t D_SIZE = 512;
     constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    constexpr uint32_t UB_SIZE = 248 * 1024;          // UB大小共256KB,预留8k
+    uint32_t totalBS1 = (tilingInfo->qLayout == QSMLALayout::TND) ?
+        tilingInfo->s1Size : (tilingInfo->bSize * tilingInfo->s1Size);
+    uint32_t blocksizeFlag = static_cast<uint32_t>((tilingInfo->cmpBlockSize &
+        (tilingInfo->cmpBlockSize - 1)) == 0); // blockSize2是否为2的幂次
+    uint32_t vectorizeUbSize = tilingInfo->cmpMaxBlockNumPerBatch * sizeof(int32_t) +
+        tilingInfo->sparseBlockCount * sizeof(int32_t) +
+        tilingInfo->sparseBlockCount * sizeof(int64_t); // 物理地址计算向量化所需ub大小
+    uint32_t vectorizeFlag = static_cast<uint32_t>((perfMode_ == QSMLATemplateMode::SCFA_TEMPLATE_MODE) &&
+        (vectorizeUbSize <= UB_SIZE) && blocksizeFlag && (tilingInfo->kvLayout == QSMLALayout::PA_BBND));
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->gSize > 64) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
+    } else {
+        workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * aicNum);
+    }
+    if (vectorizeFlag) {
+        workspaceSize += (totalBS1 * tilingInfo->sparseBlockCount * sizeof(int64_t));
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
@@ -631,7 +646,7 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
     uint32_t tilingKey =
         GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
-            static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8);
+            static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag);
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 
