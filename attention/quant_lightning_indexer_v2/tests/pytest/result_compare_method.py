@@ -17,6 +17,7 @@ import torch
 import datetime
 import os
 import sys
+import ast
 import numpy as np
 from time import time
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
@@ -242,9 +243,14 @@ def check_result(expect, result, topk_value, params):
     k_scale_datarange, cmp_ratio, return_value = params
     
     # Q 侧个体长度
+    def _cu_seqlens_to_lengths(cu_list):
+        return [cu_list[i+1] - cu_list[i] for i in range(len(cu_list) - 1)]
     if layout_query == "TND":
         # TND: 必传 cu_seqlens_q，从差分推导个体长度
-        lengths_q_list = cu_seqlens_q[1:]
+        if isinstance(cu_seqlens_q, str):
+            lengths_q_list = _cu_seqlens_to_lengths(ast.literal_eval(cu_seqlens_q))
+        else:
+            lengths_q_list = _cu_seqlens_to_lengths(cu_seqlens_q)
     else:
         # BSND: 从 seqused_q 获取，若 None 则用 q_seq 填满
         if seqused_q is not None:
@@ -255,7 +261,10 @@ def check_result(expect, result, topk_value, params):
     # K 侧个体长度
     if layout_key == "TND":
         # TND: 必传 cu_seqlens_k，从差分推导个体长度
-        lengths_k_list = cu_seqlens_k[1:]
+        if isinstance(cu_seqlens_k, str):
+            lengths_k_list = _cu_seqlens_to_lengths(ast.literal_eval(cu_seqlens_k))
+        else:
+            lengths_k_list = _cu_seqlens_to_lengths(cu_seqlens_k)
     elif layout_key == "PA_BBND":
         # PA_BBND: 从 seqused_k 获取
         assert seqused_k is not None, f"{layout_key} layout requires seqused_k"
