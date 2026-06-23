@@ -61,7 +61,7 @@ inline aclTensor *ConvertType(const NzTensor &nz)
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>
-npu_mla_preprocess(
+mla_preprocess(
     const at::Tensor &input,
     const at::Tensor &gamma0,
     const at::Tensor &beta0,
@@ -100,57 +100,89 @@ npu_mla_preprocess(
     bool doRmsNorm,
     int64_t wdkvSplitCount)
 {
+    // ── Input validation ──
+    TORCH_CHECK(cacheMode >= 0 && cacheMode <= 3,
+        "cacheMode should be in [0, 3], current is: ", cacheMode);
+    TORCH_CHECK(slotMapping.scalar_type() == at::kInt,
+        "slotMapping should be int32, current is: ", slotMapping.scalar_type());
+    TORCH_CHECK(input.scalar_type() == wuk.scalar_type(),
+        "input, wuk should have the same dtype");
+
+    constexpr int64_t KV_DIM = 512;
+    constexpr int64_t ROPE_DIM = 64;
+    constexpr int64_t NZ_C1_KVCACHE = 4;
+    constexpr int64_t NZ_C0_KVCACHE = 16;
+    constexpr int64_t NZ_C1_QKV = 16;
+    constexpr int64_t NZ_C0_QKV = 32;
+    constexpr int64_t QOUT_LAST_DIM_MODE0 = 576;
+    constexpr int64_t QOUT_LAST_DIM_OTHER = 512;
+
     int64_t tokenNum = input.size(0);
     int64_t headNum = wuk.size(0);
 
-    int64_t qOutLastDim = (cacheMode == 0) ? 576 : 512;
-    at::Tensor qOut = at::empty({tokenNum, headNum, qOutLastDim},
-        (cacheMode == 2) ? input.options().dtype(at::kChar) : input.options());
+    // ── Allocate outputs with DeviceGuard ──
+    at::Tensor qOut{nullptr};
+    at::Tensor qRopeOut{nullptr};
+    at::Tensor krCacheOut{nullptr};
+    {
+        auto device = c10::Device(input.device());
+        const c10::OptionalDeviceGuard device_guard(device);
 
-    at::Tensor qRopeOut;
-    if (cacheMode == 0) {
-        qRopeOut = at::empty({0}, input.options());
-    } else {
-        qRopeOut = at::empty({tokenNum, headNum, 64}, input.options());
-    }
+        int64_t qOutLastDim = (cacheMode == 0) ? QOUT_LAST_DIM_MODE0 : QOUT_LAST_DIM_OTHER;
+        qOut = at::empty({tokenNum, headNum, qOutLastDim},
+            (cacheMode == 2) ? input.options().dtype(at::kChar) : input.options());
 
-    at::Tensor krCacheOut;
-    if (cacheMode == 0) {
-        krCacheOut = at::empty({0}, input.options());
-    } else {
-        // krCacheOut must have the same stride0 as kvCacheRope.
-        // The kernel uses kv_cache_rope_stride0_ for both tensors.
-        TORCH_CHECK(kvCacheRope.has_value() && kvCacheRope.value().defined(),
-            "kvCacheRope is required for cacheMode > 0");
-        auto ropeStrides = kvCacheRope.value().strides();
-        int64_t krStride0 = ropeStrides[0];
-        c10::SmallVector<int64_t, 5> krSizes;
-        if (cacheMode == 1) {
-            krSizes = {kvCache.size(0), kvCache.size(1), 1, 64};
+        if (cacheMode == 0) {
+            qRopeOut = at::empty({0}, input.options());
         } else {
-            krSizes = {kvCache.size(0), 4, kvCache.size(2), 16};
+            qRopeOut = at::empty({tokenNum, headNum, ROPE_DIM}, input.options());
         }
-        int64_t physSize = krSizes[0] * krStride0;
-        auto krBuf = at::zeros({physSize}, input.options());
-        krCacheOut = krBuf.as_strided(krSizes, ropeStrides);
+
+        if (cacheMode == 0) {
+            krCacheOut = at::empty({0}, input.options());
+        } else {
+            // krCacheOut must have the same stride0 as kvCacheRope.
+            // The kernel uses kv_cache_rope_stride0_ for both tensors.
+            TORCH_CHECK(kvCacheRope.has_value() && kvCacheRope.value().defined(),
+                "kvCacheRope is required for cacheMode > 0");
+            auto ropeStrides = kvCacheRope.value().strides();
+            c10::SmallVector<int64_t, 5> krSizes;
+            if (cacheMode == 1) {
+                krSizes = {kvCache.size(0), kvCache.size(1), 1, ROPE_DIM};
+            } else {
+                krSizes = {kvCache.size(0), NZ_C1_KVCACHE, kvCache.size(2), NZ_C0_KVCACHE};
+            }
+            int64_t physSize = krSizes[0] * ropeStrides[0];
+            auto krBuf = at::zeros({physSize}, input.options());
+            krCacheOut = krBuf.as_strided(krSizes, ropeStrides);
+        }
     }
 
     NzTensor wdqkv_nz{wdqkv};
     NzTensor wuq_nz{wuq};
 
+    // Optional tensors must be valid for the ACLNN API.
+    // Fall back to an empty tensor when not provided.
+    at::Tensor kvCacheRopeRef = (kvCacheRope.has_value() && kvCacheRope.value().defined())
+        ? kvCacheRope.value()
+        : at::empty({0}, input.options());
+    at::Tensor ctkvScaleRef = (ctkvScale.has_value() && ctkvScale.value().defined())
+        ? ctkvScale.value()
+        : at::empty({0}, input.options());
+    at::Tensor qNopeScaleRef = (qNopeScale.has_value() && qNopeScale.value().defined())
+        ? qNopeScale.value()
+        : at::empty({0}, input.options());
+
     if (cacheMode >= 2) {
         NzTensor kvCache_nz{kvCache};
-        at::Tensor kcr_ref = (kvCacheRope.has_value() && kvCacheRope.value().defined())
-                            ? kvCacheRope.value()
-                            : at::Tensor();
-        NzTensor kvCacheRope_nz{kcr_ref};
+        NzTensor kvCacheRope_nz{kvCacheRopeRef};
         NzTensor kvCacheOut_nz{kvCache};
         NzTensor krCacheOut_nz{krCacheOut};
         ACLNN_CMD(aclnnMlaPreprocess,
             input, gamma0, beta0, quantScale0, quantOffset0,
             wdqkv_nz, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1,
             wuq_nz, deScale1, bias1, gamma2, cos, sin, wuk,
-            kvCache_nz, kvCacheRope_nz, slotMapping, ctkvScale, qNopeScale,
+            kvCache_nz, kvCacheRope_nz, slotMapping, ctkvScaleRef, qNopeScaleRef,
             wdqDim, qRopeDim, kRopeDim, epsilon,
             qRotaryCoeff, kRotaryCoeff,
             transposeWdq, transposeWuq, transposeWuk,
@@ -161,7 +193,7 @@ npu_mla_preprocess(
             input, gamma0, beta0, quantScale0, quantOffset0,
             wdqkv_nz, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1,
             wuq_nz, deScale1, bias1, gamma2, cos, sin, wuk,
-            kvCache, kvCacheRope, slotMapping, ctkvScale, qNopeScale,
+            kvCache, kvCacheRopeRef, slotMapping, ctkvScaleRef, qNopeScaleRef,
             wdqDim, qRopeDim, kRopeDim, epsilon,
             qRotaryCoeff, kRotaryCoeff,
             transposeWdq, transposeWuq, transposeWuk,
@@ -175,7 +207,7 @@ npu_mla_preprocess(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_mla_preprocess", &npu_mla_preprocess, "mla_preprocess");
+    m.def("mla_preprocess", &mla_preprocess, "mla_preprocess");
 }
 
 } // namespace op_api

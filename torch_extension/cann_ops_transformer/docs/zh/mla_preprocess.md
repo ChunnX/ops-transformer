@@ -1,4 +1,4 @@
-# npu_mla_preprocess
+# mla_preprocess
 
 ## 产品支持情况
 
@@ -61,25 +61,25 @@
 ## 函数原型
 
 ```python
-from cann_ops_transformer.ops import npu_mla_preprocess
+from cann_ops_transformer.ops import mla_preprocess
 
-npu_mla_preprocess(
-    input, gamma0, beta0,
-    quantScale0, quantOffset0,
-    wdqkv, deScale0, bias0,
+mla_preprocess(
+    hidden_states, gamma0, beta0,
+    quant_scale0, quant_offset0,
+    wdqkv, de_scale0, bias0,
     gamma1, beta1,
-    quantScale1, quantOffset1,
-    wuq, deScale1, bias1,
+    quant_scale1, quant_offset1,
+    wuq, de_scale1, bias1,
     gamma2, cos, sin, wuk,
-    kvCache, slotMapping,
-    kvCacheRope=None,
-    ctkvScale=None, qNopeScale=None,
-    wdqDim=1536, qRopeDim=64, kRopeDim=64,
+    kv_cache, slot_mapping,
+    kv_cache_rope=None,
+    ctkv_scale=None, q_nope_scale=None,
+    wdq_dim=1536, q_rope_dim=64, k_rope_dim=64,
     epsilon=1e-5,
-    qRotaryCoeff=2, kRotaryCoeff=2,
-    transposeWdq=True, transposeWuq=True, transposeWuk=True,
-    cacheMode=1, quantMode=0,
-    doRmsNorm=True, wdkvSplitCount=1
+    q_rotary_coeff=2, k_rotary_coeff=2,
+    transpose_wdq=True, transpose_wuq=True, transpose_wuk=True,
+    cache_mode=1, quant_mode=0,
+    do_rms_norm=True, wdkv_split_count=1
 ) -> (Tensor, Tensor, Tensor, Tensor)
 ```
 
@@ -610,7 +610,7 @@ npu_mla_preprocess(
 ```python
 import torch
 import torch_npu
-from cann_ops_transformer.ops.mla_preprocess import npu_mla_preprocess
+from cann_ops_transformer.ops.mla_preprocess import mla_preprocess
 
 torch_npu.npu.set_device(0)
 dtype = torch.bfloat16
@@ -657,14 +657,14 @@ kv_cache = torch.zeros(blockNum, blockSize, 1, keyTotalDim, dtype=dtype, device=
 slot_mapping = torch.tensor([2350, 23251, 11000, 13627, 21896, 6332, 2534, 11263],
                             dtype=torch.int32, device="npu")
 
-q_out, kv_out, qr_out, kr_out = npu_mla_preprocess(
+q_out, kv_out, qr_out, kr_out = mla_preprocess(
     inp, g0, b0, qs0, qo0,
     wdq_nz, ds0, bi0,
     g1, b1, qs1, qo1,
     wu_nz, ds1, bi1,
     g2, cos, sin, wk,
     kv_cache, slot_mapping,
-    cacheMode=0,
+    cache_mode=0,
 )
 torch.npu.synchronize()
 
@@ -684,15 +684,15 @@ kv_dim = keyTotalDim - kRopeDim  # = 512
 kv_cache = torch.zeros(blockNum, blockSize, 1, kv_dim, dtype=dtype, device="npu")
 kp_cache = torch.zeros(blockNum, blockSize, 1, kRopeDim, dtype=dtype, device="npu")
 
-q_out, kv_out, qr_out, kr_out = npu_mla_preprocess(
+q_out, kv_out, qr_out, kr_out = mla_preprocess(
     inp, g0, b0, qs0, qo0,
     wdq_nz, ds0, bi0,
     g1, b1, qs1, qo1,
     wu_nz, ds1, bi1,
     g2, cos, sin, wk,
     kv_cache, slot_mapping,
-    kvCacheRope=kp_cache,
-    cacheMode=1,
+    kv_cache_rope=kp_cache,
+    cache_mode=1,
 )
 torch.npu.synchronize()
 
@@ -727,15 +727,15 @@ print(f"kvCache is_contiguous: {kv_cache_nc.is_contiguous()}")     # False
 print(f"kvCache stride[0]:    {kv_cache_nc.stride(0)}")            # 131072（2 × 65536）
 
 # 直接传入非连续张量，算子自动处理 stride
-q_out, kv_out, qr_out, kr_out = npu_mla_preprocess(
+q_out, kv_out, qr_out, kr_out = mla_preprocess(
     inp, g0, b0, qs0, qo0,
     wdq_nz, ds0, bi0,
     g1, b1, qs1, qo1,
     wu_nz, ds1, bi1,
     g2, cos, sin, wk,
     kv_cache_nc, slot_mapping,
-    kvCacheRope=kp_cache_nc,
-    cacheMode=1,
+    kv_cache_rope=kp_cache_nc,
+    cache_mode=1,
 )
 torch.npu.synchronize()
 
@@ -758,17 +758,17 @@ kp_cache_nz = torch_npu.empty_with_format(
 ctkv_scale = torch.randn(1, dtype=dtype, device="npu").abs() + 0.01
 qnope_scale = torch.randn(headNum, dtype=dtype, device="npu").abs() + 0.001
 
-q_out, kv_out, qr_out, kr_out = npu_mla_preprocess(
+q_out, kv_out, qr_out, kr_out = mla_preprocess(
     inp, g0, b0, qs0, qo0,
     wdq_nz, ds0, bi0,
     g1, b1, qs1, qo1,
     wu_nz, ds1, bi1,
     g2, cos, sin, wk,
     kv_cache_nz, slot_mapping,
-    kvCacheRope=kp_cache_nz,
-    ctkvScale=ctkv_scale,
-    qNopeScale=qnope_scale,
-    cacheMode=2,
+    kv_cache_rope=kp_cache_nz,
+    ctkv_scale=ctkv_scale,
+    q_nope_scale=qnope_scale,
+    cache_mode=2,
 )
 torch.npu.synchronize()
 

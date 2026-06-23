@@ -11,3 +11,6 @@
 import torch
 import torch_npu
 from . import ops
+from .ops import mla_preprocess
+
+__all__ = ["mla_preprocess"]
