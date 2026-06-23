@@ -29,6 +29,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "fa_static_init_output.h"  // 静态Tensor版 InitOutput，替代 matmul::InitOutput（其内部用 TPipe 动态分配 eventId，与静态 eventId 冲突）
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -299,10 +300,14 @@ public:
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
+            // 此时 InitBuffers() 尚未运行，整个 UB 空闲，从偏移 0 处直接借用 scratch UB
+            // 供 fa_static::InitOutput 内部 Duplicate→DataCopyPad UB→GM 使用。
+            LocalTensor<uint8_t> initOutputScratch =
+                LocalTensor<uint8_t>(TPosition::VECIN, 0U, fa_static::INIT_OUTPUT_SCRATCH_BYTES);
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
-            InitOutputSingleCore();
+            InitOutputSingleCore(initOutputScratch);
             if (constInfo.isSoftmaxLseEnable) {
-                InitLseOutputSingleCore();
+                InitLseOutputSingleCore(initOutputScratch);
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             SyncAll();
@@ -314,7 +319,7 @@ public:
         return constInfo.needInitOutput;
     }
 
-    __aicore__ inline void InitOutputSingleCore()
+    __aicore__ inline void InitOutputSingleCore(LocalTensor<uint8_t> initOutputScratch)
     {
         int64_t tSize = constInfo.bSize * constInfo.s1Size;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
@@ -331,16 +336,17 @@ public:
             if constexpr (IsSameType<OUTPUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
-                matmul::InitOutput<half>(attentionOutTmpGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
+                fa_static::InitOutput<half>(attentionOutTmpGm[constInfo.aivIdx * singleCoreSize],
+                                            singleInitOutputSize, 0, initOutputScratch);
             } else {
-                matmul::InitOutput<OUTPUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
-                    0);
+                fa_static::InitOutput<OUTPUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize],
+                                                singleInitOutputSize, 0, initOutputScratch);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
-    __aicore__ inline void InitLseOutputSingleCore()
+    __aicore__ inline void InitLseOutputSingleCore(LocalTensor<uint8_t> initOutputScratch)
     {
         int64_t tSize = constInfo.bSize * constInfo.s1Size;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
@@ -354,13 +360,13 @@ public:
 
         if (singleInitOutputSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
-                                      3e+99); // 3e+99: set the value of invalid batch to inf
+            fa_static::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
+                                         3e+99, initOutputScratch); // 3e+99: set the value of invalid batch to inf
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
-    __aicore__ inline void InitFdWorkspaceSingleCore()
+    __aicore__ inline void InitFdWorkspaceSingleCore(LocalTensor<uint8_t> initOutputScratch)
     {
         // accumOut / softmaxFDSum / softmaxFDMax 在 user workspace 上连续排布
         // （见 InitVecInput：accumOut@workspace, softmaxFDSum@+accumOutSize, softmaxFDMax@+accumOutSize+logSumExpSize），
@@ -376,7 +382,8 @@ public:
 
         if (singleInitSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            matmul::InitOutput<float>(accumOutGm[constInfo.aivIdx * singleCoreSize], singleInitSize, 0);
+            fa_static::InitOutput<float>(accumOutGm[constInfo.aivIdx * singleCoreSize], singleInitSize, 0,
+                                         initOutputScratch);
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
@@ -1315,7 +1322,7 @@ public:
         }
     }
 
-    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
+    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur, LocalTensor<uint8_t> initOutputScratch)
     {
         uint32_t n2Idx = bN2Cur % constInfo.n2Size;
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
@@ -1323,16 +1330,19 @@ public:
             OffsetCalculator<GmFormat::BSNGD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                   constInfo.dSizeV, *qActSeqLensParser);
-            DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+            fa_static::DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
+                                                                      initOutputScratch);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             OffsetCalculator<GmFormat::BNGSD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                   constInfo.dSizeV, *qActSeqLensParser);
-            DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+            fa_static::DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
+                                                                      initOutputScratch);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             OffsetCalculator<GmFormat::TNGD, int32_t, true> offsetCalculator;
             offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
-            DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+            fa_static::DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
+                                                                     initOutputScratch);
         }
     }
 };
