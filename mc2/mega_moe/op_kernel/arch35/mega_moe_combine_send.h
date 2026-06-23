@@ -90,8 +90,8 @@ __aicore__ inline void CombineTokensWithUrma(
         tripleTempTensor.SetValue(5, actualDataLength);
         tripleTempTensor.SetValue(7, 1); // 标记为已处理
         __gm__  int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineSendNotifyPtr + toRankId * sizeof(int32_t));
-        GM_ADDR dataAddr = params.workspaceInfo.combineSendDataPtr + 
-                        toRankId * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
+        GM_ADDR dataAddr = params.workspaceInfo.combineSendDataPtr +
+                        static_cast<uint64_t>(toRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
         int32_t cnt = AscendC::AtomicAdd(notifyAddr, 1);
         AscendC::PipeBarrier<PIPE_ALL>();
         // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
@@ -209,7 +209,7 @@ __aicore__ inline void CombineTokensWithUrmaSend(
             // 轮询所有已到达的槽位
             while (needCnt > 0) {
                 GM_ADDR dataAddr = params.workspaceInfo.combineSendDataPtr +
-                    (rankIndex + startRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank + index * (maxDataLengthPerBlock + ALIGN_32);
+                    static_cast<uint64_t>(rankIndex + startRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank + index * (maxDataLengthPerBlock + ALIGN_32);
                 gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLengthPerBlock));
                 AscendC::Nop<800>();
                 AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
