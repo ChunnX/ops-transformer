@@ -1185,7 +1185,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         if (subBlockIdx_ == 1) {
             LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
             hcomm_.Init(hcommTensor_, ALIGN_512);
-            CombineTokensWithUrmaSend<bfloat16_t>(params_, mc2Context_, hcomm_);
+            MegaMoeImpl::CombineTokensWithUrmaSend<bfloat16_t>(params_, mc2Context_, hcomm_);
         }
     }
 
