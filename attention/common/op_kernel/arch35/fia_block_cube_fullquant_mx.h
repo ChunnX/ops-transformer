@@ -1063,6 +1063,9 @@ public:
         uint32_t curPadK = (realK + 63) >> 6 << 6;
         // nd2nz pading to k 64 align, (k,n)->(n1,k1,k0,n0)
         uint32_t movK = realK;
+        if (KvLayoutType == 3) { // 3:PA_NZ
+            movK = Align(realK, 16U);
+        }
         if (curPadK == movK) {
             return;
         }
