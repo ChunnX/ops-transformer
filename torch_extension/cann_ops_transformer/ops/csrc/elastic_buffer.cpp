@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <atomic>
 
 // CANN ACL Runtime API
 #include "acl/acl.h"
@@ -115,7 +116,8 @@ private:
                            std::vector<HcclChannelDesc> &channelDesc);
     void getHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, ChannelHandle *channels,
                             uint32_t length);
-    void getHcclCommResource(const HcclComm &commHandle, CommContext *commContextStruct, uint32_t rankSize, const std::string targetTag);
+    void getHcclCommResource(const HcclComm &commHandle, CommContext *commContextStruct, uint32_t rankSize,
+                             const std::string targetTag);
     void createContextInternal(const HcclComm &commHandle, const std::string &mc2ContextTag);
     at::Tensor createContext();
 
@@ -139,6 +141,7 @@ private:
     bool initialized = false;
     bool destroyed = false;
     bool writeCalled = false;
+    std::atomic<bool> fetchInProgress{false};
 };
 
 // Constructor
@@ -182,7 +185,8 @@ void ElasticBuffer::acquireHcclHandle()
 }
 
 // Allocate and register buffer
-void ElasticBuffer::allocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memBufferTag, uint32_t rankId)
+void ElasticBuffer::allocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memBufferTag,
+                                              uint32_t rankId)
 {
     HostBufferGuard guard;
 
@@ -276,7 +280,8 @@ void ElasticBuffer::getHcclCommChannel(const HcclComm &commHandle, uint32_t rank
 }
 
 // Get HCCL communication resources
-void ElasticBuffer::getHcclCommResource(const HcclComm &commHandle, CommContext *commContextStruct, uint32_t rankSize, const std::string targetTag)
+void ElasticBuffer::getHcclCommResource(const HcclComm &commHandle, CommContext *commContextStruct, uint32_t rankSize,
+                                        const std::string targetTag)
 {
     uint32_t rankId = commContextStruct->epRankId;
     ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
@@ -311,7 +316,8 @@ void ElasticBuffer::getHcclCommResource(const HcclComm &commHandle, CommContext 
             if (memTags[j] != nullptr && targetTag == memTags[j]) {
                 uint64_t targetMemAddr = reinterpret_cast<uint64_t>(remoteMems[j].addr);
                 commContextStruct->virtualAddrList[i] = targetMemAddr;
-                ASCEND_LOGI("Get Targe Mem(%s) Success, Mem id is %d, Addr is %lu", targetTag.c_str(), j, targetMemAddr);
+                ASCEND_LOGI("Get Targe Mem(%s) Success, Mem id is %d, Addr is %lu", targetTag.c_str(), j,
+                            targetMemAddr);
                 hasTargetMem = true;
                 break;
             }
@@ -334,8 +340,8 @@ void ElasticBuffer::createContextInternal(const HcclComm &commHandle, const std:
 
     hcclRet = HcclGetRankSizeFunc(commHandle, &commContext.rankSize);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
-    TORCH_CHECK(commContext.rankSize <= HCCL_MAX_RANK_SIZE,
-                "rankSize exceeds HCCL_MAX_RANK_SIZE, got ", commContext.rankSize, ", max ", HCCL_MAX_RANK_SIZE);
+    TORCH_CHECK(commContext.rankSize <= HCCL_MAX_RANK_SIZE, "rankSize exceeds HCCL_MAX_RANK_SIZE, got ",
+                commContext.rankSize, ", max ", HCCL_MAX_RANK_SIZE);
 
     std::string memBufferTag = mc2ContextTag + "_buffer";
     allocateAndRegisterBuffer(commHandle, memBufferTag, commContext.epRankId);
@@ -383,7 +389,7 @@ std::function<at::Tensor()> ElasticBuffer::engramFetch(const at::Tensor &indices
 {
     TORCH_CHECK(!destroyed, "ElasticBuffer has been destroyed");
     TORCH_CHECK(writeCalled, "Must call engramWrite before engramFetch");
-
+    TORCH_CHECK(!fetchInProgress.load(), "Previous engramFetch callback has not been called yet");
     TORCH_CHECK(indices.device().type() == c10::DeviceType::PrivateUse1,
                 "indices must be on NPU, got device: ", indices.device());
     TORCH_CHECK(indices.dim() == 1, "indices must be 1D, got dimensions: ", indices.dim());
@@ -395,15 +401,19 @@ std::function<at::Tensor()> ElasticBuffer::engramFetch(const at::Tensor &indices
         return [=]() { return emptyTensor; };
     }
 
+    fetchInProgress.store(true);
+
     auto fetched = at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(engramDtype).device(indices.device()));
 
     auto dtypeVal = static_cast<int64_t>(engramDtype);
     ACLNN_CMD(aclnnEngramFetch, contextTensor, indices, fetched, hiddenSize, numEngramEntries, dtypeVal);
 
     auto capturedContext = contextTensor;
-    return [capturedContext, fetched]() { 
+    auto fetchFlag = &fetchInProgress;
+    return [capturedContext, fetched, fetchFlag]() {
         ACLNN_CMD(aclnnEngramFetchWait, capturedContext);
-        return fetched; 
+        fetchFlag->store(false);
+        return fetched;
     };
 }
 
