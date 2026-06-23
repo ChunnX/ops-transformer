@@ -19,21 +19,6 @@ namespace l0op {
 
 OP_TYPE_REGISTER(SparseAttentionScore);
 
-static const aclTensor *ConvertIntArrayToTensor(const aclIntArray *intArray,
-                                                aclOpExecutor *executor,
-                                                DataType dtype)
-{
-    if (intArray != nullptr) {
-        const aclTensor *tensor = executor->ConvertToTensor(intArray, dtype);
-        auto mutableTensor = const_cast<aclTensor *>(tensor);
-        mutableTensor->SetStorageFormat(Format::FORMAT_ND);
-        mutableTensor->SetViewFormat(Format::FORMAT_ND);
-        mutableTensor->SetOriginalFormat(Format::FORMAT_ND);
-        return tensor;
-    }
-    return executor->AllocTensor(dtype, Format::FORMAT_ND, Format::FORMAT_ND);
-}
-
 const std::array<const aclTensor *, 2> SparseAttentionScore(
     const aclTensor *query,
     const aclTensor *key,
@@ -41,8 +26,8 @@ const std::array<const aclTensor *, 2> SparseAttentionScore(
     const aclTensor *selectIdx,
     const aclTensor *blockTable,
     const aclTensor *selectNumIdxOptional,
-    const aclIntArray *actualSeqLengthsOptional,
-    const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *actualSeqLengthsOptional,
+    const aclTensor *actualSeqLengthsKvOptional,
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
@@ -58,15 +43,6 @@ const std::array<const aclTensor *, 2> SparseAttentionScore(
            qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional,
            numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise);
 
-    const aclTensor *actualSeqTensor = nullptr;
-    if (actualSeqLengthsOptional) {
-        actualSeqTensor = ConvertIntArrayToTensor(actualSeqLengthsOptional, executor, DataType::DT_INT64);
-    }
-    const aclTensor *actualSeqKvTensor = nullptr;
-    if (actualSeqLengthsKvOptional) {
-        actualSeqKvTensor = ConvertIntArrayToTensor(actualSeqLengthsKvOptional, executor, DataType::DT_INT64);
-    }
-
     DataType attentionOutDtype = query->GetDataType() == DataType::DT_FLOAT8_E4M3FN ?
         DataType::DT_FLOAT16 : query->GetDataType();
     auto attentionOutTensor = executor->AllocTensor(attentionOutDtype, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -74,7 +50,7 @@ const std::array<const aclTensor *, 2> SparseAttentionScore(
 
     auto ret = INFER_SHAPE(SparseAttentionScore,
                            OP_INPUT(query, key, value, selectIdx, blockTable,
-                                    selectNumIdxOptional, actualSeqTensor, actualSeqKvTensor,
+                                    selectNumIdxOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional,
                                     qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional),
                            OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
                            OP_ATTR(static_cast<int64_t>(numKeyValueHeads),
@@ -89,7 +65,7 @@ const std::array<const aclTensor *, 2> SparseAttentionScore(
 
     ADD_TO_LAUNCHER_LIST_AICORE(SparseAttentionScore,
                                 OP_INPUT(query, key, value, selectIdx, blockTable,
-                                         selectNumIdxOptional, actualSeqTensor, actualSeqKvTensor,
+                                         selectNumIdxOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional,
                                          qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional),
                                 OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
                                 OP_ATTR(static_cast<int64_t>(numKeyValueHeads),

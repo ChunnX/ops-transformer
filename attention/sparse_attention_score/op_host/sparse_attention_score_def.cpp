@@ -43,11 +43,13 @@ public:
         this->Input("actualSeqLengths")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("actualSeqLengthsKv")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("qDequantScale")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})

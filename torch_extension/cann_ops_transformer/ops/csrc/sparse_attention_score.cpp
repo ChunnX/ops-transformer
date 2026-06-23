@@ -55,8 +55,8 @@ void CheckParams(const at::Tensor &query, const at::Tensor &key, const at::Tenso
     const c10::optional<at::Tensor> &qDequantScale,
     const c10::optional<at::Tensor> &kDequantScale,
     const c10::optional<at::Tensor> &vDequantScale,
-    const c10::optional<std::vector<int64_t>> &actualSeqLengths,
-    const c10::optional<std::vector<int64_t>> &actualSeqLengthsKv,
+    const c10::optional<at::Tensor> &actualSeqLengths,
+    const c10::optional<at::Tensor> &actualSeqLengthsKv,
     int64_t numKeyValueHeads, int64_t blockSize, int64_t topK, int64_t innerPrecise)
 {
     const bool isFp8 = query.scalar_type() == at::kFloat8_e4m3fn;
@@ -107,8 +107,10 @@ void CheckParams(const at::Tensor &query, const at::Tensor &key, const at::Tenso
         TORCH_CHECK(snIdx.scalar_type() == at::kInt, "select_num_idx dtype must be int32.");
     }
 
-    TORCH_CHECK(actualSeqLengths.has_value(), "actual_seq_lengths must be provided.");
-    TORCH_CHECK(actualSeqLengthsKv.has_value(), "actual_seq_lengths_kv must be provided.");
+    TORCH_CHECK(actualSeqLengths.has_value() && actualSeqLengths.value().defined(),
+        "actual_seq_lengths must be provided.");
+    TORCH_CHECK(actualSeqLengthsKv.has_value() && actualSeqLengthsKv.value().defined(),
+        "actual_seq_lengths_kv must be provided.");
 }
 } // namespace
 
@@ -119,8 +121,8 @@ at::Tensor npu_sparse_attention_score(
     const c10::optional<at::Tensor> &qDequantScale,
     const c10::optional<at::Tensor> &kDequantScale,
     const c10::optional<at::Tensor> &vDequantScale,
-    const c10::optional<std::vector<int64_t>> &actualSeqLengths,
-    const c10::optional<std::vector<int64_t>> &actualSeqLengthsKv,
+    const c10::optional<at::Tensor> &actualSeqLengths,
+    const c10::optional<at::Tensor> &actualSeqLengthsKv,
     c10::string_view qInputLayout, c10::string_view kvInputLayout,
     int64_t numKeyValueHeads, double scaleValue, int64_t blockSize, int64_t topK,
     int64_t innerPrecise)
@@ -129,22 +131,13 @@ at::Tensor npu_sparse_attention_score(
         qDequantScale, kDequantScale, vDequantScale,
         actualSeqLengths, actualSeqLengthsKv, numKeyValueHeads, blockSize, topK, innerPrecise);
 
-    c10::optional<at::IntArrayRef> actualSeqLengthsRef;
-    c10::optional<at::IntArrayRef> actualSeqLengthsKvRef;
-    if (actualSeqLengths.has_value()) {
-        actualSeqLengthsRef = at::IntArrayRef(actualSeqLengths.value());
-    }
-    if (actualSeqLengthsKv.has_value()) {
-        actualSeqLengthsKvRef = at::IntArrayRef(actualSeqLengthsKv.value());
-    }
-
     at::ScalarType outDtype = (query.scalar_type() == at::kFloat8_e4m3fn)
         ? at::kHalf : query.scalar_type();
     at::Tensor attentionOut = at::empty(query.sizes(), query.options().dtype(outDtype));
     at::Tensor softmaxLse;
 
     ACLNN_CMD(aclnnSparseAttentionScore, query, key, value, selectIdx, blockTable,
-        selectNumIdx, actualSeqLengthsRef, actualSeqLengthsKvRef,
+        selectNumIdx, actualSeqLengths, actualSeqLengthsKv,
         qDequantScale, kDequantScale, vDequantScale,
         numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,
         attentionOut, softmaxLse);
