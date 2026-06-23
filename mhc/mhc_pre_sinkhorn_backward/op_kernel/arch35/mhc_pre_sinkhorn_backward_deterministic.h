@@ -136,7 +136,6 @@ private:
     TBuf<TPosition::VECCALC> skGradBuf_;
     TBuf<TPosition::VECCALC> expGradBuf_;
 
-    int64_t aivNum_ = 0;
     int64_t usedAivNum_ = 0;
     int64_t batchSize_ = 0;
     int64_t seqLength_ = 0;
@@ -210,7 +209,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     skIterCount_ = tilingData->skIterCount;
     eps_ = tilingData->eps;
     k_ = n_ * n_ + 2 * n_;
-    aivNum_ = tilingData->aivNum;
     usedAivNum_ = tilingData->usedAivNum;
     blockIdx_ = GetBlockIdx();
     blockSize_ = Ops::Base::GetUbBlockSize();
@@ -230,9 +228,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     cCountPerBS_ = tilingData->cCountPerBS;
     cTailPerBS_ = tilingData->cTailPerBS;
     // BSNC每核循环
-    cBlockLoops_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->cBlockTailLoops : tilingData->cBlockLoops;
+    cBlockLoops_ = (blockIdx_ == tilingData->finalUsedAivNum - 1) ? tilingData->cBlockTailLoops : tilingData->cBlockLoops;
     cBlockCount_ = tilingData->cBlockCount;
-    cBlockTailCount_ = (blockIdx_ == tilingData->aivNum - 1) ? tilingData->cBlockTailTailCount : tilingData->cBlockTailCount;
+    cBlockTailCount_ = (blockIdx_ == tilingData->finalUsedAivNum - 1) ? tilingData->cBlockTailTailCount : tilingData->cBlockTailCount;
     blockCalcNum_ = blockIdx_ * cBlockCount_ + tilingData->cBlockTailCount;
 
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phi));
@@ -291,7 +289,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
 
         pipe_->InitBuffer(gradCalcBuf1_, kAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(gradCalcBuf2_, kAlignFp32_ * uTypeSize_);
-        avcNum_ = tilingData->aivNum / AIV_AIC_RATE;
+        avcNum_ = tilingData->aicNum;
         calcBSPerTask_ = tilingData->bsTaskCount * AIV_AIC_RATE;
         totalAicTasks_ = batchSize_ * seqLength_;
         totalAicTasksAligned_ = Ops::Base::CeilAlign(totalAicTasks_, avcNum_ * calcBSPerTask_);
