@@ -22,7 +22,7 @@ from batch import stem_indexer_pt_loadprocess
 import result_compare_method
 
 
-TEST_INPUT_PATH = "__PATH__"
+TEST_INPUT_PATH = os.environ.get("STEM_INDEXER_PT_DIR", "__PATH__")
 PT_DIR = TEST_INPUT_PATH
 RESULT_PATH = Path("result.xlsx")
 

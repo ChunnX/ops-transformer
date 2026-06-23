@@ -16,7 +16,6 @@ PATH2="./pt_path"
 STEM_INDEXER_PT_SAVE_SCRIPT="./batch/stem_indexer_pt_save.py"
 TEST_STEM_INDEXER_SINGLE_SCRIPT="test_stem_indexer_single.py"
 TEST_STEM_INDEXER_BATCH_SCRIPT="test_stem_indexer_batch.py"
-REPLACE_PATH_SCRIPT="./batch/replace_path.py"
 
 # ====================== 执行区======================
 
@@ -37,19 +36,9 @@ run_batch() {
         exit 1
     fi
 
-    echo -e "\n===== 第二步：替换test_stem_indexer_batch.py中的路径 ====="
-    python3 $REPLACE_PATH_SCRIPT $TEST_STEM_INDEXER_BATCH_SCRIPT $PATH2
-    if [ $? -ne 0 ]; then
-        echo "替换路径失败，退出"
-        exit 1
-    fi
-
-    echo -e "\n===== 第三步：执行pytest命令 ====="
-    python3 -m pytest -rA -s $TEST_STEM_INDEXER_BATCH_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    echo -e "\n===== 第二步：执行pytest命令 ====="
+    STEM_INDEXER_PT_DIR="$PATH2" python3 -m pytest -rA -s $TEST_STEM_INDEXER_BATCH_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
     pytest_status=$?
-    if [ -f "${TEST_STEM_INDEXER_BATCH_SCRIPT}.bak" ]; then
-        cp "${TEST_STEM_INDEXER_BATCH_SCRIPT}.bak" $TEST_STEM_INDEXER_BATCH_SCRIPT
-    fi
     if [ $pytest_status -ne 0 ]; then
         echo "pytest执行失败"
         exit 1
