@@ -21,7 +21,22 @@ namespace op_api {
 constexpr int DIM_TWO = 2;
 constexpr int64_t COLS_ALIGN_FACTOR = 256;
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_init_routing(
+enum MoeInitRoutingQuantMode {
+    MOE_QUANT_MODE_NO_QUANT = -1,
+    MOE_QUANT_MODE_STATIC_QUANT = 0,
+    MOE_QUANT_MODE_DYNAMIC_QUANT = 1,
+    MOE_QUANT_MODE_MXFP8_E5M2 = 2,
+    MOE_QUANT_MODE_MXFP8_E4M3FN = 3,
+    MOE_QUANT_MODE_HIFLOAT8_DIRECT = 6,
+    MOE_QUANT_MODE_HIFLOAT8_PERTENSOR = 7,
+    MOE_QUANT_MODE_HIFLOAT8_PERTOKEN = 8,
+    MOE_QUANT_MODE_MXFP4 = 9,
+    MOE_QUANT_MODE_FP8_PERBLOCK_128_E5M2 = 11,
+    MOE_QUANT_MODE_FP8_PERBLOCK_128_E4M3FN = 12,
+    MOE_QUANT_MODE_INT4_DYNAMIC_QUANT = 13,
+};
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_routing(
     const at::Tensor &x, const at::Tensor &expert_idx,
     const c10::optional<at::Tensor> &scale, const c10::optional<at::Tensor> &offset,
     const c10::optional<at::Tensor> &topk_weight,
@@ -36,8 +51,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_i
     TORCH_CHECK(expert_num > 0, "expert_num must be greater than 0, current is: ", expert_num);
     TORCH_CHECK((drop_pad_mode == 0 || drop_pad_mode == 1),
         "drop_pad_mode must be 0 or 1, current is: ", drop_pad_mode);
-    TORCH_CHECK((expert_tokens_num_type == 0 || expert_tokens_num_type == 1),
-        "expert_tokens_num_type must be 0 or 1, current is: ", expert_tokens_num_type);
+    TORCH_CHECK((expert_tokens_num_type == 0 || expert_tokens_num_type == 1 || expert_tokens_num_type == 2),
+        "expert_tokens_num_type must be 0, 1 or 2, current is: ", expert_tokens_num_type);
     TORCH_CHECK((row_idx_type == 0 || row_idx_type == 1),
         "row_idx_type must be 0 or 1, current is: ", row_idx_type);
     if (drop_pad_mode == 1) {
@@ -67,7 +82,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_i
     int64_t cols = x.size(1);
     int64_t k = expert_idx.size(1);
 
-    int64_t active_num_real = (active_num < 0) ? n * k : active_num;
+    int64_t active_num_real = std::min((active_num < 0) ? n * k : active_num, n * k);
     int64_t out_num = active_num_real;
 
     int64_t expanded_x_rows = out_num;
@@ -76,13 +91,16 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_i
     }
 
     auto output_dtype = x.scalar_type();
-    if (quant_mode == QuantMode::QUANT_MODE_STATIC_QUANT ||
-        quant_mode == QuantMode::QUANT_MODE_PERTOKEN ||
-        quant_mode == QuantMode::QUANT_MODE_PERGROUP ||
-        quant_mode == QuantMode::INT4_DYNAMIC_QUANT) {
-        output_dtype = at::kInt8;
-    } else if (quant_mode == QuantMode::QUANT_MODE_MX) {
+    if (quant_mode == MOE_QUANT_MODE_STATIC_QUANT ||
+        quant_mode == MOE_QUANT_MODE_DYNAMIC_QUANT ||
+        quant_mode == MOE_QUANT_MODE_INT4_DYNAMIC_QUANT) {
+        output_dtype = at::kChar;
+    } else if (quant_mode == MOE_QUANT_MODE_MXFP8_E5M2 ||
+               quant_mode == MOE_QUANT_MODE_FP8_PERBLOCK_128_E5M2) {
         output_dtype = at::kFloat8_e5m2;
+    } else if (quant_mode == MOE_QUANT_MODE_MXFP8_E4M3FN ||
+               quant_mode == MOE_QUANT_MODE_FP8_PERBLOCK_128_E4M3FN) {
+        output_dtype = at::kFloat8_e4m3fn;
     }
 
     bool has_topk_weight = topk_weight.has_value() && topk_weight.value().defined();
@@ -94,28 +112,49 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_i
         expanded_x = at::empty({expanded_x_rows, cols}, x.options().dtype(output_dtype));
         expanded_row_idx = at::empty({expanded_x_rows}, x.options().dtype(at::kInt));
 
-        int64_t expert_tokens_count_size = expert_num;
-        if (expert_tokens_num_type == 1 && expert_tokens_num_flag) {
-            expert_tokens_count_size = expert_num + 1;
+        int64_t expert_range_end = expert_num;
+        int64_t expert_range_start = 0;
+        if (active_expert_range.has_value() && active_expert_range.value().size() >= 2) {
+            expert_range_start = active_expert_range.value()[0];
+            expert_range_end = active_expert_range.value()[1];
         }
-        expert_tokens_count_or_cumsum = at::empty({expert_tokens_count_size}, x.options().dtype(at::kLong));
+        int64_t expert_tokens_count_size = expert_range_end - expert_range_start;
+        if (expert_tokens_num_type == 1 && expert_tokens_num_flag) {
+            expert_tokens_count_size = expert_tokens_count_size + 1;
+        }
+        if (expert_tokens_num_type == 2) {
+            expert_tokens_count_size = expert_num;
+        }
+        expert_tokens_count_or_cumsum = at::empty(
+            (expert_tokens_num_type == 2) ? std::vector<int64_t>{expert_tokens_count_size, 2}
+                                          : std::vector<int64_t>{expert_tokens_count_size},
+            x.options().dtype(at::kLong));
 
-        if (quant_mode == QuantMode::QUANT_MODE_NO_QUANT ||
-            quant_mode == QuantMode::QUANT_MODE_STATIC_QUANT) {
-            expanded_scale = at::empty({out_num}, x.options().dtype(at::kFloat));
-        } else if (quant_mode == QuantMode::QUANT_MODE_MX) {
-            int64_t cols_aligned = (cols + COLS_ALIGN_FACTOR - 1) / COLS_ALIGN_FACTOR;
-            expanded_scale = at::empty({out_num, cols_aligned, 2}, x.options().dtype(at::kFloat8_e5m2));
+        int64_t scale_out_rows = expanded_x_rows;
+        if (quant_mode == MOE_QUANT_MODE_NO_QUANT ||
+            quant_mode == MOE_QUANT_MODE_STATIC_QUANT ||
+            quant_mode == MOE_QUANT_MODE_DYNAMIC_QUANT ||
+            quant_mode == MOE_QUANT_MODE_INT4_DYNAMIC_QUANT) {
+            expanded_scale = at::empty({scale_out_rows}, x.options().dtype(at::kFloat));
+        } else if (quant_mode == MOE_QUANT_MODE_HIFLOAT8_PERTOKEN) {
+            expanded_scale = at::empty({scale_out_rows, 1}, x.options().dtype(at::kFloat));
+        } else if (quant_mode == MOE_QUANT_MODE_MXFP8_E5M2 ||
+                   quant_mode == MOE_QUANT_MODE_MXFP8_E4M3FN) {
+            int64_t mx_cols_aligned = ((cols + 31) / 32 + 1) / 2 * 2;
+            expanded_scale = at::empty({scale_out_rows, mx_cols_aligned}, x.options().dtype(at::kFloat));
+        } else if (quant_mode == MOE_QUANT_MODE_MXFP4) {
+            int64_t mxfp4_m = (cols + 63) / 64;
+            expanded_scale = at::empty({scale_out_rows, mxfp4_m, 2}, x.options().dtype(at::kFloat));
+        } else if (quant_mode == MOE_QUANT_MODE_FP8_PERBLOCK_128_E5M2 ||
+                   quant_mode == MOE_QUANT_MODE_FP8_PERBLOCK_128_E4M3FN) {
+            int64_t fp8_cols_aligned = (cols + 255) / 256;
+            expanded_scale = at::empty({scale_out_rows, fp8_cols_aligned, 2}, x.options().dtype(at::kFloat));
         } else {
             expanded_scale = at::empty({0}, x.options().dtype(at::kFloat));
         }
 
         if (has_topk_weight) {
-            int64_t topk_weight_rows = out_num;
-            if (drop_pad_mode == 1) {
-                topk_weight_rows = expert_num * expert_capacity;
-            }
-            expanded_topk_weight = at::empty({topk_weight_rows, 1}, x.options().dtype(at::kFloat));
+            expanded_topk_weight = at::empty({expanded_x_rows, 1}, x.options().dtype(at::kFloat));
         } else {
             expanded_topk_weight = at::empty({0}, x.options().dtype(at::kFloat));
         }
@@ -147,7 +186,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_i
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_moe_init_routing", &npu_moe_init_routing, "npu_moe_init_routing");
+    m.def("moe_init_routing", &moe_init_routing, "moe_init_routing");
 }
 
 } // namespace op_api
