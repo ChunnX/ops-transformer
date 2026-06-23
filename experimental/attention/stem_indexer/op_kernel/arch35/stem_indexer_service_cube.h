@@ -69,7 +69,8 @@ public:
 
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
     static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
-    static constexpr uint64_t L0AB_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
+    static constexpr uint64_t L0A_BUFFER_OFFSET = M_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
+    static constexpr uint64_t L0B_BUFFER_OFFSET = S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0;
     static constexpr uint64_t L0C_BUFFER_OFFSET = M_BASIC_BLOCK * S2_BASIC_BLOCK;
 
 protected:
@@ -263,7 +264,7 @@ __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint6
     loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
     
-    LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+    LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0A_BUFFER_OFFSET],
              queryL1_[(queryBufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
 }
 
@@ -280,7 +281,7 @@ __aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t
     loadData2DParamsV2.dstStride = CeilDiv(s2L0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
     
-    LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+    LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0B_BUFFER_OFFSET],
              keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET], loadData2DParamsV2);
 }
 
@@ -298,9 +299,9 @@ __aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2O
         mmadParams.cmatrixInitVal = false;
     }
     mmadParams.cmatrixSource = false;
-    uint64_t offset = (l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + s2Offset * M_BASIC_BLOCK_L0 + s1gOffset * S2_BASIC_BLOCK;
-    Mmad(cL0_[offset], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
-         keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET], mmadParams);
+    uint64_t offset = (l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + s2Offset * CeilAlign(s1gL0RealSize, BLOCK_CUBE) + s1gOffset * S2_BASIC_BLOCK;
+    Mmad(cL0_[offset], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0A_BUFFER_OFFSET],
+         keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0B_BUFFER_OFFSET], mmadParams);
     if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
         PipeBarrier<PIPE_M>();
     }
