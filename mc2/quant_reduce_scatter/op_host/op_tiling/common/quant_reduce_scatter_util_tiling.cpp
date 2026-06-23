@@ -13,6 +13,7 @@
  * \brief
  */
 #include "quant_reduce_scatter_util_tiling.h"
+#include "mc2_log.h"
 
 namespace MC2Tiling {
 

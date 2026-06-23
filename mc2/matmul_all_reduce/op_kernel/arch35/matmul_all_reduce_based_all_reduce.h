@@ -93,9 +93,9 @@ protected:
             return;
         }
 
-        TBuf<TPosition::VECCALC> tmpBuf;
-        tPipe_->InitBuffer(tmpBuf, TOTAL_UB_SIZE);
-        CastBFtoFloatOnAiv0(addrs_->workspaceGM, addrs_->biasGM, paramInTiling_->rankN, tmpBuf);
+        TBuf<TPosition::VECCALC> tempBuf;
+        tPipe_->InitBuffer(tempBuf, TOTAL_UB_SIZE);
+        CastBFtoFloatOnAiv0(addrs_->workspaceGM, addrs_->biasGM, paramInTiling_->rankN, tempBuf);
         SyncAll<false>();
         addrs_->biasGM = addrs_->workspaceGM;
         addrs_->workspaceGM += paramInTiling_->biasLen;

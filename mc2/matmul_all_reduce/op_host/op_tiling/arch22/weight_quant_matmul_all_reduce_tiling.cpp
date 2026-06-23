@@ -170,10 +170,11 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::PostTiling()
                     return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&weightQuantMatmulAllReduceTilingData_), tilingDataSize);
-    if (ret != EOK) {
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+    errno_t memCpyResult = memcpy_s(context_->GetRawTilingData()->GetData(),
+        context_->GetRawTilingData()->GetCapacity(),
+        reinterpret_cast<void *>(&weightQuantMatmulAllReduceTilingData_), tilingDataSize);
+    if (memCpyResult != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", memCpyResult);
         return ge::GRAPH_FAILED;
     }
     PrintTilingData();
@@ -181,9 +182,9 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::PostTiling()
     context_->SetBlockDim(args_.aicCoreNum);
 
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
-    uint32_t batch_mode = 1U;
-    ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    uint32_t batchSchedMode = 1U;
+    memCpyResult = context_->SetScheduleMode(batchSchedMode);
+    GE_ASSERT_GRAPH_SUCCESS(memCpyResult);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -310,22 +311,22 @@ WeightQuantMatmulAllReduceTiling::WeightQuantMatmulAllReduceTiling(gert::TilingC
 
 CutResult WeightQuantMatmulAllReduceTiling::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+    CutResult mCutArResult;
+    SocVersion socVersionInput = SocVersion::SOC910_B;
+    SetMCutSocVersion(socVersionInput);
+    const gert::StorageShape *commQsShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape *commQsShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQsShape1 != nullptr) && (commQsShape2 != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantArReduceTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersionInput);
+        quantArReduceTiling.GetTiling();
+        mCutArResult = quantArReduceTiling.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce arReduceTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersionInput, isPerBlock_);
+        arReduceTiling.GetTiling();
+        mCutArResult = arReduceTiling.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutArResult;
 }
 
 // 注册Tiling类

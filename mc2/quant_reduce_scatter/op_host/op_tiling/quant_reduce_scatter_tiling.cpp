@@ -16,6 +16,7 @@
 #include "../../op_kernel/quant_reduce_scatter_tiling_key.h"
 #include "../../op_kernel/quant_reduce_scatter_tiling_data.h"
 #include "common/quant_reduce_scatter_util_tiling.h"
+#include "mc2_log.h"
 
 namespace MC2Tiling {
 

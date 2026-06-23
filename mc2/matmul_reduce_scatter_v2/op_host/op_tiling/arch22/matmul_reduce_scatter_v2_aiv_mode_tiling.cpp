@@ -16,12 +16,12 @@
 #include "vector"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_tiling_key.h"
 #include "matmul_reduce_scatter_v2_aiv_mode_smallm_tiling.h"
+#include "mc2_log.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -636,26 +636,27 @@ void CalTilingParam(CoCTiling &cocTilingData,
     }
 }
 
-void ReduceScatterV2DecodeTilingData(int32_t code, CoCTiling &tilingData, MatmulReduceScatterV2AivModeInfo &info)
+void ReduceScatterV2DecodeTilingData(int32_t code, CoCTiling &tilingData, const MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t m = static_cast<int32_t>(info.M);
     int32_t k = static_cast<int32_t>(info.K);
     int32_t n = static_cast<int32_t>(info.N);
-    tilingData.commDataSplit = code & COMMDATASPLIT_MASK;
-    code >>= COMMDATASPLIT_BNUM;
-    tilingData.commNpuSplit = code & COMMNPUSPLIT_MASK;
-    code >>= COMMNPUSPLIT_BNUM;
-    tilingData.commDirect = code & COMMDIRECT_MASK;
-    code >>= COMMDIRECT_BNUM;
-    tilingData.ubMoveNum = (code & UBMOVENUM_MASK) * HALF_KBYTE;
-    code >>= UBMOVENUM_BNUM;
-    tilingData.pValue = code & PVALUE_MASK;
-    code >>= PVALUE_BNUM;
-    tilingData.swizzlCount = code & SWIZZLCOUNT_MASK;
-    code >>= SWIZZLCOUNT_BNUM;
-    tilingData.swizzlDirect = code & SWIZZLDIRECT_MASK;
-    code >>= SWIZZLDIRECT_BNUM;
-    tilingData.m0 = (code & M0_MASK) * DEFAULT_ROW + DEFAULT_ROW;
+    uint32_t bitCode = static_cast<uint32_t>(code);
+    tilingData.commDataSplit = bitCode & COMMDATASPLIT_MASK;
+    bitCode >>= COMMDATASPLIT_BNUM;
+    tilingData.commNpuSplit = bitCode & COMMNPUSPLIT_MASK;
+    bitCode >>= COMMNPUSPLIT_BNUM;
+    tilingData.commDirect = bitCode & COMMDIRECT_MASK;
+    bitCode >>= COMMDIRECT_BNUM;
+    tilingData.ubMoveNum = (bitCode & UBMOVENUM_MASK) * HALF_KBYTE;
+    bitCode >>= UBMOVENUM_BNUM;
+    tilingData.pValue = bitCode & PVALUE_MASK;
+    bitCode >>= PVALUE_BNUM;
+    tilingData.swizzlCount = bitCode & SWIZZLCOUNT_MASK;
+    bitCode >>= SWIZZLCOUNT_BNUM;
+    tilingData.swizzlDirect = bitCode & SWIZZLDIRECT_MASK;
+    bitCode >>= SWIZZLDIRECT_BNUM;
+    tilingData.m0 = (bitCode & M0_MASK) * DEFAULT_ROW + DEFAULT_ROW;
     tilingData.k0 = DEFAULT_COL;
     tilingData.n0 = tilingData.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
     tilingData.mLoop = CeilDev(m, tilingData.m0);
@@ -874,7 +875,7 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
         coreNum == 0,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "ascendcPlatform.GetCoreNumAic() return 0 cores."),
         return ge::GRAPH_FAILED);
-    int32_t count_m_tile = cocTilingData.swizzlDirect ?
+    int32_t count_m_tile = cocTilingData.swizzlDirect != 0 ?
                                ((coreNum * (cocTilingData.pValue)) / cocTilingData.swizzlCount) :
                                cocTilingData.swizzlCount;
 

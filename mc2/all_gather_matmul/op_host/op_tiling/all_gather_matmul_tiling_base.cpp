@@ -13,6 +13,8 @@
  * \brief
  */
 #include "all_gather_matmul_tiling_base.h"
+#include "mc2_log.h"
+#include "ops_utils.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -263,7 +265,7 @@ ge::graphStatus AllGatherMatmulTilingBase::MCSpliteM(gert::TilingContext* ctx,
     return ge::GRAPH_SUCCESS;
 }
 
-static void UpdateTilingKey(uint64_t& tilingKey, Mc2Tiling::AllGatherMatmulTilingData& tilingData, bool isBias)
+static void UpdateTilingKey(uint64_t& tilingKey, const Mc2Tiling::AllGatherMatmulTilingData& tilingData, bool isBias)
 {
     bool allGatherMatmulFullMesh = true;
     bool allGatherMatmulNd2nzOpt = false;

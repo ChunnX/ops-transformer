@@ -68,13 +68,13 @@ public:
     }
 
 protected:
-    __aicore__ inline void InnerProcess(bool tailFlag, uint32_t tileCnt, const MC2TileInfo &tileInfo)
+    __aicore__ inline void InnerProcess(bool isTail, uint32_t loopCnt, const MC2TileInfo &tileData)
     {
         const Mc2MatmulV3TilingData *tiling =
-            (tailFlag ? &mc2TilingData_->tailmatmulTiling : &mc2TilingData_->tilematmulTiling);
+            (isTail ? &mc2TilingData_->tailmatmulTiling : &mc2TilingData_->tilematmulTiling);
 
         mmType mmOp;
-        for (uint32_t i = 0U; i < tileCnt; ++i) {
+        for (uint32_t i = 0U; i < loopCnt; ++i) {
             if (block_idx < tiling->matmulTiling.usedCoreNum) {
                 if (this->addFlag_ || i == 0U) {
                     this->tPipe_->Reset();
@@ -86,7 +86,7 @@ protected:
                 }
                 mmOp.Process();
             }
-            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aAddrOffset, tileInfo.cAddrOffset);
+            this->PostProcEachTurn(tileData.hcclHandleId, tileData.aAddrOffset, tileData.cAddrOffset);
         }
     }
 

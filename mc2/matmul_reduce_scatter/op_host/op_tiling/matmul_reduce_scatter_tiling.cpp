@@ -14,6 +14,7 @@
  */
 
 #include "matmul_reduce_scatter_tiling_base.h"
+#include "mc2_log.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -291,7 +292,7 @@ static ge::graphStatus SetCommAlg(MatmulReduceScatterTilingData &tilingData)
     return ge::GRAPH_SUCCESS;
 }
 
-bool MatmulReduceScatterTilingFuncBase::IsDeterministic()
+bool MatmulReduceScatterTilingFuncBase::IsDeterministic() const
 {
     if (getenv(mc2tiling::HCCL_DETERMINISTIC) == nullptr) {
         return false;

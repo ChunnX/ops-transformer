@@ -42,7 +42,8 @@ ge::graphStatus MatmulAllReduceTiling910::DoOpTiling()
     } else {
         DoEmptyTensorTiling();
     }
-    DoAllReduceTiling(true);
+    bool allReduceSyncFlag = true;
+    DoAllReduceTiling(allReduceSyncFlag);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -96,10 +97,10 @@ ge::graphStatus MatmulAllReduceTiling910::PostTiling()
                     return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&matmulAllReduce910TilingData_), tilingDataSize);
-    if (ret != EOK) {
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+    errno_t cpyRetVal = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+        reinterpret_cast<void *>(&matmulAllReduce910TilingData_), tilingDataSize);
+    if (cpyRetVal != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", cpyRetVal);
         return ge::GRAPH_FAILED;
     }
     PrintTilingData();
@@ -107,9 +108,9 @@ ge::graphStatus MatmulAllReduceTiling910::PostTiling()
     context_->SetBlockDim(args_.aicCoreNum);
 
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
-    uint32_t batch_mode = 1U;
-    ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    uint32_t schedModeFlag = 1U;
+    cpyRetVal = context_->SetScheduleMode(schedModeFlag);
+    GE_ASSERT_GRAPH_SUCCESS(cpyRetVal);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -323,22 +324,22 @@ TilingTransferHelper::TilingTransferHelper(MatmulAllReduceTiling910 &matmulAllRe
 
 CutResult MatmulAllReduceTiling910::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+    CutResult mCutArRes;
+    SocVersion socVerForCut = SocVersion::SOC910_B;
+    SetMCutSocVersion(socVerForCut);
+    const gert::StorageShape *cqsShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape *cqsShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((cqsShape1 != nullptr) && (cqsShape2 != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantArTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, socVerForCut);
+        quantArTilingHccl.GetTiling();
+        mCutArRes = quantArTilingHccl.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce arTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, socVerForCut, isPerBlock_);
+        arTilingHccl.GetTiling();
+        mCutArRes = arTilingHccl.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutArRes;
 }
 
 

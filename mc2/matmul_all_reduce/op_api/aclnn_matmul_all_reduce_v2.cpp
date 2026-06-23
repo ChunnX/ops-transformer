@@ -93,8 +93,8 @@ aclnnStatus aclnnMatmulAllReduceV2(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+            uint8_t serverCommMode = Mc2Comm::GetCommModeFromEnv();
+            if (serverCommMode == Mc2Comm::COMM_MODE_AICPU) {
                 OP_LOGD("arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
