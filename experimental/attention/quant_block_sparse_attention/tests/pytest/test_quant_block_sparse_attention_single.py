@@ -45,7 +45,7 @@ PARAM_COMBINATIONS = _build_param_combinations(ENABLED_PARAMS)
 def _fill_case_name(params, case_id):
     if params.get("Testcase_Name") is not None:
         return params
-    mode = "prefill" if params["layout_q"] == "TND" else "decode"
+    mode = "prefill" if params["layout_q"] in ("TND", "NTD") else "decode"
     filled = dict(params)
     filled["Testcase_Name"] = (
         f"quantBlockSparseAttention_{mode}_{filled['layout_q']}_{filled['layout_kv']}_"
