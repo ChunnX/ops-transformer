@@ -14,6 +14,7 @@
  */
 #include "all_gather_matmul_tiling_base.h"
 #include "ops_utils.h"
+#include "mc2_log.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -167,9 +168,10 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
             "The value of shape dim must not be 0"),
         return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context)),
-        OP_LOGE(context->GetNodeName(), "the output's dim0 is invalid"),
-        return ge::GRAPH_FAILED);
+    if (!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context))) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "output", "output_dim0_mismatch", "output dim0 check failed");
+        return ge::GRAPH_FAILED;
+    }
 
     if (context->GetAttrs() == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs");
@@ -570,8 +572,10 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
         context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
     mc2tiling::TilingArgs args;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
-    OP_TILING_CHECK(AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "param is invalid"), return ge::GRAPH_FAILED);
+    if (AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context->GetNodeName(), "AllGatherParamsCheck failed");
+        return ge::GRAPH_FAILED;
+    }
 
     auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(index++);
     auto isTransB = context->GetAttrs()->GetAttrPointer<bool>(index++);

@@ -378,8 +378,10 @@ bool AllGatherMatmulTilingBase::AnalyzeInputs()
 ge::graphStatus AllGatherMatmulTilingBase::AnalyzeShapeAttr()
 {
     opName_ = context_->GetNodeName();
-    OP_TILING_CHECK(((!AnalyzeAttrs()) || (!AnalyzeInputs()) || (!SetCommAlgo())),
-        OP_LOGE(opName_, "fail to analyze context info."), return ge::GRAPH_FAILED);
+    if ((!AnalyzeAttrs()) || (!AnalyzeInputs()) || (!SetCommAlgo())) {
+        OP_LOGE(opName_, "fail to analyze context info.");
+        return ge::GRAPH_FAILED;
+    }
     commAlgorithm_ = static_cast<uint64_t>(args_.commAlg);
     return ge::GRAPH_SUCCESS;
 }
@@ -596,8 +598,10 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "comm_mode", commMode_,
         "The value of comm_mode must be ccu, ai_cpu or empty string"),
         return false);
-    OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), OP_LOGE(opName_, "GetRankSize failed."),
-        return false);
+    if (!mc2tiling::GetRankSize(opName_, group_, rankSize_)) {
+        OP_LOGE(opName_, "GetRankSize failed.");
+        return false;
+    }
     OP_TILING_CHECK(SUPPORT_RANK_SIZE.find(rankSize_) == SUPPORT_RANK_SIZE.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankSize", std::to_string(rankSize_).c_str(),
         "The value of rankSize must be 2, 4, 8, 16, 32 or 64"),

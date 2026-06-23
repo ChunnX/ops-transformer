@@ -140,14 +140,20 @@ inline ge::graphStatus CheckTpAttrs(const char *nodeName, const int64_t tpWorldS
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpWorldSize", std::to_string(tpWorldSize).c_str(),
             (std::string("[0,") + std::to_string(MAX_TP_WORLD_SIZE) + "]").c_str()), return ge::GRAPH_FAILED);
     if (tpWorldSize > 1) {
-        OP_TILING_CHECK((tpRankId < 0) || (tpRankId >= tpWorldSize),
-            OP_LOGE(nodeName, "The valid range of tpRankId is [0, %ld), but acutually got tpRankId=%ld.",
-            tpWorldSize, tpRankId), return ge::GRAPH_FAILED);
+        if ((tpRankId < 0) || (tpRankId >= tpWorldSize)) {
+            std::string reason = "tpRankId should be in [0, tpWorldSize)";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "tp_rank_id",
+                std::to_string(tpRankId).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
         OP_TILING_CHECK((groupTpPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupTpPtr"), return ge::GRAPH_FAILED);
         uint64_t len = strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH);
-        OP_TILING_CHECK((len == 0) || (len == MAX_GROUP_NAME_LENGTH),
-            OP_LOGE(nodeName, "Valid length of groupTp must be in the range (0, %lu), but got strnlen(groupTp)=%lu.",
-            MAX_GROUP_NAME_LENGTH, len), return ge::GRAPH_FAILED);
+        if (len == 0 || len == MAX_GROUP_NAME_LENGTH) {
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "groupTp",
+                std::to_string(len).c_str(),
+                (std::string("length in (0, ") + std::to_string(MAX_GROUP_NAME_LENGTH) + ")").c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else {
         OP_TILING_CHECK(tpRankId != 0,
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "tpRankId", std::to_string(tpRankId).c_str(), "0"),
@@ -162,10 +168,12 @@ inline ge::graphStatus CheckEpAttrs(const char *nodeName, const int64_t epWorldS
 {
     OP_TILING_CHECK(groupEpPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupEpPtr"), return ge::GRAPH_FAILED);
     uint64_t len = strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH);
-    OP_TILING_CHECK((len == 0) || (len == MAX_GROUP_NAME_LENGTH),
-        OP_LOGE(nodeName,
-            "Valid length of groupEp must be in the range (0, %lu), but actually got strnlen(groupEp)=%lu.",
-            MAX_GROUP_NAME_LENGTH, len), return ge::GRAPH_FAILED);
+    if (len == 0 || len == MAX_GROUP_NAME_LENGTH) {
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "groupEp",
+            std::to_string(len).c_str(),
+            (std::string("length in (0, ") + std::to_string(MAX_GROUP_NAME_LENGTH) + ")").c_str());
+        return ge::GRAPH_FAILED;
+    }
     if (OpVersionManager::GetInstance().GetVersion() == OP_VERSION_1) {
         OP_TILING_CHECK((epWorldSize <= 0) || (epWorldSize > MAX_EP_WORLD_SIZE_V1),
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", std::to_string(epWorldSize).c_str(),
@@ -175,9 +183,12 @@ inline ge::graphStatus CheckEpAttrs(const char *nodeName, const int64_t epWorldS
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize", std::to_string(epWorldSize).c_str(),
                 (std::string("[") + std::to_string(MIN_EP_WORLD_SIZE_V2) + "," + std::to_string(MAX_EP_WORLD_SIZE_V2) + "]").c_str()), return ge::GRAPH_FAILED);
     }
-    OP_TILING_CHECK((epRankId < 0) || (epRankId >= epWorldSize),
-        OP_LOGE(nodeName, "The valid range of epRankId is [0, %ld), but acutually got epRankId=%ld.",
-        epWorldSize, epRankId), return ge::GRAPH_FAILED);
+    if ((epRankId < 0) || (epRankId >= epWorldSize)) {
+        std::string reason = "epRankId should be in [0, epWorldSize)";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "ep_rank_id",
+            std::to_string(epRankId).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     groupEp = std::string(groupEpPtr);
     return ge::GRAPH_SUCCESS;
 }
@@ -185,10 +196,13 @@ inline ge::graphStatus CheckEpAttrs(const char *nodeName, const int64_t epWorldS
 inline ge::graphStatus CheckQuantAndExpertAttrs(const char *nodeName, const int64_t sharedExpertNum,
     const int64_t quantMode, const int64_t expertTokenNumsType)
 {
-    OP_TILING_CHECK((quantMode < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
-        (quantMode >= static_cast<int64_t>(QuantModeA5::BUTT)),
-        OP_LOGE(nodeName, "The valid range of quantMode is [0, %ld), but actually got quantMode=%ld.",
-        static_cast<int64_t>(QuantModeA5::BUTT), quantMode), return ge::GRAPH_FAILED);
+    if ((quantMode < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
+        (quantMode >= static_cast<int64_t>(QuantModeA5::BUTT))) {
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "quantMode",
+            std::to_string(quantMode).c_str(),
+            (std::string("[0, ") + std::to_string(static_cast<int64_t>(QuantModeA5::BUTT)) + ")").c_str());
+        return ge::GRAPH_FAILED;
+    }
     if (OpVersionManager::GetInstance().GetVersion() == OP_VERSION_1) {
         OP_TILING_CHECK(sharedExpertNum != 1, OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(sharedExpertNum).c_str(), "1"),
             return ge::GRAPH_FAILED);
@@ -207,10 +221,12 @@ inline ge::graphStatus CheckSharedExpertAttrs(const char *nodeName, const int64_
 {
     OP_TILING_CHECK(expertShard != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertShardType", std::to_string(expertShard).c_str(), "0"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((sharedExpertRankNum < 0) || (sharedExpertRankNum >= epWorldSize),
-        OP_LOGE(nodeName,
-            "The valid range of sharedExpertRankNum is [0, %ld), but actually got sharedExpertRankNum=%ld.",
-            epWorldSize, sharedExpertRankNum), return ge::GRAPH_FAILED);
+    if ((sharedExpertRankNum < 0) || (sharedExpertRankNum >= epWorldSize)) {
+        std::string reason = "sharedExpertRankNum should be in [0, epWorldSize)";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "shared_expert_rank_num",
+            std::to_string(sharedExpertRankNum).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -232,30 +248,37 @@ inline ge::graphStatus CheckOutputDataType(const gert::TilingContext *context,
     const char *nodeName, const int64_t quantMode)
 {
     auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
-    OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE(nodeName, "Failed to get expandX datatype."),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((quantMode == static_cast<int64_t>(QuantModeA5::NON_QUANT))
-        && (NON_QUANT_DTYPE.find(static_cast<ge::DataType>(expandXDesc->GetDataType())) == NON_QUANT_DTYPE.end()),
-        OP_LOGE(nodeName,
-        "Invalid expandX datatype for quantMode %ld. Only bf16/fp16/hif8/fp8_e4m3fn/fp8_e5m2 is supported, but got %s.",
-        quantMode, Ops::Base::ToString(expandXDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((quantMode == static_cast<int64_t>(QuantModeA5::STATIC_QUANT))
-        && (expandXDesc->GetDataType() != ge::DT_HIFLOAT8) && (expandXDesc->GetDataType() != ge::DT_INT8),
-        OP_LOGE(nodeName, "Invalid expandX datatype for quantMode %ld. Only int8/hif8 is supported, but got %s.",
-        quantMode, Ops::Base::ToString(expandXDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((quantMode == static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT))
+    if (expandXDesc == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandXDesc");
+        return ge::GRAPH_FAILED;
+    }
+    std::string dtypeStr = Ops::Base::ToString(expandXDesc->GetDataType());
+    if ((quantMode == static_cast<int64_t>(QuantModeA5::NON_QUANT))
+        && (NON_QUANT_DTYPE.find(static_cast<ge::DataType>(expandXDesc->GetDataType())) == NON_QUANT_DTYPE.end())) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "expandX", dtypeStr.c_str(),
+            "Only bf16/fp16/hif8/fp8_e4m3fn/fp8_e5m2 is supported for NON_QUANT mode");
+        return ge::GRAPH_FAILED;
+    }
+    if ((quantMode == static_cast<int64_t>(QuantModeA5::STATIC_QUANT))
+        && (expandXDesc->GetDataType() != ge::DT_HIFLOAT8) && (expandXDesc->GetDataType() != ge::DT_INT8)) {
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX", dtypeStr.c_str(), "HIFLOAT8 or INT8");
+        return ge::GRAPH_FAILED;
+    }
+    if ((quantMode == static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT))
         && (expandXDesc->GetDataType() != ge::DT_INT8) && (expandXDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)
-        && (expandXDesc->GetDataType() != ge::DT_FLOAT8_E5M2),
-        OP_LOGE(nodeName,
-        "Invalid expandX datatype for quantMode %ld. Only int8/fp8_e4m3fn/fp8_e5m2 is supported, but got %s.",
-        quantMode, Ops::Base::ToString(expandXDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(((quantMode == static_cast<int64_t>(QuantModeA5::PERGROUP_DYNAMIC_QUANT))
+        && (expandXDesc->GetDataType() != ge::DT_FLOAT8_E5M2)) {
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX", dtypeStr.c_str(),
+            "INT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
+        return ge::GRAPH_FAILED;
+    }
+    if (((quantMode == static_cast<int64_t>(QuantModeA5::PERGROUP_DYNAMIC_QUANT))
         || (quantMode == static_cast<int64_t>(QuantModeA5::MX_QUANT)))
         && (expandXDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)
-        && (expandXDesc->GetDataType() != ge::DT_FLOAT8_E5M2),
-        OP_LOGE(nodeName,
-        "Invalid expandX datatype for quantMode %ld. Only fp8_e4m3fn/fp8_e5m2 is supported, but got %s.",
-        quantMode, Ops::Base::ToString(expandXDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+        && (expandXDesc->GetDataType() != ge::DT_FLOAT8_E5M2)) {
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX", dtypeStr.c_str(),
+            "FLOAT8_E4M3FN or FLOAT8_E5M2");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -395,45 +418,72 @@ inline uint32_t CheckQuantModeAndExpandXType(const gert::TilingContext *context,
 static ge::graphStatus CheckQuantModeAndScales(const gert::TilingContext *context, const char *nodeName,
     bool isScales, const uint32_t quantMode)
 {
-    OP_TILING_CHECK(isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)),
-        OP_LOGE(nodeName, "The scales should be nullptr when quantMode is %u.",
-        quantMode), return ge::GRAPH_FAILED);
+    if (isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT))) {
+        std::string reason = "scales must be nullptr when quantMode is MX_QUANT";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
+            "provided", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     auto xDesc = context->GetInputDesc(X_INDEX);
-    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))
-        && ((xDesc->GetDataType() == ge::DT_BF16) || (xDesc->GetDataType() == ge::DT_FLOAT16)),
-        OP_LOGE(nodeName, "The scales should be nullptr when quantMode is %u and X datatype is %s.",
-        quantMode, Ops::Base::ToString(xDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))
+    if (xDesc == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc");
+        return ge::GRAPH_FAILED;
+    }
+    std::string xDtypeStr = Ops::Base::ToString(xDesc->GetDataType());
+    if (isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))
+        && ((xDesc->GetDataType() == ge::DT_BF16) || (xDesc->GetDataType() == ge::DT_FLOAT16))) {
+        std::string reason = "scales must be nullptr when quantMode is NON_QUANT and x dtype is " + xDtypeStr;
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
+            "provided", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (!isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))
         && ((xDesc->GetDataType() == ge::DT_HIFLOAT8) || (xDesc->GetDataType() == ge::DT_FLOAT8_E5M2)
-        || (xDesc->GetDataType() == ge::DT_FLOAT8_E4M3FN)),
-        OP_LOGE(nodeName, "The scales should not be nullptr when quantMode is %u and X datatype is %s.",
-        quantMode, Ops::Base::ToString(xDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT)),
-        OP_LOGE(nodeName, "The scales should not be nullptr when quantMode is %u.",
-        quantMode), return ge::GRAPH_FAILED);
+        || (xDesc->GetDataType() == ge::DT_FLOAT8_E4M3FN))) {
+        std::string reason = "scales must be provided when quantMode is NON_QUANT and x dtype is " + xDtypeStr;
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
+            "not provided", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (!isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT))) {
+        std::string reason = "scales must be provided when quantMode is STATIC_QUANT";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
+            "not provided", reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 inline ge::graphStatus CheckEpWorldSizeV1(const char *nodeName, uint32_t epWorldSize, uint32_t sharedExpertRankNum)
 {
     // 校验ep能否均分共享专家
-    OP_TILING_CHECK((sharedExpertRankNum != 0) && (epWorldSize % sharedExpertRankNum != 0),
-        OP_LOGE(nodeName, "epWorldSize should be non-zero and divisible by sharedExpertRankNum, but epWorldSize=%u, "
-        "sharedExpertRankNum=%u.", epWorldSize, sharedExpertRankNum), return ge::GRAPH_FAILED);
+    if ((sharedExpertRankNum != 0) && (epWorldSize % sharedExpertRankNum != 0)) {
+        std::string valueStr = "epWorldSize=" + std::to_string(epWorldSize) +
+            ", sharedExpertRankNum=" + std::to_string(sharedExpertRankNum);
+        std::string reason = "epWorldSize should be divisible by sharedExpertRankNum when sharedExpertRankNum != 0";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "epWorldSize and sharedExpertRankNum",
+            valueStr.c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     // Only the value 4 or 2 is supported currently
     if ((epWorldSize == EP_WORLD_SIZE_FOUR) || (epWorldSize == EP_WORLD_SIZE_TWO)) {
         OP_LOGD(nodeName, "epWorldSize=%u, skip validation\n", epWorldSize);
     } else {
         // 检验epWorldSize是否是8的倍数
-        OP_TILING_CHECK(epWorldSize % 8 != 0, OP_LOGE(nodeName,
-            "epWorldSize must be a multiple of 8, but got epWorldSize=%u.",
-            epWorldSize), return ge::GRAPH_FAILED);
+        if (epWorldSize % 8 != 0) {
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize",
+                std::to_string(epWorldSize).c_str(),
+                "a multiple of 8 when not 2 or 4");
+            return ge::GRAPH_FAILED;
+        }
 
-        OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0), OP_LOGE(nodeName,
-            "The value of epWorldSize must be in the list[8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize=%u.",
-            epWorldSize), return ge::GRAPH_FAILED);
+        if ((256 % epWorldSize != 0) && (epWorldSize % 144 != 0)) {
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize",
+                std::to_string(epWorldSize).c_str(),
+                "one of [8, 16, 32, 64, 128, 144, 256, 288]");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }

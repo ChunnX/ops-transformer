@@ -189,35 +189,52 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     const auto globalBs = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_GLOBAL_BS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, globalBs);
 
-    OP_CHECK_IF((*epRankId < 0) || (*epRankId >= *epWorldSize),
-        OP_LOGE(context->GetNodeName(), "epRankId shoule be in [0, epWorldSize), but got"
-        " epWorldSize: %ld, epRankId: %ld.", *epWorldSize, *epRankId), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((*sharedExpertRankNum < 0) || (*sharedExpertRankNum >= *epWorldSize),
-        OP_LOGE(context->GetNodeName(), "sharedExpertRankNum shoule be in [0, epWorldSize), but got"
-        " epWorldSize: %ld, sharedExpertRankNum: %ld.", *epWorldSize, *sharedExpertRankNum), return ge::GRAPH_FAILED);
+    if ((*epRankId < 0) || (*epRankId >= *epWorldSize)) {
+        std::string reason = "ep_rank_id should be in [0, epWorldSize)";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "ep_rank_id",
+            std::to_string(*epRankId).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((*sharedExpertRankNum < 0) || (*sharedExpertRankNum >= *epWorldSize)) {
+        std::string reason = "shared_expert_rank_num should be in [0, epWorldSize)";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "shared_expert_rank_num",
+            std::to_string(*sharedExpertRankNum).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     bool isSharedDefault = ((*sharedExpertNum == 1) && (*sharedExpertRankNum == 0));
     bool isNoShared = ((*sharedExpertNum == 0) && (*sharedExpertRankNum == 0));
     bool isValidShared = ((*sharedExpertNum > 0)
                         && ((*sharedExpertRankNum / *sharedExpertNum) > 0)
                         && ((*sharedExpertRankNum % *sharedExpertNum) == 0));
     bool isSharedSettingValid = (isSharedDefault || isNoShared || isValidShared);
-    OP_CHECK_IF(!isSharedSettingValid,
-        OP_LOGE(context->GetNodeName(), "Shared expert setting invalid, got"
-        " sharedExpertRankNum: %ld, sharedExpertNum: %ld.", *sharedExpertRankNum, *sharedExpertNum),
-        return ge::GRAPH_FAILED);
+    if (!isSharedSettingValid) {
+        std::string valueStr = "sharedExpertRankNum=" + std::to_string(*sharedExpertRankNum) +
+            ", sharedExpertNum=" + std::to_string(*sharedExpertNum);
+        std::string reason = "shared_expert_rank_num and shared_expert_num combination is invalid";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(),
+            "shared_expert_rank_num and shared_expert_num", valueStr.c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
     int64_t moeRankNum = *epWorldSize - *sharedExpertRankNum;
-    OP_CHECK_IF(moeRankNum <= 0, OP_LOGE(context->GetNodeName(), "moeRankNum(epWorldSize - sharedExpertRankNum)"
-        " should be larger than 0, but got %ld.", moeRankNum), return ge::GRAPH_FAILED);
+    if (moeRankNum <= 0) {
+        std::string reason = "moeRankNum (epWorldSize - sharedExpertRankNum) should be larger than 0";
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "ep_world_size and shared_expert_rank_num",
+            std::to_string(moeRankNum).c_str(), reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     int64_t bs = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(0));
     int64_t h = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(1));
     int64_t bsTmp = expertIdsShape->GetDimNum() == 1U ? NEG_ONE : expertIdsShape->GetDim(0);
     int64_t k = ((expertIdsShape->GetDimNum() == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
 
-    OP_CHECK_IF((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0),
-        OP_LOGE(context->GetNodeName(), "Input shape of xShape or input shape of expertIdsShape is incorrect, "
-        "xShape [%ld, %ld], expertIdsShape [%ld, %ld]", bs, h, bsTmp, k),
-        return ge::GRAPH_FAILED);
+    if ((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0)) {
+        std::string shapeStr = std::string("x[") + std::to_string(bs) + "," + std::to_string(h) + "]" +
+            ", expert_ids[" + std::to_string(bsTmp) + "," + std::to_string(k) + "]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x and expert_ids",
+            shapeStr.c_str(), "Each dim of x and expert_ids must be positive");
+        return ge::GRAPH_FAILED;
+    }
 
     int64_t a;
     int64_t localExpertNum;
@@ -316,26 +333,30 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
 static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context, const int64_t *quantMode, int64_t yDtype)
 {
     if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_STATIC) {
-        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
-                    (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8)),
-        OP_LOGE(context->GetNodeName(), "when quantmode is static quant, ydtype must be int8 or hifloat8"),
-        return ge::GRAPH_FAILED);
+        if ((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
+            (yDtype != static_cast<int64_t>(ge::DT_HIFLOAT8))) {
+            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "y_dtype",
+                std::to_string(yDtype).c_str(), "INT8 or HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
     } else if (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERTOKEN) {
-        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
-                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
-                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)),
-        OP_LOGE(context->GetNodeName(), "when quantmode is dynamic quant, ydtype must be int8 or "
-                "float8_e4m3fn or float8_e5m2"),
-        return ge::GRAPH_FAILED);
+        if ((yDtype != static_cast<int64_t>(ge::DT_INT8)) &&
+            (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+            (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2))) {
+            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "y_dtype",
+                std::to_string(yDtype).c_str(), "INT8 or FLOAT8_E4M3FN or FLOAT8_E5M2");
+            return ge::GRAPH_FAILED;
+        }
     } else if ((static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERGROUP) ||
                (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_MX)) {
-        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
-                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
-                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E2M1)) &&
-                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E1M2)),
-        OP_LOGE(context->GetNodeName(), "when quantmode is pergoup or mxfp8 quant, "
-                "ydtype must be float8_e4m3fn, float8_e5m2, float4_e2m1 or float4_e1m2"),
-        return ge::GRAPH_FAILED);
+        if ((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+            (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
+            (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E2M1)) &&
+            (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E1M2))) {
+            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "y_dtype",
+                std::to_string(yDtype).c_str(), "FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1 or FLOAT4_E1M2");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;

@@ -118,7 +118,7 @@ bool MoeDistributeCombineTilingHelper::CheckTensorDim(gert::TilingContext *conte
 {
     OP_TILING_CHECK(!CheckInputTensorDim(context, nodeName) || !CheckInputSendCountsTensorDim(context, nodeName) ||
                     !CheckInputExpertScalesTensorDim(context, nodeName) || !CheckOutputTensorDim(context, nodeName),
-                    OP_LOGE(nodeName, "Input param shape is invalid."), return false);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "inputs/outputs", "", "Input/output param shape is invalid."), return false);
 
     // x_active_mask当前不支持传入
     // A3/A5 v1接口的x_active_mask不支持传入
@@ -129,7 +129,8 @@ bool MoeDistributeCombineTilingHelper::CheckTensorDim(gert::TilingContext *conte
             return false);
     }
 
-    OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName), OP_LOGE(nodeName, "Output param shape is invalid."),
+    OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x(output)", "", "Output param shape is invalid."),
                     return false);
 
     return true;
@@ -152,9 +153,10 @@ inline bool MoeDistributeCombineTilingHelper::CheckActiveMask(const gert::Tiling
     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "xActiveMask",
         Ops::Base::ToString(xActiveMaskDesc->GetDataType()).c_str(), "The dtype of xActiveMask must be bool."),
     return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "xActiveMask format is invalid."), return false);
+    auto xActiveMaskFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat()));
+    OP_TILING_CHECK(xActiveMaskFmt == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "xActiveMask",
+                        Ops::Base::ToString(xActiveMaskFmt).c_str(), "FRACTAL_NZ"), return false);
 
     return true;
 }
@@ -220,44 +222,52 @@ bool MoeDistributeCombineTilingHelper::CheckTensorFormat(const gert::TilingConte
 {
     auto expandXDesc = context->GetInputDesc(EXPAND_X_INDEX);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expandxDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "expandXFormat is invalid"), return false);
+    auto expandXFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat()));
+    OP_TILING_CHECK(expandXFormat == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expandX",
+                        Ops::Base::ToString(expandXFormat).c_str(), "FRACTAL_NZ"), return false);
 
     auto expertIdsDesc = context->GetInputDesc(EXPERT_IDS_INDEX);
     OP_TILING_CHECK(expertIdsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expertIdsDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "expertIdsFormat is invalid"), return false);
+    auto expertIdsFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat()));
+    OP_TILING_CHECK(expertIdsFormat == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertIds",
+                        Ops::Base::ToString(expertIdsFormat).c_str(), "FRACTAL_NZ"), return false);
 
     auto expandIdxDesc = context->GetInputDesc(EXPAND_IDX_INDEX);
     OP_TILING_CHECK(expandIdxDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expandIdxDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expandIdxDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "expandIdxFormat is invalid"), return false);
+    auto expandIdxFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandIdxDesc->GetStorageFormat()));
+    OP_TILING_CHECK(expandIdxFormat == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expandIdx",
+                        Ops::Base::ToString(expandIdxFormat).c_str(), "FRACTAL_NZ"), return false);
 
     auto epSendCountsDesc = context->GetInputDesc(EP_SEND_COUNTS_INDEX);
     OP_TILING_CHECK(epSendCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"epSendCountsDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(epSendCountsDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "epSendCountsFormat is invalid"), return false);
+    auto epSendCountsFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(epSendCountsDesc->GetStorageFormat()));
+    OP_TILING_CHECK(epSendCountsFormat == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epSendCounts",
+                        Ops::Base::ToString(epSendCountsFormat).c_str(), "FRACTAL_NZ"), return false);
 
     auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
     OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"tpSendCountsDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "tpSendCountsFormat is invalid"), return false);
+    auto tpSendCountsFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat()));
+    OP_TILING_CHECK(tpSendCountsFmt == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tpSendCounts",
+                        Ops::Base::ToString(tpSendCountsFmt).c_str(), "FRACTAL_NZ"), return false);
 
     auto expertScalesDesc = context->GetInputDesc(EXPERT_SCALES_INDEX);
     OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"expertScalesDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "expertScalesFormat is invalid"), return false);
+    auto expertScalesFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat()));
+    OP_TILING_CHECK(expertScalesFmt == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertScales",
+                        Ops::Base::ToString(expertScalesFmt).c_str(), "FRACTAL_NZ"), return false);
 
     auto xDesc = context->GetOutputDesc(OUTPUT_X_INDEX);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"xDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "xFormat is invalid"), return false);
+    auto xFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
+    OP_TILING_CHECK(xFmt == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x",
+                        Ops::Base::ToString(xFmt).c_str(), "FRACTAL_NZ"), return false);
     return true;
 }
 
@@ -265,13 +275,16 @@ ge::graphStatus MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombin
                                                                                   const char *nodeName)
 {
     // 检查参数shape信息
-    OP_TILING_CHECK(!CheckTensorDim(context, nodeName), OP_LOGE(nodeName, "param shape is invalid"),
+    OP_TILING_CHECK(!CheckTensorDim(context, nodeName),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "tensor dims", "", "param shape is invalid"),
                     return ge::GRAPH_FAILED);
     // 检查参数dataType信息
-    OP_TILING_CHECK(!CheckTensorDataType(context, nodeName), OP_LOGE(nodeName, "param dataType is invalid"),
+    OP_TILING_CHECK(!CheckTensorDataType(context, nodeName),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "tensor", "", "param dataType is invalid"),
                     return ge::GRAPH_FAILED);
     // 检查参数format信息
-    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName), OP_LOGE(nodeName, "param Format is invalid"),
+    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName),
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tensor", "", "param Format is invalid"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -280,18 +293,22 @@ ge::graphStatus MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombin
     const char *nodeName, const bool isTokenMask)
 {
     // 检查参数shape信息
-    OP_TILING_CHECK(!CheckTensorDim(context, nodeName), OP_LOGE(nodeName, "param shape is invalid"),
+    OP_TILING_CHECK(!CheckTensorDim(context, nodeName),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "tensor dims", "", "param shape is invalid"),
                     return ge::GRAPH_FAILED);
     // 检查参数dataType信息
-    OP_TILING_CHECK(!CheckTensorDataType(context, nodeName), OP_LOGE(nodeName, "param dataType is invalid"),
+    OP_TILING_CHECK(!CheckTensorDataType(context, nodeName),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "tensor", "", "param dataType is invalid"),
                     return ge::GRAPH_FAILED);
     // 检查参数format信息
-    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName), OP_LOGE(nodeName, "param Format is invalid"),
+    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName),
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tensor", "", "param Format is invalid"),
                     return ge::GRAPH_FAILED);
     // 检查ActiveMask信息
     if ((OpVersionManager::GetInstance().GetVersion() != OP_VERSION_1) && isTokenMask) {
-        OP_TILING_CHECK(!CheckActiveMask(context, nodeName), OP_LOGE(nodeName, "xActiveMask is invalid."),
-        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!CheckActiveMask(context, nodeName),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "xActiveMask", "", "xActiveMask is invalid."),
+                        return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
