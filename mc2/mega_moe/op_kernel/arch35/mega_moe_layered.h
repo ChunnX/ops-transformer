@@ -555,6 +555,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrma(int32_t localExpertId)
 {
+    PRINTF("Level1DispatchUrma begin: localExpertId=%d, blockIdx_=%d, blockNum_=%d, serverNum_=%d\n",
+        localExpertId, blockIdx_, blockNum_, serverNum_);
     uint32_t senderCoreNum = (serverNum_ < blockNum_) ? serverNum_ : blockNum_;
     bool isSenderCore = blockIdx_ < senderCoreNum;
     uint32_t computeCoreNum = blockNum_ - senderCoreNum;
@@ -565,6 +567,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     bool isComputeCore = useSenderAsCompute || (blockIdx_ >= senderCoreNum);
     uint32_t computeIdx = useSenderAsCompute ? blockIdx_ : (blockIdx_ - senderCoreNum);
     if (isComputeCore) {
+        PRINTF("Level1DispatchUrma compute core: blockIdx_=%d, computeIdx=%d, realComputeCoreNum=%d\n",
+            blockIdx_, computeIdx, realComputeCoreNum);
         uint32_t baseTokenNum = m_ / realComputeCoreNum;
         uint32_t tokenRemainder = m_ % realComputeCoreNum;
         uint32_t tokenNumInCore = baseTokenNum + static_cast<uint32_t>(computeIdx < tokenRemainder);
@@ -606,6 +610,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     }
 
     if (isSenderCore) {
+        PRINTF("Level1DispatchUrma sender core: blockIdx_=%d, senderCoreNum=%d, realComputeCoreNum=%d\n",
+            blockIdx_, senderCoreNum, realComputeCoreNum);
         __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDonePtr);
         __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendCursorPtr);
         for (uint32_t targetServerForSender = blockIdx_; targetServerForSender < serverNum_;
@@ -664,6 +670,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
             }
         }
     }
+    PRINTF("Level1DispatchUrma end: localExpertId=%d, blockIdx_=%d, blockNum_=%d, serverNum_=%d\n",
+        localExpertId, blockIdx_, blockNum_, serverNum_);
 }
 
 // ==================================================
