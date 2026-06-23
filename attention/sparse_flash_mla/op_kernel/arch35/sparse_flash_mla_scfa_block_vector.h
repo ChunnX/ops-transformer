@@ -539,7 +539,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                 }
             }
             LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
-            InitSoftmaxFromSinks<T>(sumUb, maxUb, sinksUb, sinksOffset, R0, runInfo.halfMRealSize);
+            DataCopy(maxUb, sinksUb[sinksOffset], runInfo.halfMRealSize);
+            DuplicateSumWithR0<T>(sumUb, R0, runInfo.halfMRealSize);
         }
         if (likely(runInfo.s2RealSize == 128 && runInfo.s2RealSizeUpdate == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
