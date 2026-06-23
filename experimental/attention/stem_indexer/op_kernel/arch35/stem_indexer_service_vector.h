@@ -486,11 +486,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             
             uint32_t s2BlockValidLenAlign256 = SICommon::Align(s2BlockValidLen, trunkLen_);
 
-            if (isFirstS2InnerLoop) {
-                // ===== 第一个基本块：独立TopK =====
-                // mrgValueLocal_的topk的位置在首块需要刷0
-                Duplicate(mrgValueLocal_[mrgValueOffset], (uint32_t)zero, topkSelectNumAlign256);
-            } else {
+            if (!isFirstS2InnerLoop) {
                 // ===== 非第一个基本块：合并上一轮TopK结果的score + 当前基本块score =====
                 // 两个dulicate实现topkSelectNum - topkSelectNumAlign256 非对齐补0
                 if (topkSelectNumAlign256 != (uint32_t)topkSelectNum) {
@@ -510,23 +506,24 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256 + s2BlockValidLen / VEC_REPEAT_SIZE * VEC_REPEAT_SIZE + VEC_REPEAT_SIZE], (uint32_t)zero,
                             s2BlockValidLenAlign256 - (s2BlockValidLen / VEC_REPEAT_SIZE * VEC_REPEAT_SIZE + VEC_REPEAT_SIZE));
             }
+
+            // topk UB复用 resMm1Local_
+            LocalTensor<uint32_t> reuseMm1ResLocal = resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
+            
             if (isFirstS2InnerLoop) {
                 // 如果是首块，需要把initBlock的位置刷0
                 if (initialBlocks_ > 0) {
                     PipeBarrier<PIPE_V>();
                     Duplicate(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256], (uint32_t)zero, (uint32_t)initialBlocks_);
                 }
-            }
-            PipeBarrier<PIPE_V>();
-            // topk UB复用 resMm1Local_
-            LocalTensor<uint32_t> reuseMm1ResLocal = resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
-            topkOp_(mrgValueLocal_[mrgValueOffset], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
-                    topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
-            PipeBarrier<PIPE_V>();
-            // 如果是首块，因为mrgValueLocal_的前topkSelectNumAlign256的位置没有数据，这里需要把偏移值减掉
-            if (isFirstS2InnerLoop) {
-                Subs(indicesOutLocal_.ReinterpretCast<int32_t>(), indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)topkSelectNumAlign256, s2BlockValidLenAlign256);
                 PipeBarrier<PIPE_V>();
+                // 如果是首块，因为mrgValueLocal_的前topkSelectNumAlign256的位置没有数据，这里需要把对应位置偏移掉
+                topkOp_(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
+                        s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
+            } else {
+                PipeBarrier<PIPE_V>();
+                topkOp_(mrgValueLocal_[mrgValueOffset], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
+                    topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
             }
             copyCount = topkSelectNumAlign256;
             copyMask = (copyCount <= VEC_REPEAT_SIZE) ? copyCount : VEC_REPEAT_SIZE;
@@ -539,9 +536,9 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 globalGIdx = nowCurAivGS1Idx / info.actS1Size;
                 globalS1Idx = nowCurAivGS1Idx % info.actS1Size; 
                 baseOutOffset = info.indiceOutOffset + ((int64_t)globalGIdx * constInfo_.qSeqSize + globalS1Idx) * constInfo_.kSeqSize;
-
+                // 等待前面的copy结束
+                PipeBarrier<PIPE_V>();
                 if (initialBlocks_ > 0) {
-                    PipeBarrier<PIPE_V>();
                     CreateVecIndex(mrgValueLocal_[mrgValueOffset].ReinterpretCast<int32_t>(),
                                              (int32_t)zero, initialBlocks_);
                     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -550,7 +547,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                     DataCopyPad(sparseIndicesGm[baseOutOffset],
                                          mrgValueLocal_[mrgValueOffset].ReinterpretCast<int32_t>(), copyOutParams);
                 }
-
                 copyOutParams.blockLen = (uint16_t)((uint32_t)topkSelectNum * sizeof(int32_t));
                 DataCopyPad(sparseIndicesGm[baseOutOffset + initialBlocks_],
                                      globalIndexLocal_[globalIndexOffset].ReinterpretCast<int32_t>(), copyOutParams);
