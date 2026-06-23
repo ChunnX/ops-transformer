@@ -276,6 +276,206 @@ class TransformerStAccuracyTest(unittest.TestCase):
             },
         )
 
+    def test_cmd_run_prepares_pkg_before_real_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_dir = root / "out"
+            operator = Operator(name="real_op", category="attention", path=Path("attention/real_op"))
+            case = StCase(
+                op_name="real_op",
+                category="attention",
+                op_path=Path("attention/real_op"),
+                api_dir="aclnnReal",
+                aclnn_name="Real",
+                json_path=Path("attention/real_op/tests/st/aclnnReal/all.json"),
+                case_id=0,
+                raw={"inputs": []},
+            )
+            load_result = st_cases_module.CaseLoadResult(cases=[case], skipped_assets=[])
+            discovery_report = {
+                "operators": [{"op": "real_op", "category": "attention", "path": "attention/real_op", "apis": ["Real"], "cases": 1}],
+                "operator_count": 1,
+                "case_count": 1,
+                "missing_ops": [],
+                "zero_case_ops": [],
+                "skipped_assets": [],
+            }
+            prepare_calls = []
+            run_calls = []
+
+            original_repo_root = run_st_accuracy._repo_root
+            original_discover_and_load = run_st_accuracy._discover_and_load
+            original_prepare_pkg = run_st_accuracy.prepare_pkg
+            original_run_cases = run_st_accuracy.run_cases
+            run_st_accuracy._repo_root = lambda: root
+            run_st_accuracy._discover_and_load = lambda *_args, **_kwargs: ([operator], load_result, discovery_report)
+            run_st_accuracy.prepare_pkg = lambda *args, **kwargs: prepare_calls.append((args, kwargs))
+
+            def fake_run_cases(*args, **kwargs):
+                run_calls.append((args, kwargs))
+                return [case.to_result(status="passed", message="ok")]
+
+            run_st_accuracy.run_cases = fake_run_cases
+            try:
+                rc = run_st_accuracy._cmd_run(
+                    run_st_accuracy.argparse.Namespace(
+                        ops="real_op",
+                        apis=None,
+                        dtype=None,
+                        case_ids=None,
+                        limit=None,
+                        out=str(out_dir),
+                        soc="ascend910b",
+                        vendor="custom",
+                        device=0,
+                        prepare="none",
+                        jobs=16,
+                        opt="3",
+                        json_pattern="all_*.json",
+                        no_execute=False,
+                    )
+                )
+            finally:
+                run_st_accuracy._repo_root = original_repo_root
+                run_st_accuracy._discover_and_load = original_discover_and_load
+                run_st_accuracy.prepare_pkg = original_prepare_pkg
+                run_st_accuracy.run_cases = original_run_cases
+            summary_exists = (out_dir / "summary.json").exists()
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(prepare_calls), 1)
+        self.assertEqual(prepare_calls[0][0], (root, ["real_op"], "ascend910b", "custom"))
+        self.assertEqual(prepare_calls[0][1], {"jobs": 16, "opt_level": "3"})
+        self.assertEqual(len(run_calls), 1)
+        self.assertTrue(summary_exists)
+
+    def test_cmd_run_no_execute_does_not_prepare_pkg(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_dir = root / "out"
+            operator = Operator(name="static_op", category="attention", path=Path("attention/static_op"))
+            case = StCase(
+                op_name="static_op",
+                category="attention",
+                op_path=Path("attention/static_op"),
+                api_dir="aclnnStatic",
+                aclnn_name="Static",
+                json_path=Path("attention/static_op/tests/st/aclnnStatic/all.json"),
+                case_id=0,
+                raw={"inputs": []},
+            )
+            load_result = st_cases_module.CaseLoadResult(cases=[case], skipped_assets=[])
+            discovery_report = {
+                "operators": [{"op": "static_op", "category": "attention", "path": "attention/static_op", "apis": ["Static"], "cases": 1}],
+                "operator_count": 1,
+                "case_count": 1,
+                "missing_ops": [],
+                "zero_case_ops": [],
+                "skipped_assets": [],
+            }
+            prepare_calls = []
+            run_calls = []
+
+            original_repo_root = run_st_accuracy._repo_root
+            original_discover_and_load = run_st_accuracy._discover_and_load
+            original_prepare_pkg = run_st_accuracy.prepare_pkg
+            original_run_cases = run_st_accuracy.run_cases
+            run_st_accuracy._repo_root = lambda: root
+            run_st_accuracy._discover_and_load = lambda *_args, **_kwargs: ([operator], load_result, discovery_report)
+            run_st_accuracy.prepare_pkg = lambda *args, **kwargs: prepare_calls.append((args, kwargs))
+
+            def fake_run_cases(*args, **kwargs):
+                run_calls.append((args, kwargs))
+                return [case.to_result(status="skipped", message="execution disabled")]
+
+            run_st_accuracy.run_cases = fake_run_cases
+            try:
+                rc = run_st_accuracy._cmd_run(
+                    run_st_accuracy.argparse.Namespace(
+                        ops="static_op",
+                        apis=None,
+                        dtype=None,
+                        case_ids=None,
+                        limit=None,
+                        out=str(out_dir),
+                        soc="ascend910b",
+                        vendor="custom",
+                        device=0,
+                        prepare="none",
+                        jobs=16,
+                        opt="3",
+                        json_pattern="all_*.json",
+                        no_execute=True,
+                    )
+                )
+            finally:
+                run_st_accuracy._repo_root = original_repo_root
+                run_st_accuracy._discover_and_load = original_discover_and_load
+                run_st_accuracy.prepare_pkg = original_prepare_pkg
+                run_st_accuracy.run_cases = original_run_cases
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(prepare_calls, [])
+        self.assertEqual(len(run_calls), 1)
+        self.assertFalse(run_calls[0][1]["execute"])
+
+    def test_cmd_run_discovery_gate_failure_does_not_prepare_pkg(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            load_result = st_cases_module.CaseLoadResult(cases=[], skipped_assets=[])
+            discovery_report = {
+                "operators": [],
+                "operator_count": 0,
+                "case_count": 0,
+                "missing_ops": ["missing_op"],
+                "zero_case_ops": [],
+                "skipped_assets": [],
+            }
+            prepare_calls = []
+            run_calls = []
+
+            original_repo_root = run_st_accuracy._repo_root
+            original_discover_and_load = run_st_accuracy._discover_and_load
+            original_prepare_pkg = run_st_accuracy.prepare_pkg
+            original_run_cases = run_st_accuracy.run_cases
+            run_st_accuracy._repo_root = lambda: root
+            run_st_accuracy._discover_and_load = lambda *_args, **_kwargs: ([], load_result, discovery_report)
+            run_st_accuracy.prepare_pkg = lambda *args, **kwargs: prepare_calls.append((args, kwargs))
+
+            def fake_run_cases(*args, **kwargs):
+                run_calls.append((args, kwargs))
+                return []
+
+            run_st_accuracy.run_cases = fake_run_cases
+            try:
+                rc = run_st_accuracy._cmd_run(
+                    run_st_accuracy.argparse.Namespace(
+                        ops="missing_op",
+                        apis=None,
+                        dtype=None,
+                        case_ids=None,
+                        limit=None,
+                        out=str(root / "out"),
+                        soc="ascend910b",
+                        vendor="custom",
+                        device=0,
+                        prepare="none",
+                        jobs=16,
+                        opt="3",
+                        json_pattern="all_*.json",
+                        no_execute=False,
+                    )
+                )
+            finally:
+                run_st_accuracy._repo_root = original_repo_root
+                run_st_accuracy._discover_and_load = original_discover_and_load
+                run_st_accuracy.prepare_pkg = original_prepare_pkg
+                run_st_accuracy.run_cases = original_run_cases
+
+        self.assertEqual(rc, 1)
+        self.assertEqual(prepare_calls, [])
+        self.assertEqual(run_calls, [])
+
     def test_cli_coverage_and_taxonomy_summaries_include_timings(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

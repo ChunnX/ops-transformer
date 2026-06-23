@@ -124,9 +124,6 @@ def _cmd_run(args: argparse.Namespace) -> int:
         discovery_report["timings"] = timings.to_json_dict()
         _print_discovery_failure(discovery_report)
         return 1
-    if args.prepare == "pkg":
-        with _measure(timings, "prepare_pkg_ms"):
-            prepare_pkg(root, sorted(ops or []), args.soc, args.vendor, jobs=args.jobs, opt_level=args.opt)
 
     with _measure(timings, "case_select_ms"):
         selector = CaseSelector(
@@ -137,7 +134,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
             limit=args.limit,
         )
         selected = selector.apply(load_result.cases)
+    if not args.no_execute and selected:
+        package_ops = sorted({case.op_name for case in selected})
+        with _measure(timings, "prepare_pkg_ms"):
+            prepare_pkg(root, package_ops, args.soc, args.vendor, jobs=args.jobs, opt_level=args.opt)
     out_dir = Path(args.out) if args.out else _default_out_dir(root)
+    run_metadata = {}
     results = run_cases(
         selected,
         repo_root=root,
@@ -147,8 +149,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
         device=args.device,
         execute=not args.no_execute,
         timings=timings,
+        run_metadata=run_metadata,
     )
-    ResultReporter(out_dir).write(results, timings=timings)
+    ResultReporter(out_dir).write(results, timings=timings, metadata=run_metadata)
     failed = sum(1 for result in results if result.status in {"failed", "error"})
     print(f"wrote {len(results)} result rows to {out_dir}")
     return 1 if failed else 0
@@ -241,7 +244,12 @@ def main() -> int:
         default=0,
         help="ACL runtime logical device id for aclrtSetDevice(), not the npu-smi physical id",
     )
-    run_parser.add_argument("--prepare", choices=("none", "pkg"), default="none")
+    run_parser.add_argument(
+        "--prepare",
+        choices=("none", "pkg"),
+        default="pkg",
+        help="Deprecated compatibility flag; real device run always builds and installs the custom package.",
+    )
     run_parser.add_argument("--jobs", type=int, default=16)
     run_parser.add_argument("--opt", default="3")
     run_parser.add_argument("--json-pattern", default="all_*.json")
