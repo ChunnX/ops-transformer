@@ -74,6 +74,10 @@ constexpr uint32_t BLOCKSIZE_INDEX = 6;
 constexpr uint32_t GROUPSIZE_INDEX = 7;
 constexpr uint32_t TRANSPOSEB_INDEX = 3;
 constexpr uint32_t COMMMODE_INDEX = 10;
+// 支持的geAType和geBType数据类型
+constexpr std::initializer_list<ge::DataType> DTYPE_SUPPORT_LIST = {
+    ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2,
+    ge::DataType::DT_HIFLOAT8, ge::DataType::DT_FLOAT4_E2M1};
 }  // namespace
 
 bool QuantBmmReduceScatterTiling::IsCapable()
@@ -83,8 +87,8 @@ bool QuantBmmReduceScatterTiling::IsCapable()
         return false;
     }
     // geAType 和 geBType 为fp8e4m3/fp8e5m2/hif8时, 走该tiling流程
-    if (mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::FP8DTYPE_SUPPORT_LIST) &&
-        mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::FP8DTYPE_SUPPORT_LIST)) {
+    if (mc2tiling::CheckDataTypeVaild(args_.geAType, DTYPE_SUPPORT_LIST) &&
+        mc2tiling::CheckDataTypeVaild(args_.geBType, DTYPE_SUPPORT_LIST)) {
         OP_LOGI(opName_, "start with quantbmm reducescatter tiling.");
         return true;
     }
