@@ -818,6 +818,376 @@ __simd_callee__ inline void ExpSub8(
     ExpSub(o4, x8, vreg_max, preg_all);
 }
 
+__simd_callee__ inline void SelectOriTail4(
+    RegTensor<float> &o1, RegTensor<float> &o2,
+    RegTensor<float> &o3, RegTensor<float> &o4,
+    RegTensor<float> &i1, RegTensor<float> &i2,
+    RegTensor<float> &i3, RegTensor<float> &i4,
+    RegTensor<float> &vreg_min,
+    MaskReg &m1, MaskReg &m2, MaskReg &m3, MaskReg &m4)
+{
+    Select(o1, i1, vreg_min, m1);
+    Select(o2, i2, vreg_min, m2);
+    Select(o3, i3, vreg_min, m3);
+    Select(o4, i4, vreg_min, m4);
+}
+
+template <PseTypeEnum pseMode, typename T2>
+__simd_callee__ inline void ComputeOrLoadPse512(
+    RegTensor<float> &vreg_pse1, RegTensor<float> &vreg_pse2,
+    RegTensor<float> &vreg_pse3, RegTensor<float> &vreg_pse4,
+    RegTensor<float> &vreg_pse5, RegTensor<float> &vreg_pse6,
+    RegTensor<float> &vreg_pse7, RegTensor<float> &vreg_pse8,
+    RegTensor<float> &vreg_alibi1, RegTensor<float> &vreg_alibi2,
+    RegTensor<float> &vreg_alibi3, RegTensor<float> &vreg_alibi4,
+    RegTensor<float> &vreg_alibi5, RegTensor<float> &vreg_alibi6,
+    RegTensor<float> &vreg_alibi7, RegTensor<float> &vreg_alibi8,
+    const float slopes, MaskReg &preg_all, MaskReg &preg_all_b16,
+    __ubuf__ T2 *pseUb, const uint16_t i, const uint32_t pseStride)
+{
+    if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
+                  pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+        if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+            ComputePseInnerMulAddSqrt8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+                vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
+                slopes, preg_all);
+        } else {
+            ComputePseInnerMulAdd8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
+                vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
+                slopes, preg_all);
+        }
+    } else {
+        if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            LoadCastPseBf16_8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                pseUb, i, pseStride, preg_all_b16);
+        } else if constexpr (IsSameType<T2, half>::value) {
+            LoadCastPseF16_8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
+                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
+                pseUb, i, pseStride, preg_all_b16);
+        }
+    }
+}
+
+template <PseTypeEnum pseMode>
+__simd_callee__ inline void ScaleAndAddPse512(
+    RegTensor<float> &x1, RegTensor<float> &x2,
+    RegTensor<float> &x3, RegTensor<float> &x4,
+    RegTensor<float> &x5, RegTensor<float> &x6,
+    RegTensor<float> &x7, RegTensor<float> &x8,
+    RegTensor<float> &p1, RegTensor<float> &p2,
+    RegTensor<float> &p3, RegTensor<float> &p4,
+    RegTensor<float> &p5, RegTensor<float> &p6,
+    RegTensor<float> &p7, RegTensor<float> &p8,
+    const float scale, MaskReg &preg_all,
+    MaskReg &m1, MaskReg &m2, MaskReg &m3, MaskReg &m4)
+{
+    if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
+        ScaleInput4x4(x1, x2, x3, x4, x5, x6, x7, x8,
+            scale, preg_all, m1, m2, m3, m4);
+    }
+    if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
+        AddPseToInput4x4(x1, x2, x3, x4, x5, x6, x7, x8,
+            p1, p2, p3, p4, p5, p6, p7, p8,
+            preg_all, m1, m2, m3, m4);
+    }
+    if constexpr (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
+        ScaleInput4x4(x1, x2, x3, x4, x5, x6, x7, x8,
+            scale, preg_all, m1, m2, m3, m4);
+    }
+}
+
+template <typename T>
+__simd_callee__ inline void ProcessAtten512(
+    RegTensor<float> &s1, RegTensor<float> &s2,
+    RegTensor<float> &s3, RegTensor<float> &s4,
+    RegTensor<float> &s5, RegTensor<float> &s6,
+    RegTensor<float> &s7, RegTensor<float> &s8,
+    RegTensor<float> &s5_new, RegTensor<float> &s6_new,
+    RegTensor<float> &s7_new, RegTensor<float> &s8_new,
+    RegTensor<float> &vreg_min,
+    RegTensor<float> &x1, RegTensor<float> &x2,
+    RegTensor<float> &x3, RegTensor<float> &x4,
+    RegTensor<float> &x5, RegTensor<float> &x6,
+    RegTensor<float> &x7, RegTensor<float> &x8,
+    RegTensor<float> &vreg_input_max,
+    MaskReg &c1, MaskReg &c2, MaskReg &c3, MaskReg &c4,
+    MaskReg &c5, MaskReg &c6, MaskReg &c7, MaskReg &c8,
+    __ubuf__ uint32_t *&mUb1, __ubuf__ uint32_t *&mUb2,
+    __ubuf__ uint32_t *&mUb3, __ubuf__ uint32_t *&mUb4,
+    __ubuf__ uint32_t *&mUb5, __ubuf__ uint32_t *&mUb6,
+    __ubuf__ uint32_t *&mUb7, __ubuf__ uint32_t *&mUb8,
+    const uint32_t nPadding, __ubuf__ T *&srcUb,
+    const uint16_t i, const uint32_t s2BaseSize,
+    MaskReg &preg_all,
+    MaskReg &m1, MaskReg &m2, MaskReg &m3, MaskReg &m4)
+{
+    LoadAttenMask8(c1, c2, c3, c4, c5, c6, c7, c8,
+        mUb1, mUb2, mUb3, mUb4, mUb5, mUb6, mUb7, mUb8, nPadding);
+
+    ApplyAttenMaskSelect8(s1, s2, s3, s4, s5, s6, s7, s8,
+        vreg_min,
+        x1, x2, x3, x4, x5, x6, x7, x8,
+        c1, c2, c3, c4, c5, c6, c7, c8);
+
+    SelectOriTail4(s5_new, s6_new, s7_new, s8_new,
+        s5, s6, s7, s8, vreg_min, m1, m2, m3, m4);
+
+    StoreAlign8<T>(s1, s2, s3, s4, s5_new, s6_new, s7_new, s8_new,
+        srcUb, i, s2BaseSize, preg_all);
+
+    MaxReduce4(vreg_input_max,
+        s1, s2, s3, s4, s5_new, s6_new, s7_new, s8_new, preg_all);
+}
+
+template <typename T>
+__simd_callee__ inline void ProcessTail512(
+    RegTensor<float> &x1, RegTensor<float> &x2,
+    RegTensor<float> &x3, RegTensor<float> &x4,
+    RegTensor<float> &x5, RegTensor<float> &x6,
+    RegTensor<float> &x7, RegTensor<float> &x8,
+    RegTensor<float> &x5_new, RegTensor<float> &x6_new,
+    RegTensor<float> &x7_new, RegTensor<float> &x8_new,
+    RegTensor<float> &vreg_min,
+    RegTensor<float> &vreg_input_max,
+    __ubuf__ T *&srcUb, const uint16_t i, const uint32_t s2BaseSize,
+    MaskReg &preg_all,
+    MaskReg &m1, MaskReg &m2, MaskReg &m3, MaskReg &m4)
+{
+    SelectOriTail4(x5_new, x6_new, x7_new, x8_new,
+        x5, x6, x7, x8, vreg_min, m1, m2, m3, m4);
+
+    StoreAlign8<T>(x1, x2, x3, x4, x5_new, x6_new, x7_new, x8_new,
+        srcUb, i, s2BaseSize, preg_all);
+
+    MaxReduce4(vreg_input_max,
+        x1, x2, x3, x4, x5_new, x6_new, x7_new, x8_new, preg_all);
+}
+
+template <typename T, typename T2>
+__simd_callee__ inline void ProcessSecondLoop512(
+    RegTensor<float> &vreg_max,
+    RegTensor<float> &x1, RegTensor<float> &x2,
+    RegTensor<float> &x3, RegTensor<float> &x4,
+    RegTensor<float> &x5, RegTensor<float> &x6,
+    RegTensor<float> &x7, RegTensor<float> &x8,
+    RegTensor<float> &exp_even1, RegTensor<float> &exp_odd1,
+    RegTensor<float> &exp_even2, RegTensor<float> &exp_odd2,
+    RegTensor<float> &exp_even3, RegTensor<float> &exp_odd3,
+    RegTensor<float> &exp_even4, RegTensor<float> &exp_odd4,
+    RegTensor<float> &vreg_exp_sum3,
+    __ubuf__ T *maxSrc, __ubuf__ T *&srcUb,
+    const uint16_t i, const uint32_t s2BaseSize,
+    __ubuf__ T *&expSumUb, UnalignRegForStore &ureg_exp_sum,
+    __ubuf__ T2 *&expUb1, __ubuf__ T2 *&expUb2,
+    __ubuf__ T2 *&expUb3, __ubuf__ T2 *&expUb4,
+    const uint32_t blockStride, const uint32_t repeatStride,
+    MaskReg &preg_all, MaskReg &storeMask)
+{
+    LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
+        vreg_max, maxSrc);
+
+    LoadInputDinterleave4<T>(x1, x2, x3, x4, x5, x6, x7, x8,
+        srcUb, i, s2BaseSize);
+
+    ExpSub8(exp_even1, exp_odd1, exp_even2, exp_odd2,
+        exp_even3, exp_odd3, exp_even4, exp_odd4,
+        x1, x2, x3, x4, x5, x6, x7, x8,
+        vreg_max, preg_all);
+
+    ExpSumReduceStore512<float, T2>(vreg_exp_sum3,
+        exp_even1, exp_odd1, exp_even2, exp_odd2,
+        exp_even3, exp_odd3, exp_even4, exp_odd4,
+        ureg_exp_sum, expSumUb, preg_all);
+
+    if constexpr (IsSameType<T2, bfloat16_t>::value) {
+        CastStoreExpBf16_512<T2>(exp_even1, exp_odd1,
+            exp_even2, exp_odd2, exp_even3, exp_odd3,
+            exp_even4, exp_odd4,
+            expUb1, expUb2, expUb3, expUb4,
+            blockStride, repeatStride, preg_all, storeMask);
+    } else if constexpr (IsSameType<T2, half>::value) {
+        CastStoreExpF16_512<T2>(exp_even1, exp_odd1,
+            exp_even2, exp_odd2, exp_even3, exp_odd3,
+            exp_even4, exp_odd4,
+            expUb1, expUb2, expUb3, expUb4,
+            blockStride, repeatStride, preg_all, storeMask);
+    }
+}
+
+template <typename T>
+__simd_callee__ inline void MergeMaxUpdate512(
+    RegTensor<float> &vreg_input_max,
+    RegTensor<float> &vreg_max_new,
+    RegTensor<float> &vreg_in_max,
+    RegTensor<float> &vreg_input_max_tmp,
+    __ubuf__ T *&tmpMaxUb, __ubuf__ T *&inMaxUb,
+    __ubuf__ T *&tmpMaxUb2,
+    UnalignRegForStore &ureg_max,
+    MaskReg &preg_all)
+{
+    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        ((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
+    LoadAlign(vreg_in_max, inMaxUb);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    LoadAlign(vreg_input_max_tmp, tmpMaxUb2);
+    Max(vreg_max_new, vreg_input_max_tmp, vreg_in_max, preg_all);
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+        (__ubuf__ T *&)tmpMaxUb2, vreg_max_new, preg_all);
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+}
+
+template <PseTypeEnum pseMode, typename T, typename T2>
+__simd_callee__ inline void ProcessStage1Pse512(
+    RegTensor<float> &vreg_input_x7, RegTensor<float> &vreg_input_x8,
+    RegTensor<float> &vreg_pse7, RegTensor<float> &vreg_pse8,
+    RegTensor<float> &vreg_alibi7, RegTensor<float> &vreg_alibi8,
+    const float scale, const float slopes,
+    MaskReg &preg_all, MaskReg &preg_all_b16,
+    __ubuf__ T *&srcUb, __ubuf__ T2 *pseUb,
+    const uint16_t i, const uint32_t s2BaseSize, const uint32_t pseStride,
+    MaskReg &preg_ori_tail_n3, MaskReg &preg_ori_tail_n4)
+{
+    LoadAlign(vreg_input_x7, srcUb + floatRepSize * 6 + i * s2BaseSize);
+    LoadAlign(vreg_input_x8, srcUb + floatRepSize * 7 + i * s2BaseSize);
+
+    if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
+        Muls(vreg_input_x7, vreg_input_x7, scale, preg_ori_tail_n3);
+        Muls(vreg_input_x8, vreg_input_x8, scale, preg_ori_tail_n4);
+    }
+    if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
+        if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
+                      pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+            if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+                ComputePseInnerMulAddSqrt2(vreg_pse7, vreg_pse8,
+                    vreg_alibi7, vreg_alibi8, slopes, preg_all);
+            } else {
+                ComputePseInnerMulAdd2(vreg_pse7, vreg_pse8,
+                    vreg_alibi7, vreg_alibi8, slopes, preg_all);
+            }
+        } else {
+            if constexpr (IsSameType<T2, bfloat16_t>::value) {
+                LoadCastPseBf16_2(vreg_pse7, vreg_pse8,
+                    pseUb, floatRepSize * 6, i, pseStride, preg_all_b16);
+            } else if constexpr (IsSameType<T2, half>::value) {
+                LoadCastPseF16_2(vreg_pse7, vreg_pse8,
+                    pseUb, floatRepSize * 6, i, pseStride, preg_all_b16);
+            }
+        }
+        Add(vreg_input_x7, vreg_input_x7, vreg_pse7, preg_ori_tail_n3);
+        Add(vreg_input_x8, vreg_input_x8, vreg_pse8, preg_ori_tail_n4);
+    }
+    if constexpr (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
+        Muls(vreg_input_x7, vreg_input_x7, scale, preg_ori_tail_n3);
+        Muls(vreg_input_x8, vreg_input_x8, scale, preg_ori_tail_n4);
+    }
+}
+
+template <PseTypeEnum pseMode, typename T, typename T2>
+__simd_callee__ inline void ProcessStage2Pse512(
+    RegTensor<float> &x1, RegTensor<float> &x2,
+    RegTensor<float> &x3, RegTensor<float> &x4,
+    RegTensor<float> &x5, RegTensor<float> &x6,
+    RegTensor<float> &p1, RegTensor<float> &p2,
+    RegTensor<float> &p3, RegTensor<float> &p4,
+    RegTensor<float> &p5, RegTensor<float> &p6,
+    RegTensor<float> &a1, RegTensor<float> &a2,
+    RegTensor<float> &a3, RegTensor<float> &a4,
+    RegTensor<float> &a5, RegTensor<float> &a6,
+    const float scale, const float slopes,
+    MaskReg &preg_all, MaskReg &preg_all_b16,
+    __ubuf__ T *&srcUb, __ubuf__ T2 *pseUb,
+    const uint16_t i, const uint32_t s2BaseSize, const uint32_t pseStride,
+    MaskReg &m1, MaskReg &m2)
+{
+    LoadInput6<T>(x1, x2, x3, x4, x5, x6, srcUb, i, s2BaseSize);
+
+    if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
+        ScaleInput4x2(x1, x2, x3, x4, x5, x6,
+            scale, preg_all, m1, m2);
+    }
+    if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
+        if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
+                      pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+            if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+                ComputePseInnerMulAddSqrt6(p1, p2, p3, p4, p5, p6,
+                    a1, a2, a3, a4, a5, a6, slopes, preg_all);
+            } else {
+                ComputePseInnerMulAdd6(p1, p2, p3, p4, p5, p6,
+                    a1, a2, a3, a4, a5, a6, slopes, preg_all);
+            }
+        } else {
+            if constexpr (IsSameType<T2, bfloat16_t>::value) {
+                LoadCastPseBf16_6(p1, p2, p3, p4, p5, p6,
+                    pseUb, i, pseStride, preg_all_b16);
+            } else if constexpr (IsSameType<T2, half>::value) {
+                LoadCastPseF16_6(p1, p2, p3, p4, p5, p6,
+                    pseUb, i, pseStride, preg_all_b16);
+            }
+        }
+        AddPseToInput4x2(x1, x2, x3, x4, x5, x6,
+            p1, p2, p3, p4, p5, p6, preg_all, m1, m2);
+    }
+    if constexpr (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
+        ScaleInput4x2(x1, x2, x3, x4, x5, x6,
+            scale, preg_all, m1, m2);
+    }
+}
+
+template <bool hasAtten, typename T>
+__simd_callee__ inline void ProcessStage2AttenTail512(
+    RegTensor<float> &x1, RegTensor<float> &x2,
+    RegTensor<float> &x3, RegTensor<float> &x4,
+    RegTensor<float> &x5, RegTensor<float> &x6,
+    RegTensor<float> &s1, RegTensor<float> &s2,
+    RegTensor<float> &s3, RegTensor<float> &s4,
+    RegTensor<float> &s5, RegTensor<float> &s6,
+    RegTensor<float> &s5_new, RegTensor<float> &s6_new,
+    RegTensor<float> &s7_new, RegTensor<float> &s8_new,
+    RegTensor<float> &x5_new, RegTensor<float> &x6_new,
+    RegTensor<float> &x7_new, RegTensor<float> &x8_new,
+    RegTensor<float> &vreg_min,
+    RegTensor<float> &vreg_input_max,
+    MaskReg &preg_all,
+    MaskReg &m1, MaskReg &m2,
+    MaskReg &c1, MaskReg &c2, MaskReg &c3,
+    MaskReg &c4, MaskReg &c5, MaskReg &c6,
+    __ubuf__ uint32_t *&mUb1, __ubuf__ uint32_t *&mUb2,
+    __ubuf__ uint32_t *&mUb3, __ubuf__ uint32_t *&mUb4,
+    __ubuf__ uint32_t *&mUb5, __ubuf__ uint32_t *&mUb6,
+    const uint32_t nPadding,
+    __ubuf__ T *&srcUb, const uint16_t i, const uint32_t s2BaseSize)
+{
+    if constexpr (hasAtten) {
+        LoadAttenMask6(c1, c2, c3, c4, c5, c6,
+            mUb1, mUb2, mUb3, mUb4, mUb5, mUb6, nPadding);
+        ApplyAttenMaskSelect6(s1, s2, s3, s4, s5, s6,
+            vreg_min, x1, x2, x3, x4, x5, x6,
+            c1, c2, c3, c4, c5, c6);
+        Select(s5_new, s5, vreg_min, m1);
+        Select(s6_new, s6, vreg_min, m2);
+        LoadAlign(s7_new, srcUb + floatRepSize * 6 + i * s2BaseSize);
+        LoadAlign(s8_new, srcUb + floatRepSize * 7 + i * s2BaseSize);
+        StoreAlign6<T>(s1, s2, s3, s4, s5_new, s6_new,
+            srcUb, i, s2BaseSize, preg_all);
+        MaxReduce4(vreg_input_max,
+            s1, s2, s3, s4, s5_new, s6_new, s7_new, s8_new, preg_all);
+    } else {
+        Select(x5_new, x5, vreg_min, m1);
+        Select(x6_new, x6, vreg_min, m2);
+        LoadAlign(x7_new, srcUb + floatRepSize * 6 + i * s2BaseSize);
+        LoadAlign(x8_new, srcUb + floatRepSize * 7 + i * s2BaseSize);
+        StoreAlign6<T>(x1, x2, x3, x4, x5_new, x6_new,
+            srcUb, i, s2BaseSize, preg_all);
+        MaxReduce4(vreg_input_max,
+            x1, x2, x3, x4, x5_new, x6_new, x7_new, x8_new, preg_all);
+    }
+}
+
 } // namespace FaVectorApi
 
 #endif // VF_BASIC_BLOCK_UNALIGNED512_COMMON_H
