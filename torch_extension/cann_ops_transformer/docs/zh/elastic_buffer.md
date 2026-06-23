@@ -12,7 +12,7 @@
 
 - **API功能**：
 
-  ElasticBuffer 用于分布式 Engram 存储管理，支持将本 rank 的表分片写入 host pinned 共享段，以及通过 RDMA 从远端 rank 抓取 Engram 数据。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint接口说明) 配套使用。
+  ElasticBuffer 用于分布式 Engram 存储管理，支持将本 rank 的表分片写入 host pinned 共享段，以及通过 RDMA 从远端 rank 抓取 Engram 数据。需与 [get_engram_storage_size_hint]配套使用。
 
 ## ElasticBuffer 类接口原型
 

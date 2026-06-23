@@ -8,18 +8,20 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+from typing import Callable
+
 import torch
 import torch_npu
 import torch.distributed as dist
-from typing import Callable
 
 from .elastic_buffer_op import _elastic_buffer_ops
+
 
 class ElasticBuffer:
     """
     ElasticBuffer for distributed Engram storage management.
     """
-    
+
     def __init__(self,
                  group: torch.distributed.ProcessGroup,
                  num_cpu_bytes: int):
@@ -33,45 +35,10 @@ class ElasticBuffer:
         self.group = group
         rank_id = dist.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=True)
-        
+
         # Create C++ ElasticBuffer runtime (C++ handles all validation)
         self.runtime = _elastic_buffer_ops.ElasticBuffer(self.group_name, num_cpu_bytes)
-    
-    def engram_write(self, storage: torch.Tensor) -> None:
-        """
-        Write data to the host pinned memory of ElasticBuffer.
-        
-        Arguments:
-            storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32).
-        
-        Returns:
-            None
-        
-        Note: barrier(with_device_sync=True) is called before and after write internally.
-        """
-        self.runtime.engram_write(storage)
-    
-    def engram_fetch(self, indices: torch.Tensor) -> Callable[[], torch.Tensor]:
-        """
-        Fetch Engram data from remote ranks via RDMA.
 
-        Arguments:
-            indices: the indices of entries to fetch (must be 1D NPU tensor with dtype=int32).
-
-        Returns:
-            wait_callable: a callable that returns the fetched tensor when invoked.
-        """
-        return self.runtime.engram_fetch(indices)
-    
-    def destroy(self) -> None:
-        """
-        Destroy the ElasticBuffer and free host pinned memory.
-
-        Returns:
-            None
-        """
-        self.runtime.destroy()
-    
     @staticmethod
     def get_engram_storage_size_hint(num_entries: int, hidden_size: int,
                                      dtype: torch.dtype = torch.bfloat16) -> int:
@@ -88,3 +55,38 @@ class ElasticBuffer:
             num_cpu_bytes: the recommended CPU buffer size in bytes (2 MB-aligned).
         """
         return _elastic_buffer_ops.ElasticBuffer.get_engram_storage_size_hint(num_entries, hidden_size, dtype)
+
+    def engram_write(self, storage: torch.Tensor) -> None:
+        """
+        Write data to the host pinned memory of ElasticBuffer.
+
+        Arguments:
+            storage: the CPU tensor to write (must be 2D, contiguous, dtype=bf16/fp16/fp32).
+
+        Returns:
+            None
+
+        Note: barrier(with_device_sync=True) is called before and after write internally.
+        """
+        self.runtime.engram_write(storage)
+
+    def engram_fetch(self, indices: torch.Tensor) -> Callable[[], torch.Tensor]:
+        """
+        Fetch Engram data from remote ranks via RDMA.
+
+        Arguments:
+            indices: the indices of entries to fetch (must be 1D NPU tensor with dtype=int32).
+
+        Returns:
+            wait_callable: a callable that returns the fetched tensor when invoked.
+        """
+        return self.runtime.engram_fetch(indices)
+
+    def destroy(self) -> None:
+        """
+        Destroy the ElasticBuffer and free host pinned memory.
+
+        Returns:
+            None
+        """
+        self.runtime.destroy()
