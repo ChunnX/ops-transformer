@@ -127,7 +127,7 @@ private:
     GlobalTensor<XType> xGm_;
     GlobalTensor<int32_t> topkIdxGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
-    GlobalTensor<int32_t> numRecvPerExpertGm_;
+    GlobalTensor<int64_t> numRecvPerExpertGm_;
     GlobalTensor<float> topkWeightsOptionalGm_;
 
     LocalTensor<XType> xTmpTensor_;   
@@ -199,15 +199,15 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGm_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
-    numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int32_t *)numRecvPerExpert);
+    numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
     combinedXGm_.SetGlobalBuffer((__gm__ XType *)combinedX);
 
     // 计算actualA_的大小
     for(int i = 0; i < localmoeNum_; i++){
-        if (i % (DCCI_OFFSET / sizeof(int32_t)) == 0) {
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvPerExpertGm_[i]);
+        if (i % (DCCI_OFFSET / sizeof(int64_t)) == 0) {
+            DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvPerExpertGm_[i]);
         }
-        actualA_ += numRecvPerExpertGm_(i);
+        actualA_ += numRecvPerExpertGm_.GetValue(i);
     }
 
     if constexpr (HasTopkWeight == 1) {
@@ -274,7 +274,6 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendTok
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     DataCopyParams hCommuCopyOutParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
-
     // 从GM读取token到UB
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
     DataCopyPad(xTmpTensor_, xGm_[tokenIndex * axisH_], xCopyParams, padParams);
@@ -283,13 +282,8 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendTok
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
-
     PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
-    // cacheWriteThrough(reinterpret_cast<__gm__ uint8_t *>(outTokenGT), 
-    //                  axisH_ * sizeof(XType));//每隔64B做一次DCCI
-    // 一个个写入token
     if (dstRankId != rankId_) {
-        //printf("START WRITR TOKEN");
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, hAlignSize_);
     }
 }
@@ -318,11 +312,8 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendWei
     // 写入目标rank的窗口
     DataCopyPad(outWeigthGT, weightTmpTensor_, weightCommuOutParams);
     weightQueue_.FreeTensor<float>(weightTmpTensor_);
-
     PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
-
     if (dstRankId != rankId_) {
-        //printf("START WRITR TOKEN");
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWeightAddr, localRankWeightAddr, sizeof(float));
     }
 }
@@ -343,7 +334,6 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStat
     DataCopy<float>(outStateTensor, statusTensor, 8UL);
 
     if (dstRankId != rankId_) {
-        //printf("START WRITR TOKEN");
         hcomm_.Drain(GetCommHandle(dstRankId));
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
     }
@@ -360,8 +350,8 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPha
     }
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
         for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
-            int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 0);
-            int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 1);
+            int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 0);
+            int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 1);
             int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * 3 + 2);
             if (src_rank < 0 || src_rank!= rankId) { // 只处理当前rank负责的token
                 continue;
@@ -414,7 +404,6 @@ __aicore__ inline bool KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDis
     SyncFunc<AscendC::HardEvent::S_MTE2>();
     DataCopy<float>(stateTensor, stateGMTensor, copyCount);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
-
     Sum(stateSumTensor, stateTensor, sumParams);
     SyncFunc<AscendC::HardEvent::V_S>();
     localState = stateSumTensor(0);
@@ -432,10 +421,10 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process
     // SyncFunc<AscendC::HardEvent::MTE3_V>(); 
     Duplicate<float>(ubAccFp32_, (float)0, axisH_);
     DataCopyPadParams padParams = {false, 0, 0, 0};
-    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_), 0U, 0U};
+    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         // 读取expert_id
-        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE ) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
         if constexpr (HasTopkWeight == 1) {
             wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE + WEIGHT_DATA_SIZE) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
         }
@@ -493,7 +482,6 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPha
             }
             CompletedtokenNum++;
             tokenStatusTensor.SetValue(tokenIdx - tStart_, 1);
-
             if constexpr (HasTopkWeight == 1) {
                 ProcessTopKWeight(tokenIdx);
             }
@@ -511,9 +499,9 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPha
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
-    // SendPhaseExpertToToken();
-    // RecvPhaseReduce();
-    printf("moe_ep_combine End\r\n");
+    SendPhaseExpertToToken();
+    RecvPhaseReduce();
+    // printf("moe_ep_combine End\r\n");
 }
 
 } // namespace MoeEpCombineImpl
