@@ -476,14 +476,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatc
     }
 
     // relay 接收区按 tokenId 定位，二级通信通过 meta.flag 判断该 token 是否已经到达。
-    uint32_t relayRecordNum = serverNum_ * m_;
-    for (uint32_t idx = aivCoreIdx_; idx < relayRecordNum; idx += blockAivNum_) {
-        uint64_t recordOffset = static_cast<uint64_t>(idx) * static_cast<uint64_t>(relayRecordBytes_);
-        __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(
-            params_.peermemInfo.relayTokenDataPtr + recordOffset + mxQuantTokenScaleAlignBytes_);
-        WriteGmByPassDCache(metaPtr, int32_t(0));
-        WriteGmByPassDCache(metaPtr + 1, int32_t(0));
-    }
+    // uint32_t relayRecordNum = serverNum_ * m_;
+    // for (uint32_t idx = aivCoreIdx_; idx < relayRecordNum; idx += blockAivNum_) {
+    //     uint64_t recordOffset = static_cast<uint64_t>(idx) * static_cast<uint64_t>(relayRecordBytes_);
+    //     __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(
+    //         params_.peermemInfo.relayTokenDataPtr + recordOffset + mxQuantTokenScaleAlignBytes_);
+    //     WriteGmByPassDCache(metaPtr, int32_t(0));
+    //     WriteGmByPassDCache(metaPtr + 1, int32_t(0));
+    // }
     // PipeBarrier<PIPE_ALL>();
     // SyncAll<true>();
 }
@@ -1435,7 +1435,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         ResetRowGroupCompleteFlags();
     }
     // QuantProcessInRank();        // 对本卡token的量化
-    // ResetUrmaDispatchState();// 清理 URMA 一级通信 workspace/relay ready 状态
+    ResetUrmaDispatchState();// 清理 URMA 一级通信 workspace/relay ready 状态
     if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
