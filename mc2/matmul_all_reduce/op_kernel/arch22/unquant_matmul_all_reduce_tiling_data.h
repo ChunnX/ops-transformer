@@ -28,8 +28,11 @@
 
 namespace Mc2Tiling {
 
+// L2 cache alignment requirement: 8 bytes for optimal memory access
+static constexpr size_t L2_CACHE_ALIGNMENT = 8;
+
 #pragma pack(push, 8)
-struct alignas(8) Mc2L2cacheTilePara {
+struct alignas(L2_CACHE_ALIGNMENT) Mc2L2cacheTilePara {
     uint32_t mTileCntL2;
     uint32_t nTileCntL2;
     uint32_t mTileBlock;
@@ -39,8 +42,7 @@ struct alignas(8) Mc2L2cacheTilePara {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-// 8 means 8 bytes aligned
-struct alignas(8) UnQuantMatmulAllReduceTilingData {
+struct alignas(L2_CACHE_ALIGNMENT) UnQuantMatmulAllReduceTilingData {
     Mc2Tiling::Mc2Msg msg;
     Mc2Tiling::RCSTiling param;
     Mc2MatmulV3TilingData tilematmulTiling;
@@ -49,8 +51,7 @@ struct alignas(8) UnQuantMatmulAllReduceTilingData {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-// 8 means 8 bytes aligned
-struct alignas(8) MatmulAllReduce910TilingData {
+struct alignas(L2_CACHE_ALIGNMENT) MatmulAllReduce910TilingData {
     Mc2Tiling::Mc2Msg msg;
     Mc2Tiling::RCSTiling param;
     Mc2MatmulV3TilingData tilematmulTiling;
@@ -59,8 +60,7 @@ struct alignas(8) MatmulAllReduce910TilingData {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-// 8 means 8 bytes aligned
-struct alignas(8) MatmulAllReduceTilingData {
+struct alignas(L2_CACHE_ALIGNMENT) MatmulAllReduceTilingData {
     Mc2Tiling::Mc2Msg msg;
     Mc2Tiling::RCSTiling param;
     AscendC::tiling::TCubeTiling matmulTiling;
