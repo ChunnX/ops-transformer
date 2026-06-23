@@ -149,15 +149,12 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckGroupSize()
 ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
 {
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
-    // mxfp4: K must be even and multiple of 32
+    // mxfp4: K must be even
     OP_TILING_CHECK(args_.kValue % EVEN_ALIGN != 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
                                                           "The value of K must be even in mxfp4 scene"),
                     return ge::GRAPH_FAILED);
-    // OP_TILING_CHECK(args_.kValue % MX_SCALE_K_VALUE_ALIGN != 0,
-    //                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
-    //                                                       "The value of K must be multiple of 32 in mxfp4 scene"),
-    //                 return ge::GRAPH_FAILED);
+    
     OP_TILING_CHECK((!args_.isBTrans),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BTrans", std::to_string(args_.isBTrans).c_str(),
                                                 "x2 only support transpose"),
