@@ -962,7 +962,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     nope_head_dim = D - rope_head_dim
     quant_scale_head_dim = (nope_head_dim + tile_size - 1) // tile_size
     d_aligned_32 = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim * 2 + 18
-    d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim
+    d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim * 2
     print(f"d_aligned_32={d_aligned_32}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim}, quant_scale_head_dim={quant_scale_head_dim}")
     pad_d = d_aligned_32 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
@@ -990,13 +990,24 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_block_table = None
         cmp_k_bnsd = None
 
-    if layout_kv == "PA_BNBD" and (template_run_mode == "CFA" or template_run_mode == "SCFA"):
-        fusionBlock = torch.zeros((block_num, block_size1 + block_size2, N2, d_combined + pad_d), dtype=ori_kv_type)
-        fusionBlock.view(block_num, -1)[:, : block_size1 * N2 * (d_combined + pad_d)] = ori_k_in_pa_shape.view(block_num, -1)
-        fusionBlock.view(block_num, -1)[:, block_size1 * N2 * (d_combined + pad_d) :] = cmp_k_in_pa_shape.view(block_num, -1)
-        fusionBlock.npu()
-        ori_k_in_pa_shape = fusionBlock.view(block_num, -1)[:, : block_size1 * N2 * (d_combined + pad_d)].view(block_num, block_size1, N2, d_combined + pad_d)
-        cmp_k_in_pa_shape = fusionBlock.view(block_num, -1)[:, block_size1 * N2 * (d_combined + pad_d) :].view(block_num, block_size2, N2, d_combined + pad_d)
+    if layout_kv == "PA_BBND" and (template_run_mode == "CFA" or template_run_mode == "SCFA"):
+        total_block = block_size1 + block_size2
+        fusion_base = torch.zeros((block_num, total_block, N2, d_combined + pad_d), dtype=ori_kv_type, device="npu")
+        fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
+        fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
+        stride_n = total_block * N2 * (d_combined + pad_d)
+        stride_bs = N2 * (d_combined + pad_d)
+        stride_n2 = d_combined + pad_d
+        stride_d = 1
+        ori_k_in_pa_shape = torch.as_strided(
+                fusion_base,
+                size=[block_num, block_size1, N2, d_combined + pad_d],
+                stride=[stride_n, stride_bs, stride_n2, stride_d])
+        cmp_k_in_pa_shape = torch.as_strided(
+                fusion_base,
+                size=[block_num, block_size2, N2, d_combined + pad_d],
+                stride=[stride_n, stride_bs, stride_n2, stride_d],
+                storage_offset=block_size1 * N2 * (d_combined + pad_d))
 
     test_qsmla = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
         block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv,
