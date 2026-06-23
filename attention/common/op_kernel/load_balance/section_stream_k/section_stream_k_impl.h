@@ -469,21 +469,13 @@ inline int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
 
 inline uint32_t SectionStreamKImpl::CalcEffectiveL2Byte(uint32_t maxS2, uint32_t headDim)
 {
-    // 根据 S2*Dim 计算实际可用的 L2 大小
-    // L2(MB) = ceil(5*(S2*Dim - 7168*Dim) / (16*Dim*Dim)) + 48
+    // L2(MB) = 16 * ceil(S2*Dim / 600000)
     int64_t s2Dim = static_cast<int64_t>(maxS2) * headDim;
-    int64_t dim = static_cast<int64_t>(headDim);
-    uint32_t l2MB = 0U;
-    if (s2Dim <= 262144) {        // 2048*128: 不限制L2（返回0表示不需要section切分）
-        l2MB = 0U;
-    } else if (s2Dim < 917504) { // 7168*128: 最小16MB
-        l2MB = 16U;
-    } else {
-        int64_t numerator = 5 * (s2Dim - 7168 * dim);
-        int64_t denominator = 16 * dim * dim;
-        l2MB = static_cast<uint32_t>((numerator + denominator - 1) / denominator + 48);
+    if (s2Dim <= 262144) { // 2048*128: 不需要section切分
+        return 0U;
     }
-    return l2MB * 1024U * 1024U;
+    int64_t l2MB = 16 * ((s2Dim + 599999) / 600000);
+    return static_cast<uint32_t>(l2MB) * 1024U * 1024U;
 }
 
 inline Range<uint32_t> SectionStreamKImpl::CalcCoreRange(uint32_t sectionIdx, const ComputeContext &computeContext)
