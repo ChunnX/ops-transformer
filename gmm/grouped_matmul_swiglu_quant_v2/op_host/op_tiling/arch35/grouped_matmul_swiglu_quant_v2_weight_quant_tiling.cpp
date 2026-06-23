@@ -71,7 +71,7 @@ bool CheckCoreNum(gert::TilingContext *context, uint32_t aicNum, uint32_t aivNum
         return false;
     }
 
-    if(unlikely(aicNum * AIC_AIV_CORE_RATIO != aivNum)) {
+    if (unlikely(aicNum * AIC_AIV_CORE_RATIO != aivNum)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "AIC_AIV_CORE_RATIO",
             std::to_string(aicNum) + ":" + std::to_string(aivNum),
             "The cube:vector core ratio must be 1:" + std::to_string(AIC_AIV_CORE_RATIO));
