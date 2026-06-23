@@ -156,6 +156,14 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         // info.cfg.topK = static_cast<uint32_t>(cachedDim1);
     }
 
+    // info.cfg.perSlotBytes = static_cast<uint32_t>(
+    //     ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
+    //     + 80UL + 16UL);
+    uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 * 2 + UB_ALIGN));
+    OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.cfg.perSlotBytes, info.cfg.hidden);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -212,14 +220,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     info.doCpuSync = (doCpuSync && !cached) ? 1 : 0;
     info.isCached = cached ? 1 : 0;
     info.hostPinnedCounterAddr = static_cast<uint64_t>(*hpCounterAddrPtr);
-
-    // info.cfg.perSlotBytes = static_cast<uint32_t>(
-    //     ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
-    //     + 80UL + 16UL);
-    uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 * 2 + UB_ALIGN));
-    OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.cfg.perSlotBytes, info.cfg.hidden);
 
     return ge::GRAPH_SUCCESS;
 }
