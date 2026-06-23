@@ -144,21 +144,21 @@ __aicore__ inline void CombineTokensWithUrmaSend(
     LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, processRankNum );
     LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t), processRankNum);
 
-    // Duplicate(sendTokenCnt, 0 , processRankNum);
-    // Duplicate(totalTokenCnt, 0 , processRankNum);
+    Duplicate<int32_t>(sendTokenCnt, 0 , processRankNum);
+    Duplicate<int32_t>(totalTokenCnt, 0 , processRankNum);
     // // AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
     // // AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
-    // PipeBarrier<PIPE_ALL>();// todo:
-    // // maskRecvPtr 布局: [localExpert][srcRank], 每个槽位 = maskAlignSize + 32B count
-    // int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
-    // int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t),
-    //     (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
-    // int64_t maskAlignSize = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, (int64_t)ALIGN_32);
-    // int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;
-    // uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize / sizeof(int32_t));
-    // uint32_t slotCopyStride = static_cast<uint32_t>(maskSlotSize / sizeof(uint8_t));
-    // uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize / sizeof(int32_t));
-    // uint32_t expertPerRank = params.tilingData->expertPerRank;
+    PipeBarrier<PIPE_ALL>();// todo:
+    // maskRecvPtr 布局: [localExpert][srcRank], 每个槽位 = maskAlignSize + 32B count
+    int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
+    int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t),
+        (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
+    int64_t maskAlignSize = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, (int64_t)ALIGN_32);
+    int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;
+    uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize / sizeof(int32_t));
+    uint32_t slotCopyStride = static_cast<uint32_t>(maskSlotSize / sizeof(uint8_t));
+    uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize / sizeof(int32_t));
+    uint32_t expertPerRank = params.tilingData->expertPerRank;
     // LocalTensor<uint32_t> slotReadTensor = LocalTensor<uint32_t>(TPosition::VECCALC,
     //     ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t) * 2, slotWordStride);
     // LocalTensor<uint8_t> slotCopyTensor = LocalTensor<uint8_t>(TPosition::VECCALC,
