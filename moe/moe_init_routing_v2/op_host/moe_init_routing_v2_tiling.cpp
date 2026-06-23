@@ -932,7 +932,7 @@ void MoeInitRoutingV2TilingBase::CalculateOutBasicParams(MoeV2GatherOutComputeTi
 void MoeInitRoutingV2TilingBase::CalculateGatherOutSplitModeParams(int64_t ubSize, int64_t rowSize, int64_t colSize,
                                                                    int64_t cols, int64_t perCoreRows,
                                                                    int64_t lastCoreRows,
-                                                                   MoeV2GatherOutComputeTilingData *tilingData)
+                                                                   MoeV2GatherOutComputeTilingData *tilingData) const
 {
     tilingData->set_scatterMode(0);
     int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
