@@ -69,10 +69,10 @@ public:
         gK.SetGlobalBuffer((__gm__ ElementK *)params.k);
         AscendC::GlobalTensor<ElementV> gV;
         gV.SetGlobalBuffer((__gm__ ElementV *)params.v);
-        AscendC::GlobalTensor<int64_t> gActualQseqlen;
-        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
-        AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
+        AscendC::GlobalTensor<int32_t> gActualQseqlen;
+        gActualQseqlen.SetGlobalBuffer((__gm__ int32_t *)params.actualQseqlen);
+        AscendC::GlobalTensor<int32_t> gActualKvseqlen;
+        gActualKvseqlen.SetGlobalBuffer((__gm__ int32_t *)params.actualKvseqlen);
         AscendC::GlobalTensor<int32_t> gSelectIdx;
         gSelectIdx.SetGlobalBuffer((__gm__ int32_t *)params.selectIdx);
         AscendC::GlobalTensor<int32_t> gSelectNumIdx;

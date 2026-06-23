@@ -271,8 +271,8 @@ def main():
     kv_seqlen = 2048  # adjust if needed
 
     scale_value = 1.0 / math.sqrt(head_dim)
-    actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int64)
-    actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int64)
+    actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int32)
+    actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int32)
 
     # =========== KV Data Distribution Analysis ===========
     print(f"\n--- KV Data Distribution & BF16 Overflow Risk Analysis ---")

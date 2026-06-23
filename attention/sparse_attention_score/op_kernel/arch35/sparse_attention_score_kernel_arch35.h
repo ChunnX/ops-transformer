@@ -72,10 +72,10 @@ public:
         gBlockTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTable);
         AscendC::GlobalTensor<int32_t> gSelectNumIdx;
         gSelectNumIdx.SetGlobalBuffer((__gm__ int32_t *)params.selectNumIdx);
-        AscendC::GlobalTensor<int64_t> gActualQseqlen;
-        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
-        AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
+        AscendC::GlobalTensor<int32_t> gActualQseqlen;
+        gActualQseqlen.SetGlobalBuffer((__gm__ int32_t *)params.actualQseqlen);
+        AscendC::GlobalTensor<int32_t> gActualKvseqlen;
+        gActualKvseqlen.SetGlobalBuffer((__gm__ int32_t *)params.actualKvseqlen);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
         AscendC::GlobalTensor<int32_t> gIdentityIdx;

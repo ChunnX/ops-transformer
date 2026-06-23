@@ -559,8 +559,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
         group_size = q_heads // kv_heads
         total_blocks = ceil(kv_seqlen / block_size)
         max_blocks_per_batch = total_blocks
-        actual_seq_lengths = torch.tensor([q_seqlen] * batch, dtype=torch.int64)
-        actual_seq_lengths_kv = torch.tensor([kv_seqlen] * batch, dtype=torch.int64)
+        actual_seq_lengths = torch.tensor([q_seqlen] * batch, dtype=torch.int32)
+        actual_seq_lengths_kv = torch.tensor([kv_seqlen] * batch, dtype=torch.int32)
 
         torch.manual_seed(seed)
         query_fp32 = torch.rand(q_seqlen, q_heads, head_dim, dtype=torch.float32) * 2 - 1
@@ -655,8 +655,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
 
         scale_value = 1.0 / math.sqrt(head_dim)
 
-        actual_seq_lengths = torch.tensor(q_seqlens, dtype=torch.int64)
-        actual_seq_lengths_kv = torch.tensor(kv_seqlens, dtype=torch.int64)
+        actual_seq_lengths = torch.tensor(q_seqlens, dtype=torch.int32)
+        actual_seq_lengths_kv = torch.tensor(kv_seqlens, dtype=torch.int32)
 
         return (
             query_fp32.to(torch.bfloat16),
@@ -844,8 +844,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             p_query.npu(), key.npu(), value.npu(),
             p_select_idx.npu(), block_table.npu(),
             select_num_idx=p_select_num_idx.npu(),
-            actual_seq_lengths=torch.tensor([p_q_seqlen], dtype=torch.int64).npu(),
-            actual_seq_lengths_kv=torch.tensor([p_kv_seqlen], dtype=torch.int64).npu(),
+            actual_seq_lengths=torch.tensor([p_q_seqlen], dtype=torch.int32).npu(),
+            actual_seq_lengths_kv=torch.tensor([p_kv_seqlen], dtype=torch.int32).npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size,
@@ -898,8 +898,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             d_query.npu(), key.npu(), value.npu(),
             d_select_idx.npu(), block_table.npu(),
             select_num_idx=d_select_num_idx.npu(),
-            actual_seq_lengths=torch.tensor([d_q_seqlen], dtype=torch.int64).npu(),
-            actual_seq_lengths_kv=torch.tensor([d_kv_seqlen], dtype=torch.int64).npu(),
+            actual_seq_lengths=torch.tensor([d_q_seqlen], dtype=torch.int32).npu(),
+            actual_seq_lengths_kv=torch.tensor([d_kv_seqlen], dtype=torch.int32).npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size,
@@ -983,8 +983,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             p_query.npu(), key.npu(), value.npu(),
             p_select_idx.npu(), block_table.npu(),
             select_num_idx=p_select_num_idx.npu(),
-            actual_seq_lengths=torch.tensor([p_q_seqlen], dtype=torch.int64).npu(),
-            actual_seq_lengths_kv=torch.tensor([p_kv_seqlen], dtype=torch.int64).npu(),
+            actual_seq_lengths=torch.tensor([p_q_seqlen], dtype=torch.int32).npu(),
+            actual_seq_lengths_kv=torch.tensor([p_kv_seqlen], dtype=torch.int32).npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size, top_k=top_k, inner_precise=4,
@@ -1022,8 +1022,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             d_query.npu(), key.npu(), value.npu(),
             d_select_idx.npu(), block_table.npu(),
             select_num_idx=d_select_num_idx.npu(),
-            actual_seq_lengths=torch.tensor([d_q_seqlen], dtype=torch.int64).npu(),
-            actual_seq_lengths_kv=torch.tensor([d_kv_seqlen], dtype=torch.int64).npu(),
+            actual_seq_lengths=torch.tensor([d_q_seqlen], dtype=torch.int32).npu(),
+            actual_seq_lengths_kv=torch.tensor([d_kv_seqlen], dtype=torch.int32).npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size, top_k=top_k, inner_precise=4,
@@ -1507,8 +1507,8 @@ def _test_bf16_q64_kv4_seqlen132_topk16(self):
     # KV cache physical blocks >= total_blocks
     total_physical_blocks = total_blocks + 10  # extra headroom
     max_blocks_per_batch = total_blocks
-    actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int64)
-    actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int64)
+    actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int32)
+    actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int32)
 
     torch.manual_seed(seed)
     query_fp32 = torch.rand(q_seqlen, q_heads, head_dim, dtype=torch.float32) * 2 - 1
@@ -1611,8 +1611,8 @@ class TestNpuSparseAttentionScoreFp8(TestCase):
         group_size = q_heads // kv_heads
         total_blocks = ceil(kv_seqlen / block_size)
         max_blocks_per_batch = total_blocks
-        actual_seq_lengths = torch.tensor([q_seqlen] * batch, dtype=torch.int64)
-        actual_seq_lengths_kv = torch.tensor([kv_seqlen] * batch, dtype=torch.int64)
+        actual_seq_lengths = torch.tensor([q_seqlen] * batch, dtype=torch.int32)
+        actual_seq_lengths_kv = torch.tensor([kv_seqlen] * batch, dtype=torch.int32)
 
         torch.manual_seed(seed)
         query_fp32 = torch.randn(q_seqlen, q_heads, head_dim, dtype=torch.float32)
