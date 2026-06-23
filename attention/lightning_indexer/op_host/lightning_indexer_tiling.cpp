@@ -152,7 +152,6 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
     if ((npuArch_ != NpuArch::DAV_2201) &&
         (npuArch_ != NpuArch::DAV_3510)) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
-
         return GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
