@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -1299,49 +1299,43 @@ protected:
         // dSize小于64的场景，无需切D， workspace占用较小
         if (dSize <= D_SPECIFIC_SIZE) {
             // stage1占用2倍的空间，stage2占用2倍空间
-            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                                               coreParams.get_s1BaseSize() * alignedD *
-                                                                               calcTypeSize) *
-                                                aivNum) +
-                            WORK_SPACE_RESERVE_SIZE;
+            workspaces[0] = static_cast<size_t>((
+                                bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                            ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             // NZND场景，stage1占用3倍的空间，stage2占用2倍空间
             if (s2Size % S2_NZTOND_SIZE_64 != 0) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                                     SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_3 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                                ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             }
             // FP32场景，stage1占用4倍的空间，stage2占用2倍空间
             if (inputDtypeBytes == DATA_TYPE_FP32) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                                     SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_4 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                                ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             }
         } else {
             // 切D场景，stage1占用2倍的空间，stage2占用4倍空间
-            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                                               coreParams.get_s1BaseSize() * alignedD *
-                                                                               calcTypeSize) *
-                                                aivNum) +
-                            WORK_SPACE_RESERVE_SIZE;
+            workspaces[0] = static_cast<size_t>((
+                                bmm1Bytes * SPACE_NUM_2 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                            ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             // NZND场景，stage1占用3倍的空间，stage2占用4倍空间
             if (s2Size % S2_NZTOND_SIZE_64 != 0) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                                     SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_3 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                                ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             }
             // FP32场景，stage1占用4倍的空间，stage2占用4倍空间
             if (inputDtypeBytes == DATA_TYPE_FP32) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                                     SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_4 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize
+                                ) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             }
         }
 
@@ -1459,7 +1453,7 @@ protected:
         bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmmDtype, true);
         bmm1.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bmm1OutDtype);
         int64_t s2BaseSize = tmpS2BasicBlock * tilingData.coreParams.get_nRatio();
-        int32_t batchNum = tilingData.coreParams.get_bmm1Loops();
+        int32_t batchNum = tilingData.coreParams.get_bmm1Num();
         
         bmm1.SetShape(tmpS1BasicBlock, s2BaseSize, dSize); 
         bmm1.SetOrgShape(tmpS1BasicBlock, s2BaseSize, dSize);
@@ -1487,7 +1481,7 @@ protected:
         bmm1.SetALayout(1, n2BasicBlock, 1, s1Size, dSize); 
         bmm1.SetBLayout(1, s2BaseSize, 1, s1Size, dSize); 
         bmm1.SetCLayout(1, n2BasicBlock, 1, tmpS1BasicBlock, s2BaseSize); 
-        int32_t batch = tilingData.coreParams.get_bmmAddLoops();
+        int32_t batch = tilingData.coreParams.get_bmmv2Num();
         bmm1.SetBatchNum(batch);
 
         return true;
@@ -1510,7 +1504,7 @@ protected:
         bmm2v2.SetALayout(1, n2BasicBlock, 1, tmpS1BasicBlock, s2BaseSize);
         bmm2v2.SetBLayout(1, s2BaseSize, 1, s1Size, dSize);
         bmm2v2.SetCLayout(1, n2BasicBlock, 1, tmpS1BasicBlock, dSize);
-        int32_t batch = tilingData.coreParams.get_bmmAddLoops();
+        int32_t batch = tilingData.coreParams.get_bmmv2Num();
         bmm2v2.SetBatchNum(batch);
 
         return true;
@@ -1590,53 +1584,43 @@ protected:
         // dSize小于64的场景，无需切D， workspace占用较小
         if (dSize <= D_SPECIFIC_SIZE) {
             // stage1占用2倍的空间，stage2占用2倍空间
-            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 +
-                            softmaxExpBytes + bmm2stage2BufBytes + 
-                            SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                                               coreParams.get_s1BaseSize() * alignedD *
-                                                                               calcTypeSize) *
-                                                aivNum) +
-                            WORK_SPACE_RESERVE_SIZE;
+            workspaces[0] = static_cast<size_t>((
+                                bmm1Bytes * SPACE_NUM_2 + softmaxExpBytes + bmm2stage2BufBytes + 
+                                SPACE_NUM_2 * coreParams.get_n2BaseSize() * coreParams.get_s1BaseSize() * 
+                                alignedD * calcTypeSize) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             // NZND场景，stage1占用3倍的空间，stage2占用2倍空间
             if (s2Size % S2_NZTOND_SIZE_64 != 0) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                                     SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_3 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) + 
+                                    WORK_SPACE_RESERVE_SIZE;
             }
             // FP32场景，stage1占用4倍的空间，stage2占用2倍空间
             if (inputDtypeBytes == DATA_TYPE_FP32) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                                     SPACE_NUM_2 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_4 + SPACE_NUM_2 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                    WORK_SPACE_RESERVE_SIZE;
             }
         } else {
             // 切D场景，stage1占用2倍的空间，stage2占用4倍空间
-            workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_2 +
-                            softmaxExpBytes + bmm2stage2BufBytes +
-                            SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                                               coreParams.get_s1BaseSize() * alignedD *
-                                                                               calcTypeSize) *
-                                                aivNum) +
-                            WORK_SPACE_RESERVE_SIZE;
+            workspaces[0] = static_cast<size_t>((
+                                bmm1Bytes * SPACE_NUM_2 + softmaxExpBytes + bmm2stage2BufBytes +
+                                SPACE_NUM_4 * coreParams.get_n2BaseSize() * coreParams.get_s1BaseSize() * 
+                                alignedD * calcTypeSize) * aivNum) + WORK_SPACE_RESERVE_SIZE;
             // NZND场景，stage1占用3倍的空间，stage2占用4倍空间
             if (s2Size % S2_NZTOND_SIZE_64 != 0) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_3 +
-                                                     SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_3 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                    WORK_SPACE_RESERVE_SIZE;
             }
             // FP32场景，stage1占用4倍的空间，stage2占用4倍空间
             if (inputDtypeBytes == DATA_TYPE_FP32) {
-                workspaces[0] = static_cast<size_t>((bmm1Bytes * SPACE_NUM_4 +
-                                                     SPACE_NUM_4 * coreParams.get_n2BaseSize() *
-                                                         coreParams.get_s1BaseSize() * alignedD * calcTypeSize) *
-                                                    aivNum) +
-                                WORK_SPACE_RESERVE_SIZE;
+                workspaces[0] = static_cast<size_t>((
+                                    bmm1Bytes * SPACE_NUM_4 + SPACE_NUM_4 * coreParams.get_n2BaseSize() *
+                                    coreParams.get_s1BaseSize() * alignedD * calcTypeSize) * aivNum) +
+                                    WORK_SPACE_RESERVE_SIZE;
             }
         }
 

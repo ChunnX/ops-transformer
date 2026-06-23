@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2023-2024 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -367,8 +367,8 @@ FusedFloydAttentionS1s2Bn2gs1Special<implMode, layOutType, hasPse, hasAtten, has
     this->s1BaseSize = this->tilingData->coreParams.s1BaseSize;
     this->s2BaseSize = this->tilingData->coreParams.s2BaseSize;
     this->n2BaseSize = this->tilingData->coreParams.n2BaseSize;
-    this->bmm1BatchNum = this->tilingData->coreParams.bmm1Loops;
-    this->bmmAddLoops = this->tilingData->coreParams.bmmAddLoops;
+    this->bmm1BatchNum = this->tilingData->coreParams.bmm1Num;
+    this->bmmAddLoops = this->tilingData->coreParams.bmmv2Num;
 
     this->dSize = this->tilingData->inputParams.dSize;
     this->dSizeAlign16 = CeilDiv(this->tilingData->inputParams.dSize, 16) * 16;

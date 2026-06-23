@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -245,8 +245,6 @@ TILING_DATA_FIELD_DEF(int64_t, bOuterSize);
 TILING_DATA_FIELD_DEF(int32_t, n2BaseSize);
 TILING_DATA_FIELD_DEF(int32_t, bmm1Num);
 TILING_DATA_FIELD_DEF(int32_t, bmmv2Num);
-TILING_DATA_FIELD_DEF(int32_t, bmm1Loops);
-TILING_DATA_FIELD_DEF(int32_t, bmmAddLoops);
 TILING_DATA_FIELD_DEF(int32_t, n2BaseTailSize);
 TILING_DATA_FIELD_DEF(int64_t, n2OuterSize);
 TILING_DATA_FIELD_DEF(int32_t, gBaseSize);
