@@ -170,4 +170,4 @@
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn API | [test_aclnn_lightning_indexer_v2_metadata.cpp](./examples/test_aclnn_lightning_indexer_v2_metadata.cpp) | 通过[aclnnLightningIndexerV2Metadata](./docs/aclnnLightningIndexerV2Metadata.md)接口调用LightningIndexerV2Metadata算子 |
-| PyTorch API | [test_torch_lightning_indexer_v2_metadata.py](./examples/test_torch_lightning_indexer_v2_metadata.py) | 通过[torch.ops.cann_ops_transformer.lightning_indexer_v2_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer_v2_metadata.md)接口调用LightningIndexerV2Metadata算子 |
+| PyTorch API | [test_torch_lightning_indexer_v2_metadata.py](./examples/test_torch_lightning_indexer_v2_metadata.py) | 通过[torch.ops.cann_ops_transformer.lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)接口调用LightningIndexerV2Metadata算子 |
