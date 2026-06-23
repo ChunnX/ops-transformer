@@ -61,10 +61,6 @@ class MoEElasticBuffer:
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
 
-        per_slot_bytes = ((hidden * 2 + 511) // 512) * 512
-        win_need = self.ep_world_size * num_max_tokens_per_rank * per_slot_bytes
-        self._check_hccl_buffsize(win_need)
-
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
         self.hidden = hidden
         self.num_topk = num_topk
