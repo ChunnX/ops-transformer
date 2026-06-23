@@ -68,11 +68,15 @@ struct HostBufferGuard {
 // Helper functions
 static inline int64_t ceilDiv(int64_t x, int64_t y)
 {
+    TORCH_CHECK(y > 0, "ceilDiv divisor must be positive, got ", y);
+    TORCH_CHECK(x <= INT64_MAX - y + 1, "ceilDiv overflow: x=", x, " y=", y);
     return (x + y - 1) / y;
 }
 
 static inline int64_t alignTo(int64_t x, int64_t y)
 {
+    TORCH_CHECK(y > 0, "alignTo divisor must be positive, got ", y);
+    TORCH_CHECK(x <= INT64_MAX - y + 1, "alignTo overflow: x=", x, " y=", y);
     return ceilDiv(x, y) * y;
 }
 
@@ -184,7 +188,8 @@ void ElasticBuffer::allocateAndRegisterBuffer(const HcclComm &commHandle, const 
 
     aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
     TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
-    memset(guard.hostPtr, 0, static_cast<uint64_t>(numCpuBytes));
+    errno_t memRet = memset_s(guard.hostPtr, static_cast<size_t>(numCpuBytes), 0, static_cast<size_t>(numCpuBytes));
+    TORCH_CHECK(memRet == EOK, "memset_s failed, ret=", memRet);
 
     ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
     TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
@@ -277,7 +282,9 @@ void ElasticBuffer::getHcclCommResource(const HcclComm &commHandle, CommContext 
     ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
     getHcclCommChannel(commHandle, rankSize, rankId, handlesByRank, rankSize);
 
-    memset(commContextStruct->hcommHandle_, 0, rankSize * sizeof(uint64_t));
+    errno_t memRet = memset_s(commContextStruct->hcommHandle_, HCCL_MAX_RANK_SIZE * sizeof(uint64_t), 0,
+                              rankSize * sizeof(uint64_t));
+    TORCH_CHECK(memRet == EOK, "memset_s for hcommHandle_ failed, ret=", memRet);
     for (uint32_t peer = 0; peer < rankSize; ++peer) {
         if (peer == rankId)
             continue;
@@ -327,6 +334,8 @@ void ElasticBuffer::createContextInternal(const HcclComm &commHandle, const std:
 
     hcclRet = HcclGetRankSizeFunc(commHandle, &commContext.rankSize);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
+    TORCH_CHECK(commContext.rankSize <= HCCL_MAX_RANK_SIZE,
+                "rankSize exceeds HCCL_MAX_RANK_SIZE, got ", commContext.rankSize, ", max ", HCCL_MAX_RANK_SIZE);
 
     std::string memBufferTag = mc2ContextTag + "_buffer";
     allocateAndRegisterBuffer(commHandle, memBufferTag, commContext.epRankId);
@@ -362,7 +371,8 @@ void ElasticBuffer::engramWrite(const at::Tensor &storage)
     writeCalled = true;
 
     if (numEngramEntries > 0) {
-        memcpy(hostBufPtr, storage.data_ptr(), storage.nbytes());
+        errno_t memRet = memcpy_s(hostBufPtr, static_cast<size_t>(numCpuBytes), storage.data_ptr(), storage.nbytes());
+        TORCH_CHECK(memRet == EOK, "memcpy_s failed, ret=", memRet);
     }
 
     engramBarrier(true);
@@ -462,7 +472,9 @@ void ElasticBuffer::copyContextToTensor(const CommContext &context, at::Tensor &
 {
     int64_t numElements = sizeof(CommContext) / sizeof(int32_t);
     at::Tensor hostTensor = at::empty({numElements}, at::TensorOptions().dtype(at::kInt));
-    memcpy(hostTensor.data_ptr<int32_t>(), &context, sizeof(CommContext));
+    errno_t memRet = memcpy_s(hostTensor.data_ptr<int32_t>(), static_cast<size_t>(numElements * sizeof(int32_t)),
+                              &context, sizeof(CommContext));
+    TORCH_CHECK(memRet == EOK, "memcpy_s for CommContext failed, ret=", memRet);
     tensor.copy_(hostTensor);
 }
 
@@ -480,8 +492,13 @@ int64_t ElasticBuffer::getEngramStorageSizeHint(int64_t numEntries, int64_t hidd
     TORCH_CHECK(hiddenSize % 128 == 0, "hidden_size must be 128-aligned, got ", hiddenSize);
 
     int64_t dtypeSize = at::elementSize(dtype);
+    TORCH_CHECK(hiddenSize <= INT64_MAX / dtypeSize, "hiddenSize * dtypeSize overflow");
+    int64_t hiddenSizeBytes = hiddenSize * dtypeSize;
     int64_t numSfPacks = (dtypeSize <= 1) ? ceilDiv(hiddenSize, 32) : 0;
-    int64_t numBytesPerEntry = alignTo(hiddenSize * dtypeSize + numSfPacks * 4, 32);
+    TORCH_CHECK(hiddenSizeBytes <= INT64_MAX - numSfPacks * 4, "numBytesPerEntry addition overflow");
+    int64_t numBytesPerEntry = alignTo(hiddenSizeBytes + numSfPacks * 4, 32);
+    TORCH_CHECK(numBytesPerEntry > 0 && numEntries <= INT64_MAX / numBytesPerEntry,
+                "numBytesPerEntry * numEntries overflow");
     int64_t numCpuBytes = alignTo(numBytesPerEntry * numEntries, BUFFER_ALIGNMENT);
 
     return numCpuBytes;
