@@ -142,8 +142,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::SplitUb()
     ubFactorS_ = (ubFactorS == 0) ? 1 : ubFactorS;
 
     // 最终验证：总 UB 不超限
-    int64_t dyBytes = 4 * ubFactorS_ * ubFactorN_ * dAlign * typeSize;
-    int64_t cosBytes = 4 * ubFactorS_ * dAlign * cosTypeSize;
+    int64_t dyBytes = 4 * ubFactorS_ * ubFactorN_ * dAlign;
+    int64_t cosBytes = 4 * ubFactorS_ * dAlign;
     OP_CHECK_IF(dyBytes + cosBytes > static_cast<int64_t>(ubSize_),
                 OP_LOGE(context_->GetNodeName(), "UB overflow: need %ld > %ld.", dyBytes + cosBytes, ubSize_),
                 return ge::GRAPH_FAILED);
