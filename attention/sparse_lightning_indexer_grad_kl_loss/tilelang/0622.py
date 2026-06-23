@@ -10,7 +10,7 @@ import tilelang.language as T
 
 tilelang.disable_cache()
 
-BLOCK_M = 128
+BLOCK_M = 16
 BLOCK_N = 128
 BLOCK_K = 128
 
