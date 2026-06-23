@@ -197,6 +197,7 @@ private:
     using CostTable = Table<int64_t, BLOCK_MAX_TYPE, BLOCK_MAX_TYPE>;
 private:
     inline static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
+    inline static uint32_t CalcEffectiveL2Byte(uint32_t maxS2, uint32_t headDim);
     inline CostTable CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
         uint32_t s2TailSize);
     static inline Range<uint32_t> CalcCoreRange(uint32_t sectionIdx, const ComputeContext &computeContext);
@@ -279,6 +280,7 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
 
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     GridInfo &gridInfo = computeContext.gridInfo;
+    uint32_t maxS2 = 0U;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
         uint32_t s1Size = baseInfo.GetQuerySeqSize(bIdx);
         uint32_t s2Size = baseInfo.GetKvSeqSize(bIdx);
@@ -290,10 +292,16 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         if (gridInfo.mBaseNum[bIdx] != 0U && gridInfo.s2BaseNum[bIdx] != 0U) {
             gridInfo.isEmpty = false;
         }
+        if (s2Size > maxS2) {
+            maxS2 = s2Size;
+        }
     }
 
-    // 如果L2未设置，则不进行section切分
-    if (m_param.l2Byte == 0U) {
+    // 根据 S2*Dim 计算实际可用的 L2 大小
+    uint32_t effectiveL2Byte = CalcEffectiveL2Byte(maxS2, baseInfo.GetHeadDim());
+
+    // 如果有效L2为0，则不进行section切分
+    if (effectiveL2Byte == 0U) {
         gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
         gridInfo.sectionNum = 1;
         return;
@@ -308,7 +316,7 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
             int64_t tokenCost = s2Size * headDim *
                 static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
-            if (!IsWithinTolerance(static_cast<int64_t>(m_param.l2Byte), 0L, tokenSize + tokenCost) && tokenSize != 0) {
+            if (!IsWithinTolerance(static_cast<int64_t>(effectiveL2Byte), 0L, tokenSize + tokenCost) && tokenSize != 0) {
                 gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
                 gridInfo.sectionNum++;
                 tokenSize = 0L;
@@ -457,6 +465,25 @@ inline int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
     int64_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     int64_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
+}
+
+inline uint32_t SectionStreamKImpl::CalcEffectiveL2Byte(uint32_t maxS2, uint32_t headDim)
+{
+    // 根据 S2*Dim 计算实际可用的 L2 大小
+    // L2(MB) = ceil(5*(S2*Dim - 7168*Dim) / (16*Dim*Dim)) + 48
+    int64_t s2Dim = static_cast<int64_t>(maxS2) * headDim;
+    int64_t dim = static_cast<int64_t>(headDim);
+    uint32_t l2MB = 0U;
+    if (s2Dim <= 262144) {        // 2048*128: 不限制L2（返回0表示不需要section切分）
+        l2MB = 0U;
+    } else if (s2Dim < 917504) { // 7168*128: 最小16MB
+        l2MB = 16U;
+    } else {
+        int64_t numerator = 5 * (s2Dim - 7168 * dim);
+        int64_t denominator = 16 * dim * dim;
+        l2MB = static_cast<uint32_t>((numerator + denominator - 1) / denominator + 48);
+    }
+    return l2MB * 1024U * 1024U;
 }
 
 inline Range<uint32_t> SectionStreamKImpl::CalcCoreRange(uint32_t sectionIdx, const ComputeContext &computeContext)
