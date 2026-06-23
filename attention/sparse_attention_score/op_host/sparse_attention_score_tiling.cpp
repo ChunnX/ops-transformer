@@ -159,12 +159,12 @@ ge::graphStatus SASATiling::ParseSeqlens(gert::TilingContext *context)
 {
     const gert::Tensor *seqLensTensor = context->GetInputTensor(ACTUAL_SEQ_LENGTHS_INDEX);
     if (seqLensTensor != nullptr) {
-        qSeqLenList_ = reinterpret_cast<const int64_t *>(seqLensTensor->GetAddr());
+        qSeqLenList_ = reinterpret_cast<const int32_t *>(seqLensTensor->GetAddr());
     }
 
     const gert::Tensor *seqLensKvTensor = context->GetInputTensor(ACTUAL_SEQ_LENGTHS_KV_INDEX);
     if (seqLensKvTensor != nullptr) {
-        kvSeqLenList_ = reinterpret_cast<const int64_t *>(seqLensKvTensor->GetAddr());
+        kvSeqLenList_ = reinterpret_cast<const int32_t *>(seqLensKvTensor->GetAddr());
     }
 
     return ge::GRAPH_SUCCESS;

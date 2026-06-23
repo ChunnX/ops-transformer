@@ -104,8 +104,8 @@ private:
     float scaleValue_ = 0.0f;
     uint32_t innerPrecise_ = 0;
 
-    const int64_t *qSeqLenList_ = nullptr;
-    const int64_t *kvSeqLenList_ = nullptr;
+    const int32_t *qSeqLenList_ = nullptr;
+    const int32_t *kvSeqLenList_ = nullptr;
 
     uint64_t workSpaceSize_ = 0;
 
