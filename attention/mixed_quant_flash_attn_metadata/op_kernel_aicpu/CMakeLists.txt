@@ -22,7 +22,7 @@ if (BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
 
   # aicpu cust kernel
   file(GLOB AICPU_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*_aicpu*.cpp)
-  message(STATUS "[ ${OP_NAME}] Found aicpu sources: ${AICPU_SRC}, ascend dir: ${ASCEND_DIR}, ophsot name: ${OPHOST_NAME}")
+  message(STATUS "[ ${OP_NAME}] Found aicpu sources: ${AICPU_SRC}, ascend dir: ${ASCEND_DIR}, ophost name: ${OPHOST_NAME}")
 
   set(OBJ_NAME  ${OP_NAME}_cust_obj)
   add_aicpu_cust_kernel_modules(${OBJ_NAME})
