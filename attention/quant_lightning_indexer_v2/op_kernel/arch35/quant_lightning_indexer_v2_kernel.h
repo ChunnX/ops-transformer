@@ -652,15 +652,34 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
         indiceOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
     }
-    uint64_t actualSeqKPrefixSum;
-    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D, cu_seqlens_k
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx);
+    // key0轴非连续：使用keyStride0支持非连续stride
+    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) {
+        uint64_t actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx);
+        uint64_t keyTokenStride = (constInfo.keyStride0 != 0) ? constInfo.keyStride0
+            : (uint64_t)constInfo.kHeadNum * constInfo.headDim;
+        uint64_t scaleTokenStride = (constInfo.keyDequantScaleStride0 != 0) ? constInfo.keyDequantScaleStride0
+            : (uint64_t)constInfo.kHeadNum;
+        keyCoreOffset = actualSeqKPrefixSum * keyTokenStride +
+                         runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
+        keyScaleCoreOffset = actualSeqKPrefixSum * scaleTokenStride +
+                             runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum;
     } else {
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
+        if (constInfo.keyStride0 != 0) {
+            keyCoreOffset = runInfo.bIdx * (uint64_t)constInfo.keyStride0 +
+                            runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
+        } else {
+            uint64_t actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
+            keyCoreOffset = actualSeqKPrefixSum * constInfo.kHeadNum * constInfo.headDim +
+                            runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
+        }
+        if (constInfo.keyDequantScaleStride0 != 0) {
+            keyScaleCoreOffset = runInfo.bIdx * (uint64_t)constInfo.keyDequantScaleStride0 +
+                                 runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum;
+        } else {
+            uint64_t actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
+            keyScaleCoreOffset = (actualSeqKPrefixSum + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.kHeadNum;
+        }
     }
-    uint64_t tndBIdxOffsetForK = actualSeqKPrefixSum * constInfo.kHeadNum * constInfo.headDim;
-    keyCoreOffset = tndBIdxOffsetForK + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
-    keyScaleCoreOffset = (actualSeqKPrefixSum + runInfo.s2Idx * constInfo.s2BaseSize) * constInfo.kHeadNum;
     runInfo.tensorQueryOffset = queryCoreOffset;
     runInfo.tensorKeyOffset = keyCoreOffset;
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
