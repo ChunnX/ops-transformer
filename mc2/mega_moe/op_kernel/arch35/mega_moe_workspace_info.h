@@ -178,7 +178,7 @@ struct WorkspaceInfo {
         // 每个 rank 的 workspace 大小: bs * expertPerRank 个 token, 每个 token 含数据+三元组(32B)
         uint32_t maxDataLength = Ops::Base::CeilAlign(ALIGN_256 * SIZE_BF_16, ALIGN_32);
         // todo:太大了。先这样，后续必须修改。
-        uint32_t maxDataSize = Ops::Base::CeilDiv(tilingData->h, ALIGN_256) * (ALIGN_32 + maxDataLength) * 
+        uint32_t maxDataSize = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)ALIGN_256) * (ALIGN_32 + maxDataLength) * 
                                                   tilingData->bs * tilingData->expertPerRank * tilingData->epWorldSize;
         workspaceSize += maxDataSize;
         combineSendNotifyPtr = base + workspaceSize;
