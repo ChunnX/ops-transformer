@@ -44,7 +44,7 @@ const std::vector<std::string> OPTIONAL_STR_ATTRS = {"comm_alg"};
 
 ge::graphStatus MoeDistributeDispatchV2FusionPass::AddAttr(ge::GNode &moeDistributeDispatchNode,
                                                            ge::GNode &fusionNode,
-                                                           int64_t &hccl_buff_size)
+                                                           int64_t &hccl_buff_size) const
 {
     ge::AscendString nameStr;
     moeDistributeDispatchNode.GetName(nameStr);
@@ -106,7 +106,7 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::CreateFusionNode(
 // 将 V2 节点的所有边重连到 V3：输入边（port+1 偏移）→ 删除 V2 → 输出边 → context→V3.0
 ge::graphStatus MoeDistributeDispatchV2FusionPass::AddEdge(
     ge::Graph &graph, ge::GNode &moeNodePtr, ge::GNode &fusionNode,
-    ge::GNode &contextNodePtr)
+    ge::GNode &contextNodePtr) const
 {
     ge::graphStatus edgeRet;
     for (size_t v2Port = 0; v2Port < kV2TotalInputs; v2Port++) {
