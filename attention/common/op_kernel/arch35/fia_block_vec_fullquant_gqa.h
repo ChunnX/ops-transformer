@@ -292,21 +292,7 @@ public:
 
     __aicore__ inline bool IsInitAttentionOutGm()
     {
-        // TND、NTD场景且不存在无效行,不需要初始化
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD ||
-                      layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
-            /*
-             * tiling中提前算好了是否可能出现无效行, 正常从tiling中提取这个标记位(constInfo.isExistRowInvalid),
-             * 对于FD场景, 有可能整体是没有无效行的,
-             * 但当前FD处理的这部分s2是无效的。为规避潜在的风险，只要带mask(constInfo.isExistRowInvalid)
-             * 就认为可能存在无效行
-             */
-            bool isExistRowInvalid = FLASH_DECODE ? HAS_MASK : constInfo.isExistRowInvalid;
-            if (!isExistRowInvalid) {
-                return false;
-            }
-        }
-        return true;
+        return constInfo.isExistRowInvalid;
     }
 
     __aicore__ inline void InitOutputSingleCore()
@@ -1046,71 +1032,6 @@ public:
         isSkipMask = IsSkipAttentionmask(maskInfo);
         if (!isSkipMask) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo);
-        }
-    }
-
-    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
-    {
-        uint32_t n2Idx = bN2Cur % constInfo.realN2Size;
-        uint32_t bIdx = bN2Cur / constInfo.realN2Size;
-        // 对整个batch的结果置0
-        if constexpr (POST_QUANT) { // out int8
-                                    // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
-        } else {
-            if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
-                OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
-                OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
-                OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
-                OffsetCalculator<GmFormat::TNGD> offsetCalculator;
-                offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                      constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
-                OffsetCalculator<GmFormat::NGTD> offsetCalculator;
-                offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                      constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            }
-            if (constInfo.isSoftmaxLseEnable) {
-                if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
-                    OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
-                    offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                          1, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                    DealActSeqLenIsZeroLse<GmFormat::BSNGD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
-                } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
-                    OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
-                    offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                          1, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                    DealActSeqLenIsZeroLse<GmFormat::BNGSD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
-                } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
-                    OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
-                    offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                          1, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                    DealActSeqLenIsZeroLse<GmFormat::NGBSD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
-                } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
-                    OffsetCalculator<GmFormat::TNGD> offsetCalculator;
-                    offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, 1, actualSeqLengthsGmQ,
-                                          constInfo.actualSeqLenSize);
-                    DealActSeqLenIsZeroLse<GmFormat::TNGD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
-                } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
-                    OffsetCalculator<GmFormat::NGTD> offsetCalculator;
-                    offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, 1, actualSeqLengthsGmQ,
-                                          constInfo.actualSeqLenSize);
-                    DealActSeqLenIsZeroLse<GmFormat::NGTD>(bIdx, n2Idx, offsetCalculator, softmaxLseGm);
-                }
-            }
         }
     }
 };
