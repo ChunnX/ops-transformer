@@ -16,85 +16,16 @@
 #include "opdev/data_type_utils.h"
 #include "opdev/shape_utils.h"
 #include "opdev/op_log.h"
+#include "base/err_msg.h"
 
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
 
-#define QKV_K_SCALE_LOG_INVALID_VALUE(opName, paramName, incorrectValue, reason)                              \
-    do {                                                                                                              \
-        std::string _safeOpName(opName);                                                                              \
-        std::string _safeParamName(paramName);                                                                        \
-        std::string _safeIncorrectValue(incorrectValue);                                                              \
-        std::string _safeReason(reason);                                                                              \
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Parameter %s of operator %s has incorrect value %s. Reason: %s.",           \
-            _safeParamName.c_str(), _safeOpName.c_str(), _safeIncorrectValue.c_str(), _safeReason.c_str());           \
-    } while (0)
-
-#define QKV_K_SCALE_LOG_INVALID_DTYPE(opName, paramName, incorrectDtype, reason)                              \
-    do {                                                                                                              \
-        std::string _safeOpName(opName);                                                                              \
-        std::string _safeParamName(paramName);                                                                        \
-        std::string _safeIncorrectDtype(incorrectDtype);                                                              \
-        std::string _safeReason(reason);                                                                              \
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Parameter %s of operator %s has incorrect dtype %s. Reason: %s.",           \
-            _safeParamName.c_str(), _safeOpName.c_str(), _safeIncorrectDtype.c_str(), _safeReason.c_str());           \
-    } while (0)
-
-#define QKV_K_SCALE_LOG_INVALID_SHAPE(opName, paramName, incorrectShape, reason)                              \
-    do {                                                                                                              \
-        std::string _safeOpName(opName);                                                                              \
-        std::string _safeParamName(paramName);                                                                        \
-        std::string _safeIncorrectShape(incorrectShape);                                                              \
-        std::string _safeReason(reason);                                                                              \
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Parameter %s of operator %s has incorrect shape [%s]. Reason: %s.",         \
-            _safeParamName.c_str(), _safeOpName.c_str(), _safeIncorrectShape.c_str(), _safeReason.c_str());           \
-    } while (0)
-
-#define QKV_K_SCALE_LOG_INVALID_SHAPES(opName, paramNames, incorrectShapes, reason)                           \
-    do {                                                                                                              \
-        std::string _safeOpName(opName);                                                                              \
-        std::string _safeParamNames(paramNames);                                                                      \
-        std::string _safeIncorrectShapes(incorrectShapes);                                                            \
-        std::string _safeReason(reason);                                                                              \
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Parameters %s of operator %s have incorrect shapes %s. Reason: %s.",        \
-            _safeParamNames.c_str(), _safeOpName.c_str(), _safeIncorrectShapes.c_str(), _safeReason.c_str());         \
-    } while (0)
-
-#define QKV_K_SCALE_LOG_INVALID_SHAPEDIM(opName, paramName, incorrectDim, reason)                             \
-    do {                                                                                                              \
-        std::string _safeOpName(opName);                                                                              \
-        std::string _safeParamName(paramName);                                                                        \
-        std::string _safeIncorrectDim(incorrectDim);                                                                  \
-        std::string _safeReason(reason);                                                                              \
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Parameter %s of operator %s has invalid dimension number %s. Reason: %s.", \
-            _safeParamName.c_str(), _safeOpName.c_str(), _safeIncorrectDim.c_str(), _safeReason.c_str());             \
-    } while (0)
-
-#define QKV_K_SCALE_LOG_INVALID_FORMAT(opName, paramName, incorrectFormat, correctFormat)                                  \
-    do {                                                                                                              \
-        std::string _safeOpName(opName);                                                                              \
-        std::string _safeParamName(paramName);                                                                        \
-        std::string _safeIncorrectFormat(incorrectFormat);                                                            \
-        std::string _safeCorrectFormat(correctFormat);                                                                \
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Parameter %s of operator %s has incorrect format %s. The correct one should be %s.", \
-            _safeParamName.c_str(), _safeOpName.c_str(), _safeIncorrectFormat.c_str(), _safeCorrectFormat.c_str());   \
-    } while (0)
-
-#define OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(aclnnName, tensor, supportList, retExpr)                               \
-    do {                                                                                                              \
-        if (!QkvRmsNormRopeCacheWithKScaleCheck::CheckType(tensor->GetDataType(), supportList)) {                     \
-            QKV_K_SCALE_LOG_INVALID_DTYPE(                                                                    \
-                aclnnName, #tensor, op::ToString(tensor->GetDataType()).GetString(),                                  \
-                "The dtype of " + std::string(#tensor) + " must be one of " + op::ToString(supportList).GetString()); \
-            retExpr;                                                                                                  \
-        }                                                                                                             \
-    } while (0)
-
 namespace QkvRmsNormRopeCacheWithKScaleCheck {
 
-inline bool CheckType(op::DataType dtype, const std::initializer_list<op::DataType> &supportList)
+inline bool CheckType(op::DataType dtype, const std::vector<op::DataType> &supportList)
 {
     for (const auto &supported : supportList) {
         if (dtype == supported) {
@@ -144,18 +75,18 @@ public:
     static constexpr const char *INPUT_LAYOUT_TND = "TND";
 
     // Dtype support lists
-    inline static const std::initializer_list<op::DataType> QKV_TYPE_LIST = {op::DataType::DT_BF16};
-    inline static const std::initializer_list<op::DataType> GAMMA_TYPE_LIST = {op::DataType::DT_FLOAT};
-    inline static const std::initializer_list<op::DataType> COS_SIN_TYPE_LIST = {op::DataType::DT_FLOAT};
-    inline static const std::initializer_list<op::DataType> SLOT_MAPPING_TYPE_LIST = {op::DataType::DT_INT32};
-    inline static const std::initializer_list<op::DataType> CACHE_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
-    inline static const std::initializer_list<op::DataType> K_SCALE_CACHE_TYPE_LIST = {op::DataType::DT_FLOAT};
-    inline static const std::initializer_list<op::DataType> CU_SEQ_LEN_TYPE_LIST = {op::DataType::DT_INT32};
-    inline static const std::initializer_list<op::DataType> ACTUAL_SEQ_LENS_TYPE_LIST = {op::DataType::DT_INT32};
-    inline static const std::initializer_list<op::DataType> ROTATION_TYPE_LIST = {op::DataType::DT_BF16};
-    inline static const std::initializer_list<op::DataType> V_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT};
-    inline static const std::initializer_list<op::DataType> Q_OUT_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
-    inline static const std::initializer_list<op::DataType> Q_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT};
+    inline static const std::vector<op::DataType> QKV_TYPE_LIST = {op::DataType::DT_BF16};
+    inline static const std::vector<op::DataType> GAMMA_TYPE_LIST = {op::DataType::DT_FLOAT};
+    inline static const std::vector<op::DataType> COS_SIN_TYPE_LIST = {op::DataType::DT_FLOAT};
+    inline static const std::vector<op::DataType> SLOT_MAPPING_TYPE_LIST = {op::DataType::DT_INT32};
+    inline static const std::vector<op::DataType> CACHE_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
+    inline static const std::vector<op::DataType> K_SCALE_CACHE_TYPE_LIST = {op::DataType::DT_FLOAT};
+    inline static const std::vector<op::DataType> CU_SEQ_LEN_TYPE_LIST = {op::DataType::DT_INT32};
+    inline static const std::vector<op::DataType> ACTUAL_SEQ_LENS_TYPE_LIST = {op::DataType::DT_INT32};
+    inline static const std::vector<op::DataType> ROTATION_TYPE_LIST = {op::DataType::DT_BF16};
+    inline static const std::vector<op::DataType> V_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT};
+    inline static const std::vector<op::DataType> Q_OUT_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
+    inline static const std::vector<op::DataType> Q_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT};
 
     // Main entry point
     aclnnStatus CheckParams(const QkvRmsNormRopeCacheWithKScaleParams &p)
@@ -182,7 +113,7 @@ private:
     {
         std::string result;
         const auto &shape = tensor->GetViewShape();
-        for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        for (uint64_t i = 0; i < shape.GetDimNum(); ++i) {
             if (i != 0) { result += ", "; }
             result += std::to_string(shape.GetDim(i));
         }
@@ -196,7 +127,7 @@ private:
         if (shape.GetDimNum() != expectedShape.size()) {
             return false;
         }
-        for (size_t i = 0; i < expectedShape.size(); ++i) {
+        for (uint64_t i = 0; i < static_cast<uint64_t>(expectedShape.size()); ++i) {
             if (shape.GetDim(i) != expectedShape[i]) {
                 return false;
             }
@@ -204,94 +135,216 @@ private:
         return true;
     }
 
+    static void LogInvalidValue(const std::string &paramName, const std::string &incorrectValue,
+                                const std::string &reason)
+    {
+        OP_LOGE_WITHOUT_REPORT(ACLNN_ERR_PARAM_INVALID,
+                               "Parameter %s of operator %s has incorrect value %s. Reason: %s.",
+                               paramName.c_str(), ACLNN_NAME, incorrectValue.c_str(), reason.c_str());
+        const std::vector<const char *> msgKey = {"param_name", "op_name", "incorrect_value", "reason"};
+        const std::vector<const char *> msgValue = {paramName.c_str(), ACLNN_NAME, incorrectValue.c_str(),
+                                                    reason.c_str()};
+        REPORT_PREDEFINED_ERR_MSG("EZ0026", msgKey, msgValue);
+    }
+
+    static void LogInvalidValues(const std::string &paramNames, const std::string &incorrectValues,
+                                 const std::string &reason)
+    {
+        OP_LOGE_WITHOUT_REPORT(ACLNN_ERR_PARAM_INVALID,
+                               "Parameters %s of operator %s have incorrect values %s. Reason: %s.",
+                               paramNames.c_str(), ACLNN_NAME, incorrectValues.c_str(), reason.c_str());
+        const std::vector<const char *> msgKey = {"param_names", "op_name", "incorrect_values", "reason"};
+        const std::vector<const char *> msgValue = {paramNames.c_str(), ACLNN_NAME, incorrectValues.c_str(),
+                                                    reason.c_str()};
+        REPORT_PREDEFINED_ERR_MSG("EZ0027", msgKey, msgValue);
+    }
+
+    static void LogInvalidListSize(const std::string &paramName, const std::string &incorrectSize,
+                                   const std::string &correctSize)
+    {
+        OP_LOGE_WITHOUT_REPORT(
+            ACLNN_ERR_PARAM_INVALID,
+            "Parameter %s of operator %s has incorrect element nums %s. The correct one should be %s.",
+            paramName.c_str(), ACLNN_NAME, incorrectSize.c_str(), correctSize.c_str());
+        const std::vector<const char *> msgKey = {"param_name", "op_name", "incorrect_size", "correct_size"};
+        const std::vector<const char *> msgValue = {paramName.c_str(), ACLNN_NAME, incorrectSize.c_str(),
+                                                    correctSize.c_str()};
+        REPORT_PREDEFINED_ERR_MSG("EZ0025", msgKey, msgValue);
+    }
+
+    static void LogInvalidDtype(const std::string &paramName, const std::string &incorrectDtype,
+                                const std::string &reason)
+    {
+        OP_LOGE_WITHOUT_REPORT(ACLNN_ERR_PARAM_INVALID,
+                               "Parameter %s of operator %s has incorrect dtype %s. Reason: %s.",
+                               paramName.c_str(), ACLNN_NAME, incorrectDtype.c_str(), reason.c_str());
+        const std::vector<const char *> msgKey = {"param_name", "op_name", "incorrect_dtype", "reason"};
+        const std::vector<const char *> msgValue = {paramName.c_str(), ACLNN_NAME, incorrectDtype.c_str(),
+                                                    reason.c_str()};
+        REPORT_PREDEFINED_ERR_MSG("EZ0020", msgKey, msgValue);
+    }
+
+    static void LogInvalidShape(const std::string &paramName, const std::string &incorrectShape,
+                                const std::string &reason)
+    {
+        OP_LOGE_WITHOUT_REPORT(ACLNN_ERR_PARAM_INVALID,
+                               "Parameter %s of operator %s has incorrect shape [%s]. Reason: %s.",
+                               paramName.c_str(), ACLNN_NAME, incorrectShape.c_str(), reason.c_str());
+        const std::vector<const char *> msgKey = {"param_name", "op_name", "incorrect_shape", "reason"};
+        const std::vector<const char *> msgValue = {paramName.c_str(), ACLNN_NAME, incorrectShape.c_str(),
+                                                    reason.c_str()};
+        REPORT_PREDEFINED_ERR_MSG("EZ0009", msgKey, msgValue);
+    }
+
+    static void LogInvalidShapes(const std::string &paramNames, const std::string &incorrectShapes,
+                                 const std::string &reason)
+    {
+        OP_LOGE_WITHOUT_REPORT(ACLNN_ERR_PARAM_INVALID,
+                               "Parameters %s of operator %s have incorrect shapes %s. Reason: %s.",
+                               paramNames.c_str(), ACLNN_NAME, incorrectShapes.c_str(), reason.c_str());
+        const std::vector<const char *> msgKey = {"param_names", "op_name", "incorrect_shapes", "reason"};
+        const std::vector<const char *> msgValue = {paramNames.c_str(), ACLNN_NAME, incorrectShapes.c_str(),
+                                                    reason.c_str()};
+        REPORT_PREDEFINED_ERR_MSG("EZ0010", msgKey, msgValue);
+    }
+
+    static void LogInvalidShapeDim(const std::string &paramName, const std::string &incorrectDim,
+                                   const std::string &reason)
+    {
+        OP_LOGE_WITHOUT_REPORT(ACLNN_ERR_PARAM_INVALID,
+                               "Parameter %s of operator %s has incorrect shape dim %s. Reason: %s.",
+                               paramName.c_str(), ACLNN_NAME, incorrectDim.c_str(), reason.c_str());
+        const std::vector<const char *> msgKey = {"param_name", "op_name", "incorrect_dim", "reason"};
+        const std::vector<const char *> msgValue = {paramName.c_str(), ACLNN_NAME, incorrectDim.c_str(),
+                                                    reason.c_str()};
+        REPORT_PREDEFINED_ERR_MSG("EZ0012", msgKey, msgValue);
+    }
+
+    static void LogInvalidFormat(const std::string &paramName, const std::string &incorrectFormat,
+                                 const std::string &correctFormat)
+    {
+        OP_LOGE_WITHOUT_REPORT(
+            ACLNN_ERR_PARAM_INVALID,
+            "Parameter %s of operator %s has incorrect format %s. The correct one should be %s.",
+            paramName.c_str(), ACLNN_NAME, incorrectFormat.c_str(), correctFormat.c_str());
+        const std::vector<const char *> msgKey = {"param_name", "op_name", "incorrect_format", "correct_format"};
+        const std::vector<const char *> msgValue = {paramName.c_str(), ACLNN_NAME, incorrectFormat.c_str(),
+                                                    correctFormat.c_str()};
+        REPORT_PREDEFINED_ERR_MSG("EZ0017", msgKey, msgValue);
+    }
+
+    static std::string DataTypeListToString(const std::vector<op::DataType> &supportList)
+    {
+        std::string result;
+        for (uint64_t i = 0; i < static_cast<uint64_t>(supportList.size()); ++i) {
+            if (i != 0) {
+                result += ", ";
+            }
+            result += op::ToString(supportList[i]).GetString();
+        }
+        return result;
+    }
+
+    static aclnnStatus CheckDtypeSupported(const std::string &paramName, const aclTensor *tensor,
+                                           const std::vector<op::DataType> &supportList)
+    {
+        if (!CheckType(tensor->GetDataType(), supportList)) {
+            LogInvalidDtype(paramName, op::ToString(tensor->GetDataType()).GetString(),
+                            "the dtype of " + paramName + " must be one of " +
+                            DataTypeListToString(supportList));
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        return ACLNN_SUCCESS;
+    }
+
     // 1. Null pointer check
     aclnnStatus CheckNotNull()
     {
         if (params_.qkv == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "qkv", "nullptr", "qkv must not be nullptr");
+            LogInvalidValue("qkv", "nullptr", "qkv can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.qGamma == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "qGamma", "nullptr", "qGamma must not be nullptr");
+            LogInvalidValue("qGamma", "nullptr", "qGamma can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.kGamma == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "kGamma", "nullptr", "kGamma must not be nullptr");
+            LogInvalidValue("kGamma", "nullptr", "kGamma can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.cosSin == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "cosSin", "nullptr", "cosSin must not be nullptr");
+            LogInvalidValue("cosSin", "nullptr", "cosSin can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.slotMapping == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "slotMapping", "nullptr",
-                "slotMapping must not be nullptr");
+            LogInvalidValue("slotMapping", "nullptr",
+                "slotMapping can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.kCache == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "kCache", "nullptr", "kCache must not be nullptr");
+            LogInvalidValue("kCache", "nullptr", "kCache can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.vCache == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "vCache", "nullptr", "vCache must not be nullptr");
+            LogInvalidValue("vCache", "nullptr", "vCache can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.kScaleCache == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "kScaleCache", "nullptr",
-                "kScaleCache must not be nullptr");
+            LogInvalidValue("kScaleCache", "nullptr",
+                "kScaleCache can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.cuSeqLen == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "cuSeqLen", "nullptr",
-                "cuSeqLen must not be nullptr");
+            LogInvalidValue("cuSeqLen", "nullptr",
+                "cuSeqLen can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.actualSeqLens == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "actualSeqLens", "nullptr",
-                "actualSeqLens must not be nullptr");
+            LogInvalidValue("actualSeqLens", "nullptr",
+                "actualSeqLens can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.optionalQRotation == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "optionalQRotation", "nullptr",
-                "optionalQRotation must not be nullptr");
+            LogInvalidValue("optionalQRotation", "nullptr",
+                "optionalQRotation can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.optionalKRotation == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "optionalKRotation", "nullptr",
-                "optionalKRotation must not be nullptr");
+            LogInvalidValue("optionalKRotation", "nullptr",
+                "optionalKRotation can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.optionalVScale == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "optionalVScale", "nullptr",
-                "optionalVScale must not be nullptr");
+            LogInvalidValue("optionalVScale", "nullptr",
+                "optionalVScale can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.headNums == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "headNums", "nullptr",
-                "headNums must not be nullptr");
+            LogInvalidValue("headNums", "nullptr",
+                "headNums can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.inputLayout == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "inputLayout", "nullptr",
-                "inputLayout must not be nullptr");
+            LogInvalidValue("inputLayout", "nullptr",
+                "inputLayout can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.qOut == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "qOut", "nullptr", "qOut must not be nullptr");
+            LogInvalidValue("qOut", "nullptr", "qOut can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.qScale == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "qScale", "nullptr", "qScale must not be nullptr");
+            LogInvalidValue("qScale", "nullptr", "qScale can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.workspaceSize == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "workspaceSize", "nullptr",
-                "workspaceSize must not be nullptr");
+            LogInvalidValue("workspaceSize", "nullptr",
+                "workspaceSize can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.executor == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "executor", "nullptr",
-                "executor must not be nullptr");
+            LogInvalidValue("executor", "nullptr",
+                "executor can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         return ACLNN_SUCCESS;
@@ -300,36 +353,36 @@ private:
     // 2. Dtype check
     aclnnStatus CheckDtypeValid()
     {
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.qkv, QKV_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.qGamma, GAMMA_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.kGamma, GAMMA_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.cosSin, COS_SIN_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.slotMapping, SLOT_MAPPING_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.kCache, CACHE_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.vCache, CACHE_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.kScaleCache, K_SCALE_CACHE_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.cuSeqLen, CU_SEQ_LEN_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.actualSeqLens, ACTUAL_SEQ_LENS_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.optionalQRotation, ROTATION_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.optionalKRotation, ROTATION_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.optionalVScale, V_SCALE_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.qOut, Q_OUT_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(ACLNN_NAME, params_.qScale, Q_SCALE_TYPE_LIST,
-            return ACLNN_ERR_PARAM_INVALID);
+        aclnnStatus ret = CheckDtypeSupported("qkv", params_.qkv, QKV_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("qGamma", params_.qGamma, GAMMA_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("kGamma", params_.kGamma, GAMMA_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("cosSin", params_.cosSin, COS_SIN_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("slotMapping", params_.slotMapping, SLOT_MAPPING_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("kCache", params_.kCache, CACHE_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("vCache", params_.vCache, CACHE_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("kScaleCache", params_.kScaleCache, K_SCALE_CACHE_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("cuSeqLen", params_.cuSeqLen, CU_SEQ_LEN_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("actualSeqLens", params_.actualSeqLens, ACTUAL_SEQ_LENS_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("optionalQRotation", params_.optionalQRotation, ROTATION_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("optionalKRotation", params_.optionalKRotation, ROTATION_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("optionalVScale", params_.optionalVScale, V_SCALE_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("qOut", params_.qOut, Q_OUT_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
+        ret = CheckDtypeSupported("qScale", params_.qScale, Q_SCALE_TYPE_LIST);
+        if (ret != ACLNN_SUCCESS) { return ret; }
         return ACLNN_SUCCESS;
     }
 
@@ -337,13 +390,13 @@ private:
     aclnnStatus ParseHeadNums(int64_t &nq, int64_t &nk, int64_t &nv)
     {
         if (params_.headNums->Size() != static_cast<int64_t>(HEAD_NUMS_SIZE)) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "headNums",
-                std::to_string(params_.headNums->Size()), "headNums must contain exactly 3 elements");
+            LogInvalidListSize("headNums", std::to_string(params_.headNums->Size()),
+                               std::to_string(HEAD_NUMS_SIZE));
             return ACLNN_ERR_PARAM_INVALID;
         }
         const int64_t *headNumsData = params_.headNums->GetData();
         if (headNumsData == nullptr) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "headNums", "nullptr", "headNums data is null");
+            LogInvalidValue("headNums", "nullptr", "headNums data can not be nullptr");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -351,15 +404,15 @@ private:
         nk = headNumsData[1];
         nv = headNumsData[2];
         if (nq <= 0 || nk <= 0 || nv <= 0) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "headNums",
+            LogInvalidValue("headNums",
                 std::to_string(nq) + ", " + std::to_string(nk) + ", " + std::to_string(nv),
                 "headNums values must be positive");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (nv != nk) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "Nv, Nk",
+            LogInvalidValue("Nv, Nk",
                 std::to_string(nv) + ", " + std::to_string(nk),
-                "First phase only supports Nv == Nk");
+                "nv must be equal to nk");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -377,8 +430,8 @@ private:
         const bool isNtd = std::strcmp(params_.inputLayout, INPUT_LAYOUT_NTD) == 0;
         const bool isTnd = std::strcmp(params_.inputLayout, INPUT_LAYOUT_TND) == 0;
         if (!isNtd && !isTnd) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "inputLayout", params_.inputLayout,
-                "inputLayout only supports NTD or TND");
+            LogInvalidValue("inputLayout", params_.inputLayout,
+                "inputLayout must be NTD or TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -386,33 +439,33 @@ private:
         const auto &qkvShape = params_.qkv->GetViewShape();
         uint64_t qkvDimNum = qkvShape.GetDimNum();
         if (unlikely(qkvDimNum != 3)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPEDIM(ACLNN_NAME, "qkv",
-                std::to_string(qkvDimNum), "qkv must be a 3D tensor [Nq+Nk+Nv, T, D] or [T, Nq+Nk+Nv, D]");
+            LogInvalidShapeDim("qkv",
+                std::to_string(qkvDimNum) + "D", "qkv must be a 3D tensor [Nq+Nk+Nv, T, D] or [T, Nq+Nk+Nv, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
         const int64_t hqkv = qkvShape.GetDim(isTnd ? 1 : 0);
         const int64_t t = qkvShape.GetDim(isTnd ? 0 : 1);
         const int64_t d = qkvShape.GetDim(2);
         if (unlikely(hqkv != nq + nk + nv)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPES(ACLNN_NAME, "qkv and headNums",
-                "qkv logical N=" + std::to_string(hqkv) + ", Nq+Nk+Nv=" + std::to_string(nq + nk + nv),
+            LogInvalidValues("qkv, headNums",
+                std::to_string(hqkv) + ", " + std::to_string(nq + nk + nv),
                 "qkv logical N dimension must equal Nq+Nk+Nv from headNums");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(d != HEAD_DIM_FAST_PATH)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "D",
-                std::to_string(d), "First phase only supports D=128");
+            LogInvalidValue("D",
+                std::to_string(d), "head dimension must be 128");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(d % 2 != 0)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "D",
-                std::to_string(d), "D must be even for RoPE");
+            LogInvalidValue("D",
+                std::to_string(d), "head dimension must be even for RoPE");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
         // gamma shape check: [D]
         if (!IsShape(params_.qGamma, {d}) || !IsShape(params_.kGamma, {d})) {
-            QKV_K_SCALE_LOG_INVALID_SHAPES(ACLNN_NAME, "qGamma, kGamma",
+            LogInvalidShapes("qGamma, kGamma",
                 ShapeToString(params_.qGamma) + ", " + ShapeToString(params_.kGamma),
                 "qGamma and kGamma must have shape [D]");
             return ACLNN_ERR_PARAM_INVALID;
@@ -421,14 +474,14 @@ private:
         // cosSin shape check: [*, D]
         const auto &cosSinShape = params_.cosSin->GetViewShape();
         if (unlikely(cosSinShape.GetDimNum() != 2 || cosSinShape.GetDim(1) != d)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "cosSin",
+            LogInvalidShape("cosSin",
                 ShapeToString(params_.cosSin), "cosSin must have shape [MaxSeqLen, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
         // slotMapping shape check: [T]
         if (!IsShape(params_.slotMapping, {t})) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "slotMapping",
+            LogInvalidShape("slotMapping",
                 ShapeToString(params_.slotMapping), "slotMapping must have shape [T]");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -436,14 +489,14 @@ private:
         // cuSeqLen shape check: 1D, len >= 2
         const auto &cuSeqLenShape = params_.cuSeqLen->GetViewShape();
         if (unlikely(cuSeqLenShape.GetDimNum() != 1 || cuSeqLenShape.GetDim(0) < 2)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "cuSeqLen",
+            LogInvalidShape("cuSeqLen",
                 ShapeToString(params_.cuSeqLen), "cuSeqLen must be a 1D tensor with length >= 2");
             return ACLNN_ERR_PARAM_INVALID;
         }
         const auto &actualSeqLensShape = params_.actualSeqLens->GetViewShape();
         if (unlikely(actualSeqLensShape.GetDimNum() != 1 ||
             actualSeqLensShape.GetDim(0) != cuSeqLenShape.GetDim(0) - 1)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "actualSeqLens",
+            LogInvalidShape("actualSeqLens",
                 ShapeToString(params_.actualSeqLens), "actualSeqLens must have shape [cuSeqLen.shape[0] - 1]");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -451,7 +504,7 @@ private:
         // rotation shape check: [D, D]
         if (!IsShape(params_.optionalQRotation, {d, d}) ||
             !IsShape(params_.optionalKRotation, {d, d})) {
-            QKV_K_SCALE_LOG_INVALID_SHAPES(ACLNN_NAME, "optionalQRotation, optionalKRotation",
+            LogInvalidShapes("optionalQRotation, optionalKRotation",
                 ShapeToString(params_.optionalQRotation) + ", " + ShapeToString(params_.optionalKRotation),
                 "optionalQRotation and optionalKRotation must have shape [D, D]");
             return ACLNN_ERR_PARAM_INVALID;
@@ -459,7 +512,7 @@ private:
 
         // vScale shape check: [Nv]
         if (!IsShape(params_.optionalVScale, {nv})) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "optionalVScale",
+            LogInvalidShape("optionalVScale",
                 ShapeToString(params_.optionalVScale), "optionalVScale must have shape [Nv]");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -468,7 +521,7 @@ private:
         const auto &kCacheShape = params_.kCache->GetViewShape();
         if (unlikely(kCacheShape.GetDimNum() != 4 || kCacheShape.GetDim(1) != nk ||
             kCacheShape.GetDim(3) != d)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "kCache",
+            LogInvalidShape("kCache",
                 ShapeToString(params_.kCache),
                 "kCache must have shape [BlockNum, Nk, BlockSize, D]");
             return ACLNN_ERR_PARAM_INVALID;
@@ -478,7 +531,7 @@ private:
         const auto &vCacheShape = params_.vCache->GetViewShape();
         if (unlikely(vCacheShape.GetDimNum() != 4 || vCacheShape.GetDim(1) != nv ||
             vCacheShape.GetDim(3) != d)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "vCache",
+            LogInvalidShape("vCache",
                 ShapeToString(params_.vCache),
                 "vCache must have shape [BlockNum, Nv, BlockSize, D]");
             return ACLNN_ERR_PARAM_INVALID;
@@ -488,7 +541,7 @@ private:
         const auto &kScaleCacheShape = params_.kScaleCache->GetViewShape();
         if (unlikely(kScaleCacheShape.GetDimNum() != 4 || kScaleCacheShape.GetDim(1) != nk ||
             kScaleCacheShape.GetDim(3) != 1)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPE(ACLNN_NAME, "kScaleCache",
+            LogInvalidShape("kScaleCache",
                 ShapeToString(params_.kScaleCache),
                 "kScaleCache must have shape [BlockNum, Nk, BlockSize, 1]");
             return ACLNN_ERR_PARAM_INVALID;
@@ -497,7 +550,7 @@ private:
         // Block consistency: kScaleCache BlockNum/BlockSize must match kCache
         if (unlikely(kCacheShape.GetDim(0) != kScaleCacheShape.GetDim(0) ||
             kCacheShape.GetDim(2) != kScaleCacheShape.GetDim(2))) {
-            QKV_K_SCALE_LOG_INVALID_SHAPES(ACLNN_NAME, "kCache and kScaleCache",
+            LogInvalidShapes("kCache and kScaleCache",
                 "kCache=[" + ShapeToString(params_.kCache) +
                 "], kScaleCache=[" + ShapeToString(params_.kScaleCache) + "]",
                 "kScaleCache BlockNum/BlockSize must match kCache");
@@ -507,7 +560,7 @@ private:
         // Block consistency: vCache BlockNum/BlockSize must match kCache
         if (unlikely(vCacheShape.GetDim(0) != kCacheShape.GetDim(0) ||
             vCacheShape.GetDim(2) != kCacheShape.GetDim(2))) {
-            QKV_K_SCALE_LOG_INVALID_SHAPES(ACLNN_NAME, "vCache and kCache",
+            LogInvalidShapes("vCache and kCache",
                 "vCache=[" + ShapeToString(params_.vCache) +
                 "], kCache=[" + ShapeToString(params_.kCache) + "]",
                 "vCache BlockNum/BlockSize must match kCache");
@@ -519,7 +572,7 @@ private:
         const std::vector<int64_t> expectedQScaleShape = isTnd ? std::vector<int64_t>{t, nq} :
                                                                  std::vector<int64_t>{nq, t};
         if (!IsShape(params_.qOut, expectedQOutShape) || !IsShape(params_.qScale, expectedQScaleShape)) {
-            QKV_K_SCALE_LOG_INVALID_SHAPES(ACLNN_NAME, "qOut, qScale",
+            LogInvalidShapes("qOut, qScale",
                 ShapeToString(params_.qOut) + ", " + ShapeToString(params_.qScale),
                 "qOut/qScale must keep the same N/T layout as qkv inputLayout");
             return ACLNN_ERR_PARAM_INVALID;
@@ -532,77 +585,77 @@ private:
     aclnnStatus CheckFormat()
     {
         if (unlikely(op::IsPrivateFormat(params_.qkv->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "qkv",
+            LogInvalidFormat("qkv",
                 op::ToString(params_.qkv->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.qGamma->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "qGamma",
+            LogInvalidFormat("qGamma",
                 op::ToString(params_.qGamma->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.kGamma->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "kGamma",
+            LogInvalidFormat("kGamma",
                 op::ToString(params_.kGamma->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.cosSin->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "cosSin",
+            LogInvalidFormat("cosSin",
                 op::ToString(params_.cosSin->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.slotMapping->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "slotMapping",
+            LogInvalidFormat("slotMapping",
                 op::ToString(params_.slotMapping->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.kCache->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "kCache",
+            LogInvalidFormat("kCache",
                 op::ToString(params_.kCache->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.vCache->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "vCache",
+            LogInvalidFormat("vCache",
                 op::ToString(params_.vCache->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.kScaleCache->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "kScaleCache",
+            LogInvalidFormat("kScaleCache",
                 op::ToString(params_.kScaleCache->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.cuSeqLen->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "cuSeqLen",
+            LogInvalidFormat("cuSeqLen",
                 op::ToString(params_.cuSeqLen->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.actualSeqLens->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "actualSeqLens",
+            LogInvalidFormat("actualSeqLens",
                 op::ToString(params_.actualSeqLens->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.optionalQRotation->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "optionalQRotation",
+            LogInvalidFormat("optionalQRotation",
                 op::ToString(params_.optionalQRotation->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.optionalKRotation->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "optionalKRotation",
+            LogInvalidFormat("optionalKRotation",
                 op::ToString(params_.optionalKRotation->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.optionalVScale->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "optionalVScale",
+            LogInvalidFormat("optionalVScale",
                 op::ToString(params_.optionalVScale->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.qOut->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "qOut",
+            LogInvalidFormat("qOut",
                 op::ToString(params_.qOut->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(op::IsPrivateFormat(params_.qScale->GetStorageFormat()))) {
-            QKV_K_SCALE_LOG_INVALID_FORMAT(ACLNN_NAME, "qScale",
+            LogInvalidFormat("qScale",
                 op::ToString(params_.qScale->GetStorageFormat()).GetString(), "ND");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -617,8 +670,8 @@ private:
         int64_t vCacheShapeSize = params_.vCache->GetViewShape().GetShapeSize();
         int64_t actualSeqLensShapeSize = params_.actualSeqLens->GetViewShape().GetShapeSize();
         if (qkvShapeSize == 0 || kCacheShapeSize == 0 || vCacheShapeSize == 0 || actualSeqLensShapeSize == 0) {
-            QKV_K_SCALE_LOG_INVALID_VALUE(ACLNN_NAME, "qkv/kCache/vCache/actualSeqLens", "empty tensor",
-                "do not support empty tensors");
+            LogInvalidValue("qkv/kCache/vCache/actualSeqLens", "empty tensor",
+                "input tensors can not be empty");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -626,12 +679,5 @@ private:
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScaleCheck
-
-#undef QKV_K_SCALE_LOG_INVALID_FORMAT
-#undef QKV_K_SCALE_LOG_INVALID_SHAPEDIM
-#undef QKV_K_SCALE_LOG_INVALID_SHAPES
-#undef QKV_K_SCALE_LOG_INVALID_SHAPE
-#undef QKV_K_SCALE_LOG_INVALID_DTYPE
-#undef QKV_K_SCALE_LOG_INVALID_VALUE
 
 #endif

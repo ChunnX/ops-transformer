@@ -14,8 +14,6 @@
 #include "opdev/shape_utils.h"
 #include "opdev/make_op_executor.h"
 
-using namespace op;
-
 namespace l0op {
 OP_TYPE_REGISTER(QkvRmsNormRopeCacheWithKScale);
 
@@ -33,13 +31,15 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
            epsilon);
 
     if (optionalQRotation == nullptr) {
-        optionalQRotation = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
+        optionalQRotation = executor->AllocTensor(op::DataType::DT_BF16, op::Format::FORMAT_ND,
+                                                  op::Format::FORMAT_ND);
     }
     if (optionalKRotation == nullptr) {
-        optionalKRotation = executor->AllocTensor(DataType::DT_BF16, Format::FORMAT_ND, Format::FORMAT_ND);
+        optionalKRotation = executor->AllocTensor(op::DataType::DT_BF16, op::Format::FORMAT_ND,
+                                                  op::Format::FORMAT_ND);
     }
     if (optionalVScale == nullptr) {
-        optionalVScale = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
+        optionalVScale = executor->AllocTensor(op::DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
     }
 
     auto ret = INFER_SHAPE(QkvRmsNormRopeCacheWithKScale,
