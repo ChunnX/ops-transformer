@@ -456,150 +456,311 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 ### 参数说明
 
 <table>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>输入/输出/属性</th>
-   <th>描述</th>
-   <th>数据类型</th>
-   <th>数据格式</th>
-  </tr>
- </thead>
- <tbody>
-  <tr>
-   <td>x</td>
-   <td>输入</td>
-   <td>表示计算使用的token数据，需根据topk_idx来发送给其他卡。要求为2维张量，shape为(BS, H)，表示有BS个token。支持非连续的Tensor。</td>
-   <td>BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>topk_idx</td>
-   <td>输入</td>
-   <td>表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2维张量，shape为(BS, K)。张量里value取值范围为[0, num_experts)，且同一行中的K个value不能重复。支持非连续的Tensor。</td>
-   <td>INT32</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>topk_weights</td>
-   <td>输入</td>
-   <td>表示每个token的topK个专家的权重，要求为2维张量，shape为(BS, K)，其中共享专家不需要乘权重系数，直接相加即可。支持非连续的Tensor。<ul><li>Atlas A2/A3：FLOAT32、BFLOAT16</li><li>Ascend 950：FLOAT32</li></ul></td>
-   <td>FLOAT32、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>l1_weights</td>
-   <td>输入</td>
-   <td>GroupMatmul1计算的右矩阵，用于计算SwiGLU激活前的线性变换。支持非连续的Tensor。<ul><li>Atlas A2/A3：3维张量，shape为(expertPerRank, H, N)；INT8/INT4权重还支持FRACTAL_NZ格式。</li><li>Ascend 950：3维张量，shape为(expertPerRank, N, H)。</li></ul></td>
-   <td><ul><li>Atlas A2/A3：BFLOAT16、INT8、INT4</li><li>Ascend 950：FLOAT8_E5M2、FLOAT8_E4M3FN</li></ul></td>
-   <td>ND、FRACTAL_NZ</td>
-  </tr>
-  <tr>
-   <td>l2_weights</td>
-   <td>输入</td>
-   <td>GroupMatmul2计算的右矩阵，用于计算SwiGLU激活后的线性变换。数据类型与l1_weights一致。支持非连续的Tensor。<ul><li>Atlas A2/A3：3维张量，shape为(expertPerRank, N/2, H)；INT8/INT4权重还支持FRACTAL_NZ格式。</li><li>Ascend 950：3维张量，shape为(expertPerRank, H, N/2)。</li></ul></td>
-   <td>同l1_weights</td>
-   <td>ND、FRACTAL_NZ</td>
-  </tr>
-  <tr>
-   <td>sym_buffer</td>
-   <td>输入</td>
-   <td>由get_symm_buffer_for_mega_moe接口创建的结构体，封装了以下入参：<ul><li>context：本卡通信域信息（INT32）。</li><li>ep_world_size：专家并行通信域大小（INT64）。</li><li>ccl_buffer_size：CCL通信缓冲区大小（INT64）。</li><li>num_experts：MoE模型的总专家数量（INT64）。</li><li>max_recv_token_num：每个Rank最大可接收Token数，默认值为0表示自动计算（INT64）。</li><li>num_max_tokens_per_rank：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小（INT64）。</li><li>dispatch_quant_mode：dispatch通信时量化模式（INT64）。Atlas A2/A3支持0（非量化，A16W16模式）和2（per-token量化，A8W8/A8W4模式）；Ascend 950仅支持4（MX模式）。</li><li>dispatch_quant_out_dtype：dispatch量化后输出的数据类型（INT64）。Atlas A2/A3 A8W8/A8W4模式下传入torch.int8；Ascend 950支持23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。</li><li>combine_quant_mode：暂不支持该参数，使用默认值即可。</li><li>comm_alg：暂不支持该参数，使用默认值即可。</li></ul></td>
-   <td>SymmBuffer</td>
-   <td>-</td>
-  </tr>
-  <tr>
-   <td>l1_weights_sf</td>
-   <td>可选输入</td>
-   <td>量化场景需要，GroupMatmul1右矩阵反量化参数。<ul><li>Atlas A2/A3：A8W8和A8W4模式下必选，2维张量shape为(expertPerRank, N)，per-channel量化缩放因子。</li><li>Ascend 950：MXFP量化场景必选，4维张量shape为(expertPerRank, N, CeilDiv(H, 64), 2)，其中CeilDiv(H, 64) = (H + 63) / 64。支持非连续的Tensor。</li></ul></td>
-   <td><ul><li>Atlas A2/A3：FLOAT32</li><li>Ascend 950：FLOAT8_E8M0</li></ul></td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>l2_weights_sf</td>
-   <td>可选输入</td>
-   <td>量化场景需要，GroupMatmul2右矩阵反量化参数。<ul><li>Atlas A2/A3：A8W8和A8W4模式下必选，2维张量shape为(expertPerRank, H)，per-channel量化缩放因子。</li><li>Ascend 950：MXFP量化场景必选，4维张量shape为(expertPerRank, H, CeilDiv(N/2, 64), 2)，其中CeilDiv(N/2, 64) = (N/2 + 63) / 64。支持非连续的Tensor。</li></ul></td>
-   <td><ul><li>Atlas A2/A3：FLOAT32</li><li>Ascend 950：FLOAT8_E8M0</li></ul></td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>l1_bias</td>
-   <td>可选输入</td>
-   <td>GroupMatmul1的偏置，用于补偿INT4权重量化误差。<ul><li>Atlas A2/A3：A8W4模式下必选，每个元素为1维张量shape为(N,)。</li><li>Ascend 950：不支持该参数。</li></ul></td>
-   <td>FLOAT32</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>l2_bias</td>
-   <td>可选输入</td>
-   <td>GroupMatmul2的偏置，用于补偿INT4权重量化误差。<ul><li>Atlas A2/A3：A8W4模式下必选，每个元素为1维张量shape为(H,)。</li><li>Ascend 950：不支持该参数。</li></ul></td>
-   <td>FLOAT32</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>x_active_mask</td>
-   <td>可选输入</td>
-   <td>表示token是否参与通信。<ul><li>Atlas A2/A3：1维张量，shape为(BS,)。</li><li>Ascend 950：暂不支持该参数，使用默认值即可。</li></ul></td>
-   <td>INT8</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>activation</td>
-   <td>可选属性</td>
-   <td>激活函数类型，默认值为"swiglu"。当前仅支持"swiglu"。</td>
-   <td>STRING</td>
-   <td>-</td>
-  </tr>
-  <tr>
-   <td>activation_clamp</td>
-   <td>可选属性</td>
-   <td>激活函数截断值，默认值为None（表示不截断）。取值需大于等于0。</td>
-   <td>FLOAT</td>
-   <td>-</td>
-  </tr>
-  <tr>
-   <td>weight1_type</td>
-   <td>可选属性</td>
-   <td>暂不支持该参数，使用默认值即可。</td>
-   <td>INT64</td>
-   <td>-</td>
-  </tr>
-  <tr>
-   <td>weight2_type</td>
-   <td>可选属性</td>
-   <td>暂不支持该参数，使用默认值即可。</td>
-   <td>INT64</td>
-   <td>-</td>
-  </tr>
- </tbody>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>必选/可选</th>
+      <th>描述</th>
+      <th>类型</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>list[Tensor]长度</th>
+      <th>是否转置</th>
+      <th>是否支持非连续Tensor</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>x</td>
+      <td>必选</td>
+      <td>MoE层输入的token隐藏状态。</td>
+      <td>Tensor</td>
+      <td>BFLOAT16</td>
+      <td>ND</td>
+      <td>(num_tokens, hidden)</td>
+      <td>-</td>
+      <td>-</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>topk_idx</td>
+      <td>必选</td>
+      <td>专家索引矩阵，表示每个token选择的num_topk个专家。元素取值范围为<code>[0, num_experts)</code>，且同一token选择的num_topk个专家不能重复。</td>
+      <td>Tensor</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(num_tokens, num_topk)</td>
+      <td>-</td>
+      <td>-</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>topk_weights</td>
+      <td>必选</td>
+      <td>表示MoE模型的专家门控网络为当前输入Token选出的num_topk个专家所对应的门控权重系数。</td>
+      <td>Tensor</td>
+      <td>FLOAT32、BFLOAT16<sup>2</sup></td>
+      <td>ND</td>
+      <td>(num_tokens, num_topk)</td>
+      <td>-</td>
+      <td>-</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td rowspan="5">l1_weights</td>
+      <td rowspan="5">必选</td>
+      <td rowspan="5">专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+      <td rowspan="5">list[Tensor]</td>
+      <td>BFLOAT16<sup>2</sup></td>
+      <td>ND</td>
+      <td>(hidden, 2 × intermediate_hidden)</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+      <td rowspan="5">-</td>
+    </tr>
+    <tr>
+      <td>INT8<sup>2</sup></td>
+      <td>FRACTAL_NZ</td>
+      <td>(hidden, 2 × intermediate_hidden)</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>INT4<sup>2</sup></td>
+      <td>FRACTAL_NZ</td>
+      <td>(hidden, 2 × intermediate_hidden)</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>FLOAT8_E5M2<sup>1</sup></td>
+      <td>ND</td>
+      <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+      <td>1</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>FLOAT8_E4M3FN<sup>1</sup></td>
+      <td>ND</td>
+      <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+      <td>1</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td rowspan="5">l2_weights</td>
+      <td rowspan="5">必选</td>
+      <td rowspan="5">专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。</td>
+      <td rowspan="5">list[Tensor]</td>
+      <td>BFLOAT16<sup>2</sup></td>
+      <td>ND</td>
+      <td>(intermediate_hidden, hidden)</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+      <td rowspan="5">-</td>
+    </tr>
+    <tr>
+      <td>INT8<sup>2</sup></td>
+      <td>FRACTAL_NZ</td>
+      <td>(intermediate_hidden, hidden)</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>INT4<sup>2</sup></td>
+      <td>FRACTAL_NZ</td>
+      <td>(intermediate_hidden, hidden)</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>FLOAT8_E5M2<sup>1</sup></td>
+      <td>ND</td>
+      <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+      <td>1</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>FLOAT8_E4M3FN<sup>1</sup></td>
+      <td>ND</td>
+      <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+      <td>1</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>sym_buffer</td>
+      <td>必选</td>
+      <td>由get_symm_buffer_for_mega_moe接口创建的结构体</td>
+      <td>SymmBuffer</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td rowspan="2">l1_weights_sf</td>
+      <td rowspan="2">可选</td>
+      <td rowspan="2">专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+      <td rowspan="2">list[Tensor]</td>
+      <td>UINT64<sup>2</sup></td>
+      <td>ND</td>
+      <td>(2 × intermediate_hidden, )</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+      <td rowspan="2">-</td>
+    </tr>
+    <tr>
+      <td>FLOAT8_E8M0<sup>1</sup></td>
+      <td>ND</td>
+      <td>(num_experts_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
+      <td>1</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td rowspan="2">l2_weights_sf</td>
+      <td rowspan="2">可选</td>
+      <td rowspan="2">专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+      <td rowspan="2">list[Tensor]</td>
+      <td>UINT64<sup>2</sup></td>
+      <td>ND</td>
+      <td>(hidden, )</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+      <td rowspan="2">-</td>
+    </tr>
+    <tr>
+      <td>FLOAT8_E8M0<sup>1</sup></td>
+      <td>ND</td>
+      <td>(num_experts_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
+      <td>1</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>l1_bias<sup>2</sup></td>
+      <td>可选</td>
+      <td>专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+      <td>list[Tensor]</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>(2 × intermediate_hidden, )</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>l2_bias<sup>2</sup></td>
+      <td>可选</td>
+      <td>专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+      <td>list[Tensor]</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>(hidden, )</td>
+      <td>num_experts_per_rank</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>x_active_mask<sup>2</sup></td>
+      <td>可选</td>
+      <td>表示token是否参与通信。</td>
+      <td>Tensor</td>
+      <td>INT8</td>
+      <td>ND</td>
+      <td>(num_tokens, )</td>
+      <td>-</td>
+      <td>-</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>activation</td>
+      <td>可选</td>
+      <td>激活函数类型，默认值为"swiglu"。当前仅支持"swiglu"。</td>
+      <td>str</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>activation_clamp</td>
+      <td>可选</td>
+      <td>激活函数前输入的对称截断阈值，将输入张量限制在 [-activation_clamp, activation_clamp] 区间内。None表示不截断，值需≥0</td>
+      <td>float</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>weight1_type</td>
+      <td>可选</td>
+      <td>暂不支持该参数，使用默认值即可。</td>
+      <td>int</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>weight2_type</td>
+      <td>可选</td>
+      <td>暂不支持该参数，使用默认值即可。</td>
+      <td>int</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="10">注1：上角标<sup>1</sup>表示Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品不支持，上角标<sup>2</sup>表示Ascend 950PR/Ascend 950DT不支持，产品不支持的参数使用默认值即可。</td>
+    </tr>
+    <tr>
+      <td colspan="10">注2：表格中的<code>CeilDiv(<var>x</var>, <var>y</var>) = (<var>x</var> + <var>y</var> - 1) // <var>y</var></code>，其中 <code>//</code> 表示整数除法（即取商的整数部分，舍去小数）</td>
+    </tr>
+  </tfoot>
 </table>
 
-### 输出说明
+### 返回值说明
 
 <table>
  <thead>
   <tr>
    <th>参数名</th>
-   <th>输入/输出</th>
    <th>描述</th>
+   <th>类型</th>
    <th>数据类型</th>
    <th>数据格式</th>
+   <th>维度(shape)</th>
   </tr>
  </thead>
  <tbody>
   <tr>
    <td>y</td>
-   <td>输出</td>
-   <td>表示本卡收到的token数据，2维张量，shape为(BS, H)。支持非连续的Tensor。</td>
+   <td>MoE层输出的token隐藏状态。</td>
+   <td>Tensor</td>
    <td>BFLOAT16</td>
    <td>ND</td>
+   <td>(num_tokens, hidden)</td>
   </tr>
   <tr>
    <td>expert_token_nums</td>
-   <td>输出</td>
-   <td>本卡每个专家实际收到的token数量，1维张量，shape为(local_expert_num,)。支持非连续的Tensor。</td>
+   <td>本卡每个专家实际收到的token数量。</td>
+   <td>Tensor</td>
    <td>INT32</td>
    <td>ND</td>
+   <td>(num_experts_per_rank, )</td>
   </tr>
  </tbody>
 </table>
@@ -607,10 +768,10 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 ### 约束说明
 
 - **参数一致性约束**：
-    - 调用算子过程中使用的 `ep_world_size`、`globalBs`、`HCCL_BUFFSIZE` 等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+    - 调用算子过程中使用的 `num_max_tokens_per_rank`、`HCCL_BUFFSIZE` 等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域使用约束**：
-    - 所有卡的 `moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank` 参数取值需保持一致。
+    - 所有卡的 `num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank` 参数取值需保持一致。
 
 #### Atlas A2 训练系列产品/Atlas A3 训练系列产品/Atlas A3 推理系列产品 约束
 
@@ -618,34 +779,34 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - BS（x.dim0）范围 [1, 8192]。
     - H（x.dim1）范围 [1024, 10240]，且必须为32的倍数。
     - topK（topk_ids.dim1）范围 [1, 32]。
-    - expertPerRank（weight1.dim0）范围 [1, 128]。
+    - num_experts_per_rank（weight1.dim0）范围 [1, 128]。
     - ep_world_size 仅支持 2, 4, 8, 16, 32, 64, 128。
-    - moe_expert_num 范围 [ep_world_size, 1024]。
+    - num_experts 范围 [ep_world_size, 1024]。
     - globalBs 为 0 或满足 BS <= globalBs 且 globalBs 为 ep_world_size 的倍数。
     - combineQuantMode 必须为 0，commAlg 必须为空字符串 ""。
     - y 的数据类型与 x 相同。
     - weight1 的最后一维（N）必须为偶数，且 weight1 的 dim1 必须等于 weight2 的 dim2 的二倍，这是因为 SwiGLU 激活需要将中间维度从 N 减半为 N/2。
     - weight1 和 weight2 的数据类型必须一致。
-    - expertPerRank = moe_expert_num / ep_world_size，必须为整数。
+    - num_experts_per_rank = num_experts / ep_world_size，必须为整数。
 
 - **量化模式约束**：
     - dispatch_quant_mode 由 weight1 数据类型决定：weight1 为 `int8` 或 `int4` 时，dispatch\_quant\_mode 必须为 2（per-token 量化）；weight1 为 `bfloat16` 或 `float16` 时，dispatch\_quant\_mode 必须为 0（非量化）。
     - dispatch_quant_out_dtype 由 weight1 数据类型决定：weight1 为 `int8` 或 `int4` 时，dispatch\_quant\_out\_dtype 必须为 `torch.int8`；A16W16 模式下不需要指定。
 
 - **A16W16 场景约束**：
-    - weight1 shape 为 (expertPerRank, H, N)，weight2 shape 为 (expertPerRank, N/2, H)。
+    - weight1 shape 为 (num_experts_per_rank, H, N)，weight2 shape 为 (num_experts_per_rank, N/2, H)。
     - weight1 和 weight2 数据类型为 `bfloat16` 或 `float16`。
     - 不需要 l1\_weights\_sf、l2\_weights\_sf、l1\_bias、l2\_bias。
 
 - **A8W8 场景约束**：
-    - weight1 shape 为 (expertPerRank, H, N)，weight2 shape 为 (expertPerRank, N/2, H)，数据类型为 `int8`。
-    - l1\_weights\_sf shape 为 (expertPerRank, N)，l2\_weights\_sf shape 为 (expertPerRank, H)，数据类型为 `float`。
+    - weight1 shape 为 (num_experts_per_rank, H, N)，weight2 shape 为 (num_experts_per_rank, N/2, H)，数据类型为 `int8`。
+    - l1\_weights\_sf shape 为 (num_experts_per_rank, N)，l2\_weights\_sf shape 为 (num_experts_per_rank, H)，数据类型为 `float`。
     - l1\_weights\_sf 和 l2\_weights\_sf 不可为空。
     - 不需要 l1\_bias、l2\_bias。
 
 - **A8W4 场景约束**：
-    - weight1 shape 为 (expertPerRank, H, N)，weight2 shape 为 (expertPerRank, N/2, H)，数据类型为 `int4`。
-    - l1\_weights\_sf shape 为 (expertPerRank, N)，l2\_weights\_sf shape 为 (expertPerRank, H)，数据类型为 `float`。
+    - weight1 shape 为 (num_experts_per_rank, H, N)，weight2 shape 为 (num_experts_per_rank, N/2, H)，数据类型为 `int4`。
+    - l1\_weights\_sf shape 为 (num_experts_per_rank, N)，l2\_weights\_sf shape 为 (num_experts_per_rank, H)，数据类型为 `float`。
     - l1\_weights\_sf 和 l2\_weights\_sf 不可为空。
     - l1\_bias 不可为空，每个元素 shape 为 (N,)，数据类型为 `float`。
     - l2\_bias 不可为空，每个元素 shape 为 (H,)，数据类型为 `float`。
@@ -656,11 +817,11 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - BS（x.dim0）范围 [1, 512]。
     - H（x.dim1）仅支持 4096、5120、7168。
     - topK（topk_ids.dim1）仅支持 6 或 8。
-    - expertPerRank（weight1.dim0）范围 [1, 16]。
+    - num_experts_per_rank（weight1.dim0）范围 [1, 16]。
     - N（weight1.dim1）仅支持 1024、2048、3072、4096、7168。
     - ep_world_size 范围 [2, 768]。
-    - moe_expert_num 范围 [ep_world_size, 1024]，且 moe_expert_num % ep_world_size == 0。
-    - maxRecvTokenNum 范围 [0, BS × ep_world_size × min(topK, expertPerRank)]。
+    - num_experts 范围 [ep_world_size, 1024]，且 num_experts % ep_world_size == 0。
+    - maxRecvTokenNum 范围 [0, BS × ep_world_size × min(topK, num_experts_per_rank)]。
     - dispatchQuantOutDtype 仅支持 23（FLOAT8_E5M2）或 24（FLOAT8_E4M3FN）。
     - globalBs 为 0 或满足 BS × ep_world_size <= globalBs 且 globalBs % ep_world_size == 0。
     - 当前版本仅支持 MXFP 量化模式（dispatchQuantMode = 4），dispatch 阶段使用 MX 逐组量化（group size = 32），量化缩放因子类型为 FLOAT8_E8M0。
@@ -669,12 +830,12 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - y 的数据类型与 x 相同。
     - weight1 的 dim1（N）必须等于 weight2 的 dim2 的二倍，这是因为 SwiGLU 激活需要将中间维度从 N 减半为 N/2。
     - weightScales1 和 weightScales2 不可为空指针。
-    - expertPerRank = moe_expert_num / ep_world_size，必须为整数且在 [1, 16] 范围内。
+    - num_experts_per_rank = num_experts / ep_world_size，必须为整数且在 [1, 16] 范围内。
 
 - **MXFP 量化场景约束**：
-    - weight1 shape 为 (expertPerRank, N, H)，weight2 shape 为 (expertPerRank, H, N/2)。
-    - weightScales1 shape 为 (expertPerRank, N, CeilDiv(H, 64), 2)，其中 CeilDiv(H, 64) = (H + 63) / 64。
-    - weightScales2 shape 为 (expertPerRank, H, CeilDiv(N/2, 64), 2)，其中 CeilDiv(N/2, 64) = (N/2 + 63) / 64。
+    - weight1 shape 为 (num_experts_per_rank, N, H)，weight2 shape 为 (num_experts_per_rank, H, N/2)。
+    - weightScales1 shape 为 (num_experts_per_rank, N, CeilDiv(H, 64), 2)，其中 CeilDiv(H, 64) = (H + 63) / 64。
+    - weightScales2 shape 为 (num_experts_per_rank, H, CeilDiv(N/2, 64), 2)，其中 CeilDiv(N/2, 64) = (N/2 + 63) / 64。
     - weightScales1 的 dim3 和 weightScales2 的 dim3 必须等于 2。
     - MXFP 场景下，dispatchQuantOutDtype=23 时 weight1 和 weight2 必须为 FLOAT8_E5M2，dispatchQuantOutDtype=24 时必须为 FLOAT8_E4M3FN。
     - xActiveMask 必须为空指针。
@@ -689,7 +850,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
  <thead>
   <tr>
    <th>参数名</th>
-   <th>输入/输出/属性</th>
+   <th>必选/可选</th>
    <th>描述</th>
    <th>数据类型</th>
   </tr>
@@ -697,67 +858,67 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
  <tbody>
   <tr>
    <td>group</td>
-   <td>输入</td>
-   <td>EP 通信域名称（专家并行通信域）。</td>
+   <td>必选</td>
+   <td>EP 通信域名称（专家并行通信域）。</td>类型
    <td>STRING</td>
   </tr>
   <tr>
    <td>num_experts</td>
-   <td>输入</td>
+   <td>必选</td>
    <td>MoE 模型的总专家数量。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>num_max_tokens_per_rank</td>
-   <td>输入</td>
+   <td>必选</td>
    <td>每张卡上的token数量，当每个rank的BS不同时，最大的BS大小。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>num_topk</td>
-   <td>输入</td>
+   <td>必选</td>
    <td>表示每个token发送的专家数。预留参数，暂不支持。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>hidden</td>
-   <td>输入</td>
+   <td>必选</td>
    <td>表示每个token大小。预留参数，暂不支持。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>intermediate_hidden</td>
-   <td>输入</td>
+   <td>必选</td>
    <td>表示中间层投影维度。预留参数，暂不支持。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>max_recv_token_num</td>
-   <td>可选属性</td>
+   <td>可选</td>
    <td>每个Rank最大可接收Token数，默认值为0表示自动计算。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>dispatch_quant_mode</td>
-   <td>可选属性</td>
+   <td>可选</td>
    <td>dispatch通信时量化模式。Atlas A2/A3支持0（非量化，A16W16模式）和2（per-token量化，A8W8/A8W4模式）；Ascend 950仅支持4（MX模式）。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>dispatch_quant_out_dtype</td>
-   <td>可选属性</td>
+   <td>可选</td>
    <td>dispatch量化后输出的数据类型。Atlas A2/A3 A8W8/A8W4模式下传入torch.int8；Ascend 950支持23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>combine_quant_mode</td>
-   <td>可选属性</td>
+   <td>可选</td>
    <td>暂不支持该参数，使用默认值即可。</td>
    <td>INT</td>
   </tr>
   <tr>
    <td>comm_alg</td>
-   <td>可选属性</td>
+   <td>可选</td>
    <td>暂不支持该参数，使用默认值即可。</td>
    <td>STRING</td>
   </tr>
@@ -767,6 +928,8 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
 ### 输出说明
 
 -   **sym\_buffer** (`SymmBuffer`)：用于封装输入参数并生成 `context`、`ep_world_size` 和 `ccl_buffer_size`。
+
+封装了以下入参：<ul><li>context：本卡通信域信息（INT32）。</li><li>ep_world_size：专家并行通信域大小（INT64）。</li><li>ccl_buffer_size：CCL通信缓冲区大小（INT64）。</li><li>num_experts：MoE模型的总专家数量（INT64）。</li><li>max_recv_token_num：每个Rank最大可接收Token数，默认值为0表示自动计算（INT64）。</li><li>num_max_tokens_per_rank：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小（INT64）。</li><li>dispatch_quant_mode：dispatch通信时量化模式（INT64）。Atlas A2/A3支持0（非量化，A16W16模式）和2（per-token量化，A8W8/A8W4模式）；Ascend 950仅支持4（MX模式）。</li><li>dispatch_quant_out_dtype：dispatch量化后输出的数据类型（INT64）。Atlas A2/A3 A8W8/A8W4模式下传入torch.int8；Ascend 950支持23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。</li><li>combine_quant_mode：暂不支持该参数，使用默认值即可。</li><li>comm_alg：暂不支持该参数，使用默认值即可。</li></ul>
 
 ## 调用示例
 -   单算子模式调用
