@@ -697,7 +697,16 @@ bool GroupedQmmTiling::AnalyzeInputs()
     const gert::Shape &weightNzStorageShape = wStorageShape->GetStorageShape();
 
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
+    OP_LOGD(context_->GetNodeName(),
+            "GMM AnalyzeInputs before SetMKN: xOrigin=%s, xStorage=%s, weightOrigin=%s, weightStorage=%s, "
+            "transA=%d, transB=%d, groupNum=%lu, weightFormat=%d.",
+            ShapeToString(xShape).c_str(), ShapeToString(xStorageShape->GetStorageShape()).c_str(),
+            ShapeToString(wShape).c_str(), ShapeToString(weightNzStorageShape).c_str(),
+            static_cast<int>(inputParams_.transA), static_cast<int>(inputParams_.transB),
+            inputParams_.groupNum, static_cast<int>(inputParams_.bFormat));
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    OP_LOGD(context_->GetNodeName(), "GMM AnalyzeInputs after SetMKN: M=%lu, K=%lu, N=%lu.",
+            inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
 
     if (inputParams_.cDtype == ge::DT_INT32) {
         return true;
@@ -715,14 +724,23 @@ bool GroupedQmmTiling::AnalyzeInputs()
         OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale", std::to_string(scaleDimNum), "positive integer"),
         return false);
     auto xScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
+    OP_LOGD(context_->GetNodeName(),
+            "GMM AnalyzeInputs quant shapes: scaleOrigin=%s, scaleStorage=%s, perTokenScale=%s.",
+            ShapeToString(wScaleShape).c_str(), ShapeToString(scaleStorageShape->GetStorageShape()).c_str(),
+            xScaleStorageShape == nullptr ? "nullptr" : ShapeToString(xScaleStorageShape->GetOriginShape()).c_str());
     OP_CHECK_IF(!SetQuantMode(wScaleShape, xScaleStorageShape, wShape),
                 OP_LOGE(inputParams_.opName, "SetQuantMode failed."), return false);
     OP_CHECK_IF(!CheckQuantParams(xScaleStorageShape, wScaleShape),
                 OP_LOGE(inputParams_.opName, "CheckQuantParams failed."), return false);
 
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        OP_LOGD(context_->GetNodeName(),
+                "GMM AnalyzeInputs check WeightNZ: weightStorage=%s, M=%lu, K=%lu, N=%lu, transB=%d.",
+                ShapeToString(weightNzStorageShape).c_str(), inputParams_.mSize, inputParams_.kSize,
+                inputParams_.nSize, static_cast<int>(inputParams_.transB));
         OP_CHECK_IF(!CheckShapeForWeightNz(weightNzStorageShape),
                     OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed."), return false);
+        OP_LOGD(context_->GetNodeName(), "GMM AnalyzeInputs check WeightNZ success.");
     }
     if (inputParams_.actType != static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_NONE)) {
         OP_CHECK_IF(!CheckActiveMode(wScaleShape, xScaleStorageShape),
