@@ -103,7 +103,7 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
     print_log(
         '---------------------------------------------------------------------------------------')
     split_count = int(end - start)
-    if true:
+    if True:
         for i in range(split_count + 1):
             display_inner(i)
     else:
