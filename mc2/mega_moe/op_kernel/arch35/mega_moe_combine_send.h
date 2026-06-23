@@ -193,6 +193,10 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         }
     }
 
+    // 所有分配到的 rank 均为本卡或 0 token, 无需轮询, 直接返回
+    if (processRank == processRankNum) {
+        return;
+    }
 
     uint32_t rankIndex = 0;
     uint32_t cnt = 0;
