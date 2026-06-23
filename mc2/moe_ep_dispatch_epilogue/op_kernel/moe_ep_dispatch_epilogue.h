@@ -422,41 +422,19 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
 
 // ---------------------------------------------------------------------------
 // CopyInputsToOutputs
-//   non-cached: recvSrcMetadata 已在 CopyFromWindowByExpert 中由各 aiv 写好，本函数无操作
-//   cached:     把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
-//               总元素 = expertSum_ * RECV_META_FIELDS（int32），用 DataCopyPad 兜底尾部
-//               调用方已通过 if (aivId_ == 0) 守卫，本函数体不再判定
+//   cached: 把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
 // ---------------------------------------------------------------------------
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyInputsToOutputs()
 {
-    PipeBarrier<PIPE_MTE3>();   // 等待 CopyFromWindowByExpert 写完 recvX/recvTopkIdx/recvTopkWeights
-
     if constexpr (IsCached) {
-        const uint32_t totalElems = expertSum_ * RECV_META_FIELDS;
-        if (totalElems == 0) {
-            return;
-        }
-        // 复用 ubMeta_（int32），其元素容量 ubMetaCapElems_ 已在 Init 中算好
-        // 取容量做分块，向下对齐到 8（int32 → 32B/4）以便对齐路径
-        const uint32_t ubElemsCap = ubMetaCapElems_;
-        uint32_t chunkElems = (ubElemsCap / 8U) * 8U;
-        if (chunkElems == 0) {
-            chunkElems = 8U;
-        }
-
-        for (uint32_t off = 0; off < totalElems; off += chunkElems) {
-            uint32_t copyElems = (off + chunkElems > totalElems) ? (totalElems - off) : chunkElems;
-            // 整段（含尾部不对齐）统一用 DataCopyPad，兼容 < 8 elem 余数（实现简单优先）
-            DataCopyExtParams copyParams{1U,
-                                         static_cast<uint32_t>(copyElems * sizeof(int32_t)),
-                                         0U, 0U, 0U};
-            DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
-            DataCopyPad(ubMeta_, cachedRecvSrcMetadataGm_[off], copyParams, padParams);
-            PipeBarrier<PIPE_MTE2>();
-            DataCopyPad(recvSrcMetadataGm_[off], ubMeta_, copyParams);
-            PipeBarrier<PIPE_MTE3>();
-        }
+        DataCopyExtParams copyParams{1U,
+            static_cast<uint32_t>(expertSum_ * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+        DataCopyPad(ubMeta_, cachedRecvSrcMetadataGm_, copyParams, padParams);
+        PipeBarrier<PIPE_MTE2>();
+        DataCopyPad(recvSrcMetadataGm_, ubMeta_, copyParams);
+        PipeBarrier<PIPE_MTE3>();
     }
 }
 
