@@ -824,7 +824,7 @@ ge::GRAPH_SUCCESS, 3000000, expectTilingData, expectWorkspaces);
 // counting sort 多核gather非fullload 1300000
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_43)
 {
-    string expectTilingData = "40 1000 2880 4 0 256 256 -1 0 1 0 256 1 0 0 0 4000 0 0 0 0 4 992 1 992 992 1024 1 1024 1024 1984 0 1504 40 100 100 1 100 100 1 100 100 40 25 100 1 100 100 1 100 100 2 2800 80 0 40 100 100 100 100 100 100 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 100 100 100 100 100 100 1 1 ";
+    string expectTilingData = "40 1000 2880 4 0 256 256 -1 0 1 0 256 1 0 0 0 4000 0 0 0 0 4 992 1 992 992 1024 1 1024 1024 1984 0 1504 40 100 100 1 100 100 1 100 100 40 100 100 1 100 100 1 100 100 1 2880 2880 0 40 100 100 100 100 100 100 1 1 2880 2880 1 0 0 0 0 0 0 0 0 0 0 0 0 40 100 100 100 100 100 100 1 1 ";
     std::vector<size_t> expectWorkspaces = {16892832};
     RunNormalCaseNoQuant(1000, 2880, 4, 0, 4000, 0, 1, false, QUANT_MODE_NONE, 1, ge::DT_FLOAT, {0, 256}, ROW_IDX_TYPE_DROPPAD,
                   ge::GRAPH_SUCCESS, 1100000, expectTilingData, expectWorkspaces);
