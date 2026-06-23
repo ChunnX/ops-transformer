@@ -167,16 +167,16 @@
 
 ## 约束说明
 
--   QuantLightningIndexerV2Metadata算子需要与QuantLightningIndexerV2算子配套使用。
--   B（Batch）表示输入样本批量大小。
--   参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
--   参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
--   参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
--   mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode参数说明.md)。
+- QuantLightningIndexerV2Metadata算子需要与QuantLightningIndexerV2算子配套使用。
+- B（Batch）表示输入样本批量大小。
+- 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
+- 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
+- 参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
+- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode参数说明.md)。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn API | [test_aclnn_quant_lightning_indexer_v2_metadata.cpp](./examples/test_aclnn_quant_lightning_indexer_v2_metadata.cpp) | 通过[aclnnQuantLightningIndexerV2Metadata](./docs/aclnnQuantLightningIndexerV2Metadata.md)接口调用QuantLightningIndexerV2Metadata算子 |
-| PyTorch API | [test_torch_quant_lightning_indexer_v2_metadata.py](./examples/test_torch_quant_lightning_indexer_v2_metadata.py) | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/quant_lightning_indexer.md)接口调用QuantLightningIndexerV2Metadata算子 |
+| aclnn API | [test_aclnn_quant_lightning_indexer_v2_metadata](./examples/test_aclnn_quant_lightning_indexer_v2_metadata.cpp) | 通过[aclnnQuantLightningIndexerV2Metadata](./docs/aclnnQuantLightningIndexerV2Metadata.md)接口调用QuantLightningIndexerV2Metadata算子 |
+| PyTorch API | [test_torch_quant_lightning_indexer_v2_metadata](./examples/test_torch_quant_lightning_indexer_v2_metadata.py) | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/quant_lightning_indexer.md)接口调用QuantLightningIndexerV2Metadata算子 |

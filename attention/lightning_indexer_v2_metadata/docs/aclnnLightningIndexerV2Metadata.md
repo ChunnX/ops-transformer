@@ -82,7 +82,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     </tr></thead>
   <tbody>
     <tr>
-      <td>cuSeqlensQOptional</td>
+      <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query的有效Sequence Length。</td>
       <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
@@ -92,7 +92,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>cuSeqlensKOptional</td>
+      <td>cuSeqlensKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Key的有效Sequence Length。</td>
       <td><ul><li>支持空Tensor。</li><li>layoutKOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
@@ -102,7 +102,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>sequsedQOptional</td>
+      <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
       <td>支持空Tensor。</td>
@@ -112,7 +112,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>sequsedKOptional</td>
+      <td>sequsedKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Key实际参与运算的Sequence Length。</td>
       <td>支持空Tensor。</td>
@@ -122,7 +122,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>cmpResidualKOptional</td>
+      <td>cmpResidualKOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
       <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li></ul></td>
@@ -132,7 +132,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>√</td>
     </tr>
     <tr>
-      <td>numHeadsQ</td>
+      <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
       <td>当前仅支持32/64。</td>
@@ -142,7 +142,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>numHeadsK</td>
+      <td>numHeadsK（int64_t）</td>
       <td>输入</td>
       <td>表示Key的head个数。</td>
       <td>当前仅支持1。</td>
@@ -152,7 +152,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>headDim</td>
+      <td>headDim（int64_t）</td>
       <td>输入</td>
       <td>注意力头的维度。</td>
       <td>当前仅支持128。</td>
@@ -162,7 +162,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>topk</td>
+      <td>topk（int64_t）</td>
       <td>输入</td>
       <td>表示从Query中筛选出的关键稀疏token的个数。</td>
       <td>当前仅支持[1, 2048]</td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>batchSize</td>
+      <td>batchSize（int64_t）</td>
       <td>输入</td>
       <td>表示Batch数量。</td>
       <td><ul><li>支持非负数。</li><li>建议值为0。</li></ul></td>
@@ -182,7 +182,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenQ</td>
+      <td>maxSeqlenQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的最长Sequence Length。</td>
       <td><ul><li>取值范围≥-1，-1表示任意可能长度。</li><li>建议值为-1。</li></ul></td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenK</td>
+      <td>maxSeqlenK（int64_t）</td>
       <td>输入</td>
       <td>表示Key的最长Sequence Length。</td>
       <td><ul><li>取值范围≥-1，-1表示任意可能长度。</li><li>建议值为-1。</li></ul></td>
@@ -202,7 +202,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutQOptional</td>
+      <td>layoutQOptional（char*）</td>
       <td>输入</td>
       <td>表示Query的排列格式。</td>
       <td><ul><li>支持 BSND、TND。</li><li>建议值为BSND。</li></ul></td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutKOptional</td>
+      <td>layoutKOptional（char*）</td>
       <td>输入</td>
       <td>表示Key的排列格式。</td>
       <td><ul><li>支持 BSND、TND、PA_BBND。</li><li>建议值为BSND。</li></ul></td>
@@ -222,7 +222,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>maskMode</td>
+      <td>maskMode（int64_t）</td>
       <td>输入</td>
       <td>表示sparse模式。</td>
       <td><ul><li>0: No mask。</li><li>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li><li>建议值为0。</li></ul></td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpRatio</td>
+      <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>表示Key的压缩率。</td>
       <td><ul><li>取值范围[1，128]</li><li>建议值1，表示无压缩。</li></ul></td>
@@ -242,7 +242,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>metadata</td>
+      <td>metadata（aclTensor*）</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
       <td>-</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -356,27 +356,27 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 
 ## 约束说明
 
-  - aclnnLightningIndexerV2Metadata默认确定性实现
+  - aclnnLightningIndexerV2Metadata默认确定性实现。
 
   - Batch取值规则
-    - 优先获取sequsedQOptional中的Batch信息
-    - 如果未传入sequsedQOptional，优先获取cuSeqlensQOptional中的Batch信息
-    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
-    - 除上所述，使用batchSize
+    - 优先获取sequsedQOptional中的Batch信息。
+    - 如果未传入sequsedQOptional，优先获取cuSeqlensQOptional中的Batch信息。
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息。
+    - 除上所述，使用batchSize。
   - Sequence Length取值规则
-    - 优先获取sequsedQOptional中的Sequence Length信息
-    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息
-    - 除上所述，使用maxSeqlenQ
-    - Key与Query的获取规则一致
+    - 优先获取sequsedQOptional中的Sequence Length信息。
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息。
+    - 除上所述，使用maxSeqlenQ。
+    - Key与Query的获取规则一致。
   - layout约束
-    - 当layoutKOptional为PA_BBND时，layoutQOptional可以任意取值
-    - 除上所述，layoutQOptional必须与layoutKOptional保持一致
+    - 当layoutKOptional为PA_BBND时，layoutQOptional可以任意取值。
+    - 除上所述，layoutQOptional必须与layoutKOptional保持一致。
   - BSND场景
-    - 当传入的layoutQOptional为"BSND"时，视为使用BSND场景
-    - 在未传入cuSeqlensQOptional和sequsedQOptional的情况下，必传batchSize、maxSeqlenQ、maxSeqlenK参数
+    - 当传入的layoutQOptional为"BSND"时，视为使用BSND场景。
+    - 在未传入cuSeqlensQOptional和sequsedQOptional的情况下，必传batchSize、maxSeqlenQ、maxSeqlenK参数。
   - TND场景
-    - 当传入的layoutQOptional为"TND"时，视为使用TND场景
-    - 必传cuSeqlensQOptional、cuSeqlensKOptional参数
+    - 当传入的layoutQOptional为"TND"时，视为使用TND场景。
+    - 必传cuSeqlensQOptional、cuSeqlensKOptional参数。
 
 ## 调用示例
 

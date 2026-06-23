@@ -501,23 +501,23 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 
 ## 约束说明
 
-  - aclnnMixedQuantSparseFlashMlaMetadata默认确定性实现
+  - aclnnMixedQuantSparseFlashMlaMetadata默认确定性实现。
 
   - Batch取值规则
-    - 优先获取sequsedQOptional中的Batch信息
-    - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Batch信息
-    - 除上所述，使用batchSize
+    - 优先获取sequsedQOptional中的Batch信息。
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Batch信息。
+    - 除上所述，使用batchSize。
   - Query Sequence Length取值规则
-    - 优先获取sequsedQOptional中的Sequence Length信息
-    - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Sequence Length信息
-    - 除上所述，使用maxSeqlenQ
-    - ori_kv、cmp_kv Sequence Length与Query的获取规则一致
+    - 优先获取sequsedQOptional中的Sequence Length信息。
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Sequence Length信息。
+    - 除上所述，使用maxSeqlenQ。
+    - ori_kv、cmp_kv Sequence Length与Query的获取规则一致。
   - BSND场景
-    - 当传入的layoutQOptional为"BSND"时，在未传入sequsedQOptional的情况下，必传maxSeqlenQ参数
-    - 当传入的layoutKvOptional为"BSND"时，若hasOriKv为true，在未传入sequsedOriKvOptional的情况下，必传maxSeqlenOriKv参数；若hasCmpKv为true，在未传入sequsedCmpKvOptional的情况下，必传maxSeqlenCmpKv参数
+    - 当传入的layoutQOptional为"BSND"时，在未传入sequsedQOptional的情况下，必传maxSeqlenQ参数。
+    - 当传入的layoutKvOptional为"BSND"时，若hasOriKv为true，在未传入sequsedOriKvOptional的情况下，必传maxSeqlenOriKv参数；若hasCmpKv为true，在未传入sequsedCmpKvOptional的情况下，必传maxSeqlenCmpKv参数。
   - TND场景
-    - 当传入的layoutQOptional为"TND"时，必传cuSeqlensQOptional参数
-    - 当传入的layoutKvOptional为"TND"时，若hasOriKv为true，必传cuSeqlensOriKvOptional；若hasCmpKv为true，必传cuSeqlensCmpKvOptional参数
+    - 当传入的layoutQOptional为"TND"时，必传cuSeqlensQOptional参数。
+    - 当传入的layoutKvOptional为"TND"时，若hasOriKv为true，必传cuSeqlensOriKvOptional；若hasCmpKv为true，必传cuSeqlensCmpKvOptional参数。
 
 ## 调用示例
 
