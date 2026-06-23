@@ -369,12 +369,12 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
 {
     if (unlikely(boIdx == 0)) {
-        actualSeqQlen = actualSeqQlenAddr[0];
-        actualSeqKvlen = actualSeqKvlenAddr[0];
+        actualSeqQlen = actualSeqQlenAddr[1];
+        actualSeqKvlen = actualSeqKvlenAddr[1];
         return;
     }
-    actualSeqQlen = actualSeqQlenAddr[boIdx] - actualSeqQlenAddr[boIdx - 1];
-    actualSeqKvlen = actualSeqKvlenAddr[boIdx] - actualSeqKvlenAddr[boIdx - 1];
+    actualSeqQlen = actualSeqQlenAddr[boIdx + 1] - actualSeqQlenAddr[boIdx];
+    actualSeqKvlen = actualSeqKvlenAddr[boIdx + 1] - actualSeqKvlenAddr[boIdx];
 }
 
 template <typename CubeBlockType, typename VecBlockType>
