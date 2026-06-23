@@ -59,8 +59,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
     return ge::GRAPH_SUCCESS;
 }
 
-// CheckCrossFeature
-ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &fiaInfo) const
+// CheckMultiPara
+ge::graphStatus SoftmaxLSEChecker::CheckMultiParaDimAndShape(const FiaTilingInfo &fiaInfo) const
 {
     // When softmaxLseFlag is true and emptyTensorFlag is false:
     // -If the LayOut is TND, the shape must have 3 dimensions (matching TN1).
@@ -124,9 +124,6 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FiaTilingInfo &fiaIn
 
 ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureDimAndShape(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-    }
     OP_CHECK_IF(
         fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.softmaxLseFlag,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "softmax_lse_flag", "True",
@@ -137,6 +134,9 @@ ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInf
 
 ge::graphStatus SoftmaxLSEChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
+    if (ge::GRAPH_SUCCESS != CheckMultiParaDimAndShape(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
