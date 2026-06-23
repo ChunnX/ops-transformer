@@ -30,6 +30,7 @@ COV="false"
 CLANG="false"
 VERBOSE="false"
 OOM="false"
+FUSION_PASS="false"
 THREAD_NUM=$(grep -c ^processor /proc/cpuinfo)
 ENABLE_VALGRIND=FALSE
 ENABLE_CREATE_LIB=FALSE
@@ -107,6 +108,7 @@ function help_info() {
                 echo "    --cann_3rd_lib_path=<PATH>"
                 echo "                           Set ascend third_party package install path, default ./third_party"
                 echo "    --oom                  Build with oom mode on the kernel side, with options: '-g --cce-enable-oom'"
+                echo "    --enable-fusion-pass   Enable custom pkg graph fusion pass, ES libs and install.sh override"
                 echo "    --asan                 Enable ASAN (Address Sanitizer) on the host side"
                 echo "    --kernel_template_input=args0,args1"
                 echo "                           Specify kernel template input arguments (comma-separated for multiple)"
@@ -1453,6 +1455,10 @@ while [[ $# -gt 0 ]]; do
         OOM="true"
         shift
         ;;
+    --enable-fusion-pass)
+        FUSION_PASS="true"
+        shift
+        ;;
     *)
         help_info
         exit 1
@@ -1603,6 +1609,10 @@ fi
 
 if [ "${OOM}" == "true" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_OOM=ON"
+fi
+
+if [ "${FUSION_PASS}" == "true" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CUSTOM_FUSION_PASS=ON"
 fi
 
 if [ -n "${EXAMPLE}" ];then

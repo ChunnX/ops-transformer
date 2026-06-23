@@ -294,7 +294,7 @@ fi
 if [ -n "${INSTALL_PATH}" ] && [ -d ${INSTALL_PATH} ]; then
     _ASCEND_CUSTOM_OPP_PATH=${targetdir}/${vendordir}
     bin_path="${_ASCEND_CUSTOM_OPP_PATH}/bin"
-    set_env_variable="#!/bin/bash\nexport ASCEND_CUSTOM_OPP_PATH=${_ASCEND_CUSTOM_OPP_PATH}:\${ASCEND_CUSTOM_OPP_PATH}\nexport LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH}"
+    set_env_variable="#!/bin/bash\nexport ASCEND_CUSTOM_OPP_PATH=${_ASCEND_CUSTOM_OPP_PATH}:\${ASCEND_CUSTOM_OPP_PATH}\nexport LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_proto/es/lib/linux/$(uname -m):${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH}"
     if [ ! -d ${bin_path} ]; then
         mkdir -p ${bin_path} >> /dev/null 2>&1
         if [ $? -ne 0 ]; then
@@ -333,7 +333,7 @@ else
         chmod 755 ${config_file}
     fi
     log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
-        execute the command [ export LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH} ] to set the environment path"
+        execute the command [ export LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_proto/es/lib/linux/$(uname -m):${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH} ] to set the environment path"
 fi
 
 if [ -d ${targetdir}/$vendordir/op_impl/cpu/aicpu_kernel/impl/ ]; then

@@ -711,6 +711,12 @@ target_link_libraries(
     PUBLIC ${OPHOST_NAME}_infer_obj
     PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:${OPGRAPH_NAME}_gentask_obj>
 )
+if(ENABLE_CUSTOM_FUSION_PASS)
+    target_link_libraries(
+        cust_proto
+        PUBLIC $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:${GRAPH_PLUGIN_NAME}_obj>
+    )
+endif()
 
 function(filter_aclnn_headers_by_skip_flag input_headers output_headers)
     set(filtered_headers)
@@ -873,7 +879,7 @@ if (BUILD_OPEN_PROJECT)
 endif ()
 
 # ---------------------------------------- generate es transformer cust ------------------------------------------
-if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENABLE_STATIC)
+if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENABLE_STATIC AND ENABLE_CUSTOM_FUSION_PASS)
     message(STATUS "Start Generating es transformer for custom pkg")
     add_library(
         proto_transformer_cust SHARED
@@ -1167,9 +1173,18 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     else()
         set(ASCEND_PROJECT_DIR_SCRIPTS_PATH ${CMAKE_SOURCE_DIR}/cmake/scripts/custom)
     endif()
+    if(ENABLE_CUSTOM_FUSION_PASS)
+        set(_CUSTOM_INSTALL_SH_COPY_COMMAND
+            COMMAND cp -f ${CMAKE_SOURCE_DIR}/cmake/scripts/custom/install.sh
+                    ${CMAKE_CURRENT_BINARY_DIR}/scripts/install.sh
+        )
+    else()
+        set(_CUSTOM_INSTALL_SH_COPY_COMMAND)
+    endif()
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/scripts/install.sh ${CMAKE_CURRENT_BINARY_DIR}/scripts/upgrade.sh
             COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/scripts
             COMMAND cp -r ${ASCEND_PROJECT_DIR_SCRIPTS_PATH}/* ${CMAKE_CURRENT_BINARY_DIR}/scripts/
+            ${_CUSTOM_INSTALL_SH_COPY_COMMAND}
             COMMAND chmod +w ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
             COMMAND sed -i "s/vendor_name=customize/vendor_name=${VENDOR_NAME}_transformer/g" ${CMAKE_CURRENT_BINARY_DIR}/scripts/*
     )
