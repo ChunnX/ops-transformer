@@ -88,6 +88,7 @@ private:
     void FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
                                 int64_t &nextTokensLeftUp);
     void InitImplParam();
+    bool IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo);
     bool IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo);
     void GetSafeActToken(split_core_v2::SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken);
