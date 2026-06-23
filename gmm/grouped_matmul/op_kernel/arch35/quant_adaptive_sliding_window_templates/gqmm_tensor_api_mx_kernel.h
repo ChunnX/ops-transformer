@@ -45,10 +45,10 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using LayoutB = wLayout;
     using LayoutC = yLayout;
     using ProblemShape = Blaze::Gemm::MatmulShape;
-    using BlockMmadPolicy = Blaze::Gemm::MatmulWithScaleMx<0>;
+    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
     using QgmmBlockMmad =
-        Blaze::Gemm::Block::BlockMmadGroupedMatmulMx<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC,
-                                                     BiasType, LayoutC>;
+        Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType,
+                                      LayoutC>;
     using BlockEpilogue = void;
     using QgmmKernel = Blaze::Gemm::Kernel::KernelGroupedMatmulMx<ProblemShape, QgmmBlockMmad, BlockEpilogue>;
     using Params = typename QgmmKernel::Params;
