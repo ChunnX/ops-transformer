@@ -138,6 +138,39 @@ __simd_callee__ inline void FloatX2ToSortableKey(
     AscendC::MicroAPI::Xor(outKey1, outKey1, regMask[1], maskAll);
 }
 
+__aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
+                                              const LocalTensor<uint16_t> &in,
+                                              const uint32_t topK)
+{
+    auto outBuf = (__local_mem__ bfloat16_t*)out_.GetPhyAddr();
+    auto inBuf = (__local_mem__ uint16_t*)in.GetPhyAddr();
+
+    const uint16_t repeatSize16 = 128;
+    uint16_t topkLoopNum = (topK + repeatSize16 - 1) / repeatSize16;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<uint16_t> regIn;
+        AscendC::MicroAPI::RegTensor<bfloat16_t> regOut;
+        AscendC::MicroAPI::MaskReg maskAllB16 =
+                                    AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+
+        for (uint16_t i = 0; i < topkLoopNum; ++i) {
+            AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * 128);
+
+            UIntSortConstCtx<bfloat16_t> uint16Ctx;
+            InitUIntSortConstCtx(uint16Ctx, maskAllB16);
+
+            UIntToSortableKey<bfloat16_t>(regOut, regIn, uint16Ctx, maskAllB16);
+
+            AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                outBuf + i * 128,
+                regOut,
+                maskAllB16);
+        }
+    }
+}
+
 template <typename T, size_t N>
 __simd_callee__ inline void DuplicateZero(AscendC::MicroAPI::RegTensor<T> (&regArray)[N],
                                           AscendC::MicroAPI::MaskReg& mask)
