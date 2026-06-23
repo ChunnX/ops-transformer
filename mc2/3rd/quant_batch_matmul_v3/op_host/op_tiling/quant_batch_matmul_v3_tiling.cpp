@@ -1172,10 +1172,6 @@ int32_t Mc2QuantBatchMatmulV3Tiling::CalcND2NZSpace() const {
 
 void Mc2QuantBatchMatmulV3Tiling::PrintTilingData()
 {
-    if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     auto &tiling = tilingData_.matmulTiling;
     std::stringstream ss;
     ss << " usedCoreNum: " << tiling.usedCoreNum << " M: " << tiling.M << " N: " << tiling.N
@@ -1193,14 +1189,11 @@ void Mc2QuantBatchMatmulV3Tiling::PrintTilingData()
        << " usedUBSize: " << tiling.shareUbSize << " batchM: " << tiling.batchM
        << " batchN: " << tiling.batchN << " singleBatchM: " << tiling.singleBatchM
        << " singleBatchN: " << tiling.singleBatchN;
+    OP_LOGD(inputParams_.opName, "%s", ss.str().c_str());
 }
 
 void Mc2QuantBatchMatmulV3Tiling::PrintTbeTiling()
 {
-    if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     optiling::CacheTilingData &tiling = tbeTiling_;
     std::stringstream ss;
     ss << "tiling_id: " << tiling.tiling_id << " n_cub: " << tiling.n_cub << " db_cub: " << tiling.db_cub
@@ -1228,14 +1221,11 @@ void Mc2QuantBatchMatmulV3Tiling::PrintTbeTiling()
        << " al1_full_load: " << tiling.al1_full_load << " bl1_full_load: " << tiling.bl1_full_load
        << " hf32_flag: " << tiling.hf32_flag << " zero_flag: " << tiling.zero_flag
        << " datatype_bf16: " << tiling.datatype_bf16 << " deq_scale_var: " << tiling.deq_scale_var;
+    OP_LOGD(inputParams_.opName, "%s", ss.str().c_str());
 }
 
 void Mc2QuantBatchMatmulV3Tiling::PrintTilingParams() const
 {
-    if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     Mc2QuantBatchMatmulV3Params& params = tilingData_.params;
     std::stringstream ss;
     ss << " batchA: " << params.batchA << " batchB: " << params.batchB << " batchC: " << params.batchC

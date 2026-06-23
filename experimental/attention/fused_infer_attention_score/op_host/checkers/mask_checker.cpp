@@ -134,17 +134,21 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
     bool isPa = fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION;
     bool isSparse0NoMask = (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag);
     bool isSparse3WithMask = (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && fiaInfo.attenMaskFlag;
-    bool isSparse5PrefillWithMask = (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) && fiaInfo.attenMaskFlag &&
-                                    isPrefillQScale;
-    OP_CHECK_IF(!(isSparse0NoMask || isSparse3WithMask || isSparse5PrefillWithMask),
+    bool isSparse5WithMask = (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) && fiaInfo.attenMaskFlag;
+    OP_CHECK_IF(!(isSparse0NoMask || isSparse3WithMask || isSparse5WithMask),
                     OP_LOGE(fiaInfo.opName,
-                            "Only support sparse 0 without mask, sparse 3 with mask, or prefill sparse 5 with mask "
+                            "Only support sparse 0 without mask, sparse 3 with mask, or sparse 5 with mask "
                             "in MXFP8 fullquant scenario, "
                             "now input sparse mode is %d and there has%smask",
                             fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                     return ge::GRAPH_FAILED);
 
     if (fiaInfo.sparseMode == SPARSE_MODE_INIT_SWA) {
+        OP_CHECK_IF(!isPrefillQScale,
+            OP_LOGE(fiaInfo.opName,
+            "Only support qScale dim num = 4 in MXFP8 fullquant sparse 5 scenario."),
+            return ge::GRAPH_FAILED);
+        
         OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::TND,
             OP_LOGE(fiaInfo.opName,
             "Only support Query layout = TND in MXFP8 fullquant sparse 5 scenario"),
