@@ -11,6 +11,7 @@
 #include "grouped_matmul_activation_quant_tiling.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <graph/utils/type_utils.h>
@@ -52,6 +53,9 @@ constexpr uint32_t WEIGHT_SCALE_N_DIM_INDEX = 2;
 constexpr uint32_t WEIGHT_SCALE_PAIR_DIM_INDEX = 3;
 constexpr uint32_t WEIGHT_SCALE_TRANS_N_DIM_INDEX = 1;
 constexpr uint32_t WEIGHT_SCALE_TRANS_K_BLOCK_DIM_INDEX = 2;
+constexpr uint32_t WEIGHT_NZ_GROUP_DIM_INDEX = 0;
+constexpr uint32_t WEIGHT_NZ_BLOCK1_DIM_INDEX = 1;
+constexpr uint32_t WEIGHT_NZ_BLOCK2_DIM_INDEX = 2;
 constexpr uint32_t WEIGHT_NZ_C0_DIM_INDEX = 3;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_INDEX = 4;
 constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP8 = 32;
@@ -249,6 +253,20 @@ bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape
                     wStorageShape.GetDim(WEIGHT_NZ_LAST_DIM_INDEX) != WEIGHT_NZ_LAST_DIM_FP8,
                 OP_LOGE(context_->GetNodeName(), "FP8 NZ weight storage tail dims must be 16 and 32."),
                 return false);
+    auto expectedNBlock = inputParams_.transB ?
+        static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.kSize, WEIGHT_NZ_LAST_DIM_FP8)) :
+        static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.nSize, WEIGHT_NZ_LAST_DIM_FP8));
+    auto expectedKBlock = inputParams_.transB ?
+        static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.nSize, WEIGHT_NZ_C0_DIM)) :
+        static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.kSize, WEIGHT_NZ_C0_DIM));
+    OP_CHECK_IF(wStorageShape.GetDim(WEIGHT_NZ_GROUP_DIM_INDEX) != static_cast<int64_t>(inputParams_.groupNum) ||
+                    wStorageShape.GetDim(WEIGHT_NZ_BLOCK1_DIM_INDEX) != expectedNBlock ||
+                    wStorageShape.GetDim(WEIGHT_NZ_BLOCK2_DIM_INDEX) != expectedKBlock,
+                OP_LOGE(context_->GetNodeName(),
+                        "NZ weight storage shape mismatch, actual is %s, expected first three dims are [%lu, %ld, %ld].",
+                        ShapeToDebugString(wStorageShape).c_str(), inputParams_.groupNum, expectedNBlock,
+                        expectedKBlock),
+                return false);
     return true;
 }
 
@@ -283,6 +301,14 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     const auto &xScaleShape = xScaleStorageShape->GetOriginShape();
     const auto &wScaleShape = wScaleStorageShape->GetOriginShape();
     const auto &weightScaleStorageShape = wScaleStorageShape->GetStorageShape();
+    std::printf("[GMMAQ tiling] AnalyzeInputs before SetMKN: xOrigin=%s, xStorage=%s, weightOrigin=%s, "
+                "weightStorage=%s, xScaleOrigin=%s, weightScaleOrigin=%s, weightScaleStorage=%s, transB=%d, "
+                "groupNum=%lu.\n",
+                ShapeToDebugString(xShape).c_str(), ShapeToDebugString(xStorageShape->GetStorageShape()).c_str(),
+                ShapeToDebugString(wShape).c_str(), ShapeToDebugString(weightStorageShape).c_str(),
+                ShapeToDebugString(xScaleShape).c_str(), ShapeToDebugString(wScaleShape).c_str(),
+                ShapeToDebugString(weightScaleStorageShape).c_str(), static_cast<int>(inputParams_.transB),
+                inputParams_.groupNum);
     OP_LOGD(context_->GetNodeName(),
             "GMMAQ AnalyzeInputs before SetMKN: xOrigin=%s, xStorage=%s, weightOrigin=%s, weightStorage=%s, "
             "xScaleOrigin=%s, weightScaleOrigin=%s, weightScaleStorage=%s, transB=%d, groupNum=%lu.",
@@ -292,11 +318,30 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
             ShapeToDebugString(weightScaleStorageShape).c_str(), static_cast<int>(inputParams_.transB),
             inputParams_.groupNum);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    std::printf("[GMMAQ tiling] AnalyzeInputs after SetMKN: M=%lu, K=%lu, N=%lu.\n",
+                inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
     OP_LOGD(context_->GetNodeName(), "GMMAQ AnalyzeInputs after SetMKN: M=%lu, K=%lu, N=%lu.",
             inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
+    if (wShape.GetDimNum() == WEIGHT_NZ_DIM_NUM) {
+        inputParams_.mSize = static_cast<uint64_t>(xShape.GetDim(0));
+        inputParams_.kSize = static_cast<uint64_t>(xShape.GetDim(1));
+        inputParams_.nSize = inputParams_.transB ?
+            static_cast<uint64_t>(weightStorageShape.GetDim(WEIGHT_NZ_BLOCK2_DIM_INDEX) * WEIGHT_NZ_C0_DIM) :
+            static_cast<uint64_t>(weightStorageShape.GetDim(WEIGHT_NZ_BLOCK1_DIM_INDEX) * WEIGHT_NZ_LAST_DIM_FP8);
+        std::printf("[GMMAQ tiling] AnalyzeInputs recover MKN from WeightNZ storage: M=%lu, K=%lu, N=%lu.\n",
+                    inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
+        OP_LOGD(context_->GetNodeName(), "GMMAQ AnalyzeInputs recover MKN from WeightNZ storage: M=%lu, K=%lu, N=%lu.",
+                inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
+    }
     OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
-                OP_LOGE(inputParams_.opName, "N must be a multiple of %u, actual is %u.", N_SIZE_ALIGN,
-                        static_cast<uint32_t>(inputParams_.nSize)),
+                OP_LOGE(inputParams_.opName,
+                        "N must be a multiple of %u, actual is %u. xOrigin=%s, xStorage=%s, weightOrigin=%s, "
+                        "weightStorage=%s, xScaleOrigin=%s, weightScaleOrigin=%s, weightScaleStorage=%s.",
+                        N_SIZE_ALIGN, static_cast<uint32_t>(inputParams_.nSize),
+                        ShapeToDebugString(xShape).c_str(), ShapeToDebugString(xStorageShape->GetStorageShape()).c_str(),
+                        ShapeToDebugString(wShape).c_str(), ShapeToDebugString(weightStorageShape).c_str(),
+                        ShapeToDebugString(xScaleShape).c_str(), ShapeToDebugString(wScaleShape).c_str(),
+                        ShapeToDebugString(weightScaleStorageShape).c_str()),
                 return false);
     inputParams_.aQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
     inputParams_.bQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
