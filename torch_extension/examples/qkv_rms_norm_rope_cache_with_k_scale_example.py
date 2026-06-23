@@ -12,8 +12,9 @@
 
 The default run covers 60 inplace cases across NTD/TND layouts, Nq/Nk/Nv
 combinations, multi-batch prefix sums, non-contiguous slots, actual_seq_lens
-history offsets, large T axes, and strided cache views. Each case runs the torch
-NPU interface and prints match rates against a CPU golden implementation.
+history offsets, T axes greater than 5k, and strided cache views. Each case runs
+the torch NPU interface and prints match rates against a CPU golden
+implementation.
 
 Example:
     python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py --list-cases
@@ -57,12 +58,25 @@ class Case:
 
 
 @dataclass(frozen=True)
+class DiffSample:
+    index: Tuple[int, ...]
+    actual: float
+    expected: float
+    diff: float
+
+
+@dataclass(frozen=True)
 class MatchResult:
     name: str
     matched: int
     total: int
     rate: float
     max_abs_diff: float
+    mean_abs_diff: float
+    max_diff: float
+    max_actual: float
+    max_expected: float
+    diff_samples: Tuple[DiffSample, ...]
 
 
 def build_cases() -> Tuple[Case, ...]:
@@ -86,23 +100,23 @@ def build_cases() -> Tuple[Case, ...]:
         ("offset_multi", (3, 5, 2), (4099, 5, 8194), "random"),
     )
     n16_large_strided_specs = (
-        ("large64_dpad", (64,), (64,), "linear"),
-        ("large96_dpad", (96,), (96,), "reverse"),
-        ("large127_dpad", (127,), (127,), "random"),
-        ("large128_stride3_dpad", (128,), (128,), "stride3"),
-        ("large_mb32_64_dpad", (32, 64), (32, 64), "linear"),
-        ("large_mb17_79_3_dpad", (17, 79, 3), (17, 79, 3), "random"),
-        ("large_offset_b0_dpad", (64, 1), (8256, 1), "stride3"),
-        ("large_offset_multi_dpad", (33, 17, 49), (4129, 17, 8241), "random"),
+        ("long5379_dpad", (5379,), (5379,), "random", 512),
+        ("long_offset_mb3217_2891_dpad", (3217, 2891), (11397, 3589), "random", 512),
+        ("large96_dpad", (96,), (96,), "reverse", 32),
+        ("large127_dpad", (127,), (127,), "random", 32),
+        ("large128_stride3_dpad", (128,), (128,), "stride3", 32),
+        ("large_mb32_64_dpad", (32, 64), (32, 64), "linear", 32),
+        ("large_mb17_79_3_dpad", (17, 79, 3), (17, 79, 3), "random", 32),
+        ("large_offset_multi_dpad", (33, 17, 49), (4129, 17, 8241), "random", 32),
     )
     n8_large_strided_specs = (
-        ("large64_dpad", (64,), (64,), "linear"),
-        ("large96_dpad", (96,), (96,), "reverse"),
-        ("large127_dpad", (127,), (127,), "random"),
-        ("large_mb32_64_dpad", (32, 64), (32, 64), "linear"),
-        ("large_mb17_79_3_dpad", (17, 79, 3), (17, 79, 3), "random"),
-        ("large_offset_b1_dpad", (1, 64), (1, 8256), "reverse"),
-        ("large_offset_multi_dpad", (33, 17, 49), (4129, 17, 8241), "random"),
+        ("long5863_dpad", (5863,), (5863,), "random", 512),
+        ("long_offset_mb2753_3401_dpad", (2753, 3401), (10945, 7509), "random", 512),
+        ("large96_dpad", (96,), (96,), "reverse", 32),
+        ("large127_dpad", (127,), (127,), "random", 32),
+        ("large_mb32_64_dpad", (32, 64), (32, 64), "linear", 32),
+        ("large_mb17_79_3_dpad", (17, 79, 3), (17, 79, 3), "random", 32),
+        ("large_offset_multi_dpad", (33, 17, 49), (4129, 17, 8241), "random", 32),
     )
 
     cases: List[Case] = []
@@ -128,7 +142,7 @@ def build_cases() -> Tuple[Case, ...]:
         ("n16_kv2", n16_large_strided_specs, (16, 2, 2)),
         ("n8_kv1", n8_large_strided_specs, (8, 1, 1)),
     ):
-        for suffix, seq_lens, actual_lens, slot_pattern in specs:
+        for suffix, seq_lens, actual_lens, slot_pattern, block_num in specs:
             for layout in ("NTD", "TND"):
                 cases.append(
                     Case(
@@ -141,7 +155,7 @@ def build_cases() -> Tuple[Case, ...]:
                         input_layout=layout,
                         slot_pattern=slot_pattern,
                         seed=seed,
-                        block_num=32,
+                        block_num=block_num,
                         cache_stride="d_pad",
                         cache_pad=8,
                     )
@@ -327,6 +341,14 @@ def dynamic_quant_fp8(x: torch.Tensor):
     return y.to(torch.float8_e4m3fn), scale.to(torch.float32)
 
 
+def unravel_index(flat_idx: int, shape: Tuple[int, ...]) -> Tuple[int, ...]:
+    index = []
+    for dim in reversed(shape):
+        index.append(flat_idx % dim)
+        flat_idx //= dim
+    return tuple(reversed(index))
+
+
 def golden_outputs(cpu_inputs: Dict[str, object]):
     qkv = cpu_inputs["qkv"].to(torch.float32)
     q_gamma = cpu_inputs["q_gamma"].to(torch.float32)
@@ -424,21 +446,55 @@ def run_inplace(cpu_inputs: Dict[str, object], case: Case, device: str):
     }
 
 
-def compare_tensor(name: str, actual: torch.Tensor, expected: torch.Tensor, atol: float, rtol: float) -> MatchResult:
+def compare_tensor(name: str, actual: torch.Tensor, expected: torch.Tensor,
+                   atol: float, rtol: float, max_diff_lines: int) -> MatchResult:
     actual_f32 = actual.detach().cpu().to(torch.float32)
     expected_f32 = expected.detach().cpu().to(torch.float32)
     if actual_f32.shape != expected_f32.shape:
-        return MatchResult(name, 0, 1, 0.0, float("inf"))
+        return MatchResult(
+            name, 0, 1, 0.0, float("inf"), float("inf"),
+            float("nan"), float("nan"), float("nan"), tuple())
 
     close = torch.isclose(actual_f32, expected_f32, atol=atol, rtol=rtol, equal_nan=True)
     matched = int(torch.count_nonzero(close).item())
     total = actual_f32.numel()
     finite = torch.isfinite(actual_f32) & torch.isfinite(expected_f32)
     if torch.any(finite):
-        max_abs_diff = float(torch.max(torch.abs(actual_f32[finite] - expected_f32[finite])).item())
+        signed_diff = actual_f32[finite] - expected_f32[finite]
+        abs_diff = torch.abs(signed_diff)
+        max_pos = int(torch.argmax(abs_diff).item())
+        max_abs_diff = float(abs_diff[max_pos].item())
+        mean_abs_diff = float(torch.mean(abs_diff).item())
+        max_diff = float(signed_diff[max_pos].item())
+        max_actual = float(actual_f32[finite][max_pos].item())
+        max_expected = float(expected_f32[finite][max_pos].item())
     else:
         max_abs_diff = 0.0
-    return MatchResult(name, matched, total, matched / total if total else 1.0, max_abs_diff)
+        mean_abs_diff = 0.0
+        max_diff = 0.0
+        max_actual = 0.0
+        max_expected = 0.0
+    diff_samples: List[DiffSample] = []
+    if max_diff_lines > 0 and matched != total:
+        actual_flat = actual_f32.reshape(-1)
+        expected_flat = expected_f32.reshape(-1)
+        mismatch_indices = torch.nonzero((~close).reshape(-1), as_tuple=False).flatten()[:max_diff_lines]
+        shape = tuple(actual_f32.shape)
+        for flat_idx_tensor in mismatch_indices:
+            flat_idx = int(flat_idx_tensor.item())
+            actual_value = float(actual_flat[flat_idx].item())
+            expected_value = float(expected_flat[flat_idx].item())
+            diff_samples.append(
+                DiffSample(
+                    index=unravel_index(flat_idx, shape),
+                    actual=actual_value,
+                    expected=expected_value,
+                    diff=actual_value - expected_value,
+                )
+            )
+    return MatchResult(
+        name, matched, total, matched / total if total else 1.0,
+        max_abs_diff, mean_abs_diff, max_diff, max_actual, max_expected, tuple(diff_samples))
 
 
 def select_touched_cache_rows(outputs: Dict[str, torch.Tensor], slot_mapping: torch.Tensor) -> Dict[str, torch.Tensor]:
@@ -462,14 +518,17 @@ def compare_outputs(actual: Dict[str, torch.Tensor], expected: Dict[str, torch.T
     expected_touched = select_touched_cache_rows(expected, cpu_inputs["slot_mapping"])
 
     results = [
-        compare_tensor("q_out", actual["q_out"], expected["q_out"], args.fp8_atol, args.fp8_rtol),
+        compare_tensor(
+            "q_out", actual["q_out"], expected["q_out"], args.fp8_atol, args.fp8_rtol, args.max_diff_lines),
         compare_tensor("k_cache_touched", actual_touched["k_cache_touched"],
-                       expected_touched["k_cache_touched"], args.fp8_atol, args.fp8_rtol),
+                       expected_touched["k_cache_touched"], args.fp8_atol, args.fp8_rtol, args.max_diff_lines),
         compare_tensor("v_cache_touched", actual_touched["v_cache_touched"],
-                       expected_touched["v_cache_touched"], args.fp8_atol, args.fp8_rtol),
-        compare_tensor("q_scale", actual["q_scale"], expected["q_scale"], args.float_atol, args.float_rtol),
+                       expected_touched["v_cache_touched"], args.fp8_atol, args.fp8_rtol, args.max_diff_lines),
+        compare_tensor(
+            "q_scale", actual["q_scale"], expected["q_scale"], args.float_atol, args.float_rtol, args.max_diff_lines),
         compare_tensor("k_scale_cache_touched", actual_touched["k_scale_cache_touched"],
-                       expected_touched["k_scale_cache_touched"], args.float_atol, args.float_rtol),
+                       expected_touched["k_scale_cache_touched"],
+                       args.float_atol, args.float_rtol, args.max_diff_lines),
     ]
     total = sum(result.total for result in results)
     matched = sum(result.matched for result in results)
@@ -503,8 +562,16 @@ def print_case_results(case: Case, results: List[MatchResult]) -> None:
     for result in results:
         print(
             f"  [RESULT] {result.name}: match={result.rate * 100.0:.2f}% "
-            f"matched={result.matched}/{result.total} max_abs_diff={result.max_abs_diff:.4g}"
+            f"matched={result.matched}/{result.total} "
+            f"max_abs_diff={result.max_abs_diff:.4g} mean_abs_diff={result.mean_abs_diff:.4g} "
+            f"max_diff={result.max_diff:.4g} "
+            f"max_diff_actual={result.max_actual:.4g} max_diff_expected={result.max_expected:.4g}"
         )
+        for diff_idx, sample in enumerate(result.diff_samples):
+            print(
+                f"    [DIFF {diff_idx:02d}] index={sample.index} "
+                f"actual={sample.actual:.4g} expected={sample.expected:.4g} diff={sample.diff:.4g}"
+            )
 
 
 def run_case(case: Case, args) -> float:
@@ -532,6 +599,8 @@ def parse_args():
     parser.add_argument("--fp8-rtol", type=float, default=0.0)
     parser.add_argument("--float-atol", type=float, default=1e-2)
     parser.add_argument("--float-rtol", type=float, default=1e-2)
+    parser.add_argument("--max-diff-lines", type=int, default=20,
+                        help="maximum mismatch detail lines to print per output; set 0 to disable")
     return parser.parse_args()
 
 
