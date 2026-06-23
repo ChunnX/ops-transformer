@@ -164,6 +164,8 @@ def tilelang_grad_kl_loss_single_kernel(
     s1_tile_num = ceil_div(S1, s1_block)
     n_num = K // n_block
     block_num = B * s1_tile_num * n_num
+    core_num = block_num if block_num < 20 else 20
+    tasks_per_core = (block_num + core_num - 1) // core_num
     d_num_query = DQuery // k_block
     d_num_rope = ceil_div(d_rope, k_block)
     d_num_total = d_num_query + d_num_rope
@@ -196,12 +198,16 @@ def tilelang_grad_kl_loss_single_kernel(
         LossOut: T.Tensor((B, S1, n_num * 16), calc_dtype),
         dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
     ):
-        with T.Kernel(block_num, is_npu=True) as (cid, vid):
-            bz = cid // (s1_tile_num * n_num)
-            m = (cid // n_num) % s1_tile_num
-            n_idx_k = cid % n_num
-            s1_start = m * s1_block
-            s1_end = T.min(s1_start + s1_block, S1)
+        with T.Kernel(core_num, is_npu=True) as (cid, vid):
+            for task_id in T.serial(tasks_per_core):
+                global_id = cid * tasks_per_core + task_id
+                safe_gid = T.if_then_else(global_id < block_num, global_id, 0)
+                valid   = global_id < block_num
+                bz      = safe_gid // (s1_tile_num * n_num)
+                m       = (safe_gid // n_num) % s1_tile_num
+                n_idx_k = safe_gid % n_num
+                s1_start = m * s1_block
+                s1_end   = T.min(s1_start + s1_block, S1)
 
             # ============================================================
             # C scope 1: Matmul1 (with rope) + Matmul2
@@ -294,20 +300,22 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                     T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY for ALL K blocks (redundant across cores, avoids cross-core sync)
-                    for n_rsy in T.serial(n_num):
-                        T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_rsy * n_block:(n_rsy + 1) * n_block], bmm2_ub)
-                        T.tile.fill(rsy_reduce_ub, 0)
-                        for g_id in range(g_num):
-                            T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub)
-                            T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
-                            T.barrier_all()
-                            for i in range(vector_baseg):
-                                T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
-                            T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
-                            T.barrier_all()
-                        T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_rsy * n_block:(n_rsy + 1) * n_block])
+                    # ReduceSumY for MY K block (per-core, sync_all ensures cross-core visibility)
+                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm2_ub)
+                    T.tile.fill(rsy_reduce_ub, 0)
+                    for g_id in range(g_num):
+                        T.copy(Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg], weight_half_ub)
+                        T.tile.cast(weight_ub, weight_half_ub, "CAST_NONE", vector_baseg)
+                        T.barrier_all()
+                        for i in range(vector_baseg):
+                            T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
+                        T.reduce_sum(rsy_tmp_ub, rsy_reduce_ub, 0, clear=False)
+                        T.barrier_all()
+                    T.copy(rsy_reduce_ub, ReduceSumY[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
+                T.sync_all()
+
+                for s1_id in T.serial(s1_start, s1_end):
                     # Global SoftmaxI (all cores execute - must traverse all K blocks)
                     T.tile.fill(rsy_max_ub, -1e30)
                     T.barrier_all()
