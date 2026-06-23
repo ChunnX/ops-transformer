@@ -698,7 +698,8 @@ def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total,
     if Qri is not None and Krj is not None:
         S_ij += torch.matmul(Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2))
     sqrt_d = 1.0 / math.sqrt(d_total)
-    return S_ij * sqrt_d
+    inv_sqrt_d = 1.0 / math.sqrt(d_total)
+    return S_ij * inv_sqrt_d
 
 
 def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale):
