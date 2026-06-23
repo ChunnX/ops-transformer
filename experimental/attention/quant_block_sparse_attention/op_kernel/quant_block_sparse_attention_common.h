@@ -29,6 +29,7 @@ enum class BSALayout : uint32_t {
     TND = 2,
     PA_BNSD = 3,
     PA_BSND = 4,
+    NTD = 5,
 };
 
 enum class BSADType : uint32_t {

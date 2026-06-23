@@ -31,7 +31,8 @@ enum class GmFormat {
     PA_BnBsND = 2,
     PA_BnNBsD = 3,
     PA_BnNBs = 4,
-    BNGSD = 5
+    BNGSD = 5,
+    NGTD = 6,
 };
 
 
@@ -67,6 +68,23 @@ struct GmLayout<GmFormat::TND> {
         uint64_t nStride = dStride * d;
         uint64_t tStride = nStride * n;
         stride = AscendC::MakeStride(tStride, nStride, dStride);
+    }
+};
+
+template <>
+struct GmLayout<GmFormat::NGTD> {
+    AscendC::Shape<uint32_t, uint32_t, uint32_t, uint32_t> shape;
+    AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
+
+    __aicore__ inline GmLayout() = default;
+    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t g, uint32_t d)
+    {
+        shape = AscendC::MakeShape(t, n, g, d);
+        uint64_t dStride = 1;
+        uint64_t tStride = dStride * d;
+        uint64_t gStride = tStride * t;
+        uint64_t nStride = gStride * g;
+        stride = AscendC::MakeStride(tStride, nStride, gStride, dStride);
     }
 };
 
@@ -205,7 +223,7 @@ public:
         return actualSeqLengthsGm.GetValue(bIdx);
     }
 
-    __aicore__ inline uint32_t GetActualLenDims() const 
+    __aicore__ inline uint32_t GetActualLenDims() const
     {
         return actualLenDims;
     }
@@ -309,6 +327,10 @@ struct GmLayoutParams<GmFormat::PA_BnNBsD> {
 template <>
 struct GmLayoutParams<GmFormat::PA_BnNBs> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_ANTIQ_BnNBs;
+};
+template <>
+struct GmLayoutParams<GmFormat::NGTD> {
+    static constexpr FormatCategory CATEGORY = FormatCategory::GM_Q_OUT_TND;
 };
 
 // ----------------------------------------------OffsetCalculator--------------------------------
