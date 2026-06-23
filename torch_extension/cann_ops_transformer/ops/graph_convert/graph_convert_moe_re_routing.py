@@ -85,8 +85,8 @@ if _TORCHAIR_AVAILABLE:
             .output("permute_topk_weight", "DT_FLOAT")
         )
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_moe_re_routing.default)
-    def convert_npu_moe_re_routing(
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.moe_re_routing.default)
+    def convert_moe_re_routing(
         tokens: Tensor,
         expert_token_num_per_rank: Tensor,
         *,

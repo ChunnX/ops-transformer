@@ -20,7 +20,7 @@ namespace op_api {
 
 constexpr int DIM_TWO = 2;
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_re_routing(
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_re_routing(
     const at::Tensor &tokens, const at::Tensor &expert_token_num_per_rank,
     const c10::optional<at::Tensor> &per_token_scales,
     const c10::optional<at::Tensor> &expert_topk_weight,
@@ -84,7 +84,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_moe_r
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_moe_re_routing", &npu_moe_re_routing, "npu_moe_re_routing");
+    m.def("moe_re_routing", &moe_re_routing, "moe_re_routing");
 }
 
 } // namespace op_api
