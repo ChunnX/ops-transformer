@@ -394,13 +394,12 @@ ge::graphStatus MhcPostTilingBase::CheckSpecConstraints()
     }
 
     OP_CHECK_IF(d_ <= 0 || d_ >= D_MAX_VALUE || d_ % D_ALIGN_SIZE != 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                                            "d must be > 0, < 100000 and divisible by 128, but got %ld", d_),
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "Value of d", std::to_string(d_).c_str(),
+                                          "> 0, < 100000 and divisible by 128"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n_ != N_SIZE_4,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
-                                            "n must be %ld, but got %ld", N_SIZE_4, n_),
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "Value of n", std::to_string(n_).c_str(), "4"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
