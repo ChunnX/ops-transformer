@@ -140,7 +140,9 @@ npu_mla_preprocess(
 
     if (cacheMode >= 2) {
         NzTensor kvCache_nz{kvCache};
-        at::Tensor kcr_ref = kvCacheRope.has_value() && kvCacheRope.value().defined() ? kvCacheRope.value() : at::Tensor();
+        at::Tensor kcr_ref = (kvCacheRope.has_value() && kvCacheRope.value().defined()) 
+                            ? kvCacheRope.value() 
+                            : at::Tensor();
         NzTensor kvCacheRope_nz{kcr_ref};
         NzTensor kvCacheOut_nz{kvCache};
         NzTensor krCacheOut_nz{krCacheOut};

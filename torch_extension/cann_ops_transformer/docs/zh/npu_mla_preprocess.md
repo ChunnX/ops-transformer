@@ -22,7 +22,7 @@
     - 通路5经过RmsNorm后传入Cache中得到$k^N$。
     - 通路6经过旋转位置编码后传入另一个Cache中得到$k^R$。
 
-**计算公式**：
+- **计算公式**：
 
     RmsNormQuant公式
 
@@ -123,7 +123,7 @@ npu_mla_preprocess(
       <td>gamma0</td>
       <td>输入</td>
       <td>首次RmsNorm计算中的γ参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[hiddenSize]</td>
@@ -133,7 +133,7 @@ npu_mla_preprocess(
       <td>beta0</td>
       <td>输入</td>
       <td>首次RmsNorm计算中的β参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[hiddenSize]</td>
@@ -143,7 +143,7 @@ npu_mla_preprocess(
       <td>quantScale0</td>
       <td>输入</td>
       <td>首次RmsNorm公式中量化缩放的参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[1]</td>
@@ -153,7 +153,7 @@ npu_mla_preprocess(
       <td>quantOffset0</td>
       <td>输入</td>
       <td>首次RmsNorm公式中的量化偏移参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>INT8</td>
       <td>ND</td>
       <td>[1]</td>
@@ -193,7 +193,7 @@ npu_mla_preprocess(
       <td>gamma1</td>
       <td>输入</td>
       <td>第二次RmsNorm计算中的γ参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[qLoraDim]</td>
@@ -203,7 +203,7 @@ npu_mla_preprocess(
       <td>beta1</td>
       <td>输入</td>
       <td>第二次RmsNorm计算中的β参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[qLoraDim]</td>
@@ -213,7 +213,7 @@ npu_mla_preprocess(
       <td>quantScale1</td>
       <td>输入</td>
       <td>第二次RmsNorm公式中量化缩放的参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[1]</td>
@@ -223,7 +223,7 @@ npu_mla_preprocess(
       <td>quantOffset1</td>
       <td>输入</td>
       <td>第二次RmsNorm公式中的量化偏移参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>INT8</td>
       <td>ND</td>
       <td>[1]</td>
@@ -263,7 +263,7 @@ npu_mla_preprocess(
       <td>gamma2</td>
       <td>输入</td>
       <td>参与RmsNormAndreshapeAndCache计算的γ参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[512]</td>
@@ -304,10 +304,10 @@ npu_mla_preprocess(
       <td>输入</td>
       <td>与输出的kvCacheOut为同一tensor。</td>
       <td>输入格式随cacheMode变化：<ul>
-        <li>cacheMode为0：shape为[blockNum,blockSize,1,576]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为1：shape为[blockNum,blockSize,1,512]，tensor的shape为拆分情况，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[blockNum,16,blockSize,32]，dtype为int8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
-        <li>cacheMode为3：shape为[blockNum,32,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
+        <li>cacheMode为0：shape为[blockNum,blockSize,1,576]，dtype与input保持一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为1：shape为[blockNum,blockSize,1,512]，tensor的shape为拆分情况，dtype与input保持一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2：shape为[blockNum,16,blockSize,32]，dtype为int8，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
+        <li>cacheMode为3：shape为[blockNum,32,blockSize,16]，dtype与input保持一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
         <li>仅支持首轴非连续</li></ul>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
@@ -321,8 +321,8 @@ npu_mla_preprocess(
       <td>与输出的krCacheOut为同一tensor。</td>
       <td>可选参数，支出传入空指针，输入格式随cacheMode变化：<ul>
         <li>cacheMode为0：不传入。</li>
-        <li>cacheMode为1：shape为[blockNum,blockSize,1,64]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
+        <li>cacheMode为1：shape为[blockNum,blockSize,1,64]，dtype与input保持一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
         <li>仅支持首轴非连续</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -534,9 +534,9 @@ npu_mla_preprocess(
       <td>输出</td>
       <td>表示Query的输出tensor，对应计算流图中右侧经过NOPE和矩阵乘后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
-        <li>cacheMode为0：shape为[tokenNum, headNum, 576]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为1或3：shape为[tokenNum, headNum, 512]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[tokenNum, headNum, 512]，dtype为INT8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND格式。</li></ul>
+        <li>cacheMode为0：shape为[tokenNum, headNum, 576]，dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为1或3：shape为[tokenNum, headNum, 512]，dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2：shape为[tokenNum, headNum, 512]，dtype为INT8，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND格式。</li></ul>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -548,10 +548,10 @@ npu_mla_preprocess(
       <td>输出</td>
       <td>表示Key经过ReshapeAndCache后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
-        <li>cacheMode为0：shape为[blockNum, blockSize, 1, 576]， dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为1：shape为[blockNum, blockSize, 1, 512]， dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[blockNum, 16, blockSize, 32]，dtype为INT8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
-        <li>cacheMode为3：shape为[blockNum, 32, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为0：shape为[blockNum, blockSize, 1, 576]， dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为1：shape为[blockNum, blockSize, 1, 512]， dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2：shape为[blockNum, 16, blockSize, 32]，dtype为INT8，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
+        <li>cacheMode为3：shape为[blockNum, 32, blockSize, 16]，dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -564,8 +564,8 @@ npu_mla_preprocess(
       <td>表示Query经过旋转编码后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
-        <li>cacheMode为1或3：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li></ul>
+        <li>cacheMode为1或3：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -578,8 +578,8 @@ npu_mla_preprocess(
       <td>表示Key经过ROPE和ReshapeAndCache后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
-        <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
