@@ -337,7 +337,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
                 dataTypeSizeValue = static_cast<float>(BFLOAT16SIZE);
             }
 
-            d0Size = static_cast<uint32_t>(BYTE_BLOCK / dataTypeSizeValue);
+            d0Size = BYTE_BLOCK / dataTypeSizeValue;
             if (tempD0 != d0Size) {
                 std::string reasonMsg = "When PA_NZ is enabled, in " +
                     std::string(QuantModeToSerialString(fiaInfo.quantMode)) + " " +
