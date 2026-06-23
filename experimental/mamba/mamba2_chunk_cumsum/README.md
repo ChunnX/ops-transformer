@@ -1,8 +1,8 @@
-# mamba2_chunk_cumsum 算子说明
+# mamba2_chunk_cumsum算子说明
 
 ### 功能和实现说明
 
-mamba2_chunk_cumsum 用于在 MambaV2 Prefill 阶段对 chunk 内部执行按时间步的累积求和操作，实现 SSM 中状态量在 chunk 维度上的递推更新。算子对输入序列在 S 维度按 chunk_size 拆分，并在每个 chunk 内按照因果顺序执行 cumulative sum，用于后续 chunk 状态更新与 selective scan 计算。本算子基于 Vector 实现累积求和计算，支持 FP16/FP32 输入输出。
+mamba2_chunk_cumsum用于在MambaV2 Prefill阶段对chunk内部执行按时间步的累积求和操作，实现SSM中状态量在chunk维度上的递推更新。算子对输入序列在S维度按chunk_size拆分，并在每个chunk内按照因果顺序执行cumulative sum，用于后续chunk状态更新与selective scan计算。本算子基于Vector实现累积求和计算，支持FP16/FP32输入输出。
 
 **计算流**
 
@@ -45,7 +45,7 @@ out = torch.ops.npu_ops_transformer_ext.mamba2_chunk_cumsum(at, dt, dt_bias, dt_
 
 **测试方法**
 
-见当前目录 tests/
+见当前目录tests/
 
 ```
 python test_chunk_cumsum.py

@@ -58,7 +58,7 @@
       <tr>
         <td>expertIdx</td>
         <td>输入</td>
-        <td>aclnnMoeGatingTopKSoftmax的输出每一行特征对应的K个处理专家,对应公式中的`expertIdx`。</td>
+        <td>aclnnMoeGatingTopKSoftmax的输出每一行特征对应的K个处理专家，对应公式中的`expertIdx`。</td>
         <td>INT32</td>
         <td>ND</td>
       </tr>

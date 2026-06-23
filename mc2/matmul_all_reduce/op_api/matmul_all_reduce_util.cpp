@@ -17,7 +17,7 @@
 #include "opdev/platform.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "mc2_comm_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -571,7 +571,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != nullptr && executor != nullptr && *executor != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 4U); // 4 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 5U); // 5 is input irIndex
             if (pertokenScaleOptional == nullptr) {

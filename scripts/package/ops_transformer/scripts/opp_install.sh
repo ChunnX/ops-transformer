@@ -375,11 +375,11 @@ install_whl_package() {
   local target_python_dir="${TARGET_VERSION_DIR}/python/site-packages"
 
   # 查找 whl 文件
-  local whl_file=$(find "${whl_dir}" -name "npu_ops_transformer-*.whl" 2>/dev/null | head -1)
+  local whl_file=$(find "${whl_dir}" -name "cann_ops_transformer-*.whl" 2>/dev/null | head -1)
 
   if [ -n "${whl_file}" ] && [ -f "${whl_file}" ]; then
     logandprint "[INFO]: Found whl package: ${whl_file}"
-    logandprint "[INFO]: Installing npu_ops_transformer whl package to ${target_python_dir}"
+    logandprint "[INFO]: Installing cann_ops_transformer whl package to ${target_python_dir}"
 
     # 创建目标目录
     comm_create_dir "${target_python_dir}" "${CREATE_DIR_PERM}" "${TARGET_USERNAME}:${TARGET_USERGROUP}" "${IS_FOR_ALL}"
@@ -403,9 +403,9 @@ install_whl_package() {
       cp "${whl_file}" "${target_python_dir}/"
     fi
 
-    logandprint "[INFO]: npu_ops_transformer whl package installed successfully"
+    logandprint "[INFO]: cann_ops_transformer whl package installed successfully"
   else
-    logandprint "[INFO]: No npu_ops_transformer whl package found, skipping"
+    logandprint "[INFO]: No cann_ops_transformer whl package found, skipping"
   fi
 }
 

@@ -18,7 +18,7 @@
 
 #include "matmul_v3_l2_cache.h"
 #include "util/math_util.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "op_host/tiling_key.h"
 #include "mc2_log.h"
 #include "ops_legacy/op_tiling/op_cache_tiling.h"

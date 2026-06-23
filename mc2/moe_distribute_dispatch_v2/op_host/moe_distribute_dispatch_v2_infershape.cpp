@@ -17,7 +17,7 @@
 #include "platform/platform_info.h"
 #include "runtime/rt_external_base.h"
 #include "platform/soc_spec.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace ge;
 namespace ops {

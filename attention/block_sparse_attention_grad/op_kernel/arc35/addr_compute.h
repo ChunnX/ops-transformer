@@ -13,27 +13,25 @@ using namespace AscendC;
 namespace BSA_ARC35 {
 
 class SingleBlock {
+    /*
+     *  Single块内只遍历S1方向。
+     */
 public:
-    __aicore__ inline void Update(int32_t &cur_s1_idx, int32_t &cur_s1_len)
+    __aicore__ inline void Reset(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask, const int32_t b_idx,
+                                 const int32_t n1_idx, const int32_t s1_idx, const int32_t s2_idx, const int32_t s1_len,
+                                 int32_t &base_s1_start_idx, int32_t &base_s1_len)
     {
         /*
-         *  Single块内只遍历S1方向。
+         * 功能：设置SingleBlock的起始索引和结束索引，同时更新base_s1_start_idx和base_s1_len。
+         * base_s1_start_idx：表示下一个需要计算的base块的s1方向的起始索引。
+         * base_s1_len：表示下一个需要计算的base块的s1方向的长度。
+         * 默认起始位置必为有效块。
          */
-        cur_s1_idx = s1_start_idx;
-        cur_s1_len = s1_start_idx + s1_base_size < s1_end_idx ? s1_base_size : (s1_end_idx - s1_start_idx);
 
-        s1_start_idx += cur_s1_len;
-        if (s1_start_idx >= s1_end_idx) {
-            is_finish = true;
-        }
-    }
-
-    __aicore__ inline void Reset(int32_t s1_start_idx, int32_t s1_len)
-    {
-        is_finish = false;
-        this->s1_start_idx = s1_start_idx;
-        this->s1_len = s1_len;
-        s1_end_idx = s1_start_idx + s1_len;
+        this->is_finish_ = false;
+        this->s1_start_idx_ = s1_idx;
+        this->s1_end_idx_ = s1_idx + s1_len;
+        this->Update(const_info, block_sparse_mask, b_idx, n1_idx, s2_idx, base_s1_start_idx, base_s1_len);
     }
 
     __aicore__ inline void RecordRunTimeInfo(const RunTimeInfo &runTimeInfo)
@@ -55,18 +53,19 @@ public:
     }
 
     template <uint32_t INPUT_LAYOUT>
-    __aicore__ inline void UpdateRunTimeInfo(RunTimeInfo &runTimeInfo, const int32_t q_head_num,
-                                             const int32_t kv_head_num, const int32_t head_dim)
+    __aicore__ inline void UpdateRunTimeInfo(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask,
+                                             RunTimeInfo &runTimeInfo)
     {
-        int32_t base_s1_idx, base_s1_len;
-        this->Update(base_s1_idx, base_s1_len);
+        int32_t base_s1_start_idx, base_s1_len;
+        this->Update(const_info, block_sparse_mask, this->runTimeInfoBak_.bIdx, this->runTimeInfoBak_.n1Idx,
+                     this->runTimeInfoBak_.s2Idx, base_s1_start_idx, base_s1_len);
 
         runTimeInfo.bIdx = this->runTimeInfoBak_.bIdx;
         runTimeInfo.last_q_seq_sum = this->runTimeInfoBak_.last_q_seq_sum;
         runTimeInfo.last_kv_seq_sum = this->runTimeInfoBak_.last_kv_seq_sum;
         runTimeInfo.cur_q_seq_len = this->runTimeInfoBak_.cur_q_seq_len;
         runTimeInfo.cur_kv_seq_len = this->runTimeInfoBak_.cur_kv_seq_len;
-        runTimeInfo.s1Idx = base_s1_idx;
+        runTimeInfo.s1Idx = base_s1_start_idx;
         runTimeInfo.s2Idx = this->runTimeInfoBak_.s2Idx;
         runTimeInfo.n1Idx = this->runTimeInfoBak_.n1Idx;
         runTimeInfo.n2Idx = this->runTimeInfoBak_.n2Idx;
@@ -75,38 +74,75 @@ public:
         runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
         runTimeInfo.s2LenAlign = this->runTimeInfoBak_.s2LenAlign;
         runTimeInfo.queryGmOffset =
-            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num, head_dim,
-                                         runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
-        runTimeInfo.keyGmOffset =
-            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len, kv_head_num, head_dim,
-                                         runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
+            GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, const_info.q_head_num,
+                                         const_info.head_dim, runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
+        runTimeInfo.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_kv_seq_sum, runTimeInfo.cur_kv_seq_len,
+                                                               const_info.kv_head_num, const_info.head_dim,
+                                                               runTimeInfo.bIdx, runTimeInfo.s2Idx, runTimeInfo.n2Idx);
         runTimeInfo.lseGmOffset =
-            GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
+            GetLseGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, const_info.q_head_num,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.sftgGmOffset =
-            GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num,
+            GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, const_info.q_head_num,
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
         runTimeInfo.need_copy_kv = 0;
-        runTimeInfo.is_singlekv_last = is_finish;
+        runTimeInfo.is_singlekv_last = is_finish_;
         runTimeInfo.kv_ping_pong_idx = this->runTimeInfoBak_.kv_ping_pong_idx;
     }
 
     __aicore__ inline bool IsFinish()
     {
-        return is_finish;
+        return is_finish_;
     }
-    __aicore__ inline void SetBaseBlock(uint32_t base_size)
+
+    __aicore__ inline void SetBaseBlock(uint32_t s1_base_size)
     {
-        this->s1_base_size = base_size;
+        this->s1_base_size_ = s1_base_size;
     }
 
 private:
-    int32_t s1_start_idx{0};
-    int32_t s1_len{0};
-    int32_t s1_end_idx{0};
-    int32_t s1_base_size{128};
-    bool is_finish{true};
+    __aicore__ inline void Update(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask, const int32_t b_idx,
+                                  const int32_t n1_idx, const int32_t s2Idx, int32_t &base_s1_start_idx,
+                                  int32_t &base_s1_len)
+    {
+        /*
+         * 功能：返回有效base块的起始地址和长度。并判断是否遍历完所有的s1方向。
+         */
+        base_s1_start_idx = this->s1_start_idx_;
+        base_s1_len = GetBlockLen(this->s1_start_idx_, this->s1_end_idx_, s1_base_size_);
+        this->s1_start_idx_ += base_s1_len;
+
+        if (this->s1_start_idx_ >= this->s1_end_idx_) {
+            // 下一块遍历完，提前退出
+            this->is_finish_ = true;
+            return;
+        }
+
+        // 判断下一块是否是有效块
+        int32_t q_block_idx = this->s1_start_idx_ / const_info.block_x;
+        int32_t kv_block_idx = s2Idx / const_info.block_y;
+        while (true) {
+            if (IsValidBlock(const_info, b_idx, n1_idx, q_block_idx, kv_block_idx, block_sparse_mask)) {
+                break;
+            }
+            int32_t tmp_s1_len = GetBlockLen(this->s1_start_idx_, this->s1_end_idx_, s1_base_size_);
+            this->s1_start_idx_ += tmp_s1_len;
+            q_block_idx = this->s1_start_idx_ / const_info.block_x;
+            if (this->s1_start_idx_ >= this->s1_end_idx_) {
+                break;
+            }
+        }
+
+        if (this->s1_start_idx_ >= this->s1_end_idx_) {
+            this->is_finish_ = true;
+        }
+    }
+
+    int32_t s1_start_idx_{0};
+    int32_t s1_end_idx_{0};
+    int32_t s1_base_size_{0};
+    bool is_finish_{true};
     RunTimeInfo runTimeInfoBak_;
 };
 
@@ -149,6 +185,7 @@ private:
     int32_t single_m_{0};
     int32_t kv_ping_pong_idx_{0};
     SingleBlock single_block_;
+    ConstInfo const_info_;
 
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
@@ -169,7 +206,7 @@ public:
         this->block_y_ = tilingData->BlockY;
         this->base_m_ = tilingData->baseM;
         this->base_n_ = tilingData->baseN;
-        this->single_m_ = 1024;
+        this->single_m_ = tilingData->singleM;
         single_block_.SetBaseBlock(this->base_m_);
         if constexpr (INPUT_LAYOUT == TND) {
             UpdateSeqLen();
@@ -191,7 +228,13 @@ public:
             q_block_num_ = CeilDiv(q_seq_len_, block_x_);
             kv_block_num_ = CeilDiv(kv_seq_len_, block_y_);
         }
-
+        const_info_.q_head_num = q_head_num_;
+        const_info_.kv_head_num = kv_head_num_;
+        const_info_.block_x = block_x_;
+        const_info_.block_y = block_y_;
+        const_info_.head_dim = head_dim_;
+        const_info_.q_block_num = q_block_num_;
+        const_info_.kv_block_num = kv_block_num_;
         if ASCEND_IS_AIC {
             this->cube_core_idx_ = GetBlockIdx();
         }
@@ -205,8 +248,8 @@ public:
         runTimeInfo.need_compute = 0;
 
         if (!single_block_.IsFinish()) {
-            // 处理完Single块，更新RunTimeInfo
-            single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(runTimeInfo, q_head_num_, kv_head_num_, head_dim_);
+            // 如果singleBlock未计算完，先计算singleBlock内的内容
+            single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(const_info_, blockSparseMask_, runTimeInfo);
             return;
         }
 
@@ -214,10 +257,13 @@ public:
             if (InitStartIdx()) {
                 break;
             }
+            int32_t vaild_s1_idx;
+            int32_t vaild_s1_len;
+            int32_t s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
 
-            if (IsValidBlock(q_head_num_, q_block_num_, kv_block_num_, bIdx_, n1Idx_, s1Idx_ / block_x_,
-                             s2Idx_ / block_y_, blockSparseMask_)) {
-                RunTimeInfoRecord(runTimeInfo);
+            if (IsValidSingleBlock(vaild_s1_idx, vaild_s1_len)) {
+                // 如果singleBlock内全是无效的base块，则不记录
+                RunTimeInfoRecord(runTimeInfo, vaild_s1_idx, s2Idx_, vaild_s1_len, s2_len);
             }
 
             if (current_cube_idx_ && current_cube_idx_ % cube_core_num_ == 0) {
@@ -229,6 +275,31 @@ public:
     }
 
 private:
+    __aicore__ inline bool IsValidSingleBlock(int32_t &vaild_s1_idx, int32_t &vaild_s1_len)
+    {
+        /*
+         * 功能：判断singleBlock内是否存在有效base块，并返回第一块有效base块的起始idx和长度
+         */
+        int32_t s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
+        int32_t s1_end_idx = s1Idx_ + s1_len;
+        int32_t block_y_idx = s2Idx_ / block_y_;
+        bool find_vaild_block = false;
+
+        for (int32_t s1_idx = s1Idx_; s1_idx < s1_end_idx; s1_idx += block_x_) {
+            int32_t block_x_idx = s1_idx / block_x_;
+            if (IsValidBlock(const_info_, bIdx_, n1Idx_, block_x_idx, block_y_idx, blockSparseMask_)) {
+                find_vaild_block = true;
+                vaild_s1_idx = s1_idx;
+                vaild_s1_len = s1_end_idx - s1_idx;
+            }
+            if (find_vaild_block) {
+                break;
+            }
+        }
+
+        return find_vaild_block;
+    }
+
     __aicore__ inline void UpdateSeqLen()
     {
         if constexpr (INPUT_LAYOUT != TND) {
@@ -243,11 +314,6 @@ private:
         }
         last_q_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualQseqlen_) : 0;
         last_kv_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualKvseqlen_) : 0;
-    }
-
-    __aicore__ inline int32_t GetBlockLen(int32_t sIdx, int32_t sLen, int32_t single_size)
-    {
-        return sIdx + single_size < sLen ? single_size : (sLen - sIdx);
     }
 
     __aicore__ inline bool InitStartIdx()
@@ -293,33 +359,32 @@ private:
         return true;
     }
 
-    __aicore__ inline void RunTimeInfoRecord(RunTimeInfo &runTimeInfo)
+    __aicore__ inline void RunTimeInfoRecord(RunTimeInfo &runTimeInfo, int32_t vaild_s1_idx, int32_t vaild_s2_idx,
+                                             int32_t vaild_s1_len, int32_t vaild_s2_len)
     {
         if (current_cube_idx_ % cube_core_num_ != cube_core_idx_) {
             current_cube_idx_++;
             return;
         }
-        int32_t single_s1_len = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
-        single_block_.Reset(s1Idx_, single_s1_len);
         int32_t base_s1_idx;
         int32_t base_s1_len;
-        int32_t base_s2_len = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
+        single_block_.Reset(const_info_, blockSparseMask_, bIdx_, n1Idx_, vaild_s1_idx, vaild_s2_idx, vaild_s1_len,
+                            base_s1_idx, base_s1_len);
         int32_t n2Idx = n1Idx_ / q_group_;
 
-        single_block_.Update(base_s1_idx, base_s1_len);
         runTimeInfo.bIdx = bIdx_;
         runTimeInfo.last_q_seq_sum = last_q_seq_sum_;
         runTimeInfo.last_kv_seq_sum = last_kv_seq_sum_;
         runTimeInfo.cur_q_seq_len = cur_q_seq_len_;
         runTimeInfo.cur_kv_seq_len = cur_kv_seq_len_;
         runTimeInfo.s1Idx = base_s1_idx;
-        runTimeInfo.s2Idx = s2Idx_;
+        runTimeInfo.s2Idx = vaild_s2_idx;
         runTimeInfo.n1Idx = n1Idx_;
         runTimeInfo.n2Idx = n2Idx;
         runTimeInfo.s1Len = base_s1_len;
-        runTimeInfo.s2Len = base_s2_len;
+        runTimeInfo.s2Len = vaild_s2_len;
         runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
-        runTimeInfo.s2LenAlign = RoundUp(base_s2_len, 16);
+        runTimeInfo.s2LenAlign = RoundUp(vaild_s2_len, 16);
         runTimeInfo.queryGmOffset =
             GetQKVGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_, head_dim_,
                                          runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);

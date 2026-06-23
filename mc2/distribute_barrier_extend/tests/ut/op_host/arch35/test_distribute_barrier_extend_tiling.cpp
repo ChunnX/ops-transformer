@@ -89,7 +89,7 @@ TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingWorldSize1)
     ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
 }
 
-TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingWorldSize385)
+TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingWorldSize1025)
 {
     struct DistributeBarrierExtendCompileInfo {} compileInfo;
     uint64_t coreNum = 20;
@@ -101,7 +101,7 @@ TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingWorldSize385)
         },
         {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
         {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
-         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(385)}},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1025)}},
         &compileInfo, "Ascend950", coreNum, ubSize);
     TilingInfo tilingInfo;
     ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));

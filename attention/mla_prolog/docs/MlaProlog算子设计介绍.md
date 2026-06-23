@@ -61,7 +61,7 @@ MlaProlog融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧的
 
 4、由于和RopeQr的分核策略不同，因此RopeQr计算前，也需要AIC和AIV之间的同步控制（SYNC_MMQCQR_ROPEQR）
 
-5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖于MatmulQcQr的输出,因此需要做cube的全核同步（SYNC_ALL_CUBE）
+5、由于MatmulQcQr和MatmulQn的分核策略不同，MatmulQn依赖于MatmulQcQr的输出，因此需要做cube的全核同步（SYNC_ALL_CUBE）
 
 6、Vector核运算前，需要做vector的全核同步（SYNC_ALL_VECTOR），确保数据流水搬运
 

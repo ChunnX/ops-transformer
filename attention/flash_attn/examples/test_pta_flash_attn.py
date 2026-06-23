@@ -2,8 +2,8 @@ import torch
 import torch_npu
 import math
 import numpy as np
-import npu_ops_transformer
-from npu_ops_transformer.ops import npu_flash_attn
+import cann_ops_transformer
+from cann_ops_transformer.ops import npu_flash_attn
 torch.manual_seed(42)
 
 # B = 1

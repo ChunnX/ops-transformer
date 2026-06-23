@@ -65,13 +65,13 @@
     $$
 
   2.以sortedRowIdx做位置映射得出expandedRowIdxOut：
-    - rowIdxType等于1时,输出scatter索引
+    - rowIdxType等于1时，输出scatter索引
 
       $$
       expandedRowIdxOut[i]=sortedRowIdx[i]
       $$
 
-    - rowIdxType等于0时,输出gather索引
+    - rowIdxType等于0时，输出gather索引
 
       $$
       expandedRowIdxOut[sortedRowIdx[i]]=i
@@ -505,7 +505,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
     - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
-    - dropPadMode支持取值为0和1，DropPad模式（dropPadMode=1）具有如下额外约束：<ul><li>rowIdxType仅支持取值为0（gather索引）。</li><li>activeExpertRangeOptional必须为[0, expertNum]。</li><li>quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。</li></ul>
+    - dropPadMode支持取值为0和1，DropPad模式（dropPadMode=1）具有如下额外约束：<ul><li>rowIdxType仅支持取值为0（gather索引）。</li><li>activeExpertRangeOptional必须为[0, expertNum]。</li><li>expertTokensNumType仅支持取值为1（count模式）。</li><li>quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。</li></ul>
     - expertTokensNumType仅支持取值0、1、2。
     - expertTokensNumFlag仅支持取值为true。
   - <term>Ascend 950PR/Ascend 950DT</term>支持quantMode为13的INT4动态量化场景，需同时满足：
@@ -659,7 +659,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 }
 int main()
 {
-    // 1. 固定写法，device/stream初始化,参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化，参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

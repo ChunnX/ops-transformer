@@ -16,9 +16,10 @@ Docs目录结构说明如下：
   │   ├── ...
   ├── figures                            # 图片目录
   ├── install                            # 环境安装和编译指导文档
-  │   ├── build.md  
-  │   ├── compile.md  
-  │   ├── quick_install.md 
+  │   ├── build.md                       # build参数说明
+  │   ├── compile.md                     # 源码构建指南(离线编译、自定义算子包编译、transformer包编译等)
+  │   ├── quick_install.md               # 环境部署、CANN包安装等
+  │   ├── dir_structure.md               # 项目目录层级介绍
   │   └── ...
   ├── invocation                         # 算子调用指导文档（包括aclnn调用、图模式调用等）
   │   ├── quick_op_invocation.md
@@ -48,7 +49,7 @@ Docs目录结构说明如下：
 | 文档        | 说明                  |
 | ----------------------- | ---------------------- |
 | [算子列表](zh/op_list.md)                        | 介绍项目内置标准算子清单。 |
-| [aclnn API列表](zh/op_api_list.md)               | 介绍项目提供的aclnn API清单，通过将所有算子封装为以 `aclnn` 为前缀的C语言API，旨在方便用户在Host侧直接调用。 |
+| [aclnn API列表](zh/op_api_list.md)               | 介绍项目提供的aclnn API清单，通过将所有算子封装为以`aclnn`为前缀的C语言API，旨在方便用户在Host侧直接调用。 |
 | [PyTorch API列表](zh/torch_api_list.md) | 介绍项目提供的torch_extension API清单，通过JIT编译桥接PyTorch与aclnn API，并通过GE Converter支持TorchAir图模式。 |
 
 ### 工具类文档

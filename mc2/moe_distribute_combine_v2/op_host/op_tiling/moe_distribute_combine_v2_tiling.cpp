@@ -75,7 +75,8 @@ namespace {
 
     constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
     constexpr int64_t MAX_SHARED_EXPERT_NUM = 4;
-    constexpr int64_t MAX_EP_WORLD_SIZE = 768L; // 384 * 2
+    constexpr int64_t MAX_EP_WORLD_SIZE_A3 = 768L; // 384 * 2
+    constexpr int64_t MAX_EP_WORLD_SIZE_A5 = 1024L;
     constexpr int64_t MAX_EP_WORLD_SIZE_LAYERED = 256;
     constexpr int64_t MIN_EP_WORLD_SIZE = 2;
     constexpr int64_t EP_RESTRICT_8 = 8;
@@ -228,7 +229,13 @@ static ge::graphStatus GetTpAndEpAttrAndSetTilingData(const gert::TilingContext 
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"epWorldSize"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName,"tpWorldSize"), return ge::GRAPH_FAILED);
     int64_t epWorldSize = *epWorldSizePtr;
-    int64_t maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE;
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    int64_t maxEpworldsize = 0;
+    if (socVersion == "Ascend950") {
+        maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A5;
+    } else {
+        maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A3;
+    }
     int64_t maxTpworldsize = isLayered ? MAX_TP_WORLD_SIZE_LAYERED : MAX_TP_WORLD_SIZE;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize),
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize",

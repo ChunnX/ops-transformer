@@ -14,7 +14,7 @@
   */
 
 #include "fallback/fallback.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace fallback
 {

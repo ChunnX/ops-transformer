@@ -15,7 +15,7 @@
 #include <alog_pub.h>
 #include "gmm_qbmm_tiling.h"
 
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "log/error_code.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
@@ -910,10 +910,6 @@ ge::graphStatus Mc2GroupedQbmmTiling::PostTiling()
 
 void Mc2GroupedQbmmTiling::PrintQuantParams()
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-    if (enable != 1) {
-        return;
-    }
     GMMQuantParams &params = tilingData_.gmmQuantParams;
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.groupNum << ", activeType = " << params.activeType <<

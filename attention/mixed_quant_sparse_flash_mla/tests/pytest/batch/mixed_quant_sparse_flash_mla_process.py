@@ -18,7 +18,7 @@ import pytest
 import random
 import numpy as np
 import math
-import npu_ops_transformer
+import cann_ops_transformer
 import custom_ops as ops
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
@@ -31,7 +31,7 @@ class Network(torch.nn.Module):
         cmp_block_table, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, metadata, kv_quant_mode, rope_head_dim,
         softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv,
         topk_value_mode, return_softmax_lse):
-        npu_result, _ = torch.ops.npu_ops_transformer.npu_mixed_quant_sparse_flash_mla(
+        npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
                                 q=q,
                                 ori_kv=ori_kv,
                                 cmp_kv=cmp_kv,
@@ -86,7 +86,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     npu_mode = torch.compile(npu_mode, fullgraph=True, backend=npu_backend, dynamic=False)
 
     print("test_data:", params)
-    print("npu_mixed_quant_sparse_flash_mla_metadata...")
+    print("mixed_quant_sparse_flash_mla_metadata...")
     layout_kv_qsas = metadata_input['layout_kv']
     if layout_kv_qsas == "PA_BBND":
         layout_kv_qsas = "PA_ND"
@@ -118,7 +118,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     torch.npu.synchronize()
     metadata.npu()
 
-    print("npu_mixed_quant_sparse_flash_mla...")
+    print("mixed_quant_sparse_flash_mla...")
     npu_result = npu_mode(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
@@ -147,7 +147,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                                 return_softmax_lse=op_input.get('return_softmax_lse', False))
 
     torch.npu.synchronize()
-    print("npu_mixed_quant_sparse_flash_mla...")
+    print("mixed_quant_sparse_flash_mla...")
     npu_result = npu_mode(
                                 q=input['q'].npu() if input['q'] is not None else None,
                                 ori_kv=input['ori_kv'].npu() if input['ori_kv'] is not None else None,
@@ -179,7 +179,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     torch_npu.npu.set_device(device_id)
 
     print("test_data:", params)
-    print("npu_mixed_quant_sparse_flash_mla_metadata...")
+    print("mixed_quant_sparse_flash_mla_metadata...")
     layout_kv_qsas = metadata_input['layout_kv']
     if layout_kv_qsas == "PA_BBND":
         layout_kv_qsas = "PA_ND"
@@ -210,8 +210,8 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     torch.npu.synchronize()
     metadata.npu()
 
-    print("npu_mixed_quant_sparse_flash_mla...")
-    npu_result, _ = torch.ops.npu_ops_transformer.npu_mixed_quant_sparse_flash_mla(
+    print("mixed_quant_sparse_flash_mla...")
+    npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
                                 cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,

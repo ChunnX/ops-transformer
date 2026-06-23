@@ -8,36 +8,31 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_SPARSE_FLASH_MLA_METADATA_AICPU_H
-#define ACLNN_SPARSE_FLASH_MLA_METADATA_AICPU_H
+#ifndef ACLNN_SPARSE_FLASH_MLA_METADATA_H
+#define ACLNN_SPARSE_FLASH_MLA_METADATA_H
 
 #include "aclnn/aclnn_base.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-/**
- * @brief aclnnSparseFlashMlaMetadataGetWorkspaceSize的第一段接口，计算workspace大小。
- * 功能描述：该算子实现aclnnSparseFlashMla的tiling metadata数据计算。
- * @domain aclnn_ops_train
- */
-__attribute__((visibility("default"))) aclnnStatus
-aclnnSparseFlashMlaMetadataGetWorkspaceSize(
-    const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,
-    const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedOriKvOptional,
-    int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-    int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft,
-    int64_t oriWinRight, char *layoutQOptional, char *layoutKvOptional, bool hasOriKv, bool hasCmpKv,
-    const aclTensor* metadata, uint64_t* workspaceSize, aclOpExecutor** executor);
 
-    /**
- * @brief aclnnSparseFlashMlaMetadata的第二段接口，用于执行计算。
- */
-__attribute__((visibility("default"))) aclnnStatus
-aclnnSparseFlashMlaMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensOriKvOptional,
+    const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedOriKvOptional,
+    const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,
+    const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional, int64_t numHeadsQ,
+    int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenOriKv,
+    int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
+    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional,
+    const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metaData, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
+
+__attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashMlaMetadata(
+    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // ACLNN_SPARSE_FLASH_MLA_METADATA_AICPU_H
+#endif // ACLNN_SPARSE_FLASH_MLA_METADATA_H

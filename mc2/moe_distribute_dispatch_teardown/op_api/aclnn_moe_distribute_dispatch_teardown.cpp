@@ -19,6 +19,7 @@
 #include "aclnnInner_moe_distribute_dispatch_teardown.h"
 #include "log/log.h"
 #include "common/op_api/mc2_context.h"
+#include "mc2_log_compat.h"
 
 using namespace op;
 using namespace Mc2Aclnn;

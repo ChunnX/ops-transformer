@@ -11,7 +11,7 @@
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
-- API功能：KvQuantSparseAttnSharedKv 算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention：
+- API功能：KvQuantSparseAttnSharedKv算子旨在完成以下公式描述的Attention计算，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention：
 
 - 计算公式：
 

@@ -26,7 +26,14 @@ namespace smlag {
 
 ASCENDC_EXTERN_C ge::graphStatus TilingSparseFlashMlaGrad(gert::TilingContext *context)
 {
-    return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
+    auto platform = context->GetPlatformInfo();
+    auto sasgPlatform = platform_ascendc::PlatformAscendC(platform);
+    if (sasgPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGD(context, "Current npu arch is dav-3510.");
+    } else {
+        OP_LOGD(context, "Current npu arch is not dav-3510.");
+    }
+    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForSparseFlashMlaGrad(gert::TilingParseContext *context)

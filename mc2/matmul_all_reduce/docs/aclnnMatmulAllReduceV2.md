@@ -405,7 +405,7 @@ aclnnStatus aclnnMatmulAllReduceV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        // 调用第一段接口, x3位置传入out
+        // 调用第一段接口， x3位置传入out
         ret = aclnnMatmulAllReduceV2GetWorkspaceSize(x1, x2, bias, x3, hcom_name, "sum", commTurn, streamMode, out, &workspaceSize, &executor);
 
         CHECK_RET(ret == ACL_SUCCESS,

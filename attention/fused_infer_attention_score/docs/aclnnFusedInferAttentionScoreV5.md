@@ -152,21 +152,29 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>-</td>
+        <td>
+        <ul>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+        </ul>
+        </td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>-</td>
+        <td>
+        <ul>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+        </ul>
+        </td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>pseShiftOptional</td>
@@ -393,6 +401,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
             <li>支持per-tensor，per-channel，per-token，per-token-group，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -428,6 +437,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
             <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -537,13 +547,14 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>不支持空Tensor。</li>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>keyRope的shape中d为64，其余维度与key一致</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>keyRopeAntiquantScaleOptional</td>
@@ -1400,7 +1411,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                     </ul>
                 </td>
                 <td rowspan="3">
-                    query的layout不为BSH时，query/attentionOut的N轴与numHeads保持一致,key/value的N轴与numKeyValueHeads保持一致
+                    query的layout不为BSH时，query/attentionOut的N轴与numHeads保持一致，key/value的N轴与numKeyValueHeads保持一致
                 </td>
                 <td>
                     <ul>
@@ -1410,7 +1421,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                         <li>MxFP8场景下，HeadDim仅支持64或128</li>
                         <li>layout为NTD/NTD_TND/BSH_BNSD/BSND_BNSD时，HeadDim仅支持64或128</li>
                         <li>layout为BNSD_BSND时，HeadDim需要16对齐</li>
-                        <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时,HeadDim需要32对齐</li>
+                        <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时，HeadDim需要32对齐</li>
                     </ul>
                 </td>
                 <td rowspan="2">
@@ -1460,7 +1471,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             </tr>
             <tr>
                 <td>GQA</td>
-                <td>query/key的HeadDim与value的HeadDim不相等时,除attenMask参数组外，其余均不支持</td>
+                <td>query/key的HeadDim与value的HeadDim不相等时，除attenMask参数组外，其余均不支持</td>
             </tr>
             <tr>
                 <td>Prefill MLA</td>
@@ -1701,7 +1712,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - query、key、value的dtype为FLOAT8_E4M3FN/INT8/HIFLOAT8
       - attenOut的dtype为BFLOAT16
       - queryRope、keyRope的dtype为BFLOAT16
-      - 当query/key/value是FLOAT8_E4M3FN/HIFLOAT8时, inputLayout仅支持BSH、BSND、BNSD、TND、BSH_NBSD、BSND_NBSD、BNSD_NBSD、TND_NTD；当query/key/value类型为INT8时, inputLayout仅支持BSH、BSND、TND、BSH_NBSD、BSND_NBSD、TND_NTD
+      - 当query/key/value是FLOAT8_E4M3FN/HIFLOAT8时， inputLayout仅支持BSH、BSND、BNSD、TND、BSH_NBSD、BSND_NBSD、BNSD_NBSD、TND_NTD；当query/key/value类型为INT8时, inputLayout仅支持BSH、BSND、TND、BSH_NBSD、BSND_NBSD、TND_NTD
       - Q_N支持1、2、4、8、16、32、64、128
       - KV_N必须为1；G支持 [1, 128]；Q_S支持[1,16]
       - 当query的inputLayout为BSH时，dequantScaleQuery的shape应该为（B, Q_S, Q_N）；当query的inputLayout为BSND、BNSD、TND时，dequantScaleQuery的shape相比query仅少一个维度D，且每一维需要和query的对应维度保持一致
@@ -1713,7 +1724,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - Q_S、KV_S仅支持64对齐
       - inputLayout仅支持TND
       - 支持PagedAttention场景和非PagedAttention场景，PagedAttention场景仅支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
-      - 不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
+      - 支持传入独立Rope，若传入Rope，Rope和attentionOut的dtype仅支持BFLOAT16
+      - 不支持alibi场景、不支持后量化、不支持D不等长场景、不支持公共前缀场景
 
 #### <span id="PostQuantChecker">后量化参数组（PostQuantChecker）</span>
 
@@ -1859,7 +1871,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 - 特性交叉约束
   - 公共
     - query shape的D仅支持128、512
-    - 非tensorlist场景,  queryRope shape维度需要和query保持一致，除了queryRope shape的D为64外,其余维度需要和query一致；keyRope shape维度需要和key保持一致，除了keyRope shape的D为64外,其余维度需要和key一致
+    - 非tensorlist场景，  queryRope shape维度需要和query保持一致，除了queryRope shape的D为64外,其余维度需要和query一致；keyRope shape维度需要和key保持一致，除了keyRope shape的D为64外,其余维度需要和key一致
     - 非量化场景，入参queryRope和keyRope的dtype需要和query、key保持一致
     - 不支持公共前缀场景、不支持pse场景、不支持alibi场景
     - 不支持伪量化场景
