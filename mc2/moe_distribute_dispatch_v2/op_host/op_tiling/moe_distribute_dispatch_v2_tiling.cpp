@@ -687,8 +687,9 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(
     auto expertTokenNumsTypePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrExpertTokenNumsTypeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     if (config.isMc2Context) {
-        if (strcmp(commAlgPtr, "hierarchy") != 0) {
-            OP_LOGE_WITH_INVALID_ATTR(nodeName, "comm_alg", commAlgPtr, "\"hierarchy\"");
+        if (strcmp(commAlgPtr, "hierarchy") == 0) {
+            std::string reason = "hierarchy does not support mc2 context mode";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "comm_alg", commAlgPtr, reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
