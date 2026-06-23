@@ -1471,12 +1471,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
             continue;
         }
-        // UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
-        // if constexpr(g_coreType == AIV) {
-        //     if (subBlockIdx_ == 1) {
-        //         TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
-        //     }
-        // }
+        UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
+        if constexpr(g_coreType == AIV) {
+            if (subBlockIdx_ == 1) {
+                TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
+            }
+        }
         // if (subBlockIdx_ == 0) {
         //     MegaMoeImpl::GroupMatmulSwigluQuant<
         //         QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
