@@ -489,7 +489,9 @@ __aicore__ inline void GroupMatmul2(
                 tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
                     (groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
                 AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
-                MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+                // MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
+                //     mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+                MegaMoeCombineImpl::CombineTokensWithUrma<ElementC, decltype(actualShape)>(
                     mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);

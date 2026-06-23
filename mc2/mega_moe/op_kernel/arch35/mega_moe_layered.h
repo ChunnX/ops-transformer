@@ -189,6 +189,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
+    params_.epGmAddr = (GM_ADDR)mc2Context_->urmacclBuffer[rankId_];
+    params_.rankId = rankId_;
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
     params_.bGmAddr = GetTensorAddr(0, weight1);
@@ -310,7 +312,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     }
     // Tensor用处：SendMaskCal 函数中搬运本卡的 topkIds；
     // Tensor大小：该Tensor在进行CompareScalar时，compareCount_要求256B对齐，申请大小256字节对齐；
-    LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512);
+    LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
     hcomm_.Init(hcommTensor_, ALIGN_512);
     uint32_t topkIdsTensorAddr = ALIGN_512;
     uint32_t topkIdsTensorSize = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)),
@@ -909,7 +911,6 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
-    printf("ProcessCombine quant\n");
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
 
     GlobalTensor<int32_t> rowGroupComplete;
@@ -1038,7 +1039,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
     int32_t coreLen, coreOffset;
     TilingByCore(m_, coreLen, coreOffset, 1);
     GlobalTensor<bfloat16_t> expandedX;
-    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.combineSendPtr);
+    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)(params_.peermemInfo.URMACombineWinOffset + params_.epGmAddr));
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -1179,6 +1180,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     expertBeforeCnt_ = 0;
     ExpertLoopState gmm2State{initShape, initOffset};
     InitCombineBuffers();
+
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
+        if (subBlockIdx_ == 1) {
+            LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
+            hcomm_.Init(hcommTensor_, ALIGN_512);
+            CombineTokensWithUrmaSend<bfloat16_t>(params_, mc2Context_, hcomm_);
+        }
+    }
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {

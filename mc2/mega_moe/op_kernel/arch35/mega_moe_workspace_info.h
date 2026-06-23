@@ -101,6 +101,8 @@ struct WorkspaceInfo {
     GM_ADDR gmmOutPtr;
     GM_ADDR rowGroupCompletePtr;
     GM_ADDR maskSlotPtr;
+    GM_ADDR combineSendDataPtr;
+    GM_ADDR combineSendNotifyPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -161,7 +163,26 @@ struct WorkspaceInfo {
             workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
         }
         maskSlotPtr = base + workspaceSize + 10UL * 1024 * 1024; //todo:
+        workspaceSize += 10UL * 1024 * 1024; //todo:
+
+        int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+        int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
+            (int64_t)sizeof(int32_t);
+        int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
+        int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;  // mask + 32B count
         
+        workspaceSize += Ops::Base::CeilAlign(
+            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+        combineSendDataPtr = base + workspaceSize;
+
+        // 每个 rank 的 workspace 大小: bs * expertPerRank 个 token, 每个 token 含数据+三元组(32B)
+        uint32_t maxDataLength = Ops::Base::CeilAlign(ALIGN_256 * SIZE_BF_16, ALIGN_32);
+        // todo:太大了。先这样，后续必须修改。
+        uint32_t maxDataSize = Ops::Base::CeilDiv(tilingData->h, ALIGN_256) * (ALIGN_32 + maxDataLength) * 
+                                                  tilingData->bs * tilingData->expertPerRank * tilingData->epWorldSize;
+        workspaceSize += maxDataSize;
+        combineSendNotifyPtr = base + workspaceSize;
+
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

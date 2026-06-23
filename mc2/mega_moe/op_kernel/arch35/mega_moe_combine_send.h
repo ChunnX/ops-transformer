@@ -23,12 +23,13 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
+constexpr uint32_t L1_TILE_N = 256;
+
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t>& tripleTensor,
     LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
 {
-    printf("CombineTokens no quant\n");
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
@@ -48,6 +49,209 @@ __aicore__ inline void CombineTokens(
             l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
     }
 }
+
+template <typename ElementMMadOut2, typename BlockShape>
+__aicore__ inline void CombineTokensWithUrma(
+    uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t>& tripleTensor,
+    LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
+{
+    int32_t lenTile = Get<M_VALUE>(actualBlockShape);
+    uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
+    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(L1_TILE_N * sizeof(ElementMMadOut2), ALIGN_32);
+    //每个 token 含数据+三元组(32B)
+    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(params.tilingData->h, L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+    LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC, 130 * 1024, ALIGN_32 / sizeof(int32_t));
+    AscendC::GlobalTensor<ElementMMadOut2> gmLocalD;
+    AscendC::GlobalTensor<int32_t> gmLocalDTriple;
+    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
+    ub2GmParams.blockCount = 1;
+    ub2GmParams.blockLen = actualDataLength;
+
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+    for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
+        uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
+        uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
+        uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
+        if (toRankId == params.rankId) {
+            uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
+            GM_ADDR localAddr = params.epGmAddr + params.peermemInfo.URMACombineWinOffset + gmDstOffset * sizeof(ElementMMadOut2);
+            gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(localAddr));
+            AscendC::DataCopyPad(gmLocalD,
+                l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+            AscendC::PipeBarrier<PIPE_ALL>();
+            continue; // 本地 rank 不处理三元组
+        }
+        tripleTempTensor.SetValue(0, toRankId);
+        tripleTempTensor.SetValue(1, tokenIdx);
+        tripleTempTensor.SetValue(2, topkIdx);
+        tripleTempTensor.SetValue(3, nLoc);
+        tripleTempTensor.SetValue(4, n);
+        tripleTempTensor.SetValue(5, actualDataLength);
+        tripleTempTensor.SetValue(7, 1); // 标记为已处理
+        GM_ADDR notifyAddr = params.workspaceInfo.combineSendNotifyPtr + toRankId * sizeof(int32_t);
+        GM_ADDR dataAddr = params.workspaceInfo.combineSendDataPtr + 
+                        toRankId * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank;
+        int32_t cnt = AscendC::AtomicAdd(reinterpret_cast<int32_t*>(notifyAddr), 1);
+        AscendC::PipeBarrier<PIPE_ALL>();
+        // 数据区: 每个 rank 独立空间, 每个槽位 = maxDataLength(数据) + 32B(三元组)
+        gmLocalD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
+            dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32)));
+        AscendC::DataCopyPad(gmLocalD,
+            l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+        AscendC::PipeBarrier<PIPE_ALL>();
+        // 三元组区: 紧跟数据之后
+        gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+            dataAddr + cnt * (maxDataLengthPerBlock + ALIGN_32) + maxDataLengthPerBlock));
+        AscendC::DataCopy(gmLocalDTriple, tripleTempTensor, ALIGN_32 / sizeof(int32_t));
+        AscendC::PipeBarrier<PIPE_ALL>();
+    }
+}
+
+// ==================================================================================================
+// CombineTokensWithUrmaSend (接收端轮询 + urma 发送): 在 GMM2 全部完成后调用
+// --------------------------------------------------------------------------------------------------
+//   Phase 1: 分核, 按 aivNum 均分 worldSize 个目标 rank;
+//   Phase 2: 逐 rank 读 mask count 累加得到该 rank 应收的 token 总数;
+//   Phase 3: 轮询 combineSendNotifyPtr, 收到新数据后读三元组, 通过 urma WriteNbi 发送到目标卡 combineSend 区;
+//   Phase 4: 全部发送完成后 drain 所有 urma channel;
+// ==================================================================================================
+template <typename ElementMMadOut2>
+__aicore__ inline void CombineTokensWithUrmaSend(
+    const Params& params, __gm__ Mc2MoeContext* mc2Context,
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP>& hcomm)
+{
+    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
+    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),  (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
+
+    // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
+    uint32_t aivIdx = GetBlockIdx() / GetTaskRation();  // block 级别索引
+    uint32_t aivNum = GetBlockNum();  // 核1参与, 使用 blockNum
+
+    uint32_t rankId = params.rankId;
+    uint32_t worldSize = params.tilingData->epWorldSize;
+    uint32_t rankPerCore = worldSize / aivNum;
+    uint32_t remainder = worldSize % aivNum;
+    uint32_t startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
+    uint32_t processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
+    uint32_t endRankId = startRankId + processRankNum;
+    if (startRankId >= endRankId || processRankNum == 0) {
+        return;
+    }
+
+    LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, processRankNum );
+    LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t), processRankNum);
+
+    Duplicate(sendTokenCnt, 0 , processRankNum);
+    Duplicate(totalTokenCnt, 0 , processRankNum);
+    // maskRecvPtr 布局: [localExpert][srcRank], 每个槽位 = maskAlignSize + 32B count
+    int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
+    int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t),
+        (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
+    int64_t maskAlignSize = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, (int64_t)ALIGN_32);
+    int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;
+    uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize / sizeof(int32_t));
+    uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize / sizeof(int32_t));
+    uint32_t expertPerRank = params.tilingData->expertPerRank;
+    LocalTensor<uint32_t> slotReadTensor = LocalTensor<uint32_t>(TPosition::VECCALC,
+        ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t) * 2, slotWordStride);
+    AscendC::GlobalTensor<uint8_t> maskSrcGlobal;
+
+    // Phase 2: 逐 rank 统计应收 token 总数 (从 mask count 累加)
+    for (uint32_t index = startRankId; index < endRankId; index++) {
+        if (index == rankId) {
+            continue;
+        }
+        uint32_t cnt = 0;
+        for (uint32_t expertIdx = 0; expertIdx < expertPerRank; expertIdx++) {
+            maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context, rankId) +
+                static_cast<uint64_t>(expertIdx) * worldSize * maskSlotSize +
+                static_cast<uint64_t>(index) * maskSlotSize));
+            AscendC::DataCopy(slotReadTensor, maskSrcGlobal, slotWordStride);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+            cnt += slotReadTensor.GetValue(countWordIdx);
+        }
+        // 修正: CeilAlign 返回类型与 L1_TILE_N 一致, 用 uint32_t
+        uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), 
+                                    static_cast<int64_t>(L1_TILE_N)));
+        totalTokenCnt.SetValue(index - startRankId, totalDataBlockCnt);
+    }
+
+    // Phase 3: 轮询 notify, 收到后 urma 发送
+    uint32_t rankIndex = 0;
+    uint32_t processRank = 0;
+    AscendC::GlobalTensor<int32_t> gmLocalDTriple;
+    if (startRankId >= rankId && rankId < endRankId) {
+        processRank = 1;
+    }
+
+    while (true) {
+        // 跳过已完成的 rank
+        // 修正: 用 GetValue 访问 LocalTensor (原代码误用 sendTokenCnt(rankIndex))
+        while ((rankIndex + startRankId == rankId) || sendTokenCnt.GetValue(rankIndex) == totalTokenCnt.GetValue(rankIndex)) {
+            rankIndex = (rankIndex + 1) % processRankNum;
+        }
+        // 读 notify count
+        __gm__ int32_t* notifyAddr = (__gm__ int32_t*)(params.peermemInfo.URMACombineWinOffset + params.workspaceInfo.combineSendNotifyPtr + (rankIndex + startRankId) * sizeof(int32_t));
+        uint32_t curCnt = ReadGmByPassDCache(notifyAddr);
+        uint32_t completeCnt = sendTokenCnt.GetValue(rankIndex);
+        if (curCnt > completeCnt) {
+            uint32_t needCnt = curCnt - completeCnt;
+            uint32_t index = completeCnt;
+            // 轮询所有已到达的槽位
+            while (needCnt > 0) {
+                GM_ADDR dataAddr = params.workspaceInfo.combineSendDataPtr +
+                    (rankIndex + startRankId) * maxDataSizePerToken * params.tilingData->bs * params.tilingData->expertPerRank + index * (maxDataLengthPerBlock + ALIGN_32);
+                gmLocalDTriple.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(dataAddr + maxDataLengthPerBlock));
+                AscendC::Nop<800>();
+                AscendC::DataCopy(sendTensor, gmLocalDTriple, 8);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+                if (sendTensor.GetValue(7) == 1) {
+                    // 读取三元组元数据
+                    uint32_t toRankId = sendTensor.GetValue(0);
+                    uint32_t tokenIdx = sendTensor.GetValue(1);
+                    uint32_t topkIdx = sendTensor.GetValue(2);
+                    uint32_t nLoc = sendTensor.GetValue(3);
+                    uint32_t n = sendTensor.GetValue(4);
+                    uint32_t dataLen = sendTensor.GetValue(5);
+                    uint64_t channelHandle = GetUrmaCommHandle(mc2Context, toRankId, rankId);
+                    uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
+                    GM_ADDR remoteAddr = GetUrmaAddrByRankId(mc2Context, toRankId) + params.peermemInfo.URMACombineWinOffset + gmDstOffset * sizeof(ElementMMadOut2);
+                    hcomm.WriteNbi(channelHandle, remoteAddr, dataAddr, dataLen);
+                    // 标记已处理, 避免重复发送
+                    sendTensor.SetValue(7, 0);
+                    AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);
+                    AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
+                    AscendC::DataCopy(gmLocalDTriple, sendTensor, 8);
+                    PipeBarrier<PIPE_ALL>();
+                    needCnt--;
+                }
+                // 修正: 轮询所有槽位, 用 curCnt 作为模数 (原代码 needCnt 会变为0导致除零)
+                index = (index + 1 < curCnt) ? index + 1 : completeCnt;
+            }
+            sendTokenCnt.SetValue(rankIndex, curCnt);
+            if (curCnt == totalTokenCnt.GetValue(rankIndex)) {
+                processRank++;
+                if (processRank == processRankNum) {
+                    break;
+                }
+            }
+        }
+        rankIndex = (rankIndex + 1) % processRankNum;
+    }
+
+    // Phase 4: drain 本核负责的 rank 的 urma 发送 (仅 startRankId..endRankId-1)
+    for (uint32_t dr = startRankId; dr < endRankId; ++dr) {
+        if (dr == rankId) {
+            continue;
+        }
+        hcomm.Drain(GetUrmaCommHandle(mc2Context, dr, rankId));
+    }
+}
+
 
 // =============================================
 // QuantMxFp8：将 bf16 数据量化为 MXFP8 格式

@@ -45,6 +45,8 @@ struct PeermemInfo {
     GM_ADDR maskRecvPtr;             // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
     GM_ADDR quantTokenScalePtr;      // 量化结果，包括data+scale
     GM_ADDR combineSendPtr;
+    GM_ADDR URMACombineWinOffset;
+    GM_ADDR URMAmaskRecvPtr;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)
     {
@@ -62,7 +64,7 @@ struct PeermemInfo {
         // 整个 mask 区按 512 对齐, 保证后续 quantTokenScalePtr 仍 512 对齐(CopyGMToGMPerToken 用普通 DataCopy 读)。
         offset += Ops::Base::CeilAlign(
             (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
-
+        
         quantTokenScalePtr = base + offset;
         uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
         uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h / elemsPerByte,
@@ -71,6 +73,10 @@ struct PeermemInfo {
         uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
         offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         combineSendPtr = base + offset;
+
+        URMAmaskRecvPtr = 0;
+        URMACombineWinOffset = Ops::Base::CeilAlign(
+            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
     }
 };
 
@@ -84,6 +90,8 @@ struct Params {
     GM_ADDR probsGmAddr;
     GM_ADDR y2GmAddr;
     GM_ADDR expertTokenNumsOutGmAddr;
+    int32_t rankId;
+    GM_ADDR epGmAddr;
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData *tilingData;
