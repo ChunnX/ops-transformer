@@ -485,7 +485,8 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
                                    IsActualSeqLengthsKVHasZero(baseInfo));
 }
 
-bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo) {
+bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo) 
+{
     for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
         uint32_t s2Size = split_core_v2::GetS2SeqSize(bIdx, baseInfo);
         if (s2Size == 0) {
