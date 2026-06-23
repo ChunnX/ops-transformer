@@ -98,7 +98,7 @@ ge::graphStatus MatmulAllReduceTiling910::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
     errno_t cpyRetVal = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&matmulAllReduce910TilingData_), tilingDataSize);
+        reinterpret_cast<void *>(&matmulAllReduce910TilingData_), tilingDataSize);
     if (cpyRetVal != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", cpyRetVal);
         return ge::GRAPH_FAILED;
