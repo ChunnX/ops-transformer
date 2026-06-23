@@ -21,6 +21,7 @@
 #include "../../../op_kernel/matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_tiling_key.h"
 #include "matmul_reduce_scatter_v2_aiv_mode_smallm_tiling.h"
+#include "mc2_log.h"
 
 using namespace AscendC;
 using namespace ge;

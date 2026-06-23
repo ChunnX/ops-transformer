@@ -14,6 +14,7 @@
  */
 
 #include "matmul_reduce_scatter_tiling_base.h"
+#include "mc2_log.h"
 
 using namespace AscendC;
 using namespace ge;
