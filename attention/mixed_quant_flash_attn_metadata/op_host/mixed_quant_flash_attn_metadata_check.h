@@ -30,7 +30,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                                const aclTensor *metaData)
 {
     if (quantMode != 1 && quantMode != 2 && quantMode != 3) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "quantMode only supports 0, 3, 4, but got %ld", quantMode);
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "quantMode only supports 1, 2, 3, but got %ld", quantMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
