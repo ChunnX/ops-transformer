@@ -491,6 +491,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 
                 ProcessSoftmaxSecondPass(qChunkStart, curQChunkSize, batchIdx, headIdx);
             }
+
+            AscendC::PipeBarrier<PIPE_ALL>();
             SyncAll<false>();
 
             if ASCEND_IS_AIV {
