@@ -332,6 +332,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
     ConstInfo &constInfo)
 {
+    // bmm1ResBuf.WaitCrossCore();
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (isFp8 && hasAtten) {
         AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[0], this->attenMaskGmInt,

@@ -336,13 +336,38 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                 # flash-attention fp8 数据流：量化未归一化的 exp(s-max)（量级 O(1)、fp8 友好），
                 # PV 之后再除以 fp32 行和 l。不能对归一化概率(~1/N)做 fp8 量化——小值舍入会带来
                 # 与硬件不符的系统性误差（如均匀注意力下 N 非 2 的幂时输出偏离 1.0）。
-                row_max = scores.max(dim=-1, keepdim=True).values
-                p_unnorm = torch.exp(scores - row_max)
-                p_unnorm = torch.where(valid_mask, p_unnorm, torch.zeros_like(p_unnorm))
-                row_sum = p_unnorm.sum(dim=-1, keepdim=True)
-                p_quant = (p_unnorm / p_scale_value).to(_fp8_dtype()).to(torch.float32)
-                attn = torch.matmul(p_quant, v_mat) * p_scale_value * float(v_scale[n2_idx].item())
-                attn = attn / row_sum
+                #
+                # 必须严格复刻 kernel 的 online(flash) 数据流：kernel 每个 s2LoopCount 处理「2 个
+                # sparse block」(s2LoopCount*2 读 idx1/idx2)，在该 chunk 内用「运行中的局部 max」做
+                # FP8 量化，再用 exp(m_old-m_new) 在线缩放累加器。若像单遍 softmax 那样用「全局 max」
+                # 量化全部 P，则当 sparseLen>2(≥2 个 s2 迭代) 且全局 max 不在首个 chunk 时，首 chunk 的
+                # exp(s-局部max) 被 FP8 舍入后无法靠后续 fp32 缩放还原 → 输出系统性偏差(随 block 数增大)，
+                # 而 lse(=max+log(sum)) 与量化无关故不受影响。详见 qb0/qb1 位精确、qb2/qb3 发散的定位。
+                fp8_dtype = _fp8_dtype()
+                v_scale_value = float(v_scale[n2_idx].item())
+                chunk_pos = 2 * case["sparse_kv_block_size"]  # kernel 每次 s2 迭代处理 2 个 kv block
+                npos = scores.shape[-1]
+                neg_inf = float("-inf")
+                m_run = neg_inf
+                l_run = 0.0
+                acc = torch.zeros(head_dim, dtype=torch.float32)
+                for c0 in range(0, npos, chunk_pos):
+                    c1 = min(c0 + chunk_pos, npos)
+                    s_c = scores[c0:c1]
+                    vm_c = valid_mask[c0:c1]
+                    if not bool(vm_c.any()):
+                        continue
+                    chunk_max = float(s_c[vm_c].max().item())
+                    m_new = chunk_max if m_run == neg_inf else max(m_run, chunk_max)
+                    rescale = 0.0 if m_run == neg_inf else math.exp(m_run - m_new)
+                    p_c = torch.exp(s_c - m_new)
+                    p_c = torch.where(vm_c, p_c, torch.zeros_like(p_c))
+                    p_quant = (p_c / p_scale_value).to(fp8_dtype).to(torch.float32)
+                    pv = torch.matmul(p_quant, v_mat[c0:c1]) * p_scale_value * v_scale_value
+                    acc = acc * rescale + pv
+                    l_run = l_run * rescale + float(p_c.sum().item())
+                    m_run = m_new
+                attn = acc / l_run
                 _set_output(attention_out, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, attn.to(output_dtype))
                 _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx,
                          torch.logsumexp(scores[valid_mask], dim=-1))
