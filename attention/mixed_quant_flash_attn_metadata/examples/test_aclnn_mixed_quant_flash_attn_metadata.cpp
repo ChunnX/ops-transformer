@@ -129,6 +129,8 @@ int main() {
     auto ret = Init(deviceId, &stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("Init acl failed. ERROR: %d\n", ret); 
+        aclrtFree(*deviceAddr); 
+        *deviceAddr = nullptr;
         return ret;
     }
 
@@ -145,12 +147,6 @@ int main() {
 
     int32_t preTokens = -1;
     int32_t nextTokens = -1;
-    string layout_query = "BSND";
-    char layoutQuery[layout_query.length() + 1];
-    strcpy(layoutQuery, layout_query.c_str());
-    string layout_kv = "BSND";
-    char layoutKv[layout_kv.length() + 1];
-    strcpy(layoutKv, layout_kv.c_str());
     int32_t sparseMode = 3;
     int32_t attentionMode = 0;
     bool return_softmax_lse = false;
@@ -204,7 +200,7 @@ int main() {
         batchSize, qS, kvS,
         numHeads, numKeyValueHeads,
         headDim, quantMode, sparseMode, preTokens, nextTokens, 
-        "BSND", "BSND", "BSND", 
+         "BSND", "BSND", "BSND",   // layoutQuery, layoutKv, layoutOut
         metadataTensor,
         &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {
@@ -227,7 +223,7 @@ int main() {
 
     ret = aclrtMemcpy(metadataHostData.data(),
                         metadataHostData.size() * sizeof(metadataHostData[0]), metadataDeviceAddr,
-                        metadataShapeSize,
+                        metadataShapeSize * sizeof(metadataHostData[0]),
                         ACL_MEMCPY_DEVICE_TO_HOST);
     if (ret != ACL_SUCCESS) {
         printf("aclrtMemcpy %d\n", ret);

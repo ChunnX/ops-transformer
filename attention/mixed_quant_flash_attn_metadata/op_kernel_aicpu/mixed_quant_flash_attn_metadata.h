@@ -24,8 +24,6 @@ namespace optiling {
 // Constants
 constexpr uint32_t AIC_CORE_NUM = 36U;
 constexpr uint32_t AIV_CORE_NUM = 72U;
-constexpr uint32_t FA_META_SIZE = 1024U;
-using FA_METADATA_T = uint32_t;
 
 constexpr uint32_t HEAD_METADATA_SIZE = 16U;
 constexpr uint32_t FA_METADATA_SIZE = 16U;
@@ -57,28 +55,28 @@ constexpr uint32_t FD_M_NUM_INDEX = 5U;
 namespace detail {
 struct FaMetaData {
     uint32_t sectionNum;
-    uint32_t *headMedata; // [HEAD_METADATA_SIZE];
+    uint32_t *headMetadata; // [HEAD_METADATA_SIZE];
     uint32_t *faMetadata; // [sectionNum][AIC_CORE_NUM][FA_METADATA_SIZE];
     uint32_t *fdMetadata; // [sectionNum][AIV_CORE_NUM][FD_METADATA_SIZE];
     FaMetaData(void *metadataPtr, uint32_t sectionNum)
         :sectionNum(sectionNum),
-        headMedata(static_cast<uint32_t*>(metadataPtr)),
-        faMetadata(headMedata + HEAD_METADATA_SIZE),
+        headMetadata(static_cast<uint32_t*>(metadataPtr)),
+        faMetadata(headMetadata + HEAD_METADATA_SIZE),
         fdMetadata(faMetadata + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE)
     {
-            headMedata[0] = sectionNum;
+            headMetadata[0] = sectionNum;
     }
 
-    void SetHeadMedata(uint32_t metaIdx, uint32_t val)
+    void SetheadMetadata(uint32_t metaIdx, uint32_t val)
     {
         assert(metaIdx < HEAD_METADATA_SIZE);
-        headMedata[metaIdx] = val;
+        headMetadata[metaIdx] = val;
     }
 
-    uint32_t GetHeadMedata(uint32_t metaIdx)
+    uint32_t GetheadMetadata(uint32_t metaIdx)
     {
         assert(metaIdx < HEAD_METADATA_SIZE);
-        return headMedata[metaIdx];
+        return headMetadata[metaIdx];
     }
 
     void SetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val)

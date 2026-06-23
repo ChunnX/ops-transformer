@@ -59,6 +59,7 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
                                           mask_mode: Optional[int] = None, win_left: Optional[int] = None,
                                           win_right: Optional[int] = None, layout_q: Optional[str] = None,
                                           layout_kv: Optional[str] = None, layout_out: Optional[str] = None):
+            batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q) if batch_size is None else batch_size
             metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
             return torch.empty((metadataSize,), dtype=torch.int32, device="npu")
 
