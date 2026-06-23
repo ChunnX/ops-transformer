@@ -56,20 +56,45 @@ python3 scripts/st_accuracy/run_st_accuracy.py run \
 
 `--device` 是传给 `aclrtSetDevice()` 的 ACL runtime logical device id。
 
+## Discovery Gate
+
+`list`、`coverage`、`taxonomy` 和 `run` 的第一步都是 discovery gate：
+
+1. 发现当前 scope 内的 AscendC attention 算子。
+2. 装载 `<op>/tests/st/*/all_*.json` case。
+3. 对显式 `--ops` 请求校验发现结果。
+
+当传入 `--ops` 时，以下情况会返回非 0，并且 `run` 不会继续执行或写出成功形态报告：
+
+- `missing_ops`：请求的算子没有被当前 AscendC attention 发现逻辑识别。
+- `zero_case_ops`：请求的算子已发现，但没有任何有效 ST case。
+- `skipped_assets`：请求算子的 ST 资产存在不可静默忽略的问题，例如缺少 `tests/st`、没有匹配 JSON、JSON 非法、payload 不是 list、case 不是 object 或 case id 非整数。
+
+未传 `--ops` 时仍保持宽松扫描，用于观察当前默认 scope；不能把未请求算子的 0 case 当成执行失败。
+
 ## Outputs
 
 `run` 写入：
 
 - `summary.json`：`passed`、`failed`、`error`、`unsupported`、`skipped` 聚合计数。
+- `summary.json.timings`：Python discovery/load/select/support、native bridge 和 report 写入的阶段耗时。
 - `cases.jsonl`：每个 case 一行结构化结果。
+- `cases.jsonl.extra.timings`：两个 attention API 的 C++ native 内部阶段耗时，包含 `parse_ms`、`input_generate_h2d_ms`、`golden_ms`、`workspace_ms`、`launch_sync_ms`、`d2h_ms`、`compare_ms`。
 - `native/st_accuracy_aclnn_runner`：执行模式下缓存的 C++ native runner。
 - `native/batch_cases.tsv`：传给 native runner 的 batch 输入。
 
 `coverage` 写入：
 
-- `coverage_summary.json`
+- `coverage_summary.json`，包含 `timings` 阶段耗时。
 - `coverage_by_op.jsonl`
 - `coverage_by_api.jsonl`
+
+`taxonomy` 写入：
+
+- `taxonomy_summary.json`，包含 `timings` 阶段耗时。
+- `taxonomy_by_api.jsonl`
+- `taxonomy_by_op.jsonl`
+- `taxonomy_priority.jsonl`
 
 ## Current Scope
 

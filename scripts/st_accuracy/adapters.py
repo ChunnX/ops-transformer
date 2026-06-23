@@ -1165,15 +1165,15 @@ def _numel(shape: Any) -> int:
 
 
 def _tensor_items(case: StCase) -> list[dict[str, Any]]:
-    return [item for item in case.flat_inputs if item.get("type") == "tensor"]
+    return case.tensor_items
 
 
 def _tensor_list_items(case: StCase) -> list[dict[str, Any]]:
-    return [item for item in case.flat_inputs if item.get("type") == "tensors"]
+    return case.tensor_list_items
 
 
 def _scalar_items(case: StCase) -> list[dict[str, Any]]:
-    return [item for item in case.flat_inputs if item.get("type") == "scalar"]
+    return case.scalar_items
 
 
 def _scalar_by_name(scalars: list[dict[str, Any]], name: str) -> dict[str, Any] | None:

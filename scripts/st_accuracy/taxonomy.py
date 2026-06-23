@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable
@@ -9,6 +10,7 @@ from typing import Iterable
 from .adapters import get_adapter
 from .inventory import Operator
 from .st_cases import StCase
+from .timing import TimingCollector
 
 ACTION_ORDER = {
     "implement_adapter_from_examples": 0,
@@ -76,6 +78,7 @@ def build_taxonomy_report(repo_root: Path | str, operators: Iterable[Operator], 
     operator_by_name = {operator.name: operator for operator in operator_list}
     by_api_cases: dict[str, list[StCase]] = defaultdict(list)
     by_op_cases: dict[str, list[StCase]] = defaultdict(list)
+    support_by_case = {id(case): _case_support(case) for case in case_list}
 
     for case in case_list:
         by_api_cases[case.aclnn_name].append(case)
@@ -85,7 +88,7 @@ def build_taxonomy_report(repo_root: Path | str, operators: Iterable[Operator], 
     for api in sorted(by_api_cases):
         api_cases = by_api_cases[api]
         ops = sorted({case.op_name for case in api_cases})
-        support_rows = [_case_support(case) for case in api_cases]
+        support_rows = [support_by_case[id(case)] for case in api_cases]
         unsupported_reasons = _reason_counts(support_rows)
         unsupported_categories = _category_counts(unsupported_reasons)
         metadata = _api_metadata(root, api, [operator_by_name[op] for op in ops if op in operator_by_name])
@@ -106,7 +109,7 @@ def build_taxonomy_report(repo_root: Path | str, operators: Iterable[Operator], 
     by_op = []
     for operator in operator_list:
         op_cases = by_op_cases.get(operator.name, [])
-        support_rows = [_case_support(case) for case in op_cases]
+        support_rows = [support_by_case[id(case)] for case in op_cases]
         unsupported_reasons = _reason_counts(support_rows)
         unsupported_categories = _category_counts(unsupported_reasons)
         by_op.append(
@@ -148,15 +151,19 @@ def build_taxonomy_report(repo_root: Path | str, operators: Iterable[Operator], 
     }
 
 
-def write_taxonomy_report(report: dict, out_dir: Path | str) -> None:
+def write_taxonomy_report(report: dict, out_dir: Path | str, timings: TimingCollector | None = None) -> None:
+    start = time.perf_counter()
     path = Path(out_dir)
     path.mkdir(parents=True, exist_ok=True)
-    with (path / "taxonomy_summary.json").open("w", encoding="utf-8") as handle:
-        json.dump(report["summary"], handle, indent=2, sort_keys=True)
-        handle.write("\n")
     _write_jsonl(path / "taxonomy_by_api.jsonl", report["by_api"])
     _write_jsonl(path / "taxonomy_by_op.jsonl", report["by_op"])
     _write_jsonl(path / "taxonomy_priority.jsonl", report["priority"])
+    if timings is not None:
+        timings.add("report_write_ms", (time.perf_counter() - start) * 1000.0)
+        report["summary"]["timings"] = timings.to_json_dict()
+    with (path / "taxonomy_summary.json").open("w", encoding="utf-8") as handle:
+        json.dump(report["summary"], handle, indent=2, sort_keys=True)
+        handle.write("\n")
 
 
 def _case_support(case: StCase) -> tuple[bool, str]:

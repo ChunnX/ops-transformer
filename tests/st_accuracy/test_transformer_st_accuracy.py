@@ -1,10 +1,17 @@
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.st_accuracy import run_st_accuracy
+from scripts.st_accuracy import coverage as coverage_module
+from scripts.st_accuracy import st_cases as st_cases_module
+from scripts.st_accuracy import taxonomy as taxonomy_module
 from scripts.st_accuracy.adapters import get_adapter
 from scripts.st_accuracy.inventory import discover_operators
+from scripts.st_accuracy.inventory import Operator
 from scripts.st_accuracy.native import NativeRunner
 from scripts.st_accuracy.runner import CaseSelector
 from scripts.st_accuracy.st_cases import StCase, load_cases
@@ -18,6 +25,14 @@ def _write(path: Path, text: str) -> None:
 def _write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _assert_timing_keys(testcase: unittest.TestCase, timings: dict, expected_keys: set[str]) -> None:
+    testcase.assertIsInstance(timings, dict)
+    testcase.assertTrue(expected_keys <= set(timings), f"missing timing keys: {sorted(expected_keys - set(timings))}")
+    for key in expected_keys:
+        testcase.assertIsInstance(timings[key], (int, float), key)
+        testcase.assertGreaterEqual(timings[key], 0.0, key)
 
 
 class TransformerStAccuracyTest(unittest.TestCase):
@@ -78,6 +93,318 @@ class TransformerStAccuracyTest(unittest.TestCase):
         self.assertEqual(len(selected), 2)
         self.assertEqual({case.aclnn_name for case in selected}, {"LightningIndexer", "RecurrentGatedDeltaRule"})
         self.assertEqual({case.case_id for case in selected}, {7})
+
+    def test_discovery_report_marks_missing_and_zero_case_requested_ops(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / "attention/no_st_cases/CMakeLists.txt", "")
+            _write(root / "attention/no_st_cases/op_host/no_st_cases_def.cpp", "")
+            _write(root / "attention/no_st_cases/op_kernel/no_st_cases.cpp", "__aicore__ void kernel() {}\n")
+
+            operators = discover_operators(root)
+            self.assertTrue(hasattr(st_cases_module, "load_cases_with_diagnostics"))
+            load_result = st_cases_module.load_cases_with_diagnostics(root, operators)
+            self.assertTrue(hasattr(run_st_accuracy, "_build_discovery_report"))
+            report = run_st_accuracy._build_discovery_report(
+                operators,
+                load_result,
+                requested_ops={"no_st_cases", "missing_op"},
+            )
+
+        self.assertEqual(report["missing_ops"], ["missing_op"])
+        self.assertEqual(report["zero_case_ops"], ["no_st_cases"])
+        self.assertEqual(
+            report["skipped_assets"],
+            [
+                {
+                    "case_index": None,
+                    "category": "attention",
+                    "json_path": "attention/no_st_cases/tests/st",
+                    "message": "operator has no tests/st directory",
+                    "op": "no_st_cases",
+                    "path": "attention/no_st_cases",
+                    "reason": "missing_st_dir",
+                }
+            ],
+        )
+
+    def test_load_cases_with_diagnostics_reports_skipped_st_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root / "attention/bad_st/CMakeLists.txt", "")
+            _write(root / "attention/bad_st/op_host/bad_st_def.cpp", "")
+            _write(root / "attention/bad_st/op_kernel/bad_st.cpp", "__aicore__ void kernel() {}\n")
+            _write(root / "attention/bad_st/tests/st/aclnnBadInvalidJson/all_invalid_json.json", "{")
+            _write_json(root / "attention/bad_st/tests/st/aclnnBadNonList/all_non_list.json", {"id": 1})
+            _write_json(
+                root / "attention/bad_st/tests/st/aclnnBadMixed/all_mixed.json",
+                [
+                    "not a dict",
+                    {"id": "not-int", "aclnn_name": "Bad", "inputs": []},
+                    {"id": 3, "aclnn_name": "Bad", "inputs": []},
+                ],
+            )
+
+            operators = discover_operators(root)
+            self.assertTrue(hasattr(st_cases_module, "load_cases_with_diagnostics"))
+            load_result = st_cases_module.load_cases_with_diagnostics(root, operators)
+
+        self.assertEqual([case.case_id for case in load_result.cases], [3])
+        self.assertEqual(
+            [(asset.reason, asset.case_index) for asset in load_result.skipped_assets],
+            [
+                ("invalid_json", None),
+                ("case_not_object", 0),
+                ("invalid_case_id", 1),
+                ("payload_not_list", None),
+            ],
+        )
+
+    def test_cli_list_fails_for_missing_requested_op(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/st_accuracy/run_st_accuracy.py",
+                "list",
+                "--ops",
+                "definitely_missing_op",
+                "--format",
+                "json",
+            ],
+            cwd=Path.cwd(),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["missing_ops"], ["definitely_missing_op"])
+
+    def test_cli_run_fails_before_writing_results_for_missing_requested_op(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "missing_op_run"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/st_accuracy/run_st_accuracy.py",
+                    "run",
+                    "--ops",
+                    "definitely_missing_op",
+                    "--no-execute",
+                    "--out",
+                    str(out_dir),
+                ],
+                cwd=Path.cwd(),
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("definitely_missing_op", result.stdout)
+            self.assertFalse((out_dir / "summary.json").exists())
+
+    def test_cli_list_json_includes_discovery_timings(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/st_accuracy/run_st_accuracy.py",
+                "list",
+                "--ops",
+                "lightning_indexer,recurrent_gated_delta_rule",
+                "--format",
+                "json",
+            ],
+            cwd=Path.cwd(),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(result.stdout)
+        _assert_timing_keys(
+            self,
+            payload["timings"],
+            {"total_ms", "inventory_discovery_ms", "case_load_ms", "discovery_report_ms"},
+        )
+
+    def test_cli_run_no_execute_summary_includes_python_stage_timings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "no_execute"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/st_accuracy/run_st_accuracy.py",
+                    "run",
+                    "--ops",
+                    "lightning_indexer,recurrent_gated_delta_rule",
+                    "--no-execute",
+                    "--out",
+                    str(out_dir),
+                ],
+                cwd=Path.cwd(),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
+
+        _assert_timing_keys(
+            self,
+            summary["timings"],
+            {
+                "total_ms",
+                "inventory_discovery_ms",
+                "case_load_ms",
+                "discovery_report_ms",
+                "case_select_ms",
+                "support_gate_ms",
+                "report_write_ms",
+            },
+        )
+
+    def test_cli_coverage_and_taxonomy_summaries_include_timings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            coverage_out = root / "coverage"
+            taxonomy_out = root / "taxonomy"
+            for command, out_dir in (("coverage", coverage_out), ("taxonomy", taxonomy_out)):
+                subprocess.run(
+                    [
+                        sys.executable,
+                        "scripts/st_accuracy/run_st_accuracy.py",
+                        command,
+                        "--ops",
+                        "lightning_indexer,recurrent_gated_delta_rule",
+                        "--out",
+                        str(out_dir),
+                    ],
+                    cwd=Path.cwd(),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+            coverage_summary = json.loads((coverage_out / "coverage_summary.json").read_text(encoding="utf-8"))
+            taxonomy_summary = json.loads((taxonomy_out / "taxonomy_summary.json").read_text(encoding="utf-8"))
+
+        expected = {
+            "total_ms",
+            "inventory_discovery_ms",
+            "case_load_ms",
+            "discovery_report_ms",
+            "support_gate_ms",
+            "report_write_ms",
+        }
+        _assert_timing_keys(self, coverage_summary["timings"], expected)
+        _assert_timing_keys(self, taxonomy_summary["timings"], expected)
+
+    def test_st_case_reuses_flattened_inputs(self):
+        case = StCase(
+            op_name="cached_inputs",
+            category="attention",
+            op_path=Path("attention/cached_inputs"),
+            api_dir="aclnnCachedInputs",
+            aclnn_name="CachedInputs",
+            json_path=Path("attention/cached_inputs/tests/st/aclnnCachedInputs/all.json"),
+            case_id=0,
+            raw={
+                "inputs": [
+                    [
+                        {
+                            "name": "x",
+                            "type": "tensor",
+                            "dtype": "fp16",
+                            "shape": [1],
+                            "range_values": [0.0, 1.0],
+                        }
+                    ],
+                    {"name": "dim", "type": "attr", "dtype": "int64", "range_values": 0},
+                ]
+            },
+        )
+        calls = 0
+        original = st_cases_module.flatten_input_items
+
+        def counting_flatten(values):
+            nonlocal calls
+            calls += 1
+            return original(values)
+
+        st_cases_module.flatten_input_items = counting_flatten
+        try:
+            self.assertEqual(len(case.flat_inputs), 2)
+            self.assertEqual(len(case.flat_inputs), 2)
+            self.assertEqual(case.tensor_dtypes, ["fp16"])
+            self.assertEqual(case.all_dtypes, ["fp16", "int64"])
+        finally:
+            st_cases_module.flatten_input_items = original
+
+        self.assertEqual(calls, 1)
+
+    def test_coverage_reuses_support_result_per_case(self):
+        case = StCase(
+            op_name="cached_support",
+            category="attention",
+            op_path=Path("attention/cached_support"),
+            api_dir="aclnnCachedSupport",
+            aclnn_name="CachedSupport",
+            json_path=Path("attention/cached_support/tests/st/aclnnCachedSupport/all.json"),
+            case_id=0,
+            raw={"inputs": []},
+        )
+        operator = Operator(name="cached_support", category="attention", path=Path("attention/cached_support"))
+        calls = 0
+        original = coverage_module._case_support
+
+        def counting_support(current_case):
+            nonlocal calls
+            calls += 1
+            self.assertIs(current_case, case)
+            return True, ""
+
+        coverage_module._case_support = counting_support
+        try:
+            report = coverage_module.build_coverage_report([operator], [case])
+        finally:
+            coverage_module._case_support = original
+
+        self.assertEqual(report["summary"]["executable_case_count"], 1)
+        self.assertEqual(calls, 1)
+
+    def test_taxonomy_reuses_support_result_per_case(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = StCase(
+                op_name="cached_support",
+                category="attention",
+                op_path=Path("attention/cached_support"),
+                api_dir="aclnnCachedSupport",
+                aclnn_name="CachedSupport",
+                json_path=Path("attention/cached_support/tests/st/aclnnCachedSupport/all.json"),
+                case_id=0,
+                raw={"inputs": []},
+            )
+            operator = Operator(name="cached_support", category="attention", path=Path("attention/cached_support"))
+            calls = 0
+            original = taxonomy_module._case_support
+
+            def counting_support(current_case):
+                nonlocal calls
+                calls += 1
+                self.assertIs(current_case, case)
+                return True, ""
+
+            taxonomy_module._case_support = counting_support
+            try:
+                report = taxonomy_module.build_taxonomy_report(root, [operator], [case])
+            finally:
+                taxonomy_module._case_support = original
+
+        self.assertEqual(report["summary"]["executable_case_count"], 1)
+        self.assertEqual(calls, 1)
 
     def test_native_runner_falls_back_to_transformer_vendor_opapi_library(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -207,6 +534,22 @@ class TransformerStAccuracyTest(unittest.TestCase):
 
         self.assertIn("valuesShape = args.returnValues ? outShape : std::vector<int64_t>{0}", source)
         self.assertIn("CreateGeneratedTensorByDtype(args.dtype, valuesShape", source)
+
+    def test_attention_native_runner_reports_internal_stage_timings(self):
+        source = Path("scripts/st_accuracy/native/st_accuracy_aclnn_runner.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("NativeStageTimings", source)
+        self.assertIn("PrintStageTimingsJson", source)
+        for timing_key in (
+            "parse_ms",
+            "input_generate_h2d_ms",
+            "golden_ms",
+            "workspace_ms",
+            "launch_sync_ms",
+            "d2h_ms",
+            "compare_ms",
+        ):
+            self.assertIn(timing_key, source)
 
 
 if __name__ == "__main__":

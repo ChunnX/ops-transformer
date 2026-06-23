@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -7,6 +8,7 @@ from typing import Iterable
 from .adapters import get_adapter
 from .native import NativeRunner
 from .st_cases import CaseResult, StCase
+from .timing import TimingCollector
 
 
 @dataclass(frozen=True)
@@ -48,24 +50,26 @@ def run_cases(
     soc: str,
     device: int,
     execute: bool = True,
+    timings: TimingCollector | None = None,
 ) -> list[CaseResult]:
-    native_runner = NativeRunner(repo_root=repo_root, out_dir=out_dir, vendor=vendor, soc=soc, device=device)
+    native_runner = NativeRunner(repo_root=repo_root, out_dir=out_dir, vendor=vendor, soc=soc, device=device, timings=timings)
     results: list[CaseResult | None] = []
     executable: list[tuple[int, StCase, object]] = []
-    for case in cases:
-        adapter = get_adapter(case.aclnn_name)
-        if adapter is None:
-            results.append(case.to_result(status="unsupported", message=f"no adapter for {case.aclnn_name}"))
-            continue
-        supported, reason = adapter.supports(case)
-        if not supported:
-            results.append(case.to_result(status="unsupported", message=reason))
-            continue
-        if not execute:
-            results.append(case.to_result(status="skipped", message="execution disabled"))
-            continue
-        results.append(None)
-        executable.append((len(results) - 1, case, adapter))
+    with timings.measure("support_gate_ms") if timings is not None else nullcontext():
+        for case in cases:
+            adapter = get_adapter(case.aclnn_name)
+            if adapter is None:
+                results.append(case.to_result(status="unsupported", message=f"no adapter for {case.aclnn_name}"))
+                continue
+            supported, reason = adapter.supports(case)
+            if not supported:
+                results.append(case.to_result(status="unsupported", message=reason))
+                continue
+            if not execute:
+                results.append(case.to_result(status="skipped", message="execution disabled"))
+                continue
+            results.append(None)
+            executable.append((len(results) - 1, case, adapter))
 
     if executable:
         batch_results = native_runner.run_many([(case, adapter) for _index, case, adapter in executable])

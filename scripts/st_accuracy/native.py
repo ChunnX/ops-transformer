@@ -4,11 +4,13 @@ import json
 import os
 import subprocess
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 from .adapters import Adapter
 from .st_cases import CaseResult, StCase
+from .timing import TimingCollector
 
 
 ACL_DTYPE_ATTR_TO_NAME = {
@@ -26,12 +28,21 @@ ACL_DTYPE_ATTR_TO_NAME = {
 
 
 class NativeRunner:
-    def __init__(self, repo_root: Path, out_dir: Path, vendor: str, soc: str, device: int):
+    def __init__(
+        self,
+        repo_root: Path,
+        out_dir: Path,
+        vendor: str,
+        soc: str,
+        device: int,
+        timings: TimingCollector | None = None,
+    ):
         self.repo_root = repo_root
         self.out_dir = out_dir
         self.vendor = vendor
         self.soc = soc
         self.device = device
+        self.timings = timings
         self.source = repo_root / "scripts" / "st_accuracy" / "native" / "st_accuracy_aclnn_runner.cpp"
         self.binary = out_dir / "native" / "st_accuracy_aclnn_runner"
 
@@ -44,30 +55,34 @@ class NativeRunner:
 
         start = time.monotonic()
         try:
-            self._ensure_built()
-            batch_file = self._write_batch_file(items)
-            completed = subprocess.run(
-                [
-                    str(self.binary),
-                    "--batch-file",
-                    str(batch_file),
-                    "--device",
-                    str(self.device),
-                    "--opapi-lib",
-                    str(self._vendor_opapi_lib()),
-                ],
-                cwd=self.repo_root,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
+            with self._measure("native_build_ms"):
+                self._ensure_built()
+            with self._measure("batch_write_ms"):
+                batch_file = self._write_batch_file(items)
+            with self._measure("native_subprocess_ms"):
+                completed = subprocess.run(
+                    [
+                        str(self.binary),
+                        "--batch-file",
+                        str(batch_file),
+                        "--device",
+                        str(self.device),
+                        "--opapi-lib",
+                        str(self._vendor_opapi_lib()),
+                    ],
+                    cwd=self.repo_root,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
         except Exception as exc:  # noqa: BLE001 - runner errors must become report rows.
             return [case.to_result(status="error", message=str(exc)) for case, _adapter in items]
 
         fallback_duration_ms = (time.monotonic() - start) * 1000.0
         try:
-            payloads = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+            with self._measure("native_output_parse_ms"):
+                payloads = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
         except json.JSONDecodeError:
             message = completed.stderr.strip() or f"invalid native output: {completed.stdout!r}"
             return [case.to_result(status="error", message=message, duration_ms=fallback_duration_ms) for case, _adapter in items]
@@ -90,6 +105,11 @@ class NativeRunner:
             message = str(payload.pop("message", ""))
             results.append(case.to_result(status=status, message=message, duration_ms=duration_ms, **payload))
         return results
+
+    def _measure(self, key: str):
+        if self.timings is None:
+            return nullcontext()
+        return self.timings.measure(key)
 
     def _ensure_built(self) -> None:
         if self.binary.is_file() and self.binary.stat().st_mtime >= self.source.stat().st_mtime:

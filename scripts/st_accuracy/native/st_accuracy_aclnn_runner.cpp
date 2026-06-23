@@ -191,6 +191,47 @@ struct NativeResult {
     int retCode = 0;
 };
 
+struct NativeStageTimings {
+    double parseMs = 0.0;
+    double inputGenerateH2dMs = 0.0;
+    double goldenMs = 0.0;
+    double workspaceMs = 0.0;
+    double launchSyncMs = 0.0;
+    double d2hMs = 0.0;
+    double compareMs = 0.0;
+};
+
+using SteadyClock = std::chrono::steady_clock;
+
+double ElapsedMs(SteadyClock::time_point start)
+{
+    return std::chrono::duration<double, std::milli>(SteadyClock::now() - start).count();
+}
+
+double *StageTimingTarget(NativeStageTimings *timings, double NativeStageTimings::*field)
+{
+    if (timings == nullptr) {
+        return nullptr;
+    }
+    return &(timings->*field);
+}
+
+class ScopedStageTimer {
+public:
+    explicit ScopedStageTimer(double *target) : target_(target), start_(SteadyClock::now()) {}
+
+    ~ScopedStageTimer()
+    {
+        if (target_ != nullptr) {
+            *target_ += ElapsedMs(start_);
+        }
+    }
+
+private:
+    double *target_ = nullptr;
+    SteadyClock::time_point start_;
+};
+
 struct TensorHolder {
     void *deviceAddr = nullptr;
     aclTensor *tensor = nullptr;
@@ -2886,7 +2927,21 @@ std::string JsonEscape(const std::string &value)
     return escaped.str();
 }
 
-void PrintResultJson(const NativeResult &result, int caseIndex, double durationMs)
+void PrintStageTimingsJson(const NativeStageTimings &timings)
+{
+    std::cout << "\"timings\":{";
+    std::cout << "\"parse_ms\":" << timings.parseMs << ",";
+    std::cout << "\"input_generate_h2d_ms\":" << timings.inputGenerateH2dMs << ",";
+    std::cout << "\"golden_ms\":" << timings.goldenMs << ",";
+    std::cout << "\"workspace_ms\":" << timings.workspaceMs << ",";
+    std::cout << "\"launch_sync_ms\":" << timings.launchSyncMs << ",";
+    std::cout << "\"d2h_ms\":" << timings.d2hMs << ",";
+    std::cout << "\"compare_ms\":" << timings.compareMs;
+    std::cout << "}";
+}
+
+void PrintResultJson(
+    const NativeResult &result, int caseIndex, double durationMs, const NativeStageTimings *timings = nullptr)
 {
     std::cout << "{";
     if (caseIndex >= 0) {
@@ -2902,6 +2957,10 @@ void PrintResultJson(const NativeResult &result, int caseIndex, double durationM
     }
     if (durationMs >= 0.0) {
         std::cout << ",\"duration_ms\":" << durationMs;
+    }
+    if (timings != nullptr) {
+        std::cout << ",";
+        PrintStageTimingsJson(*timings);
     }
     std::cout << "}\n";
     std::cout.flush();
@@ -4939,7 +4998,7 @@ NativeResult CompareRecurrentGatedDeltaRuleResult(
     return outResult;
 }
 
-NativeResult RunLightningIndexerWithStream(const Args &args, aclrtStream stream)
+NativeResult RunLightningIndexerWithStream(const Args &args, aclrtStream stream, NativeStageTimings *timings)
 {
     NativeResult result;
     TensorHolder queryTensor;
@@ -4955,98 +5014,126 @@ NativeResult RunLightningIndexerWithStream(const Args &args, aclrtStream stream)
     std::vector<double> keyValues;
     std::vector<double> weightsValues;
     std::vector<double> ignored;
+    LightningIndexerGolden golden;
 
     try {
-        if (CreateGeneratedTensorByDtype(
-                args.dtype, args.queryShape, args.queryRangeLow, args.queryRangeHigh, &queryTensor, &queryValues) !=
-            ACL_SUCCESS) {
-            throw std::runtime_error("create LightningIndexer query tensor failed");
-        }
-        if (CreateGeneratedTensorByDtype(
-                args.dtype, args.keyShape, args.keyRangeLow, args.keyRangeHigh, &keyTensor, &keyValues) !=
-            ACL_SUCCESS) {
-            throw std::runtime_error("create LightningIndexer key tensor failed");
-        }
-        const std::string weightsDtype = args.weightsDtype.empty() ? args.dtype : args.weightsDtype;
-        if (CreateGeneratedTensorByDtype(
-                weightsDtype, args.weightsShape, args.weightsRangeLow, args.weightsRangeHigh, &weightsTensor,
-                &weightsValues) != ACL_SUCCESS) {
-            throw std::runtime_error("create LightningIndexer weights tensor failed");
-        }
-        const auto golden = GoldenLightningIndexer(args, queryValues, keyValues, weightsValues);
-        if (!args.actualSeqLengthsQuery.empty() &&
-            CreateTensor(args.actualSeqLengthsQuery, {static_cast<int64_t>(args.actualSeqLengthsQuery.size())},
-                         aclDataType::ACL_INT32, &actualSeqLengthsQueryTensor) != ACL_SUCCESS) {
-            throw std::runtime_error("create LightningIndexer actualSeqLengthsQuery tensor failed");
-        }
-        if (!args.actualSeqLengthsKey.empty() &&
-            CreateTensor(args.actualSeqLengthsKey, {static_cast<int64_t>(args.actualSeqLengthsKey.size())},
-                         aclDataType::ACL_INT32, &actualSeqLengthsKeyTensor) != ACL_SUCCESS) {
-            throw std::runtime_error("create LightningIndexer actualSeqLengthsKey tensor failed");
-        }
-        if (!args.blockTableValues.empty() &&
-            CreateTensor(args.blockTableValues, args.blockTableShape, aclDataType::ACL_INT32, &blockTableTensor) !=
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::inputGenerateH2dMs));
+            if (CreateGeneratedTensorByDtype(
+                    args.dtype, args.queryShape, args.queryRangeLow, args.queryRangeHigh, &queryTensor,
+                    &queryValues) != ACL_SUCCESS) {
+                throw std::runtime_error("create LightningIndexer query tensor failed");
+            }
+            if (CreateGeneratedTensorByDtype(
+                    args.dtype, args.keyShape, args.keyRangeLow, args.keyRangeHigh, &keyTensor, &keyValues) !=
                 ACL_SUCCESS) {
-            throw std::runtime_error("create LightningIndexer blockTable tensor failed");
+                throw std::runtime_error("create LightningIndexer key tensor failed");
+            }
+            const std::string weightsDtype = args.weightsDtype.empty() ? args.dtype : args.weightsDtype;
+            if (CreateGeneratedTensorByDtype(
+                    weightsDtype, args.weightsShape, args.weightsRangeLow, args.weightsRangeHigh, &weightsTensor,
+                    &weightsValues) != ACL_SUCCESS) {
+                throw std::runtime_error("create LightningIndexer weights tensor failed");
+            }
         }
-
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::goldenMs));
+            golden = GoldenLightningIndexer(args, queryValues, keyValues, weightsValues);
+        }
         auto outShape = LightningOutputShape(args);
-        std::vector<int32_t> sparseIndices(static_cast<size_t>(Numel(outShape)), 0);
-        if (CreateTensor(sparseIndices, outShape, aclDataType::ACL_INT32, &sparseIndicesTensor) != ACL_SUCCESS) {
-            throw std::runtime_error("create LightningIndexer sparseIndices output failed");
-        }
-        const std::vector<int64_t> valuesShape = args.returnValues ? outShape : std::vector<int64_t>{0};
-        if (CreateGeneratedTensorByDtype(args.dtype, valuesShape, 0.0, 0.0, &sparseValuesTensor, &ignored) !=
-            ACL_SUCCESS) {
-            throw std::runtime_error("create LightningIndexer sparseValues output failed");
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::inputGenerateH2dMs));
+            if (!args.actualSeqLengthsQuery.empty() &&
+                CreateTensor(args.actualSeqLengthsQuery, {static_cast<int64_t>(args.actualSeqLengthsQuery.size())},
+                             aclDataType::ACL_INT32, &actualSeqLengthsQueryTensor) != ACL_SUCCESS) {
+                throw std::runtime_error("create LightningIndexer actualSeqLengthsQuery tensor failed");
+            }
+            if (!args.actualSeqLengthsKey.empty() &&
+                CreateTensor(args.actualSeqLengthsKey, {static_cast<int64_t>(args.actualSeqLengthsKey.size())},
+                             aclDataType::ACL_INT32, &actualSeqLengthsKeyTensor) != ACL_SUCCESS) {
+                throw std::runtime_error("create LightningIndexer actualSeqLengthsKey tensor failed");
+            }
+            if (!args.blockTableValues.empty() &&
+                CreateTensor(args.blockTableValues, args.blockTableShape, aclDataType::ACL_INT32,
+                             &blockTableTensor) != ACL_SUCCESS) {
+                throw std::runtime_error("create LightningIndexer blockTable tensor failed");
+            }
+
+            std::vector<int32_t> sparseIndices(static_cast<size_t>(Numel(outShape)), 0);
+            if (CreateTensor(sparseIndices, outShape, aclDataType::ACL_INT32, &sparseIndicesTensor) != ACL_SUCCESS) {
+                throw std::runtime_error("create LightningIndexer sparseIndices output failed");
+            }
+            const std::vector<int64_t> valuesShape = args.returnValues ? outShape : std::vector<int64_t>{0};
+            if (CreateGeneratedTensorByDtype(args.dtype, valuesShape, 0.0, 0.0, &sparseValuesTensor, &ignored) !=
+                ACL_SUCCESS) {
+                throw std::runtime_error("create LightningIndexer sparseValues output failed");
+            }
         }
 
+        uint64_t workspaceSize = 0;
+        aclOpExecutor *executor = nullptr;
         auto getWorkspaceSize =
             ResolveSymbol<LightningIndexerGetWorkspaceSizeFn>("aclnnLightningIndexerGetWorkspaceSize");
         auto launch = ResolveSymbol<LightningIndexerLaunchFn>("aclnnLightningIndexer");
-        uint64_t workspaceSize = 0;
-        aclOpExecutor *executor = nullptr;
-        std::string layoutQuery = args.layoutQuery;
-        std::string layoutKey = args.layoutKey;
-        auto ret = getWorkspaceSize(
-            queryTensor.tensor, keyTensor.tensor, weightsTensor.tensor,
-            actualSeqLengthsQueryTensor.tensor, actualSeqLengthsKeyTensor.tensor, blockTableTensor.tensor,
-            layoutQuery.data(), layoutKey.data(), args.sparseCount, args.sparseMode, args.preTokens, args.nextTokens,
-            args.returnValues, sparseIndicesTensor.tensor, sparseValuesTensor.tensor, &workspaceSize, &executor);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("aclnnLightningIndexerGetWorkspaceSize failed: " + std::to_string(ret));
-        }
-        if (workspaceSize > 0) {
-            ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        auto ret = ACL_SUCCESS;
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::workspaceMs));
+            std::string layoutQuery = args.layoutQuery;
+            std::string layoutKey = args.layoutKey;
+            ret = getWorkspaceSize(
+                queryTensor.tensor, keyTensor.tensor, weightsTensor.tensor,
+                actualSeqLengthsQueryTensor.tensor, actualSeqLengthsKeyTensor.tensor, blockTableTensor.tensor,
+                layoutQuery.data(), layoutKey.data(), args.sparseCount, args.sparseMode, args.preTokens,
+                args.nextTokens, args.returnValues, sparseIndicesTensor.tensor, sparseValuesTensor.tensor,
+                &workspaceSize, &executor);
             if (ret != ACL_SUCCESS) {
-                throw std::runtime_error("allocate LightningIndexer workspace failed: " + std::to_string(ret));
+                throw std::runtime_error("aclnnLightningIndexerGetWorkspaceSize failed: " + std::to_string(ret));
+            }
+            if (workspaceSize > 0) {
+                ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+                if (ret != ACL_SUCCESS) {
+                    throw std::runtime_error("allocate LightningIndexer workspace failed: " + std::to_string(ret));
+                }
             }
         }
-        ret = launch(workspace, workspaceSize, executor, stream);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("aclnnLightningIndexer failed: " + std::to_string(ret));
-        }
-        ret = aclrtSynchronizeStream(stream);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("LightningIndexer stream sync failed: " + std::to_string(ret));
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::launchSyncMs));
+            ret = launch(workspace, workspaceSize, executor, stream);
+            if (ret != ACL_SUCCESS) {
+                throw std::runtime_error("aclnnLightningIndexer failed: " + std::to_string(ret));
+            }
+            ret = aclrtSynchronizeStream(stream);
+            if (ret != ACL_SUCCESS) {
+                throw std::runtime_error("LightningIndexer stream sync failed: " + std::to_string(ret));
+            }
         }
 
         std::vector<int32_t> actualIndices;
-        ret = CopyDeviceToHost(sparseIndicesTensor, outShape, &actualIndices);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("copy LightningIndexer sparseIndices failed: " + std::to_string(ret));
-        }
         if (args.returnValues) {
             if (args.dtype == "fp16") {
                 std::vector<HalfStorage<HalfKind::Fp16>> values;
-                ret = CopyDeviceToHost(sparseValuesTensor, outShape, &values);
+                {
+                    ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::d2hMs));
+                    ret = CopyDeviceToHost(sparseIndicesTensor, outShape, &actualIndices);
+                    if (ret == ACL_SUCCESS) {
+                        ret = CopyDeviceToHost(sparseValuesTensor, outShape, &values);
+                    }
+                }
                 if (ret == ACL_SUCCESS) {
+                    ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::compareMs));
                     result = CompareLightningIndexerResult(actualIndices, values, golden, true);
                 }
             } else {
                 std::vector<HalfStorage<HalfKind::Bf16>> values;
-                ret = CopyDeviceToHost(sparseValuesTensor, outShape, &values);
+                {
+                    ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::d2hMs));
+                    ret = CopyDeviceToHost(sparseIndicesTensor, outShape, &actualIndices);
+                    if (ret == ACL_SUCCESS) {
+                        ret = CopyDeviceToHost(sparseValuesTensor, outShape, &values);
+                    }
+                }
                 if (ret == ACL_SUCCESS) {
+                    ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::compareMs));
                     result = CompareLightningIndexerResult(actualIndices, values, golden, true);
                 }
             }
@@ -5054,6 +5141,14 @@ NativeResult RunLightningIndexerWithStream(const Args &args, aclrtStream stream)
                 throw std::runtime_error("copy LightningIndexer sparseValues failed: " + std::to_string(ret));
             }
         } else {
+            {
+                ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::d2hMs));
+                ret = CopyDeviceToHost(sparseIndicesTensor, outShape, &actualIndices);
+            }
+            if (ret != ACL_SUCCESS) {
+                throw std::runtime_error("copy LightningIndexer sparseIndices failed: " + std::to_string(ret));
+            }
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::compareMs));
             result = CompareLightningIndexerResult(actualIndices, ignored, golden, false);
         }
         if (result.retCode == 0) {
@@ -5074,7 +5169,7 @@ NativeResult RunLightningIndexerWithStream(const Args &args, aclrtStream stream)
     return result;
 }
 
-NativeResult RunRecurrentGatedDeltaRuleWithStream(const Args &args, aclrtStream stream)
+NativeResult RunRecurrentGatedDeltaRuleWithStream(const Args &args, aclrtStream stream, NativeStageTimings *timings)
 {
     NativeResult result;
     TensorHolder queryTensor;
@@ -5097,91 +5192,112 @@ NativeResult RunRecurrentGatedDeltaRuleWithStream(const Args &args, aclrtStream 
     std::vector<double> gValues;
     std::vector<double> gkValues;
     std::vector<double> ignored;
+    RecurrentGatedDeltaRuleGolden golden;
 
     try {
-        if (CreateGeneratedTensorByDtype(
-                "bf16", args.queryShape, args.queryRangeLow, args.queryRangeHigh, &queryTensor, &queryValues) !=
-                ACL_SUCCESS ||
-            CreateGeneratedTensorByDtype(
-                "bf16", args.keyShape, args.keyRangeLow, args.keyRangeHigh, &keyTensor, &keyValues) !=
-                ACL_SUCCESS ||
-            CreateGeneratedTensorByDtype(
-                "bf16", args.valueShape, args.valueRangeLow, args.valueRangeHigh, &valueTensor, &valueValues) !=
-                ACL_SUCCESS ||
-            CreateGeneratedTensorByDtype(
-                "bf16", args.betaShape, args.betaRangeLow, args.betaRangeHigh, &betaTensor, &betaValues) !=
-                ACL_SUCCESS ||
-            CreateGeneratedTensorByDtype(
-                "bf16", args.stateShape, args.stateRangeLow, args.stateRangeHigh, &stateTensor, &stateValues) !=
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::inputGenerateH2dMs));
+            if (CreateGeneratedTensorByDtype(
+                    "bf16", args.queryShape, args.queryRangeLow, args.queryRangeHigh, &queryTensor, &queryValues) !=
+                    ACL_SUCCESS ||
+                CreateGeneratedTensorByDtype(
+                    "bf16", args.keyShape, args.keyRangeLow, args.keyRangeHigh, &keyTensor, &keyValues) !=
+                    ACL_SUCCESS ||
+                CreateGeneratedTensorByDtype(
+                    "bf16", args.valueShape, args.valueRangeLow, args.valueRangeHigh, &valueTensor, &valueValues) !=
+                    ACL_SUCCESS ||
+                CreateGeneratedTensorByDtype(
+                    "bf16", args.betaShape, args.betaRangeLow, args.betaRangeHigh, &betaTensor, &betaValues) !=
+                    ACL_SUCCESS ||
+                CreateGeneratedTensorByDtype(
+                    "bf16", args.stateShape, args.stateRangeLow, args.stateRangeHigh, &stateTensor,
+                    &stateValues) != ACL_SUCCESS) {
+                throw std::runtime_error("create RecurrentGatedDeltaRule bf16 tensor failed");
+            }
+            if (CreateTensor(args.actualSeqLengths, {static_cast<int64_t>(args.actualSeqLengths.size())},
+                             aclDataType::ACL_INT32, &actualSeqLengthsTensor) != ACL_SUCCESS ||
+                CreateTensor(args.ssmStateIndices, {static_cast<int64_t>(args.ssmStateIndices.size())},
+                             aclDataType::ACL_INT32, &ssmStateIndicesTensor) != ACL_SUCCESS ||
+                CreateTensor(args.numAcceptedTokens, {static_cast<int64_t>(args.numAcceptedTokens.size())},
+                             aclDataType::ACL_INT32, &numAcceptedTokensTensor) != ACL_SUCCESS) {
+                throw std::runtime_error("create RecurrentGatedDeltaRule int32 tensor failed");
+            }
+            if (args.gPresent &&
+                CreateGeneratedTensorTyped<float>(
+                    args.gShape, args.gRangeLow, args.gRangeHigh, aclDataType::ACL_FLOAT, false, &gTensor,
+                    &gValues) != ACL_SUCCESS) {
+                throw std::runtime_error("create RecurrentGatedDeltaRule g tensor failed");
+            }
+            if (args.gkPresent &&
+                CreateGeneratedTensorTyped<float>(
+                    args.gkShape, args.gkRangeLow, args.gkRangeHigh, aclDataType::ACL_FLOAT, false, &gkTensor,
+                    &gkValues) != ACL_SUCCESS) {
+                throw std::runtime_error("create RecurrentGatedDeltaRule gk tensor failed");
+            }
+            if (CreateGeneratedTensorByDtype("bf16", args.valueShape, 0.0, 0.0, &outTensor, &ignored) !=
                 ACL_SUCCESS) {
-            throw std::runtime_error("create RecurrentGatedDeltaRule bf16 tensor failed");
+                throw std::runtime_error("create RecurrentGatedDeltaRule out tensor failed");
+            }
         }
-        if (CreateTensor(args.actualSeqLengths, {static_cast<int64_t>(args.actualSeqLengths.size())},
-                         aclDataType::ACL_INT32, &actualSeqLengthsTensor) != ACL_SUCCESS ||
-            CreateTensor(args.ssmStateIndices, {static_cast<int64_t>(args.ssmStateIndices.size())},
-                         aclDataType::ACL_INT32, &ssmStateIndicesTensor) != ACL_SUCCESS ||
-            CreateTensor(args.numAcceptedTokens, {static_cast<int64_t>(args.numAcceptedTokens.size())},
-                         aclDataType::ACL_INT32, &numAcceptedTokensTensor) != ACL_SUCCESS) {
-            throw std::runtime_error("create RecurrentGatedDeltaRule int32 tensor failed");
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::goldenMs));
+            golden = GoldenRecurrentGatedDeltaRule(
+                args, queryValues, keyValues, valueValues, betaValues, stateValues, gValues, gkValues);
         }
-        if (args.gPresent &&
-            CreateGeneratedTensorTyped<float>(
-                args.gShape, args.gRangeLow, args.gRangeHigh, aclDataType::ACL_FLOAT, false, &gTensor, &gValues) !=
-                ACL_SUCCESS) {
-            throw std::runtime_error("create RecurrentGatedDeltaRule g tensor failed");
-        }
-        if (args.gkPresent &&
-            CreateGeneratedTensorTyped<float>(
-                args.gkShape, args.gkRangeLow, args.gkRangeHigh, aclDataType::ACL_FLOAT, false, &gkTensor, &gkValues) !=
-                ACL_SUCCESS) {
-            throw std::runtime_error("create RecurrentGatedDeltaRule gk tensor failed");
-        }
-        if (CreateGeneratedTensorByDtype("bf16", args.valueShape, 0.0, 0.0, &outTensor, &ignored) !=
-            ACL_SUCCESS) {
-            throw std::runtime_error("create RecurrentGatedDeltaRule out tensor failed");
-        }
-        const auto golden = GoldenRecurrentGatedDeltaRule(
-            args, queryValues, keyValues, valueValues, betaValues, stateValues, gValues, gkValues);
 
+        uint64_t workspaceSize = 0;
+        aclOpExecutor *executor = nullptr;
         auto getWorkspaceSize =
             ResolveSymbol<RecurrentGatedDeltaRuleGetWorkspaceSizeFn>("aclnnRecurrentGatedDeltaRuleGetWorkspaceSize");
         auto launch = ResolveSymbol<RecurrentGatedDeltaRuleLaunchFn>("aclnnRecurrentGatedDeltaRule");
-        uint64_t workspaceSize = 0;
-        aclOpExecutor *executor = nullptr;
-        auto ret = getWorkspaceSize(
-            queryTensor.tensor, keyTensor.tensor, valueTensor.tensor, betaTensor.tensor, stateTensor.tensor,
-            actualSeqLengthsTensor.tensor, ssmStateIndicesTensor.tensor, args.gPresent ? gTensor.tensor : nullptr,
-            args.gkPresent ? gkTensor.tensor : nullptr, numAcceptedTokensTensor.tensor, args.scaleValue, outTensor.tensor,
-            &workspaceSize, &executor);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("aclnnRecurrentGatedDeltaRuleGetWorkspaceSize failed: " + std::to_string(ret));
-        }
-        if (workspaceSize > 0) {
-            ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        auto ret = ACL_SUCCESS;
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::workspaceMs));
+            ret = getWorkspaceSize(
+                queryTensor.tensor, keyTensor.tensor, valueTensor.tensor, betaTensor.tensor, stateTensor.tensor,
+                actualSeqLengthsTensor.tensor, ssmStateIndicesTensor.tensor, args.gPresent ? gTensor.tensor : nullptr,
+                args.gkPresent ? gkTensor.tensor : nullptr, numAcceptedTokensTensor.tensor, args.scaleValue,
+                outTensor.tensor, &workspaceSize, &executor);
             if (ret != ACL_SUCCESS) {
-                throw std::runtime_error("allocate RecurrentGatedDeltaRule workspace failed: " + std::to_string(ret));
+                throw std::runtime_error(
+                    "aclnnRecurrentGatedDeltaRuleGetWorkspaceSize failed: " + std::to_string(ret));
+            }
+            if (workspaceSize > 0) {
+                ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+                if (ret != ACL_SUCCESS) {
+                    throw std::runtime_error(
+                        "allocate RecurrentGatedDeltaRule workspace failed: " + std::to_string(ret));
+                }
             }
         }
-        ret = launch(workspace, workspaceSize, executor, stream);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("aclnnRecurrentGatedDeltaRule failed: " + std::to_string(ret));
-        }
-        ret = aclrtSynchronizeStream(stream);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("RecurrentGatedDeltaRule stream sync failed: " + std::to_string(ret));
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::launchSyncMs));
+            ret = launch(workspace, workspaceSize, executor, stream);
+            if (ret != ACL_SUCCESS) {
+                throw std::runtime_error("aclnnRecurrentGatedDeltaRule failed: " + std::to_string(ret));
+            }
+            ret = aclrtSynchronizeStream(stream);
+            if (ret != ACL_SUCCESS) {
+                throw std::runtime_error("RecurrentGatedDeltaRule stream sync failed: " + std::to_string(ret));
+            }
         }
 
         std::vector<HalfStorage<HalfKind::Bf16>> outHost;
-        ret = CopyDeviceToHost(outTensor, args.valueShape, &outHost);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("copy RecurrentGatedDeltaRule out failed: " + std::to_string(ret));
-        }
         std::vector<HalfStorage<HalfKind::Bf16>> stateHost;
-        ret = CopyDeviceToHost(stateTensor, args.stateShape, &stateHost);
-        if (ret != ACL_SUCCESS) {
-            throw std::runtime_error("copy RecurrentGatedDeltaRule stateRef failed: " + std::to_string(ret));
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::d2hMs));
+            ret = CopyDeviceToHost(outTensor, args.valueShape, &outHost);
+            if (ret == ACL_SUCCESS) {
+                ret = CopyDeviceToHost(stateTensor, args.stateShape, &stateHost);
+            }
         }
-        result = CompareRecurrentGatedDeltaRuleResult(outHost, stateHost, golden);
+        if (ret != ACL_SUCCESS) {
+            throw std::runtime_error("copy RecurrentGatedDeltaRule output failed: " + std::to_string(ret));
+        }
+        {
+            ScopedStageTimer stage(StageTimingTarget(timings, &NativeStageTimings::compareMs));
+            result = CompareRecurrentGatedDeltaRuleResult(outHost, stateHost, golden);
+        }
         if (result.retCode == 0) {
             result.message += "; workspace_size=" + std::to_string(workspaceSize);
         }
@@ -5678,13 +5794,13 @@ NativeResult DispatchMaskedSelectWithStream(const Args &args, aclrtStream stream
     return result;
 }
 
-NativeResult DispatchWithStream(const Args &args, aclrtStream stream)
+NativeResult DispatchWithStream(const Args &args, aclrtStream stream, NativeStageTimings *timings = nullptr)
 {
     if (args.api == "LightningIndexer") {
-        return RunLightningIndexerWithStream(args, stream);
+        return RunLightningIndexerWithStream(args, stream, timings);
     }
     if (args.api == "RecurrentGatedDeltaRule") {
-        return RunRecurrentGatedDeltaRuleWithStream(args, stream);
+        return RunRecurrentGatedDeltaRuleWithStream(args, stream, timings);
     }
     if (args.api == "Cast") {
         return DispatchCastWithStream(args, stream);
@@ -5753,6 +5869,11 @@ bool BatchLineNeedsFreshAcl(const std::string &line)
 {
     return line.find("api=Cat") != std::string::npos || line.find("api=Stack") != std::string::npos ||
            line.find("api=ChunkCat") != std::string::npos || line.find("api=SplitWithSize") != std::string::npos;
+}
+
+bool EmitsStageTimings(const std::string &api)
+{
+    return api == "LightningIndexer" || api == "RecurrentGatedDeltaRule";
 }
 
 NativeResult DispatchWithFreshAcl(const Args &args)
@@ -5827,11 +5948,13 @@ int RunSingle(const Args &args)
     if (InitAcl(args.device, &stream) != ACL_SUCCESS) {
         return 1;
     }
+    NativeStageTimings timings;
+    const bool emitTimings = EmitsStageTimings(args.api);
     auto start = std::chrono::steady_clock::now();
-    NativeResult result = DispatchWithStream(args, stream);
+    NativeResult result = DispatchWithStream(args, stream, emitTimings ? &timings : nullptr);
     auto end = std::chrono::steady_clock::now();
     const double durationMs = std::chrono::duration<double, std::milli>(end - start).count();
-    PrintResultJson(result, -1, durationMs);
+    PrintResultJson(result, -1, durationMs, emitTimings ? &timings : nullptr);
     if (stream != nullptr) {
         aclrtDestroyStream(stream);
     }
@@ -5868,9 +5991,16 @@ int RunBatch(const Args &args)
     for (const auto &batchLine : lines) {
         int caseIndex = -1;
         NativeResult result;
+        NativeStageTimings timings;
+        bool emitTimings = false;
         auto start = std::chrono::steady_clock::now();
         try {
-            Args caseArgs = ParseBatchLine(batchLine, args.device, args.opapiLib, &caseIndex);
+            Args caseArgs;
+            {
+                ScopedStageTimer parseStage(StageTimingTarget(&timings, &NativeStageTimings::parseMs));
+                caseArgs = ParseBatchLine(batchLine, args.device, args.opapiLib, &caseIndex);
+            }
+            emitTimings = EmitsStageTimings(caseArgs.api);
             if (freshAclPerCase || NeedsFreshAclPerCase(caseArgs.api)) {
                 const int childRet = DispatchFreshAclCaseInChild(caseArgs, caseIndex);
                 if (childRet != 0) {
@@ -5878,7 +6008,7 @@ int RunBatch(const Args &args)
                 }
                 continue;
             } else {
-                result = DispatchWithStream(caseArgs, stream);
+                result = DispatchWithStream(caseArgs, stream, emitTimings ? &timings : nullptr);
             }
         } catch (const std::exception &exc) {
             result.status = "failed";
@@ -5887,7 +6017,7 @@ int RunBatch(const Args &args)
         }
         auto end = std::chrono::steady_clock::now();
         const double durationMs = std::chrono::duration<double, std::milli>(end - start).count();
-        PrintResultJson(result, caseIndex, durationMs);
+        PrintResultJson(result, caseIndex, durationMs, emitTimings ? &timings : nullptr);
         if (result.retCode != 0) {
             retCode = 1;
         }
