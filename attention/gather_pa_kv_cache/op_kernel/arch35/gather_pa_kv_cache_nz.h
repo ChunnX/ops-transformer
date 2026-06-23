@@ -142,14 +142,17 @@ private:
         valueOutStride0_ = tl_->valueOutStride0;
 
         isSmallShape =
-            (maxUbHiddenSizeK_ >= blockSize_ * hiddenSizeK_) && (maxUbHiddenSizeV_ >= blockSize_ * hiddenSizeV_);
+            (maxUbHiddenSizeK_ >= blockSize_ * hiddenSizeK_) && (maxUbHiddenSizeV_ >= blockSize_ * hiddenSizeV_) &&
+            // 输出非连续(ref dim0非连续)时不走small-shape的DataCopyFromeCache(它整block连续写, 无法按token散写),
+            // 改走RestoreFromCache逐token循环按keyOutStride0散写。bit2:keyOut非连续, bit3:valueOut非连续。
+            ((nonContiguousFlag_ & ((1U << 2) | (1U << 3))) == 0);
     }
 
 public:
     __aicore__ inline void Process()
     {
-        int64_t batchStart = GetBlockIdx() * batchPerCore_;
-        int64_t batchEnd = batchStart + batchPerCore_;
+        uint32_t batchStart = GetBlockIdx() * batchPerCore_;
+        uint32_t batchEnd = batchStart + batchPerCore_;
         if (GetBlockIdx() == needCoreNum_ - 1) {
             batchEnd = batchCount_;
         }
@@ -161,11 +164,11 @@ public:
             coreOffset_ = CalcKvCoreOffset(batchStart); // 计算累加和
         }
 
-        uint64_t keyCacheOffset = 0;
-        uint64_t valueCacheOffset = 0;
-        for (int64_t i = batchStart; i < batchEnd; i++) {
+        uint32_t keyCacheOffset = 0;
+        uint32_t valueCacheOffset = 0;
+        for (uint32_t i = batchStart; i < batchEnd; i++) {
             T_INDEX seqLen;
-            int64_t batchOffset, accumSeqLen;
+            uint32_t batchOffset, accumSeqLen;
             if constexpr (isSeqLensCumsum) {
                 // 当前batch对应的seqLen
                 seqLen = seqLensGm_.GetValue(i + 1) - seqLensGm_.GetValue(i);
@@ -196,14 +199,14 @@ public:
             }
             T_INDEX blockStart = 0;
 
-            uint64_t blockCount = CeilDivision(seqLen, blockSize_);
+            uint32_t blockCount = CeilDivision(seqLen, blockSize_);
 
             // 搬运key
-            uint64_t keyOffset = (nonContiguousFlag_ & (1 << 2)) ?
-                static_cast<uint64_t>(batchOffset * keyOutStride0_ * sizeof(DTYPE_KEY)) :
-                static_cast<uint64_t>(batchOffset * hiddenSizeK_);
-            for (int64_t j = 0; j < blockCount; j++) {
-                uint64_t curLen = blockSize_; // 4
+            uint32_t keyOffset = (nonContiguousFlag_ & (1 << 2)) ?
+                (batchOffset * keyOutStride0_ * sizeof(DTYPE_KEY)) :
+                (batchOffset * hiddenSizeK_);
+            for (int j = 0; j < blockCount; j++) {
+                uint32_t curLen = blockSize_; // 4
                 if (j == blockCount - 1) {
                     curLen = seqLen - (blockCount - 1) * blockSize_;
                 }
@@ -231,8 +234,11 @@ public:
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, keyCacheOffset, keyOffset, isFulledWithZero, true);
                 } else {
+                    // ref dim0非连续(bit2)时token间按keyOutStride0散写; 连续时token紧密排列(=hiddenSizeK_)
                     RestoreFromCache(outKeyGm_[keyOffset], keyCacheGm_[keyCacheOffset], hiddenSizeK_, curLen,
-                                     isFulledWithZero);
+                                     isFulledWithZero,
+                                     (nonContiguousFlag_ & (1 << 2)) ?
+                                         (keyOutStride0_ * sizeof(DTYPE_KEY)) : hiddenSizeK_);
                 }
 
                 keyOffset += (nonContiguousFlag_ & (1 << 2)) ?
@@ -241,12 +247,12 @@ public:
             }
 
             // 搬运value
-            uint64_t valueOffset = (nonContiguousFlag_ & (1 << 3)) ?
-                static_cast<uint64_t>(batchOffset * valueOutStride0_ * sizeof(DTYPE_VALUE)) :
-                static_cast<uint64_t>(batchOffset * hiddenSizeV_);
+            uint32_t valueOffset = (nonContiguousFlag_ & (1 << 3)) ?
+                (batchOffset * valueOutStride0_ * sizeof(DTYPE_VALUE)) :
+                (batchOffset * hiddenSizeV_);
 
-            for (int64_t j = 0; j < blockCount; j++) {
-                uint64_t curLen = blockSize_;
+            for (int j = 0; j < blockCount; j++) {
+                uint32_t curLen = blockSize_;
                 if (j == blockCount - 1) {
                     curLen = seqLen - (blockCount - 1) * blockSize_;
                 }
@@ -273,8 +279,11 @@ public:
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, valueCacheOffset, valueOffset, isFulledWithZero, false);
                 } else {
+                    // ref dim0非连续(bit3)时token间按valueOutStride0散写; 连续时token紧密排列(=hiddenSizeV_)
                     RestoreFromCache(outValueGm_[valueOffset], valueCacheGm_[valueCacheOffset], hiddenSizeV_, curLen,
-                                     isFulledWithZero);
+                                     isFulledWithZero,
+                                     (nonContiguousFlag_ & (1 << 3)) ?
+                                         (valueOutStride0_ * sizeof(DTYPE_VALUE)) : hiddenSizeV_);
                 }
 
                 valueOffset += (nonContiguousFlag_ & (1 << 3)) ?
@@ -285,7 +294,7 @@ public:
     }
 
 private:
-    __aicore__ inline T_INDEX CalcKvCoreOffset(uint64_t batchStart)
+    __aicore__ inline T_INDEX CalcKvCoreOffset(uint32_t batchStart)
     {
         LocalTensor<T_INDEX> sumLocal = sumBuffer.Get<T_INDEX>();
         uint32_t reduceLoops = CeilDivision(batchStart, seqLenAccumSize_);
@@ -321,7 +330,7 @@ private:
         return coreOffset;
     }
 
-    __aicore__ inline void DataCopyFromeCache(uint64_t curLen, uint64_t scrOffset, uint64_t dstOffset,
+    __aicore__ inline void DataCopyFromeCache(uint32_t curLen, uint32_t scrOffset, uint32_t dstOffset,
                                               bool isFulledWithZero, bool isKey)
     {
         // 小shape情况
@@ -375,21 +384,23 @@ private:
         cacheQueue_.FreeTensor(cacheLocal);
     }
 
+    // dstTokenStrideBytes: 输出端相邻token间步长(字节)。输出连续时=hiddenSize; ref dim0非连续时=keyOutStride0*元素宽,
+    // 使block内每个token按stride散写到原ref内存(否则按hiddenSize稠密写会错位)。
     __aicore__ inline void RestoreFromCache(GlobalTensor<T> dstGm, GlobalTensor<T> scrGm, uint64_t hiddenSize,
-                                            uint64_t curblockSize, bool isFulledWithZero)
+                                            uint32_t curblockSize, bool isFulledWithZero, uint64_t dstTokenStrideBytes)
     {
-        uint64_t fracBlockSize = hiddenSize / eleNumPerBlk;
+        uint32_t fracBlockSize = hiddenSize / eleNumPerBlk;
         uint16_t inBlkCnt = 0;
         uint16_t inSrcStride = blockSize_ - 1;
         DataCopyParams seqLensCopyParams = {inBlkCnt, 1, inSrcStride, 0};
         DataCopyParams lensCopyParams = {1, inBlkCnt, 0, 0};
 
-        for (int64_t i = 0; i < curblockSize; i++) {
-            uint64_t scroffset = i * eleNumPerBlk;
-            uint64_t dstoffset = i * hiddenSize;
+        for (int i = 0; i < curblockSize; i++) {
+            uint32_t scroffset = i * eleNumPerBlk;
+            uint32_t dstoffset = i * dstTokenStrideBytes;
 
-            uint64_t ubLoops = CeilDivision(fracBlockSize, MAX_BLOCK_CNT);
-            for (int64_t j = 0; j < ubLoops; j++) {
+            uint32_t ubLoops = CeilDivision(fracBlockSize, MAX_BLOCK_CNT);
+            for (int j = 0; j < ubLoops; j++) {
                 inBlkCnt = MAX_BLOCK_CNT;
                 if (j == (ubLoops - 1)) {
                     inBlkCnt = fracBlockSize - MAX_BLOCK_CNT * j;
