@@ -1,15 +1,17 @@
 # aclnnLightningIndexerV2Metadata
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/lightning_indexer_v2_metadata)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | Ascend 950PR/Ascend 950DT |      √     |
-| Atlas A3训练系列产品/Atlas A3推理系列产品     |    √     |
-| Atlas A2训练系列产品/Atlas A2推理系列产品 |    √     |
-| Atlas 200I/500 A2推理产品                      |    x     |
-| Atlas推理系列产品                              |    x     |
-| Atlas训练系列产品                              |    x     |
+| Atlas A3 训练系列产品/Atlas A3 推理系列产品     |    √     |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品 |    √     |
+| Atlas 200I/500 A2 推理产品                      |    x     |
+| Atlas 推理系列产品                              |    x     |
+| Atlas 训练系列产品                              |    x     |
 
 ## 功能说明
 
@@ -136,7 +138,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示Query的head个数。</td>
       <td>当前仅支持32/64。</td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -146,7 +148,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示Key的head个数。</td>
       <td>当前仅支持1。</td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -156,7 +158,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>注意力头的维度。</td>
       <td>当前仅支持128。</td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -166,7 +168,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示从Query中筛选出的关键稀疏token的个数。</td>
       <td>当前仅支持[1, 2048]</td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -176,7 +178,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示Batch数量。</td>
       <td><ul><li>支持非负数。</li><li>建议值为0。</li></ul></td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -186,7 +188,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示Query的最长Sequence Length。</td>
       <td><ul><li>取值范围≥-1，-1表示任意可能长度。</li><li>建议值为-1。</li></ul></td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -196,7 +198,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示Key的最长Sequence Length。</td>
       <td><ul><li>取值范围≥-1，-1表示任意可能长度。</li><li>建议值为-1。</li></ul></td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -206,7 +208,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示Query的排列格式。</td>
       <td><ul><li>支持 BSND、TND。</li><li>建议值为BSND。</li></ul></td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -216,7 +218,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示Key的排列格式。</td>
       <td><ul><li>支持 BSND、TND、PA_BBND。</li><li>建议值为BSND。</li></ul></td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -226,7 +228,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示sparse模式。</td>
       <td><ul><li>0: No mask。</li><li>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li><li>建议值为0。</li></ul></td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -236,7 +238,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示Key的压缩率。</td>
       <td><ul><li>取值范围[1，128]</li><li>建议值1，表示无压缩。</li></ul></td>
-      <td>INT64</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
