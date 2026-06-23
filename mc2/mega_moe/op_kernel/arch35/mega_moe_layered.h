@@ -1181,13 +1181,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     ExpertLoopState gmm2State{initShape, initOffset};
     InitCombineBuffers();
 
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
-        if (subBlockIdx_ == 1) {
-            LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
-            hcomm_.Init(hcommTensor_, ALIGN_512);
-            MegaMoeCombineImpl::CombineTokensWithUrmaSend<bfloat16_t>(params_, mc2Context_, hcomm_);
-        }
-    }
+    // if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
+    //     if (subBlockIdx_ == 1) {
+    //         LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
+    //         hcomm_.Init(hcommTensor_, ALIGN_512);
+    //         MegaMoeCombineImpl::CombineTokensWithUrmaSend<bfloat16_t>(params_, mc2Context_, hcomm_);
+    //     }
+    // }
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<AddrUpdateMode::kGmm2>(gmm2State, expertIdx)) {
@@ -1210,12 +1210,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
-    // 4. 本卡数据Unpermute
-    if constexpr(g_coreType == AIV) {
-        UnpermuteBuffInit();
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        Unpermute();
-    }
+    // // 4. 本卡数据Unpermute
+    // if constexpr(g_coreType == AIV) {
+    //     UnpermuteBuffInit();
+    //     CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+    //     Unpermute();
+    // }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
