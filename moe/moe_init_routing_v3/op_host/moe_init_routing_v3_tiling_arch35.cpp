@@ -116,6 +116,8 @@ const static int64_t SORT_CORE_TILINGKEY_BASE = 1000000LL;
 const static int64_t QUANT_MODE_TILINGKEY_BASE = 10000LL;
 const static int64_t ROWIDX_TYPE_TILINGKEY_BASE = 1000LL;
 const static int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
+const static uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
+const static int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
 
 inline static int64_t CeilLog4(int64_t x)
 {
@@ -387,6 +389,7 @@ private:
 
     // full load flag
     bool isFullload_ = false;
+    bool isEmptyTensor_ = false;
     int64_t ep_ = 0LL;
 
     // input attrs
@@ -491,6 +494,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     MIRV3_CHECK_GE_RET(CheckSetInputs());
     MIRV3_CHECK_GE_RET(CheckOutputs());
 
+    // 空tensor快速返回，跳过后续tiling计算
+    if (isEmptyTensor_) {
+        return ge::GRAPH_SUCCESS;
+    }
+
     sortLoopMaxElement_ = availUbSize_ / (NUM_FOUR * NUM_TWO * NUM_FOUR) / SORT32_ALIGN_ELEMENT * SORT32_ALIGN_ELEMENT;
     sortLoopMaxElement_ =
         std::min(sortLoopMaxElement_, SORT_API_MAX_ELEM); // 限制单核排序的元素个数在AscendC::Sort全排序的能力范围内
@@ -518,6 +526,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
 uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTilingKey()");
+
+    if (isEmptyTensor_) {
+        return EMPTY_TENSOR_TILINGKEY;
+    }
+
     int64_t quantModeFactor = quantMode_ + 1;
 
     if (isFullload_ && IsSupportFullloadQuantMode()) {
@@ -542,6 +555,14 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()");
+    // 空tensor场景：分配少量workspace即可
+    if (isEmptyTensor_) {
+        workspaceSize_ = SIZE_16 * LENGTH_1024 * LENGTH_1024;
+        auto *workspacePtr = context_->GetWorkspaceSizes(1);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, workspacePtr);
+        workspacePtr[0] = workspaceSize_;
+        return ge::GRAPH_SUCCESS;
+    }
     // 计算workspace大小
     workspaceSize_ = 0;
     int64_t sortWorkspaceSize =
@@ -592,8 +613,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::PostTiling()
     tilingKey_ = GetTilingKey();
     LogBaseTilingData();
 
-    // 设置启动核数（全核启动）
-    context_->SetBlockDim(aivCoreNum_);
+    // 设置启动核数：空tensor场景只用到1个核，否则全核启动
+    if (isEmptyTensor_) {
+        context_->SetBlockDim(1);
+    } else {
+        context_->SetBlockDim(aivCoreNum_);
+    }
     // 设置UB可用大小（必须是减除SIMT用的DCACHE大小后的）
     auto ret = context_->SetLocalMemorySize(availUbSize_);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
@@ -1084,6 +1109,18 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     tilingDataPtr_->n = n_;
     tilingDataPtr_->k = k_;
     tilingDataPtr_->cols = cols_;
+
+    // 空tensor场景：n_==0、k_==0、cols_==0
+    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+        isEmptyTensor_ = true;
+        int64_t expertCountElements = 0;
+        if (expertTokensNumType_ == EXPERT_TOKENS_TYPE_KEY_VALUE) {
+            expertCountElements = expertNum_ * KEY_VALUE_MODE_DIM0_NUM;
+        } else {
+            expertCountElements = expertEnd_ - expertStart_;
+        }
+        tilingDataPtr_->expertCountElements = expertCountElements;
+    }
 
     // INT4 dynamic quantization packs two values per byte along the H/cols dimension.
     if (IsInt4DynamicQuantCase() && (cols_ % NUM_TWO != 0)) {
