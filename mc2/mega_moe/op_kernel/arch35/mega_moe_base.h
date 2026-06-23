@@ -45,8 +45,8 @@ struct PeermemInfo {
     GM_ADDR maskRecvPtr;             // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
     GM_ADDR quantTokenScalePtr;      // 量化结果，包括data+scale
     GM_ADDR combineSendPtr;
-    GM_ADDR URMACombineWinOffset;
-    GM_ADDR URMAmaskRecvPtr;
+    uint64_t URMACombineWinPtr;
+    uint64_t URMAmaskRecvPtr;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)
     {
@@ -75,8 +75,8 @@ struct PeermemInfo {
         combineSendPtr = base + offset;
 
         URMAmaskRecvPtr = 0;
-        URMACombineWinOffset = Ops::Base::CeilAlign(
-            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+        URMACombineWinPtr = Ops::Base::CeilAlign(
+            (int64_t)(tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize), (int64_t)ALIGN_512);
     }
 };
 

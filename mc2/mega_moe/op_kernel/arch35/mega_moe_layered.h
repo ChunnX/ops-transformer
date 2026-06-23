@@ -1039,7 +1039,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
     int32_t coreLen, coreOffset;
     TilingByCore(m_, coreLen, coreOffset, 1);
     GlobalTensor<bfloat16_t> expandedX;
-    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)(params_.peermemInfo.URMACombineWinOffset + params_.epGmAddr));
+    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)(params_.peermemInfo.URMACombineWinPtr + params_.epGmAddr));
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
