@@ -909,69 +909,12 @@ void MoeInitRoutingV2TilingBase::CalculateScatterOutBufferParams(int64_t ubRowsV
     tilingData->set_colLoops(1);
 }
 
-void MoeInitRoutingV2TilingBase::CalculateOutBasicParams(MoeV2GatherOutComputeTilingData *tilingData,
-                                                         int64_t &perCoreRows, int64_t &lastCoreRows,
-                                                         int64_t &cols)
-{
-    tilingData->set_activateRows(totalLength);
-    if (dropPadMode == 0) {
-        tilingData->set_activateRows(activateNum);
-    }
-    perCoreRows = CeilDiv(totalLength, aivNum);
-    if (perCoreRows <= 0 || moeInitRoutingTilingData.get_cols() <= 0) {
-        tilingData->set_needCoreNum(0);
-        return;
-    }
-    tilingData->set_needCoreNum(CeilDiv(totalLength, perCoreRows));
-    cols = moeInitRoutingTilingData.get_cols();
-    tilingData->set_perCoreRows(perCoreRows);
-    lastCoreRows = totalLength - perCoreRows * (tilingData->get_needCoreNum() - 1);
-    tilingData->set_lastCoreRows(lastCoreRows);
-}
-
-void MoeInitRoutingV2TilingBase::CalculateGatherOutSplitModeParams(int64_t ubSize, int64_t rowSize, int64_t colSize,
-                                                                   int64_t cols, int64_t perCoreRows,
-                                                                   int64_t lastCoreRows,
-                                                                   MoeV2GatherOutComputeTilingData *tilingData)
-{
-    tilingData->set_scatterMode(0);
-    int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
-    int64_t baseMaxColsSize = (baseMaxCols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-    int64_t basePerLoopMaxRows = (ubSize - baseMaxColsSize) / sizeof(int32_t) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-    if (cols < MAX_COLS_ONE_LOOP) {
-        basePerLoopMaxRows = (ubSize - colSize) / sizeof(int32_t) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-    } else if (perCoreRows < basePerLoopMaxRows) {
-        baseMaxCols = (ubSize - rowSize) / inuptXDtypeSize_ / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-    }
-    tilingData->set_perLoopCols(std::min(baseMaxCols, cols));
-    tilingData->set_lastLoopCols(GetPerOrLastValue(cols, baseMaxCols));
-    tilingData->set_colLoops((cols + baseMaxCols - 1) / baseMaxCols);
-
-    tilingData->set_perCorePerLoopRows(std::min(perCoreRows, basePerLoopMaxRows));
-    tilingData->set_perCoreLastLoopRows(GetPerOrLastValue(perCoreRows, basePerLoopMaxRows));
-    tilingData->set_perCoreLoops((perCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
-
-    tilingData->set_lastCorePerLoopRows(std::min(lastCoreRows, basePerLoopMaxRows));
-    tilingData->set_lastCoreLastLoopRows(GetPerOrLastValue(lastCoreRows, basePerLoopMaxRows));
-    tilingData->set_lastCoreLoops((lastCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
-}
-
-void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
+void MoeInitRoutingV2TilingBase::SetGatherOutLoopParams(int64_t perCoreRows, int64_t lastCoreRows, int64_t rowSize,
+                                                        int64_t colSize)
 {
     auto tilingData = &moeInitRoutingTilingData.gatherOutComputeParamsOp;
-    int64_t perCoreRows = 0;
-    int64_t lastCoreRows = 0;
-    int64_t cols = 0;
-
-    CalculateOutBasicParams(tilingData, perCoreRows, lastCoreRows, cols);
-    if (tilingData->get_needCoreNum() == 0) {
-        return;
-    }
-
-    int64_t rowSize = (perCoreRows * sizeof(int32_t) + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-    int64_t colSize = (cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
-
     int64_t ubSize = static_cast<int64_t>(aicoreParams_.ubSize) / NUM_TWO;
+    int64_t cols = moeInitRoutingTilingData.get_cols();
 
     int64_t ubRowsVal = ubSize / ((cols * inuptXDtypeSize_ + sizeof(int32_t)));
     ubRowsVal = ubRowsVal / (ONE_BLOCK_BYTE / inuptXDtypeSize_) * (ONE_BLOCK_BYTE / inuptXDtypeSize_);
@@ -988,7 +931,6 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
         }
         CalculateScatterOutBufferParams(ubRowsVal, cols, tilingData);
     } else if (rowSize + colSize < ubSize) {
-        tilingData->set_scatterMode(0);
         tilingData->set_perCorePerLoopRows(perCoreRows);
         tilingData->set_perCoreLastLoopRows(perCoreRows);
         tilingData->set_lastCorePerLoopRows(lastCoreRows);
@@ -1000,8 +942,50 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
         tilingData->set_lastLoopCols(loopCols);
         tilingData->set_colLoops(1);
     } else {
-        CalculateGatherOutSplitModeParams(ubSize, rowSize, colSize, cols, perCoreRows, lastCoreRows, tilingData);
+        int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
+    int64_t baseMaxColsSize = (baseMaxCols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+        int64_t basePerLoopMaxRows = (ubSize - baseMaxColsSize) / sizeof(int32_t) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+        if (cols < MAX_COLS_ONE_LOOP) {
+            basePerLoopMaxRows = (ubSize - colSize) / sizeof(int32_t) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+        } else if (perCoreRows < basePerLoopMaxRows) {
+            baseMaxCols = (ubSize - rowSize) / inuptXDtypeSize_ / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+        }
+        tilingData->set_perLoopCols(std::min(baseMaxCols, cols));
+        tilingData->set_lastLoopCols(GetPerOrLastValue(cols, baseMaxCols));
+        tilingData->set_colLoops((cols + baseMaxCols - 1) / baseMaxCols);
+
+        tilingData->set_perCorePerLoopRows(std::min(perCoreRows, basePerLoopMaxRows));
+        tilingData->set_perCoreLastLoopRows(GetPerOrLastValue(perCoreRows, basePerLoopMaxRows));
+        tilingData->set_perCoreLoops((perCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
+
+        tilingData->set_lastCorePerLoopRows(std::min(lastCoreRows, basePerLoopMaxRows));
+        tilingData->set_lastCoreLastLoopRows(GetPerOrLastValue(lastCoreRows, basePerLoopMaxRows));
+        tilingData->set_lastCoreLoops((lastCoreRows + basePerLoopMaxRows - 1) / basePerLoopMaxRows);
     }
+}
+
+void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
+{
+    auto tilingData = &moeInitRoutingTilingData.gatherOutComputeParamsOp;
+    tilingData->set_activateRows(totalLength);
+    if (dropPadMode == 0) {
+        tilingData->set_activateRows(activateNum);
+    }
+    int64_t perCoreRows = CeilDiv(totalLength, aivNum);
+    if (perCoreRows <= 0 || moeInitRoutingTilingData.get_cols() <= 0) {
+        tilingData->set_needCoreNum(0);
+        return;
+    }
+    tilingData->set_needCoreNum(CeilDiv(totalLength, perCoreRows));
+    int64_t cols = moeInitRoutingTilingData.get_cols();
+    tilingData->set_perCoreRows(perCoreRows);
+    int64_t lastCoreRows = totalLength - perCoreRows * (tilingData->get_needCoreNum() - 1);
+    tilingData->set_lastCoreRows(lastCoreRows);
+
+    int64_t rowSize = (perCoreRows * sizeof(int32_t) + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+    int64_t colSize = (cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+
+    SetGatherOutLoopParams(perCoreRows, lastCoreRows, rowSize, colSize);
 }
 
 bool MoeInitRoutingV2TilingBase::IsFullLoad()
