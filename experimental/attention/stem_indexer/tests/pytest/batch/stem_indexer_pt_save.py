@@ -31,11 +31,9 @@ from npu_ops_transformer.ops import npu_stem_indexer_metadata
 
 
 LIST_COLUMNS = {
-    "q_token_lens_per_batch",
-    "kv_token_lens_per_batch",
-    "q_seq_lens_per_batch",
-    "kv_seq_lens_per_batch",
-    "num_prompt_tokens_per_batch",
+    "q_seq_lens",
+    "kv_seq_lens",
+    "num_prompt_tokens",
 }
 INT_COLUMNS = {
     "batch_size",
@@ -53,11 +51,9 @@ REQUIRED_COLUMNS = [
     "batch_size",
     "q_heads",
     "kv_heads",
-    "q_token_lens_per_batch",
-    "kv_token_lens_per_batch",
-    "q_seq_lens_per_batch",
-    "kv_seq_lens_per_batch",
-    "num_prompt_tokens_per_batch",
+    "q_seq_lens",
+    "kv_seq_lens",
+    "num_prompt_tokens",
     "causal",
     "alpha",
     "stem_block_size",

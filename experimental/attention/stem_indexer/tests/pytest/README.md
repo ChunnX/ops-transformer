@@ -21,7 +21,7 @@ excel/stem_indexer_cases.xlsx
 case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点和设计原因。
 `excel/stem_indexer_cases.xlsx`记录同一批case，作为批量模式生成`.pt`文件的输入。
 
-当前共有60条case，其中single模式直接读取`ENABLED_PARAMS`，batch模式按QLI风格读取Excel并生成`.pt`文件。
+当前共有60条正例case，其中single模式直接读取`ENABLED_PARAMS`，batch模式按QLI风格读取Excel并生成`.pt`文件。
 
 ## 当前覆盖点
 
@@ -32,22 +32,23 @@ case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点�
 - 动态TopK预算的small/medium/large prompt block分支。
 - S2方向`baseN=256`整块和尾块。
 - M方向`baseM=96`整块和尾块。
-- GQA组合：`q_heads`为32/64，`kv_heads`为2/4/8。
-- 多batch变长、prefill/decode混合、单token decode。
+- GQA组合：`q_heads`为32/64，`kv_heads`为2/4/8，6种合法组合各10条case。
+- 多batch变长、prefill/decode混合、单token decode，batch覆盖1到28以及30、37。
 - OAM `vbias`影响选块、`scoreScale=1/64`路径。
 - `num_prompt_tokens`不能整除`stem_block_size`。
 - 动态TopK small/medium/large分段边界：55/56/159/160 blocks。
 - `curS2Len == initial + dynamicTopK + window`和刚越过该边界的短路2路径。
-- 参数非法负例。
 
 ## Metadata说明
 
 `metadata`是StemIndexer主算子的前置输入，pytest正例和普通单case脚本都会先调用
 `npu_stem_indexer_metadata`生成`int32[2048]`的metadata，再传给`npu_stem_indexer`。
-pytest负例会继续传入参数表中构造的metadata，用于覆盖StemIndexer主算子的参数校验。
+当前case表只保留可运行并可与golden比对的正例。
 
 当前StemIndexer主算子使用BNSD布局，`q_seq_lens`、`kv_seq_lens`和`num_prompt_tokens`
 均按batch实际长度传入，其中`num_prompt_tokens`用于动态TopK预算。
+测试用例不再单独维护额外token长度辅助字段；
+`qflat`、`kflat`的shape由`q_seq_lens`、`kv_seq_lens`的最大值推导。
 
 ## 文件结构
 

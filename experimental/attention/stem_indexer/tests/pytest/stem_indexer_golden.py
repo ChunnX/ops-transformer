@@ -84,8 +84,8 @@ def get_tensor_shapes(case):
     stem_block_size = case["stem_block_size"]
     stem_stride = case["stem_stride"]
     flatten_dim = stem_stride * HEAD_DIM
-    max_qb = ceil_div(max(case["q_token_lens_per_batch"]), stem_block_size)
-    max_kb = ceil_div(max(case["kv_token_lens_per_batch"]), stem_block_size)
+    max_qb = ceil_div(max(case["q_seq_lens"]), stem_block_size)
+    max_kb = ceil_div(max(case["kv_seq_lens"]), stem_block_size)
 
     qflat_shape = parse_shape(special["qflat_shape"]) if "qflat_shape" in special else [
         batch_size, q_heads, max_qb, flatten_dim
@@ -109,9 +109,9 @@ def build_case_inputs(case):
     qflat = make_float_tensor(qflat_shape, dtype_from_name(case["qflat_dtype"]), qflat_pattern, seed=17)
     kflat = make_float_tensor(kflat_shape, dtype_from_name(case["kflat_dtype"]), kflat_pattern, seed=23)
     vbias = make_float_tensor(vbias_shape, dtype_from_name(case["vbias_dtype"]), vbias_pattern, seed=31)
-    q_seq_lens = torch.tensor(case["q_seq_lens_per_batch"], dtype=torch.int32)
-    kv_seq_lens = torch.tensor(case["kv_seq_lens_per_batch"], dtype=torch.int32)
-    num_prompt_tokens = torch.tensor(case["num_prompt_tokens_per_batch"], dtype=torch.int32)
+    q_seq_lens = torch.tensor(case["q_seq_lens"], dtype=torch.int32)
+    kv_seq_lens = torch.tensor(case["kv_seq_lens"], dtype=torch.int32)
+    num_prompt_tokens = torch.tensor(case["num_prompt_tokens"], dtype=torch.int32)
     metadata = torch.zeros(metadata_shape, dtype=torch.int32)
 
     return {
@@ -197,9 +197,9 @@ def stem_indexer_golden(case, inputs):
     q_heads = case["q_heads"]
     kv_heads = case["kv_heads"]
     g_size = q_heads // kv_heads
-    q_token_lens = case["q_token_lens_per_batch"]
-    kv_token_lens = case["kv_token_lens_per_batch"]
-    prompt_lens = case["num_prompt_tokens_per_batch"]
+    q_seq_lens = case["q_seq_lens"]
+    kv_seq_lens = case["kv_seq_lens"]
+    prompt_lens = case["num_prompt_tokens"]
     stem_block_size = case["stem_block_size"]
     stem_stride = case["stem_stride"]
     score_scale = 1.0 / ((stem_block_size // stem_stride) ** 2)
@@ -210,8 +210,8 @@ def stem_indexer_golden(case, inputs):
     sparse_seq_len = torch.zeros((batch_size, q_heads, max_qb), dtype=torch.int32)
 
     for batch_idx in range(batch_size):
-        q_len = q_token_lens[batch_idx]
-        kv_len = kv_token_lens[batch_idx]
+        q_len = q_seq_lens[batch_idx]
+        kv_len = kv_seq_lens[batch_idx]
         prompt_len = prompt_lens[batch_idx]
         q_block_num = ceil_div(q_len, stem_block_size)
         kv_block_num = ceil_div(kv_len, stem_block_size)
