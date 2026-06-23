@@ -35,6 +35,8 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&selectIdx,
                                   const aclTensor *&blockTable,
                                   const aclTensor *&selectNumIdxOptional,
+                                  const aclTensor *&actualSeqLengthsOptional,
+                                  const aclTensor *&actualSeqLengthsKvOptional,
                                   aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
@@ -57,6 +59,16 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
         CHECK_RET(selectNumIdxOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
+    if (actualSeqLengthsOptional != nullptr) {
+        actualSeqLengthsOptional = l0op::Contiguous(actualSeqLengthsOptional, executor);
+        CHECK_RET(actualSeqLengthsOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    if (actualSeqLengthsKvOptional != nullptr) {
+        actualSeqLengthsKvOptional = l0op::Contiguous(actualSeqLengthsKvOptional, executor);
+        CHECK_RET(actualSeqLengthsKvOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
     return ACLNN_SUCCESS;
 }
 
@@ -69,8 +81,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScoreGetW
     const aclTensor *selectIdx,
     const aclTensor *blockTable,
     const aclTensor *selectNumIdxOptional,
-    const aclIntArray *actualSeqLengthsOptional,
-    const aclIntArray *actualSeqLengthsKvOptional,
+    const aclTensor *actualSeqLengthsOptional,
+    const aclTensor *actualSeqLengthsKvOptional,
     const aclTensor *qDequantScaleOptional,
     const aclTensor *kDequantScaleOptional,
     const aclTensor *vDequantScaleOptional,
@@ -105,7 +117,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScoreGetW
     auto *executorImpl = uniqueExecutor.get();
 
     aclnnStatus ret = MakeContiguous(query, key, value, selectIdx, blockTable,
-                                     selectNumIdxOptional, executorImpl);
+                                     selectNumIdxOptional,
+                                     actualSeqLengthsOptional, actualSeqLengthsKvOptional,
+                                     executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }

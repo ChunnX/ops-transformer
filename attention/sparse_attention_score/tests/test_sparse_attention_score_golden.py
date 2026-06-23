@@ -41,7 +41,7 @@ def _quantize_fp8(fp32_tensor: torch.Tensor, scale: float) -> torch.Tensor:
 def _register_sparse_attention_score_op():
     spec = importlib.util.spec_from_file_location(
         "sparse_attention_score",
-        _TORCH_EXT / "npu_ops_transformer" / "ops" / "sparse_attention_score.py",
+        _TORCH_EXT / "cann_ops_transformer" / "ops" / "sparse_attention_score.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -74,7 +74,7 @@ def _register_sparse_attention_score_op():
     ext_mod = importlib.util.module_from_spec(ext_spec)
     ext_spec.loader.exec_module(ext_mod)
 
-    from npu_ops_transformer.op_builder.builder import OpBuilder
+    from cann_ops_transformer.op_builder.builder import OpBuilder
 
     OpBuilder._loaded_ops["npu_sparse_attention_score"] = ext_mod
     print(f"[INFO] Loaded pre-compiled extension: {so_file}")
@@ -559,8 +559,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
         group_size = q_heads // kv_heads
         total_blocks = ceil(kv_seqlen / block_size)
         max_blocks_per_batch = total_blocks
-        actual_seq_lengths = [q_seqlen] * batch
-        actual_seq_lengths_kv = [kv_seqlen] * batch
+        actual_seq_lengths = torch.tensor([q_seqlen] * batch, dtype=torch.int64)
+        actual_seq_lengths_kv = torch.tensor([kv_seqlen] * batch, dtype=torch.int64)
 
         torch.manual_seed(seed)
         query_fp32 = torch.rand(q_seqlen, q_heads, head_dim, dtype=torch.float32) * 2 - 1
@@ -655,6 +655,9 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
 
         scale_value = 1.0 / math.sqrt(head_dim)
 
+        actual_seq_lengths = torch.tensor(q_seqlens, dtype=torch.int64)
+        actual_seq_lengths_kv = torch.tensor(kv_seqlens, dtype=torch.int64)
+
         return (
             query_fp32.to(torch.bfloat16),
             key_fp32.to(torch.bfloat16),
@@ -662,8 +665,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             select_idx,
             block_table,
             select_num_idx,
-            q_seqlens,
-            kv_seqlens,
+            actual_seq_lengths,
+            actual_seq_lengths_kv,
             kv_heads,
             block_size,
             top_k,
@@ -682,7 +685,7 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
 
         cpu_out = cpu_sparse_attention_score_bf16(
             query, key, value, select_idx, block_table,
-            actual_seq_lengths, actual_seq_lengths_kv,
+            actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
             num_key_value_heads=kv_heads,
             select_num_idx=select_num_idx,
             block_size=block_size,
@@ -691,7 +694,7 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
 
         cpu_out_fp32 = cpu_sparse_attention_score_fp32(
             query, key, value, select_idx, block_table,
-            actual_seq_lengths, actual_seq_lengths_kv,
+            actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
             num_key_value_heads=kv_heads,
             select_num_idx=select_num_idx,
             block_size=block_size,
@@ -701,8 +704,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
         npu_out = torch_npu.npu_sparse_attention_score(
             query.npu(), key.npu(), value.npu(), select_idx.npu(), block_table.npu(),
             select_num_idx=select_num_idx.npu(),
-            actual_seq_lengths=actual_seq_lengths,
-            actual_seq_lengths_kv=actual_seq_lengths_kv,
+            actual_seq_lengths=actual_seq_lengths.npu(),
+            actual_seq_lengths_kv=actual_seq_lengths_kv.npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size,
@@ -841,8 +844,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             p_query.npu(), key.npu(), value.npu(),
             p_select_idx.npu(), block_table.npu(),
             select_num_idx=p_select_num_idx.npu(),
-            actual_seq_lengths=[p_q_seqlen],
-            actual_seq_lengths_kv=[p_kv_seqlen],
+            actual_seq_lengths=torch.tensor([p_q_seqlen], dtype=torch.int64).npu(),
+            actual_seq_lengths_kv=torch.tensor([p_kv_seqlen], dtype=torch.int64).npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size,
@@ -895,8 +898,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             d_query.npu(), key.npu(), value.npu(),
             d_select_idx.npu(), block_table.npu(),
             select_num_idx=d_select_num_idx.npu(),
-            actual_seq_lengths=[d_q_seqlen],
-            actual_seq_lengths_kv=[d_kv_seqlen],
+            actual_seq_lengths=torch.tensor([d_q_seqlen], dtype=torch.int64).npu(),
+            actual_seq_lengths_kv=torch.tensor([d_kv_seqlen], dtype=torch.int64).npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size,
@@ -980,8 +983,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             p_query.npu(), key.npu(), value.npu(),
             p_select_idx.npu(), block_table.npu(),
             select_num_idx=p_select_num_idx.npu(),
-            actual_seq_lengths=[p_q_seqlen],
-            actual_seq_lengths_kv=[p_kv_seqlen],
+            actual_seq_lengths=torch.tensor([p_q_seqlen], dtype=torch.int64).npu(),
+            actual_seq_lengths_kv=torch.tensor([p_kv_seqlen], dtype=torch.int64).npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size, top_k=top_k, inner_precise=4,
@@ -1019,8 +1022,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
             d_query.npu(), key.npu(), value.npu(),
             d_select_idx.npu(), block_table.npu(),
             select_num_idx=d_select_num_idx.npu(),
-            actual_seq_lengths=[d_q_seqlen],
-            actual_seq_lengths_kv=[d_kv_seqlen],
+            actual_seq_lengths=torch.tensor([d_q_seqlen], dtype=torch.int64).npu(),
+            actual_seq_lengths_kv=torch.tensor([d_kv_seqlen], dtype=torch.int64).npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size, top_k=top_k, inner_precise=4,
@@ -1072,7 +1075,7 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
 
         cpu_out = cpu_sparse_attention_score_bf16(
             query, key, value, select_idx, block_table,
-            actual_seq_lengths, actual_seq_lengths_kv,
+            actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
             num_key_value_heads=kv_heads,
             select_num_idx=select_num_idx,
             block_size=block_size,
@@ -1081,7 +1084,7 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
 
         cpu_out_fp32 = cpu_sparse_attention_score_fp32(
             query, key, value, select_idx, block_table,
-            actual_seq_lengths, actual_seq_lengths_kv,
+            actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
             num_key_value_heads=kv_heads,
             select_num_idx=select_num_idx,
             block_size=block_size,
@@ -1091,8 +1094,8 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
         npu_out = torch_npu.npu_sparse_attention_score(
             query.npu(), key.npu(), value.npu(), select_idx.npu(), block_table.npu(),
             select_num_idx=select_num_idx.npu(),
-            actual_seq_lengths=actual_seq_lengths,
-            actual_seq_lengths_kv=actual_seq_lengths_kv,
+            actual_seq_lengths=actual_seq_lengths.npu(),
+            actual_seq_lengths_kv=actual_seq_lengths_kv.npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size,
@@ -1504,8 +1507,8 @@ def _test_bf16_q64_kv4_seqlen132_topk16(self):
     # KV cache physical blocks >= total_blocks
     total_physical_blocks = total_blocks + 10  # extra headroom
     max_blocks_per_batch = total_blocks
-    actual_seq_lengths = [q_seqlen]
-    actual_seq_lengths_kv = [kv_seqlen]
+    actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int64)
+    actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int64)
 
     torch.manual_seed(seed)
     query_fp32 = torch.rand(q_seqlen, q_heads, head_dim, dtype=torch.float32) * 2 - 1
@@ -1556,7 +1559,7 @@ def _test_bf16_q64_kv4_seqlen132_topk16(self):
 
     cpu_out = cpu_sparse_attention_score_bf16(
         query, key, value, select_idx, block_table,
-        actual_seq_lengths, actual_seq_lengths_kv,
+        actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
         num_key_value_heads=kv_heads,
         select_num_idx=select_num_idx,
         block_size=block_size,
@@ -1565,7 +1568,7 @@ def _test_bf16_q64_kv4_seqlen132_topk16(self):
 
     cpu_out_fp32 = cpu_sparse_attention_score_fp32(
         query, key, value, select_idx, block_table,
-        actual_seq_lengths, actual_seq_lengths_kv,
+        actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
         num_key_value_heads=kv_heads,
         select_num_idx=select_num_idx,
         block_size=block_size,
@@ -1575,8 +1578,8 @@ def _test_bf16_q64_kv4_seqlen132_topk16(self):
     npu_out = torch_npu.npu_sparse_attention_score(
         query.npu(), key.npu(), value.npu(), select_idx.npu(), block_table.npu(),
         select_num_idx=select_num_idx.npu(),
-        actual_seq_lengths=actual_seq_lengths,
-        actual_seq_lengths_kv=actual_seq_lengths_kv,
+        actual_seq_lengths=actual_seq_lengths.npu(),
+        actual_seq_lengths_kv=actual_seq_lengths_kv.npu(),
         num_key_value_heads=kv_heads,
         scale_value=scale_value,
         block_size=block_size,
@@ -1608,8 +1611,8 @@ class TestNpuSparseAttentionScoreFp8(TestCase):
         group_size = q_heads // kv_heads
         total_blocks = ceil(kv_seqlen / block_size)
         max_blocks_per_batch = total_blocks
-        actual_seq_lengths = [q_seqlen] * batch
-        actual_seq_lengths_kv = [kv_seqlen] * batch
+        actual_seq_lengths = torch.tensor([q_seqlen] * batch, dtype=torch.int64)
+        actual_seq_lengths_kv = torch.tensor([kv_seqlen] * batch, dtype=torch.int64)
 
         torch.manual_seed(seed)
         query_fp32 = torch.randn(q_seqlen, q_heads, head_dim, dtype=torch.float32)
@@ -1653,7 +1656,7 @@ class TestNpuSparseAttentionScoreFp8(TestCase):
         cpu_out = cpu_sparse_attention_score_fp8(
             query, key, value, select_idx, block_table,
             q_scales, k_scales, v_scales,
-            actual_seq_lengths, actual_seq_lengths_kv,
+            actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
             num_key_value_heads=kv_heads,
             select_num_idx=select_num_idx,
             block_size=block_size,
@@ -1666,8 +1669,8 @@ class TestNpuSparseAttentionScoreFp8(TestCase):
             q_dequant_scale=q_scales.npu(),
             k_dequant_scale=k_scales.npu(),
             v_dequant_scale=v_scales.npu(),
-            actual_seq_lengths=actual_seq_lengths,
-            actual_seq_lengths_kv=actual_seq_lengths_kv,
+            actual_seq_lengths=actual_seq_lengths.npu(),
+            actual_seq_lengths_kv=actual_seq_lengths_kv.npu(),
             num_key_value_heads=kv_heads,
             scale_value=scale_value,
             block_size=block_size,

@@ -271,8 +271,8 @@ def main():
     kv_seqlen = 2048  # adjust if needed
 
     scale_value = 1.0 / math.sqrt(head_dim)
-    actual_seq_lengths = [q_seqlen]
-    actual_seq_lengths_kv = [kv_seqlen]
+    actual_seq_lengths = torch.tensor([q_seqlen], dtype=torch.int64)
+    actual_seq_lengths_kv = torch.tensor([kv_seqlen], dtype=torch.int64)
 
     # =========== KV Data Distribution Analysis ===========
     print(f"\n--- KV Data Distribution & BF16 Overflow Risk Analysis ---")
@@ -474,8 +474,8 @@ def main():
     npu_out = torch_npu.npu_sparse_attention_score(
         query.npu(), key.npu(), value.npu(),
         select_idx.npu(), block_table.npu(),
-        actual_seq_lengths=actual_seq_lengths,
-        actual_seq_lengths_kv=actual_seq_lengths_kv,
+        actual_seq_lengths=actual_seq_lengths.npu(),
+        actual_seq_lengths_kv=actual_seq_lengths_kv.npu(),
         num_key_value_heads=kv_heads,
         scale_value=scale_value,
         block_size=block_size,

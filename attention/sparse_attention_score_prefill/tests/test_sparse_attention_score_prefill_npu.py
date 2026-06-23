@@ -34,7 +34,7 @@ def _load_prefill_op():
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "sparse_attention_score_prefill",
-        _TORCH_EXT / "npu_ops_transformer" / "ops" / "sparse_attention_score_prefill.py",
+        _TORCH_EXT / "cann_ops_transformer" / "ops" / "sparse_attention_score_prefill.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -375,7 +375,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
             kv_heads, block_size, top_k, data['scale_value'])
 
         # NPU call via OpBuilder-loaded custom op
-        npu_out = torch.ops.npu_ops_transformer.npu_sparse_attention_score_prefill(
+        npu_out = torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
             data['query'].npu(),
             data['key'].npu(),
             data['value'].npu(),
