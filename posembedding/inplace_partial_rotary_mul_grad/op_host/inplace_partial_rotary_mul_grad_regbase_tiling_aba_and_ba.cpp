@@ -124,9 +124,10 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAbaAndBa::ComputeUbFacto
     // 最终验证：总 UB 不超限
     int64_t dAlign = Ops::Base::CeilAlign(sliceLength_ * maxTypeSize / dSplitCoef_, this->blockSize_) *
                      dSplitCoef_;
-    int64_t dyBytes = 4 * ubFactorB_ * ubFactorS_ * ubFactorN_ * dAlign * typeSize;
-    int64_t cosBytes = (cosb_ == 1) ? (4 * ubFactorS_ * dAlign * cosTypeSize)
-                                     : (4 * ubFactorB_ * ubFactorS_ * dAlign * cosTypeSize);
+    // dAlign 已包含 maxTypeSize 乘法，不再乘 typeSize/cosTypeSize
+    int64_t dyBytes = 4 * ubFactorB_ * ubFactorS_ * ubFactorN_ * dAlign;
+    int64_t cosBytes = (cosb_ == 1) ? (4 * ubFactorS_ * dAlign)
+                                     : (4 * ubFactorB_ * ubFactorS_ * dAlign);
     OP_CHECK_IF(dyBytes + cosBytes > static_cast<int64_t>(aicoreParams_.ubSize),
                 OP_LOGE(context_, "UB overflow: need %ld > %ld.", dyBytes + cosBytes,
                         static_cast<int64_t>(aicoreParams_.ubSize)),
