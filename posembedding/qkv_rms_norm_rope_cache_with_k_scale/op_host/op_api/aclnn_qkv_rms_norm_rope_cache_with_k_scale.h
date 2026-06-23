@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_LEVEL2_ACLNN_QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_H_
-#define OP_API_INC_LEVEL2_ACLNN_QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_H_
+#ifndef OP_API_INC_LEVEL2_ACLNN_QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_H_
+#define OP_API_INC_LEVEL2_ACLNN_QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_H_
 
 #include "aclnn/acl_meta.h"
 

@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "qkv_rms_norm_rope_cache_with_kscale.h"
+#include "qkv_rms_norm_rope_cache_with_k_scale.h"
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/shape_utils.h"

@@ -40,7 +40,7 @@ from .graph_convert.graph_convert_quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
-from .qkv_rms_norm_rope_cache_with_kscale import (
-    qkv_rms_norm_rope_cache_with_kscale,
-    qkv_rms_norm_rope_cache_with_kscale_functional
+from .qkv_rms_norm_rope_cache_with_k_scale import (
+    qkv_rms_norm_rope_cache_with_k_scale,
+    qkv_rms_norm_rope_cache_with_k_scale_functional
 )

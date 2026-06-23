@@ -8,12 +8,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Run cann_ops_transformer.qkv_rms_norm_rope_cache_with_kscale on several shapes.
+"""Run cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale on several shapes.
 
 Example:
-    python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_kscale_example.py --list-cases
-    python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_kscale_example.py
-    python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_kscale_example.py --case smoke_tnd --mode functional
+    python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py --list-cases
+    python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py
+    python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py --case smoke_tnd --mode functional
 """
 
 import argparse
@@ -126,14 +126,14 @@ def assert_outputs(case: Case, outputs):
 
 def run_case(case: Case, mode: str, device: str):
     from cann_ops_transformer.ops import (
-        qkv_rms_norm_rope_cache_with_kscale,
-        qkv_rms_norm_rope_cache_with_kscale_functional,
+        qkv_rms_norm_rope_cache_with_k_scale,
+        qkv_rms_norm_rope_cache_with_k_scale_functional,
     )
 
     tensors = make_inputs(case, device)
     with torch.no_grad():
         if mode == "inplace":
-            q_out, q_scale = qkv_rms_norm_rope_cache_with_kscale(
+            q_out, q_scale = qkv_rms_norm_rope_cache_with_k_scale(
                 tensors["qkv"],
                 tensors["q_gamma"],
                 tensors["k_gamma"],
@@ -153,7 +153,7 @@ def run_case(case: Case, mode: str, device: str):
             )
             outputs = (q_out, q_scale, tensors["k_cache"], tensors["v_cache"], tensors["k_scale_cache"])
         elif mode == "functional":
-            outputs = qkv_rms_norm_rope_cache_with_kscale_functional(
+            outputs = qkv_rms_norm_rope_cache_with_k_scale_functional(
                 tensors["qkv"],
                 tensors["q_gamma"],
                 tensors["k_gamma"],

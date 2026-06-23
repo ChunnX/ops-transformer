@@ -11,7 +11,7 @@
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
-#include "aclnn_qkv_rms_norm_rope_cache_with_kscale.h"
+#include "aclnn_qkv_rms_norm_rope_cache_with_k_scale.h"
 
 int main() {
     aclError ret = aclInit(nullptr);

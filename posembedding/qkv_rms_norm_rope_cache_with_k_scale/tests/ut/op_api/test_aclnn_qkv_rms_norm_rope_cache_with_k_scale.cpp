@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_aclnn_qkv_rms_norm_rope_cache_with_kscale.cpp
+ * \file test_aclnn_qkv_rms_norm_rope_cache_with_k_scale.cpp
  * \brief CSV driven QkvRmsNormRopeCacheWithKScale aclnn op_api UT.
  */
 
@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "../../../op_host/op_api/aclnn_qkv_rms_norm_rope_cache_with_kscale.h"
+#include "../../../op_host/op_api/aclnn_qkv_rms_norm_rope_cache_with_k_scale.h"
 #include "gmm_csv_acl_parse_utils.h"
 #include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -434,8 +434,8 @@ vector<QkvRmsNormRopeCacheWithKScaleCase> LoadCases(const string &csvFilePath)
 const vector<QkvRmsNormRopeCacheWithKScaleCase> &GetCases()
 {
     static const auto cases = LoadCases(ops::ut::ResolveCsvPath(
-        "test_aclnn_qkv_rms_norm_rope_cache_with_kscale.csv",
-        "attention/qkv_rms_norm_rope_cache_with_kscale/tests/ut/op_api", __FILE__));
+        "test_aclnn_qkv_rms_norm_rope_cache_with_k_scale.csv",
+        "attention/qkv_rms_norm_rope_cache_with_k_scale/tests/ut/op_api", __FILE__));
     return cases;
 }
 
@@ -444,15 +444,15 @@ string MakeParamName(const testing::TestParamInfo<QkvRmsNormRopeCacheWithKScaleC
     return ops::ut::MakeSafeParamName(info.param.caseName);
 }
 
-class qkv_rms_norm_rope_cache_with_kscale_csv_test
+class qkv_rms_norm_rope_cache_with_k_scale_csv_test
     : public testing::TestWithParam<QkvRmsNormRopeCacheWithKScaleCase> {};
 
-TEST_P(qkv_rms_norm_rope_cache_with_kscale_csv_test, csvDrivenCase)
+TEST_P(qkv_rms_norm_rope_cache_with_k_scale_csv_test, csvDrivenCase)
 {
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_CSV,
-                         qkv_rms_norm_rope_cache_with_kscale_csv_test, testing::ValuesIn(GetCases()),
+INSTANTIATE_TEST_SUITE_P(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CSV,
+                         qkv_rms_norm_rope_cache_with_k_scale_csv_test, testing::ValuesIn(GetCases()),
                          MakeParamName);
 } // namespace
