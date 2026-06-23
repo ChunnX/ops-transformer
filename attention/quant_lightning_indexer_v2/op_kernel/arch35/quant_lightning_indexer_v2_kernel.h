@@ -108,6 +108,7 @@ protected:
     uint64_t indiceOutCoreOffset = 0ULL;
     uint64_t valueOutCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
+    bool isOutputIdxOffsetValid = false;
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
@@ -119,7 +120,7 @@ protected:
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<bfloat16_t> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
-
+    GlobalTensor<int32_t> outputIdxOffsetGm;
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGm;
     GlobalTensor<uint32_t> cmpResidualKGm;
@@ -522,7 +523,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
+        if (outputIdxOffset != nullptr) {
+            isOutputIdxOffsetValid = true;
+            outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
+        } 
+        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm, outputIdxOffsetGm);
+        
         vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
         vectorService.InitParams(constInfo, ldInfo, tiling);
     } else {
@@ -638,9 +644,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     runInfo.isLastS2InnerLoop = s2LoopIdx == tempLoopInfo.s2LoopEnd;
     runInfo.isAllLoopEnd = (runInfo.bN2Idx == splitCoreInfo.bN2End) && (runInfo.gS1Idx == splitCoreInfo.gS1End) &&
                            (runInfo.s2Idx == splitCoreInfo.s2End);
-
+    runInfo.isOutputIdxOffsetValid = isOutputIdxOffsetValid;
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
+        // TODO
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(runInfo.bIdx);
         } else {  // BSND
@@ -654,6 +661,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
         // B,S1,N2,k/T,N2,k
         indiceOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
+        valueOutCoreOffset =
+            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.topK + runInfo.n2Idx * constInfo.topK;
+        outputIdxCoreOffset =
+            (actualSeqQPrefixSum + runInfo.gS1Idx * constInfo.s1BaseSize) * constInfo.kHeadNum + runInfo.n2Idx;
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D, cu_seqlens_k
