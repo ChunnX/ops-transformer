@@ -25,8 +25,6 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchEpilogueTilingData, tilingData, tilingGM);
 
-    AscendC::printf("start moe_ep_dispatch_epilogue kernel\n");
-    return;
     KernelDispatchEpilogue<DTYPE_RECV_X, IsCached> op;
     op.Init(context, dstBufferSlotIdx,
             numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata,
