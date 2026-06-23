@@ -725,7 +725,10 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseMode() const
 
 ge::graphStatus QSFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
-    OP_CHECK_IF(((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
+    auto qsfaAscendcPlat = platform_ascendc::PlatformAscendC(platformInfo_);
+    npuArch_ = qsfaAscendcPlat.GetCurNpuArch();
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_2201) &&
+        ((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
         (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
             std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
