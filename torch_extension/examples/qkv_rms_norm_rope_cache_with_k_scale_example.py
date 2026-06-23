@@ -8,19 +8,24 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Run cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale on several shapes.
+"""Run and compare cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale.
+
+The default run covers 60 inplace cases across NTD/TND layouts, Nq/Nk/Nv
+combinations, multi-batch prefix sums, non-contiguous slots, actual_seq_lens
+history offsets, large T axes, and strided cache views. Each case runs the torch
+NPU interface and prints match rates against a CPU golden implementation.
 
 Example:
     python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py --list-cases
     python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py
-    python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py --case smoke_tnd --mode functional
+    python3 torch_extension/examples/qkv_rms_norm_rope_cache_with_k_scale_example.py --case n16_kv2_offset_b0_ntd
 """
 
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
 import sys
-from typing import Iterable, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 import torch
 import torch_npu
@@ -31,61 +36,224 @@ if str(TORCH_EXTENSION_DIR) not in sys.path:
 
 HEAD_SIZE = 128
 DEFAULT_EPSILON = 1e-6
+FP8_E4M3FN_MAX = 448.0
 
 
 @dataclass(frozen=True)
 class Case:
     name: str
     batch_seq_lens: Tuple[int, ...]
-    block_size: int
-    block_num: int
+    actual_seq_lens: Tuple[int, ...]
     n_q: int
     n_k: int
     n_v: int
     input_layout: str
+    slot_pattern: str = "linear"
+    seed: int = 0
+    block_size: int = 16
+    block_num: int = 8
+    cache_stride: str = "contiguous"
+    cache_pad: int = 0
 
 
-CASES = (
-    Case("smoke_ntd", (1,), 16, 4, 16, 2, 2, "NTD"),
-    Case("smoke_tnd", (1,), 16, 4, 16, 2, 2, "TND"),
-    Case("multi_batch_ntd", (2, 7), 16, 4, 16, 2, 2, "NTD"),
-    Case("multi_batch_tnd", (2, 7), 16, 4, 16, 2, 2, "TND"),
-    Case("head_combo", (32,), 16, 8, 32, 4, 4, "NTD"),
-)
+@dataclass(frozen=True)
+class MatchResult:
+    name: str
+    matched: int
+    total: int
+    rate: float
+    max_abs_diff: float
 
 
-def make_cu_seq_len(seq_lens: Iterable[int], device: str) -> torch.Tensor:
+def build_cases() -> Tuple[Case, ...]:
+    n16_specs = (
+        ("decode1", (1,), (1,), "linear"),
+        ("prefill8", (8,), (8,), "reverse"),
+        ("prefill17", (17,), (17,), "stride3"),
+        ("prefill33", (33,), (33,), "random"),
+        ("mb_2_7", (2, 7), (2, 7), "linear"),
+        ("offset_b0", (17, 1), (8209, 1), "stride3"),
+        ("offset_b1", (1, 17), (1, 8209), "reverse"),
+        ("offset_multi", (3, 5, 2), (4099, 5, 8194), "random"),
+    )
+    n8_specs = (
+        ("decode1", (1,), (1,), "linear"),
+        ("prefill8", (8,), (8,), "reverse"),
+        ("prefill17", (17,), (17,), "stride3"),
+        ("mb_2_7", (2, 7), (2, 7), "linear"),
+        ("offset_b0", (17, 1), (8209, 1), "stride3"),
+        ("offset_b1", (1, 17), (1, 8209), "reverse"),
+        ("offset_multi", (3, 5, 2), (4099, 5, 8194), "random"),
+    )
+    n16_large_strided_specs = (
+        ("large64_dpad", (64,), (64,), "linear"),
+        ("large96_dpad", (96,), (96,), "reverse"),
+        ("large127_dpad", (127,), (127,), "random"),
+        ("large128_stride3_dpad", (128,), (128,), "stride3"),
+        ("large_mb32_64_dpad", (32, 64), (32, 64), "linear"),
+        ("large_mb17_79_3_dpad", (17, 79, 3), (17, 79, 3), "random"),
+        ("large_offset_b0_dpad", (64, 1), (8256, 1), "stride3"),
+        ("large_offset_multi_dpad", (33, 17, 49), (4129, 17, 8241), "random"),
+    )
+    n8_large_strided_specs = (
+        ("large64_dpad", (64,), (64,), "linear"),
+        ("large96_dpad", (96,), (96,), "reverse"),
+        ("large127_dpad", (127,), (127,), "random"),
+        ("large_mb32_64_dpad", (32, 64), (32, 64), "linear"),
+        ("large_mb17_79_3_dpad", (17, 79, 3), (17, 79, 3), "random"),
+        ("large_offset_b1_dpad", (1, 64), (1, 8256), "reverse"),
+        ("large_offset_multi_dpad", (33, 17, 49), (4129, 17, 8241), "random"),
+    )
+
+    cases: List[Case] = []
+    seed = 20260623
+    for heads_name, specs, heads in (("n16_kv2", n16_specs, (16, 2, 2)), ("n8_kv1", n8_specs, (8, 1, 1))):
+        for suffix, seq_lens, actual_lens, slot_pattern in specs:
+            for layout in ("NTD", "TND"):
+                cases.append(
+                    Case(
+                        name=f"{heads_name}_{suffix}_{layout.lower()}",
+                        batch_seq_lens=seq_lens,
+                        actual_seq_lens=actual_lens,
+                        n_q=heads[0],
+                        n_k=heads[1],
+                        n_v=heads[2],
+                        input_layout=layout,
+                        slot_pattern=slot_pattern,
+                        seed=seed,
+                    )
+                )
+                seed += 1
+    for heads_name, specs, heads in (
+        ("n16_kv2", n16_large_strided_specs, (16, 2, 2)),
+        ("n8_kv1", n8_large_strided_specs, (8, 1, 1)),
+    ):
+        for suffix, seq_lens, actual_lens, slot_pattern in specs:
+            for layout in ("NTD", "TND"):
+                cases.append(
+                    Case(
+                        name=f"{heads_name}_{suffix}_{layout.lower()}",
+                        batch_seq_lens=seq_lens,
+                        actual_seq_lens=actual_lens,
+                        n_q=heads[0],
+                        n_k=heads[1],
+                        n_v=heads[2],
+                        input_layout=layout,
+                        slot_pattern=slot_pattern,
+                        seed=seed,
+                        block_num=32,
+                        cache_stride="d_pad",
+                        cache_pad=8,
+                    )
+                )
+                seed += 1
+    return tuple(cases)
+
+
+CASES = build_cases()
+
+
+def make_cu_seq_len(seq_lens: Iterable[int]) -> torch.Tensor:
     prefix = [0]
     for seq_len in seq_lens:
         prefix.append(prefix[-1] + int(seq_len))
-    return torch.tensor(prefix, dtype=torch.int32, device=device)
+    return torch.tensor(prefix, dtype=torch.int32)
 
 
-def make_inputs(case: Case, device: str):
+def make_slot_mapping(case: Case, total_tokens: int, generator: torch.Generator) -> torch.Tensor:
+    capacity = case.block_num * case.block_size
+    if total_tokens > capacity:
+        raise ValueError(f"{case.name}: total tokens exceed cache slot capacity")
+
+    token_ids = torch.arange(total_tokens, dtype=torch.int64)
+    if case.slot_pattern == "linear":
+        slots = token_ids
+    elif case.slot_pattern == "reverse":
+        slots = torch.arange(total_tokens - 1, -1, -1, dtype=torch.int64)
+    elif case.slot_pattern == "stride3":
+        slots = token_ids * 3 + 1
+    elif case.slot_pattern == "random":
+        slots = torch.randperm(capacity, generator=generator, dtype=torch.int64)[:total_tokens]
+    else:
+        raise ValueError(f"{case.name}: unknown slot pattern {case.slot_pattern}")
+
+    if int(slots.max().item()) >= capacity or torch.unique(slots).numel() != total_tokens:
+        raise ValueError(f"{case.name}: slot pattern must produce unique slots within cache capacity")
+    return slots.to(torch.int32)
+
+
+def validate_case(case: Case) -> None:
+    if case.input_layout not in ("NTD", "TND"):
+        raise ValueError(f"{case.name}: input_layout must be NTD or TND")
+    if case.n_k != case.n_v:
+        raise ValueError(f"{case.name}: Nk and Nv must match")
+    if len(case.actual_seq_lens) != len(case.batch_seq_lens):
+        raise ValueError(f"{case.name}: actual_seq_lens length must match batch_seq_lens length")
+    if any(actual_len < batch_len for batch_len, actual_len in zip(case.batch_seq_lens, case.actual_seq_lens)):
+        raise ValueError(f"{case.name}: actual_seq_lens values must be >= current batch token counts")
+    if case.cache_stride not in ("contiguous", "d_pad"):
+        raise ValueError(f"{case.name}: cache_stride must be contiguous or d_pad")
+    if case.cache_stride == "d_pad" and case.cache_pad <= 0:
+        raise ValueError(f"{case.name}: cache_pad must be positive for d_pad cache stride")
+
+
+def storage_numel(shape: Tuple[int, ...], stride: Tuple[int, ...]) -> int:
+    return sum((dim - 1) * step for dim, step in zip(shape, stride)) + 1
+
+
+def cache_view_stride(shape: Tuple[int, int, int, int], cache_stride: str, cache_pad: int) -> Tuple[int, int, int, int]:
+    _, heads, block_size, dim = shape
+    if cache_stride == "contiguous":
+        token_stride = dim
+    elif cache_stride == "d_pad":
+        token_stride = dim + cache_pad
+    else:
+        raise ValueError(f"unknown cache_stride: {cache_stride}")
+    return (heads * block_size * token_stride, block_size * token_stride, token_stride, 1)
+
+
+def make_zero_cache_view(shape: Tuple[int, int, int, int], dtype: torch.dtype, device: str,
+                         cache_stride: str, cache_pad: int) -> torch.Tensor:
+    if cache_stride == "contiguous":
+        if dtype == torch.float8_e4m3fn:
+            return torch.zeros(shape, dtype=torch.float32, device=device).to(dtype)
+        return torch.zeros(shape, dtype=dtype, device=device)
+
+    stride = cache_view_stride(shape, cache_stride, cache_pad)
+    numel = storage_numel(shape, stride)
+    if dtype == torch.float8_e4m3fn:
+        storage = torch.zeros((numel,), dtype=torch.float32, device=device).to(dtype)
+    else:
+        storage = torch.zeros((numel,), dtype=dtype, device=device)
+    return torch.as_strided(storage, size=shape, stride=stride)
+
+
+def make_cpu_inputs(case: Case) -> Dict[str, object]:
+    validate_case(case)
+    generator = torch.Generator(device="cpu").manual_seed(case.seed)
     total_tokens = sum(case.batch_seq_lens)
-    head_nums = [case.n_q, case.n_k, case.n_v]
     total_heads = case.n_q + case.n_k + case.n_v
     qkv_shape = (total_tokens, total_heads, HEAD_SIZE)
     if case.input_layout == "NTD":
         qkv_shape = (total_heads, total_tokens, HEAD_SIZE)
 
-    max_seq_len = max(case.batch_seq_lens)
-    qkv = torch.randn(qkv_shape, dtype=torch.bfloat16, device=device)
-    q_gamma = torch.ones((HEAD_SIZE,), dtype=torch.float32, device=device)
-    k_gamma = torch.ones((HEAD_SIZE,), dtype=torch.float32, device=device)
-    cos_sin = torch.randn((max_seq_len, HEAD_SIZE), dtype=torch.float32, device=device)
-    slot_mapping = torch.arange(total_tokens, dtype=torch.int32, device=device) % (case.block_num * case.block_size)
-    k_cache = torch.empty((case.block_num, case.n_k, case.block_size, HEAD_SIZE),
-                          dtype=torch.float8_e4m3fn, device=device)
-    v_cache = torch.empty((case.block_num, case.n_v, case.block_size, HEAD_SIZE),
-                          dtype=torch.float8_e4m3fn, device=device)
-    k_scale_cache = torch.zeros((case.block_num, case.n_k, case.block_size, 1),
-                                dtype=torch.float32, device=device)
-    cu_seq_len = make_cu_seq_len(case.batch_seq_lens, device)
-    actual_seq_lens = torch.tensor(case.batch_seq_lens, dtype=torch.int32, device=device)
-    q_rotation = torch.eye(HEAD_SIZE, dtype=torch.bfloat16, device=device)
-    k_rotation = torch.eye(HEAD_SIZE, dtype=torch.bfloat16, device=device)
-    v_scale = torch.ones((case.n_v,), dtype=torch.float32, device=device)
+    qkv = (torch.randn(qkv_shape, generator=generator, dtype=torch.float32) * 0.5).to(torch.bfloat16)
+    q_gamma = torch.rand((HEAD_SIZE,), generator=generator, dtype=torch.float32) + 0.5
+    k_gamma = torch.rand((HEAD_SIZE,), generator=generator, dtype=torch.float32) + 0.5
+    cos_sin = torch.randn((max(case.actual_seq_lens), HEAD_SIZE), generator=generator, dtype=torch.float32)
+    slot_mapping = make_slot_mapping(case, total_tokens, generator)
+    k_cache = torch.zeros((case.block_num, case.n_k, case.block_size, HEAD_SIZE), dtype=torch.float32).to(
+        torch.float8_e4m3fn
+    )
+    v_cache = torch.zeros((case.block_num, case.n_v, case.block_size, HEAD_SIZE), dtype=torch.float32).to(
+        torch.float8_e4m3fn
+    )
+    k_scale_cache = torch.zeros((case.block_num, case.n_k, case.block_size, 1), dtype=torch.float32)
+    cu_seq_len = make_cu_seq_len(case.batch_seq_lens)
+    actual_seq_lens = torch.tensor(case.actual_seq_lens, dtype=torch.int32)
+    q_rotation = torch.eye(HEAD_SIZE, dtype=torch.float32).to(torch.bfloat16)
+    k_rotation = torch.eye(HEAD_SIZE, dtype=torch.float32).to(torch.bfloat16)
+    v_scale = torch.rand((case.n_v,), generator=generator, dtype=torch.float32) + 0.5
 
     return {
         "qkv": qkv,
@@ -98,13 +266,215 @@ def make_inputs(case: Case, device: str):
         "k_scale_cache": k_scale_cache,
         "cu_seq_len": cu_seq_len,
         "actual_seq_lens": actual_seq_lens,
-        "head_nums": head_nums,
+        "head_nums": [case.n_q, case.n_k, case.n_v],
         "input_layout": case.input_layout,
         "q_rotation": q_rotation,
         "k_rotation": k_rotation,
         "v_scale": v_scale,
         "epsilon": DEFAULT_EPSILON,
     }
+
+
+def to_npu_inputs(cpu_inputs: Dict[str, object], case: Case, device: str) -> Dict[str, object]:
+    npu_inputs: Dict[str, object] = {}
+    for name, value in cpu_inputs.items():
+        if name in ("k_cache", "v_cache", "k_scale_cache"):
+            continue
+        if isinstance(value, torch.Tensor):
+            npu_inputs[name] = value.to(device)
+        else:
+            npu_inputs[name] = value
+    for name in ("k_cache", "v_cache", "k_scale_cache"):
+        tensor = cpu_inputs[name]
+        npu_inputs[name] = make_zero_cache_view(
+            tuple(tensor.shape), tensor.dtype, device, case.cache_stride, case.cache_pad)
+    return npu_inputs
+
+
+def resolve_positions(cu_seq_len: torch.Tensor, actual_seq_lens: torch.Tensor) -> torch.Tensor:
+    cu = cu_seq_len.to(torch.int64)
+    actual = actual_seq_lens.to(torch.int64)
+    total_tokens = int(cu[-1].item())
+    positions = torch.empty((total_tokens,), dtype=torch.int64)
+    for batch_idx in range(actual.numel()):
+        begin = int(cu[batch_idx].item())
+        end = int(cu[batch_idx + 1].item())
+        local_len = end - begin
+        start_pos = int(actual[batch_idx].item()) - local_len
+        positions[begin:end] = torch.arange(start_pos, start_pos + local_len, dtype=torch.int64)
+    return positions
+
+
+def apply_rope(x: torch.Tensor, cos_sin: torch.Tensor, cu_seq_len: torch.Tensor, actual_seq_lens: torch.Tensor):
+    positions = resolve_positions(cu_seq_len, actual_seq_lens)
+    if int(positions.min().item()) < 0 or int(positions.max().item()) >= cos_sin.shape[0]:
+        raise ValueError("cos_sin does not cover all RoPE positions")
+
+    half = x.shape[-1] // 2
+    cos = cos_sin[positions, :half].to(torch.float32)
+    sin = cos_sin[positions, half:].to(torch.float32)
+    x_low = x[:, :, :half]
+    x_high = x[:, :, half:]
+    out_low = x_low * cos[:, None, :] - x_high * sin[:, None, :]
+    out_high = x_high * cos[:, None, :] + x_low * sin[:, None, :]
+    return torch.cat((out_low, out_high), dim=-1)
+
+
+def dynamic_quant_fp8(x: torch.Tensor):
+    max_abs = torch.amax(torch.abs(x), dim=-1)
+    scale = max_abs / FP8_E4M3FN_MAX
+    y = x / scale.unsqueeze(-1)
+    return y.to(torch.float8_e4m3fn), scale.to(torch.float32)
+
+
+def golden_outputs(cpu_inputs: Dict[str, object]):
+    qkv = cpu_inputs["qkv"].to(torch.float32)
+    q_gamma = cpu_inputs["q_gamma"].to(torch.float32)
+    k_gamma = cpu_inputs["k_gamma"].to(torch.float32)
+    cos_sin = cpu_inputs["cos_sin"].to(torch.float32)
+    slot_mapping = cpu_inputs["slot_mapping"].to(torch.int64)
+    k_cache = cpu_inputs["k_cache"].clone()
+    v_cache = cpu_inputs["v_cache"].clone()
+    k_scale_cache = cpu_inputs["k_scale_cache"].clone()
+    cu_seq_len = cpu_inputs["cu_seq_len"]
+    actual_seq_lens = cpu_inputs["actual_seq_lens"]
+    q_rotation = cpu_inputs["q_rotation"].to(torch.float32)
+    k_rotation = cpu_inputs["k_rotation"].to(torch.float32)
+    v_scale = cpu_inputs["v_scale"].to(torch.float32)
+    n_q, n_k, n_v = cpu_inputs["head_nums"]
+    input_layout = cpu_inputs["input_layout"]
+    epsilon = cpu_inputs["epsilon"]
+
+    if input_layout == "TND":
+        q = qkv[:, :n_q, :]
+        k = qkv[:, n_q:n_q + n_k, :]
+        v = qkv[:, n_q + n_k:n_q + n_k + n_v, :]
+    else:
+        q = qkv[:n_q, :, :].transpose(0, 1).contiguous()
+        k = qkv[n_q:n_q + n_k, :, :].transpose(0, 1).contiguous()
+        v = qkv[n_q + n_k:n_q + n_k + n_v, :, :].transpose(0, 1).contiguous()
+
+    q_rms = torch.sqrt(torch.sum(q * q, dim=-1, keepdim=True) / HEAD_SIZE + epsilon)
+    k_rms = torch.sqrt(torch.sum(k * k, dim=-1, keepdim=True) / HEAD_SIZE + epsilon)
+    q_norm = q / q_rms * q_gamma[None, None, :]
+    k_norm = k / k_rms * k_gamma[None, None, :]
+
+    q_rope = apply_rope(q_norm, cos_sin, cu_seq_len, actual_seq_lens).to(torch.bfloat16).to(torch.float32)
+    k_rope = apply_rope(k_norm, cos_sin, cu_seq_len, actual_seq_lens).to(torch.bfloat16).to(torch.float32)
+    q_after_cube = q_rope @ q_rotation
+    k_after_cube = k_rope @ k_rotation
+    qk_after_cube = torch.cat((q_after_cube, k_after_cube), dim=1)
+    qk_quant, scale = dynamic_quant_fp8(qk_after_cube)
+
+    v_out = (v * v_scale[None, :, None]).to(torch.float8_e4m3fn)
+    if input_layout == "TND":
+        q_out = qk_quant[:, :n_q, :].contiguous()
+        q_scale = scale[:, :n_q].contiguous()
+    else:
+        q_out = qk_quant[:, :n_q, :].transpose(0, 1).contiguous()
+        q_scale = scale[:, :n_q].transpose(0, 1).contiguous()
+
+    block_size = k_cache.shape[2]
+    for token_idx, slot in enumerate(slot_mapping.tolist()):
+        block_id = slot // block_size
+        block_offset = slot % block_size
+        k_cache[block_id, :, block_offset, :] = qk_quant[token_idx, n_q:n_q + n_k, :]
+        k_scale_cache[block_id, :, block_offset, 0] = scale[token_idx, n_q:n_q + n_k]
+        v_cache[block_id, :, block_offset, :] = v_out[token_idx, :, :]
+
+    return {
+        "q_out": q_out,
+        "q_scale": q_scale,
+        "k_cache": k_cache,
+        "v_cache": v_cache,
+        "k_scale_cache": k_scale_cache,
+    }
+
+
+def run_inplace(cpu_inputs: Dict[str, object], case: Case, device: str):
+    from cann_ops_transformer.ops import qkv_rms_norm_rope_cache_with_k_scale
+
+    npu_inputs = to_npu_inputs(cpu_inputs, case, device)
+    with torch.no_grad():
+        q_out, q_scale = qkv_rms_norm_rope_cache_with_k_scale(
+            npu_inputs["qkv"],
+            npu_inputs["q_gamma"],
+            npu_inputs["k_gamma"],
+            npu_inputs["cos_sin"],
+            npu_inputs["slot_mapping"],
+            npu_inputs["k_cache"],
+            npu_inputs["v_cache"],
+            npu_inputs["k_scale_cache"],
+            npu_inputs["cu_seq_len"],
+            npu_inputs["actual_seq_lens"],
+            npu_inputs["head_nums"],
+            npu_inputs["input_layout"],
+            q_rotation=npu_inputs["q_rotation"],
+            k_rotation=npu_inputs["k_rotation"],
+            v_scale=npu_inputs["v_scale"],
+            epsilon=npu_inputs["epsilon"],
+        )
+    torch.npu.synchronize()
+    return {
+        "q_out": q_out,
+        "q_scale": q_scale,
+        "k_cache": npu_inputs["k_cache"],
+        "v_cache": npu_inputs["v_cache"],
+        "k_scale_cache": npu_inputs["k_scale_cache"],
+    }
+
+
+def compare_tensor(name: str, actual: torch.Tensor, expected: torch.Tensor, atol: float, rtol: float) -> MatchResult:
+    actual_f32 = actual.detach().cpu().to(torch.float32)
+    expected_f32 = expected.detach().cpu().to(torch.float32)
+    if actual_f32.shape != expected_f32.shape:
+        return MatchResult(name, 0, 1, 0.0, float("inf"))
+
+    close = torch.isclose(actual_f32, expected_f32, atol=atol, rtol=rtol, equal_nan=True)
+    matched = int(torch.count_nonzero(close).item())
+    total = actual_f32.numel()
+    finite = torch.isfinite(actual_f32) & torch.isfinite(expected_f32)
+    if torch.any(finite):
+        max_abs_diff = float(torch.max(torch.abs(actual_f32[finite] - expected_f32[finite])).item())
+    else:
+        max_abs_diff = 0.0
+    return MatchResult(name, matched, total, matched / total if total else 1.0, max_abs_diff)
+
+
+def select_touched_cache_rows(outputs: Dict[str, torch.Tensor], slot_mapping: torch.Tensor) -> Dict[str, torch.Tensor]:
+    slots = slot_mapping.detach().cpu().to(torch.int64)
+    block_size = outputs["k_cache"].shape[2]
+    block_ids = slots // block_size
+    block_offsets = slots % block_size
+    k_cache_f32 = outputs["k_cache"].detach().cpu().to(torch.float32)
+    v_cache_f32 = outputs["v_cache"].detach().cpu().to(torch.float32)
+    k_scale_cache_f32 = outputs["k_scale_cache"].detach().cpu().to(torch.float32)
+    return {
+        "k_cache_touched": k_cache_f32[block_ids, :, block_offsets, :],
+        "v_cache_touched": v_cache_f32[block_ids, :, block_offsets, :],
+        "k_scale_cache_touched": k_scale_cache_f32[block_ids, :, block_offsets, 0],
+    }
+
+
+def compare_outputs(actual: Dict[str, torch.Tensor], expected: Dict[str, torch.Tensor],
+                    cpu_inputs: Dict[str, object], args):
+    actual_touched = select_touched_cache_rows(actual, cpu_inputs["slot_mapping"])
+    expected_touched = select_touched_cache_rows(expected, cpu_inputs["slot_mapping"])
+
+    results = [
+        compare_tensor("q_out", actual["q_out"], expected["q_out"], args.fp8_atol, args.fp8_rtol),
+        compare_tensor("k_cache_touched", actual_touched["k_cache_touched"],
+                       expected_touched["k_cache_touched"], args.fp8_atol, args.fp8_rtol),
+        compare_tensor("v_cache_touched", actual_touched["v_cache_touched"],
+                       expected_touched["v_cache_touched"], args.fp8_atol, args.fp8_rtol),
+        compare_tensor("q_scale", actual["q_scale"], expected["q_scale"], args.float_atol, args.float_rtol),
+        compare_tensor("k_scale_cache_touched", actual_touched["k_scale_cache_touched"],
+                       expected_touched["k_scale_cache_touched"], args.float_atol, args.float_rtol),
+    ]
+    total = sum(result.total for result in results)
+    matched = sum(result.matched for result in results)
+    overall = matched / total if total else 1.0
+    return results, overall
 
 
 def expected_shapes(case: Case):
@@ -114,83 +484,54 @@ def expected_shapes(case: Case):
     return (case.n_q, total_tokens, HEAD_SIZE), (case.n_q, total_tokens)
 
 
-def assert_outputs(case: Case, outputs):
-    q_out, q_scale = outputs[:2]
+def assert_shapes(case: Case, outputs: Dict[str, torch.Tensor]):
     q_out_shape, q_scale_shape = expected_shapes(case)
-    assert tuple(q_out.shape) == q_out_shape, f"{case.name}: q_out shape mismatch: {tuple(q_out.shape)} vs {q_out_shape}"
-    assert tuple(q_scale.shape) == q_scale_shape, (
-        f"{case.name}: q_scale shape mismatch: {tuple(q_scale.shape)} vs {q_scale_shape}")
-    assert q_out.dtype == torch.float8_e4m3fn, f"{case.name}: q_out dtype mismatch: {q_out.dtype}"
-    assert q_scale.dtype == torch.float32, f"{case.name}: q_scale dtype mismatch: {q_scale.dtype}"
+    assert tuple(outputs["q_out"].shape) == q_out_shape, (
+        f"{case.name}: q_out shape mismatch: {tuple(outputs['q_out'].shape)} vs {q_out_shape}")
+    assert tuple(outputs["q_scale"].shape) == q_scale_shape, (
+        f"{case.name}: q_scale shape mismatch: {tuple(outputs['q_scale'].shape)} vs {q_scale_shape}")
+    assert outputs["q_out"].dtype == torch.float8_e4m3fn, f"{case.name}: q_out dtype mismatch: {outputs['q_out'].dtype}"
+    assert outputs["q_scale"].dtype == torch.float32, f"{case.name}: q_scale dtype mismatch: {outputs['q_scale'].dtype}"
 
 
-def run_case(case: Case, mode: str, device: str):
-    from cann_ops_transformer.ops import (
-        qkv_rms_norm_rope_cache_with_k_scale,
-        qkv_rms_norm_rope_cache_with_k_scale_functional,
-    )
-
-    tensors = make_inputs(case, device)
-    with torch.no_grad():
-        if mode == "inplace":
-            q_out, q_scale = qkv_rms_norm_rope_cache_with_k_scale(
-                tensors["qkv"],
-                tensors["q_gamma"],
-                tensors["k_gamma"],
-                tensors["cos_sin"],
-                tensors["slot_mapping"],
-                tensors["k_cache"],
-                tensors["v_cache"],
-                tensors["k_scale_cache"],
-                tensors["cu_seq_len"],
-                tensors["actual_seq_lens"],
-                tensors["head_nums"],
-                tensors["input_layout"],
-                q_rotation=tensors["q_rotation"],
-                k_rotation=tensors["k_rotation"],
-                v_scale=tensors["v_scale"],
-                epsilon=tensors["epsilon"],
-            )
-            outputs = (q_out, q_scale, tensors["k_cache"], tensors["v_cache"], tensors["k_scale_cache"])
-        elif mode == "functional":
-            outputs = qkv_rms_norm_rope_cache_with_k_scale_functional(
-                tensors["qkv"],
-                tensors["q_gamma"],
-                tensors["k_gamma"],
-                tensors["cos_sin"],
-                tensors["slot_mapping"],
-                tensors["k_cache"],
-                tensors["v_cache"],
-                tensors["k_scale_cache"],
-                tensors["cu_seq_len"],
-                tensors["actual_seq_lens"],
-                tensors["head_nums"],
-                tensors["input_layout"],
-                q_rotation=tensors["q_rotation"],
-                k_rotation=tensors["k_rotation"],
-                v_scale=tensors["v_scale"],
-                epsilon=tensors["epsilon"],
-            )
-        else:
-            raise ValueError(f"unknown mode: {mode}")
-
-    torch.npu.synchronize()
-    assert_outputs(case, outputs)
-    q_out, q_scale, k_cache, v_cache, k_scale_cache = outputs
+def print_case_results(case: Case, results: List[MatchResult]) -> None:
     print(
-        f"[PASS] case={case.name} mode={mode} layout={case.input_layout} "
-        f"q_out={tuple(q_out.shape)}/{q_out.dtype} q_scale={tuple(q_scale.shape)}/{q_scale.dtype} "
-        f"k_cache={tuple(k_cache.shape)} v_cache={tuple(v_cache.shape)} "
-        f"k_scale_cache={tuple(k_scale_cache.shape)}"
+        f"[CASE] {case.name} layout={case.input_layout} heads=({case.n_q},{case.n_k},{case.n_v}) "
+        f"seq={case.batch_seq_lens} actual_seq={case.actual_seq_lens} slot={case.slot_pattern} "
+        f"cache_stride={case.cache_stride} cache_pad={case.cache_pad}"
     )
+    for result in results:
+        print(
+            f"  [RESULT] {result.name}: match={result.rate * 100.0:.2f}% "
+            f"matched={result.matched}/{result.total} max_abs_diff={result.max_abs_diff:.4g}"
+        )
+
+
+def run_case(case: Case, args) -> float:
+    cpu_inputs = make_cpu_inputs(case)
+    expected = golden_outputs(cpu_inputs)
+    actual = run_inplace(cpu_inputs, case, args.device)
+    assert_shapes(case, actual)
+    results, overall = compare_outputs(actual, expected, cpu_inputs, args)
+    print_case_results(case, results)
+    for result in results:
+        if result.rate < args.min_match_rate:
+            raise AssertionError(
+                f"{case.name}: {result.name} golden match rate {result.rate:.6f} "
+                f"is below threshold {args.min_match_rate:.6f}")
+    return overall
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", action="append", help="case name to run; may be repeated; default: all")
+    parser.add_argument("--case", action="append", help="case name to run; may be repeated; default: all 60 cases")
     parser.add_argument("--list-cases", action="store_true")
-    parser.add_argument("--mode", choices=("inplace", "functional", "both"), default="both")
     parser.add_argument("--device", default="npu")
+    parser.add_argument("--min-match-rate", type=float, default=0.99)
+    parser.add_argument("--fp8-atol", type=float, default=1.0)
+    parser.add_argument("--fp8-rtol", type=float, default=0.0)
+    parser.add_argument("--float-atol", type=float, default=1e-2)
+    parser.add_argument("--float-rtol", type=float, default=1e-2)
     return parser.parse_args()
 
 
@@ -209,10 +550,9 @@ def main():
     if unknown:
         raise ValueError(f"unknown case(s): {unknown}; available: {list(case_map)}")
 
-    modes = ("inplace", "functional") if args.mode == "both" else (args.mode,)
     for case_name in selected_names:
-        for mode in modes:
-            run_case(case_map[case_name], mode, args.device)
+        run_case(case_map[case_name], args)
+    print(f"[SUMMARY] cases={len(selected_names)}")
     return 0
 
 
