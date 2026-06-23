@@ -268,6 +268,7 @@ __aicore__ inline void CombineTokensWithUrmaSend(
             continue;
         }
         hcomm.Drain(GetUrmaCommHandle(mc2Context, dr, rankId));
+        PipeBarrier<PIPE_ALL>();1
     }
     printf("complete drain\n");
 }
