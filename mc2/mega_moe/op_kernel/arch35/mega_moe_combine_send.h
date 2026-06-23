@@ -199,23 +199,23 @@ __aicore__ inline void CombineTokensWithUrmaSend(
     }
 
     uint32_t rankIndex = 0;
-    uint32_t cnt = 0;
+    // uint32_t cnt = 0;
     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
     while (true) {
         while ((rankIndex + startRankId == rankId) || sendTokenCnt.GetValue(rankIndex) == totalTokenCnt.GetValue(rankIndex)) {
             rankIndex = (rankIndex + 1) % processRankNum;
         }
-        cnt++;
+        // cnt++;
         // 读 notify count
         __gm__ int32_t* notifyAddr = (__gm__ int32_t*)(params.workspaceInfo.combineSendNotifyPtr + (rankIndex + startRankId) * sizeof(int32_t));
         uint32_t curCnt = ReadGmByPassDCache(notifyAddr);
         uint32_t completeCnt = sendTokenCnt.GetValue(rankIndex);
-        if (cnt % 100000 == 0) {
-            printf("rankId=%d, processRankId=%d, curCnt=%d, completeCnt=%d\n", rankId, rankIndex + startRankId, curCnt, completeCnt);
-        }
-        if (cnt >= 30000000) {
-            break;
-        }
+        // if (cnt % 100000 == 0) {
+        //     printf("rankId=%d, processRankId=%d, curCnt=%d, completeCnt=%d\n", rankId, rankIndex + startRankId, curCnt, completeCnt);
+        // }
+        // if (cnt >= 30000000) {
+        //     break;
+        // }
         if (curCnt > completeCnt) {
             uint32_t needCnt = curCnt - completeCnt;
             uint32_t index = completeCnt;

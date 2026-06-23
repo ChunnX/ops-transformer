@@ -1210,12 +1210,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
-    // // 4. 本卡数据Unpermute
-    // if constexpr(g_coreType == AIV) {
-    //     UnpermuteBuffInit();
-    //     CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-    //     Unpermute();
-    // }
+    // 4. 本卡数据Unpermute
+    if constexpr(g_coreType == AIV) {
+        UnpermuteBuffInit();
+        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        Unpermute();
+    }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
