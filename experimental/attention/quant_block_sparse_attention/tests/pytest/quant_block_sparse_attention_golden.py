@@ -201,12 +201,16 @@ def _kv_index(layout_q, cu_seqlens_kv, batch_idx, kv_idx):
 def _get_query(query, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx):
     if layout_q == "BSND":
         return query[batch_idx, q_idx, head_idx]
+    if layout_q == "NTD":
+        return query[head_idx, int(cu_seqlens_q[batch_idx].item()) + q_idx]
     return query[_query_index(layout_q, cu_seqlens_q, batch_idx, q_idx), head_idx]
 
 
 def _get_q_scale(q_scale, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx):
     if layout_q == "BSND":
         return q_scale[batch_idx, q_idx, head_idx]
+    if layout_q == "NTD":
+        return q_scale[head_idx, int(cu_seqlens_q[batch_idx].item()) + q_idx]
     return q_scale[_query_index(layout_q, cu_seqlens_q, batch_idx, q_idx), head_idx]
 
 
@@ -244,6 +248,9 @@ def _make_scales(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths):
     if layout_q == "BSND":
         q_shape = (case["B"], case["S1"], case["N1"])
         k_shape = (case["B"], case["S2"], case["N2"])
+    elif layout_q == "NTD":
+        q_shape = (case["N1"], int(cu_seqlens_q[-1].item()))
+        k_shape = (int(cu_seqlens_kv[-1].item()), case["N2"])
     else:
         q_shape = (int(cu_seqlens_q[-1].item()), case["N1"])
         k_shape = (int(cu_seqlens_kv[-1].item()), case["N2"])
@@ -463,6 +470,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         query = _rand_fp8((batch, s1, n1, head_dim), generator)
         cu_seqlens_q_input = None
         cu_seqlens_kv_input = None
+    elif case["layout_q"] == "NTD":
+        query = _rand_fp8((n1, int(cu_seqlens_q[-1].item()), head_dim), generator)
+        cu_seqlens_q_input = cu_seqlens_q
+        cu_seqlens_kv_input = cu_seqlens_kv
     else:
         query = _rand_fp8((int(cu_seqlens_q[-1].item()), n1, head_dim), generator)
         cu_seqlens_q_input = cu_seqlens_q
@@ -486,7 +497,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths)
 
     if case["Testcase_Name"] is None:
-        mode = "prefill" if case["layout_q"] == "TND" else "decode"
+        mode = "prefill" if case["layout_q"] in ("TND", "NTD") else "decode"
         case["Testcase_Name"] = (
             f"quantBlockSparseAttention_{mode}_{case['layout_q']}_{case['layout_kv']}_"
             f"{batch}_{n1}_{n2}_{s1}_{s2}_{head_dim}"

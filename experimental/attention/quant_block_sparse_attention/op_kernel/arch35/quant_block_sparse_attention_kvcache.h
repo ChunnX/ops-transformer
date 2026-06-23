@@ -85,9 +85,6 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
     } else if constexpr (layout == BSALayout::NTD) {
         runParam.qBScalarOffset = (runParam.boIdx == 0) ? 0 : constInfo.t1Size * runParam.n2oIdx * (constInfo.gSize + runParam.goIdx) + actualSeqQlenAddr[runParam.boIdx];
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
-    } else if constexpr (layout == BSALayout::NTD) {
-        runParam.qBScalarOffset = 0;
-        runParam.qBOffset = 0;
     }
 
     // 暂时用不到，但保留的参数计算
@@ -151,8 +148,8 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
             runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
                 runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
         } else if constexpr (layout == BSALayout::NTD) {
-            int64_t ntdActualSeqLen = (bIdx == 0) ? actualSeqQlenAddr[0] :
-                (actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1]);
+            int64_t ntdActualSeqLen = (bIdx == 0) ? actualSeqQlenAddr[1] :
+                (actualSeqQlenAddr[bIdx + 1] - actualSeqQlenAddr[bIdx]);
             runParam.tensorQOffset = runParam.n2oIdx * (int64_t)constInfo.gSize * ntdActualSeqLen * constInfo.dSize +
                 runParam.goIdx * (int64_t)ntdActualSeqLen * constInfo.dSize +
                 runParam.cubeSOuterOffset * constInfo.dSize;
