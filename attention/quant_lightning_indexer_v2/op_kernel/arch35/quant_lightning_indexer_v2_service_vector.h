@@ -127,10 +127,8 @@ private:
     TBuf<TPosition::VECCALC> indicesOutBuf_;
     LocalTensor<uint32_t> indicesOutLocal_;
 
-    TBuf<TPosition::VECCALC> scoreOutBuf_;
+    // scoreOutLocal_ 和 topkSharedTmpLocal_ 复用 resMm1UB_（ProcessVec1 结束后空闲）
     LocalTensor<SCORE_T> scoreOutLocal_;
-
-    TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
 
     LocalTensor<int32_t> outInvalidLocal_;
@@ -187,25 +185,31 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(SCORE_T));
     vec1OutUB_ = outBuf_.Get<SCORE_T>(); // out
 
-    // Topk
+    // Topk: mrgValueLocal_ 和 indicesOutLocal_ 独立分配（跨迭代使用，不可复用）
     pipe->InitBuffer(mrgValueBuf_,
         (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));
-    // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
-    outInvalidLocal_ = mrgValueBuf_.Get<int32_t>();
 
     pipe->InitBuffer(indicesOutBuf_,
         (topkCountAlign256_ + 64) * sizeof(uint32_t));
     // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(scoreOutBuf_, (topkCountAlign256_ + 64) * sizeof(SCORE_T));
-        // (topkCountAlign256_ + 64) * sizeof(SCORE_T) 64:duplicate刷-1额外空间
-    scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
+    // 桶排序相关 buffer 全部复用 resMm1UB_（ProcessVec1 结束后 resMm1UB_ 空闲）
+    // 布局：resMm1UB_ 前部用于 outInvalidLocal_，后部用于 topk 临时 buffer
+    // outInvalidLocal_: CleanInvalidOutput 路径使用（与 ProcessTopK 互斥）
+    outInvalidLocal_ = resMm1UB_.template ReinterpretCast<int32_t>();
 
-    uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
-    pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
-    topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
+    // topkSharedTmpLocal_ 布局在 resMm1UB_ 中：
+    //   hisIndexLocal[1](topK) | histograms(256) | idxHigh(256) | idxLow(256) | nkValue(64) | tmpIndex(topK+trunkLen)
+    //   其中 tmpIndexLocal 与 hisIndexLocal[1] 空间复用（topk 内部保证时序安全）
+    topkSharedTmpLocal_ = resMm1UB_.template ReinterpretCast<uint32_t>();
+
+    // scoreOutLocal_ 布局在 topkSharedTmpLocal_ 之后
+    //   偏移 = topK + 3*256 + 64 = 2048 + 832 = 2880 uint32
+    uint32_t scoreOutOffsetInU32 = topkCountAlign256_ + 3 * 256 + 64;
+    scoreOutLocal_ = resMm1UB_[scoreOutOffsetInU32].template ReinterpretCast<SCORE_T>();
+
     topkOp_.InitBuffers(topkSharedTmpLocal_);
 
     // 刷-1（MXFP8 场景不需要 kScale buffer）
