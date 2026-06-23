@@ -458,42 +458,63 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatc
     if constexpr(g_coreType == AIC) {
         return;
     }
-    PRINTF("ResetUrmaDispatchState1: rankId=%u\n", rankId_);
+    PRINTF("ResetUrmaDispatchState1: rankId=%u, blockIdx=%u, aivCoreIdx=%u, subBlockIdx=%u, blockAivNum=%u, "
+        "serverNum=%u, m=%u, relayRecordBytes=%u, mxQuantTokenScaleAlignBytes=%u\n",
+        rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_, blockAivNum_, serverNum_, m_, relayRecordBytes_,
+        mxQuantTokenScaleAlignBytes_);
     for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
         __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
             params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(serverIdx));
         WriteGmByPassDCache(countPtr, int32_t(0));
     }
-    PRINTF("ResetUrmaDispatchState2: rankId=%u\n", rankId_);
+    PRINTF("ResetUrmaDispatchState2: rankId=%u, aivCoreIdx=%u\n", rankId_, aivCoreIdx_);
     __gm__ int32_t* dedupPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDedupMaskPtr);
     uint32_t dedupIntNum = serverNum_ * (sendDedupStrideBytes_ / sizeof(int32_t));
+    if (aivCoreIdx_ < 4) {
+        PRINTF("ResetUrmaDispatchState dedup begin: rankId=%u, aivCoreIdx=%u, dedupIntNum=%u, "
+            "sendDedupStrideBytes=%u\n",
+            rankId_, aivCoreIdx_, dedupIntNum, sendDedupStrideBytes_);
+    }
     for (uint32_t idx = aivCoreIdx_; idx < dedupIntNum; idx += blockAivNum_) {
         WriteGmByPassDCache(dedupPtr + idx, int32_t(0));
     }
-    PRINTF("ResetUrmaDispatchState3: rankId=%u\n", rankId_);
+    PRINTF("ResetUrmaDispatchState3: rankId=%u, aivCoreIdx=%u\n", rankId_, aivCoreIdx_);
     __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendCursorPtr);
     for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
         WriteGmByPassDCache(cursorPtr + serverIdx, int32_t(0));
     }
-    PRINTF("ResetUrmaDispatchState4: rankId=%u\n", rankId_);
+    PRINTF("ResetUrmaDispatchState4: rankId=%u, aivCoreIdx=%u\n", rankId_, aivCoreIdx_);
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDonePtr);
     for (uint32_t idx = aivCoreIdx_; idx < blockNum_; idx += blockAivNum_) {
         WriteGmByPassDCache(donePtr + idx, int32_t(0));
     }
 
-    PRINTF("ResetUrmaDispatchState5: rankId=%u\n", rankId_);
+    PRINTF("ResetUrmaDispatchState5: rankId=%u, aivCoreIdx=%u\n", rankId_, aivCoreIdx_);
     // relay 接收区按 tokenId 定位，二级通信通过 meta.flag 判断该 token 是否已经到达。
     uint32_t relayRecordNum = serverNum_ * m_;
+    if (aivCoreIdx_ < 4) {
+        PRINTF("ResetUrmaDispatchState relay begin: rankId=%u, aivCoreIdx=%u, relayRecordNum=%u, "
+            "relayRecordBytes=%u, relayTokenDataPtr=%lu\n",
+            rankId_, aivCoreIdx_, relayRecordNum, relayRecordBytes_,
+            reinterpret_cast<uint64_t>(params_.peermemInfo.relayTokenDataPtr));
+    }
     for (uint32_t idx = aivCoreIdx_; idx < relayRecordNum; idx += blockAivNum_) {
         uint64_t recordOffset = static_cast<uint64_t>(idx) * static_cast<uint64_t>(relayRecordBytes_);
         __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(
             params_.peermemInfo.relayTokenDataPtr + recordOffset + mxQuantTokenScaleAlignBytes_);
+        if (aivCoreIdx_ < 4 && (idx == aivCoreIdx_ || idx + blockAivNum_ >= relayRecordNum)) {
+            PRINTF("ResetUrmaDispatchState relay clear: rankId=%u, aivCoreIdx=%u, idx=%u, recordOffset=%lu, "
+                "metaPtr=%lu\n",
+                rankId_, aivCoreIdx_, idx, recordOffset, reinterpret_cast<uint64_t>(metaPtr));
+        }
         WriteGmByPassDCache(metaPtr, int32_t(0));
         WriteGmByPassDCache(metaPtr + 1, int32_t(0));
     }
+    PRINTF("ResetUrmaDispatchState before PipeBarrier: rankId=%u, aivCoreIdx=%u\n", rankId_, aivCoreIdx_);
     PipeBarrier<PIPE_ALL>();
+    PRINTF("ResetUrmaDispatchState before SyncAll: rankId=%u, aivCoreIdx=%u\n", rankId_, aivCoreIdx_);
     SyncAll<true>();
-    PRINTF("ResetUrmaDispatchStateDone: rankId=%u\n", rankId_);
+    PRINTF("ResetUrmaDispatchStateDone: rankId=%u, aivCoreIdx=%u\n", rankId_, aivCoreIdx_);
 }
 
 // ===============================================================================================
