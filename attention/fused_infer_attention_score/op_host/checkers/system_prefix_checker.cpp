@@ -34,7 +34,7 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDim(const FiaTilingInfo &f
     auto &keySharedPrefixTensor = fiaInfo.opParamInfo.keySharedPrefix.tensor;
     auto &valueSharedPrefixTensor = fiaInfo.opParamInfo.valueSharedPrefix.tensor;
     if (fiaInfo.sysPrefixFlag) {
-        // 若keySharedPrefix或valueSharedPrefix的shape为空，则放弃后续校验
+        // 若不使能systemPrefix，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
     // keySharedPrefix、valueSharedPrefix、key、value的维度相同
@@ -356,10 +356,10 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
             "prefix must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/TND_NTD/NTD_TND"),
         return ge::GRAPH_FAILED);
-    // 不支持PFA MLA场景
+    // 不支持PFA MLA场景, IFA MLA场景
     OP_CHECK_IF((enablePFAMLA || enableIFAMLA || enablePFARope),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty in PFA MLA scenario"),
+            "prefix must be empty in PFA/IFA MLA scenario"),
         return ge::GRAPH_FAILED);
     // 不支持IFA MLA场景
     OP_CHECK_IF((enableIFAMLA),
