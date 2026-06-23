@@ -643,19 +643,19 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t SparseLightningIndexerGradKLLossTilingBase::GetS2RealSize(int32_t sparseMode, int32_t s1Size, 
-                                                                        int32_t s2Size, int32_t s1Idx) 
+int64_t SparseLightningIndexerGradKLLossTilingBase::GetS2RealSize(int32_t sparseMode, int32_t s1Size,
+                                                                        int32_t s2Size, int32_t s1Idx)
 {
     int64_t s2RealSize = 0;
     // sparsemode = 3 的情形
     if (sparseMode == static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
-        s2RealSize = static_cast<int64_t>((s2Size - s1Size) + s1Idx + 1);
+        s2RealSize = (static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size)) + s1Idx + 1;
         if (s2RealSize <= 0) {
             s2RealSize = static_cast<int64_t>(s2Size);
         }
     }
     s2RealSize = AlignUp(s2RealSize, 512L);
-    return std::min(s2RealSize, (int64_t)sliGradkllossBaseParams_->get_kSize());
+    return std::min(s2RealSize, static_cast<int64_t>(sliGradkllossBaseParams_->get_kSize()));
 }
 
 bool SparseLightningIndexerGradKLLossTilingBase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray)

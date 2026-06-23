@@ -524,6 +524,7 @@ struct CVSharedParams<true, true> {
     int64_t kvPrefixSize;
 
     int64_t totalSize;
+    float scaleValue;
 };
 }
 

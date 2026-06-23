@@ -125,20 +125,20 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::CheckInputNotNull() const
     if (permuteOutFlag_) {
         tilingData->isPermuteOut = true;
         OP_TILING_CHECK(context_->GetOutputDesc(OUTPUT_PERMUTE_OUT_INDEX) == nullptr,
-            OP_LOGE(context_->GetNodeName(), "When permuteOutFlag is true, output permuteOut returned null."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "permuteOut"), return ge::GRAPH_FAILED);
     }
     if (hasSharedExpertFlag_) {
         // mmX mmWeight
         OP_TILING_CHECK((context_->GetOptionalInputDesc(MM_X_INDEX) == nullptr),
-            OP_LOGE(context_->GetNodeName(), "When hasSharedExpertFlag is true, input mmX can not be null."),
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmX"),
             return ge::GRAPH_FAILED);
         // gmmWeight
         OP_TILING_CHECK(context_->GetInputDesc(MM_WEIGHT_INDEX) == nullptr,
-            OP_LOGE(context_->GetNodeName(), "When hasSharedExpertFlag is true, input mmWeight can not be null."),
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmWeight"),
             return ge::GRAPH_FAILED);
         // mmY
         OP_TILING_CHECK(context_->GetOutputDesc(OUTPUT_MM_Y_INDEX) == nullptr,
-            OP_LOGE(context_->GetNodeName(), "When hasSharedExpertFlag is true, output mmy can not be null."),
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "mmY"),
                     return ge::GRAPH_FAILED);
     }
     OP_LOGD(context_->GetNodeName(), "end CheckInputNotNull.");
@@ -256,13 +256,13 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
     uint8_t &commMode) const
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr,
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(epWorldSizePtr == nullptr,
-        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "epWorldSize"), return ge::GRAPH_FAILED);
     int64_t rankDim = *epWorldSizePtr;
     const size_t maxLength = 6UL;
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
@@ -278,7 +278,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
         OP_LOGI(context->GetNodeName(),
             "commMode is '', and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
+            "'', 'ai_cpu', 'ccu'");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -297,8 +298,10 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
     } else {
         alltoallvHcclDataType = mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
     }
-    OP_TILING_CHECK(alltoallvHcclDataType == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED, OP_LOGE(context_->GetNodeName(), "Ge datatype gmmXDataType(%s) "
-        "is not found in HCCL_DATA_TYPE.", ge::TypeUtils::DataTypeToSerialString(gmmXDataType_).c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(alltoallvHcclDataType == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "gmmXDataType",
+            Ops::Base::ToString(gmmXDataType_).c_str(), "supported HCCL data types"),
+        return ge::GRAPH_FAILED);
     uint8_t alltoAllvDataType = static_cast<uint8_t>(alltoallvHcclDataType);
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,

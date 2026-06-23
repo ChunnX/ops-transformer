@@ -73,14 +73,9 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
     OP_LOGD(nodeName, "topK is %u", tilingData->topK);
     OP_LOGD(nodeName, "aicNum is %u", tilingData->aicNum);
     OP_LOGD(nodeName, "expertPerRank is %u", tilingData->expertPerRank);
-    OP_LOGD(nodeName, "groupListType is %u", tilingData->groupListType);
 
     OP_LOGD(nodeName, "epWorldSize is %u", tilingData->epWorldSize);
     OP_LOGD(nodeName, "maxOutputSize is %u", tilingData->maxOutputSize);
-
-    OP_LOGD(nodeName, "transX is %s", (tilingData->transX ? "True" : "False"));
-    OP_LOGD(nodeName, "transW is %s", (tilingData->transW ? "True" : "False"));
-    OP_LOGD(nodeName, "transW2 is %s", (tilingData->transW2 ? "True" : "False"));
 }
 
 void printWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -151,6 +146,16 @@ static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *co
     return opQuantMode;
 }
 
+static int64_t GetCombineQuantModeByAttr(const gert::TilingContext *context, MegaMoeConfig &config)
+{
+    auto attrs = context->GetAttrs();
+    auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
+    if (combineQuantModePtr == nullptr) {
+        return COMBINE_QUANT_OUT_TYPE_NO_QUANT;
+    }
+    return static_cast<int64_t>(*combineQuantModePtr);
+}
+
 static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &config,
     MegaMoeTilingData *tilingData, const char *nodeName)
 {
@@ -158,8 +163,9 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
 
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
+    int64_t combineQuantMode = GetCombineQuantModeByAttr(context, config);
 
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode);
+    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
@@ -248,13 +254,23 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             (std::string("should equal ") + std::to_string(expertPerRank * epWorldSize)).c_str()),
         return ge::GRAPH_FAILED);
 
+    // maskRecv Size
+    int64_t compareCount = ops::CeilAlign((int64_t)(bs * topK * sizeof(int32_t)), (int64_t)(ALIGN_256))
+        / (int64_t)sizeof(int32_t);
+    int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32); // 8 = block_32 / sizeof(int32_t)
+    int64_t maskSlotSize = maskAlignSize + ALIGN_32;  // mask + 32B count
+    int64_t maskRecvSize = ops::CeilAlign(expertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
+    // quantTokenScale Size
+    uint32_t mxScaleNum = ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32));
+    uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
+    uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+    uint32_t tokenBytes = ops::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+    int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+    // combineSend Size
+    int64_t combineSendSize = ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512);
+    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
-    // leastCclBufferSize = PEERMEM_DATA_OFFSET + tokenPerExpert + quantTokenScale + combineOut
-    int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET +
-        (epWorldSize * ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) * sizeof(int32_t)) + // tokenPerExpert
-        (ops::CeilAlign(bs * topK * (h + h / MXFP_SCALE_GROUP_NUM), ALIGN_512) * sizeof(int8_t)) + // quantTokenScale
-        (ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512)); // combineOut
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize",
             std::to_string(cclBufferSize).c_str(),
@@ -305,9 +321,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         return ge::GRAPH_FAILED);
 
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
-    OP_TILING_CHECK(*combineQuantModePtr != 0,
+    OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT &&
+                    *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E5M2 &&
+                    *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E4M3FN,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineQuantMode",
-            std::to_string(*combineQuantModePtr).c_str(), "0"),
+            std::to_string(*combineQuantModePtr).c_str(),
+            "only support no_quant(0), fp8_e5m2(3) and fp8_e4m3fn(4)"),
         return ge::GRAPH_FAILED);
 
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
@@ -344,7 +363,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->bs * tilingData->epWorldSize *
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
-    tilingData->dispatchRows = 2;
+    tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -906,11 +925,6 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     tilingData->hiddenDim = static_cast<uint32_t>(hiddenDim);
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
-    tilingData->groupListType = 1;
-
-    tilingData->transX = false;
-    tilingData->transW = true;
-    tilingData->transW2 = true;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -948,6 +962,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     tilingData->aicNum = aicNum;
+    tilingData->blockAivNum = aivNum;
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "aivNum/aicNum",
             (std::to_string(aivNum) + ", " + std::to_string(aicNum)).c_str(),

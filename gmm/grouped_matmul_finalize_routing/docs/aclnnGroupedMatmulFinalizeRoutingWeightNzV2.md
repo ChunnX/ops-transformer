@@ -732,7 +732,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         ret = aclnnGroupedMatmulFinalizeRoutingWeightNzV2(workspaceAddr, workspaceSize, executor, stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzV2 failed. ERROR: %d\n", ret); return ret);
 
-        // 4. （固定写法）同步等待任务执行结束
+        // 4.（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
@@ -896,7 +896,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
   int main()
   {
-      // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+      // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
       // 根据自己的实际device填写deviceId
       int32_t deviceId = 0;
       aclrtStream stream;
@@ -1015,7 +1015,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       CHECK_FREE_RET(ret == ACL_SUCCESS,
                     LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzV2 failed. ERROR: %d\n", ret); return ret);
 
-      // 4. （固定写法）同步等待任务执行结束
+      // 4.（固定写法）同步等待任务执行结束
       ret = aclrtSynchronizeStream(stream);
       CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

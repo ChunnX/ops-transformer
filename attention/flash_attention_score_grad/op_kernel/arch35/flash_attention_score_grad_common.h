@@ -220,6 +220,11 @@ __aicore__ constexpr bool NEED_DETER_PREFIX(const uint8_t deterSparseType, bool 
     return isTnd && IS_DETER_NEW(deterSparseType);
 }
 
+__aicore__ constexpr bool NEED_DETER(const uint8_t deterSparseType)
+{
+    return deterSparseType != NO_DETER;
+}
+
 template <typename T, bool IS_WRITE_UB>
 struct DqkvResPos {
     using PosType = typename std::conditional<IS_WRITE_UB, LocalTensor<T> &, GlobalTensor<T> &>::type;
@@ -253,6 +258,16 @@ __aicore__ constexpr bool GET_IS_L1_REUSE(const uint32_t HEAD_DIM_ALIGN, const b
              IsSameType<T1, hifloat8_t>::value));
 }
 
+template <typename T1>
+__aicore__ constexpr bool GET_IS_NZ_OUT(const uint8_t SPLIT_AXIS, const uint32_t HEAD_DIM_ALIGN, const bool IS_TND,
+                                        const bool IS_ROPE, const bool IS_DETER_OLD)
+{
+    return (SPLIT_AXIS == BN2GS1S2 &&
+            (!IsSameType<T1, float>::value && !IsSameType<T1, fp8_e5m2_t>::value &&
+             !IsSameType<T1, fp8_e4m3fn_t>::value && !IsSameType<T1, hifloat8_t>::value) &&
+            HEAD_DIM_ALIGN == static_cast<uint32_t>(DTemplateType::Aligned128) && !IS_DETER_OLD);
+}
+
 // 判断DK/DV能否驻留在L0C的宏。
 // 计算公式：max(mm1_size, mm2_size, mm3_size) + mm4_size + mm5_size <= L0C_MAX_SIZE
 // 其中 mm*_size 对应不同矩阵乘的中间结果大小。
@@ -276,7 +291,7 @@ __aicore__ constexpr bool GET_IS_L1_REUSE(const uint32_t HEAD_DIM_ALIGN, const b
     X(IS_N_EQUAL, bool, false)                                                                                         \
     X(IS_D_NO_EQUAL, bool, false)                                                                                      \
     X(IS_ROPE, bool, false)                                                                                            \
-    X(FP8_OPEN_TSCM, bool, false)                                                                                      \
+    X(IS_NZ_OUT, bool, false)                                                                                      \
     X(IS_TND_SWIZZLE, bool, false)                                                                                     \
     X(SPLIT_AXIS, uint8_t, 0)                                                                                          \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128)                                                      \
@@ -318,12 +333,12 @@ __aicore__ constexpr bool GET_IS_L1_REUSE(const uint32_t HEAD_DIM_ALIGN, const b
     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
 #define FagOldTilingType                                                                                               \
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, \
-                                                                 false> *__restrict
+    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
+        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, false> *__restrict
 
 #define FagTilingType                                                                                                  \
-    const FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, \
-                                                                 IS_TND_SWIZZLE> *__restrict
+    const __gm__ FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<NEED_DETER(DETER_SPARSE_TYPE), \
+        NEED_DETER_PREFIX(DETER_SPARSE_TYPE, IS_TND), IS_TND, IS_TND_SWIZZLE> *__restrict
 
 struct LoopInfo {
     int64_t bIdx{0};
@@ -348,10 +363,6 @@ struct DeterConstInfo {
     uint32_t dqEachVectorSize;
     uint32_t dkvEachVectorSize;
     // 确定性计算MTE3的stride
-    int64_t deterBStride;
-    int64_t deterN2Stride;
-    int64_t deterGStride;
-    int64_t deterS1oStride;
     uint32_t deterDqkSrcStride;
     uint32_t deterDvSrcStride;
     uint32_t deterDqDstStride;
@@ -402,11 +413,11 @@ struct FagConstInfo {
     int64_t s1Outer;
     int64_t s2Outer;
     int64_t s1CvTail;
-    int64_t s1Tail;
     int64_t s2Tail;
     uint32_t sfmgMaxLoopSize;
     uint32_t dAlignToBlock;
-    uint32_t dAlignToBlockForFp8;
+    uint32_t dAlign16;
+    uint32_t dvAlign16;
     int64_t mm2Ka;
     int64_t mm2Kb;
     int64_t mm3Ka;

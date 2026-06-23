@@ -19,7 +19,7 @@
 
 namespace optiling {
 namespace smlag {
-constexpr uint32_t WORKSPACE_BASE_CAL = 32 * 1024 * 1024; // 100MB系统预留
+constexpr uint32_t WORKSPACE_BASE_CAL = 32 * 1024 * 1024; // 32MB系统预留
 constexpr uint32_t BLOCK = 32;                            // 32B
 constexpr uint32_t B32 = 4;                               // 4B
 constexpr uint32_t B16 = 2;
@@ -180,7 +180,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = sysLen;
     workspaces[0] += selectedKWorkspaceLen * currentUseCoreNum;
-    workspaces[0] += mm12WorkspaceLen * 2 * currentUseCoreNum;
+    workspaces[0] += mm12WorkspaceLen * 4 * currentUseCoreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen;
 
     if (tmpData.mode == SMLAG_SCFA_MODE) {
@@ -196,7 +196,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
 
     int64_t workspaceOffsets = selectedKWorkspaceLen * currentUseCoreNum;
-    workspaceOffsets += mm12WorkspaceLen * 2 * currentUseCoreNum;
+    workspaceOffsets += mm12WorkspaceLen * 4 * currentUseCoreNum;
     tilingData.postTilingData.set_dqWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + dqWorkspaceLen;
     tilingData.postTilingData.set_dkWorkSpaceOffset(workspaceOffsets);
@@ -577,7 +577,8 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
 }
 
 
-REGISTER_OPS_TILING_TEMPLATE(SparseFlashMlaGrad, SparseFlashMlaGradBasicTiling, 1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashMlaGrad, SparseFlashMlaGradBasicTiling,
+                                   std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 1);
 
 } // namespace smlag
 } // namespace optiling

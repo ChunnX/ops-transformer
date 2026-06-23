@@ -263,12 +263,13 @@ public:
             uint32_t qSTileSizeAct = (qSTileIdxCurXBlock == qSTileNumCurXBlock - 1) ?
                 (xBlockSize - qSTileIdxCurXBlock * qBaseTile_) : qBaseTile_;
             // calc the gathered kvS from sparse mask
-            uint32_t gmOffsetSparseCount =
-                curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx;
+            uint64_t gmOffsetSparseCount =
+                static_cast<uint64_t>(curBatch) * qHeads_ * xBlockNumAligned_ +
+                static_cast<uint64_t>(qHeadIdx) * xBlockNumAligned_ + xBlockIdx;
             uint32_t yBlockNumRsvd = gSparseCount.GetValue(gmOffsetSparseCount);
 
-            uint32_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
-            uint32_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
+            uint64_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
+            uint64_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
             uint32_t lastSparseIdx = gSparseIdx.GetValue(lastIdxOffset);
 
             uint32_t yBlockNumAval = static_cast<uint32_t>(CeilDiv(kvSeqlen, static_cast<int64_t>(blockShapeY_)));

@@ -24,7 +24,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/utils/hccl_util.h"
@@ -139,8 +139,18 @@ static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const a
 }
 
 static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *output, bool isTransA) {
-  OP_CHECK_WRONG_DIMENSION(x1, TWO_DIMS, return false);
-  OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
+  if (x1->GetViewShape().GetDimNum() != TWO_DIMS) {
+    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMatmulReduceScatterGetWorkspaceSize", "x1",
+        (std::to_string(x1->GetViewShape().GetDimNum()) + "D").c_str(),
+        "The shape of x1 must be 2D.");
+    return false;
+  }
+  if (x2->GetViewShape().GetDimNum() != TWO_DIMS) {
+    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMatmulReduceScatterGetWorkspaceSize", "x2",
+        (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
+        "The shape of x2 must be 2D.");
+    return false;
+  }
   OP_API_CHECK(isTransA, {
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterGetWorkspaceSize", "x1", "transposed",
         "The value of x1 must not be transposed.");

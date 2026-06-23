@@ -79,7 +79,12 @@ public:
 
 protected:
     __aicore__ inline void CopyIn();
+    __aicore__ inline void InitGlobalBuffers(GM_ADDR expertIdx, GM_ADDR expandedRowIdx,
+                                             GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace);
+    __aicore__ inline void InitQueBuffers();
     __aicore__ inline void SortCompute();
+    __aicore__ inline void FilterExpertIdx(LocalTensor<int32_t> &expertIdxLocal,
+                                           LocalTensor<float> &expertIdxLocalFp32);
     __aicore__ inline void ComputeGatherIdx(LocalTensor<int32_t> &inLocal);
     __aicore__ inline void ComputeGatherIdxWithCapacity();
     __aicore__ inline void CopyOutRowIdx();
@@ -180,17 +185,6 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     this->epFullload_ = tilingData->epFullload;
     this->pipe_ = tPipe;
 
-    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength_);
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength_);
-
-    if (this->expertTokensNumFlag_ > 0) {
-        expertTokensCountOrCumsumGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum);
-    }
-
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2 +
-                                            Align(this->actualExpertNum_, sizeof(int32_t)),
-                                        1);
-
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
         expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ?
                                    (actualExpertNum_ + 1) * EXERPT_TOKENS_KEY_VALUE :
@@ -205,6 +199,29 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     startXRow_ = curIndexStart_ / this->k_;
     endXRow_ = (curIndexStart_ + this->coreIndicesElements_ - 1) / this->k_;
 
+    InitGlobalBuffers(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace);
+    InitQueBuffers();
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadBase<T>::InitGlobalBuffers(GM_ADDR expertIdx, GM_ADDR expandedRowIdx,
+                                                                GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace)
+{
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength_);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength_);
+
+    if (this->expertTokensNumFlag_ > 0) {
+        expertTokensCountOrCumsumGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum);
+    }
+
+    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2 +
+                                        Align(this->actualExpertNum_, sizeof(int32_t)), 1);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadBase<T>::InitQueBuffers()
+{
+    int64_t buffSize = this->sortNum_ * sizeof(int32_t);
     pipe_->InitBuffer(sortDataCopyInQueue_, bufferNum_, buffSize * kvFactor_);
     pipe_->InitBuffer(sortedExpertIdxQueue_, bufferNum_, buffSize);
     pipe_->InitBuffer(sortedRowIdxQueue_, bufferNum_, buffSize);
@@ -233,31 +250,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::SortCompute()
     LocalTensor<int32_t> inLocal = sortDataCopyInQueue_.DeQue<int32_t>();
     LocalTensor<int32_t> expertIdxLocal = inLocal[0];
     LocalTensor<float> expertIdxLocalFp32 = expertIdxLocal.ReinterpretCast<float>();
-    Cast(expertIdxLocalFp32, expertIdxLocal, RoundMode::CAST_ROUND, this->tileLength_);
-
-    uint16_t repeatTimes = Ceil(this->tileLength_, FLOAT_REG_TENSOR_LENGTH);
-    uint32_t sreg = static_cast<uint32_t>(this->tileLength_);
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)expertIdxLocalFp32.GetPhyAddr();
-    float cmpScalar = static_cast<float>(expertStart_);
-    float negOne = static_cast<float>(-1);
-
-    __VEC_SCOPE__
-    {
-        MicroAPI::MaskReg maskRegLoop, cmpMaskReg;
-        MicroAPI::MaskReg pregMain = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-
-        MicroAPI::RegTensor<float> inRegToFloat, infFloat, vDstReg0;
-        Duplicate(infFloat, static_cast<float>(MIN_FP32), pregMain);
-
-        for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
-            MicroAPI::DataCopy(inRegToFloat, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::CompareScalar<float, CMPMODE::LT>(cmpMaskReg, inRegToFloat, cmpScalar, maskRegLoop);
-            MicroAPI::Muls(inRegToFloat, inRegToFloat, negOne, maskRegLoop);
-            MicroAPI::Select(vDstReg0, infFloat, inRegToFloat, cmpMaskReg);
-            MicroAPI::DataCopy(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, vDstReg0, maskRegLoop);
-        }
-    }
+    FilterExpertIdx(expertIdxLocal, expertIdxLocalFp32);
 
     int64_t duplicateNum = totalLength_ % ONE_REPEAT_SORT_NUM;
     if (duplicateNum > 0) {
@@ -278,7 +271,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::SortCompute()
     LocalTensor<float> sortedExpertForSourceRowLocal = sortedExpertIdxQueue_.AllocTensor<float>();
     LocalTensor<uint32_t> expandDstToSrcRowLocal = sortedRowIdxQueue_.AllocTensor<uint32_t>();
     Extract(sortedExpertForSourceRowLocal, expandDstToSrcRowLocal, sortedLocal, this->sortNum_ / ONE_REPEAT_SORT_NUM);
-    Muls(sortedExpertForSourceRowLocal, sortedExpertForSourceRowLocal, negOne, this->tileLength_);
+    Muls(sortedExpertForSourceRowLocal, sortedExpertForSourceRowLocal, static_cast<float>(-1), this->tileLength_);
 
     LocalTensor<int32_t> sortedExpertIdxLocal = sortedExpertForSourceRowLocal.ReinterpretCast<int32_t>();
     Cast(sortedExpertIdxLocal, sortedExpertForSourceRowLocal, RoundMode::CAST_ROUND, this->tileLength_);
@@ -311,6 +304,38 @@ __aicore__ inline void MoeV3FullLoadBase<T>::SortCompute()
 
     sortDataCopyInQueue_.FreeTensor(inLocal);
 }
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadBase<T>::FilterExpertIdx(LocalTensor<int32_t> &expertIdxLocal,
+                                                             LocalTensor<float> &expertIdxLocalFp32)
+{
+    Cast(expertIdxLocalFp32, expertIdxLocal, RoundMode::CAST_ROUND, this->tileLength_);
+
+    uint16_t repeatTimes = Ceil(this->tileLength_, FLOAT_REG_TENSOR_LENGTH);
+    uint32_t sreg = static_cast<uint32_t>(this->tileLength_);
+    __local_mem__ float *inUbAddr = (__local_mem__ float *)expertIdxLocalFp32.GetPhyAddr();
+    float cmpScalar = static_cast<float>(expertStart_);
+    float negOne = static_cast<float>(-1);
+
+    __VEC_SCOPE__
+    {
+        MicroAPI::MaskReg maskRegLoop, cmpMaskReg;
+        MicroAPI::MaskReg pregMain = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+
+        MicroAPI::RegTensor<float> inRegToFloat, infFloat, vDstReg0;
+        Duplicate(infFloat, static_cast<float>(MIN_FP32), pregMain);
+
+        for (uint16_t i = 0; i < repeatTimes; i++) {
+            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
+            MicroAPI::DataCopy(inRegToFloat, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            MicroAPI::CompareScalar<float, CMPMODE::LT>(cmpMaskReg, inRegToFloat, cmpScalar, maskRegLoop);
+            MicroAPI::Muls(inRegToFloat, inRegToFloat, negOne, maskRegLoop);
+            MicroAPI::Select(vDstReg0, infFloat, inRegToFloat, cmpMaskReg);
+            MicroAPI::DataCopy(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, vDstReg0, maskRegLoop);
+        }
+    }
+}
+
 
 template <typename T>
 __aicore__ inline void MoeV3FullLoadBase<T>::ComputeGatherIdx(LocalTensor<int32_t> &inLocal)

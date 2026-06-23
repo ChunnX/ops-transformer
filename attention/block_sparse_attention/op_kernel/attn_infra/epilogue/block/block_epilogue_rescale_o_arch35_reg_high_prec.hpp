@@ -252,7 +252,7 @@ public:
         uint32_t colTail, uint32_t vlElemNum)
     {
     }
-    
+
     template <>
     __simd_vf__ inline void RescaleFunc<DRegSplitStages::ONE>(
         __ubuf__ ElementOTmp *goUb, __ubuf__ ElementOTmp *loUb, __ubuf__ ElementOTmp *dmUb,

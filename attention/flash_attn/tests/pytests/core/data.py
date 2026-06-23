@@ -31,6 +31,11 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         is_causal = True
         mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
         attn_mask = mask.to(dtype=torch.int8, device=device)
+    elif mask_mode == 4:
+        mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
+        attn_mask = mask.to(dtype=torch.int8, device=device)
+        wl = p.get("win_left", 2147483647)
+        wr = p.get("win_right", 2147483647)
     elif mask_mode != 0:
         wl = p.get("win_left", 2147483647)
         wr = p.get("win_right", 2147483647)
@@ -46,33 +51,35 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
     sq    = _u32(p.get("seqused_q", p.get("actual_seq_qlen")))
     skv   = _u32(p.get("seqused_kv", p.get("actual_seq_kvlen")))
 
+    def _resolve_max_seqlen(explicit, used_seq, cu_seqlens, fallback):
+        if explicit is not None:
+            return int(explicit)
+        if used_seq is not None:
+            return int(used_seq.max())
+        if cu_seqlens is not None:
+            return int((cu_seqlens[1:] - cu_seqlens[:-1]).max())
+        return fallback
+
     # 从 tensor shape 推导 metadata 参数
     q = inputs["q"]; k = inputs["k"]
     if layout_q == "BNSD":
-        bs, nqh, msq, hd = q.shape[0], q.shape[1], q.shape[2], q.shape[3]
-        nkh, msk = k.shape[1], k.shape[2]
+        bs, nqh, s_q, hd = q.shape[0], q.shape[1], q.shape[2], q.shape[3]
+        nkh, s_kv = k.shape[1], k.shape[2]
     elif layout_q == "BSND":
-        bs, nqh, msq, hd = q.shape[0], q.shape[2], q.shape[1], q.shape[3]
-        nkh, msk = k.shape[2], k.shape[1]
+        bs, nqh, s_q, hd = q.shape[0], q.shape[2], q.shape[1], q.shape[3]
+        nkh, s_kv = k.shape[2], k.shape[1]
     elif layout_q == "TND":
         bs = (cu_q.shape[0] - 1) if cu_q is not None else p.get("B", 1)
         nqh, hd = q.shape[1], q.shape[2]
         nkh = k.shape[1]
-        if sq is not None:
-            msq = int(sq.max())
-        elif cu_q is not None:
-            msq = int((cu_q[1:] - cu_q[:-1]).max())
-        else:
-            msq = p.get("S1", 1)
-        if skv is not None:
-            msk = int(skv.max())
-        elif cu_kv is not None:
-            msk = int((cu_kv[1:] - cu_kv[:-1]).max())
-        else:
-            msk = p.get("S2", p.get("S1", 1))
+        s_q = p.get("S1", 1)
+        s_kv = p.get("S2", p.get("S1", 1))
     else:
         bs = q.shape[0]; nqh = p["N1"]; nkh = p.get("N2", nqh)
-        hd = d; msq = q.shape[1]; msk = k.shape[1]
+        hd = d; s_q = q.shape[1]; s_kv = k.shape[1]
+
+    msq = _resolve_max_seqlen(p.get("max_seqlen_q"), sq, cu_q, s_q)
+    msk = _resolve_max_seqlen(p.get("max_seqlen_kv"), skv, cu_kv, s_kv)
 
     # === Paged Attention 参数组 ===
     bt = None
@@ -82,7 +89,7 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
             bt = bt.to(device)
             nkh = p.get("N2", nqh)
             hd = d
-            msk = max(skv) if skv is not None else p.get("S2", p.get("S1", 1))
+            msk = _resolve_max_seqlen(p.get("max_seqlen_kv"), skv, cu_kv, s_kv)
 
     # === metadata kwargs ===
     meta_kwargs = dict(
@@ -101,8 +108,8 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         block_table=bt, sinks=None, attn_mask=attn_mask,
         cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
         seqused_q=sq, seqused_kv=skv,
-        max_seqlen_q=msq if layout_q == "TND" else -1,
-        max_seqlen_kv=msk if layout_kv == "TND" else -1,
+        max_seqlen_q=msq,
+        max_seqlen_kv=msk,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
         return_softmax_lse=p.get("return_softmax_lse", 0),
     )
@@ -257,23 +264,27 @@ flash_attn_inputs = (
     .tensor("k", layout={
             "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
             "PA_BBND": "num_blocks,block_size,N2,D",
-            "PA_BNBD": "num_blocks,N2,block_size,D"},
+            "PA_BNBD": "num_blocks,N2,block_size,D",
+            "PA_NZ": "num_blocks,N2,D_nz_sub,block_size,nz_blk_elem"},
             method="uniform", low=-5.0, high=5.0, range_key="k_range",
             when=lambda p: "k_range" in p, layout_override="layout_kv")
     .tensor("k", layout={
             "BNSD": "B,N2,S2,D", "BSND": "B,S2,N2,D", "TND": "total_s2,N2,D",
             "PA_BBND": "num_blocks,block_size,N2,D",
-            "PA_BNBD": "num_blocks,N2,block_size,D"},
+            "PA_BNBD": "num_blocks,N2,block_size,D",
+            "PA_NZ": "num_blocks,N2,D_nz_sub,block_size,nz_blk_elem"},
             when=lambda p: "k_range" not in p, layout_override="layout_kv")
     .tensor("v", layout={
             "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
             "PA_BBND": "num_blocks,block_size,N2,_V",
-            "PA_BNBD": "num_blocks,N2,block_size,_V"},
+            "PA_BNBD": "num_blocks,N2,block_size,_V",
+            "PA_NZ": "num_blocks,N2,DV_nz_sub,block_size,nz_blk_elem"},
             method="uniform", low=-5.0, high=5.0, range_key="v_range",
             when=lambda p: "v_range" in p, layout_override="layout_kv")
     .tensor("v", layout={
             "BNSD": "B,N2,S2,_V", "BSND": "B,S2,N2,_V", "TND": "total_s2,N2,_V",
             "PA_BBND": "num_blocks,block_size,N2,_V",
-            "PA_BNBD": "num_blocks,N2,block_size,_V"},
+            "PA_BNBD": "num_blocks,N2,block_size,_V",
+            "PA_NZ": "num_blocks,N2,DV_nz_sub,block_size,nz_blk_elem"},
             when=lambda p: "v_range" not in p, layout_override="layout_kv")
 )

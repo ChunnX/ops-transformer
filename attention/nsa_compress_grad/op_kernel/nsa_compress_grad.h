@@ -109,7 +109,7 @@ __aicore__ inline void NsaCompressGradND<T>::InitWorkspace(GM_ADDR workspace) {
 
     if (isOverLap_) {
         // overLap场景需要使用workspace累加
-        uint32_t inputGradOffset = blockSize_ * headNum_ * coreNum_ * sizeof(float);
+        uint64_t inputGradOffset = static_cast<uint64_t>(blockSize_) * headNum_ * coreNum_ * sizeof(float);
         inputGradAtomicWs_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace + inputGradOffset));
     }
 }
@@ -196,8 +196,8 @@ __aicore__ inline void NsaCompressGradND<T>::SetWsToZero() {
     }
 
     // 清零wtGradAtomicWs_
-    uint32_t wtGradNum = blockSize_ * headNum_;
-    Duplicate<float>(cmpGrad, ZERO_FLOAT, wtGradNum);
+    uint64_t wtGradNum = static_cast<uint64_t>(blockSize_) * headNum_;
+    Duplicate<float>(cmpGrad, ZERO_FLOAT, static_cast<uint32_t>(wtGradNum));
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID3);
@@ -243,10 +243,10 @@ __aicore__ inline void NsaCompressGradND<T>::Process() {
     PresetFlag();
 
     uint32_t curBIdx = startBatchIdx_;
-    uint32_t offsetPerRow = headDim_ * headNum_;
-    uint32_t offsetPerBlc = offsetPerRow * blockStride_;
+    uint64_t offsetPerRow = static_cast<uint64_t>(headDim_) * headNum_;
+    uint64_t offsetPerBlc = offsetPerRow * blockStride_;
     // inptKv当前处理的第一个batch的偏移
-    uint32_t batchOffset = batchOffsetCurCore_ * offsetPerRow;
+    uint64_t batchOffset = static_cast<uint64_t>(batchOffsetCurCore_) * offsetPerRow;
 
     uint32_t blcStartIdxCurBch = blcIdxOfStartBatch_;
     uint32_t seqLenCurBch = GetSeqLenTarBch(curBIdx);
@@ -265,20 +265,21 @@ __aicore__ inline void NsaCompressGradND<T>::Process() {
             nBlcCurBch = CompressBlkNum(seqLenCurBch, blockSize_, blockStride_);
         }
         // inputKV当前处理的block的偏移
-        auto blcOffset = batchOffset + (blcId - blcStartIdxCurBch) * offsetPerBlc;
+        uint64_t blcOffset = batchOffset + static_cast<uint64_t>(blcId - blcStartIdxCurBch) * offsetPerBlc;
 
         // deal with current block
         for (auto headId = 0; headId < headNum_; headId += nHeadOnce_) {
             // Block内按行处理
             uint32_t headToProcess = (headId + nHeadOnce_ > headNum_) ? (headNum_ - headId) : nHeadOnce_;
-            uint32_t cmpOffset = blcId * offsetPerRow + headId * headDim_;
+            uint64_t cmpOffset = static_cast<uint64_t>(blcId) * offsetPerRow + static_cast<uint64_t>(headId) * headDim_;
 
             WaitFlag<HardEvent::V_MTE2>(EVENT_ID6);
             CopyInCmpGrad(cmpOffset, headToProcess * headDim_);
             
             for (auto rowId = 0; rowId < blockSize_; rowId+=nRowsOnce_) {
-                uint32_t inputOffset = blcOffset + rowId * offsetPerRow + headId * headDim_;
-                uint32_t weightOffset = rowId * headNum_ + headId;
+                uint64_t inputOffset =
+                    blcOffset + static_cast<uint64_t>(rowId) * offsetPerRow + static_cast<uint64_t>(headId) * headDim_;
+                uint64_t weightOffset = static_cast<uint64_t>(rowId) * headNum_ + headId;
                 uint32_t rowsToProcess = (rowId + nRowsOnce_ > blockSize_) ? (blockSize_ - rowId) : nRowsOnce_;
 
                 // 拷贝inputKV
@@ -442,10 +443,10 @@ __aicore__ inline void NsaCompressGradND<T>::DeterministicComputeSumWtGrad() {
         return;
     }
 
-    auto totalWeightLength = blockSize_ * headNum_;
-    auto minOffset = 16;
-    auto nLengthBase = (blockSize_ * headNum_ / minOffset) / coreNum_;
-    auto nLengthReminder = (blockSize_ * headNum_ / minOffset) % coreNum_;
+    uint64_t totalWeightLength = static_cast<uint64_t>(blockSize_) * headNum_;
+    uint64_t minOffset = 16;
+    uint64_t nLengthBase = (static_cast<uint64_t>(blockSize_) * headNum_ / minOffset) / coreNum_;
+    uint64_t nLengthReminder = (static_cast<uint64_t>(blockSize_) * headNum_ / minOffset) % coreNum_;
     //当前core从第几个数据开始算
     auto startLengthIdx = (nLengthBase * coreId_ + (coreId_ < nLengthReminder ? coreId_ : nLengthReminder)) * minOffset;
     //当前core需要处理几个数据
@@ -501,7 +502,7 @@ __aicore__ inline void NsaCompressGradND<T>::DeterministicComputeSumWtGrad() {
 
 template<typename T>
 __aicore__ inline void NsaCompressGradND<T>::MoveWtGrad() {
-    uint32_t wtNum = blockSize_ * headNum_;
+    uint64_t wtNum = static_cast<uint64_t>(blockSize_) * headNum_;
     DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(wtNum * sizeof(float)), 0, 0, 0};
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
     DataCopyPad(transWtGrad_, wtGradAtomicWs_, dataCopyParams, padParams);
@@ -509,7 +510,7 @@ __aicore__ inline void NsaCompressGradND<T>::MoveWtGrad() {
     SetFlag<HardEvent::MTE2_V>(EVENT_ID3);
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID3);
 
-    CastByCondition(halfTransWtGrad_, transWtGrad_, wtNum, true);
+    CastByCondition(halfTransWtGrad_, transWtGrad_, static_cast<uint32_t>(wtNum), true);
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID3);

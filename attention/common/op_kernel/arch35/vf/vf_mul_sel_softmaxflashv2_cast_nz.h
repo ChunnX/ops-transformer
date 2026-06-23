@@ -410,7 +410,6 @@ __aicore__ inline void ProcessVec1NoUpdateMxfp8(
     const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
     const float deSCaleKValue = 1.0f, const float pScale = 1.0f, float sinkValue = 0.0f)
 {
-
     if constexpr (oriNRange == GT_128_AND_LTE_256) {
         LocalTensor<uint8_t> indexesTensor;
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -484,7 +483,6 @@ __aicore__ inline void ProcessVec1UpdateMxfp8(
     const LocalTensor<T>& queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
     const float pScale = 1.0f, float sinkValue = 0.0f)
 {
-
     if constexpr (oriNRange == GT_128_AND_LTE_256) {
          LocalTensor<uint8_t> indexesTensor;
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -540,7 +538,6 @@ __aicore__ inline void ProcessVec1UpdateMxfp8(
             pseStride, slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue,
             sinkValue, pScale);
     }
-
 }
 
 template <typename T, typename T2, typename pseShiftType, bool isUpdate = false, uint32_t s1BaseSize = 128,

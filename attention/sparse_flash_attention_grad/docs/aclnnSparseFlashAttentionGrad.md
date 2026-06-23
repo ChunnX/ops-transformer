@@ -25,6 +25,12 @@
    selectedValue\text{ }=\text{ }Gather \left( value,topkIndices \left[ i \left]  \left) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
   $$
 
+  KV merge场景下，若value为空指针，则上述公式中的value按key处理，selectedValue等价于selectedKey。该场景的反向输出不单独返回dValue，dKeyOut表示合并后的梯度：
+
+  $$
+   dKeyOut = dK + dV
+  $$
+
 <div style="padding-left:40px;">
 
   阶段1：根据矩阵乘法导数规则，计算$dP$和$dV$:
@@ -164,7 +170,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输入</td>
             <td>attention结构的输入v。</td>
             <td>
-            -
+            可选项。传入空指针时启用KV merge，内部按value=key处理；此时要求dValueOut也传入空指针，dKeyOut返回dK+dV的合并结果。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -348,7 +354,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
         <td>preTokens</td>
             <td>输入</td>
-            <td>Attention算子里, 对S矩阵的滑窗起始位置。</td>
+            <td>Attention算子里，对S矩阵的滑窗起始位置。</td>
             <td>
             <ul>
                 <li>sparseMode=4时，pre_tokens生效。</li>
@@ -363,7 +369,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
         <td>nextTokens</td>
             <td>输入</td>
-            <td>Attention算子里, 对S矩阵的滑窗终止位置。</td>
+            <td>Attention算子里，对S矩阵的滑窗终止位置。</td>
             <td>
             <ul>
                 <li>sparseMode=4时，next_tokens生效。</li>
@@ -405,7 +411,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输出</td>
             <td>表示key的梯度。</td>
             <td>
-            -
+            KV merge场景下表示key和value的合并梯度，即dK+dV。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -418,7 +424,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>输出</td>
             <td>表示value的梯度。</td>
             <td>
-            与输入value的Shape维度保持一致。
+            可选项。普通场景下与输入value的Shape维度保持一致；KV merge场景下需传入空指针，dValue不单独输出，其梯度合入dKey。
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -477,7 +483,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或者输出是空指针。</td>
+                <td>必选参数或者输出是空指针。KV merge场景下value和dValueOut允许为空指针。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
@@ -548,6 +554,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
     - 当前只支持value和key完全一致的场景。
+    - KV merge场景下，value和dValueOut需传入空指针，dKeyOut返回dK+dV，不再单独返回dValue。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
@@ -758,7 +765,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
@@ -870,7 +877,7 @@ int main() {
   ret = CreateAclTensor(dkRopeHostData, kRopeShape, &dkRopeDeviceAddr, aclDataType::ACL_FLOAT16, &dkRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   
-  double scaleValue = 0.088388;
+  double scaleValue = 0.044194;
   int64_t sparseBlockSize = 1;
   int64_t sparseMode = 0;
   int64_t preTokens = 2147483647;
@@ -899,7 +906,7 @@ int main() {
   ret = aclnnSparseFlashAttentionGrad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGrad failed. ERROR: %d\n", ret); return ret);
   
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
   
@@ -945,6 +952,8 @@ int main() {
   aclrtFree(dvDeviceAddr);
   aclrtFree(dqRopeDeviceAddr);
   aclrtFree(dkRopeDeviceAddr);
+  aclrtFree(actSeqQLenDeviceAddr);
+  aclrtFree(actSeqKvLenDeviceAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }

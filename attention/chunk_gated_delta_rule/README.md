@@ -123,20 +123,20 @@
 
 ## 约束说明
 
-- 为方便理解后续排布格式（如 BNSD、TND 等），统一说明各缩写维度含义：
+- 为方便理解后续排布格式（如BNSD、TND等），统一说明各缩写维度含义：
   * B：输入样本批量大小（Batch）。
   * T：设 $L_i$ 为第 $i$ 个序列长度，则 $T=\sum_i^B L_i$ 表示累积序列长度。
-  * Nk：Query 和 Key 头数。
-  * Nv：Value 头数。
-  * Dk：Query 和 Key 隐藏层维度。
-  * Dv：Value 隐藏层维度。
+  * Nk：Query和Key头数。
+  * Nv：Value头数。
+  * Dk：Query和Key隐藏层维度。
+  * Dv：Value隐藏层维度。
 
-- 当前仅支持 TND 布局：
-  - query、key 形状：$(T, Nk, Dk)$
-  - value、out 形状：$(T, Nv, Dv)$
-  - beta、g 形状：$(T, Nv)$
-  - actual_seq_lengths 形状：$(B,)$
-  - initial_state、final_state 形状：$(B, Nv, Dv, Dk)$
+- 当前仅支持TND布局：
+  - query、key形状：$(T, Nk, Dk)$
+  - value、out形状：$(T, Nv, Dv)$
+  - beta、g形状：$(T, Nv)$
+  - actual_seq_lengths形状：$(B,)$
+  - initial_state、final_state形状：$(B, Nv, Dv, Dk)$
 
   维度需满足以下约束：
   - $0 \lt Nv \le 64，0 \lt Nk \le 64$，且 $Nv \bmod Nk = 0$

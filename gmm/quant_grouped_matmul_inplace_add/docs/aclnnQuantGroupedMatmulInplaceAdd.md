@@ -183,7 +183,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <td>整数型参数，用于输入m、n、k方向上的量化分组大小。</td>
       <td>
         <ul>
-          <li>groupSize输入由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，共占用int64_t类型groupSize的低48位（groupSize     中的高16位的数值无效），计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</li>
+          <li>groupSize输入由3个方向的groupSizeM，groupSizeN，groupSizeK三个值拼接组成，每个值占16位，共占用int64_t类型groupSize的低48位（groupSize中的高16位的数值无效），计算公式为：groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32。</li>
           <li>当前只支持传0。</li>
         </ul>
       </td>
@@ -292,8 +292,8 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
         | 参数 | shape限制 |
         |:---------:| :------ |
-        |scale1Optional| 3维tensor，shape为((K / 64) + g, M, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) \* M \* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为(K\_0 / 64 + 1) \* M \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* M \* 2, 依此类推|
-        |scale2| 3维tensor，shape为((K / 64) + g, N, 2), 起始地址偏移与scale1Optional同理|
+        |scale1Optional| 3维tensor，shape为((K / 64) + g, M, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) \* M \* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为(K\_0 / 64 + 1) \* M \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* M \* 2,依此类推|
+        |scale2| 3维tensor，shape为((K / 64) + g, N, 2),起始地址偏移与scale1Optional同理|
 
   - groupList第1维最大支持1024，即最多支持1024个group。
 
@@ -359,7 +359,7 @@ int CreateTransposeAclTensor(const std::vector<T>& hostData, const std::vector<i
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    // 交换 stride
+    // 交换stride
     std::swap(strides[0], strides[1]);
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(view_shape.data(), view_shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
@@ -418,7 +418,7 @@ int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream)
     aclTensor* out = nullptr;
     int64_t groupListType = 0;
     int64_t groupSize = 0;
-    std::vector<uint8_t> xData(GetShapeSize(x1Shape), 0X10); // hifloat8 2.0 转16进制 0X10
+    std::vector<uint8_t> xData(GetShapeSize(x1Shape), 0X10); // hifloat8 2.0转16进制0X10
     std::vector<int64_t> groupListData = {1, 3};
     std::vector<float> scale2Data(GetShapeSize(scale2Shape), 1);
     std::vector<float> yData(GetShapeSize(yShape), 1);
@@ -470,7 +470,7 @@ int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream)
     // 调用aclnnQuantGroupedMatmulInplaceAdd第二段接口
     ret = aclnnQuantGroupedMatmulInplaceAdd(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantGroupedMatmulInplaceAdd failed. ERROR: %d\n", ret); return ret);
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
@@ -486,7 +486,7 @@ int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream)
 }
 int main()
 {
-    // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

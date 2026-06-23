@@ -39,7 +39,8 @@ public:
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset, int64_t curLoopCols);
 
 private:
-    __aicore__ inline void InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
+    __aicore__ inline void InitBasicParams(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                           TPipe *tPipe);
 
     TPipe *pipe_;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, GATHER_OUT_BUFFER_NUM> xCopyInQueue_;
@@ -82,7 +83,8 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3GatherOutMxFp4<T>::InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData,
+__aicore__ inline void MoeV3GatherOutMxFp4<T>::InitBasicParams(GM_ADDR workspace,
+                                                               const MoeInitRoutingV3Arch35TilingData *tilingData,
                                                                TPipe *tPipe)
 {
     pipe_ = tPipe;
@@ -100,6 +102,12 @@ __aicore__ inline void MoeV3GatherOutMxFp4<T>::InitBasicParams(const MoeInitRout
     lastLoopCols_ = tilingData->gatherOutComputeParamsOp.lastLoopCols;
 
     actualExpertNum_ = tilingData->actualExpertNum;
+    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
+                                         Align(actualExpertNum_, sizeof(int32_t)), 1);
+    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+        expertTotalCountGm_);
+    expertTotalCount_ = expertTotalCountGm_.GetValue(0);
+
     perCorePerLoopIndicesElements_ = tilingData->gatherOutComputeParamsOp.perCorePerLoopIndicesElements;
     lastCorePerLoopIndicesElements_ = tilingData->gatherOutComputeParamsOp.lastCorePerLoopIndicesElements;
 
@@ -123,12 +131,7 @@ __aicore__ inline void MoeV3GatherOutMxFp4<T>::Init(GM_ADDR x, GM_ADDR scale, GM
                                              GM_ADDR expandedX, GM_ADDR expandedScale,
                                              const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
-    InitBasicParams(tilingData, tPipe);
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                         Align(actualExpertNum_, sizeof(int32_t)), 1);
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        expertTotalCountGm_);
-    expertTotalCount_ = expertTotalCountGm_.GetValue(0);
+    InitBasicParams(workspace, tilingData, tPipe);
     xUint8tGm_.SetGlobalBuffer((__gm__ uint8_t *)x, n_ * cols_ / NUM_TWO);
     xGscaleGm_.SetGlobalBuffer((__gm__ uint8_t *)scale, n_ * cols_ / SCALE_FACTOR_WITH_X);
     expandedXGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_ / NUM_TWO,

@@ -185,7 +185,6 @@ public:
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        // TODO，共享buffer初始化放到block层
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         if constexpr (BMM2_TOUB) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
@@ -250,9 +249,12 @@ public:
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
 
-        // if constexpr (HAS_MASK) {
-        constInfo.sparseMode =
-            fiaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+        constInfo.keyStrides.bnStride = fiaBaseParams.keyStrides.bnStride;
+        constInfo.keyStrides.n2Stride = fiaBaseParams.keyStrides.n2Stride;
+        constInfo.valueStrides.bnStride = fiaBaseParams.valueStrides.bnStride;
+        constInfo.valueStrides.n2Stride = fiaBaseParams.valueStrides.n2Stride;
+
+        constInfo.sparseMode = fiaAttenMaskParams.sparseMode;
         constInfo.preTokens = fiaAttenMaskParams.preTokens;
         constInfo.nextTokens = fiaAttenMaskParams.nextTokens;
         constInfo.attenMaskBatch = fiaAttenMaskParams.attenMaskBatch;
@@ -260,7 +262,6 @@ public:
         constInfo.attenMaskS2Size = fiaAttenMaskParams.attenMaskS2Size;
         constInfo.isRowInvalidOpen = fiaAttenMaskParams.isRowInvalidOpen;
         constInfo.isExistRowInvalid = fiaAttenMaskParams.isExistRowInvalid;
-        // }
 
         if ASCEND_IS_AIV {
             if constexpr (VecFaBlockType::hasPse) {

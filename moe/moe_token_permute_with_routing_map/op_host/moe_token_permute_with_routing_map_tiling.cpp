@@ -115,6 +115,26 @@ inline auto UpAlign(const T1& a, const T2& b) -> T1
     return a;
 }
 
+// 与 kernel moe_common.h Align 一致：按 32B 对齐元素个数
+inline int64_t KernelElementAlign(int64_t elementNum, int64_t dtypeBytes)
+{
+    if (dtypeBytes == 0) {
+        return 0;
+    }
+    return UpAlign(elementNum * dtypeBytes, ONE_BLOCK_BYTE) / dtypeBytes;
+}
+
+// 非对齐 cumsum+scatter 路径 workspace（int32 元素布局，见 moe_token_permute_with_routing_map.cpp）
+inline size_t CalcNonAlignedScatterWorkspaceBytes(
+    int64_t msNeedCoreNum, int64_t numTokens, int64_t numExperts, int64_t totalLength)
+{
+    int64_t partialOffset = KernelElementAlign(msNeedCoreNum, INT32_DTYPE_SIZE);
+    int64_t sortPositionOffset = partialOffset + msNeedCoreNum * numTokens;
+    int64_t valueStreamOffset = sortPositionOffset + numExperts * numTokens;
+    int64_t requiredInt32Elems = valueStreamOffset + totalLength;
+    return static_cast<size_t>(requiredInt32Elems) * static_cast<size_t>(INT32_DTYPE_SIZE);
+}
+
 inline bool GetLengthByType(int32_t dtype, uint32_t& dsize)
 {
     switch (dtype) {
@@ -415,6 +435,7 @@ ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::InitShapeAttrsInfo()
     auto tokenOneBlockNum = GetDiv(ONE_BLOCK_BYTE, tokenBtypeSize);
     auto colsAlign = GetCeilInt(cols, tokenOneBlockNum) * tokenOneBlockNum;
     moeTokenPermuteWithRoutingMapTilingData.set_n(tokensShape.GetDim(0));
+    moeTokenPermuteWithRoutingMapTilingData.set_expertNum(numExperts);
     moeTokenPermuteWithRoutingMapTilingData.set_colsAlign(colsAlign);
     return ge::GRAPH_SUCCESS;
 }
@@ -682,6 +703,12 @@ ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::GetWorkspaceSize()
     size_t sortWorkspaceSize = paddedMode == true ? realCoreNum *
                                                         totalLength * sizeof(float) * NUM_TWO * NUM_TWO :
                                                     totalLength * sizeof(float) * NUM_TWO * NUM_TWO; // 排序需要的空间
+    if (paddedMode == false) {
+        int64_t msNeedCoreNum = moeTokenPermuteWithRoutingMapTilingData.maskedSelectParamsOp.get_needCoreNum();
+        size_t nonAlignedWs = CalcNonAlignedScatterWorkspaceBytes(
+            msNeedCoreNum, numTokens, numExperts, totalLength);
+        sortWorkspaceSize = std::max(sortWorkspaceSize, nonAlignedWs);
+    }
     size_t coreSyncWorkspaceSize = realCoreNum * SORT32_ALIGN_ELEMENT * NUM_TWO; // 多核同步需要的空间
     workspaceSize_ = sortWorkspaceSize + coreSyncWorkspaceSize + SIZE_16 * LENGTH_1024 * LENGTH_1024;
     return ge::GRAPH_SUCCESS;

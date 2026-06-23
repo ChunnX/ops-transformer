@@ -327,8 +327,9 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams& params, bool 
                     params.offset->GetViewShape().GetDim(ONE_DIM_NUM), params.offset->GetViewShape().GetDim(TWO_DIM_NUM));
             return false;
             }
-        if (!(params.bias->GetViewShape().GetDim(0) == params.x2EDim
-            && params.bias->GetViewShape().GetDim(ONE_DIM_NUM) == params.x2NDim)) {
+        if (params.bias != nullptr &&
+            !(params.bias->GetViewShape().GetDim(0) == params.x2EDim
+              && params.bias->GetViewShape().GetDim(ONE_DIM_NUM) == params.x2NDim)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "w4a8 bias's dim value should be (e, n),"
                     " which is (%lld, %lld)",
                     params.bias->GetViewShape().GetDim(0), params.bias->GetViewShape().GetDim(ONE_DIM_NUM));
@@ -1440,10 +1441,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
                  (transposeX1 == false && transposeX2 == true &&
                   op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510))) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-            "aclnnGroupedMatmulFinalizeRoutingV3", "x and weight",
-            "x=" + GmmFinalizeRouting::ViewShapeToString(x1) +
-                ", weight=" + GmmFinalizeRouting::ViewShapeToString(x2),
-            "the value of x and weight transpose config must be false/false or false/true on DAV_3510");
+            "aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize", "transposeX1 and transposeX2",
+            "transposeX1=" + std::string(transposeX1 ? "true" : "false") +
+                ", transposeX2=" + std::string(transposeX2 ? "true" : "false"),
+            "the value of transposeX1 and transposeX2 must be false/false or false/true on DAV_3510");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // unpack int32 to int4
@@ -1467,7 +1468,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
                      CheckType(tmpWeightV3->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && !isMXValid) {
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-            "aclnnGroupedMatmulFinalizeRoutingV3", "x and weight",
+            "aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize", "x and weight",
             "x=" + std::string(op::ToString(x1->GetDataType()).GetString()) +
                 ", weight=" + op::ToString(tmpWeightV3->GetDataType()).GetString(),
             "for mx, the dtypes of x and weight must be within the range {FLOAT8_E5M2, FLOAT8_E4M3FN, FLOAT4_E2M1}");

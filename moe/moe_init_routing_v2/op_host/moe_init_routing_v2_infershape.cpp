@@ -35,6 +35,8 @@ static constexpr int64_t ATTR_DROP_PAD_MODE = 3;
 static constexpr int64_t ATTR_EXPERT_TOKENS_COUNT_OR_CUMSUM_FLAG = 4;
 static constexpr int64_t ATTR_EXPERT_TOKENS_BEFORE_CAPACITY_FLAG = 5;
 static constexpr int64_t EXPERT_TOKENS_COUNT = 2;
+static constexpr int64_t DROP_LESS = 0;
+static constexpr int64_t DROP_PAD = 1;
 
 static bool IsSameDim(int64_t dim1, int64_t dim2)
 {
@@ -203,16 +205,18 @@ static void InferOutputShape(const gert::Shape *xShape, const gert::Shape *exper
     int64_t expandedRowIdxNum = OTHER_SHAPE;
 
     if (n >= 0 && k >= 0) {
-        expandedRowIdxNum = n * k;
         outActiveNum = activeNum > 0 ? std::min(n * k, activeNum) : n * k;
+        expandedRowIdxNum = n * k;
     }
 
-    if (dropPadMode > 0) {
+    if (dropPadMode == DROP_PAD) {
         expandedXShape->SetDimNum(DIM_THREE);
         expandedXShape->SetDim(0U, expertNum);
         expandedXShape->SetDim(1U, expertCapacity);
         expandedXShape->SetDim(2U, cols < 0 ? OTHER_SHAPE : cols);
-    } else {
+    }
+
+    if (dropPadMode == DROP_LESS) {
         expandedXShape->SetDimNum(DIM_TWO);
         expandedXShape->SetDim(0U, outActiveNum);
         expandedXShape->SetDim(1U, cols < 0 ? OTHER_SHAPE : cols);
@@ -221,12 +225,12 @@ static void InferOutputShape(const gert::Shape *xShape, const gert::Shape *exper
     expandedRowIdx->SetDimNum(DIM_ONE);
     expandedRowIdx->SetDim(0U, expandedRowIdxNum);
 
-    if (dropPadMode == 1 && expertTokensBeforeCapacityFlag) {
+    if (dropPadMode == DROP_PAD && expertTokensBeforeCapacityFlag) {
         expertTokensBeforeCapacityShape->SetDimNum(DIM_ONE);
         expertTokensBeforeCapacityShape->SetDim(0U, expertNum);
     }
 
-    if (dropPadMode == 0 && expertTokensCountOrCumsumFlag > 0) {
+    if (dropPadMode == DROP_LESS && expertTokensCountOrCumsumFlag > 0) {
         expertTokensCountOrCumsumShape->SetDimNum(DIM_ONE);
         expertTokensCountOrCumsumShape->SetDim(0U, expertNum);
     }

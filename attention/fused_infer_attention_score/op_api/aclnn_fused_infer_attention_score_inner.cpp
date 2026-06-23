@@ -11,6 +11,7 @@
 #include "fused_infer_attention_score_inner.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -132,6 +133,14 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
     } else {
         placeHolder = softmaxLse;
     }
+}
+
+aclnnStatus CheckKVContiguous(const aclTensorList *key, const aclTensorList *value)
+{
+    if (!IsContiguous((*key)[0]) || !IsContiguous((*value)[0])) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
 }
 
 } // namespace

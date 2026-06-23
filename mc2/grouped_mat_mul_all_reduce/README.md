@@ -10,10 +10,10 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -125,8 +125,8 @@ $$
 ## 约束说明
 
 - 数据类型组合约束：x、weight、bias支持的数据类型组合为：
-  - “x-FLOAT16、weight-FLOAT16、bias-FLOAT16”
-  - “x-BFLOAT16、weight-BFLOAT16、bias-FLOAT32”
+  -“x-FLOAT16、weight-FLOAT16、bias-FLOAT16”
+  -“x-BFLOAT16、weight-BFLOAT16、bias-FLOAT32”
 - 维度约束：
   - 当splitItem为0时，x支持2-6维，y支持2-6维；
   - 当splitItem为1/2/3时，x支持2维，y支持2维；
