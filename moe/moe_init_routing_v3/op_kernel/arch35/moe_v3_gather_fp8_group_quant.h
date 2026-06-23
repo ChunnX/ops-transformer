@@ -108,7 +108,7 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         Duplicate(invExpBaseReg, FP8_GROUP_FP32_INV_EXPONENT_BIAS_SUM, maskAllUint);
         Duplicate(infExpReg, FP8_GROUP_FP32_INF_EXPONENT, maskAllUint);
 
-        for (uint32_t groupIdx = 0; groupIdx < loopScaleCols; groupIdx++) {
+        for (uint16_t groupIdx = 0; groupIdx < (uint16_t)loopScaleCols; groupIdx++) {
             uint32_t groupOffset = groupIdx * FP8_GROUP_QUANT_SIZE;
             uint32_t groupElemNum =
                 (groupIdx == loopScaleCols - 1) ? (loopCols - groupOffset) : FP8_GROUP_QUANT_SIZE;
