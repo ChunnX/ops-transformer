@@ -2,32 +2,43 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * Licensed under the Apache License, Version 2.0 (the "License").
  *
- *  dispatch_min_driver.cpp —— 两算子集成驱动（单 die、两条流、写/等状态位串行同步）。
+ *  dispatch_min_driver.cpp —— 两算子集成驱动（2 die / 2 rank、每 rank 两条流、写/等状态位串行同步）。
  *
- *  流程（最小功能，单 die、不跨卡）：
- *    1. acl 初始化 + 设备 + context + 两条 stream（streamSetup / streamTeardown）；
- *    2. 单 rank HCCL 通信域（CCU 拉起需要 HcclComm）；
- *    3. 分配共享状态区 statusGm（32B 对齐、memset 0）、oneBuf（host 填 slot0=1）、doneGm；
- *    4. CCU dispatch_setup 在 streamSetup 上拉起（HCOMM 路径）→ LocalCopyNb 把 1 写进 statusGm；
- *    5. AIV dispatch_teardown 经 aclnn 在 streamTeardown 上拉起 → 忙等 statusGm[0]==1 → 写 doneGm[0]=1；
- *    6. 同步两条流 → 拷 doneGm 回 host 校验 == 1（证明 teardown 等到了状态位并往下走）。
+ *  流程（最小功能，2 die、MPI 起 2 进程、每 rank 各自本地写+轮询、不跨卡传数据）：
+ *    1. MPI_Init → 每进程一个 rank（rank_id = MPI rank，dev_id = rank）；
+ *    2. acl 初始化 + 设备 + context + 两条 stream（streamSetup / streamTeardown）；
+ *    3. 【CCU 容器关键】2-rank HCCL 通信域：root 取 RootInfo → MPI_Bcast 广播 → 各 rank
+ *       HcclCommInitRootInfoConfig(rank_size=2, hcclOpExpansionMode=CCU)。忠实镜像已在 a6 跑通的
+ *       hcomm-test 基线 init_hcclComm（hccl_test_common.cc:861-941）——CCU 容器(ccuContainer)由库内部
+ *       在【CCU 扩展模式 + rank_size>=2】下创建。单 rank 不建容器，故必须 2 die（mpirun -n 2）。
+ *    4. 分配本 rank 的共享状态区 statusGm（32B 对齐、memset 0）、oneBuf（host 填 slot0=1）、doneGm；
+ *    5. CCU dispatch_setup 在 streamSetup 上拉起（HCOMM 路径）→ LocalCopyNb 把 1 写进【本 rank】statusGm；
+ *    6. AIV dispatch_teardown 经 aclnn 在 streamTeardown 上拉起 → 忙等 statusGm[0]==1 → 写 doneGm[0]=1；
+ *    7. 同步两条流 → 拷 doneGm 回 host 校验 == 1（证明本 rank teardown 等到状态位并往下走）。
  *
- *  关键点：两条流无显式 event 依赖，teardown 的忙等轮询【本身】就是跨流同步——它一直
- *  自旋读 statusGm，直到 CCU 的写可见。这正是“根据写状态位等状态位的方式来同步”。
+ *  关键点：两条流无显式 event 依赖，teardown 的忙等轮询【本身】就是跨流同步——它一直自旋读
+ *    statusGm，直到 CCU 的写可见。这正是"根据写状态位等状态位的方式来同步"。两个 rank 完全对称、
+ *    各自独立 PASS；2-die 仅为满足 CCU 容器创建，最小 case 不做真跨卡数据交换。
  *
  *  本机为 a5、仅作参考，不在此编译/上板；本文件聚焦 a6 可编译可跑通的结构。
  *  已坐实（从 a5 CANN 包查实，相对 include 串 a5/a6 一致；根目录 CMake 自动定位）：
  *    [T6✓] HCOMM 拉起 API 头：hccl/hccl_res.h（ThreadAcquireWithStream）、hcomm/ccu/hccl_ccu_res.h
  *          （CcuKernelRegister/Finish/Launch、CcuKernelHandle）、hcomm/ccu/ccu_assist_pub.h
  *          （hcomm::CcuRep::GetTokenInfo）、hcomm/ccu/ccu_kernel.h（CcuKernel/KernelCreator）、
- *          hcomm_res_defs.h（CommEngine COMM_ENGINE_CCU=5）、hcomm_primitives.h（ThreadHandle）。
- *  a6-TODO（真 a6 闭源、a5 看不到，需手抄校准）：
+ *          hcomm_res_defs.h（CommEngine COMM_ENGINE_CCU=5）、hcomm_primitives.h（ThreadHandle）、
+ *          hccl/hccl_rank_graph.h（HcclRankGraphGetLinks/CommLink/HcclChannelDesc/HcclChannelAcquire）。
+ *  a6-TODO（a5 看不到、需在 a6 上实测确认）：
  *    [T1] LocalCopyNb a6 6 参原型 + CreateBlockCcuBuf（见 dispatch_setup_ccu）；
  *    [T2] WaitEvent a6 1 参形式；
  *    [T3] 状态字跨流可见性 / cache（见 op_kernel 注释）；
- *    [T7] 单 rank HCCL comm：rank_table.json（设备 ip/id 按环境填，模板见同目录 rank_table.json.tmpl）；
+ *    [T5] CCU 扩展模式值：默认 DISPATCH_CCU_EXPANSION_MODE=6(ccu_sched)，按 a6 基线 -a 实际值校（可 =5）；
+ *    [T7] 2-die 拓扑：dev_id=rank（假定本节点 die0/die1=dev0/dev1）；若 2 die 不是 dev0/1 改 devId 映射；
+ *         MPI 起 2 进程（mpirun -n 2），无需 rank_table（RootInfo + MPI 广播自给 bootstrap）；
  *    [T8] SoC 串 ascend950pr_9599 是否 a6 真值（见 run.sh）；
- *    [T9] teardown 算子包 opapi 库名（CANN 惯例 libcust_opapi.so，装包后核实；CMake 已 find_library 兜底）。
+ *    [T9] teardown 算子包 opapi 库名（CANN 惯例 libcust_opapi.so，装包后核实；CMake 已 find_library 兜底）；
+ *    [T10] 最小本地 kernel 是否真需要建 channel：本版按基线忠实建 rsz-1 个 UBC_CTP channel（保 CCU comm
+ *          处于基线验证态）；若 a6 实测纯本地 LocalCopyNb 的 Register/Launch 不依赖 channel，可去掉建 channel
+ *          一段（kernel Algorithm 本就不在 channel 上发 op）。
  */
 
 #include <cstdio>
@@ -35,6 +46,8 @@
 #include <cstring>
 #include <vector>
 #include <memory>
+
+#include <mpi.h>                            // 2-die：rootInfo 跨 rank 广播（镜像 hcomm-test init_hcclComm）
 
 #include "acl/acl.h"
 #include "hccl/hccl.h"
@@ -50,10 +63,21 @@
 #include "hccl/hccl_res.h"                 // HcclThreadAcquireWithStream
 #include "hcomm/ccu/hccl_ccu_res.h"        // HcclCcuKernelRegister / RegisterFinish / Launch；CcuKernelHandle
 #include "hcomm/ccu/ccu_assist_pub.h"      // hcomm::CcuRep::GetTokenInfo(va, size)
+#ifdef DISPATCH_CCU_A6
+#include "hccl/hccl_rank_graph.h"          // [a6] HcclRankGraphGetLinks / CommLink / HcclChannelDesc / HcclChannelAcquire
+#endif
 
 // ACLNN_SUCCESS 在本 CANN 版本公共 aclnn 头未导出（同 ACLNN_API），外部调用方自定义兜底（恒 0）。
 #ifndef ACLNN_SUCCESS
 #define ACLNN_SUCCESS 0
+#endif
+
+// CCU 扩展模式值 —— 修 a6 "ccuContainer is nullptr" 的关键开关。
+//   ★ 用 a6 基线「数组约定」ccu_ms=5 / ccu_sched=6（hcomm-test/src/common/hccl_test_common.cc:36 + :867），
+//     【不是】a5 pkg 头枚举 HcclOpExpansionMode 的 CCU_MS=4 / CCU_SCHED=5 —— a5/a6 枚举漂移，按 a6 基线取值！
+//   默认 6(ccu_sched)；用你 dispatch/combine 基线 -a 实际用的那个，可 -DDISPATCH_CCU_EXPANSION_MODE=5 覆盖。
+#ifndef DISPATCH_CCU_EXPANSION_MODE
+#define DISPATCH_CCU_EXPANSION_MODE 6
 #endif
 
 namespace {
@@ -64,13 +88,13 @@ constexpr size_t   STATUS_BYTES = STATUS_SLOTS * sizeof(int32_t);     // 32B
 #define ACLCHECK(expr)                                                                    \
     do {                                                                                  \
         aclError __r = (expr);                                                            \
-        if (__r != ACL_SUCCESS) { printf("[ERR] %s ret=%d @%d\n", #expr, __r, __LINE__); return -1; } \
+        if (__r != ACL_SUCCESS) { printf("[ERR] %s ret=%d @%d\n", #expr, __r, __LINE__); MPI_Abort(MPI_COMM_WORLD, -1); return -1; } \
     } while (0)
 
 #define HCCLCHECK(expr)                                                                   \
     do {                                                                                  \
         HcclResult __r = (expr);                                                          \
-        if (__r != HCCL_SUCCESS) { printf("[ERR] %s ret=%d @%d\n", #expr, __r, __LINE__); return -1; } \
+        if (__r != HCCL_SUCCESS) { printf("[ERR] %s ret=%d @%d\n", #expr, __r, __LINE__); MPI_Abort(MPI_COMM_WORLD, -1); return -1; } \
     } while (0)
 
 // 用一个 device GM 指针 + shape 造 int32 的 aclTensor（contiguous, ND）。
@@ -82,7 +106,51 @@ aclTensor *MakeInt32Tensor(void *devAddr, int64_t numElem)
                            aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), devAddr);
 }
 
-// ---- 段 A：CCU dispatch_setup 经 HCOMM 在 streamSetup 上拉起（裁剪自 ccu_kernel_test 的 ccu_kernel_launch）----
+#ifdef DISPATCH_CCU_A6
+// A6 范式 channel 获取：本卡 srcRank → 对端 dstRank，从 RankGraph link 填 endpoint（UBC_CTP + notifyNum=2）。
+//   裁剪自基线 hcomm_moe_dispatch_setup_test.cc:84-124，与其 channel 序铁律一致。
+//   [T10] 最小本地 kernel 不在 channel 上发 op，建 channel 仅为把 CCU comm 拉到基线验证态。
+static HcclResult HcclGetOneChannel(HcclComm comm, CommEngine engine,
+    uint32_t srcRank, uint32_t dstRank, ChannelHandle *channel)
+{
+    uint32_t netLayer = 0, listSize = 0;
+    CommLink *linkList = nullptr;
+    HcclResult ret = HcclRankGraphGetLinks(comm, netLayer, srcRank, dstRank, &linkList, &listSize);
+    if (ret != HCCL_SUCCESS) { printf("[ERR] HcclRankGraphGetLinks rank %u->%u ret=%d\n", srcRank, dstRank, ret); return ret; }
+
+    HcclChannelDesc desc;
+    ret = HcclChannelDescInit(&desc, 1);
+    if (ret != HCCL_SUCCESS) { printf("[ERR] HcclChannelDescInit ret=%d\n", ret); return ret; }
+    const CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+    const char *tmpArg[] = { "moe_dispatch_05rtt" };       // 与基线 resGroupTag 一致（CCU 资源组）
+    char **resGroupTag = const_cast<char **>(tmpArg);
+
+    bool found = false;
+    for (uint32_t idx = 0; idx < listSize; ++idx) {
+        CommLink link = linkList[idx];
+        if (link.linkAttr.linkProtocol == protocol) {
+            desc.remoteRank              = dstRank;
+            desc.notifyNum               = 2;
+            desc.channelProtocol         = link.linkAttr.linkProtocol;
+            desc.localEndpoint.protocol  = link.srcEndpointDesc.protocol;
+            desc.localEndpoint.commAddr  = link.srcEndpointDesc.commAddr;
+            desc.localEndpoint.loc       = link.srcEndpointDesc.loc;
+            desc.remoteEndpoint.protocol = link.dstEndpointDesc.protocol;
+            desc.remoteEndpoint.commAddr = link.dstEndpointDesc.commAddr;
+            desc.remoteEndpoint.loc      = link.dstEndpointDesc.loc;
+            desc.ccuUbAttr.resGroupTag    = resGroupTag;
+            desc.ccuUbAttr.resGroupTagNum = 1;
+            found = true;
+            break;
+        }
+    }
+    if (!found) { printf("[ERR] no UBC_CTP link between rank %u and %u\n", srcRank, dstRank); return HCCL_E_NOT_FOUND; }
+    return HcclChannelAcquire(comm, engine, &desc, 1, channel);
+}
+#endif  // DISPATCH_CCU_A6
+
+// ---- 段 A：CCU dispatch_setup 经 HCOMM 在 streamSetup 上拉起（裁剪自基线 ccu_kernel_launch）----
+//   2-die：建 rsz-1 个 channel（忠实镜像基线）→ WithStream 取 thread → 注册 → 拉起（kernel 只本地写 1）。
 int LaunchDispatchSetupCcu(HcclComm comm, aclrtStream streamSetup,
                            void *statusGm, void *oneBuf)
 {
@@ -91,8 +159,14 @@ int LaunchDispatchSetupCcu(HcclComm comm, aclrtStream streamSetup,
     HCCLCHECK(HcclGetRankId(comm, &rid));
     HCCLCHECK(HcclGetRankSize(comm, &rsz));
 
-    // 单 die：channel_num = rsz - 1 = 0，纯本地 LocalCopyNb 不取跨卡 channel（[T7]）。
-    std::vector<ChannelHandle> channels;  // 空
+    // 2-die：channel_num = rsz - 1（R=2 → 1 个对端 channel）。channels[k] → dstRank=(k<rid)?k:k+1。
+    //   [T10] 最小本地 kernel 的 Algorithm 不消费 channel，但忠实镜像基线把 CCU comm 拉到验证态。
+    const uint32_t channelNum = rsz - 1U;
+    std::vector<ChannelHandle> channels(channelNum);
+    for (uint32_t k = 0; k < channelNum; ++k) {
+        uint32_t dstRank = (k < rid) ? k : k + 1;
+        HCCLCHECK(HcclGetOneChannel(comm, CommEngine::COMM_ENGINE_CCU, rid, dstRank, &channels[k]));
+    }
 
     ThreadHandle mainThread = 0;
     HCCLCHECK(HcclThreadAcquireWithStream(comm, CommEngine::COMM_ENGINE_CCU, streamSetup, 1, &mainThread));
@@ -119,12 +193,12 @@ int LaunchDispatchSetupCcu(HcclComm comm, aclrtStream streamSetup,
         reinterpret_cast<uint64_t>(oneBuf), oneTok);
 
     HCCLCHECK(HcclCcuKernelLaunch(comm, mainThread, handle, static_cast<void *>(&taskArg)));
-    printf("[driver] dispatch_setup(CCU) launched on streamSetup\n");
+    printf("[driver] dispatch_setup(CCU) launched on streamSetup (rid=%u rsz=%u channels=%u)\n", rid, rsz, channelNum);
     return 0;
 #else
-    // a5：HCOMM CCU 拉起符号（HcclThreadAcquireWithStream / HcclCcuKernel* / CcuKernel 构造）
+    // a5：HCOMM CCU 拉起符号（HcclThreadAcquireWithStream / HcclCcuKernel* / CcuKernel 构造 / channel 建链）
     //   未导出于 a5 libhcomm（nm 实测为空），属 a6-only。a5 上桩掉以便驱动其余部分编译+链接通过；
-    //   a6 移植：cmake -DDISPATCH_CCU_A6=ON（同步启用 dispatch_setup_ccu.cpp 段10 真实写）。
+    //   a6 移植：cmake -DDISPATCH_CCU_A6=ON（同步启用 dispatch_setup_ccu.cpp 段10 真实写 + channel 建链）。
     (void)comm; (void)streamSetup; (void)statusGm; (void)oneBuf;
     printf("[driver] (a5) dispatch_setup(CCU) launch skipped — a6-only hcomm 符号；a6 上 -DDISPATCH_CCU_A6\n");
     return 0;
@@ -159,30 +233,56 @@ int LaunchDispatchTeardownAclnn(aclrtStream streamTeardown, void *statusGm, void
 
 int main(int argc, char **argv)
 {
-    // 极简参数：rank_id 与 rankTableFile（[T7] 单 die 的 rank table 内容需按 a6 环境给）。
-    int32_t rankId = 0;
-    const char *rankTableFile = (argc > 1) ? argv[1] : "./rank_table.json";
+    // ---- MPI：2 die / 2 进程，每进程一个 rank（镜像 hcomm-test）----
+    MPI_Init(&argc, &argv);
+    int mpiRank = 0, mpiSize = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
+    MPI_Comm_size(MPI_COMM_WORLD, &mpiSize);
+    const uint32_t rankId   = static_cast<uint32_t>(mpiRank);
+    const uint32_t rankSize = static_cast<uint32_t>(mpiSize);     // 期望 2（mpirun -n 2）
+    const int32_t  devId    = static_cast<int32_t>(rankId);       // [T7] 单节点：die = rank（dev0/dev1）；若拓扑不同改此映射
+
+    if (rankSize < 2U) {
+        printf("[rank %u][FATAL] rank_size=%u (<2)：CCU 容器需 rank_size>=2 才会创建（硬前置，非警告）。请 mpirun -n 2。\n",
+               rankId, rankSize);
+        MPI_Abort(MPI_COMM_WORLD, -1); return -1;
+    }
 
     ACLCHECK(aclInit(nullptr));
-    ACLCHECK(aclrtSetDevice(rankId));
-    aclrtContext context = nullptr;
-    ACLCHECK(aclrtCreateContext(&context, rankId));
+    ACLCHECK(aclrtSetDevice(devId));
+    // ★ 用 aclrtSetDevice 隐式建的【默认 context】，不显式 aclrtCreateContext——否则 stream 建在显式
+    //   context、而 CCU/HCCL 运行时走默认 context → rtCCULaunch 报 "stream not in current context"(107003)。
+    //   对齐基线 device_init（hccl_test_common.cc:841 仅 aclrtSetDevice、全程无 CreateContext/SetCurrentContext）。
 
     aclrtStream streamSetup = nullptr, streamTeardown = nullptr;
     ACLCHECK(aclrtCreateStream(&streamSetup));
     ACLCHECK(aclrtCreateStream(&streamTeardown));
+    ACLCHECK(aclrtSetStreamFailureMode(streamSetup, 1));          // 遇错即停（对齐基线 hccl_test_common.cc:857，免掩盖 CCU 失败）
+    ACLCHECK(aclrtSetStreamFailureMode(streamTeardown, 1));
 
-    // ---- 单 rank HCCL 通信域（CCU 拉起需要 HcclComm）[T7] ----
-    // [T10] a6 使能 CCU 可能还需：(a) config.hcclOpExpansionMode 设为 CCU 模式
-    //   （HcclOpExpansionMode: CCU_MS=4 / CCU_SCHED=5）;(b) HcclCommQueryCcuIns 校验 CCU 实例数（别 hardcode）。
-    //   低层 HcclThreadAcquireWithStream(COMM_ENGINE_CCU) 路径是否依赖 opExpansionMode 待 a6 核实——
-    //   参考 ccu_kernel_launch 未显式设、可能不需要;a5/a6 仅靠运行期 SOC_VERSION 串区分（DevType 都是 DEV_TYPE_950）。
-    HcclCommConfig config;
+    // ---- 2-rank HCCL 通信域：CCU 拉起需要【CCU 扩展模式 + rank_size>=2】的 HcclComm ----
+    // ★★ 修 a6 "[HcclCcuKernelRegister] ptr [ccuContainer] is nullptr"：根因 = comm 没在 CCU 扩展模式下、
+    //    或 rank_size<2 下初始化，ccuContainer 不会被创建 → Register 取到空指针。对齐已跑通的 hcomm-test 基线
+    //    (hccl_test_common.cc:861-941)：root HcclGetRootInfo → MPI_Bcast 广播 rootInfo → 各 rank
+    //    HcclCommInitRootInfoConfig(rank_size, &rootInfo, rank_id, &config{hcclOpExpansionMode=CCU}, &comm)。
+    HcclRootInfo rootInfo{};                                       // 零初始化（非 root 在 Bcast 前不读，防脏字节泄漏）
+    if (rankId == 0U) {
+        HCCLCHECK(HcclGetRootInfo(&rootInfo));                     // 仅 root 取，广播给其余 rank
+    }
+    if (MPI_Bcast(&rootInfo, HCCL_ROOT_INFO_BYTES, MPI_CHAR, 0, MPI_COMM_WORLD) != MPI_SUCCESS) {
+        printf("[rank %u][ERR] MPI_Bcast(rootInfo) failed\n", rankId); MPI_Abort(MPI_COMM_WORLD, -1); return -1;
+    }
+
+    HcclCommConfig config{};                                      // 零初始化（对齐基线 ={0}，免栈垃圾混入建 comm 的 config——它正是建 ccuContainer 的那个 config）
     HcclCommConfigInit(&config);
+    config.hcclWorldRankID = rankId;
+#ifdef DISPATCH_CCU_A6
+    config.hcclOpExpansionMode = DISPATCH_CCU_EXPANSION_MODE;      // ★ 关键：CCU 扩展模式 → 创建 ccuContainer（a5 骨架不设）
+#endif
     HcclComm comm = nullptr;
-    HCCLCHECK(HcclCommInitClusterInfoConfig(rankTableFile, rankId, &config, &comm));
+    HCCLCHECK(HcclCommInitRootInfoConfig(rankSize, &rootInfo, rankId, &config, &comm));
 
-    // ---- 共享 GM：status（CCU 写 / AIV 读）、oneBuf（CCU 写源）、done（AIV 写 / host 校验）----
+    // ---- 本 rank 的共享 GM：status（CCU 写 / AIV 读）、oneBuf（CCU 写源）、done（AIV 写 / host 校验）----
     void *statusGm = nullptr, *oneBuf = nullptr, *doneGm = nullptr;
     ACLCHECK(aclrtMalloc(&statusGm, STATUS_BYTES, ACL_MEM_MALLOC_HUGE_FIRST));
     ACLCHECK(aclrtMalloc(&oneBuf, STATUS_BYTES, ACL_MEM_MALLOC_HUGE_FIRST));
@@ -197,20 +297,20 @@ int main(int argc, char **argv)
         ACLCHECK(aclrtMemcpy(oneBuf, STATUS_BYTES, ones.data(), STATUS_BYTES, ACL_MEMCPY_HOST_TO_DEVICE));
     }
 
-    // ---- 串行同步：先后异步拉起两算子到两条流，靠 teardown 忙等轮询完成跨流同步 ----
-    if (LaunchDispatchSetupCcu(comm, streamSetup, statusGm, oneBuf) != 0) return -1;
-    if (LaunchDispatchTeardownAclnn(streamTeardown, statusGm, doneGm) != 0) return -1;
+    // ---- 串行同步：先后异步拉起两算子到两条流，靠 teardown 忙等轮询完成跨流同步（每 rank 各自独立）----
+    if (LaunchDispatchSetupCcu(comm, streamSetup, statusGm, oneBuf) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
+    if (LaunchDispatchTeardownAclnn(streamTeardown, statusGm, doneGm) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
 
     ACLCHECK(aclrtSynchronizeStream(streamSetup));
     ACLCHECK(aclrtSynchronizeStream(streamTeardown));
 
-    // ---- 校验：done[0] 应为 1（teardown 等到状态位并往下走）----
+    // ---- 校验：done[0] 应为 1（本 rank teardown 等到状态位并往下走）----
     std::vector<int32_t> doneHost(STATUS_SLOTS, 0);
     ACLCHECK(aclrtMemcpy(doneHost.data(), STATUS_BYTES, doneGm, STATUS_BYTES, ACL_MEMCPY_DEVICE_TO_HOST));
     if (doneHost[0] == mc2::DISPATCH_READY_VALUE) {
-        printf("[driver] PASS: teardown observed status==1 (done=%d)\n", doneHost[0]);
+        printf("[rank %u] PASS: teardown observed status==1 (done=%d)\n", rankId, doneHost[0]);
     } else {
-        printf("[driver] FAIL: done=%d (expected 1)\n", doneHost[0]);
+        printf("[rank %u] FAIL: done=%d (expected 1)\n", rankId, doneHost[0]);
     }
 
     // ---- 清理 ----
@@ -220,8 +320,8 @@ int main(int argc, char **argv)
     HcclCommDestroy(comm);
     aclrtDestroyStream(streamSetup);
     aclrtDestroyStream(streamTeardown);
-    aclrtDestroyContext(context);
-    aclrtResetDevice(rankId);
+    aclrtResetDevice(devId);
     aclFinalize();
+    MPI_Finalize();
     return 0;
 }

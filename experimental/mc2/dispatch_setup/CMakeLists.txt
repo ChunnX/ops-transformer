@@ -28,6 +28,29 @@ if(NOT DEFINED ASCEND_CANN_PACKAGE_PATH)
 endif()
 message(STATUS "ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH}  SOC_VERSION=${SOC_VERSION}")
 
+# ---- MPI（2-die bootstrap：root 取 rootInfo → 2 rank MPI_Bcast 广播；镜像 hcomm-test init_hcclComm）----
+#   依赖 MPI dev 包 / module（与 hcomm-test 相同前提）。仅用 C MPI API（MPI_Init/Comm_rank/Bcast/Finalize），
+#   故链 MPI::MPI_C 足矣；如 a6 环境 find_package 失败，可 -DMPI_HOME=.. 或加 CMAKE_PREFIX_PATH 指到 MPI。
+# MPI（仅 C API）：★ 不用 find_package(MPI)——它靠问 MPI wrapper(mpicc/mpicxx) 拿路径并 try_compile，
+#   a6 上 MPICH/OpenMPI 的 wrapper 常自报一个写死的、当前机上不存在的 include（如 /mnt/mpich/include：
+#   安装位与挂载位不一致），直接把 find_package 搞挂（Imported target MPI::MPI_CXX includes non-existent path）。
+#   改为【直接从 MPI_HOME 定位 mpi.h + libmpi(C 库)】，绕开 wrapper 脏路径，用 MPI_HOME 作唯一真值来源。
+#   （本驱动只用 C MPI API；C++ bindings 已由 OMPI_SKIP_MPICXX/MPICH_SKIP_MPICXX 关掉，故不碰 libmpi_cxx。）
+find_path(MPI_INC_DIR NAMES mpi.h
+    HINTS ${MPI_HOME} $ENV{MPI_HOME}
+    PATHS /usr/lib/x86_64-linux-gnu/openmpi /usr/include /usr/local/include
+    PATH_SUFFIXES include)
+find_library(MPI_C_LIB NAMES mpi
+    HINTS ${MPI_HOME} $ENV{MPI_HOME}
+    PATHS /usr/lib/x86_64-linux-gnu/openmpi /usr/lib /usr/lib64 /usr/local/lib
+    PATH_SUFFIXES lib lib64)
+if(NOT MPI_INC_DIR OR NOT MPI_C_LIB)
+    message(FATAL_ERROR "MPI(C) 未定位到：mpi.h=[${MPI_INC_DIR}] libmpi=[${MPI_C_LIB}]。"
+        " 请 -DMPI_HOME=<mpi 根，其下应有 include/mpi.h 与 lib/libmpi.so>")
+endif()
+set(MPI_LINK_TARGET ${MPI_C_LIB})
+message(STATUS "MPI(C-only): inc=${MPI_INC_DIR}  lib=${MPI_C_LIB}")
+
 # a6-only CCU 路径开关：关(默认)= a5 只编驱动本体（不编 CCU kernel —— 它继承 hcomm::CcuKernel，
 #   而 CcuKernel 基类/HcclCcuKernel* 符号 nm 实测不在 a5 libhcomm，属 a6-only、a5 链接无解）；
 #   开 = 编入 dispatch_setup_ccu.cpp + 启用 CCU 拉起与段10 LocalCopyNb 真实写，需 a6 libhcomm。
@@ -42,7 +65,13 @@ add_executable(dispatch_min_driver ${DRIVER_SRCS})
 target_compile_options(dispatch_min_driver PRIVATE
     -O2 -std=c++17 -D_GLIBCXX_USE_CXX11_ABI=0 -Wall
 )
-target_compile_definitions(dispatch_min_driver PRIVATE SOC_VERSION="${SOC_VERSION}")
+target_compile_definitions(dispatch_min_driver PRIVATE SOC_VERSION="${SOC_VERSION}"
+    OMPI_SKIP_MPICXX MPICH_SKIP_MPICXX)   # ★ 关掉 mpi.h 拖进的已废弃 C++ bindings，只走 C MPI API
+
+# a6 链接：CCU 头(hcomm/ccu)内联用了安全 C 函数 memset_s（属 libc_sec）；ld 默认不传递解析 DT_NEEDED，
+#   故 (1) 上面 foreach 已把 c_sec 纳入显式链接，(2) 加 --copy-dt-needed-entries 让 CANN 库的传递符号也能解析
+#   （对齐 hcomm-test 基线用法；a5 骨架 CCU 关、不引用 memset_s，故此依赖仅 a6 暴露）。
+target_link_options(dispatch_min_driver PRIVATE -Wl,--copy-dt-needed-entries)
 
 if(DISPATCH_CCU_A6)
     target_compile_definitions(dispatch_min_driver PRIVATE DISPATCH_CCU_A6)
@@ -82,10 +111,11 @@ target_include_directories(dispatch_min_driver PRIVATE
     ${HCOMM_PKG_INC}/hcomm/ccu                                       # plain "ccu_kernel.h"（dispatch_setup_ccu.h 用）
     ${HCOMM_INT_INC}                                                 # hccl/hccl_res.h, hcomm_res_defs.h, hcomm_primitives.h
     ${HCOMM_INT_INC}/hccl                                            # plain "hccl_types.h"（ccu_kernel.h 内部 plain include）
+    ${MPI_INC_DIR}                                                   # mpi.h（直接从 MPI_HOME 定位，不走 find_package）
 )
 
 # ---- 自动定位库（lib64 布局 a5/a6 不同）----
-foreach(_lib ascendcl nnopbase hccl hcomm)
+foreach(_lib ascendcl nnopbase hccl hcomm c_sec)
     find_library(LIB_${_lib} ${_lib}
         PATHS ${ASCEND_CANN_PACKAGE_PATH}
         PATH_SUFFIXES lib64 x86_64-linux/lib64 x86_64-linux/devlib lib
@@ -103,7 +133,7 @@ find_library(LIB_cust_opapi NAMES cust_opapi cust_op_api
     NO_DEFAULT_PATH)
 
 target_link_libraries(dispatch_min_driver PRIVATE
-    ${LIB_ascendcl} ${LIB_nnopbase} ${LIB_hccl} ${LIB_hcomm} pthread
+    ${LIB_ascendcl} ${LIB_nnopbase} ${LIB_hccl} ${LIB_hcomm} ${LIB_c_sec} ${MPI_LINK_TARGET} pthread
 )
 if(LIB_cust_opapi)
     target_link_libraries(dispatch_min_driver PRIVATE ${LIB_cust_opapi})
