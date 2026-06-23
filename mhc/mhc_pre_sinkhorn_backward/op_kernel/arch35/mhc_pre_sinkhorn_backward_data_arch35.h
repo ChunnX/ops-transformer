@@ -49,6 +49,7 @@ struct MhcPreSinkhornBackwardArch35DeterminiticTilingData {
     int64_t skIterCount = 0;
     int64_t bsTaskCount = 0;
     int64_t tailBsTaskCount = 0;
+    int64_t tileSize = 0;
     //reset后
     int64_t cBlockLoops = 0; // B*S*N*C，切核，总循环次数
     int64_t cBlockTailLoops = 0; // B*S*N*C，切核，尾核循环次数
