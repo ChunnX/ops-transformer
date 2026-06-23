@@ -977,7 +977,7 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
     uint32_t elementSize = D_TYPE_SIZE_MAP.at(cType);
 
     OP_TILING_CHECK(
-        (info.M * info.N / rankSize * elementSize) >= (180 * 1024 * 1024),
+        (static_cast<uint64_t>(info.M) * info.N / rankSize * elementSize) >= (180 * 1024 * 1024),
         OP_LOGE(context->GetNodeName(),
                 "The space required for the output result is larger than the peermem space, and "
                 "a single copy is not possible."),
@@ -1019,21 +1019,23 @@ void GetUsrWorkSpaceSize(uint32_t elementSize, uint32_t numBlocks, uint64_t &use
     info.hasAAlign = hasAAlign;
     info.hasBAlign = hasBAlign;
     if (info.hasAAlign) {
-        info.aAlignSize = static_cast<uint64_t>((info.isTransposeA ? info.K * mAlign : info.M * kAlign) * elementSize);
+        info.aAlignSize = (info.isTransposeA ? static_cast<uint64_t>(info.K) * mAlign :
+                           static_cast<uint64_t>(info.M) * kAlign) * elementSize;
         userWorkSpaceSize += info.aAlignSize;
     }
     if (info.hasBAlign) {
-        info.bAlignSize = static_cast<uint64_t>((info.isTransposeB ? info.N * kAlign : info.K * nAlign) * elementSize);
+        info.bAlignSize = (info.isTransposeB ? static_cast<uint64_t>(info.N) * kAlign :
+                           static_cast<uint64_t>(info.K) * nAlign) * elementSize;
         userWorkSpaceSize += info.bAlignSize;
     }
     if (info.quantFlag) {
         if (GetAlgorithmPolicy(info.M, info.N, info.is910C, info.quantFlag) == AlgorithmStrategy::SMALL_M_OPTIMIZED) {
             // 针对小m场景优化算法，输出矩阵可以一次性放入peermem中，因此workspace匹配整个输出矩阵大小。
-            info.dequantSize = static_cast<uint64_t>(mAlign * nAlign * sizeof(int32_t));
+            info.dequantSize = static_cast<uint64_t>(mAlign) * nAlign * sizeof(int32_t);
         } else {
             // 大m场景算法，peermem可能转不下输出矩阵，需要double buffer搬运，因此workspace匹配double buffer空间。
-            info.dequantSize = static_cast<uint64_t>(cocTilingData.pValue * numBlocks * cocTilingData.m0 *
-                                                     cocTilingData.n0 * TWO * sizeof(int32_t));
+            info.dequantSize = static_cast<uint64_t>(cocTilingData.pValue) * numBlocks * cocTilingData.m0 *
+                                                     cocTilingData.n0 * TWO * sizeof(int32_t);
         }
     }
     userWorkSpaceSize += info.dequantSize;
