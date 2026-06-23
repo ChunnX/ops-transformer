@@ -209,8 +209,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     serverNum_ = Ops::Base::CeilDiv(worldSize_, rankPerServer_);
     serverId_ = rankId_ / rankPerServer_;
     rankInServer_ = rankId_ % rankPerServer_;
-    PRINTF("Init: rankId=%u, serverId=%u, rankInServer=%u, worldSize=%u, rankPerServer=%u, serverNum=%u\n",
-        rankId_, serverId_, rankInServer_, worldSize_, rankPerServer_, serverNum_);
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
@@ -486,42 +484,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatc
         WriteGmByPassDCache(metaPtr, int32_t(0));
         WriteGmByPassDCache(metaPtr + 1, int32_t(0));
     }
-    __gm__ int32_t* resetSyncMarkPtr = reinterpret_cast<__gm__ int32_t*>(
-        params_.workspaceInfo.relayReadScratchPtr);
-    WriteGmByPassDCache(resetSyncMarkPtr + aivCoreIdx_,
-        static_cast<int32_t>(0x5a000000U + aivCoreIdx_));
-    PipeBarrier<PIPE_ALL>();
-    if (aivCoreIdx_ == 0) {
-        int32_t arrived = 0;
-        for (int32_t spin = 0; spin < 10000; ++spin) {
-            arrived = 0;
-            for (uint32_t idx = 0; idx < blockAivNum_; ++idx) {
-                int32_t mark = ReadGmByPassDCache(resetSyncMarkPtr + idx);
-                if (mark == static_cast<int32_t>(0x5a000000U + idx)) {
-                    ++arrived;
-                }
-            }
-            if (arrived == static_cast<int32_t>(blockAivNum_)) {
-                break;
-            }
-            Nop<200>();
-        }
-        PRINTF("ResetUrmaDispatchState SyncAll arrival: rankId=%u, arrived=%d, expected=%u, "
-            "mark0=%d, mark1=%d, mark2=%d, mark3=%d, mark4=%d, mark5=%d, mark6=%d, mark7=%d\n",
-            rankId_, arrived, blockAivNum_,
-            ReadGmByPassDCache(resetSyncMarkPtr),
-            ReadGmByPassDCache(resetSyncMarkPtr + 1),
-            ReadGmByPassDCache(resetSyncMarkPtr + 2),
-            ReadGmByPassDCache(resetSyncMarkPtr + 3),
-            ReadGmByPassDCache(resetSyncMarkPtr + 4),
-            ReadGmByPassDCache(resetSyncMarkPtr + 5),
-            ReadGmByPassDCache(resetSyncMarkPtr + 6),
-            ReadGmByPassDCache(resetSyncMarkPtr + 7));
-    }
-    SyncAll<true>();
-    if (aivCoreIdx_ == 0) {
-        PRINTF("ResetUrmaDispatchStateDone: rankId=%u\n", rankId_);
-    }
+    // PipeBarrier<PIPE_ALL>();
+    // SyncAll<true>();
 }
 
 // ===============================================================================================
@@ -591,7 +555,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUrma(int32_t localExpertId)
 {
-    PRINTF("BEGIN Level1DispatchUrma, localExpertId=%d\n", localExpertId);
     uint32_t senderCoreNum = (serverNum_ < blockNum_) ? serverNum_ : blockNum_;
     bool isSenderCore = blockIdx_ < senderCoreNum;
     uint32_t computeCoreNum = blockNum_ - senderCoreNum;
@@ -601,10 +564,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 
     bool isComputeCore = useSenderAsCompute || (blockIdx_ >= senderCoreNum);
     uint32_t computeIdx = useSenderAsCompute ? blockIdx_ : (blockIdx_ - senderCoreNum);
-    PRINTF("Level1DispatchUrma: senderCoreNum=%u, computeCoreNum=%u, isSenderCore=%d, isComputeCore=%d, computeIdx=%u\n",
-        senderCoreNum, computeCoreNum, isSenderCore, isComputeCore, computeIdx);
     if (isComputeCore) {
-        PRINTF("Level1DispatchUrma Compute, blockIdx_=%u\n", blockIdx_);
         uint32_t baseTokenNum = m_ / realComputeCoreNum;
         uint32_t tokenRemainder = m_ % realComputeCoreNum;
         uint32_t tokenNumInCore = baseTokenNum + static_cast<uint32_t>(computeIdx < tokenRemainder);
@@ -646,7 +606,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     }
 
     if (isSenderCore) {
-        PRINTF("Level1DispatchUrma Sender, blockIdx_=%u\n", blockIdx_);
         __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDonePtr);
         __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendCursorPtr);
         for (uint32_t targetServerForSender = blockIdx_; targetServerForSender < serverNum_;
@@ -705,7 +664,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
             }
         }
     }
-    PRINTF("END Level1DispatchUrma, localExpertId=%d\n", localExpertId);
 }
 
 // ==================================================
@@ -1255,7 +1213,6 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
-    printf("ProcessCombine quant\n");
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
 
     GlobalTensor<int32_t> rowGroupComplete;
@@ -1483,6 +1440,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
+    PRINTF("before CrossRankSyncInWorldSize\n");
     CrossRankSyncInWorldSize();  // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
