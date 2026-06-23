@@ -64,6 +64,7 @@ constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr uint32_t DOUBLE_BUFFER = 2U;
+constexpr uint32_t DISPATCH_BUFFER_NUM = 6U;
 constexpr uint32_t TWO_FLAG = 2U;
 constexpr uint32_t RANK_ID = 0U;
 constexpr uint32_t TOKEN_ID = 1U;
@@ -105,6 +106,7 @@ struct WorkspaceInfo {
     GM_ADDR sendDedupMaskPtr;
     GM_ADDR sendCursorPtr;
     GM_ADDR sendDonePtr;
+    GM_ADDR relayReadScratchPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
