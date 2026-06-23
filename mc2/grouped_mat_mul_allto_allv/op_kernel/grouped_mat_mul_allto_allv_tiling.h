@@ -14,7 +14,7 @@
 #ifndef GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H_ARCH22__
 #define GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H_ARCH22__
 
-#include "../../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
+#include "../../quant_grouped_mat_mul_allto_allv/op_kernel/quant_grouped_mat_mul_allto_allv_tiling.h"
 
 #pragma once
 
