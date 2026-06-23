@@ -25,10 +25,10 @@ using namespace matmul;
 
 constexpr uint8_t STAGE3_AIC_AIV_SYNC_MODE = 0x2;
 constexpr uint32_t STAGE3_TMP_GM_SLOT_COUNT = 4;
+constexpr uint16_t STAGE3_AIC_DONE_AIV_FLAG_BASE = 0x0;
 constexpr uint16_t STAGE3_AIV0_READY_AIC_FLAG_BASE = 0x4;
 constexpr uint16_t STAGE3_AIV1_READY_AIC_FLAG_BASE = 0x8;
 constexpr uint16_t STAGE3_AIC_INIT_AIV_FLAG_BASE = 0xc;
-constexpr uint32_t STAGE3_DONE_STATE_ALIGN_INT32 = BLOCK_SIZE / sizeof(int32_t);
 
 using aT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
 using bT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
@@ -77,10 +77,6 @@ public:
         uint64_t workSpaceOffset = 0;
         tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
             initParams->ws + workSpaceOffset + coreNum_ * chunkSize_ * chunkSize_ * sizeof(float)));
-        uint64_t doneStateOffset = coreNum_ * chunkSize_ * chunkSize_ * sizeof(float) +
-                                   static_cast<uint64_t>(STAGE3_TMP_GM_SLOT_COUNT) * coreNum_ *
-                                   chunkSize_ * chunkSize_ * sizeof(bfloat16_t);
-        doneStateGM_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(initParams->ws + doneStateOffset));
         if ASCEND_IS_AIC {
             return;
         }
@@ -103,7 +99,6 @@ public:
     __aicore__ inline void Process()
     {
         if ASCEND_IS_AIC {
-            InitDoneState();
             CrossCoreSetFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAicInitAivFlag(0));
             CrossCoreSetFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAicInitAivFlag(1));
         }
@@ -125,7 +120,7 @@ public:
             uint64_t slotOffset = GetTmpGmSlotOffset(slotIdx);
             if ASCEND_IS_AIV {
                 if (localIdx >= STAGE3_TMP_GM_SLOT_COUNT) {
-                    WaitAicDone(slotIdx, GetPrevDoneEpoch(localIdx));
+                    WaitAicDone(slotIdx);
                 }
                 SetSubValidRows();
                 CalMaskedQKT(tmpGM_[slotOffset + coreId_ * chunkSize_ * chunkSize_ +
@@ -140,7 +135,7 @@ public:
                 AICProcess(tmpGM_[slotOffset + coreId_ * chunkSize_ * chunkSize_],
                            sTP_->vInner[nvId * Sp_ * Dv_ + chunkPos * Dv_],
                            sTP_->attnOut[nvId * Dv_ + chunkPos * Nv_ * Dv_]);
-                SetAicDone(slotIdx, GetCurDoneEpoch(localIdx));
+                SetAicDone(slotIdx);
             }
             localIdx++;
         }
@@ -149,7 +144,7 @@ public:
                                  localIdx : static_cast<int64_t>(STAGE3_TMP_GM_SLOT_COUNT);
             for (int64_t drainIdx = localIdx - drainCount; drainIdx < localIdx; drainIdx++) {
                 uint32_t slotIdx = static_cast<uint32_t>(drainIdx % STAGE3_TMP_GM_SLOT_COUNT);
-                WaitAicDone(slotIdx, GetCurDoneEpoch(drainIdx));
+                WaitAicDone(slotIdx);
             }
         }
     }
@@ -170,39 +165,19 @@ public:
         return STAGE3_AIC_INIT_AIV_FLAG_BASE + static_cast<uint16_t>(subBlockIdx);
     }
 
-    __aicore__ inline int32_t GetPrevDoneEpoch(int64_t localIdx)
+    __aicore__ inline uint16_t GetAicDoneAivFlag(uint32_t slotIdx)
     {
-        return static_cast<int32_t>(localIdx / STAGE3_TMP_GM_SLOT_COUNT);
+        return STAGE3_AIC_DONE_AIV_FLAG_BASE + static_cast<uint16_t>(slotIdx);
     }
 
-    __aicore__ inline int32_t GetCurDoneEpoch(int64_t localIdx)
+    __aicore__ inline void WaitAicDone(uint32_t slotIdx)
     {
-        return static_cast<int32_t>(localIdx / STAGE3_TMP_GM_SLOT_COUNT + 1);
+        CrossCoreWaitFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_MTE3>(GetAicDoneAivFlag(slotIdx));
     }
 
-    __aicore__ inline uint64_t GetDoneStateOffset(uint32_t slotIdx)
+    __aicore__ inline void SetAicDone(uint32_t slotIdx)
     {
-        return (static_cast<uint64_t>(coreId_) * STAGE3_TMP_GM_SLOT_COUNT + slotIdx) *
-               STAGE3_DONE_STATE_ALIGN_INT32;
-    }
-
-    __aicore__ inline void WaitAicDone(uint32_t slotIdx, int32_t doneEpoch)
-    {
-        uint64_t doneOffset = GetDoneStateOffset(slotIdx);
-        while (doneStateGM_.GetValue(doneOffset) < doneEpoch) {
-        }
-    }
-
-    __aicore__ inline void InitDoneState()
-    {
-        for (uint32_t slotIdx = 0; slotIdx < STAGE3_TMP_GM_SLOT_COUNT; slotIdx++) {
-            doneStateGM_.SetValue(GetDoneStateOffset(slotIdx), 0);
-        }
-    }
-
-    __aicore__ inline void SetAicDone(uint32_t slotIdx, int32_t doneEpoch)
-    {
-        doneStateGM_.SetValue(GetDoneStateOffset(slotIdx), doneEpoch);
+        CrossCoreSetFlag<STAGE3_AIC_AIV_SYNC_MODE, PIPE_FIX>(GetAicDoneAivFlag(slotIdx));
     }
 
     __aicore__ inline void LoadMaskToBuffer(int32_t rowOffset)
@@ -338,7 +313,6 @@ private:
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;
     TBuf<TPosition::VECCALC> tmpBuff_;
     GlobalTensor<bfloat16_t> tmpGM_;
-    GlobalTensor<int32_t> doneStateGM_;
     LocalTensor<float> tmpBuffer1_;
     LocalTensor<float> tmpBuffer2_;
     LocalTensor<float> maskBuffer_;
