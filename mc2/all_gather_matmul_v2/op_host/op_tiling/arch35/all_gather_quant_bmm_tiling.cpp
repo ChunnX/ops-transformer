@@ -180,6 +180,10 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckX1Input()
         (isFp4_) && (CheckMXFP4Input() != ge::GRAPH_SUCCESS),
         OP_LOGE(opName_, "Check mxfp4 input failed."),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (isFp4_),
+        OP_LOGE(opName_, "fp4 only support mx quant."),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
