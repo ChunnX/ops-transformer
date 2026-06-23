@@ -675,15 +675,10 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor(
             RoundMode::CAST_ROUND};
 
         AscendC::MicroAPI::LoadAlign<float>(regW, weight);
-        // AscendC::MicroAPI::LoadAlign<float>(regQScale, qScale);
-        // AscendC::MicroAPI::Mul(regW, regW, regQScale, maskAllB32);
         AscendC::MicroAPI::Muls(regW, regW, qScaleValue, maskAllB32);
 
         DuplicateZero(regSum0, maskAllB32);
         DuplicateZero(regSum1, maskAllB32);
-
-        // MicroAPI::LoadAlign<float>(regKScale[0], kScale);
-        // MicroAPI::LoadAlign<float>(regKScale[1], kScale + 64);
 
         // unroll2
         for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i += 2) {
@@ -748,8 +743,6 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor2(
         AscendC::MicroAPI::RegTensor<float> regQK1[2];
         AscendC::MicroAPI::RegTensor<float> regW[2];
 
-        // AscendC::MicroAPI::RegTensor<float> regQScale[2];
-        // AscendC::MicroAPI::RegTensor<float> regKScale[2];
         AscendC::MicroAPI::RegTensor<float> regSum0[2];
         AscendC::MicroAPI::RegTensor<float> regSum1[2];
         AscendC::MicroAPI::MaskReg maskAllB32 = AscendC::MicroAPI::CreateMask<float,
