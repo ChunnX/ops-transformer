@@ -156,7 +156,8 @@ void QSMLATilingCheck::Init()
     }
 }
 static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vector<int64_t> &strides,
-    const gert::Shape &shape, const QSMLALayout &kvLayout, const std::string &tensorName) {
+    const gert::Shape &shape, const QSMLALayout &kvLayout, const std::string &tensorName)
+{
     std::vector<int64_t> expectedStrides;
     const size_t dimNum = shape.GetDimNum();
     if (kvLayout == QSMLALayout::BSND) {
@@ -195,7 +196,7 @@ ge::graphStatus QSMLATilingCheck::CheckKvContiguous() const
             qsmlaInfo_.oriKvStorageShape, kvLayout_, ORI_KV_NAME) != ge::GRAPH_SUCCESS) {
                     return ge::GRAPH_FAILED;
             }
-    }        
+    } 
     if (!qsmlaInfo_.cmpKvStrides.empty()) {
         if (ValidateKvContiguous(opName_, qsmlaInfo_.cmpKvStrides,
             qsmlaInfo_.cmpKvStorageShape, kvLayout_, CMP_KV_NAME) != ge::GRAPH_SUCCESS) {
