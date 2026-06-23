@@ -1446,43 +1446,43 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     }
     // QuantProcessInRank();        // 对本卡token的量化
     ResetUrmaDispatchState();// 清理 URMA 一级通信 workspace/relay ready 状态
-    // if constexpr(g_coreType == AIV) {
-    //     PipeBarrier<PIPE_ALL>();
-    //     SyncAll<true>();
-    // }
-    // PRINTF("before CrossRankSyncInWorldSize\n");
-    // CrossRankSyncInWorldSize();  // 全卡同步
+    if constexpr(g_coreType == AIV) {
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+    }
+    PRINTF("before CrossRankSyncInWorldSize\n");
+    CrossRankSyncInWorldSize();  // 全卡同步
 
-    // // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
-    // DispatchBuffInit();
-    // GMMAddrInfo gmmAddrInfo;
-    // TupleShape initShape;
-    // Get<N_VALUE>(initShape) = hiddenDim_;
-    // Get<K_VALUE>(initShape) = k_;
-    // BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    // ExpertLoopState gmm1State{initShape, initOffset};
-    // for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
-    //     if constexpr(g_coreType == AIV) {
-    //         if (subBlockIdx_ == 1) {
-    //             Level1DispatchUrma(localExpertId); // 一级通信：本轮 localExpertId 的 token 写入各 server relay 区
-    //             SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
-    //         }
-    //     }
-    //     if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
-    //         continue;
-    //     }
-    //     UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
-    //     if constexpr(g_coreType == AIV) {
-    //         if (subBlockIdx_ == 1) {
-    //             TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
-    //         }
-    //     }
-    //     if (subBlockIdx_ == 0) {
-    //         MegaMoeImpl::GroupMatmulSwigluQuant<
-    //             QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-    //             epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
-    //     }
-    // }
+    // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+    DispatchBuffInit();
+    GMMAddrInfo gmmAddrInfo;
+    TupleShape initShape;
+    Get<N_VALUE>(initShape) = hiddenDim_;
+    Get<K_VALUE>(initShape) = k_;
+    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    ExpertLoopState gmm1State{initShape, initOffset};
+    for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
+        if constexpr(g_coreType == AIV) {
+            if (subBlockIdx_ == 1) {
+                Level1DispatchUrma(localExpertId); // 一级通信：本轮 localExpertId 的 token 写入各 server relay 区
+                SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
+            }
+        }
+        if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
+            continue;
+        }
+        // UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
+        // if constexpr(g_coreType == AIV) {
+        //     if (subBlockIdx_ == 1) {
+        //         TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
+        //     }
+        // }
+        // if (subBlockIdx_ == 0) {
+        //     MegaMoeImpl::GroupMatmulSwigluQuant<
+        //         QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+        //         epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+        // }
+    }
     // EndSync(vecSetSyncCom_);
     // if constexpr(g_coreType == AIV) {
     //     if (subBlockIdx_ == 1) {
