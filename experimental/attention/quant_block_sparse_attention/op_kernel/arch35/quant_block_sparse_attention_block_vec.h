@@ -436,7 +436,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
     float deSCaleVValue = 1.0f;
     // BSA: V 为 per-head 反量化，vScale shape [N2]，按 n2 head 取值。
     // 原 deScaleKvOffset 未被赋值（未初始化），GetValue 会越界读 GM → AICore SVM page fault(507015)。
-    deSCaleVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx) * constInfo.pScale;
+    deSCaleVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
@@ -446,7 +446,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
         // BSA: V per-head 反量化，前一块与当前块同为 vScale[n2oIdx]（非 FIA 的 per-block scale），
         // 不能用 deScaleKvOffset 的 per-block ping-pong（未初始化且 -1 会越界，触发 507015）。
-        float deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx) * constInfo.pScale;
+        float deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             if (unlikely(runInfo.s2LoopCount == 1)) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(

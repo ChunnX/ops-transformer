@@ -225,7 +225,7 @@ void QuantBlockSparseAttentionTiling::FillInitOutputParams()
 void QuantBlockSparseAttentionTiling::CalcTilingKey()
 {
     const auto &info = *tilingInfo_;
-    tilingKey_ = GET_TPL_TILING_KEY(BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_ND, info.maskModeVal,
+    tilingKey_ = GET_TPL_TILING_KEY(BSA_DTYPE_FP8_E4M3FN, info.layoutQValue, BSA_KV_LAYOUT_PA_BNSD, info.maskModeVal,
                                     info.returnSoftmaxLseVal ? 1U : 0U);
 }
 

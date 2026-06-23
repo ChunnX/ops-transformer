@@ -82,8 +82,8 @@ __global__ __aicore__ void quant_block_sparse_attention(
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    constexpr BSALayout layout = BSALayout::TND;
-    constexpr BSALayout kvLayout = BSALayout::PA_BNSD;
+    constexpr BSALayout layout = static_cast<BSALayout>(LAYOUT_T);
+    constexpr BSALayout kvLayout = static_cast<BSALayout>(KV_LAYOUT_T);
     // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = true;
     constexpr bool bsaUseDn = BaseApi::IsDn();
