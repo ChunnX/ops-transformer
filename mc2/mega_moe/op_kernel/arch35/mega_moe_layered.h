@@ -898,10 +898,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
-    do {
-        hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
-        hcomm_.Drain(channel);
-    } while (ReadGmByPassDCache(localReadyFlag) != int32_t(1));
+    // do {
+    //     hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
+    //     hcomm_.Drain(channel);
+    // } while (ReadGmByPassDCache(localReadyFlag) != int32_t(1));
 
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     hcomm_.Drain(channel);
@@ -965,7 +965,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
         TEventID eventId = kBufEvents[primeIdx];
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-        // ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, primeIdx, copyInNum);
+        ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, primeIdx, copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     }
     // Phase 2 steady: MTE3[copyIdx] + issueMTE2[copyIdx + BufferNum]
@@ -990,7 +990,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
             uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
             // WaitFlag 此处等待的是本轮刚发出的 SetFlag<MTE3_MTE2>(eventId),即等本槽 MTE3 完成。
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-            // ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, outIdx, copyInNum);
+            ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, outIdx, copyInNum);
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         }
     }
