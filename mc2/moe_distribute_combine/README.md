@@ -13,20 +13,12 @@
 
 ## 功能说明
 
-算子功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）。
+算子功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。不支持TP域通信。
 
-- 不存在TP域通信时：
+- 计算公式：
 
     $$
     ataOut = AllToAllV(expandX)\\
-    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-    $$
-
-- 存在TP域通信时：
-
-    $$
-    rsOut = ReduceScatterV(expandX)\\
-    ataOut = AllToAllV(rsOut)\\
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
 
@@ -89,7 +81,7 @@
 <tr>
 <td>tpSendCounts</td>
 <td>可选输入</td>
-<td>从TP通信域各卡接收的token数，对应MoeDistributeDispatch中的tpRecvCounts输出，若有TP域通信需传参，若无TP域通信传空指针。</td>
+<td>预留参数，TP域通信不再支持，传空指针即可。</td>
 <td>INT32</td>
 <td>ND</td>
 </tr>
@@ -159,21 +151,21 @@
 <tr>
 <td>groupTp</td>
 <td>可选属性</td>
-<td><li>TP通信域名称（数据并行通信域）。</li><li>默认值为""。</li></td>
+<td><li>TP通信域名称（数据并行通信域），预留参数，TP域通信不再支持。</li><li>默认值为""。</li></td>
 <td>STRING</td>
 <td>ND</td>
 </tr>
 <tr>
 <td>tpWorldSize</td>
 <td>可选属性</td>
-<td><li>TP通信域大小。</li><li>默认值为0。</li></td>
+<td><li>TP通信域大小，预留参数，TP域通信不再支持，仅允许0或1。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
 <tr>
 <td>tpRankId</td>
 <td>可选属性</td>
-<td><li>TP域本卡ID。同一个EP通信域中各卡的tpRankId不重复。</li><li>默认值为0。</li></td>
+<td><li>TP域本卡ID，预留参数，TP域通信不再支持，传0即可。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
@@ -243,6 +235,7 @@
 
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
     * 不支持`expandScales`。
+    * 当前不支持TP域通信，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpSendCounts`为无效内容。
 
 * <term>Ascend 950DT</term>：
     * 不支持`expandScales`。
@@ -270,7 +263,7 @@
 
 - 通信域使用约束：
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
+    - 当前不支持TP域通信。
 
 - 通信方式约束：
     - <term>Ascend 950DT</term>：仅支持UB Memory通信。
@@ -298,9 +291,9 @@
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ moeExpertNum，取值范围为[1, 8]。
     - 参数约束：
         - `epWorldSize`：取值支持8、16、32、64、128、144、256、288。
-        - `groupTp`：字符串长度范围为[1, 128)，不能和groupEp相同。
-        - `tpWorldSize`：取值范围[0, 2]，0和1表示无tp域通信，有tp域通信时仅支持2。
-        - `tpRankId`：取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复。无TP域通信时，传0即可。
+        - `groupTp`：预留参数，TP域通信不再支持。
+        - `tpWorldSize`：预留参数，TP域通信不再支持，仅允许0或1。
+        - `tpRankId`：预留参数，TP域通信不再支持，传0即可。
         - `sharedExpertRankNum`：当前取值范围[0, `epWorldSize`)，不为0时需满足`epWorldSize` % `sharedExpertRankNum` = 0。
         - `globalBS`：当每个rank的`BS`数一致时，`globalBS` = `BS` * `epWorldSize`或`globalBS` = 0；当每个rank的`BS`数不一致时，`globalBS` = `maxBS` * `epWorldSize`，其中`maxBS`表示单卡`BS`最大值。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
