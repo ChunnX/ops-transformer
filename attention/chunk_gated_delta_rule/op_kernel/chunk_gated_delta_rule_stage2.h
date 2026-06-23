@@ -66,6 +66,11 @@ public:
         curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         curChunkSize_ = chunkSize_;
         gOptional_ = sTP_->gOptional;
+        subBlockIdx_ = GetSubBlockIdx();
+        stateRowsPerSubBlock_ = (Dv_ + TASK_RATIO - 1) / TASK_RATIO;
+        stateRowOffset_ = subBlockIdx_ * stateRowsPerSubBlock_;
+        stateValidRows_ = stateRowOffset_ < Dv_ ?
+                          Std::min(stateRowsPerSubBlock_, static_cast<int32_t>(Dv_ - stateRowOffset_)) : 0;
         InitLocalBuffers();
     }
 
@@ -75,17 +80,19 @@ public:
             return;
         }
         pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, Std::max((uint64_t)chunkSize_,
-                                                             (uint64_t)Dv_) * curDk_ * sizeof(bfloat16_t));
+                                                             (uint64_t)stateRowsPerSubBlock_) * curDk_ *
+                         sizeof(bfloat16_t));
         uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
-                                         (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
+                                         (uint64_t)stateRowsPerSubBlock_ * curDk_ * sizeof(bfloat16_t));
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
-        pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ +
+        pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)stateRowsPerSubBlock_) * curDk_ +
                                      BLOCK_FLOAT_NUM) *sizeof(float));
         uint32_t buffOffset = 0;
-        tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
-        buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
+        tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(stateRowsPerSubBlock_ * curDk_),
+                                                    buffOffset);
+        buffOffset += Ceil(stateRowsPerSubBlock_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
         // 暂存所取的最后一位数
-        lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
+        lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(BLOCK_FLOAT_NUM), buffOffset);
     }
 
     __aicore__ inline void Process()
@@ -109,13 +116,13 @@ public:
                     curChunkSize_ = lastChunkSize;
                 }
                 if ASCEND_IS_AIV {
-                    if (GetSubBlockIdx() == 0) {
-                        CopyIn(curState, Dv_, Dk_);
+                    if (stateValidRows_ > 0) {
+                        CopyIn(curState[stateRowOffset_ * Dk_], stateValidRows_, Dk_);
                         CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                     }
                     CrossCoreWaitFlag(0x2);
-                    if (GetSubBlockIdx() == 0) {
-                        CopyOutState(finalState);
+                    if (stateValidRows_ > 0) {
+                        CopyOutState(finalState[stateRowOffset_ * Dk_]);
                     }
                     CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                     CrossCoreWaitFlag(0x4);
@@ -140,14 +147,11 @@ public:
     __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
     {
         if (gOptional_) {
-            // 刷新cache
-            DataCacheCleanAndInvalid<float,
-                                     CacheLine::SINGLE_CACHE_LINE,
-                                     DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
-            float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
-            lastGCum_.SetValue(0, tmpFloat);
-            SetFlag<HardEvent::S_V>(S_V_EVENT);
-            WaitFlag<HardEvent::S_V>(S_V_EVENT);
+            DataCopyExtParams gInParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+            DataCopyPadExtParams<float> gPadParams{false, 0, 0, 0};
+            DataCopyPad(lastGCum_, gCum[curChunkSize_ - 1], gInParams, gPadParams);
+            SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
+            WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
             Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
         } else {
             lastGCum_.SetValue(0, 1.0f);
@@ -157,11 +161,11 @@ public:
         auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-        Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
+        Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, stateValidRows_ * curDk_);
         SetFlag<HardEvent::S_V>(S_V_EVENT);
         WaitFlag<HardEvent::S_V>(S_V_EVENT);
-        Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
-        Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
+        Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, stateValidRows_ * curDk_);
+        Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, stateValidRows_ * curDk_);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         outQueue_.EnQue(stateOut);
@@ -223,7 +227,7 @@ public:
 
     __aicore__ inline void CopyOutState(GlobalTensor<bfloat16_t> stateNew)
     {
-        CopyOut<bfloat16_t>(stateNew, Dv_, Dk_, false);
+        CopyOut<bfloat16_t>(stateNew, stateValidRows_, Dk_, false);
     }
 
     template <typename outType>
@@ -261,6 +265,10 @@ private:
     int32_t chunkSize_;
     int32_t curChunkSize_;
     int32_t curDk_;
+    int32_t subBlockIdx_;
+    int32_t stateRowsPerSubBlock_;
+    int32_t stateRowOffset_;
+    int32_t stateValidRows_;
     int64_t Sp_;
     int32_t chunkNum_;
     int32_t coreNum_;

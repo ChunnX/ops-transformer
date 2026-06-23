@@ -88,7 +88,6 @@ __aicore__ inline void CopyCast(
     }
 }
 
-
 template <typename lowType, typename highType>
 class CGDR {
 public:
@@ -103,9 +102,9 @@ public:
     {
         if ASCEND_IS_AIC {
             // 使用 tiling 中的 matmul tiling 数据初始化
-            stage1MT_.Init(&tiling_->matmulTilingFp32, pipe_);
-            stage2MT_.Init(&tiling_->matmulTilingFp32, pipe_);
-            stage3MT_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage1MT_.Init(&tiling_->matmulTilingBf16, pipe_);
+            stage2MT_.Init(&tiling_->matmulTilingBf16, pipe_);
+            stage3MT_.Init(&tiling_->matmulTilingBf16, pipe_);
         }
     }
 
@@ -179,17 +178,11 @@ public:
         qPrime_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
-        attnInter_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
-        offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dv;
-
         kg_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->dk;
 
         qkt_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
         offset += sizeof(lowType) * tiling_->nv * tiling_->maxGroupLength * tiling_->chunkSize;
-
-        highState_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
-        offset += sizeof(highType) * tiling_->b * tiling_->nv * tiling_->dv * tiling_->dk;
 
         stageOneMask_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->chunkSize * tiling_->chunkSize * tiling_->aiCoreNum * TASK_RATIO;
@@ -233,8 +226,11 @@ public:
                           finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
                 SyncAll<false>();
 
-                RunStage3(cg);
-                SyncAll<false>();
+                bool hasNextGroup = (pos + tiling_->maxGroupLength < seqEnd) || (bid + 1 < tiling_->b);
+                RunStage3(cg, hasNextGroup);
+                if (hasNextGroup) {
+                    SyncAll<false>();
+                }
             }
         }
     }
@@ -253,6 +249,9 @@ private:
     __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<lowType> stateIn,
                                      GlobalTensor<lowType> stateOut)
     {
+        if ASCEND_IS_AIC {
+            stage2MT_.Init(&tiling_->matmulTilingBf16, pipe_);
+        }
         Stage2 stageTwoOp;
         StageTwoParams initStageTwoParams{
             qPrime_, vInner_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
@@ -263,8 +262,11 @@ private:
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage3(ChunkGroup& cg)
+    __aicore__ inline void RunStage3(ChunkGroup& cg, bool resetAfter)
     {
+        if ASCEND_IS_AIC {
+            stage3MT_.Init(&tiling_->matmulTilingBf16, pipe_);
+        }
         Stage3 stageThreeOp;
         StageThreeParams initStageThreeParams{
             qkt_, gCum_, vInner_,
@@ -274,7 +276,9 @@ private:
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
         stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
         stageThreeOp.Process();
-        pipe_->Reset();
+        if (resetAfter) {
+            pipe_->Reset();
+        }
     }
 
 private:
@@ -295,10 +299,8 @@ private:
     GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> qPrime_;        // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> attnInter_;    // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> qkt_;          // (Nv, maxGroupLength, C)
-    GlobalTensor<highType> highState_;
     // mask矩阵
     GlobalTensor<highType> stageOneMask_;          // (Nv, maxGroupLength, C)
     GlobalTensor<highType> stageThreeMask_;          // (Nv, maxGroupLength, C)

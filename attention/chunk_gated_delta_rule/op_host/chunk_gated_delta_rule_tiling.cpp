@@ -59,6 +59,8 @@ constexpr uint32_t STAGE_ONE_THREE = 3;
 constexpr uint32_t STAGE_ONE_PARA_NUM = 4;
 constexpr uint32_t MASK_NUM = 4;
 constexpr int64_t P_NUM = 2;
+constexpr int64_t STAGE3_TMP_GM_SLOT_COUNT = 4;
+constexpr int64_t STAGE3_DONE_STATE_BYTES_PER_SLOT = 32;
 
 // 初始化编译信息，读取平台资源，并缓存核数到 tilingData_
 void ChunkGatedDeltaRuleTiling::InitCompileInfo()
@@ -128,16 +130,16 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kCumDecay
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // vInner
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // qPrime
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // attnInter
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kg
     tilingData_.interWorkspaceSz += sizeHigh * nv * s * c;                               // qkt
-    tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                         // highState
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask
 
     // stage1 临时变量空间
     tilingData_.stageWorkspaceSz =
         sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
+    tilingData_.stageWorkspaceSz +=
+        STAGE3_TMP_GM_SLOT_COUNT * STAGE3_DONE_STATE_BYTES_PER_SLOT * tilingData_.aiCoreNum;
 
     PrintTilingData();
     return ge::GRAPH_SUCCESS;
@@ -150,7 +152,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     uint32_t baseK = MATMUL_BASE_K;
     uint32_t baseN = MATMUL_BASE_N;
 
-    // ========== MT_FP32: FP32 -> FP32 ==========
+    // ========== MT_BF16: BF16 x BF16 -> BF16 ==========
     matmul_tiling::MultiCoreMatmulTiling mm_;
     const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     uint64_t ubSize;
@@ -171,18 +173,18 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     mm_.SetShape(baseM, baseN, baseK);
     mm_.SetOrgShape(baseM, baseN, baseK);
     mm_.SetFixSplit(baseM, baseN, baseK);
-    if (mm_.GetTiling(tilingData_.matmulTilingFp32) == -1) {
+    if (mm_.GetTiling(tilingData_.matmulTilingBf16) == -1) {
         OP_LOGE(context_->GetNodeName(), "CGDR: Get Tiling Failed!");
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context_->GetNodeName(), "CGDR: baseM is %d, baseK is %d, baseN is %d.", baseM, baseK, baseN);
-    tilingData_.matmulTilingFp32.dbL0C = 1;
-    tilingData_.matmulTilingFp32.stepKa = 1;
-    tilingData_.matmulTilingFp32.stepKb = 1;
-    tilingData_.matmulTilingFp32.depthA1 = 1;
-    tilingData_.matmulTilingFp32.depthB1 = 1;
-    tilingData_.matmulTilingFp32.stepM = 1;
-    tilingData_.matmulTilingFp32.stepN = 1;
+    tilingData_.matmulTilingBf16.dbL0C = 1;
+    tilingData_.matmulTilingBf16.stepKa = 1;
+    tilingData_.matmulTilingBf16.stepKb = 1;
+    tilingData_.matmulTilingBf16.depthA1 = 1;
+    tilingData_.matmulTilingBf16.depthB1 = 1;
+    tilingData_.matmulTilingBf16.stepM = 1;
+    tilingData_.matmulTilingBf16.stepN = 1;
     return ge::GRAPH_SUCCESS;
 }
 
