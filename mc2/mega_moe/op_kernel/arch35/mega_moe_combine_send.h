@@ -123,50 +123,50 @@ __aicore__ inline void CombineTokensWithUrmaSend(
 {
     uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
     uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),  (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-    LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
+    // LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
 
-    // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
-    uint32_t aivIdx = GetBlockIdx() / GetTaskRation();  // block 级别索引
-    uint32_t aivNum = GetBlockNum();  // 核1参与, 使用 blockNum
+    // // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
+    // uint32_t aivIdx = GetBlockIdx() / GetTaskRation();  // block 级别索引
+    // uint32_t aivNum = GetBlockNum();  // 核1参与, 使用 blockNum
 
-    uint32_t rankId = params.rankId;
-    uint32_t worldSize = params.tilingData->epWorldSize;
-    uint32_t rankPerCore = worldSize / aivNum;
-    uint32_t remainder = worldSize % aivNum;
-    uint32_t startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
-    uint32_t processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
-    uint32_t endRankId = startRankId + processRankNum;
-    if (startRankId >= endRankId || processRankNum == 0) {
-        return;
-    }
-    AscendC::printf("CombineTokensWithUrmaSend: aivIdx=%d,aivNum=%d, rankId=%d, startRankId=%d, endRankId=%d, processRankNum=%d\n",
-        aivIdx,aivNum, rankId, startRankId, endRankId, processRankNum);
-    LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, processRankNum );
-    LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t), processRankNum);
+    // uint32_t rankId = params.rankId;
+    // uint32_t worldSize = params.tilingData->epWorldSize;
+    // uint32_t rankPerCore = worldSize / aivNum;
+    // uint32_t remainder = worldSize % aivNum;
+    // uint32_t startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
+    // uint32_t processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
+    // uint32_t endRankId = startRankId + processRankNum;
+    // if (startRankId >= endRankId || processRankNum == 0) {
+    //     return;
+    // }
+    // AscendC::printf("CombineTokensWithUrmaSend: aivIdx=%d,aivNum=%d, rankId=%d, startRankId=%d, endRankId=%d, processRankNum=%d\n",
+    //     aivIdx,aivNum, rankId, startRankId, endRankId, processRankNum);
+    // LocalTensor<int32_t> sendTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512, processRankNum );
+    // LocalTensor<int32_t> totalTokenCnt = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t), processRankNum);
 
-    Duplicate(sendTokenCnt, 0 , processRankNum);
-    Duplicate(totalTokenCnt, 0 , processRankNum);
-    // AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
-    // AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
-    PipeBarrier<PIPE_ALL>();// todo:
-    // maskRecvPtr 布局: [localExpert][srcRank], 每个槽位 = maskAlignSize + 32B count
-    int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
-    int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t),
-        (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
-    int64_t maskAlignSize = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, (int64_t)ALIGN_32);
-    int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;
-    uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize / sizeof(int32_t));
-    uint32_t slotCopyStride = static_cast<uint32_t>(maskSlotSize / sizeof(uint8_t));
-    uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize / sizeof(int32_t));
-    uint32_t expertPerRank = params.tilingData->expertPerRank;
-    LocalTensor<uint32_t> slotReadTensor = LocalTensor<uint32_t>(TPosition::VECCALC,
-        ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t) * 2, slotWordStride);
-    LocalTensor<uint8_t> slotCopyTensor = LocalTensor<uint8_t>(TPosition::VECCALC,
-        ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t) * 2, slotCopyStride);
-    AscendC::GlobalTensor<uint8_t> maskSrcGlobal;
+    // Duplicate(sendTokenCnt, 0 , processRankNum);
+    // Duplicate(totalTokenCnt, 0 , processRankNum);
+    // // AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
+    // // AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
+    // PipeBarrier<PIPE_ALL>();// todo:
+    // // maskRecvPtr 布局: [localExpert][srcRank], 每个槽位 = maskAlignSize + 32B count
+    // int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
+    // int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t),
+    //     (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
+    // int64_t maskAlignSize = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount) / 8, (int64_t)ALIGN_32);
+    // int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;
+    // uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize / sizeof(int32_t));
+    // uint32_t slotCopyStride = static_cast<uint32_t>(maskSlotSize / sizeof(uint8_t));
+    // uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize / sizeof(int32_t));
+    // uint32_t expertPerRank = params.tilingData->expertPerRank;
+    // LocalTensor<uint32_t> slotReadTensor = LocalTensor<uint32_t>(TPosition::VECCALC,
+    //     ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t) * 2, slotWordStride);
+    // LocalTensor<uint8_t> slotCopyTensor = LocalTensor<uint8_t>(TPosition::VECCALC,
+    //     ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t) * 2, slotCopyStride);
+    // AscendC::GlobalTensor<uint8_t> maskSrcGlobal;
 
-    uint32_t processRank = 0;
-    // Phase 2: 逐 rank 统计应收 token 总数 (从 mask count 累加)
+    // uint32_t processRank = 0;
+    // // Phase 2: 逐 rank 统计应收 token 总数 (从 mask count 累加)
     // for (uint32_t index = startRankId; index < endRankId; index++) {
     //     if (index == rankId) {
     //         processRank++;
