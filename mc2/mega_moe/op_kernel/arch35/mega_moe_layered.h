@@ -1435,7 +1435,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         ResetRowGroupCompleteFlags();
     }
     // QuantProcessInRank();        // 对本卡token的量化
-    ResetUrmaDispatchState();// 清理 URMA 一级通信 workspace/relay ready 状态
+    // ResetUrmaDispatchState();// 清理 URMA 一级通信 workspace/relay ready 状态
     if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
