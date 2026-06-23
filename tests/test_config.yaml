@@ -539,20 +539,6 @@ gmm:
     test:
       examples: True
 
-  grouped_matmul_activation_quant:
-    module: True
-    src:
-      - gmm/grouped_matmul_activation_quant
-    exclude:
-      - gmm/grouped_matmul_activation_quant/docs
-      - gmm/grouped_matmul_activation_quant/README.md
-    ut_cov_exclude:
-      - gmm/grouped_matmul_activation_quant/op_kernel
-    options:
-      - grouped_matmul_activation_quant
-    test:
-      examples: True
-
   grouped_matmul_add:
     module: True
     src:
