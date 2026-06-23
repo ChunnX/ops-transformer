@@ -26,8 +26,8 @@ static const std::unordered_map<std::string, int64_t> mode_map = {
 };
 
 void inplace_partial_rotary_mul(at::Tensor &x, const at::Tensor &r1,
-                                 const at::Tensor &r2, std::string rotary_mode,
-                                 c10::IntArrayRef partial_slice)
+    const at::Tensor &r2, std::string rotary_mode,
+    c10::IntArrayRef partial_slice)
 {
     TORCH_CHECK(x.dim() == 4, "Input tensor x's dim num should be 4, actual ", x.dim(), ".");
     auto it = mode_map.find(rotary_mode);
