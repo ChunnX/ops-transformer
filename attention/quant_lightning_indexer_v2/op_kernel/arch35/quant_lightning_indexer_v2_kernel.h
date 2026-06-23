@@ -662,7 +662,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
         indiceOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
         valueOutCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.topK + runInfo.n2Idx * constInfo.topK;
+            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.topkCount_ + runInfo.n2Idx * constInfo.topkCount_;
         outputIdxCoreOffset =
             (actualSeqQPrefixSum + runInfo.gS1Idx * constInfo.s1BaseSize) * constInfo.kHeadNum + runInfo.n2Idx;
     }

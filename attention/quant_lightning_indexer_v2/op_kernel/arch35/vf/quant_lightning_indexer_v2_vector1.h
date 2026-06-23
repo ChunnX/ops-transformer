@@ -53,6 +53,16 @@ struct FloatSortConstCtx {
 };
 
 template <typename FloatT>
+struct UIntSortConstCtx {
+    using Traits = UIntSortTraits<FloatT>;
+    using UInt   = typename Traits::UInt;
+    AscendC::MicroAPI::RegTensor<UInt> zeros;
+    AscendC::MicroAPI::RegTensor<UInt> allOne;
+    AscendC::MicroAPI::RegTensor<UInt> signMask;
+    AscendC::MicroAPI::RegTensor<UInt> nan;
+};
+
+template <typename FloatT>
 __simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT>& ctx, AscendC::MicroAPI::MaskReg& maskAll)
 {
     using Traits = FloatSortTraits<FloatT>;
