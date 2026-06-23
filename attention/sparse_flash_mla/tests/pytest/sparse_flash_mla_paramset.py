@@ -266,7 +266,7 @@ TEST_PARAMS = {
         "cu_seqlens_cmp_kv": [[0, 512]],
         "seqused_ori_kv": [[2050]],
         "seqused_cmp_kv": [[512]],
-        "cmp_residual_kv": [[2]], # 残差 cmp_redisual_kv
+        "cmp_residual_kv": [[2]], # 残差 cmp_residual_kv
         "softmax_scale": [0.04419417],
         "cmp_ratio": [4], # != 1
         "return_softmax_lse": [False],
