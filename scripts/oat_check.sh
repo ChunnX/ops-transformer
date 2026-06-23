@@ -1,6 +1,6 @@
 #!/bin/sh
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2028 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of 
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 # Requires: Python 3.7+  (pip install oat-py>=1.0.0)
 # Works on: Linux / macOS / Windows (Git Bash / MSYS2)
 #
-# Self-healing: strip Windows CRLF if present
+# Self-healing: strip  Windows CRLF if present
 _SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 if sed 's/\r//' "$_SCRIPT" 2>/dev/null | diff -q - "$_SCRIPT" >/dev/null 2>&1; then
     :
