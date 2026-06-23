@@ -61,13 +61,10 @@ private:
         uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
         uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % offsetCalculator.GetDimG();
 
-        // uint64_t queryGmbaseOffset =
-        //     offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
-
         auto srcTileTensor = srcTensor.gmTensor.Slice(
             AscendC::Te::MakeCoord(
-                gmCoord.bIdx * offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx) + gmCoord.gS1Idx, // AscendC::Te::MakeCoord(runInfo.gS1Idx, runInfo.bIdx), 
-                gmCoord.n2Idx * gmCoord.dDealSize // AscendC::Te::MakeCoord(0, runInfo.n2Idx)
+                gmCoord.bIdx * offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx) + gmCoord.gS1Idx,
+                gmCoord.n2Idx * gmCoord.dDealSize
             ), 
             AscendC::Te::MakeShape(s1IdxEnd - s1IdxStart, gmCoord.dDealSize)
         );
