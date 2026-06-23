@@ -395,6 +395,8 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
     const auto *xShapePtr = context.GetInputShape(X_INDEX);
     OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, "weight"),
         OP_LOGE(OP_NAME, "Check dynamic input shape of weight failed."), return false);
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, "weightScale"),
+        OP_LOGE(OP_NAME, "Check dynamic input shape of weightScale failed."), return false);
     const auto *wShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(xShapePtr == nullptr || wShapePtr == nullptr,
                 OP_LOGE(OP_NAME, "Required input shape is nullptr."), return false);
