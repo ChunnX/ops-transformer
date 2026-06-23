@@ -687,7 +687,7 @@ void SplitFD(SplitResult &result)
     result.usedVecNumOfFd = curCoreIndex + 1;
 }
 
-void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam param)
+void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param)
 {
     OP_LOGI("BaseInfo", "========== BaseInfo ==========");
     OP_LOGI("BaseInfo", "bSize: %u", baseInfo.bSize);
@@ -736,10 +736,10 @@ void LogSplitCoreResult(const SplitResult &result)
 
 void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, SplitResult &result)
 {
-    //打印baseInfo,param信息
+    // 打印baseInfo,param信息
     LogSplitCoreInput(baseInfo, param);
     SplitContext splitContext(baseInfo, param);
-    
+
     // 1、划分基本块，统计信息
     CalcSplitInfo(splitContext);
     // 全空case
@@ -778,7 +778,7 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     }
     result.usedCoreNum = std::max(result.usedCoreNum, 1U);  // 至少使用1个core
 
-    //打印分核结果信息
+    // 打印分核结果信息
     LogSplitCoreResult(result);
 }
 
