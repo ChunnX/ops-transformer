@@ -168,7 +168,7 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
     // 走复用UB逻辑 初始化topk相关ub大小
-    topkOp_.InitBuffers(topkSharedTmpLocal_, globalIndexLocal_, indicesOutLocal_);
+    topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
     // indice_len
     pipe->InitBuffer(indiceLenBuf_, CeilDiv(constInfo_.mBaseSize, 2) * sizeof(uint32_t));
@@ -519,11 +519,11 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 PipeBarrier<PIPE_V>();
                 // 如果是首块，因为mrgValueLocal_的前topkSelectNumAlign256的位置没有数据，这里需要把对应位置偏移掉
                 topkOp_(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
-                        s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
+                        globalIndexLocal_[globalIndexOffset], s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
             } else {
                 PipeBarrier<PIPE_V>();
                 topkOp_(mrgValueLocal_[mrgValueOffset], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
-                    topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
+                        globalIndexLocal_[globalIndexOffset], topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
             }
             copyCount = topkSelectNumAlign256;
             copyMask = (copyCount <= VEC_REPEAT_SIZE) ? copyCount : VEC_REPEAT_SIZE;

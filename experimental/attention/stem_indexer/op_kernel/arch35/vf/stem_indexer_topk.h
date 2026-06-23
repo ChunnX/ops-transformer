@@ -81,12 +81,9 @@ public:
     }
 
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer,
-                                       LocalTensor<uint32_t>& globalIndexLocal,
                                        LocalTensor<uint32_t>& indicesOutLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = globalIndexLocal;
         LocalTensor<uint32_t> hisIndexLocal2 = indicesOutLocal;
-        hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
         histogramsLocal = sharedTmpBuffer[0];
         nkValueLocal = histogramsLocal[256];
@@ -96,13 +93,15 @@ public:
 
     __aicore__ inline void operator()(const LocalTensor<uint32_t>& mrgValueLocal, const LocalTensor<uint32_t>& indicesOutLocal,
                                       const LocalTensor<uint32_t>& hisValueLocal, const LocalTensor<uint32_t>& reuseMm1ResLocal,
-                                      uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
+                                      const LocalTensor<uint32_t>& reuseGlobalIndexLocal, uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
     {
         // uint32_t时UB需要进行复用，此处将每8位的targetbin复用mm1res
         idx0Local = reuseMm1ResLocal;
         idx1Local = idx0Local[256];
         idx2Local = idx1Local[256];
         idx3Local = idx2Local[256];
+        // hisIndexLocal[0]复用globalIndexLocal
+        hisIndexLocal[0] = reuseGlobalIndexLocal;
 
         if (s2LoopNum == 1) {
             SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
