@@ -52,11 +52,12 @@ private:
     DataCopyPadExtParams<TCOS> padParamsCos_{false, 0, 0, static_cast<TCOS>(0)};
     uint32_t dSplitSizeX_{0};
     uint32_t dSplitSizeCos_{0};
+    uint32_t dAlignLenDy_{0};
+    uint32_t dAlignLenCos_{0};
     int64_t bIdx_{0};
     int64_t sIdx_{0};
     int64_t bNum_{0};
     int64_t sNum_{0};
-    int64_t dAlign_{0};
     uint32_t ubFactorN_{0};
 };
 
@@ -72,11 +73,12 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(
         return;
     }
 
-    constexpr uint32_t maxTypeSize =
-        sizeof(TDY) > sizeof(TCOS) ? sizeof(TDY) : sizeof(TCOS);
-    dAlign_ = AscendC::Ceil(tilingData_->sliceLength / tilingData_->dSplitCoef,
-                              static_cast<uint32_t>(BLOCK_TYPE_SIZE / maxTypeSize)) *
-               tilingData_->dSplitCoef;
+    dAlignLenDy_ = Ops::Base::CeilAlign<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                                                   static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
+                   tilingData_->dSplitCoef;
+    dAlignLenCos_ = Ops::Base::CeilAlign<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                                                    static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
+                    tilingData_->dSplitCoef;
     dSplitSizeX_ = tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY);
     dSplitSizeCos_ = tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS);
     ubFactorN_ = tilingData_->ubFactorN;
@@ -86,8 +88,8 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(
     cosGm_.SetGlobalBuffer((__gm__ TCOS *)cos);
     sinGm_.SetGlobalBuffer((__gm__ TCOS *)sin);
 
-    int64_t bufferSizeX = dAlign_ * sizeof(TDY) * tilingData_->ubFactorS;
-    int64_t bufferSizeCos = dAlign_ * sizeof(TCOS) * tilingData_->ubFactorS;
+    int64_t bufferSizeX = dAlignLenDy_ * sizeof(TDY) * tilingData_->ubFactorS;
+    int64_t bufferSizeCos = dAlignLenCos_ * sizeof(TCOS) * tilingData_->ubFactorS;
     pipe_->InitBuffer(gradInQue_, 2, bufferSizeX * ubFactorN_);
     pipe_->InitBuffer(xGradOutQue_, 2, bufferSizeX * ubFactorN_);
     pipe_->InitBuffer(cosInQue_, 2, bufferSizeCos);
@@ -129,8 +131,10 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessNLoop(
     LocalTensor<TCOS> sinBuffer = sinInQue_.template AllocTensor<TCOS>();
 
     int64_t cosGmOffset = sIdx * tilingData_->sliceLength;
-    DataCopyExtParams cosCopyParams = {static_cast<uint16_t>(currSNum * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0,
-                                       0};
+    uint32_t dstStrideCos =
+        static_cast<uint32_t>((dAlignLenCos_ - tilingData_->sliceLength / tilingData_->dSplitCoef) * sizeof(TCOS));
+    DataCopyExtParams cosCopyParams = {static_cast<uint16_t>(currSNum * tilingData_->dSplitCoef), dSplitSizeCos_, 0,
+                                       dstStrideCos, 0};
 
     DataCopyPad(cosBuffer, cosGm_[cosGmOffset], cosCopyParams, padParamsCos_);
     cosInQue_.EnQue(cosBuffer);
@@ -164,7 +168,10 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessN(
         uint32_t strideBytesX =
             static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY));
         uint32_t blockLenX = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY));
-        DataCopyExtParams copyInParams = {static_cast<uint16_t>(currSNum * currDNum), blockLenX, strideBytesX, 0, 0};
+        uint32_t dstStrideX =
+            static_cast<uint32_t>((dAlignLenDy_ - tilingData_->sliceLength / tilingData_->dSplitCoef) * sizeof(TDY));
+        DataCopyExtParams copyInParams = {static_cast<uint16_t>(currSNum * currDNum), blockLenX, strideBytesX, dstStrideX,
+                                          0};
         DataCopyPad(inBuffer, gradGm_[offset], copyInParams, padParamsX_);
         gradInQue_.EnQue(inBuffer);
         inBuffer = gradInQue_.template DeQue<TDY>();
@@ -194,7 +201,8 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessN(
         xGradOutQue_.EnQue(outBuffer);
         outBuffer = xGradOutQue_.template DeQue<TDY>();
 
-        DataCopyExtParams copyOutParams = {static_cast<uint16_t>(currSNum * currDNum), blockLenX, 0, strideBytesX, 0};
+        DataCopyExtParams copyOutParams = {static_cast<uint16_t>(currSNum * currDNum), blockLenX, dstStrideX,
+                                          strideBytesX, 0};
         DataCopyPad(dxGm_[offset], outBuffer, copyOutParams);
         xGradOutQue_.FreeTensor(outBuffer);
     }

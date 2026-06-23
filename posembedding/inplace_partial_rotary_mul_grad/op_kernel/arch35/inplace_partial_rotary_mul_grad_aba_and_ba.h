@@ -59,7 +59,8 @@ private:
     int64_t sBlockLength_{0};
     uint32_t dSplitSizeX_{0};
     uint32_t dSplitSizeCos_{0};
-    int64_t dAlign_{0};
+    uint32_t dAlignLenDy_{0};
+    uint32_t dAlignLenCos_{0};
     int64_t ubFactorB_{0};
     int64_t ubFactorS_{0};
     int64_t ubFactorN_{0};
@@ -79,11 +80,12 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::Init(
         return;
     }
 
-    constexpr uint32_t maxTypeSize =
-        sizeof(TDY) > sizeof(TCOS) ? sizeof(TDY) : sizeof(TCOS);
-    dAlign_ = AscendC::Ceil(tilingData_->sliceLength / tilingData_->dSplitCoef,
-                              static_cast<uint32_t>(BLOCK_TYPE_SIZE / maxTypeSize)) *
-               tilingData_->dSplitCoef;
+    dAlignLenDy_ = Ops::Base::CeilAlign<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                                                  static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
+                   tilingData_->dSplitCoef;
+    dAlignLenCos_ = Ops::Base::CeilAlign<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                                                    static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
+                    tilingData_->dSplitCoef;
     dSplitSizeX_ = tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY);
     dSplitSizeCos_ = tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS);
     ubFactorB_ = tilingData_->ubFactorB;
@@ -95,15 +97,15 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::Init(
     cosGm_.SetGlobalBuffer((__gm__ TCOS *)cos);
     sinGm_.SetGlobalBuffer((__gm__ TCOS *)sin);
 
-    int64_t bufferSizeBS = dAlign_ * sizeof(TDY) * ubFactorB_ * ubFactorS_;
+    int64_t bufferSizeBS = dAlignLenDy_ * sizeof(TDY) * ubFactorB_ * ubFactorS_;
     pipe_->InitBuffer(gradInQueue_, 2, bufferSizeBS * ubFactorN_);
     pipe_->InitBuffer(xGradOutQueue_, 2, bufferSizeBS * ubFactorN_);
 
     if constexpr (IsBroadcast) {
-        pipe_->InitBuffer(cosInQueue_, 2, dAlign_ * sizeof(TCOS) * ubFactorS_);
-        pipe_->InitBuffer(sinInQueue_, 2, dAlign_ * sizeof(TCOS) * ubFactorS_);
+        pipe_->InitBuffer(cosInQueue_, 2, dAlignLenCos_ * sizeof(TCOS) * ubFactorS_);
+        pipe_->InitBuffer(sinInQueue_, 2, dAlignLenCos_ * sizeof(TCOS) * ubFactorS_);
     } else {
-        int64_t bufferSizeCosBS = dAlign_ * sizeof(TCOS) * ubFactorB_ * ubFactorS_;
+        int64_t bufferSizeCosBS = dAlignLenCos_ * sizeof(TCOS) * ubFactorB_ * ubFactorS_;
         pipe_->InitBuffer(cosInQueue_, 2, bufferSizeCosBS);
         pipe_->InitBuffer(sinInQueue_, 2, bufferSizeCosBS);
     }
@@ -151,8 +153,10 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::ProcessInSLoop(
 
     if constexpr (IsBroadcast) {
         // cos/sin 的 B=1，只拷一份
-        DataCopyExtParams cosParams = {static_cast<uint16_t>(sLength * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0,
-                                       0};
+        uint32_t dstStrideCos =
+            static_cast<uint32_t>((dAlignLenCos_ - tilingData_->sliceLength / tilingData_->dSplitCoef) * sizeof(TCOS));
+        DataCopyExtParams cosParams = {static_cast<uint16_t>(sLength * tilingData_->dSplitCoef), dSplitSizeCos_, 0,
+                                       dstStrideCos, 0};
         int64_t cosGmOffset = sStart * tilingData_->sliceLength;
 
         LocalTensor<TCOS> cosBuffer = cosInQueue_.template AllocTensor<TCOS>();
@@ -179,8 +183,10 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::ProcessInSLoop(
             int64_t bLength =
                 (ubLoopIdx != ubLoopCntB - 1) ? ubFactorB_ : bBlockLength_ - (ubLoopIdx * ubFactorB_);
 
+            uint32_t dstStrideCosNonBc = static_cast<uint32_t>(
+                (dAlignLenCos_ - tilingData_->sliceLength / tilingData_->dSplitCoef) * sizeof(TCOS));
             DataCopyExtParams cosParams = {static_cast<uint16_t>(sLength * tilingData_->dSplitCoef), dSplitSizeCos_,
-                                           0, 0, 0};
+                                           0, dstStrideCosNonBc, 0};
             int64_t cosGmOffset =
                 bStart * tilingData_->s * tilingData_->sliceLength + sStart * tilingData_->sliceLength;
 
@@ -223,9 +229,11 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadcast>::ProcessInSBLoop(
         uint32_t strideBytesX =
             static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY));
         uint32_t blockLenX = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY));
+        uint32_t dstStrideX =
+            static_cast<uint32_t>((dAlignLenDy_ - tilingData_->sliceLength / tilingData_->dSplitCoef) * sizeof(TDY));
 
-        DataCopyExtParams inParams = {static_cast<uint16_t>(totalCount), blockLenX, strideBytesX, 0, 0};
-        DataCopyExtParams outParams = {static_cast<uint16_t>(totalCount), blockLenX, 0, strideBytesX, 0};
+        DataCopyExtParams inParams = {static_cast<uint16_t>(totalCount), blockLenX, strideBytesX, dstStrideX, 0};
+        DataCopyExtParams outParams = {static_cast<uint16_t>(totalCount), blockLenX, dstStrideX, strideBytesX, 0};
 
         LocalTensor<TDY> inBuffer = gradInQueue_.template AllocTensor<TDY>();
         LocalTensor<TDY> outBuffer = xGradOutQueue_.template AllocTensor<TDY>();
