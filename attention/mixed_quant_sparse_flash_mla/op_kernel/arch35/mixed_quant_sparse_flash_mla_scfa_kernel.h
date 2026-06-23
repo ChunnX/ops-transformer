@@ -413,7 +413,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
         SyncAll();
         if ASCEND_IS_AIV {
             if (fdRunInfo.coreEnable > 0) {
-                this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo, this->bmm2Buffers.Get());
+                this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
             }
         }
         return;
@@ -555,7 +555,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     SyncAll();
     if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable > 0) {
-            this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo, this->bmm2Buffers.Get());
+            this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
     }
 }

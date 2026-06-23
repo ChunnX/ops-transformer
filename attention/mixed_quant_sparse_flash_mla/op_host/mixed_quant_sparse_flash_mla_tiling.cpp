@@ -591,7 +591,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     constexpr uint32_t M_BASE_SIZE_SPLIT_G = 128;    // N1=128时FD staging按配对cube的128行逻辑M布局
     constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
     constexpr uint32_t D_SIZE = 512;
-    constexpr uint32_t VEC_RES_ELEM_SIZE = 4;        // 4: fp32 (FD staging直接用fp32)
+    constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16字节数
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
     constexpr uint32_t MAX_S2_SPLIT_NUM = 2;           // 每核最多S2切分次数
     constexpr uint32_t FLOAT_ELEM_SIZE = 4;            // sizeof(float)
@@ -599,12 +599,12 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     bool isSplitG = tilingInfo->gSize > 64; // gSize超过64时采用Split-G
     if (isSplitG) {
-        workspaceSize += (S2_BASE_SIZE * D_SIZE * 2 * TRIPLE_BUFFER_NUM * (aicNum >> 1)); // 2: bf16字节数
+        workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     }
     uint32_t fdStagingMSize = isSplitG ? M_BASE_SIZE_SPLIT_G : tilingInfo->gSize;
     uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1) : aicNum;
     // 末尾的2对应每个split分别暂存max和sum。
-    uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * VEC_RES_ELEM_SIZE * MAX_S2_SPLIT_NUM
+    uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM
         + fdStagingMSize * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;
     workspaceSize += s2SplitStagingPerSlot * fdStagingSlotNum;
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
