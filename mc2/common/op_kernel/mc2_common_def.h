@@ -30,6 +30,5 @@ struct HcclCombinOpParam {
     uint32_t rankId;
     uint32_t rankDim;
 };
-
 }
 #endif  // KERNEL_MC2_COMMON_DEF_H
