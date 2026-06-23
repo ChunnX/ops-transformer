@@ -13,19 +13,19 @@
 # StemIndexer single pytest case set.
 # Add new cases by appending one dict to ENABLED_PARAMS. Keep fixed-spec attrs unchanged unless testing FAIL paths.
 ENABLED_PARAMS = [
-    # SI_WB_001 basic_prefill_small_prompt_no_tail
-    # 覆盖: 基础链路；prefill；small prompt分支；q/kv无尾块；causal=true
-    # 设计: 所有固定规格使用合法默认值，先验证 StemIndexer 端到端最基础路径。
+    # SI_WB_001 basic_prefill_32k_kv_no_tail
+    # 覆盖: 基础链路；prefill；kv/prompt为32K token；causal=true
+    # 设计: query长度保持原基础case，只把KV和prompt拉到32K token基准线。
     {
         'case_id': 'SI_WB_001',
-        'testcase_name': 'basic_prefill_small_prompt_no_tail',
+        'testcase_name': 'basic_prefill_32k_kv_no_tail',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 8,
         'q_seq_lens': [3968],
-        'kv_seq_lens': [7296],
-        'num_prompt_tokens': [3968],
+        'kv_seq_lens': [32768],
+        'num_prompt_tokens': [32768],
         'causal': True,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -264,8 +264,8 @@ ENABLED_PARAMS = [
         'q_heads': 32,
         'kv_heads': 8,
         'q_seq_lens': [7296],
-        'kv_seq_lens': [32768],
-        'num_prompt_tokens': [7296],
+        'kv_seq_lens': [65536],
+        'num_prompt_tokens': [65536],
         'causal': True,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -278,8 +278,8 @@ ENABLED_PARAMS = [
         'special_setting': '',
     },
     # SI_WB_012 alpha_decay_half
-    # 覆盖: TPD alpha=0.5；后部query预算下降
-    # 设计: 覆盖普通衰减路径，golden 应检查后部 query block 的 k(i) 小于前部。
+    # 覆盖: TPD alpha=0.5；后部query预算下降；kv/prompt为32K token
+    # 设计: query长度保持不变，在32K KV/prompt基准线上覆盖普通衰减路径。
     {
         'case_id': 'SI_WB_012',
         'testcase_name': 'alpha_decay_half',
@@ -288,8 +288,8 @@ ENABLED_PARAMS = [
         'q_heads': 32,
         'kv_heads': 8,
         'q_seq_lens': [8192],
-        'kv_seq_lens': [8192],
-        'num_prompt_tokens': [8192],
+        'kv_seq_lens': [32768],
+        'num_prompt_tokens': [32768],
         'causal': True,
         'alpha': 0.5,
         'stem_block_size': 128,
@@ -302,8 +302,8 @@ ENABLED_PARAMS = [
         'special_setting': '',
     },
     # SI_WB_013 alpha_small_positive
-    # 覆盖: alpha接近合法下界；强衰减；topkCurr clamp
-    # 设计: alpha 接近 0 但仍合法，覆盖预算强衰减以及 topkCurr 与 s2Valid 的 clamp。
+    # 覆盖: alpha接近合法下界；强衰减；topkCurr clamp；kv/prompt为64K token
+    # 设计: query长度保持不变，在64K KV/prompt基准线上覆盖预算强衰减。
     {
         'case_id': 'SI_WB_013',
         'testcase_name': 'alpha_small_positive',
@@ -312,8 +312,8 @@ ENABLED_PARAMS = [
         'q_heads': 32,
         'kv_heads': 8,
         'q_seq_lens': [8192],
-        'kv_seq_lens': [8192],
-        'num_prompt_tokens': [8192],
+        'kv_seq_lens': [65536],
+        'num_prompt_tokens': [65536],
         'causal': True,
         'alpha': 0.01,
         'stem_block_size': 128,
@@ -685,19 +685,19 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_029 decode_single_token_long_kv
-    # 覆盖: decode路径；q_len=1；kv_len参与i/N；kv尾块
+    # SI_WB_029 decode_single_token_64k_kv
+    # 覆盖: decode路径；q_len=1；kv_len=64K；kv_len参与i/N
     # 设计: 单 token decode 是设计方案明确风险点，预算应按 kv_len 而不是 q_len 计算。
     {
         'case_id': 'SI_WB_029',
-        'testcase_name': 'decode_single_token_long_kv',
+        'testcase_name': 'decode_single_token_64k_kv',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 2,
         'q_seq_lens': [1],
-        'kv_seq_lens': [8193],
-        'num_prompt_tokens': [8192],
+        'kv_seq_lens': [65536],
+        'num_prompt_tokens': [65535],
         'causal': True,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -757,19 +757,19 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': 'qflat=constant_positive; kflat=constant_positive; vbias=zeros',
     },
-    # SI_WB_032 dynamic_topk_large_prompt_decode
-    # 覆盖: num_prompt_tokens=20480；prompt block=160；large分支；decode路径下alpha衰减
-    # 设计: 当前TopK预算按prompt block数分段，构造单token decode降低计算量并覆盖large分支。
+    # SI_WB_032 dynamic_topk_128k_prompt_decode
+    # 覆盖: num_prompt_tokens=128K；prompt block=1024；large分支；decode路径下alpha衰减
+    # 设计: query长度保持单token decode，以128K prompt覆盖large分支下的长上下文预算计算。
     {
         'case_id': 'SI_WB_032',
-        'testcase_name': 'dynamic_topk_large_prompt_decode',
+        'testcase_name': 'dynamic_topk_128k_prompt_decode',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 32,
         'kv_heads': 4,
         'q_seq_lens': [1],
-        'kv_seq_lens': [20481],
-        'num_prompt_tokens': [20480],
+        'kv_seq_lens': [131073],
+        'num_prompt_tokens': [131072],
         'causal': True,
         'alpha': 0.5,
         'stem_block_size': 128,
@@ -829,19 +829,19 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_035 decode_prompt_not_divisible
+    # SI_WB_035 decode_prompt_128k_not_divisible
     # 覆盖: decode；num_prompt_tokens非128整数倍；prompt block向上取整
-    # 设计: num_prompt_tokens=8193，验证promptLen=ceil(8193/128)路径。
+    # 设计: num_prompt_tokens=131071，验证128K附近promptLen向上取整路径。
     {
         'case_id': 'SI_WB_035',
-        'testcase_name': 'decode_prompt_not_divisible',
+        'testcase_name': 'decode_prompt_128k_not_divisible',
         'expected_result': 'PASS',
         'batch_size': 1,
         'q_heads': 64,
         'kv_heads': 8,
         'q_seq_lens': [1],
-        'kv_seq_lens': [8194],
-        'num_prompt_tokens': [8193],
+        'kv_seq_lens': [131072],
+        'num_prompt_tokens': [131071],
         'causal': True,
         'alpha': 1.0,
         'stem_block_size': 128,
@@ -902,8 +902,8 @@ ENABLED_PARAMS = [
         'special_setting': '',
     },
     # SI_WB_038 dynamic_topk_medium_upper_159
-    # 覆盖: 动态TopK medium分支上边界；numPromptK=159
-    # 设计: prompt block数刚好小于160，验证medium分支高位边界。
+    # 覆盖: 动态TopK medium分支上边界；numPromptK=159；kv为32K token
+    # 设计: query长度保持不变，以32K KV覆盖medium分支高位边界。
     {
         'case_id': 'SI_WB_038',
         'testcase_name': 'dynamic_topk_medium_upper_159',
@@ -926,8 +926,8 @@ ENABLED_PARAMS = [
         'special_setting': '',
     },
     # SI_WB_039 dynamic_topk_large_lower_160
-    # 覆盖: 动态TopK large分支下边界；numPromptK=160
-    # 设计: prompt block数等于160，验证从medium切到large的分段点。
+    # 覆盖: 动态TopK large分支下边界；numPromptK=160；kv为32K token
+    # 设计: query长度保持不变，以32K KV覆盖从medium切到large的分段点。
     {
         'case_id': 'SI_WB_039',
         'testcase_name': 'dynamic_topk_large_lower_160',
