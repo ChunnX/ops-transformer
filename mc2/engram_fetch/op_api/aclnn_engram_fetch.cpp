@@ -23,14 +23,6 @@ using namespace op;
 extern "C" {
 #endif
 
-enum NnopbaseHcclServerType {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
-
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
-
 static bool CheckNotNull(const aclTensor *bufferHandle, const aclTensor *indices, aclTensor *fetched)
 {
     OP_CHECK_NULL(bufferHandle, return false);
@@ -60,9 +52,6 @@ aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *bufferHandle, cons
 
 aclnnStatus aclnnEngramFetch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
-    if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    }
     aclnnStatus ret = aclnnInnerEngramFetch(workspace, workspaceSize, executor, stream);
     return ret;
 }
