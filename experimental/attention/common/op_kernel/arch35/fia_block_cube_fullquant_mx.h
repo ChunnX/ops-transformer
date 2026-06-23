@@ -72,6 +72,7 @@ public:
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr uint32_t MXFP_DIVISOR_SIZE = 64U;
     static constexpr uint32_t MXFP_MULTI_BASE_SIZE = 2U;
+    static constexpr uint32_t BAND_GLOBAL_WINDOW_SIZE = 4U;
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool HAS_ROPE = hasRope;
@@ -561,7 +562,7 @@ public:
             .n2Idx = runInfo.n2Idx,
             .s2Idx = 0,
             .dIdx = 0,
-            .s2DealSize = 4,
+            .s2DealSize = BAND_GLOBAL_WINDOW_SIZE,
             .dDealSize = dDealSize
         };
         copyKvGmToL1(l1Tensor, keyGm, gmCoord);
@@ -597,7 +598,8 @@ public:
         CopyKeyScaleSlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize / MXFP_GROUP_SIZE, runInfo);
     }
 
-    __aicore__ inline void CopyKeyScaleInitToken(const LocalTensor<SCALE_T> &dstTensor, RunInfoX &runInfo, uint32_t s2RealSize)
+    __aicore__ inline void CopyKeyScaleInitToken(const LocalTensor<SCALE_T> &dstTensor, RunInfoX &runInfo,
+                                                 uint32_t s2RealSize)
     {
         uint32_t dstStride = (s2RealSize + 31) >> 5 << 5;
         FaL1Tensor<SCALE_T, L1Format::NZ> l1Tensor {
@@ -610,7 +612,7 @@ public:
             .n2Idx = runInfo.n2Idx,
             .s2Idx = 0,
             .dIdx = 0,
-            .s2DealSize = 4,
+            .s2DealSize = BAND_GLOBAL_WINDOW_SIZE,
             .dDealSize = constInfo.dSize / MXFP_GROUP_SIZE
         };
         copyKeyScaleGmToL1(l1Tensor, keyScaleGm, gmCoord);
@@ -651,7 +653,7 @@ public:
             .n2Idx = runInfo.n2Idx,
             .s2Idx = 0,
             .dIdx = dOffset,
-            .s2DealSize = 4,
+            .s2DealSize = BAND_GLOBAL_WINDOW_SIZE,
             .dDealSize = dRealSize
         };
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
@@ -1120,7 +1122,8 @@ public:
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
             
             if (k == 0 && runInfo.shouldDealInitToken) {
-                CopyValueScaleInitToken(mm2BScaleTensor, (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
+                CopyValueScaleInitToken(mm2BScaleTensor, (realK + 63) / MXFP_DIVISOR_SIZE, 0,
+                                        constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
             }
             
             mm2B.Set<HardEvent::MTE2_MTE1>();
