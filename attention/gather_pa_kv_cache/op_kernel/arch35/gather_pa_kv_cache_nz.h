@@ -390,6 +390,13 @@ private:
                                             uint32_t curblockSize, bool isFulledWithZero, uint64_t dstTokenStrideBytes)
     {
         uint32_t fracBlockSize = hiddenSize / eleNumPerBlk;
+        // 每轮最多搬运的32B块数: 既受UB buffer容量(maxUbHiddenSize_/BLOCK_SIZE)约束, 也受硬件
+        // blockCount字段上限(MAX_BLOCK_CNT)约束。大hiddenSize时若仅按MAX_BLOCK_CNT切, 单次
+        // DataCopy(inBlkCnt*32B)会超过UB buffer导致越界, 故取二者较小值。
+        uint32_t maxBlkPerLoop = static_cast<uint32_t>(maxUbHiddenSize_ / BLOCK_SIZE);
+        if (maxBlkPerLoop > MAX_BLOCK_CNT) {
+            maxBlkPerLoop = MAX_BLOCK_CNT;
+        }
         uint16_t inBlkCnt = 0;
         uint16_t inSrcStride = blockSize_ - 1;
         DataCopyParams seqLensCopyParams = {inBlkCnt, 1, inSrcStride, 0};
@@ -399,11 +406,11 @@ private:
             uint32_t scroffset = i * eleNumPerBlk;
             uint32_t dstoffset = i * dstTokenStrideBytes;
 
-            uint32_t ubLoops = CeilDivision(fracBlockSize, MAX_BLOCK_CNT);
+            uint32_t ubLoops = CeilDivision(fracBlockSize, maxBlkPerLoop);
             for (int j = 0; j < ubLoops; j++) {
-                inBlkCnt = MAX_BLOCK_CNT;
+                inBlkCnt = maxBlkPerLoop;
                 if (j == (ubLoops - 1)) {
-                    inBlkCnt = fracBlockSize - MAX_BLOCK_CNT * j;
+                    inBlkCnt = fracBlockSize - maxBlkPerLoop * j;
                 }
 
                 seqLensCopyParams.blockCount = inBlkCnt;
