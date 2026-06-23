@@ -48,10 +48,11 @@ void PrintTensorInfo(const char *name, const aclTensor *tensor)
         GmmaqPrint("launch tensor %s: nullptr.", name);
         return;
     }
-    GmmaqPrint("launch tensor %s: dtype=%s, storageFormat=%s, viewShape=%s, storageShape=%s, "
+    GmmaqPrint("launch tensor %s: dtype=%s, storageFormat=%s(primary=%s), viewShape=%s, storageShape=%s, "
                "viewDim=%zu, storageDim=%zu, isEmpty=%d.",
                name, op::ToString(tensor->GetDataType()).GetString(),
                op::ToString(tensor->GetStorageFormat()).GetString(),
+               op::ToString(ge::GetPrimaryFormat(tensor->GetStorageFormat())).GetString(),
                op::ToString(tensor->GetViewShape()).GetString(),
                op::ToString(tensor->GetStorageShape()).GetString(),
                tensor->GetViewShape().GetDimNum(), tensor->GetStorageShape().GetDimNum(),

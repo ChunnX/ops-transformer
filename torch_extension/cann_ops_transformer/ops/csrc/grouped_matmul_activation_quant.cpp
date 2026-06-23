@@ -34,9 +34,39 @@ constexpr int64_t MAX_GROUP_NUM = 1024;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
 constexpr float FLOAT_EPS = 1e-6F;
 
+template <typename ShapeT>
+std::string ShapeToString(const ShapeT &shape)
+{
+    std::string result = "[";
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (i > 0) {
+            result += ", ";
+        }
+        result += std::to_string(shape[i]);
+    }
+    result += "]";
+    return result;
+}
+
 void PrintTorchTensorFormats(const at::Tensor &x, const at::Tensor &groupList, const at::Tensor &weightTensor,
     const at::Tensor &weightScaleTensor, const at::Tensor &xScale, const at::Tensor &y, const at::Tensor &yScale)
 {
+    auto xStorage = at_npu::native::get_npu_storage_sizes(x);
+    auto groupListStorage = at_npu::native::get_npu_storage_sizes(groupList);
+    auto weightStorage = at_npu::native::get_npu_storage_sizes(weightTensor);
+    auto weightScaleStorage = at_npu::native::get_npu_storage_sizes(weightScaleTensor);
+    auto xScaleStorage = at_npu::native::get_npu_storage_sizes(xScale);
+    auto yStorage = at_npu::native::get_npu_storage_sizes(y);
+    auto yScaleStorage = at_npu::native::get_npu_storage_sizes(yScale);
+    std::printf("[GMMAQ torch] tensor shapes/storage: x=%s/%s, groupList=%s/%s, weight=%s/%s, "
+                "weightScale=%s/%s, xScale=%s/%s, y=%s/%s, yScale=%s/%s.\n",
+                ShapeToString(x.sizes()).c_str(), ShapeToString(xStorage).c_str(),
+                ShapeToString(groupList.sizes()).c_str(), ShapeToString(groupListStorage).c_str(),
+                ShapeToString(weightTensor.sizes()).c_str(), ShapeToString(weightStorage).c_str(),
+                ShapeToString(weightScaleTensor.sizes()).c_str(), ShapeToString(weightScaleStorage).c_str(),
+                ShapeToString(xScale.sizes()).c_str(), ShapeToString(xScaleStorage).c_str(),
+                ShapeToString(y.sizes()).c_str(), ShapeToString(yStorage).c_str(),
+                ShapeToString(yScale.sizes()).c_str(), ShapeToString(yScaleStorage).c_str());
     std::printf("[GMMAQ torch] raw npu formats: x=%ld, groupList=%ld, weight=%ld, weightScale=%ld, "
                 "xScale=%ld, y=%ld, yScale=%ld.\n",
                 static_cast<long>(at_npu::native::get_npu_format(x)),
@@ -177,77 +207,12 @@ void CheckBias(const c10::optional<std::vector<at::Tensor>> &bias)
         "bias must be None or an empty tensor list in current MXFP8 mode.");
 }
 
-struct TensorWithFormatWrapper {
-    const at::Tensor &tensor;
-    aclDataType dtype;
-    aclFormat format;
-};
-
-struct TensorListWithFormatWrapper {
-    const at::TensorList &tensorList;
-    aclDataType dtype;
-    aclFormat format;
-};
-
-aclTensor *ConvertType(const TensorWithFormatWrapper &tensorWrapper)
-{
-    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
-    if (aclCreateTensor == nullptr || !tensorWrapper.tensor.defined()) {
-        return nullptr;
-    }
-
-    const at::Tensor &tensor = tensorWrapper.tensor;
-    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(tensor.strides());
-    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(tensor.sizes());
-    c10::SmallVector<int64_t, MAX_DIM_NUM> storageDims = op_infer::array_to_small_vector(tensor.sizes());
-    if (!IsOpInputBaseFormat(tensor)) {
-        auto storageSizes = at_npu::native::get_npu_storage_sizes(tensor);
-        storageDims = op_infer::array_to_small_vector(c10::IntArrayRef(storageSizes.data(), storageSizes.size()));
-    }
-
-    return aclCreateTensor(wrapperShape.data(), tensor.sizes().size(), tensorWrapper.dtype, wrapperStride.data(),
-        tensor.storage_offset(), tensorWrapper.format, storageDims.data(), storageDims.size(),
-        const_cast<void *>(tensor.storage().data()));
-}
-
-aclTensorList *ConvertType(const TensorListWithFormatWrapper &tensorListWrapper)
-{
-    if (tensorListWrapper.tensorList.size() == 0) {
-        return nullptr;
-    }
-    static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
-    if (aclCreateTensorList == nullptr) {
-        return nullptr;
-    }
-
-    std::vector<const aclTensor *> tensorList(tensorListWrapper.tensorList.size());
-    for (size_t i = 0; i < tensorList.size(); ++i) {
-        tensorList[i] = ConvertType(
-            TensorWithFormatWrapper{tensorListWrapper.tensorList[i], tensorListWrapper.dtype, tensorListWrapper.format});
-    }
-    return aclCreateTensorList(tensorList.data(), tensorList.size());
-}
-
 std::vector<int64_t> GetExpectedWeightStorageShape(const WeightLayout &weightLayout, int64_t e, int64_t k)
 {
     if (weightLayout.transpose) {
         return {e, CeilDiv(k, 32), CeilDiv(weightLayout.n, 16), 16, 32};
     }
     return {e, CeilDiv(weightLayout.n, 32), CeilDiv(k, 16), 16, 32};
-}
-
-template <typename ShapeT>
-std::string ShapeToString(const ShapeT &shape)
-{
-    std::string result = "[";
-    for (size_t i = 0; i < shape.size(); ++i) {
-        if (i > 0) {
-            result += ", ";
-        }
-        result += std::to_string(shape[i]);
-    }
-    result += "]";
-    return result;
 }
 
 at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const WeightLayout &weightLayout,
@@ -362,11 +327,11 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     }
 
     TensorWrapper xWrapper = {x, xAclDtype};
-    TensorWithFormatWrapper xScaleWrapper = {xScale, xScaleAclDtype, ACL_FORMAT_ND};
+    TensorWrapper xScaleWrapper = {xScale, xScaleAclDtype};
     TensorListWrapper weightWrapper = {weightRef, weightAclDtype};
-    TensorListWithFormatWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype, ACL_FORMAT_ND};
+    TensorListWrapper weightScaleWrapper = {weightScaleRef, weightScaleAclDtype};
     TensorWrapper yWrapper = {y, static_cast<aclDataType>(yDtypeValue)};
-    TensorWithFormatWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0, ACL_FORMAT_ND};
+    TensorWrapper yScaleWrapper = {yScale, ACL_FLOAT8_E8M0};
     PrintTorchTensorFormats(x, groupList, weightTensor, weightScaleTensor, xScale, y, yScale);
     char *activationTypePtr = const_cast<char *>(activationType.c_str());
     char *quantModePtr = const_cast<char *>(quantMode.c_str());

@@ -312,13 +312,20 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                "In op [%s], y dtype must be the same as yDtype.", OP_NAME);
     CHECK_COND(yScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], yScale only supports FLOAT8_E8M0.", OP_NAME);
-    GmmaqPrint("In op [%s], storage formats: x=%s, xScaleOptional=%s, groupList=%s, weightScale=%s, "
-               "y=%s, yScale=%s.",
+    GmmaqPrint("In op [%s], storage formats: x=%s(primary=%s), xScaleOptional=%s(primary=%s), "
+               "groupList=%s(primary=%s), weightScale=%s(primary=%s), y=%s(primary=%s), yScale=%s(primary=%s).",
                OP_NAME, op::ToString(x->GetStorageFormat()).GetString(),
+               op::ToString(ge::GetPrimaryFormat(x->GetStorageFormat())).GetString(),
                op::ToString(xScaleOptional->GetStorageFormat()).GetString(),
+               op::ToString(ge::GetPrimaryFormat(xScaleOptional->GetStorageFormat())).GetString(),
                op::ToString(groupList->GetStorageFormat()).GetString(),
-               op::ToString(wScale->GetStorageFormat()).GetString(), op::ToString(y->GetStorageFormat()).GetString(),
-               op::ToString(yScale->GetStorageFormat()).GetString());
+               op::ToString(ge::GetPrimaryFormat(groupList->GetStorageFormat())).GetString(),
+               op::ToString(wScale->GetStorageFormat()).GetString(),
+               op::ToString(ge::GetPrimaryFormat(wScale->GetStorageFormat())).GetString(),
+               op::ToString(y->GetStorageFormat()).GetString(),
+               op::ToString(ge::GetPrimaryFormat(y->GetStorageFormat())).GetString(),
+               op::ToString(yScale->GetStorageFormat()).GetString(),
+               op::ToString(ge::GetPrimaryFormat(yScale->GetStorageFormat())).GetString());
     CHECK_COND(!op::IsPrivateFormat(x->GetStorageFormat()), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], x only supports ND, but got %s.", OP_NAME,
                op::ToString(x->GetStorageFormat()).GetString());
