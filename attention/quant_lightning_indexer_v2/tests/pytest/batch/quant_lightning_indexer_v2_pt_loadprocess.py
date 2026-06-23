@@ -33,20 +33,20 @@ def test_qliv2_process(filepath, device_id=0):
     torch_npu.npu.set_device(device_id)
 
     if params[10] == 'FLOAT8_E4M3FN':
-        query = test_data['query'].to(dtype=torch.float8_e4m3fn).npu()
-        key = test_data['key'].to(dtype=torch.float8_e4m3fn).npu()
+        query = test_data['query'].to(dtype=torch.float8_e4m3fn).cpu()
+        key = test_data['key'].to(dtype=torch.float8_e4m3fn).cpu()
     else:
-        query = test_data['query'].npu()
-        key = test_data['key'].npu()
+        query = test_data['query'].cpu()
+        key = test_data['key'].cpu()
 
     
-    weights =test_data['weights'].npu()
-    query_dequant_scale = test_data['query_dequant_scale'].npu()
-    key_dequant_scale = test_data['key_dequant_scale'].npu()
-    actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
-    actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
-    block_table = test_data['block_table'].npu()
-    metadata = test_data['metadata'].npu()
+    weights =test_data['weights'].cpu()
+    query_dequant_scale = test_data['query_dequant_scale'].cpu()
+    key_dequant_scale = test_data['key_dequant_scale'].cpu()
+    actual_seq_lengths_query = test_data['actual_seq_lengths_query'].cpu()
+    actual_seq_lengths_key = test_data['actual_seq_lengths_key'].cpu()
+    block_table = test_data['block_table'].cpu()
+    metadata = test_data['metadata'].cpu()
     query_quant_mode = test_data['query_quant_mode']
     key_quant_mode = test_data['key_quant_mode']
     layout_query = test_data['layout_query']
