@@ -165,9 +165,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(resMm1Buf_,
         2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
-    // 大小：2(开dB) * 2 * 64 * 2 = 0.5KB
-    pipe->InitBuffer(weightBuf_,
-        2 * CeilDiv(s1BaseSize_, CVRATIO) * gSize_ * sizeof(W_T));
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>(); // weight
     pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightTempUB_ = weightTempBuf_.Get<float>();
@@ -175,19 +173,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         // 大小：2(开dB) * 128 * 4 = 1KB
         pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
         kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
-        // 大小：2(开dB) * 2 * 64 * 4 = 1KB
-        pipe->InitBuffer(qScaleBuf_,
-            2 * CeilDiv(s1BaseSize_, CVRATIO) * gSize_ * sizeof(SCALE_T));
+        pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
         qScaleUB_ = qScaleBuf_.Get<SCALE_T>(); // qScale
     }
-    // 大小：2(开dB) * 2 * 128 * 4 = 2KB
-    pipe->InitBuffer(outBuf_,
-        2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(SCORE_T));
+    pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(uint16_t));
     vec1OutUB_ = outBuf_.Get<SCORE_T>(); // out
 
     // Topk: mrgValueLocal_ 和 indicesOutLocal_ 独立分配（跨迭代使用，不可复用）
-    pipe->InitBuffer(mrgValueBuf_,
-        (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));
+    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
 
     pipe->InitBuffer(indicesOutBuf_,
@@ -208,7 +201,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     // scoreOutLocal_ 布局在 topkSharedTmpLocal_ 之后
     //   偏移 = topK + 3*256 + 64 = 2048 + 832 = 2880 uint32
     uint32_t scoreOutOffsetInU32 = topkCountAlign256_ + 3 * 256 + 64;
-    scoreOutLocal_ = resMm1UB_[scoreOutOffsetInU32].template ReinterpretCast<SCORE_T>();
+    scoreOutLocal_ = resMm1UB_[scoreOutOffsetInU32].template ReinterpretCast<uint16_t>();
 
     topkOp_.InitBuffers(topkSharedTmpLocal_);
 
