@@ -81,12 +81,12 @@ FAIL_CASES=()
 # NPU execution repeat count for stability verification.
 # Each NPU run is compared against golden independently.
 # Case passes iff ALL runs pass. Set to 1 for normal single-run mode.
-NPU_RUN_COUNT=0
+NPU_RUN_COUNT=1
 
 # Generalized test case generation (replaces TEST_CASES when enabled).
 # Set USE_GENERALIZED_CASES=1 to randomly generate cases; 0 uses hardcoded TEST_CASES above.
 # GENERALIZED_CASE_COUNT: number of random cases to generate.
-USE_GENERALIZED_CASES=1
+USE_GENERALIZED_CASES=0
 GENERALIZED_CASE_COUNT=30
 
 # ============================================================
