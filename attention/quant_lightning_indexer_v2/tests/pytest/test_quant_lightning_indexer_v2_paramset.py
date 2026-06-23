@@ -162,7 +162,42 @@ TEST_PARAMS = {
         "cmp_ratio":[4], #1/2/4/8/16/32/64/128
         "max_seqlen_q": [-1],
         "return_value": [0]
-    }
+    },
+
+    "mxfp8_1":{
+        "batch_size": [1],
+        "q_seq": [4],
+        "k_seq": [512],
+        "q_t_size":[1],
+        "k_t_size":[1],#压缩后的值
+        "q_head_num": [64],
+        "k_head_num": [1],
+        "head_dim": [128],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[4],
+        "qk_dtype": [torch.float8_e4m3fn],
+        "weight_dtype": [torch.float],
+        "dequant_dtype": [torch.float8_e8m0fnu],
+        "actual_seq_dtype": [torch.int32],
+        "cu_seqlens_q": [None],     # BSND: cu_seqlens_q 不传
+        "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
+        "seqused_q": [[4]],
+        "seqused_k": [[512]], # PA场景每个batch的实际token数
+        "cmp_residual_k": [None],
+        "max_seqlen_q": [-1],
+        "quant_mode": [3],
+        "layout_query": ["BSND"],
+        "layout_key":["BSND"],
+        "sparse_count": [128],
+        "sparse_mode": [0],
+        "query_datarange":[[-448,448]],
+        "key_datarange":[[-20,20]],
+        "weights_datarange":[[-123,123]],
+        "q_scale_datarange":[[0,255]],
+        "k_scale_datarange":[[0,65504]],
+        "cmp_ratio":[1], #1/2/4/8/16/32/64/128
+        "return_value":[0]
+    },
 
 }
 
@@ -171,4 +206,6 @@ properties = torch.npu.get_device_properties()
 # if "Ascend910_93" in properties.name:
 #     ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a3"]]
 # elif "Ascend950" in properties.name:
-ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"]]
+ENABLED_PARAMS = [
+    TEST_PARAMS["mxfp8_1"],
+    ]
