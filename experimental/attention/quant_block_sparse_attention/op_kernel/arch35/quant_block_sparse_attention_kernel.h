@@ -204,7 +204,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     if constexpr (isPa) {
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
-    if constexpr (layout == BSALayout::TND) {
+    if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
         actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengthsKv;
     }
@@ -334,6 +334,15 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         if ASCEND_IS_AIV {
             // BSA: 输出 TND [T, N1, Dv]，同一 head 相邻 token 间隔 (n2G-1)*Dv 个元素（跳过其余 head）。
             // 每核独立计算一个 head，不做 FIA GS1 合轴/连续 GQA 输出，固定使用 per-head stride。
+            constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
+        }
+    } else if constexpr (layout == BSALayout::NTD) {
+        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
+        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
+        constInfo.mm1Ka = constInfo.dSize;
+        constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
+        constInfo.mm2Kb = constInfo.n2Dv;
+        if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
     }

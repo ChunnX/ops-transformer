@@ -30,7 +30,7 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr& runParam,
     const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* actualSeqQlenAddr)
 {
     int64_t actualS1Size = 0;
-    if constexpr (layout == BSALayout::TND) {
+    if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
         if (constInfo.isActualLenDimsNull) {
             actualS1Size = constInfo.s1Size;
         } else {
@@ -46,7 +46,7 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr& runParam,
     const ConstInfo& constInfo, int32_t bIdx, __gm__ int32_t* actualSeqKvlenAddr)
 {
     int64_t actualS2Size = 0;
-    if constexpr (layout == BSALayout::TND) {
+    if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
         if (constInfo.isActualLenDimsNull) {
             actualS2Size = constInfo.s2Size;
         } else {
@@ -73,7 +73,7 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
         runParam.nextTokensPerBatch = attenMaskInfo.nextTokens;
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
             runParam.preTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
-            if constexpr (layout == BSALayout::TND) {
+            if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
                 runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
             }
         }
@@ -82,6 +82,9 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
     if constexpr (layout == BSALayout::TND) {
         runParam.qBScalarOffset = (runParam.boIdx == 0) ? 0 : actualSeqQlenAddr[runParam.boIdx - 1] * constInfo.n2G;
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
+    } else if constexpr (layout == BSALayout::NTD) {
+        runParam.qBScalarOffset = 0;
+        runParam.qBOffset = 0;
     }
 
     // 暂时用不到，但保留的参数计算
@@ -136,7 +139,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
 {
     int64_t actualSeqLen = 0;
     int64_t seqOffset = 0;
-    if constexpr (layout == BSALayout::TND) {
+    if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
         actualSeqLen = (bIdx == 0) ? actualSeqQlenAddr[0] : runParam.actualS1Size;
         seqOffset = (bIdx == 0) ? 0 : actualSeqQlenAddr[bIdx - 1];
     }
@@ -144,15 +147,21 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
         if constexpr (layout == BSALayout::TND) {
             runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
                 runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
+        } else if constexpr (layout == BSALayout::NTD) {
+            int64_t ntdActualSeqLen = (bIdx == 0) ? actualSeqQlenAddr[0] :
+                (actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1]);
+            runParam.tensorQOffset = runParam.n2oIdx * (int64_t)constInfo.gSize * ntdActualSeqLen * constInfo.dSize +
+                runParam.goIdx * (int64_t)ntdActualSeqLen * constInfo.dSize +
+                runParam.cubeSOuterOffset * constInfo.dSize;
         }
     } else {
-        if constexpr (layout == BSALayout::TND) {
+        if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
             // 起始地址  需要stride偏移
             runParam.attentionOutOffset = seqOffset * constInfo.n2GDv +
                 runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
                 runParam.goIdx * constInfo.dSizeV;
         }
-        if constexpr (layout == BSALayout::TND) {
+        if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
             if (constInfo.isGqa) {
                 runParam.softmaxLseOffset = runParam.n1oIdx * constInfo.t1Size + seqOffset + runParam.sOuterOffset;
             } else {

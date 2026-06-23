@@ -41,6 +41,8 @@ namespace QuantBlockSparseAttentionCube {
 template <BSALayout LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
+    if constexpr (LAYOUT == BSALayout::TND) return GmFormat::TNGD;
+    if constexpr (LAYOUT == BSALayout::NTD) return GmFormat::NGTD;
     return GmFormat::TNGD;
 }
 
@@ -520,8 +522,15 @@ BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROS
         mm1B = l1QBuffers.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
-        CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize,
-                               constInfo.dSize, constInfo.mm1Ka);
+        if constexpr (layout == BSALayout::NTD) {
+            uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
+                coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize,
+                                   constInfo.dSize, constInfo.mm1Ka);
+        } else {
+            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize,
+                                   constInfo.dSize, constInfo.mm1Ka);
+        }
         mm1B.Set<HardEvent::MTE2_MTE1>();
     } else {
         mm1B = l1QBuffers.GetPre();
@@ -680,8 +689,15 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
             CopyToL1Nd2NzGS1Merge<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize,
                 constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
         } else {
-            CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
-                constInfo.mm1Ka); 
+            if constexpr (layout == BSALayout::NTD) {
+                uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
+                    coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+                CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize,
+                    constInfo.dSize, constInfo.mm1Ka);
+            } else {
+                CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
+                    constInfo.mm1Ka); 
+            }
         }
         
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
