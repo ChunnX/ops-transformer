@@ -571,4 +571,4 @@ aclnnStatus aclnnCompressor(
                     cache_mode = cache_mode)
     ```
 
-更多使用示例见[pytest示例](./tests/pytest/README.md)。
+更多使用示例见[pytest示例](../tests/pytest/README.md)。
