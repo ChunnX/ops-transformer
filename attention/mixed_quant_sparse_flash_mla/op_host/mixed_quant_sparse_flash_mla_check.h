@@ -282,6 +282,10 @@ public:
     float softmaxScale = 0;
     int64_t oriKvStride = 0;
     int64_t cmpKvStride = 0;
+    std::vector<int64_t> oriKvStrides;
+    std::vector<int64_t> cmpKvStrides;
+    gert::Shape oriKvStorageShape;
+    gert::Shape cmpKvStorageShape;
     int64_t cmpRatio = 0;
     uint64_t oriMaskMode = 0;
     uint64_t cmpMaskMode = 0;
@@ -387,6 +391,8 @@ public:
     uint32_t dSizeKV_ = 0;
     uint32_t oriKvStride_ = 0;
     uint32_t cmpKvStride_ = 0;
+    std::vector<int64_t> oriKvStridesVec_;
+    std::vector<int64_t> cmpKvStridesVec_;
     // Layout
     QSMLALayout qLayout_ = QSMLALayout::BSND;
     QSMLALayout outLayout_ = QSMLALayout::BSND;
@@ -504,7 +510,7 @@ private:
     ge::graphStatus CheckFeatureAntiquantPa() const;
     ge::graphStatus CheckFeatureAntiquant() const;
     ge::graphStatus CheckFeature() const;
-
+    ge::graphStatus CheckKvContiguous() const;
     void SetQSMLAShapeCompare();
 
 private:

@@ -139,8 +139,6 @@ ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.tileSize = nullptr;
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ATTR_ROPE_HEAD_DIM_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
-    opParamInfo_.oriKvStride = nullptr;
-    opParamInfo_.cmpKvStride = nullptr;
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
@@ -450,13 +448,23 @@ ge::graphStatus QSMLAInfoParser::GetDSizeKV()
 
 ge::graphStatus QSMLAInfoParser::GetKvstride()
 {
-    if (opParamInfo_.oriKv.tensor != nullptr) {
-        oriKvStride_ = opParamInfo_.oriKv.tensor->GetShapeSize() /
-                    opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0);
+    auto oriKvStrides = context_->GetDynamicInputStride(ORI_KV_INDEX, 0);
+    auto cmpKvStrides = context_->GetDynamicInputStride(CMP_KV_INDEX, 0);
+    if (oriKvStrides != nullptr && oriKvStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < oriKvStrides->GetDimNum(); i++) {
+            oriKvStridesVec_.push_back(oriKvStrides->GetStride(i));
+        }
+        if (kvLayout_ == QSMLALayout::PA_BBND) {
+            oriKvStride_ = oriKvStrides->GetStride(0);
+        }
     }
-    if (opParamInfo_.cmpKv.tensor != nullptr) {
-        cmpKvStride_ = opParamInfo_.cmpKv.tensor->GetShapeSize() /
-                    opParamInfo_.cmpKv.tensor->GetStorageShape().GetDim(0);
+    if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
+            cmpKvStridesVec_.push_back(cmpKvStrides->GetStride(i));
+        }
+        if (kvLayout_ == QSMLALayout::PA_BBND) {
+            cmpKvStride_ = cmpKvStrides->GetStride(0);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -503,6 +511,10 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
     qsmlaInfo.oriKvStride = oriKvStride_;
     qsmlaInfo.cmpKvStride = cmpKvStride_;
+    qsmlaInfo.oriKvStrides = oriKvStridesVec_;
+    qsmlaInfo.cmpKvStrides = cmpKvStridesVec_;
+    qsmlaInfo.oriKvStorageShape = oriKvShape_;
+    qsmlaInfo.cmpKvStorageShape = cmpKvShape_;
     qsmlaInfo.cmpRatio = *opParamInfo_.cmpRatio;
     qsmlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     qsmlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
