@@ -85,8 +85,8 @@ private:
         int32_t copyStartIdx, int32_t copyNum);
     __aicore__ inline void QuantTokenToWorkspaceRecord(uint32_t tokenIdx, GM_ADDR recordAddr);
     __aicore__ inline void QuantProcessInRank();
-    __aicore__ inline uint64_t SendWorkspaceServerOffset(uint32_t targetServer) const;
-    __aicore__ inline uint64_t RelayTokenOffset(uint32_t sourceServer, uint32_t tokenId) const;
+    __aicore__ inline uint64_t SendWorkspaceServerOffset(uint32_t targetServer);
+    __aicore__ inline uint64_t RelayTokenOffset(uint32_t sourceServer, uint32_t tokenId);
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -430,14 +430,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline uint64_t MegaMoe<TemplateMegaMoeTypeFunc>::SendWorkspaceServerOffset(uint32_t targetServer) const
+__aicore__ inline uint64_t MegaMoe<TemplateMegaMoeTypeFunc>::SendWorkspaceServerOffset(uint32_t targetServer)
 {
     return static_cast<uint64_t>(targetServer) * static_cast<uint64_t>(sendWorkspaceServerBytes_);
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint64_t MegaMoe<TemplateMegaMoeTypeFunc>::RelayTokenOffset(uint32_t sourceServer,
-    uint32_t tokenId) const
+    uint32_t tokenId)
 {
     return (static_cast<uint64_t>(sourceServer) * static_cast<uint64_t>(m_) + tokenId) *
         static_cast<uint64_t>(relayRecordBytes_);
