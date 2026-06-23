@@ -1,0 +1,47 @@
+{
+  "operator": "lightning_indexer",
+  "domain": "attention",
+  "status": "optimized_kept",
+  "soc": "ascend910b",
+  "arch": "arch22",
+  "vendor": "custom_transformer",
+  "api": "aclnn_lightning_indexer",
+  "source_changes": [
+    "attention/lightning_indexer/op_host/lightning_indexer_tiling.cpp",
+    "attention/lightning_indexer/tests/ut/op_host/arch22/test_lightning_indexer_tiling.cpp"
+  ],
+  "package_load": {
+    "build_command": "bash build.sh --pkg --soc=ascend910b --ops=lightning_indexer,recurrent_gated_delta_rule --vendor_name=custom -j16 -O3",
+    "install_command": "bash build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet",
+    "package_sha256": "9cadc00a497ed7acc41cbb7112eb3f529fbcf139d6813041879f4384c36e0f07",
+    "opapi_sha256": "96bf2f2af0840292e7ceb3ecd149af57021ac0f44af12bd0bbe3820e8b1cd3ab",
+    "kernel_config_evidence": "vendor custom_transformer contains ascend910b/lightning_indexer kernels and kernel/config/ascend910b/lightning_indexer.json"
+  },
+  "accuracy": {
+    "command": "python3 scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --soc ascend910b --out build/st_accuracy/perf_candidate_li_rgdr_blockdim_20260617_0456",
+    "summary": "18 passed, 0 failed, 0 error, 0 unsupported, 0 skipped"
+  },
+  "migration_verification": {
+    "branch": "br_tang_dev",
+    "date": "2026-06-22",
+    "package_sha256": "4d8f2567a0f2e9b8422e1d098db12f8b8dc9b0c50bba7a2a79d97af5742eca0c",
+    "opapi_sha256": "7da7964e25974ba1af76afdd0cbdcd4836e34c157c3a16d29878f0266b2b0f30",
+    "host_ut": "build.sh -u --ophost_test --soc=ascend910b --ops=lightning_indexer,recurrent_gated_delta_rule -j16: 16 passed",
+    "accuracy_command": "python3 scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/migration_device",
+    "accuracy_summary": "18 passed, 0 failed, 0 error, 0 unsupported, 0 skipped"
+  },
+  "performance": {
+    "baseline_root": "artifacts/perf_baseline/msprof_baseline_direct_20260617_0320",
+    "candidate_root": "artifacts/perf_candidate/li_rgdr_blockdim_20260617_0442",
+    "matrix": "10 ST cases plus li_readme_pa_large",
+    "metric": "median Task Duration(us), at least 3 valid samples; li_readme_pa_large has 5 candidate samples",
+    "decision": "ST cases improved by 22.72% to 51.59%; README PA large flat at +0.39%; no stable regression"
+  },
+  "artifacts": [
+    {
+      "path": "artifacts/perf_candidate/li_rgdr_blockdim_20260617_0442/SUMMARY.md",
+      "sha256": "a2717a9985e14a45eb0c0fda7afa45f514414d79e2735c984a1eb3449c5a3fa9",
+      "retention_action": "archive_with_hash"
+    }
+  ]
+}

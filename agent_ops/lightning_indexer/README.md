@@ -1,0 +1,35 @@
+# LightningIndexer Performance Ledger
+
+Status: `optimized_kept`
+
+Operator:
+- domain: `attention`
+- API: `LightningIndexer` / `aclnn_lightning_indexer`
+- target SoC: `ascend910b`
+- arch: `arch22`
+- vendor: `custom_transformer`
+
+Optimization kept on 2026-06-17:
+- Host tiling now caps launch `blockDim` by a shape-implied maximum base-block count instead of always using the physical TSch blockDim.
+- The device kernel already recomputes actual work from runtime `actual_seq_lengths`; the host cap only avoids launching obviously idle mix cores from static shape upper bounds.
+
+Evidence:
+- candidate summary: `artifacts/perf_candidate/li_rgdr_blockdim_20260617_0442/SUMMARY.md`
+- summary sha256: `a2717a9985e14a45eb0c0fda7afa45f514414d79e2735c984a1eb3449c5a3fa9`
+- package sha256: `9cadc00a497ed7acc41cbb7112eb3f529fbcf139d6813041879f4384c36e0f07`
+- installed op_api sha256: `96bf2f2af0840292e7ceb3ecd149af57021ac0f44af12bd0bbe3820e8b1cd3ab`
+
+Migration verification on `br_tang_dev` (2026-06-22):
+- package sha256: `4d8f2567a0f2e9b8422e1d098db12f8b8dc9b0c50bba7a2a79d97af5742eca0c`
+- installed op_api sha256: `7da7964e25974ba1af76afdd0cbdcd4836e34c157c3a16d29878f0266b2b0f30`
+- op_host UT: `build.sh -u --ophost_test --soc=ascend910b --ops=lightning_indexer,recurrent_gated_delta_rule -j16`, 16 passed
+- ST accuracy: `scripts/st_accuracy/run_st_accuracy.py run --ops lightning_indexer,recurrent_gated_delta_rule --out build/st_accuracy/migration_device`, 18 passed, 0 failed, 0 error, 0 unsupported
+
+Outcome:
+- ST matrix cases improved by 22.72% to 51.59% median `Task Duration(us)`.
+- README PA large was flat at +0.39% after resampling and is treated as noise-band neutral, not a stable gain.
+- No stable representative-matrix regression was observed.
+
+Follow-up:
+- README PA large remains the most useful next target because launch-count reduction alone is not enough there.
+- Next hypotheses should inspect inner kernel work: vector TopK merge, sparse mode 3 mask path, PA block-table access, workspace traffic, and cube/vector synchronization.
