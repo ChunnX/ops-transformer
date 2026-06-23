@@ -136,7 +136,7 @@ __aicore__ inline void CombineTokensWithUrmaSend(
     uint32_t startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
     uint32_t processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
     uint32_t endRankId = startRankId + processRankNum;
-    uint32_t cntTensorLength = Ops::Base::CeilAlign(static_cast<int64_t>(processRankNum) * sizeof(uint32_t), (int64_t)ALIGN_32);
+    uint32_t cntTensorLength = Ops::Base::CeilAlign(static_cast<uint64_t>(processRankNum) * sizeof(uint32_t), (uint64_t)ALIGN_32);
     if (startRankId >= endRankId || processRankNum == 0) {
         return;
     }
