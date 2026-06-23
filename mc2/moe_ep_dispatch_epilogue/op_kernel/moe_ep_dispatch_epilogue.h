@@ -386,10 +386,13 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     GM_ADDR slotAddr = srcRankBase + (int64_t)(slotStart + localSlot) * perSlotBytes_;
                     GlobalTensor<XType> srcTokenTensor;
                     srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
-                    DataCopy(ubToken_, srcTokenTensor, axisH_);
+                    DataCopyExtParams tokenCopyParams{1U,
+                        static_cast<uint32_t>(axisH_ * sizeof(XType)), 0U, 0U, 0U};
+                    DataCopyPadExtParams<XType> tokenPadParams{false, 0, 0, 0};
+                    DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
                     PipeBarrier<PIPE_MTE2>();
 
-                    DataCopy(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, axisH_);
+                    DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
                     PipeBarrier<PIPE_MTE3>();
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);

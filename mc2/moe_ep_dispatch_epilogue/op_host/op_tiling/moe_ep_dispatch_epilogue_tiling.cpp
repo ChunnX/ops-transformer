@@ -206,9 +206,8 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         return ge::GRAPH_FAILED);
     const int64_t numTokens = dstSlotShape->GetStorageShape().GetDim(0);
     const int64_t topK = dstSlotShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK((numTokens <= 0) || (numTokens > BS_UPPER_BOUND),
-        OP_LOGE(nodeName, "dstBufferSlotIdx dim0(numTokens) must be in (0, %ld], got %ld.",
-            BS_UPPER_BOUND, numTokens),
+    OP_TILING_CHECK(numTokens <= 0,
+        OP_LOGE(nodeName, "dstBufferSlotIdx dim0(numTokens) must be positive, got %ld.", numTokens),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((topK <= 0) || (topK > K_MAX),
         OP_LOGE(nodeName, "dstBufferSlotIdx dim1(topK) must be in (0, %ld], got %ld.", K_MAX, topK),
@@ -399,50 +398,36 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
 
     MoeEpDispatchEpilogueInfo &info = tilingData->moeEpDispatchEpilogueInfo;
 
-    // 1) attr 合法性
     OP_TILING_CHECK(CheckAttrParams(context, nodeName, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check attr params failed."), return ge::GRAPH_FAILED);
 
-    // 1.5) cached 判定（OPTIONAL cachedRecvSrcMetadata 是否传入决定 cached 路径）
     bool cached = (context->GetOptionalInputDesc(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
     info.cached = cached ? 1U : 0U;
 
-    // 2) 输入 dtype（先于 shape，避免 shape 校验时基于错误 dtype 推断）
     OP_TILING_CHECK(CheckInputDataType(context, nodeName, cached) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input dtype failed."), return ge::GRAPH_FAILED);
 
-    // 3) 输入 shape（依赖 attr 校验已写入 info.cfg.epWorldSize/numLocalExperts/numMaxTokensPerRank）
     OP_TILING_CHECK(CheckInputTensorShape(context, nodeName, info, cached) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
 
-    // 4) 派生 numTokens / topK（来自 dstBufferSlotIdx，shape 已校验）
     const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
     info.cfg.numTokens = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(0));
     info.cfg.topK = static_cast<uint32_t>(dstBufferSlotIdxShape->GetStorageShape().GetDim(1));
     const int64_t topK = static_cast<int64_t>(info.cfg.topK);
 
-    // 5) 输出 shape + dtype（含 A_alloc ≤ ep × nmt 上界 / hidden 范围 / 5 个输出交叉一致）
     OP_TILING_CHECK(CheckOutputTensors(context, nodeName, info, topK) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check output tensors failed."), return ge::GRAPH_FAILED);
 
-    // 6) 派生 hidden（来自 recvX，shape/dtype 已校验）+ 对齐校验
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
     info.cfg.hidden = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(1));
-    OP_TILING_CHECK(info.cfg.hidden % HIDDEN_ALIGN != 0,
-        OP_LOGE(nodeName, "hidden must be a multiple of %u for DataCopy alignment, got %u.",
-            HIDDEN_ALIGN, info.cfg.hidden),
-        return ge::GRAPH_FAILED);
 
-    // 7) perSlotBytes 派生（公式与 dispatch 端保持对齐：hAlign + 2 × kAlign + UB_ALIGN）
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 * 2 + UB_ALIGN));
 
-    // 8) HCCL Window 容量校验（perSlotBytes 已派生）
     OP_TILING_CHECK(CheckWinSize(context, nodeName, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check HCCL Window size failed."), return ge::GRAPH_FAILED);
 
-    // 9) 平台资源
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0UL;
@@ -456,7 +441,6 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     info.aivNum = aivNum;
     info.totalUbSize = ubSize;
 
-    // 10) workspace
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
@@ -466,7 +450,6 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     uint64_t rowStartBytes = static_cast<uint64_t>(aivNum) * info.cfg.numLocalExperts * sizeof(int64_t);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + prefixSumBytes + hitCountBytes + rowStartBytes;
 
-    // 11) tilingKey（ARCH_TAG + IS_CACHED 二维模板）
     uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U);
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u",
