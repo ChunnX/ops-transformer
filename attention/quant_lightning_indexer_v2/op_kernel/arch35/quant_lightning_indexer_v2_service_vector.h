@@ -51,7 +51,8 @@ public:
                                                     GlobalTensor<int32_t> ldIndexGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
                                               GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
-                                              GlobalTensor<int32_t> blockTableGm, GlobalTensor<bfloat16_t> valueOutGm);
+                                              GlobalTensor<int32_t> blockTableGm, GlobalTensor<bfloat16_t> valueOutGm,
+                                              GlobalTensor<int32_t> outputIdxOffsetGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -239,7 +240,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitParams(const struct QLIV2Common:
     s2BaseSize_ = constInfo.s2BaseSize;  // 128
     kCacheBlockSize_ = constInfo.kCacheBlockSize;
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
-    returnValueFlag = constInfo.returnValueFlag;
+    returnValueFlag = constInfo.returnValue;
     blockId_ = GetBlockIdx();
     trunkLen_ = TRUNK_LEN_16K;
     topkCount_ = constInfo.sparseCount;
@@ -330,14 +331,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::CleanInvalidOutput(int64_t invalidS1
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.NEG_INF_BFLOAT, constInfo_.topk);
+        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.NEG_INF_BFLOAT, constInfo_.topkCount_);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
         AscendC::DataCopyParams copyOutValueParams;
         copyOutValueParams.blockCount = 1;
-        copyOutValueParams.blockLen = constInfo_.topk * sizeof(float);
+        copyOutValueParams.blockLen = constInfo_.topkCount_ * sizeof(float);
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
         AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
@@ -348,8 +349,8 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const LIV2Common::RunInfo &runInfo)
 {
     uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t paddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topk;
-    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topk;
+    uint64_t paddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topkCount_;
+    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topkCount_;
     GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
     AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
 
