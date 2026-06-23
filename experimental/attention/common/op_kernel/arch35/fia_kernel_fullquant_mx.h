@@ -107,8 +107,6 @@ public:
     bool headS2Split = false;
     bool tailS2Split = false;
 
-    uint32_t bandHeadTokenOffset = 0U;
-
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
 
@@ -234,6 +232,8 @@ public:
         }
         if constexpr (HAS_ROPE) {
             constInfo.dSizeRope = fiaBaseParams.dSizeRope;
+            constInfo.kRopeStrides.bnStride = fiaBaseParams.kRopeStrides.bnStride;
+            constInfo.kRopeStrides.n2Stride = fiaBaseParams.kRopeStrides.n2Stride;
         } else {
             constInfo.dSizeRope = 0;
         }
@@ -243,7 +243,15 @@ public:
         constInfo.isKvContinuous = fiaBaseParams.isKvContinuous != 0;
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
-
+        // constInfo.strides从fiaBaseParams赋值
+        constInfo.keyStrides.bnStride = fiaBaseParams.keyStrides.bnStride;
+        constInfo.keyStrides.n2Stride = fiaBaseParams.keyStrides.n2Stride;
+        constInfo.valueStrides.bnStride = fiaBaseParams.valueStrides.bnStride;
+        constInfo.valueStrides.n2Stride = fiaBaseParams.valueStrides.n2Stride;
+        constInfo.kScaleStrides.bnStride = fiaBaseParams.kScaleStrides.bnStride;
+        constInfo.kScaleStrides.n2Stride = fiaBaseParams.kScaleStrides.n2Stride;
+        constInfo.vScaleStrides.bnStride = fiaBaseParams.vScaleStrides.bnStride;
+        constInfo.vScaleStrides.n2Stride = fiaBaseParams.vScaleStrides.n2Stride;
         // if constexpr (HAS_MASK) {
         constInfo.sparseMode =
             fiaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
@@ -268,6 +276,7 @@ public:
         // LSE
         constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
 
+        // 任务起始位置
         constInfo.bN2Start = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_BN2_START_INDEX));
         constInfo.gS1OStart = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_M_START_INDEX));
         constInfo.s2OStart = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_S2_START_INDEX));
@@ -425,7 +434,7 @@ public:
             }
 
             if (s2Cur < curS2Start || s2Cur >= curS2End) {
-                return TASK_DEAL_MODE::SKIP;
+                return TASK_DEAL_MODE::SKIP_REMAINING_S2;
             }
 
             if (s2Cur == curS2Start) {
@@ -544,7 +553,6 @@ public:
                 s2FirstTokenAlign64 = 0;
             }
             bandLength = s2LastToken - s2FirstTokenAlign64 + 1;
-            bandHeadTokenOffset = static_cast<uint32_t>(s2FirstToken - s2FirstTokenAlign64);
             curS2Start = 0;
             curS2End = CeilDiv(bandLength, s2BaseSize);
 
@@ -647,7 +655,6 @@ public:
         }
         info.s2Idx = s2FirstTokenAlign64 + s2Cur * s2BaseSize;
         info.shouldDealInitToken = s2FirstTokenAlign64 > 0 && s2Cur == 0;
-        info.validBandCopySkip = (s2Cur == 0U) ? bandHeadTokenOffset : 0U;
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
 
@@ -703,11 +710,12 @@ public:
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
+            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
+            info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
@@ -736,10 +744,12 @@ public:
         }
         uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
-            s2Cur++;
-            return;
+        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
+            // 当前S2未处理完
+            if (s2Cur + 1 < s2LoopTimes) {
+                s2Cur++;
+                return;
+            }
         }
 
         // 当前BN2未处理完
