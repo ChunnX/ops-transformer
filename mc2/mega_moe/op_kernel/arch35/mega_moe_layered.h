@@ -458,29 +458,30 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatc
     if constexpr(g_coreType == AIC) {
         return;
     }
-
+    PRINTF("ResetUrmaDispatchState1: rankId=%u\n", rankId_);
     for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
         __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
             params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(serverIdx));
         WriteGmByPassDCache(countPtr, int32_t(0));
     }
-
+    PRINTF("ResetUrmaDispatchState2: rankId=%u\n", rankId_);
     __gm__ int32_t* dedupPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDedupMaskPtr);
     uint32_t dedupIntNum = serverNum_ * (sendDedupStrideBytes_ / sizeof(int32_t));
     for (uint32_t idx = aivCoreIdx_; idx < dedupIntNum; idx += blockAivNum_) {
         WriteGmByPassDCache(dedupPtr + idx, int32_t(0));
     }
-
+    PRINTF("ResetUrmaDispatchState3: rankId=%u\n", rankId_);
     __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendCursorPtr);
     for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
         WriteGmByPassDCache(cursorPtr + serverIdx, int32_t(0));
     }
-
+    PRINTF("ResetUrmaDispatchState4: rankId=%u\n", rankId_);
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDonePtr);
     for (uint32_t idx = aivCoreIdx_; idx < blockNum_; idx += blockAivNum_) {
         WriteGmByPassDCache(donePtr + idx, int32_t(0));
     }
 
+    PRINTF("ResetUrmaDispatchState5: rankId=%u\n", rankId_);
     // relay 接收区按 tokenId 定位，二级通信通过 meta.flag 判断该 token 是否已经到达。
     uint32_t relayRecordNum = serverNum_ * m_;
     for (uint32_t idx = aivCoreIdx_; idx < relayRecordNum; idx += blockAivNum_) {
