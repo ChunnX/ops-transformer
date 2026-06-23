@@ -404,7 +404,219 @@ TEST_PARAMS = {
 
 ---
 
-## 五、关键设计决策总结
+## 五、V2 Golden 代码对齐整改（从 V1 mxpytest 回合）
+
+> 以下修改将 V2 `quant_lightning_indexer_v2_golden.py` 对齐到 V1 mxpytest commit 中的重构和 bugfix。
+
+### 5.1 Shape 推导整改：删除冗余 shape 成员变量
+
+**问题**: V2 的 `__init__` 中仍维护 `self.q_shape`/`self.k_shape`/`self.w_shape` 成员变量，`forward()` 中维护 `q_bnsd_shape`/`k_bnsd_shape` 等，全部冗余。
+
+**修改**:
+
+#### `__init__` 中删除 shape 成员变量
+
+```python
+# 修改前（删除以下代码）
+if layout_query == "BSND":
+    self.q_shape = [batch_size, q_seq, q_head_num, head_dim]
+    self.w_shape = [batch_size, q_seq, q_head_num]
+    self.q_tnd_flag = 0
+elif layout_query == "TND":
+    self.q_shape = [q_t_size, q_head_num, head_dim]
+    self.w_shape = [q_t_size, q_head_num]
+    self.q_tnd_flag = 1
+
+if layout_key == "BSND":
+    self.k_shape = [batch_size, k_seq, k_head_num, head_dim]
+elif layout_key == "TND":
+    self.k_shape = [k_t_size, k_head_num, head_dim]
+
+# 修改后：全部删除，w_dtype 改为固定 bfloat16
+self.w_dtype = torch.bfloat16  # 原来是 self.w_dtype = dequant_dtype
+```
+
+#### `forward()` 中删除 shape 局部变量和 bnsd_shape 成员赋值
+
+```python
+# 修改前
+q_shape = self.q_shape
+w_shape = self.w_shape
+q_scale_shape = [batch_size, q_seq, q_head_num]  # 或 [q_t_size, q_head_num]
+layout_key_scale = "BSN"  # 或 "TN" 或 layout_key
+k_shape = self.k_shape
+k_scale_shape = [batch_size, k_seq, k_head_num]  # 或 [k_t_size, k_head_num] 等
+
+# 修改后：全部删除，不再维护这些局部变量
+```
+
+```python
+# 修改前（forward 末尾）
+self.q_bnsd_shape = q_bnsd_shape
+self.k_bnsd_shape = k_bnsd_shape
+self.wt_bnsd_shape = wt_bnsd_shape
+self.q_scale_bnsd_shape = q_scale_bnsd_shape
+self.k_scale_bnsd_shape = k_scale_bnsd_shape
+m_shape_std = [q_bnsd_shape[2], k_bnsd_shape[2]]
+batch = q_bnsd_shape[0]
+
+# 修改后：删除所有 *_shape 成员赋值，直接用 .shape
+self.q_bnsd_tensor = q_bnsd_tensor
+self.k_bnsd_tensor = k_bnsd_tensor
+self.wt_bnsd_tensor = wt_bnsd_tensor
+self.q_scale_bnsd_tensor = q_scale_bnsd_tensor
+self.k_scale_bnsd_tensor = k_scale_bnsd_tensor
+m_shape_std = [q_bnsd_tensor.shape[2], k_bnsd_tensor.shape[2]]
+batch = q_bnsd_tensor.shape[0]
+```
+
+#### `cal_atten_bnsd()` 和 `forward()` 末尾的 `copy.deepcopy` 替换
+
+```python
+# 修改前（3 处）
+out_shape_bnsd = copy.deepcopy(self.q_bnsd_shape)
+
+# 修改后
+out_shape_bnsd = list(q_bnsd_tensor.shape)
+```
+
+### 5.2 `trans_shape_to_bnsd` 函数整改
+
+**问题**: V2 的 `trans_shape_to_bnsd` 仍使用旧签名（含 `shape`/`is_weights` 参数），返回 `(tensor, shape)` 元组，且包含已废弃的 `BSN`/`TN` 分支。
+
+**修改**:
+
+```python
+# 修改前
+def trans_shape_to_bnsd(self, tensor, shape, layout, headnums=None, act_seq=None,
+                        is_weights=False, tensor_name=None):
+    if layout in ["BSND"]:
+        B = shape[0]; S = shape[1]; N = shape[2]; D = 1
+        if is_weights:
+            tensor = torch.unsqueeze(tensor, dim=-1)
+        else:
+            D = shape[3]
+        ...
+        return tensor, [B, N, S, D]
+    elif layout == "BSN":       # ← 废弃分支
+        ...
+    elif layout == "TN":        # ← 废弃分支
+        ...
+
+# 修改后
+def trans_shape_to_bnsd(self, tensor, layout, headnums=None, act_seq=None,
+                        tensor_name=None):
+    if layout == "BSND":
+        B = tensor.shape[0]; S = tensor.shape[1]; N = tensor.shape[2]; D = 1
+        if len(tensor.shape) == 3:          # 替代 is_weights
+            tensor = torch.unsqueeze(tensor, dim=-1)
+        else:
+            D = tensor.shape[3]
+        ...
+        return tensor                       # 只返回 tensor
+    elif layout == "TND":
+        ...
+        return new_tensor
+    elif layout == "PA_BSND":              # ← 新增分支
+        if len(tensor.shape) == 3:
+            tensor = torch.unsqueeze(tensor, dim=-1)
+        return tensor
+    else:
+        return tensor
+```
+
+**调用方同步更新**（`forward()` 中 5 处调用）:
+
+```python
+# 修改前
+q_bnsd_tensor, q_bnsd_shape = self.trans_shape_to_bnsd(
+    query, q_shape, layout_query, q_head_num, actualSeqLengths_q)
+k_scale_bnsd_tensor, k_scale_bnsd_shape = self.trans_shape_to_bnsd(
+    key_dequant_scale, k_scale_shape, layout_key_scale, k_head_num, ...)
+wt_bnsd_tensor, wt_bnsd_shape = self.trans_shape_to_bnsd(
+    weights, w_shape, layout_query, q_head_num, actualSeqLengths_q, is_weights)
+
+# 修改后：去掉 shape 参数，去掉元组解包，key_scale 改用 layout_key
+q_bnsd_tensor = self.trans_shape_to_bnsd(
+    query, layout_query, q_head_num, actualSeqLengths_q)
+q_scale_bnsd_tensor = self.trans_shape_to_bnsd(
+    query_dequant_scale, layout_query, q_head_num, actualSeqLengths_q)
+k_bnsd_tensor = self.trans_shape_to_bnsd(
+    key, layout_key, k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
+k_scale_bnsd_tensor = self.trans_shape_to_bnsd(
+    key_dequant_scale, layout_key, k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
+wt_bnsd_tensor = self.trans_shape_to_bnsd(
+    weights, layout_query, q_head_num, actualSeqLengths_q)
+```
+
+### 5.3 `broadcast_n_axis` 简化
+
+```python
+# 修改前
+def broadcast_n_axis(self, n1, n2, temp_tensor, input_dtype):
+    ...
+    return modify_tensor, modify_tensor.shape
+
+# 修改后
+def broadcast_n_axis(self, n1, n2, temp_tensor):
+    ...
+    return modify_tensor
+```
+
+调用方同步更新（去掉 `k_dtype` 参数和元组解包）:
+
+```python
+# 修改前
+k_bnsd_tensor, k_bnsd_shape = self.broadcast_n_axis(q_head_num, k_head_num, k_bnsd_tensor, k_dtype)
+k_scale_bnsd_tensor, k_scale_bnsd_shape = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_bnsd_tensor, k_dtype)
+
+# 修改后
+k_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_bnsd_tensor)
+k_scale_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_bnsd_tensor)
+```
+
+### 5.4 `cal_atten_per_batch_fp8` — k_scale 添加 `.squeeze(-1)`
+
+**问题**: fp8 路径中 `cur_k_scale` 未 squeeze 末尾维度，导致与 `reduce_sum` 相乘时广播不正确。
+
+```python
+# 修改前
+cur_k_scale = self.cur_k_scale.to(dtype=torch.float32)
+
+# 修改后
+cur_k_scale = self.cur_k_scale.to(dtype=torch.float32).squeeze(-1)
+```
+
+### 5.5 `cal_atten_per_batch_int8` — k_scale 添加 `.unsqueeze(-1)`
+
+**问题**: int8 路径中 `cur_k_scale` 缺少末尾维度，导致与 `reduce_sum` 相乘时维度不匹配。
+
+```python
+# 修改前
+cur_k_scale = self.cur_k_scale.to(dtype=torch.float16)
+
+# 修改后
+cur_k_scale = self.cur_k_scale.to(dtype=torch.float16).unsqueeze(-1)
+```
+
+### 5.6 `create_mask_right_down` — mask 列表添加 numpy 转换
+
+**问题**: `re_mask_batch` 中每个元素是 `torch.Tensor`，直接 `np.array(re_mask_batch, dtype=np.bool_)` 可能产生非预期的嵌套结构。
+
+```python
+# 修改前
+re_mask_batch.append(atten_masks)
+re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
+
+# 修改后：先逐个转为 numpy array，再整体转 bool
+re_mask_batch.append(atten_masks)
+re_mask_batch = [np.array(x) for x in re_mask_batch]
+re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
+```
+
+---
+
+## 六、关键设计决策总结
 
 | 决策 | 说明 |
 |------|------|
@@ -414,3 +626,7 @@ TEST_PARAMS = {
 | 移除 `npu_ops_transformer` 依赖 | 改用 `torch_npu` 直调，简化接口 |
 | CPU/NPU 结果都先排序 | 消除 topk 同值时顺序不确定的问题 |
 | `cmp_ratio` 全局传递 | 支持 Key 序列压缩场景的 golden 计算 |
+| 删除所有 shape 成员变量 | 统一用 `tensor.shape` 获取维度，消除冗余 |
+| `trans_shape_to_bnsd` 去 shape 参数 | 从 tensor 自身推导维度，简化调用链 |
+| fp8 的 k_scale `.squeeze(-1)` | 消除末尾多余维度，确保广播正确 |
+| int8 的 k_scale `.unsqueeze(-1)` | 补齐末尾维度，确保维度匹配 |
