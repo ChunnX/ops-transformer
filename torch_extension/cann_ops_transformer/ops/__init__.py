@@ -7,8 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from .sparse_flash_mla_grad import npu_sparse_flash_mla_grad
-from .sparse_flash_mla_grad_metadata import npu_sparse_flash_mla_grad_metadata
+from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .moe_distribute_combine import npu_moe_distribute_combine
 from .mega_moe import (
@@ -16,7 +15,6 @@ from .mega_moe import (
     mega_moe,
     npu_get_mega_moe_ccl_buffer_size
 )
-from .bandwidth_test import npu_bandwidth_test
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch import converter_moe_distribute_dispatch
 from .graph_convert.graph_convert_moe_distribute_combine import convert_npu_moe_distribute_combine
@@ -30,11 +28,13 @@ from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla import (
 )
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
 from .graph_convert.graph_convert_sparse_flash_mla import convert_sparse_flash_mla_metadata
-from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_indexer_kl_loss_grad
-from .npu_sparse_lightning_indexer_kl_loss_grad_metadata import npu_sparse_lightning_indexer_kl_loss_grad_metadata
-from .lightning_indexer_v2 import lightning_indexer_v2, lightning_indexer_metadata
+from .sparse_lightning_indexer_kl_loss_grad import (
+    sparse_lightning_indexer_kl_loss_grad,
+    sparse_lightning_indexer_kl_loss_grad_metadata
+)
+from .lightning_indexer import lightning_indexer, lightning_indexer_metadata
 from .graph_convert.graph_convert_lightning_indexer import convert_lightning_indexer_metadata
-from .quant_lightning_indexer_v2 import quant_lightning_indexer_v2, quant_lightning_indexer_metadata
+from .quant_lightning_indexer import quant_lightning_indexer, quant_lightning_indexer_metadata
 from .graph_convert.graph_convert_quant_lightning_indexer import (
     convert_quant_lightning_indexer_metadata
 )

@@ -475,6 +475,17 @@ static bool ValidateBiasShape(gert::TilingContext *contex, int64_t eFromW, int64
     return true;
 }
 
+// Axis indices for scale shape [E, N, CeilDiv(K, 64), MX_INNER_DIM]
+constexpr uint32_t SCALE_AXIS_E = 0;
+constexpr uint32_t SCALE_AXIS_N = 1;
+constexpr uint32_t SCALE_AXIS_K_CEIL_DIV = 2;
+constexpr uint32_t SCALE_AXIS_INNER = 3;
+
+// Axis indices for pertoken_scale shape [M, CeilDiv(K, 64), MX_INNER_DIM]
+constexpr uint32_t PTSCALE_AXIS_M = 0;
+constexpr uint32_t PTSCALE_AXIS_K_CEIL_DIV = 1;
+constexpr uint32_t PTSCALE_AXIS_INNER = 2;
+
 // Helper: Validate scale shape [E, N, CeilDiv(K, 64), 2]
 static bool ValidateScaleShape(gert::TilingContext *contex, int64_t eFromW, int64_t nSize, int64_t kCeilDiv64)
 {
@@ -487,23 +498,23 @@ static bool ValidateScaleShape(gert::TilingContext *contex, int64_t eFromW, int6
             "The shape dim of scale must be " + std::to_string(DIM_NUM_MX_SCALE));
         return false;
     }
-    if (unlikely(scaleShape.GetDim(0) != eFromW)) {
+    if (unlikely(scaleShape.GetDim(SCALE_AXIS_E) != eFromW)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale",
             Ops::Base::ToString(scaleShape), "The axis 0 of scale must be equal to E=" + std::to_string(eFromW));
         return false;
     }
-    if (unlikely(scaleShape.GetDim(1) != nSize)) {
+    if (unlikely(scaleShape.GetDim(SCALE_AXIS_N) != nSize)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale",
             Ops::Base::ToString(scaleShape), "The axis 1 of scale must be equal to N=" + std::to_string(nSize));
         return false;
     }
-    if (unlikely(scaleShape.GetDim(2) != kCeilDiv64)) {
+    if (unlikely(scaleShape.GetDim(SCALE_AXIS_K_CEIL_DIV) != kCeilDiv64)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale",
             Ops::Base::ToString(scaleShape),
             "The axis 2 of scale must be equal to CeilDiv(K, 64)=" + std::to_string(kCeilDiv64));
         return false;
     }
-    if (unlikely(scaleShape.GetDim(3) != MX_INNER_DIM)) {
+    if (unlikely(scaleShape.GetDim(SCALE_AXIS_INNER) != MX_INNER_DIM)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "scale",
             Ops::Base::ToString(scaleShape), "The axis 3 of scale must be equal to " + std::to_string(MX_INNER_DIM));
         return false;
@@ -523,19 +534,19 @@ static bool ValidatePertokenScaleShape(gert::TilingContext *contex, int64_t mSiz
             "The shape dim of pertokenScale must be " + std::to_string(DIM_NUM_MX_PERTOKENSCALE));
         return false;
     }
-    if (unlikely(pertokenScaleShape.GetDim(0) != mSize)) {
+    if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_M) != mSize)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale",
             Ops::Base::ToString(pertokenScaleShape),
             "The axis 0 of pertokenScale must be equal to M=" + std::to_string(mSize));
         return false;
     }
-    if (unlikely(pertokenScaleShape.GetDim(1) != kCeilDiv64)) {
+    if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_K_CEIL_DIV) != kCeilDiv64)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale",
             Ops::Base::ToString(pertokenScaleShape),
             "The axis 1 of pertokenScale must be equal to CeilDiv(K, 64)=" + std::to_string(kCeilDiv64));
         return false;
     }
-    if (unlikely(pertokenScaleShape.GetDim(2) != MX_INNER_DIM)) {
+    if (unlikely(pertokenScaleShape.GetDim(PTSCALE_AXIS_INNER) != MX_INNER_DIM)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "pertokenScale",
             Ops::Base::ToString(pertokenScaleShape),
             "The axis 2 of pertokenScale must be equal to " + std::to_string(MX_INNER_DIM));

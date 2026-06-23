@@ -27,6 +27,7 @@ public:
     template <typename TilingData>
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expandDstToSrcRow, const TilingData *tilingData);
     __aicore__ inline void Process();
+    __aicore__ inline void ProcessWithoutSync();
 
 private:
     __aicore__ inline void SyncAll();
@@ -88,11 +89,16 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ComputeSimt(int64_t 
 
 __aicore__ inline void MoeV2SrcToDstOpSimt::Process()
 {
+    this->ProcessWithoutSync();
+    this->SyncAll();
+}
+
+__aicore__ inline void MoeV2SrcToDstOpSimt::ProcessWithoutSync()
+{
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
         asc_vf_call<ComputeSimt>(dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_,
-                                   this->startIndex_, expandDstToSrcRowGm_, expandedRowIdxGm_);
+                                 this->startIndex_, expandDstToSrcRowGm_, expandedRowIdxGm_);
     }
-    this->SyncAll();
 }
 } // namespace MoeInitRoutingV2
 #endif // MOE_SRC_TO_DST_SIMT_H

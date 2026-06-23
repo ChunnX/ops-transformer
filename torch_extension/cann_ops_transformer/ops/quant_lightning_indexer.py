@@ -17,13 +17,13 @@ QLI_V2_METADATA_SIZE = 1024
 QLI_V2_METADATA_OP_NAME = "quant_lightning_indexer_metadata"
 
 
-class QuantLightningIndexerV2OpBuilder(OpBuilder):
+class QuantLightningIndexerOpBuilder(OpBuilder):
     def __init__(self):
-        super(QuantLightningIndexerV2OpBuilder, self).__init__("quant_lightning_indexer_v2")
+        super(QuantLightningIndexerOpBuilder, self).__init__("quant_lightning_indexer")
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/quant_lightning_indexer_v2.cpp']
+        return ['ops/csrc/quant_lightning_indexer.cpp']
 
     def schema(self) -> str:
         """PyTorch operator signature."""
@@ -34,7 +34,7 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
             "int? max_seqlen_k=None, str? layout_q=None, str? layout_k=None, int? mask_mode=None, "
             "int? cmp_ratio=None) -> Tensor",
 
-            "quant_lightning_indexer_v2(Tensor query, Tensor key, Tensor weights, Tensor query_dequant_scale, "
+            "quant_lightning_indexer(Tensor query, Tensor key, Tensor weights, Tensor query_dequant_scale, "
             "Tensor key_dequant_scale, int topk, int quant_mode, *, Tensor? cu_seqlens_q=None, "
             "Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? "
             "cmp_residual_k = None, Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "
@@ -59,7 +59,7 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
 
 
         @impl(AS_LIBRARY, self.name, "Meta")
-        def quant_lightning_indexer_v2_meta(query, key, weights, query_dequant_scale, key_dequant_scale, topk,
+        def quant_lightning_indexer_meta(query, key, weights, query_dequant_scale, key_dequant_scale, topk,
                                                 quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
                                                 block_table=None, output_idx_offset=None, metadata=None, 
                                                 max_seqlen_q=-1, layout_q="BSND", layout_k="BSND",
@@ -88,8 +88,8 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
             return (sparse_indices_out, sparse_values_out)
 
 # Instantiate the builder
-quant_lightning_indexer_v2_op_builder = QuantLightningIndexerV2OpBuilder()
-op_module = quant_lightning_indexer_v2_op_builder.load()  # Compiles/loads the .so file
+quant_lightning_indexer_op_builder = QuantLightningIndexerOpBuilder()
+op_module = quant_lightning_indexer_op_builder.load()  # Compiles/loads the .so file
 
 
 @impl(AS_LIBRARY, QLI_V2_METADATA_OP_NAME, "PrivateUse1")
@@ -134,8 +134,8 @@ def quant_lightning_indexer_metadata_fallback(
 torch.compiler.allow_in_graph(quant_lightning_indexer_metadata)
 
 
-@impl(AS_LIBRARY, quant_lightning_indexer_v2_op_builder.name, "PrivateUse1")
-def quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key_dequant_scale, topk,
+@impl(AS_LIBRARY, quant_lightning_indexer_op_builder.name, "PrivateUse1")
+def quant_lightning_indexer(query, key, weights, query_dequant_scale, key_dequant_scale, topk,
                                    quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
                                    seqused_q=None, seqused_k=None, cmp_residual_k=None, 
                                    block_table=None, output_idx_offset=None, metadata=None, 
@@ -145,7 +145,7 @@ def quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key_deq
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key_dequant_scale, 
+    return op_module.quant_lightning_indexer(query, key, weights, query_dequant_scale, key_dequant_scale, 
                                                     topk, quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
                                                     cmp_residual_k, block_table, output_idx_offset, metadata,
                                                     max_seqlen_q, layout_q, layout_k, mask_mode,
