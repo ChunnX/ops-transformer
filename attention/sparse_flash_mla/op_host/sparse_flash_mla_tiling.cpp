@@ -156,9 +156,26 @@ static uint64_t GetStride0FromStrideImpl(const StrideT &, ...)
 }
 
 template <typename StrideT>
+static auto GetStride0FromStrideScalar(const StrideT &stride, int)
+    -> decltype(stride > 0, static_cast<uint64_t>(stride))
+{
+    return stride > 0 ? static_cast<uint64_t>(stride) : 0ULL;
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStrideScalar(const StrideT &, ...)
+{
+    return 0ULL;
+}
+
+template <typename StrideT>
 static uint64_t GetStride0FromStride(const StrideT &stride)
 {
-    return GetStride0FromStrideImpl(stride, 0);
+    uint64_t stride0 = GetStride0FromStrideImpl(stride, 0);
+    if (stride0 > 0) {
+        return stride0;
+    }
+    return GetStride0FromStrideScalar(stride, 0);
 }
 
 template <typename StrideT>
@@ -174,7 +191,11 @@ template <typename ContextT>
 static auto TryGetOptionalInputStride0(ContextT *context, uint32_t inputIndex, int)
     -> decltype(context->GetOptionalInputStride(inputIndex), uint64_t())
 {
-    return GetStride0FromStride(context->GetOptionalInputStride(inputIndex));
+    const auto *stride = context->GetOptionalInputStride(inputIndex);
+    if (stride == nullptr) {
+        return 0ULL;
+    }
+    return GetStride0FromStride(stride[0]);
 }
 
 template <typename ContextT>
@@ -190,7 +211,11 @@ static auto TryGetInputViewStride0(ContextT *context, uint32_t inputIndex, int)
     if (!context->InputIsView(inputIndex)) {
         return 0ULL;
     }
-    return GetStride0FromStride(context->GetInputStride(inputIndex));
+    const auto *stride = context->GetInputStride(inputIndex);
+    if (stride == nullptr) {
+        return 0ULL;
+    }
+    return GetStride0FromStride(stride[0]);
 }
 
 template <typename ContextT>
