@@ -192,6 +192,11 @@ struct WorkspaceInfo {
         sendDonePtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
             static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+
+        relayReadScratchPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->aicNum * DISPATCH_BUFFER_NUM * recordBytes),
+            static_cast<int64_t>(ALIGN_512));
         
     }
 };
