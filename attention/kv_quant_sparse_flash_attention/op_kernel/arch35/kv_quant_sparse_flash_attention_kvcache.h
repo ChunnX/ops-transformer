@@ -80,15 +80,15 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
+__aicore__ inline void ComputeParamBatch(RunParamStr& runParam,
+    const ConstInfo &constInfo, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
 {
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo, bool lastBN,
-    int64_t nextGs1Idx, int64_t gS1StartIdx)
+__aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo,
+    bool lastBN, int64_t nextGs1Idx, int64_t gS1StartIdx)
 {
     runParam.gs1LoopStartIdx = gS1StartIdx;
     runParam.qSNumInOneBlock = 1; // qsfa 不切G轴, 计算每个基本块可以拷贝多少行s
