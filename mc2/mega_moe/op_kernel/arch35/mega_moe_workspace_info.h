@@ -91,6 +91,9 @@ constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 // Combine buffer constants
 constexpr uint32_t TRIPLE_SIZE = 8U;  // 每个 token 的三元组大小（8 个 int32）
+// GroupedMatmul modes
+constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
+constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
 } // namespace
 
 struct WorkspaceInfo {
@@ -146,14 +149,29 @@ struct WorkspaceInfo {
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
 
-        cumsumInfoPtr = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(
-            static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize), ALIGN_32) *
-            tilingData->aicNum;
-        gmm1MmadResPtr = base + workspaceSize;
-        workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
-        gmm2MmadResPtr = base + workspaceSize;
-        workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+        // Conditional allocation for A8W4 / combine-quant paths.
+        // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / CombineQuantMode) 一致，
+        // 由 TilingKey 保证同步。
+        // A8W4-only: cumsum GM backup and GMM1 intermediate result.
+        cumsumInfoPtr = nullptr;
+        gmm1MmadResPtr = nullptr;
+        gmm2MmadResPtr = nullptr;
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4) {
+            // cumsumInfo: per-core backup of cumsum state (expertPerRank × epWorldSize int32 per core).
+            cumsumInfoPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize),
+                ALIGN_32) * tilingData->aicNum;
+            // gmm1MmadRes: GMM1 matmul output (maxOutputSize × hiddenDim bf16).
+            gmm1MmadResPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
+        }
+        // gmm2MmadRes: GMM2 matmul output (maxOutputSize × h bf16), needed by A8W4 and combine-quant.
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+            tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+            gmm2MmadResPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+        }
 
         // Combine-quant-only workspace buffers
         rowGroupCompletePtr = nullptr;
