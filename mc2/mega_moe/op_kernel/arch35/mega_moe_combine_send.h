@@ -145,6 +145,9 @@ __aicore__ inline void CombineTokensWithUrmaSend(
 
     Duplicate(sendTokenCnt, 0 , processRankNum);
     Duplicate(totalTokenCnt, 0 , processRankNum);
+    // AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
+    // AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
+    PipeBarrier<PIPE_ALL>();// todo:
     // maskRecvPtr 布局: [localExpert][srcRank], 每个槽位 = maskAlignSize + 32B count
     int64_t sendTotalNum = static_cast<int64_t>(params.tilingData->bs) * params.tilingData->topK;
     int64_t compareCount = Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum) * (int64_t)sizeof(int32_t),
@@ -161,9 +164,11 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         ALIGN_32 + ALIGN_512 + processRankNum * sizeof(uint32_t) * 2, slotCopyStride);
     AscendC::GlobalTensor<uint8_t> maskSrcGlobal;
 
+    uint32_t processRank = 0;
     // Phase 2: 逐 rank 统计应收 token 总数 (从 mask count 累加)
     for (uint32_t index = startRankId; index < endRankId; index++) {
         if (index == rankId) {
+            processRank++;
             continue;
         }
         uint32_t cnt = 0;
@@ -180,16 +185,14 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), 
                                     static_cast<int64_t>(L1_TILE_N)));
         totalTokenCnt.SetValue(index - startRankId, totalDataBlockCnt);
+        if(totalDataBlockCnt == 0) {
+            processRank++;
+        }
     }
 
     // Phase 3: 轮询 notify, 收到后 urma 发送
     uint32_t rankIndex = 0;
-    uint32_t processRank = 0;
     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
-    if (startRankId >= rankId && rankId < endRankId) {
-        processRank = 1;
-    }
-
     while (true) {
         // 跳过已完成的 rank
         // 修正: 用 GetValue 访问 LocalTensor (原代码误用 sendTokenCnt(rankIndex))
