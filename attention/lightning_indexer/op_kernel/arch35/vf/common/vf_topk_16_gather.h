@@ -17,7 +17,13 @@
 #define VF_TOP_K_16_GATHER_H
 
 namespace topkb16gather {
-    
+
+template <typename T>
+__aicore__ inline T TopKGatherAlign(T num, T rnd)
+{
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
+}
+
 template<typename T>
 __simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t* histogramsBuf,
                                       __ubuf__ uint16_t* inputBuf,
@@ -373,7 +379,7 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf,
  * @param idxLowLocal 目标桶低八位 256 * 4B
  * @param nkValueLocal 存储next_k的值 64 * 4B
  * @param topK topK元素
- * @param validLen 有效元素个数:LICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256)
+ * @param validLen 有效元素个数，按 256 对齐后的 topkCountAlign256_ + validTrunkLen
  */
 template<bool ISOUTVALUE> // 是否输出VALUE
 __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
@@ -415,7 +421,7 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     FindKthVFImpl(nkValueBuf, histogramsBuf, idxHighBuf, idxLowBuf);
 
     // filter
-    int32_t count = LICommon::Align(topK, (uint32_t)128) - topK / 128 * 128;
+    int32_t count = TopKGatherAlign(topK, (uint32_t)128) - topK / 128 * 128;
     AscendC::Duplicate(tmpIdxLocal[topK / 128 * 128], (uint16_t)(0), count);
     // 输出大于k-value的值idx
     FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
