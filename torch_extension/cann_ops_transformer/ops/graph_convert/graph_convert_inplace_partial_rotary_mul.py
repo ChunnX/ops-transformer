@@ -12,7 +12,7 @@ try:
     import torch
     import torch_npu
     import torchair
-    from typing import List
+    from typing import List, Optional
     from torchair.ge._ge_graph import Tensor, TensorSpec
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
@@ -30,9 +30,16 @@ _ROTARY_MODE_MAP = {
 
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor([False, False, False], [False, False, False])
-    def InplacePartialRotaryMul(x: Tensor, cos: Tensor, sin: Tensor, *,
-                                rotary_mode: int = 0, partial_slice: List[int] = None,
-                                dependencies=[], node_name=None):
+    def inplace_partial_rotary_mul(
+        x: Tensor,
+        cos: Tensor,
+        sin: Tensor,
+        *,
+        rotary_mode: int = 0,
+        partial_slice: Optional[List[int]] = None,
+        dependencies=None,
+        node_name=None,
+    ):
         """REG_OP(InplacePartialRotaryMul)\n
         .INPUT(x, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))\n
         .INPUT(cos, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))\n
@@ -43,6 +50,8 @@ if _TORCHAIR_AVAILABLE:
         """
         if partial_slice is None:
             partial_slice = [0, 0]
+        if dependencies is None:
+            dependencies = []
 
         inputs = {
             "x": x,
@@ -75,14 +84,12 @@ if _TORCHAIR_AVAILABLE:
     def convert_inplace_partial_rotary_mul(x: Tensor, r1: Tensor, r2: Tensor, *,
                                            rotary_mode: str, partial_slice: List[int],
                                            meta_outputs: TensorSpec = None):
-        torch._check(
-            rotary_mode in _ROTARY_MODE_MAP,
-            lambda: (
+        if rotary_mode not in _ROTARY_MODE_MAP:
+            raise ValueError(
                 "rotary_mode only supports 'interleave', "
                 f"got '{rotary_mode}'."
-            ),
-        )
-        return InplacePartialRotaryMul(
+            )
+        return inplace_partial_rotary_mul(
             x=x,
             cos=r1,
             sin=r2,

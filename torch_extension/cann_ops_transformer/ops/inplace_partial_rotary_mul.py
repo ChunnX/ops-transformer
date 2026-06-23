@@ -24,7 +24,10 @@ class InplacePartialRotaryMulOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "inplace_partial_rotary_mul(Tensor(a!) x, Tensor r1, Tensor r2, *, str rotary_mode, int[2] partial_slice) -> ()"
+        return (
+            "inplace_partial_rotary_mul(Tensor(a!) x, Tensor r1, Tensor r2, *, "
+            "str rotary_mode, int[2] partial_slice) -> ()"
+        )
 
     def register_meta(self):
         """
@@ -32,18 +35,12 @@ class InplacePartialRotaryMulOpBuilder(OpBuilder):
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def inplace_partial_rotary_mul_meta(x, r1, r2, rotary_mode, partial_slice):
-            torch._check(
-                x.dim() == 4,
-                lambda: f"Input tensor x's dim num should be 4, actual {x.dim()}."
-            )
-            torch._check(
-                rotary_mode == "interleave",
-                lambda: "rotary_mode only supports 'interleave'."
-            )
-            torch._check(
-                len(partial_slice) == 2,
-                lambda: "partial_slice must contain exactly two integers."
-            )
+            if x.dim() != 4:
+                raise ValueError(f"Input tensor x's dim num should be 4, actual {x.dim()}.")
+            if rotary_mode != "interleave":
+                raise ValueError("rotary_mode only supports 'interleave'.")
+            if len(partial_slice) != 2:
+                raise ValueError("partial_slice must contain exactly two integers.")
             return
 
 
