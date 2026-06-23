@@ -44,11 +44,16 @@ struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr;
     GM_ADDR maskRecvPtr;             // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
     GM_ADDR quantTokenScalePtr;      // 量化结果，包括data+scale
+    GM_ADDR relayTokenDataPtr;       // URMA 一级通信接收区, 布局 [srcServer][tokenId][token+scale+meta]
     GM_ADDR combineSendPtr;
+    GM_ADDR URMAmaskRecvPtr;
     __aicore__ inline PeermemInfo() = default;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
+        uint32_t rankSizePerServer = 0)
     {
         rankSyncInWorldPtr = base;
+        uint32_t rankPerServer = (rankSizePerServer == 0) ? tilingData->epWorldSize : rankSizePerServer;
+        uint32_t serverNum = Ops::Base::CeilDiv(tilingData->epWorldSize, rankPerServer);
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
         // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
@@ -71,6 +76,10 @@ struct PeermemInfo {
         uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
         offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         combineSendPtr = base + offset;
+
+        URMAmaskRecvPtr = 0;
+        relayTokenDataPtr = URMAmaskRecvPtr + Ops::Base::CeilAlign(
+            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512); 
     }
 };
 

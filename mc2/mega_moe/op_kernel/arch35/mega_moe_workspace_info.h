@@ -101,11 +101,17 @@ struct WorkspaceInfo {
     GM_ADDR gmmOutPtr;
     GM_ADDR rowGroupCompletePtr;
     GM_ADDR maskSlotPtr;
+    GM_ADDR sendWorkspacePtr;
+    GM_ADDR sendDedupMaskPtr;
+    GM_ADDR sendCursorPtr;
+    GM_ADDR sendDonePtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t rankSizePerServer = 0)
     {
+        uint32_t rankPerServer = (rankSizePerServer == 0) ? tilingData->epWorldSize : rankSizePerServer;
+        uint32_t serverNum = Ops::Base::CeilDiv(tilingData->epWorldSize, rankPerServer);
         workspaceSize = 0;
         dispatchRevDataPtr = base;
 
@@ -161,6 +167,31 @@ struct WorkspaceInfo {
             workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
         }
         maskSlotPtr = base + workspaceSize + 10UL * 1024 * 1024; //todo:
+        workspaceSize += 20UL * 1024 * 1024; //todo: mask槽位预留20MB, 包括mask和count; 实际需求根据tilingData计算后调整
+        sendWorkspacePtr = base + workspaceSize;
+        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * SIZE_INT_8;
+        uint32_t scaleBytes = mxScaleNum * SIZE_INT_8;
+        uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+        uint32_t recordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
+            static_cast<uint32_t>(ALIGN_512));
+        uint32_t serverWorkspaceBytes = ALIGN_32 + tilingData->bs * recordBytes;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(serverNum * serverWorkspaceBytes), static_cast<int64_t>(ALIGN_512));
+
+        sendDedupMaskPtr = base + workspaceSize;
+        uint32_t dedupBytesPerServer = Ops::Base::CeilAlign(
+            tilingData->bs * static_cast<uint32_t>(SIZE_INT_32), static_cast<uint32_t>(ALIGN_32));
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(serverNum * dedupBytesPerServer), static_cast<int64_t>(ALIGN_512));
+
+        sendCursorPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+
+        sendDonePtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
         
     }
 };
