@@ -1731,6 +1731,7 @@ void FusedInferAttentionScoreTilingImpl::SetSparseTilingData(const FiaTilingInfo
 
 void FusedInferAttentionScoreTilingImpl::SetLayoutTilingData(const FiaTilingInfo &fiaInfo)
 {
+    // layout 相关tiling data 
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
 
@@ -1747,19 +1748,31 @@ void FusedInferAttentionScoreTilingImpl::SetLayoutTilingData(const FiaTilingInfo
     }
 
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-        SetPALayoutTilingData(fiaInfo);
-    }
-
-    const std::map<std::string, uint32_t> transposeLayoutMp = {{"BNSD_BSND", 1}, {"BSND_BNSD", 2}, {"BSH_BNSD", 3},
-                                                               {"BNSD_NBSD", 4}, {"BSND_NBSD", 5}, {"BSH_NBSD", 6},
-                                                               {"NTD_TND", 7},   {"TND_NTD", 8}};
-    string layout(fiaInfo.opParamInfo.layOut);
-    if (transposeLayoutMp.find(layout) != transposeLayoutMp.end()) {
-        inputParams.set_transposeLayout(transposeLayoutMp.at(layout));
-        baseParams.set_transposeLayout(transposeLayoutMp.at(layout));
-    } else {
-        inputParams.set_transposeLayout(0);
-        baseParams.set_transposeLayout(0);
+        if (fiaInfo.antiQuantFlag) {
+            uint32_t keyCacheDimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
+            if (keyCacheDimNum == 3) { // 3: BBH
+                inputParams.set_paLayoutType(0);
+                baseParams.set_PAlayoutType(0);
+            } else if (keyCacheDimNum == 4) { // 4: BNBD
+                inputParams.set_paLayoutType(1);
+                baseParams.set_PAlayoutType(1);
+            } else if (keyCacheDimNum == 5) { // 5: PA NZ
+                inputParams.set_paLayoutType(2);
+                baseParams.set_PAlayoutType(2);
+            }
+        } else {
+            uint32_t keyCacheDimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
+            if (fiaInfo.kvLayout == FiaLayout::BnBsH) { // 3: BBH
+                inputParams.set_paLayoutType(1);
+                baseParams.set_PAlayoutType(1);
+            } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD) { // 4: BNBD
+                inputParams.set_paLayoutType(0);
+                baseParams.set_PAlayoutType(0);
+            } else if (fiaInfo.kvLayout == FiaLayout::NZ) { // 5: PA NZ
+                inputParams.set_paLayoutType(2);
+                baseParams.set_PAlayoutType(2);
+            }
+        }
     }
 }
 
@@ -1828,11 +1841,13 @@ void FusedInferAttentionScoreTilingImpl::CheckNeedInitFlag(const FiaTilingInfo &
 
 ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaTilingInfo &fiaInfo)
 {
+    // 处理不能直接从fiaInfo赋值到tiling data
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
 
     SetMaskTilingData(fiaInfo);
     SetSparseTilingData(fiaInfo);
 
+    // alibi 相关tiling data
     int64_t qStartIdx = 0;
     int64_t kvStartIdx = 0;
     auto qStartIdxTensor = fiaInfo.opParamInfo.qStartIdx.tensor;
@@ -1843,6 +1858,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
             qStartIdx = value[0];
         }
     }
+
     if (kvStartIdxTensor != nullptr && kvStartIdxTensor->GetShapeSize() >= 1) {
         const int64_t *value = kvStartIdxTensor->GetData<int64_t>();
         if (value != nullptr) {
@@ -1854,6 +1870,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
 
     SetLayoutTilingData(fiaInfo);
 
+    // 伪量化 相关tiling data
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
         auto scaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
         uint32_t expectShape = 1;
