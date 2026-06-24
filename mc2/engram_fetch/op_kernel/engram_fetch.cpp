@@ -11,7 +11,7 @@
 using namespace AscendC;
 
 template<uint32_t engramFetchMode>
-__global__ __aicore__ void engram_fetch(GM_ADDR bufferHandle, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
+__global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
                                         GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(EngramFetchTilingData);
@@ -20,7 +20,7 @@ __global__ __aicore__ void engram_fetch(GM_ADDR bufferHandle, GM_ADDR indices, G
     if constexpr (engramFetchMode == ENGRAM_FETCH_DEFAULT_MODE) {
         TPipe pipe;
         EngramFetchImpl::EngramFetchArch35 op;
-        op.Init(bufferHandle, indices, fetched, workspaceGM, &pipe, &tilingData);
+        op.Init(commContext, indices, fetched, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }

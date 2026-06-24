@@ -23,29 +23,29 @@ using namespace op;
 extern "C" {
 #endif
 
-static bool CheckNotNull(const aclTensor *bufferHandle, const aclTensor *indices, aclTensor *fetched)
+static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices, aclTensor *fetched)
 {
-    OP_CHECK_NULL(bufferHandle, return false);
+    OP_CHECK_NULL(commContext, return false);
     OP_CHECK_NULL(indices, return false);
     OP_CHECK_NULL(fetched, return false);
     return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor *bufferHandle, const aclTensor *indices, aclTensor *fetched)
+static aclnnStatus CheckParams(const aclTensor *commContext, const aclTensor *indices, aclTensor *fetched)
 {
-    CHECK_RET(CheckNotNull(bufferHandle, indices, fetched), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(commContext, indices, fetched), ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *bufferHandle, const aclTensor *indices,
+aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
                                                aclTensor *fetched, int32_t hiddenSize,
                                                int64_t numEntriesPerRank, int64_t outputDtype,
                                                uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto retParam = CheckParams(bufferHandle, indices, fetched);
+    auto retParam = CheckParams(commContext, indices, fetched);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerEngramFetchGetWorkspaceSize(
-        bufferHandle, indices, hiddenSize, numEntriesPerRank,
+        commContext, indices, hiddenSize, numEntriesPerRank,
         outputDtype, fetched, workspaceSize, executor);
     return ret;
 }

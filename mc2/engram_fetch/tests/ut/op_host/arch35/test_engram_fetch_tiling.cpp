@@ -23,9 +23,9 @@ static const std::string OP_NAME = "EngramFetch";
 
 struct EngramFetchTestParam {
     std::string caseName;
-    std::initializer_list<int64_t> bufferHandleShape;
-    ge::DataType bufferHandleDtype;
-    ge::Format bufferHandleFormat;
+    std::initializer_list<int64_t> commContextShape;
+    ge::DataType commContextDtype;
+    ge::Format commContextFormat;
     std::initializer_list<int64_t> indicesShape;
     ge::DataType indicesDtype;
     ge::Format indicesFormat;
@@ -104,14 +104,14 @@ static EngramFetchTestParam g_testCases[] = {
      512, 0, static_cast<int64_t>(ge::DT_BF16), "3510",
      ge::GRAPH_SUCCESS, 0UL, "", {16777216}},
 
-    {"fail_bufferHandle_dtype_float16",
+    {"fail_commContext_dtype_float16",
      {4 * 512}, ge::DT_FLOAT16, ge::FORMAT_ND,
      {8}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      512, 4, static_cast<int64_t>(ge::DT_BF16), "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
-    {"fail_bufferHandle_dtype_bf16",
+    {"fail_commContext_dtype_bf16",
      {4 * 512}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
@@ -223,7 +223,7 @@ static EngramFetchTestParam g_testCases[] = {
      512, 4, static_cast<int64_t>(ge::DT_BF16), "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
-    {"fail_bufferHandle_format_nz",
+    {"fail_commContext_format_nz",
      {4 * 512}, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ,
      {8}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
@@ -270,12 +270,12 @@ static struct EngramFetchCompileInfo {} compileInfo;
 static gert::TilingContextPara BuildTilingContextPara(const EngramFetchTestParam &param)
 {
     std::cout << "[TEST_CASE] " << param.caseName << std::endl;
-    gert::StorageShape bufferHandleShape = {param.bufferHandleShape, param.bufferHandleShape};
+    gert::StorageShape commContextShape = {param.commContextShape, param.commContextShape};
     gert::StorageShape indicesShape = {param.indicesShape, param.indicesShape};
     gert::StorageShape fetchedShape = {param.fetchedShape, param.fetchedShape};
 
     std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
-        {{bufferHandleShape, param.bufferHandleDtype, param.bufferHandleFormat},
+        {{commContextShape, param.commContextDtype, param.commContextFormat},
          {indicesShape, param.indicesDtype, param.indicesFormat}});
 
     std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_(

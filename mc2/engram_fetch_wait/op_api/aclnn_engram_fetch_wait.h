@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-ACLNN_API aclnnStatus aclnnEngramFetchWaitGetWorkspaceSize(const aclTensor *bufferHandle, uint64_t *workspaceSize,
+ACLNN_API aclnnStatus aclnnEngramFetchWaitGetWorkspaceSize(const aclTensor *commContext, uint64_t *workspaceSize,
                                                            aclOpExecutor **executor);
 
 ACLNN_API aclnnStatus aclnnEngramFetchWait(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

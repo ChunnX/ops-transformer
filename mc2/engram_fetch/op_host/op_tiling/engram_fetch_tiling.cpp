@@ -27,7 +27,7 @@ using namespace ge;
 using namespace Mc2Tiling;
 
 namespace optiling {
-constexpr uint32_t BUFFER_HANDLE_INDEX = 0U;
+constexpr uint32_t COMM_CONTEXT_INDEX = 0U;
 constexpr uint32_t INDICES_INDEX = 1U;
 constexpr uint32_t FETCHED_INDEX = 0U;
 
@@ -73,11 +73,11 @@ static void PrintEngramFetchTilingData(const EngramFetchTilingData *tilingData, 
  */
 static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
 {
-    auto bufferHandleDesc = context->GetInputDesc(BUFFER_HANDLE_INDEX);
+    auto commContextDesc = context->GetInputDesc(COMM_CONTEXT_INDEX);
     auto indicesDesc = context->GetInputDesc(INDICES_INDEX);
     auto fetchedDesc = context->GetOutputDesc(FETCHED_INDEX);
 
-    OP_CHECK_NULL_WITH_CONTEXT(context, bufferHandleDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, commContextDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, indicesDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, fetchedDesc);
 
@@ -91,11 +91,11 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
 
-    auto bufferHandleDesc = context->GetInputDesc(BUFFER_HANDLE_INDEX);
-    OP_TILING_CHECK(bufferHandleDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "bufferHandle",
-            Ops::Base::ToString(bufferHandleDesc->GetDataType()).c_str(),
-            "The dtype of bufferHandle must be DT_INT32."),
+    auto commContextDesc = context->GetInputDesc(COMM_CONTEXT_INDEX);
+    OP_TILING_CHECK(commContextDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "commContext",
+            Ops::Base::ToString(commContextDesc->GetDataType()).c_str(),
+            "The dtype of commContext must be DT_INT32."),
         return ge::GRAPH_FAILED);
 
     auto indicesDesc = context->GetInputDesc(INDICES_INDEX);
@@ -123,16 +123,16 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, uint32
 {
     const char *nodeName = context->GetNodeName();
     // input dim check
-    const gert::StorageShape *bufferHandleShape = context->GetInputShape(BUFFER_HANDLE_INDEX);
-    OP_TILING_CHECK(bufferHandleShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "bufferHandle"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(bufferHandleShape->GetStorageShape().GetDimNum() != DIM_ONE,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "bufferHandle",
-            (std::to_string(bufferHandleShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-            "The shape dim of bufferHandle must be 1D."),
+    const gert::StorageShape *commContextShape = context->GetInputShape(COMM_CONTEXT_INDEX);
+    OP_TILING_CHECK(commContextShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "commContext"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commContextShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "commContext",
+            (std::to_string(commContextShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of commContext must be 1D."),
         return ge::GRAPH_FAILED);
-    int64_t bufferHandleDim0 = bufferHandleShape->GetStorageShape().GetDim(0);
-    OP_LOGD(nodeName, "bufferHandle dim0 = %ld", bufferHandleDim0);
+    int64_t commContextDim0 = commContextShape->GetStorageShape().GetDim(0);
+    OP_LOGD(nodeName, "commContext dim0 = %ld", commContextDim0);
 
     const gert::StorageShape *indicesShape = context->GetInputShape(INDICES_INDEX);
     OP_TILING_CHECK(indicesShape == nullptr,
@@ -178,11 +178,11 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
 
-    auto bufferHandleDesc = context->GetInputDesc(BUFFER_HANDLE_INDEX);
-    ge::Format bufferHandleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(bufferHandleDesc->GetStorageFormat()));
-    OP_TILING_CHECK(bufferHandleFormat != ge::FORMAT_ND,
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "bufferHandle",
-            Ops::Base::ToString(bufferHandleFormat).c_str(), "ND"),
+    auto commContextDesc = context->GetInputDesc(COMM_CONTEXT_INDEX);
+    ge::Format commContextFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(commContextDesc->GetStorageFormat()));
+    OP_TILING_CHECK(commContextFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "commContext",
+            Ops::Base::ToString(commContextFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
 
     auto indicesDesc = context->GetInputDesc(INDICES_INDEX);

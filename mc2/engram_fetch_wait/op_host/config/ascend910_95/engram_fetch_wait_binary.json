@@ -5,7 +5,7 @@
             "bin_filename": "EngramFetchWait_int32",
             "inputs": [
                 {
-                    "name": "bufferHandle",
+                    "name": "commContext",
                     "index": 0,
                     "dtype": "int32",
                     "format": "ND",

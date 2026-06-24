@@ -21,14 +21,14 @@ class EngramFetchWaitArch35 {
 public:
     __aicore__ inline EngramFetchWaitArch35() = default;
 
-    __aicore__ inline void Init(GM_ADDR bufferHandle, GM_ADDR workspaceGM, TPipe *pipe,
+    __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR workspaceGM, TPipe *pipe,
                                 const EngramFetchWaitTilingData *tilingData);
 
     __aicore__ inline void Process();
 
 private:
     TPipe *tpipe_{nullptr};
-    __gm__ EngramBufferHandle *bhPtr_{nullptr};
+    __gm__ EngramCommContext *ctxPtr_{nullptr};
 
     uint32_t aivId_{0};
     uint32_t rankId_{0};
@@ -40,15 +40,15 @@ private:
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
 
-__aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR bufferHandle, GM_ADDR workspaceGM, TPipe *pipe,
+__aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR workspaceGM, TPipe *pipe,
                                                    const EngramFetchWaitTilingData *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
 
-    bhPtr_ = (__gm__ EngramBufferHandle *)bufferHandle;
-    rankId_ = bhPtr_->rankId;
-    numRanks_ = bhPtr_->rankSize;
+    ctxPtr_ = (__gm__ EngramCommContext *)commContext;
+    rankId_ = ctxPtr_->rankId;
+    numRanks_ = ctxPtr_->rankSize;
 
     tpipe_->InitBuffer(hcommBuf_, EngramFetchWaitImpl::HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
@@ -62,7 +62,7 @@ __aicore__ inline void EngramFetchWaitArch35::Process()
         for (uint32_t channelIdx = aivId_; channelIdx < numRanks_; channelIdx += totalBlocks) {
             if (channelIdx == rankId_)
                 continue;
-            hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
+            hcomm_.Drain(ctxPtr_->hcommHandle_[channelIdx]);
         }
     }
 }

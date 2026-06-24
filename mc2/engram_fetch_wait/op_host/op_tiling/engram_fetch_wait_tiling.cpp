@@ -24,19 +24,19 @@ using namespace ge;
 using namespace Mc2Tiling;
 
 namespace optiling {
-constexpr uint32_t BUFFER_HANDLE_INDEX = 0U;
+constexpr uint32_t COMM_CONTEXT_INDEX = 0U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
 static ge::graphStatus CheckInputDataType(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
 
-    auto bufferHandleDesc = context->GetInputDesc(BUFFER_HANDLE_INDEX);
-    OP_TILING_CHECK(bufferHandleDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "bufferHandle"),
+    auto commContextDesc = context->GetInputDesc(COMM_CONTEXT_INDEX);
+    OP_TILING_CHECK(commContextDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commContext"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(bufferHandleDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "bufferHandle",
-                                              Ops::Base::ToString(bufferHandleDesc->GetDataType()).c_str(), "INT32"),
+    OP_TILING_CHECK(commContextDesc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "commContext",
+                                              Ops::Base::ToString(commContextDesc->GetDataType()).c_str(), "INT32"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
