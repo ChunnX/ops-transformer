@@ -136,21 +136,22 @@ public:
                 layoutDst = layoutOutput;
                 gmDst = gmOutput + layoutOutput.GetOffset(offsetC);
             }
+            __gm__ BiasType *gmBiasOffset = (gmbias != nullptr) ? (gmbias + blockLocCoord.n()) : nullptr;
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
                               perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
-                              gmbias + blockLocCoord.n(), layoutBias, workspace + dataBlockOffset, layoutBlock,
+                              gmBiasOffset, layoutBias, workspace + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
             } else if (needPerChannel) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              gmbias + blockLocCoord.n(), layoutBias,
+                              gmBiasOffset, layoutBias,
                               workspace + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
             } else if (needPerToken) {
                 blockEpilogue(perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
-                              gmbias + blockLocCoord.n(), layoutBias,
+                              gmBiasOffset, layoutBias,
                               gmPeerMem + dataBlockOffset, layoutBlock,
                               gmDst, layoutDst,
                               blockSizeCoord);
