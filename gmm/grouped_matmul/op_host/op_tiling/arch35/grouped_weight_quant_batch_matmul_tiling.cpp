@@ -656,7 +656,7 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
     isSingleX_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
                   context->GetDynamicInputTensor(X_IDX, 1) == nullptr);
     isSingleWeight_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
-                       context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr);
+                       context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr && context->GetDynamicInputTensor(WEIGHT_IDX, 0) != nullptr && context->GetDynamicInputTensor->GetOriginShape().GetDimNum() == 3);
     // 2: when x is multi-tensor, y is single-tensor; 3: when x is single-tensor, y is single-tensor
     isSingleY_ = (splitItem_ == 2 || splitItem_ == 3);
     GetNumOfInputs(context);
