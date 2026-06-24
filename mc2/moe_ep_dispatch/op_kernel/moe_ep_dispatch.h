@@ -34,8 +34,8 @@
 
 namespace MoeEpDispatchImpl {
 
-#define TemplateMoeEpDispatchTypeClass typename XType, typename ScalesType, uint32_t DoCpuSync, uint32_t IsCached, uint8_t NetworkMode
-#define TemplateMoeEpDispatchTypeFunc XType, ScalesType, DoCpuSync, IsCached, NetworkMode
+#define TemplateMoeEpDispatchTypeClass typename XType, typename ScalesType, bool DoCpuSync, bool IsCached, bool IsTopkWeights, uint8_t NetworkMode
+#define TemplateMoeEpDispatchTypeFunc XType, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode
 
 using namespace AscendC;
 using namespace Mc2Kernel;
@@ -231,7 +231,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     topkIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t*)topkIdx);
-    topkWeightsGMTensor_.SetGlobalBuffer((__gm__ float*)topkWeights);   // TODO
+    if constexpr (IsTopkWeights) {
+        topkWeightsGMTensor_.SetGlobalBuffer((__gm__ float*)topkWeights);
+    }
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
         scalesGMTensor_.SetGlobalBuffer((__gm__ ScalesType*)scales);
     }
@@ -742,8 +744,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
                         scalesGMTensor_[tokenId * scalesAlign_], scalesCopyParams_, padParams_);
         }
         DataCopyPad(metaLocalTensor_, topkIdxGMTensor_[topkOffset], topkCopyParams_, padParams_);
-        DataCopyPad(metaLocalTensor_[axisKAlign_].template ReinterpretCast<float>(), topkWeightsGMTensor_[topkOffset],
-                    topkCopyParams_, padParams_);
+        if constexpr (IsTopkWeights) {
+            DataCopyPad(metaLocalTensor_[axisKAlign_].template ReinterpretCast<float>(), topkWeightsGMTensor_[topkOffset],
+                        topkCopyParams_, padParams_);
+        }
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         metaLocalTensor_.SetValue(2 * axisKAlign_, epRankId_);
         metaLocalTensor_.SetValue(2 * axisKAlign_ + 1, tokenId);
