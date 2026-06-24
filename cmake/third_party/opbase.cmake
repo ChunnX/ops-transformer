@@ -13,6 +13,10 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/../../ops-base")
   get_filename_component(OPBASE_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../../ops-base REALPATH)
   message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")
+elseif(EXISTS "${PROJECT_SOURCE_DIR}/../../../../ops-base")
+  get_filename_component(OPBASE_SOURCE_PATH
+                         ${PROJECT_SOURCE_DIR}/../../../../ops-base REALPATH)
+  message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/opbase")
   get_filename_component(OPBASE_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/opbase REALPATH)
