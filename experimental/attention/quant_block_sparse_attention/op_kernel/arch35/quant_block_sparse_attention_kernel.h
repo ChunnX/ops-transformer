@@ -60,8 +60,10 @@ public:
 
     __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask,
-                            __gm__ uint8_t *metadata, __gm__ uint8_t *actualSeqLengths,
-                            __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, 
+                            __gm__ uint8_t *metadata, 
+                            __gm__ uint8_t *prefixSeqLengths, __gm__ uint8_t *prefixSeqLengthsKv,
+                            __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv, 
+                            __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, 
                             __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, 
                             __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, 
                             __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen, 
@@ -71,7 +73,9 @@ public:
     __aicore__ inline void Process();
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask,
-                            __gm__ uint8_t *metadata, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
+                            __gm__ uint8_t *metadata, 
+                            __gm__ uint8_t *prefixSeqLengths, __gm__ uint8_t *prefixSeqLengthsKv,
+                            __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
                             __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
                             __gm__ uint8_t *queryRope,
                             __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
@@ -87,7 +91,6 @@ public:
                                       int64_t s2LoopLimit, int64_t multiCoreInnerIdx, uint64_t sparseBase);
     __aicore__ inline void SetSparseIndicesRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t s2LoopCount, int64_t s2LoopLimit, uint64_t sparseBase);
     __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
-    __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
     __aicore__ inline void InitUniqueConstInfo();
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam,
         RunInfo &runInfo);
@@ -125,6 +128,8 @@ public:
     GlobalTensor<int32_t> sparseSeqLenGm;
     GlobalTensor<int32_t> metadataGm;
     GlobalTensor<int32_t> blockTableGm;
+    __gm__ int32_t *prefixSeqQlenAddr;
+    __gm__ int32_t *prefixSeqKvlenAddr;
     __gm__ int32_t *actualSeqQlenAddr;
     __gm__ int32_t *actualSeqKvlenAddr;
     int32_t aicIdx;
@@ -141,7 +146,8 @@ public:
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitBaseAPI(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, 
+    __gm__ uint8_t *prefixSeqLengths, __gm__ uint8_t *prefixSeqLengthsKv, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
     __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, 
@@ -178,8 +184,8 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     }
 
     this->ComputeConstexpr();
-    this->InitGlobalBuffer(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, actualSeqLengths,
-        actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale,
+    this->InitGlobalBuffer(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, prefixSeqLengths,
+        prefixSeqLengthsKv, actualSeqLengths, actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale,
         keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
         kvPaddingSize, learnableSink, softmaxMax, softmaxSum, softmaxOut, workspace, tiling, tPipe);
     this->InitLocalBuffer();
@@ -189,8 +195,10 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
+    __gm__ uint8_t *sparseSeqLen, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, 
+    __gm__ uint8_t *prefixSeqLengths, __gm__ uint8_t *prefixSeqLengthsKv,
+    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv, 
+    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *keySharedPrefix,
     __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t*actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink,
@@ -204,7 +212,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     if constexpr (isPa) {
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
-    if constexpr (layout == BSALayout::TND) {
+    if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
+        prefixSeqQlenAddr = (__gm__ int32_t *)prefixSeqLengths;
+        prefixSeqKvlenAddr = (__gm__ int32_t *)prefixSeqLengthsKv;
         actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengthsKv;
     }
@@ -336,6 +346,15 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
             // 每核独立计算一个 head，不做 FIA GS1 合轴/连续 GQA 输出，固定使用 per-head stride。
             constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
+    } else if constexpr (layout == BSALayout::NTD) {
+        constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
+        constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
+        constInfo.mm1Ka = constInfo.dSize;
+        constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
+        constInfo.mm2Kb = constInfo.n2Dv;
+        if ASCEND_IS_AIV {
+            constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
+        }
     }
 
     if ASCEND_IS_AIV {
@@ -353,19 +372,6 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     }
 
     InitUniqueConstInfo();
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBoidx(int64_t boIdx,
-    int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
-{
-    if (unlikely(boIdx == 0)) {
-        actualSeqQlen = actualSeqQlenAddr[0];
-        actualSeqKvlen = actualSeqKvlenAddr[0];
-        return;
-    }
-    actualSeqQlen = actualSeqQlenAddr[boIdx] - actualSeqQlenAddr[boIdx - 1];
-    actualSeqKvlen = actualSeqKvlenAddr[boIdx] - actualSeqKvlenAddr[boIdx - 1];
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -541,7 +547,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
         runParam.n2oIdx = runParam.n1oIdx / constInfo.gSize;
         runParam.goIdx =  runParam.n1oIdx % constInfo.gSize;
         ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo,
-            this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
+            this->keyGm, this->prefixSeqQlenAddr, this->prefixSeqKvlenAddr);
         ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, s1StartIdx, s1EndIdx, bn1Idx == bn1StartIdx, lastBN);
         int64_t temps1End = lastBN ? (runParam.s1LoopEnd + 3) : runParam.s1LoopEnd;
         bool notLastThreeLoop = true;
@@ -552,7 +558,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
             }
             if (notLastThreeLoop) {
                 runParam.s1oIdx = s1Index;
-                ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index, this->actualSeqQlenAddr);
+                ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index, this->prefixSeqQlenAddr);
                 bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, sparseSeqLenGm, s1Index);
                 if (s2NoNeedCalc) {
                     continue;

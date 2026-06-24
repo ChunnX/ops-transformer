@@ -36,7 +36,7 @@ using namespace AscendC;
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttentionTilingData, tilingDataIn, tiling);            \
         const QuantBlockSparseAttentionTilingData *__restrict tilingData = &tilingDataIn;                  \
         op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen,                                      \
-            attenMask, metadata, /*actualSeqLengths*/seqUsedQ, /*actualSeqLengthsKv*/seqUsedKv, \
+            attenMask, metadata, cuSeqlensQ, cuSeqlensKv, seqUsedQ, seqUsedKv,                              \
             blockTable, /*queryPaddingSize*/nullptr, /*kvPaddingSize*/nullptr,                           \
             /*deqScaleQ*/qScale, /*deqScaleK*/kScale, /*deqScaleV*/vScale, /*pScale*/pScale,             \
             /*keySharedPrefix*/nullptr, /*valueSharedPrefix*/nullptr, /*actualSharedPrefixLen*/nullptr,  \
@@ -73,17 +73,15 @@ __global__ __aicore__ void quant_block_sparse_attention(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     // TODO: 待实现 - 以下 BSA 专有输入暂未接入 InitBaseAPI（其形参无对应位），随 sparse 流水后续接入：
-    //   cuSeqlensQ/cuSeqlensKv（变长 TND）、metadata（调度）。
-    (void)cuSeqlensQ;
-    (void)cuSeqlensKv;
+
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
     (void)RETURN_SOFTMAX_LSE;
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    constexpr BSALayout layout = BSALayout::TND;
-    constexpr BSALayout kvLayout = BSALayout::PA_BNSD;
+    constexpr BSALayout layout = static_cast<BSALayout>(LAYOUT_T);
+    constexpr BSALayout kvLayout = static_cast<BSALayout>(KV_LAYOUT_T);
     // isPa: KV 连续 -> false; PA_ND -> true
     constexpr bool bsaIsPa = true;
     constexpr bool bsaUseDn = BaseApi::IsDn();

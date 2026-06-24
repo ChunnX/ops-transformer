@@ -52,6 +52,20 @@ TEST_PARAMS = {
         p_scale_value=[1.0],
         seed=[3],
     ),
+    "NTD_TYPICAL_CASE": _case(
+        layout_q=["NTD"],
+        B=[1],
+        S1=[512],
+        S2=[512],
+        sparse_count=[4],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["sequential"],
+        scale_pattern=["ones"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[1.0],
+        seed=[3],
+    ),
     "tnd_dense_equiv": _case(
         layout_q=["TND"],
         B=[1],
@@ -152,5 +166,5 @@ TEST_PARAMS = {
     ),
 }
 
-ENABLED_PARAMS = [TEST_PARAMS["TND_TYPICAL_CASE"]]
+ENABLED_PARAMS = [TEST_PARAMS["TND_TYPICAL_CASE"], TEST_PARAMS["NTD_TYPICAL_CASE"]]
 # ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

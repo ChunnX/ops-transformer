@@ -36,6 +36,9 @@ constexpr size_t DIM_D = 3U;
 constexpr size_t DIM_TND_T = 0U;
 constexpr size_t DIM_TND_N = 1U;
 constexpr size_t DIM_TND_D = 2U;
+constexpr size_t DIM_NTD_N = 0U;
+constexpr size_t DIM_NTD_T = 1U;
+constexpr size_t DIM_NTD_D = 2U;
 constexpr size_t DIM_PA_N = 1U;
 constexpr size_t DIM_PA_BLOCK_SIZE = 2U;
 constexpr size_t DIM_BLOCK_TABLE_MAX = 1U;
@@ -45,7 +48,8 @@ constexpr size_t DIM_SPARSE_COUNT = 3U;
 constexpr size_t DIM_KV_HEAD_DIM = 3U;
 constexpr size_t DIM_V_DESCALE_N2 = 0U;
 constexpr uint32_t BSA_LAYOUT_Q_BSND_VALUE = 0U;
-constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 1U;
+constexpr uint32_t BSA_LAYOUT_Q_TND_VALUE = 2U;
+constexpr uint32_t BSA_LAYOUT_Q_NTD_VALUE = 5U;
 } // namespace
 
 QuantBlockSparseAttentionInfoParser::QuantBlockSparseAttentionInfoParser(gert::TilingContext *context)
@@ -84,10 +88,22 @@ ge::graphStatus QuantBlockSparseAttentionInfoParser::ParseQuery(QuantBlockSparse
         }
         tilingInfo.qTokenNum = tilingInfo.s1Size;
         tilingInfo.s1Size = BSAGetPositiveAttr(attrs, BSA_MAX_SEQLEN_Q_ATTR_INDEX, tilingInfo.s1Size);
+    } else if (queryDimNum == DIM_NUM_3 && layoutQ == "NTD") {
+        tilingInfo.isBSND = false;
+        tilingInfo.layoutQValue = BSA_LAYOUT_Q_NTD_VALUE;
+        if (!BSAGetDimAsU32(sparseIndicesShape, DIM_B, tilingInfo.bSize) ||
+            !BSAGetDimAsU32(queryShape, DIM_NTD_N, tilingInfo.n1Size) ||
+            !BSAGetDimAsU32(queryShape, DIM_NTD_T, tilingInfo.s1Size) ||
+            !BSAGetDimAsU32(queryShape, DIM_NTD_D, tilingInfo.dSize)) {
+            OP_LOGE(kOpName, "ParseQuery NTD: failed to get query/sparseIndices dims, dimNum=%zu", queryDimNum);
+            return ge::GRAPH_FAILED;
+        }
+        tilingInfo.qTokenNum = tilingInfo.s1Size;
+        tilingInfo.s1Size = BSAGetPositiveAttr(attrs, BSA_MAX_SEQLEN_Q_ATTR_INDEX, tilingInfo.s1Size);
     } else {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query",
                                                  std::to_string(queryDimNum) + "D with layout " + layoutQ,
-                                                 "4D with layout BSND or 3D with layout TND");
+                                                 "4D with layout BSND, 3D with layout TND or 3D with layout NTD");
         return ge::GRAPH_FAILED;
     }
 
