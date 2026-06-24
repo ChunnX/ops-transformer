@@ -256,7 +256,8 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
             OP_CHECK_IF(*opParamInfo_.quantMode != 2, OP_LOGE(opName_, "input attr quant_mode only supported 2."),
                return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(*opParamInfo_.quantMode != 1, OP_LOGE(opName_, "input attr quant_mode only supported 1."),
+        OP_CHECK_IF(*opParamInfo_.quantMode != 3,
+               OP_LOGE(opName_, "input attr quant_mode only supported 3."),
                return ge::GRAPH_FAILED);
     }
     
@@ -307,11 +308,19 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
         OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8,
                OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3 or hifloat8."),
                return ge::GRAPH_FAILED);
-        // MXFP8: scale 类型可以是 float 或 fp8_e8m0
-        OP_CHECK_IF(
-            inputQueryScaleType_ != ge::DT_FLOAT && inputQueryScaleType_ != ge::DT_FLOAT8_E8M0,
-            OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float or float8_e8m0."),
-            return ge::GRAPH_FAILED);
+        if (*opParamInfo_.quantMode == 3) {
+            // MXFP8: scale 类型必须是 fp8_e8m0
+            OP_CHECK_IF(
+                inputQueryScaleType_ != ge::DT_FLOAT8_E8M0,
+                OP_LOGE(opName_, "MXFP8 (quant_mode=3): The data types of the input query_dequant_scale and key_dequant_scale must be float8_e8m0."),
+                return ge::GRAPH_FAILED);
+        } else {
+            // 非 MXFP8: scale 类型必须是 float
+            OP_CHECK_IF(
+                inputQueryScaleType_ != ge::DT_FLOAT,
+                OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float."),
+                return ge::GRAPH_FAILED);
+        }
     }
 
     if (npuArch_ == NpuArch::DAV_2201) {
@@ -831,7 +840,7 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
     uint32_t kDequantScaleShapeDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDimNum();
 
     // MXFP8: scale 比 data 多一维，最后两维为 [D/64, 2]
-    bool isMxFp8Scale = (inputQueryScaleType_ == ge::DT_FLOAT8_E8M0);
+    bool isMxFp8Scale = (*opParamInfo_.quantMode == 3);
 
     if (isMxFp8Scale) {
         // MXFP8: qScale shape [B, S1, N1, D/64, 2]，比 query 多一维
@@ -947,7 +956,7 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
         QLIV2Info.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
     } else {
         // MXFP8: kScale shape [BlockNum, BlockSize, N2, D/64, 2]，stride = BlockSize * (D/64) * 2 = BlockSize * D/32
-        if (inputKeyScaleType_ == ge::DT_FLOAT8_E8M0) {
+        if (*opParamInfo_.quantMode == 3) {
             QLIV2Info.keyDequantScaleStride0 = blockSize_ * (headDim_ / 32);
         } else {
             QLIV2Info.keyDequantScaleStride0 = blockSize_;
