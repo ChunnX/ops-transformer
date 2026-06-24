@@ -28,6 +28,14 @@
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 using AscendC::Reg::StoreDist;
+#if __has_include("../../../common/op_kernel/arch35/flash_decode_s2_split.h")
+#include "../../../common/op_kernel/arch35/flash_decode_s2_split.h"
+#elif __has_include("../../common/op_kernel/arch35/flash_decode_s2_split.h")
+#include "../../common/op_kernel/arch35/flash_decode_s2_split.h"
+#else
+#include "../common/arch35/flash_decode_s2_split.h"
+#endif
+
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #else
@@ -152,12 +160,12 @@ private:
 
     __aicore__ inline uint32_t StagingAttenOutBytes(const ConstInfo &constInfo) const
     {
-        return StagingMSize(constInfo) * dTemplateAlign64 * sizeof(float);
+        return GetS2SplitFdStagingLayout(constInfo).StagingAttenOutBytes();
     }
 
     __aicore__ inline uint32_t StagingMaxSumBytes(const ConstInfo &constInfo) const
     {
-        return StagingMSize(constInfo) * regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+        return GetS2SplitFdStagingLayout(constInfo).StagingMaxSumBytes();
     }
 
     __aicore__ inline uint32_t GetStagingSlotNum() const
@@ -185,6 +193,13 @@ private:
             }
         }
         return stagingMOffset;
+    }
+
+    __aicore__ inline AttentionCommon::S2SplitFdStagingLayout GetS2SplitFdStagingLayout(
+        const ConstInfo &constInfo) const
+    {
+        return {StagingMSize(constInfo), dTemplateAlign64, GetStagingSlotNum(),
+            regbaseutil::FD_BROADCAST_ELEMS_PER_ROW};
     }
 
     __aicore__ inline void CopyMaxSumToStaging(RunInfo &runInfo, ConstInfo &constInfo,
@@ -918,12 +933,11 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyMaxSumToStaging(
     RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
 {
+    AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
     uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes(constInfo);
     uint32_t MAX_SUM_BYTES = StagingMaxSumBytes(constInfo);
-    uint32_t stagingSlotNum = GetStagingSlotNum();
-    __gm__ uint8_t *basePtr = s2SplitStagingBase;
-    __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
-    __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * MAX_SUM_BYTES;
+    __gm__ uint8_t *maxRegion = stagingLayout.MaxRegion(s2SplitStagingBase);
+    __gm__ uint8_t *sumRegion = stagingLayout.SumRegion(s2SplitStagingBase);
     GlobalTensor<float> maxGm;
     maxGm.SetGlobalBuffer((__gm__ float *)maxRegion);
     GlobalTensor<float> sumGm;
@@ -994,12 +1008,13 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
         }
         if (runInfo.isS2Split) {
+            AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
             uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes(constInfo);
-            __gm__ uint8_t *basePtr = s2SplitStagingBase;
 
             GlobalTensor<float> stagingOut;
             uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
-            stagingOut.SetGlobalBuffer((__gm__ float *)(basePtr + workspaceIdx * ATTEN_OUT_BYTES));
+            stagingOut.SetGlobalBuffer((__gm__ float *)(stagingLayout.AttenOutRegion(s2SplitStagingBase) +
+                workspaceIdx * ATTEN_OUT_BYTES));
             uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
             SetFlag<HardEvent::V_MTE3>(vToMte3Id);
             WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
@@ -1039,12 +1054,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     LocalTensor<float> blockSumUb = this->fdBlockSumBuf.template Get<float>();
     LocalTensor<T> sinkUb;
 
+    AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
     uint32_t ATTEN_OUT_BYTES = StagingAttenOutBytes(constInfo);
     uint32_t MAX_SUM_BYTES = StagingMaxSumBytes(constInfo);
-    uint32_t stagingSlotNum = GetStagingSlotNum();
-    __gm__ uint8_t *basePtr = s2SplitStagingBase;
-    __gm__ uint8_t *maxRegion = basePtr + stagingSlotNum * ATTEN_OUT_BYTES;
-    __gm__ uint8_t *sumRegion = maxRegion + stagingSlotNum * MAX_SUM_BYTES;
+    __gm__ uint8_t *maxRegion = stagingLayout.MaxRegion(s2SplitStagingBase);
+    __gm__ uint8_t *sumRegion = stagingLayout.SumRegion(s2SplitStagingBase);
 
     uint32_t fdMOffset = static_cast<uint32_t>(fdRunInfo.mStartIdx);
     GlobalTensor<float> maxGm;
@@ -1053,7 +1067,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     sumGm.SetGlobalBuffer((__gm__ float *)(sumRegion + fdRunInfo.workspaceIdx * MAX_SUM_BYTES));
     uint32_t splitStride = MAX_SUM_BYTES / sizeof(float);
     GlobalTensor<float> stagingOutGm;
-    stagingOutGm.SetGlobalBuffer((__gm__ float *)(basePtr + fdRunInfo.workspaceIdx * ATTEN_OUT_BYTES));
+    stagingOutGm.SetGlobalBuffer((__gm__ float *)(stagingLayout.AttenOutRegion(s2SplitStagingBase) +
+        fdRunInfo.workspaceIdx * ATTEN_OUT_BYTES));
     uint32_t outSplitStride = ATTEN_OUT_BYTES / sizeof(float);
     LocalTensor<T> partialOFp32 = this->fdPartialBuf.template Get<T>();
 
