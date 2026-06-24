@@ -471,11 +471,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
         // 3、copy kv out, ub -> l1
         SetFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
-        if constexpr (IS_SPLIT_G) {
-            CopyOutKvUb2Gm(v0ResGm, kvOutUb, v0ProcessSize, s2StartIdx, runInfo, constInfo);
-        } else {
-            CopyOutKvUb2L1(outputL1, kvOutUb, v0ProcessSize, s2StartIdx, runInfo, constInfo);
-        }
+        CopyOutKvUb2Gm(v0ResGm, kvOutUb, v0ProcessSize, s2StartIdx, runInfo, constInfo);
         SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
         pingPongV0 ^= 1;
     }
@@ -602,11 +598,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
     }
 
-    if constexpr (IS_SPLIT_G) {
-        v0ResGm.SetCrossCore();
-    } else {
-        outputL1.SetCrossCore(); // 核间同步
-    }
+    v0ResGm.SetCrossCore();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -661,11 +653,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
         // 3、copy kv out, ub -> l1
         SetFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
-        if constexpr (IS_SPLIT_G) {
-            CopyOutKvUb2Gm(v0ResGm, kvOutUb, dealRow, s2Start, runInfo, constInfo);
-        } else {
-            CopyOutKvUb2L1(outputL1, kvOutUb, dealRow, s2Start, runInfo, constInfo);
-        }
+        CopyOutKvUb2Gm(v0ResGm, kvOutUb, dealRow, s2Start, runInfo, constInfo);
+
         SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
         s2Start += dealRow;
         pingPongV0 ^= 1;
@@ -1174,9 +1163,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
 
     // GM分配
     int64_t v0TotalOffset = 0;
+    uint32_t v0ResSize = constInfo.s2BaseSize * constInfo.dSize * sizeof(Q_T);
     if constexpr (IS_SPLIT_G) {
-        uint32_t v0ResSize = constInfo.s2BaseSize * constInfo.dSize * sizeof(Q_T);
         v0TotalOffset = v0ResSize * 3 * (GetBlockNum() >> 1U); // 3buffer
+    } else {
+        v0TotalOffset = v0ResSize * 3 * GetBlockNum(); // 3buffer
     }
     this->kvPhyAddrGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + v0TotalOffset));
 
