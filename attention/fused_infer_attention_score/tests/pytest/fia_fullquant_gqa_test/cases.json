@@ -1,17 +1,17 @@
 [
   {
-    "name": "B3_G2_Nq14_Nkv7_D128_SM0_LSE1_Q6331_KV8130",
+    "name": "B2_G1_Nq19_Nkv19_D128_SM3_LSE1_Q2405_KV2429",
     "B": 2,
     "N_q": 1,
     "N_kv": 1,
     "D": 128,
     "actual_seq_q": [
-      128,
-      128
+      475,
+      2405
     ],
     "actual_seq_kv": [
-      256,
-      0
+      2429,
+      51
     ],
     "enable_pa": true,
     "enable_lse": true,
@@ -23,18 +23,105 @@
     "p_scale": 1.0
   },
   {
-    "name": "B2_G8_Nq8_Nkv1_D128_SM3_LSE1_Q827_KV1962",
-    "B": 2,
+    "name": "B7_G4_Nq44_Nkv11_D128_SM3_LSE1_Q3605_KV14512",
+    "B": 7,
+    "N_q": 2,
+    "N_kv": 1,
+    "D": 128,
+    "actual_seq_q": [
+      3605,
+      179,
+      1749,
+      264,
+      501,
+      3599,
+      169
+    ],
+    "actual_seq_kv": [
+      2982,
+      5404,
+      2463,
+      14512,
+      2715,
+      3565,
+      91
+    ],
+    "enable_pa": true,
+    "enable_lse": true,
+    "block_size": 128,
+    "sparse_mode": 3,
+    "input_layout": "NTD_TND",
+    "q_scale_layout": "NT",
+    "kv_cache_layout": "BnNBsD",
+    "p_scale": 1.0
+  },
+  {
+    "name": "B4_G5_Nq95_Nkv19_D128_SM3_LSE1_Q1823_KV10669",
+    "B": 4,
     "N_q": 1,
     "N_kv": 1,
     "D": 128,
     "actual_seq_q": [
-      128,
-      128
+      1823,
+      481,
+      1653,
+      241
     ],
     "actual_seq_kv": [
-      256,
-      1
+      2180,
+      10669,
+      3145,
+      163
+    ],
+    "enable_pa": true,
+    "enable_lse": true,
+    "block_size": 128,
+    "sparse_mode": 3,
+    "input_layout": "NTD_TND",
+    "q_scale_layout": "NT",
+    "kv_cache_layout": "BnNBsD",
+    "p_scale": 1.0
+  },
+  {
+    "name": "B4_G32_Nq256_Nkv8_D128_SM3_LSE1_Q1555_KV3078",
+    "B": 4,
+    "N_q": 1,
+    "N_kv": 1,
+    "D": 128,
+    "actual_seq_q": [
+      429,
+      313,
+      1555,
+      185
+    ],
+    "actual_seq_kv": [
+      327,
+      399,
+      3078,
+      2096
+    ],
+    "enable_pa": true,
+    "enable_lse": true,
+    "block_size": 128,
+    "sparse_mode": 3,
+    "input_layout": "NTD_TND",
+    "q_scale_layout": "NT",
+    "kv_cache_layout": "BnNBsD",
+    "p_scale": 1.0
+  },
+  {
+    "name": "B2_G64_Nq192_Nkv3_D128_SM3_LSE1_Q497_KV730",
+    "B": 2,
+    "N_q": 6,
+    "N_kv": 3,
+    "D": 128,
+    "actual_seq_q": [
+      130,
+      497
+    ],
+    "actual_seq_kv": [
+      220,
+      730
     ],
     "enable_pa": true,
     "enable_lse": true,
