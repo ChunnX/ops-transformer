@@ -130,6 +130,11 @@ protected:
     ge::graphStatus SetDequantMMTilingData(const gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     bool CheckTransposeLayout(const FiaTilingInfo &fiaInfo) const;
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
+    void SetMaskTilingData(const FiaTilingInfo &fiaInfo);
+    void SetSparseTilingData(const FiaTilingInfo &fiaInfo);
+    void SetLayoutTilingData(const FiaTilingInfo &fiaInfo);
+    void SetPALayoutTilingData(const FiaTilingInfo &fiaInfo);
+    void CheckNeedInitFlag(const FiaTilingInfo &fiaInfo);
 
     PromptFlashAttentionTilingDataV2 pfaTilingData_;
     IncreFlashAttentionTilingDataRegbase ifaTilingData_;
