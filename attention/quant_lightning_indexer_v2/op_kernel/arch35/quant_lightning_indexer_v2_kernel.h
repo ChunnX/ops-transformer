@@ -524,7 +524,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        valueOutGm.SetGlobalBuffer((__gm__ float *)sparseValues);
+        valueOutGm.SetGlobalBuffer((__gm__ bfloat16_t *)sparseValues);
         if (outputIdxOffset != nullptr) {
             isOutputIdxOffsetValid = true;
             outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
