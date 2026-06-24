@@ -48,9 +48,7 @@ private:
     uint32_t numRanks_{0};
     uint32_t numEntriesPerRank_{0};
     uint32_t numTokens_{0};
-    uint32_t hiddenDim_{0};
     uint32_t hiddenBytes_{0};
-    uint32_t aivNum_{0};
 
     TBuf<> dataBuf_;
     TBuf<> indicesBuf_;
@@ -76,9 +74,7 @@ __aicore__ inline void EngramFetchArch35::Init(
 
     numEntriesPerRank_ = tilingData_->numEntriesPerRank;
     numTokens_ = tilingData_->numTokens;
-    hiddenDim_ = tilingData_->hiddenDim;
     hiddenBytes_ = tilingData_->hiddenBytes;
-    aivNum_ = tilingData_->aivNum;
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
@@ -93,52 +89,49 @@ __aicore__ inline void EngramFetchArch35::Init(
 __aicore__ inline void EngramFetchArch35::Process()
 {
     if ASCEND_IS_AIV {
-        if (aivId_ >= numRanks_) {
-            return;
-        }
-        uint32_t ownerRank = aivId_;
-        // DMA: 全部 indices 从 GM 搬入 UB
+        uint32_t totalBlocks = GetBlockNum();
+
         GlobalTensor<int32_t> indicesGlobal;
         indicesGlobal.SetGlobalBuffer((__gm__ int32_t *)indicesGM_);
         LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
         DataCopyExtParams params{1U, numTokens_ * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
         DataCopyPad(indicesLocal, indicesGlobal, params, pad);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        uint32_t idxStart = ownerRank * numEntriesPerRank_;
-        uint32_t idxEnd = idxStart + numEntriesPerRank_;
+        SyncFunc<HardEvent::MTE2_S>();
 
-        uint32_t pendingReadCount = 0;
-        uint32_t channelIdx = ownerRank;
-        for (uint32_t i = 0; i < numTokens_; i++) {
-            int32_t globalIdx = indicesLocal(i);
-            if (globalIdx < 0) {
-                continue;
+        for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks) {
+            uint32_t idxStart = ownerRank * numEntriesPerRank_;
+            uint32_t idxEnd = idxStart + numEntriesPerRank_;
+
+            uint32_t pendingReadCount = 0;
+            uint32_t channelIdx = ownerRank;
+            for (uint32_t i = 0; i < numTokens_; i++) {
+                int32_t globalIdx = indicesLocal(i);
+                if (globalIdx < 0) {
+                    continue;
+                }
+                if (static_cast<uint32_t>(globalIdx) < idxStart || static_cast<uint32_t>(globalIdx) >= idxEnd) {
+                    continue;
+                }
+
+                uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
+                GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
+
+                if (ownerRank == rankId_) {
+                    GM_ADDR src =
+                        (GM_ADDR)bhPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                    LocalCopySlice(dst, src, hiddenBytes_);
+                } else {
+                    GM_ADDR remoteSrcAddr =
+                        (GM_ADDR)bhPtr_->commBuffer[ownerRank] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                    hcomm_.ReadNbi<false>(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
+                    pendingReadCount++;
+                }
             }
-            if (static_cast<uint32_t>(globalIdx) < idxStart ||
-                static_cast<uint32_t>(globalIdx) >= idxEnd) {
-                continue;
+
+            if (pendingReadCount > 0) {
+                hcomm_.Commit(bhPtr_->hcommHandle_[channelIdx]);
             }
-
-            uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
-            GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
-
-            if (ownerRank == rankId_) {
-                GM_ADDR src = (GM_ADDR)bhPtr_->commBuffer[rankId_] +
-                              static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                LocalCopySlice(dst, src, hiddenBytes_);
-            } 
-            else {
-                GM_ADDR remoteSrcAddr =
-                    (GM_ADDR)bhPtr_->commBuffer[ownerRank] +
-                    static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                hcomm_.ReadNbi<false>(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
-                pendingReadCount++;
-             }
-        }
-
-        if (pendingReadCount > 0) {
-            hcomm_.Commit(bhPtr_->hcommHandle_[channelIdx]);
         }
     }
 }

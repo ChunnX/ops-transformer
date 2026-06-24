@@ -58,12 +58,12 @@ __aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR bufferHandle, GM_ADDR
 __aicore__ inline void EngramFetchWaitArch35::Process()
 {
     if ASCEND_IS_AIV {
-        if (aivId_ >= numRanks_)
-            return;
-        if (aivId_ == rankId_)
-            return;
-        uint32_t channelIdx = aivId_;
-        hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
+        uint32_t totalBlocks = GetBlockNum();
+        for (uint32_t channelIdx = aivId_; channelIdx < numRanks_; channelIdx += totalBlocks) {
+            if (channelIdx == rankId_)
+                continue;
+            hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
+        }
     }
 }
 
