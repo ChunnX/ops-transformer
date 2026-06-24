@@ -110,6 +110,11 @@ protected:
     uint64_t outputIdxCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
     bool isOutputIdxOffsetValid = false;
+    bool hasCuSeqlensQ = false;
+    bool hasCuSeqlensK = false;
+    bool hasSequsedQ = false;
+    bool hasSequsedK = false;
+    bool hasCmpResidualK = false;
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
@@ -124,6 +129,10 @@ protected:
     GlobalTensor<int32_t> outputIdxOffsetGm;
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGm;
+    GlobalTensor<uint32_t> cuSeqlensQGm;
+    GlobalTensor<uint32_t> cuSeqlensKGm;
+    GlobalTensor<uint32_t> sequsedQGm;
+    GlobalTensor<uint32_t> sequsedKGm;
     GlobalTensor<uint32_t> cmpResidualKGm;
 
     // ================================类成员变量====================================
@@ -157,10 +166,13 @@ protected:
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                               GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
+                                               GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                               uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
                                                   uint32_t cmpResiduaKLenDims, bool isAccumSeq,
                                                   GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                                  GlobalTensor<uint32_t> &cuSeqlensKGm,
+                                                  GlobalTensor<uint32_t> &sequsedKGm,
                                                   GlobalTensor<uint32_t> &cmpResidualKGm,
                                                   uint32_t defaultSeqLen, uint32_t cmpRatio);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
@@ -220,6 +232,26 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
                                                               __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
                                                               __gm__ uint8_t *cmpResidualK)
 {
+    if (cuSeqlensQ != nullptr) {
+        cuSeqlensQGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ);
+        hasCuSeqlensQ = true;
+    }
+    if (cuSeqlensK != nullptr) {
+        cuSeqlensKGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensK);
+        hasCuSeqlensK = true;
+    }
+    if (sequsedQ != nullptr) {
+        sequsedQGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedQ);
+        hasSequsedQ = true;
+    }
+    if (sequsedK != nullptr) {
+        sequsedKGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedK);
+        hasSequsedK = true;
+    }
+    if (cmpResidualK != nullptr) {
+        cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK);
+        hasCmpResidualK = true;
+    }
     // Q side: cu_seqlens (TND) or seqused (non-TND)
     if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
         if (cuSeqlensQ != nullptr) {
@@ -652,6 +684,16 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
         // TODO
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(runInfo.bIdx);
+            if (hasSequsedQ) {
+                uint32_t curSequsedQ = sequsedQGm.GetValue(runInfo.bIdx);
+                uint32_t nextPrefixSum = cuSeqlensQGm.GetValue(runInfo.bIdx + 1);
+                uint32_t curCuLensQ = nextPrefixSum - actualSeqQPrefixSum;
+                if (curSequsedQ < curCuLensQ) {
+                    runInfo.needTndPadding = true;
+                    runInfo.curCuSeqlensQ = curCuLensQ;
+                    runInfo.curSequsedQ = curSequsedQ;
+                }
+            }
         } else {  // BSND
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
         }
