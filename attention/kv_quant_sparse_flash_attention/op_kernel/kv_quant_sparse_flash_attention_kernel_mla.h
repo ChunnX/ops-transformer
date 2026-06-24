@@ -175,6 +175,9 @@ private:
     __aicore__ inline void UpdateInnerLoopCond();
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
     __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info);
+    __aicore__ inline void CalcMSizeInfo(RunInfo &info);
+    __aicore__ inline void CalcFirstTensorOffsets(RunInfo &info, uint64_t qsfaActualSeqQPrefixSum,
+                                                  uint64_t actualSeqKVPrefixSum);
     __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t gS1EndPrev, uint32_t s2EndPrev);
     __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths, uint32_t bIdx);
     __aicore__ inline uint32_t GetActualSeqLenKV(uint32_t bIdx);
@@ -642,7 +645,6 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_
     info.actS1Size = tempLoopInfo.actS1Size;
     info.actS2Size = tempLoopInfo.curActualSeqLen;
 
-
     info.actMBaseSize = constInfo.mBaseSize;
     uint32_t qsfaRemainedGS1Size = tempLoopInfo.actS1Size * constInfo.gSize - tempLoopInfo.gS1Idx;
     if (qsfaRemainedGS1Size <= constInfo.mBaseSize && qsfaRemainedGS1Size > 0) {
@@ -650,17 +652,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_
     }
 
     info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
-
-    if ASCEND_IS_AIV {
-        info.mSize = info.actMBaseSize;
-        info.mSizeV = (info.mSize <= 16) ? \
-            info.mSize : (((info.mSize + 15) / 16 + 1) / 2 * 16);
-        info.mSizeVStart = 0;
-        if (tmpBlockIdx % 2 == 1) {
-            info.mSizeVStart = info.mSizeV;
-            info.mSizeV = info.mSize - info.mSizeV;
-        }
-    }
+    CalcMSizeInfo(info);
 
     info.isChangeBatch = false;
 
@@ -686,6 +678,42 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_
     }
     info.tndBIdxOffsetForKV = actualSeqKVPrefixSum * constInfo.kvHeadNum * constInfo.combineHeadDim;
 
+    CalcFirstTensorOffsets(info, qsfaActualSeqQPrefixSum, actualSeqKVPrefixSum);
+
+    uint64_t sInnerOffsetDataSize = info.s2Idx * constInfo.s2BaseSize;
+    info.s2BatchOffset = s2BatchBaseOffset + sInnerOffsetDataSize;
+
+    info.curActualSeqLenOri = tempLoopInfo.curActualSeqLenOri;
+    if (tempLoopInfo.curActualSeqLen > sInnerOffsetDataSize) {
+        info.actualSingleProcessSInnerSize = tempLoopInfo.curActualSeqLen - sInnerOffsetDataSize;
+        info.actualSingleProcessSInnerSize = info.actualSingleProcessSInnerSize > constInfo.s2BaseSize ?
+                                             constInfo.s2BaseSize : info.actualSingleProcessSInnerSize;
+    } else {
+        info.actualSingleProcessSInnerSize = 0;
+    }
+    info.actualSingleProcessSInnerSizeAlign =
+        QSFAAlign((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)QSFAVectorService<QSFAT>::BYTE_BLOCK);
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcMSizeInfo(RunInfo &info)
+{
+    if ASCEND_IS_AIV {
+        info.mSize = info.actMBaseSize;
+        info.mSizeV = (info.mSize <= 16) ? \
+            info.mSize : (((info.mSize + 15) / 16 + 1) / 2 * 16);
+        info.mSizeVStart = 0;
+        if (tmpBlockIdx % 2 == 1) {
+            info.mSizeVStart = info.mSizeV;
+            info.mSizeV = info.mSize - info.mSizeV;
+        }
+    }
+}
+
+template <typename QSFAT>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcFirstTensorOffsets(
+    RunInfo &info, uint64_t qsfaActualSeqQPrefixSum, uint64_t actualSeqKVPrefixSum)
+{
     if (info.isFirstSInnerLoop) {
         tensorACoreOffset = info.tndBIdxOffsetForQ + info.gS1Idx * constInfo.combineHeadDim;
         tensorBCoreOffset = info.tndBIdxOffsetForKV + info.n2Idx * constInfo.combineHeadDim;
@@ -703,15 +731,16 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_
         } else {
             threshold = tempLoopInfo.curActualSeqLenOri;
         }
-        if constexpr(LAYOUT_T == QSFA_LAYOUT::BSND) {     // B,S1,N2 K
+        if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
             topKBaseOffset = info.bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
                             info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
                             info.n2Idx * constInfo.sparseBlockCount;
-        } else if (LAYOUT_T == QSFA_LAYOUT::TND) {   // T N2 K
-            topKBaseOffset = info.tndBIdxOffsetForQ / constInfo.gSize / constInfo.combineHeadDim * constInfo.kvHeadNum *
-                             constInfo.sparseBlockCount + info.n2Idx * constInfo.sparseBlockCount +
-                             info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount;
-        } else {    // B N2 S1 K
+        } else if (LAYOUT_T == QSFA_LAYOUT::TND) {
+            topKBaseOffset = info.tndBIdxOffsetForQ / constInfo.gSize / constInfo.combineHeadDim *
+                            constInfo.kvHeadNum * constInfo.sparseBlockCount +
+                            info.n2Idx * constInfo.sparseBlockCount +
+                            info.gS1Idx / constInfo.gSize * constInfo.kvHeadNum * constInfo.sparseBlockCount;
+        } else {
             topKBaseOffset = info.bIdx * constInfo.kvHeadNum * constInfo.qSeqSize * constInfo.sparseBlockCount +
                             info.n2Idx * constInfo.qSeqSize * constInfo.sparseBlockCount +
                             info.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
@@ -724,21 +753,6 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_
     info.tensorBOffset = tensorBCoreOffset;
     info.tensorBRopeOffset = tensorBRopeCoreOffset;
     info.attenOutOffset = attenOutOffset;
-
-    uint64_t sInnerOffsetDataSize = info.s2Idx * constInfo.s2BaseSize;
-    info.s2BatchOffset = s2BatchBaseOffset + sInnerOffsetDataSize;
-
-    info.curActualSeqLenOri = tempLoopInfo.curActualSeqLenOri;
-    // 计算实际基本块size
-    if (tempLoopInfo.curActualSeqLen > sInnerOffsetDataSize) {
-        info.actualSingleProcessSInnerSize = tempLoopInfo.curActualSeqLen - sInnerOffsetDataSize;
-        info.actualSingleProcessSInnerSize = info.actualSingleProcessSInnerSize > constInfo.s2BaseSize ?
-                                             constInfo.s2BaseSize : info.actualSingleProcessSInnerSize;
-    } else {
-        info.actualSingleProcessSInnerSize = 0;
-    }
-    info.actualSingleProcessSInnerSizeAlign =
-        QSFAAlign((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)QSFAVectorService<QSFAT>::BYTE_BLOCK);
 }
 
 template <typename QSFAT>

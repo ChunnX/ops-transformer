@@ -52,7 +52,6 @@ for _, params in enumerate(ENABLED_PARAMS):
     template_run_mode = normalized_params["template_run_mode"]
     if isinstance(template_run_mode, list):
         template_run_mode = template_run_mode[0]
-    normalized_params["template_run_mode"] = template_run_mode.split(',')
 
     param_names = [
         "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", \
@@ -88,7 +87,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["kv_quant_mode"]],
         [normalized_params["tile_size"]],
         [normalized_params["rope_head_dim"]],
-        normalized_params["template_run_mode"],
+        [normalized_params["template_run_mode"]],
         [normalized_params["actlen_mode"]],
         [normalized_params["S1EQS2"]],
         [normalized_params["topk_value_mode"]],
