@@ -146,19 +146,43 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckGroupSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AllGatherQuantBmmTiling::CheckX1Input()
+ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
 {
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
+    // mxfp4: K must be even
+    OP_TILING_CHECK(args_.kValue % EVEN_ALIGN != 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
+                                                          "The value of K must be even in mxfp4 scene"),
+                    return ge::GRAPH_FAILED);
+    
+    OP_TILING_CHECK((!args_.isBTrans),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BTrans", std::to_string(args_.isBTrans).c_str(),
+                                                "x2 only support transpose"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "scale1",
+            (Ops::Base::ToString(scaleInv1Desc->GetDataType())).c_str(),
+            "The dtypes of scale1 must be float8_e8m0 when x1/x2 is float4_e2m1"),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AllGatherQuantBmmTiling::CheckX1Input()
+{
     OP_TILING_CHECK((args_.mValue % PERBLOCK_SCALE_SIZE != 0) &&
         (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Dim0", std::to_string(args_.mValue).c_str(),
         "The value of x1Dim0 must be divisible by 128 in perblock scene"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        ((quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) &&
-         (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) &&
+        (quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) &&
         (isFp4_) && (CheckMXFP4Input() != ge::GRAPH_SUCCESS),
         OP_LOGE(opName_, "Check mxfp4 input failed."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (isFp4_),
+        OP_LOGE(opName_, "fp4 only support mx quant."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -244,39 +268,33 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
         return ge::GRAPH_FAILED);
     
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
-    OP_TILING_CHECK((!isTransB),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BTrans", std::to_string(args_.isBTrans).c_str(),
-                                                "x2 only support transpose"),
-        return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK((scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) ||
-        (scale2ThirdDim != EVEN_ALIGN),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
-        (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " +
-        std::to_string(scale2ThirdDim) + "]")
-                                                    .c_str(),
-        (std::string("The shape of x2Scale must be [") + std::to_string(args_.nValue) + ", " + std::to_string(ceilKAlign) + ", " +
-        std::to_string(EVEN_ALIGN) + "]")
-                                                    .c_str()),
-        return ge::GRAPH_FAILED);
-    scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
-    OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
-    
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus AllGatherQuantBmmTiling::CheckMXFP4Input()
-{
-    // mxfp4: K must be even and multiple of 32
-    OP_TILING_CHECK(args_.kValue % EVEN_ALIGN != 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
-                                                          "The value of K must be even in mxfp4 scene"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(args_.kValue % MX_SCALE_K_VALUE_ALIGN != 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kValue", std::to_string(args_.kValue).c_str(),
-                                                          "The value of K must be multiple of 32 in mxfp4 scene"),
-                    return ge::GRAPH_FAILED);
-
+    if (isTransB) {
+        OP_TILING_CHECK((scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) ||
+            (scale2ThirdDim != EVEN_ALIGN),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
+            (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " +
+            std::to_string(scale2ThirdDim) + "]")
+                                                        .c_str(),
+            (std::string("The shape of x2Scale must be [") + std::to_string(args_.nValue) + ", " + std::to_string(ceilKAlign) + ", " +
+            std::to_string(EVEN_ALIGN) + "]")
+                                                        .c_str()),
+            return ge::GRAPH_FAILED);
+        scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+        OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
+    } else {
+        OP_TILING_CHECK((scale2FirstDim != ceilKAlign) || (scale2SecondDim != args_.nValue) ||
+            (scale2ThirdDim != EVEN_ALIGN),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
+            (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " +
+            std::to_string(scale2ThirdDim) + "]")
+                                                        .c_str(),
+            (std::string("The shape of x2Scale must be [") + std::to_string(ceilKAlign) + ", " + std::to_string(args_.nValue) + ", " +
+            std::to_string(EVEN_ALIGN) + "]")
+                                                        .c_str()),
+            return ge::GRAPH_FAILED);
+        scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
+        OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -374,11 +392,6 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckInputValid()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BType", Ops::Base::ToString(args_.geBType).c_str(),
         "If the dtype of AType is hifp8, the value of BType must be equal to that of AType"),
         return ge::GRAPH_FAILED);
-    // mxfp4: x1和x2类型应一致
-    OP_TILING_CHECK((isFp4_) && (args_.geAType != args_.geBType),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BType", Ops::Base::ToString(args_.geBType).c_str(),
-            "If the dtype of AType is mxfp4, the value of BType must be equal to that of AType"),
-        return ge::GRAPH_FAILED);
 
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
     auto scaleInv2Desc = context_->GetOptionalInputDesc(SCALE_INV2);
@@ -396,11 +409,6 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckInputValid()
         (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scale1",
         Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(), "The dtype of scale1 must be float32"),
-        return ge::GRAPH_FAILED);
-    // mxfp4: x1_scale需要为fp8e8m0
-    OP_TILING_CHECK((isFp4_) && (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scale1",
-        Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(), "The dtype of scale1 must be float8_e8m0"),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT) &&
@@ -685,7 +693,7 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
     CutResult result = tileFormulate.GetTiling();
 
     if (isFp4_) {
-        AdjustCutResultForHCCL(result, args_.mValue, args_.kValue / 2, 1, args_.rankDim, opName_);
+        AdjustCutResultForHCCL(result, args_.mValue, args_.kValue / EVEN_ALIGN, 1, args_.rankDim, opName_);
     } else {
         AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
     }
