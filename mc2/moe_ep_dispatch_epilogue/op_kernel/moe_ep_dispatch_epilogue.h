@@ -105,6 +105,7 @@ private:
     uint32_t paddedTopkElems_{0};
     uint32_t ubMetaCapElems_{0};   // ubMeta_ 容纳的 int32 元素数（用于 cached 路径分块拷贝）
     uint32_t numLocalExperts_{0};
+    uint32_t hitCountStride_{0};   // 对齐到 32B 的 hitCount 存储步长 (int32 元素数)
     uint32_t aivNum_{0};
     uint32_t axisK_{0};
     uint32_t axisH_{0};
@@ -326,7 +327,7 @@ template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowByExpert()
 {
     DataCopyExtParams hitCountFullCopyParams{1U,
-        static_cast<uint32_t>(aivNum_ * numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
+        static_cast<uint32_t>(aivNum_ * hitCountStride_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> hitCountFullPadParams{false, 0U, 0U, 0};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopyPad(ubHitCountFull_, hitCountGm_, hitCountFullCopyParams, hitCountFullPadParams);

@@ -375,7 +375,8 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
     
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    info.cfg.perSlotBytes = static_cast<uint32_t>(hAlign32 + kAlign32 * 2 + UB_ALIGN);
+    uint32_t perSlotBytes = ((hAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    info.cfg.perSlotBytes = perSlotBytes;
     OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.cfg.perSlotBytes, info.cfg.hidden);
 
     return ge::GRAPH_SUCCESS;
