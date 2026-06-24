@@ -122,6 +122,7 @@ struct ApplyRotaryPosEmbParams {
     int64_t tilingKey = 0;
     int64_t halfDimAlign = 0; // [泛化SBND需求] halfNum按32B对齐后的值
     int64_t lastDimAlign = 0; // [泛化SBND需求] lastDim按32B对齐后的值
+    int64_t blockMoveQ = 0; // [泛化SBND需求] 部分维度旋转搬运block数
     platform_ascendc::SocVersion  socVersion = platform_ascendc::SocVersion::ASCEND910B;
 };
 
@@ -409,8 +410,8 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.mask = (params.isCast || params.isFp32) ? REPEAT_FP32 : REPEAT_FP16;
     params.mask = (params.cosDim3 <= params.mask) ? params.cosDim3 : params.mask;
     params.lastDim = params.cosDim3;
-    params.blockMoveQ = params.lastDim / params.oneBlock;  // 部分维度旋转搬运block数
     params.halfNum = params.lastDim / DIM_2;
+    params.blockMoveQ = params.lastDim / params.oneBlock;  // [泛化SBND需求] 部分维度旋转搬运block数
     // [泛化SBND需求] halfDim按32B对齐，保证UB内q/k排布的两半之间offset满足32B对齐要求
     params.halfDimAlign = ((params.halfNum + params.oneBlock - 1) / params.oneBlock) * params.oneBlock;
     // [泛化SBND需求] lastDim对齐后的长度，用于UB buffer大小计算
@@ -432,7 +433,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     // kernel侧Mul()中repeatTimes参数为uint8_t类型，避免使用qkcNum传参计算时超出范围
     OP_CHECK_IF(params.qkcNum > UINT8_MAX, OP_LOGE(context->GetNodeName(),
         "qkcNum exceeds the maximum range of uint8_t"), return ge::GRAPH_FAILED);
-                
+
     params.mulNum = params.qkcNum * params.halfNum;    // (Q_n + K_n) * D / 2
     params.qcdHalfNum = params.qcNum * params.halfNum; // Q_n * D / 2
     // 单核处理的数据偏移 batch * ND
