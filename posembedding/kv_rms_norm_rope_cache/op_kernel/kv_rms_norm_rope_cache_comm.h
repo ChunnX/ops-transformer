@@ -21,7 +21,7 @@
 
 namespace KvRmsNormRopeCache {
 using namespace AscendC;
-
+constexpr int64_t NUM_ONE = 1;
 constexpr int64_t NUM_TWO = 2;
 constexpr int64_t NUM_FOUR = 4;
 constexpr int64_t NUM_EIGHT = 8;
@@ -77,6 +77,16 @@ public:
         this->RMS_NORM_LENGTH = KERNEL_RMS_NORM_LENGTH[methodMode];
         this->ROPE_LENGTH = KERNEL_ROPE_LENGTH[methodMode];
         this->V_LENGTH = V_CACHE_SIZES[methodMode]; 
+        
+        if (methodMode == METHOD_V1){
+            // KV Concat in hDimV=512, hDimK=64(Rope).
+            this->hDimK = this->ROPE_LENGTH;
+            this->hDimV = this->RMS_NORM_LENGTH;
+        } else if (methodMode == METHOD_V2){
+            // KV Split in hDimK=192([:64] for Rope), hDimV=128.
+            this->hDimK = this->RMS_NORM_LENGTH;
+            this->hDimV = this->V_LENGTH;
+        }
         return 0;
     }
 
@@ -109,6 +119,10 @@ protected:
     TQue<QuePosition::VECIN, 1> inQueueV;       // vOptional
     TQue<QuePosition::VECIN, 1> inQueueGamma;   // Quant Scale
     TQue<QuePosition::VECIN, 1> inQueueOffset;  // Quant Offset
+
+    // Runtime hidden dim sizes marked by tensor component type
+    uint64_t hDimK{0};
+    uint64_t hDimV{0};
 };
 
 template <bool isPagedAttention, typename KV_DTYPE, typename K_DTYPE, typename V_DTYPE>
