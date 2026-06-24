@@ -6,6 +6,11 @@
 #else
 #include "kernel_operator.h"
 #endif
+#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
+#include "../common/op_kernel/mc2_kernel_utils.h"
+#else
+#include "../../common/op_kernel/mc2_kernel_utils.h"
+#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_tiling_data.h"
 #include "../engram_fetch.h"
@@ -56,9 +61,6 @@ __aicore__ inline void EngramFetchArch35::Init(
     GM_ADDR bufferHandle, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
     TPipe *pipe, const EngramFetchTilingData *tilingData)
 {
-    // if (GetBlockIdx() > 0) {
-    //     return;
-    // }
     tpipe_ = pipe;
     indicesGM_ = indices;
     fetchedGM_ = fetched;
@@ -88,12 +90,12 @@ __aicore__ inline void EngramFetchArch35::Init(
         for (int i = 0; i < 8; ++i) {
           AscendC::printf("[kernel] rankid: %lu, bhPtr_->commBuffer[%d]: %lu\n", 
                     rankId_, i, bhPtr_->commBuffer[i]);
-      }
+        }
+        for (int i = 0; i < 8; ++i) {
+          AscendC::printf("[kernel] rankid: %lu, bhPtr_->hcommHandle_[%d]: %lu\n", 
+                    rankId_, i, bhPtr_->hcommHandle_[i]);
+        }
 
-        AscendC::printf("[kernel] rankid: %lu, bhPtr_->hcommHandle_[0]: %lu\n", rankId_, bhPtr_->hcommHandle_[0]);
-        AscendC::printf("[kernel] rankid: %lu, bhPtr_->hcommHandle_[1]: %lu\n", rankId_, bhPtr_->hcommHandle_[1]);
-        AscendC::printf("[kernel] rankid: %lu, bhPtr_->hcommHandle_[2]: %lu\n", rankId_, bhPtr_->hcommHandle_[2]);
-        AscendC::printf("[kernel] rankid: %lu, bhPtr_->hcommHandle_[3]: %lu\n", rankId_, bhPtr_->hcommHandle_[3]);
         AscendC::printf("[kernel] fetched: %lu\n", (uint64_t)fetchedGM_);
     }
 }
@@ -113,7 +115,7 @@ __aicore__ inline void EngramFetchArch35::Process()
         DataCopyExtParams params{1U, numTokens_ * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
         DataCopyPad(indicesLocal, indicesGlobal, params, pad);
-        PipeBarrier<PIPE_MTE2>();
+        SyncFunc<HardEvent::MTE2_S>();
         uint32_t idxStart = ownerRank * numEntriesPerRank_;
         uint32_t idxEnd = idxStart + numEntriesPerRank_;
 
@@ -134,17 +136,19 @@ __aicore__ inline void EngramFetchArch35::Process()
             if (ownerRank == rankId_) {
                 GM_ADDR src =
                     (GM_ADDR)bhPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                GM_ADDR src =
+                    (GM_ADDR)bhPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
                 LocalCopySlice(dst, src, hiddenBytes_);
             } else {
-                AscendC::printf("[aiv]ssssss\n");
-                AscendC::printf("[kernel] channelIdx: %u\n", channelIdx);
+                //AscendC::printf("[kernel] channelIdx: %u\n", channelIdx);
                 GM_ADDR remoteSrcAddr =
                     (GM_ADDR)bhPtr_->commBuffer[ownerRank] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                AscendC::printf(
-                    "[kernel] rankid: %lu, bhPtr_->hcommHandle_[channelIdx]: %lu, dst = %lu ,remoteSrcAddr = %lu \n",
-                    rankId_, bhPtr_->hcommHandle_[channelIdx], (uint64_t)dst, (uint64_t)remoteSrcAddr);
+                // AscendC::printf(
+                //     "[kernel] rankid: %lu, bhPtr_->hcommHandle_[channelIdx]: %lu, dst = %lu ,remoteSrcAddr = %lu \n",
+                //     rankId_, bhPtr_->hcommHandle_[channelIdx], (uint64_t)dst, (uint64_t)remoteSrcAddr);
                 hcomm_.ReadNbi<false>(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
                 pendingReadCount++;
+            }
             }
         }
 
@@ -167,9 +171,9 @@ __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR sr
         uint64_t thisLen = (len - off > TILE_BYTES) ? TILE_BYTES : (len - off);
         DataCopyExtParams cp{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
         DataCopyPad(tmp, srcGm[off], cp, pad);
-        PipeBarrier<PIPE_MTE2>();
+        SyncFunc<HardEvent::MTE2_MTE3>();
         DataCopyPad(dstGm[off], tmp, cp);
-        PipeBarrier<PIPE_MTE3>();
+        SyncFunc<HardEvent::MTE3_MTE2>();
         off += thisLen;
     }
 }
