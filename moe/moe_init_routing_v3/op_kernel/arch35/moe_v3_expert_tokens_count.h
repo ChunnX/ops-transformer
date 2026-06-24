@@ -140,10 +140,10 @@ __aicore__ inline void ExpertTokensCount::InitBasicParams(const MoeInitRoutingV3
         perCorePerLoopElements_ = expertTokensCountTilingData_->perCorePerLoopElements;
         perCoreLastLoopElements_ = expertTokensCountTilingData_->perCoreLastLoopElements;
     }
-
     if (expertTokensNumType_ == KEY_VALUE_MODE) {
-        expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ? (actualExpertNum_ + 1) * KEY_VALUE_MODE_DIM_NUM :	 
-                                        expertNum_ * KEY_VALUE_MODE_DIM_NUM;
+        expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ? 
+                                (actualExpertNum_ + 1) * KEY_VALUE_MODE_DIM_NUM :
+                                expertNum_ * KEY_VALUE_MODE_DIM_NUM;
     } else {
         expertCountElements_ = actualExpertNum_;
     }
@@ -285,7 +285,6 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
             }
         }
         expertCountElements_ = Min(expertCountElements_, static_cast<int64_t>((expertOffset + 1) * KEY_VALUE_MODE));
-
     } else if (expertTokensNumType_ == COUNT_MODE) {
         for (int64_t i = 0; i < actualExpertNum_; i++) {
             int64_t expertCount = static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
@@ -314,7 +313,8 @@ __aicore__ inline void ExpertTokensCount::expertCountCopyOut()
 {
     LocalTensor<int64_t> expertCountOutLocal = expertIdxCountOutQueue_.DeQue<int64_t>();
     LocalTensor<int32_t> expertTotalCountLocal = expertTotalCountQueue_.DeQue<int32_t>();
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), 
+        static_cast<uint32_t>(expertCountElements_ * sizeof(int64_t)), 0, 0, 0};
     DataCopyPad(expertTokensCountGm_, expertCountOutLocal, copyParams);
     copyParams.blockLen = sizeof(int32_t);
     DataCopyPad(expertTotalCountGm_, expertTotalCountLocal, copyParams);
