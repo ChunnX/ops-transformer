@@ -64,7 +64,6 @@ static ge::graphStatus InferShapeMoeEpDispatch(gert::InferShapeContext *context)
     int64_t ep = *epWorldSize;
     int64_t nmt = *numMaxTokensPerRank;
     int64_t numLocalExperts = *numExperts / ep;
-    int64_t upperA = ep * nmt;
 
     gert::Shape *numRecvPerRank = context->GetOutputShape(DISPATCH_OUTPUT_NUM_RECV_PER_RANK_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRank);
