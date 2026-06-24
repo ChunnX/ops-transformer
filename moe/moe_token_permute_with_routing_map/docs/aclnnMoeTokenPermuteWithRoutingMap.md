@@ -338,7 +338,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 - 确定性计算：
   - aclnnMoeTokenPermuteWithRoutingMap默认确定性实现。
 
-- tokens_num和experts_num要求小于`16777215`，pad模式为false时routingMap中每行为1或true的个数固定且小于`512`。
+- pad模式为true时tokens_num要求小于`16777215`，pad模式为false时routingMap中每行为1或true的个数小于topK且小于`512`，且topK * tokens_num小于`16777215`。
 
 ## 调用示例
 
