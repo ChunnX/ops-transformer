@@ -752,6 +752,12 @@ ge::graphStatus SFATilingCheck::CheckSingleParaSparseMode() const
 
 ge::graphStatus SFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.sparseBlockSize != 1),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
+            std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
+            "when soc version is Ascend950, sparse_block_size only support 1"),
+        return ge::GRAPH_FAILED);
+
     OP_CHECK_IF((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 128 ||
         (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
@@ -759,11 +765,6 @@ ge::graphStatus SFATilingCheck::CheckSingleParaSparseBlockSize() const
             "sparseBlockSize must be in range [1, 16] and be a power of 2"),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.sparseBlockSize != 1),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
-            std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
-            "when soc version is Ascend950, sparse_block_size only support 1"),
-        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1373,12 +1374,14 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
 
     if (isA5_) {
         OP_CHECK_IF(gSize_ < 1 || gSize_ > 128,
-            OP_LOGE(opName_, "n1Size should be in 1 ~ 128, but got %u", gSize_),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "n1Size", std::to_string(gSize_).c_str(),
+                "n1Size should be in 1 ~ 128"),
             return ge::GRAPH_FAILED);
     } else {
         std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
         OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-            OP_LOGE(opName_, "n1Size should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "n1Size", std::to_string(gSize_).c_str(),
+                "n1Size should be in 1, 2, 4, 8, 16, 32, 64, 128"),
             return ge::GRAPH_FAILED);
     }
 
