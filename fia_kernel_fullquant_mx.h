@@ -1,4 +1,12 @@
-
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_kernel_fullquant_mx.h
@@ -35,7 +43,7 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)512;
     static constexpr uint32_t dBaseSize = (uint32_t)128;
     static constexpr uint32_t dVBaseSize = (uint32_t)128;
-    static constexpr uint32_t bSize = (uint32_t)2;//修改
+    static constexpr uint32_t bSize = (uint32_t)48;//修改
     static constexpr uint32_t n2Size = (uint32_t)8;//修改
     static constexpr uint32_t realN2Size = (uint32_t)8;//修改
     static constexpr uint32_t gSize = (uint32_t)8;
@@ -43,7 +51,7 @@ public:
     static constexpr uint32_t s2Size = (uint32_t)512;
     // static constexpr uint32_t n2Size = (uint32_t)8;
     static constexpr uint32_t realGSize = (uint32_t)8;
-    static constexpr uint32_t maxBlockNumPerBatch = (uint32_t)1;//修改
+    static constexpr uint32_t maxBlockNumPerBatch = (uint32_t)20;//修改
     static constexpr uint32_t gS1OStart = (uint32_t)0;
     static constexpr uint32_t s2OStart = (uint32_t)0;
     static constexpr uint32_t coreNum = (uint32_t)32;
@@ -54,10 +62,10 @@ public:
     static constexpr uint64_t actualSeqLenSize = (uint64_t)48;
     static constexpr uint64_t actualSeqLenKVSize = (uint64_t)48;
 
-    static constexpr uint64_t actSeqLensKv = 512;
+    static constexpr uint64_t actSeqLensKv = 10240;
     static constexpr uint64_t actSeqLensQ = 4;
     static constexpr uint32_t curS2Start = 0;
-    static constexpr uint32_t curS2End = 1;
+    static constexpr uint32_t curS2End = 20;
     static constexpr uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
     static constexpr uint64_t gS1Size = actSeqLensQ * realGSize;
     static constexpr uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
@@ -75,7 +83,6 @@ public:
 
     TPipe tPipe;
     TBuf<TPosition::A1> L1_P0, L1_P1, L1_P2;
-    TBuf<TPosition::A1> L1_PScale;
     TBuf<TPosition::VECIN> UB_MM1Res0, UB_MM1Res1;
     TBuf<TPosition::VECIN> UB_MM2Res;
     int bmm1_id{0};
@@ -141,23 +148,26 @@ public:
 
     __aicore__ inline void InitMMResBuf()
     {
-        constexpr uint32_t mm2LeftSize = 128 * 512;
+        constexpr uint32_t mm2LeftSize = 128 * 512 +  128 * 512 / 32;
         constexpr uint32_t pScaleSize = 128 * 512 / 32;
         // 保存p结果的L1内存，triple buffer
         tPipe.InitBuffer(L1_P0, mm2LeftSize);
         tPipe.InitBuffer(L1_P1, mm2LeftSize);
         tPipe.InitBuffer(L1_P2, mm2LeftSize);
-        tPipe.InitBuffer(L1_PScale, pScaleSize);
-
         constexpr uint32_t mm1ResultSize = 128 / 2 * 512 * 4 / 2;
         constexpr uint32_t mm2ResultSize = 128 / 2 * 128 * 4;
         tPipe.InitBuffer(UB_MM1Res0, mm1ResultSize);
         tPipe.InitBuffer(UB_MM1Res1, mm1ResultSize);
         tPipe.InitBuffer(UB_MM2Res, mm2ResultSize);
 
+        // InitConstValue 也要改为对3个buffer分别初始化 pscale 部分
         if ASCEND_IS_AIC {
-            LocalTensor<int16_t> pscaleTensor = L1_PScale.Get<int16_t>();
-            InitConstValue(pscaleTensor, {1, pScaleSize / 32, 0, 0x7f7f});
+            LocalTensor<int16_t> pscaleTensor0 = L1_P0.Get<int16_t>()[128 * 512];
+            InitConstValue(pscaleTensor0, {1, pScaleSize / 32, 0, 0x7f7f});
+            LocalTensor<int16_t> pscaleTensor1 = L1_P1.Get<int16_t>()[128 * 512];
+            InitConstValue(pscaleTensor1, {1, pScaleSize / 32, 0, 0x7f7f});
+            LocalTensor<int16_t> pscaleTensor2 = L1_P2.Get<int16_t>()[128 * 512];
+            InitConstValue(pscaleTensor2, {1, pScaleSize / 32, 0, 0x7f7f});
         }
     }
 
@@ -178,8 +188,8 @@ public:
             aicIdx = GetBlockIdx() / GetSubBlockNum();
             subBlockIdx = GetSubBlockIdx();
         }
-        bN2Start = 1 * aicIdx;//修改
-        bN2End = 1 * (aicIdx + 1);//修改
+        bN2Start = 12 * aicIdx;//修改
+        bN2End = 12 * (aicIdx + 1);//修改
 
     }
 
@@ -391,8 +401,7 @@ public:
                 if ASCEND_IS_AIC {
                     LocalTensor<float> mm2ResTensor = UB_MM2Res.Get<float>();
                     LocalTensor<float8_e4m3_t> p1Tensor = ((loop - 2) % 3 == 0) ? L1_P0.Get<float8_e4m3_t>() : (((loop - 2) % 3 == 1) ? L1_P1.Get<float8_e4m3_t>() : L1_P2.Get<float8_e4m3_t>());
-                    LocalTensor<float8_e8m0_t> pscaleTensor = L1_PScale.Get<float8_e8m0_t>();
-                    cubeBlock.IterateBmm2((loop - 2) % 3, mm2ResTensor, p1Tensor, bmm2_id, pscaleTensor,
+                    cubeBlock.IterateBmm2((loop - 2) % 3, mm2ResTensor, p1Tensor, bmm2_id,
                                             bIdxp[(loop - 2) % 3], n2Idxp[(loop - 2) % 3], s2Idxp[(loop - 2) % 3]);
                 } else {
                     LocalTensor<float> mm2ResTensor = UB_MM2Res.Get<float>();

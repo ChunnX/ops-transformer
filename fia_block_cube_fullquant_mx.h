@@ -71,26 +71,28 @@ public:
     int l0c_id{-1};
     // int mm1_id{-1};
 
-    using ROPE_T = bfloat16_t;
-    using Q_T = INPUT_T;
-    using KV_T = INPUT_T;
-    using MM_T = T;
+    // using ROPE_T = bfloat16_t;
+    // using Q_T = INPUT_T;
+    // using KV_T = INPUT_T;
+    // using MM_T = T;
     static constexpr uint32_t mBaseSize = (uint32_t)128;
     static constexpr uint32_t s2BaseSize = (uint32_t)512;
     static constexpr uint32_t dBaseSize = (uint32_t)128;
     static constexpr uint32_t dVBaseSize = (uint32_t)128;
-    static constexpr uint32_t bSize = (uint32_t)2;//修改
+    static constexpr uint32_t bSize = (uint32_t)48;//修改
     static constexpr uint32_t n2Size = (uint32_t)8;
     static constexpr uint32_t gSize = (uint32_t)8;
     static constexpr uint32_t s1Size = (uint32_t)4;
     static constexpr uint32_t s2Size = (uint32_t)512;
     // static constexpr uint32_t n2Size = (uint32_t)8;
     static constexpr uint32_t realGSize = (uint32_t)8;
-    static constexpr uint32_t maxBlockNumPerBatch = (uint32_t)1;//修改
-    static constexpr uint64_t actMSize = (uint64_t)32;
+    static constexpr uint32_t maxBlockNumPerBatch = (uint32_t)20;//修改
+
     static constexpr uint64_t gS1Idx = (uint64_t)0;
     static constexpr uint32_t FirstS2Loop = (uint32_t)0;
-    static constexpr uint32_t LastS2Loop = (uint32_t)1;
+    static constexpr uint32_t LastS2Loop = (uint32_t)20;
+    static constexpr uint32_t actMSize = (uint32_t)32;
+    static constexpr uint32_t actMSizeAlign32 = (uint32_t)32;
 
     // static constexpr uint32_t l1BaseD = 128;
     // static constexpr uint32_t s2SplitSize = 256U;
@@ -114,11 +116,10 @@ public:
     __aicore__ inline void InitBuffers()
     {
         constexpr uint32_t mm1QSize = 128 * 128;
-        constexpr uint32_t mm1QScaleSize = 128 * 128 / 32 ;
+        constexpr uint32_t mm1QScaleSize = 128 * 128 / MXFP_GROUP_SIZE ;
         constexpr uint32_t mm1KVSize = 128 * 256;
-        constexpr uint32_t mm1KVScaleSize = 128 * 256 / 32;
-        constexpr uint32_t mm2LeftSize = 128 * 512 ;
-        constexpr uint32_t pScaleSize = 128 * 512 / 32;
+        constexpr uint32_t mm1KVScaleSize = 128 * 256 / MXFP_GROUP_SIZE;
+        constexpr uint32_t mm2LeftSize = 128 * 512 + 128 * 512 / 32;
 
 
         tPipePtr->InitBuffer(L1_Q, (mm1QSize + mm1QScaleSize) * 2);
@@ -476,8 +477,8 @@ public:
         PipeBarrier<PIPE_FIX>();
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = 256;
-        fixpipeParams.mSize = (actMSize + 1) >> 1 << 1;
-        fixpipeParams.srcStride = ((((actMSize + 1) >> 1 << 1) + 15) / 16) * 16;
+        fixpipeParams.mSize = 32;  // (runInfo.actMSize + 31) >> 5 << 5
+        fixpipeParams.srcStride = 32; // ((runInfo.actMSize + 15) / 16) * 16;
         fixpipeParams.dstStride = 256;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
@@ -618,7 +619,7 @@ public:
         DataCopy(kv1VScaleTensor, gmVScaleTensor, intriParamsVScale);
     }
 
-    __aicore__ inline void mm2_l1_l0a_no_trans(uint64_t actMSize, LocalTensor<float8_e4m3_t> p1Tensor, LocalTensor<float8_e8m0_t> pscaleTensor, uint32_t k, int ipuse, int l0a_iduse)
+    __aicore__ inline void mm2_l1_l0a_no_trans(LocalTensor<float8_e4m3_t> p1Tensor, uint32_t k, int ipuse, int l0a_iduse)
     {
         // loadData2DParamsA.mStartPosition = 0
         // loadData2DParamsA.kStartPosition = 0
@@ -639,9 +640,11 @@ public:
         //set_mark(0x7766880);
         //set_mark(k);
         //set_mark(k * 256 * 128);
+        uint32_t pScaleOffset = mBaseSize * s2BaseSize; // PScale在L1P的偏移量（单位：元素）; // VScale在mm1B的偏移量（单位：元素）
+        uint64_t l1ScaleOffset = k * 256 / MXFP_GROUP_SIZE * actMSizeAlign32 ;
         LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>()[(l0a_iduse - 4) * 32 * 1024];
         LocalTensor<float8_e4m3_t> aL1Tensor = p1Tensor[k * 256 * dBaseSize];
-        LocalTensor<float8_e8m0_t> aScaleL1Tensor = pscaleTensor;
+        LocalTensor<float8_e8m0_t> aScaleL1Tensor = p1Tensor.template ReinterpretCast<float8_e8m0_t>()[pScaleOffset + l1ScaleOffset];
 
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
@@ -735,8 +738,8 @@ public:
         /*
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = 128;  (dVBaseSize + 7) >> 3 << 3
-        fixpipeParams.mSize = 32;   (runInfo.actMSize + 1) >> 1 << 1;
-        fixpipeParams.srcStride = 32;  ((fixpipeParams.mSize + 15) / 16) * 16;  (((runInfo.actMSize + 1) >> 1 << 1 + 15) / 16) * 16
+        fixpipeParams.mSize = 32;   (runInfo.actMSize + 31) >> 5 << 5;
+        fixpipeParams.srcStride = 32;  ((runInfo.actMSize + 15) / 16) * 16;
         fixpipeParams.dstStride = 128; ((uint32_t)dVTemplateType + 15) >> 4 << 4;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
@@ -758,7 +761,7 @@ public:
         Fixpipe<float, float, PFA_CFG_ROW_MAJOR_UB>(mm2Res, srcTensor, fixpipeParams);
     }
 
-    __aicore__ inline void IterateBmm2(int ipuse, LocalTensor<float> mm2Res, LocalTensor<float8_e4m3_t> p1Tensor, int bmm2_id, LocalTensor<float8_e8m0_t> pscaleTensor, uint32_t bIdx, uint32_t n2Idx,
+    __aicore__ inline void IterateBmm2(int ipuse, LocalTensor<float> mm2Res, LocalTensor<float8_e4m3_t> p1Tensor, int bmm2_id, uint32_t bIdx, uint32_t n2Idx,
                                         uint32_t s2Idx)
     {
         // mm2A.WaitCrossCore();
@@ -782,7 +785,7 @@ public:
             l0a_id ++ ;
             int l0a_iduse = l0a_id % 2 + 4;
             wait_flag(PIPE_M, PIPE_MTE1, l0a_iduse);// mte1 alloc l0ab buffer
-            mm2_l1_l0a_no_trans(actMSize, p1Tensor, pscaleTensor, k, ipuse, l0a_iduse);
+            mm2_l1_l0a_no_trans(p1Tensor, k, ipuse, l0a_iduse);
             mm2_l1_l0b_trans(ivkuse, l0a_iduse);
             set_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
             wait_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
