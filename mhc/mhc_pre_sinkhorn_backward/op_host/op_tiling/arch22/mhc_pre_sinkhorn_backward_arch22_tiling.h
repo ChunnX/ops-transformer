@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH32_TILING_H_
-#define MHC_PRE_SINKHORN_BACKWARD_ARCH32_TILING_H_
+#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH22_TILING_H_
+#define MHC_PRE_SINKHORN_BACKWARD_ARCH22_TILING_H_
 
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
@@ -22,7 +22,7 @@
 #include "err/ops_err.h"
 
 namespace optiling {
-    ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context);
+    ge::graphStatus TilingMhcPreSinkhornBackwardArch22(gert::TilingContext *context);
 }
 
-#endif  //  MHC_PRE_SINKHORN_BACKWARD_ARCH32_TILING_H_
+#endif  //  MHC_PRE_SINKHORN_BACKWARD_ARCH22_TILING_H_

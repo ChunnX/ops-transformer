@@ -15,10 +15,10 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "mhc_pre_sinkhorn_backward_arch32_tiling.h"
+#include "mhc_pre_sinkhorn_backward_arch22_tiling.h"
 #include "log/log.h"
-#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch32/mhc_pre_sinkhorn_backward_data_arch32.h"
-#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch32/mhc_pre_sinkhorn_backward_key_arch32.h"
+#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch22/mhc_pre_sinkhorn_backward_data_arch22.h"
+#include "mhc/mhc_pre_sinkhorn_backward/op_kernel/arch22/mhc_pre_sinkhorn_backward_key_arch22.h"
 
 #define CHECK_NULLPTR(ptr)                                                                                             \
     if (ptr == nullptr) {                                                                                              \
@@ -318,7 +318,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
+ge::graphStatus TilingMhcPreSinkhornBackwardArch22(gert::TilingContext *context)
 {
     if (context == nullptr) {
         OP_LOGE(context, "context is nullptr");
@@ -397,9 +397,8 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
     int64_t mm2M = n * n + 2 * n;
     int64_t mm2N = n * c;
 
-    // MhcPreSinkhornBackwardTilingData tilingData;
-    MhcPreSinkhornBackwardArch32TilingData* tilingData =
-    context->GetTilingData<MhcPreSinkhornBackwardArch32TilingData>();
+    MhcPreSinkhornBackwardArch22TilingData* tilingData =
+    context->GetTilingData<MhcPreSinkhornBackwardArch22TilingData>();
     auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
@@ -442,13 +441,6 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
     tilingData->eps = eps;
     tilingData->tileSize = tile;
 
-    // if (context->GetRawTilingData() == nullptr) {
-    //     OP_LOGE(context, "GetRawTilingData() is nullptr");
-    //     return ge::GRAPH_FAILED;
-    // }
-    // tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    // context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
-
     size_t xCastWorkspace = batchSize * seqLength * n * c * sizeof(float) * 2;
     size_t gradHat2Workspace = batchSize * seqLength * (n * n + 2 * n) * sizeof(float);
 
@@ -463,7 +455,6 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
     auto isDeterministic = (context->GetDeterministic() == 1);
     context->SetScheduleMode(1); // 1: batchmode模式
     GET_TPL_TILING_KEY(isDeterministic);
-    //context->SetTilingKey(isDeterministic ? DETERMINISTIC_KEY : DEFAULT_KEY);
     if (isDeterministic) {
         currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize +
                               aicNum * (n * n + 2 * n) * (n * c) * sizeof(float) +
@@ -473,13 +464,4 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch32(gert::TilingContext *context)
     }
     return ge::GRAPH_SUCCESS;
 }
-
-// static ge::graphStatus TilingParseForMhcPreSinkhornBackward(gert::TilingParseContext *context)
-// {
-//     return ge::GRAPH_SUCCESS;
-// }
-
-// IMPL_OP_OPTILING(MhcPreSinkhornBackward)
-//     .Tiling(TilingMhcPreSinkhornBackward)
-//     .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingParseForMhcPreSinkhornBackward); // 向框架注册入口函数
 } // namespace optiling

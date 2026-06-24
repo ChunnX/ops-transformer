@@ -14,9 +14,9 @@
  */
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "arch32/mhc_pre_grad_kernel.h"
-#include "arch32/mhc_pre_sinkhorn_backward_data_arch32.h"
-#include "arch32/mhc_pre_sinkhorn_backward_key_arch32.h"
+#include "arch22/mhc_pre_grad_kernel.h"
+#include "arch22/mhc_pre_sinkhorn_backward_data_arch22.h"
+#include "arch22/mhc_pre_sinkhorn_backward_key_arch22.h"
 
 using namespace AscendC;
 
@@ -27,8 +27,8 @@ mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_
                           GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR grad_x, GM_ADDR grad_phi, GM_ADDR grad_alpha,
                           GM_ADDR grad_bias, GM_ADDR workspace, GM_ADDR tiling)
 {
-    REGISTER_TILING_DEFAULT(MhcPreSinkhornBackwardArch32TilingData);
-    GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardArch32TilingData, tilingData, tiling);
+    REGISTER_TILING_DEFAULT(MhcPreSinkhornBackwardArch22TilingData);
+    GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardArch22TilingData, tilingData, tiling);
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
     if (usrWorkspace == nullptr) {
         return;
