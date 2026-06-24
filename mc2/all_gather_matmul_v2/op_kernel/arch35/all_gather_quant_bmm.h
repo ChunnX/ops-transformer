@@ -281,6 +281,13 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
         return;
     }
 
+    bool batchInvariant = (cfg.batchInvariant != 0U);
+    Mc2Tiling::RCSTiling cfgForCompute = cfg;
+    if (batchInvariant) {
+        // BI-fix (issue #2872): cfgForCompute.rankM must cover the full gather-buffer M.
+        cfgForCompute.rankM = cfg.rankM * cfg.rankDim;
+    }
+
     GetTPipePtr() -> Destroy();
     GetTPipePtr() -> Init();
     Mc2MatmulV3::Mc2QuantBatchMatmulASWKernel<
@@ -292,12 +299,12 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
         workspaceGM += DequantBmm::Align(CeilDiv(qMmv3Tiling.matmulTiling.Ka, MX_BLOCK_SIZE), EVEN_ALIGN) *
                        static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) * static_cast<uint64_t>(cfg.rankDim);
         mmv3.Init(
-            aGM, bGM_, biasGM_, dequantGM2_, gatherDequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(), cfg,
-            isTail, true, preCoreNum_);
+            aGM, bGM_, biasGM_, dequantGM2_, gatherDequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(),
+            cfgForCompute, isTail, !batchInvariant, preCoreNum_);
     } else {
         mmv3.Init(
-            aGM, bGM_, biasGM_, dequantGM2_, dequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(), cfg, isTail,
-            true, preCoreNum_);
+            aGM, bGM_, biasGM_, dequantGM2_, dequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(),
+            cfgForCompute, isTail, !batchInvariant, preCoreNum_);
     }
 
     uint32_t shift = isTail ? cfg.tileCnt : 0;
@@ -326,18 +333,20 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
                                          X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulCompute()
 {
     auto &&cfg = tilingData_->param;
-    // 计算本片的块
-    // 未用到的AIC核不需要参与计算
-    if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
-        QuantMatmulLocalCompute();
+    bool batchInvariant = (cfg.batchInvariant != 0U);
+    if (!batchInvariant) {
+        // Default fast path: preserve master LOCAL compute + HCCL gather overlap.
+        if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
+            QuantMatmulLocalCompute();
+        }
     }
+    // BI ON or N == 0: skip LOCAL pass, fall through to gather sync + compute
+    // (matches master behavior at N == 0 where LOCAL is skipped but downstream pass runs).
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
 
-    // 只做本卡计算时，aGM_从本地获取；计算远端卡数据时，aGM_为gather来的数据
     if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
         aGM_ = gatherOut_;
         if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
-            // 计算其他片数据前先wait scale1
             hcclAllgather_.Wait(handleList_[SCALE1_HANDLE_IDX]);
         }
     }
