@@ -383,6 +383,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 |      公共参数组      |         q         |      INPUT      |   Tensor   |
 |                      |          k          |      INPUT      | Tensor |
 |                      |         v         |      INPUT      | Tensor |
+|                      |     metadata     |     INPUT(OPTIONAL)     |   Tensor   |
 |                      |      softmax_scale      | ATTR(OPTIONAL) |   double   |
 |                      |      layout_q      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
@@ -424,6 +425,8 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 - 入参为空的场景处理：
     - 空Tensor指必选输入和输出的shape size为0,即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
+- metadata校验：
+    - metadata当前不支持不传入，未传入metadata的用例将出发拦截报错。
 - q、k、v、attn_out校验
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
