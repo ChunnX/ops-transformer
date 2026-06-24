@@ -265,14 +265,7 @@ __simd_callee__ inline void CastStoreExpBf16_512(
     RegTensor<bfloat16_t> vreg_exp_even4_bf16, vreg_exp_odd4_bf16;
     RegTensor<bfloat16_t> vreg_exp1_bf16, vreg_exp2_bf16, vreg_exp3_bf16, vreg_exp4_bf16;
     DO_CAST_EVEN_ODD_4(T2, float, vreg_exp_even, vreg_exp_odd, _bf16, preg_all);
-    Or((RegTensor<uint16_t>&)vreg_exp1_bf16, (RegTensor<uint16_t>&)vreg_exp_even1_bf16,
-        (RegTensor<uint16_t>&)vreg_exp_odd1_bf16, storeMask);
-    Or((RegTensor<uint16_t>&)vreg_exp2_bf16, (RegTensor<uint16_t>&)vreg_exp_even2_bf16,
-        (RegTensor<uint16_t>&)vreg_exp_odd2_bf16, storeMask);
-    Or((RegTensor<uint16_t>&)vreg_exp3_bf16, (RegTensor<uint16_t>&)vreg_exp_even3_bf16,
-        (RegTensor<uint16_t>&)vreg_exp_odd3_bf16, storeMask);
-    Or((RegTensor<uint16_t>&)vreg_exp4_bf16, (RegTensor<uint16_t>&)vreg_exp_even4_bf16,
-        (RegTensor<uint16_t>&)vreg_exp_odd4_bf16, storeMask);
+    DO_OR_4(vreg_exp, vreg_exp_even, vreg_exp_odd, _bf16, storeMask);
     StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
         ((__ubuf__ T2 *&)expUb1), vreg_exp1_bf16, blockStride, repeatStride, storeMask);
     StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -300,14 +293,7 @@ __simd_callee__ inline void CastStoreExpF16_512(
     RegTensor<half> vreg_exp_even4_f16, vreg_exp_odd4_f16;
     RegTensor<half> vreg_exp1_f16, vreg_exp2_f16, vreg_exp3_f16, vreg_exp4_f16;
     DO_CAST_EVEN_ODD_4(T2, float, vreg_exp_even, vreg_exp_odd, _f16, preg_all);
-    Or((RegTensor<uint16_t>&)vreg_exp1_f16, (RegTensor<uint16_t>&)vreg_exp_even1_f16,
-        (RegTensor<uint16_t>&)vreg_exp_odd1_f16, storeMask);
-    Or((RegTensor<uint16_t>&)vreg_exp2_f16, (RegTensor<uint16_t>&)vreg_exp_even2_f16,
-        (RegTensor<uint16_t>&)vreg_exp_odd2_f16, storeMask);
-    Or((RegTensor<uint16_t>&)vreg_exp3_f16, (RegTensor<uint16_t>&)vreg_exp_even3_f16,
-        (RegTensor<uint16_t>&)vreg_exp_odd3_f16, storeMask);
-    Or((RegTensor<uint16_t>&)vreg_exp4_f16, (RegTensor<uint16_t>&)vreg_exp_even4_f16,
-        (RegTensor<uint16_t>&)vreg_exp_odd4_f16, storeMask);
+    DO_OR_4(vreg_exp, vreg_exp_even, vreg_exp_odd, _f16, storeMask);
     StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
         ((__ubuf__ T2 *&)expUb1), vreg_exp1_f16, blockStride, repeatStride, storeMask);
     StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -380,14 +366,7 @@ __simd_callee__ inline void LoadInput8(
     RegTensor<float> &vreg_input_x7, RegTensor<float> &vreg_input_x8,
     __ubuf__ T *&srcUb, const uint16_t i, const uint32_t s2BaseSize)
 {
-    LoadAlign(vreg_input_x1, srcUb + i * s2BaseSize);
-    LoadAlign(vreg_input_x2, srcUb + floatRepSize + i * s2BaseSize);
-    LoadAlign(vreg_input_x3, srcUb + floatRepSize * 2 + i * s2BaseSize);
-    LoadAlign(vreg_input_x4, srcUb + floatRepSize * 3 + i * s2BaseSize);
-    LoadAlign(vreg_input_x5, srcUb + floatRepSize * 4 + i * s2BaseSize);
-    LoadAlign(vreg_input_x6, srcUb + floatRepSize * 5 + i * s2BaseSize);
-    LoadAlign(vreg_input_x7, srcUb + floatRepSize * 6 + i * s2BaseSize);
-    LoadAlign(vreg_input_x8, srcUb + floatRepSize * 7 + i * s2BaseSize);
+    DO_LOADALIGN_8(vreg_input_x, srcUb, s2BaseSize, i);
 }
 
 template<typename T>
@@ -397,12 +376,7 @@ __simd_callee__ inline void LoadInput6(
     RegTensor<float> &vreg_input_x5, RegTensor<float> &vreg_input_x6,
     __ubuf__ T *&srcUb, const uint16_t i, const uint32_t s2BaseSize)
 {
-    LoadAlign(vreg_input_x1, srcUb + i * s2BaseSize);
-    LoadAlign(vreg_input_x2, srcUb + floatRepSize + i * s2BaseSize);
-    LoadAlign(vreg_input_x3, srcUb + floatRepSize * 2 + i * s2BaseSize);
-    LoadAlign(vreg_input_x4, srcUb + floatRepSize * 3 + i * s2BaseSize);
-    LoadAlign(vreg_input_x5, srcUb + floatRepSize * 4 + i * s2BaseSize);
-    LoadAlign(vreg_input_x6, srcUb + floatRepSize * 5 + i * s2BaseSize);
+    DO_LOADALIGN_6(vreg_input_x, srcUb, s2BaseSize, i);
 }
 
 __simd_callee__ inline void ScaleInput4x4(
@@ -487,22 +461,7 @@ __simd_callee__ inline void LoadAttenMask8(
     __ubuf__ uint32_t *&maskUb7, __ubuf__ uint32_t *&maskUb8,
     const uint32_t nPadding)
 {
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare1, maskUb1, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare2, maskUb2, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare3, maskUb3, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare4, maskUb4, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare5, maskUb5, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare6, maskUb6, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare7, maskUb7, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare8, maskUb8, nPadding);
+    DO_LOADALIGN_MASK_8(preg_compare, maskUb, nPadding);
 }
 
 __simd_callee__ inline void LoadAttenMask6(
@@ -514,18 +473,7 @@ __simd_callee__ inline void LoadAttenMask6(
     __ubuf__ uint32_t *&maskUb5, __ubuf__ uint32_t *&maskUb6,
     const uint32_t nPadding)
 {
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare1, maskUb1, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare2, maskUb2, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare3, maskUb3, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare4, maskUb4, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare5, maskUb5, nPadding);
-    LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
-        preg_compare6, maskUb6, nPadding);
+    DO_LOADALIGN_MASK_6(preg_compare, maskUb, nPadding);
 }
 
 __simd_callee__ inline void ApplyAttenMaskSelect8(
@@ -541,14 +489,7 @@ __simd_callee__ inline void ApplyAttenMaskSelect8(
     MaskReg &c1, MaskReg &c2, MaskReg &c3, MaskReg &c4,
     MaskReg &c5, MaskReg &c6, MaskReg &c7, MaskReg &c8)
 {
-    Select(s1, vreg_min, x1, c1);
-    Select(s2, vreg_min, x2, c2);
-    Select(s3, vreg_min, x3, c3);
-    Select(s4, vreg_min, x4, c4);
-    Select(s5, vreg_min, x5, c5);
-    Select(s6, vreg_min, x6, c6);
-    Select(s7, vreg_min, x7, c7);
-    Select(s8, vreg_min, x8, c8);
+    DO_SELECT_8(s, vreg_min, x, c);
 }
 
 __simd_callee__ inline void ApplyAttenMaskSelect6(
@@ -562,12 +503,7 @@ __simd_callee__ inline void ApplyAttenMaskSelect6(
     MaskReg &c1, MaskReg &c2, MaskReg &c3,
     MaskReg &c4, MaskReg &c5, MaskReg &c6)
 {
-    Select(s1, vreg_min, x1, c1);
-    Select(s2, vreg_min, x2, c2);
-    Select(s3, vreg_min, x3, c3);
-    Select(s4, vreg_min, x4, c4);
-    Select(s5, vreg_min, x5, c5);
-    Select(s6, vreg_min, x6, c6);
+    DO_SELECT_6(s, vreg_min, x, c);
 }
 
 template<typename T>
@@ -579,22 +515,7 @@ __simd_callee__ inline void StoreAlign8(
     __ubuf__ T *&srcUb, const uint16_t i, const uint32_t s2BaseSize,
     MaskReg &preg_all)
 {
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + i * s2BaseSize, v1, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, v2, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 2 + i * s2BaseSize, v3, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 3 + i * s2BaseSize, v4, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 4 + i * s2BaseSize, v5, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 5 + i * s2BaseSize, v6, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 6 + i * s2BaseSize, v7, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 7 + i * s2BaseSize, v8, preg_all);
+    DO_STOREALIGN_8(T, srcUb, v, s2BaseSize, i, preg_all);
 }
 
 template<typename T>
@@ -605,18 +526,7 @@ __simd_callee__ inline void StoreAlign6(
     __ubuf__ T *&srcUb, const uint16_t i, const uint32_t s2BaseSize,
     MaskReg &preg_all)
 {
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + i * s2BaseSize, v1, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, v2, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 2 + i * s2BaseSize, v3, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 3 + i * s2BaseSize, v4, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 4 + i * s2BaseSize, v5, preg_all);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-        (__ubuf__ T *&)srcUb + floatRepSize * 5 + i * s2BaseSize, v6, preg_all);
+    DO_STOREALIGN_6(T, srcUb, v, s2BaseSize, i, preg_all);
 }
 
 template<typename T>
@@ -648,14 +558,7 @@ __simd_callee__ inline void ExpSub8(
     RegTensor<float> &x7, RegTensor<float> &x8,
     RegTensor<float> &vreg_max, MaskReg &preg_all)
 {
-    ExpSub(e1, x1, vreg_max, preg_all);
-    ExpSub(o1, x2, vreg_max, preg_all);
-    ExpSub(e2, x3, vreg_max, preg_all);
-    ExpSub(o2, x4, vreg_max, preg_all);
-    ExpSub(e3, x5, vreg_max, preg_all);
-    ExpSub(o3, x6, vreg_max, preg_all);
-    ExpSub(e4, x7, vreg_max, preg_all);
-    ExpSub(o4, x8, vreg_max, preg_all);
+    DO_EXPSUB_PAIRS_4(e, o, x, vreg_max, preg_all);
 }
 
 } // namespace FaVectorApi
