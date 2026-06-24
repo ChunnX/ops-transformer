@@ -836,9 +836,9 @@ __aicore__ inline void LoadL1BOuter(const GlobalTensor<T> &tensorBGm, const Glob
  * @brief 初始化MKOuter模式下的计算参数
  */
 __aicore__ inline void InitMatmulMKOuterParams(const MMParams &para, uint32_t &nBlocks, uint32_t &kL1Loops,
-                                                uint32_t &kOffsetUnit, uint32_t &mSizeAligned,
-                                                uint32_t &aOffsetUnit, uint32_t &bOffsetUnit,
-                                                uint32_t &scaleOffsetUnit)
+                                               uint32_t &kOffsetUnit, uint32_t &mSizeAligned,
+                                               uint32_t &aOffsetUnit, uint32_t &bOffsetUnit,
+                                               uint32_t &scaleOffsetUnit)
 {
     nBlocks = CeilDivT(para.n, para.baseN);
     kL1Loops = CeilDivT(para.k, para.kL1StepSize);
@@ -960,7 +960,8 @@ __aicore__ inline void ProcessNBlock(uint32_t nb, uint32_t nBlocks, const Global
     if (nb + 1 < nBlocks) {
         uint32_t nextSlot = (nb + 1) & 1u;
         uint32_t subNx = ((nb + 1) == nBlocks - 1) ? (para.n - (nb + 1) * para.baseN) : para.baseN;
-        int64_t bOffNext = static_cast<int64_t>(para.k) * (nb + 1) * para.baseN + static_cast<int64_t>(kL1) * kOffsetUnit;
+        int64_t bOffNext = static_cast<int64_t>(para.k) * (nb + 1) *
+                           para.baseN + static_cast<int64_t>(kL1) * kOffsetUnit;
         if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
             int64_t bScOffNext = static_cast<int64_t>((nb + 1) * para.baseN * para.kScale);
             LoadL1BOuter<T, S>(tensorBGm[bOffNext], tensorBScaleGm[bScOffNext], subNx, para.kL1StepSize, para.k,
@@ -993,7 +994,8 @@ __aicore__ inline void MatmulSplitMKOuter(const GlobalTensor<O> &tensorCGm, cons
     using O_L0C = typename std::conditional<std::is_same<T, int8_t>::value, int32_t, float>::type;
 
     uint32_t nBlocks, kL1Loops, kOffsetUnit, mSizeAligned, aOffsetUnit, bOffsetUnit, scaleOffsetUnit;
-    InitMatmulMKOuterParams(para, nBlocks, kL1Loops, kOffsetUnit, mSizeAligned, aOffsetUnit, bOffsetUnit, scaleOffsetUnit);
+    InitMatmulMKOuterParams(para, nBlocks, kL1Loops, kOffsetUnit, mSizeAligned,
+                            aOffsetUnit, bOffsetUnit, scaleOffsetUnit);
 
     mmLocalTensors<T, O_L0C> localTensors;
     localTensors.Init(bufParam);
