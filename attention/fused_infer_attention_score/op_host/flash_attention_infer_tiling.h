@@ -475,7 +475,8 @@ namespace optiling{
 
     // coreNumUsed：本次方案使用的核数（动态负载上限 = 剩余开销 / 剩余核数）。
     uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize,
-                                                       uint64_t totalCost, uint32_t coreNumUsed) {
+                                                       uint64_t totalCost, uint32_t coreNumUsed)
+    {
         uint32_t nowBIdx = 0;
         uint32_t nowN1Idx = 0;
         uint32_t nowS1Idx = 0;
@@ -557,7 +558,10 @@ namespace optiling{
                 finalizeCore(coreIdx, costLimit, resTaskNum);
                 continue;
             }
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+                finishBatch(coreIdx, costLimit, resTaskNum);
+                break;
+            }
 
             // 阶段2：整 batch 跳（带容差）
             while (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum > 0) {
@@ -571,7 +575,10 @@ namespace optiling{
                 }
             }
 
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+                finishBatch(coreIdx, costLimit, resTaskNum);
+                break;
+            }
             p = getBatchParams(nowBIdx, groupSize);
 
             // 阶段3：整 N1 块跳（带容差）
@@ -586,7 +593,10 @@ namespace optiling{
             }
 
             advanceCounters();
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+                finishBatch(coreIdx, costLimit, resTaskNum);
+                break;
+            }
             p = getBatchParams(nowBIdx, groupSize);
 
             // 阶段4：整 S1 块（一个 query）跳（带容差）
@@ -601,7 +611,10 @@ namespace optiling{
             }
 
             advanceCounters();
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+                finishBatch(coreIdx, costLimit, resTaskNum);
+                break;
+            }
             p = getBatchParams(nowBIdx, groupSize);
 
             // 阶段5：逐 S2 块精确落点
@@ -610,7 +623,10 @@ namespace optiling{
                 nowS2Idx += 1;
             }
 
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx, costLimit, resTaskNum); break; }
+            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+                finishBatch(coreIdx, costLimit, resTaskNum);
+                break;
+            }
 
             faTilingData.coreInfo.get_endBIdx()[coreIdx] = nowBIdx;
             faTilingData.coreInfo.get_endN1Idx()[coreIdx] = nowN1Idx;
