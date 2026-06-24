@@ -539,7 +539,7 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
 
     CHECK_RET(CheckNullptr(keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
                            workspaceSize, executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
+              ACLNN_ERR_PARAM_NULLPTR);
 
     bool keyCacheEmpty = keyCache->GetViewShape().GetShapeSize() == 0;
     bool valueCacheEmpty = valueCache->GetViewShape().GetShapeSize() == 0;
