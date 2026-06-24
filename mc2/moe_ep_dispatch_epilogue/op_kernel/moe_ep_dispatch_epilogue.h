@@ -203,8 +203,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     scaleOffset_ = tilingData->scaleOffset;
     scaleBytes_ = tilingData->scaleBytes;
     scalesAlign_ = (scaleBytes_ == 0U) ? 0U : (scaleBytes_ / sizeof(ScalesType));
-    uint32_t ubScalesBytes = Ceil(scaleBytes_, UB_ALIGN) * UB_ALIGN;
-    maxSlotsPerAiv_ = maxSlotsPerAiv;
+    uint32_t scalesBytesAlign = Ceil(scaleBytes_, UB_ALIGN) * UB_ALIGN;
+    maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
+
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
 
@@ -223,7 +224,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-        tpipe_->InitBuffer(ubScalesBuf_, ubScalesBytes);
+        tpipe_->InitBuffer(ubScalesBuf_, scalesBytesAlign);
     }
 
     ubToken_     = ubTokenBuf_.Get<XType>();
