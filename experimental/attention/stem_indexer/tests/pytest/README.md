@@ -34,7 +34,7 @@ case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点�
 - M方向`baseM=96`整块和尾块。
 - GQA组合：`q_heads`为32/64，`kv_heads`为2/4/8，覆盖6种合法组合。
 - 多batch变长、prefill/decode混合、单token decode，batch覆盖1到19、23到28以及30、37。
-- 长序列量级覆盖：`q_seq_lens`保持原query chunk、decode和尾块覆盖目的，`kv_seq_lens`和`num_prompt_tokens`覆盖32K/64K/128K/256K/1M token基准线，同时保留小于32K的短序列、尾块和短路场景。
+- 长序列量级覆盖：`kv_seq_lens`和`num_prompt_tokens`覆盖32K/64K/128K/256K/1M token基准线；`q_seq_lens`以保留query chunk、decode和尾块覆盖目的为主，仅在张量规模可控的case中放大，同时保留小于32K的短序列、尾块和短路场景。
 - OAM `vbias`影响选块、`scoreScale=1/64`路径。
 - `num_prompt_tokens`不能整除`stem_block_size`。
 - 动态TopK small/medium/large分段边界：55/56/159/160 blocks。
