@@ -52,8 +52,8 @@ public:
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
                                                     GlobalTensor<SCORE_T> ldScoreGm,
                                                     GlobalTensor<int32_t> ldIndexGm);
-    __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
-                                              GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
+    __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<SCALE_T> qScaleGm,
+                                              GlobalTensor<SCALE_T> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<int32_t> blockTableGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
@@ -236,8 +236,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitParams(const struct QLIV2Common:
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<float> weightsGm,
-    GlobalTensor<float> qScaleGm,
-                                                            GlobalTensor<float> kScaleGm,
+    GlobalTensor<SCALE_T> qScaleGm,
+                                                            GlobalTensor<SCALE_T> kScaleGm,
                                                             GlobalTensor<int32_t> indiceOutGm,
                                                             GlobalTensor<int32_t> blockTableGm)
 {
