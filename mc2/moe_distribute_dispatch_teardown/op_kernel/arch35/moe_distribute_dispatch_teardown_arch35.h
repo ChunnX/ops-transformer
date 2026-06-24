@@ -29,11 +29,7 @@
 #else
 #include "../../moe_distribute_dispatch_setup/op_kernel/common.h"
 #endif
-#if __has_include("../../common/op_kernel/mc2_kernel_utils.h")
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#else
-#include "../../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf

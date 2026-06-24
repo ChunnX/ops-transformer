@@ -1,0 +1,1287 @@
+[2026-06-24 19:49:05] Warning: The current environment is configured for ascend950, Please use Ascend 950PR/Ascend 950DT series hardware for optimal performance.
+[2026-06-24 19:49:05] [2026-06-24 19:49:05] Info: cmake config -DBUILD_OPEN_PROJECT=ON -DASCEND_OP_NAME=allto_allv_grouped_mat_mul -DENABLE_TILING_SINK=OFF -DUT_INFERSHAPE_FLAG=TRUE -DENABLE_UT_EXEC=TRUE -DCANN_3RD_LIB_PATH=/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party -DENABLE_AICPU_KERNEL=FALSE -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.1.0 -DCHECK_COMPATIBLE=true -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=/usr/local/bin/ccache -DASCEND_COMPUTE_UNIT=ascend950 -DENABLE_BUILT_IN=OFF -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON -DENABLE_BUILD_PKG=ON .
+[2026-06-24 19:49:06] -- The C compiler identification is GNU 13.3.0
+[2026-06-24 19:49:06] -- The CXX compiler identification is GNU 13.3.0
+[2026-06-24 19:49:06] -- Detecting C compiler ABI info
+[2026-06-24 19:49:06] -- Detecting C compiler ABI info - done
+[2026-06-24 19:49:06] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-06-24 19:49:06] -- Detecting C compile features
+[2026-06-24 19:49:06] -- Detecting C compile features - done
+[2026-06-24 19:49:06] -- Detecting CXX compiler ABI info
+[2026-06-24 19:49:06] -- Detecting CXX compiler ABI info - done
+[2026-06-24 19:49:06] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-06-24 19:49:06] -- Detecting CXX compile features
+[2026-06-24 19:49:06] -- Detecting CXX compile features - done
+[2026-06-24 19:49:06] -- Initialization summary: Found ccache, TARGET_ARCH: aarch64
+[2026-06-24 19:49:06] -- ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.1.0
+[2026-06-24 19:49:07] -- compile project with library
+[2026-06-24 19:49:07] -- Find opbase source dir: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/opbase
+fatal: reference is not a tree: cd48c600c4b37146f504217eab2bf3956f7fee8b
+[2026-06-24 19:49:07] -- Find ops-tensor source dir: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/ops-tensor
+[2026-06-24 19:49:07] -- ops-tensor fetched b24535e30a6f7a3909c53c8b09713a9c0d08e54b
+[2026-06-24 19:49:08] -- Found Python3: /opt/buildtools/python-3.12.9/bin/python3 (found version "3.12.9") found components: Interpreter 
+[2026-06-24 19:49:08] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=/usr/local/bin/ccache
+[2026-06-24 19:49:08] -- CCACHE_PROGRAM=/usr/local/bin/ccache
+[2026-06-24 19:49:08] -- ASCEND_COMPUTE_UNIT=ascend950
+[2026-06-24 19:49:08] -- ASCEND_OP_NAME=allto_allv_grouped_mat_mul
+[2026-06-24 19:49:08] -- TILING_KEY=
+[2026-06-24 19:49:08] -- TESTS_UT_OPS_TEST=
+[2026-06-24 19:49:08] -- TESTS_EXAMPLE_OPS_TEST=
+[2026-06-24 19:49:08] -- CMAKE_BUILD_TYPE=Release
+[2026-06-24 19:49:08] -- VERSION=
+fatal: reference is not a tree: cd48c600c4b37146f504217eab2bf3956f7fee8b
+[ThirdParty][protobuf] PRODUCT_SIDE: 
+[ThirdParty][protobuf] CMAKE_TOOLCHAIN_FILE: 
+[ThirdParty][protobuf] PROTOC_PROGRAM : /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIB : /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/lib_cache/protobuf_static/lib/libascend_protobuf.a.
+[ThirdParty][protobuf] HOST_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libascend_protobuf.so.
+[ThirdParty][protobuf_shared] shared build.
+[ThirdParty][protoc] protoc use cache.
+[ThirdParty][protobuf_host_static] host static build.
+LIBASAN_PATH = 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/cmake/scripts/util/ascendc_impl_build.py:190: SyntaxWarning: invalid escape sequence '\d'
+  IMPL_API = '''
+[2026-06-24 19:49:11] -- Found json: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/json/include  
+[2026-06-24 19:49:11] -- [ThirdPartyLib][json] build json end, JSON_SOURCE_PATH: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/json.
+[2026-06-24 19:49:11] -- Start building custom package.
+[2026-06-24 19:49:11] -- Search libs under install path /home/developer/Ascend/cann-9.1.0
+[2026-06-24 19:49:11] -- CMAKE_MODULE_PATH            :/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/cmake/modules;/home/developer/Ascend/cann-9.1.0/include/ge/cmake
+[2026-06-24 19:49:11] -- compile option:   -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
+[2026-06-24 19:49:11] -- Found dlog: /home/developer/Ascend/cann-9.1.0/pkg_inc/base  
+[2026-06-24 19:49:11] -- Transformer Variables in dlog module:
+[2026-06-24 19:49:11] -- dlog_TRANSFORMER_INCLUDE_DIR="/home/developer/Ascend/cann-9.1.0/pkg_inc/base"
+[2026-06-24 19:49:11] -- dlog_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11]  Properties for TARGET dlog:
+[2026-06-24 19:49:11]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-24 19:49:11]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
+[2026-06-24 19:49:11]    dlog.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-24 19:49:11] 
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11]  Properties for TARGET dlog_headers:
+[2026-06-24 19:49:11]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/developer/Ascend/cann-9.1.0/pkg_inc/base"
+[2026-06-24 19:49:11] 
+[2026-06-24 19:49:11] -- Found securec: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-24 19:49:11] -- Found OPBASE: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-24 19:49:11] -- Found OPABSE include:/home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-24 19:49:11] -- Found OPABSE lib:
+[2026-06-24 19:49:11] -- Found platform: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-24 19:49:11] -- Found platform include:/home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-24 19:49:11] -- Found register library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libregister.so
+[2026-06-24 19:49:11] -- Found opp_registry library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libopp_registry.so
+[2026-06-24 19:49:11] -- Found exe_graph library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libexe_graph.so
+[2026-06-24 19:49:11] -- Found graph_base library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libgraph_base.so
+[2026-06-24 19:49:11] -- Found error_manager library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/liberror_manager.so
+[2026-06-24 19:49:11] -- Found metadef library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libmetadef.so
+[2026-06-24 19:49:11] -- Found rt2_registry library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/librt2_registry.a
+[2026-06-24 19:49:11] -- Found metadef: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-24 19:49:11] -- Found source metadef include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/exe_graph
+[2026-06-24 19:49:11] -- Found graph library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libgraph.so
+[2026-06-24 19:49:11] -- Found mmpa library:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libmmpa.so
+[2026-06-24 19:49:11] -- Found source acl include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-24 19:49:11] -- [transformer]Found source npuruntime include dir: /home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/runtime
+[2026-06-24 19:49:11] -- Found aclnn include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-24 19:49:11] -- Found opdev include dir:  /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aclnn
+[2026-06-24 19:49:11] -- Found tilingapi include:/home/developer/Ascend/cann-9.1.0/aarch64-linux/include
+[2026-06-24 19:49:11] -- TILINGAPI_INC_DIRS: /home/developer/Ascend/cann-9.1.0/aarch64-linux/include;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/lib;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/impl;/home/developer/Ascend/cann-9.1.0/aarch64-linux/ascendc/include/highlevel_api/tiling
+[2026-06-24 19:49:11] -- Found tilingapi lib:/home/developer/Ascend/cann-9.1.0/aarch64-linux/lib64/libtiling_api.a
+[2026-06-24 19:49:11] -- Using AICPU include dirs: /home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/cce;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/msprof;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/cpu_proto;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu_common/context/utils;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/cpu_proto;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/aicpu_common/context/utils;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/datagw/aicpu/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/include/experiment/datagw/aicpu/common;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc;/home/developer/Ascend/cann-9.1.0/aarch64-linux/pkg_inc/aicpu
+[2026-06-24 19:49:11] -- Finding gen es pkg
+[2026-06-24 19:49:11] -- [add_es_library] Module loaded from: /home/developer/Ascend/cann-9.1.0/include/ge/cmake
+[2026-06-24 19:49:11] -- [ThirdParty][eigen] path found in cache: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/eigen
+[2026-06-24 19:49:11] -- Found abseil-cpp: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/lib_cache/abseil-cpp  
+[2026-06-24 19:49:11] -- [ThirdPartyLib][abseil-cpp] Found abseil-cpp in: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/lib_cache/abseil-cpp
+[ThirdParty][protobuf] PRODUCT_SIDE: 
+[ThirdParty][protobuf] CMAKE_TOOLCHAIN_FILE: 
+[ThirdParty][protobuf] PROTOC_PROGRAM : /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/lib_cache/protoc/protoc.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_STATIC_LIB : /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party/lib_cache/protobuf_static/lib/libascend_protobuf.a.
+[ThirdParty][protobuf] HOST_PROTOBUF_STATIC_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libhost_ascend_protobuf.a.
+[ThirdParty][protobuf] ASCEND_PROTOBUF_SHARED_LIB : /home/developer/Ascend/cann-9.1.0/lib64/libascend_protobuf.so.
+[ThirdParty][protobuf_shared] shared build.
+[ThirdParty][protoc] protoc use cache.
+[ThirdParty][protobuf_host_static] host static build.
+[2026-06-24 19:49:11] -- Found alog: /home/developer/Ascend/cann-9.1.0/include  
+[2026-06-24 19:49:11] -- Variables in alog module:
+[2026-06-24 19:49:11] -- alog_a_INCLUDE_DIR="/home/developer/Ascend/cann-9.1.0/include"
+[2026-06-24 19:49:11] -- slog_a_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-24 19:49:11] -- alog_a_SHARED_LIBRARY="/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11]  Properties for TARGET slog_a:
+[2026-06-24 19:49:11]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-24 19:49:11]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-06-24 19:49:11]    slog_a.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-24 19:49:11] 
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11]  Properties for TARGET alog_a:
+[2026-06-24 19:49:11]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-06-24 19:49:11]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-06-24 19:49:11]    alog_a.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.1.0/lib64/libascendalog.so"
+[2026-06-24 19:49:11] 
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11]  Properties for TARGET alog_headers:
+[2026-06-24 19:49:11]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/developer/Ascend/cann-9.1.0/include;/home/developer/Ascend/cann-9.1.0/include/base"
+[2026-06-24 19:49:11] 
+[2026-06-24 19:49:11] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
+[2026-06-24 19:49:11] -- Generated helper script: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/cmake/run_gen_esb_with_lock.sh
+[2026-06-24 19:49:11] -- Using existing Python3: /opt/buildtools/python-3.12.9/bin/python3
+[2026-06-24 19:49:11] -- _add_es_library_impl: OUTPUT_PATH is /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_packages_math
+[2026-06-24 19:49:11] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-06-24 19:49:11] -- add_es_package: OPP_PROTO_TARGET output directory: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build
+[2026-06-24 19:49:11] -- add_es_package: Derived ASCEND_OPP_PATH: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build
+[2026-06-24 19:49:11] --   - Created standard OPP path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-24 19:49:11] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-06-24 19:49:11] --     Found gen_esb in PATH (environment variables configured)
+[2026-06-24 19:49:11] --     - gen_esb path: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-24 19:49:11] --     - library path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-24 19:49:11] -- Using proto library path (derived from OPP_PROTO_TARGET): /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-24 19:49:11] -- add_es_package: Module name for gen_esb: math
+[2026-06-24 19:49:11] -- [add_es_library] No history registry found at /home/developer/Ascend/cann-9.1.0/opp/history_registry/math, skipping
+[2026-06-24 19:49:11] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-06-24 19:49:11] --   Found library in run package: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so
+[2026-06-24 19:49:11] -- Configuring ES package: es_math
+[2026-06-24 19:49:11] --   - Exported target: es_math (public interface)
+[2026-06-24 19:49:11] --   - Internal .obj target: es_math_obj (compile once)
+[2026-06-24 19:49:11] --   - Internal .so target: es_math_so
+[2026-06-24 19:49:11] --   - Internal .a target: es_math_a
+[2026-06-24 19:49:11] --   - Module name (for gen_esb): math
+[2026-06-24 19:49:11] --   - OPP proto target: proto_math (type: SHARED_LIBRARY)
+[2026-06-24 19:49:11] --   - OPP proto path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-24 19:49:11] --   - Output path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_packages_math (artifacts will be copied)
+[2026-06-24 19:49:11] --   - Library files: libes_math.so, libes_math.a
+[2026-06-24 19:49:11] --   - Python package: es_math
+[2026-06-24 19:49:11] -- ES package 'es_math' using single-file compilation mode
+[2026-06-24 19:49:11] --   - Wrapper file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-24 19:49:11] --   - Module name: math
+[2026-06-24 19:49:11] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-06-24 19:49:11] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-06-24 19:49:11] -- add_es_library: Deduced header base path from cmake file: /home/developer/Ascend/cann-9.1.0
+[2026-06-24 19:49:11] -- add_es_library: metadef_headers target not found, skipping
+[2026-06-24 19:49:11] -- add_es_library: Found c_sec target
+[2026-06-24 19:49:11] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-06-24 19:49:11] -- add_es_package: 'build_es_math' is the first ES package (will be built first)
+[2026-06-24 19:49:11] -- ES package 'es_math' configured successfully (single-file mode):
+[2026-06-24 19:49:11] --   - Exported target (for linking): es_math
+[2026-06-24 19:49:11] --   - Build target: build_es_math
+[2026-06-24 19:49:11] --   - Wrapper file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-24 19:49:11] --   - Internal targets:
+[2026-06-24 19:49:11] --     * Code generation: generate_es_math_code
+[2026-06-24 19:49:11] --     * Object library: es_math_obj (compiled once)
+[2026-06-24 19:49:11] --     * Shared library: es_math_so
+[2026-06-24 19:49:11] --     * Static library: es_math_a
+[2026-06-24 19:49:11] --     * Wheel generation: generate_es_math_whl
+[2026-06-24 19:49:11] --     * Install: install_es_math
+[2026-06-24 19:49:11] --   - Library files: libes_math.so, libes_math.a
+[2026-06-24 19:49:11] --   - Python package: es_math
+[2026-06-24 19:49:11] --   - ES base library: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11] -- Quick start:
+[2026-06-24 19:49:11] --   1. Link:    target_link_libraries(your_target PRIVATE es_math)
+[2026-06-24 19:49:11] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11] -- add_fallback_modules start
+[2026-06-24 19:49:11] -- add_gentask_modules start
+[2026-06-24 19:49:11] -- xxxx compile add_gentask_modules
+[2026-06-24 19:49:11] -- add_gentask_modules start
+[2026-06-24 19:49:11] -- add_fallback_modules start
+[2026-06-24 19:49:11] -- add_gentask_modules start
+LIBASAN_PATH = 
+[2026-06-24 19:49:11] -- Update proto header path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_graph/allto_allv_grouped_mat_mul_proto.h
+[2026-06-24 19:49:11] -- Start Generating es transformer for custom pkg
+[2026-06-24 19:49:11] -- _add_es_library_impl: OUTPUT_PATH is /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_packages
+[2026-06-24 19:49:11] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-06-24 19:49:11] -- add_es_package: Using default output directory: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build
+[2026-06-24 19:49:11] -- add_es_package: OPP_PROTO_TARGET output directory: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build
+[2026-06-24 19:49:11] -- add_es_package: Derived ASCEND_OPP_PATH: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build
+[2026-06-24 19:49:11] --   - Created standard OPP path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-24 19:49:11] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-06-24 19:49:11] --     Found gen_esb in PATH (environment variables configured)
+[2026-06-24 19:49:11] --     - gen_esb path: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-24 19:49:11] --     - library path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-24 19:49:11] -- Using proto library path (derived from OPP_PROTO_TARGET): /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-24 19:49:11] -- add_es_package: Module name for gen_esb: transformer_cust
+[2026-06-24 19:49:11] -- [add_es_library] No history registry found at /home/developer/Ascend/cann-9.1.0/opp/history_registry/transformer_cust, skipping
+[2026-06-24 19:49:11] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-06-24 19:49:11] --   Found library in run package: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so
+[2026-06-24 19:49:11] -- Configuring ES package: es_transformer_cust
+[2026-06-24 19:49:11] --   - Exported target: es_transformer_cust (public interface)
+[2026-06-24 19:49:11] --   - Internal .obj target: es_transformer_cust_obj (compile once)
+[2026-06-24 19:49:11] --   - Internal .so target: es_transformer_cust_so
+[2026-06-24 19:49:11] --   - Internal .a target: es_transformer_cust_a
+[2026-06-24 19:49:11] --   - Module name (for gen_esb): transformer_cust
+[2026-06-24 19:49:11] --   - OPP proto target: proto_transformer_cust (type: SHARED_LIBRARY)
+[2026-06-24 19:49:11] --   - OPP proto path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-24 19:49:11] --   - Output path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_packages (artifacts will be copied)
+[2026-06-24 19:49:11] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-06-24 19:49:11] --   - Python package: es_transformer_cust
+[2026-06-24 19:49:11] -- ES package 'es_transformer_cust' using single-file compilation mode
+[2026-06-24 19:49:11] --   - Wrapper file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-24 19:49:11] --   - Module name: transformer_cust
+[2026-06-24 19:49:11] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-06-24 19:49:11] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-06-24 19:49:11] -- add_es_library: Deduced header base path from cmake file: /home/developer/Ascend/cann-9.1.0
+[2026-06-24 19:49:11] -- add_es_library: metadef_headers target not found, skipping
+[2026-06-24 19:49:11] -- add_es_library: Found c_sec target
+[2026-06-24 19:49:11] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-06-24 19:49:11] -- add_es_package: 'build_es_transformer_cust' depends on 'build_es_math' to avoid concurrent builds of shared dependencies
+[2026-06-24 19:49:11] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
+[2026-06-24 19:49:11] --   - Exported target (for linking): es_transformer_cust
+[2026-06-24 19:49:11] --   - Build target: build_es_transformer_cust
+[2026-06-24 19:49:11] --   - Wrapper file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-24 19:49:11] --   - Internal targets:
+[2026-06-24 19:49:11] --     * Code generation: generate_es_transformer_cust_code
+[2026-06-24 19:49:11] --     * Object library: es_transformer_cust_obj (compiled once)
+[2026-06-24 19:49:11] --     * Shared library: es_transformer_cust_so
+[2026-06-24 19:49:11] --     * Static library: es_transformer_cust_a
+[2026-06-24 19:49:11] --     * Wheel generation: generate_es_transformer_cust_whl
+[2026-06-24 19:49:11] --     * Install: install_es_transformer_cust
+[2026-06-24 19:49:11] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-06-24 19:49:11] --   - Python package: es_transformer_cust
+[2026-06-24 19:49:11] --   - ES base library: /home/developer/Ascend/cann-9.1.0/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11] -- Quick start:
+[2026-06-24 19:49:11] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
+[2026-06-24 19:49:11] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-06-24 19:49:11] -- 
+[2026-06-24 19:49:11] -- Detected architecture: ARM64
+[2026-06-24 19:49:11] -- End building custom package.
+[2026-06-24 19:49:11] -- create aclnn master header file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/aclnn_ops_transformer_custom.h
+[2026-06-24 19:49:11] -- no operator info to generate
+[2026-06-24 19:49:11] -- Start building custom package.
+[2026-06-24 19:49:11] -- No aicpu opdef/json files to merge, skipping.
+[2026-06-24 19:49:11] -- No aicpu cust obj targets found, skipping.
+[2026-06-24 19:49:11] -- Configuring done
+[2026-06-24 19:49:11] -- Generating done
+[2026-06-24 19:49:11] -- Build files have been written to: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build
+[2026-06-24 19:49:11] [  0%] Generating op_host_aclnn_exc_stub.cpp
+[2026-06-24 19:49:11] [  1%] Generating op_host_aclnn_stub.cpp
+[2026-06-24 19:49:11] [  1%] Running C++ protocol buffer compiler on /home/developer/Ascend/cann-9.1.0/include/proto/ge_onnx.proto
+[2026-06-24 19:49:11] [  2%] Building CXX object CMakeFiles/op_host_aclnnInner.dir/mc2/allto_allv_grouped_mat_mul/op_host/allto_allv_grouped_mat_mul_def.cpp.o
+[2026-06-24 19:49:11] [  2%] Building CXX object CMakeFiles/op_host_aclnnInner.dir/mc2/allto_allv_quant_grouped_mat_mul/op_host/allto_allv_quant_grouped_mat_mul_def.cpp.o
+[2026-06-24 19:49:11] [  3%] Generating binary/ascend950/bin/allto_allv_grouped_mat_mul
+[2026-06-24 19:49:11] [  3%] Generating binary/ascend950/src/allto_allv_grouped_mat_mul/AlltoAllvGroupedMatMul.py
+[2026-06-24 19:49:11] [  3%] Generating binary/ascend950/src/common/.all_common_copy.stamp
+[2026-06-24 19:49:11] [  4%] Generating binary/ascend950/src/ascendc/common/.utils_copy.stamp
+[2026-06-24 19:49:11] [  4%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/op_host/tiling_util.cpp.o
+[2026-06-24 19:49:11] [  4%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/log/log.cpp.o
+[2026-06-24 19:49:11] [  4%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/runtime_kb_api.cpp.o
+[2026-06-24 19:49:11] [  5%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm.cpp.o
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_graph/fallback_allto_allv_grouped_mat_mul.cpp:15:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_graph/fallback_allto_allv_grouped_mat_mul.cpp: In function ‘ge::graphStatus fallback::AlltoAllvGroupedMatMulExecuteFunc(gert::OpExecuteContext*)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/fallback/fallback.h:450:17: warning: declaration of ‘ret’ shadows a previous local [-Wshadow]
+  450 |     static auto ret = GRAPH_SUCCESS;                                                                                 \
+      |                 ^~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_graph/fallback_allto_allv_grouped_mat_mul.cpp:153:25: note: in expansion of macro ‘EXEC_OPAPI_CMD’
+  153 |     const auto apiRet = EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMulV2, gmmX, gmmWeight, sendCountsTensor,
+      |                         ^~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_graph/fallback_allto_allv_grouped_mat_mul.cpp:130:21: note: shadowed declaration is here
+  130 |     ge::graphStatus ret = CheckInputsAndAttrs(gmmX, gmmWeight, group, epWorldSize, transGmmWeight, commMode);
+      |                     ^~~
+[2026-06-24 19:49:11] [  5%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/math_util.cpp.o
+[2026-06-24 19:49:11] [  5%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm_2stages.cpp.o
+[2026-06-24 19:49:11] [  5%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_gen_task_ops_utils.cpp: In static member function ‘static ge::Status ops::Mc2MoeGenTaskOpsUtils::CreateAicpuTaskMc2Moe(const gert::ExeResGenerationContext*, ge::KernelLaunchInfo&, int32_t)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_gen_task_ops_utils.cpp:203:26: warning: comparison of integer expressions of different signedness: ‘size_t’ {aka ‘long unsigned int’} and ‘const int32_t’ {aka ‘const int’} [-Wsign-compare]
+  203 |     for (size_t i = 0; i < groupCnt; ++i) {
+      |                        ~~^~~~~~~~~~
+[2026-06-24 19:49:11] [  6%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_fallback_obj.dir/__/op_graph/fallback_allto_allv_grouped_mat_mul.cpp.o
+[2026-06-24 19:49:11] [  8%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_fallback_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_graph/fallback_allto_allv_quant_grouped_mat_mul.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp: In member function ‘ge::graphStatus ops::Mc2MoeGraphContext::FillContextBuffer(void* const&, const CommEngine&, ops::Mc2MoeContext*, uint32_t, const std::vector<long unsigned int>&)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:313:101: warning: unused parameter ‘engine’ [-Wunused-parameter]
+  313 | ge::graphStatus Mc2MoeGraphContext::FillContextBuffer(const HcclComm &hcclHandle, const CommEngine &engine,
+      |                                                                                   ~~~~~~~~~~~~~~~~~~^~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp: In member function ‘ge::graphStatus ops::Mc2MoeGraphContext::CreateContextNode(ge::Graph&, const ops::Mc2MoeContext&, ge::GNode&)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:585:55: warning: ‘static ge::Operator ge::OperatorFactory::CreateOperator(const std::string&, const std::string&)’ is deprecated: Please use static Operator CreateOperator(const char_t *, const char_t *) instead. [-Wdeprecated-declarations]
+  585 |     auto constOp = ge::OperatorFactory::CreateOperator(kContextConstName, "Const");
+      |                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:24:
+/home/developer/Ascend/cann-9.1.0/include/graph/operator_factory.h:40:19: note: declared here
+   40 |   static Operator CreateOperator(const std::string &operator_name, const std::string &operator_type);
+      |                   ^~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp: In static member function ‘static ge::graphStatus ops::Mc2MoeGraphContext::GetMc2ContextA5(ge::Graph&, const std::string&, const std::string&, const ge::GNode&, ge::GNode&, int64_t&)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:643:36: warning: missing initializer for member ‘ops::Mc2MoeContext::rankSizePerServer’ [-Wmissing-field-initializers]
+  643 |             Mc2MoeContext context{0};
+      |                                    ^
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:643:36: warning: missing initializer for member ‘ops::Mc2MoeContext::kfcContextAddr’ [-Wmissing-field-initializers]
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:643:36: warning: missing initializer for member ‘ops::Mc2MoeContext::epHcclBuffer_’ [-Wmissing-field-initializers]
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp: In member function ‘ge::graphStatus ops::Mc2MoeGraphContext::CreateNewMc2Context(ge::Graph&, const std::string&, const std::string&, const std::string&, ge::GNode&, int64_t&)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:661:28: warning: missing initializer for member ‘ops::Mc2MoeContext::rankSizePerServer’ [-Wmissing-field-initializers]
+  661 |     Mc2MoeContext context{0};
+      |                            ^
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:661:28: warning: missing initializer for member ‘ops::Mc2MoeContext::kfcContextAddr’ [-Wmissing-field-initializers]
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_moe_graph_context.cpp:661:28: warning: missing initializer for member ‘ops::Mc2MoeContext::epHcclBuffer_’ [-Wmissing-field-initializers]
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_gen_task_ops_utils_arch35.cpp: In static member function ‘static ge::Status ops::Mc2Arch35GenTaskOpsUtils::CreateCCUFusionTask(const gert::ExeResGenerationContext*, std::vector<std::vector<unsigned char> >&)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_graph/mc2_gen_task_ops_utils_arch35.cpp:62:26: warning: comparison of integer expressions of different signedness: ‘size_t’ {aka ‘long unsigned int’} and ‘int32_t’ {aka ‘int’} [-Wsign-compare]
+   62 |     for (size_t i = 0; i < groupInfo.groupCnt; ++i) {
+      |                        ~~^~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_graph/allto_allv_grouped_mat_mul_gen_task_training.cpp: In function ‘ge::Status ops::AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext*, std::vector<std::vector<unsigned char> >&)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_graph/allto_allv_grouped_mat_mul_gen_task_training.cpp:92:1: warning: control reaches end of non-void function [-Wreturn-type]
+   92 | }
+      | ^
+[2026-06-24 19:49:11] [  8%] Generating version.info
+[2026-06-24 19:49:11] [ 10%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/tbe_tiling_api.cpp.o
+[2026-06-24 19:49:11] [ 10%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/shape_util.cpp.o
+[2026-06-24 19:49:11] [ 12%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_base.cpp.o
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.h:21,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.cpp:15:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.h:24:7: warning: base class ‘class HCCLPerformanceModel’ has accessible non-virtual destructor [-Wnon-virtual-dtor]
+   24 | class HCCLPerformanceArch35 : public HCCLPerformanceModel
+      |       ^~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.h:24:7: warning: ‘class HCCLPerformanceArch35’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.cpp: In member function ‘virtual uint64_t HCCLPerformanceArch35::InverseCommTime(double) const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.cpp:72:108: warning: comparing floating-point with ‘==’ or ‘!=’ is unsafe [-Wfloat-equal]
+   72 |         if (commTypeInfo_.kernelType == KernelType::ALL_REDUCE && commEstimatePar_.timeToSizeParabolicPar2 != 0.0f) {
+      |                                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+[2026-06-24 19:49:11] [ 12%] Creating directories for 'external_eigen'
+[2026-06-24 19:49:11] [ 12%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/broadcast/broadcast_tiling_noncontiguous.cpp.o
+[2026-06-24 19:49:11] [ 13%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_util_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/util/fp16.cpp.o
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_formulaic_tiling.h:20,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_formulaic_tiling.cpp:18:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+[2026-06-24 19:49:11] [ 14%] Building CXX object common/stub/op_api/CMakeFiles/opapi_math.dir/opapi_stub.cpp.o
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.h:21,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/mc2_fit_based_balance_tiling.h:20,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/mc2_fit_based_balance_tiling.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.h:24:7: warning: base class ‘class HCCLPerformanceModel’ has accessible non-virtual destructor [-Wnon-virtual-dtor]
+   24 | class HCCLPerformanceArch35 : public HCCLPerformanceModel
+      |       ^~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance_arch35.h:24:7: warning: ‘class HCCLPerformanceArch35’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+[2026-06-24 19:49:11] [ 15%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/elewise/elewise_tiling.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_graph/allto_allv_quant_grouped_mat_mul_gen_task_training.cpp: In function ‘ge::Status ops::AlltoAllvQuantGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext*)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_graph/allto_allv_quant_grouped_mat_mul_gen_task_training.cpp:63:70: warning: comparison of integer expressions of different signedness: ‘int64_t’ {aka ‘long int’} and ‘const size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+   63 |     if ((isArch35 &&  commMode == "ai_cpu") || (isArch35 && rankSize > RANK_DIM_BOUNDARY && commMode == "")) {
+      |                                                             ~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_graph/allto_allv_quant_grouped_mat_mul_gen_task_training.cpp:67:73: warning: comparison of integer expressions of different signedness: ‘int64_t’ {aka ‘long int’} and ‘const size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+   67 |     } else if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= RANK_DIM_BOUNDARY && commMode == "")) {
+      |                                                                ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_graph/allto_allv_quant_grouped_mat_mul_gen_task_training.cpp: In function ‘ge::Status ops::AlltoAllvQuantGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext*, std::vector<std::vector<unsigned char> >&)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_graph/allto_allv_quant_grouped_mat_mul_gen_task_training.cpp:85:69: warning: comparison of integer expressions of different signedness: ‘int64_t’ {aka ‘long int’} and ‘const size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+   85 |     if ((isArch35 && commMode == "ai_cpu") || (isArch35 && rankSize > RANK_DIM_BOUNDARY && commMode == "")) {
+      |                                                            ~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_graph/allto_allv_quant_grouped_mat_mul_gen_task_training.cpp:88:73: warning: comparison of integer expressions of different signedness: ‘int64_t’ {aka ‘long int’} and ‘const size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+   88 |     } else if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= RANK_DIM_BOUNDARY && commMode == "")) {
+      |                                                                ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_graph/allto_allv_quant_grouped_mat_mul_gen_task_training.cpp:92:1: warning: control reaches end of non-void function [-Wreturn-type]
+   92 | }
+      | ^
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/one_calc_two_comm_tiling.h:20,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/one_calc_two_comm_tiling.cpp:18:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.cpp:20:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+[2026-06-24 19:49:11] [ 16%] Generating version.ops-transformer.info
+[2026-06-24 19:49:11] [ 16%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_tiling_objs.dir/__/__/__/third_party/opbase/src/op_common/atvoss/reduce/reduce_tiling.cpp.o
+[2026-06-24 19:49:11] [ 16%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/allto_allv_grouped_mat_mul_infershape.cpp.o
+[2026-06-24 19:49:11] [ 16%] Building CXX object common/stub/op_graph/CMakeFiles/proto_math.dir/math_proto_stub.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_transfer.cpp:16: warning: macro "_CONTEXT_TRANSFER_CC_" is not used [-Wunused-macros]
+   16 | #define _CONTEXT_TRANSFER_CC_
+      | 
+[2026-06-24 19:49:11] [ 16%] Generating scripts/install.sh, scripts/upgrade.sh
+[2026-06-24 19:49:11] [ 17%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/__/__/common/op_host/mc2_common_infershape.cpp.o
+[2026-06-24 19:49:11] [ 17%] Copying update proto /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_graph/allto_allv_grouped_mat_mul_proto.h to /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/autogen/updateproto/allto_allv_grouped_mat_mul_proto.cpp
+[2026-06-24 19:49:11] [ 17%] Building CXX object CMakeFiles/op_host_aclnn.dir/op_host_aclnn_stub.cpp.o
+[2026-06-24 19:49:11] [ 19%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_broadcast_util.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_hcom_topo_info.cpp: In member function ‘HcclResult Mc2Hcom::MC2HcomTopology::CallHcomGetRankSizeEx(const char*, uint32_t*, uint32_t) const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_hcom_topo_info.cpp:138:99: warning: unused parameter ‘flag’ [-Wunused-parameter]
+  138 | HcclResult MC2HcomTopology::CallHcomGetRankSizeEx(const char *group, uint32_t *ranksize, uint32_t flag) const
+      |                                                                                          ~~~~~~~~~^~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_hcom_topo_info.cpp: In member function ‘HcclResult Mc2Hcom::MC2HcomTopology::CallHcomGetL0TopoTypeEx(const char*, CommTopo*, uint32_t) const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_hcom_topo_info.cpp:153:101: warning: unused parameter ‘flag’ [-Wunused-parameter]
+  153 | HcclResult MC2HcomTopology::CallHcomGetL0TopoTypeEx(const char *group, CommTopo *topoType, uint32_t flag) const
+      |                                                                                            ~~~~~~~~~^~~~
+[2026-06-24 19:49:11] [ 19%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/__/__/3rd/common/op_host/matmul_common_infershape.cpp.o
+[2026-06-24 19:49:11] [ 20%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_gentask_obj.dir/__/__/common/utils/mc2_platform_info.cpp.o
+[2026-06-24 19:49:11] [ 20%] Building CXX object CMakeFiles/op_host_aclnnExc.dir/op_host_aclnn_exc_stub.cpp.o
+[2026-06-24 19:49:11] [ 21%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_gentask_obj.dir/__/__/common/op_graph/matmul_all_reduce_gen_task_ops_utils.cpp.o
+[2026-06-24 19:49:11] [ 21%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_gentask_obj.dir/__/__/common/op_graph/mc2_gen_task_ops_utils.cpp.o
+[2026-06-24 19:49:12] [ 22%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_gentask_obj.dir/__/__/common/op_graph/mc2_moe_graph_context.cpp.o
+[2026-06-24 19:49:12] generate proto cpp_out onnx by /home/developer/Ascend/cann-9.1.0/include/proto/ge_onnx.proto
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_advanced.cpp: In member function ‘virtual ge::graphStatus optiling::Mc2batch_matmul_v3_advanced::Mc2BatchMatMulV3Tiling::DoTiling()’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_advanced.cpp:43:34: warning: unused variable ‘socVersion’ [-Wunused-variable]
+   43 |     platform_ascendc::SocVersion socVersion =
+      |                                  ^~~~~~~~~~
+[2026-06-24 19:49:12] [ 22%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_gentask_obj.dir/__/__/common/op_graph/mc2_moe_gen_task_ops_utils.cpp.o
+[2026-06-24 19:49:12] [ 23%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_gentask_obj.dir/__/op_graph/allto_allv_grouped_mat_mul_gen_task_training.cpp.o
+[2026-06-24 19:49:12] [ 24%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_host/allto_allv_quant_grouped_mat_mul_infershape.cpp.o
+[2026-06-24 19:49:12] [ 24%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_elewise_util.cpp.o
+[2026-06-24 19:49:12] [ 24%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_gentask_obj.dir/__/__/common/op_graph/mc2_gen_task_ops_utils_arch35.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_advanced.cpp: In member function ‘virtual ge::graphStatus optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Tiling::DoTiling()’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_advanced.cpp:278:34: warning: unused variable ‘socVersion’ [-Wunused-variable]
+  278 |     platform_ascendc::SocVersion socVersion =
+      |                                  ^~~~~~~~~~
+[2026-06-24 19:49:12] [ 25%] Building update proto files
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/cmake/scripts/util/ascendc_impl_build.py:190: SyntaxWarning: invalid escape sequence '\d'
+  IMPL_API = '''
+[2026-06-24 19:49:12] [ 26%] Linking CXX shared library libop_host_aclnn.so
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_full_load_tiling.cpp: In function ‘uint64_t {anonymous}::GetStepSmallK91095(const optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args&, const optiling::mc2_matmul_v3_advanced::Mc2MatMulV3RunInfo&, bool)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_full_load_tiling.cpp:64:16: warning: variable ‘inputFormat’ set but not used [-Wunused-but-set-variable]
+   64 |     ge::Format inputFormat = args.bFormat;
+      |                ^~~~~~~~~~~
+[2026-06-24 19:49:12] [ 26%] Built target allto_allv_grouped_mat_mul_ascend950_mkdir
+[2026-06-24 19:49:12] [ 28%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/op_tiling/allto_allv_grouped_mat_mul_tiling.cpp.o
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/quant_batch_matmul_v3_checker.h:17,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:134:18: warning: ‘virtual void Ops::Transformer::OpTiling::TilingBaseClass::Reset(gert::TilingContext*)’ was hidden [-Woverloaded-virtual=]
+  134 |     virtual void Reset(gert::TilingContext* context)
+      |                  ^~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.cpp:19:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h:132:10: note:   by ‘void optiling::Mc2AdaptiveSlidingWindowTiling::Reset()’
+  132 |     void Reset();
+      |          ^~~~~
+[2026-06-24 19:49:12] [ 29%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opbase_infer_objs.dir/__/__/__/third_party/opbase/src/op_common/op_host/infershape_reduce_util.cpp.o
+[2026-06-24 19:49:12] [ 29%] Linking CXX shared library libop_host_aclnnExc.so
+[2026-06-24 19:49:12] [ 29%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/op_tiling/arch35/allto_allv_grouped_mat_mul_tiling_a5.cpp.o
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_cache.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_basic_tiling.cpp:25:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/common/op_host/op_tiling/tiling_cache.h: In instantiation of ‘void Ops::Transformer::TilingCache<HashInput, HashItem>::Add(uint32_t, const HashInput&, const HashItem&) [with HashInput = optiling::Mc2QuantBatchMatmulV3HashInput; HashItem = optiling::Mc2QuantBatchMatmulV3HashItem; uint32_t = unsigned int]’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_basic_tiling.cpp:1291:24:   required from here
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/common/op_host/op_tiling/tiling_cache.h:28:43: warning: unused parameter ‘hash_input’ [-Wunused-parameter]
+   28 |   void Add(uint32_t key, const HashInput &hash_input, const HashItem &value) {
+      |                          ~~~~~~~~~~~~~~~~~^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:134:18: warning: ‘virtual void Ops::Transformer::OpTiling::TilingBaseClass::Reset(gert::TilingContext*)’ was hidden [-Woverloaded-virtual=]
+  134 |     virtual void Reset(gert::TilingContext* context)
+      |                  ^~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.cpp:26:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h:132:10: note:   by ‘void optiling::Mc2AdaptiveSlidingWindowTiling::Reset()’
+  132 |     void Reset();
+      |          ^~~~~
+[2026-06-24 19:49:12] [ 29%] Linking CXX shared library libop_host_aclnnInner.so
+[2026-06-24 19:49:12] [ 29%] Built target allto_allv_grouped_mat_mul_ascend950_py_copy
+[2026-06-24 19:49:12] [ 30%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/hccl_formulaic_tiling.cpp.o
+[2026-06-24 19:49:12] [ 31%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/hccl_performance_arch35.cpp.o
+[2026-06-24 19:49:12] [ 32%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/opgraph_transformer_gentask_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_graph/allto_allv_quant_grouped_mat_mul_gen_task_training.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-06-24 19:49:12] [ 32%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/matmul_formulaic_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Lock file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/.gen.lock
+[2026-06-24 19:49:12] [ 33%] Performing download step (DIR copy) for 'external_eigen'
+[2026-06-24 19:49:12] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-24 19:49:12] [ 33%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/matmul_performance.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] OPP path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-24 19:49:12] [ 34%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/mc2_fit_based_balance_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Output dir: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code
+[2026-06-24 19:49:12] [ 34%] Linking CXX shared library ../../../libproto_math.so
+[2026-06-24 19:49:12] [ 34%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/mc2_matmul_tiling_cfg.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Module: math
+[2026-06-24 19:49:12] [ 34%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/hccl_performance.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-24 19:49:12] [ 35%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/mc2_tiling_utils.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Exclude ops: 
+[2026-06-24 19:49:12] [ 35%] Linking CXX shared library ../../../liboptiling.so
+[2026-06-24 19:49:12] [ES-GEN] ========== Main Logic Started ==========
+[2026-06-24 19:49:12] [ 35%] Built target opbase_util_objs
+[2026-06-24 19:49:12] [ 35%] Built target common_transformer_obj
+[2026-06-24 19:49:12] [ES-GEN] Using flock file locking mechanism
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.cpp: In function ‘bool optiling::CheckShape(gert::TilingContext*, Mc2WeightQuantBatchMatmulInfo*, platform_ascendc::SocVersion)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.cpp:552:120: warning: unused parameter ‘socVersion’ [-Wunused-parameter]
+  552 | bool CheckShape(gert::TilingContext* context, Mc2WeightQuantBatchMatmulInfo* inputParams, platform_ascendc::SocVersion socVersion)
+      |                                                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~
+[2026-06-24 19:49:12] [ 35%] Built target common_transformer_fallback_obj
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.cpp:15:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h: In member function ‘virtual uint64_t optiling::Mc2WeightQuantBatchMatmulV2TilingMsdGroup::GetTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h:92:22: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2TilingMsdGroup’ [-Wshadow]
+   92 |             uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |                      ^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_templates_registry.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h:19:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h:118:22: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2TilingMsdGroup’ [-Wshadow]
+  118 |             uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |                      ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.cpp: In member function ‘uint64_t optiling::Mc2WeightQuantBatchMatmulV2Msd::GetInnerPreciseTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.cpp:381:14: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2Msd’ [-Wshadow]
+  381 |     uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |              ^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_templates_registry.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.cpp: In member function ‘virtual uint64_t optiling::Mc2WeightQuantBatchMatmulV2Msd::GetTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.cpp:422:14: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2Msd’ [-Wshadow]
+  422 |     uint64_t tilingKey_;
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.cpp: In member function ‘virtual uint64_t optiling::Mc2WeightQuantBatchMatmulV2TilingFixpipe::GetTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.cpp:237:14: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2TilingFixpipe’ [-Wshadow]
+  237 |     uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |              ^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_templates_registry.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.cpp: In member function ‘virtual uint64_t optiling::Mc2WeightQuantBatchMatmulV2TilingSplitK::GetTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.cpp:264:14: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2TilingSplitK’ [-Wshadow]
+  264 |     uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |              ^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_templates_registry.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+[2026-06-24 19:49:12] [ 37%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/one_calc_two_comm_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] [flock] Acquired lock immediately
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_registry.cpp:21:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h: In member function ‘virtual uint64_t optiling::Mc2WeightQuantBatchMatmulV2TilingMsdGroup::GetTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h:92:22: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2TilingMsdGroup’ [-Wshadow]
+   92 |             uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |                      ^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_templates_registry.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_checker_for_mmads8s4.h:17,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_registry.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.h:118:22: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2TilingMsdGroup’ [-Wshadow]
+  118 |             uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |                      ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.cpp: In member function ‘virtual uint64_t optiling::Mc2WeightQuantBatchMatmulV2WeightNz::GetTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.cpp:790:14: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2WeightNz’ [-Wshadow]
+  790 |     uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |              ^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_templates_registry.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.cpp:15:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.cpp: In member function ‘virtual uint64_t optiling::Mc2WeightQuantBatchMatmulV2CustomNzSplitK::GetTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.cpp:202:14: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2CustomNzSplitK’ [-Wshadow]
+  202 |     uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |              ^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_templates_registry.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+[2026-06-24 19:49:12] [ 37%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/moe_tiling_base.cpp.o
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:23,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_util.h:24: warning: "OPS_CHECK_NULL_WITH_CONTEXT" redefined
+   24 | #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                \
+      | 
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_log.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:22:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_common_log.h:193: note: this is the location of the previous definition
+  193 | #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                                      \
+      | 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_util.h:32: warning: "OPS_CHECK_NULL_WITH_CONTEXT_RET" redefined
+   32 | #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret)                                       \
+      | 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_common_log.h:200: note: this is the location of the previous definition
+  200 | #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret)                                                             \
+      | 
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_formulaic_tiling.h:20,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:24:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h: In member function ‘virtual ge::graphStatus optiling::AlltoAllvQuantGmmTilingCommon::DoGmmTiling(uint64_t)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:78:50: warning: unused parameter ‘gmmMSize’ [-Wunused-parameter]
+   78 |     virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize) {return ge::GRAPH_SUCCESS;};
+      |                                         ~~~~~~~~~^~~~~~~~
+[2026-06-24 19:49:12] [ 37%] Linking CXX shared library ../../../libopapi_math.so
+[2026-06-24 19:49:12] [ES-GEN] Waiting for filesystem sync...
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling.cpp:29:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_util.h:24: warning: "OPS_CHECK_NULL_WITH_CONTEXT" redefined
+   24 | #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                \
+      | 
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_log.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling.cpp:22:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_common_log.h:193: note: this is the location of the previous definition
+  193 | #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                                      \
+      | 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_util.h:32: warning: "OPS_CHECK_NULL_WITH_CONTEXT_RET" redefined
+   32 | #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret)                                       \
+      | 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_common_log.h:200: note: this is the location of the previous definition
+  200 | #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret)                                                             \
+      | 
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_formulaic_tiling.h:20,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling.cpp:20:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+[2026-06-24 19:49:12] [ 37%] Built target opbase_tiling_objs
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_api/mc2_context.cpp: In member function ‘aclnnStatus Mc2Aclnn::Mc2Context::CheckProtocolSupport(void* const&, uint32_t*&, uint32_t&)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_api/mc2_context.cpp:393:14: warning: unused variable ‘dstRankId’ [-Wunused-variable]
+  393 |     uint32_t dstRankId = 0;
+      |              ^~~~~~~~~
+[2026-06-24 19:49:12] [ 37%] Built target gen_version_info
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:23,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_mx_quant_grouped_mat_mul_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_mx_quant_grouped_mat_mul_tiling.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_util.h:24: warning: "OPS_CHECK_NULL_WITH_CONTEXT" redefined
+   24 | #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                \
+      | 
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_log.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:22:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_common_log.h:193: note: this is the location of the previous definition
+  193 | #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                                      \
+      | 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_util.h:32: warning: "OPS_CHECK_NULL_WITH_CONTEXT_RET" redefined
+   32 | #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret)                                       \
+      | 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_common_log.h:200: note: this is the location of the previous definition
+  200 | #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret)                                                             \
+      | 
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_formulaic_tiling.h:20,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:24:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h: In member function ‘virtual ge::graphStatus optiling::AlltoAllvQuantGmmTilingCommon::DoGmmTiling(uint64_t)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:78:50: warning: unused parameter ‘gmmMSize’ [-Wunused-parameter]
+   78 |     virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize) {return ge::GRAPH_SUCCESS;};
+      |                                         ~~~~~~~~~^~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_mx_quant_grouped_mat_mul_tiling.h:19:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h: At global scope:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h:161:10: warning: ‘virtual void optiling::Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling::Reset(gert::TilingContext*)’ was hidden [-Woverloaded-virtual=]
+  161 |     void Reset(gert::TilingContext *context) override
+      |          ^~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_mx_quant_grouped_mat_mul_tiling.h:59:10: note:   by ‘virtual void optiling::AlltoAllvMXQuantGmmTilingHelper::Reset()’
+   59 |     void Reset() override {}
+      |          ^~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:23,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_tt_quant_grouped_mat_mul_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_tt_quant_grouped_mat_mul_tiling.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_util.h:24: warning: "OPS_CHECK_NULL_WITH_CONTEXT" redefined
+   24 | #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                \
+      | 
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_log.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:22:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_common_log.h:193: note: this is the location of the previous definition
+  193 | #define OPS_CHECK_NULL_WITH_CONTEXT(context, ptr)                                                                      \
+      | 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/context_util.h:32: warning: "OPS_CHECK_NULL_WITH_CONTEXT_RET" redefined
+   32 | #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret)                                       \
+      | 
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/utils/mc2_common_log.h:200: note: this is the location of the previous definition
+  200 | #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret)                                                             \
+      | 
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_formulaic_tiling.h:20,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:24:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/common/op_host/op_tiling/hccl_performance.h:32:7: warning: ‘class HCCLPerformanceModel’ has virtual functions and accessible non-virtual destructor [-Wnon-virtual-dtor]
+   32 | class HCCLPerformanceModel {
+      |       ^~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h: In member function ‘virtual ge::graphStatus optiling::AlltoAllvQuantGmmTilingCommon::DoGmmTiling(uint64_t)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h:78:50: warning: unused parameter ‘gmmMSize’ [-Wunused-parameter]
+   78 |     virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize) {return ge::GRAPH_SUCCESS;};
+      |                                         ~~~~~~~~~^~~~~~~~
+[2026-06-24 19:49:12] [ 37%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/utils/context_transfer.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.cpp: In member function ‘virtual uint64_t optiling::Mc2WeightQuantBatchMatmulV2TilingCustom::GetTilingKey() const’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.cpp:739:14: warning: declaration of ‘tilingKey_’ shadows a member of ‘optiling::Mc2WeightQuantBatchMatmulV2TilingCustom’ [-Wshadow]
+  739 |     uint64_t tilingKey_ = GET_TPL_TILING_KEY(
+      |              ^~~~~~~~~~
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_templates_registry.h:22,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.h:19,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/common/include/op_host/tiling_base.h:255:14: note: shadowed declaration is here
+  255 |     uint64_t tilingKey_{0};
+      |              ^~~~~~~~~~
+[2026-06-24 19:49:12] [ 37%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/utils/mc2_log.cpp.o
+[2026-06-24 19:49:12] [ 38%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/utils/mc2_moe_utils.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp: In function ‘bool {anonymous}::CheckNullStatus(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, bool, const aclTensor*, const aclTensor*)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:57:46: warning: unused parameter ‘mmXOptional’ [-Wunused-parameter]
+   57 |                             const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
+      |                             ~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:57:76: warning: unused parameter ‘mmWeightOptional’ [-Wunused-parameter]
+   57 |                             const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
+      |                                                           ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:58:46: warning: unused parameter ‘mmXScaleOptional’ [-Wunused-parameter]
+   58 |                             const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
+      |                             ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:58:81: warning: unused parameter ‘mmWeightScaleOptional’ [-Wunused-parameter]
+   58 |                             const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
+      |                                                                ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:59:67: warning: unused parameter ‘mmYOptional’ [-Wunused-parameter]
+   59 |                             bool permuteOutFlag, const aclTensor *mmYOptional, const aclTensor *permuteOutOptional)
+      |                                                  ~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp: In function ‘bool {anonymous}::CheckNotNull(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, int64_t, int64_t)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:78:34: warning: unused parameter ‘gmmWeightQuantMode’ [-Wunused-parameter]
+   78 |                          int64_t gmmWeightQuantMode)
+      |                          ~~~~~~~~^~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp: In function ‘aclnnStatus {anonymous}::CheckParams(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, int64_t, int64_t, int64_t, int64_t, const char*, int64_t, bool, const aclTensor*, const aclTensor*, const aclTensor*)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:380:68: warning: unused parameter ‘mmXQuantMode’ [-Wunused-parameter]
+  380 |                                int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
+      |                                                            ~~~~~~~~^~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:380:90: warning: unused parameter ‘mmWeightQuantMode’ [-Wunused-parameter]
+  380 |                                int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
+      |                                                                                  ~~~~~~~~^~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:381:44: warning: unused parameter ‘group’ [-Wunused-parameter]
+  381 |                                const char *group, int64_t epWorldSize, bool permuteOutFlag, const aclTensor *gmmY,
+      |                                ~~~~~~~~~~~~^~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:381:59: warning: unused parameter ‘epWorldSize’ [-Wunused-parameter]
+  381 |                                const char *group, int64_t epWorldSize, bool permuteOutFlag, const aclTensor *gmmY,
+      |                                                   ~~~~~~~~^~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp: In function ‘aclnnStatus {anonymous}::aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, int64_t, int64_t, int64_t, int64_t, const char*, int64_t, const aclIntArray*, const aclIntArray*, bool, bool, int64_t, bool, aclTensor*, aclTensor*, aclTensor*, uint64_t*, aclOpExecutor**)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:475:14: warning: declaration of ‘notContiguous’ shadows a previous local [-Wshadow]
+  475 |         bool notContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
+      |              ^~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:449:10: note: shadowed declaration is here
+  449 |     bool notContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
+      |          ^~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:477:17: warning: unused variable ‘mmDim0’ [-Wunused-variable]
+  477 |         int64_t mmDim0 = mmWeightOptional->GetViewShape().GetDim(0);
+      |                 ^~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:478:17: warning: unused variable ‘mmDim1’ [-Wunused-variable]
+  478 |         int64_t mmDim1 = mmWeightOptional->GetViewShape().GetDim(1);
+      |                 ^~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:479:17: warning: unused variable ‘mmStride0’ [-Wunused-variable]
+  479 |         int64_t mmStride0 = mmWeightOptional->GetViewStrides()[0];
+      |                 ^~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp:480:17: warning: unused variable ‘mmStride1’ [-Wunused-variable]
+  480 |         int64_t mmStride1 = mmWeightOptional->GetViewStrides()[1];
+      |                 ^~~~~~~~~
+[2026-06-24 19:49:12] [ 39%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/utils/mc2_hcom_topo_info.cpp.o
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp: In function ‘bool {anonymous}::CheckNullStatus(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, bool, const aclTensor*, const aclTensor*)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:65:22: warning: unused parameter ‘mmXOptional’ [-Wunused-parameter]
+   65 |     const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional,
+      |     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:65:52: warning: unused parameter ‘mmWeightOptional’ [-Wunused-parameter]
+   65 |     const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional,
+      |                                   ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:65:87: warning: unused parameter ‘mmXScaleOptional’ [-Wunused-parameter]
+   65 |     const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional,
+      |                                                                      ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:66:22: warning: unused parameter ‘mmWeightScaleOptional’ [-Wunused-parameter]
+   66 |     const aclTensor *mmWeightScaleOptional, bool permuteOutFlag, const aclTensor *mmYOptional,
+      |     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:66:83: warning: unused parameter ‘mmYOptional’ [-Wunused-parameter]
+   66 |     const aclTensor *mmWeightScaleOptional, bool permuteOutFlag, const aclTensor *mmYOptional,
+      |                                                                  ~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp: In function ‘bool {anonymous}::CheckNotNull(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, int64_t, int64_t)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:83:97: warning: unused parameter ‘gmmWeightQuantMode’ [-Wunused-parameter]
+   83 |     const aclTensor *gmmXScale, const aclTensor *gmmWeightScale, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode)
+      |                                                                                         ~~~~~~~~^~~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp: In function ‘aclnnStatus {anonymous}::CheckParams(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, int64_t, int64_t, int64_t, int64_t, const char*, int64_t, bool, const aclTensor*, const aclTensor*, const aclTensor*)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:389:41: warning: unused parameter ‘mmXQuantMode’ [-Wunused-parameter]
+  389 |     int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode, const char *group, int64_t epWorldSize,
+      |                                 ~~~~~~~~^~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:389:63: warning: unused parameter ‘mmWeightQuantMode’ [-Wunused-parameter]
+  389 |     int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode, const char *group, int64_t epWorldSize,
+      |                                                       ~~~~~~~~^~~~~~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:389:94: warning: unused parameter ‘group’ [-Wunused-parameter]
+  389 |     int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode, const char *group, int64_t epWorldSize,
+      |                                                                                  ~~~~~~~~~~~~^~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:389:109: warning: unused parameter ‘epWorldSize’ [-Wunused-parameter]
+  389 |     int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode, const char *group, int64_t epWorldSize,
+      |                                                                                                     ~~~~~~~~^~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp: In function ‘aclnnStatus {anonymous}::aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, int64_t, int64_t, int64_t, int64_t, const char*, const char*, int64_t, const aclIntArray*, const aclIntArray*, bool, bool, int64_t, bool, aclTensor*, aclTensor*, aclTensor*, uint64_t*, aclOpExecutor**)’:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:516:14: warning: declaration of ‘notContiguous’ shadows a previous local [-Wshadow]
+  516 |         bool notContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
+      |              ^~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:489:10: note: shadowed declaration is here
+  489 |     bool notContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
+      |          ^~~~~~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:518:17: warning: unused variable ‘mmDim0’ [-Wunused-variable]
+  518 |         int64_t mmDim0 = mmWeightOptional->GetViewShape().GetDim(0);
+      |                 ^~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:519:17: warning: unused variable ‘mmDim1’ [-Wunused-variable]
+  519 |         int64_t mmDim1 = mmWeightOptional->GetViewShape().GetDim(1);
+      |                 ^~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:520:17: warning: unused variable ‘mmStride0’ [-Wunused-variable]
+  520 |         int64_t mmStride0 = mmWeightOptional->GetViewStrides()[0];
+      |                 ^~~~~~~~~
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp:521:17: warning: unused variable ‘mmStride1’ [-Wunused-variable]
+  521 |         int64_t mmStride1 = mmWeightOptional->GetViewStrides()[1];
+      |                 ^~~~~~~~~
+[2026-06-24 19:49:12] [ 39%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/new_mc2_matmul_tiling_cfg.cpp.o
+[2026-06-24 19:49:12] [ 39%] Built target update_proto_target
+[2026-06-24 19:49:12] [ 39%] Built target opgraph_transformer_fallback_obj
+[2026-06-24 19:49:12] [ 39%] Built target ops_utils_inc_kernel_ascend950
+[2026-06-24 19:49:12] [ 39%] Built target modify_vendor
+[2026-06-24 19:49:12] [ 39%] Built target opbase_infer_objs
+[2026-06-24 19:49:12] [ 39%] Built target op_host_aclnn
+[2026-06-24 19:49:12] [ 39%] Built target common_src_copy
+[2026-06-24 19:49:12] [ 39%] Built target version_ops-transformer_info
+[2026-06-24 19:49:12] [ 40%] Generating binary/ascend950/src/allto_allv_quant_grouped_mat_mul/allto_allv_quant_grouped_mat_mul_ascend950_src_copy.done
+[2026-06-24 19:49:12] [ 40%] Generating binary/ascend950/src/3rd/3rd_ascend950_src_copy.done
+[2026-06-24 19:49:12] [ 40%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/common/op_host/op_tiling/new_mc2_tiling_utils.cpp.o
+[2026-06-24 19:49:12] [ 40%] Built target op_host_aclnnExc
+[2026-06-24 19:49:12] [ 40%] Built target opbuild_gen_default
+[2026-06-24 19:49:12] [ 40%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/ops_legacy/op_tiling/op_cache_tiling.cpp.o
+[2026-06-24 19:49:12] [ 41%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/ops_legacy/op_tiling/runtime_kb_api.cpp.o
+[2026-06-24 19:49:12] [ 42%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/ops_legacy/op_tiling/legacy_common_manager.cpp.o
+[2026-06-24 19:49:12] [ 42%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/batch_mat_mul_v3_def.cpp.o
+[2026-06-24 19:49:12] [ 42%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_basic_tiling.cpp.o
+[2026-06-24 19:49:12] [ 43%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_al1_full_load_tiling.cpp.o
+[2026-06-24 19:49:12] [ 44%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_basic_tiling.cpp.o
+[2026-06-24 19:49:12] [ 44%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_bl1_full_load_tiling.cpp.o
+[2026-06-24 19:49:12] [ 44%] Built target ophost_transformer_infer_obj
+[2026-06-24 19:49:12] [ 46%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_asw_tiling.cpp.o
+[2026-06-24 19:49:12] [ 46%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_basicapi_tiling.cpp.o
+[2026-06-24 19:49:12] [ 46%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_iterbatch_tiling.cpp.o
+[2026-06-24 19:49:12] [ 47%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/arch35/batch_matmul_v3_tiling_advanced.cpp.o
+[2026-06-24 19:49:12] [ 47%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_base_tiling.cpp.o
+[2026-06-24 19:49:12] [ 48%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.cpp.o
+[2026-06-24 19:49:12] [ 48%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/common/op_host/op_tiling/debug_tiling.cpp.o
+[2026-06-24 19:49:12] [ 49%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/common/op_host/op_tiling/hash.cpp.o
+[2026-06-24 19:49:12] [ 49%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/common/op_host/op_tiling/lock.cpp.o
+[2026-06-24 19:49:12] [ 49%] Built target opgraph_transformer_gentask_obj
+[2026-06-24 19:49:12] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-06-24 19:49:12] [ 49%] Built target allto_allv_quant_grouped_mat_mul_ascend950_src_copy
+[2026-06-24 19:49:12] [ 50%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Lock file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/.gen.lock
+[2026-06-24 19:49:12] [ 50%] Built target opbuild_gen_exc
+[2026-06-24 19:49:12] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.1.0/bin/gen_esb
+[2026-06-24 19:49:12] [ 50%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/mat_mul_v3_def.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] OPP path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-24 19:49:12] [ 51%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_basic_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Output dir: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code
+[2026-06-24 19:49:12] [ 51%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_full_load_tiling.cpp.o
+[2026-06-24 19:49:12] [ 51%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_asw_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Module: transformer_cust
+[2026-06-24 19:49:12] [ 52%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_basic_streamk_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.1.0/lib64
+[2026-06-24 19:49:12] [ 52%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_stream_k_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Exclude ops: 
+[2026-06-24 19:49:12] [ 52%] Built target opapi_math
+[2026-06-24 19:49:12] [ 53%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_advanced.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] ========== Main Logic Started ==========
+[2026-06-24 19:49:12] [ 53%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_helper.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Using flock file locking mechanism
+[2026-06-24 19:49:12] [ 53%] Built target op_host_aclnnInner
+[2026-06-24 19:49:12] [ 53%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_l2_cache.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] [flock] Acquired lock immediately
+[2026-06-24 19:49:12] [ 53%] Built target optiling
+[2026-06-24 19:49:12] [ 55%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.cpp.o
+[2026-06-24 19:49:12] [ES-GEN] Waiting for filesystem sync...
+[2026-06-24 19:49:12] [ 55%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.cpp.o
+[2026-06-24 19:49:12] [ 56%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/quant_batch_matmul_v3/op_host/op_tiling/arch35/quant_batch_matmul_v3_checker.cpp.o
+[2026-06-24 19:49:12] [ 56%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_basic_tiling.cpp.o
+[2026-06-24 19:49:12] [ 56%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling.cpp.o
+[2026-06-24 19:49:12] [ 57%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_base.cpp.o
+[2026-06-24 19:49:12] [ 57%] Built target proto_math
+[2026-06-24 19:49:12] [ 58%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.cpp.o
+[2026-06-24 19:49:12] [ 58%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/quant_batch_matmul_v3/op_host/op_tiling/quant_batch_matmul_v3_tiling_cache.cpp.o
+[2026-06-24 19:49:12] [ 59%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_sliding_window_tiling.cpp.o
+[2026-06-24 19:49:12] [ 60%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_adaptive_split_tiling.cpp.o
+[2026-06-24 19:49:12] [ 60%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_basic_block_tiling.cpp.o
+[2026-06-24 19:49:12] [ 60%] Built target opbuild_gen_inner
+[2026-06-24 19:49:12] [ 60%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/weight_quant_batch_matmul_v2_reg_base_tiling.cpp.o
+[2026-06-24 19:49:12] [ 61%] Copying OPP proto library to standard path...
+[2026-06-24 19:49:12] [ 62%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_checker_for_mmads8s4.cpp.o
+[2026-06-24 19:49:12] [ 62%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_compute_matmul_tiling.cpp.o
+[2026-06-24 19:49:12] [ 64%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling.cpp.o
+[2026-06-24 19:49:12] [ 64%] Generating autogen/aic-ascend950-ops-info.json
+[2026-06-24 19:49:12] [ 64%] Building CXX object CMakeFiles/proto_transformer_cust.dir/autogen/inner/allto_allv_quant_grouped_mat_mul_proto.cpp.o
+[2026-06-24 19:49:12] [ 65%] Building CXX object CMakeFiles/ops_aclnn.dir/autogen/inner/aclnnInner_allto_allv_grouped_mat_mul.cpp.o
+[2026-06-24 19:49:12] [ 66%] Building CXX object CMakeFiles/proto_transformer_cust.dir/autogen/updateproto/allto_allv_grouped_mat_mul_proto.cpp.o
+[2026-06-24 19:49:12] [ 66%] Building CXX object CMakeFiles/ops_aclnn.dir/autogen/inner/aclnnInner_allto_allv_quant_grouped_mat_mul.cpp.o
+[2026-06-24 19:49:12] [ 67%] Filtering proto srcs from update files
+[2026-06-24 19:49:12] [ 67%] Built target generate_proto_filtered_target
+[2026-06-24 19:49:12] [ 67%] Generating ES API code for 'es_math' using run package gen_esb...
+[2026-06-24 19:49:12] [ 68%] Linking CXX static library libops_aclnn.a
+[2026-06-24 19:49:12] Generating ES code for package: es_math
+[2026-06-24 19:49:12] [ 68%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom.cpp.o
+[2026-06-24 19:49:12] [ 68%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_custom_nz_splitk.cpp.o
+[2026-06-24 19:49:12] [ 68%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd.cpp.o
+[2026-06-24 19:49:12] [ 69%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_fixpipe.cpp.o
+[2026-06-24 19:49:12] [ 70%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_msd_group.cpp.o
+[2026-06-24 19:49:12] [ 70%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_registry.cpp.o
+[2026-06-24 19:49:12] [ 70%] Built target 3rd_ascend950_src_copy
+[2026-06-24 19:49:12] [ 71%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_splitk.cpp.o
+[2026-06-24 19:49:12] 
+[2026-06-24 19:49:12] 
+[2026-06-24 19:49:12] ==============check valid for ops info start==============
+[2026-06-24 19:49:12] ==============check valid for ops info end================
+[2026-06-24 19:49:12] 
+[2026-06-24 19:49:12] 
+[2026-06-24 19:49:12] Compile op info cfg successfully.
+[2026-06-24 19:49:12] [ 71%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_tiling_tool.cpp.o
+[2026-06-24 19:49:12] [ 73%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/3rd/weight_quant_batch_matmul_v2/op_host/op_tiling/weight_quant_batch_matmul_v2_weight_nz_tiling.cpp.o
+[2026-06-24 19:49:12] [ 73%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling.cpp.o
+[2026-06-24 19:49:12] [ 74%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.cpp.o
+[2026-06-24 19:49:12] [ 74%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_mx_quant_grouped_mat_mul_tiling.cpp.o
+[2026-06-24 19:49:12] [ 74%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.cpp.o
+[2026-06-24 19:49:12] [ 74%] Linking CXX shared library libproto_transformer_cust.so
+[2026-06-24 19:49:12] [ 75%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_tt_quant_grouped_mat_mul_tiling.cpp.o
+[2026-06-24 19:49:12] [ 75%] Built target ops_aclnn
+[2026-06-24 19:49:12] [ 75%] Generating binary/ascend950/src/allto_allv_grouped_mat_mul/allto_allv_grouped_mat_mul_ascend950_src_copy.done
+[2026-06-24 19:49:12] [ 75%] Built target generate_ops_info_ascend950
+[2026-06-24 19:49:12] INFO: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/autogen/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-06-24 19:49:12] [ 75%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/aclnn_allto_allv_grouped_mat_mul.cpp.o
+[2026-06-24 19:49:12] [ 75%] Built target generate_ops_info
+[2026-06-24 19:49:12] [ 75%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/__/common/op_api/mc2_aclnn_util.cpp.o
+[2026-06-24 19:49:12] [ 75%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/__/common/op_api/mc2_context.cpp.o
+[2026-06-24 19:49:12] [ 76%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/__/3rd/common/op_host/op_api/cube_util.cpp.o
+[2026-06-24 19:49:12] [ 77%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/aclnn_allto_allv_grouped_mat_mul_v2.cpp.o
+[2026-06-24 19:49:12] [ 77%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/__/3rd/common/op_host/op_api/matmul_util.cpp.o
+[2026-06-24 19:49:12] [ 78%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul.cpp.o
+[2026-06-24 19:49:12] [ 78%] Building CXX object mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/__/allto_allv_quant_grouped_mat_mul/op_api/aclnn_allto_allv_quant_grouped_mat_mul_v2.cpp.o
+[2026-06-24 19:49:12] [ 78%] Built target allto_allv_grouped_mat_mul_ascend950_src_copy
+[2026-06-24 19:49:12] [ 78%] Built target ophost_transformer_opapi_obj
+[2026-06-24 19:49:12] [ 79%] Generating cust_opapi_stub.cpp
+[2026-06-24 19:49:12] [ 79%] Building CXX object CMakeFiles/cust_opapi.dir/cust_opapi_stub.cpp.o
+[2026-06-24 19:49:12] [ 80%] Built target proto_transformer_cust
+[2026-06-24 19:49:12] [ 82%] Linking CXX shared library libcust_opapi.so
+[2026-06-24 19:49:12] [ 82%] No update step for 'external_eigen'
+[2026-06-24 19:49:12] [ 82%] Copying OPP proto library to standard path...
+[2026-06-24 19:49:12] [ 82%] No patch step for 'external_eigen'
+[2026-06-24 19:49:12] [ 83%] Generating ES API code for 'es_transformer_cust' using run package gen_esb...
+[2026-06-24 19:49:12] Generating ES code for package: es_transformer_cust
+[2026-06-24 19:49:12] [ 83%] Performing configure step for 'external_eigen'
+[2026-06-24 19:49:12] [ 83%] Built target generate_transformer_adapt_py
+[2026-06-24 19:49:12] INFO: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/autogen/exc/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-06-24 19:49:12] [ 83%] Built target cust_opapi
+[2026-06-24 19:49:12] -- The C compiler identification is GNU 13.3.0
+[2026-06-24 19:49:12] [ 83%] Built target generate_compile_cmd_ascend950
+[2026-06-24 19:49:12] [ 83%] Built target generate_compile_cmd
+[2026-06-24 19:49:12] [ 83%] Built target prepare_build
+[2026-06-24 19:49:12] -- The CXX compiler identification is GNU 13.3.0
+[2026-06-24 19:49:12] -- Detecting C compiler ABI info
+[2026-06-24 19:49:12] -- Detecting C compiler ABI info - done
+[2026-06-24 19:49:12] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-06-24 19:49:12] -- Detecting C compile features
+[2026-06-24 19:49:12] -- Detecting C compile features - done
+[2026-06-24 19:49:12] -- Detecting CXX compiler ABI info
+[2026-06-24 19:49:12] [ 84%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/embedding_bag_onnx_plugin.cpp.o
+[2026-06-24 19:49:12] [ 84%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/fillwindowcache_onnx_plugin.cpp.o
+[2026-06-24 19:49:12] [ 85%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/multi_head_attention_onnx_plugin.cpp.o
+[2026-06-24 19:49:12] [ 85%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_fused_attention_score_fwd_onnx_plugin.cpp.o
+[2026-06-24 19:49:12] [ 86%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_fused_attention_score_onnx_plugin.cpp.o
+[2026-06-24 19:49:12] [ 86%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_masked_softmax_with_relposbias_onnx_plugin.cpp.o
+[2026-06-24 19:49:12] [ 87%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/npu_scaled_masked_softmax_onnx_plugin.cpp.o
+[2026-06-24 19:49:12] [ 87%] Building CXX object common/src/framework/CMakeFiles/oponnx_plugin_transformer_obj.dir/tfidf_vectorizer_onnx_plugin.cpp.o
+[2026-06-24 19:49:12] -- Detecting CXX compiler ABI info - done
+[2026-06-24 19:49:12] [ 87%] Built target oponnx_plugin_transformer_obj
+[2026-06-24 19:49:12] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-06-24 19:49:12] -- Detecting CXX compile features
+[2026-06-24 19:49:12] -- Detecting CXX compile features - done
+[2026-06-24 19:49:12] -- The Fortran compiler identification is GNU 13.3.0
+[2026-06-24 19:49:12] -- Performing Test standard_math_library_linked_to_automatically
+[2026-06-24 19:49:12] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-06-24 19:49:12] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.1.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math "/home/developer/Ascend/cann-9.1.0/bin/gen_esb" --output_dir="/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code" --module_name="math" --exclude_ops=""     
+[2026-06-24 19:49:12] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-06-24 19:49:12] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.1.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust "/home/developer/Ascend/cann-9.1.0/bin/gen_esb" --output_dir="/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code" --module_name="transformer_cust" --exclude_ops=""     
+[2026-06-24 19:49:12] ==========================================
+[2026-06-24 19:49:12] ES Graph Builder Generator v1.0
+[2026-06-24 19:49:12] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-06-24 19:49:12] ==========================================
+[2026-06-24 19:49:12] Starting code generation...
+[2026-06-24 19:49:12] Environment variable check: ASCEND_OPP_PATH = /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-24 19:49:12] Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.1.0/lib64:/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build:/home/developer/Ascend/cann-9.1.0/lib64:/home/developer/Ascend/cann-9.1.0/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.1.0/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/opt/buildtools/python-3.12.9/lib:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/opt/buildtools/python-3.12.9/lib:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/opt/buildtools/python-3.12.9/lib:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/opt/buildtools/python-3.12.9/lib:
+[2026-06-24 19:49:12] Output directory: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-06-24 19:49:12] Module name: math
+[2026-06-24 19:49:12] ASCEND_OPP_PATH is: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-06-24 19:49:12] [ES-GEN] [Success] gen_esb executed successfully
+[2026-06-24 19:49:12] ops proto path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/custom/:/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/built-in/
+[2026-06-24 19:49:12] ==========================================
+[2026-06-24 19:49:12] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-06-24 19:49:12] ES Graph Builder Generator v1.0
+[2026-06-24 19:49:12] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-06-24 19:49:12] [ES-GEN] [Success] gen_esb executed successfully
+[2026-06-24 19:49:12] ==========================================
+[2026-06-24 19:49:12] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-06-24 19:49:12] Starting code generation...
+[2026-06-24 19:49:12] Environment variable check: ASCEND_OPP_PATH = /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-24 19:49:12] Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.1.0/lib64:/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build:/home/developer/Ascend/cann-9.1.0/lib64:/home/developer/Ascend/cann-9.1.0/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.1.0/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.1.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/opt/buildtools/python-3.12.9/lib:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/opt/buildtools/python-3.12.9/lib:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/opt/buildtools/python-3.12.9/lib:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/opt/buildtools/python-3.12.9/lib:
+[2026-06-24 19:49:12] Output directory: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/
+[2026-06-24 19:49:12] Module name: transformer_cust
+[2026-06-24 19:49:12] ASCEND_OPP_PATH is: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-06-24 19:49:12] ops proto path: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/custom/:/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/built-in/
+[2026-06-24 19:49:12] Get ops num: 1
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_host/op_tiling/allto_allv_grouped_mat_mul_tiling.h:29,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_host/op_tiling/allto_allv_grouped_mat_mul_tiling.cpp:16:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_host/op_tiling/../../op_kernel/allto_allv_grouped_mat_mul_tiling.h:20:10: fatal error: ../allto_allv_quant_grouped_mat_mul/mc2_templates/common/a2av_common_tiling.h: No such file or directory
+   20 | #include "../allto_allv_quant_grouped_mat_mul/mc2_templates/common/a2av_common_tiling.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+[2026-06-24 19:49:12] Generate done, generated num 1, unsupported: 
+[2026-06-24 19:49:12] Write to file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+In file included from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_host/op_tiling/arch35/../allto_allv_grouped_mat_mul_tiling.h:29,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_grouped_mat_mul_tiling_a5.h:18,
+                 from /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_grouped_mat_mul_tiling_a5.cpp:15:
+/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/allto_allv_grouped_mat_mul/op_host/op_tiling/arch35/../../../op_kernel/allto_allv_grouped_mat_mul_tiling.h:20:10: fatal error: ../allto_allv_quant_grouped_mat_mul/mc2_templates/common/a2av_common_tiling.h: No such file or directory
+   20 | #include "../allto_allv_quant_grouped_mat_mul/mc2_templates/common/a2av_common_tiling.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+[2026-06-24 19:49:12] Generated C generator aggregate file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+gmake[2]: *** [mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/build.make:76: mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/op_tiling/allto_allv_grouped_mat_mul_tiling.cpp.o] Error 1
+gmake[2]: *** Waiting for unfinished jobs....
+[2026-06-24 19:49:12] Write to file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-06-24 19:49:12] Generated C++ generator aggregate file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+gmake[2]: *** [mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/build.make:90: mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/op_tiling/arch35/allto_allv_grouped_mat_mul_tiling_a5.cpp.o] Error 1
+[2026-06-24 19:49:12] Write to file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+gmake[1]: *** [CMakeFiles/Makefile2:2232: mc2/allto_allv_grouped_mat_mul/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/all] Error 2
+gmake[1]: *** Waiting for unfinished jobs....
+[2026-06-24 19:49:12] Generated Python generator aggregate file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-06-24 19:49:12] Generated aggregate files:
+[2026-06-24 19:49:12]   C generator: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-06-24 19:49:12]   C++ generator: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-06-24 19:49:12]   Python generator: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-06-24 19:49:12] Generated util files:
+[2026-06-24 19:49:12]   Utils generator:
+[2026-06-24 19:49:12]     /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_log.h
+[2026-06-24 19:49:12] Generated files in: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-06-24 19:49:12] 
+[2026-06-24 19:49:12] ==========================================
+[2026-06-24 19:49:12] Code generation completed!
+[2026-06-24 19:49:12] Module name: math
+[2026-06-24 19:49:12] ==========================================
+[2026-06-24 19:49:12] Get ops num: 2
+[2026-06-24 19:49:12] Generate done, generated num 2, unsupported: 
+[2026-06-24 19:49:12] Write to file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-24 19:49:12] Generated C generator aggregate file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-24 19:49:12] Write to file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-24 19:49:12] Generated C++ generator aggregate file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-24 19:49:12] Write to file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-24 19:49:12] Generated Python generator aggregate file: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-24 19:49:12] Generated aggregate files:
+[2026-06-24 19:49:12]   C generator: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-06-24 19:49:12]   C++ generator: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-06-24 19:49:12]   Python generator: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-06-24 19:49:12] Generated util files:
+[2026-06-24 19:49:12]   Utils generator:
+[2026-06-24 19:49:12]     /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_log.h
+[2026-06-24 19:49:12] Generated files in: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/
+[2026-06-24 19:49:12] 
+[2026-06-24 19:49:12] ==========================================
+[2026-06-24 19:49:12] Code generation completed!
+[2026-06-24 19:49:12] Module name: transformer_cust
+[2026-06-24 19:49:12] ==========================================
+[2026-06-24 19:49:12] -- [ES Wrapper] Generated: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-06-24 19:49:12] -- [ES Wrapper] Total operators included: 1
+[2026-06-24 19:49:12] -- [ES Wrapper] Generated: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-06-24 19:49:12] -- [ES Wrapper] Total operators included: 2
+[2026-06-24 19:49:12] [ 87%] Built target generate_es_math_code
+[2026-06-24 19:49:12] [ 87%] Built target generate_es_transformer_cust_code
+[2026-06-24 19:49:12] [ 87%] Building CXX object common/stub/op_graph/CMakeFiles/es_math_obj.dir/es_math_build/generated_code/es_math_all_in_one.cpp.o
+[2026-06-24 19:49:12] [ 87%] Building Python wheel package for 'es_math'...
+[2026-06-24 19:49:12] [ 88%] Skipping Python wheel package generation for 'es_transformer_cust'
+[2026-06-24 19:49:12] [ 88%] Building CXX object CMakeFiles/es_transformer_cust_obj.dir/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp.o
+[2026-06-24 19:49:12] Building Python wheel for package: es_math
+[2026-06-24 19:49:12] Skipping wheel generation
+[2026-06-24 19:49:12] [ 88%] Built target generate_es_transformer_cust_whl
+[2026-06-24 19:49:12] [ 88%] Built target es_math_obj
+[2026-06-24 19:49:12] [ 88%] Built target es_transformer_cust_obj
+[2026-06-24 19:49:12] -- Copied: es_Transpose.py
+[2026-06-24 19:49:12] -- Copied: es_math_ops.py
+[2026-06-24 19:49:12] -- Created setup.py for package 'es_math'
+[2026-06-24 19:49:12] -- Performing Test standard_math_library_linked_to_automatically - Success
+[2026-06-24 19:49:12] -- Standard libraries to link to explicitly: none
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_WERROR
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_WERROR - Success
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_pedantic
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_pedantic - Success
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wall
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wall - Success
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wextra
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wextra - Success
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wundef
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wundef - Success
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wcastalign
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wcastalign - Success
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wcharsubscripts
+[2026-06-24 19:49:12] Looking in indexes: https://repo.huaweicloud.com/repository/pypi/simple
+[2026-06-24 19:49:12] Processing ./.
+[2026-06-24 19:49:12]   Installing build dependencies: started
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wcharsubscripts - Success
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wnonvirtualdtor
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wnonvirtualdtor - Success
+[2026-06-24 19:49:12] -- Performing Test COMPILER_SUPPORT_Wunusedlocaltypedefs
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wunusedlocaltypedefs - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wpointerarith
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wpointerarith - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wwritestrings
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wwritestrings - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wformatsecurity
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wformatsecurity - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wshorten64to32
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wshorten64to32 - Failed
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wlogicalop
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wlogicalop - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wenumconversion
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wenumconversion - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wcpp11extensions
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wcpp11extensions - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wdoublepromotion
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wdoublepromotion - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wshadow
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wshadow - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wnopsabi
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wnopsabi - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wnovariadicmacros
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wnovariadicmacros - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wnolonglong
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_Wnolonglong - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_fnocommon
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_fnocommon - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_fstrictaliasing
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_fstrictaliasing - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_wd981
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_wd981 - Failed
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_wd2304
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_wd2304 - Failed
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_fnochecknew
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_fnochecknew - Success
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_OPENMP
+[2026-06-24 19:49:13]   Installing build dependencies: finished with status 'done'
+[2026-06-24 19:49:13]   Getting requirements to build wheel: started
+[2026-06-24 19:49:13] -- Performing Test COMPILER_SUPPORT_OPENMP - Success
+[2026-06-24 19:49:13] -- Could NOT find CHOLMOD (missing: CHOLMOD_INCLUDES CHOLMOD_LIBRARIES) 
+[2026-06-24 19:49:13] -- Could NOT find UMFPACK (missing: UMFPACK_INCLUDES UMFPACK_LIBRARIES) 
+[2026-06-24 19:49:13] -- Could NOT find KLU (missing: KLU_INCLUDES KLU_LIBRARIES) 
+[2026-06-24 19:49:13] -- Could NOT find SuperLU (missing: SUPERLU_INCLUDES SUPERLU_LIBRARIES SUPERLU_VERSION_OK) (Required is at least version "4.0")
+[2026-06-24 19:49:13] -- Checking for one of the modules 'hwloc'
+[2026-06-24 19:49:14] -- Performing Test HAVE_HWLOC_PARENT_MEMBER
+[2026-06-24 19:49:14] -- Performing Test HAVE_HWLOC_PARENT_MEMBER - Success
+[2026-06-24 19:49:14] -- Performing Test HAVE_HWLOC_CACHE_ATTR
+[2026-06-24 19:49:14] -- Performing Test HAVE_HWLOC_CACHE_ATTR - Success
+[2026-06-24 19:49:14] -- Performing Test HAVE_HWLOC_OBJ_PU
+[2026-06-24 19:49:14]   Getting requirements to build wheel: finished with status 'done'
+[2026-06-24 19:49:14]   Preparing metadata (pyproject.toml): started
+[2026-06-24 19:49:14] -- Performing Test HAVE_HWLOC_OBJ_PU - Success
+[2026-06-24 19:49:14] -- Looking for hwloc_bitmap_free in hwloc
+[2026-06-24 19:49:14] -- Looking for hwloc_bitmap_free in hwloc - found
+[2026-06-24 19:49:14] -- Looking for Fortran sgemm
+[2026-06-24 19:49:14] -- Looking for Fortran sgemm - not found
+[2026-06-24 19:49:14] -- Found Threads: TRUE  
+[2026-06-24 19:49:14] -- A version of Pastix has been found but pastix_nompi.h does not exist in the include directory. Because Eigen tests require a version without MPI, we disable the Pastix backend.
+[2026-06-24 19:49:14] -- Could NOT find SPQR (missing: SPQR_INCLUDES SPQR_LIBRARIES) 
+[2026-06-24 19:49:14] -- Could NOT find Accelerate (missing: Accelerate_INCLUDES Accelerate_LIBRARIES) 
+[2026-06-24 19:49:14] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-24 19:49:14]   Preparing metadata (pyproject.toml): finished with status 'done'
+[2026-06-24 19:49:14] Building wheels for collected packages: es_math
+[2026-06-24 19:49:14]   Building wheel for es_math (pyproject.toml): started
+[2026-06-24 19:49:14] -- Performing Test COMPILER_SUPPORT_FASTMATH
+[2026-06-24 19:49:14]   Building wheel for es_math (pyproject.toml): finished with status 'done'
+[2026-06-24 19:49:14]   Created wheel for es_math: filename=es_math-1.0.0-py3-none-any.whl size=3844 sha256=c6dc09b0d0105f6edb655a44b21b2788bbe5a4b9147313caf123a279283cc6d4
+[2026-06-24 19:49:14]   Stored in directory: /tmp/pip-ephem-wheel-cache-_qy3f7un/wheels/50/ce/b5/75d18a0e7b6c0539c2b7aea4353df2ffdadd7940c3ac82b69a
+[2026-06-24 19:49:14] Successfully built es_math
+[2026-06-24 19:49:14] -- Performing Test COMPILER_SUPPORT_FASTMATH - Success
+CUDA_TOOLKIT_ROOT_DIR not found or specified
+[2026-06-24 19:49:14] -- Could NOT find CUDA (missing: CUDA_TOOLKIT_ROOT_DIR CUDA_NVCC_EXECUTABLE CUDA_INCLUDE_DIRS CUDA_CUDART_LIBRARY) (Required is at least version "9.0")
+[2026-06-24 19:49:14] -- ************************************************************
+[2026-06-24 19:49:14] -- ***    Eigen's unit tests configuration summary          ***
+[2026-06-24 19:49:14] -- ************************************************************
+[2026-06-24 19:49:14] -- 
+[2026-06-24 19:49:14] -- Build type:        Release
+[2026-06-24 19:49:14] -- Build site:        18fc964623764f9eb85e70c0070da2f9
+[2026-06-24 19:49:14] -- Build string:      linux-5.10.0-182.0.0.95.r2220_156.hce2.aarch64-_-13.3.0-sse2-64bit
+[2026-06-24 19:49:14] -- Enabled backends:  Boost.Multiprecision, 
+[2026-06-24 19:49:14] -- Disabled backends: CHOLMOD,  UMFPACK,  KLU,  SuperLU,  PaStiX,  METIS,  SPQR,  Accelerate,  Qt4 support, 
+[2026-06-24 19:49:14] -- Default order:     Column-major
+[2026-06-24 19:49:14] -- Maximal matrix/vector size: 320
+[2026-06-24 19:49:14] -- SSE2:              Using architecture defaults
+[2026-06-24 19:49:14] -- SSE3:              Using architecture defaults
+[2026-06-24 19:49:14] -- SSSE3:             Using architecture defaults
+[2026-06-24 19:49:14] -- SSE4.1:            Using architecture defaults
+[2026-06-24 19:49:14] -- SSE4.2:            Using architecture defaults
+[2026-06-24 19:49:14] -- AVX:               Using architecture defaults
+[2026-06-24 19:49:14] -- AVX2:              Using architecture defaults
+[2026-06-24 19:49:14] -- FMA:               Using architecture defaults
+[2026-06-24 19:49:14] -- AVX512:            Using architecture defaults
+[2026-06-24 19:49:14] -- AVX512DQ:          Using architecture defaults
+[2026-06-24 19:49:14] -- Altivec:           Using architecture defaults
+[2026-06-24 19:49:14] -- VSX:               Using architecture defaults
+[2026-06-24 19:49:14] -- MIPS MSA:          Using architecture defaults
+[2026-06-24 19:49:14] -- ARM NEON:          Using architecture defaults
+[2026-06-24 19:49:14] -- ARMv8 NEON:        Using architecture defaults
+[2026-06-24 19:49:14] -- S390X ZVECTOR:     Using architecture defaults
+[2026-06-24 19:49:14] -- LSX:               Using architecture defaults
+[2026-06-24 19:49:14] -- SYCL:              OFF
+[2026-06-24 19:49:14] -- CUDA:              OFF
+[2026-06-24 19:49:14] -- HIP:               OFF
+[2026-06-24 19:49:14] -- 
+[2026-06-24 19:49:14] CXX:               /usr/bin/c++
+[2026-06-24 19:49:14]  CXX_VERSION:       c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+[2026-06-24 19:49:14]  CXX_FLAGS:          -pedantic -Wall -Wextra -Wundef -Wcast-align -Wchar-subscripts -Wnon-virtual-dtor -Wunused-local-typedefs -Wpointer-arith -Wwrite-strings -Wformat-security -Wlogical-op -Wenum-conversion -Wc++11-extensions -Wdouble-promotion -Wshadow -Wno-psabi -Wno-variadic-macros -Wno-long-long -fno-common -fstrict-aliasing -fno-check-new
+[2026-06-24 19:49:14]  Sparse lib flags:   
+[2026-06-24 19:49:14] 
+[2026-06-24 19:49:14] -- ************************************************************
+INFO  DUCCFFT-NOTFOUND
+[2026-06-24 19:49:14] -- Could NOT find GoogleHash (missing: GOOGLEHASH_INCLUDES GOOGLEHASH_COMPILE) 
+[2026-06-24 19:49:14] -- Could NOT find Adolc (missing: ADOLC_INCLUDES ADOLC_LIBRARIES) 
+[2026-06-24 19:49:14] [ 88%] Built target generate_es_math_whl
+[2026-06-24 19:49:14] -- Could NOT find MPFR (missing: MPFR_INCLUDES MPFR_LIBRARIES MPFR_VERSION_OK) (Required is at least version "1.0.0")
+[2026-06-24 19:49:14] -- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
+[2026-06-24 19:49:14] -- Could NOT find FFTW (missing: FFTW_INCLUDES FFTW_LIBRARIES) 
+CUDA_TOOLKIT_ROOT_DIR not found or specified
+[2026-06-24 19:49:14] -- Could NOT find CUDA (missing: CUDA_TOOLKIT_ROOT_DIR CUDA_NVCC_EXECUTABLE CUDA_INCLUDE_DIRS CUDA_CUDART_LIBRARY) (Required is at least version "9.0")
+[2026-06-24 19:49:14] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-24 19:49:14] -- Found unsuitable Qt version "" from NOTFOUND
+[2026-06-24 19:49:14] -- Qt4 not found, so disabling the mandelbrot and opengl demos
+[2026-06-24 19:49:14] -- Available targets (use: make TARGET):
+[2026-06-24 19:49:14] -- ------------+--------------------------------------------------------------
+[2026-06-24 19:49:14] -- Target      |   Description
+[2026-06-24 19:49:14] -- ------------+--------------------------------------------------------------
+[2026-06-24 19:49:14] -- install     | Install Eigen. Headers will be installed to:
+[2026-06-24 19:49:14] --             |     <CMAKE_INSTALL_PREFIX>/<INCLUDE_INSTALL_DIR>
+[2026-06-24 19:49:14] --             |   Using the following values:
+[2026-06-24 19:49:14] --             |     CMAKE_INSTALL_PREFIX: /usr/local
+[2026-06-24 19:49:14] --             |     INCLUDE_INSTALL_DIR:  include/eigen3
+[2026-06-24 19:49:14] --             |   Change the install location of Eigen headers using:
+[2026-06-24 19:49:14] --             |     cmake . -DCMAKE_INSTALL_PREFIX=yourprefix
+[2026-06-24 19:49:14] --             |   Or:
+[2026-06-24 19:49:14] --             |     cmake . -DINCLUDE_INSTALL_DIR=yourdir
+[2026-06-24 19:49:14] -- uninstall   | Remove files installed by the install target
+[2026-06-24 19:49:14] -- doc         | Generate the API documentation, requires Doxygen & LaTeX
+[2026-06-24 19:49:14] -- install-doc | Install the API documentation
+[2026-06-24 19:49:14] -- check       | Build and run the unit-tests. Read this page:
+[2026-06-24 19:49:14] --             |   http://eigen.tuxfamily.org/index.php?title=Tests
+[2026-06-24 19:49:14] -- blas        | Build BLAS library (not the same thing as Eigen)
+[2026-06-24 19:49:14] -- lapack      | Build LAPACK subset library (not the same thing as Eigen)
+[2026-06-24 19:49:14] -- ------------+--------------------------------------------------------------
+[2026-06-24 19:49:14] -- 
+[2026-06-24 19:49:14] -- 
+[2026-06-24 19:49:14] -- Configured Eigen 5.0.0-dev
+[2026-06-24 19:49:14] -- 
+[2026-06-24 19:49:14] -- Configuring done
+[2026-06-24 19:49:16] -- Generating done
+[2026-06-24 19:49:16] -- Build files have been written to: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/third_party/src/external_eigen-build
+[2026-06-24 19:49:16] [ 89%] No build step for 'external_eigen'
+[2026-06-24 19:49:16] [ 89%] Performing install step for 'external_eigen'
+[2026-06-24 19:49:16] [ 89%] Completed 'external_eigen'
+gmake: *** [Makefile:156: all] Error 2
+[2026-06-24 19:49:16] [ 89%] Built target external_eigen
