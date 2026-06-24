@@ -149,46 +149,12 @@ public:
         }
     }
 
-    // 静态Tensor编程模式：使用预定义静态事件ID，无需TPipe/AllocEventID
-    __aicore__ inline void InitStatic(uint32_t p2cEventId, uint32_t c2pEventId) {
-        if ASCEND_IS_AIC {
-            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
-                p2cEventId_ = p2cEventId;
-                c2pEventId_ = c2pEventId;
-                SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
-            }
-        }
-    }
-
     __aicore__ inline void UnInit() {
         if ASCEND_IS_AIC {
             if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
                 WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
                 GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventP2C>(p2cEventId_); // 确保只能被调用一次
                 GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
-            }
-        }
-    }
-
-    // 静态Tensor编程模式：仅WaitFlag排干流水，不ReleaseEventID（静态ID无需释放）
-    __aicore__ inline void UnInitStatic() {
-        if ASCEND_IS_AIC {
-            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
-                WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
-            }
-        }
-    }
-
-    // 极致性能静态Tensor方式：LocalTensor构造函数以固定offset创建tensor（完全抛弃TBuf/BufferManager）
-    // 等价于参考文档"方式2": LocalTensor<T>(TPosition, addr, count)
-    // 事件ID来自调用方编译期常量；SetFlag须由调用方在InitBuffers()中显式调用，此处不隐式执行
-    __aicore__ inline void InitStaticDirect(uint32_t offset, uint32_t size, TEventID p2cId, TEventID c2pId) {
-        tensor_ = LocalTensor<uint8_t>(BufferInfo<bufferType>::Position, offset, size);
-        size_ = size;
-        if ASCEND_IS_AIC {
-            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
-                p2cEventId_ = p2cId;
-                c2pEventId_ = c2pId;
             }
         }
     }
