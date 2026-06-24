@@ -29,6 +29,8 @@ constexpr uint8_t NUMONE = 1;
 constexpr uint8_t NUMTWO = 2;
 constexpr int64_t AIV_AIC_RATE = 2;
 constexpr int64_t WS_BUFFER_INTERVAL = 1024;
+constexpr float FLT_MAX = 3.402823466e+38F;
+
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
 public:
@@ -125,7 +127,10 @@ private:
     TBuf<TPosition::VECCALC> gradCalcBuf2_;
 
     // hbj
+    TBuf<TPosition::VECCALC> tmpDivBuf_;
+    TBuf<TPosition::VECCALC> tmpDiv2Buf_;
     TBuf<TPosition::VECCALC> tmpDiv3Buf_;
+    TBuf<TPosition::VECCALC> tmpDiv4Buf_;
     TBuf<TPosition::VECCALC> tmpMulBuf_;
     TBuf<TPosition::VECCALC> sumOutBuf_;
     TBuf<TPosition::VECCALC> normOutBuf_;
@@ -135,6 +140,9 @@ private:
     TBuf<TPosition::VECCALC> gradXRowNormedBuf_;
     TBuf<TPosition::VECCALC> skGradBuf_;
     TBuf<TPosition::VECCALC> expGradBuf_;
+    TBuf<TPosition::VECCALC> reduceSumBuf_;
+    TBuf<TPosition::VECCALC> tmpBuf_;
+    TBuf<TPosition::VECCALC> isMaxBuf_;
 
     int64_t usedAivNum_ = 0;
     int64_t batchSize_ = 0;
@@ -300,7 +308,10 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         mm2M_ = 1;
         mm2N_ = n_ * c_;
         // hbj
+        pipe_->InitBuffer(tmpDivBuf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(tmpDiv2Buf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(tmpDiv3Buf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(tmpDiv4Buf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(tmpMulBuf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(sumOutBuf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(normOutBuf_, nnAlignFp32_ * bsLoopDataLen_ * FP32_BYTE_SIZE);
@@ -310,6 +321,10 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(gradXRowNormedBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(skGradBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(expGradBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(reduceSumBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(tmpBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(isMaxBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
+
         if (blockIdx_ == 0) {
             InitOutput<U>(gradAlphaGm_, 3, U(0));
             InitOutput<U>(gradAlphaWs_, 3 * usedAivNum_, U(0));
@@ -665,18 +680,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
 
     int64_t gmOffset = blockIdx_ * curCoreProcessbsTask_ + bsIdx * bsLen;
     
-    LocalTensor<float> gradHResLocal = gradHResQueue_.AllocTensor<float>();
-    DataCopyPad(gradHResLocal, gradHResGm_[gmOffset * n_ * n_], {1, static_cast<uint32_t>(bsLen * n_ * n_ * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
-    gradHResQueue_.EnQue(gradHResLocal);
+    DataCopyPad(skGradLocal, gradHResGm_[gmOffset * n_ * n_], {1, static_cast<uint32_t>(bsLen * n_ * n_ * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
+    PipeBarrier<PIPE_MTE2>;
     
     LocalTensor<float> sumOutLocal = sumOutBuf_.Get<float>();
     LocalTensor<float> normOutLocal = normOutBuf_.Get<float>();
     DataCopyPad(sumOutLocal, sumOutGm_[2 * skIterCount_ * gmOffset * n_], {1, static_cast<uint32_t>(2 * skIterCount_ * n_ * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
     DataCopyPad(normOutLocal, normOutGm_[2 * skIterCount_ * gmOffset * n_ * n_], {1, static_cast<uint32_t>(2 * skIterCount_ * n_ * n_ * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
 
-    gradHResLocal = gradHResQueue_.DeQue<float>();
-
-    __local_mem__ float *gradHResPtr = (__local_mem__ float *)gradHResLocal.GetPhyAddr();
     __local_mem__ float *skGradPtr = (__local_mem__ float *)skGradLocal.GetPhyAddr();
 
     uint16_t bsLenLoop = static_cast<uint16_t>(bsLen);
@@ -690,7 +701,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
         LocalTensor<float> colSumBroadcast = colSum;   // [n*n] broadcast后的colSum
         LocalTensor<float> rowSumBroadcast = rowSum;   // [n*n] broadcast后的rowSum
         LocalTensor<float> gradXRowNormed = gradXRowNormedBuf_.Get<float>();
+        LocalTensor<float> tmpDivLocal = tmpDivBuf_.Get<float>();
+        LocalTensor<float> tmpDiv2Local = tmpDiv2Buf_.Get<float>();
         LocalTensor<float> tmpDiv3Local = tmpDiv3Buf_.Get<float>();
+        LocalTensor<float> tmpDiv4Local = tmpDiv4Buf_.Get<float>();
+        LocalTensor<float> reduceSumLocal = reduceSumBuf_.Get<float>();
+        LocalTensor<float> tmpLocal = tmpBuf_.Get<float>();
 
         __local_mem__ float *colSumPtr = (__local_mem__ float *)colSum.GetPhyAddr();
         __local_mem__ float *rowSumPtr = (__local_mem__ float *)rowSum.GetPhyAddr();
@@ -698,7 +714,12 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
         __local_mem__ float *colSumBroadcastPtr = (__local_mem__ float *)colSumBroadcast.GetPhyAddr();
         __local_mem__ float *rowSumBroadcastPtr = (__local_mem__ float *)rowSumBroadcast.GetPhyAddr();
         __local_mem__ float *gradXRowNormedPtr = (__local_mem__ float *)gradXRowNormed.GetPhyAddr();
+        __local_mem__ float *tmpDivLocalPtr = (__local_mem__ float *)tmpDivLocal.GetPhyAddr();
+        __local_mem__ float *tmpDiv2LocalPtr = (__local_mem__ float *)tmpDiv2Local.GetPhyAddr();
         __local_mem__ float *tmpDiv3LocalPtr = (__local_mem__ float *)tmpDiv3Local.GetPhyAddr();
+        __local_mem__ float *tmpDiv4LocalPtr = (__local_mem__ float *)tmpDiv4Local.GetPhyAddr();
+        __local_mem__ float *reduceSumLocalPtr = (__local_mem__ float *)reduceSumLocal.GetPhyAddr();
+        __local_mem__ float *tmpPtr = (__local_mem__ float *)tmpLocal.GetPhyAddr();
 
         __VEC_SCOPE__
         {   
@@ -707,9 +728,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
             Reg::RegTensor<float> colSumReg;
             Reg::RegTensor<float> colSumBroadcastReg;
             Reg::RegTensor<float> colSumSquareReg;
-            Reg::UnalignRegForLoad ureg, ureg0, ureg1, ureg2, ureg3, ureg4, ureg5, ureg6, ureg7, ureg8, ureg9;
-            Reg::UnalignRegForStore uregStore0, uregStore1, uregStore2, uregStore3, uregStore4, uregStore5, uregStore6, uregStore7;
-            Reg::RegTensor<float> gradHResReg;
+            Reg::UnalignRegForLoad ureg, ureg0, ureg1, ureg2, ureg3, ureg4, ureg5, ureg6, ureg7, ureg8, ureg9, ureg10, ureg11;
+            Reg::UnalignRegForStore uregStore, uregStore0, uregStore1, uregStore2, uregStore3, uregStore4, uregStore5, uregStore6;
+
             Reg::RegTensor<float> tmpDivReg;
             Reg::RegTensor<float> tmpDiv2Reg;
             Reg::RegTensor<float> tmpDiv3Reg;
@@ -717,10 +738,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
             Reg::RegTensor<float> tmpMulReg;
             Reg::RegTensor<float> tmpMul2Reg;
             Reg::RegTensor<float> gradXRowNormedReg;
-            Reg::RegTensor<float> gradXRowNormedReg1;
-
             Reg::RegTensor<float> rowNormReg;
-
             Reg::RegTensor<float> tmpSubReg;
             Reg::RegTensor<float> skGradReg;
 
@@ -730,98 +748,131 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
             uint32_t maskLenN = static_cast<uint32_t>(n_);
             uint32_t maskLenNN = static_cast<uint32_t>(nn_);
 
+            //计算 tmpMul
             for (uint16_t j = 0; j < bsLenLoop; j++) {
                 maskNN = Reg::UpdateMask<float>(maskLenNN);
 
                 int64_t bsOffset = j * nn_;
-                
-                //broadcast colSumReg rowSumReg (B,S,N) -> (B,S,N,N) 
-                for (uint16_t k = 0; k < n_; k++) {
-                    maskN = Reg::UpdateMask<float>(maskLenN);
-                    Reg::LoadUnAlignPre(ureg0, colSumPtr + bsOffset + k);
-                    Reg::LoadUnAlign(colSumReg, ureg0, colSumPtr + bsOffset + k);
+                auto tmpPtr1 = tmpPtr + bsOffset;
 
-                    Reg::LoadUnAlignPre(ureg1, rowSumPtr + bsOffset + k);
-                    Reg::LoadUnAlign(rowSumReg, ureg1, rowSumPtr + bsOffset + k);
+                Reg::LoadUnAlignPre(ureg0, rowNormPtr + bsOffset);
+                Reg::LoadUnAlign(rowNormReg, ureg0, rowNormPtr + bsOffset);
+                Reg::LoadUnAlignPre(ureg1, skGradPtr + bsOffset);
+                Reg::LoadUnAlign(skGradReg, ureg1, skGradPtr + bsOffset);
 
-                    Reg::Duplicate(colSumBroadcastReg, colSumReg, maskN);
-                    Reg::Duplicate(rowSumBroadcastReg, rowSumReg, maskN);
+                Reg::Mul(tmpMulReg, rowNormReg, skGradReg, maskNN);
 
-                    Reg::StoreUnAlign(colSumBroadcastPtr, colSumBroadcastReg, uregStore0, bsOffset + k);
-                    Reg::StoreUnAlign(rowSumBroadcastPtr, rowSumBroadcastReg, uregStore1, bsOffset + k);
-                }
-                Reg::StoreUnAlignPost(colSumBroadcastPtr, uregStore0, 0);
-                Reg::StoreUnAlignPost(rowSumBroadcastPtr, uregStore1, 0);
-
-                // 计算 tmpDiv2Reg
-                Reg::LoadUnAlignPre(ureg4, rowNormPtr + bsOffset);
-                Reg::LoadUnAlign(rowNormReg, ureg4, rowNormPtr + bsOffset);
-                Reg::LoadUnAlignPre(ureg5, gradHResPtr + bsOffset);
-                Reg::LoadUnAlign(gradHResReg, ureg5, gradHResPtr + bsOffset);
-
-                Reg::LoadUnAlignPre(ureg6, colSumBroadcastPtr + bsOffset);
-                Reg::LoadUnAlign(colSumBroadcastReg, ureg6, colSumBroadcastPtr + bsOffset);
-                
-                Reg::LoadUnAlignPre(ureg7, colSumPtr + bsOffset);
-                Reg::LoadUnAlign(colSumReg, ureg7, colSumPtr + bsOffset);
-
-                Reg::Mul(tmpMulReg, rowNormReg, gradHResReg, maskNN);
-                Reg::Mul(colSumSquareReg, colSumReg, colSumReg, maskNN);
-                Reg::Div(tmpDiv2Reg, tmpMulReg, colSumSquareReg, maskNN);
-
-                Reg::StoreUnAlign(gradXRowNormedPtr, tmpDiv2Reg, uregStore2, bsOffset);
+                Reg::StoreAlign(tmpPtr1, tmpMulReg, maskNN);
             }
-            Reg::StoreUnAlignPost(gradXRowNormedPtr, uregStore2, 0);
-                        // reduce sum
+
+            Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+
+            // 计算 tmpDiv、tmpDiv2
             for (uint16_t j = 0; j < bsLenLoop; j++) {
                 maskNN = Reg::UpdateMask<float>(maskLenNN);
                 maskN = Reg::UpdateMask<float>(maskLenN);
 
                 int64_t bsOffset = j * nn_;
 
-                // 搬入
-                Reg::LoadUnAlignPre(ureg0, rowSumPtr + bsOffset);
-                Reg::LoadUnAlign(rowSumReg, ureg0, rowSumPtr + bsOffset);
+                auto tmpDivLocalPtr1 = tmpDivLocalPtr + bsOffset;
+                auto tmpDiv2LocalPtr1 = tmpDiv2LocalPtr + bsOffset;
+                auto tmpPtr1 = tmpPtr + bsOffset;
+                auto skGradPtr1 = skGradPtr + bsOffset;
 
-                Reg::LoadUnAlignPre(ureg1, colSumPtr + bsOffset);
-                Reg::LoadUnAlign(colSumReg, ureg1, colSumPtr + bsOffset);
+                // (b,s,1,n), 搬入一行
+                Reg::LoadUnAlignPre(ureg2, colSumPtr + j * n_);
+                Reg::LoadUnAlign(colSumReg, ureg2, colSumPtr + j * n_);
 
-                Reg::LoadUnAlignPre(ureg2, rowNormPtr + bsOffset);
-                Reg::LoadUnAlign(rowNormReg, ureg2, rowNormPtr + bsOffset);
+                Reg::Mul(colSumSquareReg, colSumReg, colSumReg, maskN);
 
-                Reg::LoadUnAlignPre(ureg3, gradHResPtr + bsOffset);
-                Reg::LoadUnAlign(gradHResReg, ureg3, gradHResPtr + bsOffset);
-
-                Reg::LoadUnAlignPre(ureg4, colSumBroadcastPtr + bsOffset);
-                Reg::LoadUnAlign(colSumBroadcastReg, ureg4, colSumBroadcastPtr + bsOffset);
-
-                Reg::LoadUnAlignPre(ureg5, rowSumBroadcastPtr + bsOffset);
-                Reg::LoadUnAlign(rowSumBroadcastReg, ureg5, rowSumBroadcastPtr + bsOffset);
-
-                // reducesum (b,s,n,n) -> (b,s,1,n)
+                // 逐行除
                 for (uint16_t k = 0; k < n_; k++) {
-                    Reg::LoadUnAlignPre(ureg6, gradXRowNormedPtr + bsOffset + k);
-                    Reg::LoadUnAlign(gradXRowNormedReg, ureg6, gradXRowNormedPtr + bsOffset + k);
-                    Reg::Add(gradXRowNormedReg1, gradXRowNormedReg1, gradXRowNormedReg, maskN);
+                    Reg::RegTensor<float> tmpReg, tmpReg1;
+
+                    Reg::LoadUnAlignPre(ureg3, tmpPtr1 + k * n_);
+                    Reg::LoadUnAlign(tmpReg, ureg3, tmpPtr1 + k * n_);
+
+                    Reg::LoadUnAlignPre(ureg4, skGradPtr1 + k * n_);
+                    Reg::LoadUnAlign(tmpReg1, ureg4, skGradPtr1 + k * n_);
+
+                    Reg::Div(tmpDivReg, tmpReg1, colSumReg, maskNN);
+                    Reg::Div(tmpDiv2Reg, tmpReg, colSumSquareReg, maskNN);
+
+                    Reg::StoreUnAlign(tmpDivLocalPtr1, tmpDivReg, uregStore0, n_);
+                    Reg::StoreUnAlign(tmpDiv2LocalPtr1, tmpDiv2Reg, uregStore1, n_);
+                }
+                Reg::StoreUnAlignPost(tmpDivLocalPtr1, uregStore0, 0);
+                Reg::StoreUnAlignPost(tmpDiv2LocalPtr1, uregStore1, 0);
+            }
+
+            Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+
+            // tmpDiv2 -> reduceSum -> broadcast
+            for (uint16_t j = 0; j < bsLenLoop; j++) {
+                maskNN = Reg::UpdateMask<float>(maskLenNN);
+                maskN = Reg::UpdateMask<float>(maskLenN);
+
+                int64_t bsOffset = j * nn_;
+
+                auto tmpDiv2LocalPtr1 = tmpDiv2LocalPtr + bsOffset;
+                auto tmpPtr1 = tmpPtr + bsOffset;
+
+                // reduce_sum (b,s,n,n) -> (b,s,1,n)
+                Reg::RegTensor<float> reduceSumReg;
+                Reg::Duplicate(reduceSumReg, (float)0.0, maskN);
+                for (uint16_t k = 0; k < n_; k++) {
+                    Reg::RegTensor<float> tmpReg;
+                    Reg::LoadUnAlignPre(ureg5, tmpDiv2LocalPtr1 + k * n_);
+                    Reg::LoadUnAlign(tmpReg, ureg5, tmpDiv2LocalPtr1 + k * n_);
+                    Reg::Add(reduceSumReg, reduceSumReg, tmpReg, maskN);
                 }
 
-                // broadcast (b,s,1,n) -> (b,s,n,n)
+                // broadcast (b,s,1,1) -> (b,s,n,n)
                 for (uint16_t k = 0; k < n_; k++) {
-                    Reg::LoadUnAlignPre(ureg7, gradXRowNormedPtr + j * nn_ + k);
-                    Reg::LoadUnAlign(gradXRowNormedReg, ureg7, gradXRowNormedPtr + j * nn_ + k);
-                    Reg::Move(gradXRowNormedReg, gradXRowNormedReg1, maskN);
+                    Reg::StoreUnAlign(tmpPtr1, reduceSumReg, uregStore2, n_);
                 }
+                Reg::StoreUnAlignPost(tmpPtr1, uregStore2, 0);
+            }
 
-                // tmpDiv3Reg、tmpDiv4Reg
-                Reg::Div(tmpDivReg, gradHResReg, colSumReg, maskNN);
+            Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+
+            // 计算tmpDiv3、tmpDiv4
+            for (uint16_t j = 0; j < bsLenLoop; j++) {
+                maskNN = Reg::UpdateMask<float>(maskLenNN);
+                maskN = Reg::UpdateMask<float>(maskLenN);
+
+                int64_t bsOffset = j * nn_;
+
+                auto tmpDiv3LocalPtr1 = tmpDiv3LocalPtr + bsOffset;
+                auto tmpDiv4LocalPtr1 = tmpDiv4LocalPtr + bsOffset;
+
+                Reg::LoadUnAlignPre(ureg6, tmpDivLocalPtr + bsOffset);
+                Reg::LoadUnAlign(tmpDivReg, ureg6, tmpDivLocalPtr + bsOffset);
+
+                Reg::LoadUnAlignPre(ureg7, rowNormPtr + bsOffset);
+                Reg::LoadUnAlign(rowNormReg, ureg7, rowNormPtr + bsOffset);
+
+                Reg::LoadUnAlignPre(ureg8, rowSumPtr + bsOffset);
+                Reg::LoadUnAlign(rowSumReg, ureg8, rowSumPtr + bsOffset);
+
+                Reg::LoadUnAlignPre(ureg9, tmpPtr + bsOffset);
+                Reg::LoadUnAlign(gradXRowNormedReg, ureg9, tmpPtr + bsOffset);
+
+                // tmpMul2
                 Reg::Sub(tmpSubReg, tmpDivReg, gradXRowNormedReg, maskNN);
                 Reg::Mul(tmpMul2Reg, tmpSubReg, rowNormReg, maskNN);
-                Reg::Div(tmpDiv3Reg, tmpSubReg, rowSumReg, maskNN);
-                Reg::Div(tmpDiv4Reg, tmpMul2Reg, rowSumReg, maskNN);
 
-                Reg::StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(tmpDiv3LocalPtr, tmpDiv3Reg, j * nn_, maskNN);
-                Reg::StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(skGradPtr, tmpDiv4Reg, j * nn_, maskNN);
+                // rowSum (B, S, N, 1) -> (B, S, N, N)
+                Reg::Duplicate(rowSumBroadcastReg, rowSumReg, maskN);
+
+                Reg::Div(tmpDiv3Reg, tmpSubReg, rowSumBroadcastReg, maskNN);
+                Reg::Div(tmpDiv4Reg, tmpMul2Reg, rowSumBroadcastReg, maskNN);
+                
+                Reg::StoreAlign(tmpDiv3LocalPtr1, tmpDiv3Reg, maskNN);
+                Reg::StoreAlign(tmpDiv4LocalPtr1, tmpDiv4Reg, maskNN);
             }
+
+            Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
 
             // 计算sk_grad
             for (uint16_t j = 0; j < bsLenLoop; j++) {
@@ -830,38 +881,31 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
 
                 int64_t bsOffset = j * nn_;
 
-                // reduce_sum (b,s,n,n) -> (b,s,n,1)
-                for (uint16_t s = 0; s < n_; s++) {
-                    for (uint16_t t = 0; t < n_; t++) {
-                        Reg::LoadUnAlignPre(ureg1, skGradPtr + bsOffset + s * n_ + t);
-                        Reg::LoadUnAlign(skGradReg, ureg1, skGradPtr + bsOffset + s * n_ + t);
-                        Reg::Add(gradXRowNormedReg1, gradXRowNormedReg1, skGradReg, maskN);
-                    }
+                auto tmpDiv3LocalPtr1 = tmpDiv3LocalPtr + bsOffset;
+                auto tmpDiv4LocalPtr1 = tmpDiv4LocalPtr + bsOffset;
+                auto skGradPtr1 = skGradPtr + bsOffset;
+
+                for (uint16_t k = 0; k < n_; k++) {
+
+                    Reg::RegTensor<float> reduceSumReg, tmpReg, tmpReg1;
+
+                    Reg::LoadUnAlignPre(ureg10, tmpDiv3LocalPtr1 + bsOffset);
+                    Reg::LoadUnAlign(tmpDiv3Reg, ureg10, tmpDiv3LocalPtr1 + bsOffset);
+
+                    Reg::LoadUnAlignPre(ureg11, tmpDiv4LocalPtr1 + bsOffset);
+                    Reg::LoadUnAlign(tmpDiv4Reg, ureg11, tmpDiv4LocalPtr1 + bsOffset);
+
+                    Reg::Reduce<Reg::ReduceType::SUM>(reduceSumReg, tmpDiv4Reg, maskN);
+                    Reg::Muls(tmpReg, reduceSumReg, (float)-1.0, maskN);
+                    Reg::Duplicate(tmpReg1, tmpReg, maskN);
+                    Reg::Add(skGradReg, tmpDiv3Reg, tmpReg1, maskN);
+
+                    Reg::StoreUnAlign(skGradPtr1, skGradReg, uregStore3, n_);
                 }
-
-                // broadcast (b,s,n,1) -> (b,s,n,n)
-                for (uint16_t s = 0; s < n_; s++) {
-                    for (uint16_t t = 0; t < n_; t++) {
-                        Reg::LoadUnAlignPre(ureg1, skGradPtr + bsOffset + s * n_ + t);
-                        Reg::LoadUnAlign(skGradReg, ureg1, skGradPtr + bsOffset + s * n_ + t);
-                        Reg::Move(skGradReg, gradXRowNormedReg1, maskN);
-                        Reg::StoreUnAlign(skGradPtr, skGradReg, uregStore5, n_);
-                    }
-                    Reg::StoreUnAlignPost(skGradPtr, uregStore5, 0);
-                }
-
-                Reg::LoadUnAlignPre(ureg1, tmpDiv3LocalPtr + bsOffset);
-                Reg::LoadUnAlign(tmpDiv3Reg, ureg1, tmpDiv3LocalPtr + bsOffset);
-                Reg::LoadUnAlignPre(ureg2, skGradPtr + bsOffset);
-                Reg::LoadUnAlign(skGradReg, ureg2, skGradPtr + bsOffset);
-                Reg::Sub(skGradReg, tmpDiv3Reg, skGradReg, maskNN);
-
-                // 搬出skGradReg
-                Reg::StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(skGradPtr, skGradReg, skIterCount_ - i - 1 + bsOffset, maskNN);
+                Reg::StoreUnAlignPost(skGradPtr1, uregStore3, 0);
             }
         }
     }
-    gradHResQueue_.FreeTensor(gradHResLocal);
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
@@ -870,158 +914,149 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::E
     LocalTensor<float> zResMax = zResMaxBuf_.Get<float>();
     LocalTensor<float> zResMaxIdx = zResMaxIdxBuf_.Get<float>();
     LocalTensor<float> tmpMul = tmpMulBuf_.Get<float>();
+    LocalTensor<float> tmpLocal = tmpBuf_.Get<float>();
+    LocalTensor<float> isMaxIdx = isMaxBuf_.Get<float>();
 
     __local_mem__ float* expGradPtr = (__local_mem__ float*) expGrad.GetPhyAddr();
     __local_mem__ float* zResPtr = (__local_mem__ float*) zResLocal.GetPhyAddr();
     __local_mem__ float* skGradPtr = (__local_mem__ float*) skGrad.GetPhyAddr();
     __local_mem__ float* tmpMulPtr = (__local_mem__ float*) tmpMul.GetPhyAddr();
+    __local_mem__ float* tmpPtr = (__local_mem__ float*) tmpLocal.GetPhyAddr();
+    __local_mem__ float* isMaxIdxPtr = (__local_mem__ float*) isMaxIdx.GetPhyAddr();
 
     uint32_t maskLenN = static_cast<uint32_t>(n_);
     uint32_t maskLenNN = static_cast<uint32_t>(nn_);
 
     uint16_t bsLenLoop = static_cast<uint16_t>(bsLen);
 
-    for (uint16_t i = 0; i < bsLenLoop; i++) {
+    AscendC::DataCopy(zResMaxIdx, zResLocal, maskLenNN);
+    AscendC::DataCopy(zResMax, zResLocal, maskLenNN);
 
-        AscendC::DataCopy(zResMaxIdx, zResLocal, maskLenNN);
-        AscendC::DataCopy(zResMax, zResLocal, maskLenNN);
+    __local_mem__ float* zResMaxPtr = (__local_mem__ float*) zResMax.GetPhyAddr();
+    __local_mem__ float* zResMaxIdxPtr = (__local_mem__ float*) zResMaxIdx.GetPhyAddr();
 
-        __local_mem__ float* zResMaxPtr = (__local_mem__ float*) zResMax.GetPhyAddr();
-        __local_mem__ float* zResMaxIdxPtr = (__local_mem__ float*) zResMaxIdx.GetPhyAddr();
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<float> zResReg;
+        Reg::RegTensor<float> zResMaxReg;
+        Reg::RegTensor<float> zResMaxIdxReg;
+        Reg::RegTensor<float> zResMaxBcastReg;
+        Reg::RegTensor<float> zResMaxIdxBcastReg;
+        
+        Reg::RegTensor<float> tmpSubReg;
+        Reg::RegTensor<float> zeroReg;
+        Reg::RegTensor<float> oneReg;
+        Reg::RegTensor<float> negInfReg;
+        Reg::RegTensor<float> tmpExpReg;
+        Reg::RegTensor<float> skGradReg;
+        Reg::RegTensor<float> tmpMulReg;
+        Reg::RegTensor<float> tmpMul2Reg;
+        Reg::RegTensor<float> sumAllReg;
+        Reg::RegTensor<float> sumAllBcastReg;
 
-        __VEC_SCOPE__
-        {
-            Reg::RegTensor<float> zResReg;
-            Reg::RegTensor<float> zResMaxReg;
-            Reg::RegTensor<float> zResMaxIdxReg;
-            Reg::RegTensor<float> zResMaxBcastReg;
-            Reg::RegTensor<float> zResMaxIdxBcastReg;
-            
-            Reg::RegTensor<float> tmpSubReg;
-            Reg::RegTensor<float> zeroReg;
-            Reg::RegTensor<float> oneReg;
-            Reg::RegTensor<float> tmpExpReg;
-            Reg::RegTensor<float> skGradReg;
-            Reg::RegTensor<float> tmpMulReg;
-            Reg::RegTensor<float> tmpMul2Reg;
-            Reg::RegTensor<float> sumAllReg;
+        Reg::RegTensor<float> isMaxReg;
+        Reg::RegTensor<float> expGradReg;
 
-            Reg::RegTensor<float> isMaxReg;
-            Reg::RegTensor<float> expGradReg;
+        Reg::UnalignRegForLoad ureg, ureg0, ureg1, ureg2, ureg3, urege4;
+        Reg::UnalignRegForStore uregStore0, uregStore1, uregStore2, uregStore3, uregStore4;
+        Reg::MaskReg maxMask;
+        Reg::MaskReg cmpMask;
+        Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        Reg::MaskReg pmask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        Reg::MaskReg maskN = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        Reg::MaskReg maskNN = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        Reg::MaskReg maskZero = Reg::CreateMask<float, Reg::MaskPattern::ALLF>();
 
-            Reg::UnalignRegForLoad ureg, ureg0, ureg1, ureg2, ureg3, urege4;
-            Reg::UnalignRegForStore uregStore0, uregStore1, uregStore2, uregStore3, uregStore4;
-            Reg::MaskReg maxMask;
-            Reg::MaskReg cmpMask;
-            Reg::MaskReg mask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-            Reg::MaskReg pmask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-            Reg::MaskReg maskN = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-            Reg::MaskReg maskNN = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-            Reg::MaskReg maskZero = Reg::CreateMask<float, Reg::MaskPattern::ALLF>();
-
-            Reg::Duplicate(zeroReg, (float)0.0, mask);
-            Reg::Duplicate(oneReg, (float)1.0, mask);
+        Reg::Duplicate(zeroReg, (float)0.0, mask);
+        Reg::Duplicate(oneReg, (float)1.0, mask);
+        Reg::Duplicate(negInfReg, (float)-FLT_MAX, mask);
+        
+        for (uint16_t i = 0; i < bsLenLoop; i++) {
             maskNN = Reg::UpdateMask<float>(maskLenNN);
 
-            // zResmax
-            for (uint16_t j = 0; j < n_; j++) {  // 第三维
-                for (uint16_t k = 0; k < n_; k++) {  // 第四维
-                    maskN = Reg::UpdateMask<float>(maskLenN);
-                    Reg::LoadUnAlignPre(ureg, zResPtr + j * n_ + k);
-                    Reg::LoadUnAlign(zResReg, ureg, zResPtr + j * n_ + k);
-                    Reg::Max<float>(zResMaxReg, zResMaxReg, zResReg, maskN);
+            int64_t bsOffset = i * nn_;
+
+            auto tmpPtr1 = tmpPtr + bsOffset;
+            auto zResMaxPtr1 = zResMaxPtr + bsOffset;
+            auto zResMaxIdxPtr1 = zResMaxIdxPtr + bsOffset;
+            auto isMaxIdxPtr1 = isMaxIdxPtr + bsOffset;
+            auto expGradPtr1 = expGradPtr + bsOffset;
+            
+            Reg::RegTensor<float> idxReg, idxSelectReg;
+            Reg::Arange(idxReg, 0);
+
+            // zResmax -> reduce_max -> broadcast, maxidx, ismax
+            for (uint16_t j = 0; j < n_; j++) { 
+                maskN = Reg::UpdateMask<float>(maskLenN);
+
+                int64_t nOffset = j * n_;
+                auto zResPtr1 = zResPtr + bsOffset + nOffset;
+                auto zResMaxPtr2 = zResMaxPtr1 + nOffset;
+                auto zResMaxIdxPtr2 = zResMaxIdxPtr1 + bsOffset;
+
+                Reg::LoadUnAlignPre(ureg, zResPtr1);
+                Reg::LoadUnAlign(zResReg, ureg, zResPtr1);
+
+                // zResMax
+                Reg::Reduce<Reg::ReduceType::MAX>(zResMaxReg, zResReg, maskN);
+
+                // zResMaxIdx
+                Reg::Compare<float>(maxMask, zResMaxReg, zResReg, maskN);
+                Reg::Select(idxSelectReg, idxReg, negInfReg, maxMask);
+                Reg::Reduce<Reg::ReduceType::MAX>(zResMaxIdxReg, idxSelectReg, maskN);
+
+                // isMax
+                Reg::Select(isMaxReg, oneReg, zeroReg, maxMask);
+
+                Reg::Duplicate(zResMaxBcastReg, zResMaxReg, maskN);
+                Reg::Duplicate(zResMaxIdxBcastReg, zResMaxIdxReg, maskN);
+
+                for (uint16_t k = 0; k < n_; k++) {
+                    Reg::StoreUnAlign<float>(zResMaxPtr2, zResMaxBcastReg, uregStore0, 1);
+                    Reg::StoreUnAlign<float>(zResMaxIdxPtr2, zResMaxIdxBcastReg, uregStore1, 1);
                 }
+                Reg::StoreUnAlignPost(zResMaxPtr2, uregStore0, 0);
+                Reg::StoreUnAlignPost(zResMaxIdxPtr2, uregStore1, 0);
+                
+                Reg::StoreUnAlign<float>(isMaxIdxPtr1, isMaxReg, uregStore2, n_);
             }
+            Reg::StoreUnAlignPost(isMaxIdxPtr1, uregStore2, 0);
 
-            // zResmaxIdx
-            Reg::RegTensor<float> idxReg;
-            Reg::Arange(idxReg, 0);   // 不能放for里面
+            Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
 
-            for (uint16_t j = 0; j < n_; j++) {  // 第三维
-                for (uint16_t k = 0; k < n_; k++) {  // 第四维
-
-                    maskN = Reg::UpdateMask<float>(maskLenN);
-                    Reg::LoadUnAlignPre(ureg, zResPtr + j * n_ + k);
-                    Reg::LoadUnAlign(zResReg, ureg, zResPtr + j * n_ + k);
-                    Reg::Compare<float>(maxMask, zResMaxReg, zResReg, maskN);
-                    
-                    Reg::Select(idxReg, idxReg, zeroReg, maxMask);
-                    Reg::Max<float>(zResMaxIdxReg, zResMaxIdxReg, idxReg, maskN);
-                }
-            }
-
-            //  make zResmax & zResmaxIdx broadcast
-            Reg::Duplicate(zResMaxBcastReg, zResMaxReg, mask);
-            Reg::Duplicate(zResMaxIdxBcastReg, zResMaxIdxReg, mask);
-            for (uint16_t j = 0; j < n_; j++) {  // 第三维
-                for (uint16_t k = 0; k < n_; k++) {  // 第四维
-                    Reg::StoreUnAlign<float>(zResMaxPtr, zResMaxBcastReg, uregStore0, j * n_ + k);
-                    Reg::StoreUnAlign<float>(zResMaxIdxPtr, zResMaxIdxReg, uregStore1, j * n_ + k);
-                }
-                Reg::StoreUnAlignPost(zResMaxPtr, uregStore0, 0);
-                Reg::StoreUnAlignPost(zResMaxIdxPtr, uregStore1, 0);
-            }
-
-            //
-            Reg::LoadUnAlignPre(ureg, zResPtr);
-            Reg::LoadUnAlign(zResReg, ureg, zResPtr);
-            Reg::LoadUnAlignPre(ureg, zResMaxPtr);
-            Reg::LoadUnAlign(zResMaxReg, ureg, zResMaxPtr);
-            Reg::LoadUnAlignPre(ureg, skGradPtr);
-            Reg::LoadUnAlign(skGradReg, ureg, skGradPtr);
+            Reg::LoadUnAlignPre(ureg0, zResPtr + bsOffset);
+            Reg::LoadUnAlign(zResReg, ureg0, zResPtr + bsOffset);
+            Reg::LoadUnAlignPre(ureg1, zResMaxPtr + bsOffset);
+            Reg::LoadUnAlign(zResMaxReg, ureg1, zResMaxPtr + bsOffset);
+            Reg::LoadUnAlignPre(ureg2, skGradPtr + bsOffset);
+            Reg::LoadUnAlign(skGradReg, ureg2, skGradPtr + bsOffset);
 
             Reg::Sub<float>(tmpSubReg, zResReg, zResMaxReg, maskNN);
             Reg::Exp<float>(tmpExpReg, tmpSubReg, maskNN);
             Reg::Mul<float>(tmpMulReg, tmpExpReg, skGradReg, maskNN);
 
-            Reg::StoreUnAlign<float>(tmpMulPtr, tmpMulReg, uregStore2, i* nn_);
-            Reg::StoreUnAlignPost(tmpMulPtr, uregStore2, 0);
+            Reg::StoreAlign<float>(tmpMulPtr + bsOffset, tmpMulReg, maskNN);
 
-            for (uint16_t j = 0; j < n_; j++) {  // 第三维
-                for (uint16_t k = 0; k < n_; k++) {  // 第四维
-                    maskN = Reg::UpdateMask<float>(maskLenN);
-                    Reg::LoadUnAlignPre(ureg, tmpMulPtr + j * n_ + k);
-                    Reg::LoadUnAlign(tmpMulReg, ureg, tmpMulPtr + j * n_ + k);
-                    Reg::Add<float>(sumAllReg, sumAllReg, tmpMulReg, maskN);
-                }
-            }
+            Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
 
-            Reg::Duplicate(sumAllReg, sumAllReg, mask);
-            for (uint16_t j = 0; j < n_; j++) {  // 第三维
-                for (uint16_t k = 0; k < n_; k++) {  // 第四维
-                    Reg::StoreUnAlign<float>(tmpMulPtr, sumAllReg, uregStore3, j * n_ + k);
-                }
-                Reg::StoreUnAlignPost(tmpMulPtr, uregStore3, 0);
-            }
-
-            Reg::LoadUnAlignPre(ureg, tmpMulPtr + i * nn_);
-            Reg::LoadUnAlign(sumAllReg, ureg, tmpMulPtr + i * nn_);
-
-            // 计算is_max
-            Reg::RegTensor<float> idxReg1;
-            Reg::Arange(idxReg1, static_cast<float>(0));   // 不能放for里面
+            // tmpMul -> reduce_sum, tmpMul2, expGrad
             for (uint16_t j = 0; j < n_; j++) {
-
                 maskN = Reg::UpdateMask<float>(maskLenN);
 
-                Reg::LoadUnAlignPre(ureg, tmpMulPtr + i * nn_ + + j * n_);
-                Reg::LoadUnAlign(sumAllReg, ureg, tmpMulPtr + i * nn_ + j * n_);
+                Reg::LoadUnAlignPre(ureg, tmpMulPtr + bsOffset + j * n_);
+                Reg::LoadUnAlign(tmpMulReg, ureg, tmpMulPtr + bsOffset + j * n_);
 
-                Reg::LoadUnAlignPre(ureg, zResMaxIdxPtr + i * nn_ + j * n_);
-                Reg::LoadUnAlign(zResMaxIdxReg, ureg, zResMaxIdxPtr + i * nn_ + j * n_);
+                Reg::LoadUnAlignPre(ureg, isMaxIdxPtr + bsOffset + j * n_);
+                Reg::LoadUnAlign(isMaxReg, ureg, isMaxIdxPtr + bsOffset + j * n_);
 
-                Reg::LoadUnAlignPre(ureg, tmpMulPtr + i * nn_  + j * n_);
-                Reg::LoadUnAlign(tmpMulReg, ureg, tmpMulPtr + i * nn_ + j * n_);
-
-                Reg::Compare(cmpMask, idxReg1, zResMaxIdxReg, maskN);
-                Reg::Select(isMaxReg, oneReg, zeroReg, cmpMask);
-
-                Reg::Mul(tmpMul2Reg, isMaxReg, sumAllReg, maskN);
+                Reg::Reduce<Reg::ReduceType::SUM>(sumAllReg, tmpMulReg, maskN);
+                Reg::Duplicate(sumAllBcastReg, sumAllReg, maskN);
+                Reg::Mul(tmpMul2Reg, isMaxReg, sumAllBcastReg, maskN);
                 Reg::Sub(expGradReg, tmpMulReg, tmpMul2Reg, maskN);
 
-                Reg::StoreUnAlign<float>(expGradPtr, expGradReg, uregStore4, i * nn_ + j * n_);
+                Reg::StoreUnAlign<float>(expGradPtr1, expGradReg, uregStore3, n_);
             }
-            Reg::StoreUnAlignPost(expGradPtr, uregStore4, 0);
+            Reg::StoreUnAlignPost(expGradPtr1, uregStore3, 0);
         }
     }
 }
