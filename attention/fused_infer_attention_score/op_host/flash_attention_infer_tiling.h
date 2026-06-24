@@ -764,25 +764,18 @@ namespace optiling{
             return;
         }
 
-        // 最优核数搜索：最小化端到端开销 E2E(k) = 最慢核负载(k) + 启动开销 * k
+        // 核数上限
         uint32_t maxCore = std::min(blockNum_, totalBlockNum);
         maxCore = std::min(maxCore, static_cast<uint32_t>(MAX_CORE_NUM_FD));
-        uint32_t minCore =
-            static_cast<uint32_t>(std::sqrt(static_cast<float>(totalBlockNum) + 0.25f) + 0.5f);
-        minCore = std::max(1U, std::min(minCore, maxCore));
 
-        uint32_t bestCore = minCore;
-        uint64_t bestE2E = UINT64_MAX;
-        for (uint32_t k = minCore; k <= maxCore; ++k) {
-            uint64_t maxCost = fillCoreInfoForFlashDecode(faTilingData, groupSize, totalCost, k);
-            uint64_t e2e = maxCost + FD_CORE_LAUNCH_COST * static_cast<uint64_t>(k);
-            if (e2e < bestE2E) {
-                bestE2E = e2e;
-                bestCore = k;
-            }
-        }
+        // 直接解析求解 e2e 下界 LB(k)=totalCost/k + C*k 的极小点 k*=sqrt(totalCost/C)
+        uint32_t bestCore = static_cast<uint32_t>(
+            std::sqrt(static_cast<double>(totalCost) / static_cast<double>(FD_CORE_LAUNCH_COST)) + 0.5);
 
-        // 用最优核数正式分核，并生成 FlashDecode 归约元数据
+        // 取值有效性约束：至少 1 核
+        bestCore = std::max(1U, std::min(bestCore, maxCore));
+
+        // 用最优核数正式分核
         fillCoreInfoForFlashDecode(faTilingData, groupSize, totalCost, bestCore);
         fillSplitInfoForFlashDecode(faTilingData, groupSize);
     }
