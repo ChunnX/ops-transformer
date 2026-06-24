@@ -103,7 +103,9 @@ public:
         uint64_t bufferSize1 = (2 * QLIV2Common::Align(topK, (uint32_t)256) + 3 * 256 + 64)  * sizeof(uint32_t);
         // QLIV2Common::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
         uint64_t bufferSize2 = (QLIV2Common::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint16_t);
-        return bufferSize1 + bufferSize2;
+        // hisIndexLocal[0] 复用 indicesOutLocal，从 shared buffer 中扣除
+        uint64_t reUseBufferSize = QLIV2Common::Align(topK, (uint32_t)256) * sizeof(uint32_t);
+        return bufferSize1 + bufferSize2 - reUseBufferSize;
     }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
@@ -112,17 +114,18 @@ public:
         this->trunkLen =  trunkLen;
     }
 
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer, LocalTensor<uint32_t>& indicesOutLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
-        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[QLIV2Common::Align(topK, (uint32_t)256)];
+        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
+        // 256: 将 topK 实际分配容量向上取整至 256 的倍数
+        LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[QLIV2Common::Align(topK, (uint32_t)256)];
-        idxHighLocal = histogramsLocal[256];
-        idxLowLocal = idxHighLocal[256];
-        nkValueLocal = idxLowLocal[256];
-        LocalTensor<uint32_t> tmpIndexLocalTmp = nkValueLocal[64];
+        histogramsLocal = hisIndexLocal2[QLIV2Common::Align(topK, (uint32_t)256)]; // 256: 同上
+        idxHighLocal = histogramsLocal[256]; // 256: 本地内存对齐基线步长
+        idxLowLocal = idxHighLocal[256]; // 256: 延续对齐基线步长
+        nkValueLocal = idxLowLocal[256]; // 256: 固定偏移步长
+        LocalTensor<uint32_t> tmpIndexLocalTmp = nkValueLocal[64]; // 64: 单核/单线程输出容量
         tmpIndexLocal = tmpIndexLocalTmp.template ReinterpretCast<uint16_t>();
     }
 

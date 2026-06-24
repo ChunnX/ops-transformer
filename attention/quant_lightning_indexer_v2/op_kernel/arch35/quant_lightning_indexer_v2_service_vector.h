@@ -194,7 +194,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     uint32_t scoreOutOffsetInU32 = topkCountAlign256_ + 3 * 256 + 64;
     scoreOutLocal_ = resMm1UB_[scoreOutOffsetInU32].template ReinterpretCast<uint16_t>();
 
-    topkOp_.InitBuffers(topkSharedTmpLocal_);
+    topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
     // 刷-1（MXFP8 场景不需要 kScale buffer）
     if constexpr (!IS_MXFP8) {
@@ -448,7 +448,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     if constexpr (IS_MXFP8) {
         // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + ReduceSum
-        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
+        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
                                                     (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
                                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
