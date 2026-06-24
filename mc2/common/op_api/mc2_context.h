@@ -97,7 +97,6 @@ private:
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclRankGraphGetRanksByLayer)(HcclComm, uint32_t, uint32_t **, uint32_t *) = nullptr;
-    HcommResult (*HcommChannelGetPtrByHandle)(const ChannelHandle *, uint32_t, uint64_t *) = nullptr;
 };
 } // namespace Mc2Aclnn
 

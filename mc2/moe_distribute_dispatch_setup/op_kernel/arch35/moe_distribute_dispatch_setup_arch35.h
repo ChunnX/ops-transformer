@@ -1133,7 +1133,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
         // 非本卡通信：发完 epRankId_-->sendRankId 的所有token后，统一敲doorbell
         bool hasWrite = false;
         uint32_t currRankId = sendRankId > epRankId_ ? sendRankId - 1 : sendRankId;
-        uint32_t tmpRankId = sendRankId < moeExpertNumPerRank_ ? sendRankId : moeExpertNumPerRank_
+        uint32_t tmpRankId = sendRankId < moeExpertNumPerRank_ ? sendRankId : moeExpertNumPerRank_;
         for (uint32_t sendExpertId = tmpRankId; sendExpertId < moeExpertNumPerRank_; ++sendExpertId) {
             uint32_t globalExpertId = sharedExpertRankNum_ +
                 (sendRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ + sendExpertId;
@@ -1233,7 +1233,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
             hcomm_.Commit(mc2Context_->hcommHandle_[currRankId]);
             //hcomm_.Drain(mc2Context_->hcommHandle_[currRankId]);
 #ifdef DETECTION_TIME
-            AscendC::PipeBarrier<PIPE_ALL>();                       // 3.
+            AscendC::PipeBarrier<PIPE_ALL>();
             int64_t g1 = AscendC::GetSystemCycle();
             int64_t costCycles = g1 - g0;
             op_LOGD("Communication cost cycles:%ld\n", costCycles);

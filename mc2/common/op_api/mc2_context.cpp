@@ -109,7 +109,6 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRanksByLayer), "HcclRankGraphGetRanksByLayer"},
-        {reinterpret_cast<void **>(&HcommChannelGetPtrByHandle), "HcommChannelGetPtrByHandle"},
     };
 
     for (auto &sym : symbols) {
