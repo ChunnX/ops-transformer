@@ -107,6 +107,7 @@ protected:
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
     uint64_t valueOutCoreOffset = 0ULL;
+    uint64_t outputIdxCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
     bool isOutputIdxOffsetValid = false;
     // ================================Global Buffer区=================================
@@ -523,11 +524,12 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+        valueOutGm.SetGlobalBuffer((__gm__ float *)sparseValues);
         if (outputIdxOffset != nullptr) {
             isOutputIdxOffsetValid = true;
             outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
-        } 
-        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm, outputIdxOffsetGm);
+        }
+        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm, valueOutGm, outputIdxOffsetGm);
         
         vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
         vectorService.InitParams(constInfo, ldInfo, tiling);
@@ -662,7 +664,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
         indiceOutCoreOffset =
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
         valueOutCoreOffset =
-            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.topkCount_ + runInfo.n2Idx * constInfo.topkCount_;
+            actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
         outputIdxCoreOffset =
             (actualSeqQPrefixSum + runInfo.gS1Idx * constInfo.s1BaseSize) * constInfo.kHeadNum + runInfo.n2Idx;
     }
@@ -720,7 +722,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
                 valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
                 GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
 
-                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
+                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_BFLOAT);
             }
         }
     }
