@@ -920,7 +920,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     // 检查 H 是否 1024 的倍数
     OP_TILING_CHECK(xDim1 % H_BASE != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
-            (std::string("should be multiple of ") + std::to_string(H_BASE)).c_str()),
+            (std::string("multiple of ") + std::to_string(H_BASE)).c_str()),
         return ge::GRAPH_FAILED);
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
