@@ -192,19 +192,9 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrsPtr);
     const int64_t* attrKPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrKPtr);
-    OP_LOGD(context_->GetNodeName(), "get k is %ld", *attrKPtr);
+    k = *attrKPtr;
     if (!scalesShape) {
         hasScales_ = false;
-        OP_CHECK_IF(
-            *attrKPtr == 0,
-            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "k",
-                "0", "k is required when scales is not provided"),
-            return ge::GRAPH_FAILED);
-        k = *attrKPtr;
-        OP_CHECK_IF(
-            k <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
-                std::to_string(k).c_str(), "k must be greater than 0 when scales is null."),
-            return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 
@@ -215,7 +205,8 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
             std::to_string(scalesShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
         return ge::GRAPH_FAILED);
     int64_t scalesDim1 = scalesShape->GetStorageShape().GetDim(1);
-    if (*attrKPtr > 0) {
+    // k > 1 means user explicitly specified k, need to verify consistency with scales dim1
+    if (*attrKPtr > 1) {
         OP_CHECK_IF(
             *attrKPtr != scalesDim1,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",

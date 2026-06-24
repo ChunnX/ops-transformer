@@ -29,7 +29,6 @@ TEST_F(l2_moe_finalize_routing_v3_test, Ascend910B2_moe_finalize_routing_v3_fp32
     auto expertIdx = TensorDesc({16, 1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
     auto out = TensorDesc({16, 16}, ACL_FLOAT, ACL_FORMAT_ND);
     int64_t dropPadMode = 0;
-    int64_t k = 1;
     std::vector<int64_t> defaultRange = {-1, -1};
     aclIntArray* zeroExpertRange = aclCreateIntArray(defaultRange.data(), defaultRange.size());
     aclIntArray* copyExpertRange = aclCreateIntArray(defaultRange.data(), defaultRange.size());
@@ -38,7 +37,7 @@ TEST_F(l2_moe_finalize_routing_v3_test, Ascend910B2_moe_finalize_routing_v3_fp32
     auto ut = OP_API_UT(aclnnMoeFinalizeRoutingV3,
                         INPUT(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx, (aclTensor*)nullptr,
                               (aclTensor*)nullptr, (aclTensor*)nullptr, (aclTensor*)nullptr, dropPadMode, zeroExpertRange,
-                              copyExpertRange, constantExpertRange, k),
+                              copyExpertRange, constantExpertRange),
                         OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -59,7 +58,6 @@ TEST_F(l2_moe_finalize_routing_v3_test, Ascend910B2_moe_finalize_routing_v3_cons
     auto v = TensorDesc({2, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto out = TensorDesc({16, 16}, ACL_FLOAT, ACL_FORMAT_ND);
     int64_t dropPadMode = 0;
-    int64_t k = 1;
     std::vector<int64_t> zeroRange = {0, 2};
     std::vector<int64_t> copyRange = {2, 4};
     std::vector<int64_t> constRange = {4, 6};
@@ -70,7 +68,7 @@ TEST_F(l2_moe_finalize_routing_v3_test, Ascend910B2_moe_finalize_routing_v3_cons
     auto ut = OP_API_UT(aclnnMoeFinalizeRoutingV3,
                         INPUT(expandedX, expandedRowIdx, x1, (aclTensor*)nullptr, (aclTensor*)nullptr, scales,
                               expertIdx, x, alpha1, alpha2, v, dropPadMode, zeroExpertRange, copyExpertRange,
-                              constantExpertRange, k),
+                              constantExpertRange),
                         OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -87,7 +85,6 @@ TEST_F(l2_moe_finalize_routing_v3_test, Ascend910B2_moe_finalize_routing_v3_drop
     auto expertIdx = TensorDesc({2, 8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
     auto out = TensorDesc({2, 16}, ACL_BF16, ACL_FORMAT_ND);
     int64_t dropPadMode = 1;
-    int64_t k = 1;
     std::vector<int64_t> defaultRange = {-1, -1};
     aclIntArray* zeroExpertRange = aclCreateIntArray(defaultRange.data(), defaultRange.size());
     aclIntArray* copyExpertRange = aclCreateIntArray(defaultRange.data(), defaultRange.size());
@@ -96,7 +93,7 @@ TEST_F(l2_moe_finalize_routing_v3_test, Ascend910B2_moe_finalize_routing_v3_drop
     auto ut = OP_API_UT(aclnnMoeFinalizeRoutingV3,
                         INPUT(expandedX, expandedRowIdx, x1, (aclTensor*)nullptr, (aclTensor*)nullptr, scales,
                               expertIdx, (aclTensor*)nullptr, (aclTensor*)nullptr, (aclTensor*)nullptr,
-                              (aclTensor*)nullptr, dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange, k),
+                              (aclTensor*)nullptr, dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange),
                         OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;

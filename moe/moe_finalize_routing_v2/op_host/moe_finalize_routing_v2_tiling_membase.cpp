@@ -202,6 +202,7 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
         return ge::GRAPH_FAILED);
     int64_t nk = expandedRowIdxShape.GetDim(DIM_INDEX_0);
     int64_t attrK = *(attrsPtr->GetAttrPointer<int64_t>(4));
+    k_ = attrK;
     if (scalesShape != nullptr) {
         OP_CHECK_IF(
             scalesShape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
@@ -209,7 +210,8 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
                 std::to_string(scalesShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
             return ge::GRAPH_FAILED);
         int64_t scalesK = scalesShape->GetStorageShape().GetDim(DIM_INDEX_1);
-        if (attrK > 0) {
+        // k > 1 means user explicitly specified k, need to verify consistency with scales dim1
+        if (attrK > 1) {
             OP_CHECK_IF(
                 attrK != scalesK,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
@@ -220,17 +222,6 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
         OP_CHECK_IF(
             k_ <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
                 std::to_string(k_).c_str(), "k must be greater than 0."),
-            return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(
-            attrK == 0,
-            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "k",
-                "0", "k is required when scales is not provided"),
-            return ge::GRAPH_FAILED);
-        k_ = attrK;
-        OP_CHECK_IF(
-            k_ <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
-                std::to_string(k_).c_str(), "k must be greater than 0 when scales is null."),
             return ge::GRAPH_FAILED);
     }
 
