@@ -213,6 +213,8 @@ private:
     ge::graphStatus ValidateRowIdxType();
     // 校验输入Tensor的Shape、Dtype
     ge::graphStatus CheckSetInputs();
+    // 空tensor场景判定与相关tiling字段设置（含activeNum校验）
+    ge::graphStatus CheckSetEmptyTensor();
     // 校验输出Tensor的Shape、Dtype
     ge::graphStatus CheckOutputs();
 
@@ -492,6 +494,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     MIRV3_CHECK_GE_RET(CheckSetAttrs());
     MIRV3_CHECK_GE_RET(CheckSetListAttrs());
     MIRV3_CHECK_GE_RET(CheckSetInputs());
+    MIRV3_CHECK_GE_RET(CheckSetEmptyTensor());
     MIRV3_CHECK_GE_RET(CheckOutputs());
 
     // 空tensor快速返回，跳过后续tiling计算
@@ -1110,6 +1113,28 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     tilingDataPtr_->k = k_;
     tilingDataPtr_->cols = cols_;
 
+    // INT4 dynamic quantization packs two values per byte along the H/cols dimension.
+    if (IsInt4DynamicQuantCase() && (cols_ % NUM_TWO != 0)) {
+        OP_LOGE(context_, "For INT4 dynamic quantization, cols (%ld) must be even.", cols_);
+        return ge::GRAPH_FAILED;
+    }
+
+    // DropPad模式下expertCapacity必须满足 ≤ numRows
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(expertCapacity_ > n_,
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_capacity",
+                        std::to_string(expertCapacity_),
+                        "less than or equal to " + std::to_string(n_)),
+                    return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
+
     // 空tensor场景：n_==0、k_==0、cols_==0
     if (n_ == 0 || k_ == 0 || cols_ == 0) {
         isEmptyTensor_ = true;
@@ -1120,12 +1145,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
             expertCountElements = expertEnd_ - expertStart_;
         }
         tilingDataPtr_->expertCountElements = expertCountElements;
-    }
-
-    // INT4 dynamic quantization packs two values per byte along the H/cols dimension.
-    if (IsInt4DynamicQuantCase() && (cols_ % NUM_TWO != 0)) {
-        OP_LOGE(context_, "For INT4 dynamic quantization, cols (%ld) must be even.", cols_);
-        return ge::GRAPH_FAILED;
     }
 
     // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
@@ -1142,15 +1161,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
         tilingDataPtr_->activeNum = totalLength_;
     } else {
         tilingDataPtr_->activeNum = totalLength_;
-    }
-
-    // DropPad模式下expertCapacity必须满足 ≤ numRows
-    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
-        OP_CHECK_IF(expertCapacity_ > n_,
-                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_capacity",
-                        std::to_string(expertCapacity_),
-                        "less than or equal to " + std::to_string(n_)),
-                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
