@@ -162,11 +162,11 @@ def run(args):
     log("call npu_grouped_matmul_activation_quant")
     y_npu, y_scale_npu = npu_grouped_matmul_activation_quant(
         data["x_npu"],
+        data["group_list_npu"],
         [data["weight_npu"]],
         [data["weight_scale_npu"]],
-        data["group_list_npu"],
+        None,
         x_scale=data["x_scale_npu"],
-        bias=None,
         activation_type="gelu_tanh",
         group_list_type=0,
         tuning_config=None,
