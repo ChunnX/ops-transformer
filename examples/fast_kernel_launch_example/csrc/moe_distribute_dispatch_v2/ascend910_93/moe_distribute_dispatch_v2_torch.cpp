@@ -120,7 +120,7 @@ void moe_distribute_dispatch_v2_api(
     int32_t tilingKey = 10000;
     calculate_tilingkey(tilingKey, x.scalar_type(), scales.has_value(), tilingData.quantMode, is_fullmesh_v2);
 
-    aclProfTensorInfo tensorInfo;
+    aclprofTensorInfo tensorInfo;
     INIT_ACL_PROF_TENSOR_INFO("moe_distribute_dispatch_v2", "MoeDistributeDispatchV2", tilingData.aivNum, MIX_AIV, tensorInfo, stream,
         INPUT(x), INPUT(expert_ids),
         OUTPUT(expand_x), OUTPUT(dynamic_scales), OUTPUT(assist_info_forcombine),
