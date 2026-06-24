@@ -223,7 +223,8 @@ bool GroupedMatmulActivationQuantTiling950::CheckMxScaleShape(const gert::Shape 
                     wScaleShape.GetDimNum() != MXFP_TYPE_M_SCALE_DIM_NUM,
                 OP_LOGE(context_->GetNodeName(), "x_scale must be 3D and weight_scale must be 4D."),
                 return false);
-    auto expectedKBlocks = static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR));
+    auto expectedKBlocks = static_cast<int64_t>(
+        Ops::Base::CeilDiv(static_cast<int64_t>(inputParams_.kSize), static_cast<int64_t>(MXFP_BASEK_FACTOR)));
     auto wScaleN =
         inputParams_.transB ? wScaleShape.GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX) :
                               wScaleShape.GetDim(WEIGHT_SCALE_N_DIM_INDEX);
@@ -253,12 +254,16 @@ bool GroupedMatmulActivationQuantTiling950::CheckWeightNzShape(const gert::Shape
                     wStorageShape.GetDim(WEIGHT_NZ_LAST_DIM_INDEX) != WEIGHT_NZ_LAST_DIM_FP8,
                 OP_LOGE(context_->GetNodeName(), "FP8 NZ weight storage tail dims must be 16 and 32."),
                 return false);
+    auto kSize = static_cast<int64_t>(inputParams_.kSize);
+    auto nSize = static_cast<int64_t>(inputParams_.nSize);
+    auto nzLastDim = static_cast<int64_t>(WEIGHT_NZ_LAST_DIM_FP8);
+    auto nzC0Dim = static_cast<int64_t>(WEIGHT_NZ_C0_DIM);
     auto expectedNBlock = inputParams_.transB ?
-        static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.kSize, WEIGHT_NZ_LAST_DIM_FP8)) :
-        static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.nSize, WEIGHT_NZ_LAST_DIM_FP8));
+        static_cast<int64_t>(Ops::Base::CeilDiv(kSize, nzLastDim)) :
+        static_cast<int64_t>(Ops::Base::CeilDiv(nSize, nzLastDim));
     auto expectedKBlock = inputParams_.transB ?
-        static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.nSize, WEIGHT_NZ_C0_DIM)) :
-        static_cast<int64_t>(Ops::Base::CeilDiv(inputParams_.kSize, WEIGHT_NZ_C0_DIM));
+        static_cast<int64_t>(Ops::Base::CeilDiv(nSize, nzC0Dim)) :
+        static_cast<int64_t>(Ops::Base::CeilDiv(kSize, nzC0Dim));
     OP_CHECK_IF(wStorageShape.GetDim(WEIGHT_NZ_GROUP_DIM_INDEX) != static_cast<int64_t>(inputParams_.groupNum) ||
                     wStorageShape.GetDim(WEIGHT_NZ_BLOCK1_DIM_INDEX) != expectedNBlock ||
                     wStorageShape.GetDim(WEIGHT_NZ_BLOCK2_DIM_INDEX) != expectedKBlock,
