@@ -199,8 +199,8 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
-    uint64_t x1Dim1 = x1->GetViewShape().GetDim(x1Len - 1);
-    if (x1Dim1 != x2Dim0) {
+    int64_t x1Dim1 = x1->GetViewShape().GetDim(x1Len - 1);
+    if (x1Dim1 < 0 || static_cast<uint64_t>(x1Dim1) != x2Dim0) {
         OP_LOGE(
             ACLNN_ERR_PARAM_INVALID,
             "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
