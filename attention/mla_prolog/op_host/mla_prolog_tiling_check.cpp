@@ -931,7 +931,13 @@ ge::graphStatus MlaPrologTilingCheck::CheckParamByScenario()
         if (__builtin_expect((expectedParam != it.second), 0)) {
             isCorrect = ge::GRAPH_FAILED;
             if (expectedParam.isValid != it.second.isValid) {
-                OP_LOGE_WITH_INVALID_INPUT(context_.opName, it.first);
+                if (expectedParam.isValid && !it.second.isValid) {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, it.first, "null",
+                                                          "This parameter is required in the current scenario");
+                } else {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, it.first, "not null",
+                                                          "This parameter is not required in the current scenario");
+                }
                 continue;
             }
             if (expectedParam.dtype != it.second.dtype) {
