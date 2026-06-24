@@ -90,17 +90,15 @@ static ge::graphStatus ValidateMinDimNum(gert::InferShapeContext *context, const
     const uint64_t actualDimNum = static_cast<uint64_t>(shape->GetDimNum());
     if (actualDimNum < minDimNum) {
         const std::string actualRank = RankString(actualDimNum);
-        const std::string reason = std::string(tensorName) + " rank must be greater than or equal to " +
-                                   RankString(minDimNum);
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetLogOpName(context), tensorName, actualRank.c_str(),
-                                                 reason.c_str());
+        const std::string reason =
+            std::string(tensorName) + " rank must be greater than or equal to " + RankString(minDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetLogOpName(context), tensorName, actualRank.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ParseInputLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
-                                        bool &isNtd)
+static ge::graphStatus ParseInputLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, bool &isNtd)
 {
     if (static_cast<uint64_t>(attrs->GetAttrNum()) <= INPUT_LAYOUT_ATTR_INDEX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "inputLayout", "missing",
@@ -121,8 +119,7 @@ static ge::graphStatus ParseInputLayout(gert::InferShapeContext *context, const 
     return ge::GRAPH_FAILED;
 }
 
-static ge::graphStatus ParseQHeadNum(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
-                                     int64_t &qHeads)
+static ge::graphStatus ParseQHeadNum(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, int64_t &qHeads)
 {
     const auto headNums = attrs->GetListInt(HEAD_NUMS_ATTR_INDEX);
     if (CheckNotNull(context, headNums, "head_nums", "head_nums must exist") != ge::GRAPH_SUCCESS) {
