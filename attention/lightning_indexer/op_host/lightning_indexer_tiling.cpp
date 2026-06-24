@@ -553,8 +553,11 @@ static ge::graphStatus LiGetHeadDim(const TilingRequiredParaInfo &liQuery, DataL
             return ge::GRAPH_FAILED;
     }
     liHeadDim = liQuery.shape->GetStorageShape().GetDim(liDIndex);
-    OP_CHECK_IF(liHeadDim != HEAD_DIM_LIMIT, OP_LOGE(liOpName, "input query's last dim head_dim only support 128."),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(liHeadDim != HEAD_DIM_LIMIT,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(liOpName, "query",
+            Ops::Base::ToString(liQuery.shape->GetStorageShape()).c_str(),
+            "input query's last dim head_dim only support 128"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
