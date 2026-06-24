@@ -902,7 +902,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     int32_t waitLoop = 0;
     do {
         hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
-        // hcomm_.Drain(channel);
+        hcomm_.Drain(channel);
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
         PRINTF("ReadRelayTokenToCopyTmp: waitLoop=%d, readyValue=%d\n", waitLoop, readyValue);
         if (readyValue == int32_t(1)) {
@@ -920,7 +920,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
             break;
         }
     } while (true);
-
+    PRINTF("BEGIN READDATA\n");
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     hcomm_.Drain(channel);
     GlobalTensor<ActivationType> scratchGlobalTensor;
