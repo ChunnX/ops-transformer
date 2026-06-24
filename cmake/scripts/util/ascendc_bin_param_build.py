@@ -204,6 +204,22 @@ class BinParamBuilder(opdesc_parser.OpDesc):
             self.output_fmt[i] = new_format_str[:-1]
 
 
+    @staticmethod
+    def _normalize_key(required_parameter):
+        """将 required_parameter 中兼容的 dtype 归一化，生成编译归一化 key。
+        归一化后的 key 相同的变体只需编译一次，其余拷贝产物。
+        """
+        normalize_map = {
+            'float16': 'bfloat16',
+            'float8_e4m3fn': 'float8_e5m2',
+            'float4_e1m2': 'float4_e2m1',
+        }
+        result = []
+        for dtype, fmt in required_parameter:
+            normalized_dtype = normalize_map.get(dtype, dtype)
+            result.append((normalized_dtype, fmt))
+        return tuple(result)
+
     def is_set_for_bin_query(self: any):
         return any([
             self.input_dtype_for_bin,
@@ -238,6 +254,7 @@ class BinParamBuilder(opdesc_parser.OpDesc):
             raise RuntimeError(f'Op {self.op_type} must have at least one input or output')
         required_parameters = set()
         index_value = -1
+        normalized_compiled = {}  # MegaMoe: normalized_key -> canonical_bin_file
 
         for i in range(0, count):
             inputs = []
@@ -335,21 +352,70 @@ class BinParamBuilder(opdesc_parser.OpDesc):
             param_file = os.path.realpath(param_file)
 
             self._write_build_json(param_file, param)
-            self._write_build_cmd(param_file, bin_file, index_value, auto_gen_path, bisheng_flags,
-            kernel_template_input=kernel_template_input)
+
+            # MegaMoe: 对归一化 key 相同的变体只编译一次，其余拷贝产物
+            is_copy_variant = False
+            canonical_bin_file = None
+            if self.op_type == "MegaMoe":
+                norm_key = self._normalize_key(required_parameter)
+                if norm_key in normalized_compiled:
+                    is_copy_variant = True
+                    canonical_bin_file = normalized_compiled[norm_key]
+                else:
+                    normalized_compiled[norm_key] = bin_file
+
+            if is_copy_variant:
+                self._write_copy_cmd(bin_file, canonical_bin_file, index_value, auto_gen_path)
+            else:
+                self._write_build_cmd(param_file, bin_file, index_value, auto_gen_path, bisheng_flags,
+                kernel_template_input=kernel_template_input)
+
             if self.op_super_config:
-                bin_file += "_relocatable"
-                op_node['bin_filename'] = bin_file
-                param_file = os.path.join(self.out_path, bin_file + '_param.json')
-                param_file = os.path.realpath(param_file)
-                self._write_build_json(param_file, param)
+                bin_file_reloc = bin_file + "_relocatable"
+                op_node['bin_filename'] = bin_file_reloc
+                param_file_reloc = os.path.join(self.out_path, bin_file_reloc + '_param.json')
+                param_file_reloc = os.path.realpath(param_file_reloc)
+                self._write_build_json(param_file_reloc, param)
                 index_value += 1
-                self._write_build_cmd(param_file, bin_file, index_value, auto_gen_path, bisheng_flags, True, 
-                                      kernel_template_input)
+                if is_copy_variant:
+                    self._write_copy_cmd(bin_file_reloc, canonical_bin_file + "_relocatable", index_value, auto_gen_path)
+                else:
+                    self._write_build_cmd(param_file_reloc, bin_file_reloc, index_value, auto_gen_path, bisheng_flags, True,
+                                          kernel_template_input)
 
     def _write_build_json(self: any, param_file: str, param):
         with os.fdopen(os.open(param_file, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
             json.dump(param, fd, indent='  ')
+
+    def _write_copy_cmd(self: any, bin_file: str, canonical_bin_file: str, index_value: int, auto_gen_path: str):
+        """生成拷贝脚本：等待规范变体编译完成，然后拷贝其产物，而非重新编译。"""
+        ci_mode_flag = (os.environ.get('CI_MODE', 'FALSE') == 'TRUE')
+        # 输出目录由调用方传入 ($2)，与正常编译脚本一致
+        out_dir_var = '$2'
+
+        build_cmd_var = "#!/bin/bash\n"
+        build_cmd_var += f'echo "[{self.soc}] Generating {bin_file} ..."\n'
+        if not ci_mode_flag:
+            build_cmd_var += self._get_no_ci_shell_str()
+        build_cmd_var += f"""
+start_time=$(date +%s.%N)
+echo "[{self.soc}] Copying from canonical {canonical_bin_file} ..."
+while [ ! -f "{out_dir_var}/{canonical_bin_file}.o" ]; do sleep 1; done
+cp "{out_dir_var}/{canonical_bin_file}.o" "{out_dir_var}/{bin_file}.o"
+cp "{out_dir_var}/{canonical_bin_file}.json" "{out_dir_var}/{bin_file}.json"
+if [ $? -ne 0 ]; then
+    echo "[{self.soc}] Copy failed for {bin_file}"
+    on_failure
+    exit 1
+fi
+remove_pid
+echo "[{self.soc}] Generating {bin_file} Done"
+"""
+
+        script_path = os.path.join(auto_gen_path, f"{self.op_type}-{self.op_intf}-{index_value}.sh")
+        with os.fdopen(os.open(script_path, const_var.WFLAGS, const_var.WMODES), 'w') as fd:
+            fd.write(build_cmd_var)
+        os.chmod(script_path, const_var.WMODES)
 
     def _generate_check_result(
         self, enable_tiling_keys: bool, bin_file: str, ci_mode_flag: bool

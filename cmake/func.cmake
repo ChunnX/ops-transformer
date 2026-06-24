@@ -491,6 +491,12 @@ function(add_ops_src_copy)
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
                 COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
             )
+            # 对于 ascend950 (arch35) 编译，排除 arch22 目录以加速编译
+            if("${SRC_COPY_COMPUTE_UNIT}" MATCHES "ascend950")
+                list(APPEND SYNC_COMMANDS
+                    COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/arch22"
+                )
+            endif()
         endif()
         list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
         add_custom_command(
