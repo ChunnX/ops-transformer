@@ -57,6 +57,7 @@ public:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline void InitLDBuffers(TPipe *pipe, const struct QLIV2Common::LdSplitCoreInfo &ldInfo);
+    __aicore__ inline void DoTndPadding(const QLIV2Common::RunInfo &runInfo);
 
 protected:
     GlobalTensor<SCORE_T> scoreGm;
@@ -68,6 +69,7 @@ protected:
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<bfloat16_t> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
+    GlobalTensor<int32_t> outputIdxOffsetGm;
     // =================================常量区=================================
     static constexpr uint32_t VEC1_V_MTE2_EVENT_KSCALE = EVENT_ID0;
     static constexpr uint32_t VEC1_MTE2_V_EVENT_KSCALE = EVENT_ID1;
@@ -331,26 +333,26 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::CleanInvalidOutput(int64_t invalidS1
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.NEG_INF_BFLOAT, constInfo_.topkCount_);
+        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.NEG_INF_BFLOAT, constInfo_.sparseCount);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
         AscendC::DataCopyParams copyOutValueParams;
         copyOutValueParams.blockCount = 1;
-        copyOutValueParams.blockLen = constInfo_.topkCount_ * sizeof(float);
+        copyOutValueParams.blockLen = constInfo_.sparseCount * sizeof(float);
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
         AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
     }
 }
 
-template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const LIV2Common::RunInfo &runInfo)
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunInfo &runInfo)
 {
     uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t paddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topkCount_;
-    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topkCount_;
+    uint64_t paddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.sparseCount;
+    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.sparseCount;
     GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
     AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
 
