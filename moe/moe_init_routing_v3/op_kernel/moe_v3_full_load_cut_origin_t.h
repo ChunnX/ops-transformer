@@ -26,9 +26,9 @@ template <typename T>
 class MoeV3FullLoadCutOriginT {
 public:
     __aicore__ inline MoeV3FullLoadCutOriginT(){};
-    __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
-        GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling, TPipe* pipe);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+                                GM_ADDR expertTokens, GM_ADDR expandedScale, GM_ADDR workspace,
+                                const MoeInitRoutingV3TilingData *tiling, TPipe *pipe);
     __aicore__ inline void Process();
 
 private:
@@ -48,7 +48,7 @@ private:
     static constexpr int64_t MASK_STRIDE = 64;
     static constexpr int64_t VECTOR_FILTER_THRESHOLD = 64;
 
-    TPipe* pipe_;
+    TPipe *pipe_;
     TBuf<TPosition::VECCALC> buf_;
 
     GlobalTensor<int32_t> expertIdxGm_;
@@ -114,9 +114,10 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(
-    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
-    GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling, TPipe* pipe)
+__aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX,
+                                                        GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
+                                                        GM_ADDR expandedScale, GM_ADDR workspace,
+                                                        const MoeInitRoutingV3TilingData *tiling, TPipe *pipe)
 {
     pipe_ = pipe;
     blockIdx_ = GetBlockIdx();
@@ -158,17 +159,17 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(
     maskBytes_ = OpsBaseCeilAlign(Ceil(entriesAligned_, static_cast<int64_t>(8)), BLOCK_BYTES);
 
     // Setup GlobalTensors
-    xGm_.SetGlobalBuffer((__gm__ T*)x);
-    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
-    expandedXGm_.SetGlobalBuffer((__gm__ T*)expandedX);
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
-    workspaceGm_.SetGlobalBuffer((__gm__ int32_t*)workspace);
+    xGm_.SetGlobalBuffer((__gm__ T *)x);
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx);
+    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
+    workspaceGm_.SetGlobalBuffer((__gm__ int32_t *)workspace);
     if (expertTokensNumFlag_ != EXERPT_TOKENS_NONE) {
-        expertTokensGm_.SetGlobalBuffer((__gm__ int64_t*)expertTokens);
+        expertTokensGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokens);
     }
     if (isInputScale_) {
-        scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
-        expandedScaleGm_.SetGlobalBuffer((__gm__ float*)expandedScale);
+        scaleGm_.SetGlobalBuffer((__gm__ float *)scale);
+        expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
     }
 
     // Modification 1: Use InitGlobalMemory for GATHER mode pre-fill -1
@@ -281,15 +282,15 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::LoadExpertIdxAndScale()
 {
     LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[expertIdxLocalOffset_ / sizeof(int32_t)];
 
-    DataCopyExtParams copyParams{
-        static_cast<uint16_t>(1), static_cast<uint32_t>(coreEntries_ * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(coreEntries_ * sizeof(int32_t)), 0, 0,
+                                 0};
     DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
     DataCopyPad(expertIdxLocal, expertIdxGm_[coreFlatStart_], copyParams, padParams);
 
     if (isInputScale_) {
         LocalTensor<float> scaleLocal = buf_.Get<float>()[scaleLocalOffset_ / sizeof(float)];
-        DataCopyExtParams scaleCopyParams{
-            static_cast<uint16_t>(coreTokenNum_), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+        DataCopyExtParams scaleCopyParams{static_cast<uint16_t>(coreTokenNum_), static_cast<uint32_t>(sizeof(float)), 0,
+                                          0, 0};
         DataCopyPadExtParams<float> scalePadParams{false, 0, 0, 0};
         DataCopyPad(scaleLocal, scaleGm_[coreTokenStart_], scaleCopyParams, scalePadParams);
     }
@@ -303,9 +304,8 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::LoadXBackground()
     LocalTensor<T> xLocal = buf_.Get<T>()[xLocalOffset_ / sizeof(T)];
 
     SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-    DataCopyExtParams copyParams{
-        static_cast<uint16_t>(coreTokenNum_), static_cast<uint32_t>(cols_ * sizeof(T)), 0,
-        static_cast<uint32_t>((colsAligned_ - cols_) * sizeof(T)), 0};
+    DataCopyExtParams copyParams{static_cast<uint16_t>(coreTokenNum_), static_cast<uint32_t>(cols_ * sizeof(T)), 0,
+                                 static_cast<uint32_t>((colsAligned_ - cols_) * sizeof(T)), 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
     DataCopyPad(xLocal, xGm_[coreTokenStart_ * cols_], copyParams, padParams);
     // Do NOT wait here -- x loads in background, waited in WaitXLoad()
@@ -380,9 +380,8 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::FilterAndCountVector()
     gatherMaskParams.src0BlockStride = 1;
     gatherMaskParams.src0RepeatStride = DST_REP_STRIDE;
     gatherMaskParams.src1RepeatStride = DST_REP_STRIDE;
-    GatherMask(
-        gatheredExpertLocal, expertIdxLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
-        static_cast<uint32_t>(coreEntries_), gatherMaskParams, rsvdCnt);
+    GatherMask(gatheredExpertLocal, expertIdxLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
+               static_cast<uint32_t>(coreEntries_), gatherMaskParams, rsvdCnt);
     PipeBarrier<PIPE_V>();
     int64_t filteredInBatch = static_cast<int64_t>(rsvdCnt);
 
@@ -393,9 +392,8 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::FilterAndCountVector()
 
     LocalTensor<int32_t> gatheredIdxLocal = buf_.Get<int32_t>()[gatheredIdxLocalOffset_ / sizeof(int32_t)];
     uint64_t idxRsvdCnt = 0;
-    GatherMask(
-        gatheredIdxLocal, flatIdxBufferLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
-        static_cast<uint32_t>(coreEntries_), gatherMaskParams, idxRsvdCnt);
+    GatherMask(gatheredIdxLocal, flatIdxBufferLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
+               static_cast<uint32_t>(coreEntries_), gatherMaskParams, idxRsvdCnt);
     PipeBarrier<PIPE_V>();
 
     SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
@@ -422,8 +420,8 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::WriteExpertCountToWorkspace()
     LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
 
     SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-    DataCopyExtParams copyParams{
-        static_cast<uint16_t>(1), static_cast<uint32_t>(expertCountStride_ * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(expertCountStride_ * sizeof(int32_t)),
+                                 0, 0, 0};
     DataCopyPad(workspaceGm_[blockIdx_ * expertCountStride_], expertCountLocal, copyParams);
 }
 
@@ -440,8 +438,8 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::ComputeGlobalOffset()
 
     // Load all cores' expert counts from workspace
     int64_t totalWsElements = filterNeedCoreNum_ * expertCountStride_;
-    DataCopyExtParams copyParams{
-        static_cast<uint16_t>(1), static_cast<uint32_t>(totalWsElements * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(totalWsElements * sizeof(int32_t)), 0,
+                                 0, 0};
     DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
     DataCopyPad(allCoreExpertCountLocal, workspaceGm_[0], copyParams, padParams);
     SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
@@ -496,8 +494,8 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::WriteExpertTokens()
     if (blockIdx_ == 0) {
         LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
         SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-        DataCopyExtParams copyParams{
-            static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
+        DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
         DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
     }
 }
@@ -549,8 +547,8 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::GatherAndWrite()
         SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
         if (newPos < activeNum_) {
             // Copy x row: UB -> GM
-            DataCopyPad(
-                expandedXGm_[static_cast<int64_t>(newPos) * cols_], xLocal[tokenRow * colsAligned_], xCopyParams);
+            DataCopyPad(expandedXGm_[static_cast<int64_t>(newPos) * cols_], xLocal[tokenRow * colsAligned_],
+                        xCopyParams);
             // Copy scale
             if (isInputScale_) {
                 DataCopyPad(expandedScaleGm_[newPos], scaleLocal[tokenRow * scaleSlotSize_], scaleCopyParams);
