@@ -841,8 +841,9 @@ public:
         // 否则 FD 与 FA 共享 UB 区域时残留 flag 会污染后续等待。
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
-                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
-                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                // 排干 FA AllocEventID 预置的 stage2OutBuf 释放 flag，避免与 FD 共享 UB 区时残留污染
+                WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::stage2OutBufFreeEventId);
+                SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::stage2OutBufFreeEventId);
                 AscendC::PipeBarrier<PIPE_MTE3>();
                 AscendC::PipeBarrier<PIPE_V>();
             }
