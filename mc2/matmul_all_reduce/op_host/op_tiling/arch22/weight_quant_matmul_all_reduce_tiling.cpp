@@ -250,7 +250,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInputDtype() const
     if (mmrCtxInfo_.bias_shape != nullptr) {
         OP_TILING_CHECK(x1Type != mmrCtxInfo_.bias->GetDataType(),
                         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x1 and bias",
-                            (Ops::Base::ToString(x1Type) + " and " + Ops::Base::ToString(mmrCtxInfo_.bias->GetDataType())).c_str(),
+                            (Ops::Base::ToString(x1Type) + " and " +
+                             Ops::Base::ToString(mmrCtxInfo_.bias->GetDataType())).c_str(),
                             "The dtypes of x1 and bias must be the same"),
                         return ge::GRAPH_FAILED);
     }
@@ -265,8 +266,10 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInputDtype() const
     if (mmrCtxInfo_.antiquant_offset_shape != nullptr) {
         auto antiquantOffsetType = mmrCtxInfo_.antiquant_offset->GetDataType();
         OP_TILING_CHECK(antiquantOffsetType != antiquantScaleType,
-                        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "antiquantScale and antiquantOffset",
-                            (Ops::Base::ToString(antiquantOffsetType) + " and " + Ops::Base::ToString(antiquantScaleType)).c_str(),
+                        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(),
+                            "antiquantScale and antiquantOffset",
+                            (Ops::Base::ToString(antiquantOffsetType) + " and " +
+                             Ops::Base::ToString(antiquantScaleType)).c_str(),
                             "The dtypes of antiquantScale and antiquantOffset must be the same"),
                         return ge::GRAPH_FAILED);
     }
