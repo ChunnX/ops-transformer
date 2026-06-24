@@ -240,11 +240,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(phi));
     gradPhiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(gradPhi));
  	constexpr int64_t FP32_BYTE_SIZE = sizeof(U);
-    int64_t gradAlphaOffset = batchSize_ * seqLength_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradBiasOffset = gradAlphaOffset + 3 * usedAivNum_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradXFromHinOffset = gradBiasOffset + (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradHcBeforeNormOffset = gradXFromHinOffset + batchSize_ * seqLength_ * n_ * c_ * 3 * FP32_BYTE_SIZE + 3 * WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradNormOutOffset = gradHcBeforeNormOffset + batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
+    int64_t gradAlphaOffset = batchSize_ * seqLength_ * n_ * c_ + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
+    int64_t gradBiasOffset = gradAlphaOffset + 3 * usedAivNum_  + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
+    int64_t gradXFromHinOffset = gradBiasOffset + 2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_ + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
+    int64_t gradHcBeforeNormOffset = gradXFromHinOffset + batchSize_ * seqLength_ * n_ * c_ * 3 + 3 * WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
+    int64_t gradNormOutOffset = gradHcBeforeNormOffset + batchSize_ * seqLength_ * 2 * n_ + n_ * n_ + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
 
     xFp32Ws_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));
     gradAlphaWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace) + gradAlphaOffset);
