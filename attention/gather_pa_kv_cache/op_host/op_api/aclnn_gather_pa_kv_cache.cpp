@@ -574,25 +574,12 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     // ref(key/value)内部轴非连续(ND dim0/dim1, NZ dim0)、尾轴连续: kernel可零拷贝散写, 放行。
     bool isRefNonContig = IsSupportNonContiguousRef(keyRef, valueRef);
 
-    // ===== 分支判定打印(调试用): 各条件取值 + cache/ref连续性 + 最终走向 =====
-    OP_LOGI("GatherPaKvCache route: isPaNz=%d, mustContiguous=%d | isCacheNonContiguous=%d, "
-            "isNdCacheInner=%d, isRefNonContig=%d",
-            static_cast<int>(isPaNz), static_cast<int>(mustContiguous),
-            static_cast<int>(isCacheNonContiguous),
-            static_cast<int>(isNdCacheInner), static_cast<int>(isRefNonContig));
-    OP_LOGI("GatherPaKvCache contiguity: keyCache=%d, valueCache=%d, keyRef=%d, valueRef=%d "
-            "(1=contiguous, 0=non-contiguous)",
-            static_cast<int>(IsContiguous(keyCache)), static_cast<int>(IsContiguous(valueCache)),
-            static_cast<int>(IsContiguous(keyRef)), static_cast<int>(IsContiguous(valueRef)));
-
     if (!mustContiguous && (isCacheNonContiguous || isNdCacheInner || isRefNonContig)) {
-        OP_LOGI("GatherPaKvCache route -> ProcessNonContiguous (zero-copy).");
         return ProcessNonContiguous(
             keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
             seqOffsetOptional, cacheMode, isSeqLensCumsum,
             workspaceSize, executor, uniqueExecutor);
     }
-    OP_LOGI("GatherPaKvCache route -> ProcessContiguous (contiguous fallback).");
     return ProcessContiguous(
         keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
         seqOffsetOptional, cacheMode, isSeqLensCumsum,
