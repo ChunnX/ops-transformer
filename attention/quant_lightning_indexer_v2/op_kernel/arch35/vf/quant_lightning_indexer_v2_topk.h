@@ -183,7 +183,7 @@ public:
                 QLIV2Common::Align(topK, (uint32_t)256));
         }
         if (outputIdxOffset != 0) {
-            topkb16gather::IndicesAddOffsetVF(indicesOutLocal, outputIdxOffset, topK);
+            topkb16gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
         }
     }
     __aicore__ inline void LdTopK(LocalTensor<uint16_t>& mrgValueLocal, LocalTensor<uint32_t> indexLocal,
