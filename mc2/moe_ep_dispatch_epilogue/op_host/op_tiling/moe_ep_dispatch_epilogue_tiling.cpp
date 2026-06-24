@@ -445,8 +445,9 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
     
-    uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * info.cfg.numLocalExperts * sizeof(int32_t);
-    uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL)/ WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint64_t hitCountStride = ((static_cast<uint64_t>(info.cfg.numLocalExperts) + 7UL) / 8UL) * 8UL;
+    uint64_t hitCountBytes = static_cast<uint64_t>(aivNum) * hitCountStride * sizeof(int32_t);
+    uint64_t hitCountBytesAlign512 = ((hitCountBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512;
 
