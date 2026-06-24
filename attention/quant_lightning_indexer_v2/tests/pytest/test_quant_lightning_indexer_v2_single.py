@@ -63,7 +63,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_k_scale_datarange"],
         locals()["param_cmp_ratio"],
         locals()["param_return_value"],
-        locals()["output_idx_offset"]
+        locals()["param_output_idx_offset"]
     ]
 
     # 生成所有的组合，并转换为字典列表
