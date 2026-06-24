@@ -22,8 +22,6 @@
 
     $$recvX = Rearrange(alltoallXOut, numRecvTokensPerRank, numRecvTokensPerExpert)$$
 
-    $$recvTopkIdx = RearrangeTopkIdx(alltoallXOut, recvSrcMetadataInternal)$$
-
     $$recvTopkWeights = RearrangeTopkWeights(alltoallXOut, recvSrcMetadataInternal)$$
 
 > 注意该接口为内部中间步骤算子，由aclnnMoeEpDispatch内部自动调用，用户无需直接使用。
@@ -46,7 +44,6 @@ aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
     int64_t           cclBufferSize,
     int64_t           expertAlignment,
     aclTensor*        recvX,
-    aclTensor*        recvTopkIdx,
     aclTensor*        recvTopkWeights,
     aclTensor*        recvSrcMetadata,
     aclTensor*        numRecvTokensPerRank,
@@ -206,16 +203,6 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>接收的token数据，对应公式中recvX。</td>
     <td><ul><li>不支持空Tensor。</li><li>shape为(A, H)。</li></ul></td>
     <td>BFLOAT16、FLOAT16</td>
-    <td>ND</td>
-    <td>2</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>recvTopkIdx（aclTensor*）</td>
-    <td>输出</td>
-    <td>接收的topk索引，对应公式中recvTopkIdx。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(A, K)。</li></ul></td>
-    <td>INT32</td>
     <td>ND</td>
     <td>2</td>
     <td>×</td>

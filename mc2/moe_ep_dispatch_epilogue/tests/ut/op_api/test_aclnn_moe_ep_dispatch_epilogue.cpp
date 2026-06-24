@@ -45,7 +45,6 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic)
     TensorDesc cachedRecvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
 
     TensorDesc recvXDesc = TensorDesc({upperA, hidden}, ACL_BF16, ACL_FORMAT_ND);
-    TensorDesc recvTopkIdxDesc = TensorDesc({upperA, topK}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc recvTopkWeightsDesc = TensorDesc({upperA}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc recvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
 
@@ -53,7 +52,7 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueBasic)
         OP_API_UT(aclnnMoeEpDispatchEpilogue,
                   INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, cachedRecvSrcMetadataDesc,
                         epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
-                  OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
+                  OUTPUT(recvXDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -76,7 +75,6 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueInvalidEpWorldSize)
                         INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, nullptr,
                               1, 0, 8, 1024, cclBufferSize, 1),
                         OUTPUT(TensorDesc({2048, 4096}, ACL_BF16, ACL_FORMAT_ND),
-                               TensorDesc({2048, topK}, ACL_INT32, ACL_FORMAT_ND),
                                TensorDesc({2048}, ACL_FLOAT, ACL_FORMAT_ND),
                                TensorDesc({2048, 3}, ACL_INT32, ACL_FORMAT_ND), nullptr));
 
@@ -102,7 +100,6 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueInvalidNumExperts)
                         INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, nullptr,
                               epWorldSize, 0, 33, 1024, cclBufferSize, 1),
                         OUTPUT(TensorDesc({4096, 4096}, ACL_BF16, ACL_FORMAT_ND),
-                               TensorDesc({4096, topK}, ACL_INT32, ACL_FORMAT_ND),
                                TensorDesc({4096}, ACL_FLOAT, ACL_FORMAT_ND),
                                TensorDesc({4096, 3}, ACL_INT32, ACL_FORMAT_ND), nullptr));
 
@@ -130,14 +127,13 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueCachedMode)
     TensorDesc numRecvPerExpertDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);
 
     TensorDesc recvXDesc = TensorDesc({upperA, hidden}, ACL_BF16, ACL_FORMAT_ND);
-    TensorDesc recvTopkIdxDesc = TensorDesc({upperA, topK}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc recvTopkWeightsDesc = TensorDesc({upperA}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc recvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeEpDispatchEpilogue,
                         INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, nullptr,
                               epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
-                        OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
+                        OUTPUT(recvXDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -163,14 +159,13 @@ TEST_F(L2AclnnMoeEpDispatchEpilogueTest, TestEpilogueSmallShape)
     TensorDesc numRecvPerExpertDesc = TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND);
 
     TensorDesc recvXDesc = TensorDesc({upperA, hidden}, ACL_BF16, ACL_FORMAT_ND);
-    TensorDesc recvTopkIdxDesc = TensorDesc({upperA, topK}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc recvTopkWeightsDesc = TensorDesc({upperA}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc recvSrcMetadataDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeEpDispatchEpilogue,
                         INPUT(contextDesc, dstSlotDesc, numRecvPerRankDesc, numRecvPerExpertDesc, nullptr,
                               epWorldSize, 0, numExperts, numMaxTokensPerRank, cclBufferSize, 1),
-                        OUTPUT(recvXDesc, recvTopkIdxDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
+                        OUTPUT(recvXDesc, recvTopkWeightsDesc, recvSrcMetadataDesc, nullptr));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
