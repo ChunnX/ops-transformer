@@ -40,6 +40,8 @@ protected:
     __aicore__ inline void GatherOutScale();
     __aicore__ inline void ZeroOutX();
     __aicore__ inline void ZeroOutScale();
+    __aicore__ inline void ZeroOutRows(int64_t startRow, int64_t rowCount);
+    __aicore__ inline void ZeroOutDropPadPadding();
 
 private:
     TQue<QuePosition::VECIN, 1> xCopyInQueue_;
@@ -139,19 +141,13 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ProcessDropPadMode()
             this->CopyOutRowIdx();
         }
 
+        this->ComputeExpertTokenCount();
         if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
-            this->ComputeExpertTokenCount();
             this->CopyExpertCountToOutput();
         }
 
-        this->ZeroOutX();
-        if (this->isInputScale_) {
-            this->ZeroOutScale();
-        }
+        this->ZeroOutDropPadPadding();
     }
-#ifndef __CCE_KT_TEST__
-    AscendC::SyncAll();
-#endif
     if (this->blockIdx_ < this->needCoreNum_) {
         this->GatherOutX();
         if (this->isInputScale_) {
@@ -372,6 +368,90 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutScale()
     GlobalTensor<float> scaleZeroGm;
     scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, rowCount);
     InitGlobalMemory(scaleZeroGm, rowCount, 0.0f);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutRows(int64_t startRow, int64_t rowCount)
+{
+    if (rowCount <= 0) {
+        return;
+    }
+
+    if constexpr (IsSameType<T, hifloat8_t>::value) {
+        GlobalTensor<uint8_t> zeroGm;
+        zeroGm.SetGlobalBuffer((__gm__ uint8_t *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                               rowCount * this->cols_);
+        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
+    } else {
+        GlobalTensor<T> zeroGm;
+        zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
+                               rowCount * this->cols_);
+        InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
+    }
+
+    if (this->isInputScale_) {
+        GlobalTensor<float> scaleZeroGm;
+        scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startRow, rowCount);
+        InitGlobalMemory(scaleZeroGm, rowCount, 0.0f);
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutDropPadPadding()
+{
+    if (this->expertCapacity_ <= 0 || this->outputRows_ <= 0) {
+        return;
+    }
+
+    PipeBarrier<PIPE_ALL>();
+    LocalTensor<int32_t> expertCountLocal = this->expertCountBuf_.template Get<int32_t>(this->actualExpertNum_);
+    int64_t perCoreRows = Ceil(this->outputRows_, this->needCoreNum_);
+    int64_t startRow = this->blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, this->outputRows_);
+    if (startRow >= endRow) {
+        return;
+    }
+
+    int64_t startExpert = startRow / this->expertCapacity_;
+    int64_t endExpert = (endRow - 1) / this->expertCapacity_;
+    int64_t zeroRunStart = -1;
+    int64_t zeroRunEnd = -1;
+
+    for (int64_t expertId = startExpert; expertId <= endExpert; expertId++) {
+        int64_t expertRowStart = expertId * this->expertCapacity_;
+        int64_t segmentStart = Max(startRow, expertRowStart);
+        int64_t segmentEnd = Min(endRow, expertRowStart + this->expertCapacity_);
+        int64_t validCount = 0;
+        int64_t localExpertId = expertId - this->expertStart_;
+        if (expertId >= this->expertStart_ && expertId < this->expertEnd_ &&
+            localExpertId >= 0 && localExpertId < this->actualExpertNum_) {
+            validCount = Min(static_cast<int64_t>(expertCountLocal.GetValue(localExpertId)), this->expertCapacity_);
+        }
+        int64_t zeroStart = Max(segmentStart, expertRowStart + validCount);
+        if (zeroStart >= segmentEnd) {
+            if (zeroRunStart >= 0) {
+                ZeroOutRows(zeroRunStart, zeroRunEnd - zeroRunStart);
+                zeroRunStart = -1;
+                zeroRunEnd = -1;
+            }
+            continue;
+        }
+
+        if (zeroRunStart < 0) {
+            zeroRunStart = zeroStart;
+            zeroRunEnd = segmentEnd;
+        } else if (zeroRunEnd == zeroStart) {
+            zeroRunEnd = segmentEnd;
+        } else {
+            ZeroOutRows(zeroRunStart, zeroRunEnd - zeroRunStart);
+            zeroRunStart = zeroStart;
+            zeroRunEnd = segmentEnd;
+        }
+    }
+
+    if (zeroRunStart >= 0) {
+        ZeroOutRows(zeroRunStart, zeroRunEnd - zeroRunStart);
+    }
 }
 
 } // namespace MoeInitRoutingV3

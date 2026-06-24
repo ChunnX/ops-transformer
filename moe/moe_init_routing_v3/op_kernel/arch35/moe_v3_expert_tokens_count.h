@@ -289,6 +289,7 @@ __aicore__ inline void ExpertTokensCount::expertCountCompute()
         expertCountElements_ = Min(expertCountElements_, static_cast<int64_t>((expertOffset + 1) * KEY_VALUE_MODE));
     } else if (expertTokensNumType_ == COUNT_MODE) {
         Cast(expertCountOutLocal, expertCountTempInLocal, RoundMode::CAST_NONE, actualExpertNum_);
+        PipeBarrier<PIPE_V>();
         if (needExpertTotalCount_) {
             for (int64_t i = 0; i < actualExpertNum_; i++) {
                 actualExpertTotalNum_ += static_cast<int64_t>(expertCountTempInLocal.GetValue(i));
