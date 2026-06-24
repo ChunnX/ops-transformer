@@ -425,7 +425,7 @@ aclnnStatus aclnnLightningIndexer(
 
 ## 约束说明
 
-- 参数query中的N支持小于等于64，key、value的N支持1。
+- 参数query中的N支持小于等于64，key的N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
