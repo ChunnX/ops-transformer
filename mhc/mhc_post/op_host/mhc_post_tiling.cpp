@@ -56,6 +56,11 @@ static const int64_t DIM_NUM_2 = 2;
 static const int64_t DIM_NUM_3 = 3;
 static const int64_t DIM_NUM_4 = 4;
 
+constexpr int64_t N_SIZE_4 = 4;
+constexpr int64_t D_MAX_VALUE = 100000;
+constexpr int64_t D_ALIGN_SIZE = 128;
+constexpr uint32_t SOC_VER_950_CODE = 4;
+
 class MhcPostTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MhcPostTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {}
@@ -79,6 +84,7 @@ private:
     ge::graphStatus CheckShape3D();
     ge::graphStatus CheckShape4D();
     ge::graphStatus CheckShapeConsistency();
+    ge::graphStatus CheckSpecConstraints();
     ge::graphStatus CheckParam();
 
     void ComputeTiling();
@@ -376,9 +382,35 @@ ge::graphStatus MhcPostTilingBase::CheckShapeConsistency()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MhcPostTilingBase::CheckSpecConstraints()
+{
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_, "fail to get platform info"), return ge::GRAPH_FAILED);
+
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint32_t socVer = static_cast<uint32_t>(ascendcPlatform.GetSocVersion());
+    if (socVer == SOC_VER_950_CODE) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_CHECK_IF(d_ <= 0 || d_ >= D_MAX_VALUE || d_ % D_ALIGN_SIZE != 0,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "Value of d", std::to_string(d_).c_str(),
+                                          "> 0, < 100000 and divisible by 128"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(n_ != N_SIZE_4,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "Value of n", std::to_string(n_).c_str(), "4"),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MhcPostTilingBase::CheckParam()
 {
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckNullptr failed"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeAllPositive failed"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(CheckDataType() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckDataType failed"),
@@ -387,7 +419,7 @@ ge::graphStatus MhcPostTilingBase::CheckParam()
     OP_CHECK_IF(CheckShapeConsistency() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeConsistency failed"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeAllPositive failed"),
+    OP_CHECK_IF(CheckSpecConstraints() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckSpecConstraints failed"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
