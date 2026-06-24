@@ -585,7 +585,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 0;
         WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
-        ComputeLse(outLse, sumUb, maxUb, runInfo.halfMRealSize);
+        ComputeLseOutputVF<float>(outLse, sumUb, maxUb, runInfo.halfMRealSize);
         SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
  	    WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
         DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, dataCopyParams);
