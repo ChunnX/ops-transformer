@@ -1383,8 +1383,7 @@ bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
     if (yDtype == DataType::DT_BF16 && scaleDtype != DataType::DT_FLOAT && scaleDtype != DataType::DT_BF16) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             aclnnOpName, "scaleOptional", gmm::dTypeToString(scaleDtype),
-            "When the activation function is enabled and the dtype of y is bfloat16, the dtype of scaleOptional "
-            "must be bfloat16 or float32");
+            "When the dtype of y is bfloat16, the dtype of scaleOptional must be bfloat16 or float32");
         return false;
     }
     if (yDtype == DataType::DT_FLOAT16 && scaleDtype != DataType::DT_FLOAT) {
