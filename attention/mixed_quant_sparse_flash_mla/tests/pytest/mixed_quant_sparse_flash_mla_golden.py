@@ -18,7 +18,6 @@ import pytest
 import random
 import numpy as np
 import math
-import custom_ops as ops
 
 # 两种运行模式
 # 0 不切S2
@@ -738,6 +737,9 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
     if layout_kv == "TND":
         ori_k_in_pa_shape = trans_kv_bnsd_to_tnd(ori_k_bnsd_npu, cu_seqlens_ori_kv, seqused_ori_kv, B, N2, d_aligned_32, ori_kv_type)
         ori_block_table = None
+    elif layout_kv == "BSND":
+        ori_block_table = None
+        ori_k_in_pa_shape = ori_k_bnsd_npu.squeeze(1).reshape(B, ori_max_s2, N2, ori_k_bnsd_npu.shape[3]).contiguous()
     else:
         ori_block_num_per_batch = []
         ori_block_num_sum = 0
@@ -821,6 +823,9 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
     if layout_kv == "TND":
         cmp_k_in_pa_shape = trans_kv_bnsd_to_tnd(cmp_k_bnsd_npu, cu_seqlens_cmp_kv, seqused_cmp_kv, B, N2, d_aligned_32, cmp_kv_type)
         cmp_block_table = None
+    elif layout_kv == "BSND":
+        cmp_block_table = None
+        cmp_k_in_pa_shape = cmp_k_bnsd_npu.squeeze(1).reshape(B, cmp_max_s2, N2, cmp_k_bnsd_npu.shape[3]).contiguous()
     else:
         cmp_block_num_per_batch = []
         cmp_block_num_sum = 0
