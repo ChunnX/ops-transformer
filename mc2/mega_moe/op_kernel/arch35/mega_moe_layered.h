@@ -1075,6 +1075,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
             uint32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
+            PRINTF("srcRankInServer=%d srcServer=%d dstRankIdx=%d sendToCurExpTokenCnt=%lu rowStartIdxInDst=%u\n",
+                srcRankInServer, srcServer, dstRankIdx, sendToCurExpTokenCnt, rowStartIdxInDst);
             if (rowStartIdxInDst < maxOutputSize_) {
                 int32_t rowsCopyCnt = sendToCurExpTokenCnt;
                 if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) {
