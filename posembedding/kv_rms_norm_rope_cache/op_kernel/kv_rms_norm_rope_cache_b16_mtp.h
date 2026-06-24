@@ -92,24 +92,37 @@ public:
         }
 
         // Init pipes
-        this->xElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * rmsNormLen); 
+        this->rmsNormElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * rmsNormLen); 
         this->ropeElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * ropeLen); 
         this->vElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->hDimV);
         this->kElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->hDimK);
         
-        this->pipe_->InitBuffer(this->inQueueX, 1, this->xElemPerSlice * sizeof(float));  // MTE2 for x: 4 * 192 * 4 / 1024 = 3
-        this->pipe_->InitBuffer(this->inQueueGamma, 1, rmsNormLen * sizeof(KV_DTYPE));  // 192 * 2 / 1024 = 0.375
-        this->pipe_->InitBuffer(this->bufferXFp32, this->xElemPerSlice * sizeof(float));  // 4 * 192 * 4 / 1024 = 3
-        this->pipe_->InitBuffer(this->bufferXSquare, this->xElemPerSlice * sizeof(float));  // 4 * 192 * 4 / 1024 = 3
-        this->pipe_->InitBuffer(
-                this->bufferSum, ((this->rowsPerBlock + NUM_EIGHT - 1) / NUM_EIGHT) * NUM_EIGHT * sizeof(float));  // 8 * 4 / 1024 = 0.03125
-        this->pipe_->InitBuffer(this->outQueueV, 1, this->vElemPerSlice * sizeof(KV_DTYPE));  // 4 * 128 * 2 / 1024 = 1
-        this->pipe_->InitBuffer(this->outQueueK, 1, this->kElemPerSlice * sizeof(KV_DTYPE));  // 4 * 192 * 2 / 1024 = 1.5
+        this->pipe_->InitBuffer(this->inQueueX, 1, this->rmsNormElemPerSlice 
+            * sizeof(float));  // MTE2 for x: rmsNormElemPerSlice * 4 / 1024 = rmsNormElemPerSlice / 256
+        this->pipe_->InitBuffer(this->inQueueGamma, 1, rmsNormLen 
+            * sizeof(KV_DTYPE));  // rmsNormLen * 2 / 1024 = rmsNormLen / 512
+        this->pipe_->InitBuffer(this->bufferXFp32, this->rmsNormElemPerSlice 
+            * sizeof(float));  // rmsNormElemPerSlice * 4 / 1024 = rmsNormLen / 256
+        this->pipe_->InitBuffer(this->bufferXSquare, this->rmsNormElemPerSlice 
+            * sizeof(float));  // rmsNormElemPerSlice * 4 / 1024 = rmsNormLen / 256
+        
+        // SafeAlignUp(rowsPerBlock, 8) * 4 / 1024 = SafeAlignUp(rowsPerBlock, 8) / 256
+        this->pipe_->InitBuffer(this->bufferSum, SafeAlignUp(this->rowsPerBlock, NUM_EIGHT) 
+        * sizesof(float));  
+
+        this->pipe_->InitBuffer(this->outQueueV, 1, this->vElemPerSlice 
+            * sizeof(KV_DTYPE));  // vElemPerSlice * 2 / 1024 = vElemPerSlice / 512
+        this->pipe_->InitBuffer(this->outQueueK, 1, this->kElemPerSlice 
+            * sizeof(KV_DTYPE));  // kElemPerSlice * 2 / 1024 = kElemPerSlice / 512
 
         if (methodMode == METHOD_V2) {
             // init additional pipes for V2
-            this->pipe_->InitBuffer(this->inQueueV, 1, this->vElemPerSlice * sizeof(float));  // 4 * 128 * 4 / 1024 = 2
-            this->pipe_->InitBuffer(this->CosSin, 1, NUM_TWO * this->ropeElemPerSlice * (sizeof(float) / sizeof(KV_DTYPE)));    //  shared buffer for Rope MTE2 and VEC computation in fp32
+            this->pipe_->InitBuffer(this->inQueueV, 1, this->vElemPerSlice 
+                * sizeof(float));  // vElemPerSlice * 4 / 1024 = vElemPerSlice / 256
+            
+            //  shared buffer for Rope MTE2 and VEC computation in fp32
+            this->pipe_->InitBuffer(this->CosSin, 1, NUM_TWO * this->ropeElemPerSlice 
+                * (sizeof(float) / sizeof(KV_DTYPE)));    
         }
     }
 
@@ -143,7 +156,7 @@ public:
                     xB16Local = this->inQueueX.template DeQue<KV_DTYPE>();
 
                     LocalTensor<float> xFp32Local = this->bufferXFp32.template Get<float>();
-                    Cast(xFp32Local, xB16Local, RoundMode::CAST_NONE, this->xElemPerSlice);
+                    Cast(xFp32Local, xB16Local, RoundMode::CAST_NONE, this->rmsNormElemPerSlice);
                     PipeBarrier<PIPE_V>();
                     this->inQueueX.FreeTensor(xB16Local);
 
@@ -180,7 +193,7 @@ public:
                     PipeBarrier<PIPE_V>();
 
                     LocalTensor<KV_DTYPE> outLocalK = this->outQueueK.template AllocTensor<KV_DTYPE>();
-                    DataCopy(outLocalK, xLocal, this->xElemPerSlice);
+                    DataCopy(outLocalK, xLocal, this->rmsNormElemPerSlice);
                     this->inQueueX.FreeTensor(xLocal);
                     
                     ScatterUpdate<KV_DTYPE>(n, i, this->kCacheGm, outLocalK, this->RMS_NORM_LENGTH);
@@ -320,10 +333,11 @@ public:
 
         uint64_t rsvdCnt = 0;
         GatherMask(
-            realLocalFp32, xFp32Local, 1, true, this->ROPE_LENGTH, {1, static_cast<uint16_t>(this->rowsPerBlock), 2 * NUM_TWELVE, 0}, rsvdCnt);
+            realLocalFp32, xFp32Local, 1, true, this->ROPE_LENGTH, {1, static_cast<uint16_t>(this->rowsPerBlock), 2 * NUM_TWELVE, 0}, 
+            rsvdCnt); // Pick even (x1)
         GatherMask(
-            imagLocalFp32, xFp32Local, NUM_TWO, true, this->ROPE_LENGTH, {1, static_cast<uint16_t>(this->rowsPerBlock), 2 * NUM_TWELVE, 0},
-            rsvdCnt);
+            imagLocalFp32, xFp32Local, NUM_TWO, true, this->ROPE_LENGTH, {1, static_cast<uint16_t>(this->rowsPerBlock), 2 * NUM_TWELVE, 0}, 
+            rsvdCnt); // Pick Odd (x2)
         PipeBarrier<PIPE_V>();
 
         Cast(cosLocalFp32, cosLocalB16, RoundMode::CAST_NONE, this->rowsPerBlock * this->ROPE_LENGTH);
@@ -375,7 +389,7 @@ public:
 
         // Cast xB16 to xFp32 [this->rowsPerBlock, this->RMS_NORM_LENGTH]
         LocalTensor<float> xFp32Local = this->bufferXFp32.template Get<float>();
-        Cast(xFp32Local, xB16Local, RoundMode::CAST_NONE, this->xElemPerSlice);
+        Cast(xFp32Local, xB16Local, RoundMode::CAST_NONE, this->rmsNormElemPerSlice);
         PipeBarrier<PIPE_V>();
         this->inQueueX.FreeTensor(xB16Local);
 
@@ -387,7 +401,7 @@ public:
 
         // Calc: xSquare = xFp32 * xFp32, xSquare shape is [this->rowsPerBlock, this->RMS_NORM_LENGTH]
         LocalTensor<float> xSquareLocal = this->bufferXSquare.template Get<float>();
-        Mul(xSquareLocal, xFp32Local, xFp32Local, this->xElemPerSlice);
+        Mul(xSquareLocal, xFp32Local, xFp32Local, this->rmsNormElemPerSlice);
         PipeBarrier<PIPE_V>();
 
         // Calc: xSquare[this->rowsPerBlock, 512]
@@ -449,9 +463,9 @@ public:
         // Cast xFp32 to outLocal
         LocalTensor<KV_DTYPE> outLocal = this->outQueueV.template AllocTensor<KV_DTYPE>();
         if constexpr (std::is_same<KV_DTYPE, bfloat16_t>::value) {
-            Cast(outLocal, xFp32Local, RoundMode::CAST_RINT, this->xElemPerSlice);
+            Cast(outLocal, xFp32Local, RoundMode::CAST_RINT, this->rmsNormElemPerSlice);
         } else if constexpr (std::is_same<KV_DTYPE, half>::value) {
-            Cast(outLocal, xFp32Local, RoundMode::CAST_NONE, this->xElemPerSlice);
+            Cast(outLocal, xFp32Local, RoundMode::CAST_NONE, this->rmsNormElemPerSlice);
         }
         this->outQueueV.EnQue(outLocal);
     }
@@ -461,7 +475,7 @@ public:
     {
         // Calc: xSquare = xFp32 * xFp32, xSquare shape is [this->rowsPerBlock, this->RMS_NORM_LENGTH]
         LocalTensor<float> xSquareLocal = this->bufferXSquare.template Get<float>();
-        Mul(xSquareLocal, xFp32Local, xFp32Local, this->xElemPerSlice);
+        Mul(xSquareLocal, xFp32Local, xFp32Local, this->rmsNormElemPerSlice);
         PipeBarrier<PIPE_V>();
 
         // Calc: xSquare[this->rowsPerBlock, 192]
@@ -518,9 +532,9 @@ public:
         // Cast xFp32 to outLocal
         LocalTensor<KV_DTYPE> xLocal = this->inQueueX.template AllocTensor<KV_DTYPE>();
         if constexpr (std::is_same<KV_DTYPE, bfloat16_t>::value) {
-            Cast(xLocal, xFp32Local, RoundMode::CAST_RINT, this->xElemPerSlice);
+            Cast(xLocal, xFp32Local, RoundMode::CAST_RINT, this->rmsNormElemPerSlice);
         } else if constexpr (std::is_same<KV_DTYPE, half>::value) {
-            Cast(xLocal, xFp32Local, RoundMode::CAST_NONE, this->xElemPerSlice);
+            Cast(xLocal, xFp32Local, RoundMode::CAST_NONE, this->rmsNormElemPerSlice);
         }
         this->inQueueX.EnQue(xLocal);
     }
@@ -627,10 +641,10 @@ private:
     TQue<QuePosition::VECIN, 1> CosSin; // MTE2 buffer for rope terms
 
     uint32_t rowsPerBlock{0};
-    uint32_t xElemPerSlice{0};      // x elements operated in a single process flow
-    uint32_t ropeElemPerSlice{0};   // rope elements operated in a single process flow
-    uint32_t kElemPerSlice{0};      // k cache elements written out per MTE call
-    uint32_t vElemPerSlice{0};      // v cache elements written out per MTE call
+    uint32_t rmsNormElemPerSlice{0};    // rmsNorm elements operated in a single process flow
+    uint32_t ropeElemPerSlice{0};       // rope elements operated in a single process flow
+    uint32_t kElemPerSlice{0};          // k cache elements written out per MTE call
+    uint32_t vElemPerSlice{0};          // v cache elements written out per MTE call
 };
 } // namespace KvRmsNormRopeCache
 

@@ -57,6 +57,22 @@ __aicore__ inline void SetWaitFlag(HardEvent evt)
     WaitFlag<event>(eventId);
 }
 
+__aicore__ inline int64_t SafeCeil(int64_t a, int64_t b)
+{
+    if (b == 0) {
+        return 0;
+    }
+    return (a + b - 1) / b;
+}
+
+__aicore__ inline int64_t SafeAlignUp(int64_t a, int64_t b)
+{
+    if (b == 0) {
+        return 0;
+    }
+    return SafeCeil(a, b) * b;
+}
+
 // Template Branch Levels:
 //  1) K/V TYPE Consistency
 //  2) Quant Mode Availability: Differentiated Quant Implementation according to Tensor Fractal and Quant Inputs.  
