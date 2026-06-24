@@ -215,7 +215,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             LocalTensor<int64_t> zeroLocal = zeroBuf.Get<int64_t>();
             Duplicate<int32_t>(zeroLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
                         static_cast<int32_t>(Align(expertCountElements, static_cast<int32_t>(sizeof(int64_t))) * 2));
-            DataCopyExtParams dataCopyParams = {1, static_cast<uint32_t>(expertCountElements * sizeof(int64_t)), 0, 0, 0};
+            DataCopyExtParams dataCopyParams = {1, static_cast<uint32_t>(expertCountElements * sizeof(int64_t)),
+                                                0, 0, 0};
             DataCopyPad(expertTokensCountGm, zeroLocal, dataCopyParams);
             pipe.Destroy();
         }
