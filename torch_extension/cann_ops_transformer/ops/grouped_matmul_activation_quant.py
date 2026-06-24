@@ -137,8 +137,8 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         return "npu_grouped_matmul_activation_quant(" \
-            "Tensor x, Tensor[] weight, Tensor[] weight_scale, Tensor group_list, *, " \
-            "Tensor? x_scale=None, Tensor[]? bias=None, str activation_type=\"gelu_tanh\", " \
+            "Tensor x, Tensor group_list, Tensor[] weight, Tensor[] weight_scale, Tensor[]? bias=None, *, " \
+            "Tensor? x_scale=None, str activation_type=\"gelu_tanh\", " \
             "int group_list_type=0, int[]? tuning_config=None, " \
             "str quant_mode=\"\", int y_dtype=36, str round_mode=\"rint\", int scale_alg=0, " \
             "float dst_type_max=0.0, int? x_dtype=None, int? weight_dtype=None, " \
@@ -146,8 +146,8 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_grouped_matmul_activation_quant_meta(x, weight, weight_scale, group_list,
-                                                     x_scale=None, bias=None, activation_type="gelu_tanh",
+        def npu_grouped_matmul_activation_quant_meta(x, group_list, weight, weight_scale, bias=None,
+                                                     x_scale=None, activation_type="gelu_tanh",
                                                      group_list_type=0, tuning_config=None,
                                                      quant_mode="", y_dtype=DEFAULT_Y_DTYPE,
                                                      round_mode="rint", scale_alg=0,
@@ -201,8 +201,8 @@ _op_module = _grouped_matmul_activation_quant_op_builder.load()
 
 
 @impl(AS_LIBRARY, _grouped_matmul_activation_quant_op_builder.name, "PrivateUse1")
-def _npu_grouped_matmul_activation_quant(x, weight, weight_scale, group_list,
-                                         x_scale=None, bias=None, activation_type="gelu_tanh",
+def _npu_grouped_matmul_activation_quant(x, group_list, weight, weight_scale, bias=None,
+                                         x_scale=None, activation_type="gelu_tanh",
                                          group_list_type=0, tuning_config=None,
                                          quant_mode="", y_dtype=DEFAULT_Y_DTYPE,
                                          round_mode="rint", scale_alg=0,
@@ -210,13 +210,13 @@ def _npu_grouped_matmul_activation_quant(x, weight, weight_scale, group_list,
                                          weight_dtype=None, weight_scale_dtype=None,
                                          x_scale_dtype=None):
     return _op_module.npu_grouped_matmul_activation_quant(
-        x, weight, weight_scale, group_list, x_scale, bias, activation_type, group_list_type, tuning_config,
+        x, group_list, weight, weight_scale, bias, x_scale, activation_type, group_list_type, tuning_config,
         quant_mode, y_dtype, round_mode,
         scale_alg, dst_type_max, x_dtype, weight_dtype, weight_scale_dtype, x_scale_dtype)
 
 
-def npu_grouped_matmul_activation_quant(x, weight, weight_scale, group_list, *,
-                                        x_scale=None, bias=None, activation_type="gelu_tanh",
+def npu_grouped_matmul_activation_quant(x, group_list, weight, weight_scale, bias=None, *,
+                                        x_scale=None, activation_type="gelu_tanh",
                                         group_list_type=0, tuning_config=None,
                                         quant_mode="", y_dtype=torch.float8_e4m3fn,
                                         round_mode="rint", scale_alg=0, dst_type_max=0.0,
@@ -232,7 +232,7 @@ def npu_grouped_matmul_activation_quant(x, weight, weight_scale, group_list, *,
     x_scale_dtype = _normalize_wrapper_dtype(x_scale_dtype)
     quant_mode = _resolve_quant_mode(quant_mode, x, x_dtype)
     return torch.ops.cann_ops_transformer.npu_grouped_matmul_activation_quant(
-        x, weight, weight_scale, group_list, x_scale=x_scale, bias=bias,
+        x, group_list, weight, weight_scale, bias, x_scale=x_scale,
         activation_type=activation_type, group_list_type=group_list_type,
         tuning_config=tuning_config, quant_mode=quant_mode, y_dtype=y_dtype,
         round_mode=round_mode, scale_alg=scale_alg, dst_type_max=dst_type_max,
