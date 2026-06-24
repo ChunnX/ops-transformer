@@ -365,7 +365,7 @@ def tilelang_grad_kl_loss_kernel(
                         )
                         T.reduce_max(rsy_chunk_ub, rsy_tmp_ub, dim=-1, real_shape=[1, n_block])
                         T.barrier_all()
-                        T.tile.max(rsy_global_max_ub, rsy_global_max_ub, rsy_tmp_ub)
+                        T.tile.max(rsy_global_max_ub, rsy_global_max_ub, rsy_tmp_ub[0])
 
                     # Step 3b: exp(rsy - max), write to SoftmaxI workspace, accumulate sum
                     T.tile.fill(rsy_global_sum_ub, 0.0)
@@ -383,7 +383,7 @@ def tilelang_grad_kl_loss_kernel(
                         )
                         T.reduce_sum(rsy_chunk_ub, rsy_tmp_ub, dim=-1, real_shape=[1, n_block])
                         T.barrier_all()
-                        T.tile.add(rsy_global_sum_ub, rsy_global_sum_ub, rsy_tmp_ub)
+                        T.tile.add(rsy_global_sum_ub, rsy_global_sum_ub, rsy_tmp_ub[0])
 
                     # Step 3c: normalize SoftmaxI
                     T.tile.max(rsy_global_sum_ub, rsy_global_sum_ub, eps_ub)
@@ -450,7 +450,7 @@ def tilelang_grad_kl_loss_kernel(
                                 )
                                 # Accumulate dW
                                 T.reduce_sum(rg_chunk_ub[g_i, :], rsy_tmp_ub, dim=-1, clear=True, real_shape=[1, n_block])
-                                T.tile.add(dw_total_ub[g_abs], dw_total_ub[g_abs], rsy_tmp_ub)
+                                T.tile.add(dw_total_ub[g_abs], dw_total_ub[g_abs], rsy_tmp_ub[0])
 
                     # Cast and store dWeight
                     dw_fp32_ub = T.alloc_shared(Nidx1, calc_dtype)
@@ -488,7 +488,7 @@ def tilelang_grad_kl_loss_kernel(
 
                         T.reduce_sum(loss_ub, rsy_tmp_ub, dim=-1, clear=True, real_shape=[1, n_block])
                         T.barrier_all()
-                        T.tile.add(loss_accum_ub, loss_accum_ub, rsy_tmp_ub)
+                        T.tile.add(loss_accum_ub, loss_accum_ub, rsy_tmp_ub[0])
 
                     T.copy(loss_accum_ub, LossOut[bz, s1_id, 0:1])
 
