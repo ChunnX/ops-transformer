@@ -1183,43 +1183,60 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
 {
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
         SplitDequant(fiaInfo);
-    } else {
-        OP_CHECK_IF(AdjustSinnerAndSouter(context, fiaInfo) != ge::GRAPH_SUCCESS,  // 确认souter/sinner
-                    OP_LOGE(fiaInfo.opName, "Get sinner and souter fail!"), return ge::GRAPH_FAILED);
-
-        dnFlag_ = CheckEnableDN(fiaInfo);
-        isQKVActualSeqLengthsRightFlag_ = CheckQKVActualSeqLengthsRight(fiaInfo);
-
-        if (dnFlag_ && isQKVActualSeqLengthsRightFlag_ && fiaInfo.qkHeadDim == fiaInfo.vHeadDim &&
-            fiaInfo.qkHeadDim == DSIZE_64) {
-            sInnerFactor_ = SINNER_256;
-        }
-        if (dnFlag_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT &&
-            fiaInfo.qkHeadDim == fiaInfo.vHeadDim && fiaInfo.qkHeadDim <= DSIZE_128) {
-            sInnerFactor_ = SINNER_256;
-        }
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
-            sOuterFactor_ = SOUTER_64;
-            sInnerFactor_ = SINNER_512;
-        }
-
-        enableS1OutSplit = CheckS1OutSplit(fiaInfo);
-        if (enableS1OutSplit) {
-            SplitOutSeq(fiaInfo);
-        } else {
-            SplitNBSeq(fiaInfo);
-            if (isIFAFlag_ && !pfaMergeFlag_ && CheckFlashDecode(fiaInfo)) {
-                flashDecodeFlag_ = true;
-                OP_LOGI(fiaInfo.opName, "FlashDecode is enable.");
-                SplitS2(fiaInfo);
-            }
-        }
-        if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag &&
-            (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag)) {
-            isRowInvalid_ = true;
-        }
+        return ge::GRAPH_SUCCESS;
     }
+
+    OP_CHECK_IF(AdjustSinnerAndSouter(context, fiaInfo) != ge::GRAPH_SUCCESS,
+                OP_LOGE(fiaInfo.opName, "Get sinner and souter fail!"), return ge::GRAPH_FAILED);
+
+    ApplySinnerSouterOverrides(fiaInfo);
+    ApplySplitStrategy(fiaInfo);
+    ApplyRowInvalidCheck(fiaInfo);
+
     return ge::GRAPH_SUCCESS;
+}
+
+void FusedInferAttentionScoreTilingImpl::ApplySinnerSouterOverrides(const FiaTilingInfo &fiaInfo)
+{
+    dnFlag_ = CheckEnableDN(fiaInfo);
+    isQKVActualSeqLengthsRightFlag_ = CheckQKVActualSeqLengthsRight(fiaInfo);
+
+    if (dnFlag_ && isQKVActualSeqLengthsRightFlag_ && fiaInfo.qkHeadDim == fiaInfo.vHeadDim &&
+        fiaInfo.qkHeadDim == DSIZE_64) {
+        sInnerFactor_ = SINNER_256;
+    }
+    if (dnFlag_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT &&
+        fiaInfo.qkHeadDim == fiaInfo.vHeadDim && fiaInfo.qkHeadDim <= DSIZE_128) {
+        sInnerFactor_ = SINNER_256;
+    }
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
+        sOuterFactor_ = SOUTER_64;
+        sInnerFactor_ = SINNER_512;
+    }
+}
+
+void FusedInferAttentionScoreTilingImpl::ApplySplitStrategy(const FiaTilingInfo &fiaInfo)
+{
+    enableS1OutSplit = CheckS1OutSplit(fiaInfo);
+    if (enableS1OutSplit) {
+        SplitOutSeq(fiaInfo);
+        return;
+    }
+
+    SplitNBSeq(fiaInfo);
+    if (isIFAFlag_ && !pfaMergeFlag_ && CheckFlashDecode(fiaInfo)) {
+        flashDecodeFlag_ = true;
+        OP_LOGI(fiaInfo.opName, "FlashDecode is enable.");
+        SplitS2(fiaInfo);
+    }
+}
+
+void FusedInferAttentionScoreTilingImpl::ApplyRowInvalidCheck(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag &&
+        (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag)) {
+        isRowInvalid_ = true;
+    }
 }
 
 static uint32_t SnapDimToBucket(uint32_t dim)

@@ -66,6 +66,9 @@ protected:
     ge::graphStatus SetPlatMemoryInfo(const gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetEmptyTensor(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SplitPolicy(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
+    void ApplySinnerSouterOverrides(const FiaTilingInfo &fiaInfo);
+    void ApplySplitStrategy(const FiaTilingInfo &fiaInfo);
+    void ApplyRowInvalidCheck(const FiaTilingInfo &fiaInfo);
     bool CheckS1OutSplit(const FiaTilingInfo &fiaInfo);
     int64_t CalcRequiredL2Size(const FiaTilingInfo &fiaInfo);
     void SplitOutSeq(const FiaTilingInfo &fiaInfo);
