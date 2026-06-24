@@ -123,9 +123,9 @@ def kernel_like_single_vec(score: torch.Tensor) -> torch.Tensor:
             k_size = min(K_CHUNK, Y - k_start)
             k_align = align_up(k_size, FLOAT_BLOCK)
             chunk = score[row_start:row_start + row_count, k_start:k_start + k_size].float()
-            if k_align > k_size:
-                pad = torch.full((row_count, k_align - k_size), NEG_INF, dtype=torch.float32)
-                chunk = torch.cat([chunk, pad], dim=1)
+            # if k_align > k_size:
+            #     pad = torch.full((row_count, k_align - k_size), NEG_INF, dtype=torch.float32)
+            #     chunk = torch.cat([chunk, pad], dim=1)
 
             local_max = chunk.max(dim=1).values
             new_max = torch.maximum(global_max, local_max)
@@ -172,9 +172,9 @@ def kernel_like_single_vec(score: torch.Tensor) -> torch.Tensor:
             k_size = min(K_CHUNK, Y - k_start)
             k_align = max(align_up(k_size, FLOAT_BLOCK), align_up(k_size, FP16_BLOCK))
             chunk = score[row_start:row_start + row_count, k_start:k_start + k_size].float()
-            if k_align > k_size:
-                pad = torch.full((row_count, k_align - k_size), NEG_INF, dtype=torch.float32)
-                chunk = torch.cat([chunk, pad], dim=1)
+            # if k_align > k_size:
+            #     pad = torch.full((row_count, k_align - k_size), NEG_INF, dtype=torch.float32)
+            #     chunk = torch.cat([chunk, pad], dim=1)
 
             t1 = chunk - global_max.unsqueeze(1)
 
