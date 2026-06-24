@@ -115,6 +115,11 @@ protected:
                            uint32_t sInnerSize, double coreWeightTarget, uint32_t &curCore);
     void SplitNBSeq(const FiaTilingInfo &fiaInfo);
     void InitImplParam(const FiaTilingInfo &fiaInfo);
+    void InitTilingFlags(const FiaTilingInfo &fiaInfo, const gert::Tensor *actSeqLenQ, uint32_t qDims,
+                         const gert::Tensor *actSeqLenKV, uint32_t kvDims,
+                         const gert::Tensor *actSharedPrefixLen, uint32_t prefixDims);
+    void ComputeLoopParams(const FiaTilingInfo &fiaInfo);
+    void ParseActualSeqLengths(const FiaTilingInfo &fiaInfo);
     void SetIsIFA(const FiaTilingInfo &fiaInfo);
     void SetGSMerge(const FiaTilingInfo &fiaInfo);
     bool CheckEnableDN(const FiaTilingInfo &fiaInfo) const;

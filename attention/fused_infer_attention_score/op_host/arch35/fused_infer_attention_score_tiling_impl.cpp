@@ -157,112 +157,116 @@ void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo
     }
 }
 
+static inline bool IsTensorValid(const gert::Tensor *tensor, uint32_t dims)
+{
+    return dims > 0 && tensor != nullptr && tensor->GetData<int64_t>() != nullptr;
+}
+
+static inline int64_t ParseSeqLength(const gert::Tensor *tensor, uint32_t dims, uint32_t bIdx, FiaLayout layout)
+{
+    if (dims == 1) {
+        return tensor->GetData<int64_t>()[0];
+    }
+
+    bool isCumulative = (layout == FiaLayout::TND || layout == FiaLayout::NTD);
+    if (!isCumulative) {
+        return tensor->GetData<int64_t>()[bIdx];
+    }
+
+    int64_t currentVal = tensor->GetData<int64_t>()[bIdx];
+    return (bIdx == 0) ? currentVal : (currentVal - tensor->GetData<int64_t>()[bIdx - 1]);
+}
+
 void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaInfo)
 {
-    const gert::Tensor *actSeqLenQ = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
-    const gert::Tensor *actSeqLenKV = fiaInfo.opParamInfo.actualSeqLengths.tensor;
-    const gert::Tensor *actSharedPrefixLen = fiaInfo.opParamInfo.actualSharedPrefixLen.tensor;
-    uint32_t actSeqLenQDims = 0;
-    uint32_t actSeqLenKVDims = 0;
-    uint32_t actSharedPrefixLenDims = 0;
+    const auto &params = fiaInfo.opParamInfo;
+    uint32_t qDims = params.actualSeqLengthsQ.tensor ? params.actualSeqLengthsQ.tensor->GetShapeSize() : 0;
+    uint32_t kvDims = params.actualSeqLengths.tensor ? params.actualSeqLengths.tensor->GetShapeSize() : 0;
+    uint32_t prefixDims = params.actualSharedPrefixLen.tensor ? params.actualSharedPrefixLen.tensor->GetShapeSize() : 0;
+
+    InitTilingFlags(fiaInfo, params.actualSeqLengthsQ.tensor, qDims,
+                    params.actualSeqLengths.tensor, kvDims,
+                    params.actualSharedPrefixLen.tensor, prefixDims);
+    ComputeLoopParams(fiaInfo);
+    ParseActualSeqLengths(fiaInfo);
+}
+
+void FusedInferAttentionScoreTilingImpl::InitTilingFlags(const FiaTilingInfo &fiaInfo,
+                                                          const gert::Tensor *actSeqLenQ, uint32_t qDims,
+                                                          const gert::Tensor *actSeqLenKV, uint32_t kvDims,
+                                                          const gert::Tensor *actSharedPrefixLen, uint32_t prefixDims)
+{
     if (fiaInfo.isMaxWorkspace) {
         actualSeqLenQFlag_ = false;
         actualSeqLenKVFlag_ = false;
-    } else {
-        actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-        actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr) ? actSharedPrefixLen->GetShapeSize() : 0;
-        actualSeqLenQFlag_ =
-            !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
-        actualSeqLenKVFlag_ =
-            !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int64_t>() == nullptr));
-
-        if (fiaInfo.antiQuantFlag && fiaInfo.qLayout == FiaLayout::TND) {
-            actualSeqLenQFlag_ = true;
-        }
+        actualSharedPrefixLenFlag_ = false;
+        return;
     }
 
+    actualSeqLenQFlag_ = IsTensorValid(actSeqLenQ, qDims);
+    actualSeqLenKVFlag_ = IsTensorValid(actSeqLenKV, kvDims);
+
+    if (fiaInfo.antiQuantFlag && fiaInfo.qLayout == FiaLayout::TND) {
+        actualSeqLenQFlag_ = true;
+    }
+    if (fiaInfo.antiQuantFlag && fiaInfo.s1Size == 1 && fiaInfo.qLayout != FiaLayout::TND) {
+        actualSeqLenQFlag_ = false;
+    }
+
+    if (!fiaInfo.sysPrefixFlag) {
+        actualSharedPrefixLenFlag_ = false;
+    } else {
+        bool isValid = IsTensorValid(actSharedPrefixLen, prefixDims);
+        actualSharedPrefixLenFlag_ = fiaInfo.antiQuantFlag ? isValid : !fiaInfo.isMaxWorkspace && isValid;
+    }
+}
+
+void FusedInferAttentionScoreTilingImpl::ComputeLoopParams(const FiaTilingInfo &fiaInfo)
+{
     SetGSMerge(fiaInfo);
     SetIsIFA(fiaInfo);
     if (!fiaInfo.antiQuantFlag) {
         gsMergeFlag_ = gsMergeFlag_ || isIFAFlag_;
     }
-    nLoopTimes_ = (gsMergeFlag_) ? fiaInfo.n2Size : fiaInfo.n1Size;
-    gsSize_ = (gsMergeFlag_) ? fiaInfo.gSize * fiaInfo.s1Size : fiaInfo.s1Size;
 
-    OP_LOGI(fiaInfo.opName, "gsMergeFlag:%u nLoopTimes:%u gsSize:%u ", gsMergeFlag_, nLoopTimes_, gsSize_);
+    nLoopTimes_ = gsMergeFlag_ ? fiaInfo.n2Size : fiaInfo.n1Size;
+    gsSize_ = gsMergeFlag_ ? fiaInfo.gSize * fiaInfo.s1Size : fiaInfo.s1Size;
+    headDimAlign_ = AlignUp(fiaInfo.qkHeadDim, NUM_32);
 
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT && fiaInfo.s1Size > 1) {
         isPFAFlag_ = true;
     }
-    headDimAlign_ = AlignUp(fiaInfo.qkHeadDim, NUM_32);
 
-    if (!fiaInfo.sysPrefixFlag) {
-        actualSharedPrefixLenFlag_ = false;
-    } else {
-        if (fiaInfo.antiQuantFlag) {
-            actualSharedPrefixLenFlag_ = !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
-                                     (actSharedPrefixLen->GetData<int64_t>() == nullptr));
-        } else {
-            actualSharedPrefixLenFlag_ = !fiaInfo.isMaxWorkspace &&
-                                         !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
-                                           (actSharedPrefixLen->GetData<int64_t>() == nullptr));
-        }
-    }
+    OP_LOGI(fiaInfo.opName, "gsMergeFlag:%u nLoopTimes:%u gsSize:%u ", gsMergeFlag_, nLoopTimes_, gsSize_);
+}
 
-    if (fiaInfo.antiQuantFlag && fiaInfo.s1Size == 1 && fiaInfo.qLayout != FiaLayout::TND) {
-        actualSeqLenQFlag_ = false;
-    }
+void FusedInferAttentionScoreTilingImpl::ParseActualSeqLengths(const FiaTilingInfo &fiaInfo)
+{
+    const gert::Tensor *actSeqLenQ = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
+    const gert::Tensor *actSeqLenKV = fiaInfo.opParamInfo.actualSeqLengths.tensor;
+    uint32_t qDims = actSeqLenQ ? actSeqLenQ->GetShapeSize() : 0;
+    uint32_t kvDims = actSeqLenKV ? actSeqLenKV->GetShapeSize() : 0;
+
+    actualSeqLengthsQ_.reserve(fiaInfo.bSize);
+    actualSeqLengthsKV_.reserve(fiaInfo.bSize);
 
     for (uint32_t bIdx = 0; bIdx < fiaInfo.bSize; bIdx++) {
-        if (actualSeqLenQFlag_) {
-            int64_t actSeqLenQData = 0;
-            if (actSeqLenQDims == 1) {
-                actSeqLenQData = actSeqLenQ->GetData<int64_t>()[0];
-            } else {
-                if (fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD) {
-                    actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-                } else {
-                    if (bIdx == 0) {
-                        actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-                    } else {
-                        actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx] - actSeqLenQ->GetData<int64_t>()[bIdx - 1];
-                    }
-                }
-            }
-            if (gsMergeFlag_) {
-                if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.qLayout == FiaLayout::BNSD) {
-                    actualSeqLengthsQ_.push_back(fiaInfo.s1Size * fiaInfo.gSize);
-                } else {
-                    actualSeqLengthsQ_.push_back(actSeqLenQData * fiaInfo.gSize);
-                }
-            } else {
-                actualSeqLengthsQ_.push_back(actSeqLenQData);
-            }
+        int64_t qLen = actualSeqLenQFlag_ ? ParseSeqLength(actSeqLenQ, qDims, bIdx, fiaInfo.qLayout) : gsSize_;
+        if (gsMergeFlag_ && fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.qLayout == FiaLayout::BNSD) {
+            actualSeqLengthsQ_.push_back(fiaInfo.s1Size * fiaInfo.gSize);
         } else {
-            actualSeqLengthsQ_.push_back(gsSize_);
+            actualSeqLengthsQ_.push_back(gsMergeFlag_ ? qLen * fiaInfo.gSize : qLen);
         }
 
+        int64_t kvLen;
         if (actualSeqLenKVFlag_) {
-            if (actSeqLenKVDims == 1) {
-                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[0]);
-            } else {
-                if (fiaInfo.kvLayout != FiaLayout::TND && fiaInfo.kvLayout != FiaLayout::NTD) {
-                    actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-                } else {
-                    if (bIdx == 0) {
-                        actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-                    } else {
-                        actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx] -
-                                                      actSeqLenKV->GetData<int64_t>()[bIdx - 1]);
-                    }
-                }
-            }
+            kvLen = ParseSeqLength(actSeqLenKV, kvDims, bIdx, fiaInfo.kvLayout);
         } else if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
-            actualSeqLengthsKV_.push_back(fiaInfo.kvListSeqLens[bIdx]);
+            kvLen = fiaInfo.kvListSeqLens[bIdx];
         } else {
-            actualSeqLengthsKV_.push_back(fiaInfo.s2Size);
+            kvLen = fiaInfo.s2Size;
         }
+        actualSeqLengthsKV_.push_back(kvLen);
     }
 }
 
