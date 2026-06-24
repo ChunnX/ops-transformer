@@ -168,6 +168,7 @@ function(gen_opapi_symbol)
   add_library(${OPAPI_NAME} SHARED	
     $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>>
     $<$<TARGET_EXISTS:opbuild_gen_aclnn_all>:$<TARGET_OBJECTS:opbuild_gen_aclnn_all>>
+    $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
   )
 
   target_link_libraries(${OPAPI_NAME}
@@ -196,6 +197,11 @@ endfunction()
 function(gen_cust_opapi_symbol)
   #op_api
   set_target_properties(${OPAPI_NAME} PROPERTIES OUTPUT_NAME "cust_opapi")
+
+  target_sources(
+ 	     cust_opapi
+ 	     PUBLIC $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
+ 	     )
 
   install(TARGETS ${OPAPI_NAME}
     LIBRARY DESTINATION ${ACLNN_LIB_INSTALL_DIR}
