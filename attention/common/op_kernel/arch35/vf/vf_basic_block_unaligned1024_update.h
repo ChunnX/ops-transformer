@@ -99,165 +99,27 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl1024VF(
     MaskReg preg_tail_n8 = UpdateMask<T>(pltTailN8);
     MaskReg preg_ori_tail_n8 = UpdateMask<T>(pltOriTailN8);
 
-    VREG_PREG_COMPARE_DECL_16();
+    ProcessVec1MainLoop1024<T, T2, hasAtten, pseMode>(
+        ARG_FLOAT_INPUT_X_16_NO_IDX,
+        ARG_FLOAT_INPUT_X_NEW_8,
+        ARG_FLOAT_PSE_16,
+        ARG_FLOAT_SEL_16,
+        ARG_FLOAT_SEL_NEW_8,
+        ARG_FLOAT_ALIBI_16_VREG,
+        vreg_input_max,
+        preg_all, preg_all_b16,
+        preg_ori_tail_n1, preg_ori_tail_n2,
+        preg_ori_tail_n3, preg_ori_tail_n4,
+        preg_ori_tail_n5, preg_ori_tail_n6,
+        preg_ori_tail_n7, preg_ori_tail_n8,
+        tmpMaxUb,
+        pseUb,
+        maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, maskUb7, maskUb8,
+        maskUb9, maskUb10, maskUb11, maskUb12, maskUb13, maskUb14, maskUb15, maskUb16,
+        minValue, m, slopes, scale, posShift,
+        pseStride, nPadding,
+        ureg_max);
 
-    Duplicate(vreg_min, minValue);
-    if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                    pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-        InitAlibiOffsets(vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
-            vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
-            vreg_alibi9, vreg_alibi10, vreg_alibi11, vreg_alibi12,
-            vreg_alibi13, vreg_alibi14, vreg_alibi15, vreg_alibi16,
-            posShift, preg_all);
-    }
-    for (uint16_t i = 0; i < m; ++i) {
-        LoadInput16<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
-            vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
-            vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
-            vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
-            srcUb, i, s2BaseSize);
-
-        if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-            ScaleInput16(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
-                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
-                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
-                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
-                scale, preg_all, preg_ori_tail_n1, preg_ori_tail_n2,
-                preg_ori_tail_n3, preg_ori_tail_n4, preg_ori_tail_n5, preg_ori_tail_n6,
-                preg_ori_tail_n7, preg_ori_tail_n8);
-        }
-        if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
-            if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                            pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                    ComputePseInnerMulAddSqrt16(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                        vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
-                        vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
-                        vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
-                        vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
-                        vreg_alibi9, vreg_alibi10, vreg_alibi11, vreg_alibi12,
-                        vreg_alibi13, vreg_alibi14, vreg_alibi15, vreg_alibi16,
-                        slopes, preg_all);
-                } else {
-                    ComputePseInnerMulAdd16(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                        vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
-                        vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
-                        vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
-                        vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
-                        vreg_alibi9, vreg_alibi10, vreg_alibi11, vreg_alibi12,
-                        vreg_alibi13, vreg_alibi14, vreg_alibi15, vreg_alibi16,
-                        slopes, preg_all);
-                }
-            } else {
-                if constexpr (IsSameType<T2, bfloat16_t>::value) {
-                    LoadCastPseBf16_16(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                        vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
-                        vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
-                        pseUb, i, pseStride, preg_all_b16);
-                } else if constexpr (IsSameType<T2, half>::value) {
-                    LoadCastPseF16_16(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                        vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
-                        vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
-                        pseUb, i, pseStride, preg_all_b16);
-                }
-            }
-            AddPseToInput16(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
-                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
-                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
-                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
-                vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                vreg_pse9, vreg_pse10, vreg_pse11, vreg_pse12,
-                vreg_pse13, vreg_pse14, vreg_pse15, vreg_pse16,
-                preg_all, preg_ori_tail_n1, preg_ori_tail_n2,
-                preg_ori_tail_n3, preg_ori_tail_n4,
-                preg_ori_tail_n5, preg_ori_tail_n6,
-                preg_ori_tail_n7, preg_ori_tail_n8);
-        }
-        if constexpr (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
-            ScaleInput16(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
-                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
-                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
-                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
-                scale, preg_all, preg_ori_tail_n1, preg_ori_tail_n2,
-                preg_ori_tail_n3, preg_ori_tail_n4, preg_ori_tail_n5, preg_ori_tail_n6,
-                preg_ori_tail_n7, preg_ori_tail_n8);
-        }
-        if constexpr (hasAtten == 1) {
-            LoadAttenMask16(preg_compare1, preg_compare2, preg_compare3, preg_compare4,
-                preg_compare5, preg_compare6, preg_compare7, preg_compare8,
-                preg_compare9, preg_compare10, preg_compare11, preg_compare12,
-                preg_compare13, preg_compare14, preg_compare15, preg_compare16,
-                maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6, maskUb7, maskUb8,
-                maskUb9, maskUb10, maskUb11, maskUb12, maskUb13, maskUb14, maskUb15, maskUb16,
-                nPadding);
-
-            ApplyAttenMaskSelect16(vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
-                vreg_sel5, vreg_sel6, vreg_sel7, vreg_sel8,
-                vreg_sel9, vreg_sel10, vreg_sel11, vreg_sel12,
-                vreg_sel13, vreg_sel14, vreg_sel15, vreg_sel16,
-                vreg_min,
-                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
-                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
-                vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
-                vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
-                preg_compare1, preg_compare2, preg_compare3, preg_compare4,
-                preg_compare5, preg_compare6, preg_compare7, preg_compare8,
-                preg_compare9, preg_compare10, preg_compare11, preg_compare12,
-                preg_compare13, preg_compare14, preg_compare15, preg_compare16);
-
-            Select(vreg_sel9_new, vreg_sel9, vreg_min, preg_ori_tail_n1);
-            Select(vreg_sel10_new, vreg_sel10, vreg_min, preg_ori_tail_n2);
-            Select(vreg_sel11_new, vreg_sel11, vreg_min, preg_ori_tail_n3);
-            Select(vreg_sel12_new, vreg_sel12, vreg_min, preg_ori_tail_n4);
-            Select(vreg_sel13_new, vreg_sel13, vreg_min, preg_ori_tail_n5);
-            Select(vreg_sel14_new, vreg_sel14, vreg_min, preg_ori_tail_n6);
-            Select(vreg_sel15_new, vreg_sel15, vreg_min, preg_ori_tail_n7);
-            Select(vreg_sel16_new, vreg_sel16, vreg_min, preg_ori_tail_n8);
-
-            StoreAlign16<T>(vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
-                vreg_sel5, vreg_sel6, vreg_sel7, vreg_sel8,
-                vreg_sel9_new, vreg_sel10_new, vreg_sel11_new, vreg_sel12_new,
-                vreg_sel13_new, vreg_sel14_new, vreg_sel15_new, vreg_sel16_new,
-                srcUb, i, s2BaseSize, preg_all);
-
-            MaxReduce16(vreg_input_max,
-                vreg_sel1, vreg_sel2, vreg_sel3, vreg_sel4,
-                vreg_sel5, vreg_sel6, vreg_sel7, vreg_sel8,
-                vreg_sel9_new, vreg_sel10_new, vreg_sel11_new, vreg_sel12_new,
-                vreg_sel13_new, vreg_sel14_new, vreg_sel15_new, vreg_sel16_new,
-                preg_all);
-        } else {
-            Select(vreg_input_x9_new, vreg_input_x9, vreg_min, preg_ori_tail_n1);
-            Select(vreg_input_x10_new, vreg_input_x10, vreg_min, preg_ori_tail_n2);
-            Select(vreg_input_x11_new, vreg_input_x11, vreg_min, preg_ori_tail_n3);
-            Select(vreg_input_x12_new, vreg_input_x12, vreg_min, preg_ori_tail_n4);
-            Select(vreg_input_x13_new, vreg_input_x13, vreg_min, preg_ori_tail_n5);
-            Select(vreg_input_x14_new, vreg_input_x14, vreg_min, preg_ori_tail_n6);
-            Select(vreg_input_x15_new, vreg_input_x15, vreg_min, preg_ori_tail_n7);
-            Select(vreg_input_x16_new, vreg_input_x16, vreg_min, preg_ori_tail_n8);
-
-            StoreAlign16<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
-                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
-                vreg_input_x9_new, vreg_input_x10_new, vreg_input_x11_new, vreg_input_x12_new,
-                vreg_input_x13_new, vreg_input_x14_new, vreg_input_x15_new, vreg_input_x16_new,
-                srcUb, i, s2BaseSize, preg_all);
-
-            MaxReduce16(vreg_input_max,
-                vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
-                vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
-                vreg_input_x9_new, vreg_input_x10_new, vreg_input_x11_new, vreg_input_x12_new,
-                vreg_input_x13_new, vreg_input_x14_new, vreg_input_x15_new, vreg_input_x16_new,
-                preg_all);
-        }
-
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max, 1);
-    }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
     LoadAlign(vreg_in_max, inMaxUb);
@@ -273,11 +135,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl1024VF(
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(
             vreg_max, tmpMaxUb2 + i);
 
-        LoadInputDinterleave8<T>(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
-            vreg_input_x5, vreg_input_x6, vreg_input_x7, vreg_input_x8,
-            vreg_input_x9, vreg_input_x10, vreg_input_x11, vreg_input_x12,
-            vreg_input_x13, vreg_input_x14, vreg_input_x15, vreg_input_x16,
-            srcUb, i, s2BaseSize);
+        LoadInputDinterleave8<T>(ARG_FLOAT_INPUT_X_16);
 
         ExpSub16(vreg_exp_even1, vreg_exp_odd1, vreg_exp_even2, vreg_exp_odd2,
             vreg_exp_even3, vreg_exp_odd3, vreg_exp_even4, vreg_exp_odd4,
@@ -297,21 +155,9 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl1024VF(
             ureg_exp_sum, tmpExpSumUb, preg_all);
 
         if constexpr (IsSameType<T2, bfloat16_t>::value) {
-            CastStoreExpBf16_1024<T2>(vreg_exp_even1, vreg_exp_odd1,
-                vreg_exp_even2, vreg_exp_odd2, vreg_exp_even3, vreg_exp_odd3,
-                vreg_exp_even4, vreg_exp_odd4, vreg_exp_even5, vreg_exp_odd5,
-                vreg_exp_even6, vreg_exp_odd6, vreg_exp_even7, vreg_exp_odd7,
-                vreg_exp_even8, vreg_exp_odd8,
-                expUb1, expUb2, expUb3, expUb4, expUb5, expUb6, expUb7, expUb8,
-                blockStride, repeatStride, preg_all, preg_all_b16);
+            CastStoreExpBf16_1024<T2>(ARG_FLOAT_CAST_STORE_EXP_1024);
         } else if constexpr (IsSameType<T2, half>::value) {
-            CastStoreExpF16_1024<T2>(vreg_exp_even1, vreg_exp_odd1,
-                vreg_exp_even2, vreg_exp_odd2, vreg_exp_even3, vreg_exp_odd3,
-                vreg_exp_even4, vreg_exp_odd4, vreg_exp_even5, vreg_exp_odd5,
-                vreg_exp_even6, vreg_exp_odd6, vreg_exp_even7, vreg_exp_odd7,
-                vreg_exp_even8, vreg_exp_odd8,
-                expUb1, expUb2, expUb3, expUb4, expUb5, expUb6, expUb7, expUb8,
-                blockStride, repeatStride, preg_all, preg_all_b16);
+            CastStoreExpF16_1024<T2>(ARG_FLOAT_CAST_STORE_EXP_1024);
         }
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
