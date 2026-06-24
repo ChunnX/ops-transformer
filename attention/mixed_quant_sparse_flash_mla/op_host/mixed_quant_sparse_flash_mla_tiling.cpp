@@ -201,6 +201,7 @@ ge::graphStatus QSMLAInfoParser::GetKvLayout()
     const map<string, QSMLALayout> layoutKVMap = {
         {"PA_BBND",     QSMLALayout::PA_BBND},
         {"TND",       QSMLALayout::TND},
+        {"BSND",       QSMLALayout::BSND},
     };
 
     std::string layout(opParamInfo_.layoutKv);
@@ -346,7 +347,7 @@ ge::graphStatus QSMLAInfoParser::GetS1Size()
 
 ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
 {
-    if (kvLayout_ == QSMLALayout::TND) {
+    if (kvLayout_ == QSMLALayout::TND || kvLayout_ == QSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
@@ -399,6 +400,7 @@ ge::graphStatus QSMLAInfoParser::GetS2SizeForPageAttention()
         return ge::GRAPH_FAILED;
     }
     s2Size_ = oriMaxBlockNumPerBatch_ * oriBlockSize_;
+    cmpS2Size_ = cmpMaxBlockNumPerBatch_ * cmpBlockSize_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -406,9 +408,16 @@ ge::graphStatus QSMLAInfoParser::GetS2Size()
 {
     if (kvLayout_ == QSMLALayout::TND) {
         s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::T, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::T, kvLayout_);
         return ge::GRAPH_SUCCESS;
+    } else if (kvLayout_ == QSMLALayout::BSND) {
+        s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::S, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::S, kvLayout_);
+        return ge::GRAPH_SUCCESS;
+    } else if (kvLayout_ == QSMLALayout::PA_BBND) {
+        return GetS2SizeForPageAttention();
     }
-    return GetS2SizeForPageAttention();
+    return ge::GRAPH_FAILED;
 }
 
 ge::graphStatus QSMLAInfoParser::GetQkHeadDim()
@@ -481,6 +490,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.n2Size = n2Size_;
     qsmlaInfo.s1Size = s1Size_;
     qsmlaInfo.s2Size = s2Size_;
+    qsmlaInfo.cmpS2Size = cmpS2Size_;
     qsmlaInfo.gSize = gSize_;
     qsmlaInfo.qkHeadDim = qkHeadDim_;
     qsmlaInfo.qTSize = qTSize_;
@@ -625,6 +635,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     // -------------set tilingdata-----------------
     tilingData_.baseParams.set_batchSize(tilingInfo->bSize);
     tilingData_.baseParams.set_kvSeqSize(tilingInfo->s2Size);
+    tilingData_.baseParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.baseParams.set_qSeqSize(tilingInfo->s1Size);
     tilingData_.baseParams.set_sparseBlockCount(tilingInfo->sparseBlockCount);
     tilingData_.baseParams.set_nNumOfQInOneGroup(tilingInfo->gSize);

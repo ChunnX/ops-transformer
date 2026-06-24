@@ -324,7 +324,13 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(
         realkeyOffset = (tPrefix + s2Idx) * constInfo.n2Size * constInfo.dSizeVInput +
             runInfo.n2oIdx * constInfo.dSizeVInput;
     } else {
-        realkeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx;
+        if (runInfo.isCmp) {
+            realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSizeVInput + \
+                runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput; // BSN(1)D
+        } else {
+            realkeyOffset = runInfo.boIdx * constInfo.n2S2Dv +
+                runInfo.n2oIdx * constInfo.s2Dv + s2Idx * constInfo.dSizeVInput; // BSN(1)D
+        }
     }
     return realkeyOffset;
 }
