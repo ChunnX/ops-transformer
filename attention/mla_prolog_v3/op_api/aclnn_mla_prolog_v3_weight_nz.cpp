@@ -51,6 +51,17 @@ extern aclnnStatus aclnnInnerMlaPrologV3GetWorkspaceSize(
 extern aclnnStatus aclnnInnerMlaPrologV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                          const aclrtStream stream);
 
+constexpr int64_t WEIGHT_QUANT_MODE_NO_QUANT = 0;
+constexpr int64_t WEIGHT_QUANT_MODE_PARTIAL_QUANT = 1;
+constexpr int64_t WEIGHT_QUANT_MODE_FULL_QUANT = 2;
+constexpr int64_t WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT = 3;
+constexpr int64_t WEIGHT_QUANT_MODE_FULL_QUANT_FP8 = 4;
+constexpr int64_t WEIGHT_QUANT_MODE_FULL_QUANT_HIF8 = 5;
+constexpr int64_t KV_CACHE_QUANT_MODE_NO_QUANT = 0;
+constexpr int64_t KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
+constexpr int64_t KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
+constexpr int64_t KV_CACHE_QUANT_MODE_PER_TILE = 3;
+
 class TensorHolder {
 public:
     TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName)
@@ -163,6 +174,51 @@ bool CheckQueryQuantModeValidity(int64_t queryQuantMode)
     return true;
 }
 
+aclDataType GetQueryNormDataType(int64_t weightQuantMode)
+{
+    if (weightQuantMode == WEIGHT_QUANT_MODE_NO_QUANT) {
+        return aclDataType::ACL_BF16;
+    }
+    if (weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT || weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8) {
+        return aclDataType::ACL_FLOAT8_E4M3FN;
+    }
+    if (weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_HIF8) {
+        return aclDataType::ACL_HIFLOAT8;
+    }
+    return aclDataType::ACL_INT8;
+}
+
+aclDataType GetDequantScaleQNormDataType(int64_t weightQuantMode)
+{
+    return weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT ? aclDataType::ACL_FLOAT8_E8M0 :
+                                                                   aclDataType::ACL_FLOAT;
+}
+
+bool IsFullQuantMode(int64_t weightQuantMode)
+{
+    return weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT || weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT ||
+           weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8 || weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_HIF8;
+}
+
+aclnnStatus CheckOptionalOutputsNotNull(const aclTensor *dequantScaleQNopeOutOptional,
+                                        const aclTensor *queryNormOutOptional,
+                                        const aclTensor *dequantScaleQNormOutOptional)
+{
+    if (dequantScaleQNopeOutOptional == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "dequantScaleQNopeOut");
+        return ge::GRAPH_FAILED;
+    }
+    if (queryNormOutOptional == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "queryNormOut");
+        return ge::GRAPH_FAILED;
+    }
+    if (dequantScaleQNormOutOptional == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "dequantScaleQNormOut");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const aclTensor *tokenX, const aclTensor *weightDq, const aclTensor *weightUqQr, const aclTensor *weightUk,
     const aclTensor *weightDkvKr, const aclTensor *rmsnormGammaCq, const aclTensor *rmsnormGammaCkv,
@@ -178,63 +234,37 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const aclTensor *dequantScaleQNopeOutOptional, const aclTensor *queryNormOutOptional,
     const aclTensor *dequantScaleQNormOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const int WEIGHT_QUANT_MODE_NO_QUANT = 0;
-    const int WEIGHT_QUANT_MODE_PARTIAL_QUANT = 1;
-    const int WEIGHT_QUANT_MODE_FULL_QUANT = 2;
-    const int WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT = 3;
-    const int WEIGHT_QUANT_MODE_FULL_QUANT_FP8 = 4;
-    const int WEIGHT_QUANT_MODE_FULL_QUANT_HIF8 = 5;
-    const int KV_CACHE_QUANT_MODE_NO_QUANT = 0;
-    const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
-    const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
-    const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
     if (!CheckWeightQuantModeValidity(weightQuantMode)) {
         return ge::GRAPH_FAILED;
-    };
+    }
     if (!CheckKvCacheQuantModeValidity(weightQuantMode, kvCacheQuantMode)) {
         return ge::GRAPH_FAILED;
-    };
+    }
     if (!CheckQueryQuantModeValidity(queryQuantMode)) {
         return ge::GRAPH_FAILED;
-    };
+    }
+
+    aclnnStatus nullCheckRet =
+        CheckOptionalOutputsNotNull(dequantScaleQNopeOutOptional, queryNormOutOptional, dequantScaleQNormOutOptional);
+    if (nullCheckRet != ge::GRAPH_SUCCESS) {
+        return nullCheckRet;
+    }
 
     auto dequantScaleQNopeHolder =
         TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
-    aclDataType queryNormDataType =
-        weightQuantMode == WEIGHT_QUANT_MODE_NO_QUANT ? aclDataType::ACL_BF16 : aclDataType::ACL_INT8;
-    aclDataType dequantScaleQNormDataType =
-        weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT ? aclDataType::ACL_FLOAT8_E8M0 : aclDataType::ACL_FLOAT;
-    if (weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT || weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8) {
-        queryNormDataType = aclDataType::ACL_FLOAT8_E4M3FN;
-    } else if (weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_HIF8) {
-        queryNormDataType = aclDataType::ACL_HIFLOAT8;
-    }
-    auto queryNormHolder = TensorHolder(queryNormOutOptional, queryNormDataType, std::string("queryNormOut"));
+    auto queryNormHolder =
+        TensorHolder(queryNormOutOptional, GetQueryNormDataType(weightQuantMode), std::string("queryNormOut"));
     auto dequantScaleQNormHolder =
-        TensorHolder(dequantScaleQNormOutOptional, dequantScaleQNormDataType, std::string("dequantScaleQNormOut"));
-    if (dequantScaleQNopeOutOptional == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "dequantScaleQNopeOut");
-        return ge::GRAPH_FAILED;
-    }
-    if (queryNormOutOptional == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "queryNormOut");
-        return ge::GRAPH_FAILED;
-    }
-    if (dequantScaleQNormOutOptional == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "dequantScaleQNormOut");
-        return ge::GRAPH_FAILED;
-    }
-    // weightQuantMode == 2,4,5:全量化场景(int8,fp8,hif8)
-    // weightQuantMode == 3:mxfp8全量化场景
+        TensorHolder(dequantScaleQNormOutOptional, GetDequantScaleQNormDataType(weightQuantMode),
+                     std::string("dequantScaleQNormOut"));
+
     // kvCacheQuantMode == 1:KV_PER_TENSOR量化场景
-    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(
-        (weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT || weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT ||
-         weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8 || weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_HIF8) &&
-        kvCacheQuantMode == KV_CACHE_QUANT_MODE_PER_TENSOR);
+    dequantScaleQNopeHolder.CheckTensorConditionalNotNull(IsFullQuantMode(weightQuantMode) &&
+                                                          kvCacheQuantMode == KV_CACHE_QUANT_MODE_PER_TENSOR);
     bool queryNormFlag = queryNormHolder.IsTensorNotNull();
-    // weightQuantMode != 0:量化场景
     dequantScaleQNormHolder.CheckTensorConditionalNotNull(weightQuantMode != WEIGHT_QUANT_MODE_NO_QUANT &&
                                                           queryNormFlag);
+
     return aclnnInnerMlaPrologV3GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
         kvCacheRef, krCacheRef, cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional,

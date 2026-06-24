@@ -290,54 +290,74 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     if (scenarioInfo_.quantMode_ == QUANT_MODE::ERROR_MODE) {
         return ge::GRAPH_FAILED;
     }
-    if (std::strncmp(context_->cacheMode, CACHE_MODE_BSND, CACHE_MODE_LEN) == 0) {
-        scenarioInfo_.cacheMode_ = CACHE_MODE::BSND;
-    } else if (std::strncmp(context_->cacheMode, CACHE_MODE_TND, CACHE_MODE_LEN) == 0) {
-        scenarioInfo_.cacheMode_ = CACHE_MODE::TND;
-    } else if (std::strncmp(context_->cacheMode, CACHE_MODE_PA_BSND, CACHE_MODE_LEN) == 0) {
-        scenarioInfo_.cacheMode_ = CACHE_MODE::PA_BSND;
-    } else if (std::strncmp(context_->cacheMode, CACHE_MODE_PA_NZ, CACHE_MODE_LEN) == 0) {
-        scenarioInfo_.cacheMode_ = CACHE_MODE::PA_NZ;
-    } else if (std::strncmp(context_->cacheMode, CACHE_MODE_PA_BLK_BSND, CACHE_MODE_LEN) == 0) {
-        scenarioInfo_.cacheMode_ = CACHE_MODE::PA_BLK_BSND;
-    } else {
-        scenarioInfo_.cacheMode_ = CACHE_MODE::PA_BLK_NZ;
+    scenarioInfo_.cacheMode_ = ResolveCacheMode();
+    scenarioInfo_.emptyTensorMode_ = ResolveEmptyTensorMode();
+    if (ResolveActualSeqMode() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
+    ResolveSplitMFlag();
+    return ge::GRAPH_SUCCESS;
+}
 
+CACHE_MODE MlaPrologTiling::ResolveCacheMode() const
+{
+    static const std::unordered_map<std::string, CACHE_MODE> cacheModeMap{
+        {CACHE_MODE_BSND, CACHE_MODE::BSND},
+        {CACHE_MODE_TND, CACHE_MODE::TND},
+        {CACHE_MODE_PA_BSND, CACHE_MODE::PA_BSND},
+        {CACHE_MODE_PA_NZ, CACHE_MODE::PA_NZ},
+        {CACHE_MODE_PA_BLK_BSND, CACHE_MODE::PA_BLK_BSND},
+    };
+    auto it = cacheModeMap.find(std::string(context_->cacheMode));
+    return (it != cacheModeMap.end()) ? it->second : CACHE_MODE::PA_BLK_NZ;
+}
+
+EMPTY_TENSOR_MODE MlaPrologTiling::ResolveEmptyTensorMode() const
+{
     if ((scenarioInfo_.batchSeqFusedFlag_ && baseShapeInfo_.tSize == 0U) ||
         (!scenarioInfo_.batchSeqFusedFlag_ && (baseShapeInfo_.bSize * baseShapeInfo_.s1Size == 0U))) {
-        scenarioInfo_.emptyTensorMode_ = EMPTY_TENSOR_MODE::EMPTY_QUERY;
-    } else if (baseShapeInfo_.blockNum == 0U) {
-        scenarioInfo_.emptyTensorMode_ = EMPTY_TENSOR_MODE::EMPTY_CACHE;
-    } else {
-        scenarioInfo_.emptyTensorMode_ = EMPTY_TENSOR_MODE::NON_EMPTY;
+        return EMPTY_TENSOR_MODE::EMPTY_QUERY;
     }
+    if (baseShapeInfo_.blockNum == 0U) {
+        return EMPTY_TENSOR_MODE::EMPTY_CACHE;
+    }
+    return EMPTY_TENSOR_MODE::NON_EMPTY;
+}
 
+ge::graphStatus MlaPrologTiling::ResolveActualSeqMode()
+{
     if (scenarioInfo_.batchSeqFusedFlag_ &&
         (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ)) {
         OP_CHECK_IF(context_->actualSeqLen.shape == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "actualSeqLen", "null",
-                                                             "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
-                                                             "shape dim num is 2, actualSeqLen should not be null"),
+                                                          "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
+                                                          "shape dim num is 2, actualSeqLen should not be null"),
                     return GRAPH_FAILED);
         baseShapeInfo_.bSize = context_->actualSeqLen.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::EN_Q_LEN;
     } else {
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::DISABLED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+bool MlaPrologTiling::IsMxfp8QuantMode() const
+{
+    return scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
+           scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+           scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE;
+}
+
+void MlaPrologTiling::ResolveSplitMFlag()
+{
     uint32_t cvRatio = aivNum_ / aicNum_;
-    // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
-    if ((scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
-         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
-         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
+    if (IsMxfp8QuantMode() && baseShapeInfo_.tSize >= 8192 && cvRatio == 2) {
         if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
-            baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
+            baseShapeInfo_.nSize == 128) {
             scenarioInfo_.splitMFlag_ = 1U;
         }
     }
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MlaPrologTiling::SetAttrInfo()
