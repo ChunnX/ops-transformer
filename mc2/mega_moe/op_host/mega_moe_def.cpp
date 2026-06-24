@@ -109,6 +109,27 @@ public:
     this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config_950;
+    aicore_config_950.Input("context")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("x")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
+                        ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("topk_ids")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("topk_weights")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_FLOAT, ge::DT_BF16})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
     aicore_config_950.Input("weight1")
         .ParamType(DYNAMIC)
         .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
@@ -121,6 +142,44 @@ public:
                     ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
         .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
                     ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_ND});
+    aicore_config_950.Input("weight_scales1")
+        .ParamType(DYNAMIC)
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("weight_scales2")
+        .ParamType(DYNAMIC)
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("bias1")
+        .ParamType(DYNAMIC)
+        .DataTypeList({ge::DT_FLOAT})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("bias2")
+        .ParamType(DYNAMIC)
+        .DataTypeList({ge::DT_FLOAT})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("x_active_mask")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_INT8})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("scales")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Output("y")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+        .FormatList({ge::FORMAT_ND});
+    aicore_config_950.Output("expert_token_nums")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND});
     aicore_config_950.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
         .DynamicRankSupportFlag(true)
