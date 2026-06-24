@@ -158,6 +158,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     uint64_t kProcessSize = constInfo_.headDim;
 
     //s2轴循环
+    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cBufIdx_ % L0_BUF_NUM);
     for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += S2_BASIC_BLOCK_L1) {
         uint64_t s2L1RealSize =
             s2GmOffset + S2_BASIC_BLOCK_L1 > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK_L1;
@@ -209,6 +210,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
         }
     }
     Fixp(0, 0, s1gProcessSize, s2ProcessSize, runInfo);
+    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cBufIdx_ % L0_BUF_NUM);
     l0cBufIdx_++;
     CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2); 
     CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET); 
