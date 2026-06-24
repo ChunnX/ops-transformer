@@ -74,6 +74,7 @@ struct RunInfo {
     uint64_t tensorKeyScaleOffset;
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
+    uint64_t valueOutOffset;
     uint64_t outputIdxCoreOffset;
 
     bool isFirstS2InnerLoop;

@@ -47,7 +47,7 @@ struct FloatSortConstCtx {
 };
 
 template <>
-struct UIntSortTraits<float> {
+struct UIntSortTraits<bfloat16_t> {
     using UInt = uint16_t;
     static constexpr UInt ZERO      = 0x0000;
     static constexpr UInt SIGN_MASK = 0x8000;

@@ -682,6 +682,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
+    runInfo.valueOutOffset = valueOutCoreOffset;
+    runInfo.outputIdxCoreOffset = outputIdxCoreOffset;
     if (runInfo.needTndPadding) {
         vectorService.DoTndPadding(runInfo);
     }
@@ -721,9 +723,9 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 
-                GlobalTensor<uint32_t> valueOutGmTmp;
-                valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
-                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
+                GlobalTensor<uint16_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
 
                 AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_BFLOAT);
             }
