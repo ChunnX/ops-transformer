@@ -70,10 +70,11 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
         op.Init(&pipe, &params, dy, cos, sin, dx);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_BAB)) {
-        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-        InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op;
-        op.Init(&pipe, &params, dy, cos, sin, dx);
-        op.Process();
+        AscendC::printf("if TILING_KEY_IS(TILING_KEY_BAB)\n");
+        // const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
+        // InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op;
+        // op.Init(&pipe, &params, dy, cos, sin, dx);
+        // op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_AB)) {
         const InplacePartialRotaryMulGradRegbaseABParams &params = tilingData.inplacePartialRotaryMulGradABParams;
         InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS> op;
