@@ -573,7 +573,6 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     bool isNdCacheInner = IsSupportNonContiguousCacheNdInner(keyCache, valueCache, isPaNz);
     // ref(key/value)内部轴非连续(ND dim0/dim1, NZ dim0)、尾轴连续: kernel可零拷贝散写, 放行。
     bool isRefNonContig = IsSupportNonContiguousRef(keyRef, valueRef);
-
     if (!mustContiguous && (isCacheNonContiguous || isNdCacheInner || isRefNonContig)) {
         return ProcessNonContiguous(
             keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,

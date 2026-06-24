@@ -495,8 +495,8 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     (void)stride0;          // block起始地址已在调用侧用stride0计算
     (void)isSlotNonContig;  // 进入本函数即slot非连续 或 输出非连续, 标志无需再用
     const uint64_t elemSize = isKey ? sizeof(DTYPE_KEY) : sizeof(DTYPE_VALUE);
-    const uint64_t srcSlotStrideBytes = static_cast<uint64_t>(stride1) * elemSize;  // 源slot(token)间步长(字节, cache stride1)
-    const uint64_t srcHeadStrideBytes = static_cast<uint64_t>(stride2) * elemSize;  // 源head间步长(字节, cache stride2)
+    const uint64_t srcSlotStrideBytes = static_cast<uint64_t>(stride1) * elemSize;  // 源slot(token)间步长
+    const uint64_t srcHeadStrideBytes = static_cast<uint64_t>(stride2) * elemSize;  // 源head间步长
 
     // 输出侧: token(dim0)步长用 keyOutStride0, head(dim1)步长用 keyOutStride1。
     // 连续时tiling已填稠密值(stride0=hiddenSize, stride1=head_size), 故下式对连续/非连续统一。
@@ -505,9 +505,9 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     int64_t outStride0 = isKey ? keyOutStride0_ : valueOutStride0_;
     int64_t outStride1 = isKey ? keyOutStride1_ : valueOutStride1_;
     const uint64_t dstSlotStrideBytes = isOutNonContig
-                                            ? static_cast<uint64_t>(outStride0) * elemSize  // 输出dim0非连续: token间有间隙
+                                            ? static_cast<uint64_t>(outStride0) * elemSize  // 输出dim0非连续
                                             : hiddenSize;                                    // 输出连续: 紧密排列
-    const uint64_t dstHeadStrideBytes = static_cast<uint64_t>(outStride1) * elemSize;        // head间步长(连续时=head_size*字节宽)
+    const uint64_t dstHeadStrideBytes = static_cast<uint64_t>(outStride1) * elemSize;        // head间步长
 
     uint64_t numHeads = isKey ? numHeadsK_ : numHeadsV_;
     uint64_t headBytes = (numHeads > 0) ? (hiddenSize / numHeads) : hiddenSize;  // 单head字节数
@@ -517,16 +517,13 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
 
     if (!needHeadLoop) {
         // Case B: token内连续(N*D字节连续)。一次批量化搬整block所有slot:
-        // 每slot hiddenSize字节, 源slot间跨srcSlotStrideBytes, 目标slot间跨dstSlotStrideBytes。
-        // (isFilledWithZero由GatherNcSlotBatchRun内部处理: 整block按dst步长填零散写)
         GatherNcSlotBatchRun(dstGm, srcGm, 0, 0, curBlockSize, hiddenSize,
                              srcSlotStrideBytes, dstSlotStrideBytes, isFilledWithZero);
     } else {
         // Case C: head轴(源或目标)非连续。外层循环head(数量少), 内层一次批量化搬整block该head的所有slot。
-        // 源head偏移按srcHeadStrideBytes, 目标head偏移按dstHeadStrideBytes(连续时即head紧密排列)。
         for (uint64_t h = 0; h < numHeads; h++) {
             GatherNcSlotBatchRun(dstGm, srcGm,
-                                 h * dstHeadStrideBytes,   // 目标: ref端head位置(连续时紧密, dim1非连续时按stride散)
+                                 h * dstHeadStrideBytes,   // 目标: ref端head位置
                                  h * srcHeadStrideBytes,   // 源: cache端head位置
                                  curBlockSize, headBytes,
                                  srcSlotStrideBytes, dstSlotStrideBytes, isFilledWithZero);
