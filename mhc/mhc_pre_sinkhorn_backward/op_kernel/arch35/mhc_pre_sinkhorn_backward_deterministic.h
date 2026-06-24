@@ -1161,7 +1161,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 {
     mm1_.SetTensorA(gradHcBeforeNormWs_);
     mm1_.SetTensorB(phiGm_);
-    mm1_.SetHF32(true, 1);
+    mm1_.SetHF32(false, 0);
     mm1_.SetSingleShape(mm1M_, mm1N_, mm1K_);
     mm1_.template IterateAll<false> (gradXGm_, 1);
     mm1_.End();
@@ -1176,7 +1176,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 {
     mm2_.SetTensorA(gradNormOutWs_, true);
     mm2_.SetTensorB(xFp32Ws_);
-    mm2_.SetHF32(true, 1);
+    mm2_.SetHF32(false, 0);
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K_);
     mm2_.template IterateAll<false> (gradPhiGm_, 1);
     mm2_.End();

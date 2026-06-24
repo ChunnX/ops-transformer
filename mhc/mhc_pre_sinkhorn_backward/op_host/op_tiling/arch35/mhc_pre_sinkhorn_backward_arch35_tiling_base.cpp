@@ -76,6 +76,18 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetPlatformInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     ubSize_ = static_cast<int64_t>(ubSizePlatForm);
     OP_CHECK_IF((ubSize_ <= 0), OP_LOGE(context_->GetNodeName(), "Failed to get ub size."), return ge::GRAPH_FAILED);
+    // This op runs as a MIX (AIC:AIV=1:2) kernel whose UB is launched as SIMT dynamic shared memory.
+    // GetCoreMemSize(UB) reports the full UB (253952B on Ascend950), but the runtime caps the
+    // dynamic shared memory plus the kernel static reserve at 229376B; declaring the full UB makes
+    // kernel launch fail with ACL_ERROR_RT_PARAM_INVALID (CheckAndGetTotalShareMemorySize).
+    // Clamp to the SIMT-usable budget (229376 - 8192 static reserve = 221184B); the actual per-core
+    // allocation (<= ~202KB at c=7168, tile<=64) still fits, so kernel behavior is unchanged.
+    constexpr int64_t SIMT_SHARE_MEM_LIMIT = 229376;
+    constexpr int64_t KERNEL_STATIC_RESERVE = 8192;
+    constexpr int64_t SIMT_USABLE_UB = SIMT_SHARE_MEM_LIMIT - KERNEL_STATIC_RESERVE;  // 221184
+    if (ubSize_ > SIMT_USABLE_UB) {
+        ubSize_ = SIMT_USABLE_UB;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

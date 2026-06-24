@@ -519,7 +519,7 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ProcessMatmul1(
 
     mm1_.SetTensorA(gradH2Global_[taskOffset * mm1K_]);
     mm1_.SetTensorB(phiGlobal_);
-    mm1_.SetHF32(true, 1);
+    mm1_.SetHF32(false, 0);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
     mm1_.template IterateAll<false> (gradXGlobal_[taskOffset * (n_ * c_)], 1);
     mm1_.End();
@@ -534,7 +534,7 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ProcessMatmul2(
 
     mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true);
     mm2_.SetTensorB(xFp32Global_[taskOffset * mm2N_]);
-    mm2_.SetHF32(true, 1);
+    mm2_.SetHF32(false, 0);
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
     mm2_.template IterateAll<false> (gradPhiGlobal_, 1);
     mm2_.End();
