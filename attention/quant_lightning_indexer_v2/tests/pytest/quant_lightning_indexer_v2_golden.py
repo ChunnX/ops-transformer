@@ -105,6 +105,8 @@ class GeneralizedQLIV2:
         self.actual_seq_dtype = actual_seq_dtype
         self.cu_seqlens_q = cu_seqlens_q
         self.cu_seqlens_k = cu_seqlens_k
+        self.seqused_q = act_seq_q
+        self.seqused_k = act_seq_k
         self.act_seq_q = act_seq_q
         self.act_seq_k = act_seq_k
         self.cmp_residual_k = cmp_residual_k
