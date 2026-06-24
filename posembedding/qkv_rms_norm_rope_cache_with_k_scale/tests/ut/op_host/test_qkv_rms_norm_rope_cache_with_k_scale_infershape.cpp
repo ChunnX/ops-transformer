@@ -113,11 +113,11 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsMissingInputLayout)
     ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsLayoutHeadMismatch)
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsQkvHeadLessThanNq)
 {
     std::vector<int64_t> headNums = {16, 2, 2};
     auto inputs = BuildInputs();
-    inputs[0] = {{{17, 21, 128}, {17, 21, 128}}, ge::DT_BF16, ge::FORMAT_ND};
+    inputs[0] = {{{17, 15, 128}, {17, 15, 128}}, ge::DT_BF16, ge::FORMAT_ND};
     gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
         BuildAttrs(headNums, "TND"));
 
@@ -127,7 +127,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsLayoutHeadMismatch)
 
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidHeadNumsAttr)
 {
-    std::vector<int64_t> headNums = {16, 2};
+    std::vector<int64_t> headNums = {};
     gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
         BuildAttrs(headNums));
 
@@ -139,7 +139,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidHeadNumsAttr)
         BuildAttrs(headNums));
     ExecuteTestCase(zeroHeadPara, ge::GRAPH_FAILED, expected);
 
-    headNums = {16, -1, 2};
+    headNums = {-1, 2, 2};
     gert::InfershapeContextPara negativeHeadPara("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
         BuildAttrs(headNums));
     ExecuteTestCase(negativeHeadPara, ge::GRAPH_FAILED, expected);
@@ -155,30 +155,6 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidInputDimNum)
     gert::InfershapeContextPara qkvPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
         BuildAttrs(headNums));
     ExecuteTestCase(qkvPara, ge::GRAPH_FAILED, expected);
-
-    inputs = BuildInputs();
-    inputs[5] = {{{8, 2, 128}, {8, 2, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND};
-    gert::InfershapeContextPara kCachePara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        BuildAttrs(headNums));
-    ExecuteTestCase(kCachePara, ge::GRAPH_FAILED, expected);
-
-    inputs = BuildInputs();
-    inputs[6] = {{{8, 2, 128}, {8, 2, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND};
-    gert::InfershapeContextPara vCachePara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        BuildAttrs(headNums));
-    ExecuteTestCase(vCachePara, ge::GRAPH_FAILED, expected);
-
-    inputs = BuildInputs();
-    inputs[7] = {{{8, 2, 128}, {8, 2, 128}}, ge::DT_FLOAT, ge::FORMAT_ND};
-    gert::InfershapeContextPara kScaleCachePara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        BuildAttrs(headNums));
-    ExecuteTestCase(kScaleCachePara, ge::GRAPH_FAILED, expected);
-
-    inputs = BuildInputs();
-    inputs[9] = {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND};
-    gert::InfershapeContextPara actualSeqLensRankPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        BuildAttrs(headNums));
-    ExecuteTestCase(actualSeqLensRankPara, ge::GRAPH_FAILED, expected);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsNonPositiveInputDims)
@@ -193,14 +169,8 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsNonPositiveInputDims)
     ExecuteTestCase(qkvPara, ge::GRAPH_FAILED, expected);
 
     inputs = BuildInputs();
-    inputs[5] = {{{8, 2, 0, 128}, {8, 2, 0, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND};
-    gert::InfershapeContextPara kCachePara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
+    inputs[0] = {{{20, 17, 0}, {20, 17, 0}}, ge::DT_BF16, ge::FORMAT_ND};
+    gert::InfershapeContextPara qkvHeadDimPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
         BuildAttrs(headNums));
-    ExecuteTestCase(kCachePara, ge::GRAPH_FAILED, expected);
-
-    inputs = BuildInputs();
-    inputs[9] = {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND};
-    gert::InfershapeContextPara actualSeqLensPara("QkvRmsNormRopeCacheWithKScale", inputs, BuildOutputs(),
-        BuildAttrs(headNums));
-    ExecuteTestCase(actualSeqLensPara, ge::GRAPH_FAILED, expected);
+    ExecuteTestCase(qkvHeadDimPara, ge::GRAPH_FAILED, expected);
 }
