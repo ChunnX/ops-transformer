@@ -448,6 +448,18 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     if constexpr (IS_MXFP8) {
         // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + ReduceSum
+        printf("[MXFP8 UB Addr] core=%u, loop=%u, pingpong=%u, qScalepingpong=%u, curAivS1ProcNum=%d\n"
+               "  outBase      phyAddr=0x%lx, outStride=%lu\n"
+               "  qkBase       phyAddr=0x%lx, qkVLstride=%u, qkStride=%lu\n"
+               "  weightBase   phyAddr=0x%lx, weightStride=%lu\n"
+               "  weightTemp   phyAddr=0x%lx\n"
+               "  gSize=%d\n",
+               blockId_, info.loop, pingpong, qScalepingpong, (int)curAivS1ProcNum,
+               (uint64_t)outBase.GetPhyAddr(), (uint64_t)(UB_BANK_DEPTH_STRIDE / sizeof(uint16_t)),
+               (uint64_t)qkBase.GetPhyAddr(), qkVLstride, (uint64_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+               (uint64_t)weightBase.GetPhyAddr(), (uint64_t)(UB_BANK_DEPTH_STRIDE / sizeof(W_T)),
+               (uint64_t)weightTempBase.GetPhyAddr(),
+               gSize_);
         vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
                                                     (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
