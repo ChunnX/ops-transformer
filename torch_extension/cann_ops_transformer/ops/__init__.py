@@ -40,3 +40,4 @@ from .graph_convert.graph_convert_quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .mixed_quant_flash_attn_metadata import npu_mixed_quant_flash_attn_metadata
