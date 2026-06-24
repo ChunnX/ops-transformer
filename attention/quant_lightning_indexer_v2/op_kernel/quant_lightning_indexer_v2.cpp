@@ -52,15 +52,12 @@ __global__ __aicore__ void quant_lightning_indexer_v2(__gm__ uint8_t *query, __g
 
 #if (true)
     if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN) {
-#ifdef ORIG_DTYPE_QUERY_DEQUANT_SCALE
-        if (ORIG_DTYPE_QUERY_DEQUANT_SCALE == DT_FLOAT8_E8M0) {
+        if (ORIG_DTYPE_Q_DESCALE == DT_FLOAT8_E8M0) {
             // MXFP8: q/k=fp8_e4m3, scale=fp8_e8m0, mmad_mx 输出 float
             INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, fp8_e4m3fn_t, fp8_e4m3fn_t, float, uint16_t, int32_t,
                     PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
                     float, fp8_e8m0_t);
-        } else
-#endif
-        {
+        } else {
             INVOKE_LI_NO_KFC_OP_IMPL(QLIV2Preload, fp8_e4m3fn_t, fp8_e4m3fn_t, float, uint16_t, int32_t,
                     PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
                     float, float32_t, float32_t);
