@@ -109,6 +109,7 @@ private:
 
     TBuf<TPosition::VECCALC> indicesOutBuf_;
     LocalTensor<uint32_t> indicesOutLocal_;
+    LocalTensor<uint32_t> hisIndexOutLocal_;
 
     TBuf<TPosition::VECCALC> scoreOutBuf_;
     LocalTensor<uint16_t> scoreOutLocal_;
@@ -156,14 +157,15 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     vec1OutUB_ = outBuf_.Get<uint16_t>();
 
     // Topk
-    pipe->InitBuffer(mrgValueBuf_, 2 * (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(uint16_t)
+    pipe->InitBuffer(mrgValueBuf_, 2 * (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
     outInvalidLocal_ = mrgValueBuf_.Get<int32_t>();
 
-    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
+    pipe->InitBuffer(indicesOutBuf_, ((topkCountAlign256_ + 64) + 2 * topkCountAlign256_) * sizeof(uint32_t));
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
+    hisIndexOutLocal_ = indicesOutLocal_[topkCountAlign256_ + 64];
 
-    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(uint16_t));                   // 大小：topkCountAlign256_ * sizeof(uint16_t)
+    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(uint16_t));
     scoreOutLocal_ = scoreOutBuf_.Get<uint16_t>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
@@ -373,7 +375,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
         SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
     }
-    // WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
 
     //CV同步
     CrossCoreWaitFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   //V核等C核计算完mm1，mm1Res已搬运到UB
@@ -399,18 +400,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
     }
     PipeBarrier<PIPE_V>();
-    // SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
-    // WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
-    // //outUB_ --->  scoreGm
-    // int64_t vec1OutGmOffset = blockId_ % 2 == 0 ? curS2Idx :
-    //                         s1BaseSizePerAIV * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + curS2Idx;
-    // DataCopyExtParams copyOutParams;
-    // copyOutParams.blockCount = curAivS1ProcNum;
-    // copyOutParams.blockLen = s2BaseSize_ * sizeof(uint16_t);
-    // copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
-    // copyOutParams.dstStride = (QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_) * sizeof(uint16_t);
-    // DataCopyPad(scoreGm[vec1OutGmOffset], outBase, copyOutParams);
-    // SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
+
     if (!(((info.s2Idx + 1) * s2BaseSize_) % trunkLen_ == 0 || info.isLastS2InnerLoop)) {
         CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   //V核处理完，通知C核可以把mm1Res搬运到UB
     }
@@ -426,12 +416,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
     int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
     LocalTensor<uint16_t> valueLocal_;
-
-    // AscendC::DataCopyExtParams copyInParams;
-    // copyInParams.blockCount = 1;
-    // copyInParams.srcStride = 0;
-    // copyInParams.dstStride = 0;
-    // copyInParams.rsv = 0;
 
     AscendC::DataCopyParams copyOutParams;
     copyOutParams.blockCount = 1;
@@ -452,8 +436,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
         uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + i;
         uint32_t mrgValueOffset = mrgValueStride * i;
-        // uint32_t vecOffset = blockId_ % 2 * CeilDiv(s1BaseSize_, 2) + i;
-        
+        LocalTensor<uint32_t> rowHisIndexLocal = hisIndexOutLocal_[topkCountAlign256_ * i];
+
         uint16_t zero = 0;
         int32_t neg = -1;
         if (constInfo_.attenMaskFlag) {
@@ -469,15 +453,13 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
             continue;
         }
 
+        uint32_t s2LoopNum = (validS2Len + trunkLen_ - 1) / trunkLen_;
         bool isLastTrunkForRow = (loopIdx == s2LoopNum - 1);
         PipeBarrier<PIPE_V>();
-        // WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
         if (isLastTrunkForRow) {
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         }
-        // AscendC::DataCopyPadExtParams<uint16_t> padParams{true, 0, 0, 0};
         if (validS2Len >= topkCount_) {
-            uint32_t s2LoopNum = (validS2Len + trunkLen_ - 1) / trunkLen_;
             if (s2LoopNum == 1) {
                 uint32_t validS2LenAlign = QLICommon::Align(validS2Len, (int32_t)256);
                 uint16_t zero16 = 0;
@@ -497,23 +479,17 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                 }
                 PipeBarrier<PIPE_V>();
                 valueLocal_ = mrgValueLocal_[mrgValueOffset + topkCountAlign256_];
-                topkOp_(valueLocal_, indicesOutLocal_, scoreOutLocal_, validS2LenAlign, 0, 1);
+                topkOp_(valueLocal_, indicesOutLocal_, rowHisIndexLocal, scoreOutLocal_, validS2LenAlign, 0, 1);
                 PipeBarrier<PIPE_V>();
+                AscendC::DataCopy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, topkCountAlign256_);
             } else {
                 if (loopIdx == 0) {
-                    // copyInParams.blockLen = trunkLen_ * sizeof(uint16_t); // byte
-                    // AscendC::DataCopyPad(mrgValueLocal_, scoreGm[vecOffset * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)], copyInParams, padParams);
-                    // SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                    // WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                     valueLocal_ = mrgValueLocal_[mrgValueOffset + topkCountAlign256_];
-                    topkOp_(valueLocal_, indicesOutLocal_, scoreOutLocal_, trunkLen_, loopIdx, s2LoopNum);
+                    topkOp_(valueLocal_, indicesOutLocal_, rowHisIndexLocal, scoreOutLocal_, trunkLen_, loopIdx, s2LoopNum);
                     PipeBarrier<PIPE_V>();
-                } else {
-                    // SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
-                    // WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT2);
-                    uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len ? validS2Len % trunkLen_ : trunkLen_;
-                    uint32_t offset = vecOffset * QLICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + loopIdx * trunkLen_;
                     AscendC::DataCopy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, topkCountAlign256_);
+                } else {
+                    uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len ? validS2Len % trunkLen_ : trunkLen_;
                     // topk如果没有对齐到256，则把topkCountAlign256_ - topkCount_部分刷0
                     if (topkCountAlign256_ != topkCount_) {
                         uint64_t mask[1];
@@ -521,15 +497,12 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                         mask[0] = mask[0] << (topkCount_ % 64);
                         PipeBarrier<PIPE_V>();
                         // 把topkCount_对齐到64刷0，此处由于duplicate的限制mask[0]刷64个数
-                        Duplicate(mrgValueLocal_[topkCount_ / 64 * 64], zero, mask, 1, 1, 0);
+                        Duplicate(mrgValueLocal_[mrgValueOffset + topkCount_ / 64 * 64], zero, mask, 1, 1, 0);
                         PipeBarrier<PIPE_V>();
                         // 把topk剩余对齐到256的部分刷0
-                        Duplicate(mrgValueLocal_[topkCount_ / 64 * 64 + 64], zero, topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
+                        Duplicate(mrgValueLocal_[mrgValueOffset + topkCount_ / 64 * 64 + 64], zero, topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
                         PipeBarrier<PIPE_V>();
-                        // SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
-                        // WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
                     }
-                    // copyInParams.blockLen = validTrunkLen * sizeof(uint16_t); // byte
                     // TOPK 直方图一次必须计算256，输入处理数据需要和256对齐
                     if ((topkCountAlign256_ + validTrunkLen) % 256 != 0) {
                         uint32_t padStart = validTrunkLen;
@@ -548,20 +521,15 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                         }     
                         PipeBarrier<PIPE_V>();
                     }
-                    // WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
-                    // AscendC::DataCopyPad(mrgValueLocal_[topkCountAlign256_], scoreGm[offset], copyInParams, padParams);
-                    // SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                    // WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                     valueLocal_ = mrgValueLocal_[mrgValueOffset];
-                    topkOp_(valueLocal_, indicesOutLocal_, scoreOutLocal_, QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum);
+                    topkOp_(valueLocal_, indicesOutLocal_, rowHisIndexLocal, scoreOutLocal_, QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum);
                     PipeBarrier<PIPE_V>();
-                    // SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+                    AscendC::DataCopy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, topkCountAlign256_);
                 }
             }
         } else {
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero, validS2Len);
         }
-        // SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
         PipeBarrier<PIPE_V>();
         if (isLastTrunkForRow) {
             if (validS2Len < topkCount_) {
