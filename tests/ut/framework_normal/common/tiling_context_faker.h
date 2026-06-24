@@ -24,14 +24,21 @@ public:
                           ge::DataType dtype, 
                           ge::Format format, 
                           bool isConst = false, 
-                          void* constValue = nullptr) :
-            shape_(shape), dtype_(dtype), format_(format), isConst_(isConst), constValue_(constValue) {}
+                          void* constValue = nullptr,
+                          bool isView = false,
+                          const gert::Stride& stride = gert::Stride(),
+                          int64_t offset = 0) :
+            shape_(shape), dtype_(dtype), format_(format), isConst_(isConst), constValue_(constValue),
+            isView_(isView), stride_(stride), offset_(offset) {}
     public:
         gert::StorageShape shape_;
         ge::DataType dtype_ = ge::DT_FLOAT;
         ge::Format format_ = ge::FORMAT_ND;
         bool isConst_ = false;
         void* constValue_ = nullptr;
+        bool isView_ = false;
+        gert::Stride stride_;
+        int64_t offset_ = 0;
     };
 
     class OpAttr {

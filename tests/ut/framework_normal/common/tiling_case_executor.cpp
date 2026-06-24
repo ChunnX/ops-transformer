@@ -30,23 +30,41 @@
     std::vector<gert::Tensor *> outputTensors = {};                                                                    \
     std::vector<std::unique_ptr<gert::Tensor>> inputTensorsKeepAlive = {};                                             \
     std::vector<std::unique_ptr<gert::Tensor>> outputTensorsKeepAlive = {};                                            \
+    std::vector<std::unique_ptr<gert::TensorV2>> inputViewTensorsKeepAlive = {};                                       \
+    std::vector<std::unique_ptr<gert::TensorV2>> outputViewTensorsKeepAlive = {};                                      \
     for (size_t index = 0; index < inputNum; index++) {                                                                \
         if (tilingContextPara.inputTensorDesc_[index].shape_.GetStorageShape().GetDimNum() == 0){                      \
             inputIrInstance.push_back(0);                                                                              \
         } else {                                                                                                       \
             inputIrInstance.push_back(1);                                                                              \
-            std::unique_ptr<gert::Tensor> curTensor = std::make_unique<gert::Tensor>(                                  \
-                tilingContextPara.inputTensorDesc_[index].shape_,                                                      \
-                gert::StorageFormat(tilingContextPara.inputTensorDesc_[index].format_,                                 \
-                tilingContextPara.inputTensorDesc_[index].format_,                                                     \
-                gert::ExpandDimsType()),                                                                               \
-                gert::TensorPlacement::kOnHost,                                                                        \
-                tilingContextPara.inputTensorDesc_[index].dtype_,                                                      \
-                tilingContextPara.inputTensorDesc_[index].isConst_ ?                                                   \
-                tilingContextPara.inputTensorDesc_[index].constValue_:                                                 \
-                nullptr);                                                                                              \
-            inputTensors.push_back(curTensor.get());                                                                   \
-            inputTensorsKeepAlive.push_back(std::move(curTensor));                                                     \
+            if (tilingContextPara.inputTensorDesc_[index].isView_) {                                                   \
+                std::unique_ptr<gert::TensorV2> curTensor = std::make_unique<gert::TensorV2>(                          \
+                    tilingContextPara.inputTensorDesc_[index].shape_,                                                  \
+                    gert::StorageFormat(tilingContextPara.inputTensorDesc_[index].format_,                             \
+                    tilingContextPara.inputTensorDesc_[index].format_,                                                 \
+                    gert::ExpandDimsType()),                                                                           \
+                    gert::TensorPlacement::kOnHost,                                                                    \
+                    tilingContextPara.inputTensorDesc_[index].dtype_,                                                  \
+                    tilingContextPara.inputTensorDesc_[index].isConst_ ?                                               \
+                    tilingContextPara.inputTensorDesc_[index].constValue_:                                             \
+                    nullptr, nullptr, tilingContextPara.inputTensorDesc_[index].stride_,                               \
+                    tilingContextPara.inputTensorDesc_[index].offset_);                                                \
+                inputTensors.push_back(reinterpret_cast<gert::Tensor *>(curTensor.get()));                             \
+                inputViewTensorsKeepAlive.push_back(std::move(curTensor));                                             \
+            } else {                                                                                                   \
+                std::unique_ptr<gert::Tensor> curTensor = std::make_unique<gert::Tensor>(                              \
+                    tilingContextPara.inputTensorDesc_[index].shape_,                                                  \
+                    gert::StorageFormat(tilingContextPara.inputTensorDesc_[index].format_,                             \
+                    tilingContextPara.inputTensorDesc_[index].format_,                                                 \
+                    gert::ExpandDimsType()),                                                                           \
+                    gert::TensorPlacement::kOnHost,                                                                    \
+                    tilingContextPara.inputTensorDesc_[index].dtype_,                                                  \
+                    tilingContextPara.inputTensorDesc_[index].isConst_ ?                                               \
+                    tilingContextPara.inputTensorDesc_[index].constValue_:                                             \
+                    nullptr);                                                                                          \
+                inputTensors.push_back(curTensor.get());                                                               \
+                inputTensorsKeepAlive.push_back(std::move(curTensor));                                                 \
+            }                                                                                                          \
         }                                                                                                              \
     }                                                                                                                  \
     for (size_t index = 0; index < outputNum; index++) {                                                               \
@@ -54,18 +72,34 @@
             outputIrInstance.push_back(0);                                                                             \
         } else {                                                                                                       \
             outputIrInstance.push_back(1);                                                                             \
-            std::unique_ptr<gert::Tensor> curTensor = std::make_unique<gert::Tensor>(                                  \
-                tilingContextPara.outputTensorDesc_[index].shape_,                                                     \
-                gert::StorageFormat(tilingContextPara.outputTensorDesc_[index].format_,                                \
-                tilingContextPara.outputTensorDesc_[index].format_,                                                    \
-                gert::ExpandDimsType()),                                                                               \
-                gert::TensorPlacement::kOnHost,                                                                        \
-                tilingContextPara.outputTensorDesc_[index].dtype_,                                                     \
-                tilingContextPara.outputTensorDesc_[index].isConst_ ?                                                  \
-                tilingContextPara.outputTensorDesc_[index].constValue_:                                                \
-                nullptr);                                                                                              \
-            outputTensors.push_back(curTensor.get());                                                                  \
-            outputTensorsKeepAlive.push_back(std::move(curTensor));                                                    \
+            if (tilingContextPara.outputTensorDesc_[index].isView_) {                                                  \
+                std::unique_ptr<gert::TensorV2> curTensor = std::make_unique<gert::TensorV2>(                          \
+                    tilingContextPara.outputTensorDesc_[index].shape_,                                                 \
+                    gert::StorageFormat(tilingContextPara.outputTensorDesc_[index].format_,                            \
+                    tilingContextPara.outputTensorDesc_[index].format_,                                                \
+                    gert::ExpandDimsType()),                                                                           \
+                    gert::TensorPlacement::kOnHost,                                                                    \
+                    tilingContextPara.outputTensorDesc_[index].dtype_,                                                 \
+                    tilingContextPara.outputTensorDesc_[index].isConst_ ?                                              \
+                    tilingContextPara.outputTensorDesc_[index].constValue_:                                            \
+                    nullptr, nullptr, tilingContextPara.outputTensorDesc_[index].stride_,                              \
+                    tilingContextPara.outputTensorDesc_[index].offset_);                                               \
+                outputTensors.push_back(reinterpret_cast<gert::Tensor *>(curTensor.get()));                            \
+                outputViewTensorsKeepAlive.push_back(std::move(curTensor));                                            \
+            } else {                                                                                                   \
+                std::unique_ptr<gert::Tensor> curTensor = std::make_unique<gert::Tensor>(                              \
+                    tilingContextPara.outputTensorDesc_[index].shape_,                                                 \
+                    gert::StorageFormat(tilingContextPara.outputTensorDesc_[index].format_,                            \
+                    tilingContextPara.outputTensorDesc_[index].format_,                                                \
+                    gert::ExpandDimsType()),                                                                           \
+                    gert::TensorPlacement::kOnHost,                                                                    \
+                    tilingContextPara.outputTensorDesc_[index].dtype_,                                                 \
+                    tilingContextPara.outputTensorDesc_[index].isConst_ ?                                              \
+                    tilingContextPara.outputTensorDesc_[index].constValue_:                                            \
+                    nullptr);                                                                                          \
+                outputTensors.push_back(curTensor.get());                                                              \
+                outputTensorsKeepAlive.push_back(std::move(curTensor));                                                \
+            }                                                                                                          \
         }                                                                                                              \
     }                                                                                                                  \
     if (tilingContextPara.inputInstanceNum_.size() != 0 || tilingContextPara.outputInstanceNum_.size() != 0) {         \
