@@ -465,10 +465,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         indiceLenCopyParams.blockLen = (uint16_t)(sizeof(uint32_t));
         indiceLenCopyParams.srcStride = 0;
         indiceLenCopyParams.dstStride = 0;
-        uint32_t copyCount = s2BlockValidLen;
-        uint64_t copyMask = (copyCount <= VEC_REPEAT_SIZE) ? copyCount : VEC_REPEAT_SIZE;
-        uint8_t copyRepeat = (copyCount + VEC_REPEAT_SIZE - 1) / VEC_REPEAT_SIZE;
-        AscendC::CopyRepeatParams copyRepeatParams{1, 1, 8, 8};
         // 内层循环：遍历同一 S1 位置下的 G 个行
         for (uint32_t gIdx = 0; gIdx < curAivGSize; gIdx++) {
 
@@ -525,11 +521,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 topkOp_(mrgValueLocal_[mrgValueOffset], indicesOutLocal_, scoreOutLocal_, reuseMm1ResLocal,
                         globalIndexLocal_[globalIndexOffset], topkSelectNumAlign256 + s2BlockValidLenAlign256, info.s2Idx, info.s2LoopEnd + 1);
             }
-            copyCount = topkSelectNumAlign256;
-            copyMask = (copyCount <= VEC_REPEAT_SIZE) ? copyCount : VEC_REPEAT_SIZE;
-            copyRepeat = (copyCount + VEC_REPEAT_SIZE - 1) / VEC_REPEAT_SIZE;
-            Copy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, copyMask, copyRepeat, copyRepeatParams);
-            Copy(globalIndexLocal_[globalIndexOffset], indicesOutLocal_, copyMask, copyRepeat, copyRepeatParams);
+            DataCopy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, topkSelectNumAlign256);
+            DataCopy(globalIndexLocal_[globalIndexOffset], indicesOutLocal_, topkSelectNumAlign256);
             // ========== 索引重组和GM搬出（仅最后一个基本块）==========
             if (isLastS2InnerLoop) {
                 nowCurAivGS1Idx = curAivGS1Idx + mInnerIdx;
