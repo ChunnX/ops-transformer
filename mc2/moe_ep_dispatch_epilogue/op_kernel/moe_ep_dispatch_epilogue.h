@@ -326,6 +326,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
         }
     }
 
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyExtParams hitCountCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(hitCountGm_[(int64_t)aivId_ * hitCountStride_], ubHitCount_, hitCountCopyParams);
 }
@@ -345,6 +346,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
         Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * hitCountStride_], RoundMode::CAST_NONE, numLocalExperts_);
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
     }
+    SyncFunc<AscendC::HardEvent::V_S>();
 
     // Per-expert outer loop: accumulate weights/metadata into UB staging buffers,
     // then flush with batched DataCopy per expert — replaces per-element GM SetValue (API-1).
@@ -412,6 +414,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
         }
 
         if (stageIdx > 0) {
+            SyncFunc<AscendC::HardEvent::S_MTE3>();
             DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(stageIdx * sizeof(float)), 0U, 0U, 0U};
             DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
             if constexpr (!IsCached) {
