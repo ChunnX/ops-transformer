@@ -221,13 +221,16 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
             OP_LOGE(nodeName, "cachedRecvSrcMetadataShape dims must be 2, got %lu.",
                 recvSrcMetaShape->GetStorageShape().GetDimNum()),
             return ge::GRAPH_FAILED);
+        const int64_t minTopKLocalExperts = (topK < static_cast<int64_t>(info.cfg.numLocalExperts))
+                                            ? topK : static_cast<int64_t>(info.cfg.numLocalExperts);
         const int64_t metaUpper = static_cast<int64_t>(info.cfg.epWorldSize)
-                                  * static_cast<int64_t>(info.cfg.numMaxTokensPerRank);
+                                  * static_cast<int64_t>(info.cfg.numMaxTokensPerRank)
+                                  * minTopKLocalExperts;
         const int64_t metaDim0 = recvSrcMetaShape->GetStorageShape().GetDim(0);
         const int64_t metaDim1 = recvSrcMetaShape->GetStorageShape().GetDim(1);
         OP_TILING_CHECK(metaDim0 < 0 || metaDim0 > metaUpper,
             OP_LOGE(nodeName,
-                "cachedRecvSrcMetadata dim0 must be in [0, epWorldSize*numMaxTokensPerRank=%ld], got %ld.",
+                "cachedRecvSrcMetadata dim0 must be in [0, epWorldSize*numMaxTokensPerRank*min(topK,numLocalExperts)=%ld], got %ld.",
                 metaUpper, metaDim0),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(metaDim1 != META_INNER_DIM,
