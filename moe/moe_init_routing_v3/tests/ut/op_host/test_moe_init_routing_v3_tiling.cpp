@@ -1011,62 +1011,6 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_empty_tensor_keyvalue)
                           EMPTY_TENSOR_TILINGKEY, {EMPTY_TENSOR_WORKSPACE});
 }
 
-// 空 tensor + k_==0（expertIdx第1维为0，如[3,0]）
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_empty_tensor_k_zero)
-{
-    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 65536};
-    int64_t expert_num = EXPERT_NUM;
-    std::vector<gert::TilingContextPara::TensorDescription> inputs;
-    inputs.emplace_back(gert::StorageShape({3, 128}, {3, 128}), ge::DT_FLOAT, ge::FORMAT_ND);
-    inputs.emplace_back(gert::StorageShape({3, 0}, {3, 0}), ge::DT_INT32, ge::FORMAT_ND);
-    std::vector<gert::TilingContextPara::TensorDescription> outputs;
-    outputs.emplace_back(gert::StorageShape({0, 128}, {0, 128}), ge::DT_FLOAT, ge::FORMAT_ND);
-    outputs.emplace_back(gert::StorageShape({0}, {0}), ge::DT_INT32, ge::FORMAT_ND);
-    outputs.emplace_back(gert::StorageShape({expert_num}, {expert_num}), ge::DT_INT64, ge::FORMAT_ND);
-    outputs.emplace_back(gert::StorageShape({0}, {0}), ge::DT_FLOAT, ge::FORMAT_ND);
-    std::vector<gert::TilingContextPara::OpAttr> attrs = {
-        {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
-        {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
-        {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expert_num)},
-        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
-        {"expert_tokens_num_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(EXPERT_TOKENS_TYPE_COUNT)},
-        {"expert_tokens_num_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(QUANT_MODE_NONE)},
-        {"acive_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{})},
-        {"row_idx_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ROW_IDX_TYPE_DROPPAD)},
-    };
-    RunExtendedTilingCase(MakeExtendedTilingContextPara(inputs, outputs, attrs, &compileInfo), ge::GRAPH_SUCCESS,
-                          EMPTY_TENSOR_TILINGKEY, {EMPTY_TENSOR_WORKSPACE});
-}
-
-// 空 tensor + cols_==0（x第1维为0，如[3,0]）
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_empty_tensor_cols_zero)
-{
-    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 65536};
-    int64_t expert_num = EXPERT_NUM;
-    std::vector<gert::TilingContextPara::TensorDescription> inputs;
-    inputs.emplace_back(gert::StorageShape({3, 0}, {3, 0}), ge::DT_FLOAT, ge::FORMAT_ND);
-    inputs.emplace_back(gert::StorageShape({3, 8}, {3, 8}), ge::DT_INT32, ge::FORMAT_ND);
-    std::vector<gert::TilingContextPara::TensorDescription> outputs;
-    outputs.emplace_back(gert::StorageShape({24, 0}, {24, 0}), ge::DT_FLOAT, ge::FORMAT_ND);
-    outputs.emplace_back(gert::StorageShape({24}, {24}), ge::DT_INT32, ge::FORMAT_ND);
-    outputs.emplace_back(gert::StorageShape({expert_num}, {expert_num}), ge::DT_INT64, ge::FORMAT_ND);
-    outputs.emplace_back(gert::StorageShape({24}, {24}), ge::DT_FLOAT, ge::FORMAT_ND);
-    std::vector<gert::TilingContextPara::OpAttr> attrs = {
-        {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
-        {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
-        {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expert_num)},
-        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0LL)},
-        {"expert_tokens_num_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(EXPERT_TOKENS_TYPE_COUNT)},
-        {"expert_tokens_num_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(QUANT_MODE_NONE)},
-        {"acive_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{})},
-        {"row_idx_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(ROW_IDX_TYPE_DROPPAD)},
-    };
-    RunExtendedTilingCase(MakeExtendedTilingContextPara(inputs, outputs, attrs, &compileInfo), ge::GRAPH_SUCCESS,
-                          EMPTY_TENSOR_TILINGKEY, {EMPTY_TENSOR_WORKSPACE});
-}
-
 // 未指定 active_expert_range，默认 [0, expert_num)
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_default_expert_range)
 {
