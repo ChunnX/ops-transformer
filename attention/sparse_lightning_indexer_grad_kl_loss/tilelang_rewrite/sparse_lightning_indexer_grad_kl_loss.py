@@ -376,7 +376,7 @@ def tilelang_grad_kl_loss_kernel(
                             ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             rsy_chunk_ub,
                         )
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_global_max_ub)
+                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, rsy_global_max_ub[0])
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.barrier_all()
                         T.copy(
@@ -388,14 +388,14 @@ def tilelang_grad_kl_loss_kernel(
                         T.tile.add(rsy_global_sum_ub, rsy_global_sum_ub, rsy_tmp_ub[0])
 
                     # Step 3c: normalize SoftmaxI
-                    T.tile.max(rsy_global_sum_ub, rsy_global_sum_ub, eps_ub)
+                    T.tile.max(rsy_global_sum_ub, rsy_global_sum_ub, 1e-8)
                     T.barrier_all()
                     for n_idx in T.serial(n_num):
                         T.copy(
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             si_chunk_ub,
                         )
-                        T.tile.div(si_chunk_ub, si_chunk_ub, rsy_global_sum_ub)
+                        T.tile.div(si_chunk_ub, si_chunk_ub, rsy_global_sum_ub[0])
                         T.copy(
                             si_chunk_ub,
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
