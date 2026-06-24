@@ -93,10 +93,10 @@ ge::graphStatus QuantMatmulAllReduceTiling::PostTiling()
                     return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+    errno_t memcpyRet = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&quantMatmulAllReduceTilingData_), tilingDataSize);
-    if (ret != EOK) {
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+    if (memcpyRet != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", memcpyRet);
         return ge::GRAPH_FAILED;
     }
     PrintTilingData();
@@ -104,9 +104,9 @@ ge::graphStatus QuantMatmulAllReduceTiling::PostTiling()
     context_->SetBlockDim(args_.aicCoreNum);
 
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
-    uint32_t batch_mode = 1U;
-    ret = context_->SetScheduleMode(batch_mode);
-    MC2_CHECK_LOG_RET(opName_, ret);
+    uint32_t batchScheduleMode = 1U;
+    memcpyRet = context_->SetScheduleMode(batchScheduleMode);
+    MC2_CHECK_LOG_RET(opName_, memcpyRet);
 
     return ge::GRAPH_SUCCESS;
 }
