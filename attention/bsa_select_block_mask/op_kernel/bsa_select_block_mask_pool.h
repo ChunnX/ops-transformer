@@ -539,8 +539,6 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<I
     copyOutParams.dstStride = 0;
     // 调试用
     DataCopyPad(outDstGm[outDstOffset], poolOut, copyOutParams);
-
-    AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 template <typename BSAT>
