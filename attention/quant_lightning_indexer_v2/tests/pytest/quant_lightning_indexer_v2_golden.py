@@ -1130,7 +1130,7 @@ def qliv2_output_single(params):
     # 调试日志
     def log(tensor, name):
         if tensor != None:
-            print(name, tensor.shape)
+            print(name, tensor.shape, tensor.dtype)
             return tensor.npu()
         return None
 
