@@ -103,27 +103,15 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512VF(
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                 pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
                 if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                    ComputePseInnerMulAddSqrt8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                        vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
-                        vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
-                        slopes, preg_all);
+                    ComputePseInnerMulAddSqrt8(ARG_FLOAT_PSE_ALIBI_8);
                 } else {
-                    ComputePseInnerMulAdd8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                        vreg_alibi1, vreg_alibi2, vreg_alibi3, vreg_alibi4,
-                        vreg_alibi5, vreg_alibi6, vreg_alibi7, vreg_alibi8,
-                        slopes, preg_all);
+                    ComputePseInnerMulAdd8(ARG_FLOAT_PSE_ALIBI_8);
                 }
             } else {
                 if constexpr (IsSameType<T2, bfloat16_t>::value) {
-                    LoadCastPseBf16_8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                        pseUb, i, pseStride, preg_all_b16);
+                    LoadCastPseBf16_8(ARG_FLOAT_PSE_8_LOAD);
                 } else if constexpr (IsSameType<T2, half>::value) {
-                    LoadCastPseF16_8(vreg_pse1, vreg_pse2, vreg_pse3, vreg_pse4,
-                        vreg_pse5, vreg_pse6, vreg_pse7, vreg_pse8,
-                        pseUb, i, pseStride, preg_all_b16);
+                    LoadCastPseF16_8(ARG_FLOAT_PSE_8_LOAD);
                 }
             }
             AddPseToInput4x4(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
@@ -412,27 +400,15 @@ __simd_vf__ __no_simd_vf_fusion__ void ProcessVec1NoUpdateGeneralImpl512VFStage2
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                 pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
                 if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-                    ComputePseInnerMulAddSqrt6(vreg_pse1, vreg_pse2, vreg_pse3,
-                        vreg_pse4, vreg_pse5, vreg_pse6,
-                        vreg_alibi1, vreg_alibi2, vreg_alibi3,
-                        vreg_alibi4, vreg_alibi5, vreg_alibi6,
-                        slopes, preg_all);
+                    ComputePseInnerMulAddSqrt6(ARG_FLOAT_PSE_ALIBI_6);
                 } else {
-                    ComputePseInnerMulAdd6(vreg_pse1, vreg_pse2, vreg_pse3,
-                        vreg_pse4, vreg_pse5, vreg_pse6,
-                        vreg_alibi1, vreg_alibi2, vreg_alibi3,
-                        vreg_alibi4, vreg_alibi5, vreg_alibi6,
-                        slopes, preg_all);
+                    ComputePseInnerMulAdd6(ARG_FLOAT_PSE_ALIBI_6);
                 }
             } else {
                 if constexpr (IsSameType<T2, bfloat16_t>::value) {
-                    LoadCastPseBf16_6(vreg_pse1, vreg_pse2, vreg_pse3,
-                        vreg_pse4, vreg_pse5, vreg_pse6,
-                        pseUb, i, pseStride, preg_all_b16);
+                    LoadCastPseBf16_6(ARG_FLOAT_PSE_6_LOAD);
                 } else if constexpr (IsSameType<T2, half>::value) {
-                    LoadCastPseF16_6(vreg_pse1, vreg_pse2, vreg_pse3,
-                        vreg_pse4, vreg_pse5, vreg_pse6,
-                        pseUb, i, pseStride, preg_all_b16);
+                    LoadCastPseF16_6(ARG_FLOAT_PSE_6_LOAD);
                 }
             }
             AddPseToInput4x2(vreg_input_x1, vreg_input_x2, vreg_input_x3, vreg_input_x4,
