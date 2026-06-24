@@ -196,18 +196,9 @@ InplacePartialRotaryMulGradBAB<TDY, TCOS>::Compute(LocalTensor<TCOS> &sinTensor,
                                                    LocalTensor<TDY> &dyTensor, LocalTensor<TDY> &dxTensor,
                                                    const uint32_t currSNum, const uint32_t currDNum)
 {
-    if (tilingData_->rotaryMode == ROTARY_MODE_HALF) {
-        HalfGradAlignVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength,
-                                   static_cast<uint16_t>(currSNum), static_cast<uint16_t>(currDNum));
-    } else if (tilingData_->rotaryMode == ROTARY_MODE_INTERLEAVE) {
+    if (tilingData_->rotaryMode == ROTARY_MODE_INTERLEAVE) {
         InterleaveModeGradVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength,
                                         static_cast<uint16_t>(currSNum), static_cast<uint16_t>(currDNum));
-    } else if (tilingData_->rotaryMode == ROTARY_MODE_QUARTER) {
-        QuarterGradAlignVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength,
-                                      static_cast<uint16_t>(currSNum), static_cast<uint16_t>(currDNum));
-    } else if (tilingData_->rotaryMode == ROTARY_MODE_DEEPSEEK_INTERLEAVE) {
-        DeepSeekInterleaveGradVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength,
-                                            static_cast<uint16_t>(currSNum), static_cast<uint16_t>(currDNum));
     }
 }
 
