@@ -759,7 +759,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_n
 {
     RunArch35ExtendedTestcase(0, 128, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
                               ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
-                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 3000000ULL);
 }
 
 // 空tensor场景：k_==0（expertIdx第1维为0，如[3,0]）
@@ -767,7 +767,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k
 {
     RunArch35ExtendedTestcase(3, 128, 0, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
                               ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
-                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 3000000ULL);
 }
 
 // 空tensor场景：cols_==0（x第1维为0，如[3,0]）
@@ -775,7 +775,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_c
 {
     RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
                               ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
-                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 3000000ULL);
 }
 
 // 空tensor场景：k_==0 + key_value模式
@@ -783,5 +783,5 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k
 {
     RunArch35ExtendedTestcase(3, 64, 0, 0, 0, EXPERT_TOKENS_TYPE_KEY_VALUE, true, QUANT_MODE_UNQUANT,
                               ge::DT_FLOAT16, {0, EXPERT_NUM}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {},
-                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 3000000ULL);
 }
