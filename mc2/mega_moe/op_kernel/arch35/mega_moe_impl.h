@@ -96,6 +96,121 @@ __aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, 
     }
 }
 
+// ==================================================================================
+// A8W8/A4W4 configuration — shared type aliases and problem config for GMM1 / GMM2.
+// ==================================================================================
+namespace Detail {
+struct Gmm1PolicyA8W8 {
+    static constexpr bool IS_GMM1 = true;
+};
+
+struct Gmm2PolicyA8W8 {
+    static constexpr bool IS_GMM1 = false;
+};
+
+template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
+    typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
+struct ConfigA8W8 {
+    static constexpr bool TRANS_A = false;
+    static constexpr bool TRANS_B = true;
+    static constexpr uint32_t C0_SIZE_A = AuxGetC0Size<ElementA>();
+    static constexpr uint32_t C0_SIZE_B = AuxGetC0Size<ElementB>();
+    static constexpr uint32_t C0_SIZE_C = AuxGetC0Size<ElementC>();
+    static constexpr uint32_t C0_SIZE_SCALE = 2U;
+
+    using BiasType = float;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
+    using LayoutA = Std::conditional_t<TRANS_A, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutB = Std::conditional_t<TRANS_B, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutBias = Te::NDExtLayoutPtn;
+    using LayoutC = Te::NDExtLayoutPtn;
+
+    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE_A>>;
+    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE_B>>;
+    using MakeLayoutScaleA = Std::conditional_t<
+        TRANS_A, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<C0_SIZE_SCALE>>,
+        Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<C0_SIZE_SCALE>>>;
+    using MakeLayoutScaleB = Std::conditional_t<
+        TRANS_B, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<C0_SIZE_SCALE>>,
+        Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<C0_SIZE_SCALE>>>;
+    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE_C>>;
+
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
+        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
+
+    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using LayoutAType = decltype(MakeLayoutA{}(uint32_t {}, uint32_t {}));
+    using LayoutBType = decltype(MakeLayoutB{}(uint32_t {}, uint32_t {}));
+    using LayoutScaleAType = decltype(MakeLayoutScaleA{}(uint32_t {}, uint32_t {}));
+    using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t {}, uint32_t {}));
+    using LayoutCType = decltype(MakeLayoutC{}(uint32_t {}, uint32_t {}));
+    using LayoutBiasType = decltype(Te::MakeFrameLayout<LayoutBias>(uint32_t {}, uint32_t {}));
+
+    struct ProblemConfig {
+        uint32_t m = 0;
+        uint32_t n = 0;
+        uint32_t k = 0;
+        uint32_t outputN = 0;
+        uint32_t blockNum = 0;
+        uint32_t blockIdx = 0;
+        uint32_t scaleK = 0;
+        uint32_t tileM = 0;
+        typename BlockMmad::L1Params l1Params{
+            .kL1 = L1_TILE_K, .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE, .l1BufNum = 2};
+    };
+
+    struct LayoutBundle {
+        LayoutAType a;
+        LayoutBType b;
+        LayoutScaleAType scaleA;
+        LayoutScaleBType scaleB;
+        LayoutCType c;
+        LayoutBiasType bias;
+    };
+
+    __aicore__ static inline ProblemConfig BuildProblemConfig(const ProblemShape& problemShape)
+    {
+        ProblemConfig config;
+        config.m = Get<M_VALUE>(problemShape);
+        if constexpr (Policy::IS_GMM1) {
+            config.n = Get<N_VALUE>(problemShape);
+            config.k = Get<K_VALUE>(problemShape);
+            config.outputN = config.n / SWIGLU_N_HALF;
+            config.tileM = L1_TILE_M_256;
+        } else {
+            config.n = Get<K_VALUE>(problemShape);
+            config.k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
+            config.outputN = config.n;
+            config.tileM = (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : L1_TILE_M_256;
+        }
+        config.blockNum = GetBlockNum();
+        config.blockIdx = GetBlockIdx() / GetTaskRation();
+        config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        return config;
+    }
+
+    __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig& config)
+    {
+        LayoutBundle layouts;
+        layouts.a = MakeLayoutA{}(config.m, config.k);
+        layouts.b = MakeLayoutB{}(config.k, config.n);
+        layouts.scaleA = MakeLayoutScaleA{}(config.m, config.scaleK);
+        layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
+        layouts.bias = Te::MakeFrameLayout<LayoutBias>(1U, config.n);
+        if constexpr (Policy::IS_GMM1) {
+            layouts.c = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
+        } else {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                layouts.c = MakeLayoutC{}(L1_TILE_M_128, L1_TILE_N);
+            } else {
+                layouts.c = MakeLayoutC{}(config.m, config.n);
+            }
+        }
+        return layouts;
+    }
+};
+} // namespace Detail
+
 // =================================================================================================
 // GroupMatmulSwigluQuant：GMM1 矩阵乘法 + SwiGLU 激活 + 量化
 // =================================================================================================
@@ -105,81 +220,46 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
 {
-    uint32_t m = Get<M_VALUE>(problemShape);
-    uint32_t n = Get<N_VALUE>(problemShape);
-    uint32_t k = Get<K_VALUE>(problemShape);
-    uint32_t outputN = n / SWIGLU_N_HALF;
+    using Config = Detail::ConfigA8W8<Detail::Gmm1PolicyA8W8, COMBINE_NO_QUANT, ElementA, ElementB, ElementC,
+        ElementMxScaleA, ElementMxScaleB>;
+    auto config = Config::BuildProblemConfig(problemShape);
+    auto layouts = Config::BuildLayouts(config);
+
+    uint32_t m = config.m;
+    uint32_t n = config.n;
+    uint32_t k = config.k;
+    uint32_t outputN = config.outputN;
+    uint32_t blockNum = config.blockNum;
+    uint32_t blockIdx = config.blockIdx;
 
     epilogueOp.UpdateNextProblem({m, outputN, k, 0});
 
-    uint32_t blockNum = GetBlockNum();
-    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-
-
-    auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-
-    constexpr bool transA = false;
-    constexpr bool transB = true; // 后续要改为从模板参数获取转置属性
-
-    constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
-    constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
-    constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
-    constexpr uint32_t c0SizeScale = 2U;
-
-    using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-    using LayoutB = Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-    using LayoutBias = Te::NDExtLayoutPtn;
-    using LayoutC = Te::NDExtLayoutPtn;
-
-    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
-    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
-    using MakeLayoutScaleA = Std::conditional_t<
-        transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>,
-        Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<c0SizeScale>>>;
-    using MakeLayoutScaleB = Std::conditional_t<
-        transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>,
-        Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<c0SizeScale>>>;
-    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
-
-    auto layoutA = MakeLayoutA{}(m, k);
-    auto layoutB = MakeLayoutB{}(k, n);
-    auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
-    auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
-    auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1u, n); // block mmad需要传入bias
-    auto layoutC = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
-
-    using BiasType = float;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
+    using BlockMmad = typename Config::BlockMmad;
+    using BiasType = typename Config::BiasType;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
-    typename BlockMmad::L1Params l1Params{
-        .kL1 = L1_TILE_K,
-        .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
-        .l1BufNum = 2 // 2: double buffer
-    };
     typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong); // 当前固定无bias
+    blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
 
     int64_t ubOffset = 0;
-    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layouts.c);
 
     ubOffset += MAX_SINGLE_MN_ALIGN32_NUM_256 * sizeof(ElementC);
-    auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+    auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layouts.c);
 
     auto gmA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
     auto gmB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layoutB);
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
     auto gmScaleA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
-        layoutScaleA);
+        layouts.scaleA);
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
-        layoutScaleB);
-    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
+        layouts.scaleB);
+    auto gmBias = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layouts.bias);
 
     BlockScheduler scheduler(
         {m, outputN, k},
@@ -282,90 +362,52 @@ __aicore__ inline void GroupMatmul2(
         if (GetSubBlockIdx() != 0) return;
     }
 
-    uint32_t m = Get<M_VALUE>(problemShape);
-    uint32_t n = Get<K_VALUE>(problemShape);
-    uint32_t k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
+    using Config = Detail::ConfigA8W8<Detail::Gmm2PolicyA8W8, CombineQuantMode, ElementA, ElementB, ElementC,
+        ElementMxScaleA, ElementMxScaleB>;
+    auto config = Config::BuildProblemConfig(problemShape);
+    auto layouts = Config::BuildLayouts(config);
 
-    uint32_t blockNum = GetBlockNum();
-    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
+    uint32_t m = config.m;
+    uint32_t n = config.n;
+    uint32_t k = config.k;
+    uint32_t blockNum = config.blockNum;
+    uint32_t blockIdx = config.blockIdx;
+    constexpr uint32_t TILE_M = (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : L1_TILE_M_256;
 
-    auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-
-    constexpr bool transA = false;
-    constexpr bool transB = true;
-
-    constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
-    constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
-    constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
-    constexpr uint32_t c0SizeScale = 2U;
-
-    using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-    using LayoutB = Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-    using LayoutBias = Te::NDExtLayoutPtn;
-    using LayoutC = Te::NDExtLayoutPtn;
-
-    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
-    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
-    using MakeLayoutScaleA = Std::conditional_t<
-        transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>,
-        Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<c0SizeScale>>>;
-    using MakeLayoutScaleB = Std::conditional_t<
-        transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>,
-        Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<c0SizeScale>>>;
-    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
-
-    auto layoutA = MakeLayoutA{}(m, k);
-    auto layoutB = MakeLayoutB{}(k, n);
-    auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
-    auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
-    auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
-    
-    // 量化模式使用全矩阵 layout，非量化使用 tile 级 layout
-    auto layoutC = MakeLayoutC{}(
-        (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : m,
-        (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_N : n);
-
-    using BiasType = float;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
+    using BlockMmad = typename Config::BlockMmad;
+    using BiasType = typename Config::BiasType;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
-    typename BlockMmad::L1Params l1Params{
-        .kL1 = L1_TILE_K,
-        .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
-        .l1BufNum = 2
-    };
-    constexpr uint32_t TILE_M = (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : L1_TILE_M_256;
     typename BlockMmad::BlockShape l0TileShape{TILE_M, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
+    blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
 
     // 非量化模式：分配 UB pingpong buffer
     LocalTensor<ElementC> l0cOutUbGMM2First, l0cOutUbGMM2Second;
-    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(0), layoutC);
-    auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(0), layoutC);
+    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(0), layouts.c);
+    auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(0), layouts.c);
     
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         int64_t ubOffset = 0;
         l0cOutUbGMM2First = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M_128 * L1_TILE_N);
-        l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+        l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layouts.c);
         ubOffset += MAX_SINGLE_MN_ALIGN32_NUM_128 * sizeof(ElementC);
         l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M_128 * L1_TILE_N);
-        l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+        l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layouts.c);
     }
 
     auto gmA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
     auto gmB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layoutB);
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
     auto gmScaleA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
-        layoutScaleA);
+        layouts.scaleA);
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
-        layoutScaleB);
-    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
+        layouts.scaleB);
+    auto gmBias = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layouts.bias);
 
     BlockScheduler scheduler(
         {m, n, k},
@@ -428,7 +470,7 @@ __aicore__ inline void GroupMatmul2(
                 GlobalTensor<int32_t> gmm2CombineSyncCounter;
                 gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
                 auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
-                    reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
+                    reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layouts.c);
                 auto gmBlockC = gmC.Slice(
                     Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 
