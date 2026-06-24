@@ -193,26 +193,26 @@ A5 kernel 分发规则：
 
 核心类：`MoeDistributeDispatchA5<XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather>`。其主要阶段为 init/quant init、token mask、token scatter、CCU AlltoAllvWrite、token gather、输出统计。
 
-| 方法 | 起始行 | 功能 |
-|---|---:|---|
-| `InitGlobalAttrs` | 213 | 读取 tiling 中 bs/h/k/EP/shared expert/AIV 信息，计算本 rank 专家与通信分工。 |
-| `InitBuf` | 257 | 分配 expert id copy、sort、histogram、cumsum、mask、token queue 等 UB buffer。 |
-| `InitCommAndStatus` | 296 | 初始化 CCU HCCL、绑定 window、根据 status 选择双 buffer 接收半区。 |
-| `QuantInit` | 328 | 按 quant mode 计算 token payload、scale tail、pergroup/mx 对齐和 scale 输出字节数。 |
-| `Init` | 372 | 初始化 GM tensor、UB pipe、单 token/scale 大小和通信状态。 |
-| `QuantStatic` | 412 | 执行 int8/hif8 static quant，支持 per-tensor、per-H、per-expert scale。 |
-| `QuantDynamicPerToken` | 450 | 按 token 求最大绝对值，生成 per-token dynamic scale 并量化。 |
-| `QuantDynamicPerTile` | 496 | 调用 quant helper 做 per-tile/per-group dynamic 计算。 |
-| `QuantDynamicMxFp8` | 519 | 调用 MX/FP8 scale 计算与 FP8 数据转换。 |
-| `CalcTokenActiveMask` | 554 | 读取 x_active_mask，计算 active token 数。 |
-| `TokenScatter` | 818 | 拷贝/排序 expert_ids，统计各 expert token，并把 token 写入 send window。 |
-| `SetShareExpertSendSize` | 618 | 写 shared expert 路径的 send size/offset/count。 |
-| `ProcessToken` | 684 | 按目标 expert/rank 处理单 token，执行量化或直接搬运并附加 combine 索引。 |
-| `Communication` | 913 | AIV0 发起 CCU AlltoAllvWrite，其他 AIV 同步等待并准备 gather。 |
-| `CopyScalesToOut` | 979 | 把 dynamic/smooth scale 从接收 token 尾部写到 dynamic_scales。 |
-| `TokenGatherProcess` | 1069 | 按 rank/expert 读取 recv buffer，连续化输出 token。 |
-| `TokenGather` | 1128 | 初始化 gather 并写 expert_token_nums、ep_recv_count 等统计输出。 |
-| `Process` | 1141 | 顶层流程：mask -> scatter -> CCU 通信 -> gather -> HCCL finalize。 |
+| 方法                       |  起始行 | 功能                                                                    |
+| ------------------------ | ---: | --------------------------------------------------------------------- |
+| `InitGlobalAttrs`        |  213 | 读取 tiling 中 bs/h/k/EP/shared expert/AIV 信息，计算本 rank 专家与通信分工。          |
+| `InitBuf`                |  257 | 分配 expert id copy、sort、histogram、cumsum、mask、token queue 等 UB buffer。 |
+| `InitCommAndStatus`      |  296 | 初始化 CCU HCCL、绑定 window、根据 status 选择双 buffer 接收半区。                     |
+| `QuantInit`              |  328 | 按 quant mode 计算 token payload、scale tail、pergroup/mx 对齐和 scale 输出字节数。 |
+| `Init`                   |  372 | 初始化 GM tensor、UB pipe、单 token/scale 大小和通信状态。                          |
+| `QuantStatic`            |  412 | 执行 int8/hif8 static quant，支持 per-tensor、per-H、per-expert scale。       |
+| `QuantDynamicPerToken`   |  450 | 按 token 求最大绝对值，生成 per-token dynamic scale 并量化。                        |
+| `QuantDynamicPerTile`    |  496 | 调用 quant helper 做 per-tile/per-group dynamic 计算。                      |
+| `QuantDynamicMxFp8`      |  519 | 调用 MX/FP8 scale 计算与 FP8 数据转换。                                         |
+| `CalcTokenActiveMask`    |  554 | 读取 x_active_mask，计算 active token 数。                                   |
+| `TokenScatter`           |  818 | 拷贝/排序 expert_ids，统计各 expert token，并把 token 写入 send window。            |
+| `SetShareExpertSendSize` |  618 | 写 shared expert 路径的 send size/offset/count。                           |
+| `ProcessToken`           |  684 | 按目标 expert/rank 处理单 token，执行量化或直接搬运，并把 scale 作为 token payload 尾部传输。     |
+| `Communication`          |  913 | AIV0 发起 CCU AlltoAllvWrite，其他 AIV 同步等待并准备 gather。                     |
+| `CopyScalesToOut`        |  979 | 把 dynamic/smooth scale 从接收 token 尾部写到 dynamic_scales。                 |
+| `TokenGatherProcess`     | 1069 | 按 rank/expert 读取 recv buffer，连续化输出 token。                             |
+| `TokenGather`            | 1128 | 初始化 gather 并写 expert_token_nums、ep_recv_count 等统计输出。                  |
+| `Process`                | 1141 | 顶层流程：mask -> scatter -> CCU 通信 -> gather -> HCCL finalize。            |
 
 CCU 简化流程：
 
@@ -225,25 +225,210 @@ flowchart LR
     Gather --> Outputs["expert_token_nums / ep_recv_count / dynamic_scales / assist_info"]
 ```
 
+#### 7.2.1 `MoeDistributeDispatchA5::Init` 详细分析（40 行，代码行约 33）
+
+源码位置：`op_kernel/arch35/moe_distribute_dispatch_arch35.h:372-409`。
+
+`Init` 的职责不是执行 dispatch，而是建立本次 kernel 所需的全部运行上下文：tiling 属性、GM tensor 视图、UB 临时 buffer、单 token 通信布局、量化队列，以及 CCU/HCCL 通信窗口。调用顺序如下：
+
+```text
+Init
+  -> InitGlobalAttrs
+  -> InitBuf
+  -> QuantInit
+  -> InitCommAndStatus
+```
+
+关键步骤：
+
+1. 设置 `FLOAT_OVERFLOW_MODE_CTRL=0`，并保存 `TPipe*` 到 `pipe_`。A5 分支入口外层会保存/恢复原始 overflow mode。
+2. 从 tiling 读取 `epRankId_`，用 `GetBlockIdx()` 得到当前 `aivId_`。
+3. 调用 `InitGlobalAttrs` 解析 shape、EP rank、expert、shared expert 和 AIV 分工。
+4. 绑定所有 GM tensor：`xGT_`、`expertIdsGT_`、`expandXOutGT_`、`expandIdxGT_`、`dynamicScaleGT_`、`expertTokenNumsGT_`、`sendCountsGT_`。当模板参数或 tiling 指示存在 scale/mask 时，再绑定 `scalesGT_` 和 `xActiveMaskGT_`。
+5. 调用 `InitBuf` 分配排序、histogram、cumsum、mask 和辅助计算所需 UB buffer。
+6. 初始化基础 token 尺寸：`perTokenInSize_ = axisH_ * sizeof(XType)`，`perTokenOutSize_ = axisH_ * sizeof(ExpandXOutType)`，`perTokenMergeSize_ = Align32(axisH_) * sizeof(ExpandXOutType)`。
+7. 根据 `scalesCol * scalesTypeSize` 计算 `scaleInBytes_`，再由 `QuantInit` 修正 token payload、scale tail、通信对齐和 token queue。
+8. 调用 `InitCommAndStatus` 初始化 HCCL V2、send workspace 布局和 CCL window 双缓冲接收区。
+
+`InitGlobalAttrs` 进一步完成 A5 CCU 的拓扑计算：
+
+| 字段/计算 | 含义 |
+| --- | --- |
+| `moeExpertRankNum_ = epWorldSize_ - sharedExpertRankNum_` | 排除 shared expert rank 后，真正承载 MoE expert 的 rank 数。 |
+| `localExpertNum_ = moeExpertNum_ / moeExpertRankNum_` | 每个 MoE rank 持有的 expert 数。 |
+| `sharedUsedAivNum_` | shared expert scatter 使用的 AIV 数，按 `aivNum_ / (axisK_ + 1)` 估算，至少为 1。 |
+| `moeUsedAivNum_ = aivNum_ - sharedUsedAivNum_` | MoE expert scatter 使用的 AIV 数。 |
+| `bskNum_ = axisBS_ * axisK_` | token 与 top-k expert 组合数，也是 `expert_ids` 排序规模。 |
+| `axisMaxBs_` | 通信 buffer 按全局 batch 上限规划；`globalBs != 0` 时取 `globalBs / epWorldSize_`。 |
+| `isTokenMaskFlag_` | 是否在 `Process` 开始阶段根据 `x_active_mask` 缩减活跃 token。 |
+
+`QuantInit` 是 `Init` 中影响后续通信布局的关键函数。它把不同 quant mode 归一成“数据区 + 可选 scale tail + 512B 通信对齐”的 token payload：
+
+| 模式 | `perTokenMergeSize_` 调整 | `scaleOutBytes_` | 说明 |
+| --- | --- | ---: | --- |
+| `UNQUANT && IsSmoothScaleExist` | 追加 `scaleInBytes_` | `scaleInBytes_` | smooth scale 随 token 一起发送，gather 后写到 `dynamic_scales`。 |
+| `MX_QUANT` | `Align256(axisH_) * sizeof(out) + Align2(Ceil32(axisH_))` | `Align2(Ceil32(axisH_)) * sizeof(fp8_e8m0_t)` | 数据区按 256 对齐，尾部存 MX scale。 |
+| `PERTOKEN_DYNAMIC_QUANT` | 追加 `sizeof(float)` | 4 | 每个 token 一个反量化 scale。 |
+| `PERGROUP_DYNAMIC_QUANT` | `Align128(axisH_) * sizeof(out) + Ceil128(axisH_) * sizeof(float)` | `Ceil128(axisH_) * sizeof(float)` | 每 group/tile 输出 scale。 |
+
+最后统一计算：
+
+```text
+perTokenCommSize_ = Align512(perTokenMergeSize_)
+perRankDataSize_ = COUNT_OFFSET + perTokenCommSize_ * axisMaxBs_ * localExpertNum_
+```
+
+这两个字段后续同时用于 send buffer 地址计算、AlltoAllv size/offset、recv window 解析和 gather 地址步长。
+
+`InitCommAndStatus` 的 CCU 通信布局如下：
+
+```text
+workspaceGM
+  + 0                                             -> sendBufGM_
+  + perRankDataSize_ * epWorldSize_              -> sendSizeGM_
+  + epWorldSize_ * sizeof(uint64_t) * 2           -> sendOffsetGM_
+
+context->windowsOut[0]
+  + aivId_ * STATUS_OFFSET                       -> 当前 AIV status
+  + aivNum_ * STATUS_OFFSET                      -> recv half-buffer 0
+  + aivNum_ * STATUS_OFFSET + halfDataSize        -> recv half-buffer 1
+```
+
+`statusGT(0)` 在 0/1 之间翻转，用于在两块接收半区之间切换。每次读写 status 前后都调用 `DataCacheCleanAndInvalid`，避免 GM/window 状态缓存不一致。
+
+注意事项：类声明中的 `Init` 参数名顺序写成 `expandXOut, xActiveMask`，但定义和调用点实际传参顺序是 `xActiveMask, expandXOut`。由于二者类型都是 `GM_ADDR`，编译器无法通过类型发现该命名误导，后续维护时应以函数定义和调用点为准。
+
+#### 7.2.2 `MoeDistributeDispatchA5::Process` 详细分析（18 行，代码行约 15）
+
+源码位置：`op_kernel/arch35/moe_distribute_dispatch_arch35.h:1141-1156`。
+
+`Process` 是 A5 CCU dispatch 的顶层执行函数，只在 AIV 上运行：
+
+```text
+if ASCEND_IS_AIV:
+  if isTokenMaskFlag_: CalcTokenActiveMask()
+  TokenScatter()
+  Communication()
+  TokenGather()
+  if aivId_ == 0: hccl_.Finalize()
+```
+
+执行链可以拆成四段。
+
+**第一段：可选 token mask**
+
+`CalcTokenActiveMask` 读取 `xActiveMaskGT_`，把 bool mask cast 成 half 后做 `Sum`，得到 `activeBs_`，并同步刷新：
+
+```text
+activeBsKNum_ = activeBs_ * axisK_
+sortNum_ = Align(activeBsKNum_, ONE_REPEAT_SORT_NUM)
+sortRepeat_ = Ceil(activeBsKNum_, ONE_REPEAT_SORT_NUM)
+```
+
+因此后续 sort/scatter 只处理活跃 token 对应的 `activeBsKNum_` 个 `expert_ids`。
+
+**第二段：TokenScatter**
+
+`TokenScatter` 的公共预处理是对 `expert_ids` 排序并统计 expert 频次：
+
+1. 将 `expertIdsGT_` 拷入 `expertIdsLT_`。
+2. 构造排序索引 `indexLT_`。
+3. 将 expert id cast 到 float，乘以 -1 后排序，再乘回 -1，得到按 expert id 分组的 token/expert 组合。
+4. 生成 `sortedOutI32LT_`、`sortedIndex1LT_`、`expertFreqLT_`、`expertCumSumLT_`。
+
+之后按 AIV 分工进入不同 scatter 路径：
+
+| AIV 范围 | 路径 | 作用 |
+| --- | --- | --- |
+| `aivId_ < moeUsedAivNum_` | `MoeScatter` | 按 MoE expert 所属 rank 写 send token、send size、send offset 和 per-expert count。 |
+| `aivId_ >= moeUsedAivNum_` | `ShareScatter` | 按 shared expert 目标 rank 写 send token、send size、send offset 和 shared count。 |
+
+`MoeScatterCopyTokens` 的地址计算核心是：
+
+```text
+toExpertRankId = expertId / localExpertNum_
+toRankId = toExpertRankId + sharedExpertRankNum_
+tokenGM = sendBufGM_
+        + COUNT_OFFSET * (toRankId + 1)
+        + (toRankId * axisMaxBs_ * localExpertNum_ + preCount) * perTokenCommSize_
+```
+
+其中 `preCount` 来自排序位置减去目标 expert rank 之前的 expert 累计 token 数。实际写 token 前会调用 `ProcessToken`：量化模式走 `QuantProcess`，非量化模式直接搬运；smooth/dynamic scale 会作为 payload 尾部进入 send buffer。
+
+`ShareScatterCopyTokens` 的目标 rank 由 `CalcToSharedRankId` 计算。shared expert 的特殊点是它按 `activeBs_ * sharedExpertNum_` 复制/分发 token，且 shared rank 的接收 token 数可直接由 `activeBs_` 推导。
+
+**第三段：Communication**
+
+`Communication` 先 `SyncAll<true>()`，确保 scatter 阶段已写完 send buffer。随后只有 `aivId_ == 0` 发起 HCCL：
+
+```text
+hcclHandleId_ = hccl_.AlltoAllvWrite<true>(
+  sendBufGM_, sendOffsetGM_, sendSizeGM_, recvOffset_, localDataSize)
+```
+
+`localDataSize` 对 MoE rank 是本 rank 持有 local expert 的 token payload 总量加 `COUNT_OFFSET`；对 shared rank 是 `activeBs_ * perTokenCommSize_ + COUNT_OFFSET`。
+
+HCCL 进行期间，所有 AIV 继续做本地准备：
+
+| 函数 | 作用 |
+| --- | --- |
+| `SaveExpandIdx` | 基于排序索引和 expert 前缀和生成 `assist_info_for_combine`/`expandIdxOut`。 |
+| `TokenGatherInit` | 为 gather 阶段分配 `recvCntLT_`、`moeExpertRankTokenCumSumLT_` 和 `moeExpertTokenNumsLT_`。 |
+
+最后 `aivId_ == 0` 等待 HCCL handle，所有 AIV 再次同步，进入 gather。
+
+**第四段：TokenGather**
+
+`TokenGather` 初始化 `tokenGatherQue_` 后，根据当前 rank 类型选择 gather 参数：
+
+| 当前 rank | 调用 | 含义 |
+| --- | --- | --- |
+| shared expert rank | `TokenGatherProcess(0, 1)` | 把 shared rank 当作只有 1 个 local expert 的特殊 MoE rank。 |
+| 普通 MoE rank | `TokenGatherProcess(sharedExpertRankNum_, localExpertNum_)` | 从 shared rank 偏移后计算本 rank 的 local expert id。 |
+
+`TokenGatherProcess` 先用 `MoeGatherPrepare` 从 `recvBufGM_` 读取各源 rank 的 count，并计算每个 expert 的总 token 数和当前 rank 前缀和。随后按 expert、source rank、token 三层循环读取 recv window：
+
+```text
+baseAddr = recvBufGM_
+         + curRankId * perRankDataSize_
+         + COUNT_OFFSET
+         + rankInPreCnt * perTokenCommSize_
+```
+
+每个 token 会被拷到 `expandXOutGT_[outPreCount * axisH_]`。如果 payload 尾部包含 dynamic scale 或 smooth scale，`CopyScalesToOut` 会按 quant mode 选择 scale offset，并写入 `dynamicScaleGT_`。每个 expert 处理结束后，`UpdateMoeRankOutput` 写 `sendCountsGT_` 和 `expertTokenNumsGT_`。
+
+整体上，`Process` 的数据流是：
+
+```text
+x + expert_ids
+  -> sort expert_ids / histogram / cumsum
+  -> sendBufGM_ 按目标 rank/expert 打包 token
+  -> CCU AlltoAllvWrite 写入 recvBufGM_
+  -> recvBufGM_ 按 rank/expert 聚合
+  -> expand_x + dynamic_scales + expert_token_nums + ep_recv_count + expandIdx
+```
+
+`Process` 自身只有 18 行，但它串联了 A5 CCU 路径的全部关键行为：活跃 token 缩减、专家路由、量化打包、CCU 变长通信、combine 辅助索引生成和接收侧连续化输出。
+
 ### 7.3 A5 MTE non-fullmesh：`moe_distribute_dispatch_v2.h`（总行 1774，非空 1660，代码行约 1578）
 
 核心类：`MoeDistributeDispatchV2<Mc2Kernel::HcclContextHolder, ...>`，A3/A5 共用，A5 增加 `SetExpertTokenNumsA5`、`SetExpertPrefixSumA5`、`WaitStatusA5`、`GetCumSumA5` 等特化。
 
-| 方法 | 起始行 | 功能 |
-|---|---:|---|
-| `Init` | 339 | 读取 tiling 和 HCCL context/window，建立输入输出 GM tensor、rank/expert 参数、window 布局。 |
-| `SendToSharedExpert` | 698 | shared expert token 写入目标 rank window。 |
-| `ProcessToken` | 642 | 处理单 token payload、expert offset、source token/topk 元数据和可选量化。 |
-| `SendToMoeExpert` | 754 | MoE expert token 写入目标 rank window。 |
-| `AlltoAllDispatch` | 967 | 完成跨 rank 状态交换和 dispatch 同步。 |
-| `SetStatus` | 1014 | 写/清 window 状态，驱动接收端等待。 |
-| `BufferInit` | 1101 | 分配 window copy、mask、status、count、quant 相关 UB buffer。 |
-| `WaitStatusA5` | 1221 | A5 特化等待 window 状态到达。 |
-| `GetCumSumA5` | 1321 | A5 特化计算接收侧 prefix sum。 |
-| `LocalWindowCopy` | 1421 | 等待本地 window 数据到齐，按 cumsum 输出 expand_x/assist_info。 |
-| `SetExpertPrefixSumA5` | 1596 | A5 写 expert 前缀和，用于 expert_token_nums 输出。 |
-| `SetExpertTokenNumsA5` | 1633 | A5 特化写 expert_token_nums。 |
-| `Process` | 1752 | 顶层流程：mask/发送/shared+moe dispatch/本地 copy/输出统计。 |
+| 方法                     |  起始行 | 功能                                                                         |
+| ---------------------- | ---: | -------------------------------------------------------------------------- |
+| `Init`                 |  339 | 读取 tiling 和 HCCL context/window，建立输入输出 GM tensor、rank/expert 参数、window 布局。 |
+| `SendToSharedExpert`   |  698 | shared expert token 写入目标 rank window。                                      |
+| `ProcessToken`         |  642 | 处理单 token payload、expert offset、source token/topk 元数据和可选量化。                |
+| `SendToMoeExpert`      |  754 | MoE expert token 写入目标 rank window。                                         |
+| `AlltoAllDispatch`     |  967 | 完成跨 rank 状态交换和 dispatch 同步。                                                |
+| `SetStatus`            | 1014 | 写/清 window 状态，驱动接收端等待。                                                     |
+| `BufferInit`           | 1101 | 分配 window copy、mask、status、count、quant 相关 UB buffer。                       |
+| `WaitStatusA5`         | 1221 | A5 特化等待 window 状态到达。                                                       |
+| `GetCumSumA5`          | 1321 | A5 特化计算接收侧 prefix sum。                                                     |
+| `LocalWindowCopy`      | 1421 | 等待本地 window 数据到齐，按 cumsum 输出 expand_x/assist_info。                         |
+| `SetExpertPrefixSumA5` | 1596 | A5 写 expert 前缀和，用于 expert_token_nums 输出。                                   |
+| `SetExpertTokenNumsA5` | 1633 | A5 特化写 expert_token_nums。                                                  |
+| `Process`              | 1752 | 顶层流程：mask/发送/shared+moe dispatch/本地 copy/输出统计。                             |
 
 ### 7.4 A5 MTE fullmesh：`moe_distribute_dispatch_v2_full_mesh.h`（总行 1940，非空 1847，代码行约 1778）
 
