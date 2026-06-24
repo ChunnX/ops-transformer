@@ -315,7 +315,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
 
     if ASCEND_IS_AIC {
         mm1K_ = n_ * n_ + 2 * n_;
-        mm1M_ = tile_ * 2;
+        mm1M_ = batchSize_ * seqLength_;
         mm1N_ = n_ * c_;
 
         mm2K_ = batchSize_ * seqLength_;
@@ -1157,19 +1157,21 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         //     ComputeGradPhiMatmul(taskOffset, 1);
         // }
         CrossCoreWaitFlag<0x2>(0);
-        int8_t ping = 0;
-        int32_t totalTasks = batchSize_ * seqLength_;
-        int32_t taskLoops = Ops::Base::CeilAlign(totalTasks, aicNum_ * 2 * tile_);
-        for (int32_t taskOffset = blockIdx_ * 2 * tile_;
-            taskOffset < taskLoops; taskOffset += aicNum_ * 2 * tile_) {
+        // int8_t ping = 0;
+        // int32_t totalTasks = batchSize_ * seqLength_;
+        // int32_t taskLoops = Ops::Base::CeilAlign(totalTasks, aicNum_ * 2 * tile_);
+        // for (int32_t taskOffset = blockIdx_ * 2 * tile_;
+        //     taskOffset < taskLoops; taskOffset += aicNum_ * 2 * tile_) {
 
-            int32_t tileTaskCount = min(2 * tile_, totalTasks - taskOffset);
+        //     int32_t tileTaskCount = min(2 * tile_, totalTasks - taskOffset);
 
-            if (tileTaskCount > 0) {
-                ComputeGradXMatmul(taskOffset, tileTaskCount);
-                ComputeGradPhiMatmul(taskOffset, tileTaskCount);
-            }
-        }
+        //     if (tileTaskCount > 0) {
+        //         ComputeGradXMatmul(taskOffset, tileTaskCount);
+        //         ComputeGradPhiMatmul(taskOffset, tileTaskCount);
+        //     }
+        // }
+        ComputeGradXMatmul(0, );
+        ComputeGradPhiMatmul();
         CrossCoreSetFlag<0x2, PIPE_FIX>(1);
     }
 }
@@ -1193,11 +1195,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     if (mm1M <= 0)
         return;
 
-    mm1_.SetTensorA(gradHcBeforeNormWs_[taskOffset * mm1K_]);
+    mm1_.SetTensorA(gradHcBeforeNormWs_);
     mm1_.SetTensorB(phiGm_);
     mm1_.SetHF32(true, 1);
-    mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false> (gradXGm_[taskOffset * (n_ * c_)], 1);
+    mm1_.SetSingleShape(mm1M_, mm1N_, mm1K_);
+    mm1_.template IterateAll<false> (gradXGm_, 1);
     mm1_.End();
 }
 

@@ -89,17 +89,17 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     // int64_t bsPerCoreMM1 = Ops::Base::CeilAlign(batchSize_ * seqLength_, static_cast<int64_t>(coreNumAic_));
     // int64_t bsPerCoreMM2 = Ops::Base::CeilAlign(n_ * n_ + 2 * n_, static_cast<int64_t>(coreNumAic_));
 
-    int64_t coreTaskCount_ = (batchSize_ * seqLength_ + coreNumAiv_ - 1) / coreNumAiv_;
-    int64_t tile = min(coreTaskCount_, (int64_t) 64);
-    int64_t tileUB = (ubSize_ * 0.95 - (n_ * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c_) /
-                    ((n_ * n_ * 4 + n_ * 9 + 3) * sizeof(float));
-    tile = min(tile, tileUB);
+    // int64_t coreTaskCount_ = (batchSize_ * seqLength_ + coreNumAiv_ - 1) / coreNumAiv_;
+    // int64_t tile = min(coreTaskCount_, (int64_t) 64);
+    // int64_t tileUB = (ubSize_ * 0.95 - (n_ * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c_) /
+    //                 ((n_ * n_ * 4 + n_ * 9 + 3) * sizeof(float));
+    // tile = min(tile, tileUB);
 
     mm1K_ = n_ * n_ + 2 * n_;
-    mm1M_ = tile * 2;
+    mm1M_ = batchSize_ * seqLength_;
     mm1N_ = n_ * c_;
 
-    mm2K_ = tile * 2;
+    mm2K_ = batchSize_ * seqLength_;
     mm2M_ = n_ * n_ + 2 * n_;
     mm2N_ = n_ * c_;
 
@@ -247,7 +247,7 @@ uint64_t MhcPreSinkhornBackwardArch35DeterminiticTiling::GetTilingKey() const
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::PostTiling()
 {
-    context_->SetBlockDim(8);
+    context_->SetBlockDim(coreNumAic_);
     context_->SetScheduleMode(1);
 
     return ge::GRAPH_SUCCESS;
