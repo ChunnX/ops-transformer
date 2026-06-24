@@ -315,7 +315,10 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
     if (mCutScatter.shortTileAtBack || mCutScatter.numShortTile == 0) {
         tilingData.param.tileCnt = mCutScatter.numLongTile;
         args.mValue = mCutScatter.longTileLen;
-        CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+            return ge::GRAPH_FAILED);
         args.baseMLimit = mCutScatter.longTileLen;
         args.mValue = mCutScatter.longTileLen * args.rankTileNum;
         tilingData.param.tailM = mCutScatter.shortTileLen;
@@ -323,14 +326,20 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
         if (mCutScatter.numShortTile > 0) {
             args.mValue = mCutScatter.shortTileLen;
             tilingData.param.tailCnt = mCutScatter.numShortTile;
-            CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(
+                CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling) != ge::GRAPH_SUCCESS,
+                OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+                return ge::GRAPH_FAILED);
             args.baseMLimit = mCutScatter.shortTileLen;
             args.mValue = mCutScatter.shortTileLen * args.rankTileNum;
         }
     } else {
         tilingData.param.tileCnt = mCutScatter.numShortTile;
         args.mValue = mCutScatter.shortTileLen;
-        CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+            return ge::GRAPH_FAILED);
         args.baseMLimit = mCutScatter.shortTileLen;
         args.mValue = mCutScatter.shortTileLen * args.rankTileNum;
         tilingData.param.tailM = mCutScatter.longTileLen;
@@ -338,7 +347,10 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
         if (mCutScatter.numLongTile > 0) {
             args.mValue = mCutScatter.longTileLen;
             tilingData.param.tailCnt = mCutScatter.numLongTile;
-            CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(
+                CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling) != ge::GRAPH_SUCCESS,
+                OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+                return ge::GRAPH_FAILED);
             args.baseMLimit = mCutScatter.longTileLen;
             args.mValue = mCutScatter.longTileLen * args.rankTileNum;
         }
@@ -358,7 +370,10 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
         tilingData.param.tileCnt = 1;
         tilingData.param.tailCnt = 0;
         tilingData.param.tailM = 0;
-        CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+            return ge::GRAPH_FAILED);
     } else if (args.commTurn != 0) {
         uint64_t splite = MC2_SpliteReduceScatter(args);
 
@@ -369,18 +384,30 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
         tilingData.param.tileCnt = tileCnt;
         args.mValue = splite;
         tilingData.param.tailCnt = 0;
-        CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling);
+        OP_TILING_CHECK(
+            CalcMatmulTilingReduceScatter(args, tilingData.tileTiling, tilingData.tileL2Tiling) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+            return ge::GRAPH_FAILED);
         tilingData.param.tailM = tileTail;
         if (tileTail != 0) {
             args.mValue = tileTail;
             tilingData.param.tailCnt = 1;
-            CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(
+                CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling) != ge::GRAPH_SUCCESS,
+                OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
+                return ge::GRAPH_FAILED);
         }
         args.mValue = splite;
     } else {
-        GetReduceScatterFormulateTileCnt(ctx, tilingData, args);
+        OP_TILING_CHECK(
+            GetReduceScatterFormulateTileCnt(ctx, tilingData, args) != ge::GRAPH_SUCCESS,
+            OP_LOGE(ctx->GetNodeName(), "GetReduceScatterFormulateTileCnt failed"),
+            return ge::GRAPH_FAILED);
     }
-    MC2SetWorkspaceReduceScatter(ctx, tilingData, args);
+    OP_TILING_CHECK(
+        MC2SetWorkspaceReduceScatter(ctx, tilingData, args) != ge::GRAPH_SUCCESS,
+        OP_LOGE(ctx->GetNodeName(), "MC2SetWorkspaceReduceScatter failed"),
+        return ge::GRAPH_FAILED);
 
     // mmReduceScatterBiasCast = true时涉及SyncAll，设置batch mode模式，所有核同时启动
     if (tilingData.param.biasLen != 0) {
@@ -532,7 +559,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceSc
         return ge::GRAPH_FAILED;
     }
 
-    MCSpliteMReduceScatter(context, tilingData, args);
+    OP_TILING_CHECK(MCSpliteMReduceScatter(context, tilingData, args) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "MCSpliteMReduceScatter failed"),
+        return ge::GRAPH_FAILED);
 
     uint64_t tilingKey = 0U;
     GetTilingKey(tilingKey, tilingData);
@@ -660,7 +689,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MC2SetWorkspaceReduceScatter(
         }
     }
 
-    SetTilingData(context, tilingData);
+    OP_TILING_CHECK(SetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "SetTilingData failed"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
