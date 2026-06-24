@@ -106,6 +106,7 @@ private:
     uint32_t paddedTopkElems_{0};
     uint32_t ubMetaCapElems_{0};   // ubMeta_ 容纳的 int32 元素数（用于 cached 路径分块拷贝）
     uint32_t numLocalExperts_{0};
+    uint32_t hitCountStride_{0};   // 对齐到 32B 的 hitCount 存储步长 (int32 元素数)
     uint32_t aivNum_{0};
     uint32_t axisK_{0};
     uint32_t axisH_{0};
@@ -163,6 +164,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
 
+    // hitCountStride_: 每 aiv 的 hitCount 存储步长，对齐到 8 个 int32 (32 bytes)
+    // 确保 CopyFromWindowByExpert 中 Cast 读取地址始终 32B 对齐
+    hitCountStride_ = Ceil(numLocalExperts_, 8U) * 8U;
+
     hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace));
 
     uint32_t ubTokenBytes     = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
@@ -179,7 +184,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
     uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * hitCountStride_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv;
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
@@ -322,14 +327,14 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
     }
 
     DataCopyExtParams hitCountCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPad(hitCountGm_[(int64_t)aivId_ * numLocalExperts_], ubHitCount_, hitCountCopyParams);
+    DataCopyPad(hitCountGm_[(int64_t)aivId_ * hitCountStride_], ubHitCount_, hitCountCopyParams);
 }
 
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowByExpert()
 {
     DataCopyExtParams hitCountFullCopyParams{1U,
-        static_cast<uint32_t>(aivNum_ * numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
+        static_cast<uint32_t>(aivNum_ * hitCountStride_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> hitCountFullPadParams{false, 0U, 0U, 0};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopyPad(ubHitCountFull_, hitCountGm_, hitCountFullCopyParams, hitCountFullPadParams);
@@ -337,7 +342,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
     
     Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
     for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
-        Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * numLocalExperts_], RoundMode::CAST_NONE, numLocalExperts_);
+        Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * hitCountStride_], RoundMode::CAST_NONE, numLocalExperts_);
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
     }
 
