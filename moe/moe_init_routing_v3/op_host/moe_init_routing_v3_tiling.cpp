@@ -449,8 +449,8 @@ ge::graphStatus MoeInitRountingV3TilingBase::CheckInputShape()
     moeInitRoutingV3TilingData.set_cols(cols_);
     totalLength_ = n_ * k_;
 
-    // 空tensor场景
-    if (n_ == 0) {
+    // 空tensor场景：n_==0（行数为0）、k_==0（expertIdx第1维为0）、cols_==0（x第1维为0）
+    if (n_ == 0 ) {
         isEmptyTensor_ = true;
         int64_t expertCountElements = 0;
         if (expertTokensNumType_ == KEY_VALUE) {
