@@ -52,7 +52,7 @@ void PrintTensorInfo(const char *name, const aclTensor *tensor)
                "viewDim=%zu, storageDim=%zu, isEmpty=%d.",
                name, op::ToString(tensor->GetDataType()).GetString(),
                op::ToString(tensor->GetStorageFormat()).GetString(),
-               op::ToString(ge::GetPrimaryFormat(tensor->GetStorageFormat())).GetString(),
+               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(tensor->GetStorageFormat()))).GetString(),
                op::ToString(tensor->GetViewShape()).GetString(),
                op::ToString(tensor->GetStorageShape()).GetString(),
                tensor->GetViewShape().GetDimNum(), tensor->GetStorageShape().GetDimNum(),
