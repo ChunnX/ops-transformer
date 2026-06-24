@@ -160,7 +160,7 @@
           {
             "name": "k",
             "dtype": "int",
-            "value": 1
+            "value": 0
           }
         ]
       },
@@ -323,7 +323,7 @@
           {
             "name": "k",
             "dtype": "int",
-            "value": 1
+            "value": 0
           }
         ]
       },
@@ -486,7 +486,7 @@
           {
             "name": "k",
             "dtype": "int",
-            "value": 1
+            "value": 0
           }
         ]
       }

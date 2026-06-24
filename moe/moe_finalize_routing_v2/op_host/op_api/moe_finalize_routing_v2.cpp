@@ -39,10 +39,6 @@ const aclTensor* MoeFinalizeRoutingV2(
     // 如果输出是空，直接不走算子逻辑
     if (!y->IsEmpty()) {
         if (Ops::Transformer::AclnnUtil::IsRegbase()) {
-            OP_LOGI("l0 MoeFinalizeRoutingV2 k is %ld", k);
-            OP_LOGI("l0 MoeFinalizeRoutingV2 zeroExpertRange is [%ld,%ld]", (*zeroExpertRange)[0], (*zeroExpertRange)[1]);
-            OP_LOGI("l0 MoeFinalizeRoutingV2 copyExpertRange is [%ld,%ld]", (*copyExpertRange)[0], (*copyExpertRange)[1]);
-            OP_LOGI("l0 MoeFinalizeRoutingV2 constantExpertRange is [%ld,%ld]", (*constantExpertRange)[0], (*constantExpertRange)[1]);
             auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2,
                 OP_INPUT(expanded_x, expanded_row_idx, x1, x2, bias, scales, expert_idx, x, alpha1, alpha2, v),
                 OP_OUTPUT(y),
@@ -50,7 +46,6 @@ const aclTensor* MoeFinalizeRoutingV2(
             OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
                                                 "MoeFinalizeRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
         } else {
-            OP_LOGI("l0 MoeFinalizeRoutingV2 not IsRegbase");
             auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2,
                 OP_INPUT(expanded_x, expanded_row_idx, x1, x2, bias, scales, expert_idx),
                 OP_OUTPUT(y),
