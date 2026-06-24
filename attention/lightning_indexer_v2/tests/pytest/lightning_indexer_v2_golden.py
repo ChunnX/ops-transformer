@@ -510,7 +510,8 @@ class GeneralizedLIV2:
         query = query.cpu()
         key = key.cpu()
         weights = weights.cpu()
-        output_idx_offset = output_idx_offset.cpu()
+        if output_idx_offset is not None:
+            output_idx_offset = output_idx_offset.cpu()
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
         if self.layout_query == "TND":
