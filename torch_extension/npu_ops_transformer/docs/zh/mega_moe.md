@@ -500,7 +500,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
       <td>必选</td>
       <td>表示MoE模型的专家门控网络为当前输入Token选出的num_topk个专家所对应的门控权重系数。</td>
       <td>Tensor</td>
-      <td>FLOAT32、BFLOAT16<sup>2</sup></td>
+      <td>BFLOAT16<sup>2</sup>、FLOAT32</td>
       <td>ND</td>
       <td>(num_tokens, num_topk)</td>
       <td>-</td>
@@ -776,54 +776,17 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 #### Atlas A2 训练系列产品/Atlas A3 训练系列产品/Atlas A3 推理系列产品 约束
 
 - **参数约束**：
-    - BS（x.dim0）范围 [1, 8192]。
-    - H（x.dim1）范围 [1024, 10240]，且必须为32的倍数。
-    - topK（topk_ids.dim1）范围 [1, 32]。
-    - num_experts_per_rank（weight1.dim0）范围 [1, 128]。
-    - ep_world_size 仅支持 2, 4, 8, 16, 32, 64, 128。
-    - num_experts 范围 [ep_world_size, 1024]。
-    - globalBs 为 0 或满足 BS <= globalBs 且 globalBs 为 ep_world_size 的倍数。
-    - combineQuantMode 必须为 0，commAlg 必须为空字符串 ""。
-    - y 的数据类型与 x 相同。
-    - weight1 的最后一维（N）必须为偶数，且 weight1 的 dim1 必须等于 weight2 的 dim2 的二倍，这是因为 SwiGLU 激活需要将中间维度从 N 减半为 N/2。
-    - weight1 和 weight2 的数据类型必须一致。
-    - num_experts_per_rank = num_experts / ep_world_size，必须为整数。
-
-- **量化模式约束**：
-    - dispatch_quant_mode 由 weight1 数据类型决定：weight1 为 `int8` 或 `int4` 时，dispatch\_quant\_mode 必须为 2（per-token 量化）；weight1 为 `bfloat16` 或 `float16` 时，dispatch\_quant\_mode 必须为 0（非量化）。
-    - dispatch_quant_out_dtype 由 weight1 数据类型决定：weight1 为 `int8` 或 `int4` 时，dispatch\_quant\_out\_dtype 必须为 `torch.int8`；A16W16 模式下不需要指定。
-
-- **A16W16 场景约束**：
-    - weight1 shape 为 (num_experts_per_rank, H, N)，weight2 shape 为 (num_experts_per_rank, N/2, H)。
-    - weight1 和 weight2 数据类型为 `bfloat16` 或 `float16`。
-    - 不需要 l1\_weights\_sf、l2\_weights\_sf、l1\_bias、l2\_bias。
-
-- **A8W8 场景约束**：
-    - weight1 shape 为 (num_experts_per_rank, H, N)，weight2 shape 为 (num_experts_per_rank, N/2, H)，数据类型为 `int8`。
-    - l1\_weights\_sf shape 为 (num_experts_per_rank, N)，l2\_weights\_sf shape 为 (num_experts_per_rank, H)，数据类型为 `float`。
-    - l1\_weights\_sf 和 l2\_weights\_sf 不可为空。
-    - 不需要 l1\_bias、l2\_bias。
-
-- **A8W4 场景约束**：
-    - weight1 shape 为 (num_experts_per_rank, H, N)，weight2 shape 为 (num_experts_per_rank, N/2, H)，数据类型为 `int4`。
-    - l1\_weights\_sf shape 为 (num_experts_per_rank, N)，l2\_weights\_sf shape 为 (num_experts_per_rank, H)，数据类型为 `float`。
-    - l1\_weights\_sf 和 l2\_weights\_sf 不可为空。
-    - l1\_bias 不可为空，每个元素 shape 为 (N,)，数据类型为 `float`。
-    - l2\_bias 不可为空，每个元素 shape 为 (H,)，数据类型为 `float`。
+    - ep_world_size 仅支持 2, 4, 8, 16, 32
+    - num_experts_per_rank = num_experts / ep_world_size，取值范围 [1, 128]。
 
 #### Ascend 950PR/Ascend 950DT 约束
 
 - **参数约束**：
     - BS（x.dim0）范围 [1, 512]。
-    - H（x.dim1）仅支持 4096、5120、7168。
-    - topK（topk_ids.dim1）仅支持 6 或 8。
     - num_experts_per_rank（weight1.dim0）范围 [1, 16]。
     - N（weight1.dim1）仅支持 1024、2048、3072、4096、7168。
     - ep_world_size 范围 [2, 768]。
-    - num_experts 范围 [ep_world_size, 1024]，且 num_experts % ep_world_size == 0。
     - maxRecvTokenNum 范围 [0, BS × ep_world_size × min(topK, num_experts_per_rank)]。
-    - dispatchQuantOutDtype 仅支持 23（FLOAT8_E5M2）或 24（FLOAT8_E4M3FN）。
-    - globalBs 为 0 或满足 BS × ep_world_size <= globalBs 且 globalBs % ep_world_size == 0。
     - 当前版本仅支持 MXFP 量化模式（dispatchQuantMode = 4），dispatch 阶段使用 MX 逐组量化（group size = 32），量化缩放因子类型为 FLOAT8_E8M0。
     - xActiveMask 参数当前版本必须传入空指针，不支持非空输入。
     - combineQuantMode 必须为 0，commAlg 必须为空字符串 ""。
@@ -838,11 +801,10 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - weightScales2 shape 为 (num_experts_per_rank, H, CeilDiv(N/2, 64), 2)，其中 CeilDiv(N/2, 64) = (N/2 + 63) / 64。
     - weightScales1 的 dim3 和 weightScales2 的 dim3 必须等于 2。
     - MXFP 场景下，dispatchQuantOutDtype=23 时 weight1 和 weight2 必须为 FLOAT8_E5M2，dispatchQuantOutDtype=24 时必须为 FLOAT8_E4M3FN。
-    - xActiveMask 必须为空指针。
 
 ## get\_symm\_buffer\_for\_mega\_moe 接口说明
 ```
-get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, *, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
+get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> SymmBuffer:
 ```
 ### 参数说明
 
@@ -852,84 +814,106 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
    <th>参数名</th>
    <th>必选/可选</th>
    <th>描述</th>
-   <th>数据类型</th>
+   <th>类型</th>
+   <th>取值范围</th>
   </tr>
  </thead>
  <tbody>
   <tr>
    <td>group</td>
    <td>必选</td>
-   <td>EP 通信域名称（专家并行通信域）。</td>类型
-   <td>STRING</td>
+   <td>分布式通信的进程组句柄</td>类型
+   <td>torch.distributed.ProcessGroup</td>
+   <td>-</td>
   </tr>
   <tr>
    <td>num_experts</td>
    <td>必选</td>
    <td>MoE 模型的总专家数量。</td>
-   <td>INT</td>
+   <td>int</td>
+   <td>[ep_world_size, 1024]，且 num_experts % ep_world_size == 0</td>
   </tr>
   <tr>
    <td>num_max_tokens_per_rank</td>
    <td>必选</td>
-   <td>每张卡上的token数量，当每个rank的BS不同时，最大的BS大小。</td>
-   <td>INT</td>
+   <td>每卡中最大的输入token的数量，即当每卡的num_tokens不同时，最大的num_tokens大小。</td>
+   <td>int</td>
+   <td>等于每个卡中最大的num_tokens</td>
   </tr>
   <tr>
    <td>num_topk</td>
    <td>必选</td>
-   <td>表示每个token发送的专家数。预留参数，暂不支持。</td>
-   <td>INT</td>
+   <td>表示每个token选择的专家数。</td>
+   <td>int</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_topk ≤ 16<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_topk ≤ 16<br>
+        Ascend 950PR/Ascend 950DT：num_topk 取值为 6 或 8
+    </td>
   </tr>
   <tr>
    <td>hidden</td>
    <td>必选</td>
-   <td>表示每个token大小。预留参数，暂不支持。</td>
-   <td>INT</td>
+   <td>表示每个token大小。</td>
+   <td>int</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
+        Ascend 950PR/Ascend 950DT：hidden 取值为 4096、5120 或 7168
+   </td>
   </tr>
   <tr>
    <td>intermediate_hidden</td>
    <td>必选</td>
-   <td>表示中间层投影维度。预留参数，暂不支持。</td>
-   <td>INT</td>
+   <td>表示中间层投影维度。</td>
+   <td>int</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ intermediate_hidden ≤ 8192 且 intermediate_hidden % 512 = 0<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ intermediate_hidden ≤ 8192 且 intermediate_hidden % 512 = 0<br>
+        Ascend 950PR/Ascend 950DT：intermediate_hidden 取值为 1024、2048、3072、4096 或 7168
+   </td>
   </tr>
   <tr>
    <td>max_recv_token_num</td>
    <td>可选</td>
-   <td>每个Rank最大可接收Token数，默认值为0表示自动计算。</td>
-   <td>INT</td>
+   <td>每个Rank最大可接收token数，默认值为0表示按通信域能容纳最大的token数自动计算。</td>
+   <td>int</td>
+   <td>[0, num_tokens × ep_world_size × min(num_topk, num_experts_per_rank)]</td>
   </tr>
   <tr>
    <td>dispatch_quant_mode</td>
    <td>可选</td>
-   <td>dispatch通信时量化模式。Atlas A2/A3支持0（非量化，A16W16模式）和2（per-token量化，A8W8/A8W4模式）；Ascend 950仅支持4（MX模式）。</td>
-   <td>INT</td>
+   <td>dispatch通信前的token隐藏状态的量化模式。</td>
+   <td>int</td>
+   <td>0（非量化），2（pertoken量化），4（MX模式）</td>
   </tr>
   <tr>
    <td>dispatch_quant_out_dtype</td>
    <td>可选</td>
-   <td>dispatch量化后输出的数据类型。Atlas A2/A3 A8W8/A8W4模式下传入torch.int8；Ascend 950支持23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。</td>
-   <td>INT</td>
+   <td>dispatch通信前的token隐藏状态量化后的数据类型，默认值None表示非量化。</td>
+   <td>ScalarType</td>
+   <td>torch.int8，torch.float8_e5m2，torch.float8_e4m3fn</td>
   </tr>
   <tr>
    <td>combine_quant_mode</td>
    <td>可选</td>
-   <td>暂不支持该参数，使用默认值即可。</td>
-   <td>INT</td>
+   <td>预留参数，使用默认值即可。</td>
+   <td>int</td>
+   <td>-</td>
   </tr>
   <tr>
    <td>comm_alg</td>
    <td>可选</td>
-   <td>暂不支持该参数，使用默认值即可。</td>
-   <td>STRING</td>
+   <td>预留参数，使用默认值即可。</td>
+   <td>str</td>
+   <td>-</td>
   </tr>
  </tbody>
 </table>
 
 ### 输出说明
 
--   **sym\_buffer** (`SymmBuffer`)：用于封装输入参数并生成 `context`、`ep_world_size` 和 `ccl_buffer_size`。
-
-封装了以下入参：<ul><li>context：本卡通信域信息（INT32）。</li><li>ep_world_size：专家并行通信域大小（INT64）。</li><li>ccl_buffer_size：CCL通信缓冲区大小（INT64）。</li><li>num_experts：MoE模型的总专家数量（INT64）。</li><li>max_recv_token_num：每个Rank最大可接收Token数，默认值为0表示自动计算（INT64）。</li><li>num_max_tokens_per_rank：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小（INT64）。</li><li>dispatch_quant_mode：dispatch通信时量化模式（INT64）。Atlas A2/A3支持0（非量化，A16W16模式）和2（per-token量化，A8W8/A8W4模式）；Ascend 950仅支持4（MX模式）。</li><li>dispatch_quant_out_dtype：dispatch量化后输出的数据类型（INT64）。Atlas A2/A3 A8W8/A8W4模式下传入torch.int8；Ascend 950支持23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。</li><li>combine_quant_mode：暂不支持该参数，使用默认值即可。</li><li>comm_alg：暂不支持该参数，使用默认值即可。</li></ul>
+-   **sym\_buffer** (`SymmBuffer`)：
 
 ## 调用示例
 -   单算子模式调用
