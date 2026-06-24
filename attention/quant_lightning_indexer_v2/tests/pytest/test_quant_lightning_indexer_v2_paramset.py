@@ -49,8 +49,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[0,7]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[0,7]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[1], #1/2/4/8/16/32/64/128
         "return_value":[0]
     },
@@ -83,8 +83,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[0,7]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[0,7]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[1], #1/2/4/8/16/32/64/128
         "return_value":[0]
     },
