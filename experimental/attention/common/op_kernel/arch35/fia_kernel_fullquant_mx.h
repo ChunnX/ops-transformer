@@ -107,6 +107,8 @@ public:
     bool headS2Split = false;
     bool tailS2Split = false;
 
+    uint32_t bandHeadTokenOffset = 0U;
+
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
 
@@ -553,6 +555,7 @@ public:
                 s2FirstTokenAlign64 = 0;
             }
             bandLength = s2LastToken - s2FirstTokenAlign64 + 1;
+            bandHeadTokenOffset = static_cast<uint32_t>(s2FirstToken - s2FirstTokenAlign64);
             curS2Start = 0;
             curS2End = CeilDiv(bandLength, s2BaseSize);
 
@@ -654,6 +657,7 @@ public:
             info.s1Idx = info.gS1Idx % actSeqLensQ;
         }
         info.s2Idx = s2FirstTokenAlign64 + s2Cur * s2BaseSize;
+        info.validBandCopySkip = (s2Cur == 0U) ? bandHeadTokenOffset : 0U;
         info.shouldDealInitToken = s2FirstTokenAlign64 > 0 && s2Cur == 0;
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;

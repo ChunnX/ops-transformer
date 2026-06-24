@@ -547,6 +547,25 @@ public:
         CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize, runInfo);
     }
 
+    __aicore__ inline void InitKeyL1GapRegion(const LocalTensor<KV_T> &keyL1,
+        const uint32_t initRows, const uint32_t totalRows, const uint32_t curD)
+    {
+        constexpr uint32_t startRow = 4U;
+        uint32_t curPadK = (totalRows + 31) >> 5 << 5;
+        if (initRows == 0U || startRow >= curPadK) {
+            return;
+        }
+        uint32_t realInitRows = AttentionCommon::Min(initRows, curPadK - startRow);
+        InitConstValueParams<half> initParams;
+        initParams.repeatTimes = AttentionCommon::Align(curD, 16U) / 32U;
+        initParams.blockNum = realInitRows;
+        initParams.dstGap = curPadK - realInitRows;
+        initParams.initValue = 0;
+        constexpr uint32_t NZ_N0 = 32 / sizeof(KV_T);
+        uint32_t halfOffset = startRow * NZ_N0 / (sizeof(half) / sizeof(KV_T));
+        InitConstValue(keyL1.template ReinterpretCast<half>()[halfOffset], initParams);
+    }
+
     __aicore__ inline void CopyKeyInitToken(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo, uint32_t s2RealSize)
     {
         uint32_t dstStride = (s2RealSize + 31) >> 5 << 5;
@@ -598,6 +617,25 @@ public:
         CopyKeyScaleSlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize / MXFP_GROUP_SIZE, runInfo);
     }
 
+    __aicore__ inline void InitKeyScaleL1GapRegion(const LocalTensor<SCALE_T> &scaleL1,
+        const uint32_t initRows, const uint32_t totalRows, const uint32_t curDScale)
+    {
+        constexpr uint32_t startRow = 4U;
+        uint32_t curPadK = (totalRows + 31) >> 5 << 5;
+        if (initRows == 0U || startRow >= curPadK) {
+            return;
+        }
+        uint32_t realInitRows = AttentionCommon::Min(initRows, curPadK - startRow);
+        InitConstValueParams<half> initParams;
+        initParams.repeatTimes = AttentionCommon::Align(curDScale, 16U) / 32U;
+        initParams.blockNum = realInitRows;
+        initParams.dstGap = curPadK - realInitRows;
+        initParams.initValue = 0;
+        constexpr uint32_t NZ_N0 = 32 / sizeof(SCALE_T);
+        uint32_t halfOffset = startRow * NZ_N0 / (sizeof(half) / sizeof(SCALE_T));
+        InitConstValue(scaleL1.template ReinterpretCast<half>()[halfOffset], initParams);
+    }
+
     __aicore__ inline void CopyKeyScaleInitToken(const LocalTensor<SCALE_T> &dstTensor, RunInfoX &runInfo,
                                                  uint32_t s2RealSize)
     {
@@ -637,6 +675,25 @@ public:
             .dDealSize = dRealSize
         };
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
+    }
+
+    __aicore__ inline void InitValueL1GapRegion(const LocalTensor<KV_T> &valueL1,
+        const uint32_t initRows, const uint32_t totalRows, const uint32_t curN)
+    {
+        constexpr uint32_t startRow = 4U;
+        uint32_t curPadK = (totalRows + 63) >> 6 << 6;
+        if (initRows == 0U || startRow >= curPadK) {
+            return;
+        }
+        uint32_t realInitRows = AttentionCommon::Min(initRows, curPadK - startRow);
+        InitConstValueParams<half> initParams;
+        initParams.repeatTimes = AttentionCommon::Align(curN, 16U) / 32U;
+        initParams.blockNum = realInitRows;
+        initParams.dstGap = curPadK - realInitRows;
+        initParams.initValue = 0;
+        constexpr uint32_t NZ_N0 = 32 / sizeof(KV_T);
+        uint32_t halfOffset = startRow * NZ_N0 / (sizeof(half) / sizeof(KV_T));
+        InitConstValue(valueL1.template ReinterpretCast<half>()[halfOffset], initParams);
     }
 
     __aicore__ inline void CopyValueInitToken(const LocalTensor<KV_T> &dstTensor, uint32_t s2RealSize,
@@ -683,6 +740,25 @@ public:
             .dDealSize = dRealSize
         };
         copyValueScaleGmToL1(l1Tensor, valueScaleGm, gmCoord);
+    }
+
+    __aicore__ inline void InitValueScaleL1GapRegion(const LocalTensor<SCALE_T> &scaleL1,
+        const uint32_t initRows, const uint32_t totalRows, const uint32_t curNScale)
+    {
+        constexpr uint32_t startRow = 1U;
+        uint32_t curPadK = (totalRows + 63) >> 6 << 6;
+        if (initRows == 0U || startRow >= curPadK) {
+            return;
+        }
+        uint32_t realInitRows = AttentionCommon::Min(initRows, curPadK - startRow);
+        InitConstValueParams<half> initParams;
+        initParams.repeatTimes = AttentionCommon::Align(curNScale, 16U) / 32U;
+        initParams.blockNum = realInitRows;
+        initParams.dstGap = curPadK - realInitRows;
+        initParams.initValue = 0;
+        constexpr uint32_t NZ_N0 = 32 / sizeof(SCALE_T);
+        uint32_t halfOffset = startRow * NZ_N0 / (sizeof(half) / sizeof(SCALE_T));
+        InitConstValue(scaleL1.template ReinterpretCast<half>()[halfOffset], initParams);
     }
 
     __aicore__ inline void CopyValueScaleInitToken(const LocalTensor<SCALE_T> &dstTensor,
@@ -909,6 +985,9 @@ public:
         LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
         CopyKeyTile(mm1ATensor, runInfo, s2CalcSize, subLoop);
 
+        if (subLoop == 0 && runInfo.shouldDealInitToken && runInfo.validBandCopySkip > 4U) {
+            InitKeyL1GapRegion(mm1ATensor, runInfo.validBandCopySkip - 4U, s2CalcSize, constInfo.dSize);
+        }
         if (subLoop == 0 && runInfo.shouldDealInitToken) {
             CopyKeyInitToken(mm1ATensor, runInfo, s2CalcSize);
         }
@@ -920,6 +999,10 @@ public:
         LocalTensor<SCALE_T> mm1AScaleTensor = mm1A.GetTensor<SCALE_T>(kScaleOffset);
         CopyKeyScaleTile(mm1AScaleTensor, runInfo, s2CalcSize, subLoop);
 
+        if (subLoop == 0 && runInfo.shouldDealInitToken && runInfo.validBandCopySkip > 4U) {
+            InitKeyScaleL1GapRegion(mm1AScaleTensor, runInfo.validBandCopySkip - 4U,
+                                    s2CalcSize, constInfo.dSize / MXFP_GROUP_SIZE);
+        }
         if (subLoop == 0 && runInfo.shouldDealInitToken) {
             CopyKeyScaleInitToken(mm1AScaleTensor, runInfo, s2CalcSize);
         }
@@ -1112,6 +1195,9 @@ public:
             }
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
             
+            if (k == 0 && runInfo.shouldDealInitToken && runInfo.validBandCopySkip > 4U) {
+                InitValueL1GapRegion(mm2BTensor, runInfo.validBandCopySkip - 4U, realK, constInfo.dSizeV);
+            }
             if (k == 0 && runInfo.shouldDealInitToken) {
                 CopyValueInitToken(mm2BTensor, realK, 0, constInfo.dSizeV, runInfo);
             }
@@ -1121,6 +1207,10 @@ public:
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
             
+            if (k == 0 && runInfo.shouldDealInitToken && runInfo.validBandCopySkip > 64U) {
+                InitValueScaleL1GapRegion(mm2BScaleTensor, (runInfo.validBandCopySkip - 64U) / MXFP_DIVISOR_SIZE,
+                                          (realK + 63) / MXFP_DIVISOR_SIZE, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE);
+            }
             if (k == 0 && runInfo.shouldDealInitToken) {
                 CopyValueScaleInitToken(mm2BScaleTensor, (realK + 63) / MXFP_DIVISOR_SIZE, 0,
                                         constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
