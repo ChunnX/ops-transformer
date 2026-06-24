@@ -4,10 +4,6 @@
 #include "moe_ep_dispatch_epilogue_tiling.h"
 #include "moe_ep_dispatch_epilogue.h"
 
-#if __has_include("arch35/moe_ep_dispatch_epilogue_arch35.h")
-#include "arch35/moe_ep_dispatch_epilogue_arch35.h"
-#endif
-
 using namespace MoeEpDispatchEpilogueImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;

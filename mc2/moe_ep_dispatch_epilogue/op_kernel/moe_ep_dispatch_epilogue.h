@@ -13,12 +13,13 @@
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
 #include "../common/op_kernel/mc2_kernel_utils.h"
+#include "../moe_ep_dispatch/moe_ep_dispatch_base.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../../moe_ep_dispatch/op_kernel/moe_ep_dispatch_base.h"
 #endif
 
-#include "../../moe_ep_dispatch/op_kernel/moe_ep_dispatch_base.h"
 #include "moe_ep_dispatch_epilogue_tiling.h"
 
 namespace MoeEpDispatchEpilogueImpl {
@@ -239,7 +240,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Process()
 {
-    AscendC::printf("Start DispatchEpilogue kernel Process\n");
     ComputePrefixSums();
     CountHits();
     SyncAll<true>();
@@ -256,7 +256,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Process()
     if (aivId_ == 0) {
         CopyInputsToOutputs();
     }
-    AscendC::printf("End DispatchEpilogue kernel Process\n");
+
 }
 
 template <typename XType, uint32_t IsCached>
@@ -274,7 +274,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::ComputePrefixSum
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
 {
-    AscendC::printf("---------CountHits start--------.\n");
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
 
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {

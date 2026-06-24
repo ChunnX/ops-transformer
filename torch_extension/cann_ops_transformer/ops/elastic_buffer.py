@@ -133,8 +133,7 @@ class MoEElasticBuffer:
             _op.npu_moe_ep_dispatch_epilogue(
                 self.context, dst_slot, num_recv_per_rank, num_recv_per_expert, cached_recv_src_metadata,
                 ep_world_size, self.rank_id, ne, nm, self.ccl_buffer_size, expert_alignment=ea,
-                recv_x=recv_x,
-                recv_topk_weights=recv_topk_weights, recv_src_metadata=recv_src_meta,
+                recv_x=recv_x, recv_topk_weights=recv_topk_weights, recv_src_metadata=recv_src_meta,
                 recv_scales=recv_scales
             )
 
@@ -145,7 +144,9 @@ class MoEElasticBuffer:
             recv_src_metadata=recv_src_meta,
             num_recv_tokens_per_rank=num_recv_per_rank,
             num_recv_tokens_per_expert=num_recv_per_expert,
-            num_experts=ne, expert_alignment=ea, num_max_tokens_per_rank=nm,
+            num_experts=ne,
+            expert_alignment=ea,
+            num_max_tokens_per_rank=nm,
             topk_idx=(topk_idx.clone() if topk_idx is not None else handle.topk_idx),
         )
         return recv_x, recv_topk_idx, recv_topk_weights, new_handle
