@@ -22,12 +22,12 @@
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_full_mesh.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling_key.h"
+#include "../common/op_kernel/moe_distribute_dispatch_v2_tiling_key_common.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_full_mesh.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
+#include "../../common/op_kernel/moe_distribute_dispatch_v2_tiling_key_common.h"
 #endif
 
 using namespace Mc2Kernel;

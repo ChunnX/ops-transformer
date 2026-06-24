@@ -22,14 +22,14 @@
 
 #if __has_include("../moe_distribute_dispatch_v2/moe_distribute_dispatch_tiling.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_tiling.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_a2.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_a2_layered.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_a2_layered_aicpu.h"
+#include "../moe_distribute_dispatch_v2/arch22/moe_distribute_dispatch_a2.h"
+#include "../moe_distribute_dispatch_v2/arch22/moe_distribute_dispatch_a2_layered.h"
+#include "../moe_distribute_dispatch_v2/arch22/moe_distribute_dispatch_a2_layered_aicpu.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_a2.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_a2_layered.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_a2_layered_aicpu.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_a2.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_a2_layered.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_a2_layered_aicpu.h"
 #endif
 #include "moe_distribute_dispatch.h"
 
