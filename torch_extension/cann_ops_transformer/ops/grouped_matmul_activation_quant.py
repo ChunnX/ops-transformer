@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import math
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch_npu
@@ -54,8 +55,6 @@ def _normalize_tensor_list(value, name):
 
 
 def _normalize_bias(bias):
-    if bias is None:
-        return None
     return _normalize_tensor_list(bias, "bias")
 
 
@@ -130,30 +129,30 @@ def _infer_weight_layout(weight, weight_scale, e, k):
 
 class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
     def __init__(self):
-        super(GroupedMatmulActivationQuantOpBuilder, self).__init__("npu_grouped_matmul_activation_quant")
+        super(GroupedMatmulActivationQuantOpBuilder, self).__init__("grouped_matmul_activation_quant")
 
     def sources(self):
         return ["ops/csrc/grouped_matmul_activation_quant.cpp"]
 
     def schema(self) -> str:
-        return "npu_grouped_matmul_activation_quant(" \
-            "Tensor x, Tensor group_list, Tensor[] weight, Tensor[] weight_scale, Tensor[]? bias=None, *, " \
-            "Tensor? x_scale=None, str activation_type=\"gelu_tanh\", " \
+        return "grouped_matmul_activation_quant(" \
+            "Tensor x, Tensor group_list, Tensor[] weight, Tensor[] weight_scale, Tensor[] bias, " \
+            "str activation_type, *, Tensor? x_scale=None, " \
             "int group_list_type=0, int[]? tuning_config=None, " \
-            "str quant_mode=\"\", int y_dtype=36, str round_mode=\"rint\", int scale_alg=0, " \
+            "str? quant_mode=None, int y_dtype=36, str round_mode=\"rint\", int scale_alg=0, " \
             "float dst_type_max=0.0, int? x_dtype=None, int? weight_dtype=None, " \
             "int? weight_scale_dtype=None, int? x_scale_dtype=None) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_grouped_matmul_activation_quant_meta(x, group_list, weight, weight_scale, bias=None,
-                                                     x_scale=None, activation_type="gelu_tanh",
-                                                     group_list_type=0, tuning_config=None,
-                                                     quant_mode="", y_dtype=DEFAULT_Y_DTYPE,
-                                                     round_mode="rint", scale_alg=0,
-                                                     dst_type_max=0.0, x_dtype=None,
-                                                     weight_dtype=None, weight_scale_dtype=None,
-                                                     x_scale_dtype=None):
+        def grouped_matmul_activation_quant_meta(x, group_list, weight, weight_scale, bias, activation_type,
+                                                 x_scale=None,
+                                                 group_list_type=0, tuning_config=None,
+                                                 quant_mode=None, y_dtype=DEFAULT_Y_DTYPE,
+                                                 round_mode="rint", scale_alg=0,
+                                                 dst_type_max=0.0, x_dtype=None,
+                                                 weight_dtype=None, weight_scale_dtype=None,
+                                                 x_scale_dtype=None):
             torch._check(activation_type == "gelu_tanh",
                          lambda: f"activation_type only supports gelu_tanh, but got {activation_type}.")
             quant_mode = _resolve_quant_mode(quant_mode, x, x_dtype)
@@ -165,8 +164,8 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
                          lambda: "weight only supports one non-null tensor in current MXFP8 mode.")
             torch._check(len(weight_scale) == 1 and weight_scale[0] is not None,
                          lambda: "weight_scale only supports one non-null tensor in current MXFP8 mode.")
-            torch._check(bias is None or len(bias) == 0,
-                         lambda: "bias must be None or an empty tensor list in current MXFP8 mode.")
+            torch._check(len(bias) == 0,
+                         lambda: "bias must be an empty tensor list in current MXFP8 mode.")
             torch._check(x_scale is not None, lambda: "x_scale must be provided in current MXFP8 mode.")
             torch._check(x.dim() == 2, lambda: f"x must be 2D, but got {x.dim()}D.")
             torch._check(weight[0].dim() == 3,
@@ -201,27 +200,77 @@ _op_module = _grouped_matmul_activation_quant_op_builder.load()
 
 
 @impl(AS_LIBRARY, _grouped_matmul_activation_quant_op_builder.name, "PrivateUse1")
-def _npu_grouped_matmul_activation_quant(x, group_list, weight, weight_scale, bias=None,
-                                         x_scale=None, activation_type="gelu_tanh",
-                                         group_list_type=0, tuning_config=None,
-                                         quant_mode="", y_dtype=DEFAULT_Y_DTYPE,
-                                         round_mode="rint", scale_alg=0,
-                                         dst_type_max=0.0, x_dtype=None,
-                                         weight_dtype=None, weight_scale_dtype=None,
-                                         x_scale_dtype=None):
-    return _op_module.npu_grouped_matmul_activation_quant(
-        x, group_list, weight, weight_scale, bias, x_scale, activation_type, group_list_type, tuning_config,
+def _grouped_matmul_activation_quant(x, group_list, weight, weight_scale, bias, activation_type,
+                                     x_scale=None,
+                                     group_list_type=0, tuning_config=None,
+                                     quant_mode=None, y_dtype=DEFAULT_Y_DTYPE,
+                                     round_mode="rint", scale_alg=0,
+                                     dst_type_max=0.0, x_dtype=None,
+                                     weight_dtype=None, weight_scale_dtype=None,
+                                     x_scale_dtype=None):
+    return _op_module.grouped_matmul_activation_quant(
+        x, group_list, weight, weight_scale, bias, activation_type, x_scale, group_list_type, tuning_config,
         quant_mode, y_dtype, round_mode,
         scale_alg, dst_type_max, x_dtype, weight_dtype, weight_scale_dtype, x_scale_dtype)
 
 
-def npu_grouped_matmul_activation_quant(x, group_list, weight, weight_scale, bias=None, *,
-                                        x_scale=None, activation_type="gelu_tanh",
-                                        group_list_type=0, tuning_config=None,
-                                        quant_mode="", y_dtype=torch.float8_e4m3fn,
-                                        round_mode="rint", scale_alg=0, dst_type_max=0.0,
-                                        x_dtype=None, weight_dtype=None,
-                                        weight_scale_dtype=None, x_scale_dtype=None):
+def grouped_matmul_activation_quant(
+    x: torch.Tensor,
+    group_list: torch.Tensor,
+    weight: Union[List[torch.Tensor], Tuple[torch.Tensor, ...]],
+    weight_scale: Union[List[torch.Tensor], Tuple[torch.Tensor, ...]],
+    bias: Union[List[torch.Tensor], Tuple[torch.Tensor, ...]],
+    activation_type: str,
+    *,
+    x_scale: Optional[torch.Tensor] = None,
+    group_list_type: int = 0,
+    tuning_config: Optional[List[int]] = None,
+    quant_mode: Optional[str] = None,
+    y_dtype: Union[int, torch.dtype] = torch.float8_e4m3fn,
+    round_mode: str = "rint",
+    scale_alg: int = 0,
+    dst_type_max: float = 0.0,
+    x_dtype: Optional[Union[int, torch.dtype]] = None,
+    weight_dtype: Optional[Union[int, torch.dtype]] = None,
+    weight_scale_dtype: Optional[Union[int, torch.dtype]] = None,
+    x_scale_dtype: Optional[Union[int, torch.dtype]] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """GroupedMatmulActivationQuant torch接口，封装 aclnnGroupedMatmulActivationQuantWeightNz。
+
+    Args:
+        x (Tensor): 左矩阵，shape为 ``(M, K)``，dtype支持 ``torch.float8_e4m3fn`` 或
+            ``torch.float8_e5m2``。
+        group_list (Tensor): 分组信息，1D Tensor，dtype为 ``torch.int64``，第一维表示group数E，
+            当前E取值范围为[1, 1024]。
+        weight (List[Tensor] or Tuple[Tensor, ...]): 右矩阵dynamic input，当前MXFP8仅支持长度为1。
+            元素为3D逻辑Tensor，shape支持非转置 ``(E, K, N)`` 或转置 ``(E, N, K)``，
+            传入前需要通过 ``torch_npu.npu_format_cast(weight, 29)`` 转为FRACTAL_NZ格式。
+        weight_scale (List[Tensor] or Tuple[Tensor, ...]): weight的MX量化scale，当前MXFP8仅支持长度为1。
+            非转置weight对应shape为 ``(E, ceil(K / 64), N, 2)``，转置weight对应shape为
+            ``(E, N, ceil(K / 64), 2)``。
+        bias (List[Tensor] or Tuple[Tensor, ...]): bias dynamic input。当前MXFP8不支持非空bias，
+            必须传空TensorList。
+        activation_type (str): 激活函数类型，当前仅支持 ``"gelu_tanh"``。
+        x_scale (Tensor, optional): x的MX量化scale。当前MXFP8必须传入，shape为
+            ``(M, ceil(K / 64), 2)``。
+        group_list_type (int): group_list语义类型，当前支持0或1。
+        tuning_config (List[int], optional): 预留调优参数。
+        quant_mode (str, optional): 量化模式。FP8输入且为 ``None`` 时自动推导为 ``"MX"``；FP8输入显式传值时必须为
+            ``"MX"``。
+        y_dtype (int or torch.dtype): 输出y的数据类型，支持 ``torch.float8_e4m3fn`` 和
+            ``torch.float8_e5m2``，默认 ``torch.float8_e4m3fn``。
+        round_mode (str): 舍入模式，当前仅支持 ``"rint"``。
+        scale_alg (int): scale算法，当前支持0或1。
+        dst_type_max (float): 预留参数，当前仅支持0.0。
+        x_dtype (int or torch.dtype, optional): x的dtype wrapper覆盖值。
+        weight_dtype (int or torch.dtype, optional): weight的dtype wrapper覆盖值。
+        weight_scale_dtype (int or torch.dtype, optional): weight_scale的dtype wrapper覆盖值。
+        x_scale_dtype (int or torch.dtype, optional): x_scale的dtype wrapper覆盖值。
+
+    Returns:
+        Tuple[Tensor, Tensor]: ``(y, y_scale)``，其中 ``y`` shape为 ``(M, N)``，
+        ``y_scale`` shape为 ``(M, ceil(N / 64), 2)``。
+    """
     weight = _normalize_tensor_list(weight, "weight")
     weight_scale = _normalize_tensor_list(weight_scale, "weight_scale")
     bias = _normalize_bias(bias)
@@ -230,10 +279,9 @@ def npu_grouped_matmul_activation_quant(x, group_list, weight, weight_scale, bia
     weight_dtype = _normalize_wrapper_dtype(weight_dtype)
     weight_scale_dtype = _normalize_wrapper_dtype(weight_scale_dtype)
     x_scale_dtype = _normalize_wrapper_dtype(x_scale_dtype)
-    quant_mode = _resolve_quant_mode(quant_mode, x, x_dtype)
-    return torch.ops.cann_ops_transformer.npu_grouped_matmul_activation_quant(
-        x, group_list, weight, weight_scale, bias, x_scale=x_scale,
-        activation_type=activation_type, group_list_type=group_list_type,
+    return torch.ops.cann_ops_transformer.grouped_matmul_activation_quant(
+        x, group_list, weight, weight_scale, bias, activation_type, x_scale=x_scale,
+        group_list_type=group_list_type,
         tuning_config=tuning_config, quant_mode=quant_mode, y_dtype=y_dtype,
         round_mode=round_mode, scale_alg=scale_alg, dst_type_max=dst_type_max,
         x_dtype=x_dtype, weight_dtype=weight_dtype, weight_scale_dtype=weight_scale_dtype,
