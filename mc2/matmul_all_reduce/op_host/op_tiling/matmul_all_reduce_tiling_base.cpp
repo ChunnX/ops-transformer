@@ -185,6 +185,58 @@ void MatmulAllReduceTilingBase::DoAllReduceTiling(bool useHcclApi)
     }
 }
 
+void MatmulAllReduceTilingBase::CalcSendOffWithPadM(uint64_t& tileSendOff, uint64_t& tailSendOff)
+{
+    uint64_t padTileM = MutableTCubeTileTilingData().M;
+    uint64_t padTailM = MutableTCubeTailTilingData().M;
+    if (padTileM % args_.rankDim != 0) {
+        padTileM += args_.rankDim - (padTileM % args_.rankDim); // args_.rankDim :1/2/4/8 不会为0
+    }
+    tileSendOff = static_cast<uint64_t>(padTileM * MutableTCubeTileTilingData().N * sizeof(uint8_t)) *
+                  MutableRCSTilingData().tileCnt;
+    if (padTailM % args_.rankDim != 0) {
+        padTailM += args_.rankDim - (padTailM % args_.rankDim); // args_.rankDim :1/2/4/8 不会为0
+    }
+    tailSendOff = static_cast<uint64_t>(padTailM * MutableTCubeTailTilingData().N * sizeof(uint8_t)) *
+                  MutableRCSTilingData().tailCnt;
+}
+
+uint8_t MatmulAllReduceTilingBase::CalcBufferTypeByWindowSize()
+{
+    // win区大小为200M
+    uint16_t defaultWindowSize = 200;
+    if (getenv(HCCL_BUFFSIZE) == nullptr) {
+        OP_LOGD(opName_, "Env HCCL_BUFFSIZE don't set.");
+    } else {
+        try {
+            std::string envStr(getenv(HCCL_BUFFSIZE));
+            defaultWindowSize = std::stoi(envStr);
+        } catch (...) {
+            OP_LOGE(opName_, "Unknown Exception encountered when parser env HCCL_BUFFERSIZE.");
+        }
+    }
+    // 1024 * 1024表示1M
+    const uint64_t maxWindowSize = static_cast<uint64_t>(defaultWindowSize) * 1024UL * 1024UL;
+    uint64_t tileSendOff =
+        static_cast<uint64_t>(MutableMc2MsgData().sendOff) * MutableRCSTilingData().tileCnt;
+    uint64_t tailSendOff =
+        static_cast<uint64_t>(MutableMc2MsgData().tailSendOff) * MutableRCSTilingData().tailCnt;
+    if (MutableRCSTilingData().isInputCommQuantScale ==
+        1) { // int8低bit通信做alltoall需要pad M使其可以被卡数整除
+        CalcSendOffWithPadM(tileSendOff, tailSendOff);
+    }
+    uint8_t buffer_type;
+    if (UINT64_MAX - tileSendOff < tailSendOff || tileSendOff + tailSendOff >= maxWindowSize) {
+        buffer_type = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
+    } else {
+        buffer_type = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_WINDOW_IN);
+    }
+    OP_LOGI(
+        opName_, "Set buffer type to %u, window size %lu/%lu, max %lu.", static_cast<uint32_t>(buffer_type),
+        tileSendOff, tailSendOff, maxWindowSize);
+    return buffer_type;
+}
+
 void MatmulAllReduceTilingBase::setUseBufferType()
 {
     uint8_t buffer_type;
@@ -201,47 +253,7 @@ void MatmulAllReduceTilingBase::setUseBufferType()
         buffer_type = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
         OP_LOGI(opName_, "Set buffer type to output for empty tensor.");
     } else {
-        // win区大小为200M
-        uint16_t defaultWindowSize = 200;
-        if (getenv(HCCL_BUFFSIZE) == nullptr) {
-            OP_LOGD(opName_, "Env HCCL_BUFFSIZE don't set.");
-        } else {
-            try {
-                std::string envStr(getenv(HCCL_BUFFSIZE));
-                defaultWindowSize = std::stoi(envStr);
-            } catch (...) {
-                OP_LOGE(opName_, "Unknown Exception encountered when parser env HCCL_BUFFERSIZE.");
-            }
-        }
-        // 1024 * 1024表示1M
-        const uint64_t maxWindowSize = static_cast<uint64_t>(defaultWindowSize) * 1024UL * 1024UL;
-        uint64_t tileSendOff =
-            static_cast<uint64_t>(MutableMc2MsgData().sendOff) * MutableRCSTilingData().tileCnt;
-        uint64_t tailSendOff =
-            static_cast<uint64_t>(MutableMc2MsgData().tailSendOff) * MutableRCSTilingData().tailCnt;
-        if (MutableRCSTilingData().isInputCommQuantScale ==
-            1) { // int8低bit通信做alltoall需要pad M使其可以被卡数整除
-            uint64_t padTileM = MutableTCubeTileTilingData().M;
-            uint64_t padTailM = MutableTCubeTailTilingData().M;
-            if (padTileM % args_.rankDim != 0) {
-                padTileM += args_.rankDim - (padTileM % args_.rankDim); // args_.rankDim :1/2/4/8 不会为0
-            }
-            tileSendOff = static_cast<uint64_t>(padTileM * MutableTCubeTileTilingData().N * sizeof(uint8_t)) *
-                          MutableRCSTilingData().tileCnt;
-            if (padTailM % args_.rankDim != 0) {
-                padTailM += args_.rankDim - (padTailM % args_.rankDim); // args_.rankDim :1/2/4/8 不会为0
-            }
-            tailSendOff = static_cast<uint64_t>(padTailM * MutableTCubeTailTilingData().N * sizeof(uint8_t)) *
-                          MutableRCSTilingData().tailCnt;
-        }
-        if (UINT64_MAX - tileSendOff < tailSendOff || tileSendOff + tailSendOff >= maxWindowSize) {
-            buffer_type = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
-        } else {
-            buffer_type = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_WINDOW_IN);
-        }
-        OP_LOGI(
-            opName_, "Set buffer type to %u, window size %lu/%lu, max %lu.", static_cast<uint32_t>(buffer_type),
-            tileSendOff, tailSendOff, maxWindowSize);
+        buffer_type = CalcBufferTypeByWindowSize();
     }
     MutableMc2MsgData().useBufferType = buffer_type;
 }
@@ -661,6 +673,31 @@ uint64_t MatmulAllReduceTilingBase::GetBatchValue() const
     return bValue;
 }
 
+ge::graphStatus MatmulAllReduceTilingBase::CheckInputBias() const
+{
+    // bias为n值
+    if (mmrCtxInfo_.bias_shape != nullptr) {
+        size_t biasDimNum = mmrCtxInfo_.bias_shape->GetStorageShape().GetDimNum();
+        OP_TILING_CHECK(
+            biasDimNum != DIM_NUM_ONE,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                context_->GetNodeName(), "bias",
+                (std::to_string(biasDimNum) + "D").c_str(),
+                "The shape dim of bias must be 1"),
+            return ge::GRAPH_FAILED);
+        int64_t biasNValue = mmrCtxInfo_.bias_shape->GetStorageShape().GetDim(0);
+        int64_t nValue = static_cast<int64_t>(GetNValue());
+        OP_TILING_CHECK(
+            biasNValue != nValue,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context_->GetNodeName(), "bias",
+                Ops::Base::ToString(mmrCtxInfo_.bias_shape->GetStorageShape()).c_str(),
+                "The n dimension of bias must be the same as that of output"),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MatmulAllReduceTilingBase::CheckInput()
 {
     // 全量化mxfp&fp8hif8支持3种输出
@@ -690,24 +727,8 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckInput()
             "The shape dim of x1 must be 2 or 3"),
         return ge::GRAPH_FAILED);
     // bias为n值
-    if (mmrCtxInfo_.bias_shape != nullptr) {
-        size_t biasDimNum = mmrCtxInfo_.bias_shape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK(
-            biasDimNum != DIM_NUM_ONE,
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                context_->GetNodeName(), "bias",
-                (std::to_string(biasDimNum) + "D").c_str(),
-                "The shape dim of bias must be 1"),
-            return ge::GRAPH_FAILED);
-        int64_t biasNValue = mmrCtxInfo_.bias_shape->GetStorageShape().GetDim(0);
-        int64_t nValue = static_cast<int64_t>(GetNValue());
-        OP_TILING_CHECK(
-            biasNValue != nValue,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                context_->GetNodeName(), "bias",
-                Ops::Base::ToString(mmrCtxInfo_.bias_shape->GetStorageShape()).c_str(),
-                "The n dimension of bias must be the same as that of output"),
-            return ge::GRAPH_FAILED);
+    if (CheckInputBias() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     // reduceOp为sum
     OP_TILING_CHECK(
@@ -1084,6 +1105,38 @@ mc2tiling::HcclDataType MatmulAllReduceTilingBase::GetDataType(ge::DataType type
     return mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED;
 }
 
+void MatmulAllReduceTilingBase::CalcL2TileBlock(L2TilePara& tileL2, uint64_t mValue, uint64_t nValue, uint64_t kValue,
+    uint64_t blockBaseM, uint64_t blockBaseN, uint32_t tileSize, uint32_t tileLimit,
+    uint64_t sizeA, uint64_t sizeB, uint32_t cubeCoreNum) const
+{
+    const uint32_t ratio = 2;
+    const uint32_t kByte = 1024;
+    // 仅考虑fp16场景
+    tileL2.mTileBlock = (tileSize * kByte * kByte / ratio / kValue + blockBaseM - 1) / blockBaseM;
+    tileL2.nTileBlock = (tileSize * kByte * kByte / ratio / kValue + blockBaseN - 1) / blockBaseN;
+    // 该处保证L2cache切分的合法性，否则kernel侧切分策略不合法，会导致地址溢出
+    tileL2.mTile = (mValue + tileL2.mTileBlock * blockBaseM - 1) / (tileL2.mTileBlock * blockBaseM);
+    tileL2.nTile = (nValue + tileL2.nTileBlock * blockBaseN - 1) / (tileL2.nTileBlock * blockBaseN);
+    // 如果A或B实际小于tileSize，导致切分的mTileBlock太大，此时可以不用切分
+    if (tileL2.mTileBlock >= (mValue / blockBaseM)) {
+        tileL2.mTile = 1;
+        tileL2.mTileBlock = (mValue + blockBaseM - 1) / blockBaseM;
+    }
+    if (tileL2.nTileBlock >= (nValue / blockBaseN)) {
+        tileL2.nTile = 1;
+        tileL2.nTileBlock = (nValue + blockBaseN - 1) / blockBaseN;
+    }
+    tileL2.mTile = (tileL2.mTile > 0) ? tileL2.mTile : 1;
+    tileL2.nTile = (tileL2.nTile > 0) ? tileL2.nTile : 1;
+    if (sizeA <= tileLimit) {
+        tileL2.mTile = 1;
+    }
+    if (sizeB <= tileLimit) {
+        tileL2.nTile = 1;
+    }
+    (void)cubeCoreNum;
+}
+
 bool MatmulAllReduceTilingBase::CalL2TilePara(
     L2TilePara& tileL2, uint64_t mValue, uint64_t kValue, uint64_t nValue, uint32_t cubeCoreNum)
 {
@@ -1093,7 +1146,6 @@ bool MatmulAllReduceTilingBase::CalL2TilePara(
     mc2tiling::MatmulFormulaicTiling::GetBaseBlockParm(
         socVersion_, blockBaseM, blockBaseN, blockBaseK, blockBaseK, blockBaseK);
     // size 单位/MB
-    const uint32_t ratio = 2;
     const uint32_t kByte = 1024;
     uint64_t sizeA = mValue * kValue * D_MTYPE_SIZE_MAP.at(args_.aType) / kByte / kByte;
     uint64_t sizeB = kValue * nValue * D_MTYPE_SIZE_MAP.at(args_.bType) / kByte / kByte;
@@ -1116,29 +1168,8 @@ bool MatmulAllReduceTilingBase::CalL2TilePara(
 
     if (totalSize >= l2CacheSize || sizeA >= singleMatrixSize || sizeB >= singleMatrixSize ||
         sizeC >= singleMatrixSize) {
-        // 仅考虑fp16场景
-        tileL2.mTileBlock = (tileSize * kByte * kByte / ratio / kValue + blockBaseM - 1) / blockBaseM;
-        tileL2.nTileBlock = (tileSize * kByte * kByte / ratio / kValue + blockBaseN - 1) / blockBaseN;
-        // 该处保证L2cache切分的合法性，否则kernel侧切分策略不合法，会导致地址溢出
-        tileL2.mTile = (mValue + tileL2.mTileBlock * blockBaseM - 1) / (tileL2.mTileBlock * blockBaseM);
-        tileL2.nTile = (nValue + tileL2.nTileBlock * blockBaseN - 1) / (tileL2.nTileBlock * blockBaseN);
-        // 如果A或B实际小于tileSize，导致切分的mTileBlock太大，此时可以不用切分
-        if (tileL2.mTileBlock >= (mValue / blockBaseM)) {
-            tileL2.mTile = 1;
-            tileL2.mTileBlock = (mValue + blockBaseM - 1) / blockBaseM;
-        }
-        if (tileL2.nTileBlock >= (nValue / blockBaseN)) {
-            tileL2.nTile = 1;
-            tileL2.nTileBlock = (nValue + blockBaseN - 1) / blockBaseN;
-        }
-        tileL2.mTile = (tileL2.mTile > 0) ? tileL2.mTile : 1;
-        tileL2.nTile = (tileL2.nTile > 0) ? tileL2.nTile : 1;
-        if (sizeA <= tileLimit) {
-            tileL2.mTile = 1;
-        }
-        if (sizeB <= tileLimit) {
-            tileL2.nTile = 1;
-        }
+        CalcL2TileBlock(tileL2, mValue, nValue, kValue, blockBaseM, blockBaseN, tileSize, tileLimit,
+            sizeA, sizeB, cubeCoreNum);
         if (!isWeightNz_ && (tileL2.mTileBlock * tileL2.nTileBlock < cubeCoreNum)) {
             return false;
         }
@@ -1153,16 +1184,32 @@ bool MatmulAllReduceTilingBase::HasAntiQuantOffset() const
 {
     return mmrCtxInfo_.antiquant_offset != nullptr;
 }
+void MatmulAllReduceTilingBase::GetScaleMNAndKIdx(const gert::StorageShape* scaleShape, bool isPertoken,
+    uint64_t scaleDimNum, uint64_t& MN, uint64_t& K) const
+{
+    if (isPertoken) {
+        MN = scaleDimNum - 3U;
+        K = scaleDimNum - 2U;
+        return;
+    }
+    const auto x2Shape = mmrCtxInfo_.x2_shape;
+    uint64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
+    uint64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1);
+    bool isTransB = mmrCtxInfo_.isTransB;
+    bool nIsOne = isTransB ? (x2Dim0 == 1U) : (x2Dim1 == 1U);
+    if (!nIsOne) {
+        MN = args_.isBTrans ? scaleDimNum - 3U : scaleDimNum - 2U;
+        K = args_.isBTrans ? scaleDimNum - 2U : scaleDimNum - 3U;
+    }
+}
+
 bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZeroValue, const uint64_t kValue,
     const gert::StorageShape* scaleShape, const bool isPertoken, const bool isMXfp4) const
 {
-    const auto x2Shape = mmrCtxInfo_.x2_shape;
     uint64_t scaleDimNum = scaleShape->GetStorageShape().GetDimNum();
     const char dimZeroName = isPertoken ? 'm' : 'n';
     uint64_t MN = 0;
     uint64_t K = 0;
-    uint64_t scaleMN = 0;
-    uint64_t kOverMaxGroupsize = 0;
     const std::string scaleName = isPertoken ? "pertokenScale(x1Scale)" : "dequantScale(x2Scale)";
     OP_TILING_CHECK(
         (scaleDimNum != DIM_NUM_THREE),
@@ -1179,21 +1226,10 @@ bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZero
             "The value of scale dimension 3 (K) must be 2"),
         return false);
     // 仅支持x1非转置x2转置
-    if (isPertoken) {
-        MN = scaleDimNum - 3U;
-        K = scaleDimNum - 2U;
-    } else {
-        uint64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
-        uint64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1);
-        bool isTransB = mmrCtxInfo_.isTransB;
-        bool nIsOne = isTransB ? (x2Dim0 == 1U) : (x2Dim1 == 1U);
-        if (!nIsOne) {
-            MN = args_.isBTrans ? scaleDimNum - 3U : scaleDimNum - 2U;
-            K = args_.isBTrans ? scaleDimNum - 2U : scaleDimNum - 3U;
-        }
-    }
-    scaleMN = scaleShape->GetStorageShape().GetDim(MN);
-    kOverMaxGroupsize = scaleShape->GetStorageShape().GetDim(K);
+    GetScaleMNAndKIdx(scaleShape, isPertoken, scaleDimNum, MN, K);
+    uint64_t scaleMN = scaleShape->GetStorageShape().GetDim(MN);
+    uint64_t kOverMaxGroupsize = scaleShape->GetStorageShape().GetDim(K);
+    (void)dimZeroName;
     
     //此时只支持转置，支持非转置后拦截信息需要修改
     OP_TILING_CHECK(
@@ -1222,6 +1258,24 @@ bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZero
     return true;
 }
 
+bool MatmulAllReduceTilingBase::CheckDequantScalePerBlock(const gert::StorageShape* dequantScaleShape) const
+{
+    const auto x2Shape = mmrCtxInfo_.x2_shape;
+    const auto dim0Ofscale = dequantScaleShape->GetStorageShape().GetDim(0);
+    const auto dim1Ofscale = dequantScaleShape->GetStorageShape().GetDim(1);
+    const auto dim0Ofx2 = x2Shape->GetStorageShape().GetDim(0);
+    const auto dim1Ofx2 = x2Shape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(
+        (dim0Ofscale != Ops::Base::CeilDiv(dim0Ofx2, SUPPORTED_BLOCK_SIZE)) ||
+            (dim1Ofscale != Ops::Base::CeilDiv(dim1Ofx2, SUPPORTED_BLOCK_SIZE)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            opName_, "dequantScale(x2Scale)",
+            ("(" + std::to_string(dim0Ofscale) + ", " + std::to_string(dim1Ofscale) + ")").c_str(),
+            "The shape of dequantScale(x2Scale) must be (ceil(dim0Ofx2, blockSize), ceil(dim1Ofx2, blockSize))"),
+        return false);
+    return true;
+}
+
 bool MatmulAllReduceTilingBase::CheckDequantScaleShape(const uint64_t nValue) const
 {
     const auto dequantScaleShape = mmrCtxInfo_.dequant_scale_shape;
@@ -1230,22 +1284,9 @@ bool MatmulAllReduceTilingBase::CheckDequantScaleShape(const uint64_t nValue) co
             OP_LOGE_WITH_INVALID_INPUT(opName_, "dequantScale(x2Scale)"),
         return false);
 
-    const auto x2Shape = mmrCtxInfo_.x2_shape;
     // perblock 场景
     if (isPerBlock_) {
-        const auto dim0Ofscale = dequantScaleShape->GetStorageShape().GetDim(0);
-        const auto dim1Ofscale = dequantScaleShape->GetStorageShape().GetDim(1);
-        const auto dim0Ofx2 = x2Shape->GetStorageShape().GetDim(0);
-        const auto dim1Ofx2 = x2Shape->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(
-            (dim0Ofscale != Ops::Base::CeilDiv(dim0Ofx2, SUPPORTED_BLOCK_SIZE)) ||
-                (dim1Ofscale != Ops::Base::CeilDiv(dim1Ofx2, SUPPORTED_BLOCK_SIZE)),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                opName_, "dequantScale(x2Scale)",
-                ("(" + std::to_string(dim0Ofscale) + ", " + std::to_string(dim1Ofscale) + ")").c_str(),
-                "The shape of dequantScale(x2Scale) must be (ceil(dim0Ofx2, blockSize), ceil(dim1Ofx2, blockSize))"),
-            return false);
-        return true;
+        return CheckDequantScalePerBlock(dequantScaleShape);
     }
 
     if (scenario_ == AllReduceScenario::MXFP4) {
@@ -1445,6 +1486,36 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantScaleShape(const uint64_t kValue, 
     return false;
 }
 
+bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetShape(const gert::StorageShape* scale) const
+{
+    const gert::StorageShape* antiquantOffset = mmrCtxInfo_.antiquant_offset_shape;
+    if (antiquantOffset == nullptr) {
+        return true;
+    }
+    int32_t offsetShapeDim = antiquantOffset->GetStorageShape().GetDimNum();
+    int32_t scaleShapeDim = scale->GetStorageShape().GetDimNum();
+    OP_TILING_CHECK(
+        offsetShapeDim != scaleShapeDim,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context_->GetNodeName(), "antiquantOffset",
+            (std::to_string(offsetShapeDim) + "D").c_str(),
+            "The shape dim of antiquantOffset must be equal to that of antiquantScale"),
+        return false);
+    // 校验offset和x2最后一维是否一致
+    for (int32_t i = 0; i < offsetShapeDim; ++i) {
+        int64_t offsetValue = antiquantOffset->GetStorageShape().GetDim(i);
+        int64_t scaleValue = scale->GetStorageShape().GetDim(i);
+        OP_TILING_CHECK(
+            offsetValue != scaleValue,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context_->GetNodeName(), "antiquantOffset",
+                std::to_string(offsetValue).c_str(),
+                "The value of antiquantOffset must be equal to that of antiquantScale"),
+            return false);
+    }
+    return true;
+}
+
 bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetValid() const
 {
     const auto scale = mmrCtxInfo_.antiquant_scale_shape;
@@ -1454,10 +1525,9 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetValid() const
     }
     // 校验bias dim
     const gert::StorageShape* matrixBias = mmrCtxInfo_.bias_shape;
-    int32_t biasShapeSize = 0;
     int64_t nValue = GetNValue();
     if (matrixBias != nullptr) {
-        biasShapeSize = matrixBias->GetStorageShape().GetDimNum();
+        int32_t biasShapeSize = matrixBias->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             biasShapeSize != 1,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
@@ -1475,31 +1545,7 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetValid() const
             return false);
     }
     // 校验offset维度 与 scale一致
-    const gert::StorageShape* antiquantOffset = mmrCtxInfo_.antiquant_offset_shape;
-    if (antiquantOffset != nullptr) {
-        int32_t offsetShapeDim = antiquantOffset->GetStorageShape().GetDimNum();
-        int32_t scaleShapeDim = scale->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK(
-            offsetShapeDim != scaleShapeDim,
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                context_->GetNodeName(), "antiquantOffset",
-                (std::to_string(offsetShapeDim) + "D").c_str(),
-                "The shape dim of antiquantOffset must be equal to that of antiquantScale"),
-            return false);
-        // 校验offset和x2最后一维是否一致
-        for (int32_t i = 0; i < offsetShapeDim; ++i) {
-            int64_t offsetValue = antiquantOffset->GetStorageShape().GetDim(i);
-            int64_t scaleValue = scale->GetStorageShape().GetDim(i);
-            OP_TILING_CHECK(
-                offsetValue != scaleValue,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    context_->GetNodeName(), "antiquantOffset",
-                    std::to_string(offsetValue).c_str(),
-                    "The value of antiquantOffset must be equal to that of antiquantScale"),
-                return false);
-        }
-    }
-    return true;
+    return CheckAntiQuantOffsetShape(scale);
 }
 
 bool MatmulAllReduceTilingBase::CheckA16W4Shape(const uint64_t kValue, const uint64_t nValue)
