@@ -688,7 +688,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
       <td>activation_clamp</td>
       <td>可选</td>
-      <td>激活函数前输入的对称截断阈值，将输入张量限制在 [-activation_clamp, activation_clamp] 区间内。None表示不截断，值需≥0</td>
+      <td>激活函数输入的对称截断阈值，将输入张量限制在 [-activation_clamp, activation_clamp] 区间内。None表示不截断，值需≥0</td>
       <td>float</td>
       <td>-</td>
       <td>-</td>
@@ -700,8 +700,8 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
       <td>weight1_type</td>
       <td>可选</td>
-      <td>暂不支持该参数，使用默认值即可。</td>
-      <td>int</td>
+      <td>预留参数，使用默认值即可。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -712,8 +712,8 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
       <td>weight2_type</td>
       <td>可选</td>
-      <td>暂不支持该参数，使用默认值即可。</td>
-      <td>int</td>
+      <td>预留参数，使用默认值即可。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -768,10 +768,69 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 ### 约束说明
 
 - **参数一致性约束**：
-    - 调用算子过程中使用的 `num_max_tokens_per_rank`、`HCCL_BUFFSIZE` 等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+  - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 num_experts、hidden、intermediate_hidden 等）保持一致。
+  - 调用算子过程中使用的 `num_max_tokens_per_rank`、`HCCL_BUFFSIZE` 等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+  - mega_moe 支持四种计算场景（A16W16、A8W8-INT、A8W4-INT、A8W8-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
+    <table>
+      <thead>
+        <tr>
+          <th>场景</th>
+          <th><code>l1_weights</code> / <code>l2_weights</code> 数据类型</th>
+          <th><code>l1_weights_sf</code></th>
+          <th><code>l2_weights_sf</code></th>
+          <th><code>l1_bias</code></th>
+          <th><code>l2_bias</code></th>
+          <th><code>dispatch_quant_mode</code><br>（用于 <code>get_symm_buffer</code>）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>A16W16</strong></td>
+          <td>BFLOAT16</td>
+          <td>–</td>
+          <td>–</td>
+          <td>–</td>
+          <td>–</td>
+          <td>0</td>
+        </tr>
+        <tr>
+          <td><strong>A8W8-INT</strong></td>
+          <td>INT8</td>
+          <td>UINT64</td>
+          <td>UINT64</td>
+          <td>–</td>
+          <td>–</td>
+          <td>2</td>
+        </tr>
+        <tr>
+          <td><strong>A8W4-INT</strong></td>
+          <td>INT4</td>
+          <td>UINT64</td>
+          <td>UINT64</td>
+          <td>FLOAT32</td>
+          <td>FLOAT32</td>
+          <td>2</td>
+        </tr>
+        <tr>
+          <td><strong>A8W8-FP</strong>（MXFP）</td>
+          <td>FLOAT8_E5M2 或 FLOAT8_E4M3FN</td>
+          <td>FLOAT8_E8M0</td>
+          <td>FLOAT8_E8M0</td>
+          <td>–</td>
+          <td>–</td>
+          <td>4</td>
+        </tr>
+      </tbody>
+    </table>
+
+<p style="margin-top: 8px; font-size: 13px;">
+  <strong>表尾规则：</strong><br>
+  • “–” 表示该场景下<strong>不需要</strong>提供该参数，传入 <code>None</code> 或保持默认即可。<br>
+  • 直接填写数据类型（如 <code>UINT64</code>）表示该场景下该参数为<strong>必选</strong>，且必须使用该数据类型，否则算子行为未定义。
+</p>
 
 - **通信域使用约束**：
-    - 所有卡的 `num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank` 参数取值需保持一致。
+    - 所有卡的 `num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank` 参数取值需保持一致。  
 
 #### Atlas A2 训练系列产品/Atlas A3 训练系列产品/Atlas A3 推理系列产品 约束
 
@@ -799,8 +858,6 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - weight1 shape 为 (num_experts_per_rank, N, H)，weight2 shape 为 (num_experts_per_rank, H, N/2)。
     - weightScales1 shape 为 (num_experts_per_rank, N, CeilDiv(H, 64), 2)，其中 CeilDiv(H, 64) = (H + 63) / 64。
     - weightScales2 shape 为 (num_experts_per_rank, H, CeilDiv(N/2, 64), 2)，其中 CeilDiv(N/2, 64) = (N/2 + 63) / 64。
-    - weightScales1 的 dim3 和 weightScales2 的 dim3 必须等于 2。
-    - MXFP 场景下，dispatchQuantOutDtype=23 时 weight1 和 weight2 必须为 FLOAT8_E5M2，dispatchQuantOutDtype=24 时必须为 FLOAT8_E4M3FN。
 
 ## get\_symm\_buffer\_for\_mega\_moe 接口说明
 ```
@@ -898,14 +955,14 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>combine_quant_mode</td>
    <td>可选</td>
    <td>预留参数，使用默认值即可。</td>
-   <td>int</td>
+   <td>-</td>
    <td>-</td>
   </tr>
   <tr>
    <td>comm_alg</td>
    <td>可选</td>
    <td>预留参数，使用默认值即可。</td>
-   <td>str</td>
+   <td>-</td>
    <td>-</td>
   </tr>
  </tbody>
@@ -914,6 +971,8 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
 ### 输出说明
 
 -   **sym\_buffer** (`SymmBuffer`)：
+
+
 
 ## 调用示例
 -   单算子模式调用
