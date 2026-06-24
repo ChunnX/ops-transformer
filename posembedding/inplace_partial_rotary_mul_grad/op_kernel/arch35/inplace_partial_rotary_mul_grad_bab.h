@@ -18,7 +18,6 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "op_kernel/load_store_utils.h"
-#include "inplace_partial_rotary_mul_grad_tiling_data.h"
 #include "inplace_partial_rotary_mul_grad_common.h"
 #include <cstdint>
 
@@ -28,11 +27,10 @@ using namespace AscendC;
 template <typename TDY, typename TCOS>
 class InplacePartialRotaryMulGradBAB {
 public:
-    __aicore__ inline InplacePartialRotaryMulGradBAB()
-    {
-    }
-    __aicore__ inline void Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling, GM_ADDR dy,
-                                GM_ADDR cos, GM_ADDR sin, GM_ADDR dx);
+    __aicore__ inline InplacePartialRotaryMulGradBAB(TPipe *pipe,
+                                                     const InplacePartialRotaryMulGradRegbaseTilingData *tiling)
+        : pipe_(pipe), tilingData_(tiling){};
+    __aicore__ inline void Init(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx);
     __aicore__ inline void Process();
 
 private:
@@ -56,8 +54,7 @@ private:
     GlobalTensor<TCOS> cosGm_;
     GlobalTensor<TCOS> sinGm_;
 
-    const InplacePartialRotaryMulGradRegbaseParams *tilingData_{nullptr};
-    DataCopyPadExtParams<TDY> padParamsDy_{false, 0, 0, static_cast<TDY>(0)};
+    const InplacePartialRotaryMulGradRegbaseTilingData *tilingData_{nullptr};
     uint32_t dSplitSizeDy_{0};
     uint32_t dSplitSizeCos_{0};
     int64_t dAlignLenDy_{0};
@@ -71,12 +68,8 @@ private:
 };
 
 template <typename TDY, typename TCOS>
-__aicore__ inline void
-InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling,
-                                                GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx)
+__aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx)
 {
-    this->pipe_ = pipe;
-    this->tilingData_ = tiling;
     if (GetBlockIdx() >= tilingData_->usedCoreNum) {
         return;
     }
