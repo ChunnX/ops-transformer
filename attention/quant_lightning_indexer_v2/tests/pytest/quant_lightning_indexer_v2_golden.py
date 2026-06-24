@@ -1083,7 +1083,7 @@ def qliv2_output_single(params):
                                     cmp_ratio = cmp_ratio)
 
     metadata = metadata.npu()
-    npu_result, _ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
+    npu_result, npu_topk_value = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights,
                                                     query_dequant_scale,
                                                     key_dequant_scale,
                                                     cu_seqlens_q = cu_seqlens_query,
@@ -1104,7 +1104,7 @@ def qliv2_output_single(params):
                                                     return_value = return_value)
 
     torch.npu.synchronize()
-    return cpu_result, npu_result, topk_value
+    return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
 
 def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
     if exponent == HIF8_EXP_ZERO_THRESHOLD:
