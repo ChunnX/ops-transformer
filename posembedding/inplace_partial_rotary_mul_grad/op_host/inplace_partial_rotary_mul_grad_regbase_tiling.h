@@ -21,11 +21,36 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_util.h"
-#include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
 #include "platform/platform_info.h"
 #include "util/math_util.h"
 
 namespace optiling {
+
+BEGIN_TILING_DATA_DEF(InplacePartialRotaryMulGradRegbaseTilingData)
+TILING_DATA_FIELD_DEF(int64_t, b);
+TILING_DATA_FIELD_DEF(int64_t, s);
+TILING_DATA_FIELD_DEF(int64_t, d);
+TILING_DATA_FIELD_DEF(int64_t, n);
+TILING_DATA_FIELD_DEF(int64_t, blockNumB);
+TILING_DATA_FIELD_DEF(int64_t, blockFactorB);
+TILING_DATA_FIELD_DEF(int64_t, blockNumS);
+TILING_DATA_FIELD_DEF(int64_t, blockFactorS);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorS);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorB);
+TILING_DATA_FIELD_DEF(int64_t, ubLoopNumN);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorN);
+TILING_DATA_FIELD_DEF(int64_t, ubTailFactorN);
+TILING_DATA_FIELD_DEF(int64_t, usedCoreNum);
+TILING_DATA_FIELD_DEF(int64_t, rotaryMode);
+TILING_DATA_FIELD_DEF(int64_t, sliceStart);
+TILING_DATA_FIELD_DEF(int64_t, sliceEnd);
+TILING_DATA_FIELD_DEF(int64_t, sliceLength);
+TILING_DATA_FIELD_DEF(int64_t, dSplitCoef);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(InplacePartialRotaryMulGrad, InplacePartialRotaryMulGradRegbaseTilingData)
+
+constexpr static int64_t WORKSPACE_COUNT = 1;
+constexpr static size_t RESERVED_WORKSPACE = static_cast<size_t>(16 * 1024 * 1024);
 struct InplacePartialRotaryMulGradCompileInfo {};
 
 enum class InplacePartialRotaryMulGradLayout : int64_t {
@@ -94,7 +119,6 @@ protected:
     ge::DataType cosDtype_;
     InplacePartialRotaryMulGradLayout layout_;
     InplacePartialRotaryMulGradMode rotaryMode_;
-    InplacePartialRotaryMulGradTilingData *tilingData_{nullptr};
 
     gert::Shape dyShape_;
     gert::Shape cosShape_;
