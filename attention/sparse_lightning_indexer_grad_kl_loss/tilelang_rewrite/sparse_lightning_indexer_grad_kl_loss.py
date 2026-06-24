@@ -276,8 +276,8 @@ def tilelang_grad_kl_loss_kernel(
                 rg_fp16_ub = T.alloc_shared((BLOCK_NIDX1, n_block), input_dtype)
                 dw_total_ub = T.alloc_shared(Nidx1, calc_dtype)
                 dw_chunk_ub = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
+                dw_temp_ub = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
                 dw_fp16_ub = T.alloc_shared(Nidx1, input_dtype)
-                rg_fp16_ub = T.alloc_shared((BLOCK_NIDX1, n_block), input_dtype)
 
                 sm_max_ub = T.alloc_shared(G, calc_dtype)
                 sm_sum_ub = T.alloc_shared(G, calc_dtype)
@@ -434,10 +434,14 @@ def tilelang_grad_kl_loss_kernel(
                             T.barrier_all()
                             T.reduce_sum(rg_chunk_ub, dw_chunk_ub, dim=-1, clear=True, real_shape=[BLOCK_NIDX1, n_block])
                             T.barrier_all()
-                            T.tile.add(
+                            T.copy(
                                 dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1],
+                                dw_temp_ub,
+                            )
+                            T.tile.add(dw_temp_ub, dw_temp_ub, dw_chunk_ub)
+                            T.copy(
+                                dw_temp_ub,
                                 dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1],
-                                dw_chunk_ub,
                             )
 
                             # -- reluGrad: weight[g] * diff[k] * bool(bmm2[g,k] > 0) --
