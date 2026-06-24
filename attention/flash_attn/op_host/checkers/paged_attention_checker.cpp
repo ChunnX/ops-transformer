@@ -76,7 +76,14 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
 ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FaTilingInfo &faInfo)
 {
     if (!faInfo.pageAttentionFlag) {
+        // 非 PA 模式下，block_table 不应传入
+        auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
+        OP_CHECK_IF(blockTableTensor != nullptr,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_table", "provided",
+                "When layout_kv is not PA (PA_BBND/PA_BNBD/PA_NZ), block_table should not be provided"),
+                    return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
+
     }
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;

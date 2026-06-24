@@ -51,7 +51,7 @@ public:
     void GetKeyTSize();
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
-    void GetKvStorageMode();
+    ge::graphStatus GetKvStorageMode();
 
     void SetFaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout, int64_t &maxActualSeqLen);
