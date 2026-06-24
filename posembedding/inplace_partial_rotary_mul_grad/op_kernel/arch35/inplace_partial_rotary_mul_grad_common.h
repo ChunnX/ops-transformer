@@ -107,7 +107,7 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<TCOS> &sinTensor, const
 template <typename TDY, typename TCOS>
 __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor, const LocalTensor<TCOS> &cosTensor,
                                             const LocalTensor<TDY> &inTensor, const LocalTensor<TDY> &outTensor,
-                                            uint16_t dLen, uint16_t currSNum, uint16_t currDNum)
+                                            uint16_t dLen, uint16_t currSNum, uint16_t currNNum)
 {
     __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
     __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();
@@ -141,12 +141,12 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor, 
         for (uint16_t sIdx = 0; sIdx < currSNum; sIdx++) {
             currSinUb = sinUb + sIdx * dAlignLenCos;
             currCosUb = cosUb + sIdx * dAlignLenCos;
-            for (uint16_t idxD = 0; idxD < currDNum; idxD++) {
+            for (uint16_t idxD = 0; idxD < currNNum; idxD++) {
                 uint32_t halfCnt = halfNum;
                 uint32_t part1Cnt = part1Num;
                 uint32_t part2Cnt = part2Num;
-                currInUb = inUb + (sIdx * currDNum + idxD) * dAlignLenDy;
-                currOutUb = outUb + (sIdx * currDNum + idxD) * dAlignLenDy;
+                currInUb = inUb + (sIdx * currNNum + idxD) * dAlignLenDy;
+                currOutUb = outUb + (sIdx * currNNum + idxD) * dAlignLenDy;
                 for (uint16_t i = 0; i < loopNum; i++) {
                     pregLoop = MicroAPI::UpdateMask<float>(halfCnt);
                     pregPart1 = MicroAPI::UpdateMask<float>(part1Cnt);
