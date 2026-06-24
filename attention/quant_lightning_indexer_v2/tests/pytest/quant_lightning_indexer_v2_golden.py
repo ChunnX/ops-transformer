@@ -88,7 +88,7 @@ class GeneralizedQLIV2:
                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,
                  act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
                  sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
-                 k_scale_datarange, cmp_ratio, return_value):
+                 k_scale_datarange, cmp_ratio, return_value, output_idx_offset):
         self.batch_size = batch_size
         self.q_seq = q_seq
         self.k_seq = k_seq
@@ -117,6 +117,7 @@ class GeneralizedQLIV2:
         self.cmp_ratio = cmp_ratio
         self.w_dtype = dequant_dtype
         self.return_value = return_value
+        self.output_idx_offset = output_idx_offset
 
         if layout_query == "BSND":
             self.q_shape = [batch_size, q_seq, q_head_num, head_dim]
@@ -167,7 +168,6 @@ class GeneralizedQLIV2:
         y_value = torch.full(out_shape_bnss,-float('inf'), dtype=torch.float32)
         y_value_np = np.full(out_shape_bnsd, -np.inf, dtype=np.float32)
         
-
         prefix = 0
         for b_idx in range(batch_size):
             curr_actualSeq_q = actualSeqLengths_q[b_idx]
@@ -728,7 +728,7 @@ def qliv2_output_single(params):
     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q,\
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,\
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
-    k_scale_datarange, cmp_ratio, return_value = params
+    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
 
     if qk_dtype == torch.uint8:
         hifp8mode = 1
