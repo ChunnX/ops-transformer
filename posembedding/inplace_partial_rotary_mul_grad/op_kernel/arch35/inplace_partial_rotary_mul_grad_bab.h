@@ -46,10 +46,10 @@ private:
     TPipe *pipe_{nullptr};
     int64_t blockIdx_{0};
     int64_t dSplitCoef_{1};
-    TQue<QuePosition::VECIN, 2> dyInQue_;
-    TQue<QuePosition::VECIN, 2> cosInQue_;
-    TQue<QuePosition::VECIN, 2> sinInQue_;
-    TQue<QuePosition::VECOUT, 2> dxOutQue_;
+    TQue<QuePosition::VECIN, 1> dyInQue_;
+    TQue<QuePosition::VECIN, 1> cosInQue_;
+    TQue<QuePosition::VECIN, 1> sinInQue_;
+    TQue<QuePosition::VECOUT, 1> dxOutQue_;
 
     GlobalTensor<TDY> dyGm_;
     GlobalTensor<TDY> dxGm_;
