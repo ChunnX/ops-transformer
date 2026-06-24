@@ -82,8 +82,10 @@ if _TORCHAIR_AVAILABLE:
 
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.inplace_partial_rotary_mul.default)
     def convert_inplace_partial_rotary_mul(x: Tensor, r1: Tensor, r2: Tensor, *,
-                                           rotary_mode: str, partial_slice: List[int],
+                                           rotary_mode: str = "interleave",
+                                           partial_slice: Optional[List[int]] = None,
                                            meta_outputs: TensorSpec = None):
+        partial_slice = [0, 0] if partial_slice is None else partial_slice
         if rotary_mode not in _ROTARY_MODE_MAP:
             raise ValueError(
                 "rotary_mode only supports 'interleave', "
