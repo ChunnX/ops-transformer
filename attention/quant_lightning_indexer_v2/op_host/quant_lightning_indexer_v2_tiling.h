@@ -168,6 +168,10 @@ public:
     bool returnValue = false;
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
+    std::vector<uint32_t> keyStridesVec;
+    std::vector<uint32_t> keyDequantScaleStridesVec;
+    gert::Shape keyStorageShape;
+    gert::Shape keyDequantScaleStorageShape;
     int32_t maxSeqlenQ = -1;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
@@ -215,6 +219,7 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
+    ge::graphStatus CheckKeyContiguous() const;
     void GenerateInfo(QLIV2TilingInfo &QLIV2Info);
     ge::graphStatus ParseAndCheck(QLIV2TilingInfo &QLIV2Info);
 
@@ -248,6 +253,8 @@ public:
     ge::DataType blockTableType_ = ge::DT_FLOAT16;
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
+    std::vector<uint32_t> keyStridesVec_;
+    std::vector<uint32_t> keyDequantScaleStridesVec_;
 };
 
 // ---------------算子Tiling类---------------
