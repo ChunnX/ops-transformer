@@ -21,9 +21,9 @@
 #include "../../../common/op_kernel/mc2_moe_context.h"
 #include "../../../op_kernel/moe_distribute_combine_tiling.h"
 #include "../../../op_kernel/moe_distribute_combine_v2_tiling.h"
-#include "../../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
+#include "../../../op_kernel/arch22/moe_distribute_combine_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
-#include "../../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_check_win_size.h"
+#include "../../../../common/op_host/op_tiling/moe_distribute_check_win_size.h"
 #include "mc2_exception_dump.h"
 #include "moe_distribute_combine_tiling_arch22.h"
 
