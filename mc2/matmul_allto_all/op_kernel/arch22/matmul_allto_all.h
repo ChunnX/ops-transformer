@@ -25,7 +25,6 @@ using namespace AscendC;
 #endif
 #include "adv_api/hccl/hccl.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "matmul_allto_all_tiling.h"
 #include "moe_distribute_base.h"
 #include "matmul_allto_all_util.h"
 

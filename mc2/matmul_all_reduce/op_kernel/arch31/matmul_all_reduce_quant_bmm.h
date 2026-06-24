@@ -15,18 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_BMM_H
 #define MATMUL_ALL_REDUCE_QUANT_BMM_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
-#ifdef __CCE_KT_TEST__
-#include "rac_server_stub.h"
-#else
-#include "rac_server.h"
-#endif
-#include "../common.h"
 #include "mm_allreduce.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h"
 #include "../arch22/quant_matmul_all_reduce_tiling_data.h"

@@ -15,20 +15,8 @@
 #ifndef MATMUL_ALL_REDUCE_310_GENERAL_H
 #define MATMUL_ALL_REDUCE_310_GENERAL_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
-#ifdef __CCE_KT_TEST__
-#include "rac_server_stub.h"
-#else
-#include "rac_server.h"
-#endif
-#include "../common.h"
 #include "mm_allreduce.h"
-#include "../arch22/unquant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;

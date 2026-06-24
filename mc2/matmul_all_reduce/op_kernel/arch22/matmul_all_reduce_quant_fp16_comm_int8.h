@@ -21,7 +21,6 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "lib/hccl/hccl.h"
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
 #endif

@@ -22,7 +22,6 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "../common.h"
 
 #include "matmul_all_reduce_based_a2a_rs_ag.h"
 #include "matmul_all_reduce_based_all_reduce.h"
