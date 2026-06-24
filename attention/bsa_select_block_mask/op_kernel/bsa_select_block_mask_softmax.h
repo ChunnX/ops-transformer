@@ -392,6 +392,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     SetFlag<HardEvent::MTE3_MTE2>(eventSft);
     WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
 
+    SetFlag<HardEvent::V_MTE2>(eventSft);
+    WaitFlag<HardEvent::V_MTE2>(eventSft);
+    
     // score 矩阵workspace存储还需再想想
     DataCopyPad(scoreUb,
         scoreFp32GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
