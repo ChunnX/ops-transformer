@@ -347,42 +347,35 @@ void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingI
                                                                 int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
                                                                 int64_t &nextTokensLeftUp) const
 {
+    bool isRopeSplit512 = (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT &&
+                           fiaInfo.vHeadDim == DSIZE_512);
+    bool isOptLayout = IsSupportedQLayout(fiaInfo.qLayout);
+
+    if (isRopeSplit512 && !isOptLayout) {
+        preTokensLeftUp = SPARSE_MODE_INT_MAX;
+        nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+        return;
+    }
+
     if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
         preTokensLeftUp = SPARSE_MODE_INT_MAX;
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
-            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
-                fiaInfo.qLayout == FiaLayout::TND) {
-                nextTokensLeftUp = actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
-            } else {  // BNSD场景下分核不做优化
-                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
-            }
+        if (isRopeSplit512) {
+            nextTokensLeftUp = actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
         } else {
             nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
         }
     } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
-            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
-                fiaInfo.qLayout == FiaLayout::TND) {
-                preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize - actualSeqLengthKV * fiaInfo.gSize + actualSeqLength;
-                nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize + actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
-            } else {  // BNSD场景下分核不做优化
-                preTokensLeftUp = SPARSE_MODE_INT_MAX;
-                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
-            }
+        if (isRopeSplit512) {
+            preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize - actualSeqLengthKV * fiaInfo.gSize + actualSeqLength;
+            nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize + actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
         } else {
             preTokensLeftUp = fiaInfo.preToken - actualSeqLengthKV + actualSeqLength;
             nextTokensLeftUp = fiaInfo.nextToken + actualSeqLengthKV - actualSeqLength;
         }
     } else {
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
-            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
-                fiaInfo.qLayout == FiaLayout::TND) {
-                preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize;
-                nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize;
-            } else {  // BNSD场景下分核不做优化
-                preTokensLeftUp = SPARSE_MODE_INT_MAX;
-                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
-            }
+        if (isRopeSplit512) {
+            preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize;
+            nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize;
         } else {
             preTokensLeftUp = fiaInfo.preToken;
             nextTokensLeftUp = fiaInfo.nextToken;
