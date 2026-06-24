@@ -260,9 +260,6 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
             OP_LOGE(opName_, "input attr quant_mode only supported 1 and 4."),
             return ge::GRAPH_FAILED);
     }
-    
-    OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
-               return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
