@@ -177,6 +177,11 @@ aclnnStatus aclnnMhcPost(
           <tr>
               <td>x、hRes、hOut、hPost、out的数据类型或shape不匹配。</td>
           </tr>
+            <tr>
+              <td>ACLNN_ERR_INNER_NULLPTR</td>
+              <td>561103</td>
+              <td>n不等于4; d不在[1, 100000]范围内；d不能被128整除。</td>
+          </tr>
       </tbody>
   </table>
 
@@ -231,7 +236,7 @@ aclnnStatus aclnnMhcPost(
   | 规格项   | 规格               | 规格说明                                |
   | :------- | :----------------- | :------------------------------------- |
   | n        | 4                  | 目前只支持4                          |
-  | c        | 范围1到100000       | 128的倍数                             |
+  | d        | 范围1到100000       | 128的倍数                             |
 
 ## 调用示例
 
