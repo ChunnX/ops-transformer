@@ -64,22 +64,14 @@
 from cann_ops_transformer.ops import mla_preprocess
 
 mla_preprocess(
-    hidden_states, gamma0, beta0,
-    quant_scale0, quant_offset0,
-    wdqkv, de_scale0, bias0,
-    gamma1, beta1,
-    quant_scale1, quant_offset1,
-    wuq, de_scale1, bias1,
+    input, gamma0, beta0, wdqkv, de_scale0,
+    gamma1, beta1, wuq, de_scale1,
     gamma2, cos, sin, wuk,
-    kv_cache, slot_mapping,
-    kv_cache_rope=None,
+    kv_cache, kv_cache_rope, slot_mapping, *,
+    quant_scale0=None, quant_offset0=None, bias0=None,
+    quant_scale1=None, quant_offset1=None, bias1=None,
     ctkv_scale=None, q_nope_scale=None,
-    wdq_dim=1536, q_rope_dim=64, k_rope_dim=64,
-    epsilon=1e-5,
-    q_rotary_coeff=2, k_rotary_coeff=2,
-    transpose_wdq=True, transpose_wuq=True, transpose_wuk=True,
-    cache_mode=1, quant_mode=0,
-    do_rms_norm=True, wdkv_split_count=1
+    cache_mode="krope_ctkv", quant_mode="per_token_quant_symm"
 ) -> (Tensor, Tensor, Tensor, Tensor)
 ```
 
@@ -654,17 +646,20 @@ wk = torch.randn(headNum, nopeDim, 512, dtype=dtype, device="npu")
 
 # kvCache: [blockNum, blockSize, 1, keyTotalDim]
 kv_cache = torch.zeros(blockNum, blockSize, 1, keyTotalDim, dtype=dtype, device="npu")
+# kv_cache_rope: cache_mode=0 不需要，传空 Tensor 占位
+kv_cache_rope = torch.empty(0, dtype=dtype, device="npu")
 slot_mapping = torch.tensor([2350, 23251, 11000, 13627, 21896, 6332, 2534, 11263],
                             dtype=torch.int32, device="npu")
 
 q_out, kv_out, qr_out, kr_out = mla_preprocess(
-    inp, g0, b0, qs0, qo0,
-    wdq_nz, ds0, bi0,
-    g1, b1, qs1, qo1,
-    wu_nz, ds1, bi1,
+    inp, g0, b0, wdq_nz, ds0,
+    g1, b1, wu_nz, ds1,
     g2, cos, sin, wk,
-    kv_cache, slot_mapping,
-    cache_mode=0,
+    kv_cache, kv_cache_rope, slot_mapping,
+    quant_scale0=qs0, quant_offset0=qo0,
+    bias0=bi0, quant_scale1=qs1,
+    quant_offset1=qo1, bias1=bi1,
+    cache_mode="kcache",
 )
 torch.npu.synchronize()
 
@@ -675,7 +670,7 @@ print(f"krOut:    {kr_out.shape}")      # [0]
 print(f"in-place: {kv_out.data_ptr() == kv_cache.data_ptr()}")  # True
 ```
 
-### cacheMode=1（Key/Rope 分离存储，ND 格式）
+### cacheMode='krope_ctkv'（Key/Rope 分离存储，ND 格式）
 
 ```python
 # 复用上例中的 inp/g0~g2/wdq_nz/wu_nz/wk/cos/sin/slot_mapping 等公共输入
@@ -685,14 +680,13 @@ kv_cache = torch.zeros(blockNum, blockSize, 1, kv_dim, dtype=dtype, device="npu"
 kp_cache = torch.zeros(blockNum, blockSize, 1, kRopeDim, dtype=dtype, device="npu")
 
 q_out, kv_out, qr_out, kr_out = mla_preprocess(
-    inp, g0, b0, qs0, qo0,
-    wdq_nz, ds0, bi0,
-    g1, b1, qs1, qo1,
-    wu_nz, ds1, bi1,
+    inp, g0, b0, wdq_nz, ds0,
+    g1, b1, wu_nz, ds1,
     g2, cos, sin, wk,
-    kv_cache, slot_mapping,
-    kv_cache_rope=kp_cache,
-    cache_mode=1,
+    kv_cache, kp_cache, slot_mapping,
+    quant_scale0=qs0, quant_offset0=qo0, bias0=bi0,
+    quant_scale1=qs1, quant_offset1=qo1, bias1=bi1,
+    cache_mode="krope_ctkv",
 )
 torch.npu.synchronize()
 
@@ -728,14 +722,13 @@ print(f"kvCache stride[0]:    {kv_cache_nc.stride(0)}")            # 131072（2 
 
 # 直接传入非连续张量，算子自动处理 stride
 q_out, kv_out, qr_out, kr_out = mla_preprocess(
-    inp, g0, b0, qs0, qo0,
-    wdq_nz, ds0, bi0,
-    g1, b1, qs1, qo1,
-    wu_nz, ds1, bi1,
+    inp, g0, b0, wdq_nz, ds0,
+    g1, b1, wu_nz, ds1,
     g2, cos, sin, wk,
-    kv_cache_nc, slot_mapping,
-    kv_cache_rope=kp_cache_nc,
-    cache_mode=1,
+    kv_cache_nc, kp_cache_nc, slot_mapping,
+    quant_scale0=qs0, quant_offset0=qo0, bias0=bi0,
+    quant_scale1=qs1, quant_offset1=qo1, bias1=bi1,
+    cache_mode="krope_ctkv",
 )
 torch.npu.synchronize()
 
@@ -759,16 +752,15 @@ ctkv_scale = torch.randn(1, dtype=dtype, device="npu").abs() + 0.01
 qnope_scale = torch.randn(headNum, dtype=dtype, device="npu").abs() + 0.001
 
 q_out, kv_out, qr_out, kr_out = mla_preprocess(
-    inp, g0, b0, qs0, qo0,
-    wdq_nz, ds0, bi0,
-    g1, b1, qs1, qo1,
-    wu_nz, ds1, bi1,
+    inp, g0, b0, wdq_nz, ds0,
+    g1, b1, wu_nz, ds1,
     g2, cos, sin, wk,
-    kv_cache_nz, slot_mapping,
-    kv_cache_rope=kp_cache_nz,
+    kv_cache_nz, kp_cache_nz, slot_mapping,
+    quant_scale0=qs0, quant_offset0=qo0, bias0=bi0,
+    quant_scale1=qs1, quant_offset1=qo1, bias1=bi1,
     ctkv_scale=ctkv_scale,
     q_nope_scale=qnope_scale,
-    cache_mode=2,
+    cache_mode="int8_nzcache",
 )
 torch.npu.synchronize()
 
