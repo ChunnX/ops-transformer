@@ -1701,6 +1701,18 @@ static inline int64_t ReadFirstTensorValue(const gert::Tensor *tensor)
     return (value != nullptr) ? value[0] : 0;
 }
 
+static void SetSparseCompressMode(const FiaTilingInfo &fiaInfo,
+                                  InputParamsRegbase &inputParams)
+{
+    static const std::map<uint32_t, uint8_t> sparseCompressModeMap = {{SPARSE_MODE_NO_MASK, 0},
+                                                                      {SPARSE_MODE_ALL_MASK, 0},
+                                                                      {SPARSE_MODE_LEFT_UP, 1},
+                                                                      {SPARSE_MODE_RIGHT_DOWN, 2},
+                                                                      {SPARSE_MODE_BAND, 3}};
+    inputParams.set_attenMaskCompressMode(
+        GetMapValueOrDefault(sparseCompressModeMap, static_cast<uint32_t>(fiaInfo.sparseMode)));
+}
+
 ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaTilingInfo &fiaInfo)
 {
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
@@ -1747,17 +1759,6 @@ void FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaTilingInfo &
     baseParams.set_maskKVsSize(maskS2Size);
 }
 
-static void SetSparseCompressMode(const FiaTilingInfo &fiaInfo,
-                                  InputParamsRegbase &inputParams)
-{
-    static const std::map<uint32_t, uint8_t> sparseCompressModeMap = {{SPARSE_MODE_NO_MASK, 0},
-                                                                      {SPARSE_MODE_ALL_MASK, 0},
-                                                                      {SPARSE_MODE_LEFT_UP, 1},
-                                                                      {SPARSE_MODE_RIGHT_DOWN, 2},
-                                                                      {SPARSE_MODE_BAND, 3}};
-    inputParams.set_attenMaskCompressMode(
-        GetMapValueOrDefault(sparseCompressModeMap, fiaInfo.sparseMode));
-}
 
 uint8_t FusedInferAttentionScoreTilingImpl::ComputeSparseType(const FiaTilingInfo &fiaInfo) const
 {
