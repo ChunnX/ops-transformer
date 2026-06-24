@@ -185,6 +185,16 @@ __simd_callee__ inline void UIntToSortableKey(AscendC::MicroAPI::RegTensor<Float
                            (AscendC::MicroAPI::RegTensor<UInt>&)outKey, regMask, maskAll);
 }
 
+template <typename FloatT>
+__simd_callee__ inline void InitUIntSortConstCtx(UIntSortConstCtx<FloatT>& ctx, AscendC::MicroAPI::MaskReg& maskAll)
+{
+    using Traits = UIntSortTraits<FloatT>;
+    AscendC::MicroAPI::Duplicate(ctx.zeros,    Traits::ZERO,      maskAll);
+    AscendC::MicroAPI::Duplicate(ctx.allOne,   Traits::ALL_ONE,   maskAll);
+    AscendC::MicroAPI::Duplicate(ctx.signMask, Traits::SIGN_MASK, maskAll);
+    AscendC::MicroAPI::Duplicate(ctx.nan,      Traits::NAN_MASK,  maskAll);
+}
+
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
                                               const LocalTensor<uint16_t> &in,
                                               const uint32_t topK)
