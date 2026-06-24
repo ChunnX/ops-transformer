@@ -174,16 +174,18 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //z
                         Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf1_
                         Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf2_
-                        2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpDiv3Buf_
-                        2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpMulBuf_
-                        2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //sumOutBuf_
-                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //normOutBuf_
-                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResBuf_
-                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResMaxBuf_
-                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResMaxIdxBuf_
-                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //gradXRowNormedBuf_
-                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //skGradBuf_
-                        bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);                                //expGradBuf_
+                        6 * 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +
+                        10 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);
+                        // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpDiv3Buf_
+                        // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpMulBuf_
+                        // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //sumOutBuf_
+                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //normOutBuf_
+                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResBuf_
+                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResMaxBuf_
+                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResMaxIdxBuf_
+                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //gradXRowNormedBuf_
+                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //skGradBuf_
+                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);                                //expGradBuf_
 
         restSize = ubSize_ - occupy;
         if (restSize <= 0 && bsLoopDataLen_ > 1) {
@@ -238,7 +240,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-    size_t userWorkspaceSize = batchSize_ * seqLength_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                            //xFP32
+    size_t userWorkspaceSize = batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                            //xFP32
                                 3 * usedAivNum_ * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +                                       //gradAlpha
                                 (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +        //gradBias
                                 batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3  + 3 * WS_BUFFER_INTERVAL +             //gradXFrom
