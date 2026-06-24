@@ -111,50 +111,78 @@ void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo
         gsMergeFlag_ = false;
         return;
     }
-    
-    if (fiaInfo.s1Size * fiaInfo.gSize < NUM_64) {
-        bool isTransposeLayout = CheckTransposeLayout(fiaInfo);
-        pfaMergeFlag_ = !(fiaInfo.pseShiftFlag || fiaInfo.enableAlibiPse ||
-            fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 || fiaInfo.isOutQuantEnable ||
-            fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag ||
-            fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST ||
-            fiaInfo.quantMode == FiaQuantMode::FULL_QUANT || isTransposeLayout);
-    }
-    bool actualSeqLenUnequal = false;
-    if (actualSeqLenQFlag_ && !fiaInfo.antiQuantFlag) {
-        const gert::Tensor *actSeqLenQ = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
-        uint32_t actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-        uint32_t actSeqLengthSize = std::min(actSeqLenQDims, fiaInfo.bSize);
-        for (uint32_t i = 0; i < actSeqLengthSize; ++i) {
-            int64_t actSeqTmp = actSeqLenQ->GetData<int64_t>()[i];
-            if ((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && i >= 1) {
-                actSeqTmp -= actSeqLenQ->GetData<int64_t>()[i - 1];
-            }
-            // query act seq len padding情况下不支持合轴
-            if (actSeqTmp < fiaInfo.s1Size) {
-                actualSeqLenUnequal = true;
-                pfaMergeFlag_ = false;
-            }
-        }
+
+    pfaMergeFlag_ = CheckPFAMergeSupport(fiaInfo);
+
+    bool actualSeqLenUnequal = !CheckActualSeqLenAligned(fiaInfo);
+    if (actualSeqLenUnequal) {
+        pfaMergeFlag_ = false;
     }
 
     if (fiaInfo.antiQuantFlag) {
-        if (fiaInfo.s1Size == 1 && !fiaInfo.enableAlibiPse) {
-            gsMergeFlag_ = true;
-        } else {
-            if (fiaInfo.gSize * fiaInfo.s1Size <= 0 || fiaInfo.gSize * fiaInfo.s1Size > NUM_32) {
-                gsMergeFlag_ = false;
-                return;
-            }
-            std::string layoutStr(fiaInfo.opParamInfo.layOut);
-            gsMergeFlag_ = !(actualSeqLenUnequal || fiaInfo.qPaddingSizeFlag || fiaInfo.attenMaskFlag ||
-                            fiaInfo.pseShiftFlag || fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION ||
-                            fiaInfo.enableAlibiPse || fiaInfo.isOutQuantEnable || fiaInfo.softmaxLseFlag ||
-                            layoutStr == "BNSD_BSND");
-        }
+        gsMergeFlag_ = CheckAntiQuantGSMerge(fiaInfo, actualSeqLenUnequal);
     } else {
         gsMergeFlag_ = pfaMergeFlag_;
     }
+}
+
+bool FusedInferAttentionScoreTilingImpl::CheckPFAMergeSupport(const FiaTilingInfo &fiaInfo) const
+{
+    if (fiaInfo.s1Size * fiaInfo.gSize >= NUM_64) {
+        return false;
+    }
+    bool isTransposeLayout = CheckTransposeLayout(fiaInfo);
+    return !(fiaInfo.pseShiftFlag || fiaInfo.enableAlibiPse ||
+             fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 || fiaInfo.isOutQuantEnable ||
+             fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag ||
+             fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST ||
+             fiaInfo.quantMode == FiaQuantMode::FULL_QUANT || isTransposeLayout);
+}
+
+bool FusedInferAttentionScoreTilingImpl::CheckActualSeqLenAligned(const FiaTilingInfo &fiaInfo) const
+{
+    if (!actualSeqLenQFlag_ || fiaInfo.antiQuantFlag) {
+        return true;
+    }
+
+    const gert::Tensor *actSeqLenQ = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
+    if (actSeqLenQ == nullptr) {
+        return true;
+    }
+
+    uint32_t actSeqLenQDims = actSeqLenQ->GetShapeSize();
+    uint32_t actSeqLengthSize = std::min(actSeqLenQDims, fiaInfo.bSize);
+    bool isCumulativeLayout = (fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD);
+
+    for (uint32_t i = 0; i < actSeqLengthSize; ++i) {
+        int64_t actSeqTmp = actSeqLenQ->GetData<int64_t>()[i];
+        if (isCumulativeLayout && i >= 1) {
+            actSeqTmp -= actSeqLenQ->GetData<int64_t>()[i - 1];
+        }
+        if (actSeqTmp < fiaInfo.s1Size) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool FusedInferAttentionScoreTilingImpl::CheckAntiQuantGSMerge(const FiaTilingInfo &fiaInfo,
+                                                                bool actualSeqLenUnequal) const
+{
+    if (fiaInfo.s1Size == 1 && !fiaInfo.enableAlibiPse) {
+        return true;
+    }
+
+    int64_t totalSize = static_cast<int64_t>(fiaInfo.gSize) * fiaInfo.s1Size;
+    if (totalSize <= 0 || totalSize > NUM_32) {
+        return false;
+    }
+
+    bool isBnsdBsndLayout = (std::string(fiaInfo.opParamInfo.layOut) == "BNSD_BSND");
+    return !(actualSeqLenUnequal || fiaInfo.qPaddingSizeFlag || fiaInfo.attenMaskFlag ||
+             fiaInfo.pseShiftFlag || fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION ||
+             fiaInfo.enableAlibiPse || fiaInfo.isOutQuantEnable || fiaInfo.softmaxLseFlag ||
+             isBnsdBsndLayout);
 }
 
 static inline bool IsTensorValid(const gert::Tensor *tensor, uint32_t dims)
