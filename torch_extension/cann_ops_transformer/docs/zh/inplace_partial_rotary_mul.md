@@ -1,42 +1,53 @@
-# inplace_partial_rotary_mul
+# cann_ops_transformer.inplace_partial_rotary_mul
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| :--- | :---: |
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
-| <term>Atlas 200I/500 A2 推理产品</term> | × |
-| <term>Atlas 推理系列产品</term> | × |
-| <term>Atlas 训练系列产品</term> | × |
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
--   接口功能：
+- 接口功能：
 
-    执行单路旋转位置编码的Inplace计算，直接修改输入张量`x`，不产生新的输出张量。通过`partial_slice`参数支持对输入张量最后一维进行部分旋转位置编码计算，仅对指定范围的数据进行旋转编码。
+    执行单路旋转位置编码的Inplace计算，直接修改输入张量`x`，不产生新的输出张量。该接口支持通过`partial_slice`参数指定输入张量最后一维上的局部范围，仅对该范围内的数据执行旋转位置编码，其余位置保持原值。
 
--   计算公式：
+- 计算公式：
 
-    interleave模式（`rotary_mode`为"interleave"）：
+    interleave模式（`rotary_mode`为`"interleave"`）下，设`partial_slice=[start, end]`，被旋转的局部张量为：
 
-    $$x_1 = x[..., ::2]$$
+    $$x_{slice} = x[..., start:end]$$
 
-    $$x_2 = x[..., 1::2]$$
+    计算过程如下：
+
+    $$x_1 = x_{slice}[..., ::2]$$
+
+    $$x_2 = x_{slice}[..., 1::2]$$
 
     $$x_{rotate} = \text{cat}(-x_2, x_1)$$
 
-    $$x_{out} = x \cdot \cos + x_{rotate} \cdot \sin$$
+    $$x_{out} = x_{slice} \cdot \cos + x_{rotate} \cdot \sin$$
 
-    其中，$x$表示参数`x`，$\cos$表示参数`r1`（cos分量），$\sin$表示参数`r2`（sin分量），$x_{out}$为Inplace写入`x`的结果。
+    最终将$x_{out}$原地写回`x[..., start:end]`。其中，$x$表示参数`x`，$\cos$表示参数`r1`，$\sin$表示参数`r2`。当`start`与`end`相等时，不执行旋转位置编码，`x`保持不变。
 
--   `partial_slice`参数说明：通过`partial_slice`指定$[start, end)$范围，仅对该范围内的数据进行旋转位置编码。`partial_slice`作用于输入张量的最后一维（D维）。
+**说明**
+- 输入`x`采用BSND维度格式，其中B（Batch）表示批量大小，S（Seq-Length）表示序列长度，N（Head-Num）表示多头数，D（Head-Dim）表示每个头的隐藏维度大小。
+- `partial_slice`作用于输入`x`的最后一维D维，取值范围为左闭右开区间`[start, end)`。Python接口中`partial_slice`默认值为`None`，内部按`[0, 0]`处理。
 
 ## 函数原型
 
 ```
-inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode, partial_slice) -> None
+cann_ops_transformer.inplace_partial_rotary_mul(
+    x: torch.Tensor,
+    r1: torch.Tensor,
+    r2: torch.Tensor,
+    *,
+    rotary_mode: str = "interleave",
+    partial_slice: Optional[List[int]] = None
+) -> None
 ```
 
 ## 参数说明
@@ -44,19 +55,19 @@ inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode, partial_slice) -> None
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
 <col style="width: 132px">
-<col style="width: 232px">
-<col style="width: 293px">
+<col style="width: 120px">
+<col style="width: 342px">
 <col style="width: 185px">
-<col style="width: 200px">
+<col style="width: 260px">
 <col style="width: 140px">
 </colgroup>
 <thead>
 <tr>
     <th>参数名</th>
-    <th>输入/输出</th>
+    <th>参数类型</th>
+    <th>可选/必选</th>
     <th>描述</th>
     <th>数据类型</th>
-    <th>数据格式</th>
     <th>维度(shape)</th>
     <th>非连续Tensor</th>
 </tr>
@@ -64,45 +75,45 @@ inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode, partial_slice) -> None
 <tbody>
     <tr>
         <td>x</td>
-        <td>必选输入（Inplace输出）</td>
-        <td>待执行旋转位置编码的张量，公式中的x。Inplace模式，计算结果直接写回x。</td>
+        <td>Tensor</td>
+        <td>必选</td>
+        <td>待执行旋转位置编码的张量，对应公式中的x。Inplace模式下，计算结果直接写回该Tensor。</td>
         <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>(B, S, N, D)，即BSND布局</td>
+        <td>(B, S, N, D)</td>
         <td>×</td>
     </tr>
     <tr>
         <td>r1</td>
-        <td>必选输入</td>
-        <td>位置编码张量，公式中的cos。</td>
+        <td>Tensor</td>
+        <td>必选</td>
+        <td>位置编码张量，对应公式中的cos分量。</td>
         <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>4维</td>
+        <td>4维，需与x满足广播关系</td>
         <td>×</td>
     </tr>
     <tr>
         <td>r2</td>
-        <td>必选输入</td>
-        <td>位置编码张量，公式中的sin。</td>
+        <td>Tensor</td>
+        <td>必选</td>
+        <td>位置编码张量，对应公式中的sin分量。</td>
         <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>4维</td>
+        <td>4维，需与x满足广播关系</td>
         <td>×</td>
     </tr>
     <tr>
         <td>rotary_mode</td>
-        <td>必选属性</td>
-        <td>旋转模式，当前仅支持"interleave"。</td>
         <td>str</td>
+        <td>可选</td>
+        <td>旋转模式。当前仅支持"interleave"，默认值为"interleave"。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
     </tr>
     <tr>
         <td>partial_slice</td>
-        <td>必选属性</td>
-        <td>部分旋转的切片范围[start, end)，作用于最后一维（D维）。</td>
         <td>List[int]</td>
+        <td>可选</td>
+        <td>部分旋转的切片范围[start, end)，作用于x的最后一维D维。默认值为None，接口内部按[0, 0]处理。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -111,40 +122,39 @@ inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode, partial_slice) -> None
 </table>
 
 **说明**
-
 - `r1`的数据类型需与`x`一致，或者为FLOAT32。
 - `r2`的数据类型需与`x`一致，或者为FLOAT32。
 - `r1`和`r2`的数据类型必须一致。
-- `rotary_mode`当前仅支持"interleave"（对应值1），暂不支持"half"（值0）、"quarter"（值2）、"interleave-half"（值3）。
-- `partial_slice`为两个整数组成的列表，指定$[start, end)$范围。不指定时默认整D轴做旋转编码；当$start$和$end$相等时不做旋转编码。
+- `rotary_mode`当前仅支持`"interleave"`，对应底层`rotary_mode=1`；暂不支持`"half"`、`"quarter"`、`"interleave-half"`。
+- `partial_slice`为两个整数组成的列表。不指定时按`[0, 0]`处理；当`start`和`end`相等时不做旋转位置编码。
 
-## 输出说明
+## 返回值说明
 
-本算子为Inplace操作，计算结果直接写回输入张量`x`，不产生新的输出张量。`x`在计算后shape和数据类型保持不变，其最后一维中`partial_slice`指定的$[start, end)$范围内的数据被旋转位置编码结果替换，其余位置的数据保持原值。
+该接口无返回值。计算结果直接写回输入张量`x`，`x`在计算后shape和数据类型保持不变，`partial_slice`指定范围以外的数据保持原值。
 
 ## 约束说明
 
 - 该接口支持训练、推理场景下使用。
-- 该接口支持单算子模式调用。
+- 该接口支持单算子模式和图模式调用。
 - 不支持非连续Tensor。
-- 输入张量`x`最后一维（D）大小不超过1024。
-- interleave模式（`rotary_mode`为"interleave"）下，`x`最后一维（D）大小必须为2的倍数。
-- interleave模式下，`partial_slice`切片长度（即$end - start$）必须为2的倍数。
-- 输入张量`r1`、`r2`最后一维大小必须相同，且必须等于`partial_slice`的切片长度（即$end - start$）。
-- `partial_slice`约束：$start \geq 0$，$end \geq 0$，$end \leq D$（`x`最后一维大小），$end - start \geq 0$。当$end$和$start$相同时，不做旋转位置编码，直接返回。
-- 仅支持interleave模式（`rotary_mode`为"interleave"）。
-- `x`的shape为BSND。
-- `r1`/`r2`的shape必须与`x`满足广播关系，且存在如下约束：
-    - <term>Ascend 950PR/Ascend 950DT</term>：`r1`/`r2`的shape当前只支持BSND、B1ND、B11D、111D排布。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`r1`/`r2`的shape当前只支持BS1D、B11D排布。
+- `x`的shape必须为4维BSND格式。
+- `x`最后一维D大小不超过1024，且D必须为2的倍数。
+- 仅支持interleave模式（`rotary_mode`为`"interleave"`）。
+- `partial_slice`必须包含两个整数，满足`start >= 0`、`end >= 0`、`end <= D`、`end - start >= 0`。
+- `partial_slice`切片长度（即`end - start`）必须为2的倍数。当`end`和`start`相等时，不做旋转位置编码，直接返回。
+- `r1`、`r2`最后一维大小必须相同，且必须等于`partial_slice`的切片长度（即`end - start`）。
+- `r1`、`r2`的shape必须与`x[..., start:end]`满足广播关系，且存在如下约束：
+    - <term>Ascend 950PR/Ascend 950DT</term>：`r1`、`r2`的shape当前只支持BSND、B1ND、B11D、111D排布。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`r1`、`r2`的shape当前只支持BS1D、B11D排布。
+- `x`的各维度值必须大于0；当`partial_slice`不是空切片时，`r1`、`r2`参与计算的维度值必须大于0。
 
 ## 确定性计算
 
 默认支持确定性计算。
 
-## 调用示例
+## 调用说明
 
--   单算子模式调用
+- 单算子模式调用
 
     ```python
     import torch
@@ -153,23 +163,27 @@ inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode, partial_slice) -> None
 
     torch_npu.npu.set_device(0)
 
-    # x采用BSND布局，D维为128。
-    B, S, N, D = 2, 32, 8, 128
-
-    # 仅对x最后一维的[0, 64)范围执行旋转位置编码。
-    slice_start, slice_end = 0, 64
+    B = 2
+    S = 32
+    N = 8
+    D = 128
+    slice_start = 0
+    slice_end = 64
 
     x = torch.randn(B, S, N, D, device="npu", dtype=torch.float16)
-
-    # r1和r2分别表示cos和sin分量，最后一维需等于partial_slice的长度。
     r1 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
     r2 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
 
-    # Inplace接口无返回值，计算结果直接写回x。
-    inplace_partial_rotary_mul(x, r1, r2, rotary_mode="interleave", partial_slice=[slice_start, slice_end])
+    inplace_partial_rotary_mul(
+        x,
+        r1,
+        r2,
+        rotary_mode="interleave",
+        partial_slice=[slice_start, slice_end],
+    )
     ```
 
--   图模式调用
+- 图模式调用
 
     ```python
     import torch
@@ -179,32 +193,31 @@ inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode, partial_slice) -> None
 
     torch_npu.npu.set_device(0)
 
-    # x采用BSND布局，D维为128。
-    B, S, N, D = 2, 32, 8, 128
-
-    # 仅对x最后一维的[0, 64)范围执行旋转位置编码。
-    slice_start, slice_end = 0, 64
+    B = 2
+    S = 32
+    N = 8
+    D = 128
+    slice_start = 0
+    slice_end = 64
 
     class InplacePartialRotaryMulModel(torch.nn.Module):
-        def __init__(self, rotary_mode, partial_slice):
-            super().__init__()
-            self.rotary_mode = rotary_mode
-            self.partial_slice = partial_slice
-
         def forward(self, x, r1, r2):
-            inplace_partial_rotary_mul(x, r1, r2, rotary_mode=self.rotary_mode, partial_slice=self.partial_slice)
+            inplace_partial_rotary_mul(
+                x,
+                r1,
+                r2,
+                rotary_mode="interleave",
+                partial_slice=[slice_start, slice_end],
+            )
             return x
 
-    model = InplacePartialRotaryMulModel("interleave", [slice_start, slice_end]).npu()
+    model = InplacePartialRotaryMulModel().npu()
     npu_backend = torchair.get_npu_backend()
     model = torch.compile(model, backend=npu_backend, dynamic=False)
 
     x = torch.randn(B, S, N, D, device="npu", dtype=torch.float16)
-
-    # r1和r2需与x满足广播关系，最后一维需等于partial_slice的长度。
     r1 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
     r2 = torch.randn(B, S, 1, slice_end - slice_start, device="npu", dtype=torch.float16)
 
-    # 图模式下forward返回写回后的x。
     output = model(x, r1, r2)
     ```
