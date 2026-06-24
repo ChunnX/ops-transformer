@@ -1023,7 +1023,9 @@ def qliv2_output_single(params):
         query_dequant_scale = torch.tensor(np.random.uniform(q_scale, q_scale, query_dequant_scale_shape)).to(dequant_dtype).cpu()
     elif mxfp8_flag == 1:
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], query_shape)).to(qk_dtype).cpu()
-        query_dequant_scale = float_to_e8m0(torch.tensor(np.random.uniform(q_scale_datarange[0], q_scale_datarange[1], query_dequant_scale_shape))).cpu()
+        # MXFP8: q_scale_datarange 表示2的指数范围 [exp_min, exp_max]，各次方等概率
+        q_exp = torch.randint(int(q_scale_datarange[0]), int(q_scale_datarange[1]) + 1, query_dequant_scale_shape)
+        query_dequant_scale = (q_exp + 127).to(torch.uint8).view(torch.float8_e8m0fnu).cpu()
     else:
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], query_shape)).to(qk_dtype).cpu()
         query_dequant_scale = torch.tensor(np.random.uniform(q_scale_datarange[0], q_scale_datarange[1], query_dequant_scale_shape)).to(dequant_dtype).cpu()
@@ -1036,7 +1038,9 @@ def qliv2_output_single(params):
         key_dequant_scale = torch.tensor(np.random.uniform(k_scale, k_scale, key_dequant_scale_shape)).to(dequant_dtype).cpu()
     elif mxfp8_flag == 1:
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], key_shape)).to(qk_dtype).cpu()
-        key_dequant_scale = float_to_e8m0(torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], key_dequant_scale_shape))).cpu()
+        # MXFP8: k_scale_datarange 表示2的指数范围 [exp_min, exp_max]，各次方等概率
+        k_exp = torch.randint(int(k_scale_datarange[0]), int(k_scale_datarange[1]) + 1, key_dequant_scale_shape)
+        key_dequant_scale = (k_exp + 127).to(torch.uint8).view(torch.float8_e8m0fnu).cpu()
     else:
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], key_shape)).to(qk_dtype).cpu()
         key_dequant_scale = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], key_dequant_scale_shape)).to(dequant_dtype).cpu()
