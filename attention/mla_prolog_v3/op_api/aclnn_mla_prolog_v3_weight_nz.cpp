@@ -78,11 +78,11 @@ public:
     {
         if (inner_ && conditional) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MlaPrologV3", name_.c_str(), "null",
-                                                  "required under current configuration");
+                                                  "this parameter is required under current configuration");
             return false;
         } else if (!inner_ && !conditional) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MlaPrologV3", name_.c_str(), "not null",
-                                                  "should be empty under current configuration");
+                                                  "this parameter should be empty under current configuration");
             return false;
         }
         return true;
