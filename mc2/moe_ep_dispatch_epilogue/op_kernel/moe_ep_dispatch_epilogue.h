@@ -100,6 +100,7 @@ private:
     GM_ADDR localWinAddr_{nullptr};
     uint32_t metaOffset_{0};
     uint32_t hitCountOffset_{0};
+    uint32_t hitCountStride_{0};
     uint32_t metaBytes_{0};
     uint32_t paddedMetaElems_{0};
     uint32_t axisKAlign_{0};
@@ -163,6 +164,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
 
+    hitCountStride_ = Ceil(numLocalExperts_, 8U) * 8U;
     hitCountGm_.SetGlobalBuffer((__gm__ int32_t*)(workspace));
 
     uint32_t ubTokenBytes     = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
@@ -179,7 +181,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
     uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubHitCountFullBytes = aivNum_ * hitCountStride_ * sizeof(int32_t);
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv;
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
@@ -318,7 +320,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
     }
 
     DataCopyExtParams hitCountCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPad(hitCountGm_[(int64_t)aivId_ * numLocalExperts_], ubHitCount_, hitCountCopyParams);
+    DataCopyPad(hitCountGm_[(int64_t)aivId_ * hitCountStride_], ubHitCount_, hitCountCopyParams);
     PipeBarrier<PIPE_MTE3>();
 }
 
@@ -333,8 +335,11 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
 
     Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
     PipeBarrier<PIPE_V>();
-    for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
-        Cast(ubHitCountRowI64_, ubHitCountFull_[aiv * numLocalExperts_], RoundMode::CAST_NONE, numLocalExperts_);
+    if (aivId_ > 0) {
+        const uint32_t reduceShape[] = {aivId_, hitCountStride_};
+        ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(ubHitCount_, ubHitCountFull_, reduceShape, true);
+        PipeBarrier<PIPE_V>();
+        Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
         PipeBarrier<PIPE_V>();
         Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
         PipeBarrier<PIPE_V>();
@@ -379,7 +384,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     if (localExpertId != targetExpert) { continue; }
 
                     uint32_t globalRow = static_cast<uint32_t>(expertRowStart + localWrittenRow);
-                    if (globalRow >= expertSum_) { continue; }
 
                     GM_ADDR slotAddr = srcRankBase + (int64_t)(slotStart + localSlot) * perSlotBytes_;
                     GlobalTensor<XType> srcTokenTensor;
