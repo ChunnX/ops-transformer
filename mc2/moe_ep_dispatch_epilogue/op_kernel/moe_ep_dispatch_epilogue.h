@@ -186,7 +186,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * hitCountStride_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-    maxSlotsPerAiv_ = maxSlotsPerAiv;
+    maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
 
@@ -409,6 +409,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     }
                     stageIdx++;
                     localWrittenRow++;
+                    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
                 }
             }
         }
