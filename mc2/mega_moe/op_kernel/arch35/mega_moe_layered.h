@@ -718,7 +718,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
     DataCopyPad(topkIdsTensor_, srcGlobalTensor, loadParams, loadPad);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-    DumpTensor(topkIdsTensor_, 0, sendTotalNum_);
 
     // Phase 2: 逐个全局专家算 [mask|count] 推送 (ping-pong 双 buffer 软流水)
     // buffer内前 maskAlignSize_ 存mask, 末 32B 存 count
@@ -1506,7 +1505,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
-    PRINTF("before CrossRankSyncInWorldSize\n");
     CrossRankSyncInWorldSize();  // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
