@@ -54,42 +54,6 @@ struct ContractInput {
     TensorContractInfo vScale;
 };
 
-struct ContractTiling {
-    uint64_t numQHeads = 0;
-    uint64_t numKHeads = 0;
-    uint64_t numVHeads = 0;
-    uint64_t coreTokenTile = 0;
-    uint64_t coreGroupNum = 0;
-    uint64_t tokenTile = 0;
-    uint64_t tokenTilePerAiv = 0;
-    uint64_t rowTile = 0;
-    uint64_t rowTileAligned = 0;
-    uint64_t dimTile = 0;
-    uint64_t kvCacheStrideBlock = 0;
-    uint64_t kvCacheStrideHead = 0;
-    uint64_t kvCacheStrideToken = 0;
-    uint64_t kScaleCacheStrideBlock = 0;
-    uint64_t kScaleCacheStrideHead = 0;
-    uint64_t kScaleCacheStrideToken = 0;
-};
-
-struct TileParam {
-    uint64_t tileId = 0;
-    uint64_t tokenOffset = 0;
-    uint64_t tokenSize = 0;
-    uint64_t qkHeadOffset = 0;
-    uint64_t qkHeadSize = 0;
-    uint64_t vHeadOffset = 0;
-    uint64_t vHeadSize = 0;
-    uint64_t rowOffset = 0;
-    uint64_t rowSize = 0;
-};
-
-struct TokenTileSelection {
-    uint64_t tokenTile = 0;
-    uint64_t tokenTilePerAiv = 0;
-};
-
 class QkvRmsNormRopeCacheWithKScaleBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     static constexpr uint64_t HEAD_DIM_FAST = 128;
@@ -102,10 +66,6 @@ public:
     static constexpr uint64_t DIM_TILE_FAST = 128;
     static constexpr uint64_t AIV_PER_AIC = 2;
 
-    static ge::graphStatus ValidateContractInput(const ContractInput &input)
-        __attribute__((visibility("default")));
-    static ge::graphStatus BuildContractTiling(const ContractInput &input, uint64_t aicNum, ContractTiling &tiling)
-        __attribute__((visibility("default")));
     explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
     {
     }
@@ -130,8 +90,6 @@ private:
     static uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads);
     ge::graphStatus ValidateHeadNums() const;
     ge::graphStatus ValidateScalarInputs() const;
-    ge::graphStatus ValidateDtype(const char *tensorName, const TensorContractInfo &tensor,
-                                  ge::DataType expected) const;
     ge::graphStatus ValidateDtypes() const;
     ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
                                       uint64_t expectedRank) const;
@@ -145,18 +103,16 @@ private:
     ge::graphStatus ValidateShapes() const;
     ge::graphStatus ValidateStrides() const;
     ge::graphStatus ValidateMinimumTokenTileFeasible() const;
-    bool TrySelectTokenTile(uint64_t tokenTile, TokenTileSelection &selection) const;
-    ge::graphStatus SelectTokenTile(TokenTileSelection &selection) const;
-    void FillContractTiling(const TokenTileSelection &selection);
-    ge::graphStatus ValidateContractInput() const;
-    ge::graphStatus BuildContractTiling();
+    bool TrySelectTokenTile(uint64_t tokenTile) const;
+    uint64_t SelectTokenTile() const;
+    void FillTilingData(uint64_t tokenTile);
+    ge::graphStatus ValidateParsedInput() const;
+    ge::graphStatus ComputeTilingData();
     static ge::graphStatus MakeContiguousStrideInfo(gert::TilingContext *context, const gert::Shape &shape,
                                                     gert::Stride &strideInfo);
     static const char *DtypeName(ge::DataType dtype);
     static ge::graphStatus ToTensorInfo(gert::TilingContext *context, const char *tensorName, uint64_t index,
                                         TensorContractInfo &info);
-    static void LogCacheInputShapeQuery(gert::TilingContext *context, uint64_t index, bool inputIsView,
-                                        const gert::Shape &storageShapeInfo, const gert::Shape &logicalShapeInfo);
     static ge::graphStatus FillViewCacheTensorInfo(gert::TilingContext *context, uint64_t index, ge::DataType dtype,
                                                    const gert::Shape &logicalShapeInfo, TensorContractInfo &info);
     static ge::graphStatus FillContiguousCacheTensorInfo(gert::TilingContext *context, uint64_t index, ge::DataType dtype,
@@ -177,15 +133,14 @@ private:
     ge::graphStatus FillRequiredTensorInputs();
     void FillOptionalTensorInputs();
     ge::graphStatus BuildContractInput();
-    void FillTilingData();
     ge::graphStatus ValidateCompileInfo(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo) const;
     static ge::graphStatus CopyRawTilingData(gert::TilingContext *context,
                                              const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
                                              uint64_t &tilingDataSize);
 
+    const char *opName_ = "QkvRmsNormRopeCacheWithKScale";
     const QkvRmsNormRopeCacheWithKScaleCompileInfo *compileInfo_ = nullptr;
     ContractInput input_;
-    ContractTiling contractTiling_;
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData_;
     uint64_t aicNum_ = 0;
     float epsilon_ = 1e-6f;
