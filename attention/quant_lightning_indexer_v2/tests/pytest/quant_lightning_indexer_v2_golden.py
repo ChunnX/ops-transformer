@@ -576,12 +576,8 @@ class GeneralizedQLIV2:
         return modify_tensor
 
     def broadcast_d_axis(self, temp_tensor):
-        """MXFP8: 将 scale 的 [D/64, 2] 维度广播到完整 D 维度
-        scale shape: [B, S, N, D/64, 2] → reshape → [B, S, N, D/32] → repeat → [B, S, N, D]"""
-        # 先将最后两维展平为 D/32
-        old_shape = list(temp_tensor.shape)
-        new_shape = old_shape[:-2] + [old_shape[-2] * old_shape[-1]]
-        temp_tensor = temp_tensor.reshape(new_shape)
+        """MXFP8: 将 scale 的 D/32 维度广播到完整 D 维度
+        输入 shape: [B, N, S, D/32]（已在 trans_shape_to_bnsd 前合并了 [D/64, 2]）"""
         dg = 32
         return temp_tensor.repeat_interleave(dg, dim=-1)
 
@@ -682,20 +678,36 @@ class GeneralizedQLIV2:
         query_dequant_scale = query_dequant_scale.cpu()
         key_dequant_scale = key_dequant_scale.cpu()
 
+        # MXFP8: scale 有 [D/64, 2] 两维，先合并为 [D/32] 再做 BNSD 转换
+        if mxfp8_flag == 1:
+            q_scale_shape = list(query_dequant_scale.shape)
+            query_dequant_scale_flat = query_dequant_scale.reshape(
+                q_scale_shape[:-2] + [q_scale_shape[-2] * q_scale_shape[-1]])
+        else:
+            query_dequant_scale_flat = query_dequant_scale
+
+        if mxfp8_flag == 1:
+            k_scale_shape = list(key_dequant_scale.shape)
+            key_dequant_scale_flat = key_dequant_scale.reshape(
+                k_scale_shape[:-2] + [k_scale_shape[-2] * k_scale_shape[-1]])
+        else:
+            key_dequant_scale_flat = key_dequant_scale
+        
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
         q_bnsd_tensor = self.trans_shape_to_bnsd(query,
             layout_query, q_head_num, actualSeqLengths_q)
 
         # BSN1 -> BNS1
-        q_scale_bnsd_tensor = self.trans_shape_to_bnsd(query_dequant_scale,
+        q_scale_bnsd_tensor = self.trans_shape_to_bnsd(query_dequant_scale_flat,
             layout_query, q_head_num, actualSeqLengths_q)
 
         ## BSND/TND/ -> BNSD
         k_bnsd_tensor = self.trans_shape_to_bnsd(key,
             layout_key, k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
 
-        k_scale_bnsd_tensor = self.trans_shape_to_bnsd(key_dequant_scale,
+        # BSN1 -> BNS1
+        k_scale_bnsd_tensor = self.trans_shape_to_bnsd(key_dequant_scale_flat,
             layout_key, k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
 
         ## BSN1 -> BNS1   TN1 -> BNS1
@@ -705,16 +717,11 @@ class GeneralizedQLIV2:
         # 将 k n2轴 广播为 n1
         if q_head_num != k_head_num:
             k_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_bnsd_tensor)
-            # MXFP8场景：kScale 也需要 N 轴广播
+            # MXFP8场景：kScale 也需要 N 轴广播（此时已是4D [B, N, S, D/32]）
             if mxfp8_flag == 1:
-                # kScale shape [B, N, S, D/64, 2] 是5D，需要先展平最后两维再广播再恢复
-                ks_shape = list(k_scale_bnsd_tensor.shape)
-                k_scale_flat = k_scale_bnsd_tensor.reshape(ks_shape[:-2] + [ks_shape[-2] * ks_shape[-1]])
-                k_scale_flat = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_flat)
-                k_scale_bnsd_tensor = k_scale_flat.reshape(
-                    list(k_scale_flat.shape[:-1]) + [head_dim // 64, 2])
+                k_scale_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_bnsd_tensor)
 
-        # MXFP8场景：scale 的 D 轴为 [D/64, 2]，需要展平并广播到完整 D 维度
+        # MXFP8场景：scale 的 D/32 维度需要广播到完整 D 维度
         if mxfp8_flag == 1:
             q_scale_bnsd_tensor = self.broadcast_d_axis(q_scale_bnsd_tensor)
             k_scale_bnsd_tensor = self.broadcast_d_axis(k_scale_bnsd_tensor)
