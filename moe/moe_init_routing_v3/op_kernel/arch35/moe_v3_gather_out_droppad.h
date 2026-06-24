@@ -51,7 +51,6 @@ private:
     GlobalTensor<T> expandedXGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<float> expandedScaleGm_;
-    GlobalTensor<int32_t> expertTotalCountGm_;
 
     int64_t blockIdx_;
     int64_t cols_;
@@ -74,7 +73,6 @@ private:
     int64_t curCoreIndicesElements_;
 
     int64_t actualExpertNum_;
-    int64_t expertTotalCount_;
     int64_t outputRows_ = 0;
 
     int64_t rowIdxType_ = 0;
@@ -106,14 +104,6 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::InitBaseData(GM_ADDR workspace,
 
     actualExpertNum_ = tilingData->actualExpertNum;
     outputRows_ = tilingData->expertNum * tilingData->expertCapacity;
-    // expertTotalCountGm用于读取专家处理的token总数（动态值）
-    // 地址：workspace + Align(n*k)*2 + Align(actualExpertNum)
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                             Align(actualExpertNum_, sizeof(int32_t)),
-                                         1);
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        expertTotalCountGm_);
-    expertTotalCount_ = expertTotalCountGm_.GetValue(0);
 
     // DropPad模式下，从gatherOutComputeParamsOp读取完整Tiling参数
     // 数据分割基于totalLength (n*k)，与expert_tokens_count、row_idx_gather一致
