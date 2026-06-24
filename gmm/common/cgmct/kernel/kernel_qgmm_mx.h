@@ -278,26 +278,74 @@ KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDisableIfNeeded(int64_t m
 {
     if constexpr (formatB != CubeFormat::ND) {
         if (curBaseM >= mSize) {
+            if (AscendC::GetBlockIdx() == 0) {
+                AscendC::printf("[QGMM_MX_L2_CGMCT] path=NZ action=disable mSize=%lld curBaseM=%lld "
+                                 "baseN=%lld N=%lld K=%lld\n",
+                                 static_cast<long long>(mSize), static_cast<long long>(curBaseM),
+                                 static_cast<long long>(baseN), static_cast<long long>(Get<MNK_N>(problemShape_)),
+                                 static_cast<long long>(Get<MNK_K>(problemShape_)));
+            }
             bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
         } else {
+            if (AscendC::GetBlockIdx() == 0) {
+                AscendC::printf("[QGMM_MX_L2_CGMCT] path=NZ action=normal mSize=%lld curBaseM=%lld "
+                                 "baseN=%lld N=%lld K=%lld\n",
+                                 static_cast<long long>(mSize), static_cast<long long>(curBaseM),
+                                 static_cast<long long>(baseN), static_cast<long long>(Get<MNK_N>(problemShape_)),
+                                 static_cast<long long>(Get<MNK_K>(problemShape_)));
+            }
             bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
             x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
         }
     } else {
         if constexpr (transB) {
             if (curBaseM >= mSize && (Get<MNK_K>(problemShape_) & 0xff) == 0) {
+                if (AscendC::GetBlockIdx() == 0) {
+                    AscendC::printf("[QGMM_MX_L2_CGMCT] path=ND_TRANSB action=disable mSize=%lld curBaseM=%lld "
+                                     "baseN=%lld N=%lld K=%lld kAlign=%d\n",
+                                     static_cast<long long>(mSize), static_cast<long long>(curBaseM),
+                                     static_cast<long long>(baseN), static_cast<long long>(Get<MNK_N>(problemShape_)),
+                                     static_cast<long long>(Get<MNK_K>(problemShape_)),
+                                     static_cast<int>((Get<MNK_K>(problemShape_) & 0xff) == 0));
+                }
                 bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                 x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             } else {
+                if (AscendC::GetBlockIdx() == 0) {
+                    AscendC::printf("[QGMM_MX_L2_CGMCT] path=ND_TRANSB action=normal mSize=%lld curBaseM=%lld "
+                                     "baseN=%lld N=%lld K=%lld kAlign=%d\n",
+                                     static_cast<long long>(mSize), static_cast<long long>(curBaseM),
+                                     static_cast<long long>(baseN), static_cast<long long>(Get<MNK_N>(problemShape_)),
+                                     static_cast<long long>(Get<MNK_K>(problemShape_)),
+                                     static_cast<int>((Get<MNK_K>(problemShape_) & 0xff) == 0));
+                }
                 bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
                 x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
             }
         } else {
             if (curBaseM >= mSize && (Get<MNK_N>(problemShape_) & 0xff) == 0 && (baseN & 0xff) == 0) {
+                if (AscendC::GetBlockIdx() == 0) {
+                    AscendC::printf("[QGMM_MX_L2_CGMCT] path=ND action=disable mSize=%lld curBaseM=%lld "
+                                     "baseN=%lld N=%lld K=%lld nAlign=%d baseNAlign=%d\n",
+                                     static_cast<long long>(mSize), static_cast<long long>(curBaseM),
+                                     static_cast<long long>(baseN), static_cast<long long>(Get<MNK_N>(problemShape_)),
+                                     static_cast<long long>(Get<MNK_K>(problemShape_)),
+                                     static_cast<int>((Get<MNK_N>(problemShape_) & 0xff) == 0),
+                                     static_cast<int>((baseN & 0xff) == 0));
+                }
                 bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                 x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             } else {
+                if (AscendC::GetBlockIdx() == 0) {
+                    AscendC::printf("[QGMM_MX_L2_CGMCT] path=ND action=normal mSize=%lld curBaseM=%lld "
+                                     "baseN=%lld N=%lld K=%lld nAlign=%d baseNAlign=%d\n",
+                                     static_cast<long long>(mSize), static_cast<long long>(curBaseM),
+                                     static_cast<long long>(baseN), static_cast<long long>(Get<MNK_N>(problemShape_)),
+                                     static_cast<long long>(Get<MNK_K>(problemShape_)),
+                                     static_cast<int>((Get<MNK_N>(problemShape_) & 0xff) == 0),
+                                     static_cast<int>((baseN & 0xff) == 0));
+                }
                 bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
                 x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
             }
