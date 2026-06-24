@@ -1128,16 +1128,21 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
         return ge::GRAPH_FAILED;
     }
 
-    if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
+    // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
+    // 归一化为totalLength_，与非arch35版本保持一致，避免语义上合法的空输入误失败。
+    if (isEmptyTensor_) {
+        tilingDataPtr_->activeNum = totalLength_;
+    } else if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
         //! 出于历史调用的兼容性，保留校验activeNum=n*k，但实际上不使用该属性
         OP_CHECK_IF(
             activeNum_ != totalLength_,
             OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "active_num", std::to_string(activeNum_),
                                       ("bs*k(" + std::to_string(totalLength_) + ")")),
             return ge::GRAPH_FAILED);
+        tilingDataPtr_->activeNum = totalLength_;
+    } else {
+        tilingDataPtr_->activeNum = totalLength_;
     }
-
-    tilingDataPtr_->activeNum = totalLength_;
 
     // DropPad模式下expertCapacity必须满足 ≤ numRows
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
