@@ -1063,6 +1063,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
     GMMAddrInfo &gmmAddrInfo, int32_t localExpertId)
 {
     // Phase 1: 分组分核进行三元组组装以及token dispatch
+    PRINTF("TripleInfoCalAndDispatch Begin blockIdx_=%d rankId=%d localExpertId=%d\n", blockIdx_, rankId_, localExpertId);
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
     int32_t priorExpertCumsum = (localExpertId == 0) ? 0 : // 前面所有 expert 在本卡的总 token 数
         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
@@ -1070,6 +1071,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
     for (uint32_t srcRankInServer = blockIdx_; srcRankInServer < rankPerServer_; srcRankInServer += blockNum_) {
         for (uint32_t srcServer = 0; srcServer < serverNum_; ++srcServer) {
             uint32_t dstRankIdx = srcServer * rankPerServer_ + srcRankInServer;
+            PRINTF("TripleInfoCalAndDispatch0:rankId=%d dstRankIdx=%d\n", rankId_, dstRankIdx);
             if (dstRankIdx >= worldSize_) {
                 continue;
             }
