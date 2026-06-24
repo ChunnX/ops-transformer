@@ -19,7 +19,6 @@ import random
 import numpy as np
 import math
 import cann_ops_transformer
-import custom_ops as ops
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
@@ -154,6 +153,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                                 return_softmax_lse=op_input.get('return_softmax_lse', False))
 
     torch.npu.synchronize()
+    return npu_result, cpu_output
 
 def test_qsmla_quant_process_ci(test_data, device_id=0):
     params = test_data['params']
