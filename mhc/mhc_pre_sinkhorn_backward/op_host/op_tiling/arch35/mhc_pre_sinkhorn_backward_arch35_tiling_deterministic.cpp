@@ -155,7 +155,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     tilingData->finalUsedAivNum = finalUsedAivNum_;
     tilingData->eps = hcEps_;
     tilingData->aicNum = coreNumAic_;
-    tilingData->tileSize = tile;
+    // tilingData->tileSize = tile;
 
     int64_t cBlockLoops_{0};
     int64_t cBlockTailLoops_{0};
