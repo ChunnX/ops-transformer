@@ -312,15 +312,31 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName,
             "unsupported dispatchQuantMode(%ld), leading out data type to being DT_UNDEFINED.", dispatchQuantMode),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((refWeightDataType != weightOneDesc->GetDataType()) &&
-                    (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
-            Ops::Base::ToString(weightOneDesc->GetDataType()).c_str(),
-            (std::string("The dtype of weightOne must be ") + Ops::Base::ToString(refWeightDataType).c_str() +
-             " or DT_FLOAT4_E2M1.").c_str()),
-        return ge::GRAPH_FAILED);
+    // weight1 must match dispatch quant dtype; the only allowed mismatch is A8W4 (fp4_e2m1 + fp8_e4m3fn).
+    if (refWeightDataType != weightOneDesc->GetDataType()) {
+        std::string weightDtypeErrMsg = std::string("The dtype of weightOne (") +
+            Ops::Base::ToString(weightOneDesc->GetDataType())
+            + ") must match dispatch quant dtype ("
+            + Ops::Base::ToString(refWeightDataType)
+            + "), or be fp4_e2m1 with fp8_e4m3fn dispatch quant.";
+        OP_TILING_CHECK(weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1 ||
+                        opQuantMode != DISPATCH_QUANT_OUT_DTYPE_E4M3FN,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "dispatchQuantOutDtype/weight1",
+                weightDtypeErrMsg.c_str(), "weight1 dtype mismatch."),
+            return ge::GRAPH_FAILED);
+    }
 
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
+    // A8W4 path: combine-quant is not yet supported.
+    if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+        opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
+        OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineQuantMode",
+                std::to_string(*combineQuantModePtr).c_str(),
+                "A8W4 path only supports combineQuantMode=no_quant(0) currently."),
+            return ge::GRAPH_FAILED);
+    }
+
     OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT &&
                     *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E5M2 &&
                     *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E4M3FN,
@@ -364,6 +380,15 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
+
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
+    if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+        opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
+        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
+    } else {
+        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -811,6 +836,16 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
         static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE(nodeName,
             "weightOne format is invalid."), return ge::GRAPH_FAILED);
+
+    // A8W4 path: weight1 must use NZ_C0_32 format now.
+    if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+        GetOpQuantModeByAttrDispatchOutType(context, config) == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
+        OP_TILING_CHECK(weightOneDesc->GetStorageFormat() != ge::FORMAT_FRACTAL_NZ_C0_32,
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "weight1",
+                Ops::Base::ToString(weightOneDesc->GetStorageFormat()).c_str(),
+                "FORMAT_FRACTAL_NZ_C0_32"),
+            return ge::GRAPH_FAILED);
+    }
     
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(weightTwoDesc->GetStorageFormat())) ==
