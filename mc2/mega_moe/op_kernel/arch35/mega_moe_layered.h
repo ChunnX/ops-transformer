@@ -898,16 +898,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         // SyncFuncStatic<AscendC::HardEvent::MTE3_S, 6>();
         PipeBarrier<PIPE_ALL>();
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
-        PRINTF("ReadRelayTokenToCopyTmp: waitLoop=%d, readyValue=%d\n", waitLoop, readyValue);
+        // PRINTF("ReadRelayTokenToCopyTmp: waitLoop=%d, readyValue=%d\n", waitLoop, readyValue);
         if (readyValue == 1) {
             break;
         }
         ++waitLoop;
     } while (true);
-    // PRINTF("BEGIN READDATA\n");
+    PRINTF("BEGIN READDATA\n");
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     hcomm_.Drain(channel);
-    // PRINTF("END READDATA\n");
+    PRINTF("END READDATA\n");
     // SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, 6>();
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
