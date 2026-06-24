@@ -124,6 +124,458 @@ __aicore__ inline void NotifyCombineTileComplete(
 }
 
 // =================================================================================================
+// WaitForUpstreamReady：等待上游 GMM 计算完成，GMM1/GMM2 分流（Generic 和 A8W4 共用）
+// =================================================================================================
+template <typename Policy, typename Config>
+__aicore__ inline void WaitForUpstreamReady(
+    const GMMAddrInfo& gmmAddrInfo, const Config& config, uint32_t mLoc)
+{
+    if constexpr (Policy::IS_GMM1) {
+        uint32_t waveIdx = mLoc / L1_TILE_M_256;
+        uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
+        __gm__ int32_t* flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
+        while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+            int64_t st = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - st < 100) {
+            }
+        }
+    } else {
+        BlockScheduler gmmBlockScheduler(
+            {config.m, config.k, config.n},
+            BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
+                static_cast<int64_t>(L1_TILE_N))});
+        uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
+        __gm__ int32_t* flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
+        while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+            int64_t st = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - st < 100) {
+            }
+        }
+    }
+}
+
+// ==================================================================================
+// Generic configuration — shared type aliases and problem config for GMM1 / GMM2 (A8W8, A4W4, etc.).
+// ==================================================================================
+namespace Detail {
+struct Gmm1PolicyGeneric {
+    static constexpr bool IS_GMM1 = true;
+};
+
+struct Gmm2PolicyGeneric {
+    static constexpr bool IS_GMM1 = false;
+};
+
+template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
+    typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false>
+struct ConfigGeneric {
+    static constexpr bool TRANS_A = false;
+    static constexpr bool TRANS_B = true;
+    static constexpr uint32_t C0_SIZE_A = AuxGetC0Size<ElementA>();
+    static constexpr uint32_t C0_SIZE_B = AuxGetC0Size<ElementB>();
+    static constexpr uint32_t C0_SIZE_C = AuxGetC0Size<ElementC>();
+    static constexpr uint32_t C0_SIZE_SCALE = 2U;
+
+    using BiasType = float;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
+    using LayoutA = Std::conditional_t<TRANS_A, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutB = Std::conditional_t<
+        IsWeightNZ,
+        Std::conditional_t<TRANS_B, Te::ZNLayoutPtn, Te::NZLayoutPtn>,
+        Std::conditional_t<TRANS_B, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>>;
+    using LayoutBias = Te::NDExtLayoutPtn;
+    using LayoutC = Te::NDExtLayoutPtn;
+
+    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE_A>>;
+    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE_B>>;
+    using MakeLayoutScaleA = Std::conditional_t<
+        TRANS_A, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<C0_SIZE_SCALE>>,
+        Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<C0_SIZE_SCALE>>>;
+    using MakeLayoutScaleB = Std::conditional_t<
+        TRANS_B, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<C0_SIZE_SCALE>>,
+        Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<C0_SIZE_SCALE>>>;
+    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE_C>>;
+
+    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
+        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
+
+    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using LayoutAType = decltype(MakeLayoutA{}(uint32_t {}, uint32_t {}));
+    using LayoutBType = decltype(MakeLayoutB{}(uint32_t {}, uint32_t {}));
+    using LayoutScaleAType = decltype(MakeLayoutScaleA{}(uint32_t {}, uint32_t {}));
+    using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t {}, uint32_t {}));
+    using LayoutCType = decltype(MakeLayoutC{}(uint32_t {}, uint32_t {}));
+    using LayoutBiasType = decltype(Te::MakeFrameLayout<LayoutBias>(uint32_t {}, uint32_t {}));
+
+    struct ProblemConfig {
+        uint32_t m = 0;
+        uint32_t n = 0;
+        uint32_t k = 0;
+        uint32_t outputN = 0;
+        uint32_t blockNum = 0;
+        uint32_t blockIdx = 0;
+        uint32_t scaleK = 0;
+        uint32_t tileM = 0;
+        typename BlockMmad::L1Params l1Params{
+            .kL1 = L1_TILE_K, .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE, .l1BufNum = 2};
+    };
+
+    struct LayoutBundle {
+        LayoutAType a;
+        LayoutBType b;
+        LayoutScaleAType scaleA;
+        LayoutScaleBType scaleB;
+        LayoutCType c;
+        LayoutBiasType bias;
+    };
+
+    __aicore__ static inline ProblemConfig BuildProblemConfig(const ProblemShape& problemShape)
+    {
+        ProblemConfig config;
+        config.m = Get<M_VALUE>(problemShape);
+        if constexpr (Policy::IS_GMM1) {
+            config.n = Get<N_VALUE>(problemShape);
+            config.k = Get<K_VALUE>(problemShape);
+            config.outputN = config.n / SWIGLU_N_HALF;
+            config.tileM = L1_TILE_M_256;
+        } else {
+            config.n = Get<K_VALUE>(problemShape);
+            config.k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
+            config.outputN = config.n;
+            config.tileM = (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : L1_TILE_M_256;
+        }
+        config.blockNum = GetBlockNum();
+        config.blockIdx = GetBlockIdx() / GetTaskRation();
+        config.scaleK = CeilDiv(config.k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        return config;
+    }
+
+    __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig& config)
+    {
+        LayoutBundle layouts;
+        layouts.a = MakeLayoutA{}(config.m, config.k);
+        layouts.b = MakeLayoutB{}(config.k, config.n);
+        layouts.scaleA = MakeLayoutScaleA{}(config.m, config.scaleK);
+        layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
+        layouts.bias = Te::MakeFrameLayout<LayoutBias>(1U, config.n);
+        if constexpr (Policy::IS_GMM1) {
+            layouts.c = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
+        } else {
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                layouts.c = MakeLayoutC{}(L1_TILE_M_128, L1_TILE_N);
+            } else {
+                layouts.c = MakeLayoutC{}(config.m, config.n);
+            }
+        }
+        return layouts;
+    }
+};
+
+template <typename BlockMmad, typename WorkSet, typename TensorC, typename BlockShape, typename Config>
+__aicore__ inline void AicGmm1ComputeGeneric(
+    BlockMmad& blockMmad, WorkSet& workSet, TensorC& l0cOutUbFirst, TensorC& l0cOutUbSecond,
+    const Config& config,
+    uint32_t mLoc, uint32_t nLoc, uint32_t kLoc, BlockShape actualShape,
+    int32_t vecSetSyncCom, uint32_t& lastWaveWaited)
+{
+    uint32_t waveIdx = mLoc / L1_TILE_M_256;
+    if (waveIdx != lastWaveWaited) {
+        WaitForUpstreamReady<Gmm1PolicyGeneric>(workSet.gmmAddrInfo, config, mLoc);
+        lastWaveWaited = waveIdx;
+    }
+
+    if (vecSetSyncCom) {
+        WaitForVector();
+    }
+
+    auto gmBlockA = workSet.gmA.Slice(
+        Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+    auto gmBlockScaleA = workSet.gmScaleA.Slice(
+        Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+        Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+
+    auto tensorBlockUbFirst = l0cOutUbFirst.Slice(
+        Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+    auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
+        Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+
+    typename BlockMmad::BlockShape singleShape{
+        Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
+    for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
+        auto gmBlockB = workSet.gmB.Slice(
+            Te::MakeCoord(kLoc, nLoc + weightBlock * config.outputN),
+            Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+        auto gmBlockScaleB = workSet.gmScaleB.Slice(
+            Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * config.outputN),
+            Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+        blockMmad(
+            gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
+            weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
+    }
+
+    NotifyVector();
+}
+
+template <typename SwigluQuantOp, typename BlockShape, typename Config>
+__aicore__ inline void AivGmm1PostGeneric(
+    SwigluQuantOp& epilogueOp, uint32_t mLoc, uint32_t nLoc,
+    BlockShape actualShape, const Config& config)
+{
+    Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
+        Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), 0, 0};
+    Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+        mLoc * config.outputN + nLoc,
+        mLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+            CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+        0, 0, 0, 0};
+    WaitForCube();
+    AscendC::SetCtrlSpr<60, 60>(0);
+    epilogueOp(epilogueShape, epilogueOffset);
+    NotifyCube();
+}
+
+template <uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, typename WorkSet,
+    typename TensorC, typename BlockShape, typename Config>
+__aicore__ inline void AicGmm2ComputeGeneric(
+    BlockMmad& blockMmad, WorkSet& workSet, TensorC& l0cOutUbFirst, TensorC& l0cOutUbSecond,
+    const Config& config,
+    uint32_t loopIdx, uint32_t startLoopIdx,
+    uint32_t mLoc, uint32_t nLoc, uint32_t kLoc, BlockShape actualShape,
+    int32_t vecSetSyncCom2, uint16_t pingpongIdx, uint32_t groupIdx)
+{
+    if (loopIdx == startLoopIdx) {
+        WaitForUpstreamReady<Gmm2PolicyGeneric>(workSet.gmmAddrInfo, config, mLoc);
+    }
+
+    auto gmBlockA = workSet.gmA.Slice(
+        Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+    auto gmBlockScaleA = workSet.gmScaleA.Slice(
+        Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+        Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+    auto gmBlockB = workSet.gmB.Slice(
+        Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+    auto gmBlockScaleB = workSet.gmScaleB.Slice(
+        Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
+        Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        if (vecSetSyncCom2 >= 2) {
+            WaitForVector(pingpongIdx);
+        }
+        auto tensorUb = pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
+        auto tensorBlockUb = tensorUb.Slice(
+            Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+
+        typename BlockMmad::BlockShape singleShape{
+            Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
+        blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockUb, singleShape);
+        NotifyVector(pingpongIdx);
+    } else {
+        uint32_t blockAivNum = config.blockNum * 2;
+        auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
+            reinterpret_cast<__gm__ ElementC*>(workSet.gmmAddrInfo.gmm2OutGlobal)), workSet.layouts.c);
+        auto gmBlockC = gmC.Slice(
+            Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+
+        typename BlockMmad::BlockShape singleShape{
+            Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
+        blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
+        NotifyCombineTileComplete(mLoc, config.m, L1_TILE_M_256, blockAivNum, groupIdx,
+            (__gm__ int32_t*)workSet.params.workspaceInfo.gmm2CombineSyncCounterPtr);
+    }
+}
+
+template <typename ElementC, typename BlockShape, typename Config>
+__aicore__ inline void AivGmm2PostGeneric(
+    const Params& params, uint32_t mLoc, uint32_t nLoc, uint32_t groupCnt,
+    uint16_t pingpongIdx, BlockShape actualShape, const Config& config,
+    LocalTensor<ElementC>& l0cOutUbGMM2First, LocalTensor<ElementC>& l0cOutUbGMM2Second)
+{
+    auto l0cOutUbGMM2 = pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
+    WaitForCube(pingpongIdx);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+    AscendC::GlobalTensor<int32_t> tripleGm;
+    int32_t lenTile = Get<M_VALUE>(actualShape);
+    LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(
+        TPosition::VECCALC, TRIPLE_TENSOR_ADDR, lenTile * TRIPLE_SIZE);
+    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
+        (groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
+    AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
+    MegaMoeCombineImpl::CombineTokens<ElementC, BlockShape>(
+        mLoc, nLoc, config.n, tripleTensor, l0cOutUbGMM2, actualShape, params);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+    NotifyCube(pingpongIdx);
+}
+
+template <typename SwigluQuantOp>
+struct Gmm1ArgsGeneric {
+    SwigluQuantOp& swigluQuantOp;
+    int32_t& vecSetSyncCom;
+};
+
+struct Gmm2ArgsGeneric {
+    int32_t& vecSetSyncCom2;
+    uint32_t groupCnt;
+    uint16_t& pingpongIdx;
+    uint32_t groupIdx;
+};
+
+template <typename Scheduler, typename TensorA, typename TensorB,
+    typename TensorScaleA, typename TensorScaleB, typename TensorBias,
+    typename Config, typename LayoutBundle>
+struct WorkSetGeneric {
+    Scheduler& scheduler;
+    TensorA& gmA;
+    TensorB& gmB;
+    TensorScaleA& gmScaleA;
+    TensorScaleB& gmScaleB;
+    TensorBias& gmBias;
+    const GMMAddrInfo& gmmAddrInfo;
+    const Params& params;
+    const Config& config;
+    const LayoutBundle& layouts;
+};
+
+template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC,
+    typename WorkSet, typename ExtraArgs>
+__aicore__ inline void GroupMatmulExecGeneric(
+    WorkSet& workSet, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs& args)
+{
+    LocalTensor<ElementC> l0cOutUbGMM2First, l0cOutUbGMM2Second;
+
+    constexpr uint32_t ubBufSize = Policy::IS_GMM1
+        ? MAX_SINGLE_MN_ALIGN32_NUM_256
+        : ((CombineQuantMode == COMBINE_NO_QUANT) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : 0);
+    int64_t ubOffsetFirst = 0;
+    int64_t ubOffsetSecond = static_cast<int64_t>(ubBufSize) * sizeof(ElementC);
+
+    if constexpr (!Policy::IS_GMM1 && CombineQuantMode == COMBINE_NO_QUANT) {
+        l0cOutUbGMM2First = LocalTensor<ElementC>(TPosition::VECIN, ubOffsetFirst, L1_TILE_M_128 * L1_TILE_N);
+        l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN, ubOffsetSecond, L1_TILE_M_128 * L1_TILE_N);
+    }
+
+    if constexpr (g_coreType == AscendC::AIC) {
+        BlockMmad blockMmad;
+        bool enableL0CPingPong = false;
+        typename BlockMmad::BlockShape l0TileShape{workSet.config.tileM, L1_TILE_N, L0_TILE_K, 0};
+        typename BlockMmad::ProblemShape matmulShape{workSet.config.m, workSet.config.n, workSet.config.k, 0};
+        blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
+
+        auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), workSet.layouts.c);
+        auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), workSet.layouts.c);
+
+        uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
+
+        for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += workSet.config.blockNum) {
+            auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
+            auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
+
+            uint32_t mLoc = Get<M_VALUE>(blockCoord);
+            uint32_t nLoc = Get<N_VALUE>(blockCoord);
+            uint32_t kLoc = Get<K_VALUE>(blockCoord);
+
+            if constexpr (Policy::IS_GMM1) {
+                AicGmm1ComputeGeneric<BlockMmad>(
+                    blockMmad, workSet, l0cOutUbFirst, l0cOutUbSecond,
+                    workSet.config, mLoc, nLoc, kLoc, actualShape,
+                    args.vecSetSyncCom, lastWaveWaited);
+                args.vecSetSyncCom = 1;
+            } else {
+                AicGmm2ComputeGeneric<CombineQuantMode, BlockMmad, ElementC>(
+                    blockMmad, workSet, l0cOutUbFirst, l0cOutUbSecond,
+                    workSet.config, loopIdx, startLoopIdx,
+                    mLoc, nLoc, kLoc, actualShape, args.vecSetSyncCom2, args.pingpongIdx,
+                    args.groupIdx);
+                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                    args.vecSetSyncCom2++;
+                    args.pingpongIdx = 1 - args.pingpongIdx;
+                }
+            }
+        }
+    } else {
+        for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += workSet.config.blockNum) {
+            auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
+            auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
+
+            uint32_t mLoc = Get<M_VALUE>(blockCoord);
+            uint32_t nLoc = Get<N_VALUE>(blockCoord);
+
+            if constexpr (Policy::IS_GMM1) {
+                AivGmm1PostGeneric(args.swigluQuantOp, mLoc, nLoc, actualShape, workSet.config);
+            } else {
+                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                    AivGmm2PostGeneric(
+                        workSet.params, mLoc, nLoc, args.groupCnt, args.pingpongIdx, actualShape,
+                        workSet.config, l0cOutUbGMM2First, l0cOutUbGMM2Second);
+                    args.pingpongIdx = 1 - args.pingpongIdx;
+                }
+            }
+        }
+    }
+}
+
+template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
+    typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
+    typename ExtraArgs>
+__aicore__ inline void GroupMatmulImplGeneric(
+    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, ExtraArgs& args)
+{
+    if constexpr (!Policy::IS_GMM1) {
+        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+            if (GetSubBlockIdx() != 0) return;
+        }
+    }
+
+    using Config = ConfigGeneric<Policy, CombineQuantMode, ElementA, ElementB, ElementC,
+        ElementMxScaleA, ElementMxScaleB, IsWeightNZ>;
+    auto config = Config::BuildProblemConfig(problemShape);
+    auto layouts = Config::BuildLayouts(config);
+
+    if constexpr (Policy::IS_GMM1) {
+        args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
+    }
+
+    using BlockMmad = typename Config::BlockMmad;
+    using BiasType = typename Config::BiasType;
+
+    auto gmA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layouts.a);
+    auto gmB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layouts.b);
+    auto gmScaleA = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        layouts.scaleA);
+    auto gmScaleB = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        layouts.scaleB);
+    auto gmBias = Te::MakeTensor(
+        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layouts.bias);
+
+    BlockScheduler scheduler(
+        {config.m, config.outputN, config.k},
+        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
+    uint32_t tileNum = scheduler.GetTileNum();
+    uint32_t startLoopIdx =
+        (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
+
+    using WorkSetType = WorkSetGeneric<BlockScheduler, decltype(gmA), decltype(gmB),
+        decltype(gmScaleA), decltype(gmScaleB), decltype(gmBias),
+        decltype(config), decltype(layouts)>;
+    WorkSetType workSet{
+        scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias,
+        gmmAddrInfo, params, config, layouts
+    };
+
+    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC>(workSet, startLoopIdx, tileNum, args);
+
+    startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
+}
+} // namespace Detail
+
+// =================================================================================================
 // GroupMatmulSwigluQuant：GMM1 矩阵乘法 + SwiGLU 激活 + 量化
 // =================================================================================================
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
@@ -133,369 +585,25 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
 {
-    uint32_t m = Get<M_VALUE>(problemShape);
-    uint32_t n = Get<N_VALUE>(problemShape);
-    uint32_t k = Get<K_VALUE>(problemShape);
-    uint32_t outputN = n / SWIGLU_N_HALF;
-
-    epilogueOp.UpdateNextProblem({m, outputN, k, 0});
-
-    uint32_t blockNum = GetBlockNum();
-    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-
-
-    auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-
-    constexpr bool transA = false;
-    constexpr bool transB = true; // 后续要改为从模板参数获取转置属性
-
-    constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
-    constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
-    constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
-    constexpr uint32_t c0SizeScale = 2U;
-
-    using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-    using LayoutB = Std::conditional_t<
-        IsWeightNZ,
-        Std::conditional_t<transB, Te::ZNLayoutPtn, Te::NZLayoutPtn>,
-        Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>>;
-    using LayoutBias = Te::NDExtLayoutPtn;
-    using LayoutC = Te::NDExtLayoutPtn;
-
-    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
-    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
-    using MakeLayoutScaleA = Std::conditional_t<
-        transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>,
-        Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<c0SizeScale>>>;
-    using MakeLayoutScaleB = Std::conditional_t<
-        transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>,
-        Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<c0SizeScale>>>;
-    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
-
-    auto layoutA = MakeLayoutA{}(m, k);
-    auto layoutB = MakeLayoutB{}(k, n);
-    auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
-    auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
-    auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1u, n); // block mmad需要传入bias
-    auto layoutC = MakeLayoutC{}(L1_TILE_M_256, L1_TILE_N);
-
-    using BiasType = float;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
-    BlockMmad blockMmad;
-    bool enableL0CPingPong = false;
-    typename BlockMmad::L1Params l1Params{
-        .kL1 = L1_TILE_K,
-        .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
-        .l1BufNum = 2 // 2: double buffer
-    };
-    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M_256, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong); // 当前固定无bias
-
-    int64_t ubOffset = 0;
-    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
-
-    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM_256 * sizeof(ElementC);
-    auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
-
-    auto gmA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
-    auto gmB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layoutB);
-    auto gmScaleA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
-        layoutScaleA);
-    auto gmScaleB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
-        layoutScaleB);
-    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
-
-    BlockScheduler scheduler(
-        {m, outputN, k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
-    uint32_t tileNum = scheduler.GetTileNum();
-    uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
-
-    // wave-grain dispatch flag: 每 wave (L1_TILE_M_256 行) 一个槽,dispatch 完成的行数累加到该槽。
-    // 目标值 = 该 wave 实际行数 = min(L1_TILE_M_256, m - mLoc) (尾 wave 可能 < L1_TILE_M_256)。
-    // 仅在 wave 切换时等待;跨 nLoc 不同的同 mLoc tile 复用上次等待结果。
-    uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
-
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
-        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
-        auto actualShape = scheduler.GetBlockShape(blockCoord);
-
-        uint32_t mLoc = Get<M_VALUE>(blockCoord);
-        uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        uint32_t kLoc = Get<K_VALUE>(blockCoord);
-
-        if constexpr (g_coreType == AscendC::AIC) {
-            uint32_t waveIdx = mLoc / L1_TILE_M_256;
-            if (waveIdx != lastWaveWaited) {
-                uint32_t targetValue = (mLoc + L1_TILE_M_256 > m) ? (m - mLoc) : L1_TILE_M_256;
-                __gm__ int32_t* flagValueAddr =
-                    gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
-                while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-                    int64_t st = AscendC::GetSystemCycle();
-                    while (AscendC::GetSystemCycle() - st < 100) {
-                    }
-                }
-                lastWaveWaited = waveIdx;
-            }
-
-            if (vecSetSyncCom) {
-                WaitForVector();
-            }
-
-            auto gmBlockA = gmA.Slice(
-                Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
-            auto gmBlockScaleA = gmScaleA.Slice(
-                Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-                Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
-
-            auto tensorBlockUbFirst = l0cOutUbFirst.Slice(
-                Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-            auto tensorBlockUbSecond = l0cOutUbSecond.Slice(
-                Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-
-            typename BlockMmad::BlockShape singleShape{
-                Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
-            for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
-                auto gmBlockB = gmB.Slice(
-                    Te::MakeCoord(kLoc, nLoc + weightBlock * outputN),
-                    Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                auto gmBlockScaleB = gmScaleB.Slice(
-                    Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * outputN),
-                    Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-                blockMmad(
-                    gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
-                    weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
-            }
-
-            NotifyVector();
-        }
-
-        vecSetSyncCom = 1;
-
-        if constexpr (g_coreType == AscendC::AIV) {
-            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
-                Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), 0, 0};
-            Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-                mLoc * outputN + nLoc,
-                mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-                    CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-                0, 0, 0, 0};
-            WaitForCube();
-            AscendC::SetCtrlSpr<60, 60>(0);
-            epilogueOp(epilogueShape, epilogueOffset);
-            NotifyCube();
-        }
-    }
-    startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+    using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
+    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom};
+    Detail::GroupMatmulImplGeneric<Detail::Gmm1PolicyGeneric, COMBINE_NO_QUANT, ElementA, ElementB, ElementC,
+        ElementMxScaleA, ElementMxScaleB, IsWeightNZ>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // =================================================================================================
 // GroupMatmul2：GMM2 矩阵乘法，支持量化和非量化模式
 // =================================================================================================
-// 量化模式：AIC 计算结果写入 GM，通过 AtomicAdd 通知 AIV；AIV 不参与计算
-// 非量化模式：AIC 计算结果写入 UB，通过 pingpong 双缓冲通知 AIV；AIV 执行 CombineTokens
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false>
+           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
     int32_t& vecSetSyncCom2, uint32_t groupCnt, uint16_t& pingpongIdx, uint32_t groupIdx)
 {
-    // 非量化模式：仅 subBlockIdx_==0 的核参与
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        if (GetSubBlockIdx() != 0) return;
-    }
-
-    uint32_t m = Get<M_VALUE>(problemShape);
-    uint32_t n = Get<K_VALUE>(problemShape);
-    uint32_t k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
-
-    uint32_t blockNum = GetBlockNum();
-    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-
-    auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-
-    constexpr bool transA = false;
-    constexpr bool transB = true;
-
-    constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
-    constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
-    constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
-    constexpr uint32_t c0SizeScale = 2U;
-
-    using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-    using LayoutB = Std::conditional_t<
-        IsWeightNZ,
-        Std::conditional_t<transB, Te::ZNLayoutPtn, Te::NZLayoutPtn>,
-        Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>>;
-    using LayoutBias = Te::NDExtLayoutPtn;
-    using LayoutC = Te::NDExtLayoutPtn;
-
-    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
-    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
-    using MakeLayoutScaleA = Std::conditional_t<
-        transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>,
-        Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<c0SizeScale>>>;
-    using MakeLayoutScaleB = Std::conditional_t<
-        transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>,
-        Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<c0SizeScale>>>;
-    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
-
-    auto layoutA = MakeLayoutA{}(m, k);
-    auto layoutB = MakeLayoutB{}(k, n);
-    auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
-    auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
-    auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
-    
-    // 量化模式使用全矩阵 layout，非量化使用 tile 级 layout
-    auto layoutC = MakeLayoutC{}(
-        (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : m,
-        (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_N : n);
-
-    using BiasType = float;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
-    using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-        DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias>;
-    BlockMmad blockMmad;
-    bool enableL0CPingPong = false;
-    typename BlockMmad::L1Params l1Params{
-        .kL1 = L1_TILE_K,
-        .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
-        .l1BufNum = 2
-    };
-    constexpr uint32_t TILE_M = (CombineQuantMode == COMBINE_NO_QUANT) ? L1_TILE_M_128 : L1_TILE_M_256;
-    typename BlockMmad::BlockShape l0TileShape{TILE_M, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
-
-    // 非量化模式：分配 UB pingpong buffer
-    LocalTensor<ElementC> l0cOutUbGMM2First, l0cOutUbGMM2Second;
-    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(0), layoutC);
-    auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(0), layoutC);
-    
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        int64_t ubOffset = 0;
-        l0cOutUbGMM2First = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M_128 * L1_TILE_N);
-        l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
-        ubOffset += MAX_SINGLE_MN_ALIGN32_NUM_128 * sizeof(ElementC);
-        l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M_128 * L1_TILE_N);
-        l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
-    }
-
-    auto gmA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
-    auto gmB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layoutB);
-    auto gmScaleA = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
-        layoutScaleA);
-    auto gmScaleB = Te::MakeTensor(
-        Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
-        layoutScaleB);
-    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
-
-    BlockScheduler scheduler(
-        {m, n, k},
-        BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(TILE_M), static_cast<int64_t>(L1_TILE_N))});
-    uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
-    uint32_t tileNum = scheduler.GetTileNum();
-
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
-        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
-        auto actualShape = scheduler.GetBlockShape(blockCoord);
-
-        uint32_t mLoc = Get<M_VALUE>(blockCoord);
-        uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        uint32_t kLoc = Get<K_VALUE>(blockCoord);
-
-        if constexpr (g_coreType == AscendC::AIC) {
-            // 公共：GMM flag wait
-            if (loopIdx == startLoopIdx) {
-                BlockScheduler gmmBlockScheduler(
-                    {m, k, n},
-                    BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
-                        static_cast<int64_t>(L1_TILE_N))});
-                uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-                __gm__ int32_t* flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
-                while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-                    int64_t st = AscendC::GetSystemCycle();
-                    while (AscendC::GetSystemCycle() - st < 100) {
-                    }
-                }
-            }
-
-            // 公共：切片 A/B/Scale
-            auto gmBlockA = gmA.Slice(
-                Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
-            auto gmBlockScaleA = gmScaleA.Slice(
-                Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-                Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
-            auto gmBlockB = gmB.Slice(
-                Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-            auto gmBlockScaleB = gmScaleB.Slice(
-                Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
-                Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                // 非量化：输出到 UB
-                if (vecSetSyncCom2 >= 2) {
-                    WaitForVector(pingpongIdx);
-                }
-                auto tensorUb = pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
-                auto tensorBlockUb = tensorUb.Slice(
-                    Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                
-                typename BlockMmad::BlockShape singleShape{
-                    Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
-                blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape);
-                NotifyVector(pingpongIdx);
-            } else {
-                uint32_t blockAivNum = blockNum * 2;
-                auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
-                    reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
-                auto gmBlockC = gmC.Slice(
-                    Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-                
-                typename BlockMmad::BlockShape singleShape{
-                    Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
-                blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
-                NotifyCombineTileComplete(mLoc, m, TILE_M, blockAivNum, groupIdx,
-                    (__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
-            }
-        }
-
-        // 非量化模式：AIV CombineTokens + pingpong 切换
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            vecSetSyncCom2++;
-            if constexpr (g_coreType == AscendC::AIV) {
-                auto l0cOutUbGMM2 = pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
-                WaitForCube(pingpongIdx);
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
-                AscendC::GlobalTensor<int32_t> tripleGm;
-                int32_t lenTile = Get<M_VALUE>(actualShape);
-                LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(
-                    TPosition::VECCALC, TRIPLE_TENSOR_ADDR, lenTile * TRIPLE_SIZE);
-                tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr +
-                    (groupCnt + mLoc) * TRIPLE_SIZE * sizeof(int32_t)));
-                AscendC::DataCopy(tripleTensor, tripleGm, lenTile * TRIPLE_SIZE);
-                MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                    mLoc, nLoc, n, tripleTensor, l0cOutUbGMM2, actualShape, params);
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-                NotifyCube(pingpongIdx);
-            }
-            pingpongIdx = 1 - pingpongIdx;
-        }
-    }
-    startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx, groupIdx};
+    Detail::GroupMatmulImplGeneric<Detail::Gmm2PolicyGeneric, CombineQuantMode, ElementA, ElementB, ElementC,
+        ElementMxScaleA, ElementMxScaleB, IsWeightNZ>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // ==================================================================================
@@ -605,34 +713,6 @@ struct ConfigA8W4 {
     }
 };
 
-template <typename Policy, typename Config>
-__aicore__ inline void WaitForUpstreamReadyA8W4(
-    const GMMAddrInfo& gmmAddrInfo, const Config& config, uint32_t mLoc)
-{
-    if constexpr (Policy::IS_GMM1) {
-        uint32_t waveIdx = mLoc / L1_TILE_M_256;
-        uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
-        __gm__ int32_t* flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
-        while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-            int64_t st = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - st < 100) {
-            }
-        }
-    } else {
-        BlockScheduler gmmBlockScheduler(
-            {config.m, config.k, config.n},
-            BlockScheduler::Params{
-                Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
-        uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-        __gm__ int32_t* flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
-        while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-            int64_t st = AscendC::GetSystemCycle();
-            while (AscendC::GetSystemCycle() - st < 100) {
-            }
-        }
-    }
-}
-
 template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename Scheduler, typename TensorA,
     typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
 __aicore__ inline void AicComputeA8W4(
@@ -658,7 +738,7 @@ __aicore__ inline void AicComputeA8W4(
             shouldWait = loopIdx == startLoopIdx;
         }
         if (shouldWait) {
-            WaitForUpstreamReadyA8W4<Policy>(gmmAddrInfo, config, mLoc);
+            WaitForUpstreamReady<Policy>(gmmAddrInfo, config, mLoc);
             if constexpr (Policy::IS_GMM1) {
                 lastWaveWaited = waveIdx;
             }
