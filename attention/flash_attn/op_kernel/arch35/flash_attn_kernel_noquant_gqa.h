@@ -491,7 +491,9 @@ public:
             prevBN2Idx = bN2Cur;
             prevGS1Idx = gS1Cur;
         }
-        // 当s2方向出现第一个被mask的基本块后，跳过这行
+        if (s2Cur < curS2Start && curS2Start < curS2End) {
+            return TASK_DEAL_MODE::NOT_START;
+        }
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
             return TASK_DEAL_MODE::SKIP_REMAINING_S2;
         }
@@ -746,6 +748,10 @@ public:
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
+        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            s2Cur = curS2Start;
+            return;
+        }
         if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
             // 当前S2未处理完
             if (s2Cur + 1 < s2LoopTimes) {
