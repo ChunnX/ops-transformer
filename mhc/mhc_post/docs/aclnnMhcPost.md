@@ -180,7 +180,7 @@ aclnnStatus aclnnMhcPost(
             <tr>
               <td>ACLNN_ERR_INNER_NULLPTR</td>
               <td>561103</td>
-              <td>n不等于4; d<不在[1, 100000]范围内；d不能被128整除。</td>
+              <td>n不等于4; d不在[1, 100000]范围内；d不能被128整除。</td>
           </tr>
       </tbody>
   </table>
