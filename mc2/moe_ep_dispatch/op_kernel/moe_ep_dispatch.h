@@ -84,6 +84,7 @@ private:
     __aicore__ inline void WriteSlotToLocal(uint32_t dstRankId, uint32_t slot);
     __aicore__ inline void WriteToRemoteWindow();
     __aicore__ inline void SendPhase();
+    __aicore__ inline void WaitDispatch();
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
                                        uint32_t &endId, uint32_t &sendNum, bool isFront);
 
@@ -675,7 +676,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
-    uint32_t tokenNumPerGroup = 100;  // TODO
+    // uint32_t tokenNumPerGroup = 100;  // TODO
     uint32_t sendNumAlign = Ceil(rankNumPerCore_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(recvTempBuf_, sendNumAlign);
     LocalTensor<int32_t> sendNumPerRankTensor = recvTempBuf_.Get<int32_t>();
@@ -691,33 +692,36 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
             GlobalTensor<uint64_t> localCntGMTensor;
             localCntGMTensor.SetGlobalBuffer((__gm__ uint64_t*)(GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) +
                                                                 cntPerRankSizeAlign512_ + moeExpertNumAlign512_));
-            localCntGMTensor.SetValue(epRankId_ * axisMaxBS_, static_cast<uint64_t>(sendTokenNum));
+            localCntGMTensor.SetValue(epRankId_, static_cast<uint64_t>(1));
             DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(localCntGMTensor[epRankId_ * axisMaxBS_]);
             continue;   //  本端slot已经写入win
         }
-        uint32_t loopTimes = sendTokenNum / tokenNumPerGroup;    // 分组多token发送到对端
-        uint32_t lastTokenNum = sendTokenNum - tokenNumPerGroup * loopTimes;
-        uint32_t srcWorkspaceOffset = dstRankId * axisMaxBS_ * perSlotBytes_;
-        uint32_t dstRankWinOffset = epRankId_ * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
+        // uint32_t loopTimes = sendTokenNum / tokenNumPerGroup;    // 分组多token发送到对端
+        // uint32_t lastTokenNum = sendTokenNum - tokenNumPerGroup * loopTimes;
+        // uint32_t srcWorkspaceOffset = dstRankId * axisMaxBS_ * perSlotBytes_;
+        // uint32_t dstRankWinOffset = epRankId_ * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
         GM_ADDR remoteWinAddr = GetWinAddrByRankId(mc2Context_, dstRankId);
         GM_ADDR notifyAddr = GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + cntPerRankSizeAlign512_ + 
-                                moeExpertNumAlign512_ + epRankId_ * axisMaxBS_ * sizeof(uint64_t);
-        for (uint32_t loop = 0; loop < loopTimes; loop++) {     // 发送slot
-            printf("START WRITR TOKEN");
-            // hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr + dstRankWinOffset,
-            //                 slotWorkspaceAddr_ + srcWorkspaceOffset, perSlotBytes_ * tokenNumPerGroup);
-            hcomm_.WriteWithNotifyNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr + dstRankWinOffset,
-                                      slotWorkspaceAddr_ + srcWorkspaceOffset, perSlotBytes_ * tokenNumPerGroup,
-                                      notifyAddr + loop * sizeof(uint64_t), static_cast<uint64_t>(tokenNumPerGroup));
-            srcWorkspaceOffset += perSlotBytes_ * tokenNumPerGroup;
-            dstRankWinOffset += perSlotBytes_ * tokenNumPerGroup;
-            hcomm_.Drain(GetCommHandle(mc2Context_, epRankId_, dstRankId));   // 疑问？
-        }
-        // hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr + dstRankWinOffset,
-        //                 slotWorkspaceAddr_ + srcWorkspaceOffset, perSlotBytes_ * lastTokenNum);
-        hcomm_.WriteWithNotifyNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr + dstRankWinOffset,
-                                  slotWorkspaceAddr_ + srcWorkspaceOffset, perSlotBytes_ * lastTokenNum,
-                                  notifyAddr + loopTimes * sizeof(uint64_t), static_cast<uint64_t>(lastTokenNum));
+                                moeExpertNumAlign512_ + epRankId_;
+        // for (uint32_t loop = 0; loop < loopTimes; loop++) {     // 发送slot
+        //     printf("START WRITR TOKEN");
+        //     // hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr + dstRankWinOffset,
+        //     //                 slotWorkspaceAddr_ + srcWorkspaceOffset, perSlotBytes_ * tokenNumPerGroup);
+        //     hcomm_.WriteWithNotifyNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr + dstRankWinOffset,
+        //                               slotWorkspaceAddr_ + srcWorkspaceOffset, perSlotBytes_ * tokenNumPerGroup,
+        //                               notifyAddr + loop * sizeof(uint64_t), static_cast<uint64_t>(tokenNumPerGroup));
+        //     srcWorkspaceOffset += perSlotBytes_ * tokenNumPerGroup;
+        //     dstRankWinOffset += perSlotBytes_ * tokenNumPerGroup;
+        //     hcomm_.Drain(GetCommHandle(mc2Context_, epRankId_, dstRankId));   // 疑问？
+        // }
+        // // hcomm_.WriteNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr + dstRankWinOffset,
+        // //                 slotWorkspaceAddr_ + srcWorkspaceOffset, perSlotBytes_ * lastTokenNum);
+        // hcomm_.WriteWithNotifyNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr + dstRankWinOffset,
+        //                           slotWorkspaceAddr_ + srcWorkspaceOffset, perSlotBytes_ * lastTokenNum,
+        //                           notifyAddr + loopTimes * sizeof(uint64_t), static_cast<uint64_t>(lastTokenNum));
+        hcomm_.WriteWithNotifyNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr,
+                                  slotWorkspaceAddr_, perSlotBytes_ * sendTokenNum,
+                                  notifyAddr, static_cast<uint64_t>(1));
     }
 }
 
@@ -782,6 +786,38 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatch()
+{
+    if (aivId_ != aivNum_ - 1) {
+        return;
+    }
+
+    // 最后一个核check slot 发送是否完成
+    uint32_t mask = 1;
+    uint64_t sumOfFlag = 0;
+    uint64_t commpareFlag = static_cast<uint64_t>(epWorldSize_);
+    uint32_t recvStatusAlign = Ceil(epWorldSize_ * sizeof(uint64_t), UB_ALIGN) * UB_ALIGN / sizeof(uint64_t);
+    GlobalTensor<uint64_t> statusGMTensor;
+    GM_ADDR notifyAddr = localStateWinAddr_ + cntPerRankSizeAlign512_ +  moeExpertNumAlign512_;
+    statusGMTensor.SetGlobalBuffer((__gm__ uint64_t*)notifyAddr);
+    tpipe_->InitBuffer(recvCntBuf_, recvStatusAlign * sizeof(uint64_t));
+    tpipe_->InitBuffer(recvTempBuf_, UB_ALIGN);
+    tpipe_->InitBuffer(tempBuf_, recvStatusAlign * UB_ALIGN);
+    LocalTensor<uint64_t> statusLocalTensor = recvCntBuf_.Get<uint64_t>();
+    LocalTensor<uint64_t> sumTensor = recvTempBuf_.Get<uint64_t>();
+    LocalTensor<uint64_t> tempTensor = recvTempBuf_.Get<uint64_t>();
+
+    while (sumOfFlag != commpareFlag) {  //状态位check
+        DataCopy(statusLocalTensor, statusGMTensor, recvStatusAlign);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        ReduceSum(sumTensor, statusLocalTensor, tempTensor, epWorldSize_);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        sumOfFlag = sumTensor.GetValue(0);
+        printf("flag %d, ranId %d, aivId %d\n", sumOfFlag, epRankId_, aivId_);
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessDirect()
 {
     PipeBarrier<PIPE_ALL>();
@@ -801,6 +837,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessDire
     SendPhase();
     SyncAll<true>();
     WriteToRemoteWindow();
+    WaitDispatch();
 }
 
 template <TemplateMoeEpDispatchTypeClass>
