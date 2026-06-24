@@ -185,6 +185,8 @@ int main() {
     if (expectedSelectedPerMask < 1) {
         expectedSelectedPerMask = 1;
     }
+    int64_t expectedSelectedTotal =
+        expectedSelectedPerMask * static_cast<int64_t>(batch) * static_cast<int64_t>(numHeads);
     double expectedSparsity = 1.0 - static_cast<double>(expectedSelectedPerMask) / static_cast<double>(sortLen);
     
     LOG_PRINT("Test parameters:\n");
@@ -192,7 +194,8 @@ int main() {
               batch, numHeads, qSeqlen, kvSeqlen, headDim);
     LOG_PRINT("  blockShape=[%d, %d], xBlocks=%d, yBlocks=%d, sparsity=%.2f\n",
               blockShapeX, blockShapeY, xBlocks, yBlocks, sparsity);
-    LOG_PRINT("  sortLen=%ld, expectedSelected=%ld\n", sortLen, expectedSelectedPerMask);
+    LOG_PRINT("  sortLen=%ld, expectedSelectedPerMask=%ld, expectedSelectedTotal=%ld\n",
+              sortLen, expectedSelectedPerMask, expectedSelectedTotal);
 
     aclTensor *queryTensor = nullptr;
     aclTensor *keyTensor = nullptr;
@@ -402,13 +405,13 @@ int main() {
 
         actualSparsity = 1.0 - static_cast<double>(selectedCount) / static_cast<double>(maskOutSize);
         LOG_PRINT("Run %03d/%03d: Selected=%ld (expected: %ld), Actual sparsity=%.4f (expected: %.4f)\n",
-                  runId + 1, kernelRunTimes, selectedCount, expectedSelectedPerMask, actualSparsity, expectedSparsity);
+                  runId + 1, kernelRunTimes, selectedCount, expectedSelectedTotal, actualSparsity, expectedSparsity);
     }
     
     LOG_PRINT("\n=== Results ===\n");
     LOG_PRINT("maskOut shape: [%d, %d, %d, %d]\n", batch, numHeads, xBlocks, yBlocks);
     LOG_PRINT("Total elements: %ld\n", maskOutSize);
-    LOG_PRINT("Selected (non-zero): %ld (expected: %ld)\n", selectedCount, expectedSelectedPerMask);
+    LOG_PRINT("Selected (non-zero): %ld (expected: %ld)\n", selectedCount, expectedSelectedTotal);
     LOG_PRINT("Selected first half: %ld, second half: %ld, first second-half index: %ld\n",
               selectedFirstHalf, selectedSecondHalf, firstSelectedSecondHalf);
     LOG_PRINT("Actual sparsity: %.4f (expected: %.4f)\n", actualSparsity, expectedSparsity);
