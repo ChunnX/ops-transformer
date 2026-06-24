@@ -18,7 +18,6 @@ import pytest
 import random
 import numpy as np
 import math
-# import custom_ops as ops
 
 # 两种运行模式
 # 0 不切S2
