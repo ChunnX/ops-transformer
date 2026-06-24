@@ -161,7 +161,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     epRankId_ = mc2Context_->epRankId;
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_);
-    metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
+    metaOffset_ = Ceil((uint32_t)(axisH_ * 2U), UB_ALIGN) * UB_ALIGN;
 
     numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
@@ -195,7 +195,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * hitCountStride_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
+<<<<<<< HEAD
 
+=======
+>>>>>>> d28f55dee (feat(moe_ep_dispatch_epilogue): add recv scales kernel plumbing)
     scaleOffset_ = tilingData->scaleOffset;
     scaleBytes_ = tilingData->scaleBytes;
     scalesAlign_ = (scaleBytes_ == 0U) ? 0U : (scaleBytes_ / sizeof(ScalesType));
@@ -427,13 +430,19 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
                     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 
                     DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
+<<<<<<< HEAD
 
+=======
+>>>>>>> d28f55dee (feat(moe_ep_dispatch_epilogue): add recv scales kernel plumbing)
                     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                         DataCopyParams scalesCopyParams{1U,
                             static_cast<uint16_t>(scalesAlign_ * sizeof(ScalesType)), 0U, 0U};
                         DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesAlign_], ubScales_, scalesCopyParams);
                     }
+<<<<<<< HEAD
 
+=======
+>>>>>>> d28f55dee (feat(moe_ep_dispatch_epilogue): add recv scales kernel plumbing)
                     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);

@@ -277,6 +277,7 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
     const bool isFp8 = (recvXDtype == ge::DT_FLOAT8_E5M2 || recvXDtype == ge::DT_FLOAT8_E4M3FN);
     if (!isFp8) {
         info.hasScales = 0U;
+        info.scaleOffset = 0U;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -304,6 +305,7 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
         return ge::GRAPH_FAILED);
 
     info.hasScales = 1U;
+    info.scaleOffset = static_cast<uint32_t>(((static_cast<uint64_t>(hidden) + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN);
     info.scaleBytes = static_cast<uint32_t>(expectedDim1 * ((scalesDtype == ge::DT_FLOAT) ? sizeof(float) : 1));
     return ge::GRAPH_SUCCESS;
 }
