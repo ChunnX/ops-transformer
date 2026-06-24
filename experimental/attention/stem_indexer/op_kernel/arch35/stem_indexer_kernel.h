@@ -355,10 +355,9 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                     uint64_t indiceLenOffset =
                         ((tBase + s1Idx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx;
                     GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-                    GlobalTensor<int32_t> indiceLen = sparseSeqLenGm[indiceLenOffset];
                     AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
                                               static_cast<int32_t>(constInfo.INVALID_IDX));
-                    AscendC::InitGlobalMemory(indiceLen, 1, static_cast<int32_t>(0));
+                    vectorService.SetSparseSeqLenZero(indiceLenOffset);
                 }
             }
         } else if (constInfo.outputLayout == SI_LAYOUT::BNSD) {
@@ -371,10 +370,9 @@ __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
                     uint64_t indiceLenOffset =
                         ((bIdx * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize + s1Idx;
                     GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-                    GlobalTensor<int32_t> indiceLen = sparseSeqLenGm[indiceLenOffset];
                     AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
                                               static_cast<int32_t>(constInfo.INVALID_IDX));
-                    AscendC::InitGlobalMemory(indiceLen, 1, static_cast<int32_t>(0));
+                    vectorService.SetSparseSeqLenZero(indiceLenOffset);
                 }
             }
         }
@@ -530,8 +528,7 @@ __aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
     if (runInfo.isFirstS2InnerLoop) {
         
         queryCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.headDim + 
-                          runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim + 
-                          runInfo.gS1Idx * constInfo.mBaseSize * constInfo.headDim;
+                          runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.headDim;
         
         indiceOutCoreOffset = runInfo.bIdx * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.kSeqSize +
                               runInfo.n2Idx * constInfo.gSize * constInfo.qSeqSize * constInfo.kSeqSize;
@@ -657,7 +654,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
     } else {
         vectorService.ProcessVec1(runInfo);
         if (runInfo.isFirstS2InnerLoop) {
-            vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.indiceOutOffset);
+            vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
+                                         runInfo.indiceOutOffset);
         }
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }

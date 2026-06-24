@@ -82,6 +82,8 @@ protected:
                                         const SICommon::RunInfo &runInfo);
     __aicore__ inline void LoadQueryToL0a(uint64_t s1gL0Offset, uint64_t s1gL1RealSize,
                                           uint64_t s1gL0RealSize, uint64_t kL1Offset, const SICommon::RunInfo &runInfo);
+    __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, uint64_t l1RowOffset,
+                                                 uint64_t l1RowAlign, uint64_t gmOffset, uint64_t nValue);
     __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset, uint64_t kGmOffset, const SICommon::RunInfo &runInfo);
     __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, uint64_t kGmOffset, const SICommon::RunInfo &runInfo);
     GlobalTensor<int32_t> blkTableGm_;
@@ -236,21 +238,47 @@ __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s
 
 // batch, n2, g, s1, d
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset, uint64_t kGmOffset,
-                                                 const SICommon::RunInfo &runInfo)
+__aicore__ inline void SIMatmul<SIT>::CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, uint64_t l1RowOffset,
+                                                            uint64_t l1RowAlign, uint64_t gmOffset, uint64_t nValue)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
-    nd2nzPara.nValue = s1gL1RealSize; // 行数
+    nd2nzPara.nValue = nValue; // 行数
     nd2nzPara.dValue = D_BASIC_BLOCK_L1;
     nd2nzPara.srcDValue = constInfo_.headDim;
-    nd2nzPara.dstNzC0Stride = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
+    nd2nzPara.dstNzC0Stride = l1RowAlign; // 对齐到16 单位block
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
-    // 默认一块buf最多放两份
-    DataCopy(queryL1_[(queryBufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
-             queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * constInfo_.headDim + kGmOffset], nd2nzPara);
+    DataCopy(queryL1Base[l1RowOffset * BLOCK_CUBE], queryGm_[gmOffset], nd2nzPara);
+}
+
+template <typename SIT>
+__aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset, uint64_t kGmOffset,
+                                                 const SICommon::RunInfo &runInfo)
+{
+    LocalTensor<Q_T> queryL1Base = queryL1_[(queryBufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET];
+    uint64_t l1RowAlign = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE);
+    uint64_t logicalMStart = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo_.mBaseSize + s1gGmOffset;
+    uint64_t queryBaseOffset = runInfo.tensorQueryOffset;
+    if (runInfo.actS1Size == constInfo_.qSeqSize) {
+        CopyQuerySegmentNd2Nz(queryL1Base, 0, l1RowAlign,
+                              queryBaseOffset + logicalMStart * constInfo_.headDim + kGmOffset, s1gL1RealSize);
+        return;
+    }
+
+    uint64_t copiedRows = 0;
+    uint64_t logicalMEnd = logicalMStart + s1gL1RealSize;
+    while (logicalMStart < logicalMEnd) {
+        uint64_t globalGIdx = logicalMStart / runInfo.actS1Size;
+        uint64_t globalS1Idx = logicalMStart % runInfo.actS1Size;
+        uint64_t copyRows = Min(logicalMEnd - logicalMStart, static_cast<uint64_t>(runInfo.actS1Size) - globalS1Idx);
+        uint64_t gmOffset = queryBaseOffset +
+                            (globalGIdx * constInfo_.qSeqSize + globalS1Idx) * constInfo_.headDim + kGmOffset;
+        CopyQuerySegmentNd2Nz(queryL1Base, copiedRows, l1RowAlign, gmOffset, copyRows);
+        logicalMStart += copyRows;
+        copiedRows += copyRows;
+    }
 }
 
 template <typename SIT>

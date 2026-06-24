@@ -47,7 +47,9 @@ public:
                                       const StemIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float> vbiasGm, GlobalTensor<int32_t> numPromptTokensGm,
                                               GlobalTensor<int32_t> sparseIndicesGm, GlobalTensor<int32_t> sparseSeqLenGm);
-    __aicore__ inline void initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint64_t indiceOutOffset);
+    __aicore__ inline void initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint32_t actS1Size,
+                                          uint64_t indiceOutOffset);
+    __aicore__ inline void SetSparseSeqLenZero(uint64_t indiceLenOffset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -239,8 +241,12 @@ __aicore__ inline void SIVector<SIT>::FreeEventID()
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint64_t indiceOutOffset)
+__aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint32_t actS1Size,
+                                                     uint64_t indiceOutOffset)
 {
+    if (actS1Size == 0U) {
+        return;
+    }
     // 当前处理的GS1行起始索引（全局位置）
     int64_t curGS1Idx = gS1Idx * mBaseSize_;
     // 当前GS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
@@ -251,21 +257,45 @@ __aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t a
     int64_t curAivGS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curGS1ProcNum, 2) : curGS1ProcNum / 2;
 
     int32_t neg = -1;
-    GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset + curAivGS1Idx * kSeqSize_];
-    AscendC::InitGlobalMemory(indiceOut, curAivGS1ProcNum * constInfo_.kSeqSize, neg);
+    for (int64_t localMIdx = 0; localMIdx < curAivGS1ProcNum; localMIdx++) {
+        uint32_t globalMIdx = static_cast<uint32_t>(curAivGS1Idx + localMIdx);
+        uint32_t globalGIdx = globalMIdx / actS1Size;
+        uint32_t globalS1Idx = globalMIdx % actS1Size;
+        uint64_t outOffset = indiceOutOffset +
+                             (static_cast<uint64_t>(globalGIdx) * constInfo_.qSeqSize + globalS1Idx) *
+                                 constInfo_.kSeqSize;
+        GlobalTensor<int32_t> indiceOut = sparseIndicesGm[outOffset];
+        AscendC::InitGlobalMemory(indiceOut, constInfo_.kSeqSize, neg);
+    }
+}
+
+template <typename SIT>
+__aicore__ inline void SIVector<SIT>::SetSparseSeqLenZero(uint64_t indiceLenOffset)
+{
+    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    Duplicate(indiceLenLocal_, static_cast<uint32_t>(0), 1);
+    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+
+    AscendC::DataCopyParams indiceLenCp;
+    indiceLenCp.blockCount = 1;
+    indiceLenCp.blockLen = static_cast<uint16_t>(sizeof(uint32_t));
+    indiceLenCp.srcStride = 0;
+    indiceLenCp.dstStride = 0;
+    DataCopyPad(sparseSeqLenGm[indiceLenOffset], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCp);
+    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
 {
     auto pingpong = (info.loop % 2);
-    int64_t curS1Idx = info.gS1Idx * constInfo_.mBaseSize;
     int64_t gS1BasePerVecSize_ = CeilDiv(constInfo_.mBaseSize, 2); // 当前每个vec核上分到的mbase/2行
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
-    int64_t curS1ProcNum = curS1Idx + constInfo_.mBaseSize > info.actS1Size ? info.actS1Size % constInfo_.mBaseSize : constInfo_.mBaseSize;	 
-    int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
+    int64_t curMProcNum = info.actMBaseSize;
+    int64_t curAivMProcNum = (blockId_ % 2 == 0) ? CeilDiv(curMProcNum, 2) : curMProcNum / 2;
 
-    if (curAivS1ProcNum == 0) {
+    if (curAivMProcNum == 0) {
         CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
         CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(SICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
         return;
@@ -580,7 +610,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint32_t indiceLenOffset = (uint32_t)qFlatBase;
         uint64_t indiceOutOffset = qFlatBase * constInfo_.kSeqSize;
 
-        initS2LenToNeg(gS1Idx, actMBaseSize, indiceOutOffset);
+        initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
 
         // 当前处理的gS1行起始索引（全局位置）
         int64_t curGS1Idx = gS1Idx * mBaseSize_; 
