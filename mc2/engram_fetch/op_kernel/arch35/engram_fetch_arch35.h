@@ -6,11 +6,6 @@
 #else
 #include "kernel_operator.h"
 #endif
-#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
-#include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_tiling_data.h"
 #include "../engram_fetch.h"
@@ -21,6 +16,14 @@ namespace EngramFetchImpl {
 
 using namespace AscendC;
 using namespace Mc2Aclnn;
+
+template <AscendC::HardEvent event>
+__aicore__ inline void SyncFunc()
+{
+    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
+    AscendC::SetFlag<event>(eventID);
+    AscendC::WaitFlag<event>(eventID);
+}
 
 class EngramFetchArch35 {
 public:
@@ -84,20 +87,7 @@ __aicore__ inline void EngramFetchArch35::Init(
     tpipe_->InitBuffer(dataBuf_, TILE_BYTES);
     uint32_t indicesBufSize = Ceil(numTokens_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
-    if (GetBlockIdx() == 0) {
-        AscendC::printf("[kernel] rankId_: %lu\n", rankId_);
-        AscendC::printf("[kernel] numRanks_: %lu\n", numRanks_);
-        for (int i = 0; i < 8; ++i) {
-          AscendC::printf("[kernel] rankid: %lu, bhPtr_->commBuffer[%d]: %lu\n", 
-                    rankId_, i, bhPtr_->commBuffer[i]);
-        }
-        for (int i = 0; i < 8; ++i) {
-          AscendC::printf("[kernel] rankid: %lu, bhPtr_->hcommHandle_[%d]: %lu\n", 
-                    rankId_, i, bhPtr_->hcommHandle_[i]);
-        }
-
-        AscendC::printf("[kernel] fetched: %lu\n", (uint64_t)fetchedGM_);
-    }
+    
 }
 
 __aicore__ inline void EngramFetchArch35::Process()
@@ -107,7 +97,6 @@ __aicore__ inline void EngramFetchArch35::Process()
             return;
         }
         uint32_t ownerRank = aivId_;
-
         // DMA: 全部 indices 从 GM 搬入 UB
         GlobalTensor<int32_t> indicesGlobal;
         indicesGlobal.SetGlobalBuffer((__gm__ int32_t *)indicesGM_);
@@ -115,7 +104,7 @@ __aicore__ inline void EngramFetchArch35::Process()
         DataCopyExtParams params{1U, numTokens_ * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
         DataCopyPad(indicesLocal, indicesGlobal, params, pad);
-        SyncFunc<HardEvent::MTE2_S>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         uint32_t idxStart = ownerRank * numEntriesPerRank_;
         uint32_t idxEnd = idxStart + numEntriesPerRank_;
 
@@ -126,7 +115,8 @@ __aicore__ inline void EngramFetchArch35::Process()
             if (globalIdx < 0) {
                 continue;
             }
-            if (static_cast<uint32_t>(globalIdx) < idxStart || static_cast<uint32_t>(globalIdx) >= idxEnd) {
+            if (static_cast<uint32_t>(globalIdx) < idxStart ||
+                static_cast<uint32_t>(globalIdx) >= idxEnd) {
                 continue;
             }
 
@@ -134,22 +124,17 @@ __aicore__ inline void EngramFetchArch35::Process()
             GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
 
             if (ownerRank == rankId_) {
-                GM_ADDR src =
-                    (GM_ADDR)bhPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                GM_ADDR src =
-                    (GM_ADDR)bhPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                GM_ADDR src = (GM_ADDR)bhPtr_->commBuffer[rankId_] +
+                              static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
                 LocalCopySlice(dst, src, hiddenBytes_);
-            } else {
-                //AscendC::printf("[kernel] channelIdx: %u\n", channelIdx);
+            } 
+            else {
                 GM_ADDR remoteSrcAddr =
-                    (GM_ADDR)bhPtr_->commBuffer[ownerRank] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                // AscendC::printf(
-                //     "[kernel] rankid: %lu, bhPtr_->hcommHandle_[channelIdx]: %lu, dst = %lu ,remoteSrcAddr = %lu \n",
-                //     rankId_, bhPtr_->hcommHandle_[channelIdx], (uint64_t)dst, (uint64_t)remoteSrcAddr);
+                    (GM_ADDR)bhPtr_->commBuffer[ownerRank] +
+                    static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
                 hcomm_.ReadNbi<false>(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
                 pendingReadCount++;
-            }
-            }
+             }
         }
 
         if (pendingReadCount > 0) {
@@ -171,9 +156,9 @@ __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR sr
         uint64_t thisLen = (len - off > TILE_BYTES) ? TILE_BYTES : (len - off);
         DataCopyExtParams cp{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
         DataCopyPad(tmp, srcGm[off], cp, pad);
-        SyncFunc<HardEvent::MTE2_MTE3>();
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
         DataCopyPad(dstGm[off], tmp, cp);
-        SyncFunc<HardEvent::MTE3_MTE2>();
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         off += thisLen;
     }
 }
