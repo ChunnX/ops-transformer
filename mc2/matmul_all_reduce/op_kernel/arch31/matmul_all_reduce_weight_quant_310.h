@@ -15,18 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_WEIGHT_QUANT_310_H
 #define MATMUL_ALL_REDUCE_WEIGHT_QUANT_310_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
-#ifdef __CCE_KT_TEST__
-#include "rac_server_stub.h"
-#else
-#include "rac_server.h"
-#endif
-#include "../common.h"
 #include "mm_allreduce.h"
 #include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_weight_nz_performance.h"
 #include "../arch22/weight_quant_matmul_all_reduce_tiling_data.h"

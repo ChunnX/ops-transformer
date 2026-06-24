@@ -27,18 +27,11 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
-#include "moe_distribute_v2_constant.h"
 #include "moe_distribute_dispatch_v2_quant.h"
 #include "moe_distribute_elastic.h"
 
-#include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
 #include "../common/op_kernel/mc2_moe_context.h"
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#else
-#include "../../common/op_kernel/moe_distribute_base.h"
-#endif
 #include "hccl_context_holder.h"
 #include "mc2_moe_context_holder.h"
 

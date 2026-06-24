@@ -21,7 +21,6 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "kernel_tiling/kernel_tiling.h"
 #include "allto_all_matmul_tiling.h"
 #include "allto_all_matmul_util.h"
 #include "block_epilogue_dequant.hpp"

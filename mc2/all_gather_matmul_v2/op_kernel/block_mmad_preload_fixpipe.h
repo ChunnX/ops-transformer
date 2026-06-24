@@ -25,7 +25,6 @@
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/helper.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
 
 namespace Catlass::Gemm::Block {
 

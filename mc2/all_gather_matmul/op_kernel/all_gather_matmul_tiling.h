@@ -17,7 +17,6 @@
 #define __ALL_GATHER_MATMUL_TILING_H__
 
 #pragma once
-#include "kernel_tiling/kernel_tiling.h"
 #if __has_include("../common/op_kernel/mc2_tiling_struct.h")
 #include "../common/op_kernel/mc2_tiling_struct.h"
 #else
