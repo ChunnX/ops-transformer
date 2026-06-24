@@ -695,7 +695,8 @@ class GeneralizedQLIV2:
         weights = weights.cpu()
         query_dequant_scale = query_dequant_scale.cpu()
         key_dequant_scale = key_dequant_scale.cpu()
-        output_idx_offset = output_idx_offset.cpu()
+        if output_idx_offset is not None:
+            output_idx_offset = output_idx_offset.cpu()
 
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
