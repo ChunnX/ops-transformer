@@ -742,7 +742,7 @@ protected:
         if (!CheckAttrs()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], when %s, CheckAttrs failed.",
-                    apiName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
+                    opName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
 
@@ -844,13 +844,13 @@ protected:
         if (!CheckMXTranspose()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], when %s, CheckMXTranspose failed.",
-                    apiName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
+                    opName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
         if (!CheckMXShape()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], when %s, CheckMXShape failed.",
-                    apiName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
+                    opName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
         DataType xDtype = gmmDsqParams_.x->GetDataType();
@@ -873,13 +873,13 @@ protected:
         if (!CheckPertokenTranspose()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], when %s, CheckPertokenTranspose failed.",
-                    apiName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
+                    opName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
         if (!CheckPertokenShape()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], when %s, CheckPerTokenShape failed.",
-                    apiName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
+                    opName_.c_str(), GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_));
             return false;
         }
         return true;

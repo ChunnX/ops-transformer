@@ -33,6 +33,7 @@ namespace gmm_dsq {
 using namespace op;
 constexpr int64_t OUTPUT_IDX_0 = 0L;
 constexpr int64_t OUTPUT_IDX_1 = 1L;
+constexpr char GMM_SWIGLU_QUANT_V2_HANDLER_OP_NAME[] = "grouped_matmul_swiglu_quant_v2";
 constexpr size_t WEIGHT_NZ_DIM_LIMIT = 5UL;
 constexpr size_t WEIGHT_ND_DIM_LIMIT = 3UL;
 
@@ -218,7 +219,7 @@ protected:
 
         if (!gmmDsqParams_.weight || !gmmDsqParams_.weightScale) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                    "In op [%s], [%s] must not be nullptr.", apiName_.c_str(), "weight or weightScale");
+                    "In op [%s], [%s] must not be nullptr.", opName_.c_str(), "weight or weightScale");
             return false;
         }
         return true;
@@ -228,7 +229,7 @@ protected:
     {
         if ((*gmmDsqParams_.weight)[0]->IsEmpty() || (*gmmDsqParams_.weightScale)[0]->IsEmpty()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [%s], [%s] must not be an empty container.", apiName_.c_str(), "weight or weightScale");
+                    "In op [%s], [%s] must not be an empty container.", opName_.c_str(), "weight or weightScale");
             return false;
         }
         return true;
@@ -352,6 +353,7 @@ public:
     void Initialize(const char *apiName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
                     aclOpExecutor **executor)
     {
+        opName_ = GMM_SWIGLU_QUANT_V2_HANDLER_OP_NAME;
         apiName_ = apiName;
         gmmDsqParams_ = params;
         workspaceSize_ = workspaceSize;
@@ -418,6 +420,7 @@ public:
     }
 
 protected:
+    string opName_;
     string apiName_;
     GroupedMatmulSwigluQuantParamsBase gmmDsqParams_;
     uint64_t *workspaceSize_;

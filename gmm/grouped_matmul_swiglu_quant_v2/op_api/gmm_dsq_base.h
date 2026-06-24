@@ -102,12 +102,12 @@ protected:
         std::string scenario = gmmDsqParams_.isA4W4 ? "A4W4" : "A8W4";
         if (gmmDsqParams_.isA4W4 && gmmDsqParams_.weightAssistMatrix != nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [%s], when %s, [%s] must be nullptr.", apiName_.c_str(), scenario.c_str(),
+                    "In op [%s], when %s, [%s] must be nullptr.", opName_.c_str(), scenario.c_str(),
                     "weightAssistMatrix");
             return false;
         } else if (gmmDsqParams_.isA8W4 && gmmDsqParams_.weightAssistMatrix == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [%s], when %s, [%s] must not be nullptr.", apiName_.c_str(), scenario.c_str(),
+                    "In op [%s], when %s, [%s] must not be nullptr.", opName_.c_str(), scenario.c_str(),
                     "weightAssistMatrix");
             return false;
         }
@@ -175,7 +175,7 @@ protected:
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "In op [%s], when A8W8 NZ, the shape of weight is not supported, got [%s]. "
                         "Constraint:[%s]",
-                        apiName_.c_str(), op::ToString(w->GetViewShape()).GetString(), constraintStr.c_str());
+                        opName_.c_str(), op::ToString(w->GetViewShape()).GetString(), constraintStr.c_str());
                 return false;
             }
         } else {
@@ -187,7 +187,7 @@ protected:
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "In op [%s], when A8W8 ND, the shape of weight is not supported, got [%s]. "
                         "Constraint:[%s]",
-                        apiName_.c_str(), op::ToString(w->GetViewShape()).GetString(), constraintStr.c_str());
+                        opName_.c_str(), op::ToString(w->GetViewShape()).GetString(), constraintStr.c_str());
                 return false;
             }
 
@@ -195,7 +195,7 @@ protected:
                 std::string gotStr = BuildLogValues("K", k, "N", n);
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                        apiName_.c_str(), "weight, x", gotStr.c_str(),
+                        opName_.c_str(), "weight, x", gotStr.c_str(),
                         "K should align to 16 and N should align to 32 when A8W8 NZ");
                 return false;
             }
@@ -208,7 +208,7 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "weightScale", op::ToString(wScale->GetViewShape()).GetString(),
+                    opName_.c_str(), "weightScale", op::ToString(wScale->GetViewShape()).GetString(),
                     constraintStr.c_str());
             return false;
         }
@@ -240,7 +240,7 @@ protected:
                     std::string gotStr = BuildLogValues("K", k, "N", n);
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                             "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                            apiName_.c_str(), "weight, x", gotStr.c_str(),
+                            opName_.c_str(), "weight, x", gotStr.c_str(),
                             "K should align to 16 and N should align to 32 when A8W8 NZ");
                     return false;
                 }
@@ -276,7 +276,7 @@ protected:
             std::string gotStr = BuildLogValue("N", n);
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "weightScale", gotStr.c_str(), "N must be even when A8W8");
+                    opName_.c_str(), "weightScale", gotStr.c_str(), "N must be even when A8W8");
             return false;
         }
         int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -307,7 +307,7 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "groupList", gotStr.c_str(), constraintStr.c_str());
+                    opName_.c_str(), "groupList", gotStr.c_str(), constraintStr.c_str());
             return false;
         }
         if (n > N_LIMIT) {
@@ -317,7 +317,7 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "weightScale", gotStr.c_str(), constraintStr.c_str());
+                    opName_.c_str(), "weightScale", gotStr.c_str(), constraintStr.c_str());
             return false;
         }
         if (k >= K_LIMIT_A8W8) {
@@ -327,12 +327,12 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "x", gotStr.c_str(), constraintStr.c_str());
+                    opName_.c_str(), "x", gotStr.c_str(), constraintStr.c_str());
             return false;
         }
         if (gmmDsqParams_.smoothScale != nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [%s], when A8W8, smoothScale must be nullptr.", apiName_.c_str());
+                    "In op [%s], when A8W8, smoothScale must be nullptr.", opName_.c_str());
             return false;
         }
         return true;
@@ -372,7 +372,7 @@ protected:
                 std::string constraintStr = constraint.str();
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "In op [%s], the shape of weight is not supported, got [%s]. Constraint:[%s]",
-                        apiName_.c_str(), op::ToString(w->GetViewShape()).GetString(), constraintStr.c_str());
+                        opName_.c_str(), op::ToString(w->GetViewShape()).GetString(), constraintStr.c_str());
                 return false;
             }
         } else {
@@ -427,7 +427,7 @@ protected:
             std::string gotStr = BuildLogValue("dim num", dimNum);
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "smoothScale", gotStr.c_str(), "dim num should be 1 or 2 when A4W4");
+                    opName_.c_str(), "smoothScale", gotStr.c_str(), "dim num should be 1 or 2 when A4W4");
             return false;
         }
         return true;
@@ -485,7 +485,7 @@ protected:
                 "In op [%s], when %s, the number of groups along the k-axis is %ld, and the length of the k-axis "
                 "is %ld. The number of groups must be greater than 0, and k-axis length %% number of groups == 0 "
                 "must be true.",
-                apiName_.c_str(), scenario.c_str(), KGroupCount, k);
+                opName_.c_str(), scenario.c_str(), KGroupCount, k);
             return false;
         }
         if (n % SPLIT != 0) {
@@ -495,7 +495,7 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "weightScale", gotStr.c_str(), constraintStr.c_str());
+                    opName_.c_str(), "weightScale", gotStr.c_str(), constraintStr.c_str());
             return false;
         }
         int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -529,7 +529,7 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "groupList", gotStr.c_str(), constraintStr.c_str());
+                    opName_.c_str(), "groupList", gotStr.c_str(), constraintStr.c_str());
             return false;
         }
         if (n > N_LIMIT) {
@@ -539,7 +539,7 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "weightScale", gotStr.c_str(), constraintStr.c_str());
+                    opName_.c_str(), "weightScale", gotStr.c_str(), constraintStr.c_str());
             return false;
         }
         if (k >= K_LIMIT_A8W4) {
@@ -549,7 +549,7 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                    apiName_.c_str(), "x", gotStr.c_str(), constraintStr.c_str());
+                    opName_.c_str(), "x", gotStr.c_str(), constraintStr.c_str());
             return false;
         }
         if (gmmDsqParams_.isA4W4) {
@@ -558,7 +558,7 @@ protected:
             }
         } else if (gmmDsqParams_.isA8W4 && gmmDsqParams_.smoothScale != nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [%s], when A8W4, smoothScale must be nullptr.", apiName_.c_str());
+                    "In op [%s], when A8W4, smoothScale must be nullptr.", opName_.c_str());
             return false;
         }
         (void)KGroupSize;
@@ -651,14 +651,14 @@ protected:
                 if (!isNZ) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                             "In op [%s], when transpose weight, the format of weight is not supported, got [%s]",
-                            apiName_.c_str(),
+                            opName_.c_str(),
                             op::ToString(w->GetStorageFormat()).GetString());
                     return false;
                 }
                 if (!gmmDsqParams_.isA4W4) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                             "In op [%s], when %s, [%s] is not supported, got [%s]",
-                            apiName_.c_str(), scenario.c_str(), "weight transpose", "true");
+                            opName_.c_str(), scenario.c_str(), "weight transpose", "true");
                     return false;
                 }
             }
@@ -723,20 +723,20 @@ protected:
             // fp16 in fp32 out that is split k template, not precision-advanced now
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], when A8W8, the format of weight is not supported, got [%s]",
-                    apiName_.c_str(),
+                    opName_.c_str(),
                     op::ToString(w->GetStorageFormat()).GetString());
             return false;
         }
         if (IsPrivateFormat(gmmDsqParams_.x->GetStorageFormat())) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the format of [%s] is not supported, got [%s]",
-                    apiName_.c_str(), "x", op::ToString(gmmDsqParams_.x->GetStorageFormat()).GetString());
+                    opName_.c_str(), "x", op::ToString(gmmDsqParams_.x->GetStorageFormat()).GetString());
             return false;
         }
         if (IsPrivateFormat(gmmDsqParams_.output->GetStorageFormat())) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the format of [%s] is not supported, got [%s]",
-                    apiName_.c_str(), "output", op::ToString(gmmDsqParams_.output->GetStorageFormat()).GetString());
+                    opName_.c_str(), "output", op::ToString(gmmDsqParams_.output->GetStorageFormat()).GetString());
             return false;
         }
         return true;

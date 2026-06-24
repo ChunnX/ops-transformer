@@ -67,7 +67,7 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
         std::ostringstream reason;
         reason << "SoC version " << static_cast<int32_t>(npuArch) << " is not supported";
         std::string reasonStr = reason.str();
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], %s.", apiName, reasonStr.c_str());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], %s.", GMM_SWIGLU_QUANT_V2_OP_NAME, reasonStr.c_str());
     }
 
     return ACLNN_ERR_PARAM_INVALID;
