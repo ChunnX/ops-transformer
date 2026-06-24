@@ -14,21 +14,31 @@
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 
+#include <string>
+
 namespace optiling {
+namespace {
+constexpr const char *OP_NAME = "QkvRmsNormRopeCacheWithKScale";
+} // namespace
+
 ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *context)
 {
-    OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    OP_CHECK_IF(context == nullptr, OP_LOGE(OP_NAME, "context is nullptr."),
+                return ge::GRAPH_FAILED);
     OP_LOGD(context, "QkvRmsNormRopeCacheWithKScale tiling start.");
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseContext *context)
 {
-    OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    OP_CHECK_IF(context == nullptr, OP_LOGE(OP_NAME, "context is nullptr."),
+                return ge::GRAPH_FAILED);
     auto compileInfo = context->GetCompiledInfo<QkvRmsNormRopeCacheWithKScaleCompileInfo>();
-    OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context, "compileInfo is nullptr."),
+                return ge::GRAPH_FAILED);
     auto platformInfo = context->GetPlatformInfo();
-    OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context, "platformInfo is nullptr."),
+                return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->aicNum = static_cast<uint32_t>(ascendcPlatform.GetCoreNumAic());
@@ -44,7 +54,12 @@ ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseCon
             compileInfo->l0cSize, compileInfo->opWorkspaceSize);
     OP_CHECK_IF(compileInfo->aicNum == 0 || compileInfo->aivNum == 0 || compileInfo->ubSize == 0 ||
                     compileInfo->l1Size == 0 || compileInfo->l0cSize == 0,
-                OP_LOGE(context, "invalid platform resource for QkvRmsNormRopeCacheWithKScale."),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    OP_NAME, "aicNum, aivNum, ubSize, l1Size, l0cSize",
+                    (std::to_string(compileInfo->aicNum) + ", " + std::to_string(compileInfo->aivNum) + ", " +
+                     std::to_string(compileInfo->ubSize) + ", " + std::to_string(compileInfo->l1Size) + ", " +
+                     std::to_string(compileInfo->l0cSize)).c_str(),
+                    "platform resources must be greater than 0"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
