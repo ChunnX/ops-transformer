@@ -87,7 +87,6 @@ protected:
 private:
     void Reset();
 
-    static uint64_t CalcQkAlignedRows(uint64_t tokenTile, uint64_t numQHeads, uint64_t numKHeads);
     ge::graphStatus ValidateHeadNums() const;
     ge::graphStatus ValidateScalarInputs() const;
     ge::graphStatus ValidateDtypes() const;
@@ -108,23 +107,8 @@ private:
     void FillTilingData(uint64_t tokenTile);
     ge::graphStatus ValidateParsedInput() const;
     ge::graphStatus ComputeTilingData();
-    static ge::graphStatus MakeContiguousStrideInfo(gert::TilingContext *context, const gert::Shape &shape,
-                                                    gert::Stride &strideInfo);
-    static const char *DtypeName(ge::DataType dtype);
-    static ge::graphStatus ToTensorInfo(gert::TilingContext *context, const char *tensorName, uint64_t index,
-                                        TensorContractInfo &info);
-    static ge::graphStatus FillViewCacheTensorInfo(gert::TilingContext *context, uint64_t index, ge::DataType dtype,
-                                                   const gert::Shape &logicalShapeInfo, TensorContractInfo &info);
-    static ge::graphStatus FillContiguousCacheTensorInfo(gert::TilingContext *context, uint64_t index, ge::DataType dtype,
-                                                         const gert::Shape &storageShapeInfo, TensorContractInfo &info);
-    static ge::graphStatus ToCacheTensorInfo(gert::TilingContext *context, uint64_t index, TensorContractInfo &info);
-    static TensorContractInfo ToOptionalTensorInfo(gert::TilingContext *context, uint64_t index);
-    static const char *InputLayoutName(uint64_t inputLayout);
     void LogTensorInfo(const char *tensorName, const TensorContractInfo &info) const;
     void LogContractInput() const;
-    static ge::graphStatus SetWorkspace(gert::TilingContext *context,
-                                        const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
-                                        uint64_t &workspaceSize);
     void LogTilingData() const;
     ge::graphStatus ParseHeadNumsAttr();
     ge::graphStatus ParseInputLayoutAttr();
@@ -134,9 +118,6 @@ private:
     void FillOptionalTensorInputs();
     ge::graphStatus BuildContractInput();
     ge::graphStatus ValidateCompileInfo(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo) const;
-    static ge::graphStatus CopyRawTilingData(gert::TilingContext *context,
-                                             const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
-                                             uint64_t &tilingDataSize);
 
     const char *opName_ = "QkvRmsNormRopeCacheWithKScale";
     const QkvRmsNormRopeCacheWithKScaleCompileInfo *compileInfo_ = nullptr;
