@@ -91,7 +91,7 @@ aclnnStatus aclnnMatmulAllReduceV3GetWorkspaceSize(
     const char* reduceOp, const char* commMode, int64_t commTurn, int64_t streamMode, const aclTensor* output,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t timeStampVal = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
     auto retParam = MatmulAllReduceCheckParams(x1, x2, x3, bias, reduceOp, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
@@ -102,14 +102,14 @@ aclnnStatus aclnnMatmulAllReduceV3GetWorkspaceSize(
         x1, x2, bias, x3, group, reduceOp, commMode, commTurn, output, workspaceSize, executor);
     OP_LOGD("MatmulAllReduceV3, end ret %d", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(timeStampVal, dfxId);
     return ret;
 }
 
 aclnnStatus aclnnMatmulAllReduceV3(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t timeStampVal = NnopbaseMsprofSysTime();
     if (executor == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
         return ACLNN_ERR_INNER;
@@ -137,7 +137,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
         return ACLNN_ERR_INNER;
     });
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(timeStampVal, dfxId);
     return ACLNN_SUCCESS;
 }
 

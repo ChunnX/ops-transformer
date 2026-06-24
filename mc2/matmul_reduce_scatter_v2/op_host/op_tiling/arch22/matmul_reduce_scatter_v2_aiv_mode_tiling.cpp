@@ -548,7 +548,7 @@ static inline bool IsArrayEqual(std::vector<uint32_t> &arr1, const std::vector<u
 }
 
 static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::TilingContext *context,
-                                                                   MatmulReduceScatterV2AivModeInfo &info)
+                                                                   const MatmulReduceScatterV2AivModeInfo &)
 {
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context->GetInputDesc(A_INDEX);

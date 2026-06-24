@@ -36,8 +36,8 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_BIAS = {
     op::DataType::DT_INT32, op::DataType::DT_FLOAT};
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT = {
-    op::DataType::DT_INT8,     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
-    op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
+    op::DataType::DT_INT8, op::DataType::DT_FLOAT8_E4M3FN,
+    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8, op::DataType::DT_FLOAT4_E2M1};
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT_FP4 = {
     op::DataType::DT_FLOAT4_E2M1};
@@ -46,8 +46,8 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT_FP8 = 
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8};
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT = {
-    op::DataType::DT_UINT64, op::DataType::DT_INT64, op::DataType::DT_BF16, op::DataType::DT_FLOAT,
-    op::DataType::DT_FLOAT8_E8M0};
+    op::DataType::DT_UINT64, op::DataType::DT_INT64, op::DataType::DT_BF16,
+    op::DataType::DT_FLOAT, op::DataType::DT_FLOAT8_E8M0};
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_PERTOKEN = {
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT8_E8M0};
@@ -83,17 +83,17 @@ static bool CheckDtypeValid(
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, DTYPE_SUPPORT_LIST_DEQUANT, return false);
     // hif8/fp8/mxfp4 支持fp32的输出
-    const auto outputDtypeSupport = (CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP8) ||
-                                     CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP4)) ?
-                                        DTYPE_SUPPORT_LIST_FLOAT :
-                                        DTYPE_SUPPORT_LIST_WITHOUT_FLOAT;
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outputDtypeSupport, return false);
+    const auto outputSupportedDtype = (CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP8) ||
+                                 CheckType(x1->GetDataType(), DTYPE_SUPPORT_LIST_QUANT_FP4)) ?
+                                    DTYPE_SUPPORT_LIST_FLOAT :
+                                    DTYPE_SUPPORT_LIST_WITHOUT_FLOAT;
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, outputSupportedDtype, return false);
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outputDtypeSupport, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outputSupportedDtype, return false);
         // 检查x3和output的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
     }
@@ -230,12 +230,12 @@ static aclnnStatus CheckParams(
 
 static const aclTensor* CopyTensor(const aclTensor* x2)
 {
-    uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDims(storageDimsNum);
-    for (size_t i = 0; i < storageDimsNum; i++) {
-        storageDims[i] = x2->GetStorageShape().GetDim(i);
+    uint64_t storageDimCount = x2->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDimVec(storageDimCount);
+    for (size_t i = 0; i < storageDimCount; i++) {
+        storageDimVec[i] = x2->GetStorageShape().GetDim(i);
     }
-    OP_LOGD("MatmulAllReduce, CopyTensor storageDimsNum=%lu.", storageDimsNum);
+    OP_LOGD("MatmulAllReduce, CopyTensor storageDimsNum=%lu.", storageDimCount);
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclGetDataType(x2, &dataType);
     auto stride = x2->GetViewStrides();
@@ -249,8 +249,8 @@ static const aclTensor* CopyTensor(const aclTensor* x2)
         format = aclFormat::ACL_FORMAT_FRACTAL_NZ;
     }
     return aclCreateTensor(
-        storageDims.data(), storageDimsNum, dataType, stride.data(), offset, format, storageDims.data(), storageDimsNum,
-        x2->GetTensor()->GetAddr());
+        storageDimVec.data(), storageDimCount, dataType, stride.data(), offset, format, storageDimVec.data(),
+        storageDimCount, x2->GetTensor()->GetAddr());
 }
 
 aclnnStatus aclnnQuantMatmulAllReduceV5GetWorkspaceSize(
