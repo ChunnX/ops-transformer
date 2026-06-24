@@ -138,7 +138,7 @@ mpirun --allow-run-as-root -n 2 build/dispatch_min_driver
     <tr><td>T5</td><td>CCU 扩展模式值 (5/6)</td><td class="todo">待 a6</td></tr>
     <tr><td>T6</td><td>HCOMM 拉起 API 头</td><td class="ok">✓ 已坐实</td></tr>
     <tr><td>T7</td><td>dev_id↔die 映射 (2-die)</td><td class="todo">待 a6</td></tr>
-    <tr><td>T8</td><td>SoC 串 + build.sh 白名单一致</td><td class="todo">待 a6</td></tr>
+    <tr><td>T8</td><td>SoC 串 + build.sh 白名单一致</td><td class="ok">✓ ascend910_96（已坐实）</td></tr>
     <tr><td>T9</td><td>teardown opapi 库名</td><td class="todo">待 a6</td></tr>
     <tr><td>T10</td><td>最小本地 kernel 是否需建 channel</td><td class="todo">待 a6</td></tr>
     <tr><td>T11</td><td>CcuKernelSignature 是否需唯一键（原借 T3，已拆出）</td><td class="todo">待 a6</td></tr>
@@ -157,14 +157,25 @@ mpirun --allow-run-as-root -n 2 build/dispatch_min_driver
     <tr><td class="todo">CcuKernelSignature [T11]</td><td>a6 是否需 name/attrs 唯一键</td><td>多 kernel 可能 alias</td></tr>
   </table>
 
-  <h2>8 · 排错：仍报 ccuContainer is nullptr</h2>
-  <div class="panel">按序排查（前 3 项已在代码层保证，重点核第 4 项）：
+  <h2>8 · a6 报错链排错总表（编译→运行逐关 · 本轮实战已平 6 关，第 7 关诊断中）</h2>
+  <p class="sub">a6 上从"编不过"到"两算子握手"按序撞了 7 关。下表"报错关键串 → 根因 → 修法"照着对号入座。<b>6 关里 5 关根因在环境契约</b>（链接/MPI/cmake/context/opp 装包），非算子逻辑。</p>
+  <table>
+    <tr><th style="width:5%">关</th><th style="width:26%">报错关键串</th><th style="width:28%">根因</th><th style="width:33%">修法</th><th style="width:8%">状态</th></tr>
+    <tr><td><b>编1</b></td><td><code>memset_s undefined</code> / <code>libc_sec.so DSO missing</code></td><td>CCU 头内联用 memset_s（在 libc_sec），ld 默认不传递间接 DT_NEEDED 依赖</td><td>显式链 <code>libc_sec</code> + <code>-Wl,--copy-dt-needed-entries</code></td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>编2</b></td><td><code>_ZN3MPI8Datatype4FreeEv</code> / <code>ompi_mpi_cxx_op_intercept</code> / <code>MPI_Init</code> undefined</td><td>mpi.h 拖进 OpenMPI 废弃 C++ bindings；又错链 libmpi_cxx</td><td><code>-DOMPI_SKIP_MPICXX</code> 关 C++ binding + <b>只链 C 库 libmpi</b></td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>编3</b></td><td><code>MPI::MPI_CXX includes non-existent path /mnt/mpich/include</code></td><td>find_package(MPI) 信了 wrapper 自报脏路径（安装位≠挂载位）</td><td>弃 find_package，<code>find_path(mpi.h)</code>+<code>find_library(mpi)</code> 从 <code>-DMPI_HOME</code> 直接定位</td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>运1</b></td><td><code>rtCCULaunch 107003 stream not in current context</code></td><td>显式 aclrtCreateContext 建独立 context，stream 与 CCU launch 的默认 context 对不上</td><td>删 aclrtCreateContext，全程用 <code>aclrtSetDevice</code> 隐式默认 context</td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>运2</b></td><td><code>NnopbaseInit 161002</code> / <code>basePath.empty</code> / <code>ASCEND_CUSTOM_OPP_PATH</code></td><td>teardown 设备二进制没装到 opp（手动 cmake 只编驱动没装算子包）</td><td><code>.run --force</code> 装包 + <code>export ASCEND_CUSTOM_OPP_PATH=$ASCEND_OPP_PATH/vendors/custom_transformer</code></td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>运3</b></td><td><code>rtsFuncGetByEntry 107000</code> / <code>funcEntry=1 invalid</code></td><td>单 kernel 无 TILING_KEY 分支，host 却 <code>SetTilingKey(1)</code> → 取不到 key1 变体</td><td><code>SetTilingKey(0)</code>（单变体算子注册在 key 0）</td><td class="ok">✓ 平</td></tr>
+    <tr><td><b>运4</b></td><td>teardown <code>blk=0 start poll, expect=1</code> 后<b>卡死</b>，环境挂</td><td>三选一待诊断：CCU 写非法地址 / 没写进 1 / 跨流 cache 不可见 [T3]</td><td>host 诊断隔离：CCU 单独 sync → 读回 statusGm 打印 → 再起 AIV；<code>setvbuf</code> 无缓冲防崩溃吞日志</td><td class="todo">诊断中</td></tr>
+  </table>
+  <div class="panel"><b>第 7 关（握手卡死）诊断判读</b>——重编驱动跑一把，看打印：
     <ul>
-      <li>① <code>-DDISPATCH_CCU_A6=ON</code> 是否生效（<code>config.hcclOpExpansionMode</code> 那行才编进去）</li>
-      <li>② 是否 2 rank（<code>mpirun -n 2</code>）——单 rank 不建容器</li>
-      <li>③ config 已零初始化、comm-init 已对齐基线（本轮已修）</li>
-      <li>④ <b>CCU 扩展模式值</b>：默认 6=ccu_sched；基线若用 ccu_ms 则 <code>-DDISPATCH_CCU_EXPANSION_MODE=5</code>（按 a6 数组约定，非 a5 头枚举）</li>
+      <li>卡在 <code>syncing streamSetup(CCU)...</code> 后<b>无 DIAG 行</b> → <b>CCU 非法访存</b>（写端地址/token，重点怀疑）</li>
+      <li>DIAG 行 <code>statusGm[0]=0</code> → CCU 跑了但<b>没写进 1</b>（LocalCopyNb/event 落地）</li>
+      <li>DIAG 行 <code>statusGm[0]=1</code> → CCU 写对了 → 问题在 <b>AIV 跨流可见性 [T3]</b>（已串行化，很可能直接 PASS）</li>
     </ul>
+    <p class="sub">附：原 <code>ccuContainer is nullptr</code> 已由"2 rank MPI + <code>hcclOpExpansionMode=CCU</code>"解决（前置关，已过）。LocalCopyNb 地址/token 范式已对照工作版 combine setup 逐项核过、一致。</p>
   </div>
 
   <h2>9 · a6 上手核验三步（编过 + 链上）</h2>
@@ -185,7 +196,7 @@ cd experimental/mc2/dispatch_setup &amp;&amp; cmake -B build -DDISPATCH_CCU_A6=O
   <h2>10 · 编译期已修 bug 速查（编译器/链接器才逮得到，对抗审查看不见）</h2>
   <table>
     <tr><th>现象</th><th>根因</th><th>修法</th></tr>
-    <tr><td><code>MPI::MPI_C ... target not found</code></td><td>该机 OpenMPI 只生成 MPI_CXX 无 MPI_C</td><td class="ok">CMake 自动选 MPI_CXX 兜底（本轮 a5 编译逼出并修）</td></tr>
+    <tr><td><code>MPI::MPI_C ... target not found</code>（a5）→ a6 上 <code>MPI::MPI_CXX 脏路径</code></td><td>find_package(MPI) 信 wrapper 自报路径，a5/a6 各暴露一种坏法</td><td class="ok">a6 已弃 find_package：直接 <code>find_path</code>/<code>find_library</code> 从 MPI_HOME 定位 + <code>OMPI_SKIP_MPICXX</code>（见 §8 编2/编3）</td></tr>
     <tr><td><code>ACLNN_SUCCESS not declared</code></td><td>本 CANN 公共 aclnn 头未导出该宏</td><td>驱动 <code>#ifndef</code> 兜底定义</td></tr>
     <tr><td><code>hccl_types.h: No such file</code></td><td><code>ccu_kernel.h</code> 内部 plain include</td><td>include 加 <code>${HCOMM_INT_INC}/hccl</code></td></tr>
     <tr><td><code>undefined HcclCcuKernel* / CcuKernel</code></td><td><b>a5 libhcomm 无 CCU 符号 = a6-only</b>（库代际边界，非代码缺陷）</td><td>CCU 侧整体 <code>#ifdef DISPATCH_CCU_A6</code>；a6 上开 + a6 libhcomm</td></tr>

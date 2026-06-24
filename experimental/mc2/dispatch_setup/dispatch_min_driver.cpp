@@ -238,6 +238,8 @@ int main(int argc, char **argv)
     int mpiRank = 0, mpiSize = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpiSize);
+    setvbuf(stdout, nullptr, _IONBF, 0);   // ★ stdout 无缓冲：上板 fault/卡死时每句打印立刻落屏、不被缓冲吃掉
+                                           //   （host printf 本就正确，非 kernel 用法；崩溃前的诊断必须看得到）
     const uint32_t rankId   = static_cast<uint32_t>(mpiRank);
     const uint32_t rankSize = static_cast<uint32_t>(mpiSize);     // 期望 2（mpirun -n 2）
     const int32_t  devId    = static_cast<int32_t>(rankId);       // [T7] 单节点：die = rank（dev0/dev1）；若拓扑不同改此映射
@@ -297,11 +299,21 @@ int main(int argc, char **argv)
         ACLCHECK(aclrtMemcpy(oneBuf, STATUS_BYTES, ones.data(), STATUS_BYTES, ACL_MEMCPY_HOST_TO_DEVICE));
     }
 
-    // ---- 串行同步：先后异步拉起两算子到两条流，靠 teardown 忙等轮询完成跨流同步（每 rank 各自独立）----
+    // ---- 【诊断版】隔离 CCU 写端：先拉 CCU → 单独同步 CCU 流 → host 读回 statusGm 看 CCU 到底写没写对 → 再拉 AIV ----
     if (LaunchDispatchSetupCcu(comm, streamSetup, statusGm, oneBuf) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
+    printf("[rank %u] syncing streamSetup(CCU)... 若 CCU 非法访存，将 fault/卡在此处\n", rankId);
+    ACLCHECK(aclrtSynchronizeStream(streamSetup));   // CCU 若非法访存 → 这里 fault/报错，而非往下走
+    {
+        std::vector<int32_t> st(STATUS_SLOTS, -1);
+        ACLCHECK(aclrtMemcpy(st.data(), STATUS_BYTES, statusGm, STATUS_BYTES, ACL_MEMCPY_DEVICE_TO_HOST));
+        printf("[rank %u][DIAG] CCU 后 statusGm[0..3]=%d %d %d %d（期望 slot0=%d）→ %s\n",
+               rankId, st[0], st[1], st[2], st[3], mc2::DISPATCH_READY_VALUE,
+               st[0] == mc2::DISPATCH_READY_VALUE
+                   ? "CCU 写 1 成功 → 问题在 AIV 没观测到(cache/跨流可见性)"
+                   : "CCU 没写进 1 → 问题在 CCU 写端(地址/token/LocalCopyNb)");
+    }
+    // CCU 已完成且 statusGm 已被 host 读过（建立可见性），再拉 AIV——若 CCU 写对，AIV 此时应立即读到 1
     if (LaunchDispatchTeardownAclnn(streamTeardown, statusGm, doneGm) != 0) { MPI_Abort(MPI_COMM_WORLD, -1); return -1; }
-
-    ACLCHECK(aclrtSynchronizeStream(streamSetup));
     ACLCHECK(aclrtSynchronizeStream(streamTeardown));
 
     // ---- 校验：done[0] 应为 1（本 rank teardown 等到状态位并往下走）----
