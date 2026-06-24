@@ -11,3 +11,6 @@
 import torch
 import torch_npu
 from . import ops
+from .ops import grouped_matmul_activation_quant
+
+__all__ = ["grouped_matmul_activation_quant", "ops"]

@@ -10,6 +10,8 @@
 
 #include <torch/extension.h>
 
+#include <c10/core/DeviceGuard.h>
+
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -201,10 +203,9 @@ void CheckTensorList(const std::vector<at::Tensor> &tensorList, const char *name
     TORCH_CHECK(tensorList[0].defined(), name, "[0] must be a defined tensor.");
 }
 
-void CheckBias(const c10::optional<std::vector<at::Tensor>> &bias)
+void CheckBias(const std::vector<at::Tensor> &bias)
 {
-    TORCH_CHECK(!bias.has_value() || bias.value().empty(),
-        "bias must be None or an empty tensor list in current MXFP8 mode.");
+    TORCH_CHECK(bias.empty(), "bias must be an empty tensor list in current MXFP8 mode.");
 }
 
 std::vector<int64_t> GetExpectedWeightStorageShape(const WeightLayout &weightLayout, int64_t e, int64_t k)
@@ -233,17 +234,17 @@ at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const We
 }
 } // namespace
 
-std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
+std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     const at::Tensor &x,
     const at::Tensor &groupList,
     const std::vector<at::Tensor> &weight,
     const std::vector<at::Tensor> &weightScale,
-    const c10::optional<std::vector<at::Tensor>> &bias,
-    const c10::optional<at::Tensor> &xScaleOptional,
+    const std::vector<at::Tensor> &bias,
     std::string activationType,
+    const c10::optional<at::Tensor> &xScaleOptional,
     int64_t groupListType,
     const c10::optional<std::vector<int64_t>> &tuningConfig,
-    std::string quantMode,
+    c10::optional<c10::string_view> quantModeOptional,
     int64_t yDtype,
     std::string roundMode,
     int64_t scaleAlg,
@@ -302,25 +303,28 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     TORCH_CHECK(weightAclDtype == ACL_FLOAT8_E4M3FN, "weight only supports FLOAT8_E4M3FN.");
     TORCH_CHECK(weightScaleAclDtype == ACL_FLOAT8_E8M0, "weight_scale only supports FLOAT8_E8M0.");
     TORCH_CHECK(xScaleAclDtype == ACL_FLOAT8_E8M0, "x_scale only supports FLOAT8_E8M0.");
+    c10::string_view quantModeView = quantModeOptional.value_or("");
+    std::string quantMode(quantModeView.data(), quantModeView.size());
     if (quantMode.empty() && (xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2)) {
         quantMode = "MX";
     }
     TORCH_CHECK(!(xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2) || quantMode == "MX",
         "当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX");
 
-    at::Tensor y = at::empty({m, n}, x.options().dtype(GetYScalarType(yDtypeValue)));
-    at::Tensor yScale = at::empty({m, CeilDiv(n, MX_GROUP_SIZE), 2},
-        x.options().dtype(at::ScalarType::Float8_e8m0fnu));
+    at::Tensor y;
+    at::Tensor yScale;
+    {
+        auto localDevice = c10::Device(x.device());
+        const c10::OptionalDeviceGuard deviceGuard(localDevice);
+        y = at::empty({m, n}, x.options().dtype(GetYScalarType(yDtypeValue)));
+        yScale = at::empty({m, CeilDiv(n, MX_GROUP_SIZE), 2},
+            x.options().dtype(at::ScalarType::Float8_e8m0fnu));
+    }
 
     c10::SmallVector<at::Tensor, 1> weightVec;
     at::TensorList weightRef = PrepareWeightList(weight, weightLayout, e, k, weightVec);
     at::TensorList weightScaleRef = weightScale;
-    at::TensorList biasRef;
-    if (bias.has_value()) {
-        biasRef = at::TensorList(bias.value());
-    } else {
-        biasRef = at::TensorList();
-    }
+    at::TensorList biasRef = bias;
     c10::optional<at::IntArrayRef> tuningConfigRef = c10::nullopt;
     if (tuningConfig.has_value()) {
         tuningConfigRef = at::IntArrayRef(tuningConfig.value());
@@ -346,7 +350,7 @@ std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_grouped_matmul_activation_quant", &npu_grouped_matmul_activation_quant,
+    m.def("grouped_matmul_activation_quant", &grouped_matmul_activation_quant,
         "GroupedMatmulActivationQuant WeightNz torch wrapper");
 }
 } // namespace op_api

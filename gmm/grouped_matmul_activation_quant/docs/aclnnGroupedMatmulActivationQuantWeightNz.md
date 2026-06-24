@@ -338,8 +338,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <tr>
         <td>dstTypeMax</td>
         <td>可选输入</td>
-        <td>表示目标量化类型的最大值配置，预留参数。</td>
-        <td>可选属性，默认值为0，当前暂不使用。</td>
+        <td>表示maxType的取值，对应公式中的Amax(DType)。</td>
+        <td>可选属性，默认值为0.0。支持取值0.0和6.0-12.0，取值为0.0代表Amax(DType)为量化结果数据类型的最大值；取值为6.0-12.0代表Amax(DType)为传入值。仅支持在FP4E2M1和blocksize取32时设置该值。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -399,7 +399,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       - roundMode仅支持"rint"。
       - scaleAlg仅支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
       - MXFP8场景下bias必须为空，支持nullptr或空tensorlist。
-      - tuningConfig和dstTypeMax为预留参数，当前暂不使用。
+      - tuningConfig为预留参数，当前暂不使用。
+      - dstTypeMax表示maxType的取值，对应公式中的Amax(DType)。支持取值0.0和6.0-12.0，取值为0.0代表Amax(DType)为量化结果数据类型的最大值；取值为6.0-12.0代表Amax(DType)为传入值。仅支持在FP4E2M1和blocksize取32时设置该值，当前MXFP8场景使用默认值0.0。
 
 - **返回值**
 
