@@ -213,8 +213,9 @@ ge::graphStatus FiaTilingShape::CheckHasAxis(const FiaAxis &axis, const std::str
     }
     if (shape_.GetDimNum() != layoutAxes.size()) {
         std::string dimStr = std::to_string(shape_.GetDimNum());
-        std::string reason = "[" + funcName + "] The shape dim of " + name_ + " must be equal to the axes size of layout(" +
-            LayoutToSerialString(layout_) + "): " + std::to_string(layoutAxes.size());
+        std::string reason = "[" + funcName + "] The shape dim of " + name_ +
+            " must be equal to the axes size of layout(" + LayoutToSerialString(layout_) + "): " +
+            std::to_string(layoutAxes.size());
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name_.c_str(), dimStr.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
