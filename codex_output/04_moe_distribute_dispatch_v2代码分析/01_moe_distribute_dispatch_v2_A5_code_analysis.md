@@ -9,10 +9,13 @@
 
 `MoeDistributeDispatchV2` 是 MoE dispatch 阶段的 MC2 通信算子，核心职责是根据 `expert_ids` 把本 rank token 按 expert/rank 路由，跨 EP/TP 通信域交换 token，在接收 rank 上连续化输出 `expand_x`，并生成 combine 所需的 `assist_info_for_combine`、`expert_token_nums`、`ep_recv_count`、`tp_recv_count`、`dynamic_scales` 和 `expand_scales`。
 
-A5 分支分为两条主路径：
+A5 分支按执行形态可分为三条主要分支：
 
 - `comm_alg == "ccu"`：走 A5 CCU 专用路径。API 保持 Inner V2；graph fusion 跳过；host tiling 调用 `MoeDistributeDispatchTilingImpl(..., OP_VERSION_2)`；kernel 进入 `MoeDistributeDispatchA5`，通信使用 `Hccl<HCCL_SERVER_TYPE_CCU>::AlltoAllvWrite`。
-- `comm_alg == "" / "fullmesh_v1" / "fullmesh_v2"`（gen task 侧可归一化为 MTE）：走 A5 MTE/window 路径。API/graph 侧引入 `Mc2Context` 并转 Inner V3；host tiling 复用 A3 public tiling 但设置 `ARCH_TAG=A5`；kernel 按 `FullMesh` 选择 `MoeDistributeDispatchV2` 或 `MoeDistributeDispatchV2FullMesh`。
+- `comm_alg == "" / "fullmesh_v1"`：走 A5 MTE/window non-fullmesh 路径。API/graph 侧引入 `Mc2Context` 并转 Inner V3；host tiling 复用 A3 public tiling但设置 `ARCH_TAG=A5`；kernel 进入 `MoeDistributeDispatchV2`。
+- `comm_alg == "fullmesh_v2"`：走 A5 MTE fullmesh 路径。API/graph 侧同样走 Inner V3/context 方案；host tiling 设置 `FullMesh=TILINGKEY_ENABLE_FULLMESH`；kernel 进入 `MoeDistributeDispatchV2FullMesh`。
+
+因此，CCU 是 A5 上新增的 EP-only 专用加速路径，不是对 MTE/window 体系的完全替代。MTE non-fullmesh 负责默认兼容和 V3/context 方案，MTE fullmesh 负责 `fullmesh_v2` 算法；两者仍覆盖 CCU 当前不支持或不适合覆盖的场景。
 
 需要特别留意：`op_kernel/arch35/moe_distribute_dispatch_v2_host_kfc.h` 存在另一套 HostKfc/server 间 window 通信实现，但当前 `op_kernel/moe_distribute_dispatch_v2.cpp` 未直接 include 或派发该类，本文把它作为候选/备用实现单独说明。
 
@@ -523,6 +526,24 @@ MoeDistributeDispatchA5::Process
 | Kernel | A5 + ccu | `MoeDistributeDispatchA5` |
 | Kernel | A5 + MTE + no fullmesh | `MoeDistributeDispatchV2` |
 | Kernel | A5 + MTE + fullmesh | `MoeDistributeDispatchV2FullMesh` |
+
+CCU 分支存在后仍保留 MTE non-fullmesh 与 MTE fullmesh 的原因如下：
+
+| 原因 | 代码/行为依据 | 影响 |
+| --- | --- | --- |
+| CCU 当前是 EP-only 专用路径 | `SetCommTiling` 只设置 `HCCL_CMD_HALFALLTOALLV`，注释说明 A5 当前不支持 TP communication；`MoeDistributeDispatchTilingImpl` 要求 `tpWorldSize == 1`。 | 涉及 TP 通信或非 EP-only 语义时，不能用当前 `MoeDistributeDispatchA5` 覆盖。 |
+| CCU 固定 `FullMesh=NO_FULLMESH` | CCU `GenTilingKey` 固定 `fullMesh=TILINGKEY_NO_FULLMESH`、`commMode=TILINGKEY_TPL_CCU`。 | `fullmesh_v2` 需要进入 `MoeDistributeDispatchV2FullMesh`，不能落到 CCU kernel。 |
+| A5 non-ccu 是 V3/context 新模板路径 | API 在 A5 且非 ccu 时创建 `Mc2Context` 并调用 Inner V3；Graph fusion 会把 V2 节点替换成 V3。 | 默认空 `comm_alg` 与 `fullmesh_v1` 需要保留 MTE/window 路径以承接新模板和兼容行为。 |
+| CCU 依赖 CCU server/HCCL window 资源 | API 设置 `NNOPBASE_HCCL_SERVER_TYPE_CCU`；GenTask 使用 `ccu server/ccu_stream`；tiling 用 `CheckCommAttrs` 校验 `HCCL_BUFFSIZE * 2`。 | 在 CCU server、XN/CKE 或 window 容量不满足时，MTE 分支仍是独立资源模型。 |
+| 性能与 shape 覆盖不完全等价 | CCU 要 AIV 打包 size/offset、AIV0 提交 HCCL、CCU remote write、AIV gather；MTE/fullmesh 使用不同 window/flag/cumsum 调度。 | 对不同 BS、topK、expert 分布和 fullmesh 策略，保留多个算法分支有利于覆盖和调优。 |
+
+简化判断：
+
+```text
+comm_alg == "ccu"         -> A5 CCU：EP-only、tp=1、CCU HalfAllToAllV
+comm_alg == ""/"fullmesh_v1" -> A5 MTE non-fullmesh：默认兼容与 V3/context
+comm_alg == "fullmesh_v2" -> A5 MTE fullmesh：fullmesh_v2 专用模板
+```
 
 ## 9. A5 关键约束与量化规则
 
