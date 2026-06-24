@@ -725,7 +725,8 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseMode() const
 
 ge::graphStatus QSFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
-    OP_CHECK_IF(((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_2201) &&
+        ((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
         (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) &
          static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
@@ -1668,7 +1669,7 @@ ge::graphStatus QSFAInfoParser::GetKvLayout()
         kvLayout_ = it->second;
     } else {
         OP_LOGE_FOR_INVALID_FORMAT(opName_, "KV",
-            QSFALayoutToSerialString(kvLayout_).c_str(), "BSND or PA_BSND or TND");
+            layout.c_str(), "BSND or PA_BSND or TND");
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ != QSFALayout::PA_BSND && qLayout_ != kvLayout_) {
