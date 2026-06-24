@@ -247,7 +247,7 @@ uint64_t MhcPreSinkhornBackwardArch35DeterminiticTiling::GetTilingKey() const
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::PostTiling()
 {
-    context_->SetBlockDim(coreNumAic_);
+    context_->SetBlockDim(8);
     context_->SetScheduleMode(1);
 
     return ge::GRAPH_SUCCESS;
