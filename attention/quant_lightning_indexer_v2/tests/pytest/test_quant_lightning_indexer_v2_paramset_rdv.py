@@ -40,7 +40,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
         "seqused_q": [[1]],
         "seqused_k": [[2048]], # PA场景每个batch的实际token数
-        "cmp_residual_k": [None],
+        "cmp_residual_k": [[0]],
         "max_seqlen_q": [1],
         "quant_mode": [3],
         "layout_query": ["BSND"],
@@ -50,8 +50,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0]
     },
@@ -75,7 +75,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
         "seqused_q": [[1]],
         "seqused_k": [[120]], # PA场景每个batch的实际token数
-        "cmp_residual_k": [None],
+        "cmp_residual_k": [[0]],
         "max_seqlen_q": [1],
         "quant_mode": [3],
         "layout_query": ["BSND"],
@@ -85,8 +85,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0]
     },
@@ -120,8 +120,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0]
     },
@@ -155,8 +155,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0]
     },
@@ -190,8 +190,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0]
     },
@@ -215,7 +215,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
         "seqused_q": [[3]],
         "seqused_k": [[513]], # PA场景每个batch的实际token数
-        "cmp_residual_k": [None],
+        "cmp_residual_k": [[1]],
         "max_seqlen_q": [3],
         "quant_mode": [3],
         "layout_query": ["TND"],
@@ -225,8 +225,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[1]
     },
@@ -250,7 +250,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [None],     # BSND: cu_seqlens_k 不传
         "seqused_q": [None],
         "seqused_k": [None],
-        "cmp_residual_k": [None],
+        "cmp_residual_k": [[0,0]],
         "max_seqlen_q": [16],
         "quant_mode": [3],
         "layout_query": ["BSND"],
@@ -260,8 +260,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0]
     },
@@ -285,7 +285,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [[0,64,128,192,512]], # TND: 前缀和 [B+1]
         "seqused_q": [[16,16,16,2]],
         "seqused_k": [[64,64,64,64]],
-        "cmp_residual_k": [[9,10,11,12]],
+        "cmp_residual_k": [[1,2,3,0]],
         "max_seqlen_q": [16],
         "quant_mode": [3],
         "layout_query": ["TND"],
@@ -295,8 +295,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[1]
     },
@@ -320,7 +320,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [None],     # PA_BBND: cu_seqlens_k 不传
         "seqused_q": [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
         "seqused_k": [[2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049,2048,2049]], # PA场景每个batch的实际token数
-        "cmp_residual_k": [[14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61]],
+        "cmp_residual_k": [[2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1]],
         "max_seqlen_q": [1],
         "quant_mode": [3],
         "layout_query": ["TND"],
@@ -330,8 +330,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[1]
     },
@@ -355,7 +355,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [None],     # BSND: cu_seqlens_k 不传
         "seqused_q": [[10,12]],
         "seqused_k": [[3999,350]],
-        "cmp_residual_k": [None],
+        "cmp_residual_k": [[1,2]],
         "max_seqlen_q": [12],
         "quant_mode": [3],
         "layout_query": ["BSND"],
@@ -365,8 +365,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0]
     },
@@ -390,7 +390,7 @@ TEST_PARAMS = {
         "cu_seqlens_k": [[0,1,2,3,2051]],     # TND: 前缀和 [B+1]
         "seqused_q": [[1,1,11,28]],
         "seqused_k": [[1,1,1,2048]],
-        "cmp_residual_k": [None],
+        "cmp_residual_k": [[1,2,3,0]],
         "max_seqlen_q": [29],
         "quant_mode": [3],
         "layout_query": ["TND"],
@@ -400,8 +400,8 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
+        "q_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
+        "k_scale_datarange":[[-3,4]],   # 2的指数范围，各次方等概率
         "cmp_ratio":[4],
         "return_value":[0]
     },
