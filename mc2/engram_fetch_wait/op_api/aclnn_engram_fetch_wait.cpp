@@ -22,24 +22,24 @@ using namespace op;
 extern "C" {
 #endif
 
-static bool CheckNotNull(const aclTensor *bufferHandle)
+static bool CheckNotNull(const aclTensor *commContext)
 {
-    OP_CHECK_NULL(bufferHandle, return false);
+    OP_CHECK_NULL(commContext, return false);
     return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor *bufferHandle)
+static aclnnStatus CheckParams(const aclTensor *commContext)
 {
-    CHECK_RET(CheckNotNull(bufferHandle), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(commContext), ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnEngramFetchWaitGetWorkspaceSize(const aclTensor *bufferHandle, uint64_t *workspaceSize,
+aclnnStatus aclnnEngramFetchWaitGetWorkspaceSize(const aclTensor *commContext, uint64_t *workspaceSize,
                                                  aclOpExecutor **executor)
 {
-    auto retParam = CheckParams(bufferHandle);
+    auto retParam = CheckParams(commContext);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    aclnnStatus ret = aclnnInnerEngramFetchWaitGetWorkspaceSize(bufferHandle, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerEngramFetchWaitGetWorkspaceSize(commContext, workspaceSize, executor);
     return ret;
 }
 

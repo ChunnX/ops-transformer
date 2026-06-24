@@ -20,7 +20,7 @@ class EngramFetch : public OpDef {
 public:
     explicit EngramFetch(const char *name) : OpDef(name)
     {
-        this->Input("bufferHandle")
+        this->Input("commContext")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});

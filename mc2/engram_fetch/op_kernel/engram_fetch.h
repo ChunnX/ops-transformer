@@ -17,7 +17,7 @@
 #include "../../common/op_kernel/mc2_moe_context.h"
 #endif
 constexpr uint32_t  MAX_QP_SIZE = 1024;
-struct EngramBufferHandle {
+struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;
     uint64_t commBuffer[MAX_QP_SIZE];

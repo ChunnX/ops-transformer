@@ -29,7 +29,7 @@ class EngramFetchArch35 {
 public:
     __aicore__ inline EngramFetchArch35() = default;
 
-    __aicore__ inline void Init(GM_ADDR bufferHandle, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
+    __aicore__ inline void Init(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
                                 TPipe *pipe, const EngramFetchTilingData *tilingData);
 
     __aicore__ inline void Process();
@@ -41,7 +41,7 @@ private:
     GM_ADDR indicesGM_{nullptr};
     GM_ADDR fetchedGM_{nullptr};
     const EngramFetchTilingData *tilingData_{nullptr};
-    __gm__ EngramBufferHandle *bhPtr_{nullptr};
+    __gm__ EngramCommContext *ctxPtr_{nullptr};
 
     uint32_t aivId_{0};
     uint32_t rankId_{0};
@@ -59,7 +59,7 @@ private:
 };
 
 __aicore__ inline void EngramFetchArch35::Init(
-    GM_ADDR bufferHandle, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
+    GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
     TPipe *pipe, const EngramFetchTilingData *tilingData)
 {
     tpipe_ = pipe;
@@ -68,9 +68,9 @@ __aicore__ inline void EngramFetchArch35::Init(
     tilingData_ = tilingData;
     aivId_ = GetBlockIdx();
 
-    bhPtr_ = (__gm__ EngramBufferHandle *)bufferHandle;
-    rankId_ = bhPtr_->rankId;
-    numRanks_ = bhPtr_->rankSize;
+    ctxPtr_ = (__gm__ EngramCommContext *)commContext;
+    rankId_ = ctxPtr_->rankId;
+    numRanks_ = ctxPtr_->rankSize;
 
     numEntriesPerRank_ = tilingData_->numEntriesPerRank;
     numTokens_ = tilingData_->numTokens;
@@ -119,18 +119,18 @@ __aicore__ inline void EngramFetchArch35::Process()
 
                 if (ownerRank == rankId_) {
                     GM_ADDR src =
-                        (GM_ADDR)bhPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                        (GM_ADDR)ctxPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
                     LocalCopySlice(dst, src, hiddenBytes_);
                 } else {
                     GM_ADDR remoteSrcAddr =
-                        (GM_ADDR)bhPtr_->commBuffer[ownerRank] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                    hcomm_.ReadNbi<false>(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
+                        (GM_ADDR)ctxPtr_->commBuffer[ownerRank] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                    hcomm_.ReadNbi<false>(ctxPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
                     pendingReadCount++;
                 }
             }
 
             if (pendingReadCount > 0) {
-                hcomm_.Commit(bhPtr_->hcommHandle_[channelIdx]);
+                hcomm_.Commit(ctxPtr_->hcommHandle_[channelIdx]);
             }
         }
     }

@@ -9,7 +9,7 @@
 
 using namespace AscendC;
 
-__global__ __aicore__ void engram_fetch_wait(GM_ADDR bufferHandle, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void engram_fetch_wait(GM_ADDR commContext, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(EngramFetchWaitTilingData);
     GET_TILING_DATA_WITH_STRUCT(EngramFetchWaitTilingData, tilingData, tilingGM);
@@ -17,7 +17,7 @@ __global__ __aicore__ void engram_fetch_wait(GM_ADDR bufferHandle, GM_ADDR works
     if (TILING_KEY_IS(0)) {
         TPipe pipe;
         EngramFetchWaitImpl::EngramFetchWaitArch35 op;
-        op.Init(bufferHandle, workspaceGM, &pipe, &tilingData);
+        op.Init(commContext, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }
