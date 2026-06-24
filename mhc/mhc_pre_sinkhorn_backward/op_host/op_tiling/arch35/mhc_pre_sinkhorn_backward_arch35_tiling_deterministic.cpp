@@ -142,12 +142,6 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     tilingData->eps = hcEps_;
     tilingData->aicNum = coreNumAic_;
 
-    int64_t cBlockLoops_{0};
-    int64_t cBlockTailLoops_{0};
-    int64_t cBlockCount_{0};
-    int64_t cBlockTailCount_{0};
-    int64_t cBlockTailTailCount_{0};
-
     return ge::GRAPH_SUCCESS;  
 }
 
@@ -159,10 +153,11 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     tailBsTaskCount_ = totalBs - bsTaskCount_ * (usedAivNum_ - 1);
     cLoopDataLen_ = c_;
     bsLoopDataLen_ = bsTaskCount_;
-    ubBlock_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)) - UB_RESERVE_SIZE;
+    ubBlock_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
+    ubSize_ = ubSize_ - UB_RESERVE_SIZE;
     auto restSize = static_cast<int64_t>(-1);
- 
-    while (restSize > 0) {
+
+    while (restSize <= 0) {
         int64_t occupy = DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +   //x
                         DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                     //h_pre And grad_h_pre
                         DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +         //grad_h_in
@@ -193,7 +188,7 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
         restSize = ubSize_ - occupy;
         if (restSize <= 0 && bsLoopDataLen_ > 1) {
             bsLoopDataLen_--;
-        } else {
+        } else if (restSize <= 0 && bsLoopDataLen_ == 1) {
             cLoopDataLen_--;
         }
     }
@@ -205,10 +200,10 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     cBlockCount_ = bsncTaskCount;
     cBlockTailCount_ = tailBsncTaskCount_;
     restSize = static_cast<int64_t>(-1);
-    while (restSize > 0) {
+    while (restSize <= 0) {
         int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_);
         restSize = ubSize_ - occupy;
-        if (restSize < 0 && cBlockCount_ > 1) {
+        if (restSize <= 0 && cBlockCount_ > 1) {
             cBlockCount_--;
         }
     }
