@@ -17,8 +17,8 @@
 
 #include "lib/hccl/hccl.h"
 #ifdef __CCE_KT_TEST__
-#include "../../common/op_kernel/mc2_tiling_struct.h"
-#include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../common/op_kernel/mc2_tiling_struct.h"
+#include "../common/op_kernel/mc2_kernel_utils.h"
 #else
 #include "../common/op_kernel/mc2_tiling_struct.h"
 #include "../common/op_kernel/mc2_kernel_utils.h"

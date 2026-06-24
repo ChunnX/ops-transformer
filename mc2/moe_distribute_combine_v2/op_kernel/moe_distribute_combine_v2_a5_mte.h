@@ -33,7 +33,7 @@
 #include "../moe_distribute_dispatch_v2/moe_distribute_elastic.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../common/op_kernel/moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_elastic.h"
