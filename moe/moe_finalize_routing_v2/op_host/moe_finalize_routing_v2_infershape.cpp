@@ -308,7 +308,7 @@ static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* 
     int64_t valueDim0 = expandedSrcToDstRowInputShape->GetDim(0);
     if (scalesInputShape != nullptr) {
         valueDim0 = scalesInputShape->GetDim(0);
-    } else {
+    } else if (k > 0) {
         valueDim0 = valueDim0 / k;
     }
     outShape->AppendDim(valueDim0);
@@ -369,24 +369,19 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     }
     
     const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(ATTR_K);
-    int64_t k = -1;
+    OP_CHECK_NULL_WITH_CONTEXT(context, kPtr);
+    int64_t k = *kPtr;
     if (scalesInputShape != nullptr && !IsUnknownRank(scalesInputShape)) {
         int64_t scalesDim1 = scalesInputShape->GetDim(1);
-        if (*kPtr > 0) {
+        // k > 1 means user explicitly specified k, need to verify consistency with scales dim1
+        if (*kPtr > 1) {
             OP_CHECK_IF(
-                *kPtr != scalesDim1,
+                scalesDim1 != UNKNOWN_DIM_VALUE_ && *kPtr != scalesDim1,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k",
                     std::to_string(*kPtr).c_str(), "k must equal scales dim1"),
                 return ge::GRAPH_FAILED);
         }
         k = scalesDim1;
-    } else {
-        OP_CHECK_IF(
-            *kPtr == 0,
-            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "k",
-                "0", "k is required when scales is not provided"),
-            return ge::GRAPH_FAILED);
-        k = *kPtr;
     }
 
     ret = CheckOptionalInputShape(context, INDEX_IN_EXPERT_IDX, "expert_idx", outShape, &expertIdxShape, earlyReturn);
