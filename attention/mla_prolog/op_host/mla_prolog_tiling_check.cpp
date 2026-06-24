@@ -955,7 +955,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckParamByScenario()
             if (expectedParam.shape != it.second.shape) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     context_.opName, it.first, ConvertContainerToStringV3(it.second.shape),
-                    "this parameter requires shape " + ConvertContainerToStringV3(expectedParam.shape) +
+                    "this parameter requires shape " + ConvertContainerToString(expectedParam.shape) +
                         " under current configuration");
             }
         }
