@@ -134,7 +134,7 @@
     </tr>
     <tr>
       <td>mask_mode</td>
-      <td>属性</td>
+      <td>可选属性</td>
       <td>表示sparse模式，0表示No mask，3表示rightDownCausal模式，默认值为0。</td>
       <td>INT32</td>
       <td>-</td>

@@ -177,7 +177,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     <tr>
       <td>quantMode（int64_t）</td>
       <td>输入</td>
-      <td>表示量化模式</td>
+      <td>表示量化模式。</td>
       <td><ul><li>当前仅支持1/2/4。</li><li>1: qk: fp8(e4m3) per-token-head; scale: fp32。</li><li>2: qk: int8 per-token-head; scale: fp16 w: fp16。</li><li>4: qk: hif8 per-tensor; scale: fp32。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -287,7 +287,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
   </tbody>
   </table>
 
-  <td><ul><li><term>Ascend 950PR/Ascend 950DT</term> ：不支持quantMode = 2。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品</term> ：不支持numHeadsQ = 32，不支持quantMode = 1/4，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li></ul></td>
+  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：不支持quantMode = 2。</li><li><term>Atlas A3训练系列产品/Atlas A3推理系列产品</term> ：不支持numHeadsQ = 32，不支持quantMode = 1/4，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li></ul>
 
 - **返回值：**
 
@@ -657,7 +657,7 @@ int main() {
     ScopeGuard argsGuard([&] { DestroyArgs(context); });
 
     // 3. 调用CANN算子库API，需要修改为具体的API
-    // 调用aclnnLightningIndexerV2Metadata第一段接口
+    // 调用aclnnQuantLightningIndexerV2Metadata第一段接口
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
@@ -682,7 +682,7 @@ int main() {
         }
     });
     
-    // 调用aclnnLightningIndexerV2Metadata第二段接口
+    // 调用aclnnQuantLightningIndexerV2Metadata第二段接口
     ret = aclnnQuantLightningIndexerV2Metadata(workspaceAddr, workspaceSize, executor, stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnQuantLightningIndexerV2Metadata failed. ERROR: %d\n", ret);
 

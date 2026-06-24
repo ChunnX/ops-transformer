@@ -99,7 +99,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     <tr>
       <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length</td>
+      <td>表示不同Batch中Query的有效Sequence Length。</td>
       <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -109,7 +109,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     <tr>
       <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中ori_Kv的有效Sequence Length。</td>
+      <td>表示不同Batch中ori_kv的有效Sequence Length。</td>
       <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
@@ -119,7 +119,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     <tr>
       <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中cmp_Kv的有效Sequence Length。</td>
+      <td>表示不同Batch中cmp_kv的有效Sequence Length。</td>
       <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
