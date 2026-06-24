@@ -405,7 +405,7 @@ __aicore__ inline void CombineQuantizedTokensByUrma(
         uint64_t channelHandle = GetUrmaCommHandle(params.peermemInfo.mc2Context, toRankId, rankId);
         GM_ADDR srcAddr = dstPeermemPtr + dstBaseOffset * sizeof(QuantOutType);
         GM_ADDR remoteAddr = GetUrmaAddrByRankId(params.peermemInfo.mc2Context, toRankId) + params.peermemInfo.URMACombineWinPtr + dstBaseOffset * sizeof(QuantOutType);
-        params.peermemInfo.hcomm.WriteNbi(channelHandle, remoteAddr, srcAddr, quantRowSize * sizeof(QuantOutType));
+        params.peermemInfo.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantRowSize * sizeof(QuantOutType));
     }
 }
 

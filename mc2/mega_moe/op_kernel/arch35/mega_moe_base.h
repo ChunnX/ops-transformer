@@ -47,7 +47,7 @@ struct PeermemInfo {
     GM_ADDR combineSendPtr;
     uint64_t URMACombineWinPtr;
     uint64_t URMAmaskRecvPtr;
-    Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm;
+    Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
     __gm__ Mc2MoeContext* mc2Context;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)

@@ -205,7 +205,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData);
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, ELEMS_PER_BYTE);
     params_.tilingData = tilingData;
-    params_.peermemInfo.hcomm = hcomm_;
+    params_.peermemInfo.hcomm = &hcomm_;
     params_.peermemInfo.mc2Context = mc2Context_;
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t*)params_.expertTokenNumsOutGmAddr);
     expertRevNumsGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expertRevTokenNumsPtr);
@@ -1393,11 +1393,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     ExpertLoopState gmm2State{initShape, initOffset};
     InitCombineBuffers();
 
-    if constexpr (CombineQuantMode == COMBINE_NO_QUANT && g_coreType == AIV) {
-        LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
-        hcomm_.Init(hcommTensor_, ALIGN_512);
-        if (subBlockIdx_ == 1) {
-            MegaMoeCombineImpl::CombineTokensWithUrmaSend<bfloat16_t>(params_, mc2Context_, hcomm_);
+    if constexpr (g_coreType == AIV) {
+        if (CombineQuantMode != COMBINE_NO_QUANT || subBlockIdx_ == 1) {
+            LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
+            hcomm_.Init(hcommTensor_, ALIGN_512);
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                MegaMoeCombineImpl::CombineTokensWithUrmaSend<bfloat16_t>(params_, mc2Context_, hcomm_);
+            }
         }
     }
 
