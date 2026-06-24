@@ -20,6 +20,10 @@
 
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
+using namespace AscendC::MicroAPI;
+using AscendC::MicroAPI::MaskReg;
+using AscendC::MicroAPI::RegTensor;
+using AscendC::MicroAPI::UnalignReg;
 
 // 一个scale块元素数量为64个，即1个scale块对应64个x的元素
 constexpr int64_t SCALE_BLOCK_SIZE = 64LL;
@@ -99,6 +103,81 @@ constexpr uint16_t BF16_EXP_INVSUB = 0x7f00;
 constexpr uint16_t NEW_MANTISSA = 0x0008;
 constexpr int64_t EXERPT_TOKENS_COUNT = 1;
 constexpr int64_t EXERPT_TOKENS_KEY_VALUE = 2;
+
+constexpr int64_t GROUP_QUANT_SIZE = 128;
+constexpr int32_t UB_BLOCK_SIZE = 32;
+constexpr int32_t VFLEN_FP32 = 64;
+constexpr float FP8_E5M2_MAX = 57344.0f;
+constexpr float FP8_E4M3FN_MAX = 448.0f;
+constexpr uint32_t INV_FP8_E5M2_MAX_VALUE = 0x37924925;
+constexpr uint32_t INV_FP8_E4M3_MAX_VALUE = 0x3b124925;
+constexpr uint32_t FAST_LOG_SHIFT_BITS = 23U;
+constexpr uint32_t FAST_LOG_AND_VALUE1 = 0xFF;
+constexpr uint32_t FAST_LOG_AND_VALUE2 = (((uint32_t)1 << (uint32_t)23) - (uint32_t)1);
+constexpr uint32_t REPEAT_SIZE = 256;
+constexpr int32_t VL_FP32 = 64;
+
+constexpr static AscendC::MicroAPI::CastTrait castTraitF32toFp8Even = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+constexpr static AscendC::MicroAPI::CastTrait castTraitU32toU8Even = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_NONE,
+};
+
+constexpr static AscendC::MicroAPI::CastTrait traitB16ToB32Layout0 = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN,
+};
+
+constexpr static AscendC::MicroAPI::CastTrait traitB16ToB32Layout1 = {
+    AscendC::MicroAPI::RegLayout::ONE,
+    AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN,
+};
+
+constexpr AscendC::MicroAPI::CastTrait castTraitB162B32Even = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN,
+};
+
+constexpr AscendC::MicroAPI::CastTrait castTraitB322B16Even = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::NO_SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_RINT,
+};
+
+__aicore__ inline int32_t CeilDiv(int32_t a, int b)
+{
+    if (b == 0) {
+        return a;
+    }
+    return (a + b - 1) / b;
+}
+
+__aicore__ inline int32_t CeilAlign(int32_t a, int b)
+{
+    return CeilDiv(a, b) * b;
+}
+
+template <typename T>
+__aicore__ inline int32_t RoundUp(int32_t num)
+{
+    int32_t elemNum = UB_BLOCK_SIZE / sizeof(T);
+    return CeilAlign(num, elemNum);
+}
 
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
