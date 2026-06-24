@@ -833,14 +833,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16],
-                          constInfo_.NEG_INF_FLOAT, mask, 1, 1, 0);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
+                          constInfo_.NEG_INF_BFLOAT, mask, 1, 1, 0);
             }
         
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64],
-                          constInfo_.NEG_INF_FLOAT,
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
+                          constInfo_.NEG_INF_BFLOAT,
                           topkCount_ - (validS2Len / 16 * 16 + 64));
             }
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
@@ -849,7 +849,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 
             AscendC::DataCopyParams copyOutValueParams;
             copyOutValueParams.blockCount = 1;
-            copyOutValueParams.blockLen = topkCount_ * sizeof(float); // bytes
+            copyOutValueParams.blockLen = topkCount_ * sizeof(bfloat16_t); // bytes
             copyOutValueParams.srcStride = 0;
             copyOutValueParams.dstStride = 0;
             // 搬运到GM
