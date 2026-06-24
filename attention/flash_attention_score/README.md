@@ -85,10 +85,52 @@
       <td>ND</td>
     </tr>
     <tr>
+      <td>paddingMaskOptional</td>
+      <td>可选输入</td>
+      <td>预留参数，暂未使用。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
       <td>attenMaskOptional</td>
       <td>可选输入</td>
       <td>公式中的atten_mask，表示注意力掩码，取值为1代表该位不参与计算（不生效），为0代表该位参与计算。</td>
       <td>BOOL、UINT8</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>prefixOptional</td>
+      <td>可选输入</td>
+      <td>prefix稀疏计算场景中每个Batch的N值。</td>
+      <td>INT64</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>actualSeqQlenOptional</td>
+      <td>可选输入</td>
+      <td>实际Q序列长度。</td>
+      <td>INT64</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>actualSeqKvlenOptional</td>
+      <td>可选输入</td>
+      <td>实际KV序列长度。</td>
+      <td>INT64</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>qStartIdxOptional</td>
+      <td>可选输入</td>
+      <td>Q起始索引。</td>
+      <td>INT64</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>kvStartIdxOptional</td>
+      <td>可选输入</td>
+      <td>KV起始索引。</td>
+      <td>INT64</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -109,6 +151,34 @@
       <td>dScaleVOptional</td>
       <td>可选输入</td>
       <td>公式中的d_scale_v，FP8场景下value的全量化参数。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>queryRopeOptional</td>
+      <td>可选输入</td>
+      <td>Q的RoPE旋转位置编码输入。</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>keyRopeOptional</td>
+      <td>可选输入</td>
+      <td>K的RoPE旋转位置编码输入。</td>
+      <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT16、BFLOAT16、FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>sinkOptional</td>
+      <td>可选输入</td>
+      <td>Sinking参数。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>pScaleOptional</td>
+      <td>可选输入</td>
+      <td>P的缩放因子。</td>
       <td>FLOAT</td>
       <td>ND</td>
     </tr>
@@ -137,6 +207,73 @@
       <td>-</td>
     </tr>
     <tr>
+      <td>preTokens</td>
+      <td>可选属性</td>
+      <td>
+        <ul>
+          <li>用于稀疏计算，表示sliding window的左边界。</li>
+          <li>默认值为2147483647。</li>
+        </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>nextTokens</td>
+      <td>可选属性</td>
+      <td>
+        <ul>
+          <li>用于稀疏计算，表示sliding window的右边界。</li>
+          <li>默认值为2147483647。</li>
+        </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>headNum</td>
+      <td>必要属性</td>
+      <td>代表单卡的head个数，即输入query的N轴长度。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>inputLayout</td>
+      <td>必要属性</td>
+      <td>
+        <ul>
+          <li>代表输入query、key、value的数据排布格式。</li>
+          <li>支持BSH、SBH、BSND、BNSD。</li>
+        </ul>
+      </td>
+      <td>STRING</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>innerPrecise</td>
+      <td>可选属性</td>
+      <td>
+        <ul>
+          <li>用于提升精度。</li>
+          <li>默认值为0。</li>
+        </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>sparseMode</td>
+      <td>可选属性</td>
+      <td>
+        <ul>
+          <li>表示sparse的模式。支持配置值为0、1、2、3、4、5、6。</li>
+          <li>默认值为0。</li>
+        </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td>pseType</td>
       <td>可选属性</td>
       <td>
@@ -146,6 +283,54 @@
         </ul>
       </td>
       <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>seed</td>
+      <td>可选属性</td>
+      <td>
+        <ul>
+          <li>Dropout随机种子。</li>
+          <li>默认值为0。</li>
+        </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>offset</td>
+      <td>可选属性</td>
+      <td>
+        <ul>
+          <li>Dropout偏移量</li>
+          <li>默认值为0。</li>
+        </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>outDtype</td>
+      <td>可选属性</td>
+      <td>
+        <ul>
+          <li>输出精度控制。</li>
+          <li>默认值为0。</li>
+        </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>softmaxOutLayout</td>
+      <td>可选属性</td>
+      <td>
+        <ul>
+          <li>Softmax输出数据排布格式。</li>
+          <li>默认值为空。</li>
+        </ul>
+      </td>
+      <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
@@ -160,6 +345,13 @@
       <td>输出</td>
       <td>Softmax计算的Sum中间结果，用于反向计算。</td>
       <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>softmaxOut</td>
+      <td>输出</td>
+      <td>预留参数，暂未使用。</td>
+      <td>BFLOAT16、FLOAT16、FLOAT</td>
       <td>ND</td>
     </tr>
     <tr>
