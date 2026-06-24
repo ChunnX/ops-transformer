@@ -356,14 +356,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunI
     GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
     AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
 
-    if (constInfo_.returnValueFlag) {
+    if (constInfo_.returnValue) {
         event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
         SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
         WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
         
-        GlobalTensor<uint32_t> valueOutGmTmp;
+        GlobalTensor<uint16_t> valueOutGmTmp;
         valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
-        GlobalTensor<uint32_t> valueOut = valueOutGmTmp[paddingOffset];
+        GlobalTensor<uint16_t> valueOut = valueOutGmTmp[paddingOffset];
 
         AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_BFLOAT);
     }

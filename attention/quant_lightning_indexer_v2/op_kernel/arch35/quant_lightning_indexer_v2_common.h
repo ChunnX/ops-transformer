@@ -65,18 +65,24 @@ struct RunInfo {
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
-
+    uint32_t curCuSeqlensQ;
+    uint32_t curCuSeqlensK;
+    uint32_t curSequsedQ;
+    uint32_t curSequsedK;
     uint64_t tensorQueryOffset;
     uint64_t tensorKeyOffset;
     uint64_t tensorKeyScaleOffset;
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
+    uint64_t outputIdxCoreOffset;
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
     bool isAllLoopEnd = false;
     bool isValid = false;
     bool isNeedLD = false;
+    bool isOutputIdxOffsetValid = false;
+    bool needTndPadding = false;
     uint32_t saveWorkSpaceIdx = 0;
 };
 
@@ -99,9 +105,9 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     // 无效索引
     static constexpr int INVALID_IDX = -1;
-    static constexpr uint32_t NEG_INF_BFLOAT = 0xFF80;
+    static constexpr uint16_t NEG_INF_BFLOAT = 0xFF80;
 
-    // CUBE和VEC的核间同步EventID
+    // CUBE和VEC的核间同步EventIDR
     uint32_t syncC1V1 = 0U;
     uint32_t syncC1V0 = 2U;
     uint32_t syncV1C1 = 0U;
