@@ -296,6 +296,17 @@ context->windowsOut[0]
 
 `statusGT(0)` 在 0/1 之间翻转，用于在两块接收半区之间切换。每次读写 status 前后都调用 `DataCacheCleanAndInvalid`，避免 GM/window 状态缓存不一致。
 
+`Init` 相关函数的硬件单元映射：
+
+| 函数 | 主要硬件单元 | 关键实现点 | 后续影响 |
+| --- | --- | --- | --- |
+| `InitGlobalAttrs` | AIV scalar / system register | 读取 tiling、`GetBlockIdx()`、计算 EP/shared/MoE rank 与 AIV 分工。 | 决定 `moeUsedAivNum_`、`sharedUsedAivNum_`、`localExpertNum_`、`axisMaxBs_`，影响 scatter 并行粒度和 window 容量。 |
+| `InitBuf` | AIV UB / TPipe | 通过 `pipe_->InitBuffer` 分配 sort、histogram、cumsum、mask、reduce 临时区。 | 为后续 Vector sort/reduce 和 MTE 搬运提供 UB 工作区。 |
+| `QuantInit` | AIV scalar + UB queue | 根据 quant mode 计算 `perTokenMergeSize_`、`scaleOutBytes_`、`perTokenCommSize_`，并初始化 token queue。 | 直接定义 CCU AlltoAllvWrite 的单 token 字节跨度和 gather 解析格式。 |
+| `InitCommAndStatus` | AIV scalar + GM/HCCL window + DCCI | `GetHcclContext<0>()` 获取 `HcclCombineOpParam`，`InitV2`/`SetCcTilingV2` 绑定 CCU tiling；workspace 作为 send window，`windowsOut[0]` 作为 recv window；status 做双缓冲翻转。 | 决定 `sendBufGM_`、`sendSizeGM_`、`sendOffsetGM_`、`recvBufGM_`、`recvOffset_`，也是后续 HCCL/CCU 能正确访问 window 的前置条件。 |
+
+其中 `recvOffset_` 不是本地读偏移，而是传给 `AlltoAllvWrite` 的 `remoteWinOffset`：它表示本 rank 希望其他 rank 的 CCU 写入本 rank `windowsOut[0]` 中的哪个位置。`statusSize = aivNum_ * STATUS_OFFSET` 把每个 AIV 的状态区放在 window 头部，真实接收数据放在两个 half-buffer 内，避免上一轮通信数据被覆盖。
+
 注意事项：类声明中的 `Init` 参数名顺序写成 `expandXOut, xActiveMask`，但定义和调用点实际传参顺序是 `xActiveMask, expandXOut`。由于二者类型都是 `GM_ADDR`，编译器无法通过类型发现该命名误导，后续维护时应以函数定义和调用点为准。
 
 #### 7.2.2 `MoeDistributeDispatchA5::Process` 详细分析（18 行，代码行约 15）
@@ -410,6 +421,40 @@ x + expert_ids
 
 `Process` 自身只有 18 行，但它串联了 A5 CCU 路径的全部关键行为：活跃 token 缩减、专家路由、量化打包、CCU 变长通信、combine 辅助索引生成和接收侧连续化输出。
 
+重点函数的硬件单元、调用链和数据流如下。
+
+| 阶段 | 重点函数 | 调用链 | 硬件单元映射 | 通信/处理数据流 |
+| --- | --- | --- | --- | --- |
+| mask | `CalcTokenActiveMask` | `Process -> CalcTokenActiveMask` | MTE2 读 `x_active_mask` 到 UB；Vector `Cast/Sum` 统计；Scalar 更新 active 规模。 | `xActiveMaskGT_ -> activeBs_ -> activeBsKNum_/sortNum_/sortRepeat_`，缩小后续 sort/scatter 规模。 |
+| scatter 预处理 | `TokenScatter` | `Process -> TokenScatter` | MTE2 读取 `expertIdsGT_`；Vector `CreateVecIndex/Cast/Muls/Concat/Sort/Extract/GetExpertFreq/GetExpertCumSum`；Scalar 分支调度。 | `expert_ids -> sorted expert ids + sorted token index + expertFreq + expertCumSum`，为按目标 rank 连续打包 token 做准备。 |
+| token 打包 | `MoeScatterCopyTokens` / `ShareScatterCopyTokens` / `ProcessToken` | `TokenScatter -> MoeScatter/ShareScatter -> *CopyTokens -> ProcessToken` | MTE2 从 `xGT_` 读 token；Vector 执行 static/per-token/per-group/MX quant；MTE3 写 `sendBufGM_`；可选读取 smooth scale。 | `x[token] (+scale) -> data/scale payload -> sendBufGM_[toRank][preCount]`。MoE 按 expert 所属 rank 写入，shared expert 按 `CalcToSharedRankId` 复制到 shared rank。 |
+| send 描述表 | `MoeScatter` / `SetShareExpertSendSize` | `TokenScatter -> MoeScatter/SetShareExpertSendSize` | Scalar 计算 count/offset；MTE3 写 `sendSizeGM_`、`sendOffsetGM_` 和 `sendBufGM_` 头部 count。 | 生成 HCCL HalfAlltoAllV 所需的 byte size/offset 表；send size 被拆成两段，匹配 `BLOCK_COUNT=2` 的 half-alltoallv 布局。 |
+| 通信提交 | `Communication` | `Process -> Communication -> Hccl::AlltoAllvWrite<true>` | AIV `SyncAll` 保证 send window 可见；AIV0 作为 CCU client 写 HCCL message；CCU server/hardware 消费 XN/CKE 执行跨 rank 写。 | `sendBufGM_ + sendOffsetGM_/sendSizeGM_ + recvOffset_ + localDataSize -> remote windowsOut recv half-buffer`。 |
+| 通信重叠 | `SaveExpandIdx` / `TokenGatherInit` | `Communication -> SaveExpandIdx -> TokenGatherInit` | AIV Vector/Scalar/MTE3 本地生成 combine 索引；UB 初始化 gather 临时区。 | HCCL 在 CCU 侧执行时，AIV 继续产出 `expandIdxGT_` 并准备 `recvCntLT_` 等 gather buffer。 |
+| 接收准备 | `MoeGatherPrepare` | `TokenGatherProcess -> MoeGatherPrepare` | MTE2/Compact 从 `recvBufGM_` 按 stride 读各源 rank count；Vector `GetReduceSum` 计算 expert 总数和 rank 前缀。 | `recvBufGM_[rank][expert count] -> recvCntLT_ / moeExpertTokenNumsLT_ / moeExpertRankTokenCumSumLT_`。 |
+| gather 输出 | `TokenGatherProcess` / `CopyScalesToOut` / `UpdateMoeRankOutput` | `Process -> TokenGather -> TokenGatherProcess -> CopyScalesToOut/UpdateMoeRankOutput` | MTE2 读 recv payload 到 UB；MTE3 写 `expandXOutGT_`、`dynamicScaleGT_`、`sendCountsGT_`；AIV0 写 `expertTokenNumsGT_` 并 DCCI。 | `recvBufGM_[srcRank][expert][token] -> expand_x`；payload tail 中的 dynamic/smooth scale 被抽取到 `dynamic_scales`；统计输出写 `ep_recv_count/sendCounts` 和 `expert_token_nums`。 |
+| 收尾 | `hccl_.Finalize` | `Process -> Finalize` | AIV0 写 CCU final XN message 和 commit CKE。 | 通知 CCU server 当前 client 通信序列结束。 |
+
+HCCL 相关调用链展开：
+
+```text
+MoeDistributeDispatchA5::Process
+  -> Communication
+    -> SyncAll<true>
+    -> AIV0: hccl_.AlltoAllvWrite<true>(
+         sendBufGM_, sendOffsetGM_, sendSizeGM_, recvOffset_, localDataSize)
+      -> Hccl<HCCL_SERVER_TYPE_CCU>::AlltoAllvWrite
+        -> HcclImpl<CCU>::CommonPrepareImpl<commit=true>
+          -> CcuPrepareForAllToAllVWrite
+          -> CcuSendMsg: 写 XN 寄存器镜像 + commit CKE
+    -> all AIV: SaveExpandIdx + TokenGatherInit
+    -> AIV0: hccl_.Wait(handle)
+  -> TokenGather
+  -> AIV0: hccl_.Finalize()
+```
+
+`AlltoAllvWrite` 在 CCU 实现中被编码为 `HCCL_CMD_HALF_ALLTOALLV`，数据类型固定用 `HCCL_DATA_TYPE_INT8`，因为这里的 `localDataSize`、`sendSizeGM_`、`sendOffsetGM_` 都按字节描述 payload，而不是按 tensor 元素数描述。注释中也说明 `sendSizes[localRank]` 不参与本 rank 本地数据规模判断，CCU 使用 `localDataSize` 作为本 rank 可写数据上界。
+
 ### 7.3 A5 MTE non-fullmesh：`moe_distribute_dispatch_v2.h`（总行 1774，非空 1660，代码行约 1578）
 
 核心类：`MoeDistributeDispatchV2<Mc2Kernel::HcclContextHolder, ...>`，A3/A5 共用，A5 增加 `SetExpertTokenNumsA5`、`SetExpertPrefixSumA5`、`WaitStatusA5`、`GetCumSumA5` 等特化。
@@ -520,6 +565,48 @@ flowchart LR
     Kernel --> Quant["quantize_functions / dispatch quant"]
     Kernel --> Base["moe_distribute_v2_base / mc2_kernel_utils"]
 ```
+
+A5 CCU 分支的 HCCL 依赖分层如下：
+
+| 层级 | 文件/实现 | 作用 | 对 `MoeDistributeDispatchA5` 的影响 |
+| --- | --- | --- | --- |
+| 算子 kernel | `op_kernel/arch35/moe_distribute_dispatch_arch35.h` | 生成 send buffer、size/offset 表、recv window 偏移，并调用 `Hccl<HCCL_SERVER_TYPE_CCU>`。 | 只负责 AIV 侧数据整理和 CCU client 提交，不直接搬运跨 rank 数据。 |
+| HCCL public API | `/Users/yuantao/code/asc-devkit/include/adv_api/hccl/hccl.h` | 定义 `InitV2`、`SetCcTilingV2`、`AlltoAllvWrite`、`Wait`、`Finalize`。 | `AlltoAllvWrite` 的参数语义是 byte offset/size；`remoteWinOffset` 对应本 rank 接收 window 写入位置。 |
+| CCU client impl | `/Users/yuantao/code/asc-devkit/impl/adv_api/detail/hccl/impl/platform_v310/hccl_ccu_v0.h` | 把 `AlltoAllvWrite` 转成 `HCCL_CMD_HALF_ALLTOALLV`，写 `CommonPrepareParamCcu`、flush cache、commit message、wait CKE。 | AIV0 默认是 working core，负责写 XN/CKE 和 wait；其他 AIV 依赖 kernel 级 `SyncAll` 协同。 |
+| CCU XN 准备 | `/Users/yuantao/code/asc-devkit/impl/adv_api/detail/hccl/ccu/hccl_ccu_v0_prepare.h` | `CcuPrepareForAllToAllVWrite` 生成 XN0-XN8：op id、sendBuf、sendSizes、sendOffsets、loop 分组、remoteWinOffset。 | `localDataSize` 被拆成 4096B memslice、8-slice loop group，用于 CCU 硬件搬运调度。 |
+| CCU 公共定义 | `/Users/yuantao/code/asc-devkit/impl/adv_api/detail/hccl/common/hccl_inner_def.h` | 定义 `HcclCombineOpParam`、`windowsIn/windowsOut`、`xnOffset`、`ckeOffset`、CCU loop/msg 常量。 | 决定 context/window/XN/CKE 的 GM 布局，是 `InitCommAndStatus` 解析 window 和 HCCL 初始化的结构来源。 |
+| Host tiling | `op_host/op_tiling/arch35/moe_distribute_dispatch_v2_tiling_arch35.cpp` | `SetCommTiling` 设置 `HCCL_CMD_HALFALLTOALLV`、`AlltoAll=level0:fullmesh;level1:pairwise`、`A5_CCU_ENGINE`。 | kernel 中 `SetCcTilingV2(offsetof(..., mc2CcTiling1))` 依赖 host 写入的 CCU tiling。 |
+
+HCCL/CCU 的处理数据流可以简化为：
+
+```text
+Host tiling
+  -> mc2InitTiling + mc2CcTiling1(HALF_ALLTOALLV, A5_CCU_ENGINE)
+Kernel InitCommAndStatus
+  -> HcclCombineOpParam(context)
+  -> InitV2 + SetCcTilingV2
+  -> send workspace + recv windowsOut double buffer
+Kernel Communication(AIV0)
+  -> AlltoAllvWrite(sendBuf, sendOffsets, sendSizes, remoteWinOffset, localDataSize)
+HCCL CCU impl
+  -> CommonPrepareParamCcu(HCCL_CMD_HALF_ALLTOALLV, dataType=INT8)
+  -> CcuPrepareForAllToAllVWrite(XN0-XN8)
+  -> CcuSendMsg(write XN, flush, write commit CKE)
+CCU server/hardware
+  -> 按 sendOffsets/sendSizes 从各 rank sendBuf 读
+  -> 写入目标 rank windowsOut[remoteWinOffset + srcRank * perRankDataSize]
+Kernel gather
+  -> AIV0 Wait CKE 完成
+  -> all AIV read recvBufGM_ and format expand_x/stat outputs
+```
+
+需要重点关注的 HCCL 细节：
+
+1. `AlltoAllvWrite` 在 CCU impl 中使用 `HCCL_CMD_HALF_ALLTOALLV`，并把 `sendBuf` 同时作为 `sendBuf/recvBuf` 字段，真正的接收目标由 `remoteWinOffset` 和 window 机制决定。
+2. `sendSizeGM_`、`sendOffsetGM_` 是字节表，kernel 侧 shared/MoE scatter 会把 size/offset 拆成两个 block 写入，匹配 half-alltoallv 的两段发送描述。
+3. `localDataSize` 是本 rank 实际发送数据上界；对 MoE rank 由本地 expert token 频次累加得到，对 shared rank 是 `activeBs_ * perTokenCommSize_ + COUNT_OFFSET`。
+4. `Wait` 轮询 wait CKE；working core 完成后清 wait CKE 并更新 `finishCntGM_`。`MoeDistributeDispatchA5` 只让 `aivId_ == 0` 调用 `Wait`，然后用 `SyncAll<true>()` 释放其他 AIV。
+5. `Finalize` 会写 `0xffffffffffffffff` 到下一条 XN 消息并置 commit CKE，用于通知 CCU server 当前通信序列结束。
 
 ## 11. 测试覆盖线索
 
