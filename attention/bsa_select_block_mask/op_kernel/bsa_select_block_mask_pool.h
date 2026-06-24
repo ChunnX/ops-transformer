@@ -425,7 +425,7 @@ BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint6
     if (actualLen == 0) {
         PoolingLen0Impl(srcGm, dstGm, outDstGm, srcOffset, dstOffset, outDstOffset);
         return;
-    } else if (actualLen <= 256) {
+    } else if (actualLen <= 128) {
         PoolingLen256Impl(srcGm, dstGm, outDstGm, srcOffset, dstOffset, outDstOffset, actualLen);
         return;
     } else {
@@ -548,7 +548,7 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
                                                                  GlobalTensor<float> &outDstGm, uint64_t srcOffset,
                                                                  uint64_t dstOffset, uint64_t outDstOffset, uint32_t actualLen)
 {
-  uint32_t dSize = constInfo.dSize;
+    uint32_t dSize = constInfo.dSize;
     uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / 128;
     uint32_t loops = (actualLen + maxLen - 1) / maxLen;
     uint32_t tailLen = actualLen % maxLen == 0 ? maxLen : actualLen % maxLen;
