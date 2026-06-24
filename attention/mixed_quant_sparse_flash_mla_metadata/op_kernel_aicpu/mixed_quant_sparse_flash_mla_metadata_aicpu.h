@@ -346,7 +346,7 @@ private:
     uint32_t mBaseSize_ = 0;
     uint32_t s2BaseSize_ = 128U;
     bool isS1G_ = true;
-    bool supportFd = true;
+    bool supportFd = false;
     uint32_t oriAttentionMode_ = HAS_MASK;
     uint32_t cmpAttentionMode_ = HAS_MASK;
     BlockCost<int64_t> typeCost_ = {};
