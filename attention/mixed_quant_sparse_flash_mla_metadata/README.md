@@ -249,16 +249,16 @@
 
 ## 约束说明
 
--   MixedQuantSparseFlashMlaMetadata算子需要与MixedQuantSparseFlashMla算子配套使用。
--   B（Batch）表示输入样本批量大小。
--   参数cu_seqlens_q、cu_seqlens_ori_kv及cu_seqlens_cmp_kv要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
--   参数seqused_q、seqused_ori_kv、seqused_cmp_kv要求其值表示每个Batch中的有效token数。
--   参数cmp_residual_kv需满足cmp_residual_kv[i] < cmp_ratio。
--   ori\_mask\_mode及cmp\_mask\_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode参数说明.md)。
+- MixedQuantSparseFlashMlaMetadata算子需要与MixedQuantSparseFlashMla算子配套使用。
+- B（Batch）表示输入样本批量大小。
+- 参数cu_seqlens_q、cu_seqlens_ori_kv及cu_seqlens_cmp_kv要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
+- 参数seqused_q、seqused_ori_kv、seqused_cmp_kv要求其值表示每个Batch中的有效token数。
+- 参数cmp_residual_kv需满足cmp_residual_kv[i] < cmp_ratio。
+- ori\_mask\_mode及cmp\_mask\_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode参数说明.md)。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn API | [test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp) | 通过[aclnnMixedQuantSparseFlashMlaMetadata](./docs/aclnnMixedQuantSparseFlashMlaMetadata.md)接口调用MixedQuantSparseFlashMlaMetadata算子 |
-| PyTorch API | [test_torch_mixed_quant_sparse_flash_mla_metadata.py](./examples/test_torch_mixed_quant_sparse_flash_mla_metadata.py) | 通过[torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md)接口调用MixedQuantSparseFlashMlaMetadata算子 |
+| aclnn API | [test_aclnn_mixed_quant_sparse_flash_mla_metadata](./examples/test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp) | 通过[aclnnMixedQuantSparseFlashMlaMetadata](./docs/aclnnMixedQuantSparseFlashMlaMetadata.md)接口调用MixedQuantSparseFlashMlaMetadata算子 |
+| PyTorch API | [test_torch_mixed_quant_sparse_flash_mla_metadata](./examples/test_torch_mixed_quant_sparse_flash_mla_metadata.py) | 通过[torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md)接口调用MixedQuantSparseFlashMlaMetadata算子 |
