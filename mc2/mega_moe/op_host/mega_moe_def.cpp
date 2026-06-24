@@ -36,10 +36,20 @@ public:
     this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config_950;
+    aicore_config_950.Input("context")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
     aicore_config_950.Input("x")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
                         ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("topk_ids")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     aicore_config_950.Input("topk_weights")
@@ -69,21 +79,6 @@ public:
         .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_950.Input("scales")
-        .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND})
-        .AutoContiguous();
-    aicore_config_950.Input("context")
-        .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_INT32})
-        .FormatList({ge::FORMAT_ND})
-        .AutoContiguous();
-    aicore_config_950.Input("topk_ids")
-        .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_INT32})
-        .FormatList({ge::FORMAT_ND})
-        .AutoContiguous();
     aicore_config_950.Input("bias1")
         .ParamType(DYNAMIC)
         .DataTypeList({ge::DT_FLOAT})
@@ -97,6 +92,11 @@ public:
     aicore_config_950.Input("x_active_mask")
         .ParamType(OPTIONAL)
         .DataTypeList({ge::DT_INT8})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
+    aicore_config_950.Input("scales")
+        .ParamType(OPTIONAL)
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     aicore_config_950.Output("y")
