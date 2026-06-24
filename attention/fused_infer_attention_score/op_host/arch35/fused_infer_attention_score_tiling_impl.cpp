@@ -266,61 +266,78 @@ void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaI
     }
 }
 
+static inline bool IsSupportedQLayout(FiaLayout qLayout)
+{
+    return qLayout == FiaLayout::BSH || qLayout == FiaLayout::BSND || qLayout == FiaLayout::TND;
+}
+
+bool FusedInferAttentionScoreTilingImpl::CheckPfaMergeLayout(const FiaTilingInfo &fiaInfo) const
+{
+    return IsSupportedQLayout(fiaInfo.qLayout) && pfaMergeFlag_;
+}
+
+bool FusedInferAttentionScoreTilingImpl::CheckSmallHeadOptimization(const FiaTilingInfo &fiaInfo) const
+{
+    if (fiaInfo.quantMode != FiaQuantMode::NO_QUANT) {
+        return false;
+    }
+    if (fiaInfo.s1Size > SOUTER_64 || fiaInfo.s2Size <= SINNER_128) {
+        return false;
+    }
+    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128) {
+        return false;
+    }
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) {
+        return false;
+    }
+
+    int32_t preTokens = fiaInfo.preToken;
+    int32_t nextTokens = fiaInfo.nextToken;
+    if (fiaInfo.sparseMode == 0) {
+        preTokens = (preTokens > 0) ? 0 : preTokens;
+    } else if (fiaInfo.sparseMode == 4) {
+        nextTokens = (nextTokens > 0) ? 0 : nextTokens;
+    }
+    if (fiaInfo.sparseMode == 2 || preTokens + nextTokens <= 128) {
+        return false;
+    }
+
+    return true;
+}
+
 ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *context,
                                                                           const FiaTilingInfo &fiaInfo)
 {
-    uint32_t softmaxSOuterFactor = SOUTER_64;
     sOuterFactor_ = SOUTER_64;
     sInnerFactor_ = SINNER_128;
+    uint32_t softmaxSOuterFactor = SOUTER_64;
 
     if (fiaInfo.vHeadDim <= DSIZE_128 && fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128) {
-        bool checkDtype = fiaInfo.quantMode == FiaQuantMode::NO_QUANT;
-        bool checkQueryAndValueS = fiaInfo.s1Size <= SOUTER_64 && fiaInfo.s2Size > SINNER_128;
-        uint32_t sparseMode = fiaInfo.sparseMode;
-        int32_t preTokens = fiaInfo.preToken;
-        int32_t nextTokens = fiaInfo.nextToken;
-        if (sparseMode == 0) {
-            preTokens = (preTokens > 0) ? 0 : preTokens;
-        } else if (sparseMode == 4) {
-            nextTokens = (nextTokens > 0) ? 0 : nextTokens;
-        }
-        bool checkSparseMode = (sparseMode != 2 && preTokens + nextTokens > 128);
-        if (checkDtype && checkQueryAndValueS && checkSparseMode && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D128 &&
-            fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT) {
+        if (CheckSmallHeadOptimization(fiaInfo)) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
             softmaxSOuterFactor = SOUTER_32;
-        } else if (((fiaInfo.qLayout == FiaLayout::BSH) || (fiaInfo.qLayout == FiaLayout::BSND) ||
-                    (fiaInfo.qLayout == FiaLayout::TND)) &&
-                   pfaMergeFlag_) {
+        } else if (CheckPfaMergeLayout(fiaInfo)) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
         }
-    } else if (fiaInfo.vHeadDim > DSIZE_128 && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 && fiaInfo.s1Size != 1) {
-        if (((fiaInfo.qLayout == FiaLayout::BSH) || (fiaInfo.qLayout == FiaLayout::BSND) ||
-            (fiaInfo.qLayout == FiaLayout::TND)) && pfaMergeFlag_ && 
-            fiaInfo.vHeadDim <= DSIZE_256) {  // 256 : D size
-            sOuterFactor_ = SOUTER_32;
-            sInnerFactor_ = SINNER_256;
-        } else {
-            sOuterFactor_ = SOUTER_64;
-            sInnerFactor_ = SINNER_128;
-        }
+    } else if (fiaInfo.vHeadDim > DSIZE_128 && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 &&
+               fiaInfo.s1Size != 1) {
         softmaxSOuterFactor = SOUTER_32;
-    } else if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 ||
-               (fiaInfo.s1Size == 1 && fiaInfo.vHeadDim > DSIZE_128)) {  // IFA VD > 128
-        if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+        if (CheckPfaMergeLayout(fiaInfo) && fiaInfo.vHeadDim <= DSIZE_256) {
             sOuterFactor_ = SOUTER_32;
-        } else {
-            sOuterFactor_ = SOUTER_64;
+            sInnerFactor_ = SINNER_256;
         }
-        sInnerFactor_ = SINNER_128;
-        softmaxSOuterFactor = SOUTER_64;
+    } else if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 ||
+               (fiaInfo.s1Size == 1 && fiaInfo.vHeadDim > DSIZE_128)) {
+        sOuterFactor_ = (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) ? SOUTER_32 : SOUTER_64;
     }
+
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         sOuterFactor_ = SOUTER_64;
         sInnerFactor_ = SINNER_512;
     }
+
     OP_LOGI(fiaInfo.opName, "Souter:%u SInner:%u softmaxSOuterFactor %u", sOuterFactor_, sInnerFactor_,
             softmaxSOuterFactor);
 

@@ -89,6 +89,8 @@ protected:
     ge::graphStatus SetFATilingData(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus AdjustSinnerAndSouter(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
+    bool CheckPfaMergeLayout(const FiaTilingInfo &fiaInfo) const;
+    bool CheckSmallHeadOptimization(const FiaTilingInfo &fiaInfo) const;
     void GetPreNextTokensLeftUp(const FiaTilingInfo &fiaInfo, int64_t actualSeqLength, int64_t actualSeqLengthKV,
                                 int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp) const;
     void FixParamWithRowInvalid(const FiaTilingInfo &fiaInfo, int64_t &actualSeqLength, int64_t actualSeqLengthKV,
