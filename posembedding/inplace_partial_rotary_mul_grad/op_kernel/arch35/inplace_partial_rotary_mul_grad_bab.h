@@ -164,13 +164,14 @@ InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessN(LocalTensor<TCOS> &sinTensor
 {
     LocalTensor<TDY> dyTensor, dxTensor;
 
-    int64_t baseOffset = (bIdx * tilingData_->s + sIdx) * tilingData_->n * tilingData_->d;
+    int64_t baseOffset = (bIdx * tilingData_->s + sIdx) * tilingData_->n * tilingData_->d + tilingData_->sliceStart;
     for (uint32_t idxN = 0; idxN < tilingData_->ubLoopNumN; idxN++) {
         int64_t currNNum = (idxN == tilingData_->ubLoopNumN - 1) ? tilingData_->ubTailFactorN : ubFactorN_;
         int64_t offset = baseOffset + idxN * ubFactorN_ * tilingData_->d;
         dyTensor = dyInQue_.template AllocTensor<TDY>();
         DataCopyExtParams copyInParams{static_cast<uint16_t>(currSNum * currNNum), dSplitSizeDy_,
-                                       static_cast<uint32_t>(tilingData_->sliceStart * sizeof(TDY)), 0, 0};
+                                       static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY)),
+                                       0, 0};
         DataCopyPadExtParams<TDY> padParams{false, 0, 0, 0};
         DataCopyPad(dyTensor, dyGm_[offset], copyInParams, padParams);
         dyInQue_.EnQue(dyTensor);
@@ -180,8 +181,9 @@ InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessN(LocalTensor<TCOS> &sinTensor
         dyInQue_.FreeTensor(dyTensor);
         dxOutQue_.EnQue(dxTensor);
         dxTensor = dxOutQue_.template DeQue<TDY>();
-        DataCopyExtParams copyOutParams{static_cast<uint16_t>(currSNum * currNNum), dSplitSizeDy_, 0,
-                                        static_cast<uint32_t>(tilingData_->sliceStart * sizeof(TDY)), 0};
+        DataCopyExtParams copyOutParams{
+            static_cast<uint16_t>(currSNum * currNNum), dSplitSizeDy_, 0,
+            static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY)), 0};
         DataCopyPad(dxGm_[offset], dxTensor, copyOutParams);
         dxOutQue_.FreeTensor(dxTensor);
     }
