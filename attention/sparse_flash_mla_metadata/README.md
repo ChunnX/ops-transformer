@@ -150,7 +150,7 @@
     <tr>
       <td>ori_topk</td>
       <td>可选属性</td>
-      <td>表示从`ori_kv`中筛选出的关键稀疏token个数。默认值为0。</td>
+      <td>预留参数，表示从`ori_kv`中筛选出的关键稀疏token个数。默认值为0，当前仅支持0。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -248,7 +248,6 @@
 - 产品型号约束如下：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：`num_heads_q`/`num_heads_kv`支持1、2、4、8、16、32、64、128。
   - <term>Ascend 950PR/Ascend 950DT</term>：`num_heads_q`/`num_heads_kv`支持2、4、8、16、32、64、128，不支持1。
-- Tensor不能全传None；除`ori_topk_length`和`cmp_topk_length`等预留输入可不传或传入空Tensor外，其余已传入Tensor不支持为空。
 
 ## 调用说明
 
