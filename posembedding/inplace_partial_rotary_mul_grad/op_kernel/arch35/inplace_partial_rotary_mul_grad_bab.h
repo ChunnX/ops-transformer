@@ -111,26 +111,28 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Process()
         return;
     }
 
-    this->bIdx_ = blockIdx_ % tilingData_->blockNumB;
-    this->sIdx_ = blockIdx_ / tilingData_->blockNumB;
-    this->bNum_ = tilingData_->blockFactorB;
-    this->sNum_ = tilingData_->blockFactorS;
-    if (bIdx_ == tilingData_->blockNumB - 1 && tilingData_->b % tilingData_->blockFactorB != 0) {
-        this->bNum_ = tilingData_->b % tilingData_->blockFactorB;
-    }
-    if (sIdx_ == tilingData_->blockNumS - 1 && tilingData_->s % tilingData_->blockFactorS != 0) {
-        this->sNum_ = tilingData_->s % tilingData_->blockFactorS;
-    }
+    AscendC::printf("InplacePartialRotaryMulGradBAB::Process() blockIdx=%d\n", GetBlockIdx());
 
-    uint32_t bIdxStart = bIdx_ * tilingData_->blockFactorB;
-    for (uint32_t bIdx = bIdxStart; bIdx < bIdxStart + bNum_; bIdx++) {
-        uint32_t sIdxStart = sIdx_ * tilingData_->blockFactorS;
-        uint32_t sLoopCnt = Ops::Base::CeilDiv(sNum_, tilingData_->ubFactorS);
-        for (uint32_t loopIdx = 0; loopIdx < sLoopCnt; loopIdx++) {
-            uint32_t currSNum = (loopIdx != sLoopCnt - 1) ? ubFactorS_ : sNum_ - loopIdx * ubFactorS_;
-            ProcessNLoop(bIdx, sIdxStart + loopIdx * ubFactorS_, currSNum);
-        }
-    }
+    // this->bIdx_ = blockIdx_ % tilingData_->blockNumB;
+    // this->sIdx_ = blockIdx_ / tilingData_->blockNumB;
+    // this->bNum_ = tilingData_->blockFactorB;
+    // this->sNum_ = tilingData_->blockFactorS;
+    // if (bIdx_ == tilingData_->blockNumB - 1 && tilingData_->b % tilingData_->blockFactorB != 0) {
+    //     this->bNum_ = tilingData_->b % tilingData_->blockFactorB;
+    // }
+    // if (sIdx_ == tilingData_->blockNumS - 1 && tilingData_->s % tilingData_->blockFactorS != 0) {
+    //     this->sNum_ = tilingData_->s % tilingData_->blockFactorS;
+    // }
+
+    // uint32_t bIdxStart = bIdx_ * tilingData_->blockFactorB;
+    // for (uint32_t bIdx = bIdxStart; bIdx < bIdxStart + bNum_; bIdx++) {
+    //     uint32_t sIdxStart = sIdx_ * tilingData_->blockFactorS;
+    //     uint32_t sLoopCnt = Ops::Base::CeilDiv(sNum_, tilingData_->ubFactorS);
+    //     for (uint32_t loopIdx = 0; loopIdx < sLoopCnt; loopIdx++) {
+    //         uint32_t currSNum = (loopIdx != sLoopCnt - 1) ? ubFactorS_ : sNum_ - loopIdx * ubFactorS_;
+    //         ProcessNLoop(bIdx, sIdxStart + loopIdx * ubFactorS_, currSNum);
+    //     }
+    // }
 }
 
 template <typename TDY, typename TCOS>
