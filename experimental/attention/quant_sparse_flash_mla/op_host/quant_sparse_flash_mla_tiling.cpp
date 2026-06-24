@@ -638,7 +638,8 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t vectorizeUbSize = tilingInfo->cmpMaxBlockNumPerBatch * sizeof(int32_t) +
         tilingInfo->sparseBlockCount * sizeof(int32_t) +
         tilingInfo->sparseBlockCount * sizeof(int64_t); // 物理地址计算向量化所需ub大小
-    uint32_t vectorizeFlag = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag && inputKvLayout == 0);
+    uint32_t vectorizeFlag = static_cast<uint32_t>((perfMode_ == QSMLATemplateMode::SCFA_TEMPLATE_MODE) &&
+                vectorizeUbSize <= UB_SIZE && blocksizeFlag && inputKvLayout == 0);
     uint32_t tilingKey =
         GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
             static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag);
