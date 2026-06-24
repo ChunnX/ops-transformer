@@ -44,8 +44,8 @@ GELU_TANH_NEG_SQRT_EIGHT_OVER_PI = -1.595769121 * 0.044715
 GELU_TANH_APPROX_FACTOR = 1.0 / 0.044715
 
 
-def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, bias=None, x_scale=None, *,
-                                           activation_type: str = "gelu_tanh", transpose_weight: bool = False,
+def grouped_matmul_activation_quant_golden(x, group_list, weight, weight_scale, bias, activation_type: str, *,
+                                           x_scale=None, transpose_weight: bool = False,
                                            group_list_type: int = 0, tuning_config=None, quant_mode: str = "",
                                            y_dtype: int = QUANT_DTYPE_E4M3FN,
                                            round_mode: str = "rint", scale_alg: int = 0,
