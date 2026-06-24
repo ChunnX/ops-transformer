@@ -3094,5 +3094,63 @@ __aicore__ inline void BroadcastMaxSum(const LocalTensor<T>& outTensor, const Lo
     uint16_t loopM = (vecS1RealSize + 7) >> 3;
     BroadCastMaxSumVF<T>(out_ub, ori_ub, loopM);
 }
+
+// =============================================================================
+// 静态 Tensor 编程适配重载：vselrIndexesBuf 由 TBuf<>* 改为 LocalTensor<uint8_t>*
+//   - 仅 flash_attn 算子使用（其完成了静态 Tensor 适配，废弃 TBuf<>）
+//   - 通过 C++ 函数重载与原 TBuf<>* 版本并存，对其它算子完全透明
+// =============================================================================
+template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
+    bool hasSink = false>
+__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+                                       const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+                                       const LocalTensor<T>& expMaxTensor, LocalTensor<uint8_t> *vselrIndexesBuf,
+                                       const LocalTensor<uint8_t>& maskTensor, const uint32_t m, const uint32_t n,
+                                       const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+                                       float keepProb, bool needAtten, const float pScale = 1.0f,
+                                       const float sinkValue = 0.0f)
+{
+    if constexpr (!isUpdate) {
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+            IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)];
+        }
+        ProcessVec1DnNoUpdate<T, T2, hasAtten, ubN, hasSink>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor,
+            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
+    } else {
+        LocalTensor<uint8_t> indexesTensor;
+        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+            IsSameType<T2, hifloat8_t>::value) {
+            indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)];
+        }
+        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor,
+            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
+    }
+}
+
+template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
+    bool hasSink = false, bool hasInvalidLine = false>
+__aicore__ inline void ProcessVec1VfDnCausal(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+                                       const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+                                       const LocalTensor<T>& expMaxTensor, LocalTensor<uint8_t> *vselrIndexesBuf,
+                                       const LocalTensor<uint8_t>& maskTensor,
+                                       const LocalTensor<uint8_t>& sharedTmpBuffer,
+                                       const uint32_t m, const uint32_t n,
+                                       const uint32_t originN, const T scale, float deScaleQK, const T minValue,
+                                       float keepProb, bool needAtten, const float pScale = 1.0f,
+                                       const float sinkValue = 0.0f)
+{
+    LocalTensor<uint8_t> indexesTensor;
+    if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+        IsSameType<T2, hifloat8_t>::value) {
+        indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)];
+    }
+    ProcessVec1DnCausal<T, T2, isUpdate, hasAtten, ubN, hasSink, hasInvalidLine>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, sharedTmpBuffer,
+            m, n, originN, scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
+}
 }
 #endif // MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_

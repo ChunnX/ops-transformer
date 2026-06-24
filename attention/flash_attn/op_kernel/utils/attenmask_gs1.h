@@ -294,7 +294,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         } else {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
-        // 静态Tensor：ping/pong 各 slot 独立 MTE2_V event，与 FA_MTE2_TO_V(2/4) 错开
+        // 静态Tensor：ping/pong 各 slot 独立 MTE2_V event，与 MM2_IN_BUF_READY(=2) / SINK_BUF_READY(=4) 错开
         const event_t enQueEvtID = static_cast<event_t>(mte2ToVEventId);
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
