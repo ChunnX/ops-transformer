@@ -93,15 +93,25 @@ public:
     {
         params_ = p;
         aclnnStatus ret = CheckNotNull();
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
         ret = CheckEmptyTensor();
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
         ret = CheckDtypeValid();
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
         ret = CheckShape();
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
         ret = CheckFormat();
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
         return ACLNN_SUCCESS;
     }
 
@@ -131,7 +141,9 @@ private:
         std::string result;
         const auto &shape = tensor->GetViewShape();
         for (uint64_t i = 0; i < shape.GetDimNum(); ++i) {
-            if (i != 0) { result += ", "; }
+            if (i != 0) {
+                result += ", ";
+            }
             result += std::to_string(shape.GetDim(i));
         }
         return result;
@@ -169,8 +181,8 @@ private:
     {
         if (!CheckType(tensor->GetDataType(), supportList)) {
             const std::string incorrectDtype = op::ToString(tensor->GetDataType()).GetString();
-            const std::string reason = "the dtype of " + paramName + " must be one of " +
-                                       DataTypeListToString(supportList);
+            const std::string reason =
+                "the dtype of " + paramName + " must be one of " + DataTypeListToString(supportList);
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(ACLNN_NAME, paramName.c_str(), incorrectDtype.c_str(),
                                                   reason.c_str());
             return ACLNN_ERR_PARAM_INVALID;
@@ -224,8 +236,7 @@ private:
             }
         }
         if (params_.headNums == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "headNums", "nullptr",
-                                                  "headNums can not be nullptr");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "headNums", "nullptr", "headNums can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.inputLayout == nullptr) {
@@ -247,8 +258,7 @@ private:
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         if (params_.executor == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "executor", "nullptr",
-                                                  "executor can not be nullptr");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "executor", "nullptr", "executor can not be nullptr");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
         return ACLNN_SUCCESS;
@@ -303,8 +313,8 @@ private:
         nk = headNumsData[1];
         nv = headNumsData[2];
         if (nq <= 0 || nk <= 0 || nv <= 0) {
-            const std::string incorrectValue = std::to_string(nq) + ", " + std::to_string(nk) + ", " +
-                                               std::to_string(nv);
+            const std::string incorrectValue =
+                std::to_string(nq) + ", " + std::to_string(nk) + ", " + std::to_string(nv);
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "headNums", incorrectValue.c_str(),
                                                   "headNums values must be positive");
             return ACLNN_ERR_PARAM_INVALID;
@@ -336,9 +346,8 @@ private:
         uint64_t qkvDimNum = qkvShape.GetDimNum();
         if (unlikely(qkvDimNum != 3)) {
             const std::string incorrectDim = std::to_string(qkvDimNum) + "D";
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                ACLNN_NAME, "qkv", incorrectDim.c_str(),
-                "qkv must be a 3D tensor [Nq+Nk+Nv, T, D] or [T, Nq+Nk+Nv, D]");
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "qkv", incorrectDim.c_str(),
+                                                     "qkv must be a 3D tensor [Nq+Nk+Nv, T, D] or [T, Nq+Nk+Nv, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
         const int64_t hqkv = qkvShape.GetDim(isTnd ? 1 : 0);
@@ -368,8 +377,7 @@ private:
     aclnnStatus CheckNonCacheShapes(int64_t t, int64_t d, int64_t nv) const
     {
         if (!IsShape(params_.qGamma, {d}) || !IsShape(params_.kGamma, {d})) {
-            const std::string incorrectShapes = ShapeToString(params_.qGamma) + ", " +
-                                                ShapeToString(params_.kGamma);
+            const std::string incorrectShapes = ShapeToString(params_.qGamma) + ", " + ShapeToString(params_.kGamma);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "qGamma, kGamma", incorrectShapes.c_str(),
                                                    "qGamma and kGamma must have shape [D]");
             return ACLNN_ERR_PARAM_INVALID;
@@ -384,7 +392,9 @@ private:
         }
 
         aclnnStatus ret = CheckExactShape("slotMapping", params_.slotMapping, {t}, "slotMapping must have shape [T]");
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
         const auto &cuSeqLenShape = params_.cuSeqLen->GetViewShape();
         if (unlikely(cuSeqLenShape.GetDimNum() != 1 || cuSeqLenShape.GetDim(0) < 2)) {
             const std::string incorrectShape = ShapeToString(params_.cuSeqLen);
@@ -394,20 +404,19 @@ private:
         }
         const auto &actualSeqLensShape = params_.actualSeqLens->GetViewShape();
         if (unlikely(actualSeqLensShape.GetDimNum() != 1 ||
-            actualSeqLensShape.GetDim(0) != cuSeqLenShape.GetDim(0) - 1)) {
+                     actualSeqLensShape.GetDim(0) != cuSeqLenShape.GetDim(0) - 1)) {
             const std::string incorrectShape = ShapeToString(params_.actualSeqLens);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "actualSeqLens", incorrectShape.c_str(),
                                                   "actualSeqLens must have shape [cuSeqLen.shape[0] - 1]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        if (!IsShape(params_.optionalQRotation, {d, d}) ||
-            !IsShape(params_.optionalKRotation, {d, d})) {
-            const std::string incorrectShapes = ShapeToString(params_.optionalQRotation) + ", " +
-                                                ShapeToString(params_.optionalKRotation);
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                ACLNN_NAME, "optionalQRotation, optionalKRotation", incorrectShapes.c_str(),
-                "optionalQRotation and optionalKRotation must have shape [D, D]");
+        if (!IsShape(params_.optionalQRotation, {d, d}) || !IsShape(params_.optionalKRotation, {d, d})) {
+            const std::string incorrectShapes =
+                ShapeToString(params_.optionalQRotation) + ", " + ShapeToString(params_.optionalKRotation);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "optionalQRotation, optionalKRotation",
+                                                   incorrectShapes.c_str(),
+                                                   "optionalQRotation and optionalKRotation must have shape [D, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -417,8 +426,7 @@ private:
     aclnnStatus CheckCacheShapes(int64_t nk, int64_t nv, int64_t d) const
     {
         const auto &kCacheShape = params_.kCache->GetViewShape();
-        if (unlikely(kCacheShape.GetDimNum() != 4 || kCacheShape.GetDim(1) != nk ||
-            kCacheShape.GetDim(3) != d)) {
+        if (unlikely(kCacheShape.GetDimNum() != 4 || kCacheShape.GetDim(1) != nk || kCacheShape.GetDim(3) != d)) {
             const std::string incorrectShape = ShapeToString(params_.kCache);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "kCache", incorrectShape.c_str(),
                                                   "kCache must have shape [BlockNum, Nk, BlockSize, D]");
@@ -426,8 +434,7 @@ private:
         }
 
         const auto &vCacheShape = params_.vCache->GetViewShape();
-        if (unlikely(vCacheShape.GetDimNum() != 4 || vCacheShape.GetDim(1) != nv ||
-            vCacheShape.GetDim(3) != d)) {
+        if (unlikely(vCacheShape.GetDimNum() != 4 || vCacheShape.GetDim(1) != nv || vCacheShape.GetDim(3) != d)) {
             const std::string incorrectShape = ShapeToString(params_.vCache);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "vCache", incorrectShape.c_str(),
                                                   "vCache must have shape [BlockNum, Nv, BlockSize, D]");
@@ -436,7 +443,7 @@ private:
 
         const auto &kScaleCacheShape = params_.kScaleCache->GetViewShape();
         if (unlikely(kScaleCacheShape.GetDimNum() != 4 || kScaleCacheShape.GetDim(1) != nk ||
-            kScaleCacheShape.GetDim(3) != 1)) {
+                     kScaleCacheShape.GetDim(3) != 1)) {
             const std::string incorrectShape = ShapeToString(params_.kScaleCache);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "kScaleCache", incorrectShape.c_str(),
                                                   "kScaleCache must have shape [BlockNum, Nk, BlockSize, 1]");
@@ -444,7 +451,7 @@ private:
         }
 
         if (unlikely(kCacheShape.GetDim(0) != kScaleCacheShape.GetDim(0) ||
-            kCacheShape.GetDim(2) != kScaleCacheShape.GetDim(2))) {
+                     kCacheShape.GetDim(2) != kScaleCacheShape.GetDim(2))) {
             const std::string incorrectShapes = "kCache=[" + ShapeToString(params_.kCache) + "], kScaleCache=[" +
                                                 ShapeToString(params_.kScaleCache) + "]";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "kCache and kScaleCache", incorrectShapes.c_str(),
@@ -453,9 +460,9 @@ private:
         }
 
         if (unlikely(vCacheShape.GetDim(0) != kCacheShape.GetDim(0) ||
-            vCacheShape.GetDim(2) != kCacheShape.GetDim(2))) {
-            const std::string incorrectShapes = "vCache=[" + ShapeToString(params_.vCache) + "], kCache=[" +
-                                                ShapeToString(params_.kCache) + "]";
+                     vCacheShape.GetDim(2) != kCacheShape.GetDim(2))) {
+            const std::string incorrectShapes =
+                "vCache=[" + ShapeToString(params_.vCache) + "], kCache=[" + ShapeToString(params_.kCache) + "]";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "vCache and kCache", incorrectShapes.c_str(),
                                                    "vCache BlockNum/BlockSize must match kCache");
             return ACLNN_ERR_PARAM_INVALID;
@@ -465,10 +472,10 @@ private:
 
     aclnnStatus CheckOutputShapes(int64_t nq, int64_t t, int64_t d, bool isTnd) const
     {
-        const std::vector<int64_t> expectedQOutShape = isTnd ? std::vector<int64_t>{t, nq, d} :
-                                                               std::vector<int64_t>{nq, t, d};
-        const std::vector<int64_t> expectedQScaleShape = isTnd ? std::vector<int64_t>{t, nq} :
-                                                                 std::vector<int64_t>{nq, t};
+        const std::vector<int64_t> expectedQOutShape =
+            isTnd ? std::vector<int64_t>{t, nq, d} : std::vector<int64_t>{nq, t, d};
+        const std::vector<int64_t> expectedQScaleShape =
+            isTnd ? std::vector<int64_t>{t, nq} : std::vector<int64_t>{nq, t};
         if (!IsShape(params_.qOut, expectedQOutShape) || !IsShape(params_.qScale, expectedQScaleShape)) {
             const std::string incorrectShapes = ShapeToString(params_.qOut) + ", " + ShapeToString(params_.qScale);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "qOut, qScale", incorrectShapes.c_str(),
@@ -484,22 +491,32 @@ private:
         int64_t nk = 0;
         int64_t nv = 0;
         aclnnStatus ret = ParseHeadNums(nq, nk, nv);
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
 
         bool isTnd = false;
         ret = CheckInputLayout(isTnd);
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
 
         int64_t t = 0;
         int64_t d = 0;
         ret = CheckQkvShape(nq, nk, nv, isTnd, t, d);
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
 
         ret = CheckNonCacheShapes(t, d, nv);
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
 
         ret = CheckCacheShapes(nk, nv, d);
-        if (ret != ACLNN_SUCCESS) { return ret; }
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
 
         return CheckOutputShapes(nq, t, d, isTnd);
     }

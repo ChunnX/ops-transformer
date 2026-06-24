@@ -33,16 +33,16 @@
 namespace QkvRmsNormRopeCacheWithKScale {
 
 using Params = QkvRmsNormRopeCacheWithKScaleCheck::QkvRmsNormRopeCacheWithKScaleParams;
-using L0Outputs = std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *,
-                             const aclTensor *>;
+using L0Outputs =
+    std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *>;
 
 static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
-                         const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
-                         aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *cuSeqLen,
-                         const aclTensor *actualSeqLens, const aclTensor *optionalQRotation,
-                         const aclTensor *optionalKRotation, const aclTensor *optionalVScale,
-                         const aclIntArray *headNums, const char *inputLayout, float epsilon, aclTensor *qOut,
-                         aclTensor *qScale, uint64_t *workspaceSize, aclOpExecutor **executor)
+                         const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache, aclTensor *vCache,
+                         aclTensor *kScaleCache, const aclTensor *cuSeqLen, const aclTensor *actualSeqLens,
+                         const aclTensor *optionalQRotation, const aclTensor *optionalKRotation,
+                         const aclTensor *optionalVScale, const aclIntArray *headNums, const char *inputLayout,
+                         float epsilon, aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize,
+                         aclOpExecutor **executor)
 {
     Params params;
     params.qkv = qkv;
@@ -110,20 +110,17 @@ static aclnnStatus CheckL0Outputs(const L0Outputs &outputs)
 
 static aclnnStatus CreateCacheViews(Params &params, aclOpExecutor *executor)
 {
-    params.kCache = executor->CreateView(params.kCache, params.kCache->GetViewShape(),
-                                         params.kCache->GetStorageShape(), params.kCache->GetViewStrides(),
-                                         params.kCache->GetViewOffset());
+    params.kCache = executor->CreateView(params.kCache, params.kCache->GetViewShape(), params.kCache->GetStorageShape(),
+                                         params.kCache->GetViewStrides(), params.kCache->GetViewOffset());
     CHECK_RET(params.kCache != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    params.vCache = executor->CreateView(params.vCache, params.vCache->GetViewShape(),
-                                         params.vCache->GetStorageShape(), params.vCache->GetViewStrides(),
-                                         params.vCache->GetViewOffset());
+    params.vCache = executor->CreateView(params.vCache, params.vCache->GetViewShape(), params.vCache->GetStorageShape(),
+                                         params.vCache->GetViewStrides(), params.vCache->GetViewOffset());
     CHECK_RET(params.vCache != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    params.kScaleCache = executor->CreateView(params.kScaleCache, params.kScaleCache->GetViewShape(),
-                                              params.kScaleCache->GetStorageShape(),
-                                              params.kScaleCache->GetViewStrides(),
-                                              params.kScaleCache->GetViewOffset());
+    params.kScaleCache = executor->CreateView(
+        params.kScaleCache, params.kScaleCache->GetViewShape(), params.kScaleCache->GetStorageShape(),
+        params.kScaleCache->GetViewStrides(), params.kScaleCache->GetViewOffset());
     CHECK_RET(params.kScaleCache != nullptr, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
@@ -133,10 +130,10 @@ static aclnnStatus AddQkvRmsNormRopeCacheWithKScaleTask(Params &params, aclOpExe
     CHECK_RET(ContiguousInputs(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CreateCacheViews(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     auto l0Outs = l0op::QkvRmsNormRopeCacheWithKScale(
-        params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping,
-        params.kCache, params.vCache, params.kScaleCache, params.cuSeqLen, params.actualSeqLens,
-        params.optionalQRotation, params.optionalKRotation, params.optionalVScale,
-        params.headNums, params.inputLayout, params.epsilon, params.qOut, params.qScale, executor);
+        params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping, params.kCache, params.vCache,
+        params.kScaleCache, params.cuSeqLen, params.actualSeqLens, params.optionalQRotation, params.optionalKRotation,
+        params.optionalVScale, params.headNums, params.inputLayout, params.epsilon, params.qOut, params.qScale,
+        executor);
     return CheckL0Outputs(l0Outs);
 }
 
@@ -160,10 +157,10 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
                           epsilon),
                    DFX_OUT(qOut, qScale, kCache, vCache, kScaleCache));
 
-    auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(
-        qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen, actualSeqLens,
-        optionalQRotation, optionalKRotation, optionalVScale, headNums, inputLayout, epsilon, qOut, qScale,
-        workspaceSize, executor);
+    auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache,
+                                                            kScaleCache, cuSeqLen, actualSeqLens, optionalQRotation,
+                                                            optionalKRotation, optionalVScale, headNums, inputLayout,
+                                                            epsilon, qOut, qScale, workspaceSize, executor);
     aclnnStatus checkRet = QkvRmsNormRopeCacheWithKScale::CheckParams(params);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
@@ -171,8 +168,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(QkvRmsNormRopeCacheWithKScale::AddQkvRmsNormRopeCacheWithKScaleTask(params, l0Executor) ==
-                  ACLNN_SUCCESS,
+    CHECK_RET(QkvRmsNormRopeCacheWithKScale::AddQkvRmsNormRopeCacheWithKScaleTask(params, l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -181,11 +177,11 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
 }
 
 aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                aclrtStream stream)
+                                               aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnQkvRmsNormRopeCacheWithKScale);
-    CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS,
-               ACLNN_ERR_INNER, "QkvRmsNormRopeCacheWithKScale execution failed.");
+    CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
+               "QkvRmsNormRopeCacheWithKScale execution failed.");
     return ACLNN_SUCCESS;
 }
 

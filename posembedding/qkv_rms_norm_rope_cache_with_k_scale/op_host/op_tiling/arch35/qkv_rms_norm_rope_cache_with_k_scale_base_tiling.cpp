@@ -73,12 +73,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeRank(const
                                                                            uint64_t expectedRank) const
 {
     const uint64_t actualRank = static_cast<uint64_t>(tensor.shape.GetDimNum());
-    OP_CHECK_IF(!tensor.shapePresent || actualRank != expectedRank,
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                    opName_, tensorName,
-                    (std::to_string(actualRank) + "D").c_str(),
-                    ("shape rank must be " + std::to_string(expectedRank) + "D").c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        !tensor.shapePresent || actualRank != expectedRank,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, tensorName, (std::to_string(actualRank) + "D").c_str(),
+                                                 ("shape rank must be " + std::to_string(expectedRank) + "D").c_str()),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -120,11 +119,12 @@ const char *InputLayoutName(uint64_t inputLayout)
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateHeadNums() const
 {
     OP_CHECK_IF(input_.numQHeads == 0 || input_.numKHeads == 0 || input_.numVHeads == 0,
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                    opName_, "Nq, Nk, Nv",
-                    (std::to_string(input_.numQHeads) + ", " + std::to_string(input_.numKHeads) + ", " +
-                     std::to_string(input_.numVHeads)).c_str(),
-                    "head nums must be greater than 0"),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "Nq, Nk, Nv",
+                                                       (std::to_string(input_.numQHeads) + ", " +
+                                                        std::to_string(input_.numKHeads) + ", " +
+                                                        std::to_string(input_.numVHeads))
+                                                           .c_str(),
+                                                       "head nums must be greater than 0"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(input_.numVHeads != input_.numKHeads,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
@@ -138,27 +138,23 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateHeadNums() cons
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateScalarInputs() const
 {
     OP_CHECK_IF(input_.inputLayout != QKV_RRC_LAYOUT_NTD && input_.inputLayout != QKV_RRC_LAYOUT_TND,
-                OP_LOGE_FOR_INVALID_VALUE(opName_, "inputLayout",
-                                          InputLayoutName(input_.inputLayout),
-                                          "NTD or TND"),
+                OP_LOGE_FOR_INVALID_VALUE(opName_, "inputLayout", InputLayoutName(input_.inputLayout), "NTD or TND"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input_.totalTokens == 0,
-                OP_LOGE_FOR_INVALID_VALUE(opName_, "totalTokens",
-                                          std::to_string(input_.totalTokens).c_str(), "greater than 0"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        input_.totalTokens == 0,
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "totalTokens", std::to_string(input_.totalTokens).c_str(), "greater than 0"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(input_.batch == 0,
-                OP_LOGE_FOR_INVALID_VALUE(opName_, "batch",
-                                          std::to_string(input_.batch).c_str(), "greater than 0"),
+                OP_LOGE_FOR_INVALID_VALUE(opName_, "batch", std::to_string(input_.batch).c_str(), "greater than 0"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(input_.headDim != HEAD_DIM_FAST,
-                OP_LOGE_FOR_INVALID_VALUE(opName_, "headDim",
-                                          std::to_string(input_.headDim).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE(opName_, "headDim", std::to_string(input_.headDim).c_str(),
                                           std::to_string(HEAD_DIM_FAST).c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input_.maxSeqLen == 0,
-                OP_LOGE_FOR_INVALID_VALUE(opName_, "maxSeqLen",
-                                          std::to_string(input_.maxSeqLen).c_str(), "greater than 0"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        input_.maxSeqLen == 0,
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "maxSeqLen", std::to_string(input_.maxSeqLen).c_str(), "greater than 0"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(input_.blockNum == 0 || input_.blockSize == 0,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     opName_, "blockNum, blockSize",
@@ -166,16 +162,13 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateScalarInputs() 
                     "blockNum and blockSize must be greater than 0"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.qRotation.shapePresent,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qRotation", "missing",
-                                                      "qRotation must exist"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qRotation", "missing", "qRotation must exist"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.kRotation.shapePresent,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kRotation", "missing",
-                                                      "kRotation must exist"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kRotation", "missing", "kRotation must exist"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.vScale.shapePresent,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "vScale", "missing",
-                                                      "vScale must exist"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "vScale", "missing", "vScale must exist"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -211,8 +204,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus
-QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForDerivedFields() const
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForDerivedFields() const
 {
     OP_CHECK_IF(!input_.qkv.shapePresent || input_.qkv.shape.GetDimNum() != 3,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "qkv",
@@ -224,8 +216,7 @@ QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForDerivedFields() c
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.cuSeqLen.shapePresent || input_.cuSeqLen.shape.GetDimNum() != 1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cuSeqLen",
-                                             (std::to_string(input_.cuSeqLen.shape.GetDimNum()) + "D").c_str(),
-                                             "1D"),
+                                             (std::to_string(input_.cuSeqLen.shape.GetDimNum()) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(input_.cuSeqLen.shape.GetDim(0) < 2,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cuSeqLen",
@@ -241,8 +232,8 @@ QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateShapeInputsForDerivedFields() c
         input_.actualSeqLens.shape.GetDim(0) != input_.cuSeqLen.shape.GetDim(0) - 1,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
             opName_, "actualSeqLens, cuSeqLen",
-            (Ops::Base::ToString(input_.actualSeqLens.shape) + ", " +
-             Ops::Base::ToString(input_.cuSeqLen.shape)).c_str(),
+            (Ops::Base::ToString(input_.actualSeqLens.shape) + ", " + Ops::Base::ToString(input_.cuSeqLen.shape))
+                .c_str(),
             "dim 0 of actualSeqLens must be equal to dim 0 of cuSeqLen minus 1"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.kCache.shapePresent || input_.kCache.shape.GetDimNum() != 4,
@@ -284,19 +275,19 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateQkvAndGammaShap
     const uint64_t expectedDim1 = isNtd ? input_.totalTokens : numQkvHeads;
     OP_CHECK_IF(qkvHeadDim != numQkvHeads || qkvTokenDim != input_.totalTokens ||
                     static_cast<uint64_t>(input_.qkv.shape.GetDim(2)) != input_.headDim,
-                OP_LOGE_FOR_INVALID_SHAPE(
-                    opName_, "qkv", Ops::Base::ToString(input_.qkv.shape).c_str(),
-                    (std::to_string(expectedDim0) + ", " + std::to_string(expectedDim1) + ", " +
-                     std::to_string(input_.headDim)).c_str()),
+                OP_LOGE_FOR_INVALID_SHAPE(opName_, "qkv", Ops::Base::ToString(input_.qkv.shape).c_str(),
+                                          (std::to_string(expectedDim0) + ", " + std::to_string(expectedDim1) + ", " +
+                                           std::to_string(input_.headDim))
+                                              .c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(static_cast<uint64_t>(input_.qGamma.shape.GetDim(0)) != input_.headDim ||
-                    static_cast<uint64_t>(input_.kGamma.shape.GetDim(0)) != input_.headDim,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    opName_, "qGamma, kGamma",
-                    (Ops::Base::ToString(input_.qGamma.shape) + ", " +
-                     Ops::Base::ToString(input_.kGamma.shape)).c_str(),
-                    ("dim 0 must be equal to headDim " + std::to_string(input_.headDim)).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        static_cast<uint64_t>(input_.qGamma.shape.GetDim(0)) != input_.headDim ||
+            static_cast<uint64_t>(input_.kGamma.shape.GetDim(0)) != input_.headDim,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            opName_, "qGamma, kGamma",
+            (Ops::Base::ToString(input_.qGamma.shape) + ", " + Ops::Base::ToString(input_.kGamma.shape)).c_str(),
+            ("dim 0 must be equal to headDim " + std::to_string(input_.headDim)).c_str()),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -307,7 +298,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidatePositionInputSh
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "cosSin", Ops::Base::ToString(input_.cosSin.shape).c_str(),
                     ("shape must be maxSeqLen by headDim, maxSeqLen is " + std::to_string(input_.maxSeqLen) +
-                     ", headDim is " + std::to_string(input_.headDim)).c_str()),
+                     ", headDim is " + std::to_string(input_.headDim))
+                        .c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(static_cast<uint64_t>(input_.slotMapping.shape.GetDim(0)) != input_.totalTokens,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -322,8 +314,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidatePositionInputSh
     OP_CHECK_IF(input_.actualSeqLens.shape.GetDim(0) <= 0 ||
                     static_cast<uint64_t>(input_.actualSeqLens.shape.GetDim(0)) != input_.batch,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "actualSeqLens",
-                    Ops::Base::ToString(input_.actualSeqLens.shape).c_str(),
+                    opName_, "actualSeqLens", Ops::Base::ToString(input_.actualSeqLens.shape).c_str(),
                     ("dim 0 must be greater than 0 and equal to batch " + std::to_string(input_.batch)).c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -384,33 +375,34 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCacheShapes() c
         }
     }
 
-    OP_CHECK_IF(static_cast<uint64_t>(input_.kCache.shape.GetDim(0)) != input_.blockNum ||
-                    static_cast<uint64_t>(input_.kCache.shape.GetDim(1)) != input_.numKHeads ||
-                    static_cast<uint64_t>(input_.kCache.shape.GetDim(2)) != input_.blockSize ||
-                    static_cast<uint64_t>(input_.kCache.shape.GetDim(3)) != input_.headDim,
-                OP_LOGE_FOR_INVALID_SHAPE(
-                    opName_, "kCache", Ops::Base::ToString(input_.kCache.shape).c_str(),
-                    (std::to_string(input_.blockNum) + ", " + std::to_string(input_.numKHeads) + ", " +
-                     std::to_string(input_.blockSize) + ", " + std::to_string(input_.headDim)).c_str()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(static_cast<uint64_t>(input_.vCache.shape.GetDim(0)) != input_.blockNum ||
-                    static_cast<uint64_t>(input_.vCache.shape.GetDim(1)) != input_.numVHeads ||
-                    static_cast<uint64_t>(input_.vCache.shape.GetDim(2)) != input_.blockSize ||
-                    static_cast<uint64_t>(input_.vCache.shape.GetDim(3)) != input_.headDim,
-                OP_LOGE_FOR_INVALID_SHAPE(
-                    opName_, "vCache", Ops::Base::ToString(input_.vCache.shape).c_str(),
-                    (std::to_string(input_.blockNum) + ", " + std::to_string(input_.numVHeads) + ", " +
-                     std::to_string(input_.blockSize) + ", " + std::to_string(input_.headDim)).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        static_cast<uint64_t>(input_.kCache.shape.GetDim(0)) != input_.blockNum ||
+            static_cast<uint64_t>(input_.kCache.shape.GetDim(1)) != input_.numKHeads ||
+            static_cast<uint64_t>(input_.kCache.shape.GetDim(2)) != input_.blockSize ||
+            static_cast<uint64_t>(input_.kCache.shape.GetDim(3)) != input_.headDim,
+        OP_LOGE_FOR_INVALID_SHAPE(opName_, "kCache", Ops::Base::ToString(input_.kCache.shape).c_str(),
+                                  (std::to_string(input_.blockNum) + ", " + std::to_string(input_.numKHeads) + ", " +
+                                   std::to_string(input_.blockSize) + ", " + std::to_string(input_.headDim))
+                                      .c_str()),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        static_cast<uint64_t>(input_.vCache.shape.GetDim(0)) != input_.blockNum ||
+            static_cast<uint64_t>(input_.vCache.shape.GetDim(1)) != input_.numVHeads ||
+            static_cast<uint64_t>(input_.vCache.shape.GetDim(2)) != input_.blockSize ||
+            static_cast<uint64_t>(input_.vCache.shape.GetDim(3)) != input_.headDim,
+        OP_LOGE_FOR_INVALID_SHAPE(opName_, "vCache", Ops::Base::ToString(input_.vCache.shape).c_str(),
+                                  (std::to_string(input_.blockNum) + ", " + std::to_string(input_.numVHeads) + ", " +
+                                   std::to_string(input_.blockSize) + ", " + std::to_string(input_.headDim))
+                                      .c_str()),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(static_cast<uint64_t>(input_.kScaleCache.shape.GetDim(0)) != input_.blockNum ||
                     static_cast<uint64_t>(input_.kScaleCache.shape.GetDim(1)) != input_.numKHeads ||
                     static_cast<uint64_t>(input_.kScaleCache.shape.GetDim(2)) != input_.blockSize ||
                     input_.kScaleCache.shape.GetDim(3) != 1,
-                OP_LOGE_FOR_INVALID_SHAPE(
-                    opName_, "kScaleCache",
-                    Ops::Base::ToString(input_.kScaleCache.shape).c_str(),
-                    (std::to_string(input_.blockNum) + ", " + std::to_string(input_.numKHeads) + ", " +
-                     std::to_string(input_.blockSize) + ", 1").c_str()),
+                OP_LOGE_FOR_INVALID_SHAPE(opName_, "kScaleCache", Ops::Base::ToString(input_.kScaleCache.shape).c_str(),
+                                          (std::to_string(input_.blockNum) + ", " + std::to_string(input_.numKHeads) +
+                                           ", " + std::to_string(input_.blockSize) + ", 1")
+                                              .c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -436,23 +428,23 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
     const gert::Stride &kScaleStride = input_.kScaleCache.stride;
     OP_CHECK_IF(!input_.kCache.stridePresent || kStride.GetDimNum() != 4 || kStride.GetStride(0) <= 0 ||
                     kStride.GetStride(1) <= 0 || kStride.GetStride(2) <= 0 || kStride.GetStride(3) != 1,
-                OP_LOGE_FOR_INVALID_STRIDE(
-                    opName_, "kCache",
-                    (std::to_string(GetStrideDimOrZero(input_.kCache.stride, 0)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.kCache.stride, 1)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.kCache.stride, 2)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.kCache.stride, 3))).c_str(),
-                    "positive 4D stride and stride[3]=1"),
+                OP_LOGE_FOR_INVALID_STRIDE(opName_, "kCache",
+                                           (std::to_string(GetStrideDimOrZero(input_.kCache.stride, 0)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.kCache.stride, 1)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.kCache.stride, 2)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.kCache.stride, 3)))
+                                               .c_str(),
+                                           "positive 4D stride and stride[3]=1"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.vCache.stridePresent || vStride.GetDimNum() != 4 || vStride.GetStride(0) <= 0 ||
                     vStride.GetStride(1) <= 0 || vStride.GetStride(2) <= 0 || vStride.GetStride(3) != 1,
-                OP_LOGE_FOR_INVALID_STRIDE(
-                    opName_, "vCache",
-                    (std::to_string(GetStrideDimOrZero(input_.vCache.stride, 0)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.vCache.stride, 1)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.vCache.stride, 2)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.vCache.stride, 3))).c_str(),
-                    "positive 4D stride and stride[3]=1"),
+                OP_LOGE_FOR_INVALID_STRIDE(opName_, "vCache",
+                                           (std::to_string(GetStrideDimOrZero(input_.vCache.stride, 0)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.vCache.stride, 1)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.vCache.stride, 2)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.vCache.stride, 3)))
+                                               .c_str(),
+                                           "positive 4D stride and stride[3]=1"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(kStride.GetStride(0) != vStride.GetStride(0) || kStride.GetStride(1) != vStride.GetStride(1) ||
                     kStride.GetStride(2) != vStride.GetStride(2),
@@ -463,18 +455,19 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
                      std::to_string(input_.kCache.stride.GetStride(2)) + " and " +
                      std::to_string(input_.vCache.stride.GetStride(0)) + ", " +
                      std::to_string(input_.vCache.stride.GetStride(1)) + ", " +
-                     std::to_string(input_.vCache.stride.GetStride(2))).c_str(),
+                     std::to_string(input_.vCache.stride.GetStride(2)))
+                        .c_str(),
                     "the first three dimensions of kCache stride and vCache stride must be equal"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.kScaleCache.stridePresent || kScaleStride.GetDimNum() != 4 || kScaleStride.GetStride(0) <= 0 ||
                     kScaleStride.GetStride(1) <= 0 || kScaleStride.GetStride(2) <= 0 || kScaleStride.GetStride(3) != 1,
-                OP_LOGE_FOR_INVALID_STRIDE(
-                    opName_, "kScaleCache",
-                    (std::to_string(GetStrideDimOrZero(input_.kScaleCache.stride, 0)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.kScaleCache.stride, 1)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.kScaleCache.stride, 2)) + ", " +
-                     std::to_string(GetStrideDimOrZero(input_.kScaleCache.stride, 3))).c_str(),
-                    "positive 4D stride and stride[3]=1"),
+                OP_LOGE_FOR_INVALID_STRIDE(opName_, "kScaleCache",
+                                           (std::to_string(GetStrideDimOrZero(input_.kScaleCache.stride, 0)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.kScaleCache.stride, 1)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.kScaleCache.stride, 2)) + ", " +
+                                            std::to_string(GetStrideDimOrZero(input_.kScaleCache.stride, 3)))
+                                               .c_str(),
+                                           "positive 4D stride and stride[3]=1"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -489,12 +482,12 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMinimumTokenTil
                     opName_, "Nq+Nk", std::to_string(numQkHeads).c_str(),
                     ("nq plus nk must be less than or equal to " + std::to_string(QK_OUTPUT_ROWS_PER_AIV)).c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(numQkvHeads > QKV_INPUT_ROWS_PER_AIV,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    opName_, "Nq+Nk+Nv", std::to_string(numQkvHeads).c_str(),
-                    ("nq plus nk plus nv must be less than or equal to " +
-                     std::to_string(QKV_INPUT_ROWS_PER_AIV)).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        numQkvHeads > QKV_INPUT_ROWS_PER_AIV,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "Nq+Nk+Nv", std::to_string(numQkvHeads).c_str(),
+            ("nq plus nk plus nv must be less than or equal to " + std::to_string(QKV_INPUT_ROWS_PER_AIV)).c_str()),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(input_.numVHeads > V_OUTPUT_ROWS_PER_AIV,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     opName_, "Nv", std::to_string(input_.numVHeads).c_str(),
@@ -524,8 +517,8 @@ bool QkvRmsNormRopeCacheWithKScaleBaseTiling::TrySelectTokenTile(uint64_t tokenT
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale token tile candidate: tokenTilePerAiv=%llu tokenTile=%llu rowTile=%llu "
             "rowTileAligned=%llu qkAlignedRows=%llu fitsUb=%u fitsSideBySideL0c=%u accepted=%u.",
-            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows,
-            fitsUb ? 1U : 0U, fitsL0c ? 1U : 0U, accepted ? 1U : 0U);
+            tokenTilePerAiv, tokenTile, rowTile, rowTileAligned, qkAlignedRows, fitsUb ? 1U : 0U, fitsL0c ? 1U : 0U,
+            accepted ? 1U : 0U);
     return accepted;
 }
 
@@ -539,8 +532,8 @@ uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::SelectTokenTile() const
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale token tile search start: initialTokenTilePerAiv=%llu "
             "qkOutputLimit=%llu qkvInputLimit=%llu vOutputLimit=%llu.",
-            initialTokenTilePerAiv, QK_OUTPUT_ROWS_PER_AIV / numQkHeads,
-            QKV_INPUT_ROWS_PER_AIV / numQkvHeads, V_OUTPUT_ROWS_PER_AIV / input_.numVHeads);
+            initialTokenTilePerAiv, QK_OUTPUT_ROWS_PER_AIV / numQkHeads, QKV_INPUT_ROWS_PER_AIV / numQkvHeads,
+            V_OUTPUT_ROWS_PER_AIV / input_.numVHeads);
 
     uint64_t searchTokenTilePerAiv = initialTokenTilePerAiv;
     while (searchTokenTilePerAiv > 0) {
@@ -586,21 +579,17 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateParsedInput() c
 
     status = ValidateScalarInputs();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale scalar validation failed."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale scalar validation failed."), return ge::GRAPH_FAILED);
 
     status = ValidateDtypes();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale dtype validation failed."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale dtype validation failed."), return ge::GRAPH_FAILED);
     status = ValidateShapes();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale shape validation failed."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale shape validation failed."), return ge::GRAPH_FAILED);
     status = ValidateStrides();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale stride validation failed."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale stride validation failed."), return ge::GRAPH_FAILED);
     status = ValidateMinimumTokenTileFeasible();
     OP_CHECK_IF(status != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale resource boundary validation failed."),
@@ -616,14 +605,14 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ComputeTilingData()
             "QkvRmsNormRopeCacheWithKScale contract input: inputLayout=%s T=%llu batch=%llu Nq=%llu Nk=%llu Nv=%llu "
             "Nqk=%llu Nqkv=%llu headDim=%llu maxSeqLen=%llu blockNum=%llu blockSize=%llu aicNum=%llu.",
             InputLayoutName(input_.inputLayout), input_.totalTokens, input_.batch, input_.numQHeads, input_.numKHeads,
-            input_.numVHeads, numQkHeads, numQkvHeads, input_.headDim, input_.maxSeqLen,
-            input_.blockNum, input_.blockSize, aicNum_);
+            input_.numVHeads, numQkHeads, numQkvHeads, input_.headDim, input_.maxSeqLen, input_.blockNum,
+            input_.blockSize, aicNum_);
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale resource constants: maxTokenTile=%llu qkvInputRowsPerAiv=%llu "
             "qkOutputRowsPerAiv=%llu vOutputRowsPerAiv=%llu l0aFullDimSegmentRows=%llu l0cMaxRows=%llu "
             "aivPerAic=%llu.",
-            MAX_TOKEN_TILE, QKV_INPUT_ROWS_PER_AIV, QK_OUTPUT_ROWS_PER_AIV,
-            V_OUTPUT_ROWS_PER_AIV, L0A_FULL_DIM_SEGMENT_ROWS, L0C_MAX_ROWS, AIV_PER_AIC);
+            MAX_TOKEN_TILE, QKV_INPUT_ROWS_PER_AIV, QK_OUTPUT_ROWS_PER_AIV, V_OUTPUT_ROWS_PER_AIV,
+            L0A_FULL_DIM_SEGMENT_ROWS, L0C_MAX_ROWS, AIV_PER_AIC);
     const uint64_t tokenTile = SelectTokenTile();
     FillTilingData(tokenTile);
     const uint64_t tokenTilePerAiv = Ops::Base::CeilDiv(tokenTile, AIV_PER_AIC);
@@ -634,8 +623,8 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ComputeTilingData()
             "tokenTile=%llu tokenTilePerAiv=%llu Nq=%llu Nk=%llu Nv=%llu Nqk=%llu Nqkv=%llu "
             "rowTile=%llu rowTileAligned=%llu dimTile=%llu.",
             tilingData_.coreTokenTile, tilingData_.coreGroupNum, tilingData_.tokenTile, tokenTilePerAiv,
-            input_.numQHeads, input_.numKHeads, input_.numVHeads, numQkHeads, numQkvHeads, rowTile,
-            rowTileAligned, DIM_TILE_FAST);
+            input_.numQHeads, input_.numKHeads, input_.numVHeads, numQkHeads, numQkvHeads, rowTile, rowTileAligned,
+            DIM_TILE_FAST);
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale contract stride result: kvCache={%llu,%llu,%llu} "
             "kScaleCache={%llu,%llu,%llu}.",
@@ -651,11 +640,11 @@ ge::graphStatus MakeContiguousStrideInfo(const char *opName, const gert::Shape &
     int64_t currentStride = 1;
     for (int32_t dim = static_cast<int32_t>(shape.GetDimNum()) - 1; dim >= 0; --dim) {
         const int64_t dimValue = shape.GetDim(dim);
-        OP_CHECK_IF(dimValue <= 0,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName, "cache", Ops::Base::ToString(shape).c_str(),
-                        ("dim " + std::to_string(dim) + " must be greater than 0").c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            dimValue <= 0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "cache", Ops::Base::ToString(shape).c_str(),
+                                                  ("dim " + std::to_string(dim) + " must be greater than 0").c_str()),
+            return ge::GRAPH_FAILED);
         stride.SetStride(dim, currentStride);
         OP_CHECK_IF(dimValue > 0 && currentStride > std::numeric_limits<int64_t>::max() / dimValue,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -668,19 +657,17 @@ ge::graphStatus MakeContiguousStrideInfo(const char *opName, const gert::Shape &
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ToTensorInfo(gert::TilingContext *context, const char *opName, const char *tensorName,
-                             uint64_t index, TensorContractInfo &info)
+ge::graphStatus ToTensorInfo(gert::TilingContext *context, const char *opName, const char *tensorName, uint64_t index,
+                             TensorContractInfo &info)
 {
     const auto desc = context->GetInputDesc(index);
     if (desc == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, tensorName, "nullptr",
-                                              "input description must exist");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, tensorName, "nullptr", "input description must exist");
         return ge::GRAPH_FAILED;
     }
     const auto shape = context->GetInputShape(index);
     if (shape == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, tensorName, "nullptr",
-                                              "input shape must exist");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, tensorName, "nullptr", "input shape must exist");
         return ge::GRAPH_FAILED;
     }
     info.dtype = desc->GetDataType();
@@ -712,9 +699,8 @@ ge::graphStatus FillViewCacheTensorInfo(gert::TilingContext *context, const char
     OP_LOGD(context,
             "QkvRmsNormRopeCacheWithKScale cache input index=%llu uses view shape/stride: "
             "shapeRank=%llu strideRank=%llu stride={%lld,%lld,%lld,%lld}.",
-            index, static_cast<uint64_t>(info.shape.GetDimNum()),
-            static_cast<uint64_t>(info.stride.GetDimNum()), info.stride.GetStride(0), info.stride.GetStride(1),
-            info.stride.GetStride(2), info.stride.GetStride(3));
+            index, static_cast<uint64_t>(info.shape.GetDimNum()), static_cast<uint64_t>(info.stride.GetDimNum()),
+            info.stride.GetStride(0), info.stride.GetStride(1), info.stride.GetStride(2), info.stride.GetStride(3));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -732,9 +718,8 @@ ge::graphStatus FillContiguousCacheTensorInfo(gert::TilingContext *context, cons
     OP_LOGD(context,
             "QkvRmsNormRopeCacheWithKScale cache input index=%llu uses contiguous storage shape/stride: "
             "shapeRank=%llu strideRank=%llu stride={%lld,%lld,%lld,%lld}.",
-            index, static_cast<uint64_t>(info.shape.GetDimNum()),
-            static_cast<uint64_t>(info.stride.GetDimNum()), info.stride.GetStride(0), info.stride.GetStride(1),
-            info.stride.GetStride(2), info.stride.GetStride(3));
+            index, static_cast<uint64_t>(info.shape.GetDimNum()), static_cast<uint64_t>(info.stride.GetDimNum()),
+            info.stride.GetStride(0), info.stride.GetStride(1), info.stride.GetStride(2), info.stride.GetStride(3));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -794,8 +779,7 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTensorInfo(const char *tensorNa
             tensorName, DtypeName(info.dtype), static_cast<uint32_t>(info.dtype), info.shapePresent ? 1U : 0U,
             static_cast<uint64_t>(info.shape.GetDimNum()), info.stridePresent ? 1U : 0U,
             static_cast<uint64_t>(info.stride.GetDimNum()), GetStrideDimOrZero(info.stride, 0),
-            GetStrideDimOrZero(info.stride, 1), GetStrideDimOrZero(info.stride, 2),
-            GetStrideDimOrZero(info.stride, 3));
+            GetStrideDimOrZero(info.stride, 1), GetStrideDimOrZero(info.stride, 2), GetStrideDimOrZero(info.stride, 3));
 }
 
 void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput() const
@@ -805,8 +789,8 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput() const
             "inputLayout=%s epsilon=%f T=%llu batch=%llu headDim=%llu maxSeqLen=%llu blockNum=%llu "
             "blockSize=%llu aicNum=%llu.",
             input_.numQHeads, input_.numKHeads, input_.numVHeads, InputLayoutName(input_.inputLayout), epsilon_,
-            input_.totalTokens, input_.batch, input_.headDim, input_.maxSeqLen, input_.blockNum,
-            input_.blockSize, aicNum_);
+            input_.totalTokens, input_.batch, input_.headDim, input_.maxSeqLen, input_.blockNum, input_.blockSize,
+            aicNum_);
     LogTensorInfo("qkv", input_.qkv);
     LogTensorInfo("qGamma", input_.qGamma);
     LogTensorInfo("kGamma", input_.kGamma);
@@ -822,13 +806,11 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogContractInput() const
     LogTensorInfo("vScale", input_.vScale);
 }
 
-ge::graphStatus SetWorkspace(gert::TilingContext *context,
-                             const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
+ge::graphStatus SetWorkspace(gert::TilingContext *context, const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo,
                              uint64_t &workspaceSize)
 {
     auto *workspaces = context->GetWorkspaceSizes(WORKSPACE_COUNT);
-    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context, "get workspace failed."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context, "get workspace failed."), return ge::GRAPH_FAILED);
     const uint64_t opWorkspaceSize = compileInfo.opWorkspaceSize;
     workspaceSize = opWorkspaceSize + RESERVED_WORKSPACE_SIZE;
     workspaces[0] = workspaceSize;
@@ -848,42 +830,35 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTilingData() const
             "QkvRmsNormRopeCacheWithKScale final tilingData: totalTokens=%llu batch=%llu qHeadNum=%llu "
             "kvHeadNum=%llu headDim=%llu blockSize=%llu coreTokenTile=%llu coreGroupNum=%llu tokenTile=%llu "
             "epsilon=%f.",
-            tilingData_.totalTokens, tilingData_.batch, tilingData_.qHeadNum,
-            tilingData_.kvHeadNum, tilingData_.headDim, tilingData_.blockSize,
-            tilingData_.coreTokenTile, tilingData_.coreGroupNum, tilingData_.tokenTile,
-            tilingData_.epsilon);
+            tilingData_.totalTokens, tilingData_.batch, tilingData_.qHeadNum, tilingData_.kvHeadNum,
+            tilingData_.headDim, tilingData_.blockSize, tilingData_.coreTokenTile, tilingData_.coreGroupNum,
+            tilingData_.tokenTile, tilingData_.epsilon);
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale final strides: kvCache={%llu,%llu,%llu} "
             "kScaleCache={%llu,%llu,%llu}.",
-            tilingData_.kvCacheStrideBlock, tilingData_.kvCacheStrideHead,
-            tilingData_.kvCacheStrideToken, tilingData_.kScaleCacheStrideBlock,
-            tilingData_.kScaleCacheStrideHead, tilingData_.kScaleCacheStrideToken);
-    OP_LOGD(
-        context_,
-        "QkvRmsNormRopeCacheWithKScale final launch: tilingKey=%llu blockDim=%u tilingDataSize=%llu "
-        "workspaceSize=%llu inputLayout=%s Nqk=%llu Nv=%llu rowTile=%llu rowTileAligned=%llu "
-        "tokenTilePerAiv=%llu dimTile=%llu.",
-        context_->GetTilingKey(), numBlocks_, tilingDataSize_, workspaceSize_, InputLayoutName(input_.inputLayout),
-        numQkHeads, input_.numVHeads, rowTile, rowTileAligned, tokenTilePerAiv, DIM_TILE_FAST);
+            tilingData_.kvCacheStrideBlock, tilingData_.kvCacheStrideHead, tilingData_.kvCacheStrideToken,
+            tilingData_.kScaleCacheStrideBlock, tilingData_.kScaleCacheStrideHead, tilingData_.kScaleCacheStrideToken);
+    OP_LOGD(context_,
+            "QkvRmsNormRopeCacheWithKScale final launch: tilingKey=%llu blockDim=%u tilingDataSize=%llu "
+            "workspaceSize=%llu inputLayout=%s Nqk=%llu Nv=%llu rowTile=%llu rowTileAligned=%llu "
+            "tokenTilePerAiv=%llu dimTile=%llu.",
+            context_->GetTilingKey(), numBlocks_, tilingDataSize_, workspaceSize_, InputLayoutName(input_.inputLayout),
+            numQkHeads, input_.numVHeads, rowTile, rowTileAligned, tokenTilePerAiv, DIM_TILE_FAST);
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseHeadNumsAttr()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_, "attrs is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_, "attrs is nullptr."), return ge::GRAPH_FAILED);
     const auto headNums = attrs->GetListInt(HEAD_NUMS_ATTR_INDEX);
     OP_CHECK_IF(headNums == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "head_nums", "missing",
-                                                      "head_nums must exist"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "head_nums", "missing", "head_nums must exist"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(headNums->GetSize() != 3,
-                OP_LOGE_FOR_INVALID_LISTSIZE(opName_, "head_nums",
-                                             std::to_string(headNums->GetSize()).c_str(), "3"),
+                OP_LOGE_FOR_INVALID_LISTSIZE(opName_, "head_nums", std::to_string(headNums->GetSize()).c_str(), "3"),
                 return ge::GRAPH_FAILED);
     const auto *headNumsData = headNums->GetData();
-    OP_CHECK_IF(headNumsData == nullptr, OP_LOGE(context_, "head_nums data is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(headNumsData == nullptr, OP_LOGE(context_, "head_nums data is nullptr."), return ge::GRAPH_FAILED);
     for (uint64_t i = 0; i < 3; ++i) {
         OP_CHECK_IF(headNumsData[i] <= 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -901,17 +876,14 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseHeadNumsAttr()
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseInputLayoutAttr()
 {
     auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_, "attrs is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_, "attrs is nullptr."), return ge::GRAPH_FAILED);
     if (static_cast<uint64_t>(attrs->GetAttrNum()) <= INPUT_LAYOUT_ATTR_INDEX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "inputLayout", "missing",
-                                              "inputLayout must exist");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "inputLayout", "missing", "inputLayout must exist");
         return ge::GRAPH_FAILED;
     }
     const char *inputLayout = attrs->GetStr(INPUT_LAYOUT_ATTR_INDEX);
     if (inputLayout == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "inputLayout", "nullptr",
-                                              "inputLayout must exist");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "inputLayout", "nullptr", "inputLayout must exist");
         return ge::GRAPH_FAILED;
     }
     if (std::strcmp(inputLayout, INPUT_LAYOUT_NTD) == 0) {
@@ -946,18 +918,15 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(
     const int64_t qkvHeadDim = qkvShape.GetDim(isNtd ? 0 : 1);
     const int64_t qkvTokenDim = qkvShape.GetDim(isNtd ? 1 : 0);
     OP_CHECK_IF(qkvHeadDim <= 0 || qkvTokenDim <= 0 || qkvShape.GetDim(2) <= 0,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "qkv",
-                                                      Ops::Base::ToString(qkvShape).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "qkv", Ops::Base::ToString(qkvShape).c_str(),
                                                       "head, token and head_dim dimensions must be greater than 0"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(cosSinShape.GetDim(0) <= 0,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cosSin",
-                                                      Ops::Base::ToString(cosSinShape).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cosSin", Ops::Base::ToString(cosSinShape).c_str(),
                                                       "dim 0 must be greater than 0"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(kCacheShape.GetDim(0) <= 0 || kCacheShape.GetDim(2) <= 0,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "kCache",
-                                                      Ops::Base::ToString(kCacheShape).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "kCache", Ops::Base::ToString(kCacheShape).c_str(),
                                                       "block_num and block_size dimensions must be greater than 0"),
                 return ge::GRAPH_FAILED);
     input_.totalTokens = static_cast<uint64_t>(qkvTokenDim);
@@ -969,8 +938,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillShapeDerivedFields(
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale derived shape fields: totalTokens=%llu batch=%llu headDim=%llu "
             "maxSeqLen=%llu blockNum=%llu blockSize=%llu.",
-            input_.totalTokens, input_.batch, input_.headDim, input_.maxSeqLen,
-            input_.blockNum, input_.blockSize);
+            input_.totalTokens, input_.batch, input_.headDim, input_.maxSeqLen, input_.blockNum, input_.blockSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -986,22 +954,18 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::FillRequiredTensorInput
                 OP_LOGE(context_, "failed to parse cosSin tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToTensorInfo(context_, opName_, "slotMapping", SLOT_MAPPING_INDEX, input_.slotMapping) !=
                     ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse slotMapping tensor info."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "failed to parse slotMapping tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToCacheTensorInfo(context_, opName_, K_CACHE_INDEX, input_.kCache) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to parse kCache tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToCacheTensorInfo(context_, opName_, V_CACHE_INDEX, input_.vCache) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to parse vCache tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToCacheTensorInfo(context_, opName_, K_SCALE_CACHE_INDEX, input_.kScaleCache) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse kScaleCache tensor info."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "failed to parse kScaleCache tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToTensorInfo(context_, opName_, "cuSeqLen", CU_SEQ_LEN_INDEX, input_.cuSeqLen) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse cuSeqLen tensor info."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "failed to parse cuSeqLen tensor info."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ToTensorInfo(context_, opName_, "actualSeqLens", ACTUAL_SEQ_LENS_INDEX, input_.actualSeqLens) !=
                     ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse actualSeqLens tensor info."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "failed to parse actualSeqLens tensor info."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1014,19 +978,16 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillOptionalTensorInputs()
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput()
 {
-    OP_CHECK_IF(ParseHeadNumsAttr() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse head_nums attr."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ParseInputLayoutAttr() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse inputLayout attr."),
+    OP_CHECK_IF(ParseHeadNumsAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse head_nums attr."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ParseInputLayoutAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse inputLayout attr."),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(FillRequiredTensorInputs() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "failed to parse required tensor inputs."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "failed to parse required tensor inputs."), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(ValidateShapeInputsForDerivedFields() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "invalid shape inputs for derived fields."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "invalid shape inputs for derived fields."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(FillShapeDerivedFields() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to fill shape derived fields."), return ge::GRAPH_FAILED);
     FillOptionalTensorInputs();
@@ -1040,11 +1001,10 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCompileInfo(
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale compile info: aicNum=%u aivNum=%u ubSize=%llu l1Size=%llu "
             "l0cSize=%llu opWorkspaceSize=%llu.",
-            compileInfo.aicNum, compileInfo.aivNum, compileInfo.ubSize, compileInfo.l1Size,
-            compileInfo.l0cSize, compileInfo.opWorkspaceSize);
+            compileInfo.aicNum, compileInfo.aivNum, compileInfo.ubSize, compileInfo.l1Size, compileInfo.l0cSize,
+            compileInfo.opWorkspaceSize);
     OP_CHECK_IF(compileInfo.aicNum == 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "aicNum",
-                                                      std::to_string(compileInfo.aicNum).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "aicNum", std::to_string(compileInfo.aicNum).c_str(),
                                                       "aicNum in compile info must be greater than 0"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(compileInfo.aivNum != compileInfo.aicNum * AIV_PER_AIC,
@@ -1057,18 +1017,15 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateCompileInfo(
 }
 
 ge::graphStatus CopyRawTilingData(gert::TilingContext *context, const char *opName,
-                                  const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData,
-                                  uint64_t &tilingDataSize)
+                                  const QkvRmsNormRopeCacheWithKScaleTilingData &tilingData, uint64_t &tilingDataSize)
 {
     auto rawTilingData = context->GetRawTilingData();
-    OP_CHECK_IF(rawTilingData == nullptr, OP_LOGE(context, "raw tiling data is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(rawTilingData == nullptr, OP_LOGE(context, "raw tiling data is nullptr."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(rawTilingData->GetData() == nullptr, OP_LOGE(context, "raw tiling buffer is nullptr."),
                 return ge::GRAPH_FAILED);
     tilingDataSize = sizeof(QkvRmsNormRopeCacheWithKScaleTilingData);
     OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "tilingDataSize",
-                                                      std::to_string(tilingDataSize).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "tilingDataSize", std::to_string(tilingDataSize).c_str(),
                                                       "tilingDataSize must be aligned to 8"),
                 return ge::GRAPH_FAILED);
     const uint64_t tilingCapacity = static_cast<uint64_t>(rawTilingData->GetCapacity());
@@ -1079,9 +1036,7 @@ ge::graphStatus CopyRawTilingData(gert::TilingContext *context, const char *opNa
                     "tilingDataSize must be less than or equal to tilingCapacity"),
                 return ge::GRAPH_FAILED);
     const auto ret = memcpy_s(rawTilingData->GetData(), tilingCapacity, &tilingData, tilingDataSize);
-    OP_CHECK_IF(ret != EOK,
-                OP_LOGE(context, "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.",
-                                       ret),
+    OP_CHECK_IF(ret != EOK, OP_LOGE(context, "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
                 return ge::GRAPH_FAILED);
     rawTilingData->SetDataSize(tilingDataSize);
     return ge::GRAPH_SUCCESS;
@@ -1119,19 +1074,16 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetShapeAttrsInfo()
                 OP_LOGE(context_, "failed to build QkvRmsNormRopeCacheWithKScale contract input."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateParsedInput() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "invalid QkvRmsNormRopeCacheWithKScale contract input."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "invalid QkvRmsNormRopeCacheWithKScale contract input."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetPlatformInfo()
 {
     compileInfo_ = context_->GetCompileInfo<QkvRmsNormRopeCacheWithKScaleCompileInfo>();
-    OP_CHECK_IF(compileInfo_ == nullptr, OP_LOGE(context_, "compileInfo is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfo_ == nullptr, OP_LOGE(context_, "compileInfo is nullptr."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateCompileInfo(*compileInfo_) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "invalid QkvRmsNormRopeCacheWithKScale compile info."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "invalid QkvRmsNormRopeCacheWithKScale compile info."), return ge::GRAPH_FAILED);
     aicNum_ = compileInfo_->aicNum;
     LogContractInput();
     return ge::GRAPH_SUCCESS;
@@ -1158,11 +1110,9 @@ uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::GetTilingKey() const
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetWorkspaceSize()
 {
-    OP_CHECK_IF(compileInfo_ == nullptr, OP_LOGE(context_, "compileInfo is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compileInfo_ == nullptr, OP_LOGE(context_, "compileInfo is nullptr."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(SetWorkspace(context_, *compileInfo_, workspaceSize_) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "set QkvRmsNormRopeCacheWithKScale workspace failed."),
-                return ge::GRAPH_FAILED);
+                OP_LOGE(context_, "set QkvRmsNormRopeCacheWithKScale workspace failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

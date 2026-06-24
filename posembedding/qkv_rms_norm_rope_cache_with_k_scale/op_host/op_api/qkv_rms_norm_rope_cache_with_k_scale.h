@@ -15,7 +15,7 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-std::tuple<const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*>
+std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *>
 QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
                               const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
                               aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *cuSeqLen,

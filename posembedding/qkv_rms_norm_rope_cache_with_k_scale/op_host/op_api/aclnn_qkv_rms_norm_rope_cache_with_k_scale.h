@@ -26,8 +26,8 @@ ACLNN_API aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     const char *inputLayout, float epsilon, aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-ACLNN_API aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(void *workspace, uint64_t workspaceSize,
+                                                         aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
