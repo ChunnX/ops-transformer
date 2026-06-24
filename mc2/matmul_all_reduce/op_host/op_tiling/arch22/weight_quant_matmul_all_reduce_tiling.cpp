@@ -233,19 +233,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckAxisSize()
     return CheckWeightQuantEmptyTensor();
 }
 
-ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
+ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInputDtype() const
 {
-    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
-    const size_t x2DimNum = (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
-                                     ge::Format::FORMAT_FRACTAL_NZ ?
-                                 4 :
-                                 2);
-    const size_t actualX2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(x2DimNum != actualX2DimNum,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x2",
-                        (std::to_string(actualX2DimNum) + "D").c_str(),
-                        (std::to_string(x2DimNum) + "D").c_str()),
-                    return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     OP_TILING_CHECK(!((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x1",
@@ -281,6 +270,23 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
                             "The dtypes of antiquantScale and antiquantOffset must be the same"),
                         return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
+{
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
+    const size_t x2DimNum = (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
+                                     ge::Format::FORMAT_FRACTAL_NZ ?
+                                 4 :
+                                 2);
+    const size_t actualX2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
+    OP_TILING_CHECK(x2DimNum != actualX2DimNum,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x2",
+                        (std::to_string(actualX2DimNum) + "D").c_str(),
+                        (std::to_string(x2DimNum) + "D").c_str()),
+                    return ge::GRAPH_FAILED);
+    MC2_CHECK_LOG_RET(opName_, CheckInputDtype());
     // antiquantgroupsize 校验
     uint64_t kValue = GetKValue();
     if (kValue != 0 && mmrCtxInfo_.antiquantGroupSizePtr != nullptr) {
