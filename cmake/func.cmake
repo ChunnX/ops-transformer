@@ -459,6 +459,11 @@ function(add_ops_src_copy)
         "attention_to_ffn;"
         "ffn_to_attention;"
         "bandwidth_test;"
+        "mega_moe;"
+        "moe_distribute_combine_setup;"
+        "moe_distribute_combine_teardown;"
+        "moe_distribute_dispatch_setup;"
+        "moe_distribute_dispatch_teardown;"
     ) # mc2算子列表
 
     get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)

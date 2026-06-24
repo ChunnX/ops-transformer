@@ -15,11 +15,7 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_TEARDOWN_ARCH35_H
 #define MOE_DISTRIBUTE_COMBINE_TEARDOWN_ARCH35_H
 
-#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
