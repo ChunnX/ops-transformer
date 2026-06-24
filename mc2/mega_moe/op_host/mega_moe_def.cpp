@@ -44,24 +44,24 @@ public:
         .ParamType(DYNAMIC)
         .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4,
                    ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8,
-                   ge::DT_FLOAT4_E2M1,   // A8W4
+                //    ge::DT_FLOAT4_E2M1,   // A8W4
                    ge::DT_FLOAT4_E2M1,   // A4W4
                    ge::DT_FLOAT4_E1M2})
         .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_FRACTAL_NZ_C0_32,  // A8W4
+                //  ge::FORMAT_FRACTAL_NZ_C0_32,  // A8W4 Format 不兼容9.0.0-beta2，待工程处理
                  ge::FORMAT_ND,                // A4W4
                  ge::FORMAT_ND});
     this->Input("weight2")
         .ParamType(DYNAMIC)
         .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4,
                    ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8,
-                   ge::DT_FLOAT4_E2M1,   // A8W4
+                //    ge::DT_FLOAT4_E2M1,   // A8W4
                    ge::DT_FLOAT4_E2M1,   // A4W4
                    ge::DT_FLOAT4_E1M2})
         .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_FRACTAL_NZ_C0_32,  // A8W4
+                //  ge::FORMAT_FRACTAL_NZ_C0_32,  // A8W4
                  ge::FORMAT_ND,                // A4W4
                  ge::FORMAT_ND});
     this->Input("weight_scales1")
