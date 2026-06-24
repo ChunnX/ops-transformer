@@ -30,18 +30,6 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
            cuSeqLen, actualSeqLens, optionalQRotation, optionalKRotation, optionalVScale, headNums, inputLayout,
            epsilon);
 
-    if (optionalQRotation == nullptr) {
-        optionalQRotation = executor->AllocTensor(op::DataType::DT_BF16, op::Format::FORMAT_ND,
-                                                  op::Format::FORMAT_ND);
-    }
-    if (optionalKRotation == nullptr) {
-        optionalKRotation = executor->AllocTensor(op::DataType::DT_BF16, op::Format::FORMAT_ND,
-                                                  op::Format::FORMAT_ND);
-    }
-    if (optionalVScale == nullptr) {
-        optionalVScale = executor->AllocTensor(op::DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
-    }
-
     auto ret = INFER_SHAPE(QkvRmsNormRopeCacheWithKScale,
                            OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
                                     cuSeqLen, actualSeqLens, optionalQRotation, optionalKRotation, optionalVScale),
