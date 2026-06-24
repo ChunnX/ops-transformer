@@ -835,6 +835,7 @@ __aicore__ inline void LoadL1BOuter(const GlobalTensor<T> &tensorBGm, const Glob
 /**
  * @brief 初始化MKOuter模式下的计算参数
  */
+ template <typename T>
 __aicore__ inline void InitMatmulMKOuterParams(const MMParams &para, uint32_t &nBlocks, uint32_t &kL1Loops,
                                                uint32_t &kOffsetUnit, uint32_t &mSizeAligned,
                                                uint32_t &aOffsetUnit, uint32_t &bOffsetUnit,
@@ -994,8 +995,8 @@ __aicore__ inline void MatmulSplitMKOuter(const GlobalTensor<O> &tensorCGm, cons
     using O_L0C = typename std::conditional<std::is_same<T, int8_t>::value, int32_t, float>::type;
 
     uint32_t nBlocks, kL1Loops, kOffsetUnit, mSizeAligned, aOffsetUnit, bOffsetUnit, scaleOffsetUnit;
-    InitMatmulMKOuterParams(para, nBlocks, kL1Loops, kOffsetUnit, mSizeAligned,
-                            aOffsetUnit, bOffsetUnit, scaleOffsetUnit);
+    InitMatmulMKOuterParams<T>(para, nBlocks, kL1Loops, kOffsetUnit, mSizeAligned,
+                               OffsetUnit, bOffsetUnit, scaleOffsetUnit);
 
     mmLocalTensors<T, O_L0C> localTensors;
     localTensors.Init(bufParam);
