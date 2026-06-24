@@ -93,8 +93,9 @@ ge::graphStatus QuantMatmulAllReduceTiling::PostTiling()
                     return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
-    errno_t memcpyRet = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&quantMatmulAllReduceTilingData_), tilingDataSize);
+    errno_t memcpyRet = memcpy_s(context_->GetRawTilingData()->GetData(),
+                                 context_->GetRawTilingData()->GetCapacity(),
+                                 reinterpret_cast<void *>(&quantMatmulAllReduceTilingData_), tilingDataSize);
     if (memcpyRet != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", memcpyRet);
         return ge::GRAPH_FAILED;
