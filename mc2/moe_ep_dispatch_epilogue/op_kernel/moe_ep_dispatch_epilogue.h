@@ -66,7 +66,6 @@ private:
 
     LocalTensor<XType> ubToken_;
     LocalTensor<int32_t> ubHitCount_;
-    LocalTensor<int64_t> ubRowStart_;
     LocalTensor<int32_t> ubMeta_;
     LocalTensor<int32_t> ubTopkIds_;
     LocalTensor<int32_t> ubTargetExpertId_;
@@ -81,7 +80,6 @@ private:
 
     TBuf<QuePosition::VECIN> ubTokenBuf_;
     TBuf<QuePosition::VECIN> ubHitCountBuf_;
-    TBuf<QuePosition::VECIN> ubRowStartBuf_;
     TBuf<QuePosition::VECIN> ubMetaBuf_;
     TBuf<QuePosition::VECIN> ubTopkIdsBuf_;
     TBuf<QuePosition::VECIN> ubTargetExpertIdBuf_;
@@ -169,7 +167,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
 
     uint32_t ubTokenBytes     = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubRowStartBytes  = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
 
     axisKAlign_ = Ceil(axisK_, 8U) * 8U;
     metaBytes_ = (2 * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
@@ -189,7 +186,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
 
     tpipe_->InitBuffer(ubTokenBuf_, ubTokenBytes);
     tpipe_->InitBuffer(ubHitCountBuf_, ubHitCountBytes);
-    tpipe_->InitBuffer(ubRowStartBuf_, ubRowStartBytes);
     tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
     tpipe_->InitBuffer(ubTopkIdsBuf_, ubTopkIdsBytes);
     tpipe_->InitBuffer(ubTargetExpertIdBuf_, ubTopkIdsBytes);
@@ -204,7 +200,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
 
     ubToken_     = ubTokenBuf_.Get<XType>();
     ubHitCount_  = ubHitCountBuf_.Get<int32_t>();
-    ubRowStart_  = ubRowStartBuf_.Get<int64_t>();
     ubMeta_      = ubMetaBuf_.Get<int32_t>();
     ubTopkIds_   = ubTopkIdsBuf_.Get<int32_t>();
     ubTargetExpertId_ = ubTargetExpertIdBuf_.Get<int32_t>();
@@ -337,19 +332,17 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
     DataCopyPad(ubHitCountFull_, hitCountGm_, hitCountFullCopyParams, hitCountFullPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     
-    Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
     if (aivId_ > 0) {
         const uint32_t reduceShape[] = {aivId_, hitCountStride_};
         ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(ubHitCount_, ubHitCountFull_, reduceShape, true);
-        PipeBarrier<PIPE_V>();
         Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
-        Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
+        Add(ubExpertPfx_, ubExpertPfx_, ubHitCountRowI64_, numLocalExperts_);
     }
 
     // Per-expert outer loop: accumulate weights/metadata into UB staging buffers,
     // then flush with batched DataCopy per expert — replaces per-element GM SetValue (API-1).
     for (uint32_t targetExpert = 0; targetExpert < numLocalExperts_; ++targetExpert) {
-        int64_t expertRowStart = ubRowStart_.GetValue(targetExpert);
+        int64_t expertRowStart = ubExpertPfx_.GetValue(targetExpert);
         int32_t localWrittenRow = 0;
         uint32_t stageIdx = 0;
 
