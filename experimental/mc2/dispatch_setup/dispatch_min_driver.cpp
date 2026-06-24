@@ -12,7 +12,8 @@
  *       hcomm-test 基线 init_hcclComm（hccl_test_common.cc:861-941）——CCU 容器(ccuContainer)由库内部
  *       在【CCU 扩展模式 + rank_size>=2】下创建。单 rank 不建容器，故必须 2 die（mpirun -n 2）。
  *    4. 分配本 rank 的共享状态区 statusGm（32B 对齐、memset 0）、oneBuf（host 填 slot0=1）、doneGm；
- *    5. CCU dispatch_setup 在 streamSetup 上拉起（HCOMM 路径）→ LocalCopyNb 把 1 写进【本 rank】statusGm；
+ *    5. CCU dispatch_setup 在 streamSetup 上拉起（HCOMM 路径）→ 经 a6 已验证的 0.5RTT 跨卡写
+ *       WriteNbWithArriveNotify 把 1 写进【对端 rank】statusGm（本卡 statusGm 由对端写）；
  *    6. AIV dispatch_teardown 经 aclnn 在 streamTeardown 上拉起 → 忙等 statusGm[0]==1 → 写 doneGm[0]=1；
  *    7. 同步两条流 → 拷 doneGm 回 host 校验 == 1（证明本 rank teardown 等到状态位并往下走）。
  *
@@ -150,7 +151,9 @@ static HcclResult HcclGetOneChannel(HcclComm comm, CommEngine engine,
 #endif  // DISPATCH_CCU_A6
 
 // ---- 段 A：CCU dispatch_setup 经 HCOMM 在 streamSetup 上拉起（裁剪自基线 ccu_kernel_launch）----
-//   2-die：建 rsz-1 个 channel（忠实镜像基线）→ WithStream 取 thread → 注册 → 拉起（kernel 只本地写 1）。
+//   2-die：建 rsz-1 个 channel → WithStream 取 thread → 注册 → 拉起。
+//   kernel 在 channel 上跑 0.5RTT 跨卡写：PreSync 换对端 status 地址/token → WriteNbWithArriveNotify
+//   把 oneBuf(1) 写进对端 status → WaitallpeersarriveNotify 等本卡被对端写好。channel 是真消费、非占位。
 int LaunchDispatchSetupCcu(HcclComm comm, aclrtStream streamSetup,
                            void *statusGm, void *oneBuf)
 {
@@ -160,7 +163,8 @@ int LaunchDispatchSetupCcu(HcclComm comm, aclrtStream streamSetup,
     HCCLCHECK(HcclGetRankSize(comm, &rsz));
 
     // 2-die：channel_num = rsz - 1（R=2 → 1 个对端 channel）。channels[k] → dstRank=(k<rid)?k:k+1。
-    //   [T10] 最小本地 kernel 的 Algorithm 不消费 channel，但忠实镜像基线把 CCU comm 拉到验证态。
+    //   [T10✓] kernel Algorithm 现在【真正消费 channel】跑 0.5RTT 跨卡写（PreSync + WriteNbWithArriveNotify）。
+    //   channel 序与 kernel 内 channelIdx=(r<self)?r:r-1 严格一致（resGroupTag 绑 CCU 资源组，与 kernel TAG 同字符串）。
     const uint32_t channelNum = rsz - 1U;
     std::vector<ChannelHandle> channels(channelNum);
     for (uint32_t k = 0; k < channelNum; ++k) {
@@ -243,6 +247,15 @@ int main(int argc, char **argv)
     const uint32_t rankId   = static_cast<uint32_t>(mpiRank);
     const uint32_t rankSize = static_cast<uint32_t>(mpiSize);     // 期望 2（mpirun -n 2）
     const int32_t  devId    = static_cast<int32_t>(rankId);       // [T7] 单节点：die = rank（dev0/dev1）；若拓扑不同改此映射
+
+    // ★ 构建路径自证（审核 #2 修订）：本工程 CMake 把 dispatch_setup_ccu.cpp 的编入与 DISPATCH_CCU_A6 宏【绑定】
+    //   （a6 才编入 .cpp 且统一传宏；a5 不编 .cpp、不传宏）——kernel/driver 宏天然一致，无需跨 TU 比对（旧版那种比对
+    //   会引用 a5 上根本没编译的 kernel 函数 → a5 链接 undefined，已纠）。此处仅 #ifdef 打印路径，作 a6 启动确认。
+#ifdef DISPATCH_CCU_A6
+    printf("[rank %u] build: DISPATCH_CCU_A6=ON —— CCU 跨卡写路径已编入\n", rankId);
+#else
+    printf("[rank %u] build: DISPATCH_CCU_A6=OFF —— a5 桩，CCU 跨卡写不执行（仅编译门禁）\n", rankId);
+#endif
 
     if (rankSize < 2U) {
         printf("[rank %u][FATAL] rank_size=%u (<2)：CCU 容器需 rank_size>=2 才会创建（硬前置，非警告）。请 mpirun -n 2。\n",
