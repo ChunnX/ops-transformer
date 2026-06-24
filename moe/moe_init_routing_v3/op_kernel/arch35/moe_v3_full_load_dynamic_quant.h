@@ -248,15 +248,23 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
         }
         inputXInQueue_.EnQue<T>(inLocal);
 
-        if (this->isInputScale_ && expertIdx != lastExpertIdx) {
-            int64_t smoothOffset = 0;
-            if constexpr (!IsSameType<QuantT, int4b_t>::value) {
-                smoothOffset = expertIdx * this->cols_;
+        if (this->isInputScale_) {
+            if constexpr (IsSameType<QuantT, int4b_t>::value) {
+                if (lastExpertIdx == -1) {
+                    DataCopyPad(smoothLocal, quantSmoothGm_[0], smoothParams, {false, 0, 0, 0});
+                    smoothInQueue_.EnQue(smoothLocal);
+                    smoothLocal = smoothInQueue_.DeQue<float>();
+                    lastExpertIdx = 0;
+                }
+            } else {
+                if (expertIdx != lastExpertIdx) {
+                    int64_t smoothOffset = expertIdx * this->cols_;
+                    DataCopyPad(smoothLocal, quantSmoothGm_[smoothOffset], smoothParams, {false, 0, 0, 0});
+                    smoothInQueue_.EnQue(smoothLocal);
+                    smoothLocal = smoothInQueue_.DeQue<float>();
+                    lastExpertIdx = expertIdx;
+                }
             }
-            DataCopyPad(smoothLocal, quantSmoothGm_[smoothOffset], smoothParams, {false, 0, 0, 0});
-            smoothInQueue_.EnQue(smoothLocal);
-            smoothLocal = smoothInQueue_.DeQue<float>();
-            lastExpertIdx = expertIdx;
         }
 
         if (this->isInputScale_) {
