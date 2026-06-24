@@ -1427,7 +1427,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeBlkScatterOffsets(Glob
     int64_t paBlkId = indexGm(indexOffset); // 取cacheIdx
 
     int64_t pageTokenOffset = paBlkId * baseParams_->blockSize;
-    if (leftRowsInPage << rows) {
+    if (leftRowsInPage < rows) {
         rowsThisStep = rows - leftRowsInPage;
         spill = true;
         nextPageId = indexGm(indexOffset + 1);

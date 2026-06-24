@@ -1,1 +1,0 @@
-prologv3_quant_golden.py
