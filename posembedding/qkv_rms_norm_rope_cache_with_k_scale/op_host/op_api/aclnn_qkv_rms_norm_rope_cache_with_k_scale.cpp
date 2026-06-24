@@ -108,9 +108,30 @@ static aclnnStatus CheckL0Outputs(const L0Outputs &outputs)
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus CreateCacheViews(Params &params, aclOpExecutor *executor)
+{
+    params.kCache = executor->CreateView(params.kCache, params.kCache->GetViewShape(),
+                                         params.kCache->GetStorageShape(), params.kCache->GetViewStrides(),
+                                         params.kCache->GetViewOffset());
+    CHECK_RET(params.kCache != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    params.vCache = executor->CreateView(params.vCache, params.vCache->GetViewShape(),
+                                         params.vCache->GetStorageShape(), params.vCache->GetViewStrides(),
+                                         params.vCache->GetViewOffset());
+    CHECK_RET(params.vCache != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    params.kScaleCache = executor->CreateView(params.kScaleCache, params.kScaleCache->GetViewShape(),
+                                              params.kScaleCache->GetStorageShape(),
+                                              params.kScaleCache->GetViewStrides(),
+                                              params.kScaleCache->GetViewOffset());
+    CHECK_RET(params.kScaleCache != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus AddQkvRmsNormRopeCacheWithKScaleTask(Params &params, aclOpExecutor *executor)
 {
     CHECK_RET(ContiguousInputs(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(CreateCacheViews(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     auto l0Outs = l0op::QkvRmsNormRopeCacheWithKScale(
         params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping,
         params.kCache, params.vCache, params.kScaleCache, params.cuSeqLen, params.actualSeqLens,
