@@ -87,6 +87,7 @@ __aicore__ inline void ARPESmall<T1, T2>::Init(
 
     copyIn1.blockCount = tilingData->qkcNum;
     copyIn1.blockLen = tilingData->blockLenQ;
+    // [泛化SBND需求] UB内per-head排布有padding，但半块之间blockLen固定，跨head stride为blockLenQ
     copyIn1.srcStride = tilingData->blockLenQ;
     copyIn1.dstStride = tilingData->blockLenQ;
 
@@ -131,14 +132,27 @@ __aicore__ inline void ARPESmall<T1, T2>::CopyInQK(const ApplyRotaryPosEmbTiling
     LocalTensor<T1> sinUb = sinInQueue.AllocTensor<T1>();
     DataCopy(cosUb, cosGm[blockIdx * tilingData->cosCoreOffset], tilingData->coscdNum);
     DataCopy(sinUb, sinGm[blockIdx * tilingData->cosCoreOffset], tilingData->coscdNum);
-    if(tilingData->qDim3 > tilingData->lastDim) { // 仅操作前64个元素
-        DataCopy(qUb, qGm[blockIdx * tilingData->qCoreOffset], copyInQ); // tiling侧qCoreOffset修改
-        DataCopy(qUb[tilingData->qcdNum], kGm[blockIdx * tilingData->kCoreOffset], copyInK);
+    if (tilingData->lastDim == tilingData->lastDimAlign) { // [泛化SBND需求] 对齐D走原路径
+        if(tilingData->qDim3 > tilingData->lastDim) { // 仅操作前lastDim个元素
+            DataCopy(qUb, qGm[blockIdx * tilingData->qCoreOffset], copyInQ);
+            DataCopy(qUb[tilingData->qcdNumAlign], kGm[blockIdx * tilingData->kCoreOffset], copyInK);
+        }
+        else {
+            DataCopy(qUb, qGm[blockIdx * tilingData->qCoreOffset], tilingData->qcdNum);
+            DataCopy(qUb[tilingData->qcdNumAlign], kGm[blockIdx * tilingData->kCoreOffset], tilingData->kcdNum);
+        }
+    } else { // [泛化SBND需求] 未对齐D用DataCopyPad分左/右半搬运
+        for (int64_t n = 0; n < tilingData->qcNum; n++) {
+            this->CopyInHalfByPad(qUb[n * tilingData->lastDimAlign], qGm,
+                blockIdx * tilingData->qCoreOffset + n * tilingData->lastDim,
+                tilingData->halfDimBytes, tilingData->halfDimPadBytes, tilingData->dtypeSize);
+        }
+        for (int64_t n = 0; n < tilingData->kcNum; n++) {
+            this->CopyInHalfByPad(qUb[tilingData->qcdNumAlign + n * tilingData->lastDimAlign], kGm,
+                blockIdx * tilingData->kCoreOffset + n * tilingData->lastDim,
+                tilingData->halfDimBytes, tilingData->halfDimPadBytes, tilingData->dtypeSize);
+        }
     }
-    else {
-        DataCopy(qUb, qGm[blockIdx * tilingData->qCoreOffset], tilingData->qcdNum);
-        DataCopy(qUb[tilingData->qcdNum], kGm[blockIdx * tilingData->kCoreOffset], tilingData->kcdNum);
-    } 
 
     qInQueue.EnQue(qUb);
     cosInQueue.EnQue(cosUb);
@@ -163,13 +177,26 @@ __aicore__ inline void ARPESmall<T1, T2>::CastCopyIn(const ApplyRotaryPosEmbTili
     sinInQueue.FreeTensor(sinSize);
     qOutQueue.EnQue(qOutUb);
     LocalTensor<T1> qOutUbSize = qOutQueue.DeQue<T1>();
-    if(tilingData->qDim3 > tilingData->lastDim) {
-        DataCopy(qGm[blockIdx * tilingData->qCoreOffset], qOutUbSize, copyOutQ);
-        DataCopy(kGm[blockIdx * tilingData->kCoreOffset], qOutUbSize[tilingData->qcdNum], copyOutK);
-    }
-    else {
-        DataCopy(qGm[blockIdx * tilingData->qCoreOffset], qOutUbSize, tilingData->qcdNum);
-        DataCopy(kGm[blockIdx * tilingData->kCoreOffset], qOutUbSize[tilingData->qcdNum], tilingData->kcdNum);
+    if (tilingData->lastDim == tilingData->lastDimAlign) { // [泛化SBND需求] 对齐D走原路径
+        if(tilingData->qDim3 > tilingData->lastDim) {
+            DataCopy(qGm[blockIdx * tilingData->qCoreOffset], qOutUbSize, copyOutQ);
+            DataCopy(kGm[blockIdx * tilingData->kCoreOffset], qOutUbSize[tilingData->qcdNumAlign], copyOutK);
+        }
+        else {
+            DataCopy(qGm[blockIdx * tilingData->qCoreOffset], qOutUbSize, tilingData->qcdNum);
+            DataCopy(kGm[blockIdx * tilingData->kCoreOffset], qOutUbSize[tilingData->qcdNumAlign], tilingData->kcdNum);
+        }
+    } else { // [泛化SBND需求] 未对齐D用DataCopyPad分左/右半写回
+        for (int64_t n = 0; n < tilingData->qcNum; n++) {
+            this->CopyOutHalfByPad(qGm, qOutUbSize[n * tilingData->lastDimAlign],
+                blockIdx * tilingData->qCoreOffset + n * tilingData->lastDim,
+                tilingData->halfDimBytes, tilingData->halfDimPadBytes, tilingData->dtypeSize);
+        }
+        for (int64_t n = 0; n < tilingData->kcNum; n++) {
+            this->CopyOutHalfByPad(kGm, qOutUbSize[tilingData->qcdNumAlign + n * tilingData->lastDimAlign],
+                blockIdx * tilingData->kCoreOffset + n * tilingData->lastDim,
+                tilingData->halfDimBytes, tilingData->halfDimPadBytes, tilingData->dtypeSize);
+        }
     }
     qOutQueue.FreeTensor(qOutUbSize);
 }
@@ -186,8 +213,10 @@ __aicore__ inline void ARPESmall<T1, T2>::ComputeBF16(
     Cast(mul2Ub, qUb, RoundMode::CAST_NONE, tilingData->mulNum);
     LocalTensor<float> qoutSizeFP32;
     this->LocalTensor2NewTensor(qoutSizeFP32, qoutSize);
-    DataCopy(qoutSizeFP32, mul2Ub[tilingData->halfNum], copyIn1);
-    DataCopy(qoutSizeFP32[tilingData->halfNum], mul2Ub, copyIn1);
+    // [泛化SBND需求] DataCopy偏移使用halfDimAlign，保证32B对齐
+    DataCopy(qoutSizeFP32, mul2Ub[tilingData->halfDimAlign], copyIn1);
+    // [泛化SBND需求] DataCopy偏移使用halfDimAlign，保证32B对齐
+    DataCopy(qoutSizeFP32[tilingData->halfDimAlign], mul2Ub, copyIn1);
 
     Cast(cosC1, cosUb, RoundMode::CAST_NONE, tilingData->lastDim);
     Cast(sinC1, sinUb, RoundMode::CAST_NONE, tilingData->lastDim);
@@ -221,8 +250,10 @@ __aicore__ inline void ARPESmall<T1, T2>::ComputeTotary(
     LocalTensor<T1> mul2Ub = mul2.Get<T1>();
     LocalTensor<T1> mul1Ub = mul1.Get<T1>();
 
-    DataCopy(qoutSize, qUb[tilingData->halfNum], copyIn1);
-    DataCopy(qoutSize[tilingData->halfNum], qUb, copyIn1);
+    // [泛化SBND需求] DataCopy偏移使用halfDimAlign，保证32B对齐
+    DataCopy(qoutSize, qUb[tilingData->halfDimAlign], copyIn1);
+    // [泛化SBND需求] DataCopy偏移使用halfDimAlign，保证32B对齐
+    DataCopy(qoutSize[tilingData->halfDimAlign], qUb, copyIn1);
 
     for (int32_t aa = 0; aa < (tilingData->qcdHalfNum); aa++) {
         Mul<T1>(

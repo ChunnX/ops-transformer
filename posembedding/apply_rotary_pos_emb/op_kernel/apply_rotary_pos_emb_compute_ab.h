@@ -150,12 +150,14 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::SmallQC(
     int64_t offsin = j * tilingData->comBatchBB * tilingData->lastDim;
     int64_t qcdhalfNum = tilingData->lastDim / tilingData->mask;    //类似于tiling侧小shape情况处理
     for (int64_t ii = 0; ii < tilingData->qkcNum; ii++) {
-        int64_t offi = ii * tilingData->lastDim;
-        int64_t offset = j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDim + offi;
+        // [泛化SBND需求] 按lastDimAlign计算offset，适配UB内padding排布
+        int64_t offi = ii * tilingData->lastDimAlign;
+        // [泛化SBND需求] 按lastDimAlign计算offset，适配UB内padding排布
+        int64_t offset = j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDimAlign + offi;
         for (int32_t k = 0; k < qcdhalfNum; k++) {
-            Mul<T1>(mul1Ub[offi + k * tilingData->mask], outUb[offset + k * tilingData->mask], sinSize[offsin + k * tilingData->mask], 
+            Mul<T1>(mul1Ub[offi + k * tilingData->mask], outUb[offset + k * tilingData->mask], sinSize[offsin + k * tilingData->mask],
                 tilingData->mask, comBatchBB, repeatParams);
-            Mul<T1>(mul2Ub[offi + k * tilingData->mask], qSize[offset + k * tilingData->mask], cosSize[offsin + k * tilingData->mask], 
+            Mul<T1>(mul2Ub[offi + k * tilingData->mask], qSize[offset + k * tilingData->mask], cosSize[offsin + k * tilingData->mask],
                 tilingData->mask, comBatchBB, repeatParams);
         }
     }
@@ -169,8 +171,10 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::SmallQCFP16(
 {
     int64_t offS = j * tilingData->comBatchBB * tilingData->lastDim;
     for (int64_t ii = 0; ii < tilingData->qkcNum; ii++) {
-        int64_t off = ii * tilingData->lastDim;
-        int64_t offO = j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDim + off;
+        // [泛化SBND需求] 按lastDimAlign计算offset，适配UB内padding排布
+        int64_t off = ii * tilingData->lastDimAlign;
+        // [泛化SBND需求] 按lastDimAlign计算offset，适配UB内padding排布
+        int64_t offO = j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDimAlign + off;
         Mul<T1>(mul1Ub[off], outUb[offO], sinSize[offS], tilingData->mask, comBatchBB, repeatParams);
         Mul<T1>(mul2Ub[off], qSize[offO], cosSize[offS], tilingData->mask, comBatchBB, repeatParams);
     }
@@ -183,8 +187,10 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::LargeQCFP16(
     const ApplyRotaryPosEmbTilingData* tilingData, BinaryRepeatParams& repeatParams)
 {
     for (int64_t i = 0; i < comBatchBB; i++) {
-        int64_t off = i * tilingData->qkcNum * tilingData->lastDim;
-        int64_t offO = j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDim + off;
+        // [泛化SBND需求] 按lastDimAlign计算offset，适配UB内padding排布
+        int64_t off = i * tilingData->qkcNum * tilingData->lastDimAlign;
+        // [泛化SBND需求] 按lastDimAlign计算offset，适配UB内padding排布
+        int64_t offO = j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDimAlign + off;
         int64_t offS = j * tilingData->comBatchBB * tilingData->lastDim + i * tilingData->lastDim;
         Mul<T1>(mul1Ub[off], outUb[offO], sinSize[offS], tilingData->mask, tilingData->qkcNum, repeatParams);
         Mul<T1>(mul2Ub[off], qSize[offO], cosSize[offS], tilingData->mask, tilingData->qkcNum, repeatParams);
@@ -199,13 +205,15 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::LargeQC(
 {
     int64_t qcdhalfNum = tilingData->lastDim / tilingData->mask;    //类似于tiling侧小shape情况处理
     for (int64_t i = 0; i < comBatchBB; i++) {
-        int64_t offmul = i * tilingData->qkcNum * tilingData->lastDim;
-        int64_t offset = j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDim + offmul;
+        // [泛化SBND需求] 按lastDimAlign计算offset，适配UB内padding排布
+        int64_t offmul = i * tilingData->qkcNum * tilingData->lastDimAlign;
+        // [泛化SBND需求] 按lastDimAlign计算offset，适配UB内padding排布
+        int64_t offset = j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDimAlign + offmul;
         int64_t offsin = j * tilingData->comBatchBB * tilingData->lastDim + i * tilingData->lastDim;
         for (int32_t k = 0; k < qcdhalfNum; k++) {
-            Mul<T1>(mul1Ub[offmul + k * tilingData->mask], outUb[offset + k * tilingData->mask], sinSize[offsin + k * tilingData->mask], 
+            Mul<T1>(mul1Ub[offmul + k * tilingData->mask], outUb[offset + k * tilingData->mask], sinSize[offsin + k * tilingData->mask],
                 tilingData->mask, tilingData->qkcNum, repeatParams);
-            Mul<T1>(mul2Ub[offmul + k * tilingData->mask], qSize[offset + k * tilingData->mask], cosSize[offsin + k * tilingData->mask], 
+            Mul<T1>(mul2Ub[offmul + k * tilingData->mask], qSize[offset + k * tilingData->mask], cosSize[offsin + k * tilingData->mask],
                 tilingData->mask, tilingData->qkcNum, repeatParams);
         }
     }
@@ -226,11 +234,13 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::CTotaryBF32(
     } else {
         repeatParams.dstRepStride = tilingData->mulNum;
         repeatParams.src0RepStride = tilingData->mulNum;
-        repeatParams.src1RepStride = tilingData->dstRepSBr;
+        // [泛化SBND需求] cos/sin紧密排布，src1RepStride按lastDim计算
+        repeatParams.src1RepStride = tilingData->lastDim * tilingData->dstRepSBr / tilingData->lastDimAlign;
         SmallQC(j, comBatchBB, mul1Ub, outUb, sinSize, mul2Ub, qSize, cosSize, tilingData, repeatParams);
     }
-    Add(outUb[j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDim], mul1Ub, mul2Ub,
-        comBatchBB * tilingData->qkcNum * tilingData->lastDim);
+    // [泛化SBND需求] 按lastDimAlign计算offset和长度，适配UB内padding排布
+    Add(outUb[j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDimAlign], mul1Ub, mul2Ub,
+        comBatchBB * tilingData->qkcNum * tilingData->lastDimAlign);
 }
 
 template <typename T1, typename T2>
@@ -255,9 +265,9 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::ComputeTotary(
         repeatParams.src1RepStride = tilingData->dstRepSBr;
         SmallQCFP16(j, comBatchBB, mul1Ub, outUb, sinSize, mul2Ub, qSize, cosSize, tilingData, repeatParams);
     }
-
-    Add(outUb[j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDim], mul1Ub, mul2Ub,
-        comBatchBB * tilingData->qkcNum * tilingData->lastDim);
+    // [泛化SBND需求] 按lastDimAlign计算offset和长度，适配UB内padding排布
+    Add(outUb[j * tilingData->comBatchBB * tilingData->qkcNum * tilingData->lastDimAlign], mul1Ub, mul2Ub,
+        comBatchBB * tilingData->qkcNum * tilingData->lastDimAlign);
 #endif
 }
 
@@ -277,23 +287,49 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::CopyOutPartialRotation(
     int64_t batchOffset = coreBatchIndex * tilingData->preCBatchB;    //批次的偏移量
 
     if ((tilingData->kcNum) == 1) {    // kn==1: 特殊情况，k可以非连续搬运，q根据批次循环非连续搬运
-        for (int i = 0; i < preCBatchB; i++) {
-            DataCopy(qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize],
-                qOutUbSize[i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut1);
+        if (tilingData->lastDim == tilingData->lastDimAlign) { // [泛化SBND需求] 对齐D走原路径
+            for (int i = 0; i < preCBatchB; i++) {
+                DataCopy(qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize],
+                    qOutUbSize[i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut1);
+            }
+            copyOut2.dstStride = tilingData->srcStrideK;
+            DataCopy(kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize],
+                    qOutUbSize[tilingData->qcdNumAlign], copyOut2);
+        } else { // [泛化SBND需求] 未对齐D用DataCopyPad分左/右半写回
+            for (int i = 0; i < preCBatchB; i++) {
+                this->CopyOutHeadsByPad(qGm, qOutUbSize[i * (tilingData->qcdNumAlign + tilingData->kcdNumAlign)],
+                    blockIdx * tilingData->qCoreOffset + (batchOffset + i) * qBatchSize, tilingData->qcNum,
+                    tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                    tilingData->halfDimPadBytes, tilingData->dtypeSize);
+            }
+            this->CopyOutHeadsByPad(kGm, qOutUbSize[tilingData->qcdNumAlign],
+                blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize, tilingData->kcNum,
+                tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                tilingData->halfDimPadBytes, tilingData->dtypeSize);
         }
-        copyOut2.dstStride = tilingData->srcStrideK;
-        DataCopy(kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize],
-                qOutUbSize[tilingData->qcdNum], copyOut2);
     } else {    // kn!=1: q和k正常根据批次非连续搬运
-        copyOut2.blockCount = tilingData->kcNum;
-        copyOut2.blockLen = tilingData->blockMoveQ;
-        copyOut2.srcStride = 0;
-        copyOut2.dstStride = tilingData->blockMoveQ;
-        for (int i = 0; i < preCBatchB; i++) {
-            DataCopy(qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize],
-                qOutUbSize[i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut1);
-            DataCopy(kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize + i * kBatchSize],
-                qOutUbSize[tilingData->qcdNum + i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut2);
+        if (tilingData->lastDim == tilingData->lastDimAlign) { // [泛化SBND需求] 对齐D走原路径
+            copyOut2.blockCount = tilingData->kcNum;
+            copyOut2.blockLen = tilingData->blockMoveQ;
+            copyOut2.srcStride = 0;
+            copyOut2.dstStride = tilingData->blockMoveQ;
+            for (int i = 0; i < preCBatchB; i++) {
+                DataCopy(qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize],
+                    qOutUbSize[i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut1);
+                DataCopy(kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize + i * kBatchSize],
+                    qOutUbSize[tilingData->qcdNumAlign + i * (tilingData->qcdNum + tilingData->kcdNum)], copyOut2);
+            }
+        } else { // [泛化SBND需求] 未对齐D用DataCopyPad分左/右半写回
+            for (int i = 0; i < preCBatchB; i++) {
+                this->CopyOutHeadsByPad(qGm, qOutUbSize[i * (tilingData->qcdNumAlign + tilingData->kcdNumAlign)],
+                    blockIdx * tilingData->qCoreOffset + (batchOffset + i) * qBatchSize, tilingData->qcNum,
+                    tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                    tilingData->halfDimPadBytes, tilingData->dtypeSize);
+                this->CopyOutHeadsByPad(kGm, qOutUbSize[tilingData->qcdNumAlign + i * (tilingData->qcdNumAlign + tilingData->kcdNumAlign)],
+                    blockIdx * tilingData->kCoreOffset + (batchOffset + i) * kBatchSize, tilingData->kcNum,
+                    tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                    tilingData->halfDimPadBytes, tilingData->dtypeSize);
+            }
         }
     }
 }
@@ -307,13 +343,25 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::CopyOut(
     copyOut2.blockCount = preCBatchB;
     if(tilingData->qDim3 > tilingData->lastDim) { // 部分维度旋转处理
         CopyOutPartialRotation(coreBatchIndex, preCBatchB, qOutUbSize, tilingData);
-    } else {    // 全维度旋转处理    
-        DataCopy(
-            qGm[blockIdx * tilingData->qCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->qcdNum],
-            qOutUbSize, copyOut1);
-        DataCopy(
-            kGm[blockIdx * tilingData->kCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->kcdNum],
-            qOutUbSize[tilingData->qcdNum], copyOut2);
+    } else {    // 全维度旋转处理
+        if (tilingData->lastDim == tilingData->lastDimAlign) { // [泛化SBND需求] 对齐D走原路径
+            DataCopy(
+                qGm[blockIdx * tilingData->qCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->qcdNum],
+                qOutUbSize, copyOut1);
+            DataCopy(
+                kGm[blockIdx * tilingData->kCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->kcdNum],
+                qOutUbSize[tilingData->qcdNumAlign], copyOut2);
+        } else { // [泛化SBND需求] 未对齐D用DataCopyPad分左/右半写回
+            uint64_t qGmStart = blockIdx * tilingData->qCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->qcNum * tilingData->lastDim;
+            uint64_t kGmStart = blockIdx * tilingData->kCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->kcNum * tilingData->lastDim;
+            int64_t headCountQ = preCBatchB * tilingData->qcNum;
+            int64_t headCountK = preCBatchB * tilingData->kcNum;
+            this->CopyOutHeadsByPad(qGm, qOutUbSize, qGmStart, headCountQ, tilingData->lastDim, tilingData->lastDimAlign,
+                                      tilingData->halfDimBytes, tilingData->halfDimPadBytes, tilingData->dtypeSize);
+            this->CopyOutHeadsByPad(kGm, qOutUbSize[tilingData->qcdNumAlign], kGmStart, headCountK,
+                                      tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                                      tilingData->halfDimPadBytes, tilingData->dtypeSize);
+        }
     }
     qOutQueue.FreeTensor(qOutUbSize);
 }
@@ -334,24 +382,50 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::CopyInPartialRotation(
     int64_t batchOffset = coreBatchIndex * tilingData->preCBatchB;    //批次的偏移量
 
     if ((tilingData->kcNum) == 1) {    // kn==1: 特殊情况，k非连续搬运，q根据批次循环非连续搬运
-        for (int i = 0; i < preCBatchB; i++) {
-            DataCopy(qUb[i * (tilingData->qcdNum + tilingData->kcdNum)],
-                    qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize], copyIn1);
+        if (tilingData->lastDim == tilingData->lastDimAlign) { // [泛化SBND需求] 对齐D走原路径
+            for (int i = 0; i < preCBatchB; i++) {
+                DataCopy(qUb[i * (tilingData->qcdNum + tilingData->kcdNum)],
+                        qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize], copyIn1);
+            }
+            copyIn2.srcStride = tilingData->srcStrideK;
+            DataCopy(qUb[tilingData->qcdNumAlign],
+                    kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize],
+                    copyIn2);
+        } else { // [泛化SBND需求] 未对齐D用DataCopyPad分左/右半搬运
+            for (int i = 0; i < preCBatchB; i++) {
+                this->CopyInHeadsByPad(qUb[i * (tilingData->qcdNumAlign + tilingData->kcdNumAlign)], qGm,
+                    blockIdx * tilingData->qCoreOffset + (batchOffset + i) * qBatchSize, tilingData->qcNum,
+                    tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                    tilingData->halfDimPadBytes, tilingData->dtypeSize);
+            }
+            this->CopyInHeadsByPad(qUb[tilingData->qcdNumAlign], kGm,
+                blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize, tilingData->kcNum,
+                tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                tilingData->halfDimPadBytes, tilingData->dtypeSize);
         }
-        copyIn2.srcStride = tilingData->srcStrideK;
-        DataCopy(qUb[tilingData->qcdNum],
-                kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize],
-                copyIn2);
     } else {    // kn!=1: q和k正常根据批次非连续搬运
-        copyIn2.blockCount = tilingData->kcNum;
-        copyIn2.blockLen = tilingData->blockMoveQ;
-        copyIn2.srcStride = tilingData->blockMoveQ;
-        copyIn2.dstStride = 0;
-        for (int i = 0; i < preCBatchB; i++) {
-            DataCopy(qUb[i * (tilingData->qcdNum + tilingData->kcdNum)],
-                    qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize], copyIn1);
-            DataCopy(qUb[tilingData->qcdNum + i * (tilingData->qcdNum + tilingData->kcdNum)],
-                    kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize + i * kBatchSize], copyIn2);
+        if (tilingData->lastDim == tilingData->lastDimAlign) { // [泛化SBND需求] 对齐D走原路径
+            copyIn2.blockCount = tilingData->kcNum;
+            copyIn2.blockLen = tilingData->blockMoveQ;
+            copyIn2.srcStride = tilingData->blockMoveQ;
+            copyIn2.dstStride = 0;
+            for (int i = 0; i < preCBatchB; i++) {
+                DataCopy(qUb[i * (tilingData->qcdNum + tilingData->kcdNum)],
+                        qGm[blockIdx * tilingData->qCoreOffset + batchOffset * qBatchSize + i * qBatchSize], copyIn1);
+                DataCopy(qUb[tilingData->qcdNumAlign + i * (tilingData->qcdNum + tilingData->kcdNum)],
+                        kGm[blockIdx * tilingData->kCoreOffset + batchOffset * kBatchSize + i * kBatchSize], copyIn2);
+            }
+        } else { // [泛化SBND需求] 未对齐D用DataCopyPad分左/右半搬运
+            for (int i = 0; i < preCBatchB; i++) {
+                this->CopyInHeadsByPad(qUb[i * (tilingData->qcdNumAlign + tilingData->kcdNumAlign)], qGm,
+                    blockIdx * tilingData->qCoreOffset + (batchOffset + i) * qBatchSize, tilingData->qcNum,
+                    tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                    tilingData->halfDimPadBytes, tilingData->dtypeSize);
+                this->CopyInHeadsByPad(qUb[tilingData->qcdNumAlign + i * (tilingData->qcdNumAlign + tilingData->kcdNumAlign)], kGm,
+                    blockIdx * tilingData->kCoreOffset + (batchOffset + i) * kBatchSize, tilingData->kcNum,
+                    tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                    tilingData->halfDimPadBytes, tilingData->dtypeSize);
+            }
         }
     }
 }
@@ -376,13 +450,25 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::CopyInQK(
     if(tilingData->qDim3 > tilingData->lastDim) {    // 部分维度旋转处理
         CopyInPartialRotation(coreBatchIndex, preCBatchB, qUb, tilingData);
     } else {    // 全维度旋转处理
-        DataCopy(
-            qUb, qGm[blockIdx * tilingData->qCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->qcdNum],
-            copyIn1);
-        DataCopy(
-            qUb[tilingData->qcdNum],
-            kGm[blockIdx * tilingData->kCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->kcdNum],
-            copyIn2);
+        if (tilingData->lastDim == tilingData->lastDimAlign) { // [泛化SBND需求] 对齐D走原路径
+            DataCopy(
+                qUb, qGm[blockIdx * tilingData->qCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->qcdNum],
+                copyIn1);
+            DataCopy(
+                qUb[tilingData->qcdNumAlign],
+                kGm[blockIdx * tilingData->kCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->kcdNum],
+                copyIn2);
+        } else { // [泛化SBND需求] 未对齐D用DataCopyPad分左/右半搬运
+            uint64_t qGmStart = blockIdx * tilingData->qCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->qcNum * tilingData->lastDim;
+            uint64_t kGmStart = blockIdx * tilingData->kCoreOffset + coreBatchIndex * tilingData->preCBatchB * tilingData->kcNum * tilingData->lastDim;
+            int64_t headCountQ = preCBatchB * tilingData->qcNum;
+            int64_t headCountK = preCBatchB * tilingData->kcNum;
+            this->CopyInHeadsByPad(qUb, qGm, qGmStart, headCountQ, tilingData->lastDim, tilingData->lastDimAlign,
+                                      tilingData->halfDimBytes, tilingData->halfDimPadBytes, tilingData->dtypeSize);
+            this->CopyInHeadsByPad(qUb[tilingData->qcdNumAlign], kGm, kGmStart, headCountK,
+                                      tilingData->lastDim, tilingData->lastDimAlign, tilingData->halfDimBytes,
+                                      tilingData->halfDimPadBytes, tilingData->dtypeSize);
+        }
     }
     qInQueue.EnQue(qUb);
     cosInQueue.EnQue(cosUb);
@@ -400,12 +486,19 @@ __aicore__ inline void ARPEComputeAB<T1, T2>::CopyIn(
     LocalTensor<T1> cosSize = cosInQueue.DeQue<T1>();
     LocalTensor<T1> sinSize = sinInQueue.DeQue<T1>();
 
-    Muls(sinSize, sinSize, T1(-1.0), tilingData->halfNum, preCBatchB, mulRepeatP);
+    // [泛化SBND需求] cos/sin在UB内紧密排布，Muls的repeat stride需按lastDim计算
+    int64_t cosRepStride = tilingData->lastDim * tilingData->dstRepSBr / tilingData->lastDimAlign;
+    UnaryRepeatParams mulRepeatPCos = mulRepeatP;
+    mulRepeatPCos.dstRepStride = cosRepStride;
+    mulRepeatPCos.srcRepStride = cosRepStride;
+    Muls(sinSize, sinSize, T1(-1.0), tilingData->halfNum, preCBatchB, mulRepeatPCos);
     LocalTensor<T1> qOutUb = qOutQueue.AllocTensor<T1>();
 
     copyInq2q1.blockCount = preCBatchB * tilingData->qkcNum;
-    DataCopy(qOutUb, qSize[tilingData->halfNum], copyInq2q1);
-    DataCopy(qOutUb[tilingData->halfNum], qSize, copyInq2q1);
+    // [泛化SBND需求] DataCopy偏移使用halfDimAlign，保证32B对齐
+    DataCopy(qOutUb, qSize[tilingData->halfDimAlign], copyInq2q1);
+    // [泛化SBND需求] DataCopy偏移使用halfDimAlign，保证32B对齐
+    DataCopy(qOutUb[tilingData->halfDimAlign], qSize, copyInq2q1);
 
     for (int64_t j = 0; j < preCBBTimes; j++) {
         ComputeTotary(j, tilingData->comBatchBB, qSize, cosSize, sinSize, qOutUb, tilingData);

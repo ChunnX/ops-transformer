@@ -50,6 +50,9 @@ TILING_DATA_FIELD_DEF(int64_t, cosCoreOffset);
 TILING_DATA_FIELD_DEF(int64_t, qcdNum);
 TILING_DATA_FIELD_DEF(int64_t, kcdNum);
 TILING_DATA_FIELD_DEF(int64_t, coscdNum);
+TILING_DATA_FIELD_DEF(int64_t, qcdNumAlign);   // [泛化SBND需求] qcdNum按per-head lastDimAlign对齐后的值，用于UB内q/k边界
+TILING_DATA_FIELD_DEF(int64_t, kcdNumAlign);   // [泛化SBND需求] kcdNum按per-head lastDimAlign对齐后的值
+TILING_DATA_FIELD_DEF(int64_t, coscdNumAlign); // [泛化SBND需求] coscdNum按per-head lastDimAlign对齐后的值
 TILING_DATA_FIELD_DEF(int64_t, qkcNum);
 TILING_DATA_FIELD_DEF(int64_t, mulNum);
 TILING_DATA_FIELD_DEF(int64_t, qcdHalfNum);
@@ -63,6 +66,13 @@ TILING_DATA_FIELD_DEF(int64_t, kcNum);
 TILING_DATA_FIELD_DEF(int64_t, qDim3);
 TILING_DATA_FIELD_DEF(int64_t, kDim3);
 TILING_DATA_FIELD_DEF(int64_t, blockMoveQ);
+TILING_DATA_FIELD_DEF(int64_t, dtypeSize);     // [泛化SBND需求] 输入数据类型字节数，未对齐D拷贝用
+TILING_DATA_FIELD_DEF(int64_t, halfDimBytes);    // [泛化SBND需求] halfNum * dtypeSize，未对齐D拷贝用
+TILING_DATA_FIELD_DEF(int64_t, halfDimPadBytes); // [泛化SBND需求] halfDimAlign * dtypeSize，未对齐D拷贝用
+TILING_DATA_FIELD_DEF(int64_t, lastDimBytes);    // [泛化SBND需求] lastDim * dtypeSize，未对齐D拷贝用
+TILING_DATA_FIELD_DEF(int64_t, lastDimPadBytes); // [泛化SBND需求] lastDimAlign * dtypeSize，未对齐D拷贝用
+TILING_DATA_FIELD_DEF(int64_t, halfDimAlign); // [泛化SBND需求] UB内两半之间的对齐后偏移
+TILING_DATA_FIELD_DEF(int64_t, lastDimAlign); // [泛化SBND需求] UB内对齐后的lastDim长度
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingData)
