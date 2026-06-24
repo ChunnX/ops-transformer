@@ -134,7 +134,6 @@ static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64
 
 static bool CheckOutputParamDim0(const gert::TilingContext* context)
 {
-    const Mc2Tiling::AllGatherMatmulTilingData* tilingData = context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
     auto outputShape = context->GetOutputShape(OUTPUT_IDX);
     uint64_t outputDim0 = outputShape->GetStorageShape().GetDim(DIM0_IDX);
     const gert::StorageShape* x1Shape = context->GetInputShape(INPUT_X1_IDX);
