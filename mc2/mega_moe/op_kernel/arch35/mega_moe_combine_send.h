@@ -441,7 +441,7 @@ __aicore__ inline void CombineQuantizedTokens(
 template <uint8_t QuantMode, typename T>
 __aicore__ inline void CombineRowGroup(
     uint32_t rowStart, uint32_t rowCount, uint32_t n, uint32_t groupIdx, uint32_t rankId,
-    GM_ADDR gmm2OutAddr, const Params& params, LocalTensor<int32_t>& tripleTensor,
+    GM_ADDR gmm2OutAddr, Params& params, LocalTensor<int32_t>& tripleTensor,
     int64_t ubTensorSize, int64_t offset, uint32_t quantRowSizeBytes)
 {
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
