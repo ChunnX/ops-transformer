@@ -13,7 +13,7 @@
 
 - 接口功能：
 
-    在Indexer注意力机制的Epilog阶段对KV Cache进行原地动态量化压缩更新，封装aclnnIndexerQuantCache。将float16/bfloat16激活值x按量化粒度（MX-FP8/MX-FP4模式每32个元素一组，Normal/HiFloat8模式整行一组）动态量化为FP8（E4M3/E5M2）、INT8（uint8）或MX-FP4，并按slot_mapping将量化结果与对应scale散写到cache/cache_scale，slot_mapping中值为-1的token跳过不处理。支持MX-FP8、Normal、HiFloat8、MX-FP4四种量化模式。
+    在Indexer注意力机制的Epilog阶段对KV Cache进行原地动态量化压缩更新，封装aclnnIndexerQuantCache。将float16/bfloat16激活值x按量化粒度（mxfp8/mxfp4 模式每32个元素一组，fp8/hifloat8 模式整行一组）动态量化为FP8（E4M3/E5M2）或MX-FP4，并按slot_mapping将量化结果与对应scale散写到cache/cache_scale，slot_mapping中值为-1的token跳过不处理。支持 mxfp8、fp8、hifloat8、mxfp4 四种量化模式（各模式含义见参数说明 quant_mode）。
 
 - 语义说明：
 
@@ -22,7 +22,7 @@
 ## 函数原型
 
 ```
-cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *, quant_mode=1, round_scale=True, x_scale=1.0) -> (Tensor, Tensor)
+cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *, quant_mode="fp8", round_scale=True, x_scale=1.0) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -80,10 +80,17 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     </tr>
     <tr>
         <td>quant_mode</td>
-        <td>int</td>
+        <td>str</td>
         <td>可选</td>
-        <td>量化模式：0=MX-FP8、1=Normal、2=HiFloat8、3=MX-FP4。默认值1。</td>
-        <td>INT</td>
+        <td>量化模式（字符串，大小写不敏感；PTA 内部经枚举映射为算子侧 int）。默认值<code>"fp8"</code>。可选值与含义：
+            <ul>
+                <li><code>"mxfp8"</code>(内部 0)：MX-FP8 微缩放量化，x 每 32 个元素一组，输出 FP8(e4m3/e5m2)，每组一个 e8m0(2 的幂指数) scale，cache_scale 为 FLOAT8_E8M0。</li>
+                <li><code>"fp8"</code>(内部 1)：逐 token 动态 FP8 量化，整行（headDim）一组，输出 FP8(e4m3/e5m2)，每行一个 float32 scale（scaleCol=1），cache_scale 为 FLOAT。</li>
+                <li><code>"hifloat8"</code>(内部 2)：HiFloat8 静态量化（按 x_scale 缩放后取 HiFloat8），整行一组，cache_scale 为 FLOAT。</li>
+                <li><code>"mxfp4"</code>(内部 3)：MX-FP4 微缩放量化，x 每 32 个元素一组，输出 FP4(每字节打包 2 个值)，每组一个 e8m0 scale，cache_scale 为 FLOAT8_E8M0。</li>
+            </ul>
+            下文约束说明中出现的 quant_mode=0/1/2/3 指上表对应的内部 int 取值。</td>
+        <td>STR</td>
         <td>-</td>
     </tr>
     <tr>
@@ -150,12 +157,12 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
 - 该接口支持推理场景下使用。
 - 该接口支持单算子模式调用。
 - 仅支持<term>Ascend 950PR/Ascend 950DT</term>。
-- cache与cache_scale的数据类型组合需与quant_mode匹配：Normal/HiFloat8模式cache_scale为FLOAT；MX-FP8/MX-FP4模式cache_scale为FLOAT8_E8M0；MX-FP4模式cache为FP4（uint8打包）。
+- cache与cache_scale的数据类型组合需与quant_mode匹配：fp8/hifloat8 模式cache_scale为FLOAT；mxfp8/mxfp4 模式cache_scale为FLOAT8_E8M0；mxfp4 模式cache为FP4（uint8打包）。
 - cache 与 cache_scale（所有量化模式，含HiFloat8）均仅支持四维shape `[blockNum, blockSize, 1, headDim]`，倒数第二维固定为1（每token一个量化向量）；num_slots = blockNum × blockSize。
 - cache/cache_scale仅在blockNum维支持非连续：各block可不紧密排布，但block内须连续。
 - headDim长度约束：
     - cache.headDim ≥ d（MX-FP4以fp4元素计，d个fp4值占⌈d/2⌉字节）；
-    - cache_scale.headDim ≥ scaleCol，scaleCol = MX-FP8/MX-FP4：⌈d/32⌉；Normal/HiFloat8：1；
+    - cache_scale.headDim ≥ scaleCol，scaleCol = mxfp8/mxfp4：⌈d/32⌉；fp8/hifloat8：1；
     - 示例：d=128、quant_mode=0 → scaleCol=4 → cache.headDim ≥ 128 且 cache_scale.headDim ≥ 4。
 - slot_mapping的维度应等于x的维度减1，即slot_mapping为x除最后一维外的所有维度展平。
 - slot_mapping中值为-1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
@@ -184,7 +191,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
     slot_mapping = torch.randint(0, block_num * block_size, (bs,), dtype=torch.int32).npu()
 
     cache, cache_scale = indexer_quant_cache(
-        cache, cache_scale, x, slot_mapping, quant_mode=1, round_scale=True, x_scale=1.0)
+        cache, cache_scale, x, slot_mapping, quant_mode="fp8", round_scale=True, x_scale=1.0)
     print(cache.shape, cache.dtype, cache_scale.shape, cache_scale.dtype)
     ```
 
@@ -197,7 +204,7 @@ cann_ops_transformer.indexer_quant_cache(cache, cache_scale, x, slot_mapping, *,
 
     def fn(cache, cache_scale, x, slot_mapping):
         return torch.ops.cann_ops_transformer.indexer_quant_cache(
-            cache, cache_scale, x, slot_mapping, quant_mode=1, round_scale=True, x_scale=1.0)
+            cache, cache_scale, x, slot_mapping, quant_mode="fp8", round_scale=True, x_scale=1.0)
 
     npu_backend = torchair.get_npu_backend(compiler_config=torchair.CompilerConfig())
     compiled = torch.compile(fn, backend=npu_backend, dynamic=False)

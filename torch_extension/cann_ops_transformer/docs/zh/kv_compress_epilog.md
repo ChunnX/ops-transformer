@@ -14,8 +14,8 @@
 - 接口功能：
 
     在KV Cache的Epilog阶段对cache进行原地量化压缩更新，封装aclnnKvCompressEpilog。将bfloat16激活值x量化压缩后，按slot_mapping散写到cache，slot_mapping中值为-1的token跳过不处理。x尾轴d的后64列为rope段、前d-64列为nope段。支持三种量化模式：
-    - quant_mode=0/1：逐组动态量化压缩为FP8（uint8打包），rope段保留bfloat16；
-    - quant_mode=2：rope段hifloat8**静态**量化（乘x_scale后取hifloat8），nope段per-group **FLOAT4_E2M1 动态**量化（scale=组内amax/6以bfloat16写出）。
+    - `"fp8_bf16"`/`"fp8_e8m0"`（内部0/1）：逐组动态量化压缩为FP8（uint8打包），rope段保留bfloat16；两者区别仅为每组 scale 的表示（bf16 / e8m0）；
+    - `"hifloat8_fp4"`（内部2）：rope段hifloat8**静态**量化（乘x_scale后取hifloat8），nope段per-group **FLOAT4_E2M1 动态**量化（scale=组内amax/6以bfloat16写出）。
 
 - 语义说明：
 
@@ -24,7 +24,7 @@
 ## 函数原型
 
 ```
-cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_size=64, quant_mode=1, round_scale=True, x_scale=1.0) -> Tensor
+cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0) -> Tensor
 ```
 
 ## 参数说明
@@ -82,10 +82,16 @@ cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_s
     </tr>
     <tr>
         <td>quant_mode</td>
-        <td>int</td>
+        <td>str</td>
         <td>可选</td>
-        <td>量化模式：0=group(bf16 scale)、1=group(e8m0 scale)、2=rope hifloat8静态 + nope FLOAT4_E2M1动态。默认值1。</td>
-        <td>INT</td>
+        <td>量化模式（字符串，大小写不敏感；PTA 内部经枚举映射为算子侧 int）。默认值<code>"fp8_e8m0"</code>。三种模式中 <code>"fp8_bf16"</code> 与 <code>"fp8_e8m0"</code> 为同一种 per-group FP8 量化方法（nope/rope 整体逐组动态量化为 FP8(e4m3) 并打包进 uint8），仅 scale 表示不同。可选值与含义：
+            <ul>
+                <li><code>"fp8_bf16"</code>(内部 0)：per-group FP8 量化，组大小由 quant_group_size 决定（内核固定按 64），每组一个 <b>bf16</b> scale。</li>
+                <li><code>"fp8_e8m0"</code>(内部 1)：per-group FP8 量化，每组一个 <b>e8m0</b>(2 的幂指数) scale，即 MX-FP8 微缩放。</li>
+                <li><code>"hifloat8_fp4"</code>(内部 2)：rope 段（尾轴后 64 列）HiFloat8 <b>静态</b>量化（乘 x_scale 后取 HiFloat8）；nope 段（前 d-64 列）per-group <b>FLOAT4_E2M1 动态</b>量化（scale=组内 amax/6，以 bf16 写出）。</li>
+            </ul>
+            下文约束说明中出现的 quant_mode=0/1/2 指上表对应的内部 int 取值。</td>
+        <td>STR</td>
         <td>-</td>
     </tr>
     <tr>
@@ -180,7 +186,7 @@ cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_s
     slot_mapping = torch.randint(0, block_num * block_size, (bs,), dtype=torch.int32).npu()
 
     cache = kv_compress_epilog(
-        cache, x, slot_mapping, quant_group_size=64, quant_mode=1, round_scale=True, x_scale=1.0)
+        cache, x, slot_mapping, quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0)
     print(cache.shape, cache.dtype)
     ```
 
@@ -193,7 +199,7 @@ cann_ops_transformer.kv_compress_epilog(cache, x, slot_mapping, *, quant_group_s
 
     def fn(cache, x, slot_mapping):
         return torch.ops.cann_ops_transformer.kv_compress_epilog(
-            cache, x, slot_mapping, quant_group_size=64, quant_mode=1, round_scale=True, x_scale=1.0)
+            cache, x, slot_mapping, quant_group_size=64, quant_mode="fp8_e8m0", round_scale=True, x_scale=1.0)
 
     npu_backend = torchair.get_npu_backend(compiler_config=torchair.CompilerConfig())
     compiled = torch.compile(fn, backend=npu_backend, dynamic=False)

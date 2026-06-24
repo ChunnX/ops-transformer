@@ -88,15 +88,16 @@ if _TORCHAIR_AVAILABLE:
             x: Tensor,
             slot_mapping: Tensor,
             quant_group_size: int = 64,
-            quant_mode: int = 1,
+            quant_mode: str = "fp8_e8m0",
             round_scale: bool = True,
             x_scale: float = 1.0,
             meta_outputs: TensorSpec = None):
-
+        # 对外 str quant_mode → 算子侧 int（与 eager 路径共用同一映射）
+        from cann_ops_transformer.ops.kv_compress_epilog import _resolve_quant_mode
         return KvCompressEpilog(cache=cache,
                                 x=x,
                                 slot_mapping=slot_mapping,
                                 quant_group_size=quant_group_size,
-                                quant_mode=quant_mode,
+                                quant_mode=_resolve_quant_mode(quant_mode),
                                 round_scale=round_scale,
                                 x_scale=x_scale)

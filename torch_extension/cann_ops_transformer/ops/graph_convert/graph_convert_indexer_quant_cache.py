@@ -90,15 +90,16 @@ if _TORCHAIR_AVAILABLE:
             cache_scale: Tensor,
             x: Tensor,
             slot_mapping: Tensor,
-            quant_mode: int = 1,
+            quant_mode: str = "fp8",
             round_scale: bool = True,
             x_scale: float = 1.0,
             meta_outputs: TensorSpec = None):
-
+        # 对外 str quant_mode → 算子侧 int（与 eager 路径共用同一映射）
+        from cann_ops_transformer.ops.indexer_quant_cache import _resolve_quant_mode
         return IndexerQuantCache(cache=cache,
                                  cache_scale=cache_scale,
                                  x=x,
                                  slot_mapping=slot_mapping,
-                                 quant_mode=quant_mode,
+                                 quant_mode=_resolve_quant_mode(quant_mode),
                                  round_scale=round_scale,
                                  x_scale=x_scale)
