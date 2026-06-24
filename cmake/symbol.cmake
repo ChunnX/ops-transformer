@@ -453,7 +453,6 @@ function(gen_cust_aicpu_kernel_symbol)
       -o ${ARM_SO_OUTPUT}
     DEPENDS ${AICPU_CUST_OBJ_TARGETS}
     COMMENT "Linking cust_aicpu_kernels.so using ARM toolchain"
-    COMMAND_EXPAND_LISTS
   )
   add_custom_target(cust_aicpu_kernels ALL DEPENDS ${ARM_SO_OUTPUT})
 
