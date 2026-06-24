@@ -996,7 +996,7 @@ __aicore__ inline void MatmulSplitMKOuter(const GlobalTensor<O> &tensorCGm, cons
 
     uint32_t nBlocks, kL1Loops, kOffsetUnit, mSizeAligned, aOffsetUnit, bOffsetUnit, scaleOffsetUnit;
     InitMatmulMKOuterParams<T>(para, nBlocks, kL1Loops, kOffsetUnit, mSizeAligned,
-                               OffsetUnit, bOffsetUnit, scaleOffsetUnit);
+                               aOffsetUnit, bOffsetUnit, scaleOffsetUnit);
 
     mmLocalTensors<T, O_L0C> localTensors;
     localTensors.Init(bufParam);
