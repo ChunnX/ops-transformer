@@ -235,11 +235,11 @@ at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const We
 
 std::tuple<at::Tensor, at::Tensor> npu_grouped_matmul_activation_quant(
     const at::Tensor &x,
+    const at::Tensor &groupList,
     const std::vector<at::Tensor> &weight,
     const std::vector<at::Tensor> &weightScale,
-    const at::Tensor &groupList,
-    const c10::optional<at::Tensor> &xScaleOptional,
     const c10::optional<std::vector<at::Tensor>> &bias,
+    const c10::optional<at::Tensor> &xScaleOptional,
     std::string activationType,
     int64_t groupListType,
     const c10::optional<std::vector<int64_t>> &tuningConfig,
