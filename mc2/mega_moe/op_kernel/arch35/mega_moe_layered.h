@@ -883,6 +883,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenToCopyTmp(uint32_t relayRank,
     uint64_t remoteCopyOffset, int32_t bufferIdx, uint32_t copyInNum)
 {
+    PRINTF("ReadRelayTokenToCopyTmp0: relayRank=%d, RanId=%d\n", relayRank, rankId_);
     GM_ADDR remoteRecordAddr = GetUrmaAddrByRankId(mc2Context_, relayRank) +
         params_.peermemInfo.relayTokenDataPtr + remoteCopyOffset;
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
@@ -894,7 +895,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
         return;
     }
-
+    PRINTF("ReadRelayTokenToCopyTmp1: relayRank=%d, RanId=%d\n", relayRank, rankId_);
     GM_ADDR scratchAddr = params_.workspaceInfo.relayReadScratchPtr +
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
