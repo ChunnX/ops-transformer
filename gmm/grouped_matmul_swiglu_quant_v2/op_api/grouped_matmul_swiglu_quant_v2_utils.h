@@ -21,21 +21,23 @@ namespace gmmSwigluQuantV2 {
 
 using namespace gmm_dsq;
 
-inline std::string ShapeToStringWithoutBracket(const op::Shape &shape)
+inline std::string ShapeToString(const op::Shape &shape)
 {
     std::ostringstream oss;
+    oss << "[";
     for (size_t i = 0; i < shape.GetDimNum(); ++i) {
         if (i != 0) {
             oss << ", ";
         }
         oss << shape.GetDim(i);
     }
+    oss << "]";
     return oss.str();
 }
 
 inline std::string ViewShapeToString(const aclTensor *tensor)
 {
-    return ShapeToStringWithoutBracket(tensor->GetViewShape());
+    return ShapeToString(tensor->GetViewShape());
 }
 
 #define GMM_SWIGLU_CHECK_SHAPE(tensor, paramName, expectedShape, retExpr)                              \
