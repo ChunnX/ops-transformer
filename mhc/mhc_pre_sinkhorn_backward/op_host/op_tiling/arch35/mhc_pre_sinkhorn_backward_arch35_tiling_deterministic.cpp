@@ -86,14 +86,12 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
-    int64_t bsPerCoreMM1 = Ops::Base::CeilAlign(batchSize_ * seqLength_, static_cast<int64_t>(coreNumAic_));
-    int64_t bsPerCoreMM2 = Ops::Base::CeilAlign(n_ * n_ + 2 * n_, static_cast<int64_t>(coreNumAic_));
-
     mm1K_ = n_ * n_ + 2 * n_;
-    mm1M_ = bsPerCoreMM1;
+    mm1M_ = batchSize_ * seqLength_;
     mm1N_ = n_ * c_;
+
     mm2K_ = batchSize_ * seqLength_;
-    mm2M_ = bsPerCoreMM2;
+    mm2M_ = n_ * n_ + 2 * n_;
     mm2N_ = n_ * c_;
 
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
@@ -101,7 +99,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 
     mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
+    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bf16DataType);
     mm1Tiling.SetOrgShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetBias(false);
@@ -238,7 +236,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-    size_t userWorkspaceSize = batchSize_ * seqLength_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                            //xFP32
+    size_t userWorkspaceSize = batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +                            //xFP32
                                 3 * usedAivNum_ * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +                                       //gradAlpha
                                 (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +        //gradBias
                                 batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3  + 3 * WS_BUFFER_INTERVAL +             //gradXFrom
