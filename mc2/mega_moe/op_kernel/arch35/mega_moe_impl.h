@@ -52,10 +52,6 @@ constexpr uint32_t TRIPLE_TENSOR_ADDR = 200U * 1024U;  // triple tensor 在 UB �
 // ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
 // =================================================================================================
 // 将 totalCores 个 core 均匀分配到 numGroups 个 group 中，余数分配给前 remainder 个 group。
-// 例如：totalCores=10, numGroups=3 -> 分配为 [4, 3, 3]
-//   - group 0: core 0-3 (4个core)
-//   - group 1: core 4-6 (3个core)
-//   - group 2: core 7-9 (3个core)
 __aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, uint32_t totalCores,
     uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
 {

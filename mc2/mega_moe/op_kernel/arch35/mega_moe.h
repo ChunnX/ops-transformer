@@ -1208,12 +1208,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
             MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
+                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         } else {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
+                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
 
             if constexpr (g_coreType == AIV) {
                 ProcessCombine(gmmAddrInfo, state, expertIdx);
