@@ -352,6 +352,10 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                 if layout_q == "BSND":
                     q_block = query[batch_idx, q_start:q_end, head_idx].to(torch.float32)
                     q_scale_block = q_scale[batch_idx, q_start:q_end, head_idx].to(torch.float32)
+                elif layout_q == "NTD":
+                    base = int(cu_seqlens_q[batch_idx].item())
+                    q_block = query[head_idx, base + q_start:base + q_end].to(torch.float32)
+                    q_scale_block = q_scale[head_idx, base + q_start:base + q_end].to(torch.float32)
                 else:
                     base = int(cu_seqlens_q[batch_idx].item())
                     q_block = query[base + q_start:base + q_end, head_idx].to(torch.float32)
@@ -408,8 +412,8 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                     p_c = torch.where(vm_c, p_c, torch.zeros_like(p_c))
                     # 仅对本轮有有效位置的行参与量化累加；其余行贡献 0
                     p_c = torch.where(chunk_has.view(nq, 1), p_c, torch.zeros_like(p_c))
-                    p_quant = (p_c / p_scale_value).to(fp8_dtype).to(torch.float32)
-                    pv = torch.matmul(p_quant, v_mat[c0:c1]) * p_scale_value * v_scale_value  # (nq, D)
+                    p_quant = (p_c * p_scale_value).to(fp8_dtype).to(torch.float32)
+                    pv = torch.matmul(p_quant, v_mat[c0:c1]) / p_scale_value * v_scale_value  # (nq, D)
                     acc = acc * rescale.view(nq, 1) + pv
                     l_run = l_run * rescale + p_c.sum(dim=-1)
                     m_run = torch.where(chunk_has, m_new, m_run)
