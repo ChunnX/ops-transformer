@@ -69,7 +69,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl1024VF(
     RegTensor<float> vreg_in_max;
     RegTensor<float> vreg_max;
 
-    VREG_FLOAT_DECL_EXP_PAIRS(vreg_exp);
+    VREG_FLOAT_DECL_EXP_PAIRS_8(vreg_exp);
 
     VREG_FLOAT_DECL_16(vreg_pse);
 

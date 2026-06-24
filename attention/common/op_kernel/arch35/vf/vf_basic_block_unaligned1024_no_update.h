@@ -66,7 +66,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl1024VF(
 
     RegTensor<float> vreg_exp_sum1;
 
-    VREG_FLOAT_DECL_EXP_PAIRS(vreg_exp);
+    VREG_FLOAT_DECL_EXP_PAIRS_8(vreg_exp);
 
     VREG_FLOAT_DECL_16(vreg_pse);
 
