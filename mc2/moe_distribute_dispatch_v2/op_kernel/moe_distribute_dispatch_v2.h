@@ -1343,11 +1343,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::GetC
         totalCnt_ = recvCntSumOutTensor.ReinterpretCast<int32_t>().GetValue(0);
         SyncFunc<AscendC::HardEvent::S_V>();
     }
-    // 0核前面所有核recv cnt总和是0
-    if (aivId == 0) {
-        outLocal.SetValue(0, 0);
-        return;
-    }
+
     ReduceSum(recvCntSumOutTensor, statusTensorFp32, sharedTmpTensor, mask, startStatusIndex_, 1);
     SyncFunc<AscendC::HardEvent::V_S>();
     // 最终输出outLocal第0个元素是当前核前面所有核recv cnt总和
@@ -1393,11 +1389,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::GetC
         totalCnt_ = recvCntSumOutTensor.ReinterpretCast<int32_t>().GetValue(0);
         SyncFunc<AscendC::HardEvent::S_V>();
     }
-    // 0核前面所有核recv cnt总和是0
-    if (totalCount == 0) {
-        outLocal.SetValue(0, 0);
-        return;
-    }
+
     SumParams sumParams{1, innerSumParams, totalCount};
     Sum(recvCntSumOutTensor, tmpFp32, sumParams);
     SyncFunc<AscendC::HardEvent::V_S>();
@@ -1423,11 +1415,16 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
     RunPosRecord();    // 维测打点
     LocalTensor<int32_t> outCountLocal, xTmpTensorInt;
     if (startExpertId_ >= rscvStatusNum_) {return;} // 分核已与前面的waitDispatch里保持一致return;
+    if (aivId_ == 0) {
+        outCountLocal(0) = 0;
+    } else {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    GetCumSumA5(outCountLocal, aivId_);
+        GetCumSumA5(outCountLocal, aivId_);
 #else
-    GetCumSum(outCountLocal, aivId_);
+        GetCumSum(outCountLocal, aivId_);
 #endif
+    }
+
     // hOutElemCount为expandXOutGlobal申请每个token的GM Buffer空间大小
     uint32_t index = 0, beginIdx = outCountLocal.GetValue(0), hOutElemCount = hOutSize_ / sizeof(XOutType);
     preCnt_ = beginIdx, statusTensor_ = waitStatusBuf_.Get<int32_t>();
