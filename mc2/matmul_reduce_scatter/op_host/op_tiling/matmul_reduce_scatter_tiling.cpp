@@ -326,8 +326,8 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
         if (mCutScatter.numShortTile > 0) {
             args.mValue = mCutScatter.shortTileLen;
             tilingData.param.tailCnt = mCutScatter.numShortTile;
-            OP_TILING_CHECK(
-                CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling) != ge::GRAPH_SUCCESS,
+            auto tailRet = CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(tailRet != ge::GRAPH_SUCCESS,
                 OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
                 return ge::GRAPH_FAILED);
             args.baseMLimit = mCutScatter.shortTileLen;
@@ -347,8 +347,8 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::GetReduceScatterFormulateTile
         if (mCutScatter.numLongTile > 0) {
             args.mValue = mCutScatter.longTileLen;
             tilingData.param.tailCnt = mCutScatter.numLongTile;
-            OP_TILING_CHECK(
-                CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling) != ge::GRAPH_SUCCESS,
+            auto tailRet = CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(tailRet != ge::GRAPH_SUCCESS,
                 OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
                 return ge::GRAPH_FAILED);
             args.baseMLimit = mCutScatter.longTileLen;
@@ -392,8 +392,8 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
         if (tileTail != 0) {
             args.mValue = tileTail;
             tilingData.param.tailCnt = 1;
-            OP_TILING_CHECK(
-                CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling) != ge::GRAPH_SUCCESS,
+            auto tailRet = CalcMatmulTilingReduceScatter(args, tilingData.tailTiling, tilingData.tailL2Tiling);
+            OP_TILING_CHECK(tailRet != ge::GRAPH_SUCCESS,
                 OP_LOGE(ctx->GetNodeName(), "CalcMatmulTilingReduceScatter failed"),
                 return ge::GRAPH_FAILED);
         }
