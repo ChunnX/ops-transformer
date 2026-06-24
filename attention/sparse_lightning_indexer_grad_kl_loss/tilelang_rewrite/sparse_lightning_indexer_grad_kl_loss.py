@@ -274,8 +274,10 @@ def tilelang_grad_kl_loss_kernel(
 
                 rg_chunk_ub = T.alloc_shared((BLOCK_NIDX1, n_block), calc_dtype)
                 rg_fp16_ub = T.alloc_shared((BLOCK_NIDX1, n_block), input_dtype)
-                dw_accum_ub = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
-                dw_fp16_ub = T.alloc_shared(BLOCK_NIDX1, input_dtype)
+                dw_total_ub = T.alloc_shared(Nidx1, calc_dtype)
+                dw_chunk_ub = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
+                dw_fp16_ub = T.alloc_shared(Nidx1, input_dtype)
+                rg_fp16_ub = T.alloc_shared((BLOCK_NIDX1, n_block), input_dtype)
 
                 sm_max_ub = T.alloc_shared(G, calc_dtype)
                 sm_sum_ub = T.alloc_shared(G, calc_dtype)
@@ -402,8 +404,6 @@ def tilelang_grad_kl_loss_kernel(
                     # ---- Pass 4: dWeight and reluGrad (matching VectorDwDqDk) ----
                     # dWeight = sum over K of diff * ReLU(bmm2[g,:])
                     # reluGrad[g,k] = weight[g] * diff[k] * (bmm2[g,k] > 0 ? 1 : 0)
-                    T.tile.fill(dw_accum_ub, 0.0)
-                    dw_total_ub = T.alloc_shared(Nidx1, calc_dtype)
                     T.tile.fill(dw_total_ub, 0.0)
 
                     for n_idx in T.serial(n_num):
@@ -428,13 +428,22 @@ def tilelang_grad_kl_loss_kernel(
                                 bmm2_ub,
                             )
 
-                            # dW partial: dw[g] += sum_k(diff[k] * relu[g,k])
-                            # reluGrad: weight[g] * diff[k] * mask(bmm2 > 0)
+                            # -- dWeight: dw_chunk[g] = sum_k(diff[k] * bmm2[g,k]) --
+                            for g_i in T.serial(BLOCK_NIDX1):
+                                T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, bmm2_ub[g_i, :])
+                            T.barrier_all()
+                            T.reduce_sum(rg_chunk_ub, dw_chunk_ub, dim=-1, clear=True, real_shape=[BLOCK_NIDX1, n_block])
+                            T.barrier_all()
+                            T.tile.add(
+                                dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1],
+                                dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1],
+                                dw_chunk_ub,
+                            )
+
+                            # -- reluGrad: weight[g] * diff[k] * bool(bmm2[g,k] > 0) --
                             for g_i in T.serial(BLOCK_NIDX1):
                                 g_abs = nidx_s + g_i
-                                T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, bmm2_ub[g_i, :])
-                                T.tile.mul(rg_chunk_ub[g_i, :], rg_chunk_ub[g_i, :], weight_ub[g_abs])
-                                # mask: bmm2 > 0  => cmp + select
+                                T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, weight_ub[g_abs])
                                 T.tile.compare(mask_ub, bmm2_ub[g_i, :], 0.0, "GT")
                                 T.tile.select(rg_chunk_ub[g_i, :], mask_ub, rg_chunk_ub[g_i, :], 0.0, "VSEL_TENSOR_SCALAR_MODE")
                             T.barrier_all()
@@ -448,12 +457,8 @@ def tilelang_grad_kl_loss_kernel(
                                     rg_fp16_ub[g_i, :],
                                     reluGradRes[bz, s1_id, g_abs, n_idx * n_block:(n_idx + 1) * n_block],
                                 )
-                                # Accumulate dW
-                                T.reduce_sum(rg_chunk_ub[g_i, :], rsy_tmp_ub, dim=-1, clear=True, real_shape=[1, n_block])
-                                T.tile.add(dw_total_ub[g_abs], dw_total_ub[g_abs], rsy_tmp_ub[0])
 
                     # Cast and store dWeight
-                    dw_fp32_ub = T.alloc_shared(Nidx1, calc_dtype)
                     T.tile.cast(dw_fp16_ub, dw_total_ub, "CAST_ROUND", Nidx1)
                     T.barrier_all()
                     T.copy(dw_fp16_ub, dWeight[bz, s1_id, 0:Nidx1])
