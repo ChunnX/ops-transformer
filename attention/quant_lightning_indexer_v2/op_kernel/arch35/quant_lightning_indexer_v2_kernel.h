@@ -171,8 +171,6 @@ protected:
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
                                                   uint32_t cmpResiduaKLenDims, bool isAccumSeq,
                                                   GlobalTensor<uint32_t> &actualSeqLengthsGm,
-                                                  GlobalTensor<uint32_t> &cuSeqlensKGm,
-                                                  GlobalTensor<uint32_t> &sequsedKGm,
                                                   GlobalTensor<uint32_t> &cmpResidualKGm,
                                                   uint32_t defaultSeqLen, uint32_t cmpRatio);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
