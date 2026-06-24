@@ -64,17 +64,26 @@
     a6-only 代码用 <code>#ifdef DISPATCH_CCU_A6</code> 隔离；<b>所有代码以 a6 视角写</b>，a6 真值靠上板 + 实测校准。
   </div>
 
+  <div class="note" style="border-left-color:var(--amber,#f5c451)">
+    <b>⚠ 重大变更（2026-06-24）：CCU 写端 本地 LocalCopyNb → 跨卡 WriteNbWithArriveNotify</b><br>
+    a6 上板诊断坐实：旧的"本卡 CCU 用 6 参 <code>LocalCopyNb</code> 写自己状态区"——CCU 跑完<b>无 fault</b>、但 statusGm 全 0
+    （<code>[DIAG] statusGm[0..3]=0,0,0,0</code>），即 a6 那个新开发、未验证的 6 参 LocalCopyNb <b>静默失效</b>。
+    改用 a6 已验证功能正常的 <b>0.5RTT 跨卡写</b>：卡0 的状态区由卡1 写、卡1 的由卡0 写（<code>WriteNbWithArriveNotify</code>）。
+    kernel 基类改继承 <code>Mc2CcuKernelBase</code>（新增 <code>dispatch_setup_ccu_api.h</code> facade），裁剪自已验证参考
+    <code>moe_distribute_dispatch_ccu_setup.cpp</code>。下文 §1/§3/§6/§8 已据此更新。
+  </div>
+
   <h2>1 · 架构与数据流</h2>
-  <p><b>dispatch_setup(CCU)</b> = 独立 host 驱动 <code>dispatch_min_driver</code>（registry build 里 <code>if(BUILD_OPEN_PROJECT) return()</code> 自跳过，单独 cmake 构建）：自建 2-rank CCU comm → 注册/拉起 CCU kernel（本地 <code>LocalCopyNb</code> 写状态位）。<br>
-  <b>dispatch_teardown(AIV)</b> = 标准 registry aclnn 算子（<code>build.sh --pkg</code> 编）：blockDim=1 忙等轮询状态位 → 写 done。</p>
+  <p><b>dispatch_setup(CCU)</b> = 独立 host 驱动 <code>dispatch_min_driver</code>（registry build 里 <code>if(BUILD_OPEN_PROJECT) return()</code> 自跳过，单独 cmake 构建）：自建 2-rank CCU comm → 注册/拉起 CCU kernel（<b>跨卡 <code>WriteNbWithArriveNotify</code> 把就绪值写进对端状态区</b>）。<br>
+  <b>dispatch_teardown(AIV)</b> = 标准 registry aclnn 算子（<code>build.sh --pkg</code> 编）：blockDim=1 忙等轮询本卡状态位（现由对端写）→ 写 done。</p>
   <div class="flow">
     <div class="step"><div class="n">1 · MPI</div><div class="t">mpirun -n 2，每进程一个 rank（dev=rank）</div></div>
     <div class="step"><div class="n">2 · 建链</div><div class="t">root 取 RootInfo → MPI_Bcast → <code>HcclCommInitRootInfoConfig(rank=2, hcclOpExpansionMode=CCU)</code> → <b>建出 ccuContainer</b></div></div>
-    <div class="step"><div class="n">3 · 流1 CCU</div><div class="t">建 channel → register → launch → kernel <code>LocalCopyNb</code> 把 1 写进本 rank statusGm</div></div>
-    <div class="step"><div class="n">4 · 流2 AIV</div><div class="t">aclnn teardown 忙等 statusGm[0]==1 → 写 doneGm[0]=1</div></div>
+    <div class="step"><div class="n">3 · 流1 CCU（0.5RTT 跨卡写）</div><div class="t">建 channel → clear → <b>PreSync</b> 换对端 status 地址/token → <b>RecordExpectCount</b> → 跨卡 <code>WriteNbWithArriveNotify</code> 写<b>对端</b> status → <code>Waitallpeersarrive(R-1)</code> 等本卡被对端写好</div></div>
+    <div class="step"><div class="n">4 · 流2 AIV</div><div class="t">aclnn teardown 忙等本卡 statusGm[0]==1（对端写的）→ 写 doneGm[0]=1</div></div>
     <div class="step"><div class="n">5 · 校验</div><div class="t">同步两流 → host 读 done==1 → 两 rank 各自 PASS</div></div>
   </div>
-  <p class="sub">两条流无显式 event 依赖：teardown 的忙等轮询<b>本身</b>就是跨流同步。两 rank 完全对称、各自独立，不做真跨卡数据交换。</p>
+  <p class="sub">teardown 的忙等轮询<b>本身</b>就是跨流同步。两 rank 对称：各自把就绪值跨卡写给对端、各自等对端写好本卡 status，再由本卡 teardown 轮询 slot0。状态写是<b>真跨卡（0.5RTT）</b>，但 payload 极小（仅就绪标志 32B）。不死锁：先各自非阻塞 Write 再各自 Wait，两写都已发射→两等都能解。</p>
 
   <h2>2 · 为什么必须 2 die</h2>
   <div class="panel">
@@ -85,7 +94,8 @@
   <table>
     <tr><th>文件</th><th>作用</th><th>a5/a6</th></tr>
     <tr><td><code>dispatch_min_driver.cpp</code></td><td>集成驱动：MPI 2-rank 建 CCU comm + 注册/拉起 CCU kernel + 调 teardown aclnn + 校验</td><td>驱动外壳 a5/a6 都编；CCU 拉起段 a6-only</td></tr>
-    <tr><td><code>dispatch_setup_ccu.{h,cpp}</code></td><td>CCU kernel：<code>Algorithm()</code> 本地 LocalCopyNb 写状态位</td><td class="todo">a6-only（含 6 参 LocalCopyNb，a5 不编）</td></tr>
+    <tr><td><code>dispatch_setup_ccu_api.h</code></td><td><b>新增</b> facade：<code>Mc2CcuKernelBase</code> 声明 4 个 0.5RTT 数据面 API（impl 由 SE 链接期补全），逐字复刻参考</td><td>头声明 a5 编得过；impl a6-only</td></tr>
+    <tr><td><code>dispatch_setup_ccu.{h,cpp}</code></td><td>CCU kernel：继承 <code>Mc2CcuKernelBase</code>，<code>Algorithm()</code> 跑 0.5RTT 跨卡写（clear→PreSync→RecordExpectCount→WriteNbWithArriveNotify→Waitallpeersarrive）写<b>对端</b> status</td><td class="todo">.cpp Algorithm 体 a6-only（CMake 仅 a6 编入 .cpp）；.h 声明 a5 编得过</td></tr>
     <tr><td><code>CMakeLists.txt</code></td><td>驱动 standalone cmake（MPI + CCU include/link 自动定位）</td><td>a5/a6</td></tr>
     <tr><td><code>run.sh</code></td><td>一键：编 teardown 算子包 + 编驱动（TARGET=a5|a6）</td><td>a5/a6</td></tr>
     <tr><td><code>../dispatch_teardown/</code></td><td>AIV registry 算子（op_api/op_host/op_tiling/op_kernel）</td><td class="ok">a5/a6 都编</td></tr>
@@ -117,11 +127,11 @@ mpirun --allow-run-as-root -n 2 build/dispatch_min_driver
   <h2>6 · 已坐实事实（从猜变证 · 标注来源）</h2>
   <table>
     <tr><th>事实</th><th>来源</th></tr>
-    <tr><td><code>LocalCopyNb</code> 在 a6 是 <b>6 参</b> (dst,src,len,CcuBuf*,bufCount,event)</td><td class="ok">技术总监 2026-06-23 确认（a5 是 4 参，真分叉→kernel a6-only）</td></tr>
+    <tr><td><s><code>LocalCopyNb</code> a6 6 参</s> → <b>已弃用</b>：a6 诊断该未验证的 6 参 LocalCopyNb 静默不写，改跨卡 <code>WriteNbWithArriveNotify</code>（见顶部变更）</td><td class="ok">诊断：CCU 无 fault 但 statusGm 全 0</td></tr>
     <tr><td><code>WaitEvent</code> 是 <b>1 参</b>；<code>CompletedEvent::SetMask(uint32_t)</code> 存在</td><td class="ok">a5 <code>ccu_kernel.h:124</code> / <code>ccu_datatype_v1.h:158</code>（旧注"a5 2 参"系误记，已纠）</td></tr>
-    <tr><td><code>CcuKernel</code> 基类声明全部 builder → 直接继承（不走 Mc2CcuKernelBase）正确</td><td class="ok">a5 <code>ccu_kernel.h:104-165</code></td></tr>
+    <tr><td>跨卡写需 <code>Mc2CcuKernelBase</code> 的 4 个数据面 API → kernel 继承它；<code>channels_</code>/<code>CreateRemoteAddr</code>/<code>CreateVariable(channel,XN)</code>/<code>NotifyRecord</code> 来自 CcuKernel 基类</td><td class="ok">a5 <code>ccu_kernel.h:109/113/132/134</code> 有这些；4 数据面 API impl a6-only（SE 补全）</td></tr>
     <tr><td>comm 建链逐参对齐已跑通基线</td><td class="ok"><code>hccl_test_common.cc:874</code> 同序同型</td></tr>
-    <tr><td>状态位字节契约自洽（status/done 均 32B，slot0 int32，CCU 写 R*4=8B）</td><td class="ok">三处（驱动/CCU 写/AIV 读）一致</td></tr>
+    <tr><td>状态位字节契约自洽（status/done/oneBuf 均 32B，slot0 int32，CCU 跨卡<b>整块写 32B</b>：oneBuf=[1,0..]→对端 status[0]=1）</td><td class="ok">三处（驱动/CCU 跨卡写/AIV 读）一致；32B 整块为 dispatch_setup 独占就绪区</td></tr>
   </table>
   <p class="sub">本轮审查修复：config 零初始化、<code>aclrtSetStreamFailureMode</code>、rankSize&lt;2 硬失败、<code>MPI_Bcast</code> 兜底、teardown 写 done 前清 0 UB。</p>
 
@@ -167,23 +177,19 @@ mpirun --allow-run-as-root -n 2 build/dispatch_min_driver
     <tr><td><b>运1</b></td><td><code>rtCCULaunch 107003 stream not in current context</code></td><td>显式 aclrtCreateContext 建独立 context，stream 与 CCU launch 的默认 context 对不上</td><td>删 aclrtCreateContext，全程用 <code>aclrtSetDevice</code> 隐式默认 context</td><td class="ok">✓ 平</td></tr>
     <tr><td><b>运2</b></td><td><code>NnopbaseInit 161002</code> / <code>basePath.empty</code> / <code>ASCEND_CUSTOM_OPP_PATH</code></td><td>teardown 设备二进制没装到 opp（手动 cmake 只编驱动没装算子包）</td><td><code>.run --force</code> 装包 + <code>export ASCEND_CUSTOM_OPP_PATH=$ASCEND_OPP_PATH/vendors/custom_transformer</code></td><td class="ok">✓ 平</td></tr>
     <tr><td><b>运3</b></td><td><code>rtsFuncGetByEntry 107000</code> / <code>funcEntry=1 invalid</code></td><td>单 kernel 无 TILING_KEY 分支，host 却 <code>SetTilingKey(1)</code> → 取不到 key1 变体</td><td><code>SetTilingKey(0)</code>（单变体算子注册在 key 0）</td><td class="ok">✓ 平</td></tr>
-    <tr><td><b>运4</b></td><td>teardown <code>blk=0 start poll, expect=1</code> 后<b>卡死</b>，环境挂</td><td>三选一待诊断：CCU 写非法地址 / 没写进 1 / 跨流 cache 不可见 [T3]</td><td>host 诊断隔离：CCU 单独 sync → 读回 statusGm 打印 → 再起 AIV；<code>setvbuf</code> 无缓冲防崩溃吞日志</td><td class="todo">诊断中</td></tr>
+    <tr><td><b>运4</b></td><td>teardown <code>start poll</code> 后<b>卡死</b>；DIAG 回 <code>statusGm[0..3]=0,0,0,0</code></td><td>诊断坐实：CCU 无 fault 但状态区全 0 → 未验证的 6 参 <b>LocalCopyNb 静默不写</b>（非非法地址、非 cache）</td><td>弃 LocalCopyNb，改 a6 已验证的 0.5RTT 跨卡写 <code>WriteNbWithArriveNotify</code>（对端写本卡 status，见顶部变更）</td><td class="ok">✓ 已诊断+改方案+a5门禁过</td></tr>
+    <tr><td><b>运5</b></td><td>跨卡写后 DIAG <code>statusGm[0]=?</code> / teardown 是否见 1（新方案）</td><td>跨卡写能否落地 + [T3] 跨流 cache 可见性——均 a6 运行期事实，a5 给不了</td><td>新代码 a5 编译门禁已过、已同步；待 a6 跑：DIAG=1=写成功；DIAG=1 但 teardown TIMEOUT=cache→poll 前加 dcci</td><td class="todo">待 a6</td></tr>
   </table>
-  <div class="panel"><b>第 7 关（握手卡死）诊断判读</b>——重编驱动跑一把，看打印：
-    <ul>
-      <li>卡在 <code>syncing streamSetup(CCU)...</code> 后<b>无 DIAG 行</b> → <b>CCU 非法访存</b>（写端地址/token，重点怀疑）</li>
-      <li>DIAG 行 <code>statusGm[0]=0</code> → CCU 跑了但<b>没写进 1</b>（LocalCopyNb/event 落地）</li>
-      <li>DIAG 行 <code>statusGm[0]=1</code> → CCU 写对了 → 问题在 <b>AIV 跨流可见性 [T3]</b>（已串行化，很可能直接 PASS）</li>
-    </ul>
-    <p class="sub">附：原 <code>ccuContainer is nullptr</code> 已由"2 rank MPI + <code>hcclOpExpansionMode=CCU</code>"解决（前置关，已过）。LocalCopyNb 地址/token 范式已对照工作版 combine setup 逐项核过、一致。</p>
+  <div class="panel"><b>第 7 关诊断已出结论</b>：a6 跑回 <code>statusGm[0..3]=0,0,0,0</code>（CCU 无 fault）→ 三选一中坐实<b>"CCU 没写进 1"</b>，即未验证的 6 参 LocalCopyNb 写端静默失效。<b>修复</b>：弃 LocalCopyNb，改 a6 已验证的 0.5RTT 跨卡写——对端用 <code>WriteNbWithArriveNotify</code> 写本卡 status。
+    <p class="sub"><b>新方案 a6 跑起来看（按概率）</b>：① 启动行 <code>build: DISPATCH_CCU_A6=ON</code> 确认编进；② DIAG <code>statusGm[0]=1</code> = 跨卡写落地 = 修复奏效（旧 LocalCopyNb 是 0）；③ 若 DIAG=1 但 teardown TIMEOUT = [T3] cache 可见性，修法 poll 前加 dcci；④ 不死锁（先各自非阻塞 Write 再各自 Wait）。a5 编译门禁已过（<code>Built target</code> EXIT=0）、4 文件已同步远端 md5 ✓。</p>
   </div>
 
   <h2>9 · a6 上手核验三步（编过 + 链上）</h2>
   <div class="panel">
-    <p><b>① 核 CCU API 签名</b>（唯一可能改码处，预计 0 改——a5 已核 + 技术总监确认 6 参 <code>LocalCopyNb</code>）：</p>
-<pre>grep -n "LocalCopyNb\|WaitEvent\|CreateBlockCcuBuf" &lt;a6&gt;/.../hcomm/ccu/ccu_kernel.h
-grep -rn "SetMask" &lt;a6&gt;/.../hcomm/ccu/      <span class="c"># CompletedEvent::SetMask</span></pre>
-    <p class="sub">不一致才改 <code>dispatch_setup_ccu.cpp</code> 里那几个调用（已 <code>#ifdef</code> 围住），其它别动。</p>
+    <p><b>① 核 CCU API 签名</b>（跨卡写的 4 数据面 API + PreSync；a5 已核 CcuKernel 侧存在，4 数据面 API impl 由 SE 在 a6 libhcomm 补全）：</p>
+<pre>grep -n "RecordExpectCount\|WriteNbWithArriveNotify\|Waitallpeersarrive\|clearallpeersarrive" &lt;a6&gt;/.../moe_dispatch_ccu_api.h
+grep -n "NotifyRecord\|NotifyWait\|CreateRemoteAddr\|CreateVariable" &lt;a6&gt;/.../hcomm/ccu/ccu_kernel.h</pre>
+    <p class="sub">facade <code>dispatch_setup_ccu_api.h</code> 的 <code>Mc2CcuKernelBase</code> 4 个签名须与参考逐字一致（否则链不到 SE 实现）；其它别动。</p>
     <p><b>② build 顺序</b>（驱动要链 teardown 的 <code>libcust_opapi</code>，<b>先算子后驱动</b>）：</p>
 <pre>bash build.sh --pkg --experimental --soc=&lt;a6 token&gt; --ops=dispatch_teardown -j16
 cd experimental/mc2/dispatch_setup &amp;&amp; cmake -B build -DDISPATCH_CCU_A6=ON \

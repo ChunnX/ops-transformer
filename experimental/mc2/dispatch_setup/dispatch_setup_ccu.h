@@ -1,86 +1,64 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
+ * Licensed under the Apache License, Version 2.0 (the "License").
  *
  *  dispatch_setup_ccu.h
- *  ---------------------
- *  最小 CCU dispatch_setup：用 CCU 语义（LocalCopyNb）往【本卡状态区】写 1。
+ *  --------------------
+ *  CCU dispatch_setup：用 a6 已验证的 0.5RTT 跨卡写（WriteNbWithArriveNotify）把"就绪值 1"
+ *  写进【对端】卡的状态区——卡0 写卡1、卡1 写卡0；本卡状态区由对端写、本卡 teardown(AIV) 轮询 slot0。
  *
- *  设计来源：裁剪自 a6 已跑通参考
- *    /home/developer/hcomm-test/src/ccu_kernel_test/ccu_kernel_impl/
- *        moe_distribute_dispatch_ccu_setup.{h,cpp}
- *  只保留其“段 10 ready 写”——把 host 预填 1 的 oneBuf 整块 LocalCopyNb 到本卡
- *  状态区。其余跨卡 0.5RTT 流程（PreSync / RecordExpectCount /
- *  WriteNbWithArriveNotify / Waitallpeersarrive）全部删除：
- *    1) 本任务只需“本卡写 1、本卡 teardown 读 1”，单 die 不跨卡；
- *    2) 纯本地 LocalCopyNb 由基类 CcuKernel 直接提供（见 hcomm
- *       ccu_kernel/ccu_kernel.h:334 LocalCopyNb 重载），不需要 Mc2CcuKernelBase
- *       那 4 个尚待 SE 链接期补全的 0.5RTT 接口，故直接继承 CcuKernel。
+ *  为什么从"本地 LocalCopyNb 自写"改成"对端跨卡写"：
+ *    a6 上 6 参 LocalCopyNb 是接口团队新开发、未验证；上板诊断坐实它静默不写
+ *    （CCU 跑完无 fault、但 statusGm 全 0）。改用 a6 已验证功能正常的 WriteNbWithArriveNotify。
  *
- *  状态区契约（与 dispatch_teardown AIV 唯一耦合点，字节级必须一致）：
- *    - statusGm：专用 GM buffer（对标参考 commCmdInfo），int32 元素，值 1 表示就绪；
- *    - R 个 int32 槽（2-die R=2 → len = R*sizeof(int32) = 8 字节）；teardown 只判 slot0；
- *    - LocalCopyNb 是裸字节 DMA，状态字保持 4 字节 int32，【不】受 CCU Variable/
- *      Load/Store 恒 8 字节规则约束（那条规则只管 LoadVariable/StoreVariable）。
+ *  协议（裁剪自 a6 已验证参考 moe_distribute_dispatch_ccu_setup.cpp 的 0.5RTT 数据面）：
+ *    clear → PreSync(NotifyRecord/Wait 换对端 status 地址+token) → RecordExpectCount →
+ *    WriteNbWithArriveNotify(oneBuf→对端 status slot0) → WaitallpeersarriveNotify(R-1)。
+ *    payload 极简：参考的逐 token 数据面(routing/sendBytes/DoMainLoop 循环)全删，只剩一次定长写。
  *
- *  a6 契约（多数已坐实，来源标注；本机 a5 只作参考、kernel.cpp 不在 a5 编）：
- *    [T1✓] LocalCopyNb 在 a6 是 6 参 (dst, src, len, CcuBuf*, bufCount, event)——技术总监 2026-06-23 确认
- *          a6 即 6 参；a5 头是 4 参 (dst,src,len,event)（a5 ccu_kernel.h:151）→ a5/a6 真分叉，
- *          故含 6 参 LocalCopyNb 的本 kernel 全程 a6-only（CMake DISPATCH_CCU_A6 门控，a5 不编）。
- *          UB 暂存 buf 用 CreateBlockCcuBuf(1U,&buf) 块分配——CcuKernel 基类提供（a5 ccu_kernel.h:119）。
- *    [T2✓] WaitEvent 是 1 参 WaitEvent(event)（a5 ccu_kernel.h:124 实测，旧注"a5 是 2 参"系误记，已纠）；
- *          CcuRep::CompletedEvent::SetMask(uint32_t) 坐实存在（a5 ccu_datatype_v1.h:158）。a6 同源、上板终验。
- *    [T11] CcuKernelSignature：默认构造；若 a6 需 name/attrs 唯一化键按 a6 头补（待 a6 确认，非编译阻断）。
- *    [✓] CcuKernel 基类坐实声明全部 builder（CreateVariable/LocalAddr/RemoteAddr/CompletedEvent/CcuBuf/
- *        BlockCcuBuf/Load/WaitEvent/LocalCopyNb，a5 ccu_kernel.h:104-165）→ 直接继承 CcuKernel（不走
- *        Mc2CcuKernelBase）正确——后者只多 4 个 0.5RTT 接口，本地自写用不到。
+ *  基类：Mc2CcuKernelBase（提供 4 个数据面 API，见 dispatch_setup_ccu_api.h）；
+ *    channels_ / NotifyRecord / NotifyWait / CreateVariable(channel,XN) / CreateRemoteAddr
+ *    来自 CcuKernel 基类（CANN pkg ccu_kernel.h:109/113/130/132/134 坐实）。
+ *
+ *  状态区契约（与 dispatch_teardown AIV 唯一耦合点，字节级一致）：
+ *    statusGm：int32 GM，slot0=1 表示就绪；R 个 int32 槽（32B 对齐，teardown 一次搬 32B 读 slot0）。
+ *
+ *  a5/a6 隔离：跨卡 0.5RTT 数据面 + channel-XN PreSync 为 a6-only（SE 链接期补全）；
+ *    .h（类/成员声明）在 a5 编得过（CANN 头已有 RemoteAddr/CreateRemoteAddr/channel-XN CreateVariable）；
+ *    .cpp 的 Algorithm 体整体 #ifdef DISPATCH_CCU_A6、a5 桩 return（不引用 a6-only 数据面符号 → a5 链接通过）。
  */
-
 #ifndef DISPATCH_SETUP_CCU_H
 #define DISPATCH_SETUP_CCU_H
 
 #include <vector>
 #include <cstdint>
-#include "ccu_kernel.h"   // 解析到 CANN pkg_inc/hcomm/ccu/ccu_kernel.h（提供 CcuKernel / CcuRep::*）
-
-// 工程私有 CHK_RET：调用 expr，非 HCCL_SUCCESS 即原样返回（与 hcomm 内部宏不冲突，ODR 各编译单元独立）。
-#ifndef CHK_RET
-#define CHK_RET(expr)                              \
-    do {                                           \
-        HcclResult __ccuRet = (expr);              \
-        if (__ccuRet != HCCL_SUCCESS) {            \
-            return __ccuRet;                       \
-        }                                          \
-    } while (0)
-#endif
+#include "dispatch_setup_ccu_api.h"  // Mc2CcuKernelBase + 4 数据面 API + CHK_RET + DISPATCH_SETUP_CCU_TAG（含 ccu_kernel.h）
 
 namespace mc2 {
 
 using namespace hcomm;
 
-// 本算子的状态区元素类型与“就绪”值（与 teardown AIV 读端严格一致）。
+// 状态区元素类型与"就绪"值（与 teardown AIV 读端严格一致）。
 constexpr uint32_t DISPATCH_STATUS_DTYPE_BYTES = sizeof(int32_t);  // 4
 constexpr int32_t  DISPATCH_READY_VALUE = 1;
 
-// -------- KernelArg：构造期固定的标量属性（编译期/建图期可见）--------
-//   单 die 最小版只需 epWorldSize（决定状态区有几个 int32 槽，单 die=1）与 epRankId。
+// -------- KernelArg：构造期固定标量（epWorldSize 决定对端数 / 状态区槽数；epRankId 本卡号）--------
 class CcuKernelArgDispatchSetup : public CcuKernelArg {
 public:
     CcuKernelArgDispatchSetup(uint32_t epWorldSize, uint32_t epRankId)
         : epWorldSize(epWorldSize), epRankId(epRankId) {}
 
-    // 见 ccu_demo.h：签名用于框架生成 kernel 唯一键。最小版用默认构造（[T11]）。
     CcuKernelSignature GetKernelSignature() const override {
-        return CcuKernelSignature();
+        return CcuKernelSignature();   // 最小版默认构造（[T11] 若 a6 需 name/attrs 唯一键再补）
     }
 
     uint32_t epWorldSize{1};
     uint32_t epRankId{0};
 };
 
-// -------- TaskArg：每次 Launch 传入的 device GM 地址 + 其 token --------
-//   token 由 host 端 CcuRep::GetTokenInfo(addr, bytes) 算得，每块独立 buffer 各算各的。
+// -------- TaskArg：每次 Launch 传入的 device GM 地址 + token（GeneArgs/Load 顺序须三处一致）--------
+//   statusAddr：本卡状态区——被【对端】WriteNb 写、本卡 teardown 读；PreSync 把其 addr+token 交换给对端。
+//   oneBufAddr：host 预填 slot0=1 的源 buffer——本卡作为发送方的 localSrc。
 class CcuTaskArgDispatchSetup : public CcuTaskArg {
 public:
     CcuTaskArgDispatchSetup(uint64_t statusAddr, uint64_t statusToken,
@@ -88,26 +66,25 @@ public:
         : statusAddr(statusAddr), statusToken(statusToken),
           oneBufAddr(oneBufAddr), oneBufToken(oneBufToken) {}
 
-    uint64_t statusAddr{0};   // 本卡状态区 GM 起址（teardown 也读这里）
-    uint64_t statusToken{0};  // statusAddr 的 token
-    uint64_t oneBufAddr{0};   // host 预填 R 个 int32=1 的源 buffer GM 起址
-    uint64_t oneBufToken{0};  // oneBufAddr 的 token
+    uint64_t statusAddr{0};
+    uint64_t statusToken{0};
+    uint64_t oneBufAddr{0};
+    uint64_t oneBufToken{0};
 };
 
-// -------- CCU kernel：Algorithm() 内建微码图，把 1 写到本卡状态区 --------
-class CcuKernelDispatchSetup : public CcuKernel {
+// -------- CCU kernel：Algorithm() 内建微码图，跨卡把 1 写到【对端】状态区 --------
+class CcuKernelDispatchSetup : public Mc2CcuKernelBase {
 public:
-    explicit CcuKernelDispatchSetup(const CcuKernelArg &arg) : CcuKernel(arg) {
+    explicit CcuKernelDispatchSetup(const CcuKernelArg &arg) : Mc2CcuKernelBase(arg) {
         const auto *kernelArg = dynamic_cast<const CcuKernelArgDispatchSetup *>(&arg);
         epWorldSize_ = kernelArg->epWorldSize;
         epRankId_    = kernelArg->epRankId;
     }
     ~CcuKernelDispatchSetup() override {}
 
-    // 设备侧算法：段 1 建资源 → 段 2 Load SQE（顺序须与 GeneArgs 完全一致）→ 段 10 LocalCopyNb 写 1。
     HcclResult Algorithm() override;
 
-    // host→device 参数序列：device 侧 Load 顺序必须与此【逐字节一致】，否则读到错地址/错 token。
+    // host→device 参数序列：device 侧 Load 顺序必须与此【逐字节一致】，否则读到错位地址/token。
     std::vector<uint64_t> GeneArgs(const CcuTaskArg &arg) override {
         const auto *taskArg = dynamic_cast<const CcuTaskArgDispatchSetup *>(&arg);
         return {taskArg->statusAddr, taskArg->statusToken,
@@ -118,15 +95,16 @@ private:
     uint32_t epWorldSize_{1};
     uint32_t epRankId_{0};
 
-    // ---- 段 1 在 Algorithm() 内创建的 CCU 资源（成员仅为可读性，亦可局部变量）----
-    CcuRep::Variable   statusAddrVar_;
-    CcuRep::Variable   statusTokenVar_;
-    CcuRep::Variable   oneBufAddrVar_;
-    CcuRep::Variable   oneBufTokenVar_;
-    CcuRep::LocalAddr  readyDst_;
-    CcuRep::LocalAddr  readySrc_;
-    CcuRep::CompletedEvent event_;
-    CcuRep::CcuBuf     localCopyBuf_;   // [T1] A6 LocalCopyNb 要求的 UB 暂存 buf（块分配）
+    // ---- 段 1 在 Algorithm() 内创建的 CCU 资源 ----
+    CcuRep::Variable statusAddrVar_;    // 本卡 status 起址（Load；PreSync 交换给对端）
+    CcuRep::Variable statusTokenVar_;   // 本卡 status token（Load；PreSync 交换给对端）
+    CcuRep::Variable oneBufAddrVar_;    // 本卡 oneBuf 源起址（Load；段 7 localSrc.addr）
+    CcuRep::Variable oneBufTokenVar_;   // 本卡 oneBuf 源 token（Load；段 7 localSrc.token）
+    std::vector<CcuRep::Variable> remoteStatusAddrs_;   // PreSync 后各对端 status 起址（段 7 remoteDst.addr）
+    std::vector<CcuRep::Variable> remoteStatusTokens_;  // PreSync 后各对端 status token（段 7 remoteDst.token）
+    CcuRep::LocalAddr  localSrc_;       // 段 7 数据源（本卡 oneBuf）
+    CcuRep::RemoteAddr remoteDst_;      // 段 7 跨卡写目标（对端 status）
+    CcuRep::CompletedEvent event_;      // 段 6 RecordExpectCount 完成事件
 };
 
 }  // namespace mc2
