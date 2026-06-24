@@ -620,6 +620,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                 params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServerForSender));
             int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
+            PRINTF("Level1DispatchUrma sender core: RankId=%d, cursor=%d, localExpertId=%d\n", rankId_, cursor, localExpertId);
             GlobalTensor<uint8_t> workspaceSrcGlobal;
             GlobalTensor<uint8_t> relayDstGlobal;
             LocalTensor<uint8_t> copyTmpBytes = copyTmpTensors_[0].template ReinterpretCast<uint8_t>();
@@ -629,6 +630,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 
             while (true) {
                 int32_t endCount = ReadGmByPassDCache(countPtr);
+                PRINTF("Level1DispatchUrma sender core: RankId=%d, targetServerForSender=%d, cursor=%d, endCount=%d, localExpertId=%d\n",
+                    rankId_, targetServerForSender, cursor, endCount, localExpertId);
                 while (cursor < endCount) {
                     uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
                         static_cast<uint64_t>(cursor) * sendWorkspaceRecordBytes_;
@@ -660,7 +663,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 
                 bool allComputeDone = true;
                 for (uint32_t idx = 0; idx < realComputeCoreNum; ++idx) {
-                    if (ReadGmByPassDCache(donePtr + idx) != roundTag) {
+                    if (ReadGmByPassDCache(donePtr + idx) < roundTag) {
                         allComputeDone = false;
                         break;
                     }
