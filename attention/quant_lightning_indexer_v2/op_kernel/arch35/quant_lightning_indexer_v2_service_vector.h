@@ -110,15 +110,6 @@ private:
     // tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
     LocalTensor<SCORE_T> vec1OutUB_;
-    // tmp buff for LD
-    TBuf<TPosition::VECCALC> ldValueBuf_;
-    LocalTensor<uint32_t> ldValueLocal_;  // SCORE_T
-
-    TBuf<TPosition::VECCALC> topkIndexBuf_;
-    LocalTensor<uint32_t> topkIndexLocal_;
-
-    TBuf<TPosition::VECCALC> topkValueBuf_;
-    LocalTensor<uint32_t> topkValueLocal_;
 
     // tmp buff for topk
     TBuf<TPosition::VECCALC> mrgValueBuf_;
