@@ -179,7 +179,8 @@ InplacePartialRotaryMulGradBAB<TDY, TCOS>::ProcessN(LocalTensor<TCOS> &sinTensor
         dyInQue_.FreeTensor(dyTensor);
         dxOutQue_.EnQue(dxTensor);
         dxTensor = dxOutQue_.template DeQue<TDY>();
-        DataCopyPad(dxTensor, dxGm_[offset], copyParams, padParams);
+        DataCopyPad(dxGm_[offset], dxTensor, copyParams, padParams);
+        dxOutQue_.FreeTensor(dxTensor);
     }
 }
 
