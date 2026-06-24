@@ -30,10 +30,9 @@ TEST_F(l2_moe_finalize_routing_v2_test, Ascend910B2_moe_finalize_routing_v2_fp32
     auto expertIdx = TensorDesc({16, 1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
     auto out = TensorDesc({16, 16}, ACL_FLOAT, ACL_FORMAT_ND);
     int64_t dropPadMode = 0;
-    int64_t k = 1;
 
     auto ut = OP_API_UT(aclnnMoeFinalizeRoutingV2,
-                        INPUT(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx, dropPadMode, k), OUTPUT(out));
+                        INPUT(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx, dropPadMode), OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -47,11 +46,10 @@ TEST_F(l2_moe_finalize_routing_v2_test, Ascend910B2_moe_finalize_routing_v2_bf16
     auto x1 = TensorDesc({16, 16}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto out = TensorDesc({16, 16}, ACL_BF16, ACL_FORMAT_ND);
     int64_t dropPadMode = 0;
-    int64_t k = 1;
 
     auto ut = OP_API_UT(aclnnMoeFinalizeRoutingV2,
                         INPUT(expandedX, expandedRowIdx, x1, (aclTensor*)nullptr, (aclTensor*)nullptr,
-                              (aclTensor*)nullptr, (aclTensor*)nullptr, dropPadMode, k),
+                              (aclTensor*)nullptr, (aclTensor*)nullptr, dropPadMode),
                         OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -67,11 +65,10 @@ TEST_F(l2_moe_finalize_routing_v2_test, Ascend310P_moe_finalize_routing_v2_fp32)
     auto x1 = TensorDesc({16, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
     auto out = TensorDesc({16, 16}, ACL_FLOAT, ACL_FORMAT_ND);
     int64_t dropPadMode = 0;
-    int64_t k = 1;
 
     auto ut = OP_API_UT(aclnnMoeFinalizeRoutingV2,
                         INPUT(expandedX, expandedRowIdx, x1, (aclTensor*)nullptr, (aclTensor*)nullptr,
-                              (aclTensor*)nullptr, (aclTensor*)nullptr, dropPadMode, k),
+                              (aclTensor*)nullptr, (aclTensor*)nullptr, dropPadMode),
                         OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -85,11 +82,10 @@ TEST_F(l2_moe_finalize_routing_v2_test, Ascend910B2_moe_finalize_routing_v2_fp16
     auto expandedRowIdx = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 15);
     auto out = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     int64_t dropPadMode = 0;
-    int64_t k = 1;
 
     auto ut = OP_API_UT(aclnnMoeFinalizeRoutingV2,
                         INPUT(expandedX, expandedRowIdx, (aclTensor*)nullptr, (aclTensor*)nullptr, (aclTensor*)nullptr,
-                              (aclTensor*)nullptr, (aclTensor*)nullptr, dropPadMode, k),
+                              (aclTensor*)nullptr, (aclTensor*)nullptr, dropPadMode),
                         OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
