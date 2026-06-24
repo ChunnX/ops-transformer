@@ -715,7 +715,7 @@ macro(add_graph_plugin_sources)
     endif()
   endif()
 
-  file(GLOB GRAPH_PLUGIN_SRCS 
+  file(GLOB GRAPH_PLUGIN_SRCS
       ${SOURCE_DIR}/*_graph_plugin*.cpp
       ${SOURCE_DIR}/fusion_pass/*fusion_pass*.cpp
   )
