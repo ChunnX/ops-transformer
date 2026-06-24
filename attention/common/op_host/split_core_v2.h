@@ -259,6 +259,8 @@ void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignC
 // main
 void SplitFD(FAMetaData &result);
 void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, FAMetaData &result);
+void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param);
+void LogSplitCoreResult(const FAMetaData &result);
 void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, FAMetaData &result);
 } // namespace split_core_v2
 #endif
