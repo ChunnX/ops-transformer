@@ -10,8 +10,8 @@
 import torch
 import torch_npu
 from torch.library import impl
-from npu_ops_transformer.op_builder.builder import OpBuilder
-from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 from typing import Optional
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
@@ -75,7 +75,7 @@ def npu_mixed_quant_flash_attn_metadata(num_heads_q, num_heads_kv, head_dim, qua
                             max_seqlen_kv: Optional[int] = None,
                             mask_mode: Optional[int] = None, win_left: Optional[int] = None,
                             win_right: Optional[int] = None, layout_q: Optional[str] = None,
-                            layout_kv: Optional[str] = None, layout_out: Optional[str] = None):
+                            layout_kv: Optional[str] = None, layout_out: Optional[str] = None) -> tensor: 
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
