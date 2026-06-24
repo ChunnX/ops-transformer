@@ -73,9 +73,9 @@ SEED_KR = 9
 
 DEVICE_ID = 0
 
-Q_DATA_RANGE = (1.0, 1.0)
-K_DATA_RANGE = (1.0, 1.0)
-V_DATA_RANGE = (1.0, 1.0)
+Q_DATA_RANGE = (-5.0, 5.0)
+K_DATA_RANGE = (-5.0, 5.0)
+V_DATA_RANGE = (-5.0, 5.0)
 
 # ==============================================================================
 # 通用工具
@@ -668,8 +668,10 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     EPSILON = 1e-20
     LN2 = math.log(2.0)
     Q_BLOCK_SIZE = 128
-    K_BLOCK_SIZE = 256
-    V_BLOCK_SIZE = 512
+    # K_BLOCK_SIZE = 256
+    # V_BLOCK_SIZE = 512
+    K_BLOCK_SIZE = 128
+    V_BLOCK_SIZE = 256
 
     q_scale_is_tnd = resolve_q_scale_layout(actual_seq_q)[0] == "TND"
     if q_scale_is_tnd:
@@ -710,6 +712,8 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     q_padding_mask = q_range >= q_lens_acl
     k_padding_mask = k_range >= k_lens_acl
 
+    print("pjjjjjj: cpu SPARSE_MODE =", SPARSE_MODE)
+
     if SPARSE_MODE == 3:
         delta = k_lens_acl - q_lens_acl
         causal_mask = k_range > (q_range + delta)
@@ -749,13 +753,23 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             Sk_start = j * K_BLOCK_SIZE
             Sk_end = min(Sk_start + K_BLOCK_SIZE, Skv)
             deq_scale_k_j = dequant_scale_k_expanded[:, :, Sk_start:Sk_end, :]
+            print("C1-1 deq_scale_q_i ====== ")
+            print(deq_scale_q_i)
 
             S_ij = torch.matmul(Qi * deq_scale_q_i, (Kj * deq_scale_k_j).permute(0, 1, 3, 2))
+            print("C1-nope result ====== ")
+            print(S_ij)
             if ENABLE_ROPE and qr_bf16 is not None:
                 Qri, Krj = Qr_BLOCKS[i], Kr_BLOCKS[j]
                 Qri = Qri.to(torch.float32)
                 Krj = Krj.to(torch.float32)
                 S_ij += torch.matmul(Qri, Krj.permute(0, 1, 3, 2))
+
+            #     print("C1-rope result ====== ")
+            #     print(S_ij)
+
+            # print("rope ======= d_total")
+            # print(d_total)
 
             S_ij = S_ij / math.sqrt(d_total)
             causal_mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
@@ -769,6 +783,9 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             P_ij_raw = torch.exp(S_ij - m_block_j)
             s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
             P_ij_drop = P_ij_raw.to(FP8_DTYPE).to(torch.float32)
+
+            # print("V1 result ====== ")
+            # print(P_ij_drop)
 
             if j + 1 < TILES_KV:
                 Kj1 = K_BLOCKS[j + 1]
@@ -825,6 +842,8 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 Vj_dequant = Vj_expanded * deq_scale_v_j[:, :, :Kj.shape[2], :]
 
                 P_ij_Vj = torch.matmul(P_ij_drop, Vj_dequant)
+                # print("C2 result ====== ")
+                # print(P_ij_Vj)
                 update_mul_si = torch.exp(mi - m_block_j)
                 si_new = update_mul_si * si + s_block_j
                 o_BLOCKS[i] = update_mul_si * oi + P_ij_Vj
@@ -898,6 +917,8 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
 
         block_table_npu = block_table_torch.npu() if isinstance(block_table_torch, torch.Tensor) else torch.as_tensor(block_table_torch, dtype=torch.int32).npu()
         accum_seq_q = make_accum_seq(actual_seq_q)
+
+        print("pjjjjjj: npu SPARSE_MODE =", SPARSE_MODE)
         
         # SPARSE_MODE=0时不传mask，其他模式传 causal mask
         if SPARSE_MODE == 0:
@@ -1113,8 +1134,8 @@ def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_k
 
 def run_mxfp8_case(case=None, run_npu=False, dump_dir=None, catch_npu_error=False):
     global TESTCASE_NAME, B, N_q, N_kv, D, DV, D_rope
-    global ACTUAL_SEQ_Q, ACTUAL_SEQ_KV, INPUT_LAYOUT, SCALE_VALUE, SPARSE_MODE
-    global ENABLE_PA
+    global ACTUAL_SEQ_Q, ACTUAL_SEQ_KV, INPUT_LAYOUT, SCALE_VALUE, SPARSE_MODE, KV_CACHE_LAYOUT
+    global ENABLE_PA, ENABLE_ROPE
 
     TESTCASE_NAME = case.get("name", TESTCASE_NAME)
     B = int(case["B"])
@@ -1124,9 +1145,18 @@ def run_mxfp8_case(case=None, run_npu=False, dump_dir=None, catch_npu_error=Fals
     DV = int(case.get("DV", D))
     ACTUAL_SEQ_Q = [int(case["Sq"])] * B
     ACTUAL_SEQ_KV = [int(case["Skv"])] * B
-    INPUT_LAYOUT = case.get("layout", "BNSD")
+    INPUT_LAYOUT = case.get("layout", "TND")
     SCALE_VALUE = float(case["scale"])
-    SPARSE_MODE = int(case.get("sparse", 0))
+    SPARSE_MODE = int(case.get("sparse_mode", 0))
+
+    print(SPARSE_MODE)
+
+    ###
+    KV_CACHE_LAYOUT = case.get("kv_cache_layout", "BnNBsD")
+    ENABLE_PA = bool(case.get("enable_pa"))
+    ENABLE_ROPE = bool(case.get("enable_rope", False))
+    D_rope = int(case.get("D_rope", 0))
+
 
     if N_q % N_kv != 0:
         raise ValueError("N_q must be divisible by N_kv for GQA")
@@ -1167,6 +1197,6 @@ def run_mxfp8_case(case=None, run_npu=False, dump_dir=None, catch_npu_error=Fals
     cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out, ACTUAL_SEQ_Q, "TND")
     result_compare_method.check_result(cpu_tnd_torch, atten_out)
 
-    # if ENABLE_LSE:
-    #     print("\n[Step 5] LSE 精度对比")
-    #     result_compare_method.check_result(cpu_lse, lse_out)
+    if ENABLE_LSE:
+        print("\n[Step 5] LSE 精度对比")
+        result_compare_method.check_result(cpu_lse, lse_out)
