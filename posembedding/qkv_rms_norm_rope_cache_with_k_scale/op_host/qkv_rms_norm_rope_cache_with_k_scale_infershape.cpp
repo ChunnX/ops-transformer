@@ -10,179 +10,286 @@
 
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 #include "log/log.h"
 #include "register/op_impl_registry.h"
 
-namespace ops {
-namespace {
-constexpr uint64_t QKV_INDEX = 0;
-constexpr uint64_t K_CACHE_INDEX = 5;
-constexpr uint64_t V_CACHE_INDEX = 6;
-constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
-constexpr uint64_t CU_SEQ_LEN_INDEX = 8;
-constexpr uint64_t ACTUAL_SEQ_LENS_INDEX = 9;
-constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
-constexpr uint64_t INPUT_LAYOUT_ATTR_INDEX = 1;
+namespace QkvRmsNormRopeCacheWithKScale {
+static constexpr uint64_t QKV_INDEX = 0;
+static constexpr uint64_t K_CACHE_INDEX = 5;
+static constexpr uint64_t V_CACHE_INDEX = 6;
+static constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
+static constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
+static constexpr uint64_t INPUT_LAYOUT_ATTR_INDEX = 1;
 
-constexpr uint64_t Q_OUT_INDEX = 0;
-constexpr uint64_t Q_SCALE_INDEX = 1;
-constexpr uint64_t K_CACHE_OUT_INDEX = 2;
-constexpr uint64_t V_CACHE_OUT_INDEX = 3;
-constexpr uint64_t K_SCALE_CACHE_OUT_INDEX = 4;
+static constexpr uint64_t Q_OUT_INDEX = 0;
+static constexpr uint64_t Q_SCALE_INDEX = 1;
+static constexpr uint64_t K_CACHE_OUT_INDEX = 2;
+static constexpr uint64_t V_CACHE_OUT_INDEX = 3;
+static constexpr uint64_t K_SCALE_CACHE_OUT_INDEX = 4;
 
-constexpr uint64_t HEAD_NUMS_SIZE = 3;
-constexpr uint64_t QKV_DIM_NUM = 3;
-constexpr uint64_t CACHE_DIM_NUM = 4;
-constexpr uint64_t SEQ_LEN_DIM_NUM = 1;
-constexpr const char *INPUT_LAYOUT_NTD = "NTD";
-constexpr const char *INPUT_LAYOUT_TND = "TND";
+static constexpr uint64_t QKV_DIM_NUM = 3;
+static constexpr const char *INPUT_LAYOUT_NTD = "NTD";
+static constexpr const char *INPUT_LAYOUT_TND = "TND";
+static constexpr const char *DEFAULT_OP_NAME = "QkvRmsNormRopeCacheWithKScale";
 
-ge::graphStatus ValidateDimNum(gert::InferShapeContext *context, const char *tensorName, const gert::Shape *shape,
-                               uint64_t expectedDimNum)
+struct InferAttrs {
+    int64_t qHeads = 0;
+    bool isNtd = true;
+};
+
+struct InputShapes {
+    const gert::Shape *qkv = nullptr;
+    const gert::Shape *kCache = nullptr;
+    const gert::Shape *vCache = nullptr;
+    const gert::Shape *kScaleCache = nullptr;
+};
+
+struct OutputShapes {
+    gert::Shape *qOut = nullptr;
+    gert::Shape *qScale = nullptr;
+    gert::Shape *kCache = nullptr;
+    gert::Shape *vCache = nullptr;
+    gert::Shape *kScaleCache = nullptr;
+};
+
+struct QOutputDims {
+    int64_t totalTokens = 0;
+    int64_t headDim = 0;
+};
+
+static const char *GetLogOpName(gert::InferShapeContext *context)
+{
+    return context == nullptr || context->GetNodeName() == nullptr ? DEFAULT_OP_NAME : context->GetNodeName();
+}
+
+static std::string RankString(uint64_t dimNum)
+{
+    return std::to_string(dimNum) + "D";
+}
+
+static std::string ShapeString(const gert::Shape *shape)
+{
+    return shape == nullptr ? "nullptr" : Ops::Base::ToString(*shape);
+}
+
+static ge::graphStatus CheckNotNull(gert::InferShapeContext *context, const void *ptr, const char *paramName,
+                                    const char *reason)
+{
+    if (ptr != nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), paramName, "nullptr", reason);
+    return ge::GRAPH_FAILED;
+}
+
+static ge::graphStatus ValidateMinDimNum(gert::InferShapeContext *context, const char *tensorName,
+                                         const gert::Shape *shape, uint64_t minDimNum)
 {
     const uint64_t actualDimNum = static_cast<uint64_t>(shape->GetDimNum());
-    if (actualDimNum != expectedDimNum) {
-        OP_LOGE(context, "%s dim num must be %llu, but got %llu.", tensorName, expectedDimNum, actualDimNum);
+    if (actualDimNum < minDimNum) {
+        const std::string actualRank = RankString(actualDimNum);
+        const std::string reason = std::string(tensorName) + " rank must be greater than or equal to " +
+                                   RankString(minDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetLogOpName(context), tensorName, actualRank.c_str(),
+                                                 reason.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ValidatePositiveDims(gert::InferShapeContext *context, const char *tensorName, const gert::Shape *shape)
-{
-    const uint64_t dimNum = static_cast<uint64_t>(shape->GetDimNum());
-    for (uint64_t i = 0; i < dimNum; ++i) {
-        if (shape->GetDim(i) <= 0) {
-            OP_LOGE(context, "%s dim[%llu] must be greater than 0, but got %ld.", tensorName, i,
-                    shape->GetDim(i));
-            return ge::GRAPH_FAILED;
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus ParseInputLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
-                                 const char *&inputLayout)
+static ge::graphStatus ParseInputLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
+                                        bool &isNtd)
 {
     if (static_cast<uint64_t>(attrs->GetAttrNum()) <= INPUT_LAYOUT_ATTR_INDEX) {
-        OP_LOGE(context, "inputLayout attr is required.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "inputLayout", "missing",
+                                              "inputLayout must exist");
         return ge::GRAPH_FAILED;
     }
-    inputLayout = attrs->GetStr(INPUT_LAYOUT_ATTR_INDEX);
+    const char *inputLayout = attrs->GetStr(INPUT_LAYOUT_ATTR_INDEX);
     if (inputLayout == nullptr) {
-        OP_LOGE(context, "inputLayout attr is nullptr.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "inputLayout", "nullptr",
+                                              "inputLayout must exist");
         return ge::GRAPH_FAILED;
     }
     if (std::strcmp(inputLayout, INPUT_LAYOUT_NTD) == 0 || std::strcmp(inputLayout, INPUT_LAYOUT_TND) == 0) {
+        isNtd = std::strcmp(inputLayout, INPUT_LAYOUT_NTD) == 0;
         return ge::GRAPH_SUCCESS;
     }
-    OP_LOGE(context, "inputLayout only supports NTD or TND, but got %s.", inputLayout);
+    OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "inputLayout", inputLayout, "NTD or TND");
     return ge::GRAPH_FAILED;
 }
-} // namespace
 
-ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext *context)
+static ge::graphStatus ParseQHeadNum(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
+                                     int64_t &qHeads)
 {
-    OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    auto attrs = context->GetAttrs();
-    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const auto headNums = attrs->GetListInt(HEAD_NUMS_ATTR_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, headNums);
+    if (CheckNotNull(context, headNums, "head_nums", "head_nums must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const uint64_t headNumsSize = static_cast<uint64_t>(headNums->GetSize());
-    if (headNumsSize != HEAD_NUMS_SIZE) {
-        OP_LOGE(context, "head_nums size must be %llu, but got %llu.", HEAD_NUMS_SIZE, headNumsSize);
+    if (headNumsSize < 1) {
+        const std::string incorrectSize = std::to_string(headNumsSize);
+        const std::string correctSize = "greater than or equal to 1";
+        OP_LOGE_FOR_INVALID_LISTSIZE(GetLogOpName(context), "head_nums", incorrectSize.c_str(), correctSize.c_str());
         return ge::GRAPH_FAILED;
     }
     const auto *headNumsData = headNums->GetData();
-    OP_CHECK_NULL_WITH_CONTEXT(context, headNumsData);
-    for (uint64_t i = 0; i < HEAD_NUMS_SIZE; ++i) {
-        if (headNumsData[i] <= 0) {
-            OP_LOGE(context, "head_nums[%llu] must be greater than 0.", i);
-            return ge::GRAPH_FAILED;
-        }
+    if (CheckNotNull(context, headNumsData, "head_nums", "head_nums data must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
+    qHeads = headNumsData[0];
+    if (qHeads <= 0) {
+        const std::string incorrectValue = std::to_string(qHeads);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "head_nums", incorrectValue.c_str(),
+                                              "head_nums[0] must be greater than 0");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
-    const gert::Shape *qkvShape = context->GetInputShape(QKV_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, qkvShape);
-    const gert::Shape *kCacheShape = context->GetInputShape(K_CACHE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, kCacheShape);
-    const gert::Shape *vCacheShape = context->GetInputShape(V_CACHE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, vCacheShape);
-    const gert::Shape *kScaleCacheShape = context->GetInputShape(K_SCALE_CACHE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, kScaleCacheShape);
-    const gert::Shape *cuSeqLenShape = context->GetInputShape(CU_SEQ_LEN_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, cuSeqLenShape);
-    const gert::Shape *actualSeqLensShape = context->GetInputShape(ACTUAL_SEQ_LENS_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, actualSeqLensShape);
-
-    if (ValidateDimNum(context, "qkv", qkvShape, QKV_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(context, "k_cache", kCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(context, "v_cache", vCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(context, "k_scale_cache", kScaleCacheShape, CACHE_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(context, "cu_seq_len", cuSeqLenShape, SEQ_LEN_DIM_NUM) != ge::GRAPH_SUCCESS ||
-        ValidateDimNum(context, "actual_seq_lens", actualSeqLensShape, SEQ_LEN_DIM_NUM) != ge::GRAPH_SUCCESS) {
+static ge::graphStatus ValidateQkvShapeForOutput(gert::InferShapeContext *context, const gert::Shape *qkvShape,
+                                                 const InferAttrs &attrs, QOutputDims &dims)
+{
+    if (ValidateMinDimNum(context, "qkv", qkvShape, QKV_DIM_NUM) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ValidatePositiveDims(context, "qkv", qkvShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(context, "k_cache", kCacheShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(context, "v_cache", vCacheShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(context, "k_scale_cache", kScaleCacheShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(context, "cu_seq_len", cuSeqLenShape) != ge::GRAPH_SUCCESS ||
-        ValidatePositiveDims(context, "actual_seq_lens", actualSeqLensShape) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (cuSeqLenShape->GetDim(0) < 2 || actualSeqLensShape->GetDim(0) != cuSeqLenShape->GetDim(0) - 1) {
-        OP_LOGE(context, "actual_seq_lens shape must be [cu_seq_len dim0 - 1], got actual=%ld cu_seq_len=%ld.",
-                actualSeqLensShape->GetDim(0), cuSeqLenShape->GetDim(0));
-        return ge::GRAPH_FAILED;
-    }
-    const char *inputLayout = nullptr;
-    if (ParseInputLayout(context, attrs, inputLayout) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    const bool isNtd = std::strcmp(inputLayout, INPUT_LAYOUT_NTD) == 0;
-    const int64_t totalTokens = qkvShape->GetDim(isNtd ? 1 : 0);
-    const int64_t qkvHeads = qkvShape->GetDim(isNtd ? 0 : 1);
-    const int64_t qHeads = headNumsData[0];
-    const int64_t expectedQkvHeads = headNumsData[0] + headNumsData[1] + headNumsData[2];
-    const int64_t headDim = qkvShape->GetDim(2);
-    if (qkvHeads != expectedQkvHeads) {
-        OP_LOGE(context,
-                "qkv %s head dim must equal sum(head_nums)=%ld, but got shape={%ld,%ld,%ld}.",
-                inputLayout, expectedQkvHeads, qkvShape->GetDim(0), qkvShape->GetDim(1), qkvShape->GetDim(2));
+    dims.totalTokens = qkvShape->GetDim(attrs.isNtd ? 1 : 0);
+    dims.headDim = qkvShape->GetDim(2);
+    if (dims.totalTokens <= 0 || dims.headDim <= 0) {
+        const std::string incorrectShape = ShapeString(qkvShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetLogOpName(context), "qkv", incorrectShape.c_str(),
+                                              "qkv token dimension and head dimension must be greater than 0");
         return ge::GRAPH_FAILED;
     }
 
-    gert::Shape *qOutShape = context->GetOutputShape(Q_OUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, qOutShape);
-    gert::Shape *qScaleShape = context->GetOutputShape(Q_SCALE_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, qScaleShape);
-    gert::Shape *kCacheOutShape = context->GetOutputShape(K_CACHE_OUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, kCacheOutShape);
-    gert::Shape *vCacheOutShape = context->GetOutputShape(V_CACHE_OUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, vCacheOutShape);
-    gert::Shape *kScaleCacheOutShape = context->GetOutputShape(K_SCALE_CACHE_OUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, kScaleCacheOutShape);
+    const int64_t qkvHeads = qkvShape->GetDim(attrs.isNtd ? 0 : 1);
+    if (qkvHeads < attrs.qHeads) {
+        const std::string incorrectValues = std::to_string(qkvHeads) + ", " + std::to_string(attrs.qHeads);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            GetLogOpName(context), "qkv, head_nums", incorrectValues.c_str(),
+            "qkv logical head dimension must be greater than or equal to head_nums[0]");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
-    qOutShape->SetDimNum(3);
-    qOutShape->SetDim(0, isNtd ? qHeads : totalTokens);
-    qOutShape->SetDim(1, isNtd ? totalTokens : qHeads);
-    qOutShape->SetDim(2, headDim);
+static ge::graphStatus ParseInferAttrs(gert::InferShapeContext *context, InferAttrs &inferAttrs)
+{
+    if (CheckNotNull(context, context, "context", "context can not be nullptr") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    auto attrs = context->GetAttrs();
+    if (CheckNotNull(context, attrs, "attrs", "attrs can not be nullptr") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
-    qScaleShape->SetDimNum(2);
-    qScaleShape->SetDim(0, isNtd ? qHeads : totalTokens);
-    qScaleShape->SetDim(1, isNtd ? totalTokens : qHeads);
+    if (ParseQHeadNum(context, attrs, inferAttrs.qHeads) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ParseInputLayout(context, attrs, inferAttrs.isNtd) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
-    *kCacheOutShape = *kCacheShape;
-    *vCacheOutShape = *vCacheShape;
-    *kScaleCacheOutShape = *kScaleCacheShape;
+static ge::graphStatus GetInputShapes(gert::InferShapeContext *context, InputShapes &input)
+{
+    input.qkv = context->GetInputShape(QKV_INDEX);
+    if (CheckNotNull(context, input.qkv, "qkv", "qkv shape must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    input.kCache = context->GetInputShape(K_CACHE_INDEX);
+    if (CheckNotNull(context, input.kCache, "k_cache", "k_cache shape must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    input.vCache = context->GetInputShape(V_CACHE_INDEX);
+    if (CheckNotNull(context, input.vCache, "v_cache", "v_cache shape must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    input.kScaleCache = context->GetInputShape(K_SCALE_CACHE_INDEX);
+    if (CheckNotNull(context, input.kScaleCache, "k_scale_cache", "k_scale_cache shape must exist") !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus GetOutputShapes(gert::InferShapeContext *context, OutputShapes &output)
+{
+    output.qOut = context->GetOutputShape(Q_OUT_INDEX);
+    if (CheckNotNull(context, output.qOut, "q_out", "q_out shape must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    output.qScale = context->GetOutputShape(Q_SCALE_INDEX);
+    if (CheckNotNull(context, output.qScale, "q_scale", "q_scale shape must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    output.kCache = context->GetOutputShape(K_CACHE_OUT_INDEX);
+    if (CheckNotNull(context, output.kCache, "k_cache_out", "k_cache_out shape must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    output.vCache = context->GetOutputShape(V_CACHE_OUT_INDEX);
+    if (CheckNotNull(context, output.vCache, "v_cache_out", "v_cache_out shape must exist") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    output.kScaleCache = context->GetOutputShape(K_SCALE_CACHE_OUT_INDEX);
+    if (CheckNotNull(context, output.kScaleCache, "k_scale_cache_out", "k_scale_cache_out shape must exist") !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static void SetOutputShapes(const InputShapes &input, const OutputShapes &output, const InferAttrs &attrs,
+                            const QOutputDims &dims)
+{
+    output.qOut->SetDimNum(3);
+    output.qOut->SetDim(0, attrs.isNtd ? attrs.qHeads : dims.totalTokens);
+    output.qOut->SetDim(1, attrs.isNtd ? dims.totalTokens : attrs.qHeads);
+    output.qOut->SetDim(2, dims.headDim);
+
+    output.qScale->SetDimNum(2);
+    output.qScale->SetDim(0, attrs.isNtd ? attrs.qHeads : dims.totalTokens);
+    output.qScale->SetDim(1, attrs.isNtd ? dims.totalTokens : attrs.qHeads);
+
+    *output.kCache = *input.kCache;
+    *output.vCache = *input.vCache;
+    *output.kScaleCache = *input.kScaleCache;
+}
+
+ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext *context)
+{
+    InferAttrs attrs;
+    if (ParseInferAttrs(context, attrs) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    InputShapes input;
+    if (GetInputShapes(context, input) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    QOutputDims dims;
+    if (ValidateQkvShapeForOutput(context, input.qkv, attrs, dims) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    OutputShapes output;
+    if (GetOutputShapes(context, output) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    SetOutputShapes(input, output, attrs, dims);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus InferDtype4QkvRmsNormRopeCacheWithKScale(gert::InferDataTypeContext *context)
 {
-    OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    if (context == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(DEFAULT_OP_NAME, "context", "nullptr", "context can not be nullptr");
+        return ge::GRAPH_FAILED;
+    }
     // q_out is always the quantized FP8 query output of this op, independent of the qkv input dtype.
     context->SetOutputDataType(Q_OUT_INDEX, ge::DT_FLOAT8_E4M3FN);
     context->SetOutputDataType(Q_SCALE_INDEX, ge::DT_FLOAT);
@@ -191,9 +298,8 @@ ge::graphStatus InferDtype4QkvRmsNormRopeCacheWithKScale(gert::InferDataTypeCont
     context->SetOutputDataType(K_SCALE_CACHE_OUT_INDEX, context->GetInputDataType(K_SCALE_CACHE_INDEX));
     return ge::GRAPH_SUCCESS;
 }
+} // namespace QkvRmsNormRopeCacheWithKScale
 
 IMPL_OP_INFERSHAPE(QkvRmsNormRopeCacheWithKScale)
-    .InferShape(InferShape4QkvRmsNormRopeCacheWithKScale)
-    .InferDataType(InferDtype4QkvRmsNormRopeCacheWithKScale);
-
-} // namespace ops
+    .InferShape(QkvRmsNormRopeCacheWithKScale::InferShape4QkvRmsNormRopeCacheWithKScale)
+    .InferDataType(QkvRmsNormRopeCacheWithKScale::InferDtype4QkvRmsNormRopeCacheWithKScale);
