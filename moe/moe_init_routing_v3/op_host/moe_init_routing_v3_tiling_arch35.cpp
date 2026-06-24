@@ -217,6 +217,8 @@ private:
     ge::graphStatus CheckSetEmptyTensor();
     // 校验输出Tensor的Shape、Dtype
     ge::graphStatus CheckOutputs();
+    // 空tensor场景的workspace大小计算
+    ge::graphStatus GetEmptyTensorWorkspaceSize();
 
     // DoGetShapeAttrsInfo使用的子函数
     ge::graphStatus GetInputTensorsInfo();
@@ -560,11 +562,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()");
     // 空tensor场景：分配少量workspace即可
     if (isEmptyTensor_) {
-        workspaceSize_ = SIZE_16 * LENGTH_1024 * LENGTH_1024;
-        auto *workspacePtr = context_->GetWorkspaceSizes(1);
-        OP_CHECK_NULL_WITH_CONTEXT(context_, workspacePtr);
-        workspacePtr[0] = workspaceSize_;
-        return ge::GRAPH_SUCCESS;
+        return GetEmptyTensorWorkspaceSize();
     }
     // 计算workspace大小
     workspaceSize_ = 0;
@@ -602,6 +600,16 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
 
     OP_LOGD(context_, "Computed workspace size to allocate is %u bytes", workspaceSize_);
     // 设置workspace
+    auto *workspacePtr = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workspacePtr);
+    workspacePtr[0] = workspaceSize_;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetEmptyTensorWorkspaceSize()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetEmptyTensorWorkspaceSize()");
+    workspaceSize_ = SIZE_16 * LENGTH_1024 * LENGTH_1024;
     auto *workspacePtr = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspacePtr);
     workspacePtr[0] = workspaceSize_;
