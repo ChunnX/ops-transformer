@@ -202,7 +202,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     </tr>
     <tr>
         <td>metadata</td>
-        <td>可选输入</td>
+        <td>必选输入</td>
         <td>metadata</td>
         <td>INT32</td>
         <td>ND</td>
