@@ -27,18 +27,17 @@ using namespace MoeEpDispatchImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-template<uint32_t DoCpuSync, uint32_t IsCached, uint8_t NetworkMode>
+template<bool DoCpuSync, bool IsCached, bool IsTopkWeights, uint8_t NetworkMode>
 __global__ __aicore__ void moe_ep_dispatch(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
     GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
     GM_ADDR dstBufferSlotIdx, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpDispatchTilingData);
-    // REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpDispatchTilingData);
 
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchTilingData, tilingData, tilingGM);
-    MoeEpDispatch<DTYPE_X, DTYPE_SCALES, DoCpuSync, IsCached, NetworkMode> op;
+    MoeEpDispatch<DTYPE_X, DTYPE_SCALES, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
     AscendC::printf("start MoeEpDispatch kernel\n");
     op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank,
             numRecvPerExpert, dstBufferSlotIdx, workspaceGM, &pipe, &tilingData);

@@ -206,13 +206,6 @@ class MoEElasticBuffer:
             return bias[0], bias[1]
         raise TypeError(f"unsupported bias type: {type(bias)}")
 
-    def _check_hccl_buffsize(self, need_bytes: int):
-        avail = int(os.environ.get("HCCL_BUFFSIZE", str(200 * 1024 * 1024)))
-        if need_bytes > avail:
-            raise RuntimeError(
-                f"HCCL_BUFFSIZE={avail} insufficient; need {need_bytes} for "
-                f"ep={self.ep_world_size} x num_max_tokens_per_rank x per_slot_bytes")
-
     def destroy(self):
         if self._host_pinned_counter is not None:
             del self._host_pinned_counter
