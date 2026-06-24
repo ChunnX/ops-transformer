@@ -112,10 +112,8 @@ __aicore__ inline void EngramFetchArch35::Process()
         LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
         DataCopyExtParams params{1U, numTokens_ * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
-        PipeBarrier<PIPE_ALL>();
         DataCopyPad(indicesLocal, indicesGlobal, params, pad);
-        PipeBarrier<PIPE_ALL>();
-        // PipeBarrier<PIPE_MTE2>();
+        PipeBarrier<PIPE_MTE2>();
         uint32_t idxStart = ownerRank * numEntriesPerRank_;
         uint32_t idxEnd = idxStart + numEntriesPerRank_;
 
@@ -126,8 +124,7 @@ __aicore__ inline void EngramFetchArch35::Process()
             if (globalIdx < 0) {
                 continue;
             }
-            if (static_cast<uint32_t>(globalIdx) < idxStart ||
-                static_cast<uint32_t>(globalIdx) >= idxEnd) {
+            if (static_cast<uint32_t>(globalIdx) < idxStart || static_cast<uint32_t>(globalIdx) >= idxEnd) {
                 continue;
             }
 
@@ -135,32 +132,24 @@ __aicore__ inline void EngramFetchArch35::Process()
             GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
 
             if (ownerRank == rankId_) {
-                GM_ADDR src = (GM_ADDR)bhPtr_->commBuffer[rankId_] +
-                              static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                PipeBarrier<PIPE_ALL>();
+                GM_ADDR src =
+                    (GM_ADDR)bhPtr_->commBuffer[rankId_] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
                 LocalCopySlice(dst, src, hiddenBytes_);
-                PipeBarrier<PIPE_ALL>();
-            } 
-            else {
+            } else {
                 AscendC::printf("[aiv]ssssss\n");
-                PipeBarrier<PIPE_ALL>();
-                // uint32_t channelIdx = ownerRank > rankId_ ? ownerRank - 1 : ownerRank;
                 AscendC::printf("[kernel] channelIdx: %u\n", channelIdx);
                 GM_ADDR remoteSrcAddr =
-                    (GM_ADDR)bhPtr_->commBuffer[ownerRank] +
-                    static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                PipeBarrier<PIPE_ALL>();
-                AscendC::printf("[kernel] rankid: %lu, bhPtr_->hcommHandle_[channelIdx]: %lu, dst = %lu ,remoteSrcAddr = %lu \n", rankId_, bhPtr_->hcommHandle_[channelIdx], (uint64_t)dst, (uint64_t)remoteSrcAddr);
+                    (GM_ADDR)bhPtr_->commBuffer[ownerRank] + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                AscendC::printf(
+                    "[kernel] rankid: %lu, bhPtr_->hcommHandle_[channelIdx]: %lu, dst = %lu ,remoteSrcAddr = %lu \n",
+                    rankId_, bhPtr_->hcommHandle_[channelIdx], (uint64_t)dst, (uint64_t)remoteSrcAddr);
                 hcomm_.ReadNbi<false>(bhPtr_->hcommHandle_[channelIdx], dst, remoteSrcAddr, hiddenBytes_);
                 pendingReadCount++;
-             }
+            }
         }
 
         if (pendingReadCount > 0) {
-            PipeBarrier<PIPE_ALL>();
             hcomm_.Commit(bhPtr_->hcommHandle_[channelIdx]);
-            // hcomm_.Drain(bhPtr_->hcommHandle_[channelIdx]);
-            PipeBarrier<PIPE_ALL>();
         }
     }
 }
@@ -177,38 +166,10 @@ __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR sr
     while (off < len) {
         uint64_t thisLen = (len - off > TILE_BYTES) ? TILE_BYTES : (len - off);
         DataCopyExtParams cp{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
-        PipeBarrier<PIPE_ALL>();
         DataCopyPad(tmp, srcGm[off], cp, pad);
-        PipeBarrier<PIPE_ALL>();
-
-
-        //  if (off == 0) {
-        //     printf("=== SRC dump src: %lu dst %lu ===\n", (uint64_t)src,(uint64_t)dst);
-        //     LocalTensor<float16_t> tmpBf16 = tmp.ReinterpretCast<float16_t>();
-        //     uint32_t numBf16Elems = static_cast<uint32_t>(thisLen) / 2;
-        //     printf("=== SRC dump (off=0, %u bf16 elems) ===\n", numBf16Elems);
-        //     for (uint32_t j = 0; j < numBf16Elems && j < 10; j++) {
-        //         printf("src[%u] = %f\n", j, static_cast<float>(tmpBf16(j)));
-        //     }
-        // }
-
-        //PipeBarrier<PIPE_MTE2>();
-        PipeBarrier<PIPE_ALL>();
+        PipeBarrier<PIPE_MTE2>();
         DataCopyPad(dstGm[off], tmp, cp);
-        //PipeBarrier<PIPE_MTE3>();
-        PipeBarrier<PIPE_ALL>();
-
-        //  if (off == 0) {
-        //     DataCopyPad(tmp, dstGm[off], cp, pad);
-        //     PipeBarrier<PIPE_MTE2>();
-        //     LocalTensor<float16_t> dstBf16 = tmp.ReinterpretCast<float16_t>();
-        //     uint32_t numBf16Elems = static_cast<uint32_t>(thisLen) / 2;
-        //      printf("=== DST dump src: %lu dst %lu ===\n", (uint64_t)src,(uint64_t)dst);
-        //     printf("=== DST dump after copy (off=0, %u bf16 elems) ===\n", numBf16Elems);
-        //     for (uint32_t j = 0; j < numBf16Elems && j < 10; j++) {
-        //         printf("dst[%u] = %f\n", j, static_cast<float>(dstBf16(j)));
-        //     }
-        // }
+        PipeBarrier<PIPE_MTE3>();
         off += thisLen;
     }
 }
