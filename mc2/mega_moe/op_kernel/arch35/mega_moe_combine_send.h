@@ -381,7 +381,7 @@ template <typename QuantOutType>
 __aicore__ inline void CombineQuantizedTokensByUrma(
     uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
     uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t>& tripleTensor,
-    LocalTensor<QuantOutType>& ubQuant, const Params& params)
+    LocalTensor<QuantOutType>& ubQuant, Params& params)
 {
     int64_t quantRowSize = n + nScale;
     uint32_t toRankId = tripleTensor.GetValue(batchStart * TRIPLE_SIZE + RANK_ID);
