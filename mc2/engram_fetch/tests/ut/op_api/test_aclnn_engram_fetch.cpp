@@ -31,7 +31,7 @@ protected:
 };
 
 TEST_F(AclnnEngramFetchTest, ascend950_success) {
-    auto bufferHandle_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
 
@@ -40,7 +40,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_success) {
     int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(bufferHandle_desc, indices_desc, fetched_desc, hiddenSize, numEntriesPerRank, outputDtype),
+                        INPUT(commContext_desc, indices_desc, fetched_desc, hiddenSize, numEntriesPerRank, outputDtype),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -49,7 +49,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_success) {
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(AclnnEngramFetchTest, ascend950_nullptr_bufferHandle) {
+TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext) {
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
 
@@ -68,7 +68,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_bufferHandle) {
 }
 
 TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices) {
-    auto bufferHandle_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto fetched_desc = TensorDesc({8, 512}, ACL_BF16, ACL_FORMAT_ND);
 
     int32_t hiddenSize = 512;
@@ -76,7 +76,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices) {
     int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(bufferHandle_desc, nullptr, fetched_desc, hiddenSize, numEntriesPerRank, outputDtype),
+                        INPUT(commContext_desc, nullptr, fetched_desc, hiddenSize, numEntriesPerRank, outputDtype),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
@@ -86,7 +86,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices) {
 }
 
 TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched) {
-    auto bufferHandle_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto commContext_desc = TensorDesc({2048}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto indices_desc = TensorDesc({8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 7);
 
     int32_t hiddenSize = 512;
@@ -94,7 +94,7 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched) {
     int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(bufferHandle_desc, indices_desc, nullptr, hiddenSize, numEntriesPerRank, outputDtype),
+                        INPUT(commContext_desc, indices_desc, nullptr, hiddenSize, numEntriesPerRank, outputDtype),
                         OUTPUT());
 
     uint64_t workspace_size = 0;
