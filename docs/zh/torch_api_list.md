@@ -19,3 +19,4 @@
 |    接口名   |   说明     | 确定性说明 |
 | ----------- | ------------------- | ------------------- |
 |[flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/npu_flash_attn.md)|完成xx计算。|xx|
+|[inplace_partial_rotary_mul](../../torch_extension/cann_ops_transformer/docs/zh/inplace_partial_rotary_mul.md)|执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。|默认支持确定性计算。|
