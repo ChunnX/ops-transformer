@@ -682,6 +682,9 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     runInfo.tensorKeyScaleOffset = keyScaleCoreOffset;
     runInfo.tensorWeightsOffset = weightsCoreOffset;
     runInfo.indiceOutOffset = indiceOutCoreOffset;
+    if (runInfo.needTndPadding) {
+        vectorService.DoTndPadding(runInfo);
+    }
 }
 
 template <typename QLIV2T>
