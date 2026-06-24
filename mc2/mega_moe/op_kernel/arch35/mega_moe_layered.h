@@ -902,7 +902,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
-    // int32_t waitLoop = 0;
+    int32_t waitLoop = 0;
     do {
         hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
         hcomm_.Drain(channel);
@@ -913,7 +913,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         if (readyValue == 1) {
             break;
         }
-        // ++waitLoop;
+        ++waitLoop;
         // if (waitLoop > 1000) {
         //     PRINTF("ReadRelayTokenToCopyTmp wait ready timeout: rankId=%d relayRank=%d blockIdx=%d "
         //            "bufferIdx=%d waitLoop=%d ready=%d remoteRecordAddr=0x%lx scratchAddr=0x%lx "
