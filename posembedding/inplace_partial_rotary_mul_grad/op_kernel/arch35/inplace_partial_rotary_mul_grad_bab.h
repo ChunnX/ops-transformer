@@ -75,33 +75,34 @@ __aicore__ inline void
 InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling,
                                                 GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx)
 {
-    this->pipe_ = pipe;
-    this->tilingData_ = tiling;
-    if (GetBlockIdx() >= tilingData_->usedCoreNum) {
-        return;
-    }
-    this->blockIdx_ = GetBlockIdx();
-    this->dSplitCoef_ = tilingData_->dSplitCoef;
+    AscendC::printf("InplacePartialRotaryMulGradBAB::Init() blockIdx=%d\n", GetBlockIdx());
+    // this->pipe_ = pipe;
+    // this->tilingData_ = tiling;
+    // if (GetBlockIdx() >= tilingData_->usedCoreNum) {
+    //     return;
+    // }
+    // this->blockIdx_ = GetBlockIdx();
+    // this->dSplitCoef_ = tilingData_->dSplitCoef;
 
-    this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
-                                                       static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
-                         tilingData_->dSplitCoef;
-    this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
-                                                        static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
-                          tilingData_->dSplitCoef;
-    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY));
-    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TCOS));
-    this->ubFactorN_ = tilingData_->ubFactorN;
-    this->ubFactorS_ = tilingData_->ubFactorS;
-    this->dyGm_.SetGlobalBuffer((__gm__ TDY *)dy);
-    this->dxGm_.SetGlobalBuffer((__gm__ TDY *)dx);
-    this->cosGm_.SetGlobalBuffer((__gm__ TCOS *)cos);
-    this->sinGm_.SetGlobalBuffer((__gm__ TCOS *)sin);
+    // this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+    //                                                    static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
+    //                      tilingData_->dSplitCoef;
+    // this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+    //                                                     static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
+    //                       tilingData_->dSplitCoef;
+    // this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY));
+    // this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TCOS));
+    // this->ubFactorN_ = tilingData_->ubFactorN;
+    // this->ubFactorS_ = tilingData_->ubFactorS;
+    // this->dyGm_.SetGlobalBuffer((__gm__ TDY *)dy);
+    // this->dxGm_.SetGlobalBuffer((__gm__ TDY *)dx);
+    // this->cosGm_.SetGlobalBuffer((__gm__ TCOS *)cos);
+    // this->sinGm_.SetGlobalBuffer((__gm__ TCOS *)sin);
 
-    this->pipe_->InitBuffer(this->dyInQue_, 2, ubFactorS_ * ubFactorN_ * dAlignLenDy_ * sizeof(TDY));
-    this->pipe_->InitBuffer(this->dxOutQue_, 2, ubFactorS_ * ubFactorN_ * dAlignLenDy_ * sizeof(TDY));
-    this->pipe_->InitBuffer(this->cosInQue_, 2, ubFactorS_ * dAlignLenCos_ * sizeof(TCOS));
-    this->pipe_->InitBuffer(this->sinInQue_, 2, ubFactorS_ * dAlignLenCos_ * sizeof(TCOS));
+    // this->pipe_->InitBuffer(this->dyInQue_, 2, ubFactorS_ * ubFactorN_ * dAlignLenDy_ * sizeof(TDY));
+    // this->pipe_->InitBuffer(this->dxOutQue_, 2, ubFactorS_ * ubFactorN_ * dAlignLenDy_ * sizeof(TDY));
+    // this->pipe_->InitBuffer(this->cosInQue_, 2, ubFactorS_ * dAlignLenCos_ * sizeof(TCOS));
+    // this->pipe_->InitBuffer(this->sinInQue_, 2, ubFactorS_ * dAlignLenCos_ * sizeof(TCOS));
 }
 
 template <typename TDY, typename TCOS>
