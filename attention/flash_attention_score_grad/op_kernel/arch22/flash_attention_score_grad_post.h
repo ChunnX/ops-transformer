@@ -46,6 +46,7 @@ public:
                           uint64_t ubOffset, uint64_t srcUbOffset);
     __aicore__ inline void NZVecClc(GlobalTensor<float> srcGm, GlobalTensor<OUT_TYPE> dstGm, uint64_t dataSize,
                              GM_ADDR seqS, int64_t curG, int64_t &curS, bool needMuls, int64_t flag, int64_t d, int64_t dAlign);
+    __aicore__ inline void EODCleanMultiCore(GlobalTensor<OUT_TYPE> &gm, int64_t offset, int64_t size);
     __aicore__ inline void NZProcess();
     __aicore__ inline void ComputeDataCopyOffset(int64_t curG, int64_t &curS, int64_t d, int64_t dAlign);
 
@@ -477,41 +478,39 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
 
 template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
           const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
+__aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::EODCleanMultiCore(
+    GlobalTensor<OUT_TYPE> &gm, int64_t offset, int64_t size)
+{
+    if (size <= 0 || usedCoreNum <= 0) {
+        return;
+    }
+    int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+    int64_t usedCore = (size + perSize - 1) / perSize;
+    int64_t tailSize = size - perSize * (usedCore - 1);
+    int64_t initSize = perSize;
+    if (cBlockIdx == usedCore - 1) {
+        initSize = tailSize;
+    }
+    if (cBlockIdx < usedCore) {
+        InitOutput<OUT_TYPE>(gm[offset + cBlockIdx * perSize], initSize, 0);
+    }
+}
+
+template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
+          const uint32_t INPUT_FORMAT, const uint32_t HAS_ROPE>
 __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZProcess()
 {
     if constexpr (LAYOUT == TND) {
-        if (cBlockIdx == 0) {
-            int64_t t1Full = tilingData->postTilingData.get_t1();
-            int64_t t2Full = tilingData->postTilingData.get_t2();
-            int64_t qEodOffset = qPostBlockTotal;
-            int64_t qEodSize = t1Full * n2 * g * d - qPostBlockTotal;
-            if (qEodSize > 0) {
-                InitOutput<OUT_TYPE>(dqGm[qEodOffset], qEodSize, 0);
-            }
-            int64_t kvEodOffset = kvPostBlockTotal;
-            int64_t kvEodSize = t2Full * n2 * d - kvPostBlockTotal;
-            if (kvEodSize > 0) {
-                InitOutput<OUT_TYPE>(dkGm[kvEodOffset], kvEodSize, 0);
-            }
-            if constexpr (CAST_DV) {
-                int64_t vEodOffset = kvPostBlockTotal;
-                int64_t vEodSize = t2Full * n2 * d - kvPostBlockTotal;
-                if (vEodSize > 0) {
-                    InitOutput<OUT_TYPE>(dvGm[vEodOffset], vEodSize, 0);
-                }
-            }
-            if constexpr (HAS_ROPE == ENABLE) {
-                int64_t qRopeEodOffset = qRopePostBlockTotal;
-                int64_t qRopeEodSize = t1Full * n2 * g * rope_d - qRopePostBlockTotal;
-                if (qRopeEodSize > 0) {
-                    InitOutput<OUT_TYPE>(dqRopeGm[qRopeEodOffset], qRopeEodSize, 0);
-                }
-                int64_t kRopeEodOffset = kRopePostBlockTotal;
-                int64_t kRopeEodSize = t2Full * n2 * rope_d - kRopePostBlockTotal;
-                if (kRopeEodSize > 0) {
-                    InitOutput<OUT_TYPE>(dkRopeGm[kRopeEodOffset], kRopeEodSize, 0);
-                }
-            }
+        int64_t t1Full = tilingData->postTilingData.get_t1();
+        int64_t t2Full = tilingData->postTilingData.get_t2();
+        EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
+        EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
+        if constexpr (CAST_DV) {
+            EODCleanMultiCore(dvGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
+        }
+        if constexpr (HAS_ROPE == ENABLE) {
+            EODCleanMultiCore(dqRopeGm, qRopePostBlockTotal, t1Full * n2 * g * rope_d - qRopePostBlockTotal);
+            EODCleanMultiCore(dkRopeGm, kRopePostBlockTotal, t2Full * n2 * rope_d - kRopePostBlockTotal);
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
@@ -1178,9 +1177,6 @@ public:
 
         uint64_t sLen = (sIdx + sClcSize) > curS ? (curS - sIdx) : sClcSize;
         sLen = sLen > 255 ? 255 : sLen;
-        if (sLen == 0) {
-            return;
-        }
         uint64_t dataLen = sLen * dAlign;
 
         uint64_t ubOffset = 0;
@@ -1270,9 +1266,6 @@ public:
             sLen = sClcSize > curS ? curS : sClcSize;
             sLen = sLen > (curS - sIdx) ? (curS - sIdx) : sLen;
             sLen = sLen > 255 ? 255 : sLen;
-            if (sLen == 0) {
-                break;
-            }
             dataLen = sLen * dAlign;
             if ((sLen > 0) && (inUbOffset + dataLen + dAlign / C0_SIZE * cal_block_num) * sizeof(float) >
                                 ubBaseSize * 2 + nzReservedSize) {
@@ -1285,41 +1278,35 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(mte2WaitVPong);
         outQueueCommon.FreeTensor(vecOut);
     }
+    __aicore__ inline void EODCleanMultiCore(GlobalTensor<OUT_TYPE> &gm, int64_t offset, int64_t size)
+    {
+        if (size <= 0 || usedCoreNum <= 0) {
+            return;
+        }
+        int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+        int64_t usedCore = (size + perSize - 1) / perSize;
+        int64_t tailSize = size - perSize * (usedCore - 1);
+        int64_t initSize = perSize;
+        if (cBlockIdx == usedCore - 1) {
+            initSize = tailSize;
+        }
+        if (cBlockIdx < usedCore) {
+            InitOutput<OUT_TYPE>(gm[offset + cBlockIdx * perSize], initSize, 0);
+        }
+    }
     __aicore__ inline void NZProcess()
     {
         if constexpr (LAYOUT == TND) {
-            if (cBlockIdx == 0) {
-                int64_t t1Full = tilingData->postTilingData.get_t1();
-                int64_t t2Full = tilingData->postTilingData.get_t2();
-                int64_t qEodOffset = qPostBlockTotal;
-                int64_t qEodSize = t1Full * n2 * g * d - qPostBlockTotal;
-                if (qEodSize > 0) {
-                    InitOutput<OUT_TYPE>(dqGm[qEodOffset], qEodSize, 0);
-                }
-                int64_t kvEodOffset = kvPostBlockTotal;
-                int64_t kvEodSize = t2Full * n2 * d - kvPostBlockTotal;
-                if (kvEodSize > 0) {
-                    InitOutput<OUT_TYPE>(dkGm[kvEodOffset], kvEodSize, 0);
-                }
-                if constexpr (CAST_DV) {
-                    int64_t vEodOffset = vPostBlockTotal;
-                    int64_t vEodSize = t2Full * n2 * value_d - vPostBlockTotal;
-                    if (vEodSize > 0) {
-                        InitOutput<OUT_TYPE>(dvGm[vEodOffset], vEodSize, 0);
-                    }
-                }
-                if constexpr (HAS_ROPE == ENABLE) {
-                    int64_t qRopeEodOffset = qRopePostBlockTotal;
-                    int64_t qRopeEodSize = t1Full * n2 * g * rope_d - qRopePostBlockTotal;
-                    if (qRopeEodSize > 0) {
-                        InitOutput<OUT_TYPE>(dqRopeGm[qRopeEodOffset], qRopeEodSize, 0);
-                    }
-                    int64_t kRopeEodOffset = kRopePostBlockTotal;
-                    int64_t kRopeEodSize = t2Full * n2 * rope_d - kRopePostBlockTotal;
-                    if (kRopeEodSize > 0) {
-                        InitOutput<OUT_TYPE>(dkRopeGm[kRopeEodOffset], kRopeEodSize, 0);
-                    }
-                }
+            int64_t t1Full = tilingData->postTilingData.get_t1();
+            int64_t t2Full = tilingData->postTilingData.get_t2();
+            EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
+            EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
+            if constexpr (CAST_DV) {
+                EODCleanMultiCore(dvGm, vPostBlockTotal, t2Full * n2 * value_d - vPostBlockTotal);
+            }
+            if constexpr (HAS_ROPE == ENABLE) {
+                EODCleanMultiCore(dqRopeGm, qRopePostBlockTotal, t1Full * n2 * g * rope_d - qRopePostBlockTotal);
+                EODCleanMultiCore(dkRopeGm, kRopePostBlockTotal, t2Full * n2 * rope_d - kRopePostBlockTotal);
             }
             AscendC::PipeBarrier<PIPE_ALL>();
         }
@@ -1891,9 +1878,6 @@ public:
 
         uint64_t sLen = (sIdx + sClcSize) > curS ? (curS - sIdx) : sClcSize;
         sLen = sLen > 255 ? 255 : sLen;
-        if (sLen == 0) {
-            return;
-        }
         uint64_t dataLen = sLen * dAlign;
 
         uint64_t ubOffset = 0;
@@ -1983,9 +1967,6 @@ public:
             sLen = sClcSize > curS ? curS : sClcSize;
             sLen = sLen > (curS - sIdx) ? (curS - sIdx) : sLen;
             sLen = sLen > 255 ? 255 : sLen;
-            if (sLen == 0) {
-                break;
-            }
             dataLen = sLen * dAlign;
             if ((sLen > 0) && (inUbOffset + dataLen + dAlign / C0_SIZE * cal_block_num) * sizeof(float) >
                                 ubBaseSize * 2 + nzReservedSize) {
@@ -1998,41 +1979,35 @@ public:
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(mte2WaitVPong);
         outQueueCommon.FreeTensor(vecOut);
     }
+    __aicore__ inline void EODCleanMultiCore(GlobalTensor<OUT_TYPE> &gm, int64_t offset, int64_t size)
+    {
+        if (size <= 0 || usedCoreNum <= 0) {
+            return;
+        }
+        int64_t perSize = (size + usedCoreNum - 1) / usedCoreNum;
+        int64_t usedCore = (size + perSize - 1) / perSize;
+        int64_t tailSize = size - perSize * (usedCore - 1);
+        int64_t initSize = perSize;
+        if (cBlockIdx == usedCore - 1) {
+            initSize = tailSize;
+        }
+        if (cBlockIdx < usedCore) {
+            InitOutput<OUT_TYPE>(gm[offset + cBlockIdx * perSize], initSize, 0);
+        }
+    }
     __aicore__ inline void NZProcess()
     {
         if constexpr (LAYOUT == TND) {
-            if (cBlockIdx == 0) {
-                int64_t t1Full = tilingData->postTilingData.get_t1();
-                int64_t t2Full = tilingData->postTilingData.get_t2();
-                int64_t qEodOffset = qPostBlockTotal;
-                int64_t qEodSize = t1Full * n2 * g * d - qPostBlockTotal;
-                if (qEodSize > 0) {
-                    InitOutput<OUT_TYPE>(dqGm[qEodOffset], qEodSize, 0);
-                }
-                int64_t kvEodOffset = kvPostBlockTotal;
-                int64_t kvEodSize = t2Full * n2 * d - kvPostBlockTotal;
-                if (kvEodSize > 0) {
-                    InitOutput<OUT_TYPE>(dkGm[kvEodOffset], kvEodSize, 0);
-                }
-                if constexpr (CAST_DV) {
-                    int64_t vEodOffset = vPostBlockTotal;
-                    int64_t vEodSize = t2Full * n2 * value_d - vPostBlockTotal;
-                    if (vEodSize > 0) {
-                        InitOutput<OUT_TYPE>(dvGm[vEodOffset], vEodSize, 0);
-                    }
-                }
-                if constexpr (HAS_ROPE == ENABLE) {
-                    int64_t qRopeEodOffset = qRopePostBlockTotal;
-                    int64_t qRopeEodSize = t1Full * n2 * g * rope_d - qRopePostBlockTotal;
-                    if (qRopeEodSize > 0) {
-                        InitOutput<OUT_TYPE>(dqRopeGm[qRopeEodOffset], qRopeEodSize, 0);
-                    }
-                    int64_t kRopeEodOffset = kRopePostBlockTotal;
-                    int64_t kRopeEodSize = t2Full * n2 * rope_d - kRopePostBlockTotal;
-                    if (kRopeEodSize > 0) {
-                        InitOutput<OUT_TYPE>(dkRopeGm[kRopeEodOffset], kRopeEodSize, 0);
-                    }
-                }
+            int64_t t1Full = tilingData->postTilingData.get_t1();
+            int64_t t2Full = tilingData->postTilingData.get_t2();
+            EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
+            EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
+            if constexpr (CAST_DV) {
+                EODCleanMultiCore(dvGm, vPostBlockTotal, t2Full * n2 * value_d - vPostBlockTotal);
+            }
+            if constexpr (HAS_ROPE == ENABLE) {
+                EODCleanMultiCore(dqRopeGm, qRopePostBlockTotal, t1Full * n2 * g * rope_d - qRopePostBlockTotal);
+                EODCleanMultiCore(dkRopeGm, kRopePostBlockTotal, t2Full * n2 * rope_d - kRopePostBlockTotal);
             }
             AscendC::PipeBarrier<PIPE_ALL>();
         }
