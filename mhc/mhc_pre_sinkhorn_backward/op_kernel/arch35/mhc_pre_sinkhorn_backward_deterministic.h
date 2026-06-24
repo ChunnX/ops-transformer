@@ -407,7 +407,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::A
     pipe_->InitBuffer(gradAlphaSumQue_, 1, blockSize_);
     pipe_->InitBuffer(gradBiasQue_, 1, usedAivNum_ * nnAlignFp32_ * uTypeSize_);
 
-    for (uint16_t i = 0; i < 3; i++) {
+    for (uint16_t i = 0; i < 2; i++) {
         auto biasLen = (i == 2) ? n_ * n_ : n_;
         CopyInAlphaAndBias(i * usedAivNum_ * n_, i * usedAivNum_, biasLen);
         LocalTensor<U> gradAlphaSumLocal = gradAlphaSumQue_.AllocTensor<U>();
