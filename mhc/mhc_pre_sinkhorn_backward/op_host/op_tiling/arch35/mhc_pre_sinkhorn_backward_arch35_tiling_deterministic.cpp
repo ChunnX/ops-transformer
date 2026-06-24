@@ -86,15 +86,6 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
     auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
-    // int64_t bsPerCoreMM1 = Ops::Base::CeilAlign(batchSize_ * seqLength_, static_cast<int64_t>(coreNumAic_));
-    // int64_t bsPerCoreMM2 = Ops::Base::CeilAlign(n_ * n_ + 2 * n_, static_cast<int64_t>(coreNumAic_));
-
-    // int64_t coreTaskCount_ = (batchSize_ * seqLength_ + coreNumAiv_ - 1) / coreNumAiv_;
-    // int64_t tile = min(coreTaskCount_, (int64_t) 64);
-    // int64_t tileUB = (ubSize_ * 0.95 - (n_ * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c_) /
-    //                 ((n_ * n_ * 4 + n_ * 9 + 3) * sizeof(float));
-    // tile = min(tile, tileUB);
-
     mm1K_ = n_ * n_ + 2 * n_;
     mm1M_ = batchSize_ * seqLength_;
     mm1N_ = n_ * c_;
@@ -102,13 +93,6 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     mm2K_ = batchSize_ * seqLength_;
     mm2M_ = n_ * n_ + 2 * n_;
     mm2N_ = n_ * c_;
-
-    // mm1K_ = n_ * n_ + 2 * n_;
-    // mm1M_ = bsPerCoreMM1;
-    // mm1N_ = n_ * c_;
-    // mm2K_ = batchSize_ * seqLength_;
-    // mm2M_ = bsPerCoreMM2;
-    // mm2N_ = n_ * c_;
 
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
@@ -155,7 +139,6 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
     tilingData->finalUsedAivNum = finalUsedAivNum_;
     tilingData->eps = hcEps_;
     tilingData->aicNum = coreNumAic_;
-    // tilingData->tileSize = tile;
 
     int64_t cBlockLoops_{0};
     int64_t cBlockTailLoops_{0};

@@ -273,9 +273,10 @@ __aicore__ inline void ComputeGradInvRms(const LocalTensor<T>& gradNormOutLocal,
 }
 
 template <typename T>
-__aicore__ inline void ComputeGradXFromRms(const LocalTensor<T>& xFp32Local, T gradInvRms, T invRms, int64_t count, int64_t ncCount)
+__aicore__ inline void ComputeGradXFromRms(const LocalTensor<T>& xFp32Local, const LocalTensor<T>& xFp32LocalOut, T gradInvRms, T invRms, int64_t count, int64_t ncCount)
 {
     __local_mem__ T* xFp32Addr = (__local_mem__ T*)xFp32Local.GetPhyAddr();
+    __local_mem__ T* xFp32AddrOut = (__local_mem__ T*)xFp32LocalOut.GetPhyAddr();
     uint32_t repeatCount = Ops::Base::GetVRegSize() / sizeof(T);
     uint32_t maskCount = count;
     uint16_t repeatTimes = Ops::Base::CeilDiv(maskCount, repeatCount);
@@ -294,7 +295,7 @@ __aicore__ inline void ComputeGradXFromRms(const LocalTensor<T>& xFp32Local, T g
             MicroAPI::Muls(xFp32Reg, xFp32Reg, gradInvRms, preg);
             MicroAPI::Muls(xFp32Reg, xFp32Reg, invRms, preg);
             MicroAPI::Div(xFp32Reg, xFp32Reg, ncCountReg, preg);
-            MicroAPI::DataCopy(xFp32Addr, xFp32Reg, preg);
+            MicroAPI::DataCopy(xFp32AddrOut, xFp32Reg, preg);
         }
     }
 }
