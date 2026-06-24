@@ -70,6 +70,14 @@ protected:
     int64_t CalcRequiredL2Size(const FiaTilingInfo &fiaInfo);
     void SplitOutSeq(const FiaTilingInfo &fiaInfo);
     ge::graphStatus ComputeTilingData(const FiaTilingInfo &fiaInfo);
+    void SetMaskTilingData(const FiaTilingInfo &fiaInfo);
+    uint8_t ComputeSparseType(const FiaTilingInfo &fiaInfo) const;
+    void SetAlibiStartIdx(const FiaTilingInfo &fiaInfo);
+    void SetLayoutType(const FiaTilingInfo &fiaInfo);
+    void SetPaLayoutTilingData(const FiaTilingInfo &fiaInfo);
+    void SetTransposeLayout(const FiaTilingInfo &fiaInfo);
+    void SetAntiQuantInfo(const FiaTilingInfo &fiaInfo);
+    void ComputeNeedInit(const FiaTilingInfo &fiaInfo);
     ge::graphStatus GenTilingKey(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetBlockDim(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus GetWorkspace(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
