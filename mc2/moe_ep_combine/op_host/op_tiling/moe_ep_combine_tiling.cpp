@@ -57,10 +57,11 @@ constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t UB_ALIGN = 32UL;
+constexpr uint64_t COMM_ALIGN = 512UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;  
-constexpr int64_t H_MIN = 1024;
-constexpr int64_t H_MAX = 7168;
+constexpr int64_t H_MIN = 1;
+constexpr int64_t H_MAX = 8192;
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &info)
 {
@@ -228,7 +229,8 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    info.cfg.perSlotBytes = static_cast<uint32_t>((hAlign32 + kAlign32 * 2 + UB_ALIGN));
+    info.cfg.perSlotBytes = static_cast<uint32_t>(((hAlign32 + kAlign32 * 2 + UB_ALIGN + COMM_ALIGN - 1UL)
+                            / COMM_ALIGN) * COMM_ALIGN);
 
     OP_TILING_CHECK(CheckWinSize(context, info, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
