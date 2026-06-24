@@ -898,10 +898,26 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
-    // do {
-    //     hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
-    //     hcomm_.Drain(channel);
-    // } while (ReadGmByPassDCache(localReadyFlag) != int32_t(1));
+    int32_t waitLoop = 0;
+    do {
+        hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
+        hcomm_.Drain(channel);
+        int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
+        if (readyValue == int32_t(1)) {
+            break;
+        }
+        ++waitLoop;
+        if (waitLoop > 1000) {
+            PRINTF("ReadRelayTokenToCopyTmp wait ready timeout: rankId=%d relayRank=%d blockIdx=%d "
+                   "bufferIdx=%d waitLoop=%d ready=%d remoteRecordAddr=0x%lx scratchAddr=0x%lx "
+                   "remoteFlagAddr=0x%lx localFlagAddr=0x%lx\n",
+                rankId_, relayRank, blockIdx_, bufferIdx, waitLoop, readyValue,
+                reinterpret_cast<uint64_t>(remoteRecordAddr), reinterpret_cast<uint64_t>(scratchAddr),
+                reinterpret_cast<uint64_t>(remoteRecordAddr + flagOffset),
+                reinterpret_cast<uint64_t>(scratchAddr + flagOffset));
+            break;
+        }
+    } while (true);
 
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     hcomm_.Drain(channel);
@@ -942,6 +958,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
     uint32_t srcServer = static_cast<uint32_t>(remoteRankIdx) / rankPerServer_;
     uint32_t srcRankInServer = static_cast<uint32_t>(remoteRankIdx) % rankPerServer_;
     uint32_t relayRank = serverId_ * rankPerServer_ + srcRankInServer;
+    GM_ADDR tokenRevBaseAddr = params_.workspaceInfo.dispatchRevDataPtr + rowDstOffsetInCore * widthA;
+    GM_ADDR scaleRevBaseAddr = params_.workspaceInfo.dispatchRevScalePtr + rowDstOffsetInCore * widthAScale;
+    GM_ADDR relayBaseAddr = GetUrmaAddrByRankId(mc2Context_, relayRank) + params_.peermemInfo.relayTokenDataPtr;
+    PRINTF("CopyGMToGMPerToken begin: rankId=%d blockIdx=%d aivCoreIdx=%d subBlockIdx=%d "
+           "rowDst=%d remoteRank=%d srcServer=%d "
+           "srcRankInServer=%d relayRank=%d copyStart=%d copyNum=%d\n",
+        rankId_, blockIdx_, aivCoreIdx_, subBlockIdx_, rowDstOffsetInCore, remoteRankIdx, srcServer,
+        srcRankInServer, relayRank, copyStartIdx, copyNum);
+    PRINTF("CopyGMToGMPerToken shape/addr: widthA=%ld widthAScale=%ld copyInNum=%u relayRecordBytes=%u "
+           "tokenRevBase=0x%lx scaleRevBase=0x%lx relayBase=0x%lx\n",
+        widthA, widthAScale, copyInNum, relayRecordBytes_, reinterpret_cast<uint64_t>(tokenRevBaseAddr),
+        reinterpret_cast<uint64_t>(scaleRevBaseAddr), reinterpret_cast<uint64_t>(relayBaseAddr));
 
     // 预置 6 个 MTE3_MTE2 flag,Phase 2 的 prime/steady 的 WaitFlag 可立即通过。
     for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
@@ -956,6 +984,22 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
     }
+    int32_t firstTopkIndex = tripleTensor_[0].GetValue(TOKEN_ID) * topK_ +
+        tripleTensor_[0].GetValue(TOPK_INDEX);
+    int32_t firstTokenIndex = tripleTensor_[0].GetValue(TOKEN_ID);
+    uint64_t firstRemoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(firstTokenIndex));
+    GM_ADDR firstRemoteRecordAddr = relayBaseAddr + firstRemoteCopyOffset;
+    int32_t lastTripleOffset = (copyNum - 1) * INT32_PER_256B;
+    int32_t lastTopkIndex = tripleTensor_[lastTripleOffset].GetValue(TOKEN_ID) * topK_ +
+        tripleTensor_[lastTripleOffset].GetValue(TOPK_INDEX);
+    int32_t lastTokenIndex = tripleTensor_[lastTripleOffset].GetValue(TOKEN_ID);
+    uint64_t lastRemoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(lastTokenIndex));
+    GM_ADDR lastRemoteRecordAddr = relayBaseAddr + lastRemoteCopyOffset;
+    PRINTF("CopyGMToGMPerToken token map: firstTopk=%d firstToken=%d firstOffset=0x%lx "
+           "firstRecordAddr=0x%lx lastTopk=%d lastToken=%d lastOffset=0x%lx lastRecordAddr=0x%lx\n",
+        firstTopkIndex, firstTokenIndex, firstRemoteCopyOffset, reinterpret_cast<uint64_t>(firstRemoteRecordAddr),
+        lastTopkIndex, lastTokenIndex, lastRemoteCopyOffset,
+        reinterpret_cast<uint64_t>(lastRemoteRecordAddr));
 
     // 6-buffer SW 流水 MTE2 + MTE3
     // Phase 2 prime: 发出前 BufferNum 个 token 的 MTE2
