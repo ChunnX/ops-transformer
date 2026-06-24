@@ -316,13 +316,17 @@ ge::graphStatus FaInfoParser::GetS1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-void FaInfoParser::GetKvStorageMode()
+ge::graphStatus FaInfoParser::GetKvStorageMode()
 {
-    if (opParamInfo_.blockTable.tensor != nullptr) {
+    bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
+                       layoutKV_ == FaLayout::PA_NZ);
+
+    if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
     } else {
         kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
@@ -571,7 +575,9 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;
     }
-    GetKvStorageMode();
+    if (ge::GRAPH_SUCCESS != GetKvStorageMode()) {
+    return ge::GRAPH_FAILED;
+}
     if (emptyTensorFlag_) {
         return ge::GRAPH_SUCCESS;
     }
