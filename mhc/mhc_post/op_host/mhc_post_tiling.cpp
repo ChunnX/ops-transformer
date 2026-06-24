@@ -393,27 +393,6 @@ ge::graphStatus MhcPostTilingBase::CheckSpecConstraints()
         return ge::GRAPH_SUCCESS;
     }
 
-    auto hResShape = context_->GetInputShape(H_RES_INPUT_INDEX)->GetStorageShape();
-    auto hOutShape = context_->GetInputShape(H_OUT_INPUT_INDEX)->GetStorageShape();
-    auto hPostShape = context_->GetInputShape(H_POST_INPUT_INDEX)->GetStorageShape();
-
-    OP_CHECK_IF(xShape_->GetDimNum() != DIM_NUM_4,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x",
-                                             std::to_string(xShape_->GetDimNum()).c_str(), "4"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(hResShape.GetDimNum() != DIM_NUM_4,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "h_res",
-                                             std::to_string(hResShape.GetDimNum()).c_str(), "4"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(hOutShape.GetDimNum() != DIM_NUM_3,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "h_out",
-                                             std::to_string(hOutShape.GetDimNum()).c_str(), "3"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(hPostShape.GetDimNum() != DIM_NUM_3,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "h_post",
-                                             std::to_string(hPostShape.GetDimNum()).c_str(), "3"),
-                return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(d_ <= 0 || d_ >= D_MAX_VALUE || d_ % D_ALIGN_SIZE != 0,
                 OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "Value of d", std::to_string(d_).c_str(),
                                           "> 0, < 100000 and divisible by 128"),
