@@ -114,7 +114,7 @@ __aicore__ inline void GetTensorShape(uint32_t groupIdx, GM_ADDR tensorPtr, uint
 template <typename T>
 __aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tiling) {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
-    // grouptype can only be 2, else return.
+    // groupType can only be 2, else return.
     if (groupListPtr == nullptr || gmmBaseParams.groupType != 2) {
         return;
     }
