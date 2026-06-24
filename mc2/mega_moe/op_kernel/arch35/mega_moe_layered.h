@@ -905,7 +905,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         hcomm_.Drain(channel);
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
         PRINTF("ReadRelayTokenToCopyTmp: waitLoop=%d, readyValue=%d\n", waitLoop, readyValue);
-        if (readyValue == int32_t(1)) {
+        if (readyValue == 1) {
             break;
         }
         ++waitLoop;
