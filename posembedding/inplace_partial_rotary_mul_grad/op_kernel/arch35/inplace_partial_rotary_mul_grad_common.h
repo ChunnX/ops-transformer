@@ -115,8 +115,8 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor, 
     __local_mem__ TDY *outUb = (__local_mem__ TDY *)outTensor.GetPhyAddr();
     uint16_t loopSize = 2 * VL_FLOAT32_SIZE;
     uint16_t loopNum = (dLen + loopSize - 1) / (2 * VL_FLOAT32_SIZE);
-    uint16_t dAlignLenDy = Ops::Base::CeilAlign(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(TDY)));
-    uint16_t dAlignLenCos = Ops::Base::CeilAlign(dLen, static_cast<uint32_t>(BLOCK_TYPE_SIZE / sizeof(TCOS)));
+    uint16_t dAlignLenDy = Ops::Base::CeilAlign(dLen, static_cast<uint16_t>(BLOCK_TYPE_SIZE / sizeof(TDY)));
+    uint16_t dAlignLenCos = Ops::Base::CeilAlign(dLen, static_cast<uint16_t>(BLOCK_TYPE_SIZE / sizeof(TCOS)));
 
 
     uint32_t halfNum = dLen / 2;

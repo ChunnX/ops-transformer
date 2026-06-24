@@ -20,6 +20,7 @@
 #include "op_kernel/load_store_utils.h"
 #include "inplace_partial_rotary_mul_grad_tiling_data.h"
 #include "inplace_partial_rotary_mul_grad_common.h"
+#include <cstdint>
 
 namespace InplacePartialRotaryMulGrad {
 using namespace AscendC;
@@ -48,7 +49,7 @@ private:
     TQue<QuePosition::VECIN, 2> dyInQue_;
     TQue<QuePosition::VECIN, 2> cosInQue_;
     TQue<QuePosition::VECIN, 2> sinInQue_;
-    TQue<QuePosition::VECOUT, 2> xGradOutQue_;
+    TQue<QuePosition::VECOUT, 2> dxOutQue_;
 
     GlobalTensor<TDY> dyGm_;
     GlobalTensor<TDY> dxGm_;
@@ -57,8 +58,8 @@ private:
 
     const InplacePartialRotaryMulGradRegbaseParams *tilingData_{nullptr};
     DataCopyPadExtParams<TDY> padParamsDy_{false, 0, 0, static_cast<TDY>(0)};
-    int64_t dSplitSizeDy_{0};
-    int64_t dSplitSizeCos_{0};
+    uint32_t dSplitSizeDy_{0};
+    uint32_t dSplitSizeCos_{0};
     int64_t dAlignLenDy_{0};
     int64_t dAlignLenCos_{0};
     int64_t bIdx_{0};
@@ -88,8 +89,8 @@ InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(TPipe *pipe, const InplacePartia
     this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
                                                         static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
                           tilingData_->dSplitCoef;
-    this->dSplitSizeDy_ = tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY);
-    this->dSplitSizeCos_ = tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS);
+    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY));
+    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS));
     this->ubFactorN_ = tilingData_->ubFactorN;
     this->ubFactorS_ = tilingData_->ubFactorS;
     this->dyGm_.SetGlobalBuffer((__gm__ TDY *)dy);
