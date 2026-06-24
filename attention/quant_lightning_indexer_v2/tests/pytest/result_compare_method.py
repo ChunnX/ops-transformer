@@ -113,27 +113,54 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
-def find_batch_and_position(act_q, x):
+# def find_batch_and_position(act_q, x):
+#     """
+#     判断x属于哪个batch以及在该batch中的位置
+
+#     参数:
+#         act_q: 前缀和列表，act_q[b_idx]表示前(b_idx+1)个batch的总长度
+#         x: 需要判断的数值
+
+#     返回:
+#         tuple: (batch_idx, position)
+#                - batch_idx: 所属的batch索引（从0开始），超出范围则为-1
+#                - position: 在该batch中的位置（从0开始），超出范围则为-1
+#     """
+#     if not act_q:
+#         return (-1, -1)
+#     # 遍历前缀和列表查找所属批次
+#     for batch_idx in range(len(act_q)):
+#         # 计算当前批次的起始位置
+#         start = act_q[batch_idx - 1] if batch_idx > 0 else 0
+#         # 判断是否在当前批次范围内
+#         if start <= x < act_q[batch_idx]:
+#             # 计算在当前批次中的位置（偏移量）
+#             position = x - start
+#             return (batch_idx, position)
+#     # 超出所有批次范围
+#     return (-1, -1)
+
+def find_batch_and_position(cu_seqlens, x):
     """
     判断x属于哪个batch以及在该batch中的位置
 
     参数:
-        act_q: 前缀和列表，act_q[b_idx]表示前(b_idx+1)个batch的总长度
+        cu_seqlens: 前缀和列表, cu_seqlens[b_idx]表示前(b_idx)个batch的总长度
         x: 需要判断的数值
 
     返回:
         tuple: (batch_idx, position)
-               - batch_idx: 所属的batch索引（从0开始），超出范围则为-1
-               - position: 在该batch中的位置（从0开始），超出范围则为-1
+               - batch_idx: 所属的batch索引(从0开始)，超出范围则为-1
+               - position: 在该batch中的位置(从0开始), 超出范围则为-1
     """
-    if not act_q:
+    if not cu_seqlens:
         return (-1, -1)
     # 遍历前缀和列表查找所属批次
-    for batch_idx in range(len(act_q)):
+    for batch_idx in range(len(cu_seqlens) - 1):
         # 计算当前批次的起始位置
-        start = act_q[batch_idx - 1] if batch_idx > 0 else 0
+        start = cu_seqlens[batch_idx]
         # 判断是否在当前批次范围内
-        if start <= x < act_q[batch_idx]:
+        if start <= x < cu_seqlens[batch_idx + 1]:
             # 计算在当前批次中的位置（偏移量）
             position = x - start
             return (batch_idx, position)
@@ -299,7 +326,34 @@ def check_result(expect, result, topk_value, params):
         act_seq_k = act_seq_k
     else:
         act_seq_k = [int(x.strip()) for x in act_seq_k.split(',')]
+    
+    if isinstance(cu_seqlens_q, int):
+        cu_seqlens_q = [cu_seqlens_q]
+    elif isinstance(cu_seqlens_q, list):
+        cu_seqlens_q = cu_seqlens_q
+    else:
+        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+    
+    if isinstance(cu_seqlens_k, int):
+        cu_seqlens_k = [cu_seqlens_k]
+    elif isinstance(cu_seqlens_k, list):
+        cu_seqlens_k = cu_seqlens_k
+    else:
+        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
 
+    if isinstance(seqused_q, int):
+        seqused_q = [seqused_q]
+    elif isinstance(seqused_q, list):
+        seqused_q = seqused_q
+    else:
+        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+    
+    if isinstance(seqused_k, int):
+        seqused_k = [seqused_k]
+    elif isinstance(seqused_k, list):
+        seqused_k = seqused_k
+    else:
+        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
     npu_pass = True
     max_error = 0
     max_re = 0
@@ -310,7 +364,6 @@ def check_result(expect, result, topk_value, params):
     rtol=0.005
     atol=0.000025
     max_error_idx = 10000000
-    return_value_flag = True
     cpu_output = expect.cpu().numpy()
     npu_output = result.cpu().numpy()
     real_data = result.cpu().numpy()
@@ -352,7 +405,7 @@ def check_result(expect, result, topk_value, params):
     for t_id in rows:
         bsn = np.unravel_index(t_id, sp)
         if layout_query == "TND":
-            b_idx, s1_idx = find_batch_and_position(act_seq_q, bsn[0])
+            b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
         cur_cpu_output_value = cpu_reshape[t_id, :]
         cur_npu_output_value = npu_reshape[t_id, :]
@@ -363,7 +416,7 @@ def check_result(expect, result, topk_value, params):
                                                     topk_value, bsn, diff_npu, diff_cpu,
                                                     cur_npu_output_value,
                                                     cur_cpu_output_value, thres,
-                                                    return_value_flag)
+                                                    return_value, output_idx_offset, layout_query, cu_seqlens_q, q_seq)
         if not npu_pass_t:
             npu_pass = False
     end_time = time()

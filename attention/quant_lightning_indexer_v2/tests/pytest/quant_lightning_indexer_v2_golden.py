@@ -88,7 +88,7 @@ class GeneralizedQLIV2:
                  block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, act_seq_q,
                  act_seq_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count,
                  sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,
-                 k_scale_datarange, cmp_ratio, return_value, output_idx_offset):
+                 k_scale_datarange, cmp_ratio, return_value):
         self.batch_size = batch_size
         self.q_seq = q_seq
         self.k_seq = k_seq
@@ -148,6 +148,11 @@ class GeneralizedQLIV2:
         n2 = self.k_head_num
         actualSeqLengths_q = self.actual_seq_lengths_query
         actualSeqLengths_k = self.actual_seq_lengths_key
+        cu_seqlens_q = self.cu_seqlens_q
+        cu_seqlens_k = self.cu_seqlens_k
+        seqused_q = self.seqused_q
+        seqused_k = self.seqused_k
+        cmp_residual_k = self.cmp_residual_k
         q_bnsd_tensor = self.q_bnsd_tensor
         k_bnsd_tensor = self.k_bnsd_tensor
         wt_bnsd_tensor = self.wt_bnsd_tensor
@@ -162,9 +167,11 @@ class GeneralizedQLIV2:
 
         out_shape_bnss = copy.deepcopy(self.q_bnsd_shape)
         out_shape_bnss[1] = n2
-        out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k))
+        # out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k))
+        out_shape_bnss[-1] = math.floor(max(seqused_k)) if seqused_k is not None else ks
 
-        y = torch.full(out_shape_bnsd,-1,dtype = torch.int32)
+
+        y = torch.full(out_shape_bnsd, -1, dtype = torch.int32)
         y_value = torch.full(out_shape_bnss,-float('inf'), dtype=torch.float32)
         y_value_np = np.full(out_shape_bnsd, -np.inf, dtype=np.float32)
         
@@ -172,8 +179,33 @@ class GeneralizedQLIV2:
         for b_idx in range(batch_size):
             curr_actualSeq_q = actualSeqLengths_q[b_idx]
             curr_actualSeq_k = math.floor(actualSeqLengths_k[b_idx])
+            if self.layout_query == "TND":
+                if seqused_q is not None:
+                    curr_actualSeq_q = seqused_q[b_idx]
+                else:
+                    # 已被处理为shape为(B,)的tensor
+                    curr_actualSeq_q = cu_seqlens_q[b_idx]
+            elif self.layout_query == "BSND":
+                if seqused_q is not None:
+                    curr_actualSeq_q = seqused_q[b_idx]
+                else:
+                    curr_actualSeq_q = qs
+
+            if self.layout_key == "TND":
+                if seqused_k is not None:
+                    curr_actualSeq_k = seqused_k[b_idx]
+                else:
+                    curr_actualSeq_k = cu_seqlens_k[b_idx]
+            elif self.layout_key == "PA_BBND":
+                curr_actualSeq_k = seqused_k[b_idx]
+            elif self.layout_key == "BSND":
+                if seqused_k is not None:
+                    curr_actualSeq_k = seqused_k[b_idx]
+                else:
+                    curr_actualSeq_k = ks
             self.cur_actseq_q = curr_actualSeq_q
             self.cur_actseq_k = curr_actualSeq_k
+            
             self.cur_q = q_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
             self.cur_k = k_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k, :]
             self.cur_wt = wt_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
@@ -568,7 +600,7 @@ class GeneralizedQLIV2:
         return cpu_mask, next_tokens_list
 
 
-    def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table, output_idx_offset):
+    def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, block_table, output_idx_offset):
         print("cpu执行中...")
 
         # 参数的初始化
@@ -603,11 +635,23 @@ class GeneralizedQLIV2:
             self.actual_seq_lengths_query = torch.tensor(actual_seq_lengths_query)
             actualSeqLengths_q = self.actual_seq_lengths_query
             q_scale_shape = [q_t_size, q_head_num]
-
+            self.cu_seqlens_q = self.trans_tnd_actseq(cu_seqlens_q[1:])
+            actualSeqLengths_q = self.cu_seqlens_q
+            if seqused_q is not None:
+                self.seqused_q = seqused_q
+                self.has_seqused_q = True
+                actualSeqLengths_q = self.seqused_q
         elif layout_query == "BSND":
             self.actual_seq_lengths_query = actual_seq_lengths_query
             actualSeqLengths_q = self.actual_seq_lengths_query
             q_scale_shape = [batch_size, q_seq, q_head_num]
+            if seqused_q is not None:
+                self.seqused_q = seqused_q
+                actual_seq_lengths_query = seqused_q
+                self.has_seqused_q = True
+            else:
+                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size).to(torch.int32))
+            actualSeqLengths_q = actual_seq_lengths_query
 
         if layout_key == "TND":
             if len(actual_seq_lengths_key) == batch_size + 1:
@@ -618,16 +662,30 @@ class GeneralizedQLIV2:
             layout_key_scale = "TN"
             k_shape = self.k_shape
             k_scale_shape = [k_t_size, k_head_num]
-
+            self.cu_seqlens_k = self.trans_tnd_actseq(cu_seqlens_k[1:])
+            actualSeqLengths_k = self.cu_seqlens_k
+            if seqused_k is not None:
+                self.seqused_k = seqused_k
+                self.has_seqused_k = True
+                actualSeqLengths_k = self.seqused_k
         elif layout_key == "BSND":
             self.actual_seq_lengths_key = actual_seq_lengths_key
             actualSeqLengths_k = self.actual_seq_lengths_key
             layout_key_scale = "BSN"
             k_shape = self.k_shape
             k_scale_shape = [batch_size, k_seq, k_head_num]
+            if seqused_k is not None:
+                self.seqused_k = seqused_k
+                actual_seq_lengths_key = seqused_k
+                self.has_seqused_k = True
+            else:
+                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size).to(torch.int32))
+            actualSeqLengths_k = actual_seq_lengths_key
 
         elif layout_key == "PA_BBND":
             self.actual_seq_lengths_key = actual_seq_lengths_key
+            actualSeqLengths_k = self.actual_seq_lengths_key
+            self.actual_seq_lengths_key = seqused_k
             actualSeqLengths_k = self.actual_seq_lengths_key
             layout_key_scale = layout_key
             k_max_s2 = math.floor(max(actualSeqLengths_k))
@@ -642,11 +700,19 @@ class GeneralizedQLIV2:
 
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
-        q_bnsd_tensor, q_bnsd_shape = self.trans_shape_to_bnsd(query, q_shape, layout_query,
-                                                        q_head_num, actualSeqLengths_q)
+        if self.layout_query == "TND":
+            q_bnsd_tensor, q_bnsd_shape = self.trans_shape_to_bnsd(query, q_shape, layout_query,
+                                                            q_head_num, self.cu_seqlens_q)
+        else:
+            q_bnsd_tensor, q_bnsd_shape = self.trans_shape_to_bnsd(query, q_shape, layout_query,
+                                                            q_head_num, actualSeqLengths_q)
 
         ## BSND/TND/ -> BNSD
-        k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(key, k_shape, layout_key,
+        if self.layout_key == "TND":
+            k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(key, k_shape, layout_key,
+                                                            k_head_num, self.cu_seqlens_k)
+        else:
+            k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(key, k_shape, layout_key,
                                                         k_head_num, torch.floor(actualSeqLengths_k).to(actual_seq_dtype))
 
 
@@ -657,8 +723,12 @@ class GeneralizedQLIV2:
 
         ## BSN1 -> BNS1   TN1 -> BNS1
         is_weights = True
-        wt_bnsd_tensor, wt_bnsd_shape = self.trans_shape_to_bnsd(weights, w_shape, layout_query,
-                                                            q_head_num, actualSeqLengths_q, is_weights)
+        if self.layout_query == "TND":
+            wt_bnsd_tensor, wt_bnsd_shape = self.trans_shape_to_bnsd(weights, w_shape, layout_query,
+                                                                q_head_num, self.cu_seqlens_q, is_weights)
+        else:
+            wt_bnsd_tensor, wt_bnsd_shape = self.trans_shape_to_bnsd(weights, w_shape, layout_query,
+                                                                q_head_num, actualSeqLengths_q, is_weights)
 
         # BSN1 -> BNS1
         q_scale_bnsd_tensor, q_scale_bnsd_shape = self.trans_shape_to_bnsd(query_dequant_scale, q_scale_shape,
@@ -696,8 +766,8 @@ class GeneralizedQLIV2:
         out_shape_bnsd[1] = k_head_num
         out_shape_bnsd[-1] = sparse_count
         if self.layout_query == "TND":
-            # y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, self.cu_seqlens_q) # TODO
-            y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, actualSeqLengths_q)
+            y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, self.cu_seqlens_q) # TODO
+            # y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, actualSeqLengths_q)
             if return_value:
                 sparse_value = self.trans_bnsd_to_layout(sparse_value, out_shape_bnsd, layout_query, self.cu_seqlens_q)
         else:
@@ -707,7 +777,7 @@ class GeneralizedQLIV2:
             if return_value:
                 sparse_value = self.trans_bnsd_to_layout(sparse_value, out_shape_bnsd, layout_query, q_seq)
         # y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, actualSeqLengths_q)
-        return y, y_value
+        return y, y_value, sparse_value
 
 def trans_prefix_actseq(self,list):
         list_len = len(list)
@@ -828,6 +898,14 @@ def qliv2_output_single(params):
     else:
         cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(actual_seq_dtype).npu()
 
+    if cu_seqlens_q is not None:
+        cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32).npu()
+    if cu_seqlens_k is not None:
+        cu_seqlens_k = torch.tensor(cu_seqlens_k).to(torch.int32).npu()
+    if seqused_q is not None:
+        seqused_q = torch.tensor(seqused_q).to(torch.int32).npu()
+    if seqused_k is not None:
+        seqused_k = torch.tensor(seqused_k).to(torch.int32).npu()
     # ======================== 构造 GeneralizedQLIV2 用于 CPU golden ========================
     # GeneralizedQLIV2 需要 act_seq 个体长度（用于 TND→BNSD 转换等）
     test_qliv2 = GeneralizedQLIV2(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size,
@@ -839,7 +917,7 @@ def qliv2_output_single(params):
 
 
     if layout_query == "BSND":
-        query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1],(batch_size, q_seq, q_head_num, head_dim))).to(torch.float)
+        query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (batch_size, q_seq, q_head_num, head_dim))).to(torch.float)
         if hifp8mode == 1:
             query = trans_float_tensor_to_hifuint8(query, round_mode = "hybrid", over_mode = True).npu()
         else:
@@ -890,7 +968,7 @@ def qliv2_output_single(params):
             key_dequant_scale_cpu = key_dequant_scale.cpu()
         
         block_table = None
-        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale_cpu, key_dequant_scale_cpu, actual_seq_lengths_query, actual_seq_lengths_key, block_table, output_idx_offset)
+        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale_cpu, key_dequant_scale_cpu, actual_seq_lengths_query, actual_seq_lengths_key, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, block_table, output_idx_offset)
 
     elif layout_key == "TND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim))).to(torch.float)
@@ -908,7 +986,7 @@ def qliv2_output_single(params):
             key_dequant_scale_cpu = key_dequant_scale.cpu()
         
         block_table = None
-        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale_cpu, key_dequant_scale_cpu, actual_seq_lengths_query, actual_seq_lengths_key, block_table, output_idx_offset)
+        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale_cpu, key_dequant_scale_cpu, actual_seq_lengths_query, actual_seq_lengths_key, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, block_table, output_idx_offset)
 
     elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
@@ -976,7 +1054,7 @@ def qliv2_output_single(params):
             key_dequant_scale = torch.tensor([k_scale]).to(dequant_dtype).npu()
         else:
             key_dequant_scale = key_dequant_scale_block.npu()
-        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key_bnsd, weights, query_dequant_scale_cpu, key_dequant_scale_bns, actual_seq_lengths_query, actual_seq_lengths_key, block_table, output_idx_offset)
+        cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key_bnsd, weights, query_dequant_scale_cpu, key_dequant_scale_bns, actual_seq_lengths_query, actual_seq_lengths_key, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     # ======================== metadata 构造 ========================
     # max_seqlen 从个体长度中取
