@@ -53,6 +53,8 @@ namespace ge {
  * embedding. The value is a list of two integers. Defaults to {0, 0}.
  * @attention Constraints:
  * @li This operator is only supported on Ascend 950 AI Processor.
+ * @li Currently only interleave mode (rotary_mode=1) is supported. Other modes (half=0, quarter=2,
+ * DeepSeek interleave=3) are not implemented yet.
  * Let (B, S, N, D) represents the shape of the input "dy". Under this
  * representation, the shape constraints of each parameter can be described as follows:
  * @li The D of "dy" and "x" must be equal and less or equal to 1024. The D of "cos", "sin", "dcos" and "dsin"

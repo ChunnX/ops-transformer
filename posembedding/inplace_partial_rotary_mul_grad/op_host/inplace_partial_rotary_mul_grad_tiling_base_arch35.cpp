@@ -122,10 +122,13 @@ bool InplacePartialRotaryMulGradRegbaseTiling::IsInplacePartialRotaryMulGradMode
 {
     switch (mode) {
         case static_cast<int32_t>(InplacePartialRotaryMulGradMode::HALF):
+            return false;
         case static_cast<int32_t>(InplacePartialRotaryMulGradMode::INTERLEAVE):
-        case static_cast<int32_t>(InplacePartialRotaryMulGradMode::QUARTER):
-        case static_cast<int32_t>(InplacePartialRotaryMulGradMode::DEEPSEEK_INTERLEAVE):
             return true;
+        case static_cast<int32_t>(InplacePartialRotaryMulGradMode::QUARTER):
+            return false;
+        case static_cast<int32_t>(InplacePartialRotaryMulGradMode::DEEPSEEK_INTERLEAVE):
+            return false;
         default:
             return false;
     }
