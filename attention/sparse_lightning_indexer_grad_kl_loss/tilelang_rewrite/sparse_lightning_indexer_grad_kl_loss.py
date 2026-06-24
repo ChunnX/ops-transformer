@@ -363,7 +363,7 @@ def tilelang_grad_kl_loss_kernel(
                             ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                             rsy_chunk_ub,
                         )
-                        T.reduce_max(rsy_chunk_ub, rsy_tmp_ub, dim=-1, real_shape=[n_block])
+                        T.reduce_max(rsy_chunk_ub, rsy_tmp_ub, dim=-1, real_shape=[1, n_block])
                         T.barrier_all()
                         T.tile.max(rsy_global_max_ub, rsy_global_max_ub, rsy_tmp_ub)
 
@@ -381,7 +381,7 @@ def tilelang_grad_kl_loss_kernel(
                             rsy_chunk_ub,
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
-                        T.reduce_sum(rsy_chunk_ub, rsy_tmp_ub, dim=-1, real_shape=[n_block])
+                        T.reduce_sum(rsy_chunk_ub, rsy_tmp_ub, dim=-1, real_shape=[1, n_block])
                         T.barrier_all()
                         T.tile.add(rsy_global_sum_ub, rsy_global_sum_ub, rsy_tmp_ub)
 
@@ -449,7 +449,7 @@ def tilelang_grad_kl_loss_kernel(
                                     reluGradRes[bz, s1_id, g_abs, n_idx * n_block:(n_idx + 1) * n_block],
                                 )
                                 # Accumulate dW
-                                T.reduce_sum(rg_chunk_ub[g_i, :], rsy_tmp_ub, dim=-1, clear=True, real_shape=[n_block])
+                                T.reduce_sum(rg_chunk_ub[g_i, :], rsy_tmp_ub, dim=-1, clear=True, real_shape=[1, n_block])
                                 T.tile.add(dw_total_ub[g_abs], dw_total_ub[g_abs], rsy_tmp_ub)
 
                     # Cast and store dWeight
@@ -486,7 +486,7 @@ def tilelang_grad_kl_loss_kernel(
                         T.tile.mul(loss_ub, p_chunk_ub, loss_ub)
                         T.barrier_all()
 
-                        T.reduce_sum(loss_ub, rsy_tmp_ub, dim=-1, clear=True, real_shape=[n_block])
+                        T.reduce_sum(loss_ub, rsy_tmp_ub, dim=-1, clear=True, real_shape=[1, n_block])
                         T.barrier_all()
                         T.tile.add(loss_accum_ub, loss_accum_ub, rsy_tmp_ub)
 
