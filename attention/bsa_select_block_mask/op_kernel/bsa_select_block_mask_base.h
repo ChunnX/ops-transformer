@@ -467,6 +467,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
         for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {
 
             ProcessPoolingK(batchIdx, headIdx);
+            AscendC::PipeBarrier<PIPE_ALL>();
             SyncAll<false>();
 
             for (uint32_t qChunkStart = startRow; qChunkStart < endRow;
