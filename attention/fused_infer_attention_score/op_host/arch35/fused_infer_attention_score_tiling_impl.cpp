@@ -279,10 +279,12 @@ void FusedInferAttentionScoreTilingImpl::ParseActualSeqLengths(const FiaTilingIn
     actualSeqLengthsKV_.reserve(fiaInfo.bSize);
 
     for (uint32_t bIdx = 0; bIdx < fiaInfo.bSize; bIdx++) {
-        int64_t qLen = actualSeqLenQFlag_ ? ParseSeqLength(actSeqLenQ, qDims, bIdx, fiaInfo.qLayout) : gsSize_;
-        if (gsMergeFlag_ && fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.qLayout == FiaLayout::BNSD) {
+        if (!actualSeqLenQFlag_) {
+            actualSeqLengthsQ_.push_back(gsSize_);
+        } else if (gsMergeFlag_ && fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.qLayout == FiaLayout::BNSD) {
             actualSeqLengthsQ_.push_back(fiaInfo.s1Size * fiaInfo.gSize);
         } else {
+            int64_t qLen = ParseSeqLength(actSeqLenQ, qDims, bIdx, fiaInfo.qLayout);
             actualSeqLengthsQ_.push_back(gsMergeFlag_ ? qLen * fiaInfo.gSize : qLen);
         }
 
