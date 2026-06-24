@@ -393,10 +393,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
                     DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
                     DataCopyPadParams tokenPadParams{false, 0, 0, 0};
-                    DataCopy(ubToken_, srcTokenTensor, axisH_);
+                    DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
                     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 
-                    DataCopy(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, axisH_);
+                    DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
                     if constexpr (!IsCached) {
