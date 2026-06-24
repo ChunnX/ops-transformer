@@ -21,7 +21,6 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "mega_moe_base.h"
-#include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
 #include "moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
