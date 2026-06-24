@@ -231,12 +231,13 @@ class GeneralizedQLIV2:
                                                                                         :curr_actualSeq_q,
                                                                                         :curr_actualSeq_k] = self.cal_atten_per_batch_hifp8(b_idx)
                 # y[b_idx: (b_idx + 1), :, curr_actualSeq_q:, :actual_selected_count] = -1 # TODO
-                if self.layout_query == "TND":
-                    offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
-                else:
-                    offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
-                offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
-                y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
+                if output_idx_offset is not None:
+                    if self.layout_query == "TND":
+                        offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
+                    else:
+                        offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
+                    offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
+                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
                 y_value_np[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
             else:
                 pass
