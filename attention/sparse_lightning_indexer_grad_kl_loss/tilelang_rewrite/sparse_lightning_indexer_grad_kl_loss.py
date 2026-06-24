@@ -749,8 +749,9 @@ def sparse_lightning_indexer_grad_kl_loss(
         reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=device)
         softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=device)
         d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=device)
-        _workspace_cache[ws_key] = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws,
-                                     reduce_sum_y_ws, softmax_i_ws, d_query_index_ws)
+        ws = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws,
+              reduce_sum_y_ws, softmax_i_ws, d_query_index_ws)
+        _workspace_cache[ws_key] = ws
 
     (bmm1_res_ws, bmm2_res_ws, p_reduced_ws,
      reduce_sum_y_ws, softmax_i_ws, d_query_index_ws) = ws
