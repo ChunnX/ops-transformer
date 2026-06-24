@@ -203,7 +203,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     uint32_t scoreOutOffsetInU32 = topkCountAlign256_ + 3 * 256 + 64;
     scoreOutLocal_ = resMm1UB_[scoreOutOffsetInU32].template ReinterpretCast<uint16_t>();
 
-    topkOp_.InitBuffers(topkSharedTmpLocal_);
+    topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
     // 刷-1（MXFP8 场景不需要 kScale buffer）
     if constexpr (!IS_MXFP8) {
