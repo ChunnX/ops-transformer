@@ -117,7 +117,6 @@ class GeneralizedQLIV2:
         self.cmp_ratio = cmp_ratio
         self.w_dtype = dequant_dtype
         self.return_value = return_value
-        self.output_idx_offset = output_idx_offset
 
         if layout_query == "BSND":
             self.q_shape = [batch_size, q_seq, q_head_num, head_dim]
