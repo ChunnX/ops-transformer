@@ -43,8 +43,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 
 const std::map<std::string, std::vector<QSMLALayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME,             {QSMLALayout::BSND, QSMLALayout::TND}},
-    {ORI_KV_NAME,            {QSMLALayout::PA_BBND, QSMLALayout::TND}},
-    {CMP_KV_NAME,            {QSMLALayout::PA_BBND, QSMLALayout::TND}},
+    {ORI_KV_NAME,            {QSMLALayout::BSND, QSMLALayout::PA_BBND, QSMLALayout::TND}},
+    {CMP_KV_NAME,            {QSMLALayout::BSND, QSMLALayout::PA_BBND, QSMLALayout::TND}},
     {ATTEN_OUT_NAME,         {QSMLALayout::BSND, QSMLALayout::TND}},
 };
 

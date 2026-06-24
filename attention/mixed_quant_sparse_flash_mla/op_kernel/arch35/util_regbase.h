@@ -161,6 +161,7 @@ struct FdRunInfo {
     int64_t n2Size; \
     int64_t s1Size; /* s1总大小 */ \
     int64_t s2Size; /* s2总大小 */ \
+    int64_t cmpS2Size; \
     /* 轴的乘积 */ \
     int64_t s1D; \
     int64_t gS1D; \

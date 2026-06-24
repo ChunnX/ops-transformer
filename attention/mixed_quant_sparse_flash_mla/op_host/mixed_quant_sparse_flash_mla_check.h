@@ -265,6 +265,7 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
+    int64_t cmpS2Size = 0;
     uint32_t gSize = 0;
     uint32_t qkHeadDim = 0;
     uint32_t qTSize = 0; // 仅TND时生效
@@ -380,6 +381,7 @@ public:
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
+    int64_t cmpS2Size_ = 0;
     uint32_t headDim_ = 0;
     uint32_t qTSize_ = 0;
     uint32_t qkHeadDim_ = 0;
@@ -525,6 +527,7 @@ private:
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
+    int64_t cmpS2Size_ = 0;
     uint32_t qkHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     int64_t ropeHeadDim_ = 0;
