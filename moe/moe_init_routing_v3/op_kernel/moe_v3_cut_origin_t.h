@@ -24,10 +24,9 @@ template <typename T>
 class MoeV3CutOriginT {
 public:
     __aicore__ inline MoeV3CutOriginT(){};
-    __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-        GM_ADDR expertTokens, GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling,
-        TPipe* pipe);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX,
+                                GM_ADDR expandedRowIdx, GM_ADDR expertTokens, GM_ADDR expandedScale, GM_ADDR workspace,
+                                const MoeInitRoutingV3TilingData *tiling, TPipe *pipe);
     __aicore__ inline void Process();
 
 private:
@@ -41,17 +40,17 @@ private:
     __aicore__ inline void PadZerosForDropPad();
 
     // Quantization helper functions
-    __aicore__ inline void LoadAndCastToFloat(
-        LocalTensor<float>& dst, LocalTensor<T>& xBuf, int64_t gmOffset, int64_t copyLen, int64_t elements);
-    __aicore__ inline void StaticQuantCompute(
-        LocalTensor<float>& floatLocal, LocalTensor<int8_t>& int8Local, int64_t elements);
+    __aicore__ inline void LoadAndCastToFloat(LocalTensor<float> &dst, LocalTensor<T> &xBuf, int64_t gmOffset,
+                                              int64_t copyLen, int64_t elements);
+    __aicore__ inline void StaticQuantCompute(LocalTensor<float> &floatLocal, LocalTensor<int8_t> &int8Local,
+                                              int64_t elements);
 
 private:
     static constexpr int64_t DST_REP_STRIDE = 8;
     static constexpr int64_t MASK_STRIDE = 64;
     static constexpr int64_t VECTOR_FILTER_THRESHOLD = 64;
 
-    TPipe* pipe_;
+    TPipe *pipe_;
     TBuf<TPosition::VECCALC> buf_;
 
     // GM tensors
@@ -141,10 +140,10 @@ private:
 
 // ========================== Init ==========================
 template <typename T>
-__aicore__ inline void MoeV3CutOriginT<T>::Init(
-    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-    GM_ADDR expertTokens, GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling,
-    TPipe* pipe)
+__aicore__ inline void MoeV3CutOriginT<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset,
+                                                GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
+                                                GM_ADDR expandedScale, GM_ADDR workspace,
+                                                const MoeInitRoutingV3TilingData *tiling, TPipe *pipe)
 {
     pipe_ = pipe;
     blockIdx_ = GetBlockIdx();
@@ -213,26 +212,26 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     maskBytes_ = OpsBaseCeilAlign(Ceil(chunkAligned_, static_cast<int64_t>(8)), static_cast<int64_t>(sizeof(int8_t)));
 
     // Setup GlobalTensors
-    xGm_.SetGlobalBuffer((__gm__ T*)x);
-    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
+    xGm_.SetGlobalBuffer((__gm__ T *)x);
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx);
     if (quantMode_ == -1) {
-        expandedXGm_.SetGlobalBuffer((__gm__ T*)expandedX);
+        expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX);
     } else {
-        expandedXInt8Gm_.SetGlobalBuffer((__gm__ int8_t*)expandedX);
+        expandedXInt8Gm_.SetGlobalBuffer((__gm__ int8_t *)expandedX);
     }
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
     if (expertTokensNumFlag_ != EXERPT_TOKENS_NONE) {
-        expertTokensGm_.SetGlobalBuffer((__gm__ int64_t*)expertTokens);
+        expertTokensGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokens);
     }
     if (isInputScale_) {
-        scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
-        expandedScaleGm_.SetGlobalBuffer((__gm__ float*)expandedScale);
+        scaleGm_.SetGlobalBuffer((__gm__ float *)scale);
+        expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
     }
     staticQuantScale_ = 0.0f;
     staticQuantOffset_ = 0.0f;
     if (quantMode_ == 0) {
-        scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
-        offsetGm_.SetGlobalBuffer((__gm__ float*)offset);
+        scaleGm_.SetGlobalBuffer((__gm__ float *)scale);
+        offsetGm_.SetGlobalBuffer((__gm__ float *)offset);
         staticQuantScale_ = scaleGm_.GetValue(0);
         staticQuantOffset_ = offsetGm_.GetValue(0);
     }
@@ -253,9 +252,9 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
 
     // Workspace layout: pairs + expertCount (2 regions only)
     int64_t wsOffset = 0;
-    pairsWorkspaceGm_.SetGlobalBuffer((__gm__ int32_t*)workspace + wsOffset);
+    pairsWorkspaceGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + wsOffset);
     wsOffset += filterNeedCoreNum_ * pairsPerCore_;
-    expertCountWorkspaceGm_.SetGlobalBuffer((__gm__ int32_t*)workspace + wsOffset);
+    expertCountWorkspaceGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + wsOffset);
 
     // ===== UB layout: persistent region + max(phaseA, phaseB, phaseC) =====
 
@@ -298,7 +297,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     int64_t fixedOverhead = persistentSize_ + 2 * expertCountAlign;
     int64_t maxBatchBufSize = static_cast<int64_t>(196608) - fixedOverhead - static_cast<int64_t>(1024);
     if (maxBatchBufSize < expertCountAlign) {
-        maxBatchBufSize = expertCountAlign;  // at least 1 core
+        maxBatchBufSize = expertCountAlign; // at least 1 core
     }
     int64_t allCoresBufSize =
         OpsBaseCeilAlign(filterNeedCoreNum_ * expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
@@ -396,7 +395,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::FilterAndCountChunked()
             off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
             int64_t flatIdxOff = off;
             off += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
-            int64_t expertIdxCopyOff = off;  // V-written copy for scalar reads
+            int64_t expertIdxCopyOff = off; // V-written copy for scalar reads
 
             LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[expertIdxOff / sizeof(int32_t)];
             LocalTensor<int32_t> flatIdxLocal = buf_.Get<int32_t>()[flatIdxOff / sizeof(int32_t)];
@@ -408,8 +407,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::FilterAndCountChunked()
                 SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
             }
 
-            DataCopyExtParams copyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(chunkLength * sizeof(int32_t)), 0, 0, 0};
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(chunkLength * sizeof(int32_t)),
+                                         0, 0, 0};
             DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
             DataCopyPad(expertIdxLocal, expertIdxGm_[gmFlatOffset], copyParams, padParams);
             SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
@@ -418,8 +417,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::FilterAndCountChunked()
             // This establishes proper MTE2→V→S chain for scalar visibility
             Adds(expertIdxCopyLocal, expertIdxLocal, static_cast<int32_t>(0), static_cast<int32_t>(chunkLength));
             // Generate flat index sequence
-            ArithProgression<int32_t>(
-                flatIdxLocal, static_cast<int32_t>(gmFlatOffset), 1, static_cast<int32_t>(chunkLength));
+            ArithProgression<int32_t>(flatIdxLocal, static_cast<int32_t>(gmFlatOffset), 1,
+                                      static_cast<int32_t>(chunkLength));
             PipeBarrier<PIPE_V>();
             SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
 
@@ -434,12 +433,11 @@ __aicore__ inline void MoeV3CutOriginT<T>::FilterAndCountChunked()
 
             // Write pairs to workspace: use original expertIdxLocal (MTE2 data) and flatIdxLocal
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-            DataCopyExtParams wpCopyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(filteredInChunk * sizeof(int32_t)), 0, 0, 0};
+            DataCopyExtParams wpCopyParams{static_cast<uint16_t>(1),
+                                           static_cast<uint32_t>(filteredInChunk * sizeof(int32_t)), 0, 0, 0};
             DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], flatIdxLocal, wpCopyParams);
-            DataCopyPad(
-                pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor], expertIdxLocal,
-                wpCopyParams);
+            DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor], expertIdxLocal,
+                        wpCopyParams);
         } else {
             // Phase A shared layout (computed locally per-chunk, from persistentSize_)
             int64_t off = persistentSize_;
@@ -449,8 +447,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::FilterAndCountChunked()
             // Load expertIdx chunk from GM
 
             LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[expertIdxOff / sizeof(int32_t)];
-            DataCopyExtParams copyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(chunkLength * sizeof(int32_t)), 0, 0, 0};
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(chunkLength * sizeof(int32_t)),
+                                         0, 0, 0};
             DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
             DataCopyPad(expertIdxLocal, expertIdxGm_[gmFlatOffset], copyParams, padParams);
 
@@ -499,7 +497,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::FilterAndCountChunked()
             CompareScalar(compareMask1, expertIdxFp32Local, static_cast<float>(expertEnd_), CMPMODE::LT, alignedLen);
             PipeBarrier<PIPE_V>();
             And(gatherMaskLocal.ReinterpretCast<uint16_t>(), compareMask0.ReinterpretCast<uint16_t>(),
-                compareMask1.ReinterpretCast<uint16_t>(), Ceil(alignedLen, MASK_STRIDE) * MASK_STRIDE / DST_REP_STRIDE / 2);
+                compareMask1.ReinterpretCast<uint16_t>(),
+                Ceil(alignedLen, MASK_STRIDE) * MASK_STRIDE / DST_REP_STRIDE / 2);
             PipeBarrier<PIPE_V>();
 
             // GatherMask: compress expert IDs
@@ -510,30 +509,27 @@ __aicore__ inline void MoeV3CutOriginT<T>::FilterAndCountChunked()
             gatherMaskParams.src0BlockStride = 1;
             gatherMaskParams.src0RepeatStride = DST_REP_STRIDE;
             gatherMaskParams.src1RepeatStride = DST_REP_STRIDE;
-            GatherMask(
-                gatheredExpertLocal, expertIdxLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
-                static_cast<uint32_t>(chunkLength), gatherMaskParams, rsvdCnt);
+            GatherMask(gatheredExpertLocal, expertIdxLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
+                       static_cast<uint32_t>(chunkLength), gatherMaskParams, rsvdCnt);
             PipeBarrier<PIPE_V>();
             filteredInChunk = static_cast<int64_t>(rsvdCnt);
 
             if (filteredInChunk > 0) {
                 // GatherMask: compress flat indices
                 LocalTensor<int32_t> flatIdxBufferLocal = buf_.Get<int32_t>()[flatIdxBufferOff / sizeof(int32_t)];
-                ArithProgression<int32_t>(
-                    flatIdxBufferLocal, static_cast<int32_t>(gmFlatOffset), 1, static_cast<int32_t>(chunkLength));
+                ArithProgression<int32_t>(flatIdxBufferLocal, static_cast<int32_t>(gmFlatOffset), 1,
+                                          static_cast<int32_t>(chunkLength));
                 PipeBarrier<PIPE_V>();
 
                 LocalTensor<int32_t> gatheredIdxLocal = buf_.Get<int32_t>()[gatheredIdxOff / sizeof(int32_t)];
                 uint64_t idxRsvdCnt = 0;
-                GatherMask(
-                    gatheredIdxLocal, flatIdxBufferLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
-                    static_cast<uint32_t>(chunkLength), gatherMaskParams, idxRsvdCnt);
+                GatherMask(gatheredIdxLocal, flatIdxBufferLocal, gatherMaskLocal.ReinterpretCast<uint32_t>(), true,
+                           static_cast<uint32_t>(chunkLength), gatherMaskParams, idxRsvdCnt);
                 PipeBarrier<PIPE_V>();
 
                 // Vector: subtract expertStart_ in-place -> gatheredExpertLocal becomes expertOffset
-                Adds(
-                    gatheredExpertLocal, gatheredExpertLocal, static_cast<int32_t>(-expertStart_),
-                    static_cast<int32_t>(filteredInChunk));
+                Adds(gatheredExpertLocal, gatheredExpertLocal, static_cast<int32_t>(-expertStart_),
+                     static_cast<int32_t>(filteredInChunk));
 
                 // V -> S sync before scalar count accumulation
                 SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
@@ -550,15 +546,14 @@ __aicore__ inline void MoeV3CutOriginT<T>::FilterAndCountChunked()
                     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
                     // Write gatheredIdxLocal and gatheredExpertLocal to workspace (separated layout)
-                    DataCopyExtParams copyParams{
-                        static_cast<uint16_t>(1), static_cast<uint32_t>(filteredInChunk * sizeof(int32_t)), 0, 0, 0};
-                    DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], gatheredIdxLocal, copyParams);
-                    DataCopyPad(
-                        pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor], gatheredExpertLocal,
-                        copyParams);
+                    DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                                 static_cast<uint32_t>(filteredInChunk * sizeof(int32_t)), 0, 0, 0};
+                    DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], gatheredIdxLocal,
+                                copyParams);
+                    DataCopyPad(pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor],
+                                gatheredExpertLocal, copyParams);
                 }
             }
-
         }
 
         pairCursor += filteredInChunk;
@@ -577,8 +572,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::WriteExpertCountToWorkspace()
     LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
 
     SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-    DataCopyExtParams copyParams{
-        static_cast<uint16_t>(1), static_cast<uint32_t>(expertCountStride_ * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(expertCountStride_ * sizeof(int32_t)),
+                                 0, 0, 0};
     DataCopyPad(expertCountWorkspaceGm_[blockIdx_ * expertCountStride_], expertCountLocal, copyParams);
 }
 
@@ -600,8 +595,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::ComputeGlobalOffset()
         batchCores = filterNeedCoreNum_;
     }
 
-    LocalTensor<int32_t> batchBufLocal =
-        buf_.Get<int32_t>()[oneCoreExpertCountLocalOffset_ / sizeof(int32_t)];
+    LocalTensor<int32_t> batchBufLocal = buf_.Get<int32_t>()[oneCoreExpertCountLocalOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> totalCountLocal = buf_.Get<int32_t>()[totalCountLocalOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> prefixSumLocal = buf_.Get<int32_t>()[prefixSumLocalOffset_ / sizeof(int32_t)];
     LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
@@ -620,8 +614,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::ComputeGlobalOffset()
 
         // Load this batch of cores' expert counts from workspace in one DMA
         int64_t batchElements = curBatchSize * expertCountStride_;
-        DataCopyExtParams loadParams{
-            static_cast<uint16_t>(1), static_cast<uint32_t>(batchElements * sizeof(int32_t)), 0, 0, 0};
+        DataCopyExtParams loadParams{static_cast<uint16_t>(1), static_cast<uint32_t>(batchElements * sizeof(int32_t)),
+                                     0, 0, 0};
         DataCopyPad(batchBufLocal, expertCountWorkspaceGm_[batchStart * expertCountStride_], loadParams, padParams);
         SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
 
@@ -660,8 +654,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::ComputeGlobalOffset()
         // expertCountLocal[e] = global write start position for this core's expert e entries
         if (dropPadMode_ == DROP_PAD_MODE) {
             int32_t clampedPrefix = Min(prefixForExpert, static_cast<int32_t>(expertCapacity_));
-            expertCountLocal.SetValue(
-                e, static_cast<int32_t>((expertStart_ + e) * expertCapacity_) + clampedPrefix);
+            expertCountLocal.SetValue(e, static_cast<int32_t>((expertStart_ + e) * expertCapacity_) + clampedPrefix);
         } else {
             expertCountLocal.SetValue(e, static_cast<int32_t>(cumulativeSum) + prefixForExpert);
         }
@@ -677,12 +670,12 @@ __aicore__ inline void MoeV3CutOriginT<T>::WriteExpertTokens()
         LocalTensor<int32_t> totalCountLocal = buf_.Get<int32_t>()[totalCountLocalOffset_ / sizeof(int32_t)];
         LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
 
-         if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
+        if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
             Cast(expertTokensLocal, totalCountLocal, RoundMode::CAST_NONE, static_cast<int32_t>(actualExpertNum_));
             PipeBarrier<PIPE_V>();
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-            DataCopyExtParams copyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
             DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
 
         } else if (expertTokensNumType_ == EXERPT_TOKENS_CUMSUM) {
@@ -693,8 +686,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::WriteExpertTokens()
                 expertTokensLocal.SetValue(e, cumsum);
             }
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-            DataCopyExtParams copyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
             DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
 
         } else if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
@@ -712,8 +705,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::WriteExpertTokens()
                 }
             }
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-            DataCopyExtParams copyParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(kvTotalElements * sizeof(int64_t)), 0, 0, 0};
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                         static_cast<uint32_t>(kvTotalElements * sizeof(int64_t)), 0, 0, 0};
             DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
         }
     }
@@ -723,18 +716,17 @@ __aicore__ inline void MoeV3CutOriginT<T>::WriteExpertTokens()
 // ========================== LoadAndCastToFloat ==========================
 // Cast input T data to float. For T=float this is a DataCopy, otherwise Cast.
 template <typename T>
-__aicore__ inline void MoeV3CutOriginT<T>::LoadAndCastToFloat(
-    LocalTensor<float>& dst, LocalTensor<T>& xBuf, int64_t gmOffset, int64_t copyLen, int64_t elements)
+__aicore__ inline void MoeV3CutOriginT<T>::LoadAndCastToFloat(LocalTensor<float> &dst, LocalTensor<T> &xBuf,
+                                                              int64_t gmOffset, int64_t copyLen, int64_t elements)
 {
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1),
-                                 static_cast<uint32_t>(copyLen * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(copyLen * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
     if constexpr (IsSameType<T, float>::value) {
         // T=float: DMA directly into dst, no intermediate xBuf needed
         DataCopyPad(dst, xGm_[gmOffset], copyParams, padParams);
         SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-    } else if constexpr (!IsSameType<T, int8_t>::value){
+    } else if constexpr (!IsSameType<T, int8_t>::value) {
         // T=half/bf16: DMA into xBuf, wait MTE2 complete, then Cast to float
         DataCopyPad(xBuf, xGm_[gmOffset], copyParams, padParams);
         SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
@@ -746,8 +738,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::LoadAndCastToFloat(
 // ========================== StaticQuantCompute ==========================
 // Static quantization: float -> *scale + offset -> RINT -> ROUND -> TRUNC -> int8
 template <typename T>
-__aicore__ inline void MoeV3CutOriginT<T>::StaticQuantCompute(
-    LocalTensor<float>& floatLocal, LocalTensor<int8_t>& int8Local, int64_t elements)
+__aicore__ inline void MoeV3CutOriginT<T>::StaticQuantCompute(LocalTensor<float> &floatLocal,
+                                                              LocalTensor<int8_t> &int8Local, int64_t elements)
 {
     Muls(floatLocal, floatLocal, staticQuantScale_, elements);
     PipeBarrier<PIPE_V>();
@@ -806,7 +798,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
         off += OpsBaseCeilAlign(quantBufElements * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
         quantInt8Off = off;
         off += OpsBaseCeilAlign(quantBufElements * static_cast<int64_t>(sizeof(int8_t)), BLOCK_BYTES);
-        quantScaleOutOff = off;  // reused as quantInt8Off1
+        quantScaleOutOff = off; // reused as quantInt8Off1
         off += OpsBaseCeilAlign(quantBufElements * static_cast<int64_t>(sizeof(int8_t)), BLOCK_BYTES);
     } else if (isInputScale_) {
         // Unquant + inputScale: scaleBuf only
@@ -873,14 +865,13 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
             gatheredIdxLocal = buf_.Get<int32_t>()[pairsOff / sizeof(int32_t)];
             gatheredExpertLocal = buf_.Get<int32_t>()[pairsOff / sizeof(int32_t) + 2048];
             DataCopyPadExtParams<int32_t> intPadParams{false, 0, 0, 0};
-            DataCopyExtParams pairLoadParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(batchSize * sizeof(int32_t)), 0, 0, 0};
-            DataCopyPad(
-                gatheredIdxLocal, pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], pairLoadParams,
-                intPadParams);
-            DataCopyPad(
-                gatheredExpertLocal, pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor],
-                pairLoadParams, intPadParams);
+            DataCopyExtParams pairLoadParams{static_cast<uint16_t>(1),
+                                             static_cast<uint32_t>(batchSize * sizeof(int32_t)), 0, 0, 0};
+            DataCopyPad(gatheredIdxLocal, pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], pairLoadParams,
+                        intPadParams);
+            DataCopyPad(gatheredExpertLocal,
+                        pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor], pairLoadParams,
+                        intPadParams);
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
         } else {
             gatheredIdxLocal = buf_.Get<int32_t>()[gatheredIdxLocalOffset_ / sizeof(int32_t)];
@@ -940,7 +931,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
             for (int64_t i = 0; i < batchSize; i++) {
                 int32_t bc = static_cast<int32_t>(i & 1);
                 int32_t newPos = newPosArr[i];
-                LocalTensor<T>& curXBuf = (bc == 0) ? xBuf0 : xBuf1;
+                LocalTensor<T> &curXBuf = (bc == 0) ? xBuf0 : xBuf1;
 
                 int32_t origFlatIdx = origFlatIdxArr[i];
                 SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
@@ -957,7 +948,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 if (newPos < activeNum_) {
                     DataCopyPad(expandedXGm_[static_cast<int64_t>(newPos) * cols_], curXBuf, xCp);
                     if (isInputScale_) {
-                        LocalTensor<float>& curScBuf = (bc == 0) ? scBuf0 : scBuf1;
+                        LocalTensor<float> &curScBuf = (bc == 0) ? scBuf0 : scBuf1;
                         DataCopyPad(expandedScaleGm_[newPos], curScBuf, scaleCopyOutParams);
                     }
                 }
@@ -972,7 +963,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                     WaitFlag<HardEvent::MTE3_MTE2>(evMte3[bc]);
                     DataCopyPad(curXBuf, xGm_[static_cast<int64_t>(srcRowArr[i + 2]) * cols_], xCp, xPadParams);
                     if (isInputScale_) {
-                        LocalTensor<float>& curScBuf = (bc == 0) ? scBuf0 : scBuf1;
+                        LocalTensor<float> &curScBuf = (bc == 0) ? scBuf0 : scBuf1;
                         DataCopyPad(curScBuf, scaleGm_[srcRowArr[i + 2]], scaleCopyInParams, scalePadParams);
                     }
                     SetFlag<HardEvent::MTE2_MTE3>(evMte2[bc]);
@@ -988,56 +979,57 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
             }
         } else if (colsLoops_ == 1 && quantMode_ == 0) {
             // === x input double-buffer + int8 output double-buffer (static quant) ===
-            LocalTensor<int8_t> quantInt8Local1 =
-                buf_.Get<int8_t>()[quantScaleOutOff];
+            LocalTensor<int8_t> quantInt8Local1 = buf_.Get<int8_t>()[quantScaleOutOff];
 
             // idxBuf1 carved from space after quantInt8Local1
-            int64_t int8Size1 = OpsBaseCeilAlign(
-                quantBufElements * static_cast<int64_t>(sizeof(int8_t)), BLOCK_BYTES);
-            LocalTensor<int32_t> idxBuf1 =
-                buf_.Get<int32_t>()[(quantScaleOutOff + int8Size1) / sizeof(int32_t)];
+            int64_t int8Size1 = OpsBaseCeilAlign(quantBufElements * static_cast<int64_t>(sizeof(int8_t)), BLOCK_BYTES);
+            LocalTensor<int32_t> idxBuf1 = buf_.Get<int32_t>()[(quantScaleOutOff + int8Size1) / sizeof(int32_t)];
 
-            DataCopyExtParams xCp{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(lastLoopCols_ * sizeof(T)), 0, 0, 0};
+            DataCopyExtParams xCp{static_cast<uint16_t>(1), static_cast<uint32_t>(lastLoopCols_ * sizeof(T)), 0, 0, 0};
 
             // Prologue: signal int8 bufs free; prefetch first valid row into xBuf0.
-            SetFlag<HardEvent::MTE3_V>(evMte3Done3);   // quantInt8Local  free
-            SetFlag<HardEvent::MTE3_V>(evMte3Done2);   // quantInt8Local1 free
-            SetFlag<HardEvent::V_MTE2>(evMteVDone1);   // xBuf1 free (never prefetched)
+            SetFlag<HardEvent::MTE3_V>(evMte3Done3); // quantInt8Local  free
+            SetFlag<HardEvent::MTE3_V>(evMte3Done2); // quantInt8Local1 free
+            SetFlag<HardEvent::V_MTE2>(evMteVDone1); // xBuf1 free (never prefetched)
 
             // Find first valid row for prologue prefetch.
             int64_t firstValid = -1;
             for (int64_t i = 0; i < batchSize; i++) {
-                if (newPosArr[i] < activeNum_) { firstValid = i; break; }
+                if (newPosArr[i] < activeNum_) {
+                    firstValid = i;
+                    break;
+                }
             }
 
             if (firstValid >= 0) {
-                DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRowArr[firstValid]) * cols_],
-                            xCp, xPadParams);
+                DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRowArr[firstValid]) * cols_], xCp, xPadParams);
             }
-            int32_t pingpong = 0;  // only incremented for valid rows
+            int32_t pingpong = 0; // only incremented for valid rows
             for (int64_t i = 0; i < batchSize; i++) {
-                int32_t newPos      = newPosArr[i];
+                int32_t newPos = newPosArr[i];
                 int32_t origFlatIdx = origFlatIdxArr[i];
-                int32_t srcRow      = srcRowArr[i];
+                int32_t srcRow = srcRowArr[i];
 
                 if (newPos >= activeNum_) {
                     continue;
                 }
 
                 int32_t bc = pingpong & 1;
-                LocalTensor<T>&       curXBuf    = (bc == 0) ? xBuf0 : xBuf1;
-                LocalTensor<T>&       nextXBuf   = (bc == 0) ? xBuf1 : xBuf0;
-                LocalTensor<int8_t>&  curInt8    = (bc == 0) ? quantInt8Local : quantInt8Local1;
-                LocalTensor<int32_t>& curIdxBuf  = (bc == 0) ? idxBuf : idxBuf1;
-                event_t evCurXFree    = (bc == 0) ? evMteVDone0 : evMteVDone1;
-                event_t evNextXFree   = (bc == 0) ? evMteVDone1 : evMteVDone0;
+                LocalTensor<T> &curXBuf = (bc == 0) ? xBuf0 : xBuf1;
+                LocalTensor<T> &nextXBuf = (bc == 0) ? xBuf1 : xBuf0;
+                LocalTensor<int8_t> &curInt8 = (bc == 0) ? quantInt8Local : quantInt8Local1;
+                LocalTensor<int32_t> &curIdxBuf = (bc == 0) ? idxBuf : idxBuf1;
+                event_t evCurXFree = (bc == 0) ? evMteVDone0 : evMteVDone1;
+                event_t evNextXFree = (bc == 0) ? evMteVDone1 : evMteVDone0;
                 event_t evCurInt8Free = (bc == 0) ? evMte3Done3 : evMte3Done2;
 
                 // Find next valid row for prefetch.
                 int64_t nextValid = -1;
                 for (int64_t j = i + 1; j < batchSize; j++) {
-                    if (newPosArr[j] < activeNum_) { nextValid = j; break; }
+                    if (newPosArr[j] < activeNum_) {
+                        nextValid = j;
+                        break;
+                    }
                 }
 
                 WaitFlag<HardEvent::MTE3_V>(evCurInt8Free);
@@ -1049,18 +1041,17 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                     if (nextValid >= 0) {
                         WaitFlag<HardEvent::V_MTE2>(evNextXFree);
                         SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
-                        DataCopyPad(nextXBuf,
-                            xGm_[static_cast<int64_t>(srcRowArr[nextValid]) * cols_], xCp, xPadParams);
+                        DataCopyPad(nextXBuf, xGm_[static_cast<int64_t>(srcRowArr[nextValid]) * cols_], xCp,
+                                    xPadParams);
                     }
-                } else if constexpr (!IsSameType<T, int8_t>::value){
-                    Cast(quantFloatLocal, curXBuf, RoundMode::CAST_NONE,
-                         static_cast<int32_t>(quantBufElements));
+                } else if constexpr (!IsSameType<T, int8_t>::value) {
+                    Cast(quantFloatLocal, curXBuf, RoundMode::CAST_NONE, static_cast<int32_t>(quantBufElements));
                     PipeBarrier<PIPE_V>();
                     SetFlag<HardEvent::V_MTE2>(evCurXFree);
                     if (nextValid >= 0) {
                         WaitFlag<HardEvent::V_MTE2>(evNextXFree);
-                        DataCopyPad(nextXBuf,
-                            xGm_[static_cast<int64_t>(srcRowArr[nextValid]) * cols_], xCp, xPadParams);
+                        DataCopyPad(nextXBuf, xGm_[static_cast<int64_t>(srcRowArr[nextValid]) * cols_], xCp,
+                                    xPadParams);
                     }
                     StaticQuantCompute(quantFloatLocal, curInt8, quantBufElements);
                 }
@@ -1080,9 +1071,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 }
 
                 SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-                DataCopyPad(
-                    expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_],
-                    curInt8, int8CopyParams);
+                DataCopyPad(expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_], curInt8, int8CopyParams);
                 SetFlag<HardEvent::MTE3_V>(evCurInt8Free);
 
                 pingpong++;
@@ -1096,12 +1085,12 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
             WaitFlag<HardEvent::MTE3_V>(evMte3Done3);
             WaitFlag<HardEvent::MTE3_V>(evMte3Done2);
 
-            SetFlag<HardEvent::MTE3_V>(evMte3Done3);  // slot 0 free for V
-            SetFlag<HardEvent::MTE3_V>(evMte3Done2);  // slot 1 free for V
+            SetFlag<HardEvent::MTE3_V>(evMte3Done3); // slot 0 free for V
+            SetFlag<HardEvent::MTE3_V>(evMte3Done2); // slot 1 free for V
 
             int32_t invPingpong = 0;
             for (int64_t i = 0; i < batchSize; i++) {
-                int32_t newPos      = newPosArr[i];
+                int32_t newPos = newPosArr[i];
                 int32_t origFlatIdx = origFlatIdxArr[i];
 
                 if (newPos < activeNum_) {
@@ -1109,10 +1098,10 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 }
 
                 int32_t bc = invPingpong & 1;
-                LocalTensor<int32_t>& curIdxBuf = (bc == 0) ? idxBuf : idxBuf1;
+                LocalTensor<int32_t> &curIdxBuf = (bc == 0) ? idxBuf : idxBuf1;
                 event_t evCur = (bc == 0) ? evMte3Done3 : evMte3Done2;
 
-                WaitFlag<HardEvent::MTE3_V>(evCur);  // V: wait slot bc free from prev same-slot DCP
+                WaitFlag<HardEvent::MTE3_V>(evCur); // V: wait slot bc free from prev same-slot DCP
                 if (rowIdxType_ == GATHER) {
                     Duplicate(curIdxBuf, static_cast<int32_t>(newPos), 8);
                 } else {
@@ -1125,7 +1114,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 } else {
                     DataCopyPad(expandedRowIdxGm_[newPos], curIdxBuf, idxCopyParams);
                 }
-                SetFlag<HardEvent::MTE3_V>(evCur);  // MTE3: slot bc free for V next round
+                SetFlag<HardEvent::MTE3_V>(evCur); // MTE3: slot bc free for V next round
 
                 invPingpong++;
             }
@@ -1170,8 +1159,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                         curLoopCols = lastLoopCols_;
                     }
                     int64_t colsOff = cl * perLoopCols_;
-                    DataCopyExtParams xIn{
-                        static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+                    DataCopyExtParams xIn{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0,
+                                          0, 0};
 
                     SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
 
@@ -1182,19 +1171,17 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                         DataCopyPad(expandedXGm_[static_cast<int64_t>(newPos) * cols_ + colsOff], xBuf0, xIn);
                     } else {
                         // Static: LoadAndCastToFloat + quantize + write int8
-                        int64_t curLoopAligned = OpsBaseCeilAlign(
-                            curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+                        int64_t curLoopAligned =
+                            OpsBaseCeilAlign(curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
                             static_cast<int64_t>(sizeof(T));
-                        DataCopyExtParams int8Out{
-                            static_cast<uint16_t>(1),
-                            static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
-                        LoadAndCastToFloat(quantFloatLocal, xBuf0,
-                            static_cast<int64_t>(srcRow) * cols_ + colsOff, curLoopCols, curLoopAligned);
+                        DataCopyExtParams int8Out{static_cast<uint16_t>(1),
+                                                  static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+                        LoadAndCastToFloat(quantFloatLocal, xBuf0, static_cast<int64_t>(srcRow) * cols_ + colsOff,
+                                           curLoopCols, curLoopAligned);
                         StaticQuantCompute(quantFloatLocal, quantInt8Local, curLoopAligned);
                         SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-                        DataCopyPad(
-                            expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff],
-                            quantInt8Local, int8Out);
+                        DataCopyPad(expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff], quantInt8Local,
+                                    int8Out);
                     }
                 }
             }
@@ -1278,14 +1265,13 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
 
         if (useWorkspace) {
             DataCopyPadExtParams<int32_t> intPadParams{false, 0, 0, 0};
-            DataCopyExtParams pairLoadParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(batchSize * sizeof(int32_t)), 0, 0, 0};
-            DataCopyPad(
-                gatheredIdxLocal, pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], pairLoadParams,
-                intPadParams);
-            DataCopyPad(
-                gatheredExpertLocal, pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor],
-                pairLoadParams, intPadParams);
+            DataCopyExtParams pairLoadParams{static_cast<uint16_t>(1),
+                                             static_cast<uint32_t>(batchSize * sizeof(int32_t)), 0, 0, 0};
+            DataCopyPad(gatheredIdxLocal, pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairCursor], pairLoadParams,
+                        intPadParams);
+            DataCopyPad(gatheredExpertLocal,
+                        pairsWorkspaceGm_[blockIdx_ * pairsPerCore_ + pairsPerCore_ / 2 + pairCursor], pairLoadParams,
+                        intPadParams);
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
         } else {
             gatheredIdxLocal = buf_.Get<int32_t>()[gatheredIdxLocalOffset_ / sizeof(int32_t)];
@@ -1312,8 +1298,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
 
         // Step 2: 批量搬出 expandedRowIdx（目标连续：coreFlatStart_ + pairCursor）
         SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-        DataCopyExtParams idxBatchCp{
-            static_cast<uint16_t>(1), static_cast<uint32_t>(batchSize * sizeof(int32_t)), 0, 0, 0};
+        DataCopyExtParams idxBatchCp{static_cast<uint16_t>(1), static_cast<uint32_t>(batchSize * sizeof(int32_t)), 0, 0,
+                                     0};
         DataCopyPad(expandedRowIdxGm_[coreFlatStart_ + pairCursor], gatheredIdxLocal, idxBatchCp);
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
         // Step 3: 按 srcRow 分组搬出 expandedX (with quantization support)
@@ -1337,8 +1323,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                     colsTileLength = lastLoopCols_;
                 }
                 int64_t colsOff = colsLoop * perLoopCols_;
-                DataCopyExtParams xCp{
-                    static_cast<uint16_t>(1), static_cast<uint32_t>(colsTileLength * sizeof(T)), 0, 0, 0};
+                DataCopyExtParams xCp{static_cast<uint16_t>(1), static_cast<uint32_t>(colsTileLength * sizeof(T)), 0, 0,
+                                      0};
 
                 if (totalRows >= 1) {
                     DataCopyPad(xBuf0, xGm_[currentLoopStartRow * cols_ + colsOff], xCp, xPadParams);
@@ -1353,7 +1339,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                 for (int64_t rowIdx = 0; rowIdx < totalRows; rowIdx++) {
                     int64_t row = currentLoopStartRow + rowIdx;
                     int32_t bc = static_cast<int32_t>(rowIdx & 1);
-                    LocalTensor<T>& curBuf = (bc == 0) ? xBuf0 : xBuf1;
+                    LocalTensor<T> &curBuf = (bc == 0) ? xBuf0 : xBuf1;
 
                     WaitFlag<HardEvent::MTE2_MTE3>(evMte2[bc]);
 
@@ -1388,28 +1374,24 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
             // 双缓冲: V 读完 xBuf[bc] 后立即 MTE2 加载下一行到 xBuf[1-bc]，
             //         与 StaticQuantCompute 并行执行
 
-            event_t evV2Mte3[2] = {
-                static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_MTE3)),
-                static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_MTE3))
-            };
-            event_t evMte3Done[2] = {
-                static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE3_V)),
-                static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE3_V))
-            };
+            event_t evV2Mte3[2] = {static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_MTE3)),
+                                   static_cast<event_t>(pipe_->FetchEventID(HardEvent::V_MTE3))};
+            event_t evMte3Done[2] = {static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE3_V)),
+                                     static_cast<event_t>(pipe_->FetchEventID(HardEvent::MTE3_V))};
             int64_t colsTileLength = perLoopCols_;
             for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
                 if (colsLoop == colsLoops_ - 1) {
                     colsTileLength = lastLoopCols_;
                 }
-                int64_t curLoopAligned = OpsBaseCeilAlign(
-                    colsTileLength * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+                int64_t curLoopAligned =
+                    OpsBaseCeilAlign(colsTileLength * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
                     static_cast<int64_t>(sizeof(T));
                 int64_t colsOff = colsLoop * perLoopCols_;
 
-                DataCopyExtParams xCp{
-                    static_cast<uint16_t>(1), static_cast<uint32_t>(colsTileLength * sizeof(T)), 0, 0, 0};
-                DataCopyExtParams int8Out{
-                    static_cast<uint16_t>(1), static_cast<uint32_t>(colsTileLength * sizeof(int8_t)), 0, 0, 0};
+                DataCopyExtParams xCp{static_cast<uint16_t>(1), static_cast<uint32_t>(colsTileLength * sizeof(T)), 0, 0,
+                                      0};
+                DataCopyExtParams int8Out{static_cast<uint16_t>(1),
+                                          static_cast<uint32_t>(colsTileLength * sizeof(int8_t)), 0, 0, 0};
 
                 // 初始加载 row 0 → xBuf0
                 if (totalRows >= 1) {
@@ -1420,8 +1402,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                 for (int64_t rowIdx = 0; rowIdx < totalRows; rowIdx++) {
                     int64_t row = currentLoopStartRow + rowIdx;
                     int32_t bc = static_cast<int32_t>(rowIdx & 1);
-                    LocalTensor<T>& curBuf = (bc == 0) ? xBuf0 : xBuf1;
-                    LocalTensor<T>& nextBuf = (bc == 0) ? xBuf1 : xBuf0;
+                    LocalTensor<T> &curBuf = (bc == 0) ? xBuf0 : xBuf1;
+                    LocalTensor<T> &nextBuf = (bc == 0) ? xBuf1 : xBuf0;
 
                     // 等 MTE2 搬入 curBuf 完成 + 上一行 MTE3 读完 quantInt8Local
                     SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
@@ -1440,10 +1422,9 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                         if (rowIdx + 1 < totalRows) {
                             DataCopyPad(nextBuf, xGm_[(row + 1) * cols_ + colsOff], xCp, xPadParams);
                         }
-                    } else if constexpr (!IsSameType<T, int8_t>::value){
+                    } else if constexpr (!IsSameType<T, int8_t>::value) {
                         // T=half/bf16: Cast 读完 curBuf 后立刻释放
-                        Cast(quantFloatLocal, curBuf, RoundMode::CAST_NONE,
-                            static_cast<int32_t>(curLoopAligned));
+                        Cast(quantFloatLocal, curBuf, RoundMode::CAST_NONE, static_cast<int32_t>(curLoopAligned));
                         PipeBarrier<PIPE_V>();
                         // curBuf 已释放 → 立刻发 MTE2 预取下一行（与 StaticQuantCompute 并行！）
                         if (rowIdx + 1 < totalRows) {
@@ -1464,10 +1445,10 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteDroppad()
                     WaitFlag<HardEvent::V_MTE3>(evV2Mte3[bc]);
                     for (int64_t r = rowStart; r < curLoopRow; r++) {
                         int32_t newPos = gatheredIdxLocal.GetValue(r);
-                        if (newPos == -1) continue;
-                        DataCopyPad(
-                            expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff],
-                            quantInt8Local[bc], int8Out);
+                        if (newPos == -1)
+                            continue;
+                        DataCopyPad(expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff],
+                                    quantInt8Local[bc], int8Out);
                     }
                     SetFlag<HardEvent::MTE3_V>(evMte3Done[bc]);
                 }
@@ -1497,10 +1478,11 @@ __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
 
     // zeroBuf 从 totalCountLocal 之后开始（避免覆盖 totalCountLocal）
     int64_t zeroBufStart = totalCountLocalOffset_ +
-        OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+                           OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
     // 量化模式下输出元素为 int8，非量化为 T
-    constexpr int64_t outElemSize = (QUANT_MODE != -1) ? static_cast<int64_t>(sizeof(int8_t)) : static_cast<int64_t>(sizeof(T));
+    constexpr int64_t outElemSize =
+        (QUANT_MODE != -1) ? static_cast<int64_t>(sizeof(int8_t)) : static_cast<int64_t>(sizeof(T));
     int64_t elemsPerBlock = BLOCK_BYTES / outElemSize;
     int64_t zeroBufMaxBytes = totalBufSize_ - zeroBufStart;
     int64_t zeroBufMaxElems = (zeroBufMaxBytes / outElemSize / elemsPerBlock) * elemsPerBlock;
@@ -1531,7 +1513,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
             LocalTensor<int8_t> zb = zeroBufI32.ReinterpretCast<int8_t>();
             for (int64_t off = 0; off < totalPadElems; off += zeroBufElems) {
                 DataCopyExtParams cp{static_cast<uint16_t>(1),
-                    static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(int8_t)), 0, 0, 0};
+                                     static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(int8_t)), 0,
+                                     0, 0};
                 DataCopyPad(expandedXInt8Gm_[gmStart + off], zb, cp);
             }
         } else {
@@ -1539,7 +1522,8 @@ __aicore__ inline void MoeV3CutOriginT<T>::PadZerosForDropPad()
             LocalTensor<T> zb = zeroBufI32.ReinterpretCast<T>();
             for (int64_t off = 0; off < totalPadElems; off += zeroBufElems) {
                 DataCopyExtParams cp{static_cast<uint16_t>(1),
-                    static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(T)), 0, 0, 0};
+                                     static_cast<uint32_t>(Min(zeroBufElems, totalPadElems - off) * sizeof(T)), 0, 0,
+                                     0};
                 DataCopyPad(expandedXGm_[gmStart + off], zb, cp);
             }
         }
