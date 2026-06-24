@@ -687,7 +687,7 @@ void SplitFD(SplitResult &result)
     result.usedVecNumOfFd = curCoreIndex + 1;
 }
 
-void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, SplitResult &result)
+void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param)
 {
     OP_LOGI("BaseInfo", "========== BaseInfo ==========");
     OP_LOGI("BaseInfo", "bSize: %u", baseInfo.bSize);
@@ -707,6 +707,37 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     OP_LOGI("BaseInfo", "actualSeqPrefixSize: %ld", baseInfo.actualSeqPrefixSize);
     OP_LOGI("SplitParam", "mBaseSize: %u", param.mBaseSize);
     OP_LOGI("SplitParam", "s2BaseSize: %u", param.s2BaseSize);
+}
+void LogSplitCoreResult(const SplitResult &result)
+{
+    OP_LOGI("SplitRes", "splitRes.usedCoreNum: %d", result.usedCoreNum);
+    OP_LOGI("SplitRes", "splitRes.maxCost: %d", result.maxCost);
+    OP_LOGI("SplitRes", "splitRes.numOfFdHead: %d", result.numOfFdHead);
+    OP_LOGI("SplitRes", "splitRes.maxS2SplitNum: %d", result.maxS2SplitNum);
+    OP_LOGI("SplitRes", "splitRes.usedVecNumOfFd: %d", result.usedVecNumOfFd);
+    for (uint32_t i = 0; i < result.usedCoreNum; i++) {
+        OP_LOGI("SplitRes", "outerSplitParams.bN2End[%u]: %d", i, result.bN2End[i]);
+        OP_LOGI("SplitRes", "outerSplitParams.gS1End[%u]: %d", i, result.gS1End[i]);
+        OP_LOGI("SplitRes", "outerSplitParams.s2End[%u]: %d", i, result.s2End[i]);
+        OP_LOGI("fdRes", "fDParams.s2SplitStartIdxOfCore[%u]: %d", i, result.fdRes.s2SplitStartIdxOfCore[i]);
+    }
+    for (uint32_t i = 0; i < result.numOfFdHead; i++) {
+        OP_LOGI("fdRes", "fDParams.bN2IdxOfFdHead[%u]: %d", i, result.fdRes.bN2IdxOfFdHead[i]);
+        OP_LOGI("fdRes", "fDParams.gS1IdxOfFdHead[%u]: %d", i, result.fdRes.gS1IdxOfFdHead[i]);
+        OP_LOGI("fdRes", "fDParams.s2SplitNumOfFdHead[%u]: %d", i, result.fdRes.s2SplitNumOfFdHead[i]);
+        OP_LOGI("fdRes", "fDParams.gS1SplitNumOfFdHead[%u]: %d", i, result.fdRes.gS1SplitNumOfFdHead[i]);
+        OP_LOGI("fdRes", "fDParams.gS1LastPartSizeOfFdHead[%u]: %d", i, result.fdRes.gS1LastPartSizeOfFdHead[i]);
+    }
+    for (uint32_t i = 0; i < result.usedVecNumOfFd; i++) {
+        OP_LOGI("fdRes", "fDParams.gS1IdxEndOfFdHead[%u]: %d", i, result.fdRes.gS1IdxEndOfFdHead[i]);
+        OP_LOGI("fdRes", "fDParams.gS1IdxEndOfFdHeadSplit[%u]: %d", i, result.fdRes.gS1IdxEndOfFdHeadSplit[i]);
+    }
+}
+
+void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, SplitResult &result)
+{
+    // 打印baseInfo,param信息
+    LogSplitCoreInput(baseInfo, param);
     SplitContext splitContext(baseInfo, param);
 
     // 1、划分基本块，统计信息
@@ -746,30 +777,9 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
         SplitFD(result);
     }
     result.usedCoreNum = std::max(result.usedCoreNum, 1U);  // 至少使用1个core
-    OP_LOGI("SplitRes", "splitRes.usedCoreNum: %d", result.usedCoreNum);
-    OP_LOGI("SplitRes", "splitRes.maxCost: %d", result.maxCost);
-    OP_LOGI("SplitRes", "splitRes.numOfFdHead: %d", result.numOfFdHead);
-    OP_LOGI("SplitRes", "splitRes.maxS2SplitNum: %d", result.maxS2SplitNum);
-    OP_LOGI("SplitRes", "splitRes.usedVecNumOfFd: %d", result.usedVecNumOfFd);
 
-    for (uint32_t i = 0; i < result.usedCoreNum; i++) {
-        OP_LOGI("SplitRes", "outerSplitParams.bN2End[%u]: %d", i, result.bN2End[i]);
-        OP_LOGI("SplitRes", "outerSplitParams.gS1End[%u]: %d", i, result.gS1End[i]);
-        OP_LOGI("SplitRes", "outerSplitParams.s2End[%u]: %d", i, result.s2End[i]);
-        OP_LOGI("fdRes", "fDParams.s2SplitStartIdxOfCore[%u]: %d", i, result.fdRes.s2SplitStartIdxOfCore[i]);
-    }
-    for (uint32_t i = 0; i < result.numOfFdHead; i++) {
-    OP_LOGI("fdRes", "fDParams.bN2IdxOfFdHead[%u]: %d", i, result.fdRes.bN2IdxOfFdHead[i]);
-    OP_LOGI("fdRes", "fDParams.gS1IdxOfFdHead[%u]: %d", i, result.fdRes.gS1IdxOfFdHead[i]);
-    OP_LOGI("fdRes", "fDParams.s2SplitNumOfFdHead[%u]: %d", i, result.fdRes.s2SplitNumOfFdHead[i]);
-    OP_LOGI("fdRes", "fDParams.gS1SplitNumOfFdHead[%u]: %d", i, result.fdRes.gS1SplitNumOfFdHead[i]);
-    OP_LOGI("fdRes", "fDParams.gS1LastPartSizeOfFdHead[%u]: %d", i, result.fdRes.gS1LastPartSizeOfFdHead[i]);
-    }
-
-    for (uint32_t i = 0; i < result.usedVecNumOfFd; i++) {
-        OP_LOGI("fdRes", "fDParams.gS1IdxEndOfFdHead[%u]: %d", i, result.fdRes.gS1IdxEndOfFdHead[i]);
-        OP_LOGI("fdRes", "fDParams.gS1IdxEndOfFdHeadSplit[%u]: %d", i, result.fdRes.gS1IdxEndOfFdHeadSplit[i]);
-    }
+    // 打印分核结果信息
+    LogSplitCoreResult(result);
 }
 
 }
