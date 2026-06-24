@@ -499,7 +499,7 @@ def tilelang_grad_kl_loss_kernel(
                         T.barrier_all()
                         T.tile.add(loss_accum_ub, loss_accum_ub, rsy_tmp_ub[0])
 
-                    T.copy(loss_accum_ub, LossOut[bz, s1_id, 0:1])
+                    T.copy(loss_accum_ub, LossOut[bz, s1_id:s1_id + 1])
 
                 T.set_cross_flag("V", 12)
 
