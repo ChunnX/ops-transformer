@@ -23,41 +23,41 @@ TEST_CASES=(
     # Case 0: Basic BNSD, small dims
     # "1|1|128|128|128|128|128|BNSD|0.5|0|0|0"
 
-    # "1|1|256|256|128|128|128|BNSD|0.5|0|0|0"
+    # "1|1|1280|256|128|128|128|BNSD|0.5|0|0|0"
 
-    # "1|1|256|256|128|128|128|BNSD|0.5|0|1|1"
+    # "1|1|1280|256|128|128|128|BNSD|0.5|0|1|1"
 
-    # "4|10|256|256|128|128|128|BNSD|0.5|0|1|1"
+    # "4|10|1280|256|128|128|128|BNSD|0.5|0|1|1"
 
     # "4|10|258|121|128|128|128|BNSD|0.5|0|1|1"
     # "4|10|128|262144|128|128|128|BNSD|0.5|0|0|0"
 
-    "5|10|1280|1280|128|128|128|BNSD|0.5|0|1|1"
+    "2|2|39936|17108|128|128|128|BNSD|0.5|0|1|1"
 
     # "4|10|12054|14220|128|128|128|BNSD|0.5|0|1|1"
     
     # Case 1: Multi-batch
     # "2|8|128|128|128|128|128|BNSD|0.5|0|0|0"
     # # Case 2: Larger seqlen
-    # "1|8|256|256|128|128|128|BNSD|0.5|0|0|0"
+    # "1|8|1280|256|128|128|128|BNSD|0.5|0|0|0"
     # # Case 3: Multi-batch + larger seqlen
-    # "2|8|256|256|128|128|128|BNSD|0.5|0|0|0"
+    # "2|8|1280|256|128|128|128|BNSD|0.5|0|0|0"
     # # Case 4: Small block size (64)
-    # "1|8|256|256|128|64|64|BNSD|0.5|0|0|0"
+    # "1|8|1280|256|128|64|64|BNSD|0.5|0|0|0"
     # # Case 5: Low sparsity (0.3, TopK mode)
-    # "1|8|256|256|128|128|128|BNSD|0.3|0|0|0"
+    # "1|8|1280|256|128|128|128|BNSD|0.3|0|0|0"
     # # Case 6: High sparsity (0.8, BottomK mode)
-    # "1|8|256|256|128|128|128|BNSD|0.8|0|0|0"
+    # "1|8|1280|256|128|128|128|BNSD|0.8|0|0|0"
     # # Case 7: With seqlen
-    # "1|8|256|256|128|128|128|BNSD|0.5|1|0|0"
+    # "1|8|1280|256|128|128|128|BNSD|0.5|1|0|0"
     # # Case 8: With q_block_len
-    # "1|8|256|256|128|64|64|BNSD|0.5|0|1|0"
+    # "1|8|1280|256|128|64|64|BNSD|0.5|0|1|0"
     # # Case 9: With k_block_len
-    # "1|8|256|256|128|64|64|BNSD|0.5|0|0|1"
+    # "1|8|1280|256|128|64|64|BNSD|0.5|0|0|1"
     # # Case 10: All optional features enabled
-    # "1|8|256|256|128|64|64|BNSD|0.5|1|1|1"
+    # "1|8|1280|256|128|64|64|BNSD|0.5|1|1|1"
     # # Case 11: Multi-batch + all features
-    # "2|4|256|256|128|64|64|BNSD|0.3|1|1|1"
+    # "2|4|1280|256|128|64|64|BNSD|0.3|1|1|1"
 )
 
 # ============================================================
@@ -84,10 +84,11 @@ FAIL_CASES=()
 NPU_RUN_COUNT=1
 
 # Generalized test case generation (replaces TEST_CASES when enabled).
-# Set USE_GENERALIZED_CASES=1 to randomly generate cases; 0 uses hardcoded TEST_CASES above.
+# Set USE_GENERALIZED_CASES=0 to randomly generate cases; 0 uses hardcoded TEST_CASES above.
 # GENERALIZED_CASE_COUNT: number of random cases to generate.
-USE_GENERALIZED_CASES=0
-GENERALIZED_CASE_COUNT=30
+
+USE_GENERALIZED_CASES=1
+GENERALIZED_CASE_COUNT=100
 
 # ============================================================
 # Function: setup_env - Environment initialization
@@ -124,13 +125,12 @@ generate_generalized_cases() {
 
     echo "--- Generating $count generalized test cases (seed=$rand_seed) ---"
 
-    # Clear existing TEST_CASES
     TEST_CASES=()
 
     local i=0
     for i in $(seq 0 $(($count - 1))); do
         # B: 1..39
-        local B=$(( (RANDOM % 3) + 1 ))
+        local B=$(( (RANDOM % 5) + 1 ))
 
         # N: 1..39
         local N=$(( (RANDOM % 3) + 1 ))
@@ -161,7 +161,6 @@ generate_generalized_cases() {
 
         # D: fixed 128
         local D=128
-
         # bx: multiple of 64, bx < S1
         # Max valid bx = S1 - 1, round down to nearest 64
         # local bx_max=$(( (S1 - 1) / 64 * 64 ))

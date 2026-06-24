@@ -94,7 +94,7 @@ FLOAT_BLOCK = 8
 FP16_BLOCK = 16
 NEG_INF = -65504.0
 
-Q_CHUNK = 128
+Q_CHUNK = 25
 K_CHUNK = 128
 
 def align_up(value: int, align: int) -> int:
@@ -127,10 +127,15 @@ def kernel_like_single_vec(score: torch.Tensor) -> torch.Tensor:
             #     pad = torch.full((row_count, k_align - k_size), NEG_INF, dtype=torch.float32)
             #     chunk = torch.cat([chunk, pad], dim=1)
 
+            # print("第一轮zzzzzzzzzzzzzz")
+
             local_max = chunk.max(dim=1).values
             new_max = torch.maximum(global_max, local_max)
 
-            # print("第一轮zzzzzzzzzzzzzz")
+            # print("score * scale")
+            # print(chunk)
+            # print("local_max")
+            # print(local_max)
 
             t1 = global_max - new_max
             t2 = torch.exp(t1)
