@@ -655,7 +655,7 @@ void SplitFD(FAMetaData &result)
     fdRes.fdUsedVecNum = curCoreIndex;
 }
 
-void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, FAMetaData &result)
+void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param)
 {
     OP_LOGI("FusedInferAttentionScore", "========== BaseInfo ==========\n");
     OP_LOGI("FusedInferAttentionScore", "bSize: %u\n", baseInfo.bSize);
@@ -673,8 +673,6 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     OP_LOGI("FusedInferAttentionScore", "preToken: %lld\n", baseInfo.preToken);
     OP_LOGI("FusedInferAttentionScore", "nextToken: %lld\n", baseInfo.nextToken);
     OP_LOGI("FusedInferAttentionScore", "actualSeqPrefixSize: %lld\n", baseInfo.actualSeqPrefixSize);
-
-    // 打印 actualSeqS1Size
     if (baseInfo.actualSeqS1Size.empty()) {
         OP_LOGI("FusedInferAttentionScore", "actualSeqS1Size: nullptr\n");
     } else {
@@ -687,8 +685,6 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
         }
         OP_LOGI("FusedInferAttentionScore", "]\n");
     }
-
-    // 打印 actualSeqS2Size
     if (baseInfo.actualSeqS2Size.empty()) {
         OP_LOGI("FusedInferAttentionScore", "actualSeqS2Size: nullptr\n");
     } else {
@@ -701,12 +697,46 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
         }
         OP_LOGI("FusedInferAttentionScore", "]\n");
     }
-
     OP_LOGI("FusedInferAttentionScore", "mBaseSize: %u\n", param.mBaseSize);
     OP_LOGI("FusedInferAttentionScore", "s2BaseSize: %u\n", param.s2BaseSize);
     OP_LOGI("FusedInferAttentionScore", "gS1BaseSizeOfFd: %u\n", param.gS1BaseSizeOfFd);
+}
 
+void LogSplitCoreResult(const FAMetaData &result)
+{
+    OP_LOGI("FusedInferAttentionScore", "========== start print split core res ==========\n");
+    OP_LOGI("FusedInferAttentionScore", "result.usedCoreNum: %d \n", result.usedCoreNum);
+    OP_LOGI("FusedInferAttentionScore", "result.maxCost: %lld \n", result.maxCost);
+    OP_LOGI("FusedInferAttentionScore", "result.fdRes.fdNum: %d \n", result.fdRes.fdNum);
+    OP_LOGI("FusedInferAttentionScore", "result.fdRes.fdUsedVecNum: %d \n", result.fdRes.fdUsedVecNum);
+    for (uint32_t i = 0; i < result.usedCoreNum; i++) {
+        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.bN2End[%d]: %d \n", i, result.bN2End[i]);
+        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.mEnd[%d]: %d \n", i, result.mEnd[i]);
+        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.s2End[%d]: %d \n", i, result.s2End[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.firstFdDataWorkspaceIdx[%d]: %d \n",
+                i, result.firstFdDataWorkspaceIdx[i]);
+    }
+    for (uint32_t i = 0; i < result.fdRes.fdNum; i++) {
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdBN2Idx[%d]: %d \n", i, result.fdRes.fdBN2Idx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdMIdx[%d]: %d \n", i, result.fdRes.fdMIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdS2SplitNum[%d]: %d \n", i, result.fdRes.fdS2SplitNum[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdWorkspaceIdx[%d]: %d \n",
+                i, result.fdRes.fdWorkspaceIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mSize[%d]: %d \n", i, result.fdRes.mSize[i]);
+    }
+    for (uint32_t i = 0; i < result.fdRes.fdUsedVecNum; i++) {
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.taskIdx[%d]: %d \n", i, result.fdRes.taskIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mStart[%d]: %d \n", i, result.fdRes.mStart[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mLen[%d]: %d \n", i, result.fdRes.mLen[i]);
+    }
+}
+
+void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, FAMetaData &result)
+{
+    // 打印baseInfo,param信息
+    LogSplitCoreInput(baseInfo, param);
     SplitContext splitContext(baseInfo, param);
+
     // 1、划分基本块，统计信息
     CalcSplitInfo(splitContext);
     // 全空case
@@ -741,35 +771,9 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     if (result.fdRes.fdNum > 0U) {
         SplitFD(result);
     }
-
     result.usedCoreNum = std::max(result.usedCoreNum, 1U); // 至少使用1个core
 
-    OP_LOGI("FusedInferAttentionScore", "========== start print split core res ==========\n");
-    OP_LOGI("FusedInferAttentionScore", "result.usedCoreNum: %d \n", result.usedCoreNum);
-    OP_LOGI("FusedInferAttentionScore", "result.maxCost: %lld \n", result.maxCost);
-    OP_LOGI("FusedInferAttentionScore", "result.fdRes.fdNum: %d \n", result.fdRes.fdNum);
-    OP_LOGI("FusedInferAttentionScore", "result.fdRes.fdUsedVecNum: %d \n", result.fdRes.fdUsedVecNum);
-    for (uint32_t i = 0; i < result.usedCoreNum; i++) {
-        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.bN2End[%d]: %d \n", i, result.bN2End[i]);
-        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.mEnd[%d]: %d \n", i, result.mEnd[i]);
-        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.s2End[%d]: %d \n", i, result.s2End[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.firstFdDataWorkspaceIdx[%d]: %d \n",
-                i, result.firstFdDataWorkspaceIdx[i]);
-    }
-
-    for (uint32_t i = 0; i < result.fdRes.fdNum; i++) {
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdBN2Idx[%d]: %d \n", i, result.fdRes.fdBN2Idx[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdMIdx[%d]: %d \n", i, result.fdRes.fdMIdx[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdS2SplitNum[%d]: %d \n", i, result.fdRes.fdS2SplitNum[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdWorkspaceIdx[%d]: %d \n",
-                i, result.fdRes.fdWorkspaceIdx[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mSize[%d]: %d \n", i, result.fdRes.mSize[i]);
-    }
-
-    for (uint32_t i = 0; i < result.fdRes.fdUsedVecNum; i++) {
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.taskIdx[%d]: %d \n", i, result.fdRes.taskIdx[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mStart[%d]: %d \n", i, result.fdRes.mStart[i]);
-        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mLen[%d]: %d \n", i, result.fdRes.mLen[i]);
-    }
+    // 打印分核结果信息
+    LogSplitCoreResult(result);
 }
 } // namespace split_core_v2
