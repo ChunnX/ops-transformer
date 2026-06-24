@@ -37,4 +37,4 @@ from . import graph_convert as _graph_convert
 from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul
 from .causal_conv1d_fn import npu_causal_conv1d_fn, causal_conv1d_fn
 from .causal_conv1d_update import npu_causal_conv1d_update, causal_conv1d_update
-from .grouped_matmul_activation_quant import npu_grouped_matmul_activation_quant
+from .grouped_matmul_activation_quant import grouped_matmul_activation_quant

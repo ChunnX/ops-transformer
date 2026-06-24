@@ -45,10 +45,10 @@ def load_grouped_matmul_activation_quant():
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module.npu_grouped_matmul_activation_quant
+    return module.grouped_matmul_activation_quant
 
 
-npu_grouped_matmul_activation_quant = load_grouped_matmul_activation_quant()
+grouped_matmul_activation_quant = load_grouped_matmul_activation_quant()
 
 try:
     from golden import grouped_matmul_activation_quant_golden  # noqa: E402
@@ -159,18 +159,18 @@ def run(args):
 
     data = make_inputs()
 
-    log("call npu_grouped_matmul_activation_quant")
-    y_npu, y_scale_npu = npu_grouped_matmul_activation_quant(
+    log("call grouped_matmul_activation_quant")
+    y_npu, y_scale_npu = grouped_matmul_activation_quant(
         data["x_npu"],
         data["group_list_npu"],
         [data["weight_npu"]],
         [data["weight_scale_npu"]],
-        None,
+        [],
+        "gelu_tanh",
         x_scale=data["x_scale_npu"],
-        activation_type="gelu_tanh",
         group_list_type=0,
         tuning_config=None,
-        quant_mode="MX",
+        quant_mode=None,
         y_dtype=torch.float8_e4m3fn,
         round_mode="rint",
         scale_alg=0,
@@ -202,13 +202,13 @@ def run(args):
         data["group_list_golden"],
         [data["weight_golden"]],
         [data["weight_scale_golden"]],
-        bias=None,
+        [],
+        "gelu_tanh",
         x_scale=data["x_scale_golden"],
-        activation_type="gelu_tanh",
         transpose_weight=False,
         group_list_type=0,
         tuning_config=None,
-        quant_mode="MX",
+        quant_mode=None,
         y_dtype=GE_DTYPE_FLOAT8_E4M3FN,
         round_mode="rint",
         scale_alg=0,
