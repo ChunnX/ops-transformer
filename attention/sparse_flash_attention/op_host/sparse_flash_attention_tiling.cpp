@@ -1356,6 +1356,21 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
             "T_size of query should be greater than 0"),
         return ge::GRAPH_FAILED);
 
+    OP_CHECK_IF(kvTSize_ <= 0 && (kvLayout_ == SFALayout::TND),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of key", std::to_string(kvTSize_).c_str(),
+            "T_size of key should be greater than 0"),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(s1Size_ <= 0 && (qLayout_ == SFALayout::BSND),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "S_size of query", std::to_string(s1Size_).c_str(),
+            "S_size of query should be greater than 0"),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(s2Size_ <= 0 && (kvLayout_ == SFALayout::BSND),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "S_size of key", std::to_string(s2Size_).c_str(),
+            "S_size of key should be greater than 0"),
+        return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(n1Size_ <= 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "q_head_num", std::to_string(n1Size_).c_str(),
             "q_head_num should be greater than 0"),
@@ -1400,6 +1415,32 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ropeHeadDim_",
             std::to_string(ropeHeadDim_).c_str(), "rope_head_dim should be 64"),
         return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SFATilingCheck::CheckEmptyTensor() const
+{
+    auto checkOne = [this](const gert::StorageShape *shape, const std::string &name) -> ge::graphStatus {
+        if (shape == nullptr) {
+            return ge::GRAPH_SUCCESS;
+        }
+        const auto &s = shape->GetStorageShape();
+        int64_t product = 1;
+        for (size_t i = 0; i < s.GetDimNum(); ++i) {
+            product *= s.GetDim(i);
+        }
+        OP_CHECK_IF(product == 0,
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, name.c_str(),
+                std::to_string(product),
+                "The shape size of " + name + " should be greater than 0, empty tensor is not supported"),
+            return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    };
+
+    if (checkOne(opParamInfo_.query.shape, QUERY_NAME) != ge::GRAPH_SUCCESS ||
+        checkOne(opParamInfo_.key.shape, KEY_NAME) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1457,7 +1498,8 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquantPa() const
 
 ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquant() const
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantShape() ||
+    if (ge::GRAPH_SUCCESS != CheckEmptyTensor() ||
+        ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantShape() ||
         ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantLayout() ||
         ge::GRAPH_SUCCESS != CheckFeatureMlaNoQuantDtype() ||
         ge::GRAPH_SUCCESS != CheckFeatureMlaNoquantPa()) {

@@ -443,6 +443,7 @@ private:
     ge::graphStatus CheckMultiParaConsistency();
 
     ge::graphStatus CheckFeatureMlaNoQuantShape() const;
+    ge::graphStatus CheckEmptyTensor() const;
     ge::graphStatus CheckFeatureMlaNoQuantLayout() const;
     ge::graphStatus CheckFeatureMlaNoQuantDtype() const;
     ge::graphStatus CheckFeatureMlaNoquantPa() const;
