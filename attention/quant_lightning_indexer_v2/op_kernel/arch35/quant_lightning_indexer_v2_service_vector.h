@@ -177,11 +177,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         qScaleUB_ = qScaleBuf_.Get<SCALE_T>(); // qScale
     }
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(uint16_t));
-    vec1OutUB_ = outBuf_.Get<SCORE_T>(); // out
+    vec1OutUB_ = outBuf_.Get<uint16_t>(); // out
 
     // Topk: mrgValueLocal_ 和 indicesOutLocal_ 独立分配（跨迭代使用，不可复用）
     pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
-    mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
+    mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
 
     pipe->InitBuffer(indicesOutBuf_,
         (topkCountAlign256_ + 64) * sizeof(uint32_t));
