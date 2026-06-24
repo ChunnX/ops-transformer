@@ -214,8 +214,11 @@ __aicore__ inline void MoeV3FullLoadBase<T>::InitGlobalBuffers(GM_ADDR expertIdx
         expertTokensCountOrCumsumGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum);
     }
 
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2 +
-                                        Align(this->actualExpertNum_, sizeof(int32_t)), 1);
+    if (this->dropPadMode_ != DROP_PAD_MODE) {
+        expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+                                            Align(this->totalLength_, sizeof(int32_t)) * 2 +
+                                            Align(this->actualExpertNum_, sizeof(int32_t)), 1);
+    }
 }
 
 template <typename T>
@@ -486,6 +489,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
     PipeBarrier<PIPE_ALL>();
     LocalTensor<int32_t> expertCountLocal = expertCountBuf_.Get<int32_t>(actualExpertNum_);
     LocalTensor<int64_t> expertTokensOutLocal = expertTokensCopyOutQueue_.AllocTensor<int64_t>();
+    bool needExpertTotalCount = this->dropPadMode_ != DROP_PAD_MODE;
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
         int64_t expertOffset = 0;
@@ -500,15 +504,19 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
                 expertTokensOutLocal.SetValue(expertOffset * EXERPT_TOKENS_KEY_VALUE, i + expertStart_);
                 expertTokensOutLocal.SetValue(expertOffset * EXERPT_TOKENS_KEY_VALUE + 1, expertCount);
                 expertOffset++;
-                actualExpertTotalNum_ += expertCount;
+                if (needExpertTotalCount) {
+                    actualExpertTotalNum_ += expertCount;
+                }
             }
         }
         expertCountElements_ = Min(expertCountElements_, static_cast<int64_t>((expertOffset + 1) * KEY_VALUE_MODE));
     } else if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
-        for (int64_t i = 0; i < actualExpertNum_; i++) {
-            int64_t expertCount = static_cast<int64_t>(expertCountLocal.GetValue(i));
-            expertTokensOutLocal.SetValue(i, expertCount);
-            actualExpertTotalNum_ += expertCount;
+        Cast(expertTokensOutLocal, expertCountLocal, RoundMode::CAST_NONE, actualExpertNum_);
+        PipeBarrier<PIPE_V>();
+        if (needExpertTotalCount) {
+            for (int64_t i = 0; i < actualExpertNum_; i++) {
+                actualExpertTotalNum_ += static_cast<int64_t>(expertCountLocal.GetValue(i));
+            }
         }
     } else {
         int64_t cumsumCount = 0;
@@ -516,7 +524,9 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
             int64_t expertCount = static_cast<int64_t>(expertCountLocal.GetValue(i));
             cumsumCount += expertCount;
             expertTokensOutLocal.SetValue(i, cumsumCount);
-            actualExpertTotalNum_ += expertCount;
+            if (needExpertTotalCount) {
+                actualExpertTotalNum_ += expertCount;
+            }
         }
     }
     event_t eventIDSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
@@ -527,9 +537,11 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
     DataCopyPad(expertTokensCountOrCumsumGm_, expertTokensOutLocal, copyParams);
     expertTokensCopyOutQueue_.FreeTensor(expertTokensOutLocal);
 
-    expertTotalCountGm_.SetValue(0, static_cast<int32_t>(actualExpertTotalNum_));
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        expertTotalCountGm_);
+    if (needExpertTotalCount) {
+        expertTotalCountGm_.SetValue(0, static_cast<int32_t>(actualExpertTotalNum_));
+        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                          AscendC::DcciDst::CACHELINE_OUT>(expertTotalCountGm_);
+    }
 }
 
 template <typename T>
