@@ -1222,109 +1222,84 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
     return ge::GRAPH_SUCCESS;
 }
 
+static uint32_t SnapDimToBucket(uint32_t dim)
+{
+    if (dim <= DSIZE_64)  return DSIZE_64;
+    if (dim <= DSIZE_128) return DSIZE_128;
+    if (dim <= DSIZE_256) return DSIZE_256;
+    if (dim <= DSIZE_512) return DSIZE_512;
+    if (dim <= DSIZE_576) return DSIZE_576;
+    return dim;
+}
+
+struct TilingConfigRule {
+    bool isAntiQuant;
+    uint32_t sOuter;
+    uint32_t sInner;
+    uint32_t dSize;
+    uint32_t dVsize;
+    uint64_t config;
+    bool requireRopeSplit = false;
+};
+
 void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingInfo &fiaInfo)
 {
-    auto sOuter = sOuterFactor_ * 2;
-    auto sInner = sInnerFactor_;
-    auto dSize = fiaInfo.qkHeadDim;
-    auto dVsize = fiaInfo.vHeadDim;
+    uint32_t dSize = fiaInfo.qkHeadDim;
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
-        dSize = fiaInfo.qkHeadDim + fiaInfo.ropeHeadDim;
+        dSize += fiaInfo.ropeHeadDim;
     }
-    if (dSize <= DSIZE_64)
-        dSize = DSIZE_64;
-    else if (dSize <= DSIZE_128)
-        dSize = DSIZE_128;
-    else if (dSize <= DSIZE_256)
-        dSize = DSIZE_256;
-    else if (dSize <= DSIZE_512)
-        dSize = DSIZE_512;
-    else if (dSize <= DSIZE_576)
-        dSize = DSIZE_576;
+    dSize = SnapDimToBucket(dSize);
+    uint32_t dVsize = SnapDimToBucket(fiaInfo.vHeadDim);
 
-    if (dVsize <= DSIZE_64)
-        dVsize = DSIZE_64;
-    else if (dVsize <= DSIZE_128)
-        dVsize = DSIZE_128;
-    else if (dVsize <= DSIZE_256)
-        dVsize = DSIZE_256;
-    else if (dVsize <= DSIZE_512)
-        dVsize = DSIZE_512;
-
-    if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {  // 伪量化场景
+    uint32_t sOuter = sOuterFactor_ * 2;
+    uint32_t sInner = sInnerFactor_;
+    bool isAntiQuant = (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT);
+    if (isAntiQuant) {
         sInner = sInnerFactorSize_;
         sOuter = sOuterFactor_;
-        if (sInner == 1024 && sOuter == 16 && dSize <= DSIZE_64 && dVsize <= DSIZE_64) { // 16:s1base 1024:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64;
-        } else if (sInner == 512 && sOuter == 16 && dSize <= DSIZE_64 && dVsize <= DSIZE_64) { // 16:s1base 512:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64;
-        } else if (sInner == 512 && sOuter == 16 && dSize <= DSIZE_128 && dVsize <= DSIZE_128) { // 16:s1base 512:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned512_DAligned128_DVAligned128;
-        } else if (sInner == 256 && sOuter == 16 && dSize <= DSIZE_256 && dVsize <= DSIZE_256) { // 16:s1base 256:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned256_DAligned256_DVAligned256;
-        } else if (sInner == 128 && sOuter == 16 && dSize <= DSIZE_512 && dVsize <= DSIZE_512) { // 16:s1base 128:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned128_DAligned512_DVAligned512;
-        } else if (sInner == 512 && sOuter == 32 && dSize <= 64 &&
-                   dVsize <= 64) {  // 以下为PFA伪量化合轴场景 32:s1base 512:s2base 64:dbase
-            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned64_DVAligned64;
-        } else if (sInner == 512 && sOuter == 32 && dSize <= DSIZE_128 &&
-                   dVsize <= DSIZE_128) {  // 32:s1base 512:s2base 128:dbase
-            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128;
-        } else if (sInner == 256 && sOuter == 32 && dSize <= DSIZE_256 &&
-                   dVsize <= DSIZE_256) {  // 32:s1base 256:s2base 256:dbase
-            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned256_DAligned256_DVAligned256;
-        } else if (sInner == 128 && sOuter == 32 && dSize <= DSIZE_512 &&
-                   dVsize <= DSIZE_512) {  // 32:s1base 128:s2base 512:dbase
-            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned128_DAligned512_DVAligned512;
-        } else {
-        }
-    } else {  // 非量化+全量化 场景
-        if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-            if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
-                tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128;
-            } else {
-                tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
-            }
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_192 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_128 && dSize == DSIZE_576 && dVsize == DSIZE_512) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64;  // qkvd不等长
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128;  // qkvd不等长
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64;  // qkvd不等长
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128;  // qkvd不等长
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
-        } else {
-        }
+    }
+
+    static const std::vector<TilingConfigRule> configRules = {
+        {true, 16, 1024, DSIZE_64, DSIZE_64, Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64},
+        {true, 16, 512, DSIZE_64, DSIZE_64, Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64},
+        {true, 16, 512, DSIZE_128, DSIZE_128, Config_S1Aligned16_S2Aligned512_DAligned128_DVAligned128},
+        {true, 16, 256, DSIZE_256, DSIZE_256, Config_S1Aligned16_S2Aligned256_DAligned256_DVAligned256},
+        {true, 16, 128, DSIZE_512, DSIZE_512, Config_S1Aligned16_S2Aligned128_DAligned512_DVAligned512},
+        {true, 32, 512, DSIZE_64, DSIZE_64, Config_S1Aligned32_S2Aligned512_DAligned64_DVAligned64},
+        {true, 32, 512, DSIZE_128, DSIZE_128, Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128},
+        {true, 32, 256, DSIZE_256, DSIZE_256, Config_S1Aligned32_S2Aligned256_DAligned256_DVAligned256},
+        {true, 32, 128, DSIZE_512, DSIZE_512, Config_S1Aligned32_S2Aligned128_DAligned512_DVAligned512},
+
+        {false, SOUTER_64, SINNER_64, DSIZE_256, DSIZE_256, Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256},
+        {false, SOUTER_64, SINNER_64, DSIZE_512, DSIZE_512, Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512},
+        {false, SOUTER_64, SINNER_256, DSIZE_64, DSIZE_64, Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64},
+        {false, SOUTER_64, SINNER_256, DSIZE_128, DSIZE_128, Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128},
+        {false, SOUTER_128, SINNER_128, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64},
+        {false, SOUTER_128, SINNER_128, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128, true},
+        {false, SOUTER_128, SINNER_128, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128},
+        {false, SOUTER_128, SINNER_128, DSIZE_192, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
+        {false, SOUTER_128, SINNER_128, DSIZE_256, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
+        {false, SOUTER_128, SINNER_128, DSIZE_256, DSIZE_256, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256},
+        {false, SOUTER_128, SINNER_128, DSIZE_512, DSIZE_512, Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512},
+        {false, SOUTER_128, SINNER_256, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64},
+        {false, SOUTER_64, SINNER_128, DSIZE_576, DSIZE_512, Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512},
+        {false, SOUTER_64, SINNER_256, DSIZE_256, DSIZE_256, Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256},
+        {false, SOUTER_128, SINNER_256, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128},
+        {false, SOUTER_128, SINNER_128, DSIZE_128, DSIZE_64, Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64},
+        {false, SOUTER_128, SINNER_128, DSIZE_64, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128},
+        {false, SOUTER_64, SINNER_256, DSIZE_128, DSIZE_64, Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64},
+        {false, SOUTER_64, SINNER_256, DSIZE_64, DSIZE_128, Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128},
+        {false, SOUTER_128, SINNER_512, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64},
+        {false, SOUTER_128, SINNER_512, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128},
+    };
+
+    for (const auto &rule : configRules) {
+        if (rule.isAntiQuant != isAntiQuant) continue;
+        if (rule.sOuter != sOuter || rule.sInner != sInner) continue;
+        if (rule.dSize != dSize || rule.dVsize != dVsize) continue;
+        if (rule.requireRopeSplit && fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) continue;
+        tilingKeyInfo_.config = rule.config;
+        return;
     }
 }
 
