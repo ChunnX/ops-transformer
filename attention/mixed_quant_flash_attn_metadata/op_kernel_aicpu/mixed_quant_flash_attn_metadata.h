@@ -73,7 +73,7 @@ struct FaMetaData {
         headMetadata[metaIdx] = val;
     }
 
-    uint32_t GetheadMetadata(uint32_t metaIdx)
+    uint32_t GetHeadMetadata(uint32_t metaIdx)
     {
         assert(metaIdx < HEAD_METADATA_SIZE);
         return headMetadata[metaIdx];
