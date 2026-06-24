@@ -746,7 +746,12 @@ public:
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
-        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
+        if (taskDealMode == TASK_DEAL_MODE::SKIP_REMAINING_S2) {
+            if (s2Cur < curS2Start && curS2Start < curS2End) {
+                s2Cur = curS2Start;
+                return;
+            }
+        } else {
             // 当前S2未处理完
             if (s2Cur + 1 < s2LoopTimes) {
                 s2Cur++;
