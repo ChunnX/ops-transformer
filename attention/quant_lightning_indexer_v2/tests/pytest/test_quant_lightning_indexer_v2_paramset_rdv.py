@@ -46,13 +46,13 @@ TEST_PARAMS = {
         "layout_query": ["BSND"],
         "layout_key":["PA_BBND"],
         "sparse_count": [2048],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[1],
+        "cmp_ratio":[4],
         "return_value":[0]
     },
     # BSND+PA+mask0+s2小于一个基本块: b=1,s1=1,s2=120,g=64,blockSize=128,sparse=100,mask=0,ratio=1
@@ -81,13 +81,13 @@ TEST_PARAMS = {
         "layout_query": ["BSND"],
         "layout_key":["PA_BBND"],
         "sparse_count": [100],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[1],
+        "cmp_ratio":[4],
         "return_value":[0]
     },
     # BSND+PA+mask3+s2不整除基本块: b=1,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
@@ -122,7 +122,7 @@ TEST_PARAMS = {
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[2],
+        "cmp_ratio":[4],
         "return_value":[0]
     },
     # BSND+PA+mask3+刚好满核: b=64,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
@@ -157,7 +157,7 @@ TEST_PARAMS = {
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[2],
+        "cmp_ratio":[4],
         "return_value":[0]
     },
     # BSND+PA+mask3+满核还多: b=65,s1=2,s2=3000,g=32,blockSize=256,sparse=2047,mask=3,ratio=2
@@ -192,7 +192,7 @@ TEST_PARAMS = {
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[2],
+        "cmp_ratio":[4],
         "return_value":[0]
     },
     # TND+PA+mask0+s2切成大于基本块临界值: b=1,s1=3,s2=513,g=4,blockSize=896,sparse=512,mask=0,ratio=64
@@ -221,13 +221,13 @@ TEST_PARAMS = {
         "layout_query": ["TND"],
         "layout_key":["PA_BBND"],
         "sparse_count": [512],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[64],
+        "cmp_ratio":[4],
         "return_value":[1]
     },
     # BSND+mask0+不传seqused+s2切成小于基本块临界值: b=2,s1=16,s2=3967,g=16,blockSize=384,sparse=2046,mask=0,ratio=4
@@ -256,7 +256,7 @@ TEST_PARAMS = {
         "layout_query": ["BSND"],
         "layout_key":["BSND"],
         "sparse_count": [2046],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
@@ -297,7 +297,7 @@ TEST_PARAMS = {
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[32],
+        "cmp_ratio":[4],
         "return_value":[1]
     },
     # TND+PA+mask3+大batch+s2切成大于基本块临界值: b=48,s1=48,s2=2049,g=5,blockSize=1024,sparse=513,mask=3,ratio=128
@@ -332,7 +332,7 @@ TEST_PARAMS = {
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[128],
+        "cmp_ratio":[4],
         "return_value":[1]
     },
     # BSND+mask0+s2不整除基本块但是整除16: b=2,s1=15,s2=4000,g=16,blockSize=384,sparse=2046,mask=0,ratio=4
@@ -361,7 +361,7 @@ TEST_PARAMS = {
         "layout_query": ["BSND"],
         "layout_key":["BSND"],
         "sparse_count": [2046],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
@@ -396,13 +396,13 @@ TEST_PARAMS = {
         "layout_query": ["TND"],
         "layout_key":["TND"],
         "sparse_count": [2048],
-        "sparse_mode": [0],
+        "sparse_mode": [3],
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
         "k_scale_datarange":[[-7,8]],   # 2的指数范围，各次方等概率
-        "cmp_ratio":[16],
+        "cmp_ratio":[4],
         "return_value":[0]
     },
 }

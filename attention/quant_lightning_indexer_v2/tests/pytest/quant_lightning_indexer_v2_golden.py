@@ -245,7 +245,7 @@ class GeneralizedQLIV2:
                     new_tensor[b_index, n_index, 0:act_s, :] = tensor[t_start:t_end, n_index, :]
                 t_start += act_s
             return new_tensor
-        elif layout == "PA_BSND":
+        elif layout == "PA_BBND":
             if len(tensor.shape) == 3:
                 tensor = torch.unsqueeze(tensor, dim=-1)
             return tensor
@@ -576,7 +576,12 @@ class GeneralizedQLIV2:
         return modify_tensor
 
     def broadcast_d_axis(self, temp_tensor):
-        """MXFP8: 将 scale 的 D/32 维度广播到完整 D 维度"""
+        """MXFP8: 将 scale 的 [D/64, 2] 维度广播到完整 D 维度
+        scale shape: [B, S, N, D/64, 2] → reshape → [B, S, N, D/32] → repeat → [B, S, N, D]"""
+        # 先将最后两维展平为 D/32
+        old_shape = list(temp_tensor.shape)
+        new_shape = old_shape[:-2] + [old_shape[-2] * old_shape[-1]]
+        temp_tensor = temp_tensor.reshape(new_shape)
         dg = 32
         return temp_tensor.repeat_interleave(dg, dim=-1)
 
@@ -702,9 +707,14 @@ class GeneralizedQLIV2:
             k_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_bnsd_tensor)
             # MXFP8场景：kScale 也需要 N 轴广播
             if mxfp8_flag == 1:
-                k_scale_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_bnsd_tensor)
+                # kScale shape [B, N, S, D/64, 2] 是5D，需要先展平最后两维再广播再恢复
+                ks_shape = list(k_scale_bnsd_tensor.shape)
+                k_scale_flat = k_scale_bnsd_tensor.reshape(ks_shape[:-2] + [ks_shape[-2] * ks_shape[-1]])
+                k_scale_flat = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_flat)
+                k_scale_bnsd_tensor = k_scale_flat.reshape(
+                    list(k_scale_flat.shape[:-1]) + [head_dim // 64, 2])
 
-        # MXFP8场景：scale 的 D 轴为 D/32，需要广播到完整 D 维度
+        # MXFP8场景：scale 的 D 轴为 [D/64, 2]，需要展平并广播到完整 D 维度
         if mxfp8_flag == 1:
             q_scale_bnsd_tensor = self.broadcast_d_axis(q_scale_bnsd_tensor)
             k_scale_bnsd_tensor = self.broadcast_d_axis(k_scale_bnsd_tensor)
@@ -1009,11 +1019,11 @@ def qliv2_output_single(params):
         key_shape = [batch_size, k_head_num, k_max_s2, head_dim]
         key_dequant_scale_shape = [batch_size, k_head_num, k_max_s2]
 
-    # MXFP8: scale 增加 D/32 维度
+    # MXFP8: scale 增加 [D/64, 2] 维度
     if dequant_dtype == torch.float8_e8m0fnu:
         mxfp8_flag = 1
-        query_dequant_scale_shape.append(head_dim // 32)
-        key_dequant_scale_shape.append(head_dim // 32)
+        query_dequant_scale_shape.extend([head_dim // 64, 2])
+        key_dequant_scale_shape.extend([head_dim // 64, 2])
 
     # ======================== 随机数据生成 ========================
     if hifp8mode == 1:
@@ -1080,11 +1090,11 @@ def qliv2_output_single(params):
         key_dequant_scale_expand_shape = [batch_size, k_head_num, k_max_block_num_per_batch * block_size]
         key_dequant_scale_block_shape = [block_num, block_size, k_head_num]
         if mxfp8_flag == 1:
-            key_dequant_scale_expand_shape.append(head_dim // 32)
-            key_dequant_scale_block_shape.append(head_dim // 32)
+            key_dequant_scale_expand_shape.extend([head_dim // 64, 2])
+            key_dequant_scale_block_shape.extend([head_dim // 64, 2])
         key_dequant_scale_expand = torch.zeros(key_dequant_scale_expand_shape, dtype=dequant_dtype)
         if mxfp8_flag == 1:
-            key_dequant_scale_expand[:,:,:k_max_s2,:] = key_dequant_scale_cpu
+            key_dequant_scale_expand[:,:,:k_max_s2,:,:] = key_dequant_scale_cpu
         else:
             key_dequant_scale_expand[:,:,:k_max_s2] = key_dequant_scale_cpu
         key_dequant_scale = torch.zeros(key_dequant_scale_block_shape, dtype=dequant_dtype)
@@ -1096,7 +1106,7 @@ def qliv2_output_single(params):
                 else:
                     for i_n in range(k_head_num):
                         if mxfp8_flag == 1:
-                            key_dequant_scale[cur_block_id, :, i_n, :] = key_dequant_scale_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size, :]
+                            key_dequant_scale[cur_block_id, :, i_n, :, :] = key_dequant_scale_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size, :, :]
                         else:
                             key_dequant_scale[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size]
         key = key.cpu()

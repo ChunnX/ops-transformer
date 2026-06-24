@@ -220,7 +220,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
             ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
             (std::string(opParamInfo_.layOutKey) != "BSND") &&
             (std::string(opParamInfo_.layOutKey) != "TND")), OP_LOGE(opName_,
-            "input attr layout_key only supported PA_BSND, BSND or TND"), return ge::GRAPH_FAILED);
+            "input attr layout_key only supported PA_BBND, BSND or TND"), return ge::GRAPH_FAILED);
     }
 
     if (npuArch_ == NpuArch::DAV_2201) {
@@ -342,7 +342,7 @@ ge::graphStatus QLIV2InfoParser::GetQueryKeyAndOutLayout()
 
     const map<string, DataLayout> layoutKeyMap = {
         {"BSND", DataLayout::BSND}, {"TND", DataLayout::TND},
-        {"PA_BSND", DataLayout::PA_BBND}, {"PA_BBND", DataLayout::PA_BBND}};
+        {"PA_BBND", DataLayout::PA_BBND}};
     std::string layout_key(opParamInfo_.layOutKey);
     auto KLayout = layoutKeyMap.find(layout_key);
     if (KLayout != layoutKeyMap.end()) {
@@ -830,20 +830,20 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
     uint32_t qDequantScaleShapeDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDimNum();
     uint32_t kDequantScaleShapeDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDimNum();
 
-    // MXFP8: scale 与 data 维度数相同，最后一维为 D/32
+    // MXFP8: scale 比 data 多一维，最后两维为 [D/64, 2]
     bool isMxFp8Scale = (inputQueryScaleType_ == ge::DT_FLOAT8_E8M0);
 
     if (isMxFp8Scale) {
-        // MXFP8: qScale shape [B, S1, N1, D/32]，与 query 维度数相同
-        OP_CHECK_IF(qDequantScaleShapeDim != qShapeDim,
+        // MXFP8: qScale shape [B, S1, N1, D/64, 2]，比 query 多一维
+        OP_CHECK_IF(qDequantScaleShapeDim != (qShapeDim + 1),
                    OP_LOGE(opName_, "MXFP8: the dim num of query_dequant_scale's shape should be %u, but now is %u",
-                             qShapeDim, qDequantScaleShapeDim),
+                             qShapeDim + 1, qDequantScaleShapeDim),
                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(kDequantScaleShapeDim != kShapeDim,
+        OP_CHECK_IF(kDequantScaleShapeDim != (kShapeDim + 1),
                    OP_LOGE(opName_, "MXFP8: the dim num of key_dequant_scale's shape should be %u, but now is %u",
-                             kShapeDim, kDequantScaleShapeDim),
+                             kShapeDim + 1, kDequantScaleShapeDim),
                    return ge::GRAPH_FAILED);
-        // 检查前 N-1 维相同，最后一维为 D/32
+        // 检查前 N-1 维与 data 相同（data 的前 N-1 维 = scale 的前 N-1 维）
         for (uint32_t i = 0; i < (qShapeDim - 1); i++) {
             uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
             uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
@@ -852,12 +852,13 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                                  i, dimValueQueryScale, i, dimValueQuery),
                        return ge::GRAPH_FAILED);
         }
-        // 检查 qScale 最后一维 = headDim / 32
-        uint32_t qScaleLastDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim - 1);
-        uint32_t expectedQLastDim = headDim_ / 32;
-        OP_CHECK_IF(qScaleLastDim != expectedQLastDim,
-                   OP_LOGE(opName_, "MXFP8: query_dequant_scale's last dim should be %u (headDim/32), but now is %u",
-                             expectedQLastDim, qScaleLastDim),
+        // 检查 qScale 倒数第二维 = headDim / 64，最后一维 = 2
+        uint32_t qScaleSecondLastDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim - 1);
+        uint32_t qScaleLastDim = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(qShapeDim);
+        uint32_t expectedQSecondLastDim = headDim_ / 64;
+        OP_CHECK_IF(qScaleSecondLastDim != expectedQSecondLastDim || qScaleLastDim != 2,
+                   OP_LOGE(opName_, "MXFP8: query_dequant_scale's last two dims should be [%u, 2] (headDim/64, 2), but now is [%u, %u]",
+                             expectedQSecondLastDim, qScaleSecondLastDim, qScaleLastDim),
                    return ge::GRAPH_FAILED);
         // 检查 kScale
         for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
@@ -868,11 +869,12 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
                                  i, dimValueKeyScale, i, dimValueKey),
                        return ge::GRAPH_FAILED);
         }
-        uint32_t kScaleLastDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(kShapeDim - 1);
-        uint32_t expectedKLastDim = headDim_ / 32;
-        OP_CHECK_IF(kScaleLastDim != expectedKLastDim,
-                   OP_LOGE(opName_, "MXFP8: key_dequant_scale's last dim should be %u (headDim/32), but now is %u",
-                             expectedKLastDim, kScaleLastDim),
+        uint32_t kScaleSecondLastDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(kShapeDim - 1);
+        uint32_t kScaleLastDim = opParamInfo_.key_dequant_scale.shape->GetStorageShape().GetDim(kShapeDim);
+        uint32_t expectedKSecondLastDim = headDim_ / 64;
+        OP_CHECK_IF(kScaleSecondLastDim != expectedKSecondLastDim || kScaleLastDim != 2,
+                   OP_LOGE(opName_, "MXFP8: key_dequant_scale's last two dims should be [%u, 2] (headDim/64, 2), but now is [%u, %u]",
+                             expectedKSecondLastDim, kScaleSecondLastDim, kScaleLastDim),
                    return ge::GRAPH_FAILED);
     } else {
         // 非 MXFP8: scale 维度数比 data 少 1
@@ -944,7 +946,7 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     if (opParamInfo_.keyDequantScaleStride0 != -1) {
         QLIV2Info.keyDequantScaleStride0 = opParamInfo_.keyDequantScaleStride0;
     } else {
-        // MXFP8: kScale shape [BlockNum, BlockSize, N2, D/32]，stride 需要乘以 D/32
+        // MXFP8: kScale shape [BlockNum, BlockSize, N2, D/64, 2]，stride = BlockSize * (D/64) * 2 = BlockSize * D/32
         if (inputKeyScaleType_ == ge::DT_FLOAT8_E8M0) {
             QLIV2Info.keyDequantScaleStride0 = blockSize_ * (headDim_ / 32);
         } else {

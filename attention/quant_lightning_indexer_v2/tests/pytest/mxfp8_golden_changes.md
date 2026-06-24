@@ -129,7 +129,7 @@ if q_head_num != k_head_num:
         k_scale_bnsd_tensor = self.broadcast_n_axis(q_head_num, k_head_num, k_scale_bnsd_tensor)
 ```
 
-### 1.8 PA_BSND 场景下 MXFP8 kScale 处理
+### 1.8 PA_BBND 场景下 MXFP8 kScale 处理
 
 PA 场景构建 key_dequant_scale 时，MXFP8 需要额外处理 D/32 维度：
 
@@ -185,10 +185,10 @@ def trans_shape_to_bnsd(self, tensor, layout, headnums=None, act_seq=None, tenso
 
 **删除的分支**: `BSN`、`TN` 布局分支（不再需要，统一用 `len(tensor.shape)` 判断）
 
-**新增分支**: `PA_BSND` 布局
+**新增分支**: `PA_BBND` 布局
 
 ```python
-elif layout == "PA_BSND":
+elif layout == "PA_BBND":
     if len(tensor.shape) == 3:
         tensor = torch.unsqueeze(tensor, dim=-1)
     return tensor
@@ -517,7 +517,7 @@ def trans_shape_to_bnsd(self, tensor, layout, headnums=None, act_seq=None,
     elif layout == "TND":
         ...
         return new_tensor
-    elif layout == "PA_BSND":              # ← 新增分支
+    elif layout == "PA_BBND":              # ← 新增分支
         if len(tensor.shape) == 3:
             tensor = torch.unsqueeze(tensor, dim=-1)
         return tensor
