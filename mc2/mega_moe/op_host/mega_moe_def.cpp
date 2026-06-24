@@ -42,16 +42,32 @@ public:
         .AutoContiguous();
     this->Input("weight1")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
-                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
-                    ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        .DataType({ge::DT_BF16, ge::DT_FLOAT16,               // fp16/bf16
+                   ge::DT_INT8, ge::DT_INT4,                  // int8/int4
+                   ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,  // fp8
+                   ge::DT_HIFLOAT8,                           // hifp8
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1,    // fp4
+                   ge::DT_FLOAT4_E1M2})                       // fp4
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp16/bf16
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,  // NZ for int8/int4
+                 ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp8
+                 ge::FORMAT_ND,                                 // ND for hifp8
+                 ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ_C0_32,    // ND/NZ_C0 for fp4_e2m1
+                 ge::FORMAT_ND});                               // ND for fp4_e1m2
     this->Input("weight2")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
-                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
-                    ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        .DataType({ge::DT_BF16, ge::DT_FLOAT16,               // fp16/bf16
+                   ge::DT_INT8, ge::DT_INT4,                  // int8/int4
+                   ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,  // fp8
+                   ge::DT_HIFLOAT8,                           // hifp8
+                   ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1,    // fp4
+                   ge::DT_FLOAT4_E1M2})                       // fp4
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp16/bf16
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,  // NZ for int8/int4
+                 ge::FORMAT_ND, ge::FORMAT_ND,                  // ND for fp8
+                 ge::FORMAT_ND,                                 // ND for hifp8
+                 ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ_C0_32,    // ND/NZ_C0 for fp4_e2m1
+                 ge::FORMAT_ND});                               // ND for fp4_e1m2
     this->Input("weight_scales1")
         .ParamType(DYNAMIC)
         .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
@@ -228,7 +244,7 @@ public:
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND});
-    
+
     aicore_config_arch22.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
         .DynamicRankSupportFlag(true)
