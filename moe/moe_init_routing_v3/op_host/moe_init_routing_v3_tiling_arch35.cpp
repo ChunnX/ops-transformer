@@ -1861,7 +1861,12 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 
     MultipleParams multipleParams = GetMultipleParams();
     PerLoopParams perLoopParams = GetPerLoopParams(multipleParams, perCoreIndicesElements);
+    int64_t originPerLoopCols = perLoopParams.perLoopCols;
     AlignInt4DynamicQuantPerLoopCols(perLoopParams);
+    if (perLoopParams.perLoopCols != originPerLoopCols) {
+        SetPerLoopParams4NoQuantDropPad(multipleParams, perLoopParams, perCoreIndicesElements);
+        AlignInt4DynamicQuantPerLoopCols(perLoopParams);
+    }
 
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
     int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
