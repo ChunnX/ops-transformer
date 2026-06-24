@@ -399,6 +399,7 @@ function(add_opapi_modules)
       ascend_dump
       ascendalog
       dl
+      PRIVATE $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
       )
   endif()
 endfunction()

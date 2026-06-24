@@ -18,21 +18,54 @@
 
 namespace op_api {
 
+at::Tensor sparse_flash_mla_grad_metadata(
+    int64_t num_heads_q,
+    int64_t num_heads_kv,
+    int64_t head_dim,
+    const c10::optional<at::Tensor> &cu_seqlens_q,
+    const c10::optional<at::Tensor> &cu_seqlens_ori_kv,
+    const c10::optional<at::Tensor> &cu_seqlens_cmp_kv,
+    const c10::optional<at::Tensor> &seqused_q,
+    const c10::optional<at::Tensor> &seqused_ori_kv,
+    const c10::optional<at::Tensor> &seqused_cmp_kv,
+    const c10::optional<at::Tensor> &cmp_residual_kv,
+    const c10::optional<at::Tensor> &ori_topk_length,
+    const c10::optional<at::Tensor> &cmp_topk_length,
+    c10::optional<int64_t> batch_size,
+    c10::optional<int64_t> max_seqlen_q,
+    c10::optional<int64_t> max_seqlen_ori_kv,
+    c10::optional<int64_t> max_seqlen_cmp_kv,
+    c10::optional<int64_t> ori_topk,
+    c10::optional<int64_t> cmp_topk,
+    c10::optional<int64_t> cmp_ratio,
+    c10::optional<int64_t> ori_mask_mode,
+    c10::optional<int64_t> cmp_mask_mode,
+    c10::optional<int64_t> ori_win_left,
+    c10::optional<int64_t> ori_win_right,
+    c10::optional<c10::string_view> layout_q,
+    c10::optional<c10::string_view> layout_kv,
+    c10::optional<bool> has_ori_kv,
+    c10::optional<bool> has_cmp_kv)
+{
+    at::Tensor metadata;
+    return metadata;
+}
+
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
-npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at::Tensor &attn_out, 
-               const at::Tensor &softmax_lse, const c10::optional<at::Tensor> &ori_kv, 
-               const c10::optional<at::Tensor> &cmp_kv, const c10::optional<at::Tensor> &ori_sparse_indices,
-               const c10::optional<at::Tensor> &cmp_sparse_indices, const c10::optional<at::Tensor> &cu_seqlens_q,
-               const c10::optional<at::Tensor> &cu_seqlens_ori_kv, const c10::optional<at::Tensor> &cu_seqlens_cmp_kv, 
-               const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_ori_kv, 
-               const c10::optional<at::Tensor> &seqused_cmp_kv, const c10::optional<at::Tensor> &cmp_residual_kv, 
-               const c10::optional<at::Tensor> &ori_topk_length, const c10::optional<at::Tensor> &cmp_topk_length, 
-               const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &metadata,
-               c10::optional<double> softmax_scale, c10::optional<int64_t> cmp_ratio, 
-               c10::optional<int64_t> ori_mask_mode, c10::optional<int64_t> cmp_mask_mode,
-               c10::optional<int64_t> ori_win_left, c10::optional<int64_t> ori_win_right, 
-               c10::optional<c10::string_view> layout_q, 
-               c10::optional<c10::string_view> layout_kv)
+sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at::Tensor &attn_out,
+    const at::Tensor &softmax_lse, const c10::optional<at::Tensor> &ori_kv,
+    const c10::optional<at::Tensor> &cmp_kv, const c10::optional<at::Tensor> &ori_sparse_indices,
+    const c10::optional<at::Tensor> &cmp_sparse_indices, const c10::optional<at::Tensor> &cu_seqlens_q,
+    const c10::optional<at::Tensor> &cu_seqlens_ori_kv, const c10::optional<at::Tensor> &cu_seqlens_cmp_kv,
+    const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_ori_kv,
+    const c10::optional<at::Tensor> &seqused_cmp_kv, const c10::optional<at::Tensor> &cmp_residual_kv,
+    const c10::optional<at::Tensor> &ori_topk_length, const c10::optional<at::Tensor> &cmp_topk_length,
+    const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &metadata,
+    c10::optional<double> softmax_scale, c10::optional<int64_t> cmp_ratio,
+    c10::optional<int64_t> ori_mask_mode, c10::optional<int64_t> cmp_mask_mode,
+    c10::optional<int64_t> ori_win_left, c10::optional<int64_t> ori_win_right,
+    c10::optional<c10::string_view> layout_q,
+    c10::optional<c10::string_view> layout_kv)
 {
     const at::Tensor &ori_kv_const = ori_kv.value_or(at::Tensor());
     const at::Tensor &cmp_kv_const = cmp_kv.value_or(at::Tensor());
@@ -57,7 +90,8 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
     char *layout_kv_ptr = const_cast<char *>(layout_kv_str_view.data());
 
     at::Tensor dq = at::empty_like(q);
-    at::Tensor dOriKv, dCmpKv;
+    at::Tensor dOriKv;
+    at::Tensor dCmpKv;
     if (ori_kv_const.defined()) {
         dOriKv = at::empty_like(ori_kv_const);
     } else {
@@ -87,34 +121,37 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
 
     at::Tensor oriSoftmaxL1Norm;
     if (ori_sparse_indices_const.defined()) {
-        oriSoftmaxL1Norm = at::empty(ori_sparse_indices_const.sizes(), ori_sparse_indices_const.options().dtype(at::kFloat));
+        oriSoftmaxL1Norm = at::empty(ori_sparse_indices_const.sizes(),
+            ori_sparse_indices_const.options().dtype(at::kFloat));
     } else {
         oriSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
     }
 
     at::Tensor cmpSoftmaxL1Norm;
     if (cmp_sparse_indices_const.defined()) {
-        cmpSoftmaxL1Norm = at::empty(cmp_sparse_indices_const.sizes(), cmp_sparse_indices_const.options().dtype(at::kFloat));
+        cmpSoftmaxL1Norm = at::empty(cmp_sparse_indices_const.sizes(),
+            cmp_sparse_indices_const.options().dtype(at::kFloat));
     } else {
         cmpSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
     }
 
-    ACLNN_CMD(aclnnSparseFlashMlaGrad, q, dout, attn_out, softmax_lse, 
-              ori_kv_const, cmp_kv_const, ori_sparse_indices_const, cmp_sparse_indices_const, 
-              cu_seqlens_q_const, cu_seqlens_ori_kv_const, cu_seqlens_cmp_kv_const, 
-              seqused_q_const, seqused_ori_kv_const, seqused_cmp_kv_const, cmp_residual_kv_const, 
+    ACLNN_CMD(aclnnSparseFlashMlaGrad, q, dout, attn_out, softmax_lse,
+              ori_kv_const, cmp_kv_const, ori_sparse_indices_const, cmp_sparse_indices_const,
+              cu_seqlens_q_const, cu_seqlens_ori_kv_const, cu_seqlens_cmp_kv_const,
+              seqused_q_const, seqused_ori_kv_const, seqused_cmp_kv_const, cmp_residual_kv_const,
               ori_topk_length_const, cmp_topk_length_const, sinks_const, metadata_const,
-              softmax_scale_const, cmp_ratio_const, ori_mask_mode_const, cmp_mask_mode_const, 
-              ori_win_left_const, ori_win_right_const, 
+              softmax_scale_const, cmp_ratio_const, ori_mask_mode_const, cmp_mask_mode_const,
+              ori_win_left_const, ori_win_right_const,
               layout_q_ptr, layout_kv_ptr,
               dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(
-                        dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm);
+        dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm);
 }
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_sparse_flash_mla_grad", &npu_sparse_flash_mla_grad, "npu_sparse_flash_mla_grad");
+    m.def("sparse_flash_mla_grad_metadata", &sparse_flash_mla_grad_metadata, "sparse_flash_mla_grad_metadata");
+    m.def("sparse_flash_mla_grad", &sparse_flash_mla_grad, "sparse_flash_mla_grad");
 }
 } // namespace op_api
