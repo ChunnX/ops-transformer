@@ -51,8 +51,8 @@ if _TORCHAIR_AVAILABLE:
         result = q.new_empty(q.size())
         return result
         
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_flash_attn.default)
-    def convert_npu_flash_attn(
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.flash_attn.default)
+    def convert_flash_attn(
         q: Tensor,
         k: Tensor,
         v: Tensor,
