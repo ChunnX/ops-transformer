@@ -58,6 +58,38 @@ static ge::graphStatus CheckScaleShape(
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckMatmulKAndScale(const gert::InferShapeContext* context,
+    const gert::Shape* shape_x1, const gert::Shape* shape_x2, MatmulShapeInfo& shape,
+    bool is_trans_b, bool is_arn)
+{
+    const auto shapeX2KIndex = is_trans_b ? 1U : 0U;
+    // shape range推导的最大范围是[1,-1]
+    bool is_dynamic_shape =
+        (shape.k == -1 || shape_x2->GetDim(shapeX2KIndex) == -1 || shape.k == 0 ||
+         shape_x2->GetDim(shapeX2KIndex) == 0 || shape.k == 1 || shape_x2->GetDim(shapeX2KIndex) == 1);
+    if (is_dynamic_shape) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OPS_CHECK(
+        (shape.k != shape_x2->GetDim(shapeX2KIndex)),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x1 and x2",
+            (std::to_string(shape.k) + " and " +
+             std::to_string(shape_x2->GetDim(shapeX2KIndex))).c_str(),
+            "The k dimension of x1 must be equal to the k dimension of x2"),
+        return ge::GRAPH_FAILED);
+    const size_t scale_idx =
+        is_arn ? static_cast<size_t>(MC2AddRmsNormInputIdx::K_SCALE) : static_cast<size_t>(MC2InputIdx::K_SCALE);
+    const auto attrs = context->GetAttrs();
+    const int64_t* p = attrs->GetInt(static_cast<size_t>(MmAllReduceAttrIdx::K_ANTIQUANT_GROUP_SIZE));
+    const int64_t group_size = (p != nullptr ? *p : 0);
+    OPS_CHECK(
+        CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
+            ge::GRAPH_SUCCESS,
+        OP_LOGE(context->GetNodeName(), "Failed to check antiquant scale shape."),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* context, MatmulShapeInfo& shape, bool is_arn)
 {
     const auto shape_x1 = context->GetInputShape(static_cast<size_t>(MC2InputIdx::K_X1));
@@ -92,28 +124,8 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
     shape.m = shape_x1->GetDim(dim_num_x1 - 2U);
     shape.k = shape_x1->GetDim(dim_num_x1 - 1U);
     shape.n = is_trans_b ? shape_x2->GetDim(0U) : shape_x2->GetDim(1U);
-    const auto shapeX2KIndex = is_trans_b ? 1U : 0U;
-    // shape range推导的最大范围是[1,-1]
-    bool is_dynamic_shape =
-        (shape.k == -1 || shape_x2->GetDim(shapeX2KIndex) == -1 || shape.k == 0 ||
-         shape_x2->GetDim(shapeX2KIndex) == 0 || shape.k == 1 || shape_x2->GetDim(shapeX2KIndex) == 1);
-    if (!is_dynamic_shape) {
-        OPS_CHECK(
-            (shape.k != shape_x2->GetDim(shapeX2KIndex)),
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x1 and x2",
-                (std::to_string(shape.k) + " and " +
-                 std::to_string(shape_x2->GetDim(shapeX2KIndex))).c_str(),
-                "The k dimension of x1 must be equal to the k dimension of x2"),
-            return ge::GRAPH_FAILED);
-        const size_t scale_idx =
-            is_arn ? static_cast<size_t>(MC2AddRmsNormInputIdx::K_SCALE) : static_cast<size_t>(MC2InputIdx::K_SCALE);
-        const int64_t* p = attrs->GetInt(static_cast<size_t>(MmAllReduceAttrIdx::K_ANTIQUANT_GROUP_SIZE));
-        const int64_t group_size = (p != nullptr ? *p : 0);
-        OPS_CHECK(
-            CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
-                ge::GRAPH_SUCCESS,
-            OP_LOGE(context->GetNodeName(), "Failed to check antiquant scale shape."),
-            return ge::GRAPH_FAILED);
+    if (CheckMatmulKAndScale(context, shape_x1, shape_x2, shape, is_trans_b, is_arn) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     shape.output_dim = dim_num_x1;
     OP_LOGD(kInnerDebug, "Matmul x1 dim %zu s %ld m %ld n %ld k %ld.", dim_num_x1, shape.s, shape.m, shape.n, shape.k);
