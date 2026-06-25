@@ -1,7 +1,11 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -102,8 +106,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numExpertsPtr == nullptr, OP_LOGE(nodeName, "numExpertsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(expertAlignmentPtr == nullptr, OP_LOGE(nodeName, "expertAlignmentPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertAlignmentPtr == nullptr, OP_LOGE(nodeName, "expertAlignmentPtr is null."),
+        return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
@@ -230,9 +236,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         const int64_t metaDim0 = recvSrcMetaShape->GetStorageShape().GetDim(0);
         const int64_t metaDim1 = recvSrcMetaShape->GetStorageShape().GetDim(1);
         OP_TILING_CHECK(metaDim0 < 0 || metaDim0 > metaUpper,
-            OP_LOGE(nodeName,
-                "cachedRecvSrcMetadata dim0 must be in [0, epWorldSize*numMaxTokensPerRank*min(topK,numLocalExperts)=%ld], got %ld.",
-                metaUpper, metaDim0),
+            OP_LOGE(nodeName, "cachedRecvSrcMetadata dim0 must be in [0, %ld], got %ld.", metaUpper, metaDim0),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(metaDim1 != META_INNER_DIM,
             OP_LOGE(nodeName, "cachedRecvSrcMetadata dim1 must be %ld, got %ld.", META_INNER_DIM, metaDim1),
