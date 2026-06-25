@@ -10,26 +10,4 @@
 
 import torch
 import torch_npu
-from importlib import import_module
-
-
-_ROOT_EXPORTS = {
-    "qkv_rms_norm_rope_cache_with_k_scale": ".ops.qkv_rms_norm_rope_cache_with_k_scale",
-    "qkv_rms_norm_rope_cache_with_k_scale_functional": ".ops.qkv_rms_norm_rope_cache_with_k_scale",
-}
-
-__all__ = ("ops",) + tuple(_ROOT_EXPORTS)
-
-
-def __getattr__(name):
-    if name == "ops":
-        module = import_module(".ops", __name__)
-        globals()[name] = module
-        return module
-    module_name = _ROOT_EXPORTS.get(name)
-    if module_name is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    module = import_module(module_name, __name__)
-    value = getattr(module, name)
-    globals()[name] = value
-    return value
+from . import ops
