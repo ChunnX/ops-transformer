@@ -23,10 +23,17 @@
 #include "../allto_allv_quant_grouped_mat_mul/mc2_templates/common/a2av_common_tiling.h"
 #endif
 
+struct AlltoAllvGmmWorkspaceInfo {
+    uint64_t commXOutSize = 0;
+    uint64_t permuteXOutSize = 0;
+    uint64_t gmmComputeSize = 0;
+};
+
 #pragma pack(push, 8)
 struct AlltoAllvGmmTilingData {
     MC2KernelTemplate::HcclA2avTilingInfo hcclA2avTilingInfo;
     MC2KernelTemplate::TaskTilingInfo taskTilingInfo;
+    AlltoAllvGmmWorkspaceInfo workspaceInfo;
     bool isPermuteOut = false;
     bool isNeedMM = false;
     Mc2GroupedMatmulTilingData::GMMQuantTilingData gmmQuantTilingData;

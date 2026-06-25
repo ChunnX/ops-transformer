@@ -41,6 +41,7 @@ constexpr uint64_t DB_SIZE = 2UL;
 constexpr uint64_t MTE2_MIN_LOAD_SIZE = 64 * 1024UL;
 // pertensor
 constexpr uint32_t PERTENSOR_MODE = 1;
+constexpr uint32_t PERTENSOR_HCCL_HANDLE_MAX = 63;
 // pergroup
 constexpr uint32_t MX_MODE = 6;
 constexpr uint64_t MX_BASIC_FACTOR = 64;
@@ -52,6 +53,7 @@ constexpr uint64_t MX_GROUP_SIZE_M = 1;
 constexpr uint64_t MX_GROUP_SIZE_N = 1;
 constexpr uint64_t MXFP4_PACK_FACTOR = 2;
 constexpr uint32_t SCALE_BATCH_THRESHOLD = 32;
+constexpr uint32_t MX_HCCL_HANDLE_MAX = 31;
 // quant mode offset
 const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 
@@ -75,15 +77,14 @@ protected:
     virtual ge::graphStatus CheckScaleFormatAndDtype() const {return ge::GRAPH_SUCCESS;};
     virtual ge::graphStatus CheckQuantMode() const {return ge::GRAPH_SUCCESS;};
     virtual ge::graphStatus CheckScaleShape() const {return ge::GRAPH_SUCCESS;};
-    virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize) {return ge::GRAPH_SUCCESS;};
-    virtual void GetPermuteOutSize() {};
+    virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize, uint32_t expertNum) {return ge::GRAPH_SUCCESS;};
+    virtual void SetWorkspaceInfo() {};
     ge::graphStatus CheckInputNotNull() const;
     ge::graphStatus SetHcclTiling() const;
     ge::graphStatus QuantGetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
     void PrintGMMQuantTilingData(const Mc2GroupedMatmulTilingData::GMMQuantTilingData &data) const;
     void PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const;
-    uint64_t permuteScaleOutSize_{0};
-    uint64_t permuteOutSize_{0};
+    uint64_t expertNum_{1};
 };
 }  // namespace optiling
 #endif  // ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H

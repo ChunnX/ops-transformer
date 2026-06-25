@@ -696,6 +696,8 @@ ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context)
     uint64_t numBlocks = mc2tiling::GetNumBlocks(aicNum, aivNum, context_->GetNodeName());
 
     tilingData->taskTilingInfo.ubSize = ubSize_;
+    tilingData->taskTilingInfo.aivCoreNum = aivNum;
+    tilingData->taskTilingInfo.aicCoreNum = aicNum;
     context->SetBlockDim(static_cast<uint32_t>(numBlocks));
 
     return ge::GRAPH_SUCCESS;
@@ -869,9 +871,15 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     }
 
     if (maxMSize != 0) {
+        OP_TILING_CHECK(expertNum_ == 0,
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum_",
+                std::to_string(expertNum_).c_str(), "positive value"),
+            return ge::GRAPH_FAILED);
+        expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > NON_QUANT_HCCL_HANDLE_MAX ?
+            Ops::Base::CeilDiv(e_, static_cast<uint64_t>(NON_QUANT_HCCL_HANDLE_MAX)) : expertNum_;
         AlltoAllvGmmTilingHelper gmmHelper(*this);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(maxMSize, n1_, h1_, transGmmWeight_,
-            gmmXDataType_, gmmWeightDataType_, gmmXDataType_));
+            gmmXDataType_, gmmWeightDataType_, gmmXDataType_, expertNum_));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
     }
@@ -879,16 +887,16 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     if (bs_ != 0) {
         AlltoAllvGmmTilingHelper mmHelper(*this);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_,
-            mmXDataType_, mmWeightDataType_, mmXDataType_));
+            mmXDataType_, mmWeightDataType_, mmXDataType_, 1));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
     }
-
+    
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
-    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype)
+    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype, uint64_t expertNum)
 {
     GetPlatformInfo();
     inputParams_.opName = context_->GetNodeName();
@@ -902,13 +910,13 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
     inputParams_.transB = transB;
     inputParams_.hasBias = false;
     inputParams_.isSingleX = false;
-    inputParams_.isSingleW = false;
+    inputParams_.isSingleW = true;
     inputParams_.isSingleY = false;
 
     inputParams_.mSize = M;
     inputParams_.kSize = K;
     inputParams_.nSize = N;
-    inputParams_.groupNum = SINGLE_GROUP_NUM;
+    inputParams_.groupNum = expertNum;
     inputParams_.aQuantMode = Mc2GroupedMatmulTiling::QuantMode::DEFAULT;
     inputParams_.bQuantMode = Mc2GroupedMatmulTiling::QuantMode::DEFAULT;
     inputParams_.groupType = Mc2GroupedMatmul::SPLIT_M;
@@ -933,7 +941,14 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "N",
             std::to_string(N).c_str(), "should be less than 2147483647"),
         return ge::GRAPH_FAILED);
-    mList_[0] = static_cast<int32_t>(M);
+    OP_TILING_CHECK(expertNum > Mc2GroupedMatmul::MAX_TENSOR_CONT,
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum",
+            std::to_string(expertNum).c_str(),
+            (std::string("<=") + std::to_string(Mc2GroupedMatmul::MAX_TENSOR_CONT)).c_str()),
+        return ge::GRAPH_FAILED);
+    for (uint32_t i = 0; i < expertNum; i++) {
+        mList_[i] = static_cast<int32_t>(M);
+    }
     kList_[0] = static_cast<int32_t>(K);
     nList_[0] = static_cast<int32_t>(N);
     SetKernelType();
@@ -1134,11 +1149,17 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspace"), return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
-    uint64_t groupListSize = sizeof(int64_t) * e_;
-    uint64_t xDataTypeSize = GetSizeByDataType(gmmXDataType_);
-    uint64_t permuteOutSize = permuteOutFlag_ ? 0 : Ops::Base::CeilAlign(a_ * h1_ * xDataTypeSize, tensorListSize);
-    uint64_t permuteScaleOutSize = 0;
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize + groupListSize + tensorListSize;
+    uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
+    uint64_t groupListSize = sizeof(int64_t) * e_ + tensorListSize;
+    auto tilingData = context_->GetTilingData<AlltoAllvGmmTilingData>();
+    tilingData->workspaceInfo.commXOutSize = (permuteOutFlag_ && expertNum_ == 1)  ?
+        0 : Ops::Base::CeilAlign(gmmXSize, tensorListSize);
+    tilingData->workspaceInfo.permuteXOutSize = (expertNum_ > 1 && !permuteOutFlag_) ?
+        Ops::Base::CeilAlign(gmmXSize, tensorListSize) : 0;
+    tilingData->workspaceInfo.gmmComputeSize = Ops::Base::CeilAlign(groupListSize, tensorListSize);
+    workspaces[0] = libApiWorkSpaceSize_ + tilingData->workspaceInfo.commXOutSize +
+                    tilingData->workspaceInfo.permuteXOutSize +
+                    tilingData->workspaceInfo.gmmComputeSize;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1157,9 +1178,12 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
     tilingData->taskTilingInfo.ubSize = ubSize_;
-    tilingData->taskTilingInfo.mainLoopExpertNum = e_;
-    tilingData->taskTilingInfo.tailLoopExpertNum = 0;
-    tilingData->taskTilingInfo.totalLoopCount = e_;
+    tilingData->taskTilingInfo.expertNum = expertNum_;
+    tilingData->taskTilingInfo.mainLoopExpertNum = expertNum_;
+    tilingData->taskTilingInfo.tailLoopExpertNum =
+        (e_ % expertNum_ == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum_);
+    tilingData->taskTilingInfo.totalLoopCount =
+        static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(expertNum_)));
 
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs"),
