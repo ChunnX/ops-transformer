@@ -52,8 +52,15 @@ public:
 private:
     bool Prepare(CpuKernelContext &ctx);
     bool BalanceSchedule(SectionStreamKResult &splitRes);
-    bool GenMetaData(SectionStreamKResult &splitRes);
+    bool GenMetadata(SectionStreamKResult &splitRes);
     bool ParamsInit();
+    void InitDeviceInfo();
+    void InitBaseInfo();
+    void InitLoadBalnceParams();
+    void LoadActualQuerySeq();
+    void LoadActaulKvSeq();
+    void LoadActualSizes(Tensor *cuSeqlens, Tensor *seqused, std::vector<int64_t> &actualSizes,
+        uint32_t &seqSize, bool isCumulative);
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
@@ -80,8 +87,8 @@ private:
     std::string layoutKv_ = "BSND";
     std::string layoutOut_ = "BSND";
     std::string socVersion_ = "";
-    int32_t aicCoreNum_ = 36U;
-    int32_t aivCoreNum_ = 72U;
+    int32_t aicCoreNum_ = 36U;          // 36: default aic num
+    int32_t aivCoreNum_ = 72U;          // 72: default aiv num
 
     // SplitParams
     uint32_t groupSize_ = 0;

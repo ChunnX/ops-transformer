@@ -16,9 +16,14 @@
 
 -   API功能:
 
-    支持Flash Attention训练推理归一化。
+    本文包含两个API，前置接口npu_flash_attn_metadata和npu_flash_attn。
+
+    npu_flash_attn_metadata对训练推理数据执行负载均衡。
+
+    npu_flash_attn支持Flash Attention训练推理归一化。
+
 -   计算公式:
-    
+
     self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n \times d$的矩阵。
 
     self-attention的计算公式一般定义如下，其中$Q、K、V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。公式及算子名称中的"Attention"为"self-attention"的简写。
@@ -70,6 +75,8 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
+npu_flash_attn_metadata()
+
 npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=0, attn_mask=None, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0) -> (Tensor, Tensor)
 ```
 
