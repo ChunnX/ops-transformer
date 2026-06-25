@@ -111,8 +111,8 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
                                                      false, TILINGKEY_MATMUL_TRANS, true, false>;
     using GmmA2avSchedulerType =
         GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
-    // hccl: sendBuffer=重排后数据(permuteSendGM)或直接GMM输出(expertNum=1时无需重排)
-    GM_ADDR sendBufferAddr = (tilingData.taskTilingInfo.expertNum > 1) ? permuteSendGM : gmmOutputGM;
+    // hccl: sendBuffer=GMM输出缓冲 (rank-first布局, 无需permute重排)
+    GM_ADDR sendBufferAddr = gmmOutputGM;
     HcclOpType hcclOp;
     hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM, gmmOutputGM,
         static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));

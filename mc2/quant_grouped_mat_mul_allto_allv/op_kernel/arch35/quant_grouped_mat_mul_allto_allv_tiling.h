@@ -29,27 +29,30 @@ using MC2KernelTemplate::GMMQuantTilingData;
 using MC2KernelTemplate::TaskTilingInfo;
 
 /**
- * GMM A2AV Workspace 信息 (后通信模式: GMM计算 → PermuteSend → AlltoAllv发送)
+ * GMM A2AV Workspace 信息 (后通信模式: GMM计算 → AlltoAllv发送, Permute已消除)
  *
  * 算子级 workspace 分为四部分:
- *   [0, wsGmmOutputSize)                              → 路由专家 GMM 输出缓冲, 传给 GmmComputeOp.Init 的 y 参数
+ *   [0, wsGmmOutputSize)                              → 路由专家 GMM 输出缓冲 (rank-first布局), 传给 GmmComputeOp.Init 的 y 参数
  *   [wsGmmOutputSize, + wsGmmComputeWorkspaceSize)    → 路由专家 GmmComputeOp 内部空间, 传给 GmmComputeOp.Init 的 tempAddr 参数
  *   [+, + wsSharedGmmComputeWorkspaceSize)            → 共享专家 SharedGmmComputeOp 内部空间, 传给 SharedGmmComputeOp.Init 的 tempAddr 参数
- *   [+, + wsPermuteOutSize)                           → PermuteSend 数据重排空间 (expert优先→rank优先, expertNum>1时使用)
+ *   [+, + wsPermuteOutSize)                           → 保留字段 (始终为0, Permute已消除)
  *
  * 注: 后通信模式 recvBuffer=yGM (AlltoAllv直接写入输出tensor), 无需额外commRecv workspace
  *
- * GmmComputeOp / SharedGmmComputeOp workspace 内部布局 (由各自内部管理, tiling 侧仅需计算并分配总大小):
+ * GmmComputeOp workspace 内部布局 (由各自内部管理, tiling 侧仅需计算并分配总大小):
  *   TT模式 (MX_QUANT_MODE=false):
- *     [0, ep * 8)                      groupList: ep × int64_t 累积和
- *     [ep * 8, ep * 8 + 512)           ptrTable:  4 × 16B GetTensorAddr 双重间接指针表 (x, weight, scaleB, y)
- *                                      注: 实际使用64B(4 slots), 预留至TENSOR_LIST_SIZE(512B)对齐
- *     [ep * 8 + 512, + sizeof(float)*ep)    ttWeightScaleRepeat: PerTensor weight scale 重复拷贝
- *     [+, + sizeof(float)*ep)              ttXScaleRepeat: PerTensor x scale 重复拷贝
+ *     [0, ep * epWorldSize * 8)                groupList: (expert,rank) 粒度的token计数
+ *     [+, + ep * epWorldSize * 8)              cGroupOffsetTable: rank-first输出偏移表
+ *     [+, + 512)                               ptrTable:  4 × 16B GetTensorAddr 双重间接指针表 (x, weight, scaleB, y)
+ *     [+, + sizeof(float)*ep)                  ttWeightScaleRepeat: PerTensor weight scale 重复拷贝
+ *     [+, + sizeof(float)*ep)                  ttXScaleRepeat: PerTensor x scale 重复拷贝
  *   MX模式 (MX_QUANT_MODE=true):
- *     [0, ep * 8)                      groupList
- *     [ep * 8, ep * 8 + 512)           ptrTable
- *   总大小需按最大模式(TT)计算 = ep * sizeof(int64_t) + 512 + sizeof(float) * ep * 2
+ *     [0, ep * epWorldSize * 8)                groupList
+ *     [+, + ep * epWorldSize * 8)              cGroupOffsetTable
+ *     [+, + 512)                               ptrTable
+ *   总大小需按最大模式(TT)计算 = ep * epWorldSize * 8 * 2 + 512 + sizeof(float) * ep * 2
+ *   SharedGmmComputeOp workspace (共享专家, 单group, 无cGroupOffsetTable):
+ *     [0, ep * 8)  groupList + [+, 512) ptrTable + [+, sizeof(float)*ep*2) TT scale repeat
  */
 struct GmmA2avWorkspaceInfo {
     uint64_t wsGmmOutputSize;                    // 路由专家 GMM 主输出缓冲大小 (x @ weight -> gmm_output -> hccl send)

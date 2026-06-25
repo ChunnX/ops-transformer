@@ -865,18 +865,19 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo
     inferredInfo_.gmmResultLen = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
     localTilingData_.workspaceInfo.wsGmmOutputSize = inferredInfo_.gmmResultLen;
     // GmmComputeOp workspace 内部布局:
-    //   [groupList (ep * 8B)] [ptrTable (tensorListSize=512)] [TT scale repeat (sizeof(float) * ep * 2)]
+    //   [groupList (ep * epWorldSize * 8B)] [cGroupOffsetTable (ep * epWorldSize * 8B)]
+    //   [ptrTable (tensorListSize=512)] [TT scale repeat (sizeof(float) * ep * 2)]
+    uint64_t groupListSize = localParams_.ep * localParams_.epWorldSize * sizeof(int64_t);
+    uint64_t cGroupOffsetTableSize = localParams_.ep * localParams_.epWorldSize * sizeof(uint64_t);
     uint64_t ttScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
-    uint64_t gmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + ttScaleRepeatSize;
+    uint64_t gmmComputeWsSize = groupListSize + cGroupOffsetTableSize + tensorListSize + ttScaleRepeatSize;
     localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
     uint64_t sharedTtScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
     uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
         mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
-    // PermuteSend 数据重排空间 (后通信模式: GMM输出 → expert优先→rank优先重排 → AlltoAllv发送)
-    // expertNum=1时无需Permute, GMM输出直接作为sendBuffer
-    localTilingData_.workspaceInfo.wsPermuteOutSize = expertNum_ == 1 ? 0 :
-        mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
+    // PermuteSend 已消除: GMM 直接输出 rank-first 布局, 无需重排空间
+    localTilingData_.workspaceInfo.wsPermuteOutSize = 0;
 
     workSpaceSize_ = libApiWorkSpaceSize_ + inferredInfo_.gmmResultLen +
                      localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +
