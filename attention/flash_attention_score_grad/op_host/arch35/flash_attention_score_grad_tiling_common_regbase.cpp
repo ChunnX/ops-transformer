@@ -142,6 +142,53 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context)
+{
+    auto softmaxMax = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
+    auto softmaxSum = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SOFTMAX_SUM));
+    OP_CHECK_IF(softmaxMax == nullptr || softmaxSum == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "softmaxMaxOptional or softmaxSumOptional"),
+                return ge::GRAPH_FAILED);
+
+    auto softmaxMaxType = softmaxMax->GetDataType();
+    auto softmaxSumType = softmaxSum->GetDataType();
+
+    bool softmaxTypeCheck = (softmaxMaxType == softmaxSumType) && (softmaxMaxType == ge::DT_FLOAT);
+    std::string dtypeMsg = "{" + ge::TypeUtils::DataTypeToSerialString(softmaxMaxType) + ", " +
+                            ge::TypeUtils::DataTypeToSerialString(softmaxSumType) + "}";
+    OP_CHECK_IF(softmaxTypeCheck != true,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad",
+                    "softmaxMaxOptional, softmaxSumOptional", dtypeMsg.c_str(),
+                    "The dtype of softmaxMaxOptional and softmaxSumOptional must be FLOAT32"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context)
+{
+    auto query = context->GetInputDesc(static_cast<size_t>(InputIndex::QUERY));
+    auto attentionIn = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::ATTENTION_IN));
+    OP_CHECK_IF(query == nullptr || attentionIn == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "query or attentionInOptional"),
+                return ge::GRAPH_FAILED);
+
+    auto queryType = query->GetDataType();
+    auto attentionInType = attentionIn->GetDataType();
+
+    if (queryType == ge::DT_HIFLOAT8) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    std::string dtypeMsg = "{" + ge::TypeUtils::DataTypeToSerialString(queryType) + ", " +
+                            ge::TypeUtils::DataTypeToSerialString(attentionInType) + "}";
+    OP_CHECK_IF(queryType != attentionInType,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad",
+                    "query, attentionInOptional", dtypeMsg.c_str(),
+                    "The dtype of query and attentionInOptional must be the same"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d)
 {
     auto isShapeInValid = (b == 0 || n1 == 0 || s1 == 0 || d == 0);
@@ -190,6 +237,25 @@ ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int
     }
 
     ret = CheckSoftmaxMaxSumTndShape(context, t1, n1);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CheckDtypeValid(gert::TilingContext *context)
+{
+    if (context == nullptr) {
+        OP_LOGE(context, "context is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+
+    auto ret = CheckSoftmaxDtype(context);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+    ret = CheckAttentionInDtype(context);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -1117,6 +1183,10 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
     }
 
     if (CheckAttenMaskShape(fBaseParams) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (CheckDtypeValid(context_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
