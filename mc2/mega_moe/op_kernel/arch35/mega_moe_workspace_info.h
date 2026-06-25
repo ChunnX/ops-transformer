@@ -108,7 +108,7 @@ struct WorkspaceInfo {
     GM_ADDR cumsumInfoPtr;
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
-    GM_ADDR tokenGroupCompletePtr;
+    GM_ADDR gmm2CombineSyncCounterPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -174,10 +174,10 @@ struct WorkspaceInfo {
         }
 
         // Combine-quant-only workspace buffers
-        tokenGroupCompletePtr = nullptr;
+        gmm2CombineSyncCounterPtr = nullptr;
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
             // Token group completion counters
-            tokenGroupCompletePtr = base + workspaceSize;
+            gmm2CombineSyncCounterPtr = base + workspaceSize;
             // 紧密排布：每个 expert 分配 blockAivNum 个 slot
             int64_t stridePerExpert = Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);

@@ -430,8 +430,8 @@ __aicore__ inline void GroupMatmul2(
             } else {
                 uint32_t blockAivNum = blockNum * 2;
                 // 量化：输出到 GM
-                GlobalTensor<int32_t> tokenGroupComplete;
-                tokenGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.tokenGroupCompletePtr);
+                GlobalTensor<int32_t> gmm2CombineSyncCounter;
+                gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
                 auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
                     reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
                 auto gmBlockC = gmC.Slice(
@@ -450,7 +450,7 @@ __aicore__ inline void GroupMatmul2(
                 ComputeGroupRange(tokenGroupIdx, tokenGroupsThisExpert, blockAivNum, grpCoreStart, grpCoreSize);
                 int64_t baseOffset = static_cast<int64_t>(groupIdx) * blockAivNum * INT_CACHELINE;
                 for (uint32_t aivIdx = grpCoreStart; aivIdx < grpCoreStart + grpCoreSize; aivIdx++) {
-                    AscendC::AtomicAdd((__gm__ int32_t*)tokenGroupComplete.GetPhyAddr()
+                    AscendC::AtomicAdd((__gm__ int32_t*)gmm2CombineSyncCounter.GetPhyAddr()
                         + baseOffset + aivIdx * INT_CACHELINE, int32_t(1));
                 }
             }

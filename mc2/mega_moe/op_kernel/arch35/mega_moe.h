@@ -67,7 +67,7 @@ private:
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void UnpermuteBuffInit();
     __aicore__ inline void ResetFlagList();
-    __aicore__ inline void ResetTokenGroupCompleteFlags();
+    __aicore__ inline void ResetGmm2CombineSyncCounters();
     __aicore__ inline void SendMaskCal();
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t& sendCnt);
     __aicore__ inline void TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId);
@@ -407,7 +407,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     }
     // combine量化模式下TokenGroupCompleteFlag清零
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        ResetTokenGroupCompleteFlags();
+        ResetGmm2CombineSyncCounters();
     }
 }
 
@@ -912,22 +912,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
 }
 
 // =============================================
-// ResetTokenGroupCompleteFlags：重置 token group 完成标志计数器
+// ResetGmm2CombineSyncCounters：重置 GMM2→Combine 同步计数器
 // =============================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenGroupCompleteFlags()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCounters()
 {
     if constexpr(g_coreType == AIV) {
         int32_t totalCounters = static_cast<int32_t>(
             static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE);
         int32_t coreLen, coreOffset;
         TilingByCore(totalCounters, coreLen, coreOffset);
-        GlobalTensor<int32_t> tokenGroupCompleteGm;
-        tokenGroupCompleteGm.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.tokenGroupCompletePtr);
+        GlobalTensor<int32_t> gmm2CombineSyncCounterGm;
+        gmm2CombineSyncCounterGm.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
         if (coreLen > 0) {
             Duplicate(resetTensor_, 0, coreLen);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-            DataCopy(tokenGroupCompleteGm[coreOffset], resetTensor_, coreLen);
+            DataCopy(gmm2CombineSyncCounterGm[coreOffset], resetTensor_, coreLen);
         }
     }
 }
@@ -958,8 +958,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
 {
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
 
-    GlobalTensor<int32_t> tokenGroupComplete;
-    tokenGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.tokenGroupCompletePtr);
+    GlobalTensor<int32_t> gmm2CombineSyncCounter;
+    gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
 
     uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
     uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
@@ -975,7 +975,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
         return;
     }
 
-    __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)tokenGroupComplete.GetPhyAddr()
+    __gm__ int32_t* myCounterAddr = (__gm__ int32_t*)gmm2CombineSyncCounter.GetPhyAddr()
         + expertIdx * blockAivNum_ * INT_CACHELINE
         + aivCoreIdx_ * INT_CACHELINE;
     while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup)
