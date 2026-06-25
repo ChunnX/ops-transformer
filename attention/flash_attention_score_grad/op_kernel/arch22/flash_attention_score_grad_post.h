@@ -501,8 +501,8 @@ template <typename OUT_TYPE, class TILING_TYPE, const bool CAST_DV, const uint32
 __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, HAS_ROPE>::NZProcess()
 {
     if constexpr (LAYOUT == TND) {
-        int64_t t1Full = tilingData->postTilingData.get_t1();
-        int64_t t2Full = tilingData->postTilingData.get_t2();
+        int64_t t1Full = tilingData->postTilingData.t1;
+        int64_t t2Full = tilingData->postTilingData.t2;
         EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
         EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
         if constexpr (CAST_DV) {
@@ -1297,8 +1297,8 @@ public:
     __aicore__ inline void NZProcess()
     {
         if constexpr (LAYOUT == TND) {
-            int64_t t1Full = tilingData->postTilingData.get_t1();
-            int64_t t2Full = tilingData->postTilingData.get_t2();
+            int64_t t1Full = tilingData->postTilingData.t1;
+            int64_t t2Full = tilingData->postTilingData.t2;
             EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
             EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
             if constexpr (CAST_DV) {
@@ -1998,8 +1998,8 @@ public:
     __aicore__ inline void NZProcess()
     {
         if constexpr (LAYOUT == TND) {
-            int64_t t1Full = tilingData->postTilingData.get_t1();
-            int64_t t2Full = tilingData->postTilingData.get_t2();
+            int64_t t1Full = tilingData->postTilingData.t1;
+            int64_t t2Full = tilingData->postTilingData.t2;
             EODCleanMultiCore(dqGm, qPostBlockTotal, t1Full * n2 * g * d - qPostBlockTotal);
             EODCleanMultiCore(dkGm, kvPostBlockTotal, t2Full * n2 * d - kvPostBlockTotal);
             if constexpr (CAST_DV) {
