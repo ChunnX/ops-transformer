@@ -73,6 +73,7 @@ constexpr int64_t BS_UPPER_BOUND = 8192;
 constexpr uint32_t HIDDEN_ALIGN = 32U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
+constexpr uint64_t FP8_DTYPE_SIZE = 1UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;   // sizeof(int32)=sizeof(float)=4
 constexpr int64_t SCALES_GROUP_SIZE_MXFP = 32;
 constexpr int64_t SCALES_GROUP_SIZE_PERGROUP = 128;
@@ -83,7 +84,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogu
               info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
     OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
               info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
-    OP_LOGD(nodeName, "aivNum=%u, cached=%u, scaleBytes=%u", info.aivNum, info.cached, info.scaleBytes);
+    OP_LOGD(nodeName, "aivNum=%u, cached=%u, scalesBytes=%u", info.aivNum, info.cached, info.scalesBytes);
 }
 
 // ---------------------------------------------------------------------------
@@ -305,7 +306,8 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
             expectedDim1, recvScalesShape->GetStorageShape().GetDim(1)),
         return ge::GRAPH_FAILED);
 
-    info.scaleBytes = static_cast<uint32_t>(expectedDim1 * ((scalesDtype == ge::DT_FLOAT) ? sizeof(float) : 1));
+    uint32_t scalesSize = (scalesDtype == ge::DT_FLOAT) ? sizeof(float) : FP8_DTYPE_SIZE;
+    info.scalesBytes = static_cast<uint32_t>(expectedDim1 * scalesSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -444,10 +446,14 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
     info.cfg.hidden = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(1));
 
-    uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    ge::DataType recvXDtype = context->GetOutputDesc(OUT_RECV_X_INDEX)->GetDataType();
+    bool isFp8 = (recvXDtype == ge::DT_FLOAT8_E5M2 || recvXDtype == ge::DT_FLOAT8_E4M3FN);
+    uint32_t recvXDtypeSize = isFp8 ? FP8_DTYPE_SIZE : MAX_OUT_DTYPE_SIZE;
+    uint32_t hAlign32 = ((info.cfg.hidden * recvXDtypeSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    uint32_t perSlotBytes = ((hAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    info.cfg.perSlotBytes = perSlotBytes;
+    uint32_t scalesSizeAlign32 = isFp8 ? ((info.cfg.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
+    info.cfg.perSlotBytes = ((hAlign32 + scalesSizeAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
+                            WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
     OP_TILING_CHECK(CheckWinSize(context, nodeName, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check HCCL Window size failed."), return ge::GRAPH_FAILED);

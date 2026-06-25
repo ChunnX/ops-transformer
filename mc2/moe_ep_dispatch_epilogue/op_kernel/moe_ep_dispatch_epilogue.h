@@ -112,8 +112,8 @@ private:
     uint32_t maxSlotsPerAiv_{0};
     GM_ADDR workspaceGM_{nullptr};
     GM_ADDR localWinAddr_{nullptr};
-    uint32_t scaleOffset_{0};
-    uint32_t scaleBytes_{0};
+    uint32_t scalesOffset_{0};
+    uint32_t scalesBytes_{0};
     uint32_t scalesElems_{0};
     uint32_t metaOffset_{0};
     uint32_t hitCountOffset_{0};
@@ -173,7 +173,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     epRankId_ = mc2Context_->epRankId;
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_);
-    metaOffset_ = Ceil((uint32_t)(axisH_ * 2), UB_ALIGN) * UB_ALIGN;
+    metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
 
     numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
@@ -225,10 +225,11 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-        scaleOffset_ =  Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
-        scaleBytes_ = tilingData->scaleBytes;
-        scalesElems_ = (scaleBytes_ == 0U) ? 0U : (scaleBytes_ / sizeof(ScalesType));
-        uint32_t scalesBytesAlign = Ceil(scaleBytes_, UB_ALIGN) * UB_ALIGN;
+        scalesOffset_ =  Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
+        scalesBytes_ = tilingData->scalesBytes;
+        scalesElems_ = (scalesBytes_ == 0U) ? 0U : (scalesBytes_ / sizeof(ScalesType));
+        uint32_t scalesBytesAlign = Ceil(scalesBytes_, UB_ALIGN) * UB_ALIGN;
+        metaOffset_ += scalesBytesAlign;
         tpipe_->InitBuffer(ubScalesBuf_, scalesBytesAlign);
         ubScales_ = ubScalesBuf_.Get<ScalesType>();
         recvScalesGm_.SetGlobalBuffer((__gm__ ScalesType*)recvScales);
@@ -416,7 +417,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
                     DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
                     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                         GlobalTensor<ScalesType> srcScalesTensor;
-                        srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType*>(slotAddr + scaleOffset_),
+                        srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType*>(slotAddr + scalesOffset_),
                             scalesElems_);
                         DataCopyParams scalesCopyParams{1U,
                             static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
@@ -458,6 +459,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
                     static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
                 DataCopyPad(recvSrcMetadataGm_[expertRowStart * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
             }
+            SyncFunc<AscendC::HardEvent::MTE3_S>();
         }
     }
 }
