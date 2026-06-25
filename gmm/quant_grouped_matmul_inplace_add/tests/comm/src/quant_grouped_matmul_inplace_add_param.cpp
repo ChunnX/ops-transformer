@@ -14,6 +14,7 @@
  */
 
 #include "quant_grouped_matmul_inplace_add_param.h"
+#include <vector>
 
 using namespace ops::adv::tests::quant_grouped_matmul_inplace_add;
 
@@ -29,7 +30,7 @@ Param::Param(std::vector<TensorList> inputs, Tensor perTokenScale, Tensor groupL
 }
 
 Tensor ops::adv::tests::quant_grouped_matmul_inplace_add::GenTensor(const char *name,
-                                                                    const std::initializer_list<int64_t> &shape,
+                                                                    const std::vector<int64_t> &shape,
                                                                     ge::DataType dType, ge::Format format)
 {
     return Tensor(name, shape, "", dType, format);
