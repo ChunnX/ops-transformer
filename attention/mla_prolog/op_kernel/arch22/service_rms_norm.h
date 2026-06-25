@@ -41,8 +41,8 @@ namespace MlaProlog {
 template <typename T, typename GammaType, typename C, typename O, typename U>
 __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
                                      const LocalTensor<GammaType> &gammaLocal,
-                                     const LocalTensor<float> &dequantScaleWDqLocal,
-                                     const LocalTensor<float> &dequantScaleXLocal,
+                                     const LocalTensor<U> &dequantScaleWDqLocal,
+                                     const LocalTensor<U> &dequantScaleXLocal,
                                      const LocalTensor<uint8_t> &shareTmpUb, RmsNormParam &rmsNormParams)
 {
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;
@@ -52,21 +52,7 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(rmsNormParams.col * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
-    if constexpr (std::is_same<T, float>::value && std::is_same<U, FP8E8M0>::value) {
-        DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-    } else if constexpr (std::is_same<T, float>::value && std::is_same<U, float>::value) {
-        DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        Rectangle rectangleParams{
-            (uint32_t)rmsNormParams.row, (uint32_t)rmsNormParams.col,
-            (uint32_t)rmsNormParams.col // columnStride
-        };
-        Dequant(xFp32Local, xFp32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
-    } else if constexpr (std::is_same<T, int32_t>::value) {
+    if constexpr (std::is_same<T, int32_t>::value) {
         LocalTensor<T> xInt32Local = shareTmpUb.ReinterpretCast<T>();
         DataCopyPad(xInt32Local, inputGm, copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
@@ -125,8 +111,8 @@ template <typename T, typename GammaType, typename SmoothType, typename C, typen
 __aicore__ inline void
 RmsNormDynamicQuant(const LocalTensor<O> &outputLocal, const LocalTensor<U> &outputScales,
                     const GlobalTensor<T> &inputGm, const LocalTensor<GammaType> &gammaLocal,
-                    const LocalTensor<SmoothType> &smoothLocal, const LocalTensor<float> &dequantScaleWDqLocal,
-                    const LocalTensor<float> &dequantScaleXLocal, const LocalTensor<uint8_t> &shareTmpUb,
+                    const LocalTensor<SmoothType> &smoothLocal, const LocalTensor<U> &dequantScaleWDqLocal,
+                    const LocalTensor<U> &dequantScaleXLocal, const LocalTensor<uint8_t> &shareTmpUb,
                     RmsNormParam &rmsNormParams, bool enableSmoothScalesCq = true)
 {
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;

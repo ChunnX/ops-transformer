@@ -40,7 +40,7 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
                   const GlobalTensor<C> &deqScaleQcQrWGm, const LocalTensor<float> deQuantScaleQcQrLocal,
                   const LocalTensor<uint8_t> &shareTmpUb, Rectangle dequantRowColStrideParams, uint32_t oriRow)
 {
-    int64_t count = dequantRowColStrideParams.row * dequantRowColStrideParams.col;
+    int64_t count = dequantRowColStrideParams.col * dequantRowColStrideParams.row;
 
     LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
     LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
@@ -73,50 +73,6 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
         AscendC::PipeBarrier<PIPE_V>();
         // cast
         Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        // copy out
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        DataCopy(outputGm[outputOffset], outputLocal, count);
-    }
-}
-
-/**
- * @brief CastPerTokenQc 用于对Qc做类型转换；按行做cast流程，给oriRow * col的数据做类型转换
- * @param outputGm 输出tensor
- * @param inputGm 输入tensor
- * @param shareTmpUb 临时buffer
- * @param castRowColStrideParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
- * @param oriRow 一共有多少行
-*/
-template <typename T, typename O>
-__aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
-                                      const LocalTensor<uint8_t> &shareTmpUb, Rectangle castRowColStrideParams,
-                                      uint32_t oriRow)
-{
-    int64_t count = castRowColStrideParams.row * castRowColStrideParams.col;
-
-    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                       // count * sizeof(T)
-    LocalTensor<O> outputLocal = inputLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
-
-    DataCopyParams copyParams{
-        static_cast<uint16_t>(castRowColStrideParams.row),
-        static_cast<uint16_t>(castRowColStrideParams.col * sizeof(T) / 32U),
-        static_cast<uint16_t>((castRowColStrideParams.stride - castRowColStrideParams.col) * sizeof(T) / 32U), 0};
-
-    for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += castRowColStrideParams.row) {
-        int64_t inputOffset = rowOffset * castRowColStrideParams.stride;
-        int64_t outputOffset = rowOffset * castRowColStrideParams.col;
-        // copy in
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        DataCopy(inputLocal, inputGm[inputOffset], copyParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        // cast
-        Cast(outputLocal, inputLocal, RoundMode::CAST_RINT, count);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -168,27 +124,72 @@ DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
     };
 
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    int64_t scaleOffset = subBlockIdx_ * count;
+    int64_t scaleOffset = count * subBlockIdx_;
     DataCopy(scaleLocal, deqScaleQcQrWGm[scaleOffset], dequantRowColStrideParams.col);
     for (int64_t rowOffset = 0; rowOffset < dequantRowColStrideParams.row; rowOffset++) {
-        int64_t inputOffset = rowOffset * oriCol + subBlockIdx_ * count;
         int64_t outputOffset = rowOffset * oriCol + subBlockIdx_ * count;
+        int64_t inputOffset = rowOffset * oriCol + subBlockIdx_ * count;
         WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         DataCopy(inputLocal, inputGm[inputOffset], inputCopyParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        AscendC::SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        AscendC::WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
         Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
         // cast
         Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        AscendC::SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        AscendC::WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
         DataCopy(outputGm[outputOffset], outputLocal, count);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+}
+
+
+/**
+ * @brief CastPerTokenQc 用于对Qc做类型转换；按行做cast流程，给oriRow * col的数据做类型转换
+ * @param outputGm 输出tensor
+ * @param inputGm 输入tensor
+ * @param shareTmpUb 临时buffer
+ * @param castRowColStrideParams 描述待处理数据的排布，包括
+          row 行数
+          col 列数
+          stride 一行的真实长度
+ * @param oriRow 一共有多少行
+*/
+template <typename T, typename O>
+__aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
+                                      const LocalTensor<uint8_t> &shareTmpUb, Rectangle castRowColStrideParams,
+                                      uint32_t oriRow)
+{
+    int64_t count = castRowColStrideParams.row * castRowColStrideParams.col;
+
+    LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                       // count * sizeof(T)
+    LocalTensor<O> outputLocal = inputLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+
+    DataCopyParams copyParams{
+        static_cast<uint16_t>(castRowColStrideParams.row),
+        static_cast<uint16_t>(castRowColStrideParams.col * sizeof(T) / 32U),
+        static_cast<uint16_t>((castRowColStrideParams.stride - castRowColStrideParams.col) * sizeof(T) / 32U), 0};
+
+    for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += castRowColStrideParams.row) {
+        int64_t inputOffset = rowOffset * castRowColStrideParams.stride;
+        int64_t outputOffset = rowOffset * castRowColStrideParams.col;
+        // copy in
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        DataCopy(inputLocal, inputGm[inputOffset], copyParams);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        // cast
+        Cast(outputLocal, inputLocal, RoundMode::CAST_RINT, count);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        // copy out
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        DataCopy(outputGm[outputOffset], outputLocal, count);
+    }
 }
 
 } // namespace MlaProlog
