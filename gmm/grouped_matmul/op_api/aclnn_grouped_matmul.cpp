@@ -1349,10 +1349,31 @@ bool isActivationAllowed(int64_t act_type)
            act_type == GMMActType::GMM_ACT_TYPE_SILU;
 }
 
+const char *GetAclnnGetWorkspaceSizeOpName(gmm::GMMApiVersion apiVersion)
+{
+    switch (apiVersion) {
+        case gmm::GMMApiVersion::V1:
+            return "aclnnGroupedMatmulGetWorkspaceSize";
+        case gmm::GMMApiVersion::V2:
+            return "aclnnGroupedMatmulV2GetWorkspaceSize";
+        case gmm::GMMApiVersion::V3:
+            return "aclnnGroupedMatmulV3GetWorkspaceSize";
+        case gmm::GMMApiVersion::V4:
+            return "aclnnGroupedMatmulV4GetWorkspaceSize";
+        case gmm::GMMApiVersion::V5:
+            return "aclnnGroupedMatmulV5GetWorkspaceSize";
+        case gmm::GMMApiVersion::WeightNz:
+            return "aclnnGroupedMatmulWeightNzGetWorkspaceSize";
+        default:
+            return "aclnnGroupedMatmulGetWorkspaceSize";
+    }
+}
+
 bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
+    const char *aclnnOpName = GetAclnnGetWorkspaceSizeOpName(gmmParams.apiVersion);
     if (gmmParams.scaleOptional == nullptr || gmmParams.scaleOptional->Size() == 0 ||
         (*gmmParams.scaleOptional)[0] == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(aclnnOpName, "scaleOptional",
             "nullptr", "When the activation function is enabled, scaleOptional cannot be nullptr");
         return false;
     }
@@ -1360,14 +1381,14 @@ bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
     DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
     if (scaleDtype != DataType::DT_FLOAT && scaleDtype != DataType::DT_BF16) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional", gmm::dTypeToString(scaleDtype),
+            aclnnOpName, "scaleOptional", gmm::dTypeToString(scaleDtype),
             "When the activation function is enabled, the dtype of scaleOptional must be float32 or bfloat16");
         return false;
     }
     size_t scaleDimNum = scaleShape.GetDimNum();
     if (scaleDimNum != SCALE_TENSOR_EXPECTED_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional", std::to_string(scaleDimNum),
+            aclnnOpName, "scaleOptional", std::to_string(scaleDimNum),
             "When the activation function is enabled, the shape dim of scaleOptional must be 2 for perchannel");
         return false;
     }
@@ -1379,7 +1400,7 @@ bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
     int64_t scaleGroupNum = scaleShape.GetDim(0);
     if (scaleNSize != weightNSize || scaleGroupNum != weightGroupNum) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+            aclnnOpName, "scaleOptional",
             "[" + std::to_string(scaleGroupNum) + ", " + std::to_string(scaleNSize) + "]",
             "When the activation function is enabled, the shape of scaleOptional must be "
             "[" + std::to_string(weightGroupNum) + ", " + std::to_string(weightNSize) + "]");
@@ -1400,11 +1421,12 @@ bool CheckInt8DynamicKCQuant(const gmm::GroupedMatmulParams &gmmParams) {
         (*gmmParams.perTokenScaleOptional)[0] == nullptr) {
         return false;
     }
+    const char *aclnnOpName = GetAclnnGetWorkspaceSizeOpName(gmmParams.apiVersion);
     const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
     DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
     if (perTokenScaleDtype != DataType::DT_FLOAT) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional", gmm::dTypeToString(perTokenScaleDtype),
+            aclnnOpName, "perTokenScaleOptional", gmm::dTypeToString(perTokenScaleDtype),
             "When the activation function is enabled, the dtype of perTokenScaleOptional must be float32");
         return false;
     }
@@ -1414,13 +1436,13 @@ bool CheckInt8DynamicKCQuant(const gmm::GroupedMatmulParams &gmmParams) {
     int64_t perTokenScaleMSize = perTokenScaleShape.GetDim(perTokenScaleDim - 1);
     if (perTokenScaleDim != 1) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional", std::to_string(perTokenScaleDim),
+            aclnnOpName, "perTokenScaleOptional", std::to_string(perTokenScaleDim),
             "When the activation function is enabled, the shape dim of perTokenScaleOptional must be 1");
         return false;
     }
     if (perTokenScaleMSize != mSize) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional",
+            aclnnOpName, "perTokenScaleOptional",
             "[" + std::to_string(perTokenScaleMSize) + ",]",
             "When the activation function is enabled and the shape dim of perTokenScaleOptional is 1, the shape of "
             "perTokenScaleOptional must be [" + std::to_string(mSize) + ",]");
