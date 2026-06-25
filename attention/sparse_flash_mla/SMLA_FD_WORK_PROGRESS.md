@@ -738,3 +738,100 @@ S2 split cases still fail comparison after enabling FD reduction. Analysis:
 **Root cause**: The current test paramset was not designed to exercise the FD path. The S2 split cases produce partial results due to metadata clipping (Phase 2), but the FD reduction may not have matching FD tasks in the metadata. Phase 6 (QSMLA paramset migration) is needed to create test cases that specifically trigger and validate the FD reduction path.
 
 **结论**：Phase 5 代码基础设施完整实现。SyncAll barrier、InitFDBuffers、ProcessFlashDecode、AttentionCommon::Reduce 全部按 QSMLA 结构搬运。编译通过，13 个用例全部 pytest PASSED（无崩溃/死锁）。非 split 用例 100% 精确匹配 golden。S2 split 用例比较仍未通过，原因是当前测试集缺乏 FD 专项覆盖用例，需要 Phase 6 迁移 QSMLA FD paramset 后进行精确验证。
+
+---
+
+## 2026-06-25 Phase 6
+
+Status: paramset migration completed. Build and runtime validation done.
+
+### Migrated Test Cases
+
+8 FD-specific test cases migrated from QSMLA `mixed_quant_sparse_flash_mla_paramset.py` to SMLA `sparse_flash_mla_paramset.py`:
+
+| # | SMLA Name | QSMLA Source | Coverage Target |
+|---|---|---|---|
+| 13 | smla_fd_single_batch_2_cores | single_batch_2_cores | Minimal 2-split FD main path |
+| 14 | smla_fd_single_batch_3_cores | single_batch_3_cores | 3-core split slot + FD reader |
+| 15 | smla_fd_N32_single_batch | N32_single_batch_3_cores | Small head/group, non-64 stride |
+| 16 | smla_fd_multi_batch | multi_batch_full_cores | Multi-batch output base |
+| 17 | smla_fd_with_qs_0 | with_qs_0 | Empty Q + barrier |
+| 18 | smla_fd_with_kvs_0 | with_kvs_0 | Empty KV + barrier |
+| 19 | smla_fd_tnd_padding | tnd_padding_kv | TND padding + cu_seqlens output base |
+| 20 | smla_fd_residual | residual | Residual/tail S2 loop final-loop staging |
+
+### Migration Notes
+
+- QSMLA `ori_kv_type: float8_e4m3fn` → SMLA `ori_kv_type: bfloat16` (no quantization in SMLA)
+- QSMLA `kv_quant_mode`, `tile_size`, `rope_head_dim`, `template_run_mode`, `S1EQS2` → removed (not in SMLA schema)
+- QSMLA `S2` → SMLA `T2` (total ori KV tokens) / `T3` (total cmp KV tokens)
+- Added SMLA-specific: `K` (cmp topk), `return_softmax_lse`, `cmp_residual_kv`
+- TND cases require explicit `T3` (golden code uses `T3` for cmp_k tensor size)
+- TND `T2` must equal `cu_seqlens_ori_kv[-1]` (golden code validates this)
+
+### Not Migrated
+
+| QSMLA Case | Reason |
+|---|---|
+| N128 | SMLA supports gSize=128 via split-G; existing `scfa_g128_test_prefill` already covers N1=128 |
+| single_batch_full_cores | S2=15972 too large for current test infrastructure; covered by multi_batch |
+| single_batch_full_cores_with_blocks | Same as above |
+| 1_core_has_2_reduce | B=33 too large; multi_batch case covers similar FD task density |
+| 1_core_has_2_reduce_with_no_reduce_insight | Same as above |
+| tnd_padding_1 | BSND variant; covered by existing cases |
+| K_1024 | S2=65536 too large; workspace and metadata not validated for this scale |
+
+### Runtime Validation (2026-06-25)
+
+**Build**: JIT compilation completed with zero errors.
+
+**Test**: `test_run.sh single` — all 21 param_combinations executed without exception (pytest PASSED).
+
+#### Comparison Results
+
+| # | testcase_name | PctRlt | Comparison | S2 Split? |
+|---|---|---|---|---|
+| 0 | swa_decode | 100% | Pass | No |
+| 1 | test_swa_decode_pa | 100% | Pass | No |
+| 2 | cfa_tnd | 100% | Pass | No |
+| 3 | scfa_decode | 100% | Pass | No |
+| 4 | scfa_decode_pa | 19.06% | Failed | Yes |
+| 5 | scfa_g128_test_decode | 35.25% | Failed | Yes |
+| 6 | scfa_g128_test_decode_B1 | 28.95% | Failed | Yes |
+| 7 | scfa_g128_test_decode_B16 | 33.66% | Failed | Yes |
+| 8 | scfa_g64_test_prefill | 33.74% | Failed | Yes |
+| 9 | scfa_g128_test_prefill | 100% | Pass | No |
+| 10 | scfa_g128_test_prefill_padding | 100% | Pass | No |
+| 11 | scfa_g128_test_prefill_TND | 100% | Pass | No |
+| 12 | cmp_scfa_g64_test_prefill | 96.05% | Failed | Yes |
+| 13 | smla_fd_single_batch_2_cores | 48.98% | Failed | Yes |
+| 14 | smla_fd_single_batch_3_cores | 33.11% | Failed | Yes |
+| 15 | smla_fd_N32_single_batch | 19.93% | Failed | Yes |
+| 16 | smla_fd_multi_batch | 41.89% | Failed | Yes |
+| 17 | smla_fd_with_qs_0 | 29.77% | Failed | Yes |
+| 18 | smla_fd_with_kvs_0 | 60.08% | Failed | Yes |
+| 19 | smla_fd_tnd_padding | 49.06% | Failed | Yes |
+| 20 | smla_fd_residual | 41.85% | Failed | Yes |
+
+#### Phase 6 Validation Items vs. Document Requirements
+
+From `SMLA_FD_ADAPTATION_PLAN.md` Phase 6 acceptance criteria:
+
+| Validation Item | Status | Evidence |
+|---|---|---|
+| 每个迁移用例都有对应 metadata trace | **待验证** | 需要 device trace 或 metadata dump 确认 FD task 生成 |
+| 至少覆盖二 split、三核分配、小 head/group、多 batch、空 Q、空 KV、TND padding、tail/residual | **通过** | 8 个迁移用例覆盖所有要求的覆盖轴 |
+| 迁移用例全部通过 SMLA CPU golden | **未通过** | 所有 S2 split 用例比较 Failed |
+| S2 split 迁移用例连续执行 20 次结果稳定 | **待验证** | 需要连续执行测试 |
+| 迁移后的 paramset 不影响 SMLA 原有非 FD 用例执行 | **通过** | Cases 0-3, 9-11 仍然 100% Pass |
+
+#### S2 Split Comparison "Failed" 分析
+
+All S2 split cases (both original and migrated) fail comparison. The FD reduction infrastructure is in place (SyncAll, InitFDBuffers, ProcessFlashDecode, Reduce all execute without crashes), but the numerical results don't match CPU golden.
+
+Likely root causes (to be investigated in Phase 7):
+1. **Output offset formula**: The `attentionOutOffset` computation in `ProcessFlashDecode` may not correctly map FD metadata `mIdx`/`mStartIdx` to the SMLA output tensor layout.
+2. **Staging M offset mismatch**: FA writer's `GetFaStagingMOffset` and FD reader's `mStartIdx` may use different coordinate systems.
+3. **workspaceNum > 2**: Some cases may generate 3+ splits per row, which the common `Reduce` doesn't support.
+
+**结论**：Phase 6 迁移完成。8 个 FD 专项测试用例从 QSMLA paramset 迁移到 SMLA schema，覆盖二 split、三核分配、小 head/group、多 batch、空 Q、空 KV、TND padding、tail/residual。全部 21 个用例 pytest PASSED（无崩溃/死锁）。原有非 FD 用例不受影响（100% Pass）。S2 split 用例比较仍未通过，FD reduction 数值正确性需要在 Phase 7 中进一步调试。
