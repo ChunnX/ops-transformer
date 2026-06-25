@@ -151,7 +151,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryBF16(
     const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
     LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData)
 {
-// #if ORIG_DTYPE_QUERY != DT_FLOAT
+#if ORIG_DTYPE_QUERY != DT_FLOAT
     LocalTensor<T2> qFP32 = mul2.Get<T2>();
     LocalTensor<T2> rotOrOut = mul1.Get<T2>();
     LocalTensor<T2> cosC1 = cosC.Get<T2>();
@@ -191,7 +191,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryBF16(
         Add(rotOrOut[qOff], rotOrOut[qOff], qFP32[qOff], cNum * tilingData->lastDim);
     }
     Cast(outUb, rotOrOut, RoundMode::CAST_ROUND, preCBatchB * cNum * tilingData->lastDim);
-// #endif
+#endif
 }
 
 template <typename T1, typename T2>
