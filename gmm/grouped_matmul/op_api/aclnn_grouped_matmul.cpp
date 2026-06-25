@@ -15,6 +15,7 @@
 #include "aclnn_grouped_matmul_weight_nz.h"
 
 #include <dlfcn.h>
+#include <cstdarg>
 #include <cstdio>
 #include <new>
 
@@ -89,11 +90,13 @@ static constexpr int ANTIQUANT_SCALE_3D_DIMS = 3;
 static constexpr int ANTIQUANT_SCALE_4D_DIMS = 4;
 static constexpr int SCALE_TENSOR_EXPECTED_DIMS = 2;
 
-template <typename... Args>
-void GmmAclnnPrint(const char *format, Args... args)
+void GmmAclnnPrint(const char *format, ...)
 {
     std::printf("[GMM aclnn] ");
-    std::printf(format, args...);
+    va_list args;
+    va_start(args, format);
+    std::vprintf(format, args);
+    va_end(args);
     std::printf("\n");
     std::fflush(stdout);
 }
