@@ -82,6 +82,12 @@ bash test_run.sh single
 bash test_run.sh batch
 ```
 
+复跑已生成的`.pt`文件：
+
+```bash
+python3 -m pytest test_stem_indexer_batch.py
+```
+
 batch模式流程与QLI保持一致：
 
 ```text
