@@ -21,6 +21,7 @@
 
 namespace IndexerQuantCache {
 using namespace AscendC;
+constexpr int32_t FOUR_UNFOLD = 4;   // 拷出按 4 行展开
 template <typename T0, typename T1, typename T2>
 class IndexerQuantCacheMultiRowMxFp8 {
 public:
@@ -46,8 +47,6 @@ public:
         pipe->InitBuffer(
             cacheScaleQue, 2,
             tilingData->rowFactor * RoundUp<T2>(tilingData->scaleCol) * sizeof(T2));
-        pipe->InitBuffer(indexBuf, RoundUp<int32_t>(tilingData->rowFactor) * sizeof(int32_t));
-        indexLocal = indexBuf.Get<int32_t>();
         // MX-FP8 两函数式: fp32 中间 buffer (InvScale 写, Quant 读) + invScale 广播 buffer
         pipe->InitBuffer(yFp32Buf, tilingData->rowFactor * RoundUp<float>(tilingData->d) * sizeof(float));
         pipe->InitBuffer(
@@ -66,37 +65,27 @@ public:
         int64_t tailRowFactor = (curBlockIdx == GetBlockNum() - 1) ? tilingData->tailRowFactorOfTailBlock :
                                                                      tilingData->tailRowFactorOfFormerBlock;
         int64_t xGmBaseOffset = curBlockIdx * tilingData->rowOfFormerBlock * tilingData->d;
+        int64_t xRowAlign = RoundUp<T0>(tilingData->d, 128);   // MX-FP8 x 行按 128 对齐 (与量化读取步长一致)
         for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx++) {
             int64_t curRowFactor = (rowOuterIdx == rowOuterLoop - 1) ? tailRowFactor : tilingData->rowFactor;
+            int64_t xRowBase = xGmBaseOffset + rowOuterIdx * tilingData->rowFactor * tilingData->d;
+            int64_t slotGmBase = curBlockIdx * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->rowFactor;
             xLocal = xQue.template AllocTensor<T0>();
-            validIdx = 0;
-            for (int64_t rowInnerIdx = 0; rowInnerIdx < curRowFactor; rowInnerIdx++) {
-                int64_t curSlotIdx = curBlockIdx * tilingData->rowOfFormerBlock +
-                    rowOuterIdx * tilingData->rowFactor + rowInnerIdx;
-                int64_t slot = slotMappingGm.GetValue(curSlotIdx);
-                if (slot == -1) {
-                    continue;
+            if (xRowAlign == tilingData->d) {
+                CopyIn(xGm[xRowBase], xLocal, curRowFactor, tilingData->d);
+            } else {
+                for (int64_t r = 0; r < curRowFactor; r++) {
+                    CopyIn(xGm[xRowBase + r * tilingData->d], xLocal[r * xRowAlign], 1, tilingData->d);
                 }
-                CopyIn(
-                    xGm[xGmBaseOffset + rowOuterIdx * tilingData->rowFactor * tilingData->d +
-                        rowInnerIdx * tilingData->d],
-                    xLocal[validIdx * RoundUp<T0>(tilingData->d, 128)], 1, tilingData->d);
-                indexLocal.SetValue(validIdx, slot);
-                validIdx++;
-
-                event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
-                SetFlag<HardEvent::S_MTE3>(eventId);
-                WaitFlag<HardEvent::S_MTE3>(eventId);
             }
             xQue.template EnQue(xLocal);
             xLocal = xQue.template DeQue<T0>();
 
             cacheLocal = cacheQue.template AllocTensor<T1>();
             cacheScaleLocal = cacheScaleQue.AllocTensor<T2>();
-            // MX-FP8 scale 恒为 e8m0 (2 的幂), InvScale 只有 round 路径
             VFProcessMxFp8InvScale<T0, T2>(
-                yFp32Local, cacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, validIdx, tilingData->d);
-            VFProcessMxFp8Quant<T1>(cacheLocal, yFp32Local, mxInvScaleLocal, validIdx, tilingData->d);
+                yFp32Local, cacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, curRowFactor, tilingData->d);
+            VFProcessMxFp8Quant<T1>(cacheLocal, yFp32Local, mxInvScaleLocal, curRowFactor, tilingData->d);
             xQue.template FreeTensor(xLocal);
             cacheQue.template EnQue(cacheLocal);
             cacheScaleQue.template EnQue(cacheScaleLocal);
@@ -104,14 +93,36 @@ public:
             cacheLocal = cacheQue.template DeQue<T1>();
             cacheScaleLocal = cacheScaleQue.template DeQue<T2>();
 
-            for (int64_t curValidIdx = 0; curValidIdx < validIdx; curValidIdx++) {
-                int64_t curSlotIdx = indexLocal.GetValue(curValidIdx);
+            // ---- 优化1+3: 拷出 4 展开 + 直接从 GM 读 slot (无 UB slot 缓冲); slot==-1 丢弃; 保留分页 PagedSlotOffset ----
+            int64_t r = 0;
+            for (; r + FOUR_UNFOLD <= curRowFactor; r += FOUR_UNFOLD) {
+                for (int32_t k = 0; k < FOUR_UNFOLD; k++) {
+                    int64_t curSlotIdx = slotMappingGm.GetValue(slotGmBase + r + k);
+                    if (curSlotIdx == -1) {
+                        continue;
+                    }
+                    CopyOut(
+                        cacheLocal[(r + k) * RoundUp<T1>(tilingData->d)],
+                        cacheGm[PagedSlotOffset(curSlotIdx, tilingData->blockSize,
+                            tilingData->cacheBlockStride, tilingData->cacheRowStride)], 1, tilingData->d);
+                    CopyOut(
+                        cacheScaleLocal[(r + k) * RoundUp<T2>(tilingData->scaleCol)],
+                        cacheScaleGm[PagedSlotOffset(curSlotIdx, tilingData->blockSize,
+                            tilingData->scaleBlockStride, tilingData->scaleRowStride)], 1,
+                        tilingData->scaleCol);
+                }
+            }
+            for (; r < curRowFactor; r++) {
+                int64_t curSlotIdx = slotMappingGm.GetValue(slotGmBase + r);
+                if (curSlotIdx == -1) {
+                    continue;
+                }
                 CopyOut(
-                    cacheLocal[curValidIdx * RoundUp<T1>(tilingData->d)],
+                    cacheLocal[r * RoundUp<T1>(tilingData->d)],
                     cacheGm[PagedSlotOffset(curSlotIdx, tilingData->blockSize,
                         tilingData->cacheBlockStride, tilingData->cacheRowStride)], 1, tilingData->d);
                 CopyOut(
-                    cacheScaleLocal[curValidIdx * RoundUp<T2>(tilingData->scaleCol)],
+                    cacheScaleLocal[r * RoundUp<T2>(tilingData->scaleCol)],
                     cacheScaleGm[PagedSlotOffset(curSlotIdx, tilingData->blockSize,
                         tilingData->scaleBlockStride, tilingData->scaleRowStride)], 1,
                     tilingData->scaleCol);
@@ -145,7 +156,6 @@ private:
     TQue<QuePosition::VECIN, 1> xQue;
     TQue<QuePosition::VECOUT, 1> cacheQue;
     TQue<QuePosition::VECOUT, 1> cacheScaleQue;
-    TBuf<QuePosition::VECCALC> indexBuf;
     TBuf<QuePosition::VECCALC> yFp32Buf;
     TBuf<QuePosition::VECCALC> invScaleBuf;
 
@@ -154,7 +164,6 @@ private:
     LocalTensor<T2> cacheScaleLocal;
     LocalTensor<float> yFp32Local;
     LocalTensor<float> mxInvScaleLocal;
-    LocalTensor<int32_t> indexLocal;
     int64_t validIdx = 0;
     float maxValue = 0.0f;
     float fp8Min = 0.0f;

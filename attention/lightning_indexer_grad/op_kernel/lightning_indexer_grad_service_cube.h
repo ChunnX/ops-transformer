@@ -572,9 +572,8 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube3(GlobalTensor<dataType> leftMatrixG
         );
         SetFlag<HardEvent::M_MTE1>(B_CONFLICT_FLAG_SHIFT + rightMatrixPingPong);
         SetFlag<HardEvent::M_MTE1>(A_CONFLICT_FLAG_SHIFT + leftMatrixPingPong);
-        
-        // FixPipe  L0C -> GM
         if (i == loopK - 1) {
+            // FixPipe  L0C -> GM
             commonFixpipeParamsV220.mSize = baseM;
             commonFixpipeParamsV220.nSize = baseN;
             commonFixpipeParamsV220.srcStride = RoundUp(baseM, C0_SIZE);
@@ -591,6 +590,9 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube3(GlobalTensor<dataType> leftMatrixG
                 outputMatrixL0CTensor, 
                 commonFixpipeParamsV220
             );
+        } else {
+            // Avoid L0C read/write conflicts
+            AscendC::PipeBarrier<PIPE_M>();
         }
 
         leftMatrixPingPong = 1 - leftMatrixPingPong;

@@ -30,8 +30,9 @@
     } while (0)
 
 // 参考 quant_lightning_indexer_v2_metadata.h
-constexpr uint32_t AIC_CORE_NUM = 36;
-constexpr uint32_t AIV_CORE_NUM = 72;
+constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+constexpr uint32_t AIV_CORE_MAX_NUM = 72;
+constexpr uint32_t QLI_V2_METADATA_TOTAL_SIZE = 1024;
 constexpr uint32_t QLI_V2_METADATA_SIZE = 8;
 constexpr uint32_t QLD_V2_METADATA_SIZE = 8;
 
@@ -54,9 +55,9 @@ constexpr uint32_t QLD_V2_WORKSPACE_NUM_INDEX = 4;
 constexpr uint32_t QLD_V2_M_START_INDEX = 5;
 constexpr uint32_t QLD_V2_M_NUM_INDEX = 6;
 
-struct QliV2MetaData {
-    uint32_t faData[AIC_CORE_NUM][QLI_V2_METADATA_SIZE];
-    uint32_t fdData[AIV_CORE_NUM][QLD_V2_METADATA_SIZE];
+struct QliV2Metadata {
+    uint32_t faData[AIC_CORE_MAX_NUM][QLI_V2_METADATA_SIZE];
+    uint32_t fdData[AIV_CORE_MAX_NUM][QLD_V2_METADATA_SIZE];
 };
 
 struct ScopeGuard
@@ -100,8 +101,7 @@ struct ArgContext {
     int64_t numHeadsK { 0 };
     int64_t headDim { 0 };
     int64_t topk { 0 };
-    int64_t qQuantMode { 2 };
-    int64_t kQuantMode { 2 };
+    int64_t quantMode { 2 };
     // optional input
     Tensor cuSeqlensQOptional {};
     Tensor cuSeqlensKOptional {};
@@ -116,7 +116,7 @@ struct ArgContext {
     int64_t maskMode { 0 };
     int64_t cmpRatio { 0 };
     // output
-    Tensor metaData {};
+    Tensor metadata {};
 };
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) 
@@ -185,7 +185,7 @@ void DestroyTensor(Tensor &tensor)
 
 void DestroyArgs(ArgContext &context)
 {
-    DestroyTensor(context.metaData);
+    DestroyTensor(context.metadata);
     DestroyTensor(context.cuSeqlensQOptional);
     DestroyTensor(context.cuSeqlensKOptional);
     DestroyTensor(context.sequsedQOptional);
@@ -212,9 +212,8 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.numHeadsK = 1;
     context.headDim = 128;
     context.topk = 0;
-    context.qQuantMode = 2; // 2: per-token-head / 3: group-scaling
-    context.kQuantMode = 2; // 2: per-token-head / 3: group-scaling
-    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metaData);     // 1024: Fix size
+    context.quantMode = 2; // 2: per-token-head / 3: group-scaling
+    ret = CreateTensor(aclDataType::ACL_INT32, { QLI_V2_METADATA_TOTAL_SIZE }, context.metadata);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create meta failed. Error: %d", ret);
 
     context.maskMode = 0;                   // 0: no mask, 3: causal
@@ -228,6 +227,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
         context.batchSize = batchSize;
         context.maxSeqlenK = 1024;
         context.maxSeqlenQ = 1024;
+        argsGuard.Dismiss();
         return ACL_SUCCESS;
     }
 
@@ -277,10 +277,10 @@ int main() {
     ret = aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
         context.cuSeqlensQOptional.data, context.cuSeqlensKOptional.data, context.sequsedQOptional.data,
         context.sequsedKOptional.data, context.cmpResidualKOptional.data,
-        context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.qQuantMode, context.kQuantMode,
+        context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.quantMode,
         context.batchSize, context.maxSeqlenQ, context.maxSeqlenK, context.layoutQOptional,
         context.layoutKOptional, context.maskMode, context.cmpRatio,
-        context.metaData.data, &workspaceSize, &executor);
+        context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 
@@ -304,11 +304,11 @@ int main() {
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d\n", ret);
 
     // 5. 打印输出
-    QliV2MetaData result {};
-    ret = aclrtMemcpy(&result, sizeof(result), context.metaData.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
+    QliV2Metadata result {};
+    ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
 
-    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIC_CORE_MAX_NUM; ++i) {
         printf("AIC Core%u\n", i);
         printf("    Core Enable : %u\n", result.faData[i][QLI_V2_CORE_ENABLE_INDEX]);
         printf("    Start BN2   : %u\n", result.faData[i][QLI_V2_BN2_START_INDEX]);
@@ -319,7 +319,7 @@ int main() {
         printf("    End S2      : %u\n", result.faData[i][QLI_V2_S2_END_INDEX]);
         printf("    First Worksapce Index : %u\n", result.faData[i][QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX]);
     }
-    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIV_CORE_MAX_NUM; ++i) {
         printf("AIV Core%u\n", i);
         printf("    Core Enable             : %u\n", result.fdData[i][QLD_V2_CORE_ENABLE_INDEX]);
         printf("    FD Task BN2 Idx         : %u\n", result.fdData[i][QLD_V2_BN2_IDX_INDEX]);

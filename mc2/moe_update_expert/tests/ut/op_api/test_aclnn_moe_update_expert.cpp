@@ -90,4 +90,76 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertExecuteEntry)
     EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
                                     testing::Eq(ACLNN_ERR_PARAM_INVALID), testing::Eq(ACLNN_ERR_INNER)));
 }
+
+TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNullExpertIds)
+{
+    TensorDesc eplbTable = TensorDesc({256, 5}, ACL_INT32, ACL_FORMAT_ND);
+    int64_t localRankId = 0;
+    int64_t worldSize = 8;
+    int64_t balanceMode = 0;
+    TensorDesc balancedExpertIds = TensorDesc({50, 4}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc balancedActiveMask = TensorDesc({50, 4}, ACL_BOOL, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeUpdateExpert,
+                        INPUT(nullptr, eplbTable, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
+                        OUTPUT(balancedExpertIds, balancedActiveMask));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNullEplbTable)
+{
+    TensorDesc expertIds = TensorDesc({50, 4}, ACL_INT32, ACL_FORMAT_ND);
+    int64_t localRankId = 0;
+    int64_t worldSize = 8;
+    int64_t balanceMode = 0;
+    TensorDesc balancedExpertIds = TensorDesc({50, 4}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc balancedActiveMask = TensorDesc({50, 4}, ACL_BOOL, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeUpdateExpert,
+                        INPUT(expertIds, nullptr, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
+                        OUTPUT(balancedExpertIds, balancedActiveMask));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNullBalancedExpertIds)
+{
+    TensorDesc expertIds = TensorDesc({50, 4}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc eplbTable = TensorDesc({256, 5}, ACL_INT32, ACL_FORMAT_ND);
+    int64_t localRankId = 0;
+    int64_t worldSize = 8;
+    int64_t balanceMode = 0;
+    TensorDesc balancedActiveMask = TensorDesc({50, 4}, ACL_BOOL, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeUpdateExpert,
+                        INPUT(expertIds, eplbTable, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
+                        OUTPUT(nullptr, balancedActiveMask));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNullBalancedActiveMask)
+{
+    TensorDesc expertIds = TensorDesc({50, 4}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc eplbTable = TensorDesc({256, 5}, ACL_INT32, ACL_FORMAT_ND);
+    int64_t localRankId = 0;
+    int64_t worldSize = 8;
+    int64_t balanceMode = 0;
+    TensorDesc balancedExpertIds = TensorDesc({50, 4}, ACL_INT32, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMoeUpdateExpert,
+                        INPUT(expertIds, eplbTable, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
+                        OUTPUT(balancedExpertIds, nullptr));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
 } // MoeUpdateExpert

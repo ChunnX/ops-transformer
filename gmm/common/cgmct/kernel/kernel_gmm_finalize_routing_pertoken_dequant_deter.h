@@ -251,6 +251,7 @@ public:
 
         deterSync_.windowSize =
             params.gmmParams.deterWorkspaceSize / (params.gmmParams.matmulTiling->N * sizeof(CType));
+        deterSync_.windowSize = (deterSync_.windowSize / params.gmmParams.baseM) * params.gmmParams.baseM;
         deterSync_.lowBoundM = deterSync_.windowSize;
 
         SyncAll<false>();

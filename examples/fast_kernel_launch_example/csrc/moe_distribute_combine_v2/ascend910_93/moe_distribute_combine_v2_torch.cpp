@@ -144,7 +144,7 @@ void MoeDistributeCombineV2_api(aclrtStream stream,
     int32_t tilingKey = 100;
     calculate_tilingkey(tilingKey, expand_x.scalar_type(), comm_quant_mode);
 
-    aclProfTensorInfo tensorInfo;
+    aclprofTensorInfo tensorInfo;
     INIT_ACL_PROF_TENSOR_INFO("moe_distribute_combine_v2", "MoeDistributeCombineV2", tilingData.aivNum, AI_VECTOR_CORE,
         tensorInfo, stream,
         INPUT(expand_x), INPUT(expert_ids), INPUT(assist_info_for_combine), INPUT(ep_send_counts), INPUT(expert_scales),

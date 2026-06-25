@@ -51,7 +51,8 @@ const std::map<ge::DataType, int64_t> D_TYPE_SIZE_MAP = {
     {ge::DT_BF16, 2}, {ge::DT_FLOAT16, 2}, {ge::DT_FLOAT, 4},
     {ge::DT_INT8, 1}, {ge::DT_INT32, 4},   {ge::DT_INT4, ge::GetSizeByDataType(ge::DT_INT4)},
 };
-static int32_t AlignUp(int32_t len, int32_t size)
+template<typename T>
+inline T AlignUp(T len, T size)
 {
     return (len + size - 1) & ~(size - 1);
 }
