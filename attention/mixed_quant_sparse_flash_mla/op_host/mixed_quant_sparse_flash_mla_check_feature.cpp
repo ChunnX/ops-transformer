@@ -61,8 +61,10 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
         OP_LOGE(opName_, "dSizeV only support 512, but got %u", dSizeV_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT, // 608:当前不泛化
-        OP_LOGE(opName_, "dSizeVInput only support %u, but got %u", KV_INPUT_DIM_LIMIT, dSizeVInput_),
+    OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE &&
+                dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
+        OP_LOGE(opName_, "dSizeVInput only support %u and %u, but got %u", KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
+                KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO, dSizeVInput_),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -94,12 +96,12 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantDtype() const
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
     // 1 for fp8_e4m3fn per-tile and 10 for hif8 per-tensor
-    OP_CHECK_IF(*opParamInfo_.kvQuantMode != 1 && *opParamInfo_.kvQuantMode != 10,
-        OP_LOGE(opName_, "kv_quant_mode_ only support 1 and 10, but got %ld",
+    OP_CHECK_IF(*opParamInfo_.kvQuantMode != 1 && *opParamInfo_.kvQuantMode != 2,
+        OP_LOGE(opName_, "kv_quant_mode_ only support 1 and 2, but got %ld",
         *opParamInfo_.kvQuantMode),
         return ge::GRAPH_FAILED);
 
-    if (*opParamInfo_.kvQuantMode == 1) {
+    if (*opParamInfo_.kvQuantMode == 1 || *opParamInfo_.kvQuantMode == 2) {
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
             OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
             return ge::GRAPH_FAILED);

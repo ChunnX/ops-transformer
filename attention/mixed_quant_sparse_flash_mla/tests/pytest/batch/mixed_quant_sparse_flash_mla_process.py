@@ -32,7 +32,7 @@ class Network(torch.nn.Module):
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, metadata, kv_quant_mode, rope_head_dim,
         softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv,
         topk_value_mode, return_softmax_lse):
-        npu_result, _ = torch.ops.cann_ops_transformer.npu_mixed_quant_sparse_flash_mla(
+        npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
                                 q=q,
                                 ori_kv=ori_kv,
                                 cmp_kv=cmp_kv,
