@@ -913,11 +913,11 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     // valueDAlign * inputSize * sizeof(dtype) * 2 * 2 --  dy, y size is valueDAlign * inputSize
     // first 2 is dy + y total size, second 2 is double buffer, then get max split s1
     uint32_t sfmgDyBufferLen =
-        availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) * valueDAlign * inputSize;
-    uint32_t sfmgYBufferLen = availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) *
+        availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) + 2 * 8 * FP32_BYTES) * valueDAlign * inputSize;
+    uint32_t sfmgYBufferLen = availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) + 2 * 8 * FP32_BYTES) *
                               valueDAlign * outDtypeSize;
     uint32_t sfmgOutputBufferLen =
-        availUbSize / (valueDAlign * (inputSize * 2 + outDtypeSize * 2) + 2 * 8 * FP32_BYTES) * 8 * FP32_BYTES;
+        availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) + 2 * 8 * FP32_BYTES) * 8 * FP32_BYTES;
 
     // 计算单核的计算量
     uint32_t sfmgUsedCoreNum = fBaseParams.blockOuter * 2; // blockOuter is used cube core num, 2 is cv ratio
