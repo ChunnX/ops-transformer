@@ -53,6 +53,7 @@ public:
         this->runTimeInfoBak_.s2LenAlign = runTimeInfo.s2LenAlign;
         this->runTimeInfoBak_.keyGmOffset = runTimeInfo.keyGmOffset;
         this->runTimeInfoBak_.kv_ping_pong_idx = runTimeInfo.kv_ping_pong_idx;
+        this->runTimeInfoBak_.dkvWorkspaceGmOffset = runTimeInfo.dkvWorkspaceGmOffset;
     }
 
     template <uint32_t INPUT_LAYOUT>
@@ -70,6 +71,7 @@ public:
         runTimeInfo.s2Idx = this->runTimeInfoBak_.s2Idx;
         runTimeInfo.n1Idx = this->runTimeInfoBak_.n1Idx;
         runTimeInfo.n2Idx = this->runTimeInfoBak_.n2Idx;
+        runTimeInfo.dkvWorkspaceGmOffset = this->runTimeInfoBak_.dkvWorkspaceGmOffset;
         runTimeInfo.s1Len = base_s1_len;
         runTimeInfo.s2Len = this->runTimeInfoBak_.s2Len;
         runTimeInfo.s1LenAlign = RoundUp(base_s1_len, 16);
@@ -201,6 +203,8 @@ private:
     uint64_t mask64_arr_[2];
     uint32_t start_one_pos_;
     uint32_t is_mask_align_{0};
+    int32_t flush_pending_{0};   // s2 group changed, need to signal flush
+    int64_t flush_group_start_s2_{0}; // 待flush group的起始s2
 
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
@@ -250,6 +254,7 @@ public:
         const_info_.q_block_num = q_block_num_;
         const_info_.kv_block_num = kv_block_num_;
         is_mask_align_ = q_block_num_ % 8 == 0;
+        flush_pending_ = 0;
         single_block_.SetBaseInfo(this->base_m_, this->is_mask_align_);
         if ASCEND_IS_AIC {
             this->cube_core_idx_ = GetBlockIdx();
@@ -262,12 +267,17 @@ public:
     __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
     {
         runTimeInfo.need_compute = 0;
+        runTimeInfo.is_kv_slot_done = 0;
 
         if (!single_block_.IsFinish()) {
             // 如果singleBlock未计算完，先计算singleBlock内的内容
             single_block_.UpdateRunTimeInfo<INPUT_LAYOUT>(const_info_, blockSparseMask_, runTimeInfo);
+            runTimeInfo.is_kv_slot_done = flush_pending_;
+            flush_pending_ = 0;
             return;
         }
+
+        int32_t old_s2 = s2Idx_;  // 记录InitStartIdx前的s2
 
         while (true) {
             if (InitStartIdx()) {
@@ -291,6 +301,15 @@ public:
                 current_cube_idx_ = 0;
                 break;
             }
+        }
+
+        // 检测s2是否跨越cubeCoreNum*base_n边界 → flush_pending_
+        int32_t slot_group_size = cube_core_num_ * base_n_;
+        int32_t old_group = old_s2 / slot_group_size;
+        int32_t new_group = s2Idx_ / slot_group_size;
+        if (new_group > old_group) {
+            flush_pending_ = 1;
+            flush_group_start_s2_ = old_group * slot_group_size;
         }
     }
 
@@ -428,6 +447,12 @@ private:
             GetSftgGmOffset<INPUT_LAYOUT>(runTimeInfo.last_q_seq_sum, runTimeInfo.cur_q_seq_len, q_head_num_,
                                           runTimeInfo.bIdx, runTimeInfo.s1Idx, runTimeInfo.n1Idx);
         runTimeInfo.need_compute = 1;
+        // 小workspace偏移：keyGmOffset取模workspace_size (cubeCoreNum*base_n*kvHeadNum*headDim)
+        int64_t ws_size = cube_core_num_ * base_n_ * kv_head_num_ * head_dim_;
+        runTimeInfo.dkvWorkspaceGmOffset = runTimeInfo.keyGmOffset % ws_size;
+        runTimeInfo.is_kv_slot_done = flush_pending_;
+        runTimeInfo.group_start_s2 = flush_group_start_s2_;
+        flush_pending_ = 0;
         single_block_.RecordRunTimeInfo(runTimeInfo);
     }
 };

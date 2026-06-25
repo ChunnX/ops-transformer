@@ -217,6 +217,7 @@ public:
         vecOp.SetFlag();
         RunTimeInfo runTimeInfo_;
         RunTimeInfo nextRunTimeInfo_;
+        RunTimeInfo lastRunTimeInfo_;
 
         while (true) {
             ping_pong_idx = taskId % 2;
@@ -244,11 +245,21 @@ public:
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
             }
 
+            // 检测is_kv_slot_done: cubeCoreNum个slot全部填满 -> 统一flush
+            if (runTimeInfo_.is_kv_slot_done) {
+                SyncAll();
+                vecOp.FlushDkvSlots(dk_gm_, dv_gm_, dk_workspace_, dv_workspace_,
+                                    runTimeInfo_.group_start_s2, tilingData, ub_buffer_);
+            }
+
             if (runTimeInfo_.need_compute == false) {
                 break;
             }
+
+            lastRunTimeInfo_ = runTimeInfo_;
             taskId++;
         }
+
         vecOp.WaitFlag();
         PipeBarrier<PIPE_ALL>();
         CrossCoreWaitFlag(FLAG_CUBE_POST);

@@ -246,8 +246,8 @@ protected:
 
     ge::graphStatus DoOpTiling() override
     {
-        auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-        auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
+        auto plat = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+        auto cubeCoreNum = plat.GetCoreNumAic();
 
         uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
         uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
@@ -286,14 +286,20 @@ protected:
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
 
+        // dk/dv workspace 缩减为 cubeCoreNum × base_n × kv_head_num × head_dim
+        // 全量大小可由 kernel 通过 batchNum/kvSeqLen/kvHeadNum/headDim 自行计算
+        auto plat = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+        auto cubeCoreNum = plat.GetCoreNumAic();
+        uint32_t base_n = blockShapeY_ <= 128 ? blockShapeY_ : 128;
+
         if (strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
             dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
-            dk_size = batch_num_ * kv_seq_len_ * kv_head_num_ * head_dim_;
+            dk_size = cubeCoreNum * base_n * kv_head_num_ * head_dim_;
             dv_size = dk_size;
             sftg_size = batch_num_ * q_head_num_ * q_seq_len_ * 8;
         } else if (strcmp(layout_, TND_STR) == 0) {
             dq_size = q_seq_len_ * q_head_num_ * head_dim_;
-            dk_size = kv_seq_len_ * kv_head_num_ * head_dim_;
+            dk_size = cubeCoreNum * base_n * kv_head_num_ * head_dim_;
             dv_size = dk_size;
             sftg_size = q_seq_len_ * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
         } else {

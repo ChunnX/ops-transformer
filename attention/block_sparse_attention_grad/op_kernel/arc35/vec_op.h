@@ -360,6 +360,122 @@ public:
         SET_FLAG(V, MTE2, event_id);
     }
 
+    __aicore__ inline void FlushDkvSlots(const GlobalTensor<INPUT_TYPE> &dk_out_gm,
+                                      const GlobalTensor<INPUT_TYPE> &dv_out_gm,
+                                      const GlobalTensor<float> &dk_workspace,
+                                      const GlobalTensor<float> &dv_workspace,
+                                      int64_t group_start_s2, const TILING_CLASS *tilingData,
+                                      TBuf<TPosition::VECCALC> &ub_buffer)
+    {
+        /*
+         * 统一Flush cubeCoreNum个slot的全部dk/dv数据 -> 最终GM
+         * 使用ComputeEvenCoreInfo将cubeCoreNum*base_n*headDim均匀拆分给所有VectorCore
+         */
+        int64_t dkv_size = tilingData->dkSize;
+        int32_t head_dim = tilingData->headDim;
+        int32_t base_n = tilingData->baseN;
+        int32_t cube_core_num = tilingData->cubeCoreNum;
+        float softmax_scale = tilingData->softmaxScale;
+        int32_t kv_head_num = tilingData->kvHeadNum;
+        int32_t kv_seq_len = tilingData->kvSeqLen;
+
+        constexpr uint32_t TILE_LEN = 2 * 1024;
+        constexpr uint32_t UB_SZ = 247 * 1024;
+        constexpr uint32_t NEED_UB = TILE_LEN * sizeof(float) + TILE_LEN * sizeof(INPUT_TYPE);
+        constexpr uint32_t UB_START = UB_SZ - NEED_UB;
+
+        LocalTensor<float> vecIn = ub_buffer.GetWithOffset<float>(TILE_LEN, UB_START);
+        LocalTensor<INPUT_TYPE> vecOut = ub_buffer.GetWithOffset<INPUT_TYPE>(
+            TILE_LEN, UB_START + TILE_LEN * sizeof(float));
+
+        EvenCoreInfo info;
+        ComputeEvenCoreInfo(info, dkv_size, TILE_LEN);
+
+        if (info.start_idx >= info.data_size) {
+            return;
+        }
+
+        int32_t slot_stride = base_n * head_dim;  // 单个slot的元素数
+
+        uint32_t process_size = info.max_process_size;
+        for (uint32_t i = 0; i < info.loop_num; i++) {
+            if (unlikely(i == info.loop_num - 1)) {
+                process_size = info.align_tail;
+                if (process_size == 0) {
+                    break;
+                }
+            }
+            int64_t ws_idx = info.start_idx + i * info.max_process_size;
+
+            // 搬入: workspace -> vecIn
+            DataCopy(vecIn, dk_workspace[ws_idx], process_size);
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
+
+            // 计算: Muls + Cast
+            Muls(vecIn, vecIn, softmax_scale, process_size);
+            PipeBarrier<PIPE_V>();
+            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, process_size);
+            PipeBarrier<PIPE_V>();
+
+            // 搬出 -> dk GM
+            int64_t gm_idx = group_start_s2 * head_dim + ws_idx;
+            SET_FLAG(V, MTE3, EVENT_ID0);
+            WAIT_FLAG(V, MTE3, EVENT_ID0);
+            DataCopy(dk_out_gm[gm_idx], vecOut, process_size);
+
+            // dv: 搬入 workspace
+            DataCopy(vecIn, dv_workspace[ws_idx], process_size);
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
+
+            // dv: Cast (no Muls)
+            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, process_size);
+            PipeBarrier<PIPE_V>();
+
+            // dv: 搬出 -> dv GM
+            SET_FLAG(V, MTE3, EVENT_ID0);
+            WAIT_FLAG(V, MTE3, EVENT_ID0);
+            DataCopy(dv_out_gm[gm_idx], vecOut, process_size);
+        }
+
+        if (info.pad_tail > 0) {
+            int64_t ws_idx = info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
+            DataCopyParams copyParam;
+            copyParam.blockCount = 1;
+            copyParam.blockLen = info.pad_tail * sizeof(float);
+            copyParam.srcStride = 0;
+            copyParam.dstStride = 0;
+
+            DataCopyPad(vecIn, dk_workspace[ws_idx], copyParam, {false, 0, 0, 0});
+            Muls(vecIn, vecIn, softmax_scale, info.pad_tail);
+            PipeBarrier<PIPE_V>();
+            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, info.pad_tail);
+            PipeBarrier<PIPE_V>();
+
+            int64_t gm_idx = group_start_s2 * head_dim + ws_idx;
+            copyParam.blockLen = info.pad_tail * sizeof(INPUT_TYPE);
+            DataCopyPad(dk_out_gm[gm_idx], vecOut, copyParam);
+
+            DataCopyPad(vecIn, dv_workspace[ws_idx], copyParam, {false, 0, 0, 0});
+            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, info.pad_tail);
+            PipeBarrier<PIPE_V>();
+            copyParam.blockLen = info.pad_tail * sizeof(INPUT_TYPE);
+            DataCopyPad(dv_out_gm[gm_idx], vecOut, copyParam);
+        }
+
+        // 清零workspace
+        Duplicate(vecIn, (float)0.0, TILE_LEN);
+        PipeBarrier<PIPE_V>();
+        for (uint32_t i = 0; i < info.loop_num; i++) {
+            int64_t ws_idx = info.start_idx + i * info.max_process_size;
+            uint32_t cur = (i == info.loop_num - 1) ? 
+                (info.align_tail == 0 ? info.max_process_size : info.align_tail) : info.max_process_size;
+            DataCopy(dk_workspace[ws_idx], vecIn, cur);
+            DataCopy(dv_workspace[ws_idx], vecIn, cur);
+        }
+    }
+
     __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,
                                        const GlobalTensor<INPUT_TYPE> &dk_out_gm,
                                        const GlobalTensor<INPUT_TYPE> &dv_out_gm,
@@ -383,9 +499,7 @@ public:
         SET_FLAG(MTE3, MTE2, event_pong_);
 
         EvenCoreInfo info;
-        ComputeEvenCoreInfo(info, dkv_size, POST_TILE_LEN);
-        ComputeVecPost<false>(dv_out_gm, dv_workspace, info, post_ping_pong_idx);
-        ComputeVecPost<true>(dk_out_gm, dk_workspace, info, post_ping_pong_idx);
+        // dk/dv 已在循环中通过 FlushDkvSlots 增量搬出，此处仅处理 dq
         ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
         ComputeVecPost<true>(dq_out_gm, dq_workspace, info, post_ping_pong_idx);
 

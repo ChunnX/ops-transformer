@@ -30,7 +30,7 @@ static constexpr uint32_t FLAG_C1_V1 = 0;     // cube(qk) -> vec(softmax)
 static constexpr uint32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
 static constexpr uint32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
 static constexpr uint32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
-static constexpr uint32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr uint32_t FLAG_CUBE_POST = 4;    // vec(softmaxGrad) -> cube(dq\dk)
 
 struct ConstInfo {
     int32_t q_head_num{0};
@@ -63,6 +63,9 @@ struct RunTimeInfo {
     int32_t is_kv_end{0};    
     int32_t is_kv_change{0};  
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
+    int64_t dkvWorkspaceGmOffset{0}; // dk/dv 在小workspace内的偏移（元素个数）
+    int32_t is_kv_slot_done{0};    // cubeCoreNum个slot全部填满，可进行flush
+    int64_t group_start_s2{0};       // 当前flush group的起始s2位置
 };
 
 
