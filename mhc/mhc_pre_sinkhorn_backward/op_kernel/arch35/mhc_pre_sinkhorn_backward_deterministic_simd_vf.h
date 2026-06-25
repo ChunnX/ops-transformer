@@ -254,17 +254,18 @@ __aicore__ inline void ComputeForwardPart(__local_mem__ U* hcBeformNormAddr, __l
 template <typename T>
 __aicore__ inline void ComputeGradNormOutOrGradHcBeforeNorm(const LocalTensor<T>& gradZLocal, T scalar, uint32_t count, uint32_t offset)
 {
-    __local_mem__ T* addr = (__local_mem__ T*)gradZLocal.GetPhyAddr() + offset;
+    auto addr = (__local_mem__ T*)gradZLocal.GetPhyAddr() + offset;
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<T> gradZReg;
-        MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(count);
+        MicroAPI::MaskReg preg = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
         MicroAPI::UnalignReg u0;
         MicroAPI::DataCopyUnAlignPre(u0, addr);
-        MicroAPI::DataCopyUnAlign(gradZReg, u0, addr, count);
+        MicroAPI::DataCopyUnAlign(gradZReg, u0, addr, 0);
         MicroAPI::Muls(gradZReg, gradZReg, scalar, preg);
         MicroAPI::DataCopyUnAlign(addr, gradZReg, u0, count);
         MicroAPI::DataCopyUnAlignPost(addr, u0, 0);
+        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
     }
 }
 

@@ -473,9 +473,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         }
         ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal, scalar, count, bsLoop * count);
     }
-    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     CopyOut(gradZOut[bsOffset * k_ + offset], gradZLocal, bsLen, count, 0, k_);
 }
 
@@ -546,7 +543,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 
     // grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
     ComputeGradZ<false>(gradNormOutWs_, alphaPost_, bsLen, bsOffset, n_, n_);
-    // event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
     SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     ComputeGradZ<true>(gradHcBeforeNormWs_, alphaPost_, bsLen, bsOffset, n_, n_);
@@ -1215,7 +1211,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                ComputeGradZ<true>(gradHcBeforeNormWs_, alphaRes_, bsLen, bsOffset, n_, n_);
+                ComputeGradZ<true>(gradHcBeforeNormWs_, alphaRes_, bsLen, bsOffset, n_, 2 * n_);
             }
         }
         SyncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
