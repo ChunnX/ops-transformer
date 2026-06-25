@@ -1150,7 +1150,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 ComputeFirst(bsIdx, bsLen);
 
                 LocalTensor<float> skGradLocal = skGradBuf_.Get<float>();
-                LocalTensor<float> expGradLocal = expGradBuf_.Get<float>();
+                LocalTensor<float> expGradLocal = gradZBuf_.Get<float>();
                 LocalTensor<float> zReslocal = zBuf_.Get<float>();
 
                 SinkhornGradSimdVf(skGradLocal, bsIdx, bsLen);
