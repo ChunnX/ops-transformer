@@ -20,8 +20,8 @@
 #include "lib/matmul_intf.h"
 #include "allto_all_matmul_tiling_key.h"
 #include "allto_all_matmul.h"
-#include "../arch35/allto_all_matmul_arch35.h" // A3非量化与A5共用流水
-#include "../arch35/allto_all_matmul_pipeline.h"
+#include "../allto_all_matmul_arch35.h" // A3非量化与A5共用流水
+#include "../allto_all_matmul_pipeline.h"
 
 using namespace AscendC;
 using namespace Mc2Kernel;
