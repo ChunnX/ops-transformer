@@ -236,13 +236,6 @@ def planB_kernel1(
                 sm_sum_ub = T.alloc_shared(G, calc_dtype)
                 eps_ub = T.alloc_shared(n_block, calc_dtype)
 
-                # Broadcast buffers for vectorization
-                bc_n1_ub = T.alloc_shared((BLOCK_N1, n_block), calc_dtype)
-                bc_nidx1_ub = T.alloc_shared((BLOCK_NIDX1, n_block), calc_dtype)
-                bc_tmp_ub = T.alloc_shared(n_block, calc_dtype)
-                bc_src_n1 = T.alloc_shared(BLOCK_N1, calc_dtype)
-                bc_src_nidx1 = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
-
                 T.tile.fill(eps_ub, 1e-8)
 
                 for s1_id in T.serial(s1_start, s1_end):
@@ -256,38 +249,30 @@ def planB_kernel1(
                     T.tile.cast(weight_ub, weight_fp16_ub, "CAST_NONE", Nidx1)
                     T.barrier_all()
 
-                    # Pass 1: P_reduced (vectorized per-row ops)
+                    # Pass 1: P_reduced (reduce_sum for row accumulation)
                     T.tile.fill(p_chunk_ub, 0.0)
                     for n1_c in T.serial(n1_num):
                         n1_s = n1_c * BLOCK_N1
                         T.copy(bmm1Res[bz, s1_id, n1_s:n1_s + BLOCK_N1, k_start:k_end], bmm1_ub)
                         T.barrier_all()
                         T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-                        # Vectorized: copy slice → broadcast sm_max, single sub
-                        T.copy(sm_max_ub[n1_s:n1_s + BLOCK_N1], bc_src_n1)
-                        T.tile.broadcast(bc_n1_ub, bc_src_n1, bc_tmp_ub)
-                        T.tile.sub(bmm1_ub, bmm1_ub, bc_n1_ub)
+                        for g_i in T.serial(BLOCK_N1):
+                            T.tile.sub(bmm1_ub[g_i, :], bmm1_ub[g_i, :], sm_max_ub[n1_s + g_i])
                         T.tile.exp(bmm1_ub, bmm1_ub)
-                        # Vectorized: copy slice → broadcast sm_sum, single div
-                        T.copy(sm_sum_ub[n1_s:n1_s + BLOCK_N1], bc_src_n1)
-                        T.tile.broadcast(bc_n1_ub, bc_src_n1, bc_tmp_ub)
-                        T.tile.div(bmm1_ub, bmm1_ub, bc_n1_ub)
-                        # Reduce rows to p_chunk_ub
+                        for g_i in T.serial(BLOCK_N1):
+                            T.tile.div(bmm1_ub[g_i, :], bmm1_ub[g_i, :], sm_sum_ub[n1_s + g_i])
                         T.reduce_sum(bmm1_ub, p_chunk_ub, dim=0, clear=False, real_shape=[BLOCK_N1, n_block])
                     T.tile.mul(p_chunk_ub, p_chunk_ub, 1.0 / N1)
                     T.copy(p_chunk_ub, PReduced[bz, s1_id, k_start:k_end])
 
-                    # Pass 2: ReduceSumY (vectorized per-row ops)
+                    # Pass 2: ReduceSumY (reduce_sum for row accumulation)
                     T.tile.fill(rsy_chunk_ub, 0.0)
                     for nidx_c in T.serial(nidx1_num):
                         nidx_s = nidx_c * BLOCK_NIDX1
                         T.copy(bmm2Res[bz, s1_id, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end], bmm2_ub)
                         T.barrier_all()
-                        # Vectorized: copy slice → broadcast weight, single mul
-                        T.copy(weight_ub[nidx_s:nidx_s + BLOCK_NIDX1], bc_src_nidx1)
-                        T.tile.broadcast(bc_nidx1_ub, bc_src_nidx1, bc_tmp_ub)
-                        T.tile.mul(bmm2_ub, bmm2_ub, bc_nidx1_ub)
-                        # Reduce rows to rsy_chunk_ub
+                        for g_i in T.serial(BLOCK_NIDX1):
+                            T.tile.mul(bmm2_ub[g_i, :], bmm2_ub[g_i, :], weight_ub[nidx_s + g_i])
                         T.reduce_sum(bmm2_ub, rsy_chunk_ub, dim=0, clear=False, real_shape=[BLOCK_NIDX1, n_block])
                     T.copy(rsy_chunk_ub, ReduceSumY[bz, s1_id, k_start:k_end])
 
@@ -362,18 +347,13 @@ def planB_kernel2(
                 si_max_ub = T.alloc_shared(1, calc_dtype)
                 si_sum_ub = T.alloc_shared(1, calc_dtype)
 
-                # Broadcast buffers for vectorization
-                bc_nidx1_ub = T.alloc_shared((BLOCK_NIDX1, n_block), calc_dtype)
-                bc_tmp_ub = T.alloc_shared(n_block, calc_dtype)
-                bc_src_nidx1 = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
-
                 T.tile.fill(eps_ub, 1e-8)
 
                 for s1_id in T.serial(s1_start, s1_end):
                     # Load weights
                     T.copy(Weights[bz, s1_id, 0:Nidx1], weight_fp16_ub)
                     T.tile.cast(weight_ub, weight_fp16_ub, "CAST_NONE", Nidx1)
-                    # barrier: MTE copy → VEC cast, weight_ub used later
+                    T.barrier_all()
 
                     # ---- Compute global SoftmaxI from ReduceSumY (redundant per core) ----
                     T.copy(ReduceSumY[bz, s1_id, 0:K], si_all_ub)
@@ -395,7 +375,7 @@ def planB_kernel2(
                     # ---- Pass 4: dWeight partial + reluGrad for this K-block ----
                     T.tile.fill(dw_total_ub, 0.0)
 
-                    # T.pipelined to overlap bmm2Res copy with dWeight/reluGrad compute
+                    # T.Pipelined to overlap bmm2Res copy with dWeight/reluGrad compute
                     for nidx_c in T.Pipelined(nidx1_num, num_stages=2):
                         nidx_s = nidx_c * BLOCK_NIDX1
                         T.copy(
@@ -403,22 +383,21 @@ def planB_kernel2(
                             bmm2_ub,
                         )
 
-                        # dWeight vectorized: broadcast diff, single mul
-                        T.tile.broadcast(bc_nidx1_ub, diff_ub, bc_tmp_ub)
-                        T.tile.mul(rg_chunk_ub, bc_nidx1_ub, bmm2_ub)
+                        # dWeight: per-row mul, then reduce_sum
+                        for g_i in T.serial(BLOCK_NIDX1):
+                            T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, bmm2_ub[g_i, :])
                         T.reduce_sum(rg_chunk_ub, dw_chunk_ub, dim=-1, clear=True, real_shape=[BLOCK_NIDX1, n_block])
                         T.copy(dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1], dw_temp_ub)
                         T.tile.add(dw_temp_ub, dw_temp_ub, dw_chunk_ub)
                         T.copy(dw_temp_ub, dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1])
 
-                        # reluGrad vectorized: rg = broadcast(diff) * broadcast(weight)
-                        T.tile.broadcast(rg_chunk_ub, diff_ub, bc_tmp_ub)
-                        T.copy(weight_ub[nidx_s:nidx_s + BLOCK_NIDX1], bc_src_nidx1)
-                        T.tile.broadcast(bc_nidx1_ub, bc_src_nidx1, bc_tmp_ub)
-                        T.tile.mul(rg_chunk_ub, rg_chunk_ub, bc_nidx1_ub)
+                        # reluGrad: per-row mul, then 2D compare/select
+                        for g_i in T.serial(BLOCK_NIDX1):
+                            g_abs = nidx_s + g_i
+                            T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, weight_ub[g_abs])
                         T.tile.compare(mask_2d_ub, bmm2_ub, 0.0, "GT")
                         T.tile.select(rg_chunk_ub, mask_2d_ub, rg_chunk_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
-                        # Cast and store reluGrad (vectorized copy of 2D block)
+                        # Cast and store reluGrad (2D block copy)
                         T.tile.cast(rg_fp16_ub, rg_chunk_ub, "CAST_ROUND", BLOCK_NIDX1 * n_block)
                         T.copy(
                             rg_fp16_ub,
