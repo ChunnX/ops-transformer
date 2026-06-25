@@ -967,8 +967,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
     uint32_t m_expert = Get<M_VALUE>(gmm2State.problemShape);
     uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_256);
 
+    uint32_t coreIdForGrouping = aivCoreIdx_;
+    uint32_t totalCoresForGrouping = blockAivNum_;
+    if constexpr (ENABLE_A8W4) {
+        if (subBlockIdx_ != 1) {
+            return;
+        }
+        coreIdForGrouping = aivCoreIdx_ / 2;
+        totalCoresForGrouping = blockAivNum_ / 2;
+    }
+
     uint32_t myGroup, myIdxInGrp, myGrpSize;
-    MegaMoeImpl::ComputeCoreGrouping(aivCoreIdx_, tokenGroupsThisExpert, blockAivNum_,
+    MegaMoeImpl::ComputeCoreGrouping(coreIdForGrouping, tokenGroupsThisExpert, totalCoresForGrouping,
         myGroup, myIdxInGrp, myGrpSize);
 
     if (myGroup >= tokenGroupsThisExpert) {
@@ -1211,8 +1221,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
                 QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_);
+        } else {
+            MegaMoeImpl::GroupMatmul2CombineA8W4<
+                QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx, true);
+            if constexpr (g_coreType == AIV) {
+                ProcessCombine(gmmAddrInfo, state, expertIdx);
+            }
         }
-        // A8W4 GMM2 only implements the non-quantized combine path.
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
