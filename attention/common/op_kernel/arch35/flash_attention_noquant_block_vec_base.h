@@ -598,12 +598,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
         if (runInfo.s2LoopCount != 0) {
             UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfS1RealSize);
         }
-        if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION) {
-            if (this->tilingData->inputParamsRegbase.implMode ==
-                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-                this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
-            }
-        }
+        this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
     }
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
@@ -626,7 +621,7 @@ __aicore__ inline bool FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::SoftmaxInvalid
     for (uint32_t i = 0; i < softmaxShapeInfo.srcM; i++) {
         T maxValue = maxUb.GetValue(i);
         uint32_t checkValue = *reinterpret_cast<uint32_t*>(&maxValue);
-        if (checkValue == negativeIntScalar) {
+        if (checkValue == negativeIntScalar || checkValue == NEGATIVE_INF_VALUE_FP32) {
             isUpdateNeedCheck = true;
             break;
         }
@@ -1245,11 +1240,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     if constexpr (IsSameType<INPUT_T, float>::value) {
         this->sumBrdcst.template FreeTensor(apiTmpBuffer);
     }
-    if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
-        if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-            this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
-        }
-    }
+    this->InvalidLineProcess(runInfo, constInfo, sumUb, maxUb);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         GetDerived()->SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
     }
@@ -1927,14 +1918,10 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
     }
     if constexpr (!IsSameType<INPUT_T, VEC2_RES_T>::value) {
         attenOut.SetAddr(vec2ResUb.address_);
-        if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
-            if (this->tilingData->inputParamsRegbase.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-                int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
-                LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2MaxBufOffset];
-                InvalidLineUpdate<T, dTemplateAlign64>(vec2ResUb, vec2ResUb, maxTensor, runInfo.vec2S1RealSize,
-                    dSizeAligned64, this->negativeFloatScalar, 0.0);
-            }
-        }
+        int64_t vec2MaxBufOffset = ComputeOffsetForSoftmax(runInfo, vec2S1Idx);
+        LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[vec2MaxBufOffset];
+        InvalidLineUpdate<T, dTemplateAlign64>(vec2ResUb, vec2ResUb, maxTensor, runInfo.vec2S1RealSize,
+            dSizeAligned64, this->negativeFloatScalar, 0.0);
         if constexpr (!POST_QUANT) {
             RowInvalid(vec2ResUb, vec2S1Idx, runInfo, constInfo, dSizeAligned64);
             Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
@@ -2231,23 +2218,13 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::GetExtremeValu
     if constexpr (IsSameType<T, float>::value && !useNz) {
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         negativeScalar = *((float *)&tmp1);
-        if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
-            if (this->tilingData->inputParamsRegbase.implMode ==
-                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-                uint32_t tmp2 = POSITIVE_MAX_VALUE_FP32;
-                positiveScalar = *((float *)&tmp2);
-            }
-        }
+        uint32_t tmp2 = POSITIVE_MAX_VALUE_FP32;
+        positiveScalar = *((float *)&tmp2);
     } else {
         uint16_t tmp1 = NEGATIVE_MIN_VALUE_FP16;
         negativeScalar = *((half *)&tmp1);
-        if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
-            if (this->tilingData->inputParamsRegbase.implMode ==
-                static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
-                uint16_t tmp2 = POSITIVE_MAX_VALUE_FP16;
-                positiveScalar = *((half *)&tmp2);
-            }
-        }
+        uint16_t tmp2 = POSITIVE_MAX_VALUE_FP16;
+        positiveScalar = *((half *)&tmp2);
     }
 }
 
