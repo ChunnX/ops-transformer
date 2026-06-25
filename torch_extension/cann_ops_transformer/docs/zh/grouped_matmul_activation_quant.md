@@ -23,14 +23,14 @@ grouped_matmul_activation_quant(
     group_list,
     weight,
     weight_scale,
-    bias,
     activation_type,
     *,
+    bias=None,
     x_scale=None,
     group_list_type=0,
     tuning_config=None,
     quant_mode=None,
-    y_dtype=torch.float8_e4m3fn,
+    y_dtype=None,
     round_mode="rint",
     scale_alg=0,
     dst_type_max=0.0,
@@ -49,13 +49,13 @@ grouped_matmul_activation_quant(
 | `group_list` | 必选输入，Tensor，1D，dtype为`torch.int64`，第一维表示group数E，E范围为`[1, 1024]`。 |
 | `weight` | dynamic input，TensorList，当前MXFP8仅支持长度为1。元素为3D逻辑Tensor，支持`(E, K, N)`或`(E, N, K)`，实际格式必须为FRACTAL_NZ，dtype仅支持`torch.float8_e4m3fn`。 |
 | `weight_scale` | dynamic input，TensorList，当前MXFP8仅支持长度为1。非转置weight对应shape为`(E, ceil(K / 64), N, 2)`，转置weight对应shape为`(E, N, ceil(K / 64), 2)`。 |
-| `bias` | dynamic input，TensorList。当前MXFP8不支持非空bias，必须传空TensorList。 |
+| `bias` | 可选dynamic input，TensorList，默认`None`。当前MXFP8不支持非空bias，支持`None`或空TensorList。 |
 | `activation_type` | required attr，当前仅支持`"gelu_tanh"`。 |
 | `x_scale` | optional input，当前MXFP8必须传入，shape为`(M, ceil(K / 64), 2)`。 |
 | `group_list_type` | 可选属性，支持`0`或`1`，默认`0`。 |
 | `tuning_config` | 可选属性，预留调优参数。 |
-| `quant_mode` | 可选属性，默认`None`。FP8输入且为`None`时自动推导为`"MX"`；FP8输入显式传值时必须为`"MX"`。 |
-| `y_dtype` | 可选属性，输出`y`的数据类型，支持`torch.float8_e4m3fn`和`torch.float8_e5m2`，默认`torch.float8_e4m3fn`。 |
+| `quant_mode` | 可选属性，默认`None`。输入FP8且`quant_mode`为`None`时，自动将`quant_mode`推导为`"MX"`；`quant_mode`显式传值时必须为`"MX"`。 |
+| `y_dtype` | 可选属性，输出`y`的数据类型，支持`torch.float8_e4m3fn`和`torch.float8_e5m2`，默认`None`；为`None`时自动推导为与`x`相同的数据类型。 |
 | `round_mode` | 可选属性，当前仅支持`"rint"`。 |
 | `scale_alg` | 可选属性，支持`0`或`1`，默认`0`。 |
 | `dst_type_max` | 可选属性，表示maxType的取值，对应公式中的Amax(DType)，默认`0.0`。支持取值`0.0`和`6.0-12.0`，取值为`0.0`代表Amax(DType)为量化结果数据类型的最大值；取值为`6.0-12.0`代表Amax(DType)为传入值。仅支持在FP4E2M1和blocksize取32时设置该值，当前MXFP8场景使用默认值`0.0`。 |
@@ -77,7 +77,7 @@ grouped_matmul_activation_quant(
 - 当前仅支持MXFP8量化模式。
 - `weight`需要以3D逻辑shape传入，并通过`torch_npu.npu_format_cast(weight, 29)`转换为FRACTAL_NZ格式。
 - `N`必须为64的整数倍。
-- 当前MXFP8场景下`bias`必须传空TensorList。
+- 当前MXFP8场景下`bias`必须为空，支持`None`或空TensorList。
 
 ## 调用示例
 
@@ -104,11 +104,11 @@ y, y_scale = grouped_matmul_activation_quant(
     group_list,
     [weight],
     [weight_scale],
-    [],
     "gelu_tanh",
+    bias=None,
     x_scale=x_scale,
     quant_mode=None,
-    y_dtype=torch.float8_e4m3fn,
+    y_dtype=None,
     weight_scale_dtype=torch_npu.float8_e8m0fnu,
     x_scale_dtype=torch_npu.float8_e8m0fnu,
 )
