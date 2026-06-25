@@ -74,6 +74,7 @@ private:
     bool CheckTensorListSizeForEachInput() const;
     bool IsSpecialMXCase(const T *tensorList) const;
     bool IsMxfp4() const;
+    bool IsWeightNzSingleMultiSingleLayout() const;
     bool IsWeightNzSingleMultiSingleScenario() const;
     TensorIndexInfo GetTensorIndexInfo(size_t index = 0) const;
     aclnnStatus CheckMxFp8TypeKCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
