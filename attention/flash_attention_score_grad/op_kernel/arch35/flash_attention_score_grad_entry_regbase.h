@@ -33,12 +33,9 @@ using namespace AscendC::MicroAPI;
 #endif
 
 #include "flash_attention_score_grad_block_vec.h"
-#include "flash_attention_score_grad_block_vec_quant.h"
 #include "flash_attention_score_grad_block_cube.h"
-#include "flash_attention_score_grad_block_cube_quant.h"
 #include "flash_attention_score_grad_kernel.h"
 #include "flash_attention_score_grad_kernel_deter.h"
-#include "flash_attention_score_grad_kernel_quant.h"
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, \
                                                       IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL,          \
@@ -115,59 +112,6 @@ using namespace AscendC::MicroAPI;
             pipeBase.Destroy();                                                                                        \
         }                                                                                                              \
     } while (0)
-
-#define INVOKE_FAG_GENERAL_HIFP8_REGBASE_IMPL(INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, \
-                                              IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,  \
-                                              IS_NZ_OUT, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType,               \
-                                              s2TemplateType, dTemplateType)                                           \
-    do {                                                                                                               \
-        FlashAttentionScoreGradPresfmgRegbase<INPUT_TYPE, CALC_TYPE, OUTDTYPE, dTemplateType, IS_D_NO_EQUAL,           \
-                                              DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE>                   \
-            opPre;                                                                                                     \
-        opPre.Init(dq, dk, dv, dy, attention_in, deqScaleDy, actual_seq_kvlen, user, tilingData, &pipeIn);             \
-        opPre.Process();                                                                                               \
-        opPre.SyncALLCores();                                                                                          \
-        pipeIn.Destroy();                                                                                              \
-        TPipe pipeBase;                                                                                                \
-        using CubeBlockType = typename std::conditional<                                                               \
-            g_coreType == AscendC::AIC,                                                                                \
-            FagBaseApi::FAGBlockCubeQuant<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND,     \
-                                          IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,      \
-                                          IS_NZ_OUT, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType,   \
-                                          dTemplateType>,                                                              \
-            FagBaseApi::FAGBlockCubeQuantDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP,        \
-                                               IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL,  \
-                                               IS_ROPE, IS_NZ_OUT, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType,     \
-                                               s2TemplateType, dTemplateType>>::type;                                  \
-        using VecBlockType = typename std::conditional<                                                                \
-            g_coreType == AscendC::AIC,                                                                                \
-            FagBaseApi::FAGBlockVecQuantDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND, \
-                                              IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,  \
-                                              IS_NZ_OUT, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType,               \
-                                              s2TemplateType, dTemplateType>,                                          \
-            FagBaseApi::FAGBlockVecQuant<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, IS_TND,      \
-                                         IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL, IS_D_NO_EQUAL, IS_ROPE,       \
-                                         IS_NZ_OUT, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType,    \
-                                         dTemplateType>>::type;                                                        \
-                                                                                                                       \
-        FagBaseApi::FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType> op;                                \
-        op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
-                prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, dsScale,       \
-                pScale, queryRope, keyRope, dq, dk, dv, dpse, dqRope, dkRope, user, tilingData, &pipeBase);            \
-        op.Process();                                                                                                  \
-        op.SyncALLCores();                                                                                             \
-        pipeBase.Destroy();                                                                                            \
-        TPipe pipePost;                                                                                                \
-        FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<INPUT_TYPE, float, OUTDTYPE, SPLIT_AXIS, IS_ROPE,                \
-                                                      DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE>                       \
-            opPost;                                                                                                    \
-        opPost.Init(dq, dk, dv, dqRope, dkRope, dsink, user, tilingData, &pipePost);                                   \
-        opPost.Process();                                                                                              \
-    } while (0)
-
-#define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_HIFP8(...)                                                       \
-    if (ORIG_DTYPE_QUERY == DT_HIFLOAT8)                                                                               \
-    INVOKE_FAG_GENERAL_HIFP8_REGBASE_IMPL(__VA_ARGS__)
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(...)                                                        \
     if (ORIG_DTYPE_QUERY == DT_FLOAT16)                                                                                \
@@ -339,23 +283,6 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
                                                       isBn2MultiBlk, deterType, isNEqual, isDNoEqual, isRope,
                                                       isNzOut, isTndSwizzle, BN2, S1TemplateType(s1TemplateType),
                                                       S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
-        return;
-    }
-#endif
-
-
-#if (ORIG_DTYPE_QUERY == DT_HIFLOAT8)
-    if constexpr (outDType == FLOAT16_PRECISION) {
-        INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_HIFP8(
-            hifloat8_t, float, half, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isNEqual, isDNoEqual,
-            isRope, isNzOut, isTndSwizzle, BN2GS1S2, S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType),
-            DTemplateType(dTemplateType));
-        return;
-    } else if constexpr (outDType == BFLOAT16) {
-        INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_HIFP8(
-            hifloat8_t, float, bfloat16_t, isAttenMask, isPse, isDrop, isTnd, isBn2MultiBlk, deterType, isNEqual,
-            isDNoEqual, isRope, isNzOut, isTndSwizzle, BN2GS1S2, S1TemplateType(s1TemplateType),
-            S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
         return;
     }
 #endif

@@ -349,7 +349,7 @@ __aicore__ inline void FAGBlockCubeQuant<TEMPLATE_ARGS>::IterateMmDsP(LocalTenso
     {
         SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID3);
     }
-    if ((!runInfo.isKeyReuse && runInfo.isFirstProcessBlock) && (runInfo.quantRunInfo.s1Idx == runInfo.quantRunInfo.innerS1LoopNum - 1) && (runInfo.quantRunInfo.s2Idx <= NUM_TWO))
+    if (((!runInfo.isKeyReuse && runInfo.isFirstProcessBlock) || (constInfo.s1Outer == 1)) && (runInfo.quantRunInfo.s1Idx == runInfo.quantRunInfo.innerS1LoopNum - 1) && (runInfo.quantRunInfo.s2Idx <= NUM_TWO))
     {
         SetFlag<HardEvent::MTE1_MTE2>(runInfo.quantRunInfo.s2Idx);
     }
@@ -373,6 +373,9 @@ __aicore__ inline void FAGBlockCubeQuant<TEMPLATE_ARGS>::IterateMmDsP(LocalTenso
     mmadParams.k = param.singleK;
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
+    if (mmadParams.m == 1) {
+        mmadParams.m = 16;
+    }
 
     Buffer<BufferType::L0C, SyncType::NO_SYNC> mm1L0CBuffer = mm1L0CBuf.Get();
     WaitFlag<HardEvent::FIX_M>(EVENT_ID7);
@@ -453,8 +456,12 @@ __aicore__ inline void FAGBlockCubeQuant<TEMPLATE_ARGS>::IterateMmDsK(LocalTenso
 
         if (!runInfo.isNextKeyReuse || runInfo.isLastProcessBlock) {
             if ((runInfo.quantRunInfo.s1Idx == runInfo.quantRunInfo.innerS1LoopNum - 1) && runInfo.quantRunInfo.s2Idx == 0) {
-                SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID0);
-                SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID1);
+                if (runInfo.commonRunInfo.s2RealSize <= 128) {
+                    SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID0);
+                } else {
+                    SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID0);
+                    SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID1);
+                }
             } else if ((runInfo.quantRunInfo.s1Idx == runInfo.quantRunInfo.innerS1LoopNum - 1) && runInfo.quantRunInfo.s2Idx == NUM_TWO){
                 SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID2);
             }
@@ -484,6 +491,9 @@ __aicore__ inline void FAGBlockCubeQuant<TEMPLATE_ARGS>::IterateMmDsK(LocalTenso
     mmadParams.k = param.singleK;
     mmadParams.cmatrixInitVal = !runInfo.quantRunInfo.isDqFixOut;
     mmadParams.cmatrixSource = false;
+    if (mmadParams.m == 1) {
+        mmadParams.m = 16;
+    }
     Mmad(dqL0CBuffer.GetTensor<CALC_TYPE>(), L0ATensor, L0BTensor, mmadParams);
     SetFlag<HardEvent::M_MTE1>(EVENT_ID4 + l0Id);
     SetFlag<HardEvent::M_FIX>(EVENT_ID4);
@@ -546,6 +556,9 @@ __aicore__ inline void FAGBlockCubeQuant<TEMPLATE_ARGS>::IterateMmDsQ(LocalTenso
     if (!runInfo.quantRunInfo.isDkFixOut) {
         WaitFlag<HardEvent::FIX_M>(EVENT_ID4 + l0cId);
     }
+    if (mmadParams.m == 1) {
+        mmadParams.m = 16;
+    }
     Mmad(dkL0CBuffer.GetTensor<CALC_TYPE>(), L0ATensor, L0BTensor, mmadParams);
     SetFlag<HardEvent::M_MTE1>(EVENT_ID4 + l0Id);
     SetFlag<HardEvent::M_FIX>(EVENT_ID5);
@@ -606,6 +619,9 @@ __aicore__ inline void FAGBlockCubeQuant<TEMPLATE_ARGS>::IterateMmPDy(LocalTenso
     mmadParams.k = param.singleK;
     mmadParams.cmatrixInitVal = !runInfo.quantRunInfo.isDvFixOut;
     mmadParams.cmatrixSource = false;
+    if (mmadParams.m == 1) {
+        mmadParams.m = 16;
+    }
     Mmad(dvL0CBuffer.GetTensor<CALC_TYPE>(), L0ATensor, L0BTensor, mmadParams);
     SetFlag<HardEvent::M_MTE1>(EVENT_ID4 + l0Id);
     SetFlag<HardEvent::M_FIX>(EVENT_ID4);

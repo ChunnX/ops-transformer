@@ -220,8 +220,8 @@ __aicore__ inline void FAGBlockVecQuant<TEMPLATE_ARGS>::ProcessPDs(const LocalTe
 
     SetFlag<AscendC::HardEvent::V_MTE3>(PDS_PDS_COPY_TO_L1_INNER_CORE_SYNC_EVENTS[sdpId]);
     WaitFlag<AscendC::HardEvent::V_MTE3>(PDS_PDS_COPY_TO_L1_INNER_CORE_SYNC_EVENTS[sdpId]);
-    CopyUB2L1(runInfo, pl1Tensor, spTensor, currentRealS1, currentRealS2);
-    CopyUB2L1(runInfo, dsl1Tensor, dpdsTensor, currentRealS1, currentRealS2);
+    CopyUB2L1(runInfo, pl1Tensor, spTensor, firstHalfS1, currentRealS2);
+    CopyUB2L1(runInfo, dsl1Tensor, dpdsTensor, firstHalfS1, currentRealS2);
     maxsumIdx = (maxsumIdx + 1) & NUM_THREE;
 }
 
