@@ -23,7 +23,7 @@
 #define __MC2_TILING_STRUCT_H__
 
 #include "register/tilingdata_base.h"
-#include "../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h"
+#include "../../../3rd/batch_mat_mul_v3/op_host/op_tiling/batch_mat_mul_v3_tiling.h"
 
 namespace optiling {
 constexpr uint8_t COMM_ALG_DEFAULT = 0;

@@ -23,9 +23,9 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "quant_all_reduce_tiling_data.h"
-#include "../quant_reduce_scatter/utils.h"
-#include "../quant_reduce_scatter/mte_comm.h"
-#include "../quant_reduce_scatter/vec_comp.h"
+#include "../../quant_reduce_scatter/op_kernel/utils.h"
+#include "../../quant_reduce_scatter/op_kernel/mte_comm.h"
+#include "../../quant_reduce_scatter/op_kernel/vec_comp.h"
 
 namespace QuantAllReduceImpl {
 

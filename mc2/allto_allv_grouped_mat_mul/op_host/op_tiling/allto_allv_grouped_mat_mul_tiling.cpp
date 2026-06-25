@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <numeric>
-#include "../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
+#include "../../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "mc2_comm_utils.h"
 
