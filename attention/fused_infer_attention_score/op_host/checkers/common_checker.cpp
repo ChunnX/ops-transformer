@@ -1275,8 +1275,7 @@ bool CommonChecker::CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo)
                 ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
             return false;
         }
-    }
-    if (isGqa) { // GQA
+
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
                 layoutStr.c_str(), "The value of input_layout cannot be " + layoutStr +

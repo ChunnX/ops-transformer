@@ -1376,7 +1376,7 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
     return ge::GRAPH_SUCCESS;
 }
 
-TilingKeyLayout FiaInfoParser::MapStringToLayout(FiaLayout &layoutString) const
+TilingKeyLayout FiaInfoParser::MapStringToLayout(const FiaLayout &layoutString) const
 {
     const std::map<FiaLayout, TilingKeyLayout> layoutMap = {
         {FiaLayout::BSH, TilingKeyLayout::BSH_BSND}, {FiaLayout::BSND, TilingKeyLayout::BSH_BSND},

@@ -13,8 +13,7 @@
  * \brief
  */
 
-#ifndef AIR_CXX_RUNTIME_V4_OP_IMPL_FUSEDINFERATTENTIONSCORE_V4_H_
-#define AIR_CXX_RUNTIME_V4_OP_IMPL_FUSEDINFERATTENTIONSCORE_V4_H_
+#pragma once
 #include "register/tilingdata_base.h"
 #include "../../../common/op_host/fia_tiling_base.h"
 #include "../../../common/op_host/fia_tiling_info.h"
@@ -23,4 +22,3 @@ namespace optiling {
 ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context);
 
 } // namespace optiling
-#endif  // AIR_CXX_RUNTIME_V4_OP_IMPL_FUSEDINFERATTENTIONSCORE_V4_H_
