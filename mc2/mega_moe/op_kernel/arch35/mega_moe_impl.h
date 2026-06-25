@@ -131,8 +131,6 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
 
-    GlobalTensor<int32_t> groupFlagListGm2;
-    groupFlagListGm2.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList2);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
@@ -223,7 +221,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             if (waveIdx != lastWaveWaited) {
                 uint32_t targetValue = (mLoc + L1_TILE_M_256 > m) ? (m - mLoc) : L1_TILE_M_256;
                 __gm__ int32_t* flagValueAddr =
-                    (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr() + waveIdx;
+                    gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
@@ -307,9 +305,6 @@ __aicore__ inline void GroupMatmul2(
 
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-
-    GlobalTensor<int32_t> groupFlagListGm;
-    groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
@@ -415,7 +410,7 @@ __aicore__ inline void GroupMatmul2(
                     BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256),
                         static_cast<int64_t>(L1_TILE_N))});
                 uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-                __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
+                __gm__ int32_t* flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
                 while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
@@ -615,21 +610,19 @@ __aicore__ inline void WaitForUpstreamReadyA8W4(
     if constexpr (Policy::IS_GMM1) {
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
-        __gm__ int32_t* flagValueAddr = gmmAddrInfo.groupFlagList2 + waveIdx;
+        __gm__ int32_t* flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + waveIdx;
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
         }
     } else {
-        GlobalTensor<int32_t> groupFlagListGm;
-        groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
         BlockScheduler gmmBlockScheduler(
             {config.m, config.k, config.n},
             BlockScheduler::Params{
                 Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
         uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-        __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
+        __gm__ int32_t* flagValueAddr = gmmAddrInfo.swigluToGmm2Flag;
         while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
