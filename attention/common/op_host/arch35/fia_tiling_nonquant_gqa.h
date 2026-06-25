@@ -67,6 +67,9 @@ public:
 protected:
     void InitTilingInfo(TilingInfo *tilingInfo) override;
     bool IsCapable() override;
+    bool IsCapableBasicCheckGqa();
+    bool IsCapableFeatureCheckGqa();
+    bool IsCapableSparseLayoutCheckGqa();
     ge::graphStatus DoOpTiling() override;
 
 private:
