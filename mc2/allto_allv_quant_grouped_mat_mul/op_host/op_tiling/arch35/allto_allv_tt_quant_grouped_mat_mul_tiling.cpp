@@ -16,6 +16,7 @@
 #include "allto_allv_tt_quant_grouped_mat_mul_tiling.h"
 #include "mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
+#include "../../../../3rd/grouped_matmul/op_tiling/mc2_grouped_matmul_host_util.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -45,39 +46,41 @@ uint64_t AlltoAllvTTQuantGmmTiling::GetTilingKey() const
     return tilingKey;
 }
 
-ge::graphStatus AlltoAllvTTQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
+ge::graphStatus AlltoAllvTTQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie, uint32_t expertNum)
 {
     OP_LOGD(context_->GetNodeName(), "start DoGmmTiling.");
-    // gmm group matmul tiling
     if (gmmxMSzie != 0) {
+        OP_TILING_CHECK(expertNum > Mc2GroupedMatmul::MAX_TENSOR_CONT,
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expertNum",
+                std::to_string(expertNum).c_str(),
+                (std::string("<=") + std::to_string(Mc2GroupedMatmul::MAX_TENSOR_CONT)).c_str()),
+            return ge::GRAPH_FAILED);
         auto &gmmQuantTilingData = tilingData->gmmQuantTilingData;
-        SetGMMQuantParams(gmmQuantTilingData);
-        SetTilingArray(gmmQuantTilingData, gmmxMSzie, n1_, h1_);
+        SetGMMQuantParams(gmmQuantTilingData, expertNum);
+        SetTilingArray(gmmQuantTilingData, gmmxMSzie, n1_, h1_, expertNum);
         SetTilingParams(gmmQuantTilingData, gmmxMSzie, n1_, h1_, transGmmWeight_);
         PrintGMMQuantTilingData(gmmQuantTilingData);
     }
-    // mm group matmul tiling
     if (bs_ != 0) {
         auto &mmQuantTilingData = tilingData->mmQuantTilingData;
-        SetGMMQuantParams(mmQuantTilingData);
-        SetTilingArray(mmQuantTilingData, bs_, n2_, h2_);
+        SetGMMQuantParams(mmQuantTilingData, 1);
+        SetTilingArray(mmQuantTilingData, bs_, n2_, h2_, 1);
         SetTilingParams(mmQuantTilingData, bs_, n2_, h2_, transMmWeight_);
         PrintGMMQuantTilingData(mmQuantTilingData);
     }
-    // permute out
-    GetPermuteOutSize();
     OP_LOGD(context_->GetNodeName(), "end DoGmmTiling.");
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvTTQuantGmmTiling::SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData) const
+void AlltoAllvTTQuantGmmTiling::SetGMMQuantParams(
+    Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint32_t expertNum) const
 {
-    gmmQuantTilingData.gmmQuantParams.groupNum = SINGLE_GROUP_NUM;
+    gmmQuantTilingData.gmmQuantParams.groupNum = expertNum;
     gmmQuantTilingData.gmmQuantParams.activeType = GMM_ACT_TYPE_NONE;
     gmmQuantTilingData.gmmQuantParams.aQuantMode = PERTENSOR_QUANT_MODE;
     gmmQuantTilingData.gmmQuantParams.bQuantMode = PERTENSOR_QUANT_MODE;
     gmmQuantTilingData.gmmQuantParams.singleX = 0;
-    gmmQuantTilingData.gmmQuantParams.singleW = 0;
+    gmmQuantTilingData.gmmQuantParams.singleW = 1;
     gmmQuantTilingData.gmmQuantParams.singleY = 0;
     gmmQuantTilingData.gmmQuantParams.groupType = 0;
     gmmQuantTilingData.gmmQuantParams.groupListType = 1;
@@ -85,14 +88,20 @@ void AlltoAllvTTQuantGmmTiling::SetGMMQuantParams(Mc2GroupedMatmulTilingData::GM
     gmmQuantTilingData.gmmQuantParams.reserved = 0;
 }
 
-void AlltoAllvTTQuantGmmTiling::SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K) const
+void AlltoAllvTTQuantGmmTiling::SetTilingArray(
+    Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N,
+    uint64_t K, uint32_t expertNum) const
 {
-    gmmQuantTilingData.gmmArray.mList[0] = static_cast<int32_t>(M);
+    for (uint32_t i = 0; i < expertNum; i++) {
+        gmmQuantTilingData.gmmArray.mList[i] = static_cast<int32_t>(M);
+    }
     gmmQuantTilingData.gmmArray.kList[0] = static_cast<int32_t>(K);
     gmmQuantTilingData.gmmArray.nList[0] = static_cast<int32_t>(N);
 }
 
-void AlltoAllvTTQuantGmmTiling::SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K, bool transB) const
+void AlltoAllvTTQuantGmmTiling::SetTilingParams(
+    Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N,
+    uint64_t K, bool transB) const
 {
     auto &mm = gmmQuantTilingData.mmTilingData;
 
@@ -351,11 +360,20 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvTTQuantGmmTiling::GetPermuteOutSize()
+void AlltoAllvTTQuantGmmTiling::SetWorkspaceInfo()
 {
-    permuteOutSize_ = permuteOutFlag_ ? 0 : (a_ * h1_ * GetSizeByDataType(gmmXDataType_));
-    // 将 permuteOutSize 对齐到 512 字节
-    permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    // aixs
+    uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
+    // comm
+    tilingData->workspaceInfo.commXOutSize = (permuteOutFlag_ && expertNum_ == 1) ?
+        0 : Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    // permute gmmX
+    tilingData->workspaceInfo.permuteXOutSize = (expertNum_ > 1 && !permuteOutFlag_) ?
+        Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512)) : 0;
+    // compute
+    uint64_t ttScaleRepeatSize = sizeof(float) * e_ * 2;
+    tilingData->workspaceInfo.gmmComputeSize = Ops::Base::CeilAlign(ttScaleRepeatSize,
+        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
 }
 
 REGISTER_OPS_TILING_TEMPLATE(AlltoAllvQuantGroupedMatMul, AlltoAllvTTQuantGmmTiling, 1);

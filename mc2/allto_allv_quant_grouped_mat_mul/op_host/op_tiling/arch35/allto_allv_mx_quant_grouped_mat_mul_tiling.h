@@ -33,8 +33,8 @@ protected:
     ge::graphStatus CheckInputDtype() const override;
     ge::graphStatus CheckScaleShape() const override;
     ge::graphStatus CheckQuantMode() const override;
-    ge::graphStatus DoGmmTiling(uint64_t gmmMSize) override;
-    void GetPermuteOutSize() override;
+    ge::graphStatus DoGmmTiling(uint64_t gmmMSize, uint32_t expertNum) override;
+    void SetWorkspaceInfo() override;
 private:
     ge::graphStatus CheckGmmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType,
         ge::DataType gYDataType) const;
@@ -57,7 +57,7 @@ public:
     bool AnalyzeDtype() override {return true; }
     bool AnalyzeInputs() override {return true; }
     void Reset() override {} 
-    ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB);
+    ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB, uint32_t expertNum = 1);
     ge::graphStatus Process();
 };
 
