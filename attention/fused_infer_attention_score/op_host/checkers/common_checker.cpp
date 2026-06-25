@@ -44,19 +44,19 @@ ge::graphStatus CommonChecker::CheckInputFormat(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus CommonChecker::CheckParaExistenceImpl(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.opParamInfo.query.desc == nullptr || fiaInfo.opParamInfo.query.shape == nullptr) {
+    if (unlikely(fiaInfo.opParamInfo.query.desc == nullptr || fiaInfo.opParamInfo.query.shape == nullptr)) {
         OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "query");
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.opParamInfo.key.desc == nullptr || fiaInfo.opParamInfo.key.shape == nullptr) {
+    if (unlikely(fiaInfo.opParamInfo.key.desc == nullptr || fiaInfo.opParamInfo.key.shape == nullptr)) {
         OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "key");
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.opParamInfo.value.desc == nullptr || fiaInfo.opParamInfo.value.shape == nullptr) {
+    if (unlikely(fiaInfo.opParamInfo.value.desc == nullptr || fiaInfo.opParamInfo.value.shape == nullptr)) {
         OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "value");
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.opParamInfo.attenOut.desc == nullptr || fiaInfo.opParamInfo.attenOut.shape == nullptr) {
+    if (unlikely(fiaInfo.opParamInfo.attenOut.desc == nullptr || fiaInfo.opParamInfo.attenOut.shape == nullptr)) {
         OP_LOGE_WITH_INVALID_INPUT(fiaInfo.opName, "attention_out");
         return ge::GRAPH_FAILED;
     }
@@ -102,7 +102,7 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
     uint32_t valueH = fiaInfo.vHeadDim * fiaInfo.n2Size;
     uint32_t valueD0 = 16;
     uint32_t valueD1 = fiaInfo.vHeadDim / 16; // 当前PA NZ场景D 16
-    if (keyDimNum != valueDimNum) {
+    if (unlikely(keyDimNum != valueDimNum)) {
         std::string dimMsg = std::to_string(keyDimNum) + " and " + std::to_string(valueDimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key and value",
             dimMsg.c_str(), "The shape dim of key must be equal to that of value");
@@ -162,26 +162,26 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
         }
     }
 
-    if ((keyDimNum == 5) && ((keyBlockNum != valueBlockNum) || (keyHeadNum != valueHeadNum) ||
+    if (unlikely((keyDimNum == 5) && ((keyBlockNum != valueBlockNum) || (keyHeadNum != valueHeadNum) ||
         ((keyD1 != valueD1) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128)) || (keyBlockSize != valueBlockSize) ||
-        ((keyD0 != valueD0) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128)))) {
+        ((keyD0 != valueD0) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128))))) {
         std::string shapeMsg = ToString(keyShape->GetStorageShape()) + " and " +
             ToString(valueShape->GetStorageShape());
         std::string reason = "The dim num of key and value are inconsistent when page attention is enabled";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value", shapeMsg.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if ((keyDimNum == 4) && ((keyBlockNum != valueBlockNum) || (keyHeadNum != valueHeadNum) ||
+    if (unlikely((keyDimNum == 4) && ((keyBlockNum != valueBlockNum) || (keyHeadNum != valueHeadNum) ||
         (keyBlockSize != valueBlockSize) || ((keyHeadDim != valueHeadDim) &&
-        (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128)))) {
+        (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128))))) {
         std::string shapeMsg = ToString(keyShape->GetStorageShape()) + " and " +
             ToString(valueShape->GetStorageShape());
         std::string reason = "The dim num of key and value are inconsistent when page attention is enabled";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value", shapeMsg.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if ((keyDimNum == 3) && ((keyBlockNum != valueBlockNum) || (keyBlockSize != valueBlockSize) ||
-        ((keyH != valueH) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128)))) {
+    if (unlikely((keyDimNum == 3) && ((keyBlockNum != valueBlockNum) || (keyBlockSize != valueBlockSize) ||
+        ((keyH != valueH) && (fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128))))) {
         std::string shapeMsg = ToString(keyShape->GetStorageShape()) + " and " +
             ToString(valueShape->GetStorageShape());
         std::string reason = "The dim num of key and value are inconsistent when page attention is enabled";
@@ -189,32 +189,32 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (keyHeadDim != fiaInfo.qkHeadDim) {
+    if (unlikely(keyHeadDim != fiaInfo.qkHeadDim)) {
         std::string reason = "D of key must be equal to " + std::to_string(fiaInfo.qkHeadDim);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key",
             ToString(keyShape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (valueHeadDim != fiaInfo.vHeadDim) {
+    if (unlikely(valueHeadDim != fiaInfo.vHeadDim)) {
         std::string reason = "D of value must be equal to " + std::to_string(fiaInfo.vHeadDim);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value",
             ToString(valueShape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (keyH != fiaInfo.qkHeadDim * fiaInfo.n2Size) {
+    if (unlikely(keyH != fiaInfo.qkHeadDim * fiaInfo.n2Size)) {
         std::string reason = "H of key must be equal to " + std::to_string(fiaInfo.qkHeadDim * fiaInfo.n2Size);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key",
             ToString(keyShape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (valueH != fiaInfo.vHeadDim * fiaInfo.n2Size) {
+    if (unlikely(valueH != fiaInfo.vHeadDim * fiaInfo.n2Size)) {
         std::string reason = "H of value must be equal to " + std::to_string(fiaInfo.vHeadDim * fiaInfo.n2Size);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value",
             ToString(valueShape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (enableNonQuant_) {
-        if (keyD0 != 16 || valueD0 != 16) {
+        if (unlikely(keyD0 != 16 || valueD0 != 16)) {
             std::string valMsg = ToString(keyShape->GetStorageShape()) + " and " +
                 ToString(valueShape->GetStorageShape());
             std::string reason = "The last axis of key and value must both be equal "
@@ -223,13 +223,13 @@ ge::graphStatus CommonChecker::CheckPAKeyValue(const FiaTilingInfo &fiaInfo)
                 valMsg.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
-        if (keyD1 != fiaInfo.qkHeadDim  / 16) {
+        if (unlikely(keyD1 != fiaInfo.qkHeadDim  / 16)) {
             std::string reason = "D1 of key must be equal to " + std::to_string(fiaInfo.qkHeadDim / 16);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key",
                 ToString(keyShape->GetStorageShape()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
-        if (valueD1 != fiaInfo.vHeadDim / 16) {
+        if (unlikely(valueD1 != fiaInfo.vHeadDim / 16)) {
             std::string reason = "D1 of value must be equal to " + std::to_string(fiaInfo.vHeadDim / 16);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value",
                 ToString(valueShape->GetStorageShape()).c_str(), reason.c_str());
@@ -263,7 +263,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
         int64_t keyRopeS = 0;
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
             keyRopeS = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(1);
-            if (fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0) != fiaInfo.kCache.size()) {
+            if (unlikely(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0) != fiaInfo.kCache.size())) {
                 std::string valuesStr = std::to_string(fiaInfo.kCache.size()) + " and " +
                     std::to_string(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0));
                 std::string reason = "The values of Batch of key and B of key_rope must be the "
@@ -276,7 +276,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
 
         for (int64_t tmpIdx = 0; tmpIdx < fiaInfo.kCache.size(); ++tmpIdx) {
             // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != standardKH) {
+            if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != standardKH)) {
                 std::string paramName = "key in the " + std::to_string(tmpIdx + 1) + "th tensor";
                 std::string shapeStr = ToStringRaw(fiaInfo.kCache[tmpIdx]->GetStorageShape());
                 std::string reason = "H of key in the " + std::to_string(tmpIdx + 1) +
@@ -285,7 +285,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                     shapeStr.c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2) != standardVH) {
+            if (unlikely(fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2) != standardVH)) {
                 std::string paramName = "value in the " + std::to_string(tmpIdx + 1) + "th tensor";
                 std::string shapeStr = ToStringRaw(fiaInfo.vCache[tmpIdx]->GetStorageShape());
                 std::string reason = "H of value in the " + std::to_string(tmpIdx + 1) +
@@ -294,7 +294,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                     shapeStr.c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1)) { // k_s != v_s
+            if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1))) { // k_s != v_s
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
                 std::string reason = "S of key must be equal to S of value";
@@ -303,7 +303,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                 return false;
             }
             if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
-                if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) { // k_s != krope_s
+                if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS)) { // k_s != krope_s
                     std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                         ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                     std::string reason = "S of key must be equal to S of key_rope";
@@ -324,7 +324,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
 
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
             keyRopeS = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(2);
-            if (fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0) != fiaInfo.kCache.size()) {
+            if (unlikely(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0) != fiaInfo.kCache.size())) {
                 std::string valuesStr = std::to_string(fiaInfo.kCache.size()) + " and " +
                     std::to_string(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0));
                 std::string reason = "The values of Batch of key and B of key_rope must be the "
@@ -335,7 +335,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
             }
         }
 
-        if (tmpNKv != standardN) {
+        if (unlikely(tmpNKv != standardN)) {
             std::string reason = "N of key 1st tensor must be equal to numKeyValueHeads: " +
                 std::to_string(tmpNKv);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key 1st tensor",
@@ -344,8 +344,8 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
         }
 
         for (int64_t tmpIdx = 0; tmpIdx < fiaInfo.kCache.size(); ++tmpIdx) {
-            if ((fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != standardN) ||
-                (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1) != standardN)) {
+            if (unlikely((fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != standardN) ||
+                (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1) != standardN))) {
                 std::string paramName = "key in the " + std::to_string(tmpIdx + 1) + "th tensor and value in the " +
                     std::to_string(tmpIdx + 1) + "th tensor";
                 std::string shapeStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
@@ -357,7 +357,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                     shapeStr.c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(3) != standardKD) {
+            if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(3) != standardKD)) {
                 std::string paramName = "key in the " + std::to_string(tmpIdx + 1) + "th tensor";
                 std::string shapeStr = ToStringRaw(fiaInfo.kCache[tmpIdx]->GetStorageShape());
                 std::string reason = "D of key in the " + std::to_string(tmpIdx + 1) +
@@ -366,7 +366,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                     shapeStr.c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(3) != standardVD) {
+            if (unlikely(fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(3) != standardVD)) {
                 std::string paramName = "value in the " + std::to_string(tmpIdx + 1) + "th tensor";
                 std::string shapeStr = ToStringRaw(fiaInfo.vCache[tmpIdx]->GetStorageShape());
                 std::string reason = "D of value in the " + std::to_string(tmpIdx + 1) +
@@ -375,8 +375,8 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                     shapeStr.c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != // 2: Obtain the second dimension
-                fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2)) { // 2: Obtain the second dimension
+            if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != // 2: Obtain the second dimension
+                fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2))) { // 2: Obtain the second dimension
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
                 std::string reason = "S of key must be equal to S of value";
@@ -385,7 +385,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                 return false;
             }
             if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
-                if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != keyRopeS) { // k_s != krope_s
+                if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != keyRopeS)) { // k_s != krope_s
                     std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                         ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                     std::string reason = "S of key must be equal to S of key_rope";
@@ -404,7 +404,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
 
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
             keyRopeS = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(1);
-            if (fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0) != fiaInfo.kCache.size()) {
+            if (unlikely(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0) != fiaInfo.kCache.size())) {
                 std::string valuesStr = std::to_string(fiaInfo.kCache.size()) + " and " +
                     std::to_string(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape().GetDim(0));
                 std::string reason = "The values of Batch of key and B of key_rope must be the "
@@ -415,7 +415,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
             }
         }
 
-        if (tmpNKv != standardN) {
+        if (unlikely(tmpNKv != standardN)) {
             std::string reason = "N of key 1st tensor must be equal to num_key_value_heads: " +
                 std::to_string(tmpNKv);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key 1st tensor",
@@ -424,8 +424,8 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
         }
 
         for (int64_t tmpIdx = 0; tmpIdx < fiaInfo.kCache.size(); ++tmpIdx) {
-            if ((fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != standardN) || // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
-                (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2) != standardN)) { // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
+            if (unlikely((fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != standardN) || // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
+                (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2) != standardN))) { // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
                 std::string paramName = "key in the " + std::to_string(tmpIdx + 1) + "th tensor and value in the " +
                     std::to_string(tmpIdx + 1) + "th tensor";
                 std::string shapeStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
@@ -437,7 +437,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                     shapeStr.c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(3) != standardKD) {
+            if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(3) != standardKD)) {
                 std::string paramName = "key in the " + std::to_string(tmpIdx + 1) + "th tensor";
                 std::string shapeStr = ToStringRaw(fiaInfo.kCache[tmpIdx]->GetStorageShape());
                 std::string reason = "D of key in the " + std::to_string(tmpIdx + 1) +
@@ -446,7 +446,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                     shapeStr.c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(3) != standardVD) {
+            if (unlikely(fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(3) != standardVD)) {
                 std::string paramName = "value in the " + std::to_string(tmpIdx + 1) + "th tensor";
                 std::string shapeStr = ToStringRaw(fiaInfo.vCache[tmpIdx]->GetStorageShape());
                 std::string reason = "D of value in the " + std::to_string(tmpIdx + 1) +
@@ -455,7 +455,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                     shapeStr.c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1)) {
+            if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1))) {
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
                 std::string reason = "S of key must be equal to S of value";
@@ -464,7 +464,7 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                 return false;
             }
             if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
-                if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) { // k_s != krope_s
+                if (unlikely(fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS)) { // k_s != krope_s
                     std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                         ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                     std::string reason = "S of key must be equal to S of key_rope";
@@ -489,7 +489,7 @@ ge::graphStatus CommonChecker::CheckTensorList(const FiaTilingInfo &fiaInfo)
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "input_layout",
             "input_layout TND/NTD/TND_NTD/NTD_TND is not supported in the tensorlist scenario"),
         return ge::GRAPH_FAILED);
-    if (fiaInfo.bSize > B_LIMIT) {
+    if (unlikely(fiaInfo.bSize > B_LIMIT)) {
         std::string reason = "B of query must be less than or equal to " + std::to_string(B_LIMIT) +
             " in the tensorlist scenario";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
@@ -549,69 +549,69 @@ ge::graphStatus CommonChecker::CheckMultiDtype(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.bSize > B_LIMIT || fiaInfo.bSize <= 0) {
+    if (unlikely(fiaInfo.bSize > B_LIMIT || fiaInfo.bSize <= 0)) {
         std::string reason = "The value of B must be within the range (0, " + std::to_string(B_LIMIT) + "]";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis B",
             std::to_string(fiaInfo.bSize).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.s1Size < 0) {
+    if (unlikely(fiaInfo.s1Size < 0)) {
         std::string reason = "S of query must be greater than or equal to 0";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.s2Size < 0) {
+    if (unlikely(fiaInfo.s2Size < 0)) {
         std::string reason = "S of key must be greater than or equal to 0";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key",
             ToStringRaw(fiaInfo.opParamInfo.key.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.qkHeadDim > D_LIMIT || fiaInfo.qkHeadDim < 0) {
+    if (unlikely(fiaInfo.qkHeadDim > D_LIMIT || fiaInfo.qkHeadDim < 0)) {
         std::string reason = "D of query must be within the range [0, " + std::to_string(D_LIMIT) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.vHeadDim > D_LIMIT || fiaInfo.vHeadDim < 0) {
+    if (unlikely(fiaInfo.vHeadDim > D_LIMIT || fiaInfo.vHeadDim < 0)) {
         std::string reason = "D of value must be within the range [0, " + std::to_string(D_LIMIT) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value",
             ToStringRaw(fiaInfo.opParamInfo.value.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.isQKVDDifferent && (fiaInfo.qkHeadDim > 128)) {
+    if (unlikely(fiaInfo.isQKVDDifferent && (fiaInfo.qkHeadDim > 128))) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
             "D of query must be <= 128 when D of query and key is not equal to D of value");
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.isQKVDDifferent && (fiaInfo.vHeadDim > 128)) {
+    if (unlikely(fiaInfo.isQKVDDifferent && (fiaInfo.vHeadDim > 128))) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value",
             ToStringRaw(fiaInfo.opParamInfo.value.shape->GetStorageShape()).c_str(),
             "D of value must be <= 128 when D of query and key is not equal to D of value");
         return ge::GRAPH_FAILED;
     }
-    if ((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.qTSize < 0) {
+    if (unlikely((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.qTSize < 0)) {
         std::string reason = "T of query must be greater than or equal to 0 when input_layout is TND/NTD";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if ((fiaInfo.kvLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.kTSize < 0) {
+    if (unlikely((fiaInfo.kvLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.kTSize < 0)) {
         std::string reason = "T of key must be greater than or equal to 0 when input_layout is TND/NTD";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key",
             ToStringRaw(fiaInfo.opParamInfo.key.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
-        if (fiaInfo.s1Size < 1) {
+        if (unlikely(fiaInfo.s1Size < 1)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
                 ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
                 "S of query must be >=1 in the Decode MLA scenario");
             return ge::GRAPH_FAILED;
         }
         static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
-        if ((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end())) {
+        if (unlikely((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end()))) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
                 std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
                 "The value of axis G must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
@@ -684,13 +684,13 @@ ge::graphStatus CommonChecker::CheckQueryOutConsistency(const FiaTilingInfo &fia
     int64_t tmpOutDim = 0;
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     bool isLayoutShapeSupport = layoutStr == "BSH_BNSD" || layoutStr == "BSH_NBSD";
-    if (dimNumQ != dimNumOut && !isLayoutShapeSupport) {
+    if (unlikely(dimNumQ != dimNumOut && !isLayoutShapeSupport)) {
         std::string dimsMsg = std::to_string(dimNumQ) + " and " + std::to_string(dimNumOut);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "query and attention_out",
             dimsMsg.c_str(), "The shape dim of query must be equal to that of attention_out");
         return ge::GRAPH_FAILED;
     }
-    if (dimNumQ < INPUT_Q_SHAPE_MIN_DIMS || dimNumQ > INPUT_Q_SHAPE_MAX_DIMS) {
+    if (unlikely(dimNumQ < INPUT_Q_SHAPE_MIN_DIMS || dimNumQ > INPUT_Q_SHAPE_MAX_DIMS)) {
         std::string dimStr = std::to_string(dimNumQ);
         std::string reason = "The shape dim of query must be within the range of [" +
             std::to_string(INPUT_Q_SHAPE_MIN_DIMS) + ", " + std::to_string(INPUT_Q_SHAPE_MAX_DIMS) + "]";
@@ -703,7 +703,7 @@ ge::graphStatus CommonChecker::CheckQueryOutConsistency(const FiaTilingInfo &fia
             continue;
         }
         GetQueryDimAndOutDim(queryShape, attentionOutShape, layoutStr, tmpQueryDim, tmpOutDim, queryDimIdx);
-        if (!fiaInfo.isQKVDDifferent && (tmpQueryDim != tmpOutDim)) {
+        if (unlikely(!fiaInfo.isQKVDDifferent && (tmpQueryDim != tmpOutDim))) {
             std::string shapeMsg = ToString(queryShape->GetStorageShape()) + " and " +
                 ToString(attentionOutShape->GetStorageShape());
             std::string reason = std::to_string(queryDimIdx) + "th axis of query must be equal to "
@@ -712,7 +712,7 @@ ge::graphStatus CommonChecker::CheckQueryOutConsistency(const FiaTilingInfo &fia
                 shapeMsg.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
-        if (fiaInfo.isQKVDDifferent && (queryDimIdx != dimNumQ - 1) && (tmpQueryDim != tmpOutDim)) {
+        if (unlikely(fiaInfo.isQKVDDifferent && (queryDimIdx != dimNumQ - 1) && (tmpQueryDim != tmpOutDim))) {
             std::string shapeMsg = ToString(queryShape->GetStorageShape()) + " and " +
                 ToString(attentionOutShape->GetStorageShape());
             std::string reason = std::to_string(queryDimIdx) + "th axis of query must be equal to "
@@ -738,20 +738,20 @@ ge::graphStatus CommonChecker::CheckKeyValueConsistency(const FiaTilingInfo &fia
 
     const size_t keyDimNum = keyShape->GetStorageShape().GetDimNum();
     const size_t valueDimNum = valueShape->GetStorageShape().GetDimNum();
-    if (keyDataType != valueDataType) {
+    if (unlikely(keyDataType != valueDataType)) {
         std::string dtypeMsg = ToString(keyDataType) + " and " + ToString(valueDataType);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
             dtypeMsg.c_str(), "The dtypes of key and value must be the same");
         return ge::GRAPH_FAILED;
     }
-    if (keyDimNum != valueDimNum) {
+    if (unlikely(keyDimNum != valueDimNum)) {
         std::string dimMsg = std::to_string(keyDimNum) + " and " + std::to_string(valueDimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key and value",
             dimMsg.c_str(), "The shape dim of key must be equal to that of value");
         return ge::GRAPH_FAILED;
     }
 
-    if (keyDimNum < INPUT_KV_SHAPE_MIN_DIMS || keyDimNum > INPUT_KV_SHAPE_MAX_DIMS) {
+    if (unlikely(keyDimNum < INPUT_KV_SHAPE_MIN_DIMS || keyDimNum > INPUT_KV_SHAPE_MAX_DIMS)) {
         std::string dimStr = std::to_string(keyDimNum);
         std::string reason = "The shape dim of key must be within the range of [" +
             std::to_string(INPUT_KV_SHAPE_MIN_DIMS) + ", " + std::to_string(INPUT_KV_SHAPE_MAX_DIMS) + "]";
@@ -766,7 +766,7 @@ ge::graphStatus CommonChecker::CheckKeyValueConsistency(const FiaTilingInfo &fia
         }
         int64_t tmpKeyDim = keyShape->GetStorageShape().GetDim(i);
         int64_t tmpValueDim = valueShape->GetStorageShape().GetDim(i);
-        if (!fiaInfo.isQKVDDifferent && (tmpKeyDim != tmpValueDim)) {
+        if (unlikely(!fiaInfo.isQKVDDifferent && (tmpKeyDim != tmpValueDim))) {
             std::string shapesStr = ToString(keyShape->GetStorageShape()) + " and " +
                 ToString(valueShape->GetStorageShape());
             std::string reason = std::to_string(i) + "th axis of key must be equal to " +
@@ -774,7 +774,7 @@ ge::graphStatus CommonChecker::CheckKeyValueConsistency(const FiaTilingInfo &fia
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "key and value", shapesStr.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
-        if (fiaInfo.isQKVDDifferent && (i != keyDimNum - 1) && (tmpKeyDim != tmpValueDim)) {
+        if (unlikely(fiaInfo.isQKVDDifferent && (i != keyDimNum - 1) && (tmpKeyDim != tmpValueDim))) {
             std::string shapesStr = ToString(keyShape->GetStorageShape()) + " and " +
                 ToString(valueShape->GetStorageShape());
             std::string reason = std::to_string(i) + "th axis of key must be equal to " +
@@ -807,7 +807,7 @@ ge::graphStatus CommonChecker::CheckValueOutDConsistency(const FiaTilingInfo &fi
     } else {
         outHeadDim = attentionOutShape->GetStorageShape().GetDim(dimNumOut - 1) / fiaInfo.n1Size;
     }
-    if (valueHeadDim != outHeadDim) {
+    if (unlikely(valueHeadDim != outHeadDim)) {
         std::string dimsStr = std::to_string(valueHeadDim) + " and " + std::to_string(outHeadDim);
         std::string reason = "The shape dim of value must be equal to that of attention_out";
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "value and attention_out",
@@ -833,13 +833,13 @@ ge::graphStatus CommonChecker::CheckQueryShape(const FiaTilingInfo &fiaInfo)
     } else if (fiaInfo.qLayout == FiaLayout::NTD) {
         queryShapeHeadNum = queryShape->GetStorageShape().GetDim(0);
     }
-    if (attrN != queryShapeHeadNum) {
+    if (unlikely(attrN != queryShapeHeadNum)) {
         std::string reason = "N of query must be equal to the attr num_heads: " + std::to_string(attrN);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
             ToString(queryShape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.qLayout == FiaLayout::BSH && queryH % attrN != 0) {
+    if (unlikely(fiaInfo.qLayout == FiaLayout::BSH && queryH % attrN != 0)) {
         std::string reason = "H of query must be an integer multiple of num_heads: " +
             std::to_string(attrN) + " when layout is BSH";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
@@ -864,13 +864,13 @@ ge::graphStatus CommonChecker::CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, con
     } else if (fiaInfo.kvLayout == FiaLayout::BSH) {
         keyH = keyShape.GetDim(2);
     }
-    if (attrKvN != keyShapeHeadNum) {
+    if (unlikely(attrKvN != keyShapeHeadNum)) {
         std::string reason = "N of key must be equal to the attr num_key_value_heads: " + std::to_string(attrKvN);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key",
             ToStringRaw(keyShape).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.kvLayout == FiaLayout::BSH && keyH % attrKvN != 0) {
+    if (unlikely(fiaInfo.kvLayout == FiaLayout::BSH && keyH % attrKvN != 0)) {
         std::string reason = "H of key must be a multiple of num_key_value_heads: " +
             std::to_string(attrKvN) + " when layout is BSH";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key",
@@ -890,7 +890,7 @@ ge::graphStatus CommonChecker::CheckKeyDVaild(const FiaTilingInfo &fiaInfo, cons
         keyHeadDim = keyShape.GetDim(keyDim - 1) / fiaInfo.n2Size;
     }
 
-    if (keyHeadDim != fiaInfo.qkHeadDim) {
+    if (unlikely(keyHeadDim != fiaInfo.qkHeadDim)) {
         std::string shapeStr = ToStringRaw(keyShape);
         std::string reason = "D of query must be equal to axis D of key";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key", shapeStr.c_str(), reason.c_str());
@@ -921,7 +921,7 @@ ge::graphStatus CommonChecker::CheckKeyShape(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus CommonChecker::CheckQueryKeyTensorlistConsistency(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.bSize != fiaInfo.kCache.size()) {
+    if (unlikely(fiaInfo.bSize != fiaInfo.kCache.size())) {
         std::string valuesStr = std::to_string(fiaInfo.bSize) + " and " + std::to_string(fiaInfo.kCache.size());
         std::string reason = "B of query must be equal to the number of key: " +
             std::to_string(fiaInfo.kCache.size());
@@ -947,7 +947,7 @@ ge::graphStatus CommonChecker::CheckQueryKeyConsistency(const FiaTilingInfo &fia
     ge::DataType queryDataType = fiaInfo.opParamInfo.query.desc->GetDataType();
     ge::DataType keyDataType = fiaInfo.opParamInfo.key.desc->GetDataType();
     if (enableNonQuant_) {
-        if (queryDataType != keyDataType) {
+        if (unlikely(queryDataType != keyDataType)) {
             std::string dtypeMsg = ToString(queryDataType) + " and " + ToString(keyDataType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and key",
                 dtypeMsg.c_str(), "The dtypes of query and key must be the same");
@@ -956,7 +956,7 @@ ge::graphStatus CommonChecker::CheckQueryKeyConsistency(const FiaTilingInfo &fia
     }
     int64_t keyB = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDim(0);
     if (fiaInfo.kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) {
-        if ((fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD) && fiaInfo.bSize != keyB) {
+        if (unlikely((fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD) && fiaInfo.bSize != keyB)) {
             std::string shapesStr = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
                 ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
             std::string reason = "B of query must be equal to the same axis of key";
@@ -1032,30 +1032,30 @@ ge::graphStatus CommonChecker::CheckDimNum(const FiaTilingInfo &fiaInfo)
 {
     size_t queryDim = fiaInfo.opParamInfo.query.shape->GetStorageShape().GetDimNum();
     size_t keyDim = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-    if ((fiaInfo.qLayout == FiaLayout::BNSD || fiaInfo.qLayout == FiaLayout::BSND) && queryDim != 4U) {
+    if (unlikely((fiaInfo.qLayout == FiaLayout::BNSD || fiaInfo.qLayout == FiaLayout::BSND) && queryDim != 4U)) {
         std::string reason = "The shape dim of query must be 4 when input_layout is " +
             std::string(fiaInfo.opParamInfo.layOut);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "query",
             std::to_string(queryDim).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if ((fiaInfo.qLayout == FiaLayout::BSH || fiaInfo.qLayout == FiaLayout::TND ||
-        fiaInfo.qLayout == FiaLayout::NTD) && queryDim != 3U) {
+    if (unlikely((fiaInfo.qLayout == FiaLayout::BSH || fiaInfo.qLayout == FiaLayout::TND ||
+        fiaInfo.qLayout == FiaLayout::NTD) && queryDim != 3U)) {
         std::string reason = "The shape dim of query must be 3 when input_layout is " +
             std::string(fiaInfo.opParamInfo.layOut);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "query",
             std::to_string(queryDim).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if ((fiaInfo.kvLayout == FiaLayout::BNSD || fiaInfo.kvLayout == FiaLayout::BSND) && keyDim != 4U) {
+    if (unlikely((fiaInfo.kvLayout == FiaLayout::BNSD || fiaInfo.kvLayout == FiaLayout::BSND) && keyDim != 4U)) {
         std::string reason = "The shape dim of key must be 4 when input_layout is " +
             std::string(fiaInfo.opParamInfo.layOut);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key",
             std::to_string(keyDim).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if ((fiaInfo.kvLayout == FiaLayout::BSH || fiaInfo.kvLayout == FiaLayout::TND ||
-        fiaInfo.kvLayout == FiaLayout::NTD) && keyDim != 3U) {
+    if (unlikely((fiaInfo.kvLayout == FiaLayout::BSH || fiaInfo.kvLayout == FiaLayout::TND ||
+        fiaInfo.kvLayout == FiaLayout::NTD) && keyDim != 3U)) {
         std::string reason = "The shape dim of key must be 3 when input_layout is " +
             std::string(fiaInfo.opParamInfo.layOut);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key",
@@ -1067,7 +1067,7 @@ ge::graphStatus CommonChecker::CheckDimNum(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
 {
-    if ((fiaInfo.n1Size < 0) || (fiaInfo.n2Size < 0)) {
+    if (unlikely((fiaInfo.n1Size < 0) || (fiaInfo.n2Size < 0))) {
         std::string valMsg = std::to_string(fiaInfo.n1Size) + " and " + std::to_string(fiaInfo.n2Size);
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "num_heads and num_key_value_heads",
             valMsg.c_str(), "The value of num_heads and num_key_value_heads cannot be negative");
@@ -1076,14 +1076,14 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
 
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
         static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
-        if ((SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end())) {
+        if (unlikely((SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end()))) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
                 std::to_string(fiaInfo.n1Size).c_str(),
                 "The value of num_heads must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
                 "in the Decode MLA scenario");
             return ge::GRAPH_FAILED;
         }
-        if (fiaInfo.n2Size != 1U) {
+        if (unlikely(fiaInfo.n2Size != 1U)) {
             std::string reason = "The value of num_key_value_heads must be 1 in the Decode MLA scenario";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_key_value_heads",
                 std::to_string(fiaInfo.n2Size).c_str(), reason.c_str());
@@ -1105,7 +1105,7 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             const std::vector<std::string> INPUT_LAYOUT_LIST = {
                 "BSH", "BSND", "BNSD", "TND", "NTD", "BSND_BNSD", "BSH_BNSD", "NTD_TND", "BNSD_BSND"
             };
-            if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
+            if (unlikely(std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end())) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", inputLayout.c_str(),
                     "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BSND_BNSD, "
                     "BSH_BNSD, NTD_TND, BNSD_BSND in the GQA scenario");
@@ -1187,7 +1187,7 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
         const std::vector<std::string> INPUT_LAYOUT_LIST = {
             "BSH", "BSND", "BNSD", "TND", "BNSD_NBSD", "BSND_NBSD", "BSH_NBSD", "TND_NTD"
         };
-        if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
+        if (unlikely(std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end())) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
                 inputLayout.c_str(), "The value of input_layout must be in BSH, BSND, "
                 "BNSD, TND ,BNSD_BSND, BSND_NBSD, BSH_NBSD, TND_NTD in the Decode MLA scenario");
@@ -1197,7 +1197,7 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
         const std::vector<std::string> INPUT_LAYOUT_LIST = {
             "BSH", "BSND", "BNSD", "TND", "NTD", "BSND_BNSD", "BSH_BNSD", "NTD_TND", "BNSD_BSND"
         };
-        if (std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end()) {
+        if (unlikely(std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end())) {
             std::string reason = "The value of input_layout must be in BSH, BSND, BNSD, "
                 "TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND in the Prefill MLA scenario";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
@@ -1222,7 +1222,7 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus CommonChecker::CheckInnerPrecise(const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.innerPrecise > INNER_PRECISE_LIMIT || fiaInfo.innerPrecise < 0) {
+    if (unlikely(fiaInfo.innerPrecise > INNER_PRECISE_LIMIT || fiaInfo.innerPrecise < 0)) {
         std::string reason = "The value of inner_precise must be in the range of [0, " +
             std::to_string(INNER_PRECISE_LIMIT) + "]";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "inner_precise",
@@ -1269,7 +1269,7 @@ bool CommonChecker::CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo)
         !(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128);
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (isGqa) { // GQA
-        if ((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128)) {
+        if (unlikely((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128))) {
             std::string reason = "D of query must be 64 or 128 in the GQA scenario, when layout is " + layoutStr;
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
                 ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
@@ -1314,7 +1314,7 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
     }
     if (layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD") {
         if (isGqa) { // GQA
-            if ((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128)) {
+            if (unlikely((fiaInfo.qkHeadDim != 64 && fiaInfo.qkHeadDim != 128))) {
                 std::string reason = "D of query must be 64 or 128 in the GQA scenario, when layout is " +
                     layoutStr;
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
@@ -1334,14 +1334,14 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
             return false);
     } else if (layoutStr == "BNSD_BSND") {
         if (isGqa) { // GQA
-            if (fiaInfo.outputType == ge::DT_INT8 && fiaInfo.qkHeadDim % 32 != 0) {
+            if (unlikely(fiaInfo.outputType == ge::DT_INT8 && fiaInfo.qkHeadDim % 32 != 0)) {
                 std::string reason = "D of query must be a multiple of 32 in the GQA scenario when layout is " +
                     layoutStr + " and output dtype is INT8";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
                     ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(), reason.c_str());
                 return false;
             }
-            if (fiaInfo.qkHeadDim % 16 != 0) {
+            if (unlikely(fiaInfo.qkHeadDim % 16 != 0)) {
                 std::string reason = "D of query must be a multiple of 16 in the GQA scenario, "
                     "when layout is " + layoutStr;
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
@@ -1476,7 +1476,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
     ge::DataType queryDataType = fiaInfo.opParamInfo.query.desc->GetDataType();
     ge::DataType attenOutDataType = fiaInfo.opParamInfo.attenOut.desc->GetDataType();
     if (!fiaInfo.isOutQuantEnable && !enableFullQuant_) {
-        if (queryDataType != attenOutDataType) {
+        if (unlikely(queryDataType != attenOutDataType)) {
             std::string dtypeMsg = ToString(queryDataType) + " and " + ToString(attenOutDataType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
                 dtypeMsg.c_str(), "The dtypes of query and attention_out must be the same");
