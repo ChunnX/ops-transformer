@@ -234,7 +234,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
 
     // 每个BS中nc循环
     cCountPerBS_ = cLenAlignFp32_;
-    cLoopsPerBS_ = Ops::Base::CeilAlign(int64_t(n_ * c_), cCountPerBS_);
+    cLoopsPerBS_ = Ops::Base::CeilDiv(int64_t(n_ * c_), cCountPerBS_);
     cTailPerBS_ = n_ * c_ - (cLoopsPerBS_ - 1) * cCountPerBS_;
     // BSNC每核循环
     cBlockLoops_ = (blockIdx_ == tilingData->finalUsedAivNum - 1) ? tilingData->cBlockTailLoops : tilingData->cBlockLoops;
@@ -515,7 +515,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
         int64_t curBsIdx = bsOffset + bsLoop;
         U invRms = invRmsLocal(bsLoop);
-        ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPre_, invRms, n_, curBsIdx * k_);
+        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, alphaPre_, n_, curBsIdx * k_);
+        event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradHcBeforeNormWs_, invRms, n_, curBsIdx * k_);
     }
 
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, hcBeforeNormOffset + n_, alphaPost_, n_);
@@ -528,7 +532,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
         int64_t curBsIdx = bsOffset + bsLoop;
         U invRms = invRmsLocal(bsLoop);
-        ComputeGradNormOutAndGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaPost_, invRms, n_, curBsIdx * k_ + n_);
+        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, alphaPost_, n_, curBsIdx * k_ + n_);
+        event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradHcBeforeNormWs_, invRms, n_, curBsIdx * k_ + n_);
     }
 
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, hcBeforeNormOffset + 2 * n_, alphaRes_, 2 * n_);
@@ -1082,6 +1090,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     LocalTensor<U> hcBeforeNormLocal = gradCalcBuf2_.Get<U>();
     CopyIn(gradNormOutLocal, gradNormOutWs_[curBsKOffset], 0, k_, 0, 0);
     CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[curBsKOffset], 0, k_, 0, 0);
+    event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+    WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
     ComputeGradInvRms(gradNormOutLocal, hcBeforeNormLocal, k_, curGradInvRms);
 
     for (int64_t cLoop = 0; cLoop < cLoopsPerBS_; cLoop++) { // 切k
@@ -1097,7 +1108,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         xFp32LocalOut = xFp32Que_.DeQue<U>();
         CopyOut(xFp32Ws_[calcOffset], xFp32LocalOut, 1, calcCount, 0, 0);
         xQue_.FreeTensor(xTmpLocal);
-        xFp32Que_.FreeTensor(xTmpLocal);
+        xFp32Que_.FreeTensor(xFp32LocalOut);
     }
 }
 
@@ -1160,21 +1171,25 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
                     int64_t curBsIdx = bsOffset + bsLoop;
                     U invRms = invRmsGm_(curBsIdx);
-                    ComputeGradNormOutAndGradHcBeforeNorm(expGradLocal[bsLoop * n_ * n_], gradNormOutWs_, gradHcBeforeNormWs_, alphaRes_, invRms, n_ * n_, curBsIdx * k_ + 2 * n_);
+                    ComputeGradNormOutOrGradHcBeforeNorm(expGradLocal[bsLoop * n_ * n_], gradNormOutWs_, alphaRes_, n_ * n_, curBsIdx * k_ + 2 * n_);
+                    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                    ComputeGradNormOutOrGradHcBeforeNorm(expGradLocal[bsLoop * n_ * n_], gradHcBeforeNormWs_, invRms, n_ * n_, curBsIdx * k_ + 2 * n_);
                 }
             }
-        }
-        SyncAll();
-        if (blockIdx_ == 0) {
-            AddAlphaAndBias();
         }
         // 计算GradXFromRms
         CrossCoreSetFlag<0x2, PIPE_MTE3>(0); // GradHcBeforeNorm计算完成，可以进行matmul计算
         SyncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
-        for (uint64_t bsIdx = 0; bsIdx < curCoreProcessbsTask_; bsIdx++) {
-            ProcessGradXFromRms(bsIdx);
+        if (blockIdx_ < usedAivNum_) {
+            for (uint64_t bsIdx = 0; bsIdx < curCoreProcessbsTask_; bsIdx++) {
+                ProcessGradXFromRms(bsIdx);
+            }
+        }   
+        if (blockIdx_ == 0) {
+            AddAlphaAndBias();
         }
-        
         // 计算GradX,需添加等待matmul完成
         CrossCoreWaitFlag<0x2>(1); // gradX matmul计算完成可以执行进行最后的计算
         SyncAll();
@@ -1186,9 +1201,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     if ASCEND_IS_AIC {
         CrossCoreWaitFlag<0x2>(0);
         int32_t totalSize = batchSize_ * seqLength_;
-        int32_t taskNumPerCore = Ops::Base::CeilDiv(static_cast<int64_t>(totalSize), aicNum_);
+        int32_t taskNumPerCore = Ops::Base::CeilDiv(totalSize, static_cast<int32_t>(aicNum_));
         int32_t taskOffset = blockIdx_ * taskNumPerCore;
-        taskNumPerCore = std::min(taskNumPerCore, totalSize - blockIdx_ * taskNumPerCore);
+        taskNumPerCore = min(taskNumPerCore, static_cast<int32_t>(totalSize - blockIdx_ * taskNumPerCore));
         ComputeGradXMatmul(taskOffset, taskNumPerCore);
         ComputeGradPhiMatmul(taskOffset, taskNumPerCore);
         CrossCoreSetFlag<0x2, PIPE_FIX>(1);
