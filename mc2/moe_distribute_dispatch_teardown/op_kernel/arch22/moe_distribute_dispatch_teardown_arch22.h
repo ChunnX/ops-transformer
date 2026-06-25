@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h"
 #include "../moe_distribute_dispatch_teardown_tiling.h"
 
 namespace Mc2Kernel {
