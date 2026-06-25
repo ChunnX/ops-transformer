@@ -397,7 +397,7 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Prologue(
                 uint32_t maskOffset = tIdx * mnConfig_.n + vfBlockIdx * eleNumPerVf_;
                 uint32_t alphaOffset = vfBlockIdx * eleNumPerVf_;
                 uint32_t biasOffset = vfBlockIdx * eleNumPerVf_;
-                uint32_t curOffset = 
+                uint32_t curOffset =
                     MhcPreUtils::Min(mnConfig_.n - vfBlockIdx * eleNumPerVf_, static_cast<uint64_t>(eleNumPerVf_));
                 MicroAPI::MaskReg curMask = MicroAPI::UpdateMask<P>(curLen);
 
