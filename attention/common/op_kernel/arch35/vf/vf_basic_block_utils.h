@@ -627,6 +627,88 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitRintThree = {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
             (__ubuf__ T *&)buf + floatRepSize * 15 + idx * stride, val##16, mask);     \
     } while (0)
+/* **************************************************************************************************
+ * maskUb reference-pointer declarations: __ubuf__ uint32_t *&maskUbN
+ * ************************************************************************************************* */
+#define VREG_FLOAT_MASKUB_REF_6_DECL \
+    __ubuf__ uint32_t *&maskUb1, __ubuf__ uint32_t *&maskUb2, \
+    __ubuf__ uint32_t *&maskUb3, __ubuf__ uint32_t *&maskUb4, \
+    __ubuf__ uint32_t *&maskUb5, __ubuf__ uint32_t *&maskUb6
+
+#define ARG_FLOAT_MASKUB_REF_6 \
+    maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6
+
+#define VREG_FLOAT_MASKUB_REF_8_DECL \
+    VREG_FLOAT_MASKUB_REF_6_DECL, \
+    __ubuf__ uint32_t *&maskUb7, __ubuf__ uint32_t *&maskUb8
+
+#define ARG_FLOAT_MASKUB_REF_8 \
+    ARG_FLOAT_MASKUB_REF_6, maskUb7, maskUb8
+
+#define VREG_FLOAT_MASKUB_REF_16_DECL \
+    VREG_FLOAT_MASKUB_REF_8_DECL, \
+    __ubuf__ uint32_t *&maskUb9,  __ubuf__ uint32_t *&maskUb10, \
+    __ubuf__ uint32_t *&maskUb11, __ubuf__ uint32_t *&maskUb12, \
+    __ubuf__ uint32_t *&maskUb13, __ubuf__ uint32_t *&maskUb14, \
+    __ubuf__ uint32_t *&maskUb15, __ubuf__ uint32_t *&maskUb16
+
+#define ARG_FLOAT_MASKUB_REF_16 \
+    ARG_FLOAT_MASKUB_REF_8, \
+    maskUb9, maskUb10, maskUb11, maskUb12, maskUb13, maskUb14, maskUb15, maskUb16
+
+/* **************************************************************************************************
+ * maskUb plain pointer declarations: __ubuf__ uint32_t * maskUbN
+ * ************************************************************************************************* */
+#define VREG_FLOAT_MASKUB_6_DECL \
+    __ubuf__ uint32_t * maskUb1, __ubuf__ uint32_t * maskUb2, \
+    __ubuf__ uint32_t * maskUb3, __ubuf__ uint32_t * maskUb4, \
+    __ubuf__ uint32_t * maskUb5, __ubuf__ uint32_t * maskUb6
+
+#define ARG_FLOAT_MASKUB_6 \
+    maskUb1, maskUb2, maskUb3, maskUb4, maskUb5, maskUb6
+
+#define VREG_FLOAT_MASKUB_8_DECL \
+    VREG_FLOAT_MASKUB_6_DECL, \
+    __ubuf__ uint32_t * maskUb7, __ubuf__ uint32_t * maskUb8
+
+#define ARG_FLOAT_MASKUB_8 \
+    ARG_FLOAT_MASKUB_6, maskUb7, maskUb8
+
+#define VREG_FLOAT_MASKUB_16_DECL \
+    VREG_FLOAT_MASKUB_8_DECL, \
+    __ubuf__ uint32_t * maskUb9,  __ubuf__ uint32_t * maskUb10, \
+    __ubuf__ uint32_t * maskUb11, __ubuf__ uint32_t * maskUb12, \
+    __ubuf__ uint32_t * maskUb13, __ubuf__ uint32_t * maskUb14, \
+    __ubuf__ uint32_t * maskUb15, __ubuf__ uint32_t * maskUb16
+
+#define ARG_FLOAT_MASKUB_16 \
+    ARG_FLOAT_MASKUB_8, \
+    maskUb9, maskUb10, maskUb11, maskUb12, maskUb13, maskUb14, maskUb15, maskUb16
+
+/* **************************************************************************************************
+ * maskUb local initialization: __ubuf__ uint32_t * maskUbN = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + offset)
+ * ************************************************************************************************* */
+#define DO_MASKUB_INIT_8(maskTensor) \
+    __ubuf__ uint32_t * maskUb1 = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr(); \
+    __ubuf__ uint32_t * maskUb2 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize); \
+    __ubuf__ uint32_t * maskUb3 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 2); \
+    __ubuf__ uint32_t * maskUb4 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 3); \
+    __ubuf__ uint32_t * maskUb5 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 4); \
+    __ubuf__ uint32_t * maskUb6 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 5); \
+    __ubuf__ uint32_t * maskUb7 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 6); \
+    __ubuf__ uint32_t * maskUb8 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 7)
+
+#define DO_MASKUB_INIT_16(maskTensor) \
+    DO_MASKUB_INIT_8(maskTensor); \
+    __ubuf__ uint32_t * maskUb9 =  (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 8); \
+    __ubuf__ uint32_t * maskUb10 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 9); \
+    __ubuf__ uint32_t * maskUb11 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 10); \
+    __ubuf__ uint32_t * maskUb12 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 11); \
+    __ubuf__ uint32_t * maskUb13 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 12); \
+    __ubuf__ uint32_t * maskUb14 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 13); \
+    __ubuf__ uint32_t * maskUb15 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 14); \
+    __ubuf__ uint32_t * maskUb16 = (__ubuf__ uint32_t *)(maskTensor.GetPhyAddr() + floatRepSize * 15)
+
 } // namespace
 
 #endif // VF_BASIC_BLOCK_UTILS_H
