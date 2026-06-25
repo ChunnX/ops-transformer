@@ -98,6 +98,7 @@ protected:
     // ---- 各张量形状合法性校验 ----
     ge::graphStatus ValidateXShape();
     ge::graphStatus ValidateWeightShape();
+    ge::graphStatus ValidateBiasShape();
     ge::graphStatus ValidateConvStatesShape();
     ge::graphStatus ValidateQueryStartLocShape();
     ge::graphStatus ValidateCacheIndicesShape();
@@ -106,6 +107,7 @@ protected:
     // ---- 各张量数据类型合法性校验 ----
     ge::graphStatus ValidateXType();
     ge::graphStatus ValidateWeightType();
+    ge::graphStatus ValidateBiasType();
     ge::graphStatus ValidateConvStatesType();
     ge::graphStatus ValidateQueryStartLocType();
     ge::graphStatus ValidateCacheIndicesType();
@@ -161,6 +163,7 @@ private:
     // ---- 数据类型（由 GetTypeInfo 填充）----
     ge::DataType xDtype_;
     ge::DataType weightDtype_;
+    ge::DataType biasDtype_;
     ge::DataType convStatesDtype_;
     ge::DataType queryStartLocDtype_;
     ge::DataType cacheIndicesDtype_;
@@ -169,6 +172,7 @@ private:
 
     // ---- 算子属性（由 GetAttrInfo 填充）----
     int64_t activationMode_ = 0;     // 激活函数模式
+    int64_t hasBias_ = 0;            // 是否提供 bias
     int64_t xStride_ = 0;            // x 在 seq_len 维度上的 stride（view 时非 dim_）
     int64_t cacheStride0_ = 0;       // conv_states 在 batch 维度的 stride
     int64_t cacheStride1_ = 0;       // conv_states 在 state_len 维度的 stride

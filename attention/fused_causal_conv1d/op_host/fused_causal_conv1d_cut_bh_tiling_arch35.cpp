@@ -163,6 +163,17 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetTypeInfo()
     weightDtype_ = context_->GetInputDesc(WEIGHT_INDEX)->GetDataType();
     convStatesDtype_ = context_->GetInputDesc(CONV_STATES_INDEX)->GetDataType();
 
+    auto biasShape = context_->GetOptionalInputShape(BIAS_INDEX);
+    auto biasDesc = context_->GetOptionalInputDesc(BIAS_INDEX);
+    if (biasShape != nullptr && biasShape->GetOriginShape().GetDimNum() == DIM_1 &&
+        biasShape->GetOriginShape().GetDim(DIM_0) > 0) {
+        OP_CHECK_NULL_WITH_CONTEXT(context_, biasDesc);
+        biasDtype_ = biasDesc->GetDataType();
+        hasBias_ = 1;
+    } else {
+        hasBias_ = 0;
+    }
+
     // 可选输入：query_start_loc
     auto queryStartLocDesc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);
     if (queryStartLocDesc != nullptr) {
@@ -214,6 +225,12 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
     const int64_t *padSlotIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_PAD_SLOT_ID_INDEX);
     if (padSlotIdPtr != nullptr) {
         padSlotId_ = *padSlotIdPtr;
+    }
+    if (activationMode_ < 0 || activationMode_ > 2) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "activation_mode", std::to_string(activationMode_).c_str(),
+            "The value of activation_mode must be 0(None), 1(silu), or 2(swish)");
+        return ge::GRAPH_FAILED;
     }
 
     runMode_ = 1;
@@ -361,6 +378,30 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightShape()
         return ge::GRAPH_FAILED;
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateBiasShape()
+{
+    if (hasBias_ == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    auto biasShape = context_->GetOptionalInputShape(BIAS_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, biasShape);
+    auto biasOriginShape = biasShape->GetOriginShape();
+    if (biasOriginShape.GetDimNum() != DIM_1) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context_->GetNodeName(), "bias", std::to_string(biasOriginShape.GetDimNum()).c_str(),
+            "The shape dim of bias must be 1");
+        return ge::GRAPH_FAILED;
+    }
+    int64_t biasDim = biasOriginShape.GetDim(DIM_0);
+    if (biasDim != dim_) {
+        std::string reasonMsg = "Shape [0] of bias must be equal to dim (" + std::to_string(dim_) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "bias", std::to_string(biasDim).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -527,6 +568,21 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightType()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateBiasType()
+{
+    if (hasBias_ == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (biasDtype_ != xDtype_) {
+        std::string dtypeMsg = Ops::Base::ToString(xDtype_) + " and " + Ops::Base::ToString(biasDtype_);
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            context_->GetNodeName(), "x and bias", dtypeMsg.c_str(),
+            "The dtypes of x and bias must be the same");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesType()
 {
     if (convStatesDtype_ != xDtype_) {
@@ -597,6 +653,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
         return ge::GRAPH_FAILED;
     if (ValidateWeightShape() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
+    if (ValidateBiasShape() != ge::GRAPH_SUCCESS)
+        return ge::GRAPH_FAILED;
     if (ValidateConvStatesShape() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
     if (ValidateQueryStartLocShape() != ge::GRAPH_SUCCESS)
@@ -610,6 +668,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
     if (ValidateXType() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
     if (ValidateWeightType() != ge::GRAPH_SUCCESS)
+        return ge::GRAPH_FAILED;
+    if (ValidateBiasType() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
     if (ValidateConvStatesType() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
@@ -746,7 +806,7 @@ void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t co
 
     // 每个 dim 元素对应的 weight/conv_states UB 开销（字节）
     // weight 单 buffer（1份），cacheQueueIn + cacheQueueOut 各 DB（2×2份）
-    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
+    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + hasBias_ + BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
     // 每个 dim 元素对应的 x（含 y）UB 开销（单 buffer × batch × seqLen × 2 方向）
     int64_t xCoeffPerDimFullBS = coreBS * seqLen_ * DTYPE_SIZE * 2;
     int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
@@ -990,6 +1050,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
     tilingData_.xInputMode = xInputMode_;
     tilingData_.hasQueryStartLoc = hasQueryStartLoc_;
     tilingData_.hasAcceptTokenNum = hasAcceptTokenNum_;
+    tilingData_.hasBias = hasBias_;
+    tilingData_.activationMode = activationMode_;
     tilingData_.residualConnection = residualConnection_;
 
     tilingData_.apcEnable = apcEnable_;
@@ -1071,7 +1133,10 @@ void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "cacheStride1: %ld", tilingData_.cacheStride1);
     OP_LOGI(context_->GetNodeName(), "padSlotId: %ld", tilingData_.padSlotId);
     OP_LOGI(context_->GetNodeName(), "xInputMode: %ld", tilingData_.xInputMode);
+    OP_LOGI(context_->GetNodeName(), "hasQueryStartLoc: %ld", tilingData_.hasQueryStartLoc);
     OP_LOGI(context_->GetNodeName(), "hasAcceptTokenNum: %ld", tilingData_.hasAcceptTokenNum);
+    OP_LOGI(context_->GetNodeName(), "hasBias: %ld", tilingData_.hasBias);
+    OP_LOGI(context_->GetNodeName(), "activationMode: %ld", tilingData_.activationMode);
     OP_LOGI(context_->GetNodeName(), "residualConnection: %ld", tilingData_.residualConnection);
     OP_LOGI(context_->GetNodeName(), "apcEnable: %ld", tilingData_.apcEnable);
     OP_LOGI(context_->GetNodeName(), "blockSize: %ld", tilingData_.blockSize);
@@ -1177,7 +1242,7 @@ void FusedCausalConv1dCutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int6
     }
 
     // UB 占用系数（weight 单 buffer，cacheQueue DB，x/y 单 buffer）
-    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
+    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + hasBias_ + BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
     int64_t xCoeffPerDimFullBS = coreBS * seqLen_ * DTYPE_SIZE * 2;
     int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
 

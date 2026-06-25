@@ -21,10 +21,10 @@
 
 namespace {
 
-std::vector<gert::TilingContextPara::OpAttr> MakeAttrs()
+std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(int64_t activationMode = 0)
 {
     return {
-        {"activation_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"activation_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activationMode)},
         {"pad_slot_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
     };
 }
@@ -98,6 +98,34 @@ TEST_F(FusedCausalConv1dTiling, Bh2dVarlenBf16AcceptsKernelWidth4)
             {{{16, 128}, {16, 128}}, ge::DT_BF16, ge::FORMAT_ND},        // y
         },
         MakeAttrs(),
+        &compileInfo);
+
+    ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, optiling::TILING_KEY_BH_BF16);
+}
+
+TEST_F(FusedCausalConv1dTiling, Bh2dVarlenBf16AcceptsBiasAndSilu)
+{
+    optiling::FusedCausalConv1dCutBHCompileInfo compileInfo = {64, 261888};
+
+    gert::TilingContextPara tilingPara(
+        "FusedCausalConv1d",
+        {
+            {{{1, 3072}, {1, 3072}}, ge::DT_BF16, ge::FORMAT_ND},       // x, flattened token rows
+            {{{4, 3072}, {4, 3072}}, ge::DT_BF16, ge::FORMAT_ND},       // weight, W=4
+            {{{3072}, {3072}}, ge::DT_BF16, ge::FORMAT_ND},             // bias
+            {
+                {{1474, 3, 3072}, {1474, 3, 3072}},
+                ge::DT_BF16,
+                ge::FORMAT_ND,
+            },                                                           // conv_states
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},                  // query_start_loc: [0, 1]
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},                  // cache_indices
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                    // num_accepted_tokens
+        },
+        {
+            {{{1, 3072}, {1, 3072}}, ge::DT_BF16, ge::FORMAT_ND},       // y
+        },
+        MakeAttrs(1),
         &compileInfo);
 
     ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, optiling::TILING_KEY_BH_BF16);

@@ -62,6 +62,8 @@ struct FusedCausalConv1dCutBHTilingData {
     int64_t xInputMode;           // Input mode: 0 for 3D 1 for 2D
     int64_t hasQueryStartLoc;     // Whether query_start_loc is provided for 2D varlen decode
     int64_t hasAcceptTokenNum;    // Whether acceptTokenNum input is provided: 0 for false, 1 for true
+    int64_t hasBias;              // Whether bias input is provided: 0 for false, 1 for true
+    int64_t activationMode;       // Activation mode: 0 none, 1 silu, 2 swish
     int64_t residualConnection;   // Whether use residual connection: 0 for false, 1 for true
     int64_t apcEnable;            // 是否开启 APC：0=关闭，1=开启
     int64_t blockSize;            // APC block 大小（128 或 256）

@@ -36,7 +36,7 @@ class FusedCausalConv1dCutBH {
 public:
     __aicore__ inline FusedCausalConv1dCutBH(TPipe *pipe) : pipe_(pipe){};
 
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates, GM_ADDR queryStartLoc,
                                 GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR y,
                                 const FusedCausalConv1dCutBHTilingData *tilingData);
 
@@ -77,6 +77,7 @@ private:
     // ========== Global Memory指针 ==========
     GlobalTensor<T> xGm;                                 // 输入序列 [batch, seqLen, dim]
     GlobalTensor<T> weightGm;                            // 卷积核 [K, dim]
+    GlobalTensor<T> biasGm;                              // 偏置 [dim]
     GlobalTensor<T> convStatesGm;                        // 输入cache state [-1, K-1+m, dim]
     GlobalTensor<int32_t> cacheIndicesGm;                // cache索引：非APC=[batch]，APC=[batch, maxNumBlocks]
     GlobalTensor<int32_t> acceptTokenNumGm;              // 接受的token数 [batch]
@@ -139,6 +140,8 @@ private:
     int32_t dimOffset_;         // 当前核处理的Dim起始偏移（元素）
     int32_t coreDimLen_;        // 当前核处理的Dim大小
     int64_t hasAcceptTokenNum_; // 是否提供了acceptTokenNum输入
+    int64_t hasBias_;           // 是否提供 bias 输入
+    int64_t activationMode_;    // 0: None, 1: SiLU, 2: Swish
     int64_t dimSum_;            // x每个token间的stride
     int64_t cacheLenSum_;       // cache每个token间的stride
     int64_t cacheBatchLenSum_;  // cache每个batch间的stride
@@ -156,13 +159,14 @@ private:
     int64_t inplace_;              // 是否原地更新（F3）
     int64_t convMode_;             // 0=Qwen3，1=Pangu v2（F5 convMode）
     int64_t hasNumComputedTokens_; // numComputedTokens 是否有效
-    int32_t xWeightQueueSize_;     // xWeightQueue 单 buffer 大小（x部分 + weight部分）
+    int32_t xWeightQueueSize_;     // xWeightQueue 单 buffer 大小（x部分 + weight部分 + bias部分）
     int32_t xPartSize_;            // xWeightQueue 中 x 部分的元素个数（用于计算weight偏移）
+    int32_t weightPartSize_;       // xWeightQueue 中 weight 部分的元素个数（用于计算bias偏移）
 };
 
 template <typename T>
 __aicore__ inline void
-FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
+FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR convStates, GM_ADDR queryStartLoc,
                                 GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR y,
                                 const FusedCausalConv1dCutBHTilingData *tilingData)
 {
@@ -185,6 +189,9 @@ FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, G
         }
     }
     weightGm.SetGlobalBuffer((__gm__ T *)weight, kernelSize_ * dim_);
+    if (hasBias_) {
+        biasGm.SetGlobalBuffer((__gm__ T *)bias, dim_);
+    }
     convStatesGm.SetGlobalBuffer((__gm__ T *)convStates);
 
     if (hasCacheIndices_) {
@@ -221,6 +228,8 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
     kernelSize_ = tilingData->kernelSize;
     stateLen_ = tilingData->stateLen;
     hasAcceptTokenNum_ = tilingData->hasAcceptTokenNum;
+    hasBias_ = tilingData->hasBias;
+    activationMode_ = tilingData->activationMode;
     xInputMode_ = tilingData->xInputMode;
     hasQueryStartLoc_ = tilingData->hasQueryStartLoc;
     isResidualConnection_ = tilingData->residualConnection;
@@ -302,8 +311,10 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
         xQueueSize = ubMainFactorBS_ * maxQueryLen_ * ubMainFactorDim_ * sizeof(T);
     }
     int32_t weightQueueSize = kernelSize_ * ubMainFactorDim_ * sizeof(T);
+    int32_t biasQueueSize = ubMainFactorDim_ * sizeof(T);
     xPartSize_ = xQueueSize / sizeof(T);
-    xWeightQueueSize_ = xQueueSize + weightQueueSize;
+    weightPartSize_ = weightQueueSize / sizeof(T);
+    xWeightQueueSize_ = xQueueSize + weightQueueSize + biasQueueSize;
     pipe_->InitBuffer(xWeightQueue, 1, xWeightQueueSize_);
     pipe_->InitBuffer(yQueue, 1, xQueueSize);
 
@@ -440,6 +451,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::CopyIn(int32_t batchLoop, int3
     LocalTensor<T> xWeightLocal = xWeightQueue.AllocTensor<T>();
     LocalTensor<T> xLocal = xWeightLocal[0];
     LocalTensor<T> weightLocal = xWeightLocal[xPartSize_];
+    LocalTensor<T> biasLocal = xWeightLocal[xPartSize_ + weightPartSize_];
 
     // === 拷贝x数据：[blockCount, dimSizeInLoop] ===
     DataCopyPadParams padParams{false, 0, 0, 0};
@@ -459,6 +471,15 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::CopyIn(int32_t batchLoop, int3
     weightCopyParams.dstStride = 0;
     DataCopyPad(weightLocal, weightGm[weightOffset], weightCopyParams, padParams);
 
+    if (hasBias_) {
+        DataCopyParams biasCopyParams;
+        biasCopyParams.blockCount = 1;
+        biasCopyParams.blockLen = dimSizeInLoop_ * sizeof(T);
+        biasCopyParams.srcStride = 0;
+        biasCopyParams.dstStride = 0;
+        DataCopyPad(biasLocal, biasGm[weightOffset], biasCopyParams, padParams);
+    }
+
     xWeightQueue.EnQue(xWeightLocal);
 }
 
@@ -473,6 +494,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
     LocalTensor<T> xWeightLocal = xWeightQueue.DeQue<T>();
     LocalTensor<T> xLocal = xWeightLocal[0];
     LocalTensor<T> weightLocal = xWeightLocal[xPartSize_];
+    LocalTensor<T> biasLocal = xWeightLocal[xPartSize_ + weightPartSize_];
     LocalTensor<T> yLocal = yQueue.AllocTensor<T>();
 
     int32_t batchNumPerLoop = batchLoop * ubMainFactorBS_;
@@ -591,11 +613,11 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
                 (numComputed == 0) ? convStatesLocalIn : convStatesLocalIn[offset * dimSizeInLoop_];
             uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / CAST_REP_SIZE * CAST_REP_SIZE;
             if (dimRem == 0) {
-                Conv1dNeedStateBH(xSlice, weightLocal, convStatesSlice, y1Slice, convStateLen, dimSizeInLoop_,
-                                  isResidualConnection_);
+                Conv1dNeedStateBH(xSlice, weightLocal, biasLocal, convStatesSlice, y1Slice, convStateLen,
+                                  dimSizeInLoop_, isResidualConnection_, hasBias_, activationMode_);
             } else {
-                Conv1dNeedStateSingleTailBH(xSlice, weightLocal, convStatesSlice, y1Slice, convStateLen, dimSizeInLoop_,
-                                            isResidualConnection_);
+                Conv1dNeedStateSingleTailBH(xSlice, weightLocal, biasLocal, convStatesSlice, y1Slice, convStateLen,
+                                            dimSizeInLoop_, isResidualConnection_, hasBias_, activationMode_);
             }
         }
         cacheQueueIn.FreeTensor<T>(convStatesLocalIn);
@@ -608,11 +630,11 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
                 uint32_t xWindowOffset = static_cast<uint32_t>(blockIdx) * dimSizeInLoop_;
                 uint32_t yOffset = static_cast<uint32_t>(blockIdx) * dimSizeInLoop_;
                 if (dimRem == 0) {
-                    Conv1dPureXW4(xSlice, weightLocal, y2Slice, xWindowOffset, yOffset, dimSizeInLoop_,
-                                  isResidualConnection_);
+                    Conv1dPureXW4(xSlice, weightLocal, biasLocal, y2Slice, xWindowOffset, yOffset, dimSizeInLoop_,
+                                  isResidualConnection_, hasBias_, activationMode_);
                 } else {
-                    Conv1dPureXW4SingleTail(xSlice, weightLocal, y2Slice, xWindowOffset, yOffset, dimSizeInLoop_,
-                                            isResidualConnection_);
+                    Conv1dPureXW4SingleTail(xSlice, weightLocal, biasLocal, y2Slice, xWindowOffset, yOffset,
+                                            dimSizeInLoop_, isResidualConnection_, hasBias_, activationMode_);
                 }
             }
         }

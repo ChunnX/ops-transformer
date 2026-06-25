@@ -142,7 +142,8 @@ __simd_vf__ void Conv1dNeedStateConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAdd
 // 对stateAddr的数据进行原地读写出操作， stateAddr=yAddr
 template <typename T>
 __simd_vf__ void Conv1dNeedStateConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                      __ubuf__ T *yAddr, uint8_t stateSLen, uint8_t xSLen, uint32_t dimLen)
+                                      __ubuf__ T *yAddr, __ubuf__ T *biasAddr, uint8_t stateSLen, uint8_t xSLen,
+                                      uint32_t dimLen, uint8_t hasBias, uint8_t activationMode)
 {
     MicroAPI::RegTensor<float> xB32, mulB32, weightB32, yB32;
     MicroAPI::RegTensor<T> xB16, weightB16, yB16;
@@ -172,6 +173,7 @@ __simd_vf__ void Conv1dNeedStateConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr,
             MicroAPI::Add(yB32, yB32, mulB32, maskB32);
         }
         MicroAPI::Add(yB32, yB32, xB32, maskB32);
+        ApplyBiasActivationVF(yB32, biasAddr, offset, hasBias, activationMode, maskB32);
         MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, maskB32);
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + offset, yB16, maskB32);
         offset += B32_REP_SIZE;
@@ -180,7 +182,8 @@ __simd_vf__ void Conv1dNeedStateConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr,
 
 template <typename T>
 __simd_vf__ void Conv1dNeedStateNoConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-                                        __ubuf__ T *yAddr, uint8_t stateSLen, uint8_t xSLen, uint32_t dimLen)
+                                        __ubuf__ T *yAddr, __ubuf__ T *biasAddr, uint8_t stateSLen, uint8_t xSLen,
+                                        uint32_t dimLen, uint8_t hasBias, uint8_t activationMode)
 {
     MicroAPI::RegTensor<float> xB32, mulB32, weightB32, yB32;
     MicroAPI::RegTensor<T> xB16, weightB16, yB16;
@@ -209,6 +212,7 @@ __simd_vf__ void Conv1dNeedStateNoConVF(__ubuf__ T *xAddr, __ubuf__ T *weightAdd
             MicroAPI::Mul(mulB32, xB32, weightB32, maskB32);
             MicroAPI::Add(yB32, yB32, mulB32, maskB32);
         }
+        ApplyBiasActivationVF(yB32, biasAddr, offset, hasBias, activationMode, maskB32);
         MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, maskB32);
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + offset, yB16, maskB32);
         offset += B32_REP_SIZE;
@@ -762,51 +766,94 @@ __simd_vf__ void Conv1dNoNeedStateNoConResVF(__ubuf__ T *xAddr, __ubuf__ T *weig
 }
 
 template <typename T>
-__aicore__ inline void Conv1dNeedState(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &stateUb,
-                                       LocalTensor<T> &yUb, uint8_t stateSLen, uint32_t xSLen, uint32_t dimLen,
-                                       int32_t isResidualConnection)
+__aicore__ inline void Conv1dNeedState(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &biasUb,
+                                       LocalTensor<T> &stateUb, LocalTensor<T> &yUb, uint8_t stateSLen,
+                                       uint32_t xSLen, uint32_t dimLen, int32_t isResidualConnection,
+                                       uint8_t hasBias, uint8_t activationMode)
 {
     __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
     __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
+    __ubuf__ T *biasAddr = (__ubuf__ T *)biasUb.GetPhyAddr();
     __ubuf__ T *stateAddr = (__ubuf__ T *)stateUb.GetPhyAddr();
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
     if (isResidualConnection == 1) {
-        Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr, yAddr, biasAddr, stateSLen, xSLen, dimLen, hasBias,
+                             activationMode);
     } else {
-        Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr, yAddr, biasAddr, stateSLen, xSLen, dimLen, hasBias,
+                               activationMode);
     }
 }
 
 template <typename T>
-__aicore__ inline void Conv1dNeedStateBH(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &stateUb,
-                                         LocalTensor<T> &yUb, uint32_t convStateLen, uint32_t dimLen,
-                                         int32_t isResidualConnection)
+__aicore__ inline void Conv1dNeedStateBH(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &biasUb,
+                                         LocalTensor<T> &stateUb, LocalTensor<T> &yUb, uint32_t convStateLen,
+                                         uint32_t dimLen, int32_t isResidualConnection, uint8_t hasBias,
+                                         uint8_t activationMode)
 {
     __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
     __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
+    __ubuf__ T *biasAddr = (__ubuf__ T *)biasUb.GetPhyAddr();
     __ubuf__ T *stateAddr = (__ubuf__ T *)stateUb.GetPhyAddr();
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
     if (isResidualConnection == 1) {
         if (convStateLen >= 1) {
-            Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr, yAddr, 3, 1, dimLen);
+            Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr, yAddr, biasAddr, 3, 1, dimLen, hasBias,
+                                 activationMode);
         }
         if (convStateLen >= 2) {
-            Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr + dimLen, yAddr + dimLen, 2, 2, dimLen);
+            Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr + dimLen, yAddr + dimLen, biasAddr, 2, 2, dimLen,
+                                 hasBias, activationMode);
         }
         if (convStateLen >= 3) {
-            Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr + 2 * dimLen, yAddr + 2 * dimLen, 1, 3, dimLen);
+            Conv1dNeedStateConVF(xAddr, weightAddr, stateAddr + 2 * dimLen, yAddr + 2 * dimLen, biasAddr, 1, 3,
+                                 dimLen, hasBias, activationMode);
         }
     } else {
         if (convStateLen >= 1) {
-            Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr, yAddr, 3, 1, dimLen);
+            Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr, yAddr, biasAddr, 3, 1, dimLen, hasBias,
+                                   activationMode);
         }
         if (convStateLen >= 2) {
-            Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr + dimLen, yAddr + dimLen, 2, 2, dimLen);
+            Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr + dimLen, yAddr + dimLen, biasAddr, 2, 2, dimLen,
+                                   hasBias, activationMode);
         }
         if (convStateLen >= 3) {
-            Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr + 2 * dimLen, yAddr + 2 * dimLen, 1, 3, dimLen);
+            Conv1dNeedStateNoConVF(xAddr, weightAddr, stateAddr + 2 * dimLen, yAddr + 2 * dimLen, biasAddr, 1, 3,
+                                   dimLen, hasBias, activationMode);
         }
     }
+}
+
+template <typename T>
+__aicore__ inline void Conv1dPureXW4(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &biasUb,
+                                     LocalTensor<T> &yUb, uint32_t xWindowOffset, uint32_t yOffset,
+                                     uint32_t dimLen, int32_t isResidualConnection, uint8_t hasBias,
+                                     uint8_t activationMode)
+{
+    __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
+    __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
+    __ubuf__ T *biasAddr = (__ubuf__ T *)biasUb.GetPhyAddr();
+    __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
+    __ubuf__ T *stateAddr = xAddr + xWindowOffset;
+    __ubuf__ T *currentXAddr = stateAddr + 3 * dimLen;
+    __ubuf__ T *currentYAddr = yAddr + yOffset;
+
+    if (isResidualConnection == 1) {
+        Conv1dNeedStateConVF(currentXAddr, weightAddr, stateAddr, currentYAddr, biasAddr, 3, 1, dimLen, hasBias,
+                             activationMode);
+    } else {
+        Conv1dNeedStateNoConVF(currentXAddr, weightAddr, stateAddr, currentYAddr, biasAddr, 3, 1, dimLen, hasBias,
+                               activationMode);
+    }
+}
+
+template <typename T>
+__aicore__ inline void Conv1dNeedState(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &stateUb,
+                                       LocalTensor<T> &yUb, uint8_t stateSLen, uint32_t xSLen, uint32_t dimLen,
+                                       int32_t isResidualConnection)
+{
+    Conv1dNeedState(xUb, weightUb, weightUb, stateUb, yUb, stateSLen, xSLen, dimLen, isResidualConnection, 0, 0);
 }
 
 template <typename T>
@@ -814,18 +861,7 @@ __aicore__ inline void Conv1dPureXW4(LocalTensor<T> &xUb, LocalTensor<T> &weight
                                      uint32_t xWindowOffset, uint32_t yOffset, uint32_t dimLen,
                                      int32_t isResidualConnection)
 {
-    __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
-    __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
-    __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
-    __ubuf__ T *stateAddr = xAddr + xWindowOffset;
-    __ubuf__ T *currentXAddr = stateAddr + 3 * dimLen;
-    __ubuf__ T *currentYAddr = yAddr + yOffset;
-
-    if (isResidualConnection == 1) {
-        Conv1dNeedStateConVF(currentXAddr, weightAddr, stateAddr, currentYAddr, 3, 1, dimLen);
-    } else {
-        Conv1dNeedStateNoConVF(currentXAddr, weightAddr, stateAddr, currentYAddr, 3, 1, dimLen);
-    }
+    Conv1dPureXW4(xUb, weightUb, weightUb, yUb, xWindowOffset, yOffset, dimLen, isResidualConnection, 0, 0);
 }
 
 template <typename T>
