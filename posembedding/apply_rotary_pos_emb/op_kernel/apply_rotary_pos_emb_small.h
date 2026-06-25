@@ -48,7 +48,6 @@ private:
         const ApplyRotaryPosEmbTilingData* tilingData);
 
     constexpr static int32_t bufferNum = 1;
-    static constexpr int64_t BYTE_ALIGN = 32; // 【泛化需求】UB对齐字节数
 
 private:
     TPipe pipe;
@@ -92,8 +91,8 @@ __aicore__ inline void ARPESmall<T1, T2>::Init(
     repeatParams.src0BlkStride = 1;
     repeatParams.src1BlkStride = 1;
     // 【泛化需求】repeat stride使用computeAlignedLastDim，使各头按对齐后长度排布
-    repeatParams.dstRepStride = tilingData->computeAlignedLastDim / (BYTE_ALIGN / sizeof(T2));
-    repeatParams.src0RepStride = tilingData->computeAlignedLastDim / (BYTE_ALIGN / sizeof(T2));
+    repeatParams.dstRepStride = dstRepSBr;
+    repeatParams.src0RepStride = dstRepSBr;
     repeatParams.src1RepStride = 0;
 
 #if ORIG_DTYPE_QUERY == DT_BF16

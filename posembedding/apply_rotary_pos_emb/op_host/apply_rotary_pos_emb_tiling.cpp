@@ -466,7 +466,8 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
         params.tilingKey = static_cast<int64_t>(ApplyRotaryPosEmbTilingKey::TILINGKEY_SMALL);
         params.mulNum = params.qkcNum * params.lastDim;
         params.blockLenQ = params.halfNum / params.oneBlockFp32; // D/2 占用block数，搬运
-        params.dstRepSBr = params.lastDim / params.oneBlockFp32; // D 占用block数，计算
+        // 【泛化需求】使用 computeAlignedLastDim 计算相关 stride
+        params.dstRepSBr = params.computeAlignedLastDim / params.oneBlockFp32; // D 占用block数，计算
         params.qcdHalfNum = params.lastDim / params.mask; // D 计算时的repeat次数（按列计算），至少会执行一次，不能为0
         return ge::GRAPH_SUCCESS;
     }
