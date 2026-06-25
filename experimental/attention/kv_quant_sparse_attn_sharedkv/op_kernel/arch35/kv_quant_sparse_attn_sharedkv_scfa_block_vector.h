@@ -74,8 +74,7 @@ public:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    __aicore__ inline void ProcessVec0(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
@@ -89,10 +88,10 @@ public:
         __gm__ int32_t *actualSeqKvlenAddr, __gm__ uint8_t *workspace, ConstInfo &constInfo);
 
 private:
-    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessNotSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+        const RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessNotSparseKv(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+        const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CalProcSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase,
@@ -105,14 +104,9 @@ private:
         const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void DequantKv(LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow,
         ConstInfo &constInfo);
-    __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx,
-        const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo,
         ConstInfo &constInfo);
-    __aicore__ inline void CopyOutMrgeResult(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-        int64_t mte2Size, int64_t mte3Size, int64_t s2keyOffset, int64_t mergeMte3Idx, const RunInfo &runInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset);
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = Q_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
     using VEC2_RES_T = T;
@@ -154,7 +148,7 @@ private:
 
     TBuf<> commonTBuf; // common的复用空间
     TBuf<> sinksBuf;
-    TQue<QuePosition::VECOUT, 1> stage1OutQue[2]; // 2份表示可能存在pingpong
+    TBuf<> stage1OutBuf[2]; // 2份表示可能存在pingpong
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId;
     TEventID vToMte3Id;
@@ -162,6 +156,8 @@ private:
     TEventID vToMte2V0Id[2];
     TEventID vToMte3V0Id[2];
     TEventID mte3ToVV0Id[2];
+    TEventID vToMte3V1Id[2];
+    TEventID mte3ToVV1Id[2];
     TBuf<> softmaxMaxBuf[2];
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2]; 
@@ -498,22 +494,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> a
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow,
-    int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
-{
-    uint64_t blockElementNum = 16;
-    DataCopyParams dataCopyParams;
-    dataCopyParams.blockCount = (constInfo.dSizeNope + constInfo.dSizeRope) / blockElementNum;
-    dataCopyParams.blockLen = dealRow;
-    dataCopyParams.srcGap = blockElementNum + 1 - dealRow;
-    dataCopyParams.dstGap = Align16Func(runInfo.s2RealSize) - dealRow;
-
-    LocalTensor<Q_T> dst = outputL1.GetTensor<Q_T>();
-    DataCopy(dst[s2StartIdx * blockElementNum], antiKvTensorAsB16, dataCopyParams);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> antiKvTensorAsB16,
     int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
@@ -529,8 +509,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+    const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (procSize == 0) {
         return;
@@ -649,7 +630,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CalProcSize(const RunInfo &r
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo)
 {
@@ -668,12 +648,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     CalProcSize(runInfo, constInfo);
     if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
         if (isCmp) {
-            ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+            ProcessSparseKv(v0ResGm, runInfo, constInfo);
         } else {
-            ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+            ProcessNotSparseKv(v0ResGm, runInfo, constInfo);
         }
     } else {
-        ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
+        ProcessNotSparseKv(v0ResGm, runInfo, constInfo);
     }
 
     v0ResGm.SetCrossCore();
@@ -681,7 +661,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo)
 {
@@ -755,7 +734,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
     int64_t stage1Offset = runInfo.taskIdMod2;
-    auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<Q_T>();
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVV1Id[stage1Offset]);
+    LocalTensor<Q_T> stage1CastTensor = this->stage1OutBuf[stage1Offset].template Get<Q_T>();
 
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
@@ -820,8 +800,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     bmm1ResBuf.SetCrossCore();
 
     // ===================DataCopy to L1 ====================
-    this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
-    this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
+    SetFlag<HardEvent::V_MTE3>(vToMte3V1Id[stage1Offset]);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3V1Id[stage1Offset]);
 
     outputBuf.WaitCrossCore();
     LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>();
@@ -832,7 +812,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
             (uint16_t)(s1BaseSize - runInfo.halfMRealSize)});
     }
 
-    this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVV1Id[stage1Offset]);
 
     outputBuf.SetCrossCore();
     // ======================================================
@@ -1441,8 +1421,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(stage0OutBuf[0], dVTemplateTypeInput * (16 + 1) * sizeof(Q_T));
     tPipe->InitBuffer(stage0OutBuf[1], dVTemplateTypeInput * (16 + 1) * sizeof(Q_T));
 
-    tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
-    tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
+    tPipe->InitBuffer(stage1OutBuf[0], vec1Srcstride * s2BaseSize * sizeof(Q_T));
+    tPipe->InitBuffer(stage1OutBuf[1], vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
 
     mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
@@ -1460,6 +1440,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     mte3ToVV0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[0]);
     SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[1]);
+    vToMte3V1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    vToMte3V1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    mte3ToVV1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    mte3ToVV1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    SetFlag<HardEvent::MTE3_V>(mte3ToVV1Id[0]);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVV1Id[1]);
 
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
