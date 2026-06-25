@@ -33,14 +33,21 @@ tensor_list npu_moe_ep_dispatch_epilogue(const at::Tensor &context, const at::Te
 
     at::Tensor cached_recv_src_metadata_tensor = cached_recv_src_metadata.has_value()
         ? *cached_recv_src_metadata : at::Tensor();
-    at::Tensor recv_scales_tensor = recv_scales_opt.has_value()
-        ? *recv_scales_opt : at::Tensor();
+
+    aclDataType recv_scales_dtype;
+    at::Tensor recv_scales_tensor = recv_scales_opt.has_value() ? *recv_scales_opt : at::Tensor();
+    if (recv_scales_tensor.scalar_type() == at::kByte) {
+        recv_scales_dtype = aclDataType::ACL_FLOAT8_E8M0;
+    } else {
+        recv_scales_dtype = aclDataType::ACL_FLOAT;
+    }
+    TensorWrapper recv_scales_wrapper = TensorWrapper{recv_scales_tensor, recv_scales_dtype};
 
     ACLNN_CMD(aclnnMoeEpDispatchEpilogue, context, dst_buffer_slot_idx,
         num_recv_per_rank, num_recv_per_expert, cached_recv_src_metadata_tensor,
         ep_world_size, ep_rank_id, num_experts,
         num_max_tokens_per_rank, ccl_buffer_size, expert_alignment, recv_x,
-        recv_topk_weights, recv_src_metadata, recv_scales_tensor);
+        recv_topk_weights, recv_src_metadata, recv_scales_wrapper);
 
     c10::optional<at::Tensor> recv_scales_output;
     if (recv_scales_opt.has_value()) {
