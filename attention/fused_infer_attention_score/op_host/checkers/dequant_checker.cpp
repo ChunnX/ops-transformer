@@ -1201,7 +1201,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
             std::to_string(valueAntiquantScaleDimNum) + "D";
         std::string reasonMsg = "In MXFP8 fullquant scenario, when the layout of query is " +
             std::string(LayoutToSerialString(fiaInfo.qLayout)) + " and the layout of key/value is " +
-            std::string(LayoutToSerialString(fiaInfo.kvLayout)) + "the shape dim of keyAntiquantScale and "
+            std::string(LayoutToSerialString(fiaInfo.kvLayout)) + ", the shape dim of keyAntiquantScale and "
             "valueAntiquantScale should both be " + std::to_string(scaleKVDim) + "D";
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key_antiquant_scale and value_antiquant_scale",
             dimStr.c_str(), reasonMsg.c_str());
@@ -2341,7 +2341,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
         if ((keyAntiquantMode == PER_TENSOR_HEAD_MODE || keyAntiquantMode == PER_TOKEN_HEAD_MODE ||
              keyAntiquantMode == PER_TOKEN_PA_MODE || keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE) &&
             fiaInfo.inputKvType == ge::DT_INT8) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "keyAntiquantModee",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "keyAntiquantMode",
                 std::to_string(keyAntiquantMode).c_str(),
                 "When the datatype of key/value is int8 and the S axis of query > 1, "
                 "keyAntiquantMode 2, 3, 4, 5 are not supported");
@@ -2354,7 +2354,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
             std::string dtypeMsg = ToString(fiaInfo.inputQType) + " and " + ToString(fiaInfo.outputType);
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
                 dtypeMsg.c_str(),
-                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, "
+                "When the datatype of key/value is int8 and keyAntiquantMode is 0 or 1, "
                 "the datatype of query and attention_out must be BF16");
             return ge::GRAPH_FAILED;
         }
@@ -2363,7 +2363,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
             fiaInfo.inputKvType == ge::DT_INT8 && fiaInfo.s1Size > NUM_16) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
                 std::to_string(fiaInfo.s1Size).c_str(),
-                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, "
+                "When the datatype of key/value is int8 and keyAntiquantMode is 0 or 1, "
                 "the axis S of query should not be greater than 16");
             return ge::GRAPH_FAILED;
         }
@@ -2371,7 +2371,7 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
         if ((keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
             fiaInfo.inputKvType == ge::DT_INT8 && !fiaInfo.batchContinuousFlag) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key and value",
-                "When the datatype of key/value is int8 and keyAntiquantModee is 0 or 1, tensorlist is not supported");
+                "When the datatype of key/value is int8 and keyAntiquantMode is 0 or 1, tensorlist is not supported");
             return ge::GRAPH_FAILED;
         }
         if (fiaInfo.inputKvType == ge::DT_INT4 || fiaInfo.inputKvType == ge::DT_INT32) {
