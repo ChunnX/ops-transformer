@@ -1201,7 +1201,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
             std::to_string(valueAntiquantScaleDimNum) + "D";
         std::string reasonMsg = "In MXFP8 fullquant scenario, when the layout of query is " +
             std::string(LayoutToSerialString(fiaInfo.qLayout)) + " and the layout of key/value is " +
-            std::string(LayoutToSerialString(fiaInfo.kvLayout)) + "the shape dim of keyAntiquantScale and "
+            std::string(LayoutToSerialString(fiaInfo.kvLayout)) + ", the shape dim of keyAntiquantScale and "
             "valueAntiquantScale should both be " + std::to_string(scaleKVDim) + "D";
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "key_antiquant_scale and value_antiquant_scale",
             dimStr.c_str(), reasonMsg.c_str());
