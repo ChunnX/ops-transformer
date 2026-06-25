@@ -25,6 +25,8 @@
 
 namespace QkvRmsNormRopeCacheWithKScaleCheck {
 
+constexpr float DEFAULT_EPSILON = 1e-6f;
+
 inline bool CheckType(op::DataType dtype, const std::vector<op::DataType> &supportList)
 {
     for (const auto &supported : supportList) {
@@ -54,7 +56,7 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     // Attributes
     const aclIntArray *headNums{nullptr};
     const char *inputLayout{nullptr};
-    float epsilon{1e-6f};
+    float epsilon{DEFAULT_EPSILON};
     // Outputs
     aclTensor *qOut{nullptr};
     aclTensor *qScale{nullptr};
@@ -71,6 +73,28 @@ public:
     // Constants
     static constexpr uint64_t HEAD_NUMS_SIZE = 3;
     static constexpr int64_t HEAD_DIM_FAST_PATH = 128;
+    static constexpr uint64_t RANK_1D = 1;
+    static constexpr uint64_t RANK_2D = 2;
+    static constexpr uint64_t RANK_3D = 3;
+    static constexpr uint64_t RANK_4D = 4;
+    static constexpr uint64_t HEAD_NUMS_NQ_INDEX = 0;
+    static constexpr uint64_t HEAD_NUMS_NK_INDEX = 1;
+    static constexpr uint64_t HEAD_NUMS_NV_INDEX = 2;
+    static constexpr uint64_t QKV_NTD_HEAD_INDEX = 0;
+    static constexpr uint64_t QKV_NTD_TOKEN_INDEX = 1;
+    static constexpr uint64_t QKV_TND_TOKEN_INDEX = 0;
+    static constexpr uint64_t QKV_TND_HEAD_INDEX = 1;
+    static constexpr uint64_t QKV_HEAD_DIM_INDEX = 2;
+    static constexpr uint64_t COS_SIN_HEAD_DIM_INDEX = 1;
+    static constexpr uint64_t VECTOR_LENGTH_INDEX = 0;
+    static constexpr uint64_t CACHE_BLOCK_NUM_INDEX = 0;
+    static constexpr uint64_t CACHE_HEAD_INDEX = 1;
+    static constexpr uint64_t CACHE_BLOCK_SIZE_INDEX = 2;
+    static constexpr uint64_t CACHE_HEAD_DIM_INDEX = 3;
+    static constexpr int64_t MIN_CU_SEQ_LEN_SIZE = 2;
+    static constexpr int64_t ACTUAL_SEQ_LENS_BATCH_DIFF = 1;
+    static constexpr int64_t K_SCALE_CACHE_SCALE_DIM = 1;
+    static constexpr int64_t ROPE_PAIR_SIZE = 2;
     static constexpr const char *INPUT_LAYOUT_NTD = "NTD";
     static constexpr const char *INPUT_LAYOUT_TND = "TND";
 
@@ -309,9 +333,9 @@ private:
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        nq = headNumsData[0];
-        nk = headNumsData[1];
-        nv = headNumsData[2];
+        nq = headNumsData[HEAD_NUMS_NQ_INDEX];
+        nk = headNumsData[HEAD_NUMS_NK_INDEX];
+        nv = headNumsData[HEAD_NUMS_NV_INDEX];
         if (nq <= 0 || nk <= 0 || nv <= 0) {
             const std::string incorrectValue =
                 std::to_string(nq) + ", " + std::to_string(nk) + ", " + std::to_string(nv);
@@ -344,15 +368,15 @@ private:
     {
         const auto &qkvShape = params_.qkv->GetViewShape();
         uint64_t qkvDimNum = qkvShape.GetDimNum();
-        if (unlikely(qkvDimNum != 3)) {
+        if (unlikely(qkvDimNum != RANK_3D)) {
             const std::string incorrectDim = std::to_string(qkvDimNum) + "D";
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "qkv", incorrectDim.c_str(),
                                                      "qkv must be a 3D tensor [Nq+Nk+Nv, T, D] or [T, Nq+Nk+Nv, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        const int64_t hqkv = qkvShape.GetDim(isTnd ? 1 : 0);
-        t = qkvShape.GetDim(isTnd ? 0 : 1);
-        d = qkvShape.GetDim(2);
+        const int64_t hqkv = qkvShape.GetDim(isTnd ? QKV_TND_HEAD_INDEX : QKV_NTD_HEAD_INDEX);
+        t = qkvShape.GetDim(isTnd ? QKV_TND_TOKEN_INDEX : QKV_NTD_TOKEN_INDEX);
+        d = qkvShape.GetDim(QKV_HEAD_DIM_INDEX);
         if (unlikely(hqkv != nq + nk + nv)) {
             const std::string incorrectValues = std::to_string(hqkv) + ", " + std::to_string(nq + nk + nv);
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ACLNN_NAME, "qkv, headNums", incorrectValues.c_str(),
@@ -365,7 +389,7 @@ private:
                                                   "head dimension must be 128");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (unlikely(d % 2 != 0)) {
+        if (unlikely(d % ROPE_PAIR_SIZE != 0)) {
             const std::string incorrectValue = std::to_string(d);
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "D", incorrectValue.c_str(),
                                                   "head dimension must be even for RoPE");
@@ -384,7 +408,7 @@ private:
         }
 
         const auto &cosSinShape = params_.cosSin->GetViewShape();
-        if (unlikely(cosSinShape.GetDimNum() != 2 || cosSinShape.GetDim(1) != d)) {
+        if (unlikely(cosSinShape.GetDimNum() != RANK_2D || cosSinShape.GetDim(COS_SIN_HEAD_DIM_INDEX) != d)) {
             const std::string incorrectShape = ShapeToString(params_.cosSin);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "cosSin", incorrectShape.c_str(),
                                                   "cosSin must have shape [MaxSeqLen, D]");
@@ -396,15 +420,17 @@ private:
             return ret;
         }
         const auto &cuSeqLenShape = params_.cuSeqLen->GetViewShape();
-        if (unlikely(cuSeqLenShape.GetDimNum() != 1 || cuSeqLenShape.GetDim(0) < 2)) {
+        if (unlikely(cuSeqLenShape.GetDimNum() != RANK_1D ||
+                     cuSeqLenShape.GetDim(VECTOR_LENGTH_INDEX) < MIN_CU_SEQ_LEN_SIZE)) {
             const std::string incorrectShape = ShapeToString(params_.cuSeqLen);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "cuSeqLen", incorrectShape.c_str(),
                                                   "cuSeqLen must be a 1D tensor with length >= 2");
             return ACLNN_ERR_PARAM_INVALID;
         }
         const auto &actualSeqLensShape = params_.actualSeqLens->GetViewShape();
-        if (unlikely(actualSeqLensShape.GetDimNum() != 1 ||
-                     actualSeqLensShape.GetDim(0) != cuSeqLenShape.GetDim(0) - 1)) {
+        if (unlikely(actualSeqLensShape.GetDimNum() != RANK_1D ||
+                     actualSeqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
+                         cuSeqLenShape.GetDim(VECTOR_LENGTH_INDEX) - ACTUAL_SEQ_LENS_BATCH_DIFF)) {
             const std::string incorrectShape = ShapeToString(params_.actualSeqLens);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "actualSeqLens", incorrectShape.c_str(),
                                                   "actualSeqLens must have shape [cuSeqLen.shape[0] - 1]");
@@ -426,7 +452,8 @@ private:
     aclnnStatus CheckCacheShapes(int64_t nk, int64_t nv, int64_t d) const
     {
         const auto &kCacheShape = params_.kCache->GetViewShape();
-        if (unlikely(kCacheShape.GetDimNum() != 4 || kCacheShape.GetDim(1) != nk || kCacheShape.GetDim(3) != d)) {
+        if (unlikely(kCacheShape.GetDimNum() != RANK_4D || kCacheShape.GetDim(CACHE_HEAD_INDEX) != nk ||
+                     kCacheShape.GetDim(CACHE_HEAD_DIM_INDEX) != d)) {
             const std::string incorrectShape = ShapeToString(params_.kCache);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "kCache", incorrectShape.c_str(),
                                                   "kCache must have shape [BlockNum, Nk, BlockSize, D]");
@@ -434,7 +461,8 @@ private:
         }
 
         const auto &vCacheShape = params_.vCache->GetViewShape();
-        if (unlikely(vCacheShape.GetDimNum() != 4 || vCacheShape.GetDim(1) != nv || vCacheShape.GetDim(3) != d)) {
+        if (unlikely(vCacheShape.GetDimNum() != RANK_4D || vCacheShape.GetDim(CACHE_HEAD_INDEX) != nv ||
+                     vCacheShape.GetDim(CACHE_HEAD_DIM_INDEX) != d)) {
             const std::string incorrectShape = ShapeToString(params_.vCache);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "vCache", incorrectShape.c_str(),
                                                   "vCache must have shape [BlockNum, Nv, BlockSize, D]");
@@ -442,16 +470,19 @@ private:
         }
 
         const auto &kScaleCacheShape = params_.kScaleCache->GetViewShape();
-        if (unlikely(kScaleCacheShape.GetDimNum() != 4 || kScaleCacheShape.GetDim(1) != nk ||
-                     kScaleCacheShape.GetDim(3) != 1)) {
+        if (unlikely(kScaleCacheShape.GetDimNum() != RANK_4D ||
+                     kScaleCacheShape.GetDim(CACHE_HEAD_INDEX) != nk ||
+                     kScaleCacheShape.GetDim(CACHE_HEAD_DIM_INDEX) != K_SCALE_CACHE_SCALE_DIM)) {
             const std::string incorrectShape = ShapeToString(params_.kScaleCache);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "kScaleCache", incorrectShape.c_str(),
                                                   "kScaleCache must have shape [BlockNum, Nk, BlockSize, 1]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        if (unlikely(kCacheShape.GetDim(0) != kScaleCacheShape.GetDim(0) ||
-                     kCacheShape.GetDim(2) != kScaleCacheShape.GetDim(2))) {
+        if (unlikely(kCacheShape.GetDim(CACHE_BLOCK_NUM_INDEX) !=
+                         kScaleCacheShape.GetDim(CACHE_BLOCK_NUM_INDEX) ||
+                     kCacheShape.GetDim(CACHE_BLOCK_SIZE_INDEX) !=
+                         kScaleCacheShape.GetDim(CACHE_BLOCK_SIZE_INDEX))) {
             const std::string incorrectShapes = "kCache=[" + ShapeToString(params_.kCache) + "], kScaleCache=[" +
                                                 ShapeToString(params_.kScaleCache) + "]";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "kCache and kScaleCache", incorrectShapes.c_str(),
@@ -459,8 +490,8 @@ private:
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        if (unlikely(vCacheShape.GetDim(0) != kCacheShape.GetDim(0) ||
-                     vCacheShape.GetDim(2) != kCacheShape.GetDim(2))) {
+        if (unlikely(vCacheShape.GetDim(CACHE_BLOCK_NUM_INDEX) != kCacheShape.GetDim(CACHE_BLOCK_NUM_INDEX) ||
+                     vCacheShape.GetDim(CACHE_BLOCK_SIZE_INDEX) != kCacheShape.GetDim(CACHE_BLOCK_SIZE_INDEX))) {
             const std::string incorrectShapes =
                 "vCache=[" + ShapeToString(params_.vCache) + "], kCache=[" + ShapeToString(params_.kCache) + "]";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "vCache and kCache", incorrectShapes.c_str(),
