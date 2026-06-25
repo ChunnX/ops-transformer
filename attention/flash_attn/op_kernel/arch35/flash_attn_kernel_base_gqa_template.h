@@ -118,6 +118,7 @@ public:
     uint32_t coreGS1Loops = 0U;
     uint32_t frontGS1Count = 0U;
     uint32_t invalidGS1Size = 0U;
+    uint32_t accGS1Loops = 0u;
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
@@ -417,6 +418,7 @@ public:
         createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop = 0;
+        accGS1Loops = 0;
         headS2Split = false;
         tailS2Split = false;
 
@@ -441,7 +443,7 @@ public:
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
                     if ASCEND_IS_AIV {
-                        // vecFaBlock.DealZeroActSeqLen(bN2Cur);
+                        vecFaBlock.DealZeroActSeqLen(bN2Cur);
                     }
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     continue;
@@ -463,25 +465,7 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        if (bN2Cur > bN2End_) {
-            return false;
-        } else if (bN2Cur == bN2End_) {
-            if (gS1Cur > gS1OEnd_) {
-                return false;
-            } else if (gS1Cur == gS1OEnd_) {
-                if (s2Cur > s2OEnd_) {
-                    return false;
-                } else if (s2Cur == s2OEnd_) {
-                    return false;
-                } else {
-                    return true;
-                }
-            } else {
-                return true;
-            }
-        } else {
-            return true;
-        }
+        return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
     }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
@@ -525,8 +509,12 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
+        if (curS2Start < curS2End && s2Cur >= curS2End) {
+            return TASK_DEAL_MODE::S2_END;
+        }
+
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP_REMAINING_S2;
+            return TASK_DEAL_MODE::SKIP;
         }
 
         if (s2Cur == curS2Start) {
@@ -797,12 +785,14 @@ public:
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
         // 当前S2未处理完
-        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
-            // 当前S2未处理完
-            if (s2Cur + 1 < s2LoopTimes) {
-                s2Cur++;
-                return;
-            }
+        if (s2Cur + 1 < s2LoopTimes) {
+            s2Cur++;
+            return;
+        }
+
+        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
+            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
+            accGS1Loops++;
         }
 
         // 当前BN2未处理完
@@ -812,6 +802,10 @@ public:
             return;
         }
 
+        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
+            accGS1Loops++;
+        }
+        
         // 当前BN2已处理完
         gS1Cur = 0;
         bN2Cur++;

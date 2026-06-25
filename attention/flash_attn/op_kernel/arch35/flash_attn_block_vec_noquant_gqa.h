@@ -230,6 +230,10 @@ public:
     LocalTensor<float> sumBrdcstBuf;
     LocalTensor<float> lseBuf;
     LocalTensor<INPUT_T> sinkBuf;
+    // DealZeroActSeqLen 专用 UB scratch：等价于主线 matmul::InitOutput 内部 PopStackBuffer<T,LCM> 拿到的 LCM 栈空间。
+    // 预先在 InitBuffers 中静态创建，DealZeroActSeqLen 内部直接复用 this->initOutputScratchBuf，
+    // 调用处无需任何 Wait/Set，与主线 vecFaBlock.DealZeroActSeqLen(bN2Cur) 调用形式完全一致。
+    LocalTensor<uint8_t> initOutputScratchBuf;
 
     const ConstInfoX &constInfo;
     T negativeFloatScalar;
@@ -1248,14 +1252,28 @@ public:
             sinkBuf = LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSE + LSE_BUF_SZ,
                           256U).template ReinterpretCast<INPUT_T>();
         }
+
+        // initOutputScratchBuf：DealZeroActSeqLen 专用 scratch（>= fa_static::INIT_OUTPUT_SCRATCH_BYTES = 8160B）
+        //   - 等价于主线 matmul::InitOutput 内部 PopStackBuffer<T, TPosition::LCM> 拿到的 LCM 栈缓冲
+        //   - 编译期固定偏移：放在 lseBuf / sinkBuf（runtime 条件）的最大可能尾部之后，
+        //     使其地址不随 isSoftmaxLseEnable / learnableSinkFlag 变化，
+        //     与其它静态 buff 不重叠、不被任何流水占用，调用处无需 Wait/Set
+        constexpr uint32_t MAX_LSE_BUF_SZ            = (mBaseSize >> 1U) * 8U * sizeof(float);
+        constexpr uint32_t MAX_SINK_BUF_SZ           = 256U;
+        constexpr uint32_t INIT_OUTPUT_SCRATCH_OFF   = OFF_LSE + MAX_LSE_BUF_SZ + MAX_SINK_BUF_SZ;
+        constexpr uint32_t INIT_OUTPUT_SCRATCH_SZ    = fa_static::INIT_OUTPUT_SCRATCH_BYTES;
+        initOutputScratchBuf = LocalTensor<uint8_t>(TPosition::VECIN,
+                                                    INIT_OUTPUT_SCRATCH_OFF, INIT_OUTPUT_SCRATCH_SZ);
     }
 
     // 反向同步事件预置 SetFlag：完全静态、直接使用编译期常量（参考 quant_flash_attn AllocEventID 风格）
-    // 这里预置的都是 *FreeEventId* 类事件，让对应 buff 首轮 Wait 能立即通过
+    // 这里预置的都是 *FreeEventId* 类事件，让对应 buff 首轮 Wait 能立即通过。
+    // 注：lseBufFreeEventId 不在此列 —— 其在源码中的全部使用都是"局部 Set→Wait 立即相邻"的自闭环
+    //     fence（SoftmaxLseCopyOut 收尾 + BroadCastAndCopyOut 收尾共 3 处），从未跨调用 Wait，
+    //     故无需 AllocEventID 预置；对应 FreeEventID 的排干 Wait 也一并省略，硬件计数器自然配平。
     __aicore__ inline void AllocEventID()
     {
         SetFlag<HardEvent::MTE3_V>(stage2OutBufFreeEventId);
-        SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
         SetFlag<HardEvent::MTE3_V>(stage1OutBufFreeEventId0);
         SetFlag<HardEvent::MTE3_V>(stage1OutBufFreeEventId1);
         if constexpr (HAS_MASK) {
@@ -1267,7 +1285,6 @@ public:
     __aicore__ inline void FreeEventID()
     {
         WaitFlag<AscendC::HardEvent::MTE3_V>(stage2OutBufFreeEventId);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(lseBufFreeEventId);
         WaitFlag<AscendC::HardEvent::MTE3_V>(stage1OutBufFreeEventId0);
         WaitFlag<AscendC::HardEvent::MTE3_V>(stage1OutBufFreeEventId1);
         if constexpr (HAS_MASK) {
@@ -1355,8 +1372,10 @@ public:
         }
     }
 
-    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur, LocalTensor<uint8_t> initOutputScratch)
+    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
     {
+        // 与主线一致：调用处无 Wait/Set；scratch 用预创建的 initOutputScratchBuf（等价于主线 LCM 栈空间）。
+        // fa_static::InitOutput 内部自带 V→MTE3 fence (flagId=10)，单批处理完整闭环，无外部同步需求。
         uint32_t n2Idx = bN2Cur % constInfo.n2Size;
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
@@ -1364,18 +1383,18 @@ public:
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                   constInfo.dSizeV, *qActSeqLensParser);
             fa_static::DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
-                                                                      initOutputScratch);
+                                                                      this->initOutputScratchBuf);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             OffsetCalculator<GmFormat::BNGSD, int32_t> offsetCalculator;
             offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                   constInfo.dSizeV, *qActSeqLensParser);
             fa_static::DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
-                                                                      initOutputScratch);
+                                                                      this->initOutputScratchBuf);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             OffsetCalculator<GmFormat::TNGD, int32_t, true> offsetCalculator;
             offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
             fa_static::DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm,
-                                                                     initOutputScratch);
+                                                                     this->initOutputScratchBuf);
         }
     }
 };
