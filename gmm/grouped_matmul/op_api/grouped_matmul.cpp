@@ -15,6 +15,7 @@
 #include "opdev/format_utils.h"
 #include "opdev/shape_utils.h"
 #include "opdev/make_op_executor.h"
+#include "grouped_matmul_util.h"
 
 #include <cstdio>
 
@@ -108,7 +109,7 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x,
            transposeWeight, transposeX, groupType, groupListType, actType, tuningConfig, outLength);
     GmmPrint("GroupedMatmul L0 start. splitItem=%ld, yDtype=%s, transposeWeight=%d, transposeX=%d, "
              "groupType=%ld, groupListType=%ld, actType=%ld, outLength=%zu.",
-             splitItem, op::ToString(yDtype).GetString(), static_cast<int>(transposeWeight),
+             splitItem, gmm::dTypeToString(yDtype).c_str(), static_cast<int>(transposeWeight),
              static_cast<int>(transposeX), groupType, groupListType, actType, outLength);
 
     std::vector<const aclTensor*> tensorsVec;
