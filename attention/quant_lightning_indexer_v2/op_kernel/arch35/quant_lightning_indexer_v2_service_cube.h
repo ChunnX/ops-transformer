@@ -229,11 +229,16 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                 uint64_t s1gL1RealSize =
                     s1gGmOffset + M_BASIC_BLOCK > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK;
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
+                // MXFP8: Nd2Nz 按 BLOCK_CUBE(16) 对齐 nValue，GM 只读有效行数，避免脏数据
+                // 非 MXFP8: 保持 2G 对齐（Nd2Nz 硬件自动 pad，GM 侧有足够空间）
+                uint64_t s1gL1LoadSize = IS_MXFP8
+                    ? CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE)
+                    : s1gL1SizeAlign2G;
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
-                    QueryNd2Nz(s1gL1SizeAlign2G, s1gGmOffset, runInfo);
+                    QueryNd2Nz(s1gL1LoadSize, s1gGmOffset, runInfo);
                     // MXFP8: 加载 qScale 到 L1（与 Query 数据一起）
                     if constexpr (IS_MXFP8) {
                         LoadQScaleToL1(s1gL1RealSize, s1gGmOffset, runInfo);
@@ -247,12 +252,12 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                 for (uint64_t s2L1Offset = 0; s2L1Offset < s2L1RealSize; s2L1Offset += S2_BASIC_BLOCK_L0) {
                     uint64_t s2L0RealSize =
                         s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
-                    for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign2G; s1gL1Offset += M_BASIC_BLOCK_L0) {
+                    for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1LoadSize; s1gL1Offset += M_BASIC_BLOCK_L0) {
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         uint64_t s1gL0RealSize =
-                            s1gL1Offset + M_BASIC_BLOCK_L0 > s1gL1SizeAlign2G
-                                ? s1gL1SizeAlign2G - s1gL1Offset : M_BASIC_BLOCK_L0;
-                        LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
+                            s1gL1Offset + M_BASIC_BLOCK_L0 > s1gL1LoadSize
+                                ? s1gL1LoadSize - s1gL1Offset : M_BASIC_BLOCK_L0;
+                        LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1LoadSize, s1gL0RealSize, runInfo);
                         LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
 
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -311,11 +316,16 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                                            s1gProcessSize - s1gGmOffset :
                                            M_BASIC_BLOCK;
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
+                // MXFP8: Nd2Nz 按 BLOCK_CUBE(16) 对齐 nValue，GM 只读有效行数，避免脏数据
+                // 非 MXFP8: 保持 2G 对齐（Nd2Nz 硬件自动 pad，GM 侧有足够空间）
+                uint64_t s1gL1LoadSize = IS_MXFP8
+                    ? CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE)
+                    : s1gL1SizeAlign2G;
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
-                    QueryNd2Nz(s1gL1SizeAlign2G, s1gGmOffset, runInfo);
+                    QueryNd2Nz(s1gL1LoadSize, s1gGmOffset, runInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 } else {
@@ -328,13 +338,13 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                         s2L1Offset + S2_BASIC_BLOCK_L0 > l1S2Offset + s2ProcessSize ?
                                             l1S2Offset + s2ProcessSize - s2L1Offset :
                                             S2_BASIC_BLOCK_L0;
-                    for (uint64_t s1gOffset = 0; s1gOffset < s1gL1SizeAlign2G; s1gOffset += M_BASIC_BLOCK_L0) {
+                    for (uint64_t s1gOffset = 0; s1gOffset < s1gL1LoadSize; s1gOffset += M_BASIC_BLOCK_L0) {
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         uint64_t s1gL0RealSize =
-                            s1gOffset + M_BASIC_BLOCK_L0 > s1gL1SizeAlign2G ?
-                                                    s1gL1SizeAlign2G - s1gOffset :
+                            s1gOffset + M_BASIC_BLOCK_L0 > s1gL1LoadSize ?
+                                                    s1gL1LoadSize - s1gOffset :
                                                     M_BASIC_BLOCK_L0;
-                        LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
+                        LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1LoadSize, s1gL0RealSize, runInfo);
                         LoadKeyToL0b(s2L1Offset, l1TotalSize, s2L0RealSize, runInfo);
 
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
