@@ -241,14 +241,7 @@ public:
 
         if (singleInitOutputSize > 0) {
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            // if constexpr (POST_QUANT) {
-            //     GlobalTensor<half> attentionOutTmpGm;
-            //     attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
-            //     matmul::InitOutput<half>(attentionOutTmpGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
-            // } else 
-            {
-                matmul::InitOutput<OUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
-            }
+            matmul::InitOutput<OUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
@@ -796,16 +789,8 @@ public:
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
-                // if constexpr (!POST_QUANT) {
-                    RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
-                                              static_cast<uint32_t>(dSizeAligned64));
-                // } else {
-                //     uint32_t dStride =
-                //         CeilDiv(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
-                //     uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
-                //     RowInvalidUpdateVF<float>(*((LocalTensor<float> *)&vec2ResUb), maxTensor, mDealSize, dSize,
-                //                               dStride);
-                // }
+                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
+                                            static_cast<uint32_t>(dSizeAligned64));
             }
         }
     }
@@ -813,7 +798,7 @@ public:
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
-        FaUbTensor<OUTPUT_T, false> ubTensor{.tensor = attenOutUb,
+        FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
                                       .rowCount = dealRowCount,
                                       .colCount = (uint32_t)(splitD ? constInfo.dBasicBlock : dTemplateAlign64)};
         GmCoord gmCoord{.bIdx = info.bIdx,
@@ -825,7 +810,7 @@ public:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoord &gmCoord)
     {
         if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -1097,16 +1082,6 @@ public:
             // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
             this->tPipe->InitBuffer(softmaxLseQueue, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
         }
-        // if constexpr (POST_QUANT) {
-        //     this->tPipe->InitBuffer(postQuantScaleQue, 1, 2048); // 2K
-        //     if (constInfo.isPostQuantOffsetExist) {
-        //         this->tPipe->InitBuffer(postQuantOffsetQue, 1, 2048); // 2K
-        //     }
-        // }
-
-        // if (constInfo.learnableSinkFlag) {
-        //     this->tPipe->InitBuffer(sinkQue, 1, 256); // buffer size = 256 bytes
-        // }
     }
 
     __aicore__ inline void AllocEventID()
@@ -1185,9 +1160,6 @@ public:
         uint32_t n2Idx = bN2Cur % constInfo.n2Size;
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         // 对整个batch的结果置0
-        // if constexpr (POST_QUANT) { // out int8
-        //                             // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
-        // } else 
         {
             if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
                 OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
