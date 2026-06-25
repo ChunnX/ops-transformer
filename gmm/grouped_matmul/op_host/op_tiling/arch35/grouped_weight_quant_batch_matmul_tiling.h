@@ -262,6 +262,7 @@ protected:
     bool CheckGroupTypeAndSplitItem(const gert::TilingContext *context) const;
     bool CheckTransposeStatus(const gert::TilingContext *context) const;
     bool SetShapeListSplitMSingleXSingleWeightSingleY(const gert::TilingContext *context);
+    bool SetShapeListSplitMSingleXMultiWeightSingleY(const gert::TilingContext *context);
     bool SetShapeListMultiXMultiWeightMultiY(const gert::TilingContext *context);
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;
     void GetNumOfInputs(const gert::TilingContext *context);

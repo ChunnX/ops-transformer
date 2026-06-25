@@ -73,6 +73,9 @@ bool GroupedWeightQuantBatchMatmulTiling:: SetShapeList(const gert::TilingContex
     } else if (!isSingleX_ && !isSingleWeight_ && !isSingleY_) {
         OP_CHECK_IF(!SetShapeListMultiXMultiWeightMultiY(context),
                     OP_LOGE(context->GetNodeName(), "Unable to get MMM shape list"), return false);
+    } else if (isSingleX_ && !isSingleWeight_ && isSingleY_ && weightNzFlag_) {
+        OP_CHECK_IF(!SetShapeListSplitMSingleXMultiWeightSingleY(context),
+                    OP_LOGE(context->GetNodeName(), "Unable to get SMS shape list"), return false);
     } else {
         std::string incorrectValue = "groupType: " + std::to_string(static_cast<int8_t>(groupType_)) +
             ", singleX: " + (isSingleX_ ? "true" : "false") +
@@ -101,11 +104,14 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize(const gert::Tiling
                         "When groupType is -1 (no split), the sizes of x and weight must be all the same"),
                     return false);
     } else {
-        OP_CHECK_IF(numX_ != 1 || numWeight_ != 1,
-                    OP_LOGE_FOR_INVALID_LISTSIZE(
-                        OP_NAME, "x, weight", std::to_string(numX_) + ", " + std::to_string(numWeight_),
-                        "When groupType is 0 (split M), the sizes of x and weight should all be 1"),
-                    return false);
+        const bool isWeightNzSms = isSingleX_ && !isSingleWeight_ && isSingleY_ && weightNzFlag_;
+        if (!isWeightNzSms) {
+            OP_CHECK_IF(numX_ != 1 || numWeight_ != 1,
+                        OP_LOGE_FOR_INVALID_LISTSIZE(
+                            OP_NAME, "x, weight", std::to_string(numX_) + ", " + std::to_string(numWeight_),
+                            "When groupType is 0 (split M), the sizes of x and weight should all be 1"),
+                        return false);
+        }
     }
     OP_CHECK_IF(numAntiquantScale_ != numWeight_,
                 OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantScaleOptional, weight",
@@ -325,11 +331,26 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorShape(const gert::TilingCon
         // 校验bias、antiquantScale和antiquantOffset的第一根轴
         uint64_t groupNum = static_cast<uint64_t>(wShape.GetDim(0));
         uint64_t batchSize = static_cast<uint64_t>(tensorShape.GetDim(0));
-        OP_CHECK_IF(groupNum != batchSize,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, tensorType,
-                Ops::Base::ToString(tensorShape),
-                "Axis 0 of " + tensorType + " must be equal to groupList length " + std::to_string(groupNum)),
-            return false);
+        const bool isWeightNzSms = isSingleX_ && !isSingleWeight_ && isSingleY_ && weightNzFlag_;
+        if (isWeightNzSms) {
+            // SMS场景每个tensor的axis 0为1，不需要等于groupNum
+            OP_CHECK_IF(batchSize != 1,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, tensorType,
+                    Ops::Base::ToString(tensorShape),
+                    "In weightNz single-multi-single case, axis 0 of " + tensorType + " must be 1"),
+                return false);
+        } else {
+            OP_CHECK_IF(groupNum != batchSize,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, tensorType,
+                    Ops::Base::ToString(tensorShape),
+                    "Axis 0 of " + tensorType + " must be equal to groupList length " + std::to_string(groupNum)),
+                return false);
+        }
+    }
+    // SMS场景weight NZ shape与antiquantScale的N轴布局不同，跳过N轴检查
+    const bool isWeightNzSms = isSingleX_ && !isSingleWeight_ && isSingleY_ && weightNzFlag_;
+    if (isWeightNzSms) {
+        return true;
     }
     // 校验bias、antiquantScale和antiquantOffset的N轴
     int64_t weightNDimValue =
@@ -410,16 +431,25 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckWeightInnerAxisEven(const gert::T
 
 bool GroupedWeightQuantBatchMatmulTiling::CheckEveryTensor(const gert::TilingContext *context) const
 {
-    for (size_t i = 0; i < numX_; i++) {
-        OP_CHECK_IF(!CheckNotNull(context, i), OP_LOGE(context->GetNodeName(), "CheckTensorNotNull failed"),
-                    return false);
-        OP_CHECK_IF(!CheckTensorDim(context, i), OP_LOGE(context->GetNodeName(), "CheckTensorDim failed"),
-                    return false);
-        OP_CHECK_IF(!CheckDimValue(context, i), OP_LOGE(context->GetNodeName(), "CheckDimValue failed"), return false);
-        OP_CHECK_IF(!CheckXAndWeightFormat(context, i),
-                    OP_LOGE(context->GetNodeName(), "Check X And Weight Format failed"), return false);
-        OP_CHECK_IF(!CheckTensorDtype(context, X_IDX, i, xDType_, "x"),
-                    OP_LOGE(context->GetNodeName(), "Check Tensor x Dtype failed"), return false);
+    const bool isWeightNzSms = isSingleX_ && !isSingleWeight_ && isSingleY_ && weightNzFlag_;
+    size_t loopCount = isWeightNzSms ? numWeight_ : numX_;
+    for (size_t i = 0; i < loopCount; i++) {
+        if (!isWeightNzSms) {
+            OP_CHECK_IF(!CheckNotNull(context, i), OP_LOGE(context->GetNodeName(), "CheckTensorNotNull failed"),
+                        return false);
+            OP_CHECK_IF(!CheckTensorDim(context, i), OP_LOGE(context->GetNodeName(), "CheckTensorDim failed"),
+                        return false);
+            OP_CHECK_IF(!CheckDimValue(context, i), OP_LOGE(context->GetNodeName(), "CheckDimValue failed"), return false);
+            OP_CHECK_IF(!CheckXAndWeightFormat(context, i),
+                        OP_LOGE(context->GetNodeName(), "Check X And Weight Format failed"), return false);
+            OP_CHECK_IF(!CheckTensorDtype(context, X_IDX, i, xDType_, "x"),
+                        OP_LOGE(context->GetNodeName(), "Check Tensor x Dtype failed"), return false);
+        } else {
+            OP_CHECK_IF(!CheckNotNullPtr(context, WEIGHT_IDX, i),
+                        OP_LOGE(context->GetNodeName(), "weight[%zu] tensor or desc is nullptr.", i), return false);
+            OP_CHECK_IF(!CheckNotNullPtr(context, ANTIQUANT_SCALE_IDX, i),
+                        OP_LOGE(context->GetNodeName(), "antiquantScale[%zu] tensor or desc is nullptr.", i), return false);
+        }
         OP_CHECK_IF(!CheckTensorDtype(context, WEIGHT_IDX, i, weightDtype_, "weight"),
                     OP_LOGE(context->GetNodeName(), "Check Tensor weight Dtype failed"), return false);
         OP_CHECK_IF(!CheckTensorDtype(context, ANTIQUANT_SCALE_IDX, i, antiquantScaleDtype_, "antiquantScale"),
@@ -457,10 +487,16 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingConte
         OP_CHECK_IF(groupListPtr == nullptr, OP_LOGE(context->GetNodeName(), "GroupList is nullptr."), return false);
         int32_t groupListSize = static_cast<int32_t>(groupListPtr->GetOriginShape().GetDim(0));
 
-        auto wTensor = context->GetDynamicInputTensor(WEIGHT_IDX, 0);
-        OP_CHECK_IF(wTensor == nullptr, OP_LOGE(context->GetNodeName(), "wTensor is nullptr."), return false);
-        gert::Shape wShape = wTensor->GetStorageShape();
-        int32_t groupNum = static_cast<int32_t>(wShape.GetDim(0));
+        const bool isWeightNzSms = isSingleX_ && !isSingleWeight_ && isSingleY_ && weightNzFlag_;
+        int32_t groupNum = 0;
+        if (isWeightNzSms) {
+            groupNum = static_cast<int32_t>(numWeight_);
+        } else {
+            auto wTensor = context->GetDynamicInputTensor(WEIGHT_IDX, 0);
+            OP_CHECK_IF(wTensor == nullptr, OP_LOGE(context->GetNodeName(), "wTensor is nullptr."), return false);
+            gert::Shape wShape = wTensor->GetStorageShape();
+            groupNum = static_cast<int32_t>(wShape.GetDim(0));
+        }
 
         OP_LOGD(context->GetNodeName(), "groupNum is %d, groupListSize is %d.", groupNum, groupListSize);
         OP_CHECK_IF(groupListSize != groupNum,
@@ -1028,6 +1064,43 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXSingleWeightS
     kList_[0] = static_cast<int32_t>(kSize_);
     nList_[0] = static_cast<int32_t>(nSizeOri_);
     mList_[0] = -1;
+    return true;
+}
+
+bool GroupedWeightQuantBatchMatmulTiling::SetShapeListSplitMSingleXMultiWeightSingleY(
+    const gert::TilingContext *context)
+{
+    auto xTensor = context->GetDynamicInputTensor(X_IDX, 0);
+    OP_CHECK_IF(xTensor == nullptr, OP_LOGE(context->GetNodeName(), "xTensor is nullptr."), return false);
+    gert::Shape xShape = xTensor->GetStorageShape();
+    uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
+    mSize_ = transA_ ? xShape.GetDim(1) : xShape.GetDim(0);
+    kSize_ = transA_ ? xShape.GetDim(0) : xShape.GetDim(xDimNum - 1);
+
+    groupNum_ = static_cast<int32_t>(numWeight_);
+    for (uint16_t i = 0; i < numWeight_; ++i) {
+        auto wTensor = context->GetDynamicInputTensor(WEIGHT_IDX, i);
+        OP_CHECK_IF(wTensor == nullptr, OP_LOGE(context->GetNodeName(), "wTensor[%u] is nullptr.", i), return false);
+        gert::Shape wShape = wTensor->GetStorageShape();
+        uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
+        uint64_t n = 0;
+        if (weightNzFlag_) {
+            n = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
+                        : wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
+        } else {
+            n = transB_ ? wShape.GetDim(wDimNum - 2) : wShape.GetDim(wDimNum - 1);
+        }
+        if (weightDtype_ == ge::DT_FLOAT || weightDtype_ == ge::DT_INT32) {
+            if (!transB_) {
+                n = static_cast<uint64_t>(8) * n;
+            }
+        }
+        nList_[i] = static_cast<int32_t>(n);
+        kList_[i] = static_cast<int32_t>(kSize_);
+        mList_[i] = -1;
+        nSize_ = std::max(nSize_, n);
+    }
+    nSizeOri_ = nSize_;
     return true;
 }
 
