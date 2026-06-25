@@ -143,9 +143,11 @@ private:
     static constexpr bool ENABLE_A8W4_GMM1 = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
                                             Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value;
     // GMM2: 只要 Weight2 是 fp4 就走 A8W4 路径，不检查 QuantOutType。
+    //       E5M2 除外（A8W4 实现仅支持 e4m3 激活）。
     //       这样在 a4w4 场景（fp4 act + fp4 w1 + fp4 w2）下，
     //       GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
-    static constexpr bool ENABLE_A8W4_GMM2 = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value;
+    static constexpr bool ENABLE_A8W4_GMM2 = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value &&
+                                            QuantMode != E5M2_QUANT;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
@@ -171,7 +173,7 @@ private:
     LocalTensor<float> fp32ScaleTensor_;
     LocalTensor<bfloat16_t> bf16ScaleTensor_;
 
-    // a4w4 场景下 GMM2 走 A8W4 路径时，SwigluQuant 输出需用 fp8 以匹配 GMM2 的输入要求。
+    // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
     using Gmm2ActType = typename std::conditional<
         (ENABLE_A8W4_GMM2 && QuantMode == E2M1_QUANT),
         fp8_e4m3fn_t, QuantOutType>::type;
