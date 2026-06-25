@@ -12,10 +12,9 @@
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
 
-namespace EngramFetchImpl {
+namespace Mc2Kernel {
 
 using namespace AscendC;
-using namespace Mc2Aclnn;
 
 template <AscendC::HardEvent event>
 __aicore__ inline void SyncFunc()
@@ -265,6 +264,6 @@ __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR sr
         AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
     }
 }
-} // namespace EngramFetchImpl
+} // namespace Mc2Kernel
 
 #endif

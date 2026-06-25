@@ -8,11 +8,24 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+* \file test_aclnn_engram_fetch.cpp
+* \brief engram_fetch 算子 op_api 侧 aclnn 接口 UT
+*/
+
 #include <gtest/gtest.h>
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
-#include "../../../op_api/aclnn_engram_fetch.h"
+#include "aclnn/aclnn_base.h"
+
+extern "C" {
+aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
+                                             aclTensor *fetched, int32_t hiddenSize,
+                                             int64_t numEntriesPerRank, int64_t outputDtype,
+                                             uint64_t *workspaceSize, aclOpExecutor **executor);
+aclnnStatus aclnnEngramFetch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+}
 
 using namespace op;
 using namespace std;
