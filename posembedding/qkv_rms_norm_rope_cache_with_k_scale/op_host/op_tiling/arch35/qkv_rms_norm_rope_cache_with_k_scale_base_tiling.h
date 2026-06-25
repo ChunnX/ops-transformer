@@ -56,14 +56,14 @@ struct ContractInput {
 
 class QkvRmsNormRopeCacheWithKScaleBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    static constexpr uint64_t HEAD_DIM_FAST = 128;
+    static constexpr uint64_t SUPPORTED_HEAD_DIM = 128;
     static constexpr uint64_t MAX_TOKEN_TILE = 16;
     static constexpr uint64_t L0A_FULL_DIM_SEGMENT_ROWS = 128;
     static constexpr uint64_t L0C_MAX_ROWS = 256;
     static constexpr uint64_t QKV_INPUT_ROWS_PER_AIV = 160;
     static constexpr uint64_t QK_OUTPUT_ROWS_PER_AIV = 128;
     static constexpr uint64_t V_OUTPUT_ROWS_PER_AIV = 80;
-    static constexpr uint64_t DIM_TILE_FAST = 128;
+    static constexpr uint64_t DIM_TILE = 128;
     static constexpr uint64_t AIV_PER_AIC = 2;
 
     explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context)

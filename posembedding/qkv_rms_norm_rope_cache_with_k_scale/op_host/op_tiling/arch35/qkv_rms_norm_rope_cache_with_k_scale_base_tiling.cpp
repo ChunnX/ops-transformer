@@ -147,9 +147,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateScalarInputs() 
     OP_CHECK_IF(input_.batch == 0,
                 OP_LOGE_FOR_INVALID_VALUE(opName_, "batch", std::to_string(input_.batch).c_str(), "greater than 0"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(input_.headDim != HEAD_DIM_FAST,
+    OP_CHECK_IF(input_.headDim != SUPPORTED_HEAD_DIM,
                 OP_LOGE_FOR_INVALID_VALUE(opName_, "headDim", std::to_string(input_.headDim).c_str(),
-                                          std::to_string(HEAD_DIM_FAST).c_str()),
+                                          std::to_string(SUPPORTED_HEAD_DIM).c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         input_.maxSeqLen == 0,
@@ -624,7 +624,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ComputeTilingData()
             "rowTile=%llu rowTileAligned=%llu dimTile=%llu.",
             tilingData_.coreTokenTile, tilingData_.coreGroupNum, tilingData_.tokenTile, tokenTilePerAiv,
             input_.numQHeads, input_.numKHeads, input_.numVHeads, numQkHeads, numQkvHeads, rowTile, rowTileAligned,
-            DIM_TILE_FAST);
+            DIM_TILE);
     OP_LOGD(context_,
             "QkvRmsNormRopeCacheWithKScale contract stride result: kvCache={%llu,%llu,%llu} "
             "kScaleCache={%llu,%llu,%llu}.",
@@ -843,7 +843,7 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::LogTilingData() const
             "workspaceSize=%llu inputLayout=%s Nqk=%llu Nv=%llu rowTile=%llu rowTileAligned=%llu "
             "tokenTilePerAiv=%llu dimTile=%llu.",
             context_->GetTilingKey(), numBlocks_, tilingDataSize_, workspaceSize_, InputLayoutName(input_.inputLayout),
-            numQkHeads, input_.numVHeads, rowTile, rowTileAligned, tokenTilePerAiv, DIM_TILE_FAST);
+            numQkHeads, input_.numVHeads, rowTile, rowTileAligned, tokenTilePerAiv, DIM_TILE);
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseHeadNumsAttr()

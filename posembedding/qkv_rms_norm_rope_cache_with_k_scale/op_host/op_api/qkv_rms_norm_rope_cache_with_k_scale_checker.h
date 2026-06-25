@@ -72,7 +72,7 @@ public:
 
     // Constants
     static constexpr uint64_t HEAD_NUMS_SIZE = 3;
-    static constexpr int64_t HEAD_DIM_FAST_PATH = 128;
+    static constexpr int64_t SUPPORTED_HEAD_DIM = 128;
     static constexpr uint64_t RANK_1D = 1;
     static constexpr uint64_t RANK_2D = 2;
     static constexpr uint64_t RANK_3D = 3;
@@ -94,7 +94,6 @@ public:
     static constexpr int64_t MIN_CU_SEQ_LEN_SIZE = 2;
     static constexpr int64_t ACTUAL_SEQ_LENS_BATCH_DIFF = 1;
     static constexpr int64_t K_SCALE_CACHE_SCALE_DIM = 1;
-    static constexpr int64_t ROPE_PAIR_SIZE = 2;
     static constexpr const char *INPUT_LAYOUT_NTD = "NTD";
     static constexpr const char *INPUT_LAYOUT_TND = "TND";
 
@@ -383,16 +382,10 @@ private:
                                                    "qkv logical N dimension must equal Nq+Nk+Nv from headNums");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (unlikely(d != HEAD_DIM_FAST_PATH)) {
+        if (unlikely(d != SUPPORTED_HEAD_DIM)) {
             const std::string incorrectValue = std::to_string(d);
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "D", incorrectValue.c_str(),
                                                   "head dimension must be 128");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (unlikely(d % ROPE_PAIR_SIZE != 0)) {
-            const std::string incorrectValue = std::to_string(d);
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "D", incorrectValue.c_str(),
-                                                  "head dimension must be even for RoPE");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
