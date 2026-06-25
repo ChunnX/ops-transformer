@@ -62,6 +62,7 @@ constexpr int64_t K_MAX = 32;
 constexpr int64_t MAX_EP_WORLD_SIZE = 128;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
+constexpr uint64_t FP8_DTYPE_SIZE = 1UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;   // sizeof(int32)=sizeof(float)=4
 constexpr int64_t SCALES_GROUP_SIZE_MXFP = 32;
 constexpr int64_t SCALES_GROUP_SIZE_PERGROUP = 128;
@@ -100,8 +101,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "totalUbSize is %lu.", info.totalUbSize);
 }
 
-static bool CheckInputTensorDim(const gert::TilingContext *context, const char *nodeName,
-                                MoeEpDispatchInfo &info)
+static bool CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
+                                  MoeEpDispatchInfo &info)
 {
     const gert::StorageShape *contextShape = context->GetInputShape(CONTEXT_INDEX);
     const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
@@ -139,30 +140,8 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
     return true;
 }
 
-static bool CheckScalesTensorDim(const gert::TilingContext *context, const char *nodeName,
-                                 int64_t xDim0, int64_t xDim1)
-{
-    const gert::StorageShape *scalesShape = context->GetOptionalInputShape(SCALES_INDEX);
-    auto scalesDesc = context->GetOptionalInputDesc(SCALES_INDEX);
-    if (scalesShape != nullptr) {
-        OP_TILING_CHECK(scalesShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(nodeName, "scales dims must be 2, got %lu.", scalesShape->GetStorageShape().GetDimNum()),
-            return false);
-        int64_t scalesDim0 = scalesShape->GetStorageShape().GetDim(0);
-        int64_t scalesDim1 = scalesShape->GetStorageShape().GetDim(1);
-        int64_t groupSize = (scalesDesc != nullptr && scalesDesc->GetDataType() == ge::DT_FLOAT)
-                                ? SCALES_GROUP_SIZE_PERGROUP : SCALES_GROUP_SIZE_MXFP;
-        int64_t expectedDim1 = (xDim1 + groupSize - 1) / groupSize;
-        OP_TILING_CHECK(scalesDim0 != xDim0, OP_LOGE(nodeName,
-            "scales dim0 must equal x dim0, got %ld vs %ld.", scalesDim0, xDim0), return false);
-        OP_TILING_CHECK(scalesDim1 != expectedDim1, OP_LOGE(nodeName,
-            "scales dim1 is invalid, expected %ld but got %ld.", expectedDim1, scalesDim1),
-            return false);
-    }
-    return true;
-}
-static bool CheckCachedTensorDim(const gert::TilingContext *context, const char *nodeName,
-                                 int64_t topkDim0, int64_t topkDim1)
+static bool CheckCachedTensorShape(const gert::TilingContext *context, const char *nodeName,
+                                   int64_t topkDim0, int64_t topkDim1)
 {
     const gert::StorageShape *weightsShape = context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX);
     const gert::StorageShape *cachedShape = context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX);
@@ -190,7 +169,47 @@ static bool CheckCachedTensorDim(const gert::TilingContext *context, const char 
     return true;
 }
 
-static bool CheckOutputTensorDim(const gert::TilingContext *context, const char *nodeName,
+static bool CheckInputTensorScales(const gert::TilingContext *context, const char *nodeName,
+                                   MoeEpDispatchInfo &info, const bool isXFp8)
+{
+    const gert::StorageShape *scalesShape = context->GetOptionalInputShape(SCALES_INDEX);
+    OP_TILING_CHECK(isXFp8 && scalesShape == nullptr, OP_LOGE(nodeName,
+        "scales is required when x is fp8, but not provided."), return false);
+    OP_TILING_CHECK(!isXFp8 && scalesShape != nullptr, OP_LOGE(nodeName, "scales is only valid when x is fp8."),
+        return false);
+
+    if (scalesShape != nullptr) {
+        auto scalesDesc = context->GetOptionalInputDesc(SCALES_INDEX);
+        // check dtype 
+        ge::DataType scalesDtype = scalesDesc->GetDataType();
+        OP_TILING_CHECK(scalesDtype != ge::DT_FLOAT && scalesDtype != ge::DT_FLOAT8_E8M0,
+            OP_LOGE(nodeName, "scales dtype must be DT_FLOAT or DT_FLOAT8_E8M0, but got %d.",
+                static_cast<int32_t>(scalesDtype)), return false);
+        // check format
+        auto scalesFormat = ge::GetPrimaryFormat(scalesDesc->GetStorageFormat());
+        OP_TILING_CHECK(static_cast<ge::Format>(scalesFormat) == ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE(nodeName, "scales format is invalid."), return false);
+
+        // check shape
+        OP_TILING_CHECK(scalesShape->GetStorageShape().GetDimNum() != TWO_DIMS, OP_LOGE(nodeName,
+            "scales dims must be 2, got %lu.", scalesShape->GetStorageShape().GetDimNum()), return false);
+        int64_t scalesDim0 = scalesShape->GetStorageShape().GetDim(0);
+        int64_t scalesDim1 = scalesShape->GetStorageShape().GetDim(1);
+        int64_t groupSize = (scalesDtype == ge::DT_FLOAT) ? SCALES_GROUP_SIZE_PERGROUP : SCALES_GROUP_SIZE_MXFP;
+        int64_t expectedDim1 = (static_cast<int64_t>(info.cfg.hidden) + groupSize - 1) / groupSize;
+        OP_TILING_CHECK(scalesDim0 != static_cast<int64_t>(info.cfg.numTokens), OP_LOGE(nodeName,
+            "scales dim0 must equal x dim0, got %ld vs %u.", scalesDim0, info.cfg.numTokens), return false);
+        OP_TILING_CHECK(scalesDim1 != expectedDim1, OP_LOGE(nodeName,
+            "scales dim1 is invalid, expected %ld but got %ld.", expectedDim1, scalesDim1),
+            return false);
+        
+        uint32_t scalesSize = scalesDtype == ge::DT_FLOAT ? sizeof(float) : FP8_DTYPE_SIZE;
+        info.cfg.scalesBytes = static_cast<uint32_t>(expectedDim1 * scalesSize);
+    }
+    return true;
+}
+
+static bool CheckOutputTensorShape(const gert::TilingContext *context, const char *nodeName,
                                  const MoeEpDispatchInfo &info, int64_t topkDim0, int64_t topkDim1)
 {
     const gert::StorageShape *recvPerRankShape = context->GetOutputShape(NUM_RECV_PER_RANK_INDEX);
@@ -215,25 +234,6 @@ static bool CheckOutputTensorDim(const gert::TilingContext *context, const char 
         OP_LOGE(nodeName, "dst_buffer_slot_idx dim0 must equal topk dim0."), return false);
     OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(1) != topkDim1,
         OP_LOGE(nodeName, "dst_buffer_slot_idx dim1 must equal topK."), return false);
-    return true;
-}
-
-static bool CheckScalesTensorDtype(const gert::TilingContext *context, const char *nodeName)
-{
-    ge::DataType xDtype = context->GetInputDesc(X_INDEX)->GetDataType();
-    bool isFp8 = (xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN);
-    auto scalesDesc = context->GetOptionalInputDesc(SCALES_INDEX);
-    OP_TILING_CHECK(isFp8 && scalesDesc == nullptr, OP_LOGE(nodeName,
-        "scales is required when x is fp8, but not provided."), return false);
-    OP_TILING_CHECK(!isFp8 && scalesDesc != nullptr, OP_LOGE(nodeName,
-        "scales is only valid when x is fp8, but x dtype is %d.", static_cast<int32_t>(xDtype)),
-        return false);
-    if (scalesDesc != nullptr) {
-        ge::DataType scalesDtype = scalesDesc->GetDataType();
-        OP_TILING_CHECK(scalesDtype != ge::DT_FLOAT && scalesDtype != ge::DT_FLOAT8_E8M0,
-            OP_LOGE(nodeName, "scales dtype must be DT_FLOAT or DT_FLOAT8_E8M0, but got %d.",
-                static_cast<int32_t>(scalesDtype)), return false);
-    }
     return true;
 }
 
@@ -272,9 +272,6 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
             OP_LOGE(nodeName, "cached_slot_idx dtype must be DT_INT32, but got %d.",
                 static_cast<int32_t>(cachedSlotIdxDesc->GetDataType())), return false);
     }
-
-    OP_TILING_CHECK(!CheckScalesTensorDtype(context, nodeName),
-        OP_LOGE(nodeName, "Check scales tensor dtype failed."), return false);
 
     return true;
 }
@@ -360,24 +357,27 @@ static ge::graphStatus CheckOutputTensorFormat(const gert::TilingContext *contex
 static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, const char *nodeName,
                                         MoeEpDispatchInfo &info)
 {
-    OP_TILING_CHECK(!CheckInputTensorDim(context, nodeName, info),
-        OP_LOGE(nodeName, "Check input tensor dim failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckScalesTensorDim(context, nodeName, info.cfg.numTokens, info.cfg.hidden),
-        OP_LOGE(nodeName, "Check scales tensor dim failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckCachedTensorDim(context, nodeName, info.cfg.numTokens, info.cfg.topK),
-        OP_LOGE(nodeName, "Check optional input tensor dim failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!CheckInputTensorShape(context, nodeName, info),
+        OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!CheckCachedTensorShape(context, nodeName, info.cfg.numTokens, info.cfg.topK),
+        OP_LOGE(nodeName, "Check optional input tensor shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckInputTensorDtype(context, nodeName),
         OP_LOGE(nodeName, "Check input tensor dtype failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckInputTensorFormat(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input tensor format failed."), return ge::GRAPH_FAILED);
+
+    ge::DataType xDtype = context->GetInputDesc(X_INDEX)->GetDataType();
+    bool isXFp8 = (xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN);
+    OP_TILING_CHECK(!CheckInputTensorScales(context, nodeName, info, isXFp8),
+        OP_LOGE(nodeName, "Check scales input failed."), return ge::GRAPH_FAILED);
     
-    info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
-    
-    uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    uint32_t xDtypeSize = isXFp8 ? FP8_DTYPE_SIZE : MAX_OUT_DTYPE_SIZE;
+    uint32_t hAlign32 = ((info.cfg.hidden * xDtypeSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    uint32_t perSlotBytes = ((hAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
+    uint32_t scalesSizeAlign32 = isXFp8 ? ((info.cfg.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
+    info.cfg.perSlotBytes = ((hAlign32 + scalesSizeAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
                             WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    info.cfg.perSlotBytes = perSlotBytes;
+    info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
     OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.cfg.perSlotBytes, info.cfg.hidden);
 
     return ge::GRAPH_SUCCESS;
@@ -386,8 +386,8 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
 static ge::graphStatus CheckOutputTensor(const gert::TilingContext *context, const char *nodeName,
                                          const MoeEpDispatchInfo &info)
 {
-    OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName, info, info.cfg.numTokens, info.cfg.topK),
-        OP_LOGE(nodeName, "Check output tensor dim failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!CheckOutputTensorShape(context, nodeName, info, info.cfg.numTokens, info.cfg.topK),
+        OP_LOGE(nodeName, "Check output tensor shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckOutputTensorDtype(context, nodeName),
         OP_LOGE(nodeName, "Check output tensor dtype failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckOutputTensorFormat(context, nodeName) != ge::GRAPH_SUCCESS,
