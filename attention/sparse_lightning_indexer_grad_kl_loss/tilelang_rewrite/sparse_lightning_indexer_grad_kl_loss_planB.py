@@ -722,27 +722,14 @@ def sparse_lightning_indexer_grad_kl_loss(
     if profile:
         torch.npu.synchronize()
         _pt["python_post"] = time.perf_counter()
-        # Compute intervals
-        t_gather = _pt["gather"]
-        t_k1 = _pt["kernel1"]
-        t_k2 = _pt["kernel2"]
-        t_post = _pt["python_post"]
-        global _profile_result
-        _profile_result = {
-            "gather": (t_k1 - t_gather) * 1000,
-            "kernel1": (t_k2 - t_k1) * 1000,
-            "kernel2": (t_post - t_k2) * 1000,
-            "python": (t_post - t_k2) * 1000,  # python post is fast, merged with kernel2 sync
-            "total": (t_post - t_gather) * 1000,
-        }
-        _pt["kernel1_only"] = t_gather + (_pt["kernel1"] - t_gather)  # placeholder for correct calc
-        # Recalculate with correct scope
-        _profile_result = {
+        # Use .update() to modify in-place (so imported references see the change)
+        _profile_result.clear()
+        _profile_result.update({
             "gather": (_pt["kernel1"] - _pt["gather"]) * 1000,
             "kernel1": (_pt["kernel2"] - _pt["kernel1"]) * 1000,
             "kernel2_and_python": (_pt["python_post"] - _pt["kernel2"]) * 1000,
             "total": (_pt["python_post"] - _pt["gather"]) * 1000,
-        }
+        })
 
     return d_query_index, d_key_index, d_weight, kl_loss.npu() if hasattr(kl_loss, 'npu') else kl_loss.cuda()
 
