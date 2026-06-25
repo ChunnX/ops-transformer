@@ -54,6 +54,16 @@ size_t GetInputTensorSize(const aclTensor *input)
     return 1;
 }
 
+bool HasInputTensor(const aclTensorList *input)
+{
+    return input != nullptr && input->Size() > 0 && (*input)[0] != nullptr;
+}
+
+bool HasInputTensor(const aclTensor *input)
+{
+    return input != nullptr;
+}
+
 std::string ShapeToStringWithoutBracket(const op::Shape &shape)
 {
     std::ostringstream oss;
@@ -86,12 +96,17 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsMxfp4() const
 }
 
 template <typename T>
-bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleScenario() const
+bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleLayout() const
 {
     return gmmParams_.groupType == SPLIT_M && GetInputTensorSize(gmmParams_.x) == 1 &&
            GetInputTensorSize(gmmParams_.y) == 1 && GetInputTensorSize(gmmParams_.weight) > 1 &&
-           GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ &&
-           gmmParams_.biasOptional == nullptr;
+           GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+}
+
+template <typename T>
+bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleScenario() const
+{
+    return IsWeightNzSingleMultiSingleLayout() && !HasInputTensor(gmmParams_.biasOptional);
 }
 
 template <typename T>
@@ -338,6 +353,9 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
             "FLOAT16, BFLOAT16, FLOAT32, INT32"));
 
     auto weightTensorNum = GetInputTensorSize(gmmParams_.weight);
+    GMM_CHECK_REPORT(!(IsWeightNzSingleMultiSingleLayout() && HasInputTensor(gmmParams_.biasOptional)),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), biasName_.c_str(), "nonnull",
+            "in weightNz single-multi-single case, bias must be nullptr"));
     if (IsWeightNzSingleMultiSingleScenario()) {
         GMM_CHECK_REPORT(weightTensorNum ==
                 static_cast<size_t>(gmmParams_.groupTensorOptional->GetViewShape().GetDim(0)),
@@ -1319,7 +1337,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
         ", weight=" + std::to_string(weightTensorNum) +
         ", y=" + std::to_string(yTensorNum);
     GMM_CHECK_REPORT((xTensorNum == 1 && weightTensorNum == 1 && yTensorNum == 1) ||
-            IsWeightNzSingleMultiSingleScenario(),
+            IsWeightNzSingleMultiSingleLayout(),
         OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(GetAclnnOpName(), "x, weight and y", tensorNums.c_str(),
             "in quant case, only single-single-single or weightNz single-multi-single tensor layout is supported"));
     CHECK_RET(CheckQuantCasesFormat() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
