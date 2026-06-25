@@ -53,6 +53,7 @@ private:
     int64_t ubFactorN_ = 1;
     int64_t ubTailFactorN_ = 0;
     int64_t ubSize_ = 0;
+    InplacePartialRotaryMulGradRegbaseTilingData tilingDataBab_;
 
     void SplitCore();
     ge::graphStatus SplitUb();
@@ -197,26 +198,39 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::SplitUb()
 
 ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::PostTiling()
 {
-    tilingData_->inplacePartialRotaryMulGradParams.b = b_;
-    tilingData_->inplacePartialRotaryMulGradParams.s = s_;
-    tilingData_->inplacePartialRotaryMulGradParams.d = d_;
-    tilingData_->inplacePartialRotaryMulGradParams.n = n_;
-    tilingData_->inplacePartialRotaryMulGradParams.ubFactorS = ubFactorS_;
-    tilingData_->inplacePartialRotaryMulGradParams.ubFactorB = ubFactorB_;
-    tilingData_->inplacePartialRotaryMulGradParams.ubLoopNumN = ubLoopNumN_;
-    tilingData_->inplacePartialRotaryMulGradParams.ubFactorN = ubFactorN_;
-    tilingData_->inplacePartialRotaryMulGradParams.ubTailFactorN = ubTailFactorN_;
-    tilingData_->inplacePartialRotaryMulGradParams.blockNumB = blockNumB_;
-    tilingData_->inplacePartialRotaryMulGradParams.blockFactorB = blockFactorB_;
-    tilingData_->inplacePartialRotaryMulGradParams.blockNumS = blockNumS_;
-    tilingData_->inplacePartialRotaryMulGradParams.blockFactorS = blockFactorS_;
-    tilingData_->inplacePartialRotaryMulGradParams.usedCoreNum = usedCoreNum_;
-    tilingData_->inplacePartialRotaryMulGradParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
-    tilingData_->inplacePartialRotaryMulGradParams.sliceStart = sliceStart_;
-    tilingData_->inplacePartialRotaryMulGradParams.sliceEnd = sliceEnd_;
-    tilingData_->inplacePartialRotaryMulGradParams.sliceLength = sliceLength_;
-    tilingData_->inplacePartialRotaryMulGradParams.dSplitCoef = dSplitCoef_;
-    tilingData_->sliceLength = sliceLength_;
+    tilingDataBab_.set_b(b_);
+    tilingDataBab_.set_s(s_);
+    tilingDataBab_.set_d(d_);
+    tilingDataBab_.set_n(n_);
+    tilingDataBab_.set_ubFactorS(ubFactorS_);
+    tilingDataBab_.set_ubFactorB(ubFactorB_);
+    tilingDataBab_.set_ubLoopNumN(ubLoopNumN_);
+    tilingDataBab_.set_ubFactorN(ubFactorN_);
+    tilingDataBab_.set_ubTailFactorN(ubTailFactorN_);
+    tilingDataBab_.set_blockNumB(blockNumB_);
+    tilingDataBab_.set_blockFactorB(blockFactorB_);
+    tilingDataBab_.set_blockNumS(blockNumS_);
+    tilingDataBab_.set_blockFactorS(blockFactorS_);
+    tilingDataBab_.set_usedCoreNum(usedCoreNum_);
+    tilingDataBab_.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
+    tilingDataBab_.set_sliceStart(sliceStart_);
+    tilingDataBab_.set_sliceEnd(sliceEnd_);
+    tilingDataBab_.set_sliceLength(sliceLength_);
+    tilingDataBab_.set_dSplitCoef(dSplitCoef_);
+
+    // 设置 userWorkspace
+    size_t *userWorkspaceSize = context_->GetWorkspaceSizes(WORKSPACE_COUNT);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, userWorkspaceSize);
+    userWorkspaceSize[0] = RESERVED_WORKSPACE;
+
+    auto rawTilingDataPtr = context_->GetRawTilingData();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, rawTilingDataPtr);
+    if (tilingDataBab_.GetDataSize() > rawTilingDataPtr->GetCapacity()) {
+        return ge::GRAPH_FAILED;
+    }
+
+    tilingDataBab_.SaveToBuffer(rawTilingDataPtr->GetData(), rawTilingDataPtr->GetCapacity());
+    rawTilingDataPtr->SetDataSize(tilingDataBab_.GetDataSize());
 
     tilingKey_ = static_cast<uint64_t>(TILING_KEY_BAB);
     context_->SetBlockDim(usedCoreNum_);
