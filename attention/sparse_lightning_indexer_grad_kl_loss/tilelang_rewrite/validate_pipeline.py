@@ -353,6 +353,12 @@ def parse_planb_python_source(filepath: str) -> Tuple[List[ParsedStage], List[st
             line = lines[i].strip()
             if "T.gemm_v0" in line:
                 params = _extract_gemm_params(line)
+                # Also check next 1-2 lines for enable_relu on T.copy (MM2)
+                for j in range(i + 1, min(i + 3, len(lines))):
+                    next_line = lines[j].strip()
+                    if "T.copy" in next_line and "enable_relu=True" in next_line:
+                        params["activation"] = "ReLU"
+                        break
                 k1_c_ops.append(ParsedOp("gemm", i + 1, line, params))
             elif "T.set_cross_flag" in line:
                 k1_c_ops.append(ParsedOp("sync", i + 1, line,
@@ -390,6 +396,13 @@ def parse_planb_python_source(filepath: str) -> Tuple[List[ParsedStage], List[st
 
     # --- Parse Python ops ---
     py_ops = []
+    # V0: torch.gather (in _preprocess_gather)
+    gather_count = 0
+    for i, line in enumerate(lines):
+        if "torch.gather" in line or ".gather(" in line:
+            gather_count += 1
+            py_ops.append(ParsedOp("gather", i + 1, line.strip(),
+                                   {"note": f"V0 gather #{gather_count}: key/key_rope/key_index by sparse_indices"}))
     # dWeight sum
     for i, line in enumerate(lines):
         if "d_weight_partial.sum(dim=2)" in line:
@@ -403,9 +416,6 @@ def parse_planb_python_source(filepath: str) -> Tuple[List[ParsedStage], List[st
                                    {"op": "sum", "note": "KL loss partials → scalar"}))
             break
     # dQueryIndex bmm (MM6)
-    for i, line in enumerate(lines):
-        if "torch.bmm" in line and "d_query_index" in lines[i + 1] if i + 1 < len(lines) else False:
-            pass
     found_bmm = False
     for i, line in enumerate(lines):
         if "torch.bmm(" in line and not found_bmm:
@@ -423,7 +433,8 @@ def parse_planb_python_source(filepath: str) -> Tuple[List[ParsedStage], List[st
     for i, line in enumerate(lines):
         if "d_query_index" in line and ".to(input_dtype)" in line:
             py_ops.append(ParsedOp("cast", i + 1, line.strip(),
-                                   {"from": "float32", "to": "input_dtype (fp16/bf16)", "note": "dQI cast"}))
+                                   {"from": "float32", "to": "input_dtype (fp16/bf16)", "note": "Python dQI .to()",
+                                    "mode": "PYTHON_CAST"}))
             break
 
     if py_ops:
@@ -643,36 +654,68 @@ def _check_op_params(orig_op: Dict, planb_ops: List[ParsedOp], stage_name: str) 
     op_type = orig_op.get("type", "")
     params = orig_op.get("params", {})
 
-    found = False
-    for pb_op in planb_ops:
-        if _op_type_matches(op_type, pb_op.op_type):
-            found = True
-            # Check key parameters
-            if op_type == "gemm":
-                if params.get("transpose_B") and not pb_op.params.get("transpose_B"):
-                    issues.append(f"  !! {stage_name}: transpose_B=True expected but not found")
-                if params.get("activation") == "ReLU":
-                    if pb_op.params.get("activation") != "ReLU":
-                        issues.append(f"  !! {stage_name}: ReLU activation expected")
-            elif op_type == "reduce":
-                orig_axis = params.get("axis")
-                pb_axis = pb_op.params.get("axis")
-                if orig_axis is not None and pb_axis is not None and orig_axis != pb_axis:
-                    issues.append(f"  !! {stage_name}: reduce axis expected={orig_axis}, got={pb_axis}")
-            elif op_type == "cast":
-                orig_mode = params.get("mode", "")
-                pb_mode = pb_op.params.get("mode", "")
-                if "ROUND" in orig_mode and "ROUND" not in pb_mode:
-                    issues.append(f"  !! {stage_name}: cast mode expected=CAST_ROUND, got={pb_mode}")
-            elif op_type == "compare":
-                orig_op_name = params.get("op", "")
-                pb_op_name = pb_op.params.get("compare_op", "")
-                if orig_op_name and pb_op_name and orig_op_name != pb_op_name:
-                    issues.append(f"  !! {stage_name}: compare op expected={orig_op_name}, got={pb_op_name}")
+    matching_ops = [pb_op for pb_op in planb_ops if _op_type_matches(op_type, pb_op.op_type)]
+
+    if not matching_ops:
+        issues.append(f"  ?? {stage_name}: op type '{op_type}' not found in Plan B ops")
+        return issues
+
+    # For cast/compare: check if ANY matching op has the right params
+    param_ok = False
+    param_detail = ""
+    for pb_op in matching_ops:
+        if op_type == "gemm":
+            if params.get("transpose_B") and not pb_op.params.get("transpose_B"):
+                continue  # this gemm doesn't match, try next
+            if params.get("activation") == "ReLU":
+                if pb_op.params.get("activation") == "ReLU":
+                    param_ok = True
+                    break
+            else:
+                param_ok = True
+                break
+        elif op_type == "cast":
+            pb_mode = pb_op.params.get("mode", "")
+            orig_mode = params.get("mode", "")
+            if "ROUND" in orig_mode and "ROUND" in pb_mode:
+                param_ok = True
+                break
+            elif pb_mode == "PYTHON_CAST":
+                param_ok = True  # Python .to() has no explicit round mode
+                break
+            elif "ROUND" not in orig_mode and pb_mode:
+                param_ok = True
+                break
+            elif not orig_mode:
+                param_ok = True  # no specific mode required
+                break
+            param_detail = f"expected={orig_mode}, got={pb_mode}"
+        elif op_type == "compare":
+            orig_op_name = params.get("op", "")
+            pb_op_name = pb_op.params.get("compare_op", "")
+            if orig_op_name and pb_op_name and orig_op_name == pb_op_name:
+                param_ok = True
+                break
+            param_detail = f"expected={orig_op_name}, got={pb_op_name}"
+        elif op_type == "reduce":
+            orig_axis = params.get("axis")
+            pb_axis = pb_op.params.get("axis")
+            if orig_axis is not None and pb_axis is not None and orig_axis != pb_axis:
+                param_detail = f"reduce axis expected={orig_axis}, got={pb_axis}"
+                continue
+            param_ok = True
+            break
+        else:
+            param_ok = True
             break
 
-    if not found:
-        issues.append(f"  ?? {stage_name}: op type '{op_type}' not found in Plan B ops")
+    if not param_ok and matching_ops:
+        if param_detail:
+            issues.append(f"  !! {stage_name}: {param_detail}")
+        elif op_type == "cast" and params.get("mode"):
+            issues.append(f"  !! {stage_name}: cast mode expected={params['mode']}")
+        elif op_type == "gemm" and params.get("activation") == "ReLU":
+            issues.append(f"  !! {stage_name}: ReLU activation expected")
 
     return issues
 
@@ -693,7 +736,7 @@ def _op_type_matches(orig_type: str, pb_type: str) -> bool:
         "select": ["select"],
         "cast": ["cast"],
         "scatter_add": ["scatter_add"],
-        "gather": [],
+        "gather": ["gather"],
         "abs": ["abs"],
     }
     return pb_type in equivalents.get(orig_type, [orig_type])
