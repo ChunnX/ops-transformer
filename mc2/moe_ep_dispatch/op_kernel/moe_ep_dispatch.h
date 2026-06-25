@@ -745,7 +745,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
                 WriteSlotToLocal(dstRankId, slot);
             }
         }
-        DataCopyPad(dstSlotIdxGMTensor_[tokenId], dstSlotIdxTensor_, topkCopyParams_);
+        DataCopyPad(dstSlotIdxGMTensor_[topkOffset], dstSlotIdxTensor_, topkCopyParams_);
         perSlotQueue_.FreeTensor<XType>(tokenSlotTensor_);
         dstSlotQueue_.FreeTensor<int32_t>(dstSlotIdxTensor_);
     }
