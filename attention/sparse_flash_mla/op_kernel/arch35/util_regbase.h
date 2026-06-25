@@ -142,12 +142,12 @@ struct RunInfo {
 
 struct SmlaFdRunInfo {
     bool coreEnable = false;
-    uint32_t bn2Idx = 0;
-    uint32_t mIdx = 0;
-    uint32_t workspaceIdx = 0;
-    uint32_t workspaceNum = 0;
-    uint32_t mStartIdx = 0;
-    uint32_t mNum = 0;
+    int64_t bn2Idx = 0;
+    int64_t mIdx = 0;
+    int64_t workspaceIdx = 0;
+    int64_t workspaceNum = 0;
+    int64_t mStartIdx = 0;
+    int64_t mNum = 0;
 };
 
 #define COMMON_CONST_INFO \

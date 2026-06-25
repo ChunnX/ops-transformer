@@ -253,11 +253,11 @@ Status: code written for phase 2. Not yet compiled or run.
 
 #### 1. `util_regbase.h` — New struct and fields
 
-- Added `SmlaFdRunInfo` struct (analogous to QSMLA's `FdRunInfo`, with `uint32_t` types for SMLA):
+- Added `SmlaFdRunInfo` struct (analogous to QSMLA's `FdRunInfo`, using the same `int64_t` field types after QSMLA consistency cleanup):
   ```cpp
   struct SmlaFdRunInfo {
       bool coreEnable = false;
-      uint32_t bn2Idx, mIdx, workspaceIdx, workspaceNum, mStartIdx, mNum;
+      int64_t bn2Idx, mIdx, workspaceIdx, workspaceNum, mStartIdx, mNum;
   };
   ```
 
@@ -321,3 +321,38 @@ Logic (same as QSMLA reference):
 - Verify empty Q / empty KV / no-work core: `isS2Split` is `false`, `s2SplitIdx` is 0.
 - Verify FD metadata parse: `fdRunInfo` fields match `GenMetadata()` output.
 - Verify `bN2EndIdx++` with `s2EndIdx != 0` handles terminal sentinel correctly.
+
+### QSMLA Consistency Check (2026-06-25)
+
+Compared current SMLA Phase 2 code with QSMLA sources:
+
+```text
+attention/mixed_quant_sparse_flash_mla/op_kernel/arch35/mixed_quant_sparse_flash_mla_scfa_kernel.h
+attention/mixed_quant_sparse_flash_mla/op_kernel/arch35/mixed_quant_sparse_flash_mla_kvcache.h
+attention/mixed_quant_sparse_flash_mla/op_kernel/arch35/util_regbase.h
+```
+
+#### Fixed to match QSMLA
+
+- `SmlaFdRunInfo` fields were changed from `uint32_t` to `int64_t`, matching QSMLA `FdRunInfo`.
+- `ComputeS1LoopInfo()` now accepts `s2EndIdx` and uses the QSMLA terminal split rule:
+
+```cpp
+actualNextGs1Idx = s2EndIdx == 0 ? nextGs1Idx : nextGs1Idx + 1;
+gs1LoopEndIdx = (nextGs1Idx == 0 && s2EndIdx == 0) ? gs1LoopEndIdx : actualNextGs1Idx;
+```
+
+- SCFA `ProcessMainLoop()` now passes metadata `s2EndIdx` into `ComputeS1LoopInfo()`, matching QSMLA.
+- `ComputeS2LoopInfo()` now resets `s2CmpLineStartIdx = 0` on each fresh S2 computation, matching QSMLA and preventing stale state after `ApplyS2MetadataRange()` clips a previous task.
+- `SetRunInfo()` now sets cmp-stage `runInfo.s2StartIdx = runParam.s2CmpLineStartIdx` instead of hardcoding `0`, matching QSMLA and preserving metadata clipping for cmp KV.
+
+#### Still intentionally different
+
+- SMLA keeps its own `ComputeParamBatch()` / `ComputeS2LoopInfo()` signatures because SMLA has different topk, actual length, and sparse block inputs.
+- SMLA keeps its own `ProcessVec0()` call signature.
+- SMLA does not add a `workspaceNum > 2` kernel-side check in this cleanup because current metadata is guaranteed not to emit it.
+- QSMLA's `SyncAll() -> ProcessFlashDecode()` phase is not copied yet because SMLA Vec block does not yet have `InitS2SplitStaging()`, `InitFDBuffers()`, or `ProcessFlashDecode()`; this remains Phase 5 work and must be copied from QSMLA then.
+
+#### Verification status
+
+Code review consistency check completed. Build and runtime validation have not been run in this environment.
