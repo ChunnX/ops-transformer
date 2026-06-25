@@ -31,7 +31,7 @@ struct QSMLACompileInfo {
 // --------------------------QSMLAInfoParser类成员函数定义-------------------------------------
 ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE(opName_, "Shape of tensor q is nullptr"),
+    OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor q"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

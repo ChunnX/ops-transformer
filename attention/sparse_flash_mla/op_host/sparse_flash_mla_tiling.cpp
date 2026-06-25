@@ -239,7 +239,7 @@ static std::string SMLADataTypeToSerialString(ge::DataType type)
 // --------------------------SMLAInfoParser类成员函数定义------------------------------------
 ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.q.desc == nullptr, OP_LOGE(opName_, "Desc of tensor query is nullptr"),
                 return ge::GRAPH_FAILED);
