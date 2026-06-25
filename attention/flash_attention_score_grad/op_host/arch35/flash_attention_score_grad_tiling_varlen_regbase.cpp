@@ -148,7 +148,6 @@ protected:
         int64_t N11 = fBaseParams.n1 / fBaseParams.aicNum;
         int64_t N12 = fBaseParams.n1 % fBaseParams.aicNum;
         int64_t mnMax = 0;
-
         DeterPrefixData deterPrefixData;
         CalcleTNDBandDeterPrefix(deterPrefixData, N11, mnMax);
 
