@@ -174,11 +174,11 @@ private:
     LocalTensor<bfloat16_t> bf16ScaleTensor_;
 
     // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
-    using Gmm2ActType = typename std::conditional<
+    using SwigluQuantOutType = typename std::conditional<
         (ENABLE_A8W4_GMM2 && QuantMode == E2M1_QUANT),
         fp8_e4m3fn_t, QuantOutType>::type;
 
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<Gmm2ActType, bfloat16_t,
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t,
         QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
@@ -1194,7 +1194,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
     } else {
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }
@@ -1212,7 +1212,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     if constexpr (ENABLE_A8W4_GMM2) {
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             MegaMoeImpl::GroupMatmul2CombineA8W4<
-                Gmm2ActType, Weight2Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                SwigluQuantOutType, Weight2Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_);
         }
