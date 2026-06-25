@@ -57,6 +57,11 @@ private:
     bool IsS8S4NZ() const;
     bool IsA16W4() const;
     bool IsWeightNzMxSingleMultiSingle() const;
+    bool IsWeightNzSingleMultiSingleScenario() const;
+    size_t GetLoopSize() const;
+    size_t GetXTensorIndex(size_t index) const;
+    size_t GetWeightTensorIndex(size_t index) const;
+    size_t GetYTensorIndex(size_t index) const;
     
     std::string GetDataFlowString() const;
     const char* GetAclnnName() const;
