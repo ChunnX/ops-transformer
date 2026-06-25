@@ -807,6 +807,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBloc
         if (sdpId % 2 == 1) {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_PDS_TO_DKV_FLAG);
         }
+        if (runInfo.quantRunInfo.s2Idx == 3) {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_PDS_TO_DKV_FLAG_TAIL);
+        }
     }
 }
 
@@ -873,6 +876,10 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType>::ProcessDQ(FagRunInfo &runInfo, int8_t sdpId)
 {
     if ASCEND_IS_AIC {
+        if (runInfo.quantRunInfo.s2Idx == 2) {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_PDS_TO_DKV_FLAG_TAIL);
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_PDS_TO_DKV_FLAG_TAIL + 16);
+        }
         LocalTensor<INPUT_TYPE> dsL1Tensor0 =
             L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2)
                 .Get()
