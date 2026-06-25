@@ -1852,10 +1852,10 @@ void FusedInferAttentionScoreTilingImpl::CheckNeedInitFlag(const FiaTilingInfo &
             needInit_ = true;
         }
         OP_LOGI(fiaInfo.opName, "preTokensPerbatch[%u] is %ld, nextTokensPerbatch[%u] is %ld",
-                i, preTokensPerbatch, i, nextTokensPerbatch);
+            i, preTokensPerbatch, i, nextTokensPerbatch);
         OP_LOGI(fiaInfo.opName,
-                "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %ld, needInit is %u",
-                i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
+            "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %ld, needInit is %u",
+            i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
     }
 }
 
