@@ -25,19 +25,16 @@ namespace MlaProlog {
  * @param inputLocal 输入tensor [row * col]
  * @param cosLocal cos系数tensor [(row - 1) * sinCosRepStride + col]
  * @param sinLocal sin系数tensor [(row - 1) * sinCosRepStride + col] - 1 应已在sin中
- * @param shareTmpUb 临时buffer 内部需要的空间为 [2 * row * col * sizeof(C)]
  * @param row 待处理的行数
  * @param col 待处理的列数  col <= 512 / sizeof(C)
  * @param sinCosRepStride 行与行之间sin/cos系数的偏移，单位为元素个数。
  */
-template <typename C>
-__aicore__ inline void RotaryPosEmb(const LocalTensor<C> &outputLocal, const LocalTensor<C> &inputLocal,
+template <typename O, typename C>
+__aicore__ inline void RotaryPosEmb(const LocalTensor<O> &outputLocal, const LocalTensor<C> &inputLocal,
                                     const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-                                    const LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col,
-                                    uint8_t sinCosRepStride)
+                                    uint64_t row, uint64_t col, uint8_t sinCosRepStride)
 {
-    (void)shareTmpUb;
-    RotaryPosEmbVF<C, C>(outputLocal, inputLocal, cosLocal, sinLocal,
+    RotaryPosEmbVF<O, C>(outputLocal, inputLocal, cosLocal, sinLocal,
                          static_cast<uint32_t>(row), col, col, static_cast<uint64_t>(sinCosRepStride));
 }
 } // namespace MlaProlog
