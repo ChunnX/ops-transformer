@@ -138,20 +138,25 @@ generate_generalized_cases() {
         # S1: 1..1048575, bias towards practical sizes (128..2048) with occasional large values
         # 80% chance: small range 128..2048, 20% chance: full range up to 1048575
         local S1
-        if [ $((RANDOM % 8)) -lt 7 ]; then
-            S1=$(( ((RANDOM % 20) + 1) * 128 ))   # 128, 256, ..., 2048
+        round=$((RANDOM % 100))
+        if [[ $round -lt 5 ]]; then
+            S1=$(( ((RANDOM % 800) + 1) * 128 ))
+        elif [[ $round -lt 7 ]]; then
+            S1=$(( ((RANDOM % 800) + 1) * 128 + (RANDOM % 128) ))
         else
-            # S1=$(( (RANDOM % 6048575) + 1048576 ))
-            S2=$(( (RANDOM % 20 + 1) * 128 + (RANDOM % 128) ))
+            S1=$(( (RANDOM % 6048575) + 1048576 + ((RANDOM % 20)) * 128))
+            # S1=$(( (RANDOM % 20 + 1) * 128 + (RANDOM % 128) ))
         fi
 
         # S2: same strategy as S1
         local S2
-        if [ $((RANDOM % 10)) -lt 7 ]; then
-            S2=$(( ((RANDOM % 20) + 1) * 128 ))
+        round=$((RANDOM % 100))
+        if [[ $round -lt 5 ]]; then
+            S2=$(( ((RANDOM % 800) + 1) * 128 ))
+        elif [[ $round -lt 7 ]]; then
+            S2=$(( ((RANDOM % 800) + 1) * 128 + (RANDOM % 128) ))
         else
-            S2=$(( (RANDOM % 20 + 1) * 128 + (RANDOM % 128) ))
-            # S2=$(( (RANDOM % 6048575) + 1048576 ))
+            S2=$(( (RANDOM % 6048575) + 1048576 + ((RANDOM % 20)) * 128))
         fi
 
         # D: fixed 128
