@@ -322,21 +322,24 @@ def _preprocess_gather(
     valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
 
+    # Fuse key, key_index, key_rope into a single gather
     key_2d = key[:, :, 0, :]
-    idx_k = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQuery)
-    gather_key = torch.gather(key_2d, 1, idx_k).reshape(B, S1, K, DQuery).contiguous()
-    gather_key.mul_(valid_mask)
-
-    key_index_2d = key_index[:, :, 0, :]
-    idx_ki = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
-    gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex).contiguous()
-    gather_key_index.mul_(valid_mask)
-
+    ki_2d = key_index[:, :, 0, :]
     if key_rope is not None and d_rope_orig > 0:
-        key_rope_2d = key_rope[:, :, 0, :]
-        idx_rope = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
-        gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
-        gather_key_rope.mul_(valid_mask)
+        kr_2d = key_rope[:, :, 0, :]
+    else:
+        kr_2d = torch.zeros(B, key.shape[1], 0, dtype=dtype, device=device)
+    key_all = torch.cat([key_2d, ki_2d, kr_2d], dim=-1)
+    total_dim = DQuery + DQueryIndex + d_rope_orig
+
+    idx_all = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, total_dim)
+    gather_all = torch.gather(key_all, 1, idx_all).reshape(B, S1, K, total_dim).contiguous()
+    gather_all.mul_(valid_mask)
+
+    gather_key = gather_all[..., :DQuery].contiguous()
+    gather_key_index = gather_all[..., DQuery:DQuery + DQueryIndex].contiguous()
+    if d_rope_orig > 0:
+        gather_key_rope = gather_all[..., DQuery + DQueryIndex:].contiguous()
     else:
         gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=dtype, device=device)
 

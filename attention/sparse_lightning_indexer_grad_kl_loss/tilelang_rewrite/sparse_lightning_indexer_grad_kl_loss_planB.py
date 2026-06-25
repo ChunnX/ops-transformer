@@ -301,9 +301,8 @@ def planB_kernel2(
     def main(
         bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
-        Diff: T.Tensor((B, S1, K), calc_dtype),
         PReduced: T.Tensor((B, S1, K), calc_dtype),
-        SoftmaxI: T.Tensor((B, S1, K), calc_dtype),
+        ReduceSumY: T.Tensor((B, S1, K), calc_dtype),
         dWeightPartial: T.Tensor((B, S1, n_num, Nidx1), calc_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossPartial: T.Tensor((B, S1, n_num), calc_dtype),
@@ -320,7 +319,7 @@ def planB_kernel2(
             k_start = n_idx * n_block
             k_end = k_start + n_block
 
-            # V1 only: dWeight partial + reluGrad + Loss partial for this K-block
+            # V1 only: SoftmaxI + diff + dWeight + reluGrad + Loss
             with T.Scope("V"):
                 bmm2_ub = T.alloc_shared((BLOCK_NIDX1, n_block), calc_dtype)
                 weight_ub = T.alloc_shared(Nidx1, calc_dtype)
@@ -344,6 +343,11 @@ def planB_kernel2(
                 loss_log_si_ub = T.alloc_shared(n_block, calc_dtype)
                 rsy_tmp_ub = T.alloc_shared(1, calc_dtype)
 
+                # Softmax workspace (each core redundantly computes global SoftmaxI)
+                si_all_ub = T.alloc_shared(K, calc_dtype)
+                si_max_ub = T.alloc_shared(1, calc_dtype)
+                si_sum_ub = T.alloc_shared(1, calc_dtype)
+
                 T.tile.fill(eps_ub, 1e-8)
 
                 for s1_id in T.serial(s1_start, s1_end):
@@ -352,10 +356,24 @@ def planB_kernel2(
                     T.tile.cast(weight_ub, weight_fp16_ub, "CAST_NONE", Nidx1)
                     T.barrier_all()
 
-                    # Load Diff, SoftmaxI, PReduced for this K-block
-                    T.copy(Diff[bz, s1_id, k_start:k_end], diff_ub)
-                    T.copy(SoftmaxI[bz, s1_id, k_start:k_end], si_chunk_ub)
+                    # ---- Compute global SoftmaxI from ReduceSumY (redundant per core) ----
+                    T.copy(ReduceSumY[bz, s1_id, 0:K], si_all_ub)
+                    T.barrier_all()
+                    T.reduce_max(si_all_ub, si_max_ub, dim=-1, clear=True, real_shape=[1, K])
+                    T.barrier_all()
+                    T.tile.sub(si_all_ub, si_all_ub, si_max_ub[0])
+                    T.tile.exp(si_all_ub, si_all_ub)
+                    T.barrier_all()
+                    T.reduce_sum(si_all_ub, si_sum_ub, dim=-1, clear=True, real_shape=[1, K])
+                    T.barrier_all()
+                    T.tile.max(si_sum_ub, si_sum_ub, 1e-8)
+                    T.tile.div(si_all_ub, si_all_ub, si_sum_ub[0])
+                    T.barrier_all()
+
+                    # Load P_reduced for this K-block and compute diff
                     T.copy(PReduced[bz, s1_id, k_start:k_end], p_chunk_ub)
+                    T.copy(si_all_ub[k_start:k_end], si_chunk_ub)
+                    T.tile.sub(diff_ub, si_chunk_ub, p_chunk_ub)
                     T.barrier_all()
 
                     # ---- Pass 4: dWeight partial + reluGrad for this K-block ----
@@ -434,21 +452,24 @@ def _preprocess_gather(
     valid_mask = (sparse_idx_3d >= 0).unsqueeze(-1).to(dtype)
     sparse_idx_safe = sparse_idx_3d.clamp(min=0)
 
+    # Fuse key, key_index, key_rope into a single gather
     key_2d = key[:, :, 0, :]
-    idx_k = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQuery)
-    gather_key = torch.gather(key_2d, 1, idx_k).reshape(B, S1, K, DQuery).contiguous()
-    gather_key.mul_(valid_mask)
-
-    key_index_2d = key_index[:, :, 0, :]
-    idx_ki = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, DQueryIndex)
-    gather_key_index = torch.gather(key_index_2d, 1, idx_ki).reshape(B, S1, K, DQueryIndex).contiguous()
-    gather_key_index.mul_(valid_mask)
-
+    ki_2d = key_index[:, :, 0, :]
     if key_rope is not None and d_rope_orig > 0:
-        key_rope_2d = key_rope[:, :, 0, :]
-        idx_rope = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, d_rope_orig)
-        gather_key_rope = torch.gather(key_rope_2d, 1, idx_rope).reshape(B, S1, K, d_rope_orig).contiguous()
-        gather_key_rope.mul_(valid_mask)
+        kr_2d = key_rope[:, :, 0, :]
+    else:
+        kr_2d = torch.zeros(B, key.shape[1], 0, dtype=dtype, device=device)
+    key_all = torch.cat([key_2d, ki_2d, kr_2d], dim=-1)
+    total_dim = DQuery + DQueryIndex + d_rope_orig
+
+    idx_all = sparse_idx_safe.reshape(B, S1 * K).unsqueeze(-1).expand(B, S1 * K, total_dim)
+    gather_all = torch.gather(key_all, 1, idx_all).reshape(B, S1, K, total_dim).contiguous()
+    gather_all.mul_(valid_mask)
+
+    gather_key = gather_all[..., :DQuery].contiguous()
+    gather_key_index = gather_all[..., DQuery:DQuery + DQueryIndex].contiguous()
+    if d_rope_orig > 0:
+        gather_key_rope = gather_all[..., DQuery + DQueryIndex:].contiguous()
     else:
         gather_key_rope = torch.zeros(B, S1, K, d_rope_orig, dtype=dtype, device=device)
 
@@ -636,12 +657,9 @@ def sparse_lightning_indexer_grad_kl_loss(
         p_reduced_ws, reduce_sum_y_ws,
     )
 
-    # ---- Python Bridge: Global SoftmaxI + diff ----
-    softmax_i_ws, diff_ws = _python_bridge(reduce_sum_y_ws, p_reduced_ws)
-
-    # ---- Launch Kernel 2 (K-parallel, V1-only, partial outputs) ----
+    # ---- Launch Kernel 2 (K-parallel, V1-only, SoftmaxI fused in kernel) ----
     d_weight_partial, relu_grad, loss_partial = func2(
-        bmm2_res_ws, weights, diff_ws, p_reduced_ws, softmax_i_ws,
+        bmm2_res_ws, weights, p_reduced_ws, reduce_sum_y_ws,
         d_weight_partial,
         relu_grad_ws,
         loss_partial,
