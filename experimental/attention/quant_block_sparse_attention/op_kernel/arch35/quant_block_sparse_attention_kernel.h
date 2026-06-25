@@ -385,8 +385,9 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
 )
 {
     uint64_t sparseLoopCountOffset = sparseBase + s2LoopCount * 2;
-    runInfo.sparseBlkIdx1 = sparseIndicesGm.GetValue(sparseLoopCountOffset);
-    runInfo.sparseBlkIdx2 = sparseIndicesGm.GetValue(sparseLoopCountOffset + 1);
+    int32_t remainingSparseBlocks = runParam.actSparseLen - static_cast<int32_t>(s2LoopCount * 2);
+    runInfo.sparseBlkIdx1 = remainingSparseBlocks > 0 ? sparseIndicesGm.GetValue(sparseLoopCountOffset) : -1;
+    runInfo.sparseBlkIdx2 = remainingSparseBlocks > 1 ? sparseIndicesGm.GetValue(sparseLoopCountOffset + 1) : -1;
     if (runInfo.sparseBlkIdx1 < 0) {
         runInfo.s2SparseBlk1RealSize = 0;
         runInfo.s2SparseBlk1RealAlignedSize = 0;
