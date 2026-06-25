@@ -18,6 +18,7 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
+#include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../matmul_all_reduce/op_kernel/arch22/quant_matmul_all_reduce_tiling_data.h"
 #include "../../matmul_all_reduce/op_kernel/arch22/unquant_matmul_all_reduce_tiling_data.h"
 #include "../../matmul_all_reduce/op_kernel/arch22/weight_quant_matmul_all_reduce_tiling_data.h"
