@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import sys
 import shutil
 import subprocess
 import logging
@@ -68,7 +69,7 @@ class ABI3Wheel(bdist_wheel):
     """
     def get_tag(self):
         python, abi, plat = super().get_tag()
-        python = "cp38"
+        python = f"cp3{sys.version_info.minor}"
         abi = "abi3"
         return python, abi, plat
 
