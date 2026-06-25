@@ -36,8 +36,11 @@
 #define FLASH_DECODE_SMLA_H
 
 #include <stdint.h>
+#include "vf/vf_flash_decode.h"
 
 namespace AttentionCommon {
+
+static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
 
 // The three regions are contiguous: partial O, max, then sum.
 // slotCount = maxSplits * physicalCoreSlots (already includes maxSplits).
@@ -184,7 +187,7 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
 
         LocalTensor<T> sinkUb;
-        ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
+        FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
                                    dealRowCount, workspaceNum, false, false);
         PipeBarrier<PIPE_V>();
 
@@ -203,7 +206,7 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVId);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
-            ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
+            FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
         }
