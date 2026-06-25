@@ -1299,12 +1299,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                                               MegaMoeTrace::SP_GMM1_END);
             }
 
-            // ===== GMM1→GMM2 切换：drain GMM1 的 AIV0→AIC 残留信号，避免与 GMM2 的 AIV1 信号串扰 =====
-            // GMM1 用 AIV0 (flags 0-10 on AIC)，GMM2 用 AIV1 (flags 16-26 on AIC)，物理上不冲突，
-            // 但为了状态干净，先把 GMM1 的 pending NotifyCube drain 掉。
-            EndSync();
-            vecSetSyncCom_ = 0;
-            gmm1PingPongIdx_ = 0;
+            // ===== GMM1→GMM2 切换（不在此 drain GMM1 的 AIV0 信号）=====
+            // swiglu(w)→GMM2(w) 的数据依赖已由逐 wave 的 GM flag 单独保证：
+            //   epilogue 在 CopyOutputFromUb2Gm 后做 MTE3→V/MTE3→S 屏障，再 AtomicAdd
+            //   flagSwiGluToGmm2Ptr[wave]；GMM2 首 tile 用 ReadGmByPassDCache 自旋等到该 flag 达标
+            //   (= 本 wave 的 swiglu tile 数) 才开算。故 GMM2(w0) 只依赖 swiglu(w0)，可与还在跑的
+            //   swiglu(w2) 重叠，不该被「等齐 batch 内全部 swiglu」的 EndSync 卡住。
+            // 因此把 AIV0→AIC 的 pending NotifyCube 惰性延后到 Phase2 之后再 drain（见 batch 末尾）：
+            //   GMM2 用 AIV1 UB 与 flags 16-26，和 AIV0 的 UB/flags 0-10 物理独立，Phase2 期间互不干扰；
+            //   swiglu 在 Phase2 期间已全部完成，届时 drain 不阻塞，且仍在「下个 batch GMM1 覆写 AIV0 UB」
+            //   之前，保证 AIV0 UB 复用安全。
 
             // dispatch↔GMM2 的 UB 同步：在「本 expert 第一个 GMM2 tile 之前」消费一次本轮
             // dispatch(e+1) 的 SetFlag(8)。放这里而非 GMM1 前，是为了保住 GMM1(e) ∥ dispatch(e+1)
@@ -1348,6 +1352,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
                                               MegaMoeTrace::SP_WAVE_END);
             }
+
+            // ===== Phase2 之后惰性 drain GMM1 的 AIV0→AIC NotifyCube =====
+            // swiglu 在 Phase2 期间(与 GMM2 重叠)已全部完成，此处 drain 不再阻塞 cube；仅为把
+            // AIV0 的 pending NotifyCube 收掉、复位 vecSetSyncCom_/gmm1PingPongIdx_，保证下一个
+            // batch/expert 的 GMM1 覆写 AIV0 UbFirst/UbSecond 之前，本 batch swiglu 已读完该 UB。
+            // EndSync 内部按 vecSetSyncCom_ 决定 drain 1/2 个通道，并用 gmm1PingPongIdx_ 定 drain 顺序，
+            // 二者此刻仍是 Phase1 结束时的值（Phase2 未改动），语义与原先 Phase2 前 drain 完全一致。
+            EndSync();
+            vecSetSyncCom_ = 0;
+            gmm1PingPongIdx_ = 0;
 
             // 确保 GMM2 的 MTE3 combine 全部完成，AIV1 UB 释放，再让下一轮 prefetch dispatch 用
             if constexpr (g_coreType == AscendC::AIV) {
