@@ -419,6 +419,214 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitRintThree = {
     MaskReg preg_compare11; MaskReg preg_compare12; \
     MaskReg preg_compare13; MaskReg preg_compare14; \
     MaskReg preg_compare15; MaskReg preg_compare16
+/* **************************************************************************************************
+ * Or even/odd pair: Or((uint16_t&)dst_K_sfx, (uint16_t&)even_K_sfx, (uint16_t&)odd_K_sfx, mask)
+ * ************************************************************************************************* */
+#define DO_OR_2(dst, even, odd, sfx, mask)                                                         \
+    do {                                                                                           \
+        Or((RegTensor<uint16_t>&)dst##1##sfx, (RegTensor<uint16_t>&)even##1##sfx,                 \
+           (RegTensor<uint16_t>&)odd##1##sfx, mask);                                              \
+        Or((RegTensor<uint16_t>&)dst##2##sfx, (RegTensor<uint16_t>&)even##2##sfx,                 \
+           (RegTensor<uint16_t>&)odd##2##sfx, mask);                                              \
+    } while (0)
+
+#define DO_OR_4(dst, even, odd, sfx, mask)                                                         \
+    do {                                                                                           \
+        DO_OR_2(dst, even, odd, sfx, mask);                                                       \
+        Or((RegTensor<uint16_t>&)dst##3##sfx, (RegTensor<uint16_t>&)even##3##sfx,                 \
+           (RegTensor<uint16_t>&)odd##3##sfx, mask);                                              \
+        Or((RegTensor<uint16_t>&)dst##4##sfx, (RegTensor<uint16_t>&)even##4##sfx,                 \
+           (RegTensor<uint16_t>&)odd##4##sfx, mask);                                              \
+    } while (0)
+
+#define DO_OR_8(dst, even, odd, sfx, mask)                                                         \
+    do {                                                                                           \
+        DO_OR_4(dst, even, odd, sfx, mask);                                                       \
+        Or((RegTensor<uint16_t>&)dst##5##sfx, (RegTensor<uint16_t>&)even##5##sfx,                 \
+           (RegTensor<uint16_t>&)odd##5##sfx, mask);                                              \
+        Or((RegTensor<uint16_t>&)dst##6##sfx, (RegTensor<uint16_t>&)even##6##sfx,                 \
+           (RegTensor<uint16_t>&)odd##6##sfx, mask);                                              \
+        Or((RegTensor<uint16_t>&)dst##7##sfx, (RegTensor<uint16_t>&)even##7##sfx,                 \
+           (RegTensor<uint16_t>&)odd##7##sfx, mask);                                              \
+        Or((RegTensor<uint16_t>&)dst##8##sfx, (RegTensor<uint16_t>&)even##8##sfx,                 \
+           (RegTensor<uint16_t>&)odd##8##sfx, mask);                                              \
+    } while (0)
+
+/* **************************************************************************************************
+ * ExpSub even/odd pairs: ExpSub(even_K ← inp_(2K-1)), ExpSub(odd_K ← inp_(2K))
+ * ************************************************************************************************* */
+#define DO_EXPSUB_PAIRS_4(even, odd, inp, maxreg, mask)            \
+    do {                                                           \
+        ExpSub(even##1, inp##1, maxreg, mask); ExpSub(odd##1, inp##2, maxreg, mask); \
+        ExpSub(even##2, inp##3, maxreg, mask); ExpSub(odd##2, inp##4, maxreg, mask); \
+        ExpSub(even##3, inp##5, maxreg, mask); ExpSub(odd##3, inp##6, maxreg, mask); \
+        ExpSub(even##4, inp##7, maxreg, mask); ExpSub(odd##4, inp##8, maxreg, mask); \
+    } while (0)
+
+#define DO_EXPSUB_PAIRS_8(even, odd, inp, maxreg, mask)            \
+    do {                                                           \
+        DO_EXPSUB_PAIRS_4(even, odd, inp, maxreg, mask);          \
+        ExpSub(even##5, inp##9, maxreg, mask); ExpSub(odd##5, inp##10, maxreg, mask); \
+        ExpSub(even##6, inp##11, maxreg, mask); ExpSub(odd##6, inp##12, maxreg, mask); \
+        ExpSub(even##7, inp##13, maxreg, mask); ExpSub(odd##7, inp##14, maxreg, mask); \
+        ExpSub(even##8, inp##15, maxreg, mask); ExpSub(odd##8, inp##16, maxreg, mask); \
+    } while (0)
+
+/* **************************************************************************************************
+ * Select operation: Select(sel_K, min, inp_K, cmp_K)
+ * ************************************************************************************************* */
+#define DO_SELECT_6(sel, mins, inp, cmp)                                                         \
+    do {                                                                                         \
+        Select(sel##1, mins, inp##1, cmp##1); Select(sel##2, mins, inp##2, cmp##2);              \
+        Select(sel##3, mins, inp##3, cmp##3); Select(sel##4, mins, inp##4, cmp##4);              \
+        Select(sel##5, mins, inp##5, cmp##5); Select(sel##6, mins, inp##6, cmp##6);              \
+    } while (0)
+
+#define DO_SELECT_8(sel, mins, inp, cmp)                                                         \
+    do {                                                                                         \
+        DO_SELECT_6(sel, mins, inp, cmp);                                                        \
+        Select(sel##7, mins, inp##7, cmp##7); Select(sel##8, mins, inp##8, cmp##8);              \
+    } while (0)
+
+#define DO_SELECT_16(sel, mins, inp, cmp)                                                        \
+    do {                                                                                         \
+        DO_SELECT_8(sel, mins, inp, cmp);                                                        \
+        Select(sel##9, mins, inp##9, cmp##9);   Select(sel##10, mins, inp##10, cmp##10);         \
+        Select(sel##11, mins, inp##11, cmp##11); Select(sel##12, mins, inp##12, cmp##12);        \
+        Select(sel##13, mins, inp##13, cmp##13); Select(sel##14, mins, inp##14, cmp##14);        \
+        Select(sel##15, mins, inp##15, cmp##15); Select(sel##16, mins, inp##16, cmp##16);        \
+    } while (0)
+
+/* **************************************************************************************************
+ * LoadAlign sequential: LoadAlign(reg_K, buf + floatRepSize*(K-1) + idx*stride)
+ * ************************************************************************************************* */
+#define DO_LOADALIGN_6(reg, buf, stride, idx)                                 \
+    do {                                                                       \
+        LoadAlign(reg##1, buf + floatRepSize * 0 + idx * stride);             \
+        LoadAlign(reg##2, buf + floatRepSize * 1 + idx * stride);             \
+        LoadAlign(reg##3, buf + floatRepSize * 2 + idx * stride);             \
+        LoadAlign(reg##4, buf + floatRepSize * 3 + idx * stride);             \
+        LoadAlign(reg##5, buf + floatRepSize * 4 + idx * stride);             \
+        LoadAlign(reg##6, buf + floatRepSize * 5 + idx * stride);             \
+    } while (0)
+
+#define DO_LOADALIGN_8(reg, buf, stride, idx)                                 \
+    do {                                                                       \
+        DO_LOADALIGN_6(reg, buf, stride, idx);                                \
+        LoadAlign(reg##7, buf + floatRepSize * 6 + idx * stride);             \
+        LoadAlign(reg##8, buf + floatRepSize * 7 + idx * stride);             \
+    } while (0)
+
+#define DO_LOADALIGN_16(reg, buf, stride, idx)                                \
+    do {                                                                       \
+        DO_LOADALIGN_8(reg, buf, stride, idx);                                \
+        LoadAlign(reg##9, buf + floatRepSize * 8 + idx * stride);             \
+        LoadAlign(reg##10, buf + floatRepSize * 9 + idx * stride);            \
+        LoadAlign(reg##11, buf + floatRepSize * 10 + idx * stride);           \
+        LoadAlign(reg##12, buf + floatRepSize * 11 + idx * stride);           \
+        LoadAlign(reg##13, buf + floatRepSize * 12 + idx * stride);           \
+        LoadAlign(reg##14, buf + floatRepSize * 13 + idx * stride);           \
+        LoadAlign(reg##15, buf + floatRepSize * 14 + idx * stride);           \
+        LoadAlign(reg##16, buf + floatRepSize * 15 + idx * stride);           \
+    } while (0)
+
+/* **************************************************************************************************
+ * LoadAlign for mask: LoadAlign<u32, POST_MODE_UPDATE, DIST_DS>(cmp_K, mub_K, pad)
+ * ************************************************************************************************* */
+#define DO_LOADALIGN_MASK_6(cmp, mub, pad)                                                         \
+    do {                                                                                           \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##1, mub##1, pad);                                                                   \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##2, mub##2, pad);                                                                   \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##3, mub##3, pad);                                                                   \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##4, mub##4, pad);                                                                   \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##5, mub##5, pad);                                                                   \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##6, mub##6, pad);                                                                   \
+    } while (0)
+
+#define DO_LOADALIGN_MASK_8(cmp, mub, pad)                                                         \
+    do {                                                                                           \
+        DO_LOADALIGN_MASK_6(cmp, mub, pad);                                                        \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##7, mub##7, pad);                                                                   \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##8, mub##8, pad);                                                                   \
+    } while (0)
+
+#define DO_LOADALIGN_MASK_16(cmp, mub, pad)                                                        \
+    do {                                                                                           \
+        DO_LOADALIGN_MASK_8(cmp, mub, pad);                                                        \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##9, mub##9, pad);                                                                    \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##10, mub##10, pad);                                                                  \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##11, mub##11, pad);                                                                  \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##12, mub##12, pad);                                                                  \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##13, mub##13, pad);                                                                  \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##14, mub##14, pad);                                                                  \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##15, mub##15, pad);                                                                  \
+        LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>( \
+            cmp##16, mub##16, pad);                                                                  \
+    } while (0)
+
+/* **************************************************************************************************
+ * StoreAlign sequential: StoreAlign<T, DIST_NORM_B32>(buf + floatRepSize*(K-1) + idx*stride, val_K, mask)
+ * ************************************************************************************************* */
+#define DO_STOREALIGN_6(T, buf, val, stride, idx, mask)                                \
+    do {                                                                                \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 0 + idx * stride, val##1, mask);       \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 1 + idx * stride, val##2, mask);       \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 2 + idx * stride, val##3, mask);       \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 3 + idx * stride, val##4, mask);       \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 4 + idx * stride, val##5, mask);       \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 5 + idx * stride, val##6, mask);       \
+    } while (0)
+
+#define DO_STOREALIGN_8(T, buf, val, stride, idx, mask)                                \
+    do {                                                                                \
+        DO_STOREALIGN_6(T, buf, val, stride, idx, mask);                               \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 6 + idx * stride, val##7, mask);       \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 7 + idx * stride, val##8, mask);       \
+    } while (0)
+
+#define DO_STOREALIGN_16(T, buf, val, stride, idx, mask)                               \
+    do {                                                                                \
+        DO_STOREALIGN_8(T, buf, val, stride, idx, mask);                               \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 8 + idx * stride, val##9, mask);       \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 9 + idx * stride, val##10, mask);      \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 10 + idx * stride, val##11, mask);     \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 11 + idx * stride, val##12, mask);     \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 12 + idx * stride, val##13, mask);     \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 13 + idx * stride, val##14, mask);     \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 14 + idx * stride, val##15, mask);     \
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(                             \
+            (__ubuf__ T *&)buf + floatRepSize * 15 + idx * stride, val##16, mask);     \
+    } while (0)
 } // namespace
 
 #endif // VF_BASIC_BLOCK_UTILS_H
