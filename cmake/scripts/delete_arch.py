@@ -18,14 +18,21 @@ import sys
 import shutil
 from pathlib import Path
 
-def should_skip_directory(dir_name, skip_patterns=None):
-    if skip_patterns is None:
-        skip_patterns = [
-            "all_gather_matmul_v2",
-            "quant_grouped_mat_mul_allto_allv"
+def should_skip_directory_arch35(dir_name, skip_patterns_arch35=None):
+    if skip_patterns_arch35 is None:
+        skip_patterns_arch35 = [
+            "matmul_all_reduce"
         ]
     
-    return dir_name in skip_patterns
+    return dir_name in skip_patterns_arch35
+
+def should_skip_directory_arch22(dir_name, skip_patterns_arch22=None):
+    if skip_patterns_arch22 is None:
+        skip_patterns_arch22 = [
+            "matmul_all_reduce"
+        ]
+    
+    return dir_name in skip_patterns_arch22
 
 def main():
     if len(sys.argv) != 3:
@@ -52,7 +59,12 @@ def main():
             
         dir_name = item.name
         
-        if should_skip_directory(dir_name) and rel_path.endswith('/arch35'):
+        if should_skip_directory_arch35(dir_name) and rel_path.endswith('/arch35'):
+            print(f"skip directory: {dir_name}")
+            skipped += 1
+            continue
+        
+        if should_skip_directory_arch22(dir_name) and rel_path.endswith('/arch22'):
             print(f"skip directory: {dir_name}")
             skipped += 1
             continue
