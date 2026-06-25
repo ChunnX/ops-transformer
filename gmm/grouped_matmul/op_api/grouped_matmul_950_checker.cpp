@@ -267,6 +267,17 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(const a
         gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz && GetInputTensorSize(gmmParams_.weight) > 1;
     size_t expectedStorageDim =
         isWeightNzMultiTensor ? weightNzMultiTensorStorageDim : QUANT_WEIGHTNZ_STORAGE_DIM;
+    if (weightStorageShapeDim != expectedStorageDim) {
+        OP_LOGW("[GMM][WeightNzSmsDebug] CheckWeightStorageShape mismatch: apiVersion=%d, xTensorNum=%zu, "
+                "weightTensorNum=%zu, yTensorNum=%zu, isLayout=%d, isWeightNzMultiTensor=%d, actualDim=%zu, "
+                "expectedDim=%zu, weightStorageShape=[%s], weightStorageFormat=%s.",
+                static_cast<int32_t>(gmmParams_.apiVersion), GetInputTensorSize(gmmParams_.x),
+                GetInputTensorSize(gmmParams_.weight), GetInputTensorSize(gmmParams_.y),
+                static_cast<int32_t>(IsWeightNzSingleMultiSingleLayout()),
+                static_cast<int32_t>(isWeightNzMultiTensor), weightStorageShapeDim, expectedStorageDim,
+                StorageShapeToString(weightTensor).c_str(),
+                op::ToString(weightTensor->GetStorageFormat()).GetString());
+    }
     GMM_CHECK_REPORT(weightStorageShapeDim == expectedStorageDim,
         OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
             std::to_string(weightStorageShapeDim), std::to_string(expectedStorageDim)));
