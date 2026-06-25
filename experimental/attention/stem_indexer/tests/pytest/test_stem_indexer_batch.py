@@ -76,8 +76,8 @@ def test_stem_indexer_batch(testcase_file):
         append_result(case, "PASS", "Expected failure was raised.")
         return
 
-    expected_indices, expected_seq_len, npu_result, case = stem_indexer_pt_loadprocess.stem_indexer_process(
-        testcase_file, device_id=0
+    expected_indices, expected_seq_len, npu_result, case, test_data = stem_indexer_pt_loadprocess.stem_indexer_process(
+        testcase_file, device_id=0, return_test_data=True
     )
-    result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case)
+    result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case, test_data)
     append_result(case, "PASS")

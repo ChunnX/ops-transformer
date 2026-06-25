@@ -125,7 +125,9 @@ class TestCustomStemIndexer(TestCase):
         self.assertEqual(tuple(npu_seq_len.shape), tuple(cpu_seq_len.shape))
         self.assertEqual(tuple(npu_indices.shape), tuple(cpu_indices.shape))
         self.assertTrue(torch.equal(npu_seq_len, cpu_seq_len))
-        result_compare_method.assert_stem_indexer_result(cpu_indices, cpu_seq_len, (npu_indices, npu_seq_len), case)
+        result_compare_method.assert_stem_indexer_result(
+            cpu_indices, cpu_seq_len, (npu_indices, npu_seq_len), case, cpu_inputs
+        )
 
 
 if __name__ == "__main__":

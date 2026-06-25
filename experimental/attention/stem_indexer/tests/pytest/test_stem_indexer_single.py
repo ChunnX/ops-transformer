@@ -72,7 +72,7 @@ def run_stem_indexer_case(case):
     expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(case, inputs)
     npu_result = call_stem_indexer(case, inputs)
     torch_npu.npu.synchronize()
-    result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case)
+    result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case, inputs)
 
 
 @pytest.mark.ci
