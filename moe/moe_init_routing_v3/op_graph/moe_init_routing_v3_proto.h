@@ -27,7 +27,8 @@ namespace ge {
 * @li scale: A 1D or 2D tensor. Shape is: (B*S) or (expert_end-expert_start, H) when quant_mode is 1.
              When quant_mode is 13, scale can be omitted or shape is (1, H). Type is:Float32. Format support ND.
 * @li offset: A 2D tensor. Shape is: (expert_end - expert_start, 1) or (expert_end - expert_start, H).
-               Type is:Float32. Format support ND.
+*             Type is:Float32. Format support ND.
+* @li topk_weight: A 2D tensor. Shape is: (B*S, K). Type is:Float32. TopK routing weights. Format support ND.
 * @par Outputs:
 * @li expanded_x: A 2D tensor. Shape is: (B*S*K, H). When quant_mode is -1, type is:Int8, BFloat16, Float16, Float32,
                   Hif8, FLOAT8_E5M2, FLOAT8_E4M3FN or FLOAT4_E2M1.
@@ -57,6 +58,8 @@ namespace ge {
                       Shape is: (B*S*K, M, 2), in which M is CeilAlign(CeilDiv(H, 32), 2).
                       Type is: Float8_E8M0.
                       Format support ND.
+* @li expanded_topk_weight: A 2D tensor. Shape is: (B*S*K, 1) when topk_weight is provided,
+                            otherwise shape is (0,). Type is:Float32. Format support ND.
 * @par Attributes:
 * @li active_num: Optional parameter. Type is:Int32. identify activate scenario. The value 0 indicates a non-active
 *                 scenario, and a value greater than 0 indicates an active scenario. In the active scenario, the size
@@ -82,11 +85,13 @@ REG_OP(MoeInitRoutingV3)
     .INPUT(expert_idx, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OPTIONAL_INPUT(offset, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(topk_weight, TensorType({DT_FLOAT}))
     .OUTPUT(expanded_x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_FLOAT8_E5M2,
                                     DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_INT4}))
     .OUTPUT(expanded_row_idx, TensorType({DT_INT32}))
     .OUTPUT(expert_tokens_count_or_cumsum, TensorType({DT_INT64}))
     .OUTPUT(expanded_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .OUTPUT(expanded_topk_weight, TensorType({DT_FLOAT}))
     .ATTR(active_num, Int, -1)
     .ATTR(expert_capacity, Int, -1)
     .ATTR(expert_num, Int, -1)
