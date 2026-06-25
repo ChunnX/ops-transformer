@@ -458,6 +458,11 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             int32_t curS1RealS2LenTmp = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size) +
                                         static_cast<int32_t>(globalS1Idx) + 1;
             curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
+
+            // 如果正在遍历的s2基本块所在位置大于当前行的实际s2长度，可以跳过不处理，最后一块因为要写索引不能跳过
+            if(!isLastS2InnerLoop && (curS1RealS2Len / s2BaseSize_ <= info.s2Idx)) {
+                continue;
+            }
         }
 
         // 短路1：如果causal 场景的s2有效长度小于init_block + windows_block的长度，直接输出连续索引，跳过 TopK
