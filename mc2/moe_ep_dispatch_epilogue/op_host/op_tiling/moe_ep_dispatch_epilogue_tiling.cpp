@@ -70,6 +70,8 @@ constexpr uint32_t HIDDEN_ALIGN = 32U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;   // sizeof(int32)=sizeof(float)=4
+constexpr int64_t SCALES_GROUP_SIZE_MXFP = 32;
+constexpr int64_t SCALES_GROUP_SIZE_PERGROUP = 128;
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info)
 {
@@ -77,7 +79,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogu
               info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
     OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
               info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
-    OP_LOGD(nodeName, "aivNum=%u, cached=%u", info.aivNum, info.cached);
+    OP_LOGD(nodeName, "aivNum=%u, cached=%u, scaleBytes=%u", info.aivNum, info.cached, info.scaleBytes);
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +188,7 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
 // 必须先于本函数完成 attr 校验，依赖 epWorldSize / numLocalExperts / nmt
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
-                                                const MoeEpDispatchEpilogueInfo &info, bool cached)
+                                             const MoeEpDispatchEpilogueInfo &info, bool cached)
 {
     // ---- context: dim 必须 = 1 ----
     const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
@@ -265,13 +267,46 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
 
     return ge::GRAPH_SUCCESS;
 }
+static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context, const char *nodeName,
+                                             ge::DataType recvXDtype, int64_t aAlloc, int64_t hidden,
+                                             MoeEpDispatchEpilogueInfo &info)
+{
+    auto recvScalesDesc = context->GetOutputDesc(OUT_RECV_SCALES_INDEX);
+    auto recvScalesShape = context->GetOutputShape(OUT_RECV_SCALES_INDEX);
+    const bool isFp8 = (recvXDtype == ge::DT_FLOAT8_E5M2 || recvXDtype == ge::DT_FLOAT8_E4M3FN);
+    if (!isFp8) {
+        return ge::GRAPH_SUCCESS;
+    }
 
-// ---------------------------------------------------------------------------
-// 输出 shape + dtype
-// 5 个输出全部 caller 预分配；A_alloc = recvX.shape[0] ≤ ep × nmt
-// ---------------------------------------------------------------------------
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvScalesDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvScalesShape);
+    OP_TILING_CHECK(recvScalesShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "recvScales dims must be 2, got %lu.",
+            recvScalesShape->GetStorageShape().GetDimNum()),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvScalesShape->GetStorageShape().GetDim(0) != aAlloc,
+        OP_LOGE(nodeName, "recvScales dim0 must equal recvX dim0=%ld, got %ld.",
+            aAlloc, recvScalesShape->GetStorageShape().GetDim(0)),
+        return ge::GRAPH_FAILED);
+
+    const ge::DataType scalesDtype = recvScalesDesc->GetDataType();
+    OP_TILING_CHECK(scalesDtype != ge::DT_FLOAT && scalesDtype != ge::DT_FLOAT8_E8M0,
+        OP_LOGE(nodeName, "recvScales dtype must be float or fp8_e8m0, got %d.",
+            static_cast<int32_t>(scalesDtype)),
+        return ge::GRAPH_FAILED);
+    const int64_t groupSize = (scalesDtype == ge::DT_FLOAT) ? SCALES_GROUP_SIZE_PERGROUP : SCALES_GROUP_SIZE_MXFP;
+    const int64_t expectedDim1 = (hidden + groupSize - 1) / groupSize;
+    OP_TILING_CHECK(recvScalesShape->GetStorageShape().GetDim(1) != expectedDim1,
+        OP_LOGE(nodeName, "recvScales dim1 must be %ld, got %ld.",
+            expectedDim1, recvScalesShape->GetStorageShape().GetDim(1)),
+        return ge::GRAPH_FAILED);
+
+    info.scaleBytes = static_cast<uint32_t>(expectedDim1 * ((scalesDtype == ge::DT_FLOAT) ? sizeof(float) : 1));
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, const char *nodeName,
-                                             const MoeEpDispatchEpilogueInfo &info, int64_t topK)
+                                             MoeEpDispatchEpilogueInfo &info, int64_t topK)
 {
     // ---- recvX [A_alloc, hidden] bf16/fp16 ----
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
@@ -303,6 +338,8 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
         OP_LOGE(nodeName, "recvX dtype must be bf16/fp16/fp8_e5m2/fp8_e4m3fn, got %d.",
             static_cast<int32_t>(recvXDtype)),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckRecvScalesTensor(context, nodeName, recvXDtype, aAlloc, hidden, info) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Check recvScales tensor failed."), return ge::GRAPH_FAILED);
 
     // ---- recvTopkWeights [A_alloc] float ----
     auto recvTopkWeightsShape = context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX);
