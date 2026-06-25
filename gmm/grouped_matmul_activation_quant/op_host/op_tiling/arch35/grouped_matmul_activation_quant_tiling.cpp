@@ -373,7 +373,6 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoOpTiling()
     tilingData_.gmmActivationQuantParams.quantDtype =
         yDtype_ == ge::DT_FLOAT8_E5M2 ? FP8_E5M2_VALUE : FP8_E4M3FN_VALUE;
     tilingData_.gmmActivationQuantParams.roundMode = roundMode_;
-    tilingData_.gmmActivationQuantParams.dequantDtype = static_cast<uint8_t>(ge::DT_FLOAT);
     tilingData_.gmmActivationQuantParams.scaleAlg = scaleAlg_;
     tilingData_.gmmActivationQuantParams.dstTypeMax = dstTypeMax_;
     return ge::GRAPH_SUCCESS;

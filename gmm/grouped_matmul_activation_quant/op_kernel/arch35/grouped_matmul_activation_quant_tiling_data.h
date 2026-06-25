@@ -25,7 +25,7 @@ struct GMMActivationQuantParams {
     uint8_t activationType = 0;
     uint8_t quantDtype = 0;
     uint8_t roundMode = 0;
-    uint8_t dequantDtype = 0;
+    uint8_t reserved0 = 0;
     uint8_t scaleAlg = 0;
     uint16_t reserved = 0;
     uint32_t rowLen = 0;
