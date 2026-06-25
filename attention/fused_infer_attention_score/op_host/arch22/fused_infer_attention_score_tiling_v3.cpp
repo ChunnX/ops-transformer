@@ -932,8 +932,8 @@ int32_t GetLayoutGroup(const std::string &inputLayoutStr)
     return -1;
 }
 
-bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::StorageShape &qStorageShape,
-    const gert::Shape *qRopeShape, int64_t numHeads, int64_t &queryD, int64_t &queryRopeD)
+bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::Shape &qStorageShape,
+    const gert::StorageShape *qRopeShape, int64_t numHeads, int64_t &queryD, int64_t &queryRopeD)
 {
     if (layoutGroup == 0) {
         if (qStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
@@ -965,7 +965,7 @@ bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::StorageShape &qStor
     return true;
 }
 
-bool GetValueDByLayoutGroup(int32_t layoutGroup, const gert::StorageShape &vStorageShape,
+bool GetValueDByLayoutGroup(int32_t layoutGroup, const gert::Shape &vStorageShape,
     int64_t numKvHeads, int64_t &valueD)
 {
     if (layoutGroup == 0) {
@@ -1172,8 +1172,8 @@ bool CheckSpecCondNoPA(int64_t tempQD, int64_t tempKD, int64_t tempVD)
     return isFAIDSize;
 }
 
-bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::StorageShape &kShape,
-    const gert::StorageShape &vShape, int64_t kvHeadNum)
+bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::Shape &kShape,
+    const gert::Shape &vShape, int64_t kvHeadNum)
 {
     int64_t tempKD = kShape.GetDim(DIM_2) / kvHeadNum;
     int64_t tempVD = vShape.GetDim(DIM_2) / kvHeadNum;
@@ -1185,8 +1185,8 @@ bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::StorageShape &kShape,
     return isFAIDSize && blockSizeSupported;
 }
 
-bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::StorageShape &kShape,
-    const gert::StorageShape &vShape)
+bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::Shape &kShape,
+    const gert::Shape &vShape)
 {
     int64_t tempKD = kShape.GetDim(DIM_2) * 16;
     int64_t tempVD = vShape.GetDim(DIM_2) * 16;
