@@ -263,8 +263,10 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(const a
     auto weightStorage = weightTensor->GetStorageShape();
     auto weightStorageShapeDim = weightStorage.GetDimNum();
     constexpr size_t weightNzMultiTensorStorageDim = 4;
+    const bool isWeightNzMultiTensor =
+        gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz && GetInputTensorSize(gmmParams_.weight) > 1;
     size_t expectedStorageDim =
-        IsWeightNzSingleMultiSingleLayout() ? weightNzMultiTensorStorageDim : QUANT_WEIGHTNZ_STORAGE_DIM;
+        isWeightNzMultiTensor ? weightNzMultiTensorStorageDim : QUANT_WEIGHTNZ_STORAGE_DIM;
     GMM_CHECK_REPORT(weightStorageShapeDim == expectedStorageDim,
         OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
             std::to_string(weightStorageShapeDim), std::to_string(expectedStorageDim)));
