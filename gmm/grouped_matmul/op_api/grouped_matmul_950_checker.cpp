@@ -96,7 +96,7 @@ bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleCandidate()
 template <typename T>
 bool AclnnGroupedMatmulDAV3510Checker<T>::IsWeightNzSingleMultiSingleScenario() const
 {
-    return IsWeightNzSingleMultiSingleCandidate() && !(IsMxfp4() && gmmParams_.biasOptional != nullptr);
+    return IsWeightNzSingleMultiSingleCandidate() && gmmParams_.biasOptional == nullptr;
 }
 
 template <typename T>
@@ -343,9 +343,9 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
             "FLOAT16, BFLOAT16, FLOAT32, INT32"));
 
     auto weightTensorNum = GetInputTensorSize(gmmParams_.weight);
-    GMM_CHECK_REPORT(!(IsWeightNzSingleMultiSingleCandidate() && isInputFp4 && gmmParams_.biasOptional != nullptr),
+    GMM_CHECK_REPORT(!(IsWeightNzSingleMultiSingleCandidate() && gmmParams_.biasOptional != nullptr),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), "biasOptional", "not nullptr",
-            "in weightNz single-multi-single MXFP4 case, biasOptional must be nullptr"));
+            "in weightNz single-multi-single case, biasOptional must be nullptr"));
     if (IsWeightNzSingleMultiSingleScenario()) {
         GMM_CHECK_REPORT(weightTensorNum ==
                 static_cast<size_t>(gmmParams_.groupTensorOptional->GetViewShape().GetDim(0)),
@@ -1112,20 +1112,24 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerTile() con
                 weightName_ + "=" + ViewShapeToString(GetInputTensor(gmmParams_.weight)),
             "when quantification mode is G-B quantification, the values of scale and weight transposition "
             "must be the same"));
-    for (size_t i = 0; i < GetInputTensorSize(gmmParams_.weight); ++i) {
-        auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
+    for (size_t i = 0; i < GetTensorIndexInfo().loopSize; ++i) {
+        const auto tensorIndex = GetTensorIndexInfo(i);
+        auto weightDimNumber = GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetViewShape().GetDimNum();
         auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
-        auto weightKDim =
-            GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightDimNumber - LAST_TWO_DIM_INDEX);
-        auto weightNDim = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightDimNumber - 1);
-        auto perTokenMDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(0);
-        auto xMDim = GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(0);
+        auto weightKDim = GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetViewShape().GetDim(
+            weightDimNumber - LAST_TWO_DIM_INDEX);
+        auto weightNDim =
+            GetInputTensor(gmmParams_.weight, tensorIndex.weight)->GetViewShape().GetDim(weightDimNumber - 1);
+        auto perTokenMDim =
+            GetInputTensor(gmmParams_.perTokenScaleOptional, tensorIndex.perTokenScale)->GetViewShape().GetDim(0);
+        auto xMDim = GetInputTensor(gmmParams_.x, tensorIndex.x)->GetViewShape().GetDim(0);
         GMM_CHECK_REPORT(transposePerTokenScale == gmmParams_.transposeX ||
-                LastTwoDimValueIsOne(GetInputTensor(gmmParams_.perTokenScaleOptional)) ||
+                LastTwoDimValueIsOne(GetInputTensor(gmmParams_.perTokenScaleOptional, tensorIndex.perTokenScale)) ||
                 IsSpecialperTileScene(groupNum, weightNDim, weightKDim, xMDim, perTokenMDim),
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GetAclnnOpName(), "perTokenScale and x",
-                perTokenScaleName_ + "=" + ViewShapeToString(GetInputTensor(gmmParams_.perTokenScaleOptional, i)) +
-                    ", " + xName_ + "=" + ViewShapeToString(GetInputTensor(gmmParams_.x, i)),
+                perTokenScaleName_ + "=" +
+                    ViewShapeToString(GetInputTensor(gmmParams_.perTokenScaleOptional, tensorIndex.perTokenScale)) +
+                    ", " + xName_ + "=" + ViewShapeToString(GetInputTensor(gmmParams_.x, tensorIndex.x)),
                 "when quantification mode is G-B quantification, the values of perTokenScale and x "
                 "transposition must be the same"));
     }

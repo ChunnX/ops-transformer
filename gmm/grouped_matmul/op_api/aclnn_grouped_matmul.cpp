@@ -1663,7 +1663,12 @@ static aclnnStatus SplitMSingleXSeparatedWeightSingleY(const gmm::GroupedMatmulP
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when %s with single x, separated weight and single y, [%s] dim num or format is invalid.",
                opName, errorMessage.c_str(), "x");
-    CHECK_COND(CheckDimNumAndFormat(gmmParams, gmmParams.weight, SEPARATED_WEIGHT_DIM, "weight") == ACLNN_SUCCESS,
+    const bool isWeightNz = gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz &&
+                            (*gmmParams.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+    const size_t expectedWeightDim = isWeightNz ? gmm::SPLIT_M_SINGLE_WEIGHT_DIM : SEPARATED_WEIGHT_DIM;
+    const size_t weightKDimId = isWeightNz ? 1 : 0;
+    const size_t weightNDimId = isWeightNz ? 2 : 1;
+    CHECK_COND(CheckDimNumAndFormat(gmmParams, gmmParams.weight, expectedWeightDim, "weight") == ACLNN_SUCCESS,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when %s with single x, separated weight and single y, [%s] dim num or format is invalid.",
                opName, errorMessage.c_str(), "weight");
@@ -1673,8 +1678,8 @@ static aclnnStatus SplitMSingleXSeparatedWeightSingleY(const gmm::GroupedMatmulP
                opName, errorMessage.c_str(), "y");
     // check shape, x(m,k), weight(k,n), y(m,n)
     int64_t innerAxisDimId = 1; // x always is not transposed, check K axis
-    CHECK_COND(CheckShapeDiffLengthTensorList(gmmParams.weight, gmmParams.x, {0, 1}, innerAxisDimId, TENSOR_WEIGHT_X) ==
-                   ACLNN_SUCCESS,
+    CHECK_COND(CheckShapeDiffLengthTensorList(gmmParams.weight, gmmParams.x, {weightKDimId, 1}, innerAxisDimId,
+                   TENSOR_WEIGHT_X) == ACLNN_SUCCESS,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when %s with single x, separated weight and single y, K dim value of [%s] and [%s] is "
                "mismatched.",
@@ -1685,16 +1690,18 @@ static aclnnStatus SplitMSingleXSeparatedWeightSingleY(const gmm::GroupedMatmulP
                "mismatched.",
                opName, errorMessage.c_str(), "x", "y");
     innerAxisDimId = !gmmParams.transposeWeight ?
-                         1 :
+                         static_cast<int64_t>(weightNDimId) :
                          -1; // if w is not transposed, check N asix; otherwise, check k axis, which can be skiped
-    CHECK_COND(CheckShapeDiffLengthTensorList(gmmParams.weight, gmmParams.y, {1, 1}, innerAxisDimId, TENSOR_WEIGHT_Y) ==
-                   ACLNN_SUCCESS,
+    CHECK_COND(CheckShapeDiffLengthTensorList(gmmParams.weight, gmmParams.y, {weightNDimId, 1}, innerAxisDimId,
+                   TENSOR_WEIGHT_Y) == ACLNN_SUCCESS,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when %s with single x, separated weight and single y, N dim value of [%s] and [%s] is "
                "mismatched.",
                opName, errorMessage.c_str(), "weight", "y");
-    CHECK_COND(CheckWeightShapeInnerAxisEven(gmmParams.weight, weightSize, gmmParams.transposeWeight ? 0 : 1, opName) ==
-                   ACLNN_SUCCESS,
+    const size_t weightInnerAxisDimId = isWeightNz ? (gmmParams.transposeWeight ? 1 : 2) :
+                                                     (gmmParams.transposeWeight ? 0 : 1);
+    CHECK_COND(CheckWeightShapeInnerAxisEven(gmmParams.weight, weightSize, weightInnerAxisDimId, opName) ==
+                  ACLNN_SUCCESS,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when %s with single x, separated weight and single y, weight inner axis check failed.",
                opName, errorMessage.c_str());
