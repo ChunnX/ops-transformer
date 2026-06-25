@@ -61,6 +61,11 @@ public:
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
                                 GM_ADDR recvBuffer, GM_ADDR permuteBuffer,
                                 uint32_t aivCoreNum);
+    __aicore__ inline void UpdateSendBuffer(GM_ADDR sendBuffer)
+    {
+        sendGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)sendBuffer);
+        dataSendOffsetLastSum_ = 0UL;
+    }
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer);
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);

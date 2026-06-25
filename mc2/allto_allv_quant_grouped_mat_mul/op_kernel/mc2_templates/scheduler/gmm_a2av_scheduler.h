@@ -31,32 +31,55 @@ public:
                                        SharedComputationOpType &shareComputeOp, TaskTilingInfo *taskTilingInfo)
         : hcclOp_(hcclOp), computeOp_(computeOp), shareComputeOp_(shareComputeOp), taskTilingInfo_(taskTilingInfo){};
     __aicore__ inline void Init();
+    __aicore__ inline void SetDoubleBuffer(GM_ADDR buf0, GM_ADDR buf1)
+    {
+        gmmOutputBuf_[0] = buf0;
+        gmmOutputBuf_[1] = buf1;
+        useDoubleBuffer_ = (buf1 != nullptr);
+    }
 
     __aicore__ inline void Process()
     {
         uint32_t e = taskTilingInfo_->e;
         uint32_t expertNum = taskTilingInfo_->expertNum;
+        uint32_t loopIdx = 0;
 
         for (uint32_t start = 0; start < e; start += expertNum) {
             uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
+            uint32_t curBuf = useDoubleBuffer_ ? (loopIdx % 2U) : 0U;
+
             if ASCEND_IS_AIC {
+                if (useDoubleBuffer_ && loopIdx >= 2U) {
+                    AscendC::CrossCoreWaitFlag(10);
+                }
+                if (useDoubleBuffer_) {
+                    computeOp_.SetOutputBuffer(gmmOutputBuf_[curBuf]);
+                }
                 computeOp_.Process(start, actualExpertNum);
-                AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
-                AscendC::CrossCoreWaitFlag(8);
                 AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
             }
             if ASCEND_IS_AIV {
                 AscendC::CrossCoreWaitFlag(9);
+                if (useDoubleBuffer_) {
+                    hcclOp_.UpdateSendBuffer(gmmOutputBuf_[curBuf]);
+                }
                 hcclOp_.LaunchCommData(start, actualExpertNum);
+                if (useDoubleBuffer_) {
+                    hcclOp_.Wait(start);
+                    AscendC::CrossCoreSetFlag<0, PIPE_FIX>(10);
+                }
             }
+            loopIdx++;
         }
 
         if (IsNeedMM) {
             shareComputeOp_.Process(0, 1);
         }
 
-        for (uint32_t start = 0; start < e; start += expertNum) {
-            hcclOp_.Wait(start);
+        if (!useDoubleBuffer_) {
+            for (uint32_t start = 0; start < e; start += expertNum) {
+                hcclOp_.Wait(start);
+            }
         }
 
         this->End();
@@ -72,6 +95,8 @@ private:
     ComputationOpType &computeOp_;
     SharedComputationOpType &shareComputeOp_;
     const TaskTilingInfo *taskTilingInfo_;
+    GM_ADDR gmmOutputBuf_[2] = {nullptr, nullptr};
+    bool useDoubleBuffer_ = false;
 };
 } // namespace MC2KernelTemplate
 #endif

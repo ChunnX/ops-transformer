@@ -41,6 +41,12 @@ public:
         TILING_TYPE *gmmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag);
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void End();
+    __aicore__ inline void SetOutputBuffer(GM_ADDR yGM)
+    {
+        yGM_ = yGM;
+        yGlobalBuffer_.SetGlobalBuffer((__gm__ yType *)yGM_);
+        expertTokenOffset_ = 0;
+    }
 
 protected:
     __aicore__ inline void UpdateAddr(uint32_t expertIdx, uint32_t expertTokenNum);

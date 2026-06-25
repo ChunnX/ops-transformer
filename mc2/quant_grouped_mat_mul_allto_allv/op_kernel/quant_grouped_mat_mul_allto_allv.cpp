@@ -84,11 +84,11 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     constexpr bool IS_SHARED_EXPERT = true;
     constexpr bool IS_NOT_SHARED_EXPERT = false;
 
-    // workspace布局 (后通信模式):
-    //   [0, wsGmmOutputSize)                 → 路由专家 GMM 输出 (每轮从偏移0开始写入)
+    // workspace布局 (后通信模式, 双缓冲流水):
+    //   [0, wsGmmOutputSize)                 → GMM输出缓冲 buf[0] (rank-first布局)
     //   [+, wsGmmComputeWorkspaceSize)       → GmmComputeOp 内部空间
     //   [+, wsSharedGmmComputeWorkspaceSize) → SharedGmmComputeOp 内部空间
-    //   [+, wsPermuteOutSize)                → PermuteSend 重排空间 (expert优先→rank优先)
+    //   [+, wsPermuteOutSize)                → GMM输出缓冲 buf[1] (双缓冲第二缓冲)
     uint64_t wsOffset = 0;
     GM_ADDR gmmOutputGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsGmmOutputSize;
@@ -96,7 +96,7 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     wsOffset += tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
-    GM_ADDR permuteSendGM = userWorkspace + wsOffset;
+    GM_ADDR gmmOutputBuf1GM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsPermuteOutSize;
 
     using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
@@ -111,12 +111,12 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
                                                      false, TILINGKEY_MATMUL_TRANS, true, false>;
     using GmmA2avSchedulerType =
         GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
-    // hccl: sendBuffer=GMM输出缓冲 (rank-first布局, 无需permute重排)
+    // hccl: sendBuffer=GMM输出缓冲 buf[0] (双缓冲首缓冲, rank-first布局)
     GM_ADDR sendBufferAddr = gmmOutputGM;
     HcclOpType hcclOp;
     hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM, gmmOutputGM,
         static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
-    // gmm: yGM=GMM输出缓冲(通信发送源), workspaceGM=groupList+ptrTable区域
+    // gmm: yGM=GMM输出缓冲buf[0], workspaceGM=groupList+ptrTable区域
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                        gmmArrayAddr_, tilingGM);
     ComputeOpType computeOp;
@@ -129,5 +129,9 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
         sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe, false);
     GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
+    // 双缓冲: buf[0]=gmmOutputGM, buf[1]=gmmOutputBuf1GM (复用原permute空间)
+    if (tilingData_->workspaceInfo.wsPermuteOutSize > 0) {
+        gmmA2avScheduler.SetDoubleBuffer(gmmOutputGM, gmmOutputBuf1GM);
+    }
     gmmA2avScheduler.Process();
 }

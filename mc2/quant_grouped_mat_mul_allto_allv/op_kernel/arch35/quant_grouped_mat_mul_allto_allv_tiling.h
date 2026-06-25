@@ -29,13 +29,16 @@ using MC2KernelTemplate::GMMQuantTilingData;
 using MC2KernelTemplate::TaskTilingInfo;
 
 /**
- * GMM A2AV Workspace 信息 (后通信模式: GMM计算 → AlltoAllv发送, Permute已消除)
+ * GMM A2AV Workspace 信息 (后通信模式, 双缓冲流水: GMM计算 → AlltoAllv发送)
  *
  * 算子级 workspace 分为四部分:
- *   [0, wsGmmOutputSize)                              → 路由专家 GMM 输出缓冲 (rank-first布局), 传给 GmmComputeOp.Init 的 y 参数
+ *   [0, wsGmmOutputSize)                              → GMM输出缓冲 buf[0] (rank-first布局), 传给 GmmComputeOp.Init 的 y 参数
  *   [wsGmmOutputSize, + wsGmmComputeWorkspaceSize)    → 路由专家 GmmComputeOp 内部空间, 传给 GmmComputeOp.Init 的 tempAddr 参数
  *   [+, + wsSharedGmmComputeWorkspaceSize)            → 共享专家 SharedGmmComputeOp 内部空间, 传给 SharedGmmComputeOp.Init 的 tempAddr 参数
- *   [+, + wsPermuteOutSize)                           → 保留字段 (始终为0, Permute已消除)
+ *   [+, + wsPermuteOutSize)                           → GMM输出缓冲 buf[1] (双缓冲第二缓冲, 与buf[0]等大)
+ *
+ * 双缓冲流水: AIC写buf[i%2], AIV读buf[i%2]后Wait释放, AIC仅在追上AIV时等反压(flag 10)
+ * workspace总量与原permute方案相同 (permute空间复用为第二缓冲)
  *
  * 注: 后通信模式 recvBuffer=yGM (AlltoAllv直接写入输出tensor), 无需额外commRecv workspace
  *

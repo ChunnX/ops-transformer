@@ -95,7 +95,7 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     wsOffset += tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
-    GM_ADDR permuteSendGM = userWorkspace + wsOffset;
+    GM_ADDR gmmOutputBuf1GM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsPermuteOutSize;
 
     GM_ADDR sendBufferAddr = gmmOutputGM;
@@ -116,5 +116,8 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
         sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe, false);
 
     GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
+    if (tilingData_->workspaceInfo.wsPermuteOutSize > 0) {
+        gmmA2avScheduler.SetDoubleBuffer(gmmOutputGM, gmmOutputBuf1GM);
+    }
     gmmA2avScheduler.Process();
 }
