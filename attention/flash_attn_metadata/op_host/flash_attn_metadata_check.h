@@ -89,11 +89,6 @@ FlashAttnMetadataChecker::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, i
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (maxSeqlenQ < -1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenQ must be -1 or >= 0, but got %ld", maxSeqlenQ);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
     if (maxSeqlenKv < -1) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenKv must be -1 or >= 0, but got %ld", maxSeqlenKv);
         return ACLNN_ERR_PARAM_INVALID;
@@ -178,7 +173,7 @@ FlashAttnMetadataChecker::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv
         }
     }
 
-    if (strcmp(layoutKv, "TND")) {
+    if (strcmp(layoutKv, "TND") == 0) {
         // layoutQ为TND时，必须传入cuSeqlensKvOptional
         if (cuSeqlensKvOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
@@ -209,7 +204,7 @@ FlashAttnMetadataChecker::CheckConsistency(int64_t batchSize, int64_t numHeadsQ,
                                            const aclTensor *sequsedQOptional,
                                            const aclTensor *sequsedKvOptional)
 {
-    if (batchSize >= 0) {
+    if (batchSize == 0) {
         return ACLNN_SUCCESS;
     }
 

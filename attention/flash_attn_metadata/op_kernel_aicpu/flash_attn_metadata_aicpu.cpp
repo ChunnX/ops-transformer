@@ -110,15 +110,8 @@ std::vector<int64_t> FlashAttnMetadataCpuKernel::GetTensorDataAsInt64(Tensor *te
 bool FlashAttnMetadataCpuKernel::ParamsInit()
 {
     InitDeviceInfo();
-    InitLoadBalnceParams();
     InitBaseInfo();
-
-    LoadActualSizes(cuSeqlensQ_, sequsedQ_,
-        baseInfo.actualQuerySeqSize, baseInfo.querySeqSize, baseInfo.isCumulativeQuerySeq);
-    LoadActualSizes(cuSeqlensKv_, sequsedKv_,
-        baseInfo.actualKvSeqSize, baseInfo.kvSeqSize, baseInfo.isCumulativeKvSeq);
-
-    
+    InitLoadBalnceParams();
     return true;
 }
 
@@ -176,17 +169,23 @@ void FlashAttnMetadataCpuKernel::LoadActualQuerySeq()
 
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
-        auto tmpSeq = GetTensorDataAsInt64(sequsedQ_, batchSize_);
-        baseInfo.actualQuerySeqSize = tmpSeq;
+        baseInfo.batchSize = batchSize_;
+        auto tmpSeq = GetTensorDataAsInt64(sequsedQ_, sequsedQ_->GetTensorShape()->GetDimSize(0));
+        baseInfo.querySeqSize = static_cast<uint32_t>(*std::max_element(tmpSeq.begin(), tmpSeq.end()));
+        baseInfo.actualQuerySeqSize.assign(tmpSeq.begin(), tmpSeq.end());
         if (baseInfo.isCumulativeQuerySeq) {
             std::partial_sum(tmpSeq.begin(), tmpSeq.end(), baseInfo.actualQuerySeqSize.begin());
         }
-        baseInfo.querySeqSize = static_cast<uint32_t>(*std::max_element(tmpSeq.begin(), tmpSeq.end()));
     } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-        batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0);
-        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensQ_, batchSize_ + 1);
+        batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1U;
+        baseInfo.batchSize = batchSize_;
+        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensQ_, sequsedQ_->GetTensorShape()->GetDimSize(0));
         baseInfo.actualQuerySeqSize.assign(tmpSeq.begin() + 1, tmpSeq.end());
-        baseInfo.querySeqSize = static_cast<uint32_t>(*std::max_element(tmpSeq.begin(), tmpSeq.end()));
+        baseInfo.querySeqSize = 0Us;
+        for (size_t i = 1; i < tmpSeq.size(); ++i) {
+            auto seq = (baseInfo.isCumulativeQuerySeq) ? tmpSeq[i] - tmpSeq[i - 1] : tmpSeq[i];
+            baseInfo.querySeqSize = std::max(baseInfo.querySeqSize, static_cast<uint32_t>(seq));
+        }
     }
     return;
 }
@@ -197,18 +196,20 @@ void FlashAttnMetadataCpuKernel::LoadActaulKvSeq()
     baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
 
     if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-        auto seqLength = sequsedKv_->GetTensorShape()->GetDimSize(0);
-        auto tmpSeq = GetTensorDataAsInt64(sequsedKv_, seqLength);
-        baseInfo.actualKvSeqSize = tmpSeq;
+        auto tmpSeq = GetTensorDataAsInt64(sequsedKv_, sequsedKv_->GetTensorShape()->GetDimSize(0));
+        baseInfo.kvSeqSize = static_cast<uint32_t>(*std::max_element(tmpSeq.begin(), tmpSeq.end()));
+        baseInfo.actualKvSeqSize.assign(tmpSeq.begin(), tmpSeq.end());
         if (baseInfo.isCumulativeKvSeq) {
             std::partial_sum(tmpSeq.begin(), tmpSeq.end(), baseInfo.actualKvSeqSize.begin());
         }
-        baseInfo.kvSeqSize = static_cast<uint32_t>(*std::max_element(tmpSeq.begin(), tmpSeq.end()));
     } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-        auto seqLength = sequsedKv_->GetTensorShape()->GetDimSize(0);
-        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensKv_, batchSize_ + 1);
+        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensKv_, sequsedKv_->GetTensorShape()->GetDimSize(0));
         baseInfo.actualKvSeqSize.assign(tmpSeq.begin() + 1, tmpSeq.end());
-        baseInfo.kvSeqSize = static_cast<uint32_t>(*std::max_element(tmpSeq.begin(), tmpSeq.end()));
+        baseInfo.kvSeqSize = 0Us;
+        for (size_t i = 1; i < tmpSeq.size(); ++i) {
+            auto seq = (baseInfo.isCumulativeKvSeq) ? tmpSeq[i] - tmpSeq[i - 1] : tmpSeq[i];
+            baseInfo.kvSeqSize = std::max(baseInfo.kvSeqSize, static_cast<uint32_t>(seq));
+        }
     }
     return;
 }

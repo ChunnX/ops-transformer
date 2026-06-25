@@ -212,7 +212,7 @@ def flash_attn(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.npu_flash_attn(
+    return op_module.flash_attn(
         q, k, v,
         block_table,
         cu_seqlens_q, cu_seqlens_kv,

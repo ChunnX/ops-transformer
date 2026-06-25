@@ -59,8 +59,6 @@ private:
     void InitLoadBalnceParams();
     void LoadActualQuerySeq();
     void LoadActaulKvSeq();
-    void LoadActualSizes(Tensor *cuSeqlens, Tensor *seqused, std::vector<int64_t> &actualSizes,
-        uint32_t &seqSize, bool isCumulative);
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
