@@ -11,9 +11,45 @@
 #define OP_API_INC_GROUPED_MATMUL_UTIL_H
 #include "opdev/common_types.h"
 #include "opdev/op_executor.h"
+#include <algorithm>
+#include <map>
+#include <sstream>
+#include <string>
+#include <vector>
 
 namespace gmm {
 using namespace op;
+
+inline bool CheckDTypeInVector(const op::DataType dtype, const std::vector<op::DataType> &validTypes)
+{
+    return std::find(validTypes.begin(), validTypes.end(), dtype) != validTypes.end();
+}
+
+inline std::string DTypeVectorToString(const std::vector<op::DataType> &dataTypes)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < dataTypes.size(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << op::ToString(dataTypes[i]).GetString();
+    }
+    oss << "]";
+    return oss.str();
+}
+
+#define OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(tensor, supportList, retExpr)                                      \
+    do {                                                                                                     \
+        if (!gmm::CheckDTypeInVector((tensor)->GetDataType(), (supportList))) {                              \
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,                                                                 \
+                    "Tensor %s not implemented for %s, should be in dtype support list %s.",                 \
+                    #tensor, op::ToString((tensor)->GetDataType()).GetString(),                              \
+                    gmm::DTypeVectorToString(supportList).c_str());                                          \
+            retExpr;                                                                                         \
+        }                                                                                                    \
+    } while (0)
+
 constexpr int64_t NO_SPLIT = -1L;
 constexpr int64_t SPLIT_M = 0L;
 constexpr int64_t SPLIT_K = 2L;
@@ -126,7 +162,7 @@ const std::map<DataType, std::string> DTYPE_STRING{
     {DataType::DT_HIFLOAT8, "HIFLOAT8"}
 };
 
-const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
+const std::vector<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                 DataType::DT_BF16};
 
 bool IsTransposeLastTwoDims(const aclTensor *tensor);

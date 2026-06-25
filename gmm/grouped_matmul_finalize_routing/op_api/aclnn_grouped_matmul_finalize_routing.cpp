@@ -29,6 +29,7 @@
 #include "grouped_matmul_finalize_routing_950_checker.h"
 #include "grouped_matmul_finalize_routing_weight_quant_950_checker.h"
 #include "../../grouped_matmul/op_api/grouped_matmul_950_checker.h"
+#include <vector>
 
 using namespace op;
 using namespace GmmFinalizeRouting;
@@ -92,25 +93,25 @@ static const int64_t N_VALUE_64 = 64;
 static const int64_t PER_INT4_IN_U32 = 8;
 static const int64_t PER_INT4_IN_U8 = 2;
 
-static const std::initializer_list<op::DataType> IN_TYPE_SUPPORT_LIST = {op::DataType::DT_INT8, op::DataType::DT_INT4};
-static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST = {
+static const std::vector<op::DataType> IN_TYPE_SUPPORT_LIST = {op::DataType::DT_INT8, op::DataType::DT_INT4};
+static const std::vector<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT, op::DataType::DT_INT64, op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST = { op::DataType::DT_BF16 };
-static const std::initializer_list<op::DataType> OFFSET_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
-static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16 };
-static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64,op::DataType::DT_INT32};
+static const std::vector<op::DataType> BIAS_TYPE_SUPPORT_LIST = { op::DataType::DT_BF16 };
+static const std::vector<op::DataType> OFFSET_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
+static const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
+static const std::vector<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
+static const std::vector<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16 };
+static const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
+static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64,op::DataType::DT_INT32};
 
 // w4a8 support dtype
-static const std::initializer_list<op::DataType> W4A8_BIAS_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::initializer_list<op::DataType> W4A8_IN1_TYPE_SUPPORT_LIST = { op::DataType::DT_INT8 };
-static const std::initializer_list<op::DataType> W4A8_IN2_TYPE_SUPPORT_LIST = { op::DataType::DT_INT4 };
-static const std::initializer_list<op::DataType> W4A8_OUT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> W4A8_SCALE_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
-static const std::initializer_list<op::DataType> W4A8_ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
+static const std::vector<op::DataType> W4A8_BIAS_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
+static const std::vector<op::DataType> W4A8_IN1_TYPE_SUPPORT_LIST = { op::DataType::DT_INT8 };
+static const std::vector<op::DataType> W4A8_IN2_TYPE_SUPPORT_LIST = { op::DataType::DT_INT4 };
+static const std::vector<op::DataType> W4A8_OUT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT};
+static const std::vector<op::DataType> W4A8_SCALE_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
+static const std::vector<op::DataType> W4A8_ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
 
 
 // CheckW4orW8 Params
@@ -148,39 +149,39 @@ static inline bool CheckNotNull(const GroupedMatmulParams &params)
 static inline bool CheckDtypeValid(const GroupedMatmulParams &params)
 {
     if (params.x2->GetDataType() == DataType::DT_INT4) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.x1, W4A8_IN1_TYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.x2, W4A8_IN2_TYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.scale, W4A8_SCALE_TYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.rowIndex, W4A8_ROW_INDEX_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.x1, W4A8_IN1_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.x2, W4A8_IN2_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.scale, W4A8_SCALE_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.rowIndex, W4A8_ROW_INDEX_TYPE_SUPPORT_LIST, return false);
         if (params.offset != nullptr) {
-            OP_CHECK_DTYPE_NOT_SUPPORT(params.offset, OFFSET_TYPE_SUPPORT_LIST, return false);
+            OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.offset, OFFSET_TYPE_SUPPORT_LIST, return false);
         }
 
         if (params.bias != nullptr) {
-            OP_CHECK_DTYPE_NOT_SUPPORT(params.bias, W4A8_BIAS_TYPE_SUPPORT_LIST, return false);
+            OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.bias, W4A8_BIAS_TYPE_SUPPORT_LIST, return false);
         }
     } else {
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.x1, IN_TYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.x2, IN_TYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.scale, SCALE_TYPE_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.rowIndex, ROW_INDEX_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.x1, IN_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.x2, IN_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.scale, SCALE_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.rowIndex, ROW_INDEX_TYPE_SUPPORT_LIST, return false);
         if (params.bias != nullptr) {
-            OP_CHECK_DTYPE_NOT_SUPPORT(params.bias, BIAS_TYPE_SUPPORT_LIST, return false);
+            OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.bias, BIAS_TYPE_SUPPORT_LIST, return false);
         }
     }
 
     if (params.pertokenScaleOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.pertokenScaleOptional, PERTOKEN_SCALE_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.pertokenScaleOptional, PERTOKEN_SCALE_TYPE_SUPPORT_LIST, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.groupList, GROUP_LIST_TYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.groupList, GROUP_LIST_TYPE_SUPPORT_LIST, return false);
     if (params.shareInput != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.shareInput, SHARED_INPUT_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.shareInput, SHARED_INPUT_TYPE_SUPPORT_LIST, return false);
     }
     if (params.logit != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(params.logit, LOGIT_TYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.logit, LOGIT_TYPE_SUPPORT_LIST, return false);
     }
     
-    OP_CHECK_DTYPE_NOT_SUPPORT(params.out, OUT_TYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(params.out, OUT_TYPE_SUPPORT_LIST, return false);
     if (params.shareInput != nullptr && params.logit != nullptr && params.out->GetDataType() != DataType::DT_FLOAT) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
             "when shareInput is not null and logit is not null, y's dtype should be [DT_FLOAT], actual is [%s].",
@@ -242,7 +243,7 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
     OP_CHECK_MIN_DIM(params.x1, MIN_DIM_NUM_ND, return false);
     OP_CHECK_MIN_DIM(params.out, MIN_DIM_NUM_ND, return false);
 
-    if (CheckType(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
+    if (gmm::CheckDTypeInVector(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
         OP_CHECK_WRONG_DIMENSION(params.scale, MX_SCALE_DIM, return false);
         if (params.bias != nullptr) {
             OP_CHECK_WRONG_DIMENSION(params.bias, TWO_DIM_NUM, return false);
@@ -259,7 +260,7 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
         OP_CHECK_WRONG_DIMENSION(params.scale, SCALE_DIM, return false);
     }
 
-    if (CheckType(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
+    if (gmm::CheckDTypeInVector(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
         OP_CHECK_WRONG_DIMENSION(params.pertokenScaleOptional, MX_PERTOKEN_SCALE_DIM, return false);
     } else if (params.pertokenScaleOptional != nullptr) {
         OP_CHECK_WRONG_DIMENSION(params.pertokenScaleOptional, 1, return false);
@@ -862,8 +863,8 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     auto ret = WeightNZCaseProcess(x2, transposeX2, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    if (scale != nullptr && CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
-        CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
+    if (scale != nullptr && gmm::CheckDTypeInVector(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+        gmm::CheckDTypeInVector(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
         bool transposeScale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposeScale, executor);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -1464,8 +1465,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    bool isMXValid = CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
-                     CheckType(tmpWeightV3->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
+    bool isMXValid = gmm::CheckDTypeInVector(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+                     gmm::CheckDTypeInVector(tmpWeightV3->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && !isMXValid) {
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             "aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize", "x and weight",

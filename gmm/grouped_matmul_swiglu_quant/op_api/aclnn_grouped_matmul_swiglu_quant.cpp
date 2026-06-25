@@ -27,6 +27,8 @@
 #include "grouped_matmul_swiglu_quant.h"
 #include "aclnn_grouped_matmul_swiglu_quant_weight_nz.h"
 #include "aclnn_grouped_matmul_swiglu_quant.h"
+#include <vector>
+#include "../../grouped_matmul/op_api/grouped_matmul_util.h"
 
 using namespace op;
 
@@ -62,17 +64,17 @@ static constexpr size_t INT4_PER_INT32 = 8UL;
 bool isEnableWeightAssistanceMatrix = false;
 int dequantMode = 0;
 
-static const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
-static const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
-static const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {
+static const std::vector<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
+static const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
+static const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT, DataType::DT_FLOAT16, DataType::DT_BF16};
-static const std::initializer_list<DataType> WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST = {DataType::DT_UINT64};
-static const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
+static const std::vector<DataType> WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST = {DataType::DT_UINT64};
+static const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                            DataType::DT_BF16};
-static const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
-static const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
-static const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
-static const std::initializer_list<DataType> BIAS_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+static const std::vector<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
+static const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
+static const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+static const std::vector<DataType> BIAS_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 
 static std::string GetSwigluQuantScenarioName(const DataType &xDtype, const DataType &weightDtype)
 {
@@ -319,20 +321,20 @@ static bool CheckDtypeValid(const aclTensor *x, const aclTensor *weight, const a
                             const aclTensor *weightScale, const aclTensor *xScale, const aclTensor *groupList,
                             const aclTensor *output, const aclTensor *outputScale)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x, X_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(weight, WEIGHT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(x, X_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(weight, WEIGHT_DTYPE_SUPPORT_LIST, return false);
     if (weight->GetDataType() == DataType::DT_INT4) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, BIAS_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(bias, BIAS_DTYPE_SUPPORT_LIST, return false);
     }
     if (weight->GetDataType() == DataType::DT_INT4) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(weightScale, WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(weightScale, WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST, return false);
     } else if (weight->GetDataType() == DataType::DT_INT8) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(weightScale, WEIGHT_SCALE_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(weightScale, WEIGHT_SCALE_DTYPE_SUPPORT_LIST, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(xScale, X_SCALE_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(groupList, GROUP_LIST_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, QUANTOUT_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(outputScale, QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(xScale, X_SCALE_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(groupList, GROUP_LIST_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(output, QUANTOUT_DTYPE_SUPPORT_LIST, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_VECTOR(outputScale, QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
 
     return true;
 }
