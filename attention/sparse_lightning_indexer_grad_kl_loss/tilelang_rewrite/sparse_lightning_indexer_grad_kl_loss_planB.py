@@ -4,15 +4,16 @@ Architecture:
   Kernel 1 (block_num = B * s1_tile_num * n_num, K-parallel):
     C1(MM1+MM2, T.pipelined) -> V1(P_reduced chunk, ReduceSumY chunk, vectorized)
   Kernel 2 (block_num = B * s1_tile_num * n_num, K-parallel):
-    V1(SoftmaxI + diff + dWeight + reluGrad + Loss, T.pipelined + vectorized)
+    V1(SoftmaxI + diff + dWeight[atomic_add] + reluGrad + Loss)
+    -> C1(MM6: dQueryIndex = reluGrad @ GKI, K-parallel, atomic_add)
   Python:
-    dWeight sum reduction, Loss sum, dQueryIndex bmm, dKeyIndex scatter_add
+    Loss sum, dKeyIndex scatter_add
 
 Optimizations applied:
   - T.pipelined on C1 d_idx loop (MM1 Double Buffer)
   - T.pipelined on V1 nidx_c loop (overlap copy with compute)
-  - Vectorized per-row serial loops via T.tile.broadcast + single tile ops
-  - Reduced redundant T.barrier_all() between consecutive VEC ops
+  - MM6 + dWeight reduction moved into Kernel2 (eliminated Python bmm + sum)
+  - Atomic_add for cross-K-block accumulation
 """
 
 import math
@@ -306,10 +307,11 @@ def planB_kernel1(
 
 
 # ==============================================================================
-# Kernel 2: K-parallel dWeight/reluGrad/Loss (V1 only, partial outputs)
+# Kernel 2: V1(dWeight/reluGrad/Loss) → C1(MM6: dQueryIndex = reluGrad @ GKI)
+# K-parallel, CV-separated, dWeight/dQueryIndex via atomic_add
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-3, -2, -1],
+    out_idx=[-4, -3, -2, -1],
     pass_configs=pass_configs,
 )
 def planB_kernel2(
@@ -321,6 +323,7 @@ def planB_kernel2(
     s1_tile_num = _ceil_div(S1, s1_block)
     n_num = K // n_block
     nidx1_num = Nidx1 // BLOCK_NIDX1
+    dq_num = DQueryIndex // BLOCK_K
 
     @T.prim_func
     def main(
@@ -328,11 +331,12 @@ def planB_kernel2(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         PReduced: T.Tensor((B, S1, K), calc_dtype),
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),
-        dWeightPartial: T.Tensor((B, S1, n_num, Nidx1), calc_dtype),
+        GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
+        dWeight: T.Tensor((B, S1, Nidx1), calc_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossPartial: T.Tensor((B, S1, n_num), calc_dtype),
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
     ):
-        # K-parallel: block_num = B * s1_tile_num * n_num
         with T.Kernel(B * s1_tile_num * n_num, is_npu=True) as (cid, vid):
             bz = cid // (s1_tile_num * n_num)
             r = cid % (s1_tile_num * n_num)
@@ -344,7 +348,7 @@ def planB_kernel2(
             k_start = n_idx * n_block
             k_end = k_start + n_block
 
-            # V1 only: SoftmaxI + diff + dWeight + reluGrad + Loss
+            # V1: SoftmaxI + diff + dWeight + reluGrad + Loss
             with T.Scope("V"):
                 bmm2_ub = T.alloc_shared((BLOCK_NIDX1, n_block), calc_dtype)
                 weight_ub = T.alloc_shared(Nidx1, calc_dtype)
@@ -398,10 +402,9 @@ def planB_kernel2(
                     T.barrier_all()
                     T.tile.sub(diff_ub, si_chunk_ub, p_chunk_ub)
 
-                    # ---- Pass 4: dWeight partial + reluGrad for this K-block ----
+                    # ---- dWeight partial + reluGrad for this K-block ----
                     T.tile.fill(dw_total_ub, 0.0)
 
-                    # T.Pipelined to overlap bmm2Res copy with dWeight/reluGrad compute
                     for nidx_c in T.Pipelined(nidx1_num, num_stages=3):
                         nidx_s = nidx_c * BLOCK_NIDX1
                         T.copy(
@@ -430,10 +433,10 @@ def planB_kernel2(
                             reluGradRes[bz, s1_id, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end],
                         )
 
-                    # Store dWeight partial (FP32, summed in Python)
-                    T.copy(dw_total_ub, dWeightPartial[bz, s1_id, n_idx, 0:Nidx1])
+                    # dWeight: atomic_add this K-block's partial to global accumulator
+                    T.tile.atomic_add(dWeight[bz, s1_id, 0:Nidx1], dw_total_ub)
 
-                    # ---- Loss partial for this K-block ----
+                    # Loss partial for this K-block
                     T.tile.max(p_chunk_ub, p_chunk_ub, eps_ub)
                     T.tile.ln(loss_log_p_ub, p_chunk_ub)
                     T.tile.max(si_chunk_ub, si_chunk_ub, eps_ub)
@@ -443,6 +446,29 @@ def planB_kernel2(
                     T.reduce_sum(loss_ub, rsy_tmp_ub, dim=-1, clear=True, real_shape=[1, n_block])
                     T.barrier_all()
                     T.copy(rsy_tmp_ub, LossPartial[bz, s1_id, n_idx:n_idx + 1])
+
+                T.set_cross_flag("FIX", 2)
+
+            # C1: MM6 — dQueryIndex = reluGrad @ GatherKeyIndex (K-parallel, atomic_add)
+            with T.Scope("C"):
+                T.wait_cross_flag(2)
+
+                RG_L1 = T.alloc_L1((BLOCK_NIDX1, n_block), input_dtype)
+                GKI_L1 = T.alloc_L1((n_block, BLOCK_K), input_dtype)
+                DQ_L0C = T.alloc_L0C((BLOCK_NIDX1, BLOCK_K), calc_dtype)
+
+                for s1_row in T.serial(s1_start, s1_end):
+                    for nidx_c in T.serial(nidx1_num):
+                        nidx_s = nidx_c * BLOCK_NIDX1
+                        T.copy(reluGradRes[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end], RG_L1)
+                        for dq_c in T.serial(dq_num):
+                            dq_s = dq_c * BLOCK_K
+                            T.copy(GatherKeyIndex[bz, s1_row, k_start:k_end, dq_s:dq_s + BLOCK_K], GKI_L1)
+                            T.gemm_v0(RG_L1, GKI_L1, DQ_L0C, transpose_B=False, init=True)
+                            T.tile.atomic_add(
+                                dQueryIndex[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, dq_s:dq_s + BLOCK_K],
+                                DQ_L0C,
+                            )
 
     return main
 
@@ -663,15 +689,16 @@ def sparse_lightning_indexer_grad_kl_loss(
         bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=device)
         p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=device)
         reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=device)
-        d_weight_partial = torch.zeros(B, S1, n_num, Nidx1, dtype=torch.float32, device=device)
+        d_weight_ws = torch.zeros(B, S1, Nidx1, dtype=torch.float32, device=device)
         loss_partial = torch.zeros(B, S1, n_num, dtype=torch.float32, device=device)
         relu_grad_ws = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=device)
+        d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=device)
         ws = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws,
-              d_weight_partial, loss_partial, relu_grad_ws)
+              d_weight_ws, loss_partial, relu_grad_ws, d_query_index_ws)
         _workspace_cache[ws_key] = ws
 
     (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws,
-     d_weight_partial, loss_partial, relu_grad_ws) = ws
+     d_weight_ws, loss_partial, relu_grad_ws, d_query_index_ws) = ws
 
     # ---- Mark compilation done (for profile) ----
     if profile:
@@ -691,28 +718,27 @@ def sparse_lightning_indexer_grad_kl_loss(
         torch.npu.synchronize()
         _pt["kernel1"] = time.perf_counter()
 
-    # ---- Launch Kernel 2 (K-parallel, V1-only, SoftmaxI fused in kernel) ----
-    d_weight_partial, relu_grad, loss_partial = func2(
+    # ---- Launch Kernel 2 (V1: dWeight/reluGrad/Loss → C1: MM6 dQueryIndex) ----
+    d_weight_ws.zero_()
+    d_query_index_ws.zero_()
+    d_weight_ws, relu_grad, loss_partial, d_query_index_ws = func2(
         bmm2_res_ws, weights, p_reduced_ws, reduce_sum_y_ws,
-        d_weight_partial,
+        gather_key_index,
+        d_weight_ws,
         relu_grad_ws,
         loss_partial,
+        d_query_index_ws,
     )
 
     if profile:
         torch.npu.synchronize()
         _pt["kernel2"] = time.perf_counter()
 
-    # ---- Python Reduction + MM6 ----
-    # dWeight: sum partials across K-blocks
-    d_weight = d_weight_partial.sum(dim=2)  # (B, S1, n_num, Nidx1) → (B, S1, Nidx1)
-    d_weight = d_weight.to(weights_orig_dtype if weights_orig_dtype == torch.float32 else input_dtype)
+    # ---- Python Postprocessing (only Loss sum + dKeyIndex scatter_add) ----
+    d_weight = d_weight_ws.to(weights_orig_dtype if weights_orig_dtype == torch.float32 else input_dtype)
+    d_query_index = d_query_index_ws.to(input_dtype)
     # Loss: sum all partials
     kl_loss = loss_partial.sum().reshape(1).to(torch.float32)
-    # MM6: dQueryIndex = reluGrad @ GKI  (single bmm, like Plan A)
-    rg_flat = relu_grad.to(input_dtype).reshape(B * S1, Nidx1, K)
-    gki_flat = gather_key_index.reshape(B * S1, K, DQueryIndex)
-    d_query_index = torch.bmm(rg_flat.float(), gki_flat.float()).reshape(B, S1, Nidx1, DQueryIndex).to(input_dtype)
 
     # ---- Postprocessing: dKeyIndex via scatter_add ----
     d_key_index = _compute_d_key_index(
