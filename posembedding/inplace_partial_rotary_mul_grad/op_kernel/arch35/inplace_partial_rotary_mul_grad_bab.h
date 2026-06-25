@@ -70,7 +70,6 @@ private:
 template <typename TDY, typename TCOS>
 __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx)
 {
-    AscendC::printf("InplacePartialRotaryMulGradBAB::Init() blockIdx=%d\n", GetBlockIdx());
     if (GetBlockIdx() >= tilingData_->usedCoreNum) {
         return;
     }
@@ -104,8 +103,6 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Process()
     if (GetBlockIdx() >= tilingData_->usedCoreNum) {
         return;
     }
-
-    AscendC::printf("InplacePartialRotaryMulGradBAB::Process() blockIdx=%d\n", GetBlockIdx());
 
     this->bIdx_ = blockIdx_ % tilingData_->blockNumB;
     this->sIdx_ = blockIdx_ / tilingData_->blockNumB;
