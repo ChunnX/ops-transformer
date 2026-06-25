@@ -36,7 +36,6 @@ public:
     {
         uint32_t e = taskTilingInfo_->e;
         uint32_t expertNum = taskTilingInfo_->expertNum;
-        bool isNeedPermute = expertNum > 1;
 
         for (uint32_t start = 0; start < e; start += expertNum) {
             uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
@@ -48,10 +47,6 @@ public:
             }
             if ASCEND_IS_AIV {
                 AscendC::CrossCoreWaitFlag(9);
-                if (isNeedPermute) {
-                    hcclOp_.PermuteSendAfterCompute(start, actualExpertNum);
-                    SyncAll<true>();
-                }
                 hcclOp_.LaunchCommData(start, actualExpertNum);
             }
         }
