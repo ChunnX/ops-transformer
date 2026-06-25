@@ -10,7 +10,7 @@ import random
 import torch
 import torch_npu
 import torchair
-from cann_ops_transformer.ops import npu_compressor
+from cann_ops_transformer.ops import compressor
 import numpy as np
 import torch.nn as nn
 from torch_npu.testing.testcase import TestCase, run_tests
@@ -696,7 +696,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # ======================== execute npu finish ================================
     # start run custom ops
     npu_out = (
-        npu_compressor(
+        compressor(
             x,
             wkv,
             wgate,

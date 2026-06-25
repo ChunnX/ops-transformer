@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file npu_compressor.cpp
+ * \file compressor.cpp
  * \brief Compressor operator implementation for PyTorch NPU extension
  */
 
@@ -76,7 +76,7 @@ at::Tensor construct_compressor_output_tensor(const at::Tensor &x, const at::Ten
     return cmp_kv;
 }
 
-at::Tensor npu_compressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &state_cache,
+at::Tensor compressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &state_cache,
                           const at::Tensor &ape, int64_t cmp_ratio,
                           const c10::optional<at::Tensor> &state_block_table,
                           const c10::optional<at::Tensor> &cu_seqlens, const c10::optional<at::Tensor> &seqused,
@@ -103,7 +103,7 @@ at::Tensor npu_compressor(const at::Tensor &x, const at::Tensor &wkv, const at::
     return cmp_kv;
 }
 
-at::Tensor npu_compressor_meta(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
+at::Tensor compressor_meta(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
                                at::Tensor &state_cache, const at::Tensor &ape,
                                int64_t cmp_ratio, const c10::optional<at::Tensor> &state_block_table,
                                const c10::optional<at::Tensor> &cu_seqlens, const c10::optional<at::Tensor> &seqused,
@@ -120,6 +120,6 @@ at::Tensor npu_compressor_meta(const at::Tensor &x, const at::Tensor &wkv, const
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_compressor", &npu_compressor, "compressor");
+    m.def("compressor", &compressor, "compressor");
 }
 } // namespace op_api

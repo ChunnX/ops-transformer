@@ -12,11 +12,12 @@ import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from typing import Optional
 
 
 class CompressorOpBuilder(OpBuilder):
     def __init__(self):
-        super(CompressorOpBuilder, self).__init__("npu_compressor")
+        super(CompressorOpBuilder, self).__init__("compressor")
 
     def sources(self):
         """Path to C++ source code."""
@@ -24,9 +25,9 @@ class CompressorOpBuilder(OpBuilder):
 
     def schema(self):
         """PyTorch operator signature."""
-        return "npu_compressor(Tensor x, Tensor wkv, Tensor wgate, Tensor(a!) state_cache, " \
+        return "compressor(Tensor x, Tensor wkv, Tensor wgate, Tensor(a!) state_cache, " \
                "Tensor ape, " \
-               "int cmp_ratio=4, " \
+               "int cmp_ratio=4, *, " \
                "Tensor? state_block_table=None, Tensor? cu_seqlens=None, " \
                "Tensor? seqused=None, Tensor? start_pos=None, " \
                "int coff=1, int cache_mode=1) -> Tensor"
@@ -37,8 +38,8 @@ class CompressorOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_compressor_meta(x, wkv, wgate, state_cache,
-                                ape, cmp_ratio=4,
+        def compressor_meta(x, wkv, wgate, state_cache,
+                                ape, cmp_ratio=4,*,
                                 state_block_table=None, cu_seqlens=None,
                                 seqused=None, start_pos=None,
                                 coff=1, cache_mode=1):
@@ -62,16 +63,25 @@ op_module = compressor_op_builder.load()
 
 
 @impl(AS_LIBRARY, compressor_op_builder.name, "PrivateUse1")
-def npu_compressor(x, wkv, wgate, state_cache, 
-                   ape, cmp_ratio=4,
-                   state_block_table=None, cu_seqlens=None,
-                   seqused=None, start_pos=None,
-                   coff=1, cache_mode=1):
+def compressor(
+            x: torch.Tensor,
+            wkv: torch.Tensor,
+            wgate: torch.Tensor,
+            state_cache: torch.Tensor,
+            ape: torch.Tensor,
+            cmp_ratio: int = 4,
+            *,
+            state_block_table: Optional[torch.Tensor] = None ,
+            cu_seqlens: Optional[torch.Tensor] = None,
+            seqused: Optional[torch.Tensor] = None,
+            start_pos: Optional[torch.Tensor] = None,
+            coff: Optional[int] = 1,
+            cache_mode: Optional[int] = 1) -> torch.tensor:
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    return op_module.npu_compressor(x, wkv, wgate, state_cache,
+    return op_module.compressor(x, wkv, wgate, state_cache,
                                     ape, cmp_ratio,
                                     state_block_table, cu_seqlens,
                                     seqused, start_pos,

@@ -47,6 +47,7 @@ if _TORCHAIR_AVAILABLE:
         seqused: Optional[Tensor],
         start_pos: Optional[Tensor],
         cmp_ratio: int = 4,
+        *,
         coff: int = 1,
         cache_mode: int = 1,
         state_cache_stride_dim0: int = 0):
@@ -54,8 +55,8 @@ if _TORCHAIR_AVAILABLE:
         result = x.new_empty(x.size())
         return result
         
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_compressor.default)
-    def convert_npu_compressor(
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.compressor.default)
+    def convert_compressor(
         x: Tensor,
         wkv: Tensor,
         wgate: Tensor,
@@ -66,9 +67,9 @@ if _TORCHAIR_AVAILABLE:
         seqused: Tensor = None,
         start_pos: Tensor = None,
         cmp_ratio: int = 4,
+        *,
         coff: int = 1,
         cache_mode: int = 1,
         state_cache_stride_dim0: int = 0):
 
-        
         raise AssertionError(f"compressor is not supported in GE graph mode. Please use aclgraph mode instead.")
