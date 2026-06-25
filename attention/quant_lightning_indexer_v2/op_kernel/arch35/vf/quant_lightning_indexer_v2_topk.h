@@ -132,7 +132,6 @@ public:
     {
         // true: 开启返回hisValueLocal
         if (s2LoopNum == 1) {
-            // TODO
             if (isNeedLD) {
                 topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                     idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
@@ -142,6 +141,9 @@ public:
             }
             PipeBarrier<PIPE_V>();
             Cast(indicesOutLocal, tmpIndexLocal, RoundMode::CAST_NONE, topK);
+            if (outputIdxOffset != 0) {
+                liV2Topkb32gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
+            }
             return;
         }
         if (loopIdx == 0 && !isNeedLD) {
