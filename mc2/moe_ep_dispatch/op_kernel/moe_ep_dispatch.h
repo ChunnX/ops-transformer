@@ -29,10 +29,10 @@
 #include "adv_api/hcomm/hcomm.h"
 #include "moe_ep_dispatch_tiling.h"
 
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#include "../common/op_kernel/mc2_moe_context.h"
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
+#include "../common/mc2_kernel_utils.h"
+#include "../common/mc2_moe_context.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
