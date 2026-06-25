@@ -29,6 +29,7 @@ struct MoeEpCommonTilingData {
     uint32_t hidden;
     uint32_t topK;
     uint32_t numMaxTokensPerRank;
+    uint32_t scalesBytes;
     uint32_t perSlotBytes;
     uint32_t expertAlignment;
 };
