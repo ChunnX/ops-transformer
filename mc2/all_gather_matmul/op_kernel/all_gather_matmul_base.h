@@ -16,13 +16,8 @@
 #define ALL_GATHER_MATMUL_BASE_H
 
 #include "lib/matmul_intf.h"
-#if __has_include("../common/op_kernel/mc2_nd_to_nz.h")
-#include "../common/op_kernel/mc2_nd_to_nz.h"
-#include "../common/op_kernel/mc2_matmul_compute.h"
-#else
 #include "../../common/op_kernel/mc2_nd_to_nz.h"
 #include "../../common/op_kernel/mc2_matmul_compute.h"
-#endif
 #include "all_gather_matmul_tiling.h"
 
 namespace AscendC {
