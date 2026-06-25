@@ -1,3 +1,12 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "aclnn_moe_ep_combine.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -9,7 +18,6 @@
 using namespace op;
 
 extern "C" {
-
 static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
                                 const aclTensor *recvSrcMetadata, const aclTensor *numRecvTokensPerExpert,
                                 aclTensor *combinedX)
@@ -49,7 +57,7 @@ aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTens
     auto retNotNull = CheckNotNull(context, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert, combinedX);
     CHECK_RET(retNotNull == ACLNN_SUCCESS, retNotNull);
     auto retParams = CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize, biasOptional0,
-                          biasOptional1);
+                                 biasOptional1);
     CHECK_RET(retParams == ACLNN_SUCCESS, retParams);
 
     return aclnnInnerMoeEpCombineGetWorkspaceSize(context, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert,

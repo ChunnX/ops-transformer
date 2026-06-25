@@ -59,23 +59,23 @@ constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t COMM_ALIGN = 512UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
-constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;  
+constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;
 constexpr int64_t H_MIN = 1;
 constexpr int64_t H_MAX = 8192;
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &info)
 {
     OP_LOGD(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u", info.cfg.epWorldSize,
-              info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
+            info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
     OP_LOGD(nodeName, "numTokens=%u, hidden=%u, topK=%u, numMaxTokensPerRank=%u", info.cfg.numTokens, info.cfg.hidden,
-              info.cfg.topK, info.cfg.numMaxTokensPerRank);
+            info.cfg.topK, info.cfg.numMaxTokensPerRank);
     OP_LOGD(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u", info.cfg.perSlotBytes, info.hasTopkWeights,
-              info.aivNum);
+            info.aivNum);
     OP_LOGD(nodeName, "totalWinSizeEp=%lu, totalUbSize=%lu", info.totalWinSizeEp, info.totalUbSize);
 }
 
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
-                                               MoeEpCombineInfo &info)
+                                             MoeEpCombineInfo &info)
 {
     const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, contextStorageShape);
@@ -143,7 +143,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
 }
 
 static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const char *nodeName,
-                                         MoeEpCombineInfo &info)
+                                       MoeEpCombineInfo &info)
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
@@ -158,7 +158,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numExpertsPtr == nullptr, OP_LOGE(nodeName, "numExpertsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
+        return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = *epWorldSizePtr;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
@@ -186,7 +187,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCombineInfo &info,
-                                     const char *nodeName)
+                                    const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
