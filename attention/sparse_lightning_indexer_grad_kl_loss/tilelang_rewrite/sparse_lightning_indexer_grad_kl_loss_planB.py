@@ -311,7 +311,7 @@ def planB_kernel1(
 # K-parallel, CV-separated, dWeight/dQueryIndex via atomic_add
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-4, -3, -2, -1],
+    out_idx=[-3, -2, -1],
     pass_configs=pass_configs,
 )
 def planB_kernel2(
@@ -332,7 +332,7 @@ def planB_kernel2(
         PReduced: T.Tensor((B, S1, K), calc_dtype),
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),
         GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
-        dWeight: T.Tensor((B, S1, Nidx1), calc_dtype),
+        dWeightPartial: T.Tensor((B, S1, n_num, Nidx1), calc_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossPartial: T.Tensor((B, S1, n_num), calc_dtype),
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
@@ -433,8 +433,8 @@ def planB_kernel2(
                             reluGradRes[bz, s1_id, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end],
                         )
 
-                    # dWeight: atomic_add this K-block's partial to global accumulator
-                    T.tile.atomic_add(dWeight[bz, s1_id, 0:Nidx1], dw_total_ub)
+                    # Store dWeight partial (FP32, summed in Python)
+                    T.copy(dw_total_ub, dWeightPartial[bz, s1_id, n_idx, 0:Nidx1])
 
                     # Loss partial for this K-block
                     T.tile.max(p_chunk_ub, p_chunk_ub, eps_ub)
@@ -689,16 +689,16 @@ def sparse_lightning_indexer_grad_kl_loss(
         bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=device)
         p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=device)
         reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=device)
-        d_weight_ws = torch.zeros(B, S1, Nidx1, dtype=torch.float32, device=device)
+        d_weight_partial = torch.zeros(B, S1, n_num, Nidx1, dtype=torch.float32, device=device)
         loss_partial = torch.zeros(B, S1, n_num, dtype=torch.float32, device=device)
         relu_grad_ws = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=device)
         d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=device)
         ws = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws,
-              d_weight_ws, loss_partial, relu_grad_ws, d_query_index_ws)
+              d_weight_partial, loss_partial, relu_grad_ws, d_query_index_ws)
         _workspace_cache[ws_key] = ws
 
     (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws,
-     d_weight_ws, loss_partial, relu_grad_ws, d_query_index_ws) = ws
+     d_weight_partial, loss_partial, relu_grad_ws, d_query_index_ws) = ws
 
     # ---- Mark compilation done (for profile) ----
     if profile:
@@ -719,12 +719,11 @@ def sparse_lightning_indexer_grad_kl_loss(
         _pt["kernel1"] = time.perf_counter()
 
     # ---- Launch Kernel 2 (V1: dWeight/reluGrad/Loss → C1: MM6 dQueryIndex) ----
-    d_weight_ws.zero_()
     d_query_index_ws.zero_()
-    d_weight_ws, relu_grad, loss_partial, d_query_index_ws = func2(
+    d_weight_partial, relu_grad, loss_partial, d_query_index_ws = func2(
         bmm2_res_ws, weights, p_reduced_ws, reduce_sum_y_ws,
         gather_key_index,
-        d_weight_ws,
+        d_weight_partial,
         relu_grad_ws,
         loss_partial,
         d_query_index_ws,
@@ -734,8 +733,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         torch.npu.synchronize()
         _pt["kernel2"] = time.perf_counter()
 
-    # ---- Python Postprocessing (only Loss sum + dKeyIndex scatter_add) ----
-    d_weight = d_weight_ws.to(weights_orig_dtype if weights_orig_dtype == torch.float32 else input_dtype)
+    # ---- Python Postprocessing (dWeight sum + Loss sum + dKeyIndex scatter_add) ----
+    d_weight = d_weight_partial.sum(dim=2).to(weights_orig_dtype if weights_orig_dtype == torch.float32 else input_dtype)
     d_query_index = d_query_index_ws.to(input_dtype)
     # Loss: sum all partials
     kl_loss = loss_partial.sum().reshape(1).to(torch.float32)
