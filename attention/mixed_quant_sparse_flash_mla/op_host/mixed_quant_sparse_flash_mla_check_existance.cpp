@@ -71,25 +71,35 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
         if (qLayout_ == QSMLALayout::BSND) {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 512
                 && opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 1024) {
-                OP_LOGE(opName_, "When qLayout is BSND, topK should be 512 or 1024, but got %ld",
-                    opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(3));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
+                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    "When qLayout is BSND, topK should be 512 or 1024, but got " +
+                    std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3)));
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_1) != s1Size_) {
-                OP_LOGE(opName_, "When qLayout is BSND, cmpSparseIndices's S should be equal to s1Size:%u, but got %ld",
-                    s1Size_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(1));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
+                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    "When qLayout is BSND, cmpSparseIndices's S should be equal to s1Size:" +
+                    std::to_string(s1Size_) + ", but got " +
+                    std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(1)));
                 return ge::GRAPH_FAILED;
             }
         } else {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 512
                 && opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 1024) {
-                OP_LOGE(opName_, "When qLayout is TND, topK should be 512 or 1024, but got %ld",
-                    opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(2));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
+                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    "When qLayout is TND, topK should be 512 or 1024, but got " +
+                    std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(2)));
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_0) != qTSize_) {
-                OP_LOGE(opName_, "When qLayout is TND, cmpSparseIndices's T should be equal to qTSize:%u, but got %ld",
-                    qTSize_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(0));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
+                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    "When qLayout is TND, cmpSparseIndices's T should be equal to qTSize:" +
+                    std::to_string(qTSize_) + ", but got " +
+                    std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_0)));
                 return ge::GRAPH_FAILED;
             }
         }
@@ -104,7 +114,7 @@ ge::graphStatus QSMLATilingCheck::CheckSWAExistence()
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.oriBlockTable.tensor == nullptr &&
         kvLayout_ == QSMLALayout::PA_BBND,
-        OP_LOGE(opName_, "oriBlockTable must not be empty when kvLayout is PA_BBND and cmpKv is not provided. "),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "oriBlockTable"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -115,23 +125,22 @@ ge::graphStatus QSMLATilingCheck::CheckCFAExistence()
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr,
-        OP_LOGE(opName_, "oriKv must not be empty when cmpKv is provided and cmpSparseIndices is not provided."),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "oriKv"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr
         && opParamInfo_.cmpRatio != nullptr,
-        OP_LOGE(opName_, "cmpKv must not be empty when cmpKv is provided and cmpSparseIndices is not provided."),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpKv"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr
         && opParamInfo_.cmpRatio == nullptr,
-        OP_LOGE(opName_, "cmpRatio must not be empty when cmpKv is provided and cmpSparseIndices is not provided."),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpRatio"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
         opParamInfo_.cmpBlockTable.tensor == nullptr && kvLayout_ == QSMLALayout::PA_BBND,
-        OP_LOGE(opName_, "cmpBlockTable must not be empty when kvLayout is PA_BBND, " \
-            "cmpKv is provided and cmpSparseIndices is not provided."),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpBlockTable"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -144,17 +153,17 @@ ge::graphStatus QSMLATilingCheck::CheckSCFAExistence()
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr
         && opParamInfo_.cmpSparseIndices.tensor != nullptr,
-        OP_LOGE(opName_, "cmpKv must not be empty when cmpKv and cmpSparseIndices are provided."),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpKv"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr
         && opParamInfo_.cmpSparseIndices.tensor != nullptr,
-        OP_LOGE(opName_, "oriKv must not be empty when cmpKv and cmpSparseIndices are provided."),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "oriKv"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor == nullptr
         && opParamInfo_.cmpSparseIndices.tensor != nullptr,
-        OP_LOGE(opName_, "oriKv and cmpKv must not be empty when cmpKv and cmpSparseIndices are provided."),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "oriKv and cmpKv"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -164,15 +173,18 @@ ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
 {
     if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 1 && *opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when SWA mode, cmpRatio must be 1 or 4 or 128, but got %u", *opParamInfo_.cmpRatio),
+            OP_LOGE_WITH_INVALID_VALUE_WITH_REASON(opName_, "cmpRatio",
+                std::to_string(*opParamInfo_.cmpRatio).c_str(), "when SWA mode, cmpRatio must be 1 or 4 or 128"),
             return ge::GRAPH_FAILED);
     } else if (perfMode_ == QSMLATemplateMode::CFA_TEMPLATE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when CFA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
+            OP_LOGE_WITH_INVALID_VALUE_WITH_REASON(opName_, "cmpRatio",
+                std::to_string(*opParamInfo_.cmpRatio).c_str(), "when CFA mode, cmpRatio must be 4 or 128"),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
-            OP_LOGE(opName_, "when SCFA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
+            OP_LOGE_WITH_INVALID_VALUE_WITH_REASON(opName_, "cmpRatio",
+                std::to_string(*opParamInfo_.cmpRatio).c_str(), "when SCFA mode, cmpRatio must be 4 or 128"),
             return ge::GRAPH_FAILED);
     }
 
