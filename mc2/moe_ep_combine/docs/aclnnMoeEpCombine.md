@@ -40,7 +40,7 @@
 aclnnStatus aclnnMoeEpCombineGetWorkspaceSize(
     const aclTensor*  context,
     const aclTensor*  x,
-    const aclTensor*  topKIdx,
+    const aclTensor*  topkIdx,
     const aclTensor*  recvSrcMetadata,
     const aclTensor*  numRecvTokensPerExpert,
     const aclTensor*  topkWeightsOptional,
@@ -113,7 +113,7 @@ aclnnStatus aclnnMoeEpCombine(
     <td>×</td>
     </tr>
     <tr>
-    <td>topKIdx（aclTensor*）</td>
+    <td>topkIdx（aclTensor*）</td>
     <td>输入</td>
     <td>topk专家索引张量。</td>
     <td><ul><li>不支持空Tensor。</li><li>shape为(BS, K)。</li></ul></td>
@@ -136,8 +136,8 @@ aclnnStatus aclnnMoeEpCombine(
     <td>numRecvTokensPerExpert（aclTensor*）</td>
     <td>输入</td>
     <td>本地moe专家接收token数量，由aclnnMoeEpDispatchEpilogue输出。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(epWorldSize,)。</li></ul></td>
-    <td>INT32</td>
+    <td><ul><li>不支持空Tensor。</li><li>shape为(numLocalExperts,)。</li></ul></td>
+    <td>INT64</td>
     <td>ND</td>
     <td>1</td>
     <td>×</td>
@@ -146,10 +146,10 @@ aclnnStatus aclnnMoeEpCombine(
     <td>topkWeightsOptional（aclTensor*）</td>
     <td>输入</td>
     <td>表示每个token对应的topK专家权重，用于加权聚合，对应公式中topkWeights。</td>
-    <td><ul><li>Optional参数，传入空指针时进行纯累加combine。</li><li>shape为(A, 1)。</li></ul></td>
+    <td><ul><li>Optional参数，传入空指针时进行纯累加combine。</li><li>shape为(A,)。</li></ul></td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td>2</td>
+    <td>1</td>
     <td>×</td>
     </tr>
     <tr>
@@ -176,7 +176,7 @@ aclnnStatus aclnnMoeEpCombine(
     <td>epWorldSize（int64_t）</td>
     <td>输入</td>
     <td>EP通信域大小。</td>
-    <td><ul><li>取值范围[2, 768]。</li></ul></td>
+    <td><ul><li>取值范围[2, 128]。</li></ul></td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -196,7 +196,7 @@ aclnnStatus aclnnMoeEpCombine(
     <td>numExperts（int64_t）</td>
     <td>输入</td>
     <td>MoE专家总数量。</td>
-    <td><ul><li>取值范围[1, 2048]，且满足numExperts % epWorldSize = 0。</li></ul></td>
+    <td><ul><li>取值范围[2, 2048]，且满足numExperts % epWorldSize = 0。</li></ul></td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnMoeEpCombine(
     <tr>
     <td>ACLNN_ERR_PARAM_NULLPTR</td>
     <td>161001</td>
-    <td>context、x、topKIdx等必选参数存在空指针。</td>
+    <td>context、x、topkIdx等必选参数存在空指针。</td>
     </tr>
     <tr>
     <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
@@ -331,10 +331,10 @@ aclnnStatus aclnnMoeEpCombine(
 - 当前版本不支持bias参数，biasOptional0和biasOptional1必须传入空指针。
 - 调用接口过程中使用的epWorldSize、numExperts、numMaxTokensPerRank参数需与aclnnMoeEpDispatch保持一致。
 - 参数里Shape使用的变量如下：
-    - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank \* K。
-    - H：表示hidden size隐藏层大小。取值范围[1024, 8192]。
+    - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank \* MIN(K, numLocalExperts)。
+    - H：表示hidden size隐藏层大小。取值范围为(0, 8192]。
     - BS：表示batch sequence size，即本卡的原始token数量。
-    - K：表示选取topK个专家，取值范围为1 < K ≤ 32。
+    - K：表示选取topK个专家，取值范围为1 ≤ K ≤ 32。
     - numLocalExperts：表示本卡专家数量，numLocalExperts = numExperts / epWorldSize。
 - HCCL通信域缓存区大小：
     调用本接口前需检查通信域缓存区大小取值是否合理，单位MB，不配置时默认为200MB。
@@ -342,6 +342,6 @@ aclnnStatus aclnnMoeEpCombine(
     - 设置大小要求 >= 2 \* (epWorldSize \* numMaxTokensPerRank \* Align512(Align32(2 \* H)))。
     - 其中 Align512(x) = ((x+512-1)/512)\*512，Align32(x) = ((x+32-1)/32)\*32。
 - 通信域使用约束：
-    - 一个模型中的aclnnMoeEpDispatch和aclnnMoeEpCombine算子仅支持相同EP通信域，且该通信域中不允许有其他算子。
+    - 一个模型中的aclnnMoeEpDispatch、aclnnMoeEpDispatchEpilogue和aclnnMoeEpCombine算子仅支持相同EP通信域，且该通信域中不允许有其他算子。
 
 ## 调用示例
