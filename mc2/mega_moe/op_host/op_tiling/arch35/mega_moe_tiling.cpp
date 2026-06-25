@@ -405,7 +405,7 @@ static ge::graphStatus SetWorkspace(
             std::to_string(workspaceInfo.workspaceSize).c_str(), "non-zero"),
         return ge::GRAPH_FAILED);
 
-    int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE + 1UL * 1024 * 1024 * 1024;
+    int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE + 4UL * 1024 * 1024 * 1024;
     workspace[0] = workspaceSize;
 
     OP_LOGD(nodeName, "sysWorkspaceSize: %ld \n", sysWorkspaceSize);
