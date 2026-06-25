@@ -36,6 +36,15 @@ constexpr float FLT_MAX = 3.402823466e+38F;
 template<typename X_T, typename GRADHIN_T, typename U>
 class MhcPreSinkhornBackwardDeterministic {
 public:
+    using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
+    using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U, true>;
+    using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
+    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
+    using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
+
+    matmul::MatmulImpl<A0Type, BType, C1Type, C1Type, MHC_PRE_GRAD_MM1_CFG> mm1_;
+    matmul::MatmulImpl<A1Type, BType, C2Type, C2Type, MHC_PRE_GRAD_MM2_CFG> mm2_;
+    
     __aicore__ inline MhcPreSinkhornBackwardDeterministic() = default;
     __aicore__ inline void Process(void);
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR phi, GM_ADDR hPre, GM_ADDR gradHin, GM_ADDR gradHPost,
@@ -62,7 +71,7 @@ private:
     __aicore__ inline void ProcessGradXFromRms(int64_t bsIdx);
     __aicore__ inline void ComputeFinal(void);
     __aicore__ inline void ComputeGradXMatmul(const int32_t taskOffset, const int32_t mm1M);
-    __aicore__ inline void ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2K);
+    __aicore__ inline void ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2M);
     __aicore__ inline void SinkhornGradSimdVf(LocalTensor<float> skGradLocal, uint64_t bsIdx, uint64_t bsLen);
     __aicore__ inline void ExpGradSimdVf(LocalTensor<float> skGrad, LocalTensor<float> expGrad, LocalTensor<float> zResLocal, uint64_t bsIdx, uint64_t bsLen);
     template<bool INVRMS_MODE>
@@ -70,17 +79,6 @@ private:
 
     
 private:
-
-
-    using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
-    using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U, true>;
-    using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
-    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, X_T>;
-    using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
-
-    matmul::MatmulImpl<A0Type, BType, C1Type, C1Type, MHC_PRE_GRAD_MM1_CFG> mm1_;
-    matmul::MatmulImpl<A1Type, BType, C2Type, C2Type, MHC_PRE_GRAD_MM2_CFG> mm2_;
-
     GlobalTensor<X_T>  xGm_;                //输入
     GlobalTensor<GRADHIN_T>  gradHinGm_;
     GlobalTensor<U>  gradHPostGm_;
@@ -1220,9 +1218,10 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 ComputeGradZ<true>(gradHcBeforeNormWs_, alphaRes_, bsLen, bsOffset, n_, n_);
             }
         }
-        // 计算GradXFromRms
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(0); // GradHcBeforeNorm计算完成，可以进行matmul计算
         SyncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
+        // 计算GradXFromRms
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5); // GradHcBeforeNorm计算完成，可以进行matmul计算
+        CrossCoreWaitFlag<0x2>(0x6); // gradX matmul计算完成可以执行进行最后的计算
         if (blockIdx_ < usedAivNum_) {
             for (uint64_t bsIdx = 0; bsIdx < curCoreProcessbsTask_; bsIdx++) {
                 ProcessGradXFromRms(bsIdx);
@@ -1232,7 +1231,6 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
             AddAlphaAndBias();
         }
         // 计算GradX,需添加等待matmul完成
-        CrossCoreWaitFlag<0x2>(1); // gradX matmul计算完成可以执行进行最后的计算
         SyncAll();
         if (blockIdx_ < finalUsedAivNum_) {
             ComputeFinal();
@@ -1240,14 +1238,18 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
     }
 
     if ASCEND_IS_AIC {
-        CrossCoreWaitFlag<0x2>(0);
+        CrossCoreWaitFlag<0x2>(0x5);
         int32_t totalSize = batchSize_ * seqLength_;
         int32_t taskNumPerCore = Ops::Base::CeilDiv(totalSize, static_cast<int32_t>(aicNum_));
         int32_t taskOffset = blockIdx_ * taskNumPerCore;
         taskNumPerCore = min(taskNumPerCore, static_cast<int32_t>(totalSize - blockIdx_ * taskNumPerCore));
         ComputeGradXMatmul(taskOffset, taskNumPerCore);
+        totalSize = n_ + n_ + n_ * n_;
+        taskNumPerCore = Ops::Base::CeilDiv(totalSize, static_cast<int32_t>(aicNum_));
+        taskOffset = blockIdx_ * taskNumPerCore;
+        taskNumPerCore = min(taskNumPerCore, static_cast<int32_t>(totalSize - blockIdx_ * taskNumPerCore));
         ComputeGradPhiMatmul(taskOffset, taskNumPerCore);
-        CrossCoreSetFlag<0x2, PIPE_FIX>(1);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(0x6);
     }
 }
 
@@ -1273,15 +1275,15 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 // mm2N_ = n_ * c_;
 
 template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2K)
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2M)
 {
-    if (mm2K <= 0)
+    if (mm2M <= 0)
         return;
-    mm2_.SetTensorA(gradNormOutWs_[taskOffset * mm2M_], true);
-    mm2_.SetTensorB(xFp32Ws_[taskOffset * mm2N_]);
+    mm2_.SetTensorA(gradNormOutWs_[taskOffset * mm2K_], true);
+    mm2_.SetTensorB(xFp32Ws_);
     mm2_.SetHF32(true, 1);
-    mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
-    mm2_.template IterateAll<false> (gradPhiGm_, 1);
+    mm2_.SetSingleShape(mm2M, mm2N_, mm2K_);
+    mm2_.template IterateAll<false> (gradPhiGm_[taskOffset * (n_ * c_)], 1);
     mm2_.End();
 }
 
