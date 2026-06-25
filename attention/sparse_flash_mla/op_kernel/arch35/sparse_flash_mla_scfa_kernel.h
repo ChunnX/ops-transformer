@@ -456,7 +456,6 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
     if ASCEND_IS_AIV {
         ParseFdRunInfo(fdRunInfo);
     }
-    (void)fdRunInfo;
     int64_t maxS2LoopCnt = 0;
     if constexpr (IS_SPLIT_G) {
         maxS2LoopCnt = static_cast<int64_t>(metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_MAX_NUM, false)));
@@ -468,6 +467,10 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                     CrossCoreSetFlag<0, PIPE_MTE3>(15);
                     CrossCoreWaitFlag<0, PIPE_MTE3>(15);
                 }
+            }
+            SyncAll();
+            if (fdRunInfo.coreEnable) {
+                this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
             }
         }
         return;
@@ -610,6 +613,10 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                 CrossCoreSetFlag<0, PIPE_MTE3>(15);
                 CrossCoreWaitFlag<0, PIPE_MTE3>(15);
             }
+        }
+        SyncAll();
+        if (fdRunInfo.coreEnable) {
+            this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
     }
 }

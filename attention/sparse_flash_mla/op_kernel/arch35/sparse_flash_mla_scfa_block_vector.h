@@ -131,6 +131,8 @@ public:
         RunInfo &runInfo,
         ConstInfo &constInfo);
     __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) { s2SplitStagingBase = base; }
+    __aicore__ inline void InitFDBuffers(SmlaFdRunInfo &fdRunInfo);
+    __aicore__ inline void ProcessFlashDecode(SmlaFdRunInfo &fdRunInfo, ConstInfo &constInfo);
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
@@ -249,7 +251,14 @@ private:
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2];
     TBuf<> outLseBuf[2];
+    TBuf<> fdAccumOutBuf;
+    TBuf<> fdBlockMaxBuf;
+    TBuf<> fdBlockSumBuf;
+    TBuf<> fdLseExpBuf;
+    TBuf<> fdPartialBuf;
     __gm__ uint8_t *s2SplitStagingBase = nullptr;
+    TEventID mte2ToVV0Id[2];
+    TEventID vToMte2V0Id[2];
 
     T negativeFloatScalar;
     bool isSinks = false;
@@ -708,9 +717,71 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
         }
 
-        this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+        if (runInfo.isS2Split) {
+            AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
+            uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+            uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
+            AttentionCommon::StageVec2PartialO<T>(stagingLayout, s2SplitStagingBase,
+                workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.vec2MRealSize),
+                static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
+                vToMte3AttnOutId, mte3ToVAttnOutId);
+        } else {
+            this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+        }
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(SmlaFdRunInfo &fdRunInfo)
+{
+    this->tPipe->Reset();
+    uint32_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * regbaseutil::FD_REDUCE_CHUNK_ROWS *
+        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+    uint32_t lseExpSize = regbaseutil::FD_REDUCE_CHUNK_ROWS *
+        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+    uint32_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * dTemplateAlign64 * sizeof(T);
+    uint32_t partialOSize = regbaseutil::FD_REDUCE_CHUNK_ROWS * dTemplateAlign64 * sizeof(T);
+    this->tPipe->InitBuffer(fdAccumOutBuf, accumOutSize);
+    this->tPipe->InitBuffer(fdBlockMaxBuf, maxSumTotal);
+    this->tPipe->InitBuffer(fdBlockSumBuf, maxSumTotal);
+    this->tPipe->InitBuffer(fdLseExpBuf, lseExpSize);
+    this->tPipe->InitBuffer(fdPartialBuf, partialOSize);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
+    SmlaFdRunInfo &fdRunInfo, ConstInfo &constInfo)
+{
+    InitFDBuffers(fdRunInfo);
+    int64_t vec2CalcSize = fdRunInfo.mNum * dTemplateAlign64;
+    int64_t seqOffset = 0;
+    if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        seqOffset = this->cuSeqlensQGm.GetValue(fdRunInfo.bn2Idx);
+    } else {
+        seqOffset = fdRunInfo.bn2Idx * constInfo.s1Size;
+    }
+    int64_t attentionOutOffset = seqOffset * constInfo.n2GDv +
+        fdRunInfo.mIdx * constInfo.n2GDv +
+        fdRunInfo.mStartIdx * constInfo.dSizeV;
+    LocalTensor<T> accumulatedO = this->fdAccumOutBuf.template Get<T>();
+    LocalTensor<float> lseExpUb = this->fdLseExpBuf.template Get<float>();
+    LocalTensor<float> blockMaxUb = this->fdBlockMaxBuf.template Get<float>();
+    LocalTensor<float> blockSumUb = this->fdBlockSumBuf.template Get<float>();
+    LocalTensor<T> partialOFp32 = this->fdPartialBuf.template Get<T>();
+
+    AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
+    AttentionCommon::Reduce<T, dTemplateAlign64>(stagingLayout, s2SplitStagingBase,
+        fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
+        static_cast<uint32_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
+        static_cast<uint32_t>(constInfo.dSizeV),
+        accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
+        vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
+
+    RunInfo runInfo;
+    runInfo.vec2MRealSize = fdRunInfo.mNum;
+    runInfo.attentionOutOffset = attentionOutOffset;
+    this->CopyOutAttentionOut(runInfo, constInfo, accumulatedO, 0, vec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -877,6 +948,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[1]);
     mte2ToMte3[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
     mte2ToMte3[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE3>();
+    mte2ToVV0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+    mte2ToVV0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+    vToMte2V0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+    vToMte2V0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
+    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -902,6 +979,8 @@ public:
         __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV) {};
     __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) {}
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+    __aicore__ inline void InitFDBuffers(SmlaFdRunInfo &fdRunInfo) {}
+    __aicore__ inline void ProcessFlashDecode(SmlaFdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
 };
 }
 #endif // SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H
