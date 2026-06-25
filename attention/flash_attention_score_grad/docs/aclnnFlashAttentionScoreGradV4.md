@@ -339,7 +339,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dScaleQOptional</td>
       <td>可选输入</td>
       <td>是query输入的反量化参数。</td>
-      <td>支持[B,N2,G,Sq/128,1]</td>
+      <td>暂不使用</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>0、1</td>
@@ -349,7 +349,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dScaleKOptional</td>
       <td>可选输入</td>
       <td>是key输入的反量化参数。</td>
-      <td>支持[B,N2,1,Skv/128,1]</td>
+      <td>暂不使用</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>0、1</td>
@@ -359,7 +359,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dScaleVOptional</td>
       <td>可选输入</td>
       <td>是value输入的反量化参数。</td>
-      <td>支持[B,N2,1,Skv/128,1]</td>
+      <td>暂不使用</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>0、1</td>
@@ -369,7 +369,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dScaleDyOptional</td>
       <td>可选输入</td>
       <td>是dy输入的反量化参数。</td>
-      <td>支持[B,N2,G,Sq/128,1]</td>
+      <td>暂不使用</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>0、1</td>
@@ -378,8 +378,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     <tr>
       <td>dScaleOOptional</td>
       <td>可选输入</td>
-      <td>是attentionOptional输入的反量化参数。</td>
-      <td>支持[B,N2,G,Sq/128,1]</td>
+      <td>是attentionInOptional输入的反量化参数。</td>
+      <td>暂不使用</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>0、1</td>
