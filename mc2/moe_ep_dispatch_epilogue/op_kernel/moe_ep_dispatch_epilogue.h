@@ -396,7 +396,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 
                     DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
-                    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
                     if constexpr (!IsCached) {
