@@ -240,6 +240,8 @@ def planB_kernel1(
                 bc_n1_ub = T.alloc_shared((BLOCK_N1, n_block), calc_dtype)
                 bc_nidx1_ub = T.alloc_shared((BLOCK_NIDX1, n_block), calc_dtype)
                 bc_tmp_ub = T.alloc_shared(n_block, calc_dtype)
+                bc_src_n1 = T.alloc_shared(BLOCK_N1, calc_dtype)
+                bc_src_nidx1 = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
 
                 T.tile.fill(eps_ub, 1e-8)
 
@@ -261,12 +263,14 @@ def planB_kernel1(
                         T.copy(bmm1Res[bz, s1_id, n1_s:n1_s + BLOCK_N1, k_start:k_end], bmm1_ub)
                         T.barrier_all()
                         T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-                        # Vectorized: broadcast sm_max, single sub
-                        T.tile.broadcast(bc_n1_ub, sm_max_ub[n1_s:n1_s + BLOCK_N1], bc_tmp_ub)
+                        # Vectorized: copy slice → broadcast sm_max, single sub
+                        T.copy(sm_max_ub[n1_s:n1_s + BLOCK_N1], bc_src_n1)
+                        T.tile.broadcast(bc_n1_ub, bc_src_n1, bc_tmp_ub)
                         T.tile.sub(bmm1_ub, bmm1_ub, bc_n1_ub)
                         T.tile.exp(bmm1_ub, bmm1_ub)
-                        # Vectorized: broadcast sm_sum, single div
-                        T.tile.broadcast(bc_n1_ub, sm_sum_ub[n1_s:n1_s + BLOCK_N1], bc_tmp_ub)
+                        # Vectorized: copy slice → broadcast sm_sum, single div
+                        T.copy(sm_sum_ub[n1_s:n1_s + BLOCK_N1], bc_src_n1)
+                        T.tile.broadcast(bc_n1_ub, bc_src_n1, bc_tmp_ub)
                         T.tile.div(bmm1_ub, bmm1_ub, bc_n1_ub)
                         # Reduce rows to p_chunk_ub
                         T.reduce_sum(bmm1_ub, p_chunk_ub, dim=0, clear=False, real_shape=[BLOCK_N1, n_block])
@@ -279,8 +283,9 @@ def planB_kernel1(
                         nidx_s = nidx_c * BLOCK_NIDX1
                         T.copy(bmm2Res[bz, s1_id, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end], bmm2_ub)
                         T.barrier_all()
-                        # Vectorized: broadcast weight, single mul
-                        T.tile.broadcast(bc_nidx1_ub, weight_ub[nidx_s:nidx_s + BLOCK_NIDX1], bc_tmp_ub)
+                        # Vectorized: copy slice → broadcast weight, single mul
+                        T.copy(weight_ub[nidx_s:nidx_s + BLOCK_NIDX1], bc_src_nidx1)
+                        T.tile.broadcast(bc_nidx1_ub, bc_src_nidx1, bc_tmp_ub)
                         T.tile.mul(bmm2_ub, bmm2_ub, bc_nidx1_ub)
                         # Reduce rows to rsy_chunk_ub
                         T.reduce_sum(bmm2_ub, rsy_chunk_ub, dim=0, clear=False, real_shape=[BLOCK_NIDX1, n_block])
@@ -360,6 +365,7 @@ def planB_kernel2(
                 # Broadcast buffers for vectorization
                 bc_nidx1_ub = T.alloc_shared((BLOCK_NIDX1, n_block), calc_dtype)
                 bc_tmp_ub = T.alloc_shared(n_block, calc_dtype)
+                bc_src_nidx1 = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
 
                 T.tile.fill(eps_ub, 1e-8)
 
@@ -407,7 +413,8 @@ def planB_kernel2(
 
                         # reluGrad vectorized: rg = broadcast(diff) * broadcast(weight)
                         T.tile.broadcast(rg_chunk_ub, diff_ub, bc_tmp_ub)
-                        T.tile.broadcast(bc_nidx1_ub, weight_ub[nidx_s:nidx_s + BLOCK_NIDX1], bc_tmp_ub)
+                        T.copy(weight_ub[nidx_s:nidx_s + BLOCK_NIDX1], bc_src_nidx1)
+                        T.tile.broadcast(bc_nidx1_ub, bc_src_nidx1, bc_tmp_ub)
                         T.tile.mul(rg_chunk_ub, rg_chunk_ub, bc_nidx1_ub)
                         T.tile.compare(mask_2d_ub, bmm2_ub, 0.0, "GT")
                         T.tile.select(rg_chunk_ub, mask_2d_ub, rg_chunk_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
