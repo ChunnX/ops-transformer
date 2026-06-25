@@ -192,8 +192,7 @@ void ElasticBuffer::AllocateAndRegisterBuffer(const HcclComm &commHandle, const 
 
     aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
     TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
-    errno_t memRet = memset_s(guard.hostPtr, static_cast<size_t>(numCpuBytes), 0, static_cast<size_t>(numCpuBytes));
-    TORCH_CHECK(memRet == EOK, "memset_s failed, ret=", memRet);
+    memset(guard.hostPtr, 0, static_cast<uint64_t>(numCpuBytes));
 
     ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
     TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
@@ -288,9 +287,8 @@ void ElasticBuffer::GetHcclCommResource(const HcclComm &commHandle, CommContext 
     ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
     GetHcclCommChannel(commHandle, rankSize, rankId, handlesByRank, rankSize);
 
-    errno_t memRet = memset_s(commContextStruct->hcommHandle_, HCCL_MAX_RANK_SIZE * sizeof(uint64_t), 0,
-                              rankSize * sizeof(uint64_t));
-    TORCH_CHECK(memRet == EOK, "memset_s for hcommHandle_ failed, ret=", memRet);
+    memset(commContextStruct->hcommHandle_, 0, rankSize * sizeof(uint64_t));
+
     for (uint32_t peer = 0; peer < rankSize; ++peer) {
         if (peer == rankId)
             continue;
@@ -377,8 +375,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     engramDtype = storage.scalar_type();
 
     if (numEngramEntries > 0) {
-        errno_t memRet = memcpy_s(hostBufPtr, static_cast<size_t>(numCpuBytes), storage.data_ptr(), storage.nbytes());
-        TORCH_CHECK(memRet == EOK, "memcpy_s failed, ret=", memRet);
+        memcpy(hostBufPtr, storage.data_ptr(), storage.nbytes());
     }
 
     EngramBarrier(true);
@@ -479,9 +476,7 @@ void ElasticBuffer::CopyContextToTensor(const CommContext &context, at::Tensor &
 {
     int64_t numElements = sizeof(CommContext) / sizeof(int32_t);
     at::Tensor hostTensor = at::empty({numElements}, at::TensorOptions().dtype(at::kInt));
-    errno_t memRet = memcpy_s(hostTensor.data_ptr<int32_t>(), static_cast<size_t>(numElements * sizeof(int32_t)),
-                              &context, sizeof(CommContext));
-    TORCH_CHECK(memRet == EOK, "memcpy_s for CommContext failed, ret=", memRet);
+    memcpy(hostTensor.data_ptr<int32_t>(), &context, sizeof(CommContext));
     tensor.copy_(hostTensor);
 }
 
