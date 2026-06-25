@@ -354,7 +354,7 @@ private:
 
     __aicore__ inline bool InitStartIdx()
     {
-        // 遍历顺序 s2->s1->n1->batch
+        // 遍历顺序 s1->s2->n1->batch
         int32_t recoderS1 = GetBlockLen(s1Idx_, cur_q_seq_len_, single_m_);
         int32_t recoderS2 = GetBlockLen(s2Idx_, cur_kv_seq_len_, base_n_);
 
