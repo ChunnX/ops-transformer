@@ -14,6 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tilelang_rewrite.sparse_lightning_indexer_grad_kl_loss_planB import (
     sparse_lightning_indexer_grad_kl_loss,
     _clear_caches,
+    _profile_result,
+    set_block_config,
+    reset_block_config,
 )
 
 WARMUP_ITERS = 3
@@ -92,7 +95,7 @@ def gen_inputs(config, seed=42):
     }
 
 
-def call_tl(inputs, config):
+def call_tl(inputs, config, profile=False):
     return sparse_lightning_indexer_grad_kl_loss(
         inputs["query"], inputs["key"],
         inputs["query_index"], inputs["key_index"],
@@ -105,6 +108,7 @@ def call_tl(inputs, config):
         actual_seq_lengths_query=[config["S1"]] * config["B"],
         actual_seq_lengths_key=[config["S2"]] * config["B"],
         sparse_mode=3,
+        profile=profile,
     )
 
 
@@ -214,13 +218,118 @@ def test_performance():
         print(f"  Speedup:  {speedup:.2f}x (median)")
 
 
+def test_profile():
+    """Run once with profiling enabled, print stage-by-stage timing."""
+    print("\n" + "=" * 60)
+    print("Plan B - Stage Profiling")
+    print("=" * 60)
+    cfg = DEFAULT_CONFIG.copy()
+    inputs = gen_inputs(cfg)
+    _clear_caches()
+    torch.npu.synchronize()
+
+    print("Running with profile=True...")
+    call_tl(inputs, cfg, profile=True)
+    torch.npu.synchronize()
+
+    pt = _profile_result
+    if not pt:
+        print("  WARNING: No profile data collected.")
+        return
+
+    total = pt["total"]
+    print(f"\n  Stage timing breakdown (total={total:.3f}ms):")
+    print(f"  {'Stage':<25} {'Time(ms)':>10} {'Pct':>8}")
+    print(f"  {'-'*43}")
+    for name in ["gather", "kernel1", "kernel2_and_python"]:
+        t = pt[name]
+        pct = t / total * 100 if total > 0 else 0
+        bar = "#" * max(1, int(pct / 2))
+        print(f"  {name:<25} {t:>10.3f} {pct:>7.1f}% {bar}")
+
+
+def test_tune_blocks():
+    """Sweep BLOCK parameters and report performance for each."""
+    print("\n" + "=" * 60)
+    print("Plan B - BLOCK Parameter Tuning")
+    print("=" * 60)
+
+    from tilelang_rewrite.sparse_lightning_indexer_grad_kl_loss_planB import (
+        BLOCK_M, BLOCK_N, BLOCK_K, BLOCK_N1, BLOCK_NIDX1,
+    )
+
+    cfg = DEFAULT_CONFIG.copy()
+    print(f"\n  Default config: K={cfg['K']}, S1={cfg['S1']}, N1={cfg['N1']}, Nidx1={cfg['Nidx1']}")
+    print(f"  Current BLOCK: M={BLOCK_M}, N={BLOCK_N}, K={BLOCK_K}, N1={BLOCK_N1}, NIDX1={BLOCK_NIDX1}")
+
+    sweeps = [
+        # (param, values_to_try)
+        ("BLOCK_N", [64, 128, 256]),
+        ("BLOCK_N1", [16, 32, 64]),
+        ("BLOCK_NIDX1", [8, 16, 32]),
+    ]
+
+    default_map = {"BLOCK_N": 128, "BLOCK_N1": 32, "BLOCK_NIDX1": 16}
+
+    for param_name, values in sweeps:
+        print(f"\n  --- Sweep {param_name} ---")
+        print(f"  {'Value':>6}  {'n_num':>6}  {'Avg(ms)':>10}  {'Med(ms)':>10}  {'Min(ms)':>10}  Speedup")
+        print(f"  {'-'*60}")
+
+        baseline_med = None
+        for val in values:
+            reset_block_config()
+            _clear_caches()
+            if param_name == "BLOCK_N":
+                set_block_config(n=val)
+            elif param_name == "BLOCK_N1":
+                set_block_config(n1=val)
+            elif param_name == "BLOCK_NIDX1":
+                set_block_config(nidx1=val)
+
+            n_num = cfg["K"] // BLOCK_N
+            inputs = gen_inputs(cfg)
+            torch.npu.synchronize()
+
+            try:
+                avg, med, mn = bench(lambda: call_tl(inputs, cfg))
+                torch.npu.synchronize()
+            except Exception as e:
+                print(f"  {val:>6}  ERROR: {e}")
+                continue
+
+            if baseline_med is None:
+                baseline_med = med
+
+            speedup = baseline_med / med if med > 0 else float("inf")
+            is_default = val == default_map.get(param_name, -1)
+
+            print(f"  {val:>6}  {n_num:>6}  {avg*1e3:>10.3f}  {med*1e3:>10.3f}  {mn*1e3:>10.3f}  {speedup:>6.2f}x"
+                  f"{' (default)' if is_default else ''}")
+
+    # Restore defaults
+    reset_block_config()
+    _clear_caches()
+    print("\n  Restored default BLOCK config.")
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Test Plan B (Dual-kernel + Python bridge)")
     parser.add_argument("--precision-only", action="store_true")
     parser.add_argument("--perf-only", action="store_true")
     parser.add_argument("--quick", action="store_true", help="Quick test: single config")
+    parser.add_argument("--profile", action="store_true", help="Profile: show stage-by-stage timing breakdown")
+    parser.add_argument("--tune-blocks", action="store_true", help="Sweep BLOCK_N, BLOCK_N1, BLOCK_NIDX1 for best perf")
     args = parser.parse_args()
+
+    if args.profile:
+        test_profile()
+        return
+
+    if args.tune_blocks:
+        test_tune_blocks()
+        return
 
     if args.quick:
         print("Plan B - Quick test: single config")

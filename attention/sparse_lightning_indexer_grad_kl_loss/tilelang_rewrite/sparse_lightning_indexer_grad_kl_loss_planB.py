@@ -16,7 +16,8 @@ Optimizations applied:
 """
 
 import math
-from typing import Optional, Tuple
+import time
+from typing import Optional, Tuple, Dict
 from dataclasses import dataclass
 
 import torch
@@ -28,7 +29,7 @@ import tilelang.language as T
 tilelang.disable_cache()
 
 # ==============================================================================
-# Constants
+# Constants (can be overridden before calling the entry function)
 # ==============================================================================
 BLOCK_M = 16
 BLOCK_N = 128
@@ -43,6 +44,31 @@ DROPE = 64
 _kernel_cache = {}
 _kernel2_cache = {}
 _workspace_cache = {}
+
+
+def set_block_config(m=None, n=None, k=None, n1=None, nidx1=None):
+    """Override BLOCK constants. Call before sparse_lightning_indexer_grad_kl_loss()."""
+    global BLOCK_M, BLOCK_N, BLOCK_K, BLOCK_N1, BLOCK_NIDX1
+    if m is not None:
+        BLOCK_M = m
+    if n is not None:
+        BLOCK_N = n
+    if k is not None:
+        BLOCK_K = k
+    if n1 is not None:
+        BLOCK_N1 = n1
+    if nidx1 is not None:
+        BLOCK_NIDX1 = nidx1
+
+
+def reset_block_config():
+    """Reset BLOCK constants to defaults."""
+    global BLOCK_M, BLOCK_N, BLOCK_K, BLOCK_N1, BLOCK_NIDX1
+    BLOCK_M = 16
+    BLOCK_N = 128
+    BLOCK_K = 128
+    BLOCK_N1 = 32
+    BLOCK_NIDX1 = 16
 
 
 def _clear_caches():
@@ -515,6 +541,10 @@ def _compute_d_key_index(
 # ==============================================================================
 # Main Entry
 # ==============================================================================
+# Profiling storage (module-level, read by test script after call)
+_profile_result: Dict[str, float] = {}
+
+
 def sparse_lightning_indexer_grad_kl_loss(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -532,6 +562,7 @@ def sparse_lightning_indexer_grad_kl_loss(
     actual_seq_lengths_key: Optional[torch.Tensor] = None,
     layout_query: str = "BSND",
     sparse_mode: int = 3,
+    profile: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     tiling = check_param_valid(
         query, key, query_index, key_index, weights, sparse_indices,
@@ -592,9 +623,16 @@ def sparse_lightning_indexer_grad_kl_loss(
     if d_rope_orig == 0:
         gather_key_rope = torch.zeros(B, S1, K, d_rope, dtype=input_dtype, device=device)
 
+    if profile:
+        torch.npu.synchronize()
+        _pt = {"gather": time.perf_counter()}
+    else:
+        _pt = {}
+
     # ---- Kernel 1 compilation cache ----
     cache_key = (B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-                 d_rope, input_dtype_str, calc_dtype_str, scale_value)
+                 d_rope, input_dtype_str, calc_dtype_str, scale_value,
+                 BLOCK_M, BLOCK_N, BLOCK_K, BLOCK_N1, BLOCK_NIDX1)
     if cache_key in _kernel_cache:
         func1 = _kernel_cache[cache_key]
     else:
@@ -616,8 +654,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         _kernel2_cache[k2_key] = func2
 
     # ---- Workspace ----
-    ws_key = (B, S1, N1, Nidx1, K, DQueryIndex, input_dtype, device)
-    n_num = tiling.n_num
+    ws_key = (B, S1, N1, Nidx1, K, DQueryIndex, input_dtype, device, BLOCK_N)
+    n_num = K // BLOCK_N
     if ws_key in _workspace_cache:
         ws = _workspace_cache[ws_key]
     else:
@@ -644,6 +682,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         p_reduced_ws, reduce_sum_y_ws,
     )
 
+    if profile:
+        torch.npu.synchronize()
+        _pt["kernel1"] = time.perf_counter()
+
     # ---- Launch Kernel 2 (K-parallel, V1-only, SoftmaxI fused in kernel) ----
     d_weight_partial, relu_grad, loss_partial = func2(
         bmm2_res_ws, weights, p_reduced_ws, reduce_sum_y_ws,
@@ -651,6 +693,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         relu_grad_ws,
         loss_partial,
     )
+
+    if profile:
+        torch.npu.synchronize()
+        _pt["kernel2"] = time.perf_counter()
 
     # ---- Python Reduction + MM6 ----
     # dWeight: sum partials across K-blocks
@@ -672,6 +718,31 @@ def sparse_lightning_indexer_grad_kl_loss(
 
     if S2_pad > S2:
         d_key_index = d_key_index[:, :S2, :, :]
+
+    if profile:
+        torch.npu.synchronize()
+        _pt["python_post"] = time.perf_counter()
+        # Compute intervals
+        t_gather = _pt["gather"]
+        t_k1 = _pt["kernel1"]
+        t_k2 = _pt["kernel2"]
+        t_post = _pt["python_post"]
+        global _profile_result
+        _profile_result = {
+            "gather": (t_k1 - t_gather) * 1000,
+            "kernel1": (t_k2 - t_k1) * 1000,
+            "kernel2": (t_post - t_k2) * 1000,
+            "python": (t_post - t_k2) * 1000,  # python post is fast, merged with kernel2 sync
+            "total": (t_post - t_gather) * 1000,
+        }
+        _pt["kernel1_only"] = t_gather + (_pt["kernel1"] - t_gather)  # placeholder for correct calc
+        # Recalculate with correct scope
+        _profile_result = {
+            "gather": (_pt["kernel1"] - _pt["gather"]) * 1000,
+            "kernel1": (_pt["kernel2"] - _pt["kernel1"]) * 1000,
+            "kernel2_and_python": (_pt["python_post"] - _pt["kernel2"]) * 1000,
+            "total": (_pt["python_post"] - _pt["gather"]) * 1000,
+        }
 
     return d_query_index, d_key_index, d_weight, kl_loss.npu() if hasattr(kl_loss, 'npu') else kl_loss.cuda()
 
