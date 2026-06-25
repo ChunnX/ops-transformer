@@ -59,11 +59,11 @@ constexpr uint32_t TWO_DIMS = 2U;
 constexpr int64_t META_INNER_DIM = 3;            // recvSrcMetadata dim(1) = 3
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
-constexpr int64_t MAX_EP_WORLD_SIZE = 768;
-constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr int64_t MAX_EP_WORLD_SIZE = 128;
+constexpr int64_t MIN_EP_WORLD_SIZE = 1;
 constexpr int64_t MIN_EXPERT_ALIGNMENT = 1;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t H_MIN = 1024;
+constexpr int64_t H_MIN = 0;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t BS_UPPER_BOUND = 8192;
 constexpr uint32_t HIDDEN_ALIGN = 32U;
