@@ -21,7 +21,6 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_util.h"
-#include "../op_kernel/arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
 #include "platform/platform_info.h"
 #include "util/math_util.h"
 
@@ -120,7 +119,6 @@ protected:
     ge::DataType cosDtype_;
     InplacePartialRotaryMulGradLayout layout_;
     InplacePartialRotaryMulGradMode rotaryMode_;
-    InplacePartialRotaryMulGradTilingData *tilingData_{nullptr};
 
     gert::Shape dyShape_;
     gert::Shape cosShape_;

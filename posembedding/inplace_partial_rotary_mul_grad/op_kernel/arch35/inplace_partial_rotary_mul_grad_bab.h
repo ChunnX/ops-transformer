@@ -18,7 +18,6 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "op_kernel/load_store_utils.h"
-#include "inplace_partial_rotary_mul_grad_tiling_data.h"
 #include "inplace_partial_rotary_mul_grad_common.h"
 #include <cstdint>
 

@@ -18,11 +18,7 @@
  */
 
 #include "kernel_operator.h"
-#include "arch35/inplace_partial_rotary_mul_grad_tiling_data.h"
 #include "arch35/inplace_partial_rotary_mul_grad_common.h"
-#include "arch35/inplace_partial_rotary_mul_grad_ab.h"
-#include "arch35/inplace_partial_rotary_mul_grad_a_and_b.h"
-#include "arch35/inplace_partial_rotary_mul_grad_aba_and_ba.h"
 #include "arch35/inplace_partial_rotary_mul_grad_bab.h"
 
 #define TILING_KEY_ABA 201
