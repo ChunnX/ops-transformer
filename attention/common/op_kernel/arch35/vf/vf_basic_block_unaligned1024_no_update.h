@@ -50,6 +50,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl1024VF(
     RegTensor<float> vreg_sel15_new;
     RegTensor<float> vreg_sel16_new;
 
+    RegTensor<float> vreg_input_max;
+    RegTensor<float> vreg_max_brc;
+    RegTensor<float> vreg_zero;
+
     VREG_FLOAT_DECL_16(vreg_input_x);
     RegTensor<float> vreg_input_x9_new;
     RegTensor<float> vreg_input_x10_new;
@@ -60,10 +64,6 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl1024VF(
     RegTensor<float> vreg_input_x15_new;
     RegTensor<float> vreg_input_x16_new;
 
-    RegTensor<float> vreg_input_max;
-    RegTensor<float> vreg_max_brc;
-    RegTensor<float> vreg_zero;
-
     RegTensor<float> vreg_exp_sum1;
 
     VREG_FLOAT_DECL_EXP_PAIRS_8(vreg_exp);
@@ -71,9 +71,6 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl1024VF(
     VREG_FLOAT_DECL_16(vreg_pse);
 
     VREG_FLOAT_DECL_16(vreg_alibi);
-
-    UnalignRegForStore ureg_max;
-    UnalignRegForStore ureg_exp_sum;
 
     MaskReg preg_all = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
@@ -102,6 +99,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl1024VF(
     MaskReg preg_tail_n8 = UpdateMask<T>(pltTailN8);
     MaskReg preg_ori_tail_n8 = UpdateMask<T>(pltOriTailN8);
 
+    UnalignRegForStore ureg_max;
+    UnalignRegForStore ureg_exp_sum;
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
 
     ProcessVec1MainLoop1024<T, T2, hasAtten, pseMode>(
@@ -172,12 +171,12 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl1024(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
     const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor,
     const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor, const LocalTensor<OUTPUT_T>& pseTensor,
-    const LocalTensor<uint8_t>& dropTensor,
-    const LocalTensor<uint8_t>& sharedTmpBuffer, const uint16_t m, const uint32_t originN,
-    const uint32_t pseStride, const float slopes, const float posShift, const T scale, const T minValue, float keepProb)
+    const LocalTensor<uint8_t>& dropTensor, const LocalTensor<uint8_t>& sharedTmpBuffer, const uint16_t m,
+    const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
+    const T minValue, float keepProb)
 {
-    const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
     const uint32_t repeatStride = 1;
+    const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
     __ubuf__ T2 * expUb1 = (__ubuf__ T2*)dstTensor.GetPhyAddr();
     __ubuf__ T2 * expUb2 = (__ubuf__ T2*)dstTensor.GetPhyAddr() + ((s1BaseSize >> 1) + 1) * (128);
     __ubuf__ T2 * expUb3 = (__ubuf__ T2*)dstTensor.GetPhyAddr() + 2 * ((s1BaseSize >> 1) + 1) * (128);
@@ -219,15 +218,6 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl1024(
     const uint32_t oriTailN7 = static_cast<int32_t>(originN - floatRepSize * 14) <= 0 ? 0 : originN - floatRepSize * 14;
     const uint32_t oriTailN8 = static_cast<int32_t>(originN - floatRepSize * 15) <= 0 ? 0 : originN - floatRepSize * 15;
 
-    const uint32_t tailN1 = s2BaseSize - floatRepSize * 8;
-    const uint32_t tailN2 = s2BaseSize - floatRepSize * 9;
-    const uint32_t tailN3 = s2BaseSize - floatRepSize * 10;
-    const uint32_t tailN4 = s2BaseSize - floatRepSize * 11;
-    const uint32_t tailN5 = s2BaseSize - floatRepSize * 12;
-    const uint32_t tailN6 = s2BaseSize - floatRepSize * 13;
-    const uint32_t tailN7 = s2BaseSize - floatRepSize * 14;
-    const uint32_t tailN8 = s2BaseSize - floatRepSize * 15;
-
     uint32_t pltOriTailN1 = oriTailN1;
     uint32_t pltOriTailN2 = oriTailN2;
     uint32_t pltOriTailN3 = oriTailN3;
@@ -236,6 +226,15 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl1024(
     uint32_t pltOriTailN6 = oriTailN6;
     uint32_t pltOriTailN7 = oriTailN7;
     uint32_t pltOriTailN8 = oriTailN8;
+
+    const uint32_t tailN1 = s2BaseSize - floatRepSize * 8;
+    const uint32_t tailN2 = s2BaseSize - floatRepSize * 9;
+    const uint32_t tailN3 = s2BaseSize - floatRepSize * 10;
+    const uint32_t tailN4 = s2BaseSize - floatRepSize * 11;
+    const uint32_t tailN5 = s2BaseSize - floatRepSize * 12;
+    const uint32_t tailN6 = s2BaseSize - floatRepSize * 13;
+    const uint32_t tailN7 = s2BaseSize - floatRepSize * 14;
+    const uint32_t tailN8 = s2BaseSize - floatRepSize * 15;
 
     uint32_t pltTailN1 = tailN1;
     uint32_t pltTailN2 = tailN2;
