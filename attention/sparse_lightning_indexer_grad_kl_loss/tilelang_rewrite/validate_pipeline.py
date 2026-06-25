@@ -530,9 +530,13 @@ def _extract_cast_params(line: str) -> Dict[str, Any]:
 
 def _extract_fill_params(line: str) -> Dict[str, Any]:
     params: Dict[str, Any] = {}
-    m = re.search(r"fill\([^,]+,\s*([\d.e+\-]+)\s*\)", line)
+    m = re.search(r"fill\([^,]+,\s*([\d.eE+\-]+)\s*\)", line)
     if m:
-        params["value"] = float(m.group(1)) if "." in m.group(1) else int(m.group(1))
+        val_str = m.group(1)
+        try:
+            params["value"] = float(val_str)
+        except ValueError:
+            params["value"] = val_str
     return params
 
 
