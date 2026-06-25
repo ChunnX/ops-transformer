@@ -77,17 +77,6 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::DoOpTiling()
                 coreNum_);
         return ge::GRAPH_FAILED;
     }
-
-    std::cout << "InitTilingData" << std::endl;
-    if (tilingData_ == nullptr) {
-        tilingData_ = context_->GetTilingData<InplacePartialRotaryMulGradTilingData>();
-        OP_CHECK_IF(tilingData_ == nullptr, OP_LOGE(context_->GetNodeName(), "get tilingdata ptr failed"),
-                    return ge::GRAPH_FAILED);
-    }
-    OP_CHECK_IF((memset_s(tilingData_, sizeof(InplacePartialRotaryMulGradTilingData), 0,
-                          sizeof(InplacePartialRotaryMulGradTilingData)) != EOK),
-                OP_LOGE(context_->GetNodeName(), "memset tilingdata failed"), return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
