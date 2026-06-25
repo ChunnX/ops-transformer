@@ -100,8 +100,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [256], # 取16的整数倍，最多支持到1024
-        "block_num":[11],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[22],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
@@ -135,8 +135,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [256], # 取16的整数倍，最多支持到1024
-        "block_num":[704],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[1408],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
@@ -170,8 +170,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [256], # 取16的整数倍，最多支持到1024
-        "block_num":[715],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[1430],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
@@ -205,8 +205,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [896], # 取16的整数倍，最多支持到1024
-        "block_num":[1],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[5],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
@@ -240,8 +240,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [384], # 取16的整数倍，最多支持到1024
-        "block_num":[4],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[32],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
@@ -275,8 +275,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [768], # 取16的整数倍，最多支持到1024
-        "block_num":[4],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[8],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
@@ -310,8 +310,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [1024], # 取16的整数倍，最多支持到1024
-        "block_num":[144],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[1440],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
@@ -345,8 +345,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [384], # 取16的整数倍，最多支持到1024
-        "block_num":[4],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[40],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
@@ -380,8 +380,8 @@ TEST_PARAMS = {
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
-        "block_size": [640], # 取16的整数倍，最多支持到1024
-        "block_num":[4],
+        "block_size": [128], # 取16的整数倍，最多支持到1024
+        "block_num":[40],
         "qk_dtype": [torch.float8_e4m3fn],
         "weight_dtype": [torch.float],
         "dequant_dtype": [torch.float8_e8m0fnu],
