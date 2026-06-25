@@ -283,7 +283,7 @@ def moe_init_routing(
                          row_idx_type=row_idx_type)
     ```
 
-- 图模式调用
+    - 图模式调用（静态量化场景，quant\_mode=0）
 
     ```python
     import torch
@@ -324,15 +324,16 @@ def moe_init_routing(
         x = torch.randn((n, h), dtype=torch.float32).npu()
         expert_idx = torch.randint(0, expert_num, (n, k), dtype=torch.int32).npu()
         topk_weight = torch.randn((n, k), dtype=torch.float32).npu()
-        scale = torch.randn((n,), dtype=torch.float32).npu()
+        scale = torch.randn((1,), dtype=torch.float32).npu()
+        offset = torch.randn((1,), dtype=torch.float32).npu()
 
         model = MoeInitRoutingModel().npu()
         model = torch.compile(model, backend=npu_backend, dynamic=False)
         expanded_x, expanded_row_idx, expert_tokens_count, expanded_scale, expanded_topk_weight = \
-            model(x, expert_idx, topk_weight=topk_weight, scale=scale,
+            model(x, expert_idx, topk_weight=topk_weight, scale=scale, offset=offset,
                   active_num=-1, expert_capacity=-1, expert_num=expert_num,
                   drop_pad_mode=0, expert_tokens_num_type=1,
-                  expert_tokens_num_flag=True, quant_mode=-1,
+                  expert_tokens_num_flag=True, quant_mode=0,
                   active_expert_range=active_expert_range, row_idx_type=1)
 
     if __name__ == '__main__':
