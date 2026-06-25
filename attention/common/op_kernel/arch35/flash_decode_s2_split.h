@@ -36,8 +36,11 @@
 #define FLASH_DECODE_S2_SPLIT_H
 
 #include <stdint.h>
+#include "vf/vf_flash_decode.h"
 
 namespace AttentionCommon {
+
+static constexpr uint32_t FD_BUFFER_SIZE_BYTE_32B = 32;
 
 // The three regions are contiguous: partial O, max, then sum.
 // slotCount = maxSplits * physicalCoreSlots (already includes maxSplits).
@@ -95,8 +98,8 @@ __aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout,
     uint32_t mSizeAlign8 = (validRows + layout.broadcastElems - 1) /
         layout.broadcastElems * layout.broadcastElems;
     uint32_t brcbRepeat = mSizeAlign8 / layout.broadcastElems;
-    Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, layout.broadcastElems});
-    Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, layout.broadcastElems});
+    Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, static_cast<uint16_t>(layout.broadcastElems)});
+    Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, static_cast<uint16_t>(layout.broadcastElems)});
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
 
@@ -184,7 +187,7 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
 
         LocalTensor<T> sinkUb;
-        ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
+        FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
                                    dealRowCount, workspaceNum, false, false);
         PipeBarrier<PIPE_V>();
 
@@ -193,7 +196,7 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             DataCopyExtParams inParams;
             inParams.blockLen = dValid * sizeof(float);
             inParams.srcStride = 0;
-            constexpr uint32_t outputElemsPerBlock = BUFFER_SIZE_BYTE_32B / sizeof(float);
+            constexpr uint32_t outputElemsPerBlock = FD_BUFFER_SIZE_BYTE_32B / sizeof(float);
             inParams.dstStride = static_cast<uint16_t>((D_ALIGN - dValid) / outputElemsPerBlock);
             inParams.blockCount = dealRowCount;
             DataCopyPadExtParams<float> padParams{true, 0,
@@ -203,7 +206,7 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVId);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
-            ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
+            FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
         }
