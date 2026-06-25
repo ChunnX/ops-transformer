@@ -581,11 +581,11 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
         if ASCEND_IS_AIC {
             matmulService.ComputeMatmulChunk(qChunkStart, curQChunkSize,
                                              kChunkStart, curKChunkSize, batchIdx, headIdx);
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[flagId & SYNC_C1_TO_V1_FLAG_NUMS]);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
         }
 
         if ASCEND_IS_AIV {
-            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[flagId & SYNC_C1_TO_V1_FLAG_NUMS]);
+            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
             // printf("qChunkStart: %d, curQChunkSize:  %d, kChunkStart: %d, curKChunkSize: %d\n",
             //     qChunkStart, curQChunkSize, kChunkStart, curKChunkSize);
             vectorService.OnlineSoftmaxFirstPassChunk(
