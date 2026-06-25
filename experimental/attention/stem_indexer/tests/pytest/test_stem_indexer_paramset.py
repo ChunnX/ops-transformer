@@ -207,7 +207,7 @@ ENABLED_PARAMS = [
     },
     # SI_WB_009 causal_early_query_clip
     # 覆盖: causal=true；early q block；s2Valid小于max_Kb；forced因果裁剪
-    # 设计: 早期 query 块只能看到历史块，并用确定性分数稳定长KV TopK边界。
+    # 设计: 早期 query 块只能看到历史块，验证因果路径不会选未来块。
     {
         'case_id': 'SI_WB_009',
         'testcase_name': 'causal_early_query_clip',
@@ -227,7 +227,7 @@ ENABLED_PARAMS = [
         'qflat_dtype': 'BF16',
         'kflat_dtype': 'BF16',
         'vbias_dtype': 'FP32',
-        'special_setting': 'qflat=constant_positive; kflat=constant_positive; vbias=strictly_ascending_by_k_block',
+        'special_setting': '',
     },
     # SI_WB_010 noncausal_full_kv_window_batch6_g16
     # 覆盖: causal=false；每个q块可见完整kv；window落在全局kv尾部
@@ -591,7 +591,7 @@ ENABLED_PARAMS = [
     },
     # SI_WB_025 gqa_q64_kv4_batch15_g16
     # 覆盖: q_heads=64；kv_heads=4；g=16
-    # 设计: 覆盖 q_heads=64 与中间 kv_heads 组合，并用确定性分数稳定长KV TopK边界。
+    # 设计: 覆盖 q_heads=64 与中间 kv_heads 组合。
     {
         'case_id': 'SI_WB_025',
         'testcase_name': 'gqa_q64_kv4_batch15_g16',
@@ -611,7 +611,7 @@ ENABLED_PARAMS = [
         'qflat_dtype': 'BF16',
         'kflat_dtype': 'BF16',
         'vbias_dtype': 'FP32',
-        'special_setting': 'qflat=constant_positive; kflat=constant_positive; vbias=strictly_ascending_by_k_block',
+        'special_setting': '',
     },
     # SI_WB_026 gqa_q64_kv2_batch16_g32
     # 覆盖: q_heads=64；kv_heads=2；g=32最大GQA
@@ -639,7 +639,7 @@ ENABLED_PARAMS = [
     },
     # SI_WB_027 batch17_varlen_prefill_g16
     # 覆盖: batch=17；变长q/kv；per-batch实际长度；prompt按batch实际长度输入
-    # 设计: 覆盖多 batch 负载不均，并用确定性分数稳定长KV TopK边界。
+    # 设计: 覆盖多 batch 负载不均；BNSD下q/kv seq_lens和num_prompt_tokens均按batch实际长度读取。
     {
         'case_id': 'SI_WB_027',
         'testcase_name': 'batch17_varlen_prefill_g16',
@@ -659,7 +659,7 @@ ENABLED_PARAMS = [
         'qflat_dtype': 'BF16',
         'kflat_dtype': 'BF16',
         'vbias_dtype': 'FP32',
-        'special_setting': 'qflat=constant_positive; kflat=constant_positive; vbias=strictly_ascending_by_k_block',
+        'special_setting': '',
     },
     # SI_WB_028 batch19_mixed_prefill_decode_g8
     # 覆盖: batch内prefill/decode混合；prompt边界；decode q_len=1
@@ -1240,7 +1240,7 @@ ENABLED_PARAMS = [
     },
     # SI_WB_054 batch26_noncausal_q32_kv4_varlen
     # 覆盖: batch=26；q32/kv4；non-causal；q尾块与kv尾块混合
-    # 设计: 补齐q32/kv4组合覆盖，并用确定性分数稳定长KV TopK边界。
+    # 设计: 补齐q32/kv4组合覆盖，验证中等GQA组下的多batch变长路径。
     {
         'case_id': 'SI_WB_054',
         'testcase_name': 'batch26_noncausal_q32_kv4_varlen',
@@ -1260,7 +1260,7 @@ ENABLED_PARAMS = [
         'qflat_dtype': 'BF16',
         'kflat_dtype': 'BF16',
         'vbias_dtype': 'FP32',
-        'special_setting': 'qflat=constant_positive; kflat=constant_positive; vbias=strictly_ascending_by_k_block',
+        'special_setting': '',
     },
     # SI_WB_055 batch28_causal_q32_kv4_offset_tail
     # 覆盖: batch=28；q32/kv4；causal；S1/S2不等且均带尾块
