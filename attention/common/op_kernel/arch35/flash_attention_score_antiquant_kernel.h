@@ -92,6 +92,7 @@ public:
         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
         const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void InitBuffer();
+    __aicore__ inline void UninitBuffer();
     __aicore__ inline void Process();
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
     __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
@@ -462,6 +463,15 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
 }
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
+__aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::UninitBuffer()
+{
+    // Uninit, remove unnecessary setflag
+    mm2AL1Buffers.Uninit(l1BufferManager);
+    kvAntiquantRes.Uninit(l1BufferManager);
+    this->cubeBlock.UninitLocalBuffer();
+}
+
+template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
 __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::Process()
 {
     if (this->tilingData->initOutputParams.needInit) {
@@ -648,6 +658,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         }
         gS1StartIdx = 0;
     }
+    UninitBuffer();
     if constexpr (isFd) {
         int64_t s2InCurrentBatch = GetS2CurrentBatch();
         this->vecBlock.FlashDecode(this->constInfo, this->actualSeqQlenAddr, this->actualSeqKvlenAddr, s2InCurrentBatch);
