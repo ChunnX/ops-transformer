@@ -18,11 +18,7 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
-#if __has_include("../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_data.h")
-#include "../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_data.h"
-#else
 #include "../../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_data.h"
-#endif
 
 namespace optiling {
 struct BMM_TileInfo {

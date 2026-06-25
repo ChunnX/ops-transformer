@@ -26,11 +26,7 @@
 #include "adv_api/activation/gelu.h"
 #include "lib/matmul_intf.h"
 
-#if __has_include("../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h")
-#include "../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
-#else
 #include "../../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
-#endif
 #include "allto_all_all_gather_batch_mat_mul_tiling_struct.h"
 
 constexpr uint32_t MAX_HCCL_HANDLE = 32U;
