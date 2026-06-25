@@ -312,15 +312,16 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyIn(int64_t srcIdx
     DataCopyExtParams copyParams = {1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
-    int64_t loopColsTail = loopCols % FP8_PERBLOCK_BLOCK_SIZE;
-    if (loopColsTail != 0) {
-        padParams.isPad = true;
-        int64_t tailBytes = loopColsTail * sizeof(T);
-        int64_t alignedTailBytes = (tailBytes + ubBlockSize_ - 1) / ubBlockSize_ * ubBlockSize_;
-        padParams.rightPadding = (alignedTailBytes - tailBytes) / sizeof(T);
-    }
+    // int64_t loopColsTail = loopCols % FP8_PERBLOCK_BLOCK_SIZE;
+    // if (loopColsTail != 0) {
+    //     padParams.isPad = true;
+    //     int64_t tailBytes = loopColsTail * sizeof(T);
+    //     int64_t alignedTailBytes = (tailBytes + ubBlockSize_ - 1) / ubBlockSize_ * ubBlockSize_;
+    //     padParams.rightPadding = (alignedTailBytes - tailBytes) / sizeof(T);
+    // }
 
-    DataCopyPad(inLocal, xInGm_[srcIdx * cols_ + colIdx * perLoopCols_], copyParams, padParams);
+    DataCopyPad<T, PaddingMode::Compact>(inLocal, xInGm_[srcIdx * cols_ + colIdx * perLoopCols_], copyParams,
+                                        padParams);
 
     inQueue_.EnQue(inLocal);
 }
