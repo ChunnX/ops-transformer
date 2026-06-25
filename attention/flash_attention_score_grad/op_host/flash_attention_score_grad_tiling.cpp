@@ -255,6 +255,37 @@ static bool IsEmptyOutput(gert::TilingContext *context)
     return false;
 }
 
+// EOD场景: TND输入下actualSeqQlen/actualSeqKvlen累加和全是0，无有效计算时，直接走空tensor模板
+static bool IsTndAllSeqLenZero(gert::TilingContext *context)
+{
+    const char *inputLayout = context->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
+    if (inputLayout == nullptr || strlen(inputLayout) != 3 || inputLayout[0] != 'T') { // 3: TND
+        return false;
+    }
+    // InputIndex::ACTUAL_SEQ_Q_LEN=13, ACTUAL_SEQ_KV_LEN=14
+    auto actualSeqQlenTensor = context->GetOptionalInputTensor(13);
+    auto actualSeqKvlenTensor = context->GetOptionalInputTensor(14);
+    if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
+        return false;
+    }
+    auto qShapeSize = actualSeqQlenTensor->GetShapeSize();
+    auto kvShapeSize = actualSeqKvlenTensor->GetShapeSize();
+    if (qShapeSize == 0 || kvShapeSize == 0 || qShapeSize != kvShapeSize) {
+        return false;
+    }
+    const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
+    const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
+    if (qValue == nullptr || kvValue == nullptr) {
+        return false;
+    }
+    // EOD场景: 累加和尾部连续为0的batch为无效数据，全部为0时走空tensor模板
+    size_t realBSize = qShapeSize;
+    while (realBSize > 0 && qValue[realBSize - 1] == 0 && kvValue[realBSize - 1] == 0) {
+        --realBSize;
+    }
+    return realBSize == 0;
+}
+
 static ge::graphStatus CheckAttrs(gert::TilingContext *context)
 {
     auto attrs = context->GetAttrs();
@@ -419,7 +450,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttentionGradScore(gert::TilingConte
         }
     } else {
         OP_LOGW(context, "Current npu arch is not dav-3510.");
-        if (IsEmptyOutput(context)) {
+        if (IsEmptyOutput(context) || IsTndAllSeqLenZero(context)) {
             FlashAttentionScoreGradTiling flashAttentionScoreGradTiling;
             return flashAttentionScoreGradTiling.RunEmptyTiling(context);
         }
