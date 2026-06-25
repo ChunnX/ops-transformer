@@ -16,7 +16,6 @@
 #include "aclnn_util.h"
 
 extern "C" {
-
 /**
  * @brief MoE Expert-Parallel Dispatch: SendPhase + RecvPhase, write HCCL Window
  *        + host-pinned counter (corresponding to DeepEP V2 launch_dispatch).

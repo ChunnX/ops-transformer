@@ -162,7 +162,7 @@ static bool CheckScalesTensorDim(const gert::TilingContext *context, const char 
     return true;
 }
 static bool CheckCachedTensorDim(const gert::TilingContext *context, const char *nodeName,
-                                  int64_t topkDim0, int64_t topkDim1)
+                                 int64_t topkDim0, int64_t topkDim1)
 {
     const gert::StorageShape *weightsShape = context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX);
     const gert::StorageShape *cachedShape = context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX);
@@ -311,28 +311,28 @@ static ge::graphStatus CheckInputTensorFormat(const gert::TilingContext *context
     auto xFormat = ge::GetPrimaryFormat(xDesc->GetStorageFormat());
     auto topkIdxFormat = ge::GetPrimaryFormat(topkIdxDesc->GetStorageFormat());
     OP_TILING_CHECK(static_cast<ge::Format>(contextFormat) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "context format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "context format is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(xFormat) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "x format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "x format is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(topkIdxFormat) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "topk_idx format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "topk_idx format is invalid."), return ge::GRAPH_FAILED);
     auto topkWeightsDesc = context->GetOptionalInputDesc(TOPK_WEIGHTS_INDEX);
     if (topkWeightsDesc != nullptr) {
         auto topkWeightsFormat = ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat());
         OP_TILING_CHECK(static_cast<ge::Format>(topkWeightsFormat) == ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE(nodeName, "topk_weights format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+            OP_LOGE(nodeName, "topk_weights format is invalid."), return ge::GRAPH_FAILED);
     }
     auto scalesDesc = context->GetOptionalInputDesc(SCALES_INDEX);
     if (scalesDesc != nullptr) {
         auto scalesFormat = ge::GetPrimaryFormat(scalesDesc->GetStorageFormat());
         OP_TILING_CHECK(static_cast<ge::Format>(scalesFormat) == ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE(nodeName, "scales format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+            OP_LOGE(nodeName, "scales format is invalid."), return ge::GRAPH_FAILED);
     }
     auto cachedSlotIdxDesc = context->GetOptionalInputDesc(CACHED_SLOT_IDX_INDEX);
     if (cachedSlotIdxDesc != nullptr) {
         auto cachedSlotIdxFormat = ge::GetPrimaryFormat(cachedSlotIdxDesc->GetStorageFormat());
         OP_TILING_CHECK(static_cast<ge::Format>(cachedSlotIdxFormat) == ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE(nodeName, "cached_slot_idx format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+            OP_LOGE(nodeName, "cached_slot_idx format is invalid."), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -349,16 +349,16 @@ static ge::graphStatus CheckOutputTensorFormat(const gert::TilingContext *contex
     auto numRecvPerExpertFormat = ge::GetPrimaryFormat(numRecvPerExpertDesc->GetStorageFormat());
     auto dstSlotIdxFormat = ge::GetPrimaryFormat(dstSlotIdxDesc->GetStorageFormat());
     OP_TILING_CHECK(static_cast<ge::Format>(numRecvPerRankFormat) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "num_recv_tokens_per_rank format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "num_recv_tokens_per_rank format is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(numRecvPerExpertFormat) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "num_recv_tokens_per_expert format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "num_recv_tokens_per_expert format is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(dstSlotIdxFormat) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "dst_buffer_slot_idx format is invalid, FRACTAL_NZ is not supported."), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "dst_buffer_slot_idx format is invalid."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, const char *nodeName,
-                                         MoeEpDispatchInfo &info)
+                                        MoeEpDispatchInfo &info)
 {
     OP_TILING_CHECK(!CheckInputTensorDim(context, nodeName, info),
         OP_LOGE(nodeName, "Check input tensor dim failed."), return ge::GRAPH_FAILED);
@@ -375,7 +375,8 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
     
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    uint32_t perSlotBytes = ((hAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    uint32_t perSlotBytes = ((hAlign32 + kAlign32 * 2 + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
+                            WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     info.cfg.perSlotBytes = perSlotBytes;
     OP_LOGD(nodeName, "perSlotBytes = %u (hidden=%u)", info.cfg.perSlotBytes, info.cfg.hidden);
 
@@ -383,7 +384,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
 }
 
 static ge::graphStatus CheckOutputTensor(const gert::TilingContext *context, const char *nodeName,
-                                          const MoeEpDispatchInfo &info)
+                                         const MoeEpDispatchInfo &info)
 {
     OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName, info, info.cfg.numTokens, info.cfg.topK),
         OP_LOGE(nodeName, "Check output tensor dim failed."), return ge::GRAPH_FAILED);
@@ -395,7 +396,7 @@ static ge::graphStatus CheckOutputTensor(const gert::TilingContext *context, con
 }
 
 static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const char *nodeName,
-                                      MoeEpDispatchInfo &info)
+                                     MoeEpDispatchInfo &info)
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
@@ -424,7 +425,7 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
 }
 
 static ge::graphStatus CheckComputeAttr(const gert::TilingContext *context, const char *nodeName,
-                                         MoeEpDispatchInfo &info)
+                                        MoeEpDispatchInfo &info)
 {
     auto attrs = context->GetAttrs();
     auto numExpertsPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_EXPERTS_INDEX);
@@ -468,7 +469,7 @@ static ge::graphStatus CheckComputeAttr(const gert::TilingContext *context, cons
 }
 
 static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const char *nodeName,
-                                         MoeEpDispatchInfo &info)
+                                       MoeEpDispatchInfo &info)
 {
     OP_TILING_CHECK(CheckCommAttr(context, nodeName, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check comm attr failed."), return ge::GRAPH_FAILED);
@@ -484,8 +485,10 @@ static uint64_t CalcDispatchWorkspace(const MoeEpDispatchInfo &info)
     uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t counterBytes = (epWorldSize * sizeof(int32_t) + WIN_ADDR_ALIGN -1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
-    uint64_t sendCntPerRankBytes = (2 * epWorldSize * sizeof(int32_t) + WIN_ADDR_ALIGN -1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
-    uint64_t sendCntPerExpertBytes = (moeExpertNumPerRank * epWorldSize * sizeof(int32_t) + WIN_ADDR_ALIGN -1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+    uint64_t sendCntPerRankBytes = (2 * epWorldSize * sizeof(int32_t) + WIN_ADDR_ALIGN -1) / WIN_ADDR_ALIGN *
+                                   WIN_ADDR_ALIGN;
+    uint64_t sendCntPerExpertBytes = (moeExpertNumPerRank * epWorldSize * sizeof(int32_t) + WIN_ADDR_ALIGN -1) /
+                                      WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
     uint64_t globalABytes = UB_ALIGN;
@@ -494,7 +497,7 @@ static uint64_t CalcDispatchWorkspace(const MoeEpDispatchInfo &info)
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDispatchInfo &info,
-                                     const char *nodeName)
+                                    const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
@@ -514,7 +517,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
 }
 
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const MoeEpDispatchInfo &info,
-                                      const char *nodeName)
+                                    const char *nodeName)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
@@ -542,7 +545,8 @@ static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached,
                               static_cast<uint8_t>(networkMode));
 }
 
-static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatchInfo &info, const char *nodeName)
+static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatchInfo &info,
+                                      const char *nodeName)
 {
     uint32_t epWorldSize = info.cfg.epWorldSize;
     info.networkMode = (epWorldSize > 128) ? 1 : 0;
