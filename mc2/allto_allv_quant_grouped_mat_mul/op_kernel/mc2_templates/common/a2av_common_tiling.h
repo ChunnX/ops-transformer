@@ -16,11 +16,7 @@
 #ifndef A2AV_COMMON_H
 #define A2AV_COMMON_H
 
-#if __has_include("../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h")
-#include "../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
-#else
 #include "../../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
-#endif
 
 namespace MC2KernelTemplate {
 static constexpr uint32_t MAX_EP_RANK_SIZE = 128U;
