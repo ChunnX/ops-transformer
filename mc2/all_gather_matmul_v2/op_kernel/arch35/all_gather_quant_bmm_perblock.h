@@ -16,8 +16,8 @@
 #define ALL_GATHER_QUANT_BMM_PERBLOCK_H
 
 #include "all_gather_matmul_base.h"
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h"
-#include "../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h"
+#include "../../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
 
 /**
  * 1、依赖tiling结构QuantBatchMatmulV3TilingData

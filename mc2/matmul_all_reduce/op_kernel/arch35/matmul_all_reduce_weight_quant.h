@@ -22,8 +22,8 @@
 #endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
-#include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_constant.h"
-#include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_reg_base.h"
+#include "../../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_constant.h"
+#include "../../../3rd/weight_quant_batch_matmul_v2/op_kernel/arch35/weight_quant_batch_matmul_v2_reg_base.h"
 #include "matmul_all_reduce_based_a2a_rs_ag.h"
 #include "matmul_all_reduce_based_all_reduce.h"
 
