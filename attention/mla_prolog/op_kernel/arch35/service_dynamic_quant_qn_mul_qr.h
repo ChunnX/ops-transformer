@@ -34,10 +34,10 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O> &outputGm, con
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     constexpr uint64_t outputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(O));
     // DataCopyParams  : count len srcStrideIn dstStrideIn
-    DataCopyParams outParams{(uint16_t)subRow, (uint16_t)(col / outputBlockAlign), 0,
-                             (uint16_t)((queryOutStride - col) / outputBlockAlign)};
-    DataCopyParams inputParams{(uint16_t)subRow, (uint16_t)(col / inputBlockAlign),
-                               (uint16_t)((queryOutStride - col) / inputBlockAlign), 0};
+    DataCopyParams outParams{static_cast<uint16_t>(subRow), static_cast<uint16_t>(col / outputBlockAlign), 0,
+                             static_cast<uint16_t>((queryOutStride - col) / outputBlockAlign)};
+    DataCopyParams inputParams{static_cast<uint16_t>(subRow), static_cast<uint16_t>(col / inputBlockAlign),
+                               static_cast<uint16_t>((queryOutStride - col) / inputBlockAlign), 0};
 
     uint32_t computeSize = subRow * col;
     uint64_t loopCnt = CeilDivT(row, subRow);
@@ -88,10 +88,10 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
     uint32_t computeSizeRope = subRowRope * colRope;
 
     // DataCopyParams  : count len srcStrideIn dstStrideIn
-    DataCopyParams inputParamsRope{(uint16_t)row, (uint16_t)(colRope / inputBlockAlign),
-                                   (uint16_t)((qrOutputStrideRope - colRope) / inputBlockAlign), 0};
-    DataCopyParams outputParamsRope{(uint16_t)(subRowRope), (uint16_t)(colRope / inputBlockAlign), 0,
-                                    (uint16_t)((qrOutputStrideRope - colRope) / inputBlockAlign)};
+    DataCopyParams inputParamsRope{static_cast<uint16_t>(row), static_cast<uint16_t>(colRope / inputBlockAlign),
+                                   static_cast<uint16_t>((qrOutputStrideRope - colRope) / inputBlockAlign), 0};
+    DataCopyParams outputParamsRope{static_cast<uint16_t>(subRowRope), static_cast<uint16_t>(colRope / inputBlockAlign),
+                                    0, static_cast<uint16_t>((qrOutputStrideRope - colRope) / inputBlockAlign)};
 
     uint64_t inputGmRopeOffset = 0;
     uint64_t dequantScaleOffset = 0;

@@ -73,9 +73,9 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
 
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
         Rectangle rectangleParams{
-            (uint32_t)1,   // row
-            (uint32_t)cnt, // col
-            (uint32_t)cnt  // columnStride
+            static_cast<uint32_t>(1),   // row
+            static_cast<uint32_t>(cnt), // col
+            static_cast<uint32_t>(cnt)  // columnStride
         };
         if constexpr (std::is_same<T, float>::value) {
             Dequant(kFp32Local, kFp32Local, channelDeqScaleLocal, scale, rectangleParams);
@@ -168,7 +168,8 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
 
         uint8_t blockNumPerRow = ropeParams.col / (ALIGN_BLOCK_SIZE / sizeof(C));
         // row  col stride
-        Rectangle rectangleParams{(uint32_t)ropeParams.row, (uint32_t)ropeParams.col, (uint32_t)ropeParams.col};
+        Rectangle rectangleParams{static_cast<uint32_t>(ropeParams.row), static_cast<uint32_t>(ropeParams.col),
+                                  static_cast<uint32_t>(ropeParams.col)};
         if constexpr (std::is_same<T, float>::value) {
             Dequant(kFp32Local, kFp32Local, scaleLocal, deQuantScale, rectangleParams);
         } else {
