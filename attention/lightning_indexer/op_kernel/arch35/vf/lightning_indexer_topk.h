@@ -16,7 +16,6 @@
 #define LIGHTNING_INDEXER_TOPK_H
 
 #include "kernel_operator.h"
-#include "vf_topk.h"
 #include "vf_topk_gather.h"
 
 namespace topk {
@@ -24,12 +23,11 @@ template<typename T>
 class LITopk {
 public:
     __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
-                                      LocalTensor<T>& inputLocal,
-                                      uint32_t s2SeqLen)
+                                    LocalTensor<T>& inputLocal,
+                                    uint32_t s2SeqLen)
     {
     }
 };
-
 template<>
 class LITopk<uint32_t> {
 public:
@@ -95,17 +93,19 @@ public:
                                               histogramsLocal, idx0Local, idx1Local, idx2Local,
                                               idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                uint32_t loopBasicIdx = topK < trunkLen ? (loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256)) : ((loopIdx - 1) * trunkLen);
+                uint32_t loopBasicIdx = topK < trunkLen ?
+                         (loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256)) :
+                         ((loopIdx - 1) * trunkLen);
                 topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
-                                             tmpIndexLocal, hisIndexLocal[loopIdx % 2],
-                                             topK,
-                                             loopBasicIdx,
-                                             s2SeqLen);
+                    tmpIndexLocal, hisIndexLocal[loopIdx % 2],
+                    topK,
+                    loopBasicIdx,
+                    s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();
                     if ((loopIdx + 1) % 2 == 1) {
                         AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                                        LICommon::Align(topK, (uint32_t)256));
+                            LICommon::Align(topK, (uint32_t)256));
                     }
                 }
             }
