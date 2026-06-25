@@ -260,22 +260,22 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "CheckProtocolSupport Get rank ID failed, ret: ", hcclRet);
         ASCEND_LOGI("CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
 
-        // 步骤(5): 先获取整个通信域的卡数ranksize
+        // 先获取整个通信域的卡数ranksize
         uint32_t rankSize = 0;
         hcclRet = HcclGetRankSizeFunc(commHandle, &rankSize);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank size success, rankSize is: %d", rankSize);
 
-        // 步骤(3): 按照组网层数循环遍历每一层组网
+        // 按照组网层数循环遍历每一层组网
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
             ASCEND_LOGI("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
             
-            // 步骤(4): 在循环内调用HcclRankGraphGetRanksByLayer获取当前层的所有卡ID
+            // 在循环内调用HcclRankGraphGetRanksByLayer获取当前层的所有卡ID
             hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
 
             bool allSupportUbMem = true;
-            // 步骤(4): 检查本卡与该层所有卡之间是否全部支持UB_MEM协议
+            // 检查本卡与该层所有卡之间是否全部支持UB_MEM协议
             for (uint32_t rankIdx = 0; rankIdx < rankNumInLayer; ++rankIdx) {
                 if (rankIdLists[rankIdx] == srcRankId || layerMap_.find(rankIdLists[rankIdx]) != layerMap_.end()) {
                     continue;
@@ -287,14 +287,14 @@ public:
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
                 if (!CheckLinks(netLinkNum, linksList, protocol)) {
                     ASCEND_LOGI("Layer %d does not support UB_MEM with rank %d, break loop", layerList[layerIndex], rankIdLists[rankIdx]);
-                    // 步骤(4): 若不支持，则跳出循环
+                    // 若不支持，则跳出循环
                     allSupportUbMem = false;
                     break;
                 }
                 layerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
             }
 
-            // 步骤(4): 如果支持，则循环结束后更新rankNumPerUbDomain_和layerNumMyUbDomain_
+            // 如果支持，则循环结束后更新rankNumPerUbDomain_和layerNumMyUbDomain_
             if (allSupportUbMem) {
                 rankNumPerUbDomain_ = rankNumInLayer;
                 ASCEND_LOGI("Layer %d all support UB_MEM, rankNumPerUbDomain_: %d", layerList[layerIndex], rankNumPerUbDomain_);
@@ -312,12 +312,12 @@ public:
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
             ASCEND_LOGI("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
             
-            // 步骤(4): 在循环内调用HcclRankGraphGetRanksByLayer获取当前层的所有卡ID
+            // 在循环内调用HcclRankGraphGetRanksByLayer获取当前层的所有卡ID
             hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
 
             bool allSupportUrma = true;
-            // 步骤(4): 检查本卡与该层所有卡之间是否全部支持URMA协议
+            // 检查本卡与该层所有卡之间是否全部支持URMA协议
             for (uint32_t rankIdx = 0; rankIdx < rankNumInLayer; ++rankIdx) {
                 if (rankIdLists[rankIdx] == srcRankId || urmalayerMap_.find(rankIdLists[rankIdx]) != urmalayerMap_.end()) {
                     continue;
@@ -329,7 +329,7 @@ public:
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
                 if (!CheckLinks(netLinkNum, linksList, protocol)) {
                     ASCEND_LOGI("Layer %d does not support URMA with rank %d, break loop", layerList[layerIndex], rankIdLists[rankIdx]);
-                    // 步骤(4): 若不支持，则跳出循环
+                    // 若不支持，则跳出循环
                     allSupportUrma = false;
                     ASCEND_LOGE("Layer %d does not support URMA with rank %d, break loop", layerList[layerIndex], rankIdLists[rankIdx]);
                     return;
@@ -345,12 +345,12 @@ public:
             }
         }
 
-        // 步骤(5): 判断rankNumPerUbDomain_小于ranksize且能够被ranksize整除，若不满足则报错退出
+        // 判断rankNumPerUbDomain_小于ranksize且能够被ranksize整除，若不满足则报错退出
         TORCH_CHECK(rankNumPerUbDomain_ < rankSize && rankSize % rankNumPerUbDomain_ == 0,
                     "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
                     rankNumPerUbDomain_, ", rankSize: ", rankSize);
 
-        // 步骤(6): 确认跨超组网
+        // 确认跨超组网
         isCrossServer_ = true;
         ASCEND_LOGI("Cross-server confirmed, use URMA protocol for cross-server communication");
     }
