@@ -444,7 +444,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
-                <li>仅支持模式4。</li>
               </ul>
         </td>
         <td>INT64</td>
@@ -459,7 +458,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
-                <li>仅支持模式3。</li>
               </ul>
         </td>
         <td>INT64</td>
