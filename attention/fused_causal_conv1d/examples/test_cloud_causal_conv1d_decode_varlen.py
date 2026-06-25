@@ -2,7 +2,7 @@
 """Run the 2D varlen decode smoke case through cloud_ops_trubo.
 
 Expected dispatch in ops-transformer:
-  x.ndim == 2, max_query_len == 1, run_mode == 1 -> BH 2D decode path.
+  decode-only op, x.ndim == 2 with query_start_loc -> BH 2D varlen decode path.
 
 Shape convention used by this operator:
   x:           [total_tokens, dim]
@@ -43,8 +43,6 @@ def main():
     query_start_loc = torch.tensor([0, 1], dtype=torch.int32, device=device)
     cache_indices = torch.tensor([0], dtype=torch.int32, device=device)
     activation_mode = 1
-    run_mode = 1
-    max_query_len = 1
 
     try:
         print("cloud_causal_conv1d_fn signature:")
@@ -60,8 +58,6 @@ def main():
         "query_start_loc": query_start_loc,
         "cache_indices": cache_indices,
         "activation_mode": activation_mode,
-        "run_mode": run_mode,
-        "max_query_len": max_query_len,
     }
     try:
         y = cloud_ops_trubo.cloud_causal_conv1d_fn(

@@ -41,27 +41,15 @@ constexpr uint64_t TILING_KEY_BH_FP16 = 20001; // FP16 数据类型对应的 ker
 
 constexpr int32_t X_INDEX = 0;                  // 输入特征 x：[batch, seq_len, dim] 或 [cu_seq_len, dim]
 constexpr int32_t WEIGHT_INDEX = 1;             // 卷积权重：[kernel_size, dim]
-constexpr int32_t CONV_STATES_INDEX = 2;        // KV 缓存状态：[batch, state_len, dim]
-constexpr int32_t QUERY_START_LOC_INDEX = 3;    // 2D 输入时各 batch 的起始位置：[batch+1]（可选）
-constexpr int32_t CACHE_INDICES_INDEX = 4;      // cache 索引（可选），非APC为 1D，APC 为 2D
-constexpr int32_t INITIAL_STATE_MODE_INDEX = 5; // 初始状态模式（可选）
-constexpr int32_t BIAS_INDEX = 6;               // 偏置（可选）
-constexpr int32_t NUM_ACCEPTED_TOKEN_INDEX = 7; // 每个 batch 接受的 token 数（可选）
-// APC（Attention Page Cache）相关辅助输入
-constexpr int32_t NUM_COMPUTED_TOKENS_INDEX = 8;             // 已计算 token 数（可选）
-constexpr int32_t BLOCK_IDX_FIRST_SCHEDULED_TOKEN_INDEX = 9; // APC: 首个调度 token 所在 block 索引（可选）
-constexpr int32_t BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX = 10; // APC: 最后调度 token 所在 block 索引（可选）
-constexpr int32_t INITIAL_STATE_IDX_INDEX = 11;              // 初始状态索引（可选）
+constexpr int32_t BIAS_INDEX = 2;               // 偏置（可选）
+constexpr int32_t CONV_STATES_INDEX = 3;        // KV 缓存状态：[cache_line, state_len, dim]
+constexpr int32_t QUERY_START_LOC_INDEX = 4;    // 2D 变长输入时各 batch 的起始位置：[batch+1]（可选）
+constexpr int32_t CACHE_INDICES_INDEX = 5;      // cache 索引（可选），1D [batch]
+constexpr int32_t NUM_ACCEPTED_TOKEN_INDEX = 6; // 每个 batch 接受的 token 数（可选）
 
-constexpr int32_t OUTPUT_CONV_STATES_INDEX = 0;       // 更新后的 conv_states（与输入 conv_states 形状相同）
-constexpr int32_t Y_INDEX = 1;                        // 输出特征 y（与 x 形状相同）
+constexpr int32_t Y_INDEX = 0;                        // 输出特征 y（与 x 形状相同）
 constexpr int32_t ATTR_ACTIVATION_MODE_INDEX = 0;     // 激活函数模式：0=无，1=silu 等
 constexpr int32_t ATTR_PAD_SLOT_ID_INDEX = 1;         // padding slot id，用于标识 padding 样本
-constexpr int32_t ATTR_RUN_MODE_INDEX = 2;            // 运行模式（预留）
-constexpr int32_t ATTR_MAX_QUERY_LEN_INDEX = 3;       // 2D 输入时的最大序列长度
-constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 4; // 是否使用残差连接：0=否，1=是
-constexpr int32_t ATTR_BLOCK_SIZE_INDEX = 5;          // APC block 大小（APC 开启时必须非零）
-constexpr int32_t ATTR_CONV_MODE_INDEX = 6;           // 卷积模式：0=Qwen3，1=Pangu v2（前 width-1 token 置零）
 
 constexpr int64_t DIM_ALIGN_ELEMENT = 128;       // dim 方向的最小对齐单元（128 个元素，fp16/bf16 = 256 字节）
 constexpr int64_t COARSE_GRAIN_THRESHOLD = 1024; // dim >= 1024 时切换到粗粒度 tiling 模式
@@ -187,6 +175,7 @@ private:
     int64_t padSlotId_ = -1;         // padding sample 的 slot id（-1 表示无效）
     int64_t runMode_ = 0;            // 运行模式（预留扩展）
     int64_t xInputMode_ = 0;         // x 输入模式：0=3D，1=2D
+    int64_t hasQueryStartLoc_ = 0;   // 是否提供 query_start_loc：0=无，1=有
     int64_t hasAcceptTokenNum_ = 0;  // 是否提供 num_accepted_token 输入：0=否，1=是
     int64_t residualConnection_ = 0; // 是否使用残差连接：0=否，1=是
 

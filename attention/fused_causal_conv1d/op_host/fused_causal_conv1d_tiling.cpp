@@ -10,7 +10,7 @@
 
 /*!
  * \file fused_causal_conv1d_tiling.cpp
- * \brief Main tiling entry for FusedCausalConv1d operator (unified, dispatches by runMode)
+ * \brief Main tiling entry for FusedCausalConv1d decode operator.
  */
 
 #include "log/log.h"
@@ -18,52 +18,27 @@
 #include "op_host/tiling_util.h"
 #include "op_host/tiling_templates_registry.h"
 #include "fused_causal_conv1d_cut_bh_tiling_arch35.h"
-#include "fused_causal_conv1d_cut_bsh_tiling_arch35.h"
 
 namespace optiling {
-// max_query_len threshold for BH template: 2D input with maxQueryLen <= 8 goes to BH
-constexpr int64_t MAX_BH_SEQ_LEN = 8;
-
 struct FusedCausalConv1dCompileInfo {
     uint64_t coreNum = 0;
     uint64_t ubSize = 0;
 };
 
-// Main tiling function that dispatches based on x shape and max_query_len
+// Main tiling function for the decode-only BH implementation.
 static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext *context)
 {
     OP_LOGD(context->GetNodeName(), "FusedCausalConv1dTiling tiling start");
 
-    // Determine dispatch: BH if x is 3D, or x is 2D with max_query_len <= MAX_BH_SEQ_LEN; else BSH
     auto xShape = context->GetInputShape(0);
     OP_CHECK_IF(xShape == nullptr, OP_LOGE(context->GetNodeName(), "x shape is null"), return ge::GRAPH_FAILED);
     int64_t xDimNum = static_cast<int64_t>(xShape->GetOriginShape().GetDimNum());
+    OP_CHECK_IF(xDimNum != 2 && xDimNum != 3,
+                OP_LOGE(context->GetNodeName(), "decode only supports 2D or 3D x, got dimNum=%ld", xDimNum),
+                return ge::GRAPH_FAILED);
 
-    int64_t maxQueryLen = 0;
-    if (context->GetAttrs() != nullptr && context->GetAttrs()->GetInt(ATTR_MAX_QUERY_LEN_INDEX) != nullptr) {
-        maxQueryLen = *(context->GetAttrs()->GetInt(ATTR_MAX_QUERY_LEN_INDEX));
-    }
-    int64_t runMode = 0;
-    if (context->GetAttrs() != nullptr && context->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX) != nullptr) {
-        runMode = *(context->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX));
-    }
-
-    bool useBH = (xDimNum == 3) || (xDimNum == 2 && maxQueryLen <= MAX_BH_SEQ_LEN);
-
-    OP_LOGD(context->GetNodeName(), "FusedCausalConv1d xDimNum=%ld maxQueryLen=%ld useBH=%d", xDimNum, maxQueryLen,
-            static_cast<int>(useBH));
-    if (xDimNum == 2 && runMode == 1 && maxQueryLen >= 1 && maxQueryLen <= MAX_BH_SEQ_LEN && useBH) {
-        OP_LOGI(context->GetNodeName(), "HIT_FUSED_CAUSAL_CONV1D_BH_2D_DECODE_VARLEN");
-    }
-
-    ge::graphStatus status = ge::GRAPH_FAILED;
-    if (useBH) {
-        FusedCausalConv1dCutBHTiling tilingImpl(context);
-        status = tilingImpl.DoTiling();
-    } else {
-        FusedCausalConv1dCutBSHTiling tilingImpl(context);
-        status = tilingImpl.DoTiling();
-    }
+    FusedCausalConv1dCutBHTiling tilingImpl(context);
+    ge::graphStatus status = tilingImpl.DoTiling();
 
     OP_LOGD(context->GetNodeName(), "FusedCausalConv1dTiling tiling end, status=%d", status);
     return status;

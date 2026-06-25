@@ -23,19 +23,13 @@ namespace ops {
 
 constexpr int64_t INPUT_X_INDEX = 0;
 constexpr int64_t INPUT_WEIGHT_INDEX = 1;
-constexpr int64_t INPUT_CONV_STATES_INDEX = 2;
-constexpr int64_t INPUT_QUERY_START_LOC_INDEX = 3;
-constexpr int64_t INPUT_CACHE_INDICES_INDEX = 4;
-constexpr int64_t INPUT_INITIAL_STATE_MODE_INDEX = 5;
-constexpr int64_t INPUT_BIAS_INDEX = 6;
-constexpr int64_t INPUT_NUM_ACCEPTED_TOKEN_INDEX = 7;
-constexpr int64_t INPUT_NUM_COMPUTED_TOKEN_INDEX = 8;
-constexpr int64_t INPUT_BLOCK_IDX_FIRST_SCHEDULED_TOKEN_INDEX = 9;
-constexpr int64_t INPUT_BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX = 10;
-constexpr int64_t INPUT_INITIAL_STATE_IDX_INDEX = 11;
+constexpr int64_t INPUT_BIAS_INDEX = 2;
+constexpr int64_t INPUT_CONV_STATES_INDEX = 3;
+constexpr int64_t INPUT_QUERY_START_LOC_INDEX = 4;
+constexpr int64_t INPUT_CACHE_INDICES_INDEX = 5;
+constexpr int64_t INPUT_NUM_ACCEPTED_TOKEN_INDEX = 6;
 
-constexpr int64_t OUTPUT_CONV_STATES_INDEX = 0;
-constexpr int64_t OUTPUT_Y_INDEX = 1;
+constexpr int64_t OUTPUT_Y_INDEX = 0;
 
 ge::graphStatus InferShape4FusedCausalConv1d(gert::InferShapeContext *context)
 {
@@ -48,13 +42,6 @@ ge::graphStatus InferShape4FusedCausalConv1d(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, outputYShape);
     *outputYShape = *inputXShape;
 
-    // inferShape convStates output: same shape as input convStates
-    auto inputConvStatesShape = context->GetInputShape(INPUT_CONV_STATES_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, inputConvStatesShape);
-    auto outputConvStatesShape = context->GetOutputShape(OUTPUT_CONV_STATES_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, outputConvStatesShape);
-    *outputConvStatesShape = *inputConvStatesShape;
-
     OP_LOGD(context, "End to do InferShape4FusedCausalConv1d");
     return GRAPH_SUCCESS;
 }
@@ -65,8 +52,6 @@ ge::graphStatus InferDataType4FusedCausalConv1d(gert::InferDataTypeContext *cont
 
     // output y dtype: same as input x
     context->SetOutputDataType(OUTPUT_Y_INDEX, context->GetInputDataType(INPUT_X_INDEX));
-    // output convStates dtype: same as input convStates
-    context->SetOutputDataType(OUTPUT_CONV_STATES_INDEX, context->GetInputDataType(INPUT_CONV_STATES_INDEX));
 
     OP_LOGD(context, "End to do InferDataType4FusedCausalConv1d");
     return ge::GRAPH_SUCCESS;

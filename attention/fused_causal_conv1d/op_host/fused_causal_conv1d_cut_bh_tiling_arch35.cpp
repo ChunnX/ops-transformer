@@ -90,18 +90,36 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
         seqLen_ = xOriginShape.GetDim(DIM_1);
         dim_ = xOriginShape.GetDim(DIM_2);
     } else if (xOriginShape.GetDimNum() == DIM_2) {
-        // 2D 输入：cu_seq_len = 所有 batch token 总数
+        // 2D 输入：query_start_loc 存在时为变长 [T,D]，否则为 batch decode [B,D]。
         xInputMode_ = X_INPUT_2D;
         cuSeqLen_ = xOriginShape.GetDim(DIM_0);
         dim_ = xOriginShape.GetDim(DIM_1);
 
-        // 2D 输入必须提供 query_start_loc 才能反推 batch 数
-        // query_start_loc 形状为 (batch + 1,)，因此 batch = dim0 - 1
         auto queryStartLocShape = context_->GetOptionalInputShape(QUERY_START_LOC_INDEX);
-        OP_CHECK_NULL_WITH_CONTEXT(context_, queryStartLocShape);
-        auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
-        batchSize_ = queryStartLocOriginShape.GetDim(DIM_0) - 1;
-        seqLen_ = 0; // 2D 模式下 seqLen_ 在 UB 计算时由 maxQueryLen_ 替代
+        if (queryStartLocShape != nullptr && queryStartLocShape->GetOriginShape().GetDimNum() == DIM_1 &&
+            queryStartLocShape->GetOriginShape().GetDim(DIM_0) > 0) {
+            hasQueryStartLoc_ = 1;
+            auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
+            batchSize_ = queryStartLocOriginShape.GetDim(DIM_0) - 1;
+            seqLen_ = 0;
+            maxQueryLen_ = MAX_M + 1;
+            const gert::Tensor *qslTensor = context_->GetOptionalInputTensor(QUERY_START_LOC_INDEX);
+            const int32_t *qslData = (qslTensor != nullptr) ? qslTensor->GetData<int32_t>() : nullptr;
+            if (qslData != nullptr) {
+                maxQueryLen_ = 1;
+                for (int64_t i = 0; i < batchSize_; ++i) {
+                    int64_t len = static_cast<int64_t>(qslData[i + 1]) - static_cast<int64_t>(qslData[i]);
+                    if (len > maxQueryLen_) {
+                        maxQueryLen_ = len;
+                    }
+                }
+            }
+        } else {
+            hasQueryStartLoc_ = 0;
+            batchSize_ = cuSeqLen_;
+            seqLen_ = 1;
+            maxQueryLen_ = 1;
+        }
     } else {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "x", std::to_string(xOriginShape.GetDimNum()).c_str(),
@@ -127,37 +145,14 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
     auto convStatesOriginShape = convStatesShape->GetOriginShape();
     stateLen_ = convStatesOriginShape.GetDim(DIM_1);
 
-    // 判断 APC 是否开启：blockIdxLastScheduledToken 存在则表示 APC 开启
-    auto blockIdxLastDesc = context_->GetOptionalInputDesc(BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX);
-    apcEnable_ = (blockIdxLastDesc != nullptr) ? 1 : 0;
+    apcEnable_ = 0;
 
     // 判断 cacheIndices 是否提供
-    auto cacheIndicesDesc = context_->GetOptionalInputDesc(CACHE_INDICES_INDEX);
-    hasCacheIndices_ = (cacheIndicesDesc != nullptr) ? 1 : 0;
+    auto cacheIndicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
+    hasCacheIndices_ = (cacheIndicesShape != nullptr && cacheIndicesShape->GetOriginShape().GetDimNum() == DIM_1 &&
+                        cacheIndicesShape->GetOriginShape().GetDim(DIM_0) > 0) ? 1 : 0;
 
-    // 判断 numComputedTokens 是否提供
-    auto numComputedTokensDesc = context_->GetOptionalInputDesc(NUM_COMPUTED_TOKENS_INDEX);
-    hasNumComputedTokens_ = (numComputedTokensDesc != nullptr) ? 1 : 0;
-
-    // APC 开启时解析 maxNumBlocks（cacheIndices 为 2D [batch, maxNumBlocks]）
-    if (apcEnable_) {
-        auto cacheIndicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
-        if (cacheIndicesShape == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                context_->GetNodeName(), "cacheIndices", "nullptr",
-                "cacheIndices cannot be nullptr when APC is enabled");
-            return ge::GRAPH_FAILED;
-        }
-        auto cacheIndicesOriginShape = cacheIndicesShape->GetOriginShape();
-        if (cacheIndicesOriginShape.GetDimNum() != DIM_2) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                context_->GetNodeName(), "cacheIndices",
-                std::to_string(cacheIndicesOriginShape.GetDimNum()).c_str(),
-                "The shape dim of cacheIndices must be 2 when APC is enabled");
-            return ge::GRAPH_FAILED;
-        }
-        maxNumBlocks_ = cacheIndicesOriginShape.GetDim(DIM_1);
-    }
+    hasNumComputedTokens_ = 0;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -181,8 +176,11 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetTypeInfo()
     }
 
     // 可选输入：num_accepted_token（存在时设置 hasAcceptTokenNum_ = 1）
+    auto numAcceptedTokenShape = context_->GetOptionalInputShape(NUM_ACCEPTED_TOKEN_INDEX);
     auto numAcceptedTokenDesc = context_->GetOptionalInputDesc(NUM_ACCEPTED_TOKEN_INDEX);
-    if (numAcceptedTokenDesc != nullptr) {
+    if (numAcceptedTokenShape != nullptr && numAcceptedTokenShape->GetOriginShape().GetDimNum() == DIM_1 &&
+        numAcceptedTokenShape->GetOriginShape().GetDim(DIM_0) > 0) {
+        OP_CHECK_NULL_WITH_CONTEXT(context_, numAcceptedTokenDesc);
         numAcceptedTokenDtype_ = numAcceptedTokenDesc->GetDataType();
         hasAcceptTokenNum_ = 1;
     } else {
@@ -218,56 +216,14 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
         padSlotId_ = *padSlotIdPtr;
     }
 
-    // 运行模式（可选，预留扩展）
-    const int64_t *runModePtr = attrs->GetAttrPointer<int64_t>(ATTR_RUN_MODE_INDEX);
-    if (runModePtr != nullptr) {
-        runMode_ = *runModePtr;
-    }
-
-    // 2D 输入时的最大序列长度（决定 UB 分配时 seqLen 取值）
-    const int64_t *maxQueryLenPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_QUERY_LEN_INDEX);
-    if (maxQueryLenPtr != nullptr) {
-        maxQueryLen_ = *maxQueryLenPtr;
-    }
-
-    // 是否使用残差连接（0=否，1=是）
-    const int64_t *residualConnectionPtr = attrs->GetAttrPointer<int64_t>(ATTR_RESIDUAL_CONNECTION_INDEX);
-    if (residualConnectionPtr != nullptr) {
-        residualConnection_ = *residualConnectionPtr;
-    }
-
-    // APC block 大小（APC 开启时必须非零）
-    const int64_t *blockSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX);
-    if (blockSizePtr != nullptr) {
-        blockSize_ = *blockSizePtr;
-    }
-
-    // 卷积模式（0=Qwen3 默认，1=Pangu v2 前 width-1 token 置零）
-    const int64_t *convModePtr = attrs->GetAttrPointer<int64_t>(ATTR_CONV_MODE_INDEX);
-    if (convModePtr != nullptr) {
-        convMode_ = *convModePtr;
-    }
-
-    // 原地更新开关：由构造时传入的 isInplace_ 决定（拆分后不再从 attr 读取）
-    inplace_ = isInplace_ ? 1 : 0;
-
-    // APC 开启时 blockSize 必须有效
-    if (apcEnable_ && blockSize_ == 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "blockSize", "0",
-            "The value of blockSize must be greater than 0 when APC is enabled");
-        return ge::GRAPH_FAILED;
-    }
-
-    // convMode!=0 或 apcEnabled 时，必须提供 num_computed_tokens
-    if (convMode_ != 0 || apcEnable_) {
-        if (hasNumComputedTokens_ == 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                context_->GetNodeName(), "num_computed_tokens", "nullptr",
-                "num_computed_tokens cannot be nullptr when conv_mode != 0 or APC is enabled");
-            return ge::GRAPH_FAILED;
-        }
-    }
+    runMode_ = 1;
+    residualConnection_ = 0;
+    apcEnable_ = 0;
+    blockSize_ = 0;
+    maxNumBlocks_ = 0;
+    inplace_ = 0;
+    convMode_ = 0;
+    hasNumComputedTokens_ = 0;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -455,43 +411,26 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
         return ge::GRAPH_SUCCESS; // 可选输入，不存在时跳过
     }
     auto indicesOriginShape = indicesShape->GetOriginShape();
+    if (indicesOriginShape.GetDimNum() == 0 || (indicesOriginShape.GetDimNum() == DIM_1 &&
+        indicesOriginShape.GetDim(DIM_0) == 0)) {
+        return ge::GRAPH_SUCCESS;
+    }
 
-    if (apcEnable_) {
-        // APC 模式：2D [batch, maxNumBlocks]
-        if (indicesOriginShape.GetDimNum() != DIM_2) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                context_->GetNodeName(), "cache_indices",
-                std::to_string(indicesOriginShape.GetDimNum()).c_str(),
-                "The shape dim of cache_indices must be 2 when APC is enabled");
-            return ge::GRAPH_FAILED;
-        }
-        int64_t indicesBatch = indicesOriginShape.GetDim(DIM_0);
-        if (indicesBatch != batchSize_) {
-            std::string reasonMsg =
-                "Shape [0] of cache_indices must be equal to batch_size (" +
-                std::to_string(batchSize_) + ")";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                context_->GetNodeName(), "cache_indices", std::to_string(indicesBatch).c_str(), reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        // 非 APC 模式：1D [batch]
-        if (indicesOriginShape.GetDimNum() != DIM_1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                context_->GetNodeName(), "cache_indices",
-                std::to_string(indicesOriginShape.GetDimNum()).c_str(),
-                "The shape dim of cache_indices must be 1");
-            return ge::GRAPH_FAILED;
-        }
-        int64_t indicesLen = indicesOriginShape.GetDim(DIM_0);
-        if (indicesLen != batchSize_) {
-            std::string reasonMsg =
-                "Shape [0] of cache_indices must be equal to batch_size (" +
-                std::to_string(batchSize_) + ")";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                context_->GetNodeName(), "cache_indices", std::to_string(indicesLen).c_str(), reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
+    if (indicesOriginShape.GetDimNum() != DIM_1) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context_->GetNodeName(), "cache_indices",
+            std::to_string(indicesOriginShape.GetDimNum()).c_str(),
+            "The shape dim of cache_indices must be 1");
+        return ge::GRAPH_FAILED;
+    }
+    int64_t indicesLen = indicesOriginShape.GetDim(DIM_0);
+    if (indicesLen != batchSize_) {
+        std::string reasonMsg =
+            "Shape [0] of cache_indices must be equal to batch_size (" +
+            std::to_string(batchSize_) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "cache_indices", std::to_string(indicesLen).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;
@@ -506,6 +445,10 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
     auto acceptShape = context_->GetOptionalInputShape(NUM_ACCEPTED_TOKEN_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, acceptShape);
     auto acceptOriginShape = acceptShape->GetOriginShape();
+    if (acceptOriginShape.GetDimNum() == 0 || (acceptOriginShape.GetDimNum() == DIM_1 &&
+        acceptOriginShape.GetDim(DIM_0) == 0)) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (acceptOriginShape.GetDimNum() != DIM_1) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "num_accepted_token",
@@ -534,13 +477,13 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
     }
     auto queryStartLocShape = context_->GetOptionalInputShape(QUERY_START_LOC_INDEX);
     if (queryStartLocShape == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "query_start_loc", "nullptr",
-            "query_start_loc cannot be nullptr when input x is 2D");
-        return ge::GRAPH_FAILED;
+        return ge::GRAPH_SUCCESS;
     }
 
     auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
+    if (queryStartLocOriginShape.GetDimNum() == DIM_1 && queryStartLocOriginShape.GetDim(DIM_0) == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (queryStartLocOriginShape.GetDimNum() != DIM_1) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "query_start_loc",
@@ -619,10 +562,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocType()
     }
     auto queryStartLocDesc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);
     if (queryStartLocDesc == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "query_start_loc", "nullptr",
-            "query_start_loc cannot be nullptr when input x is 2D");
-        return ge::GRAPH_FAILED;
+        return ge::GRAPH_SUCCESS;
     }
     if (queryStartLocDtype_ != ge::DataType::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -860,7 +800,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
     fixedUBSize += cacheIndicesUBSize;
 
     // queryStartLocBuf：2D 输入时需要存储 [batch+1] 个位置信息
-    if (xInputMode_ == X_INPUT_2D) {
+    if (hasQueryStartLoc_ == 1) {
         int64_t queryStartLocUBSize =
             ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
         fixedUBSize += queryStartLocUBSize;
@@ -1048,6 +988,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
     tilingData_.cacheStride1 = cacheStride1_;
     tilingData_.padSlotId = padSlotId_;
     tilingData_.xInputMode = xInputMode_;
+    tilingData_.hasQueryStartLoc = hasQueryStartLoc_;
     tilingData_.hasAcceptTokenNum = hasAcceptTokenNum_;
     tilingData_.residualConnection = residualConnection_;
 
@@ -1283,7 +1224,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
     }
     fixedUBSize += cacheIndicesUBSize;
 
-    if (xInputMode_ == X_INPUT_2D) {
+    if (hasQueryStartLoc_ == 1) {
         int64_t queryStartLocUBSize =
             ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
         fixedUBSize += queryStartLocUBSize;

@@ -24,25 +24,19 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(FusedCausalConv1d);
 
-bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
-                       const aclTensor *queryStartLoc, const aclTensor *cacheIndices, const aclTensor *initialStateMode,
-                       const aclTensor *bias, const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
-                       const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
-                       const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode,
-                       int64_t maxQueryLen, int64_t residualConnection, int64_t blockSize, int64_t convMode,
-                       aclTensor *y, aclOpExecutor *executor)
+bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, const aclTensor *bias, aclTensor *convStates,
+                       const aclTensor *queryStartLoc, const aclTensor *cacheIndices,
+                       const aclTensor *numAcceptedTokens, int64_t activationMode, int64_t padSlotId, aclTensor *y,
+                       aclOpExecutor *executor)
 {
-    L0_DFX(FusedCausalConv1d, x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias,
-           numAcceptedTokens, numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken,
-           initialStateIdx, activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode,
-           y);
+    L0_DFX(FusedCausalConv1d, x, weight, bias, convStates, queryStartLoc, cacheIndices, numAcceptedTokens,
+           activationMode, padSlotId, y);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         FusedCausalConv1d,
-        OP_INPUT(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
-                 numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx),
-        OP_OUTPUT(convStates, y),
-        OP_ATTR(activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode));
+        OP_INPUT(x, weight, bias, convStates, queryStartLoc, cacheIndices, numAcceptedTokens),
+        OP_OUTPUT(y),
+        OP_ATTR(activationMode, padSlotId));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedCausalConv1d ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return false;

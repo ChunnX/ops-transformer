@@ -209,27 +209,17 @@ int main()
 
     int64_t activationMode = 0;
     int64_t padSlotId = -1;
-    int64_t runMode = 1;
-    int64_t maxQueryLen = seqLen;
-    int64_t residualConnection = 0;
-    int64_t blockSize = 0;
-    int64_t convMode = 0;
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnFusedCausalConv1dGetWorkspaceSize(
-        xTensor, weightTensor, convStatesTensor,
-        queryStartLocTensor, // 2D BH decode path: one batch with rows [0, seqLen)
-        nullptr, // cache_indices: slot defaults to batch index
-        nullptr, // initial_state_mode
+        xTensor, weightTensor,
         nullptr, // bias
+        convStatesTensor,
+        queryStartLocTensor, // 2D decode path: one batch with rows [0, seqLen)
+        nullptr, // cache_indices: slot defaults to batch index
         nullptr, // num_accepted_tokens: offset = stateLen - (K - 1) = 0
-        nullptr, // num_computed_tokens
-        nullptr, // block_idx_first_scheduled_token
-        nullptr, // block_idx_last_scheduled_token
-        nullptr, // initial_state_idx
-        activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, yTensor,
-        &workspaceSize, &executor);
+        activationMode, padSlotId, yTensor, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 

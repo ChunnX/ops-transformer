@@ -37,9 +37,8 @@ public:
     __aicore__ inline FusedCausalConv1dCutBH(TPipe *pipe) : pipe_(pipe){};
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
-                                GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
-                                GM_ADDR blockIdxFirstScheduledToken, GM_ADDR blockIdxLastScheduledToken,
-                                GM_ADDR initialStateIdx, GM_ADDR y, const FusedCausalConv1dCutBHTilingData *tilingData);
+                                GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR y,
+                                const FusedCausalConv1dCutBHTilingData *tilingData);
 
     __aicore__ inline void Process();
 
@@ -129,6 +128,7 @@ private:
     int64_t kernelSize_; // 卷积核大小（K=4）
     int64_t stateLen_;   // cache_state第二维 (K-1+m)
     int64_t xInputMode_; // 输入模式：0=3D, 1=2D
+    int64_t hasQueryStartLoc_;
 
     // ========== 运行时计算参数 ==========
     int32_t blockIdx_;          // 当前核的索引
@@ -163,9 +163,8 @@ private:
 template <typename T>
 __aicore__ inline void
 FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
-                                GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
-                                GM_ADDR blockIdxFirstScheduledToken, GM_ADDR blockIdxLastScheduledToken,
-                                GM_ADDR initialStateIdx, GM_ADDR y, const FusedCausalConv1dCutBHTilingData *tilingData)
+                                GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR y,
+                                const FusedCausalConv1dCutBHTilingData *tilingData)
 {
     InitParams(tilingData);
 
@@ -188,24 +187,14 @@ FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, G
     weightGm.SetGlobalBuffer((__gm__ T *)weight, kernelSize_ * dim_);
     convStatesGm.SetGlobalBuffer((__gm__ T *)convStates);
 
-    // F1/F2: 根据 APC 模式绑定 cacheIndices GM
-    if (apcEnable_) {
-        cacheIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cacheIndices, batchSize_ * maxNumBlocks_);
-        blockIdxFirstScheduledTokenGm.SetGlobalBuffer((__gm__ int32_t *)blockIdxFirstScheduledToken, batchSize_);
-        blockIdxLastScheduledTokenGm.SetGlobalBuffer((__gm__ int32_t *)blockIdxLastScheduledToken, batchSize_);
-        initialStateIdxGm.SetGlobalBuffer((__gm__ int32_t *)initialStateIdx, batchSize_);
-    } else {
+    if (hasCacheIndices_) {
         cacheIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cacheIndices, batchSize_);
-    }
-    // numComputedTokens 以 hasNumComputedTokens_ 为准（与 APC/convMode 无关）
-    if (hasNumComputedTokens_) {
-        numComputedTokensGm.SetGlobalBuffer((__gm__ int32_t *)numComputedTokens, batchSize_);
     }
 
     if (hasAcceptTokenNum_ == 1) {
         acceptTokenNumGm.SetGlobalBuffer((__gm__ int32_t *)numAcceptedToken, batchSize_);
     }
-    if (xInputMode_ == 1) {
+    if (hasQueryStartLoc_ == 1) {
         queryStartLocGm.SetGlobalBuffer((__gm__ int32_t *)queryStartLoc, batchSize_ + 1);
     }
 
@@ -233,6 +222,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
     stateLen_ = tilingData->stateLen;
     hasAcceptTokenNum_ = tilingData->hasAcceptTokenNum;
     xInputMode_ = tilingData->xInputMode;
+    hasQueryStartLoc_ = tilingData->hasQueryStartLoc;
     isResidualConnection_ = tilingData->residualConnection;
     padSlotId_ = tilingData->padSlotId;
     apcEnable_ = tilingData->apcEnable;
@@ -339,7 +329,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
     }
 
     // queryStartLocBuf: 仅2D输入时分配
-    if (xInputMode_ == 1) {
+    if (hasQueryStartLoc_ == 1) {
         int32_t queryStartLocQueueSize =
             ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
         pipe_->InitBuffer(queryStartLocBuf, queryStartLocQueueSize);
@@ -384,7 +374,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
 
     // 2D输入时搬运 queryStartLoc
     LocalTensor<int32_t> queryStartLocLocal;
-    if (xInputMode_ == 1) {
+    if (hasQueryStartLoc_ == 1) {
         queryStartLocLocal = queryStartLocBuf.Get<int32_t>();
         uint32_t queryStartLocBlockLen = (batchSize_ + 1) * sizeof(int32_t);
         DataCopyParams queryStartLocCopyParams;
@@ -429,7 +419,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
             uint16_t blockCount = batchNumInLoop_ * seqLen_;
             int64_t startSeqIdx = firstBatchIdxInLoop * seqLen_;
             int64_t yOffset = firstBatchIdxInLoop * seqLen_ * yDim_ + dimOffset_ + dimOffsetPerLoop_;
-            if (xInputMode_ == 1) {
+            if (hasQueryStartLoc_ == 1) {
                 blockCount = queryStartLocLocal.GetValue(firstBatchIdxInLoop + batchNumInLoop_) -
                              queryStartLocLocal.GetValue(firstBatchIdxInLoop);
                 startSeqIdx = queryStartLocLocal.GetValue(firstBatchIdxInLoop) - queryStartLocLocal.GetValue(0);
@@ -530,7 +520,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
         // ========== 计算当前 batch 的序列长度和 UB 偏移 ==========
         int32_t curBatchSeq = seqLen_;
         int32_t curBatchUbOffset = b * curBatchSeq * dimSizeInLoop_;
-        if (xInputMode_ == 1) {
+        if (hasQueryStartLoc_ == 1) {
             curBatchSeq = queryStartLocLocal.GetValue(curBatchIdx + 1) - queryStartLocLocal.GetValue(curBatchIdx);
             curBatchUbOffset =
                 (queryStartLocLocal.GetValue(curBatchIdx) - queryStartLocLocal.GetValue(curBatchIdx - b)) *
