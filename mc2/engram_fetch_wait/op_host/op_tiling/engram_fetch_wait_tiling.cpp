@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -78,8 +78,6 @@ static ge::graphStatus EngramFetchWaitTilingFunc(gert::TilingContext *context)
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t numBlocks = ascendcPlatform.CalcTschNumBlocks(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
-    //context->SetScheduleMode(1);
-    tilingData->aivNum = aivNum;
     OP_LOGD(nodeName, "aicNum=%u, aivNum=%u, numBlocks=%u", aicNum, aivNum, numBlocks);
 
     OP_TILING_CHECK(SetWorkSpace(context) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "SetWorkSpace failed."),
@@ -100,6 +98,5 @@ ge::graphStatus TilingParseForEngramFetchWait(gert::TilingParseContext *context)
 
 IMPL_OP_OPTILING(EngramFetchWait)
     .Tiling(EngramFetchWaitTilingFunc)
-    .TilingParse<EngramFetchWaitCompileInfo>(TilingParseForEngramFetchWait);
 
 } // namespace optiling
