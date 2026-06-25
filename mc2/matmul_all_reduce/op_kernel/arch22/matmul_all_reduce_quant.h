@@ -23,11 +23,11 @@
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #ifdef MC2_QUANT_BF16
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16.h"
 #else
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h"
 #endif
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_pertoken.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_pertoken.h"
 #include "matmul_all_reduce_base.h"
 
 namespace MatmulAllReduceImpl {

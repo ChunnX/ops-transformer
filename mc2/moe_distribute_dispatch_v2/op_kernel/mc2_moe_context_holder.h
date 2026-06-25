@@ -22,7 +22,7 @@
 #endif
 
 #include "moe_distribute_v2_constant.h"
-#include "../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 
 namespace Mc2Kernel {
 

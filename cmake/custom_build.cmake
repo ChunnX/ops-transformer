@@ -331,7 +331,6 @@ if(ENABLE_TEST)
     endif()
 endif()
 
-
 if (DEFINED MC2_OPT AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mc2/common/CMakeLists.txt AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/mc2/3rd/CMakeLists.txt)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mc2/common)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mc2/3rd)
@@ -1093,11 +1092,7 @@ if (ALL_COMMON_SRC_DIRS)
         list(APPEND COMMON_COPY_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_SRC_DIR}
         )
-        if (SRC_DIR MATCHES "mc2/common$" AND NOT ENABLE_EXPERIMENTAL)
-            list(APPEND COMMON_COPY_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_SRC_DIR}
-            )
-        endif()
+
     endforeach()
 
     if(NOT TARGET common_src_copy)
