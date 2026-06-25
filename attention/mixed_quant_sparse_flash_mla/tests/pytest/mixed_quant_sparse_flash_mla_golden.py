@@ -97,7 +97,7 @@ class GeneralizedSFAQuant:
     def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2,
                  block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,
                  cmp_residual_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode,
-                 ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode):
+                 ori_win_left, ori_win_right, quant_mode, tile_size, rope_head_dim, template_run_mode):
         self.layout_q = layout_q
         self.layout_kv = layout_kv
         self.q_type = q_type
@@ -127,7 +127,7 @@ class GeneralizedSFAQuant:
         self.cmp_mask_mode = cmp_mask_mode
         self.ori_win_left = ori_win_left
         self.ori_win_right = ori_win_right
-        self.kv_quant_mode = kv_quant_mode
+        self.quant_mode = quant_mode
         self.tile_size = tile_size
         self.rope_head_dim = rope_head_dim
         self.template_run_mode = template_run_mode
@@ -700,8 +700,8 @@ def trans_kv_bnsd_to_tnd(kv_bnsd_npu, cu_seqlens_kv, seqused_kv, B, N2, d_aligne
 
 def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_32,
                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch,
-               seqused_ori_kv, cu_seqlens_ori_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv="PA_BBND"):
-    if kv_quant_mode == 10:
+               seqused_ori_kv, cu_seqlens_ori_kv, quant_param_range_left, quant_param_range_right, quant_mode, layout_kv="PA_BBND"):
+    if quant_mode == 10:
         quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
         quant_range_left = quant_param
         quant_range_right = quant_param
@@ -712,7 +712,7 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
         (B, N2, ori_max_s2, quant_scale_head_dim))).to(q_type)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
 
-    if kv_quant_mode == 10:
+    if quant_mode == 10:
         ori_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
             (B, N2, ori_max_s2, nope_head_dim))).to(torch.float)
         ori_k_nope_bnsd_npu = trans_float_tensor_to_hifuint8(ori_k_nope_bnsd_npu,
@@ -863,9 +863,11 @@ def gen_ori_kv_quant_2_pa(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_d
     ori_topk_length = None
     ori_sparse_indices = None
     return ori_k_bnsd, ori_k_in_pa_shape, ori_block_table
-def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, N2, D, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_combined_quant_2,
-                pad_d, block_num2, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
-                topk_value_mode, quant_param_range_left, quant_param_range_right, cmp_sparse_indices_mode, kv_topk_mode):
+def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, N2, K, rope_head_dim, nope_head_dim, tile_size,
+               quant_scale_head_dim, d_combined_quant_2, pad_d, block_num2, block_size2, cmp_max_s2,
+               cmp_max_block_num_per_batch, layout_q, cu_seqlens_q, seqused_q, seqused_ori_kv,
+               cmp_ratio, cmp_mask_mode, template_run_mode,
+               quant_param_range_left, quant_param_range_right):
     if cmp_max_s2 == 0:
         return None, None, None, None
     # --- 1. 生成原始数据 ---
@@ -897,10 +899,10 @@ def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, N2, D, rope_head_dim, nope_hea
     # Padding 部分 (1字节)
     cmp_pad_tensor = torch.zeros((B, N2, cmp_max_s2, pad_d)).to(torch.float8_e8m0fnu)
 
-    # --- 2. 计算 Block 映射 (保持不变) ---
+    # --- 2. 计算 Block 映射 ---
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
-    for cur_ori_act_kv in seqused_kv:
+    for cur_ori_act_kv in seqused_ori_kv:
         cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
         cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
         cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
@@ -917,9 +919,7 @@ def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, N2, D, rope_head_dim, nope_hea
             cmp_block_table[b][i] = cmp_block_id_list[cur_block_id_idx]
             cur_block_id_idx += 1
 
-    # --- 3. 核心修改：实现 [block_size*576 + block_size*8] 排布 ---
-    # 定义物理张量：形状设为 (block_num, N2, 每一路的总字节数)
-    # d_combined 此时应为 584 (576 + 8)
+    # --- 3. 实现 [block_size*576 + block_size*8] 排布 ---
     total_bytes_per_head_block = block_size2 * (576 + 8)
     cmp_k_in_pa_shape = torch.zeros((block_num2, N2, total_bytes_per_head_block), dtype=cmp_kv_type)
 
@@ -962,17 +962,30 @@ def gen_cmp_kv_quant_2_pa(q_type, cmp_kv_type, B, N2, D, rope_head_dim, nope_hea
                 meta_offset = block_size2 * 576
                 cmp_k_in_pa_shape[cur_phys_block_id, head_idx, meta_offset : meta_offset + valid_len * 8] = \
                     meta_all[head_idx].reshape(-1)
-    cmp_k_in_pa_shape = cmp_k_in_pa_shape.reshape(block_num2, block_size2, N2, d_combined + pad_d)
+
+    cmp_k_in_pa_shape = cmp_k_in_pa_shape.reshape(block_num2, block_size2, N2, d_combined_quant_2 + pad_d)
+
+    # --- 4. 生成 Sparse Indices ---
+    cmp_sparse_indices = None
+    if template_run_mode == "SCFA" and cmp_max_s2 != 0:
+        if layout_q == "BSND":
+            S1 = int(seqused_q[0]) if isinstance(seqused_q, list) else int(seqused_q)
+            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode)
+        elif layout_q == "TND":
+            T1 = int(cu_seqlens_q[-1])
+            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, seqused_ori_kv, cmp_mask_mode)
+
     cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
+
     return cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices
 
 def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size,
                quant_scale_head_dim, d_aligned_32, pad_d, block_num2, block_size2, cmp_max_s2,
                cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_cmp_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
-               quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv="PA_BBND"):
+               quant_param_range_left, quant_param_range_right, quant_mode, layout_kv="PA_BBND"):
     if cmp_max_s2 == 0:
         return None, None, None, None
-    if kv_quant_mode == 10:
+    if quant_mode == 10:
         quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
         quant_range_left = quant_param
         quant_range_right = quant_param
@@ -983,7 +996,7 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
         (B, N2, cmp_max_s2, quant_scale_head_dim))).to(q_type)
     cmp_kv_quant_param_tensor = cmp_kv_quant_param_tensor_npu.to(q_type)
 
-    if kv_quant_mode == 10:
+    if quant_mode == 10:
         cmp_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
             (B, N2, cmp_max_s2, nope_head_dim))).to(torch.float)
         cmp_k_nope_bnsd_npu = trans_float_tensor_to_hifuint8(cmp_k_nope_bnsd_npu,
@@ -1113,7 +1126,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     cmp_mask_mode = params['cmp_mask_mode']
     ori_win_left = params['ori_win_left']
     ori_win_right = params['ori_win_right']
-    kv_quant_mode = params['kv_quant_mode']
+    quant_mode = params['quant_mode']
     tile_size = params['tile_size']
     rope_head_dim = params['rope_head_dim']
     template_run_mode = params['template_run_mode']
@@ -1143,8 +1156,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_max_s2 = int(get_max_adjacent_diff(cu_seqlens_cmp_kv)) if cu_seqlens_cmp_kv is not None else 0
         cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2) if cmp_max_s2 > 0 else 0
 
-    if kv_quant_mode != 1 and kv_quant_mode != 2:
-        raise ValueError(f"input kv_quant_mode = {kv_quant_mode}, only support 1 and 2")
+    if quant_mode != 1 and quant_mode != 2:
+        raise ValueError(f"input quant_mode = {quant_mode}, only support 1 and 2")
 
     # 计算kv每个区域D轴长度
     nope_head_dim = D - rope_head_dim
@@ -1153,7 +1166,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim * 2
     d_combined_quant_2 = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim
     print(f"d_aligned_32={d_aligned_32}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim}, quant_scale_head_dim={quant_scale_head_dim}")
-    pad_d = pad_d = 1 if kv_quant_mode == 2 else d_aligned_32 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
+    pad_d = pad_d = 1 if quant_mode == 2 else d_aligned_32 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
     # 根据输入的data range，计算scale范围，生成scale tensor，取倒数保存为bin
     quant_param_range_left = DATA_RANGE_LEFT / FP8_DATA_RANGE_LEFT
@@ -1163,23 +1176,27 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     sinks = torch.tensor(np.random.uniform(DATA_RANGE_LEFT/10, DATA_RANGE_RIGHT/10, (N1))).to(torch.float)
 
     # generate ori_kv tensor
-    if kv_quant_mode == 1:
+    if quant_mode == 1:
         ori_k_bnsd, ori_k_in_pa_shape, ori_block_table = gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim,
             nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_32, pad_d, block_num, block_size1, ori_max_s2,
-            ori_max_block_num_per_batch, seqused_ori_kv, cu_seqlens_ori_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv)
-    else: # kv_quant_mode == 2
+            ori_max_block_num_per_batch, seqused_ori_kv, cu_seqlens_ori_kv, quant_param_range_left, quant_param_range_right, quant_mode, layout_kv)
+    else: # quant_mode == 2
         ori_k_bnsd, ori_k_in_pa_shape, ori_block_table = gen_ori_kv_quant_2_pa(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,
                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch, seqused_ori_kv, quant_param_range_left, quant_param_range_right, d_combined_quant_2, layout_kv)
     # generate cmp_kv and sparse_indices
     if template_run_mode == "CFA" or template_run_mode == "SCFA":
-        if kv_quant_mode == 1:
+        if quant_mode == 1:
             cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices = gen_cmp_kv(q_type, layout_q, cmp_kv_type,
                 B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_32, pad_d,
                 block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_cmp_kv,
-                cmp_ratio, cmp_mask_mode, template_run_mode, quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv)
-        else: # kv_quant_mode == 2
-            print("kv_quant_mode  == 2 ")
-            # ori_k_bnsd, ori_k_in_pa_shape, ori_block_table = gen_cmp_kv_quant_2_pa()
+                cmp_ratio, cmp_mask_mode, template_run_mode, quant_param_range_left, quant_param_range_right, quant_mode, layout_kv)
+        else: # quant_mode == 2
+            cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices = gen_cmp_kv_quant_2_pa(
+                q_type, cmp_kv_type, B, N2, K, rope_head_dim, nope_head_dim, tile_size,
+                quant_scale_head_dim, d_combined_quant_2, pad_d, block_num, block_size2, cmp_max_s2,
+                cmp_max_block_num_per_batch, layout_q, cu_seqlens_q, seqused_q, seqused_ori_kv,
+                cmp_ratio, cmp_mask_mode, template_run_mode,
+                quant_param_range_left, quant_param_range_right)
     else:
         cmp_k_in_pa_shape = None
         cmp_sparse_indices = None
@@ -1188,27 +1205,32 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     if layout_kv == "PA_BBND" and (template_run_mode == "CFA" or template_run_mode == "SCFA"):
         total_block = block_size1 + block_size2
-        fusion_base = torch.zeros((block_num, total_block, N2, d_combined + pad_d), dtype=ori_kv_type, device="npu")
+        if quant_mode == 2:
+            fusion_d = d_combined_quant_2 + pad_d
+        else:
+            fusion_d = d_combined + pad_d
+        fusion_base = torch.zeros((block_num, total_block, N2, fusion_d), dtype=ori_kv_type, device="npu")
         fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
+        breakpoint()
         fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
-        stride_n = total_block * N2 * (d_combined + pad_d)
-        stride_bs = N2 * (d_combined + pad_d)
-        stride_n2 = d_combined + pad_d
+        stride_n = total_block * N2 * fusion_d
+        stride_bs = N2 * fusion_d
+        stride_n2 = fusion_d
         stride_d = 1
         ori_k_in_pa_shape = torch.as_strided(
                 fusion_base,
-                size=[block_num, block_size1, N2, d_combined + pad_d],
+                size=[block_num, block_size1, N2, fusion_d],
                 stride=[stride_n, stride_bs, stride_n2, stride_d])
         cmp_k_in_pa_shape = torch.as_strided(
                 fusion_base,
-                size=[block_num, block_size2, N2, d_combined + pad_d],
+                size=[block_num, block_size2, N2, fusion_d],
                 stride=[stride_n, stride_bs, stride_n2, stride_d],
-                storage_offset=block_size1 * N2 * (d_combined + pad_d))
+                storage_offset=block_size1 * N2 * fusion_d)
 
     test_qsmla = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
         block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv,
         cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, softmax_scale, cmp_ratio,
-        ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
+        ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, quant_mode, tile_size, rope_head_dim, template_run_mode)
     cpu_result = test_qsmla.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks)
 
     print("mode:%s\n",template_run_mode)
@@ -1258,7 +1280,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'layout_kv': layout_kv,
             'has_ori_kv': True,
             'has_cmp_kv': False if template_run_mode == "SWA" else True,
-            'kv_quant_mode': kv_quant_mode,
+            'quant_mode': quant_mode,
         },
 
         'op_input': {
@@ -1276,7 +1298,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'seqused_cmp_kv': seqused_cmp_kv,
             'cmp_residual_kv': cmp_residual_kv,
             'sinks': sinks,
-            'kv_quant_mode': kv_quant_mode,
+            'quant_mode': quant_mode,
             'tile_size': 64,
             'rope_head_dim': 64,
             'softmax_scale': softmax_scale,

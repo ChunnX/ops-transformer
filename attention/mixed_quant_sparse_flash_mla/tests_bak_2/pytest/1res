@@ -1,0 +1,9 @@
+===== 执行单用例算子调测 =====
+============================= test session starts ==============================
+platform linux -- Python 3.9.25, pytest-8.4.2, pluggy-1.6.0 -- /root/miniconda3/envs/cl39/bin/python3
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/c00948909/63/ops-transformer_611N/attention/mixed_quant_sparse_flash_mla/tests/pytest
+configfile: pytest.ini
+plugins: hypothesis-6.141.1
+collecting ... 

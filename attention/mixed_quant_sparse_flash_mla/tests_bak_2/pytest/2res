@@ -1,0 +1,82 @@
+===== 执行单用例算子调测 =====
+============================= test session starts ==============================
+platform linux -- Python 3.9.25, pytest-8.4.2, pluggy-1.6.0 -- /root/miniconda3/envs/cl39/bin/python3
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/c00948909/63/ops-transformer_611N/attention/mixed_quant_sparse_flash_mla/tests/pytest
+configfile: pytest.ini
+plugins: hypothesis-6.141.1
+collecting ... ninja: no work to do.
+collected 1 item
+
+test_mixed_quant_sparse_flash_mla_single.py::test_mixed_quant_sparse_flash_mla[SCFA_decode_TND_BF16_PA_BBND_FP8_E4M3FN_B1_S11_S28193_D512_K512_000000] d_aligned_32=608, nope_head_dim=448, rope_head_dim=64, quant_scale_head_dim=7
+ =================== kv_quant_2 ====================
+nope_head_dim == 448
+rope_head_dim == 64
+quant_scale_head_dim == 7
+pad_d == 1
+tile_size == 64
+tile_size == 64
+tile_size == 64
+tile_size == 64
+tile_size == 64
+tile_size == 64
+tile_size == 64
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> PDB set_trace >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+> /home/c00948909/63/ops-transformer_611N/attention/mixed_quant_sparse_flash_mla/tests/pytest/mixed_quant_sparse_flash_mla_golden.py(1215)generate_and_save_testdata()
+-> fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
+(Pdb) torch.Size([65, 128, 1, 584])
+(Pdb) 
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> PDB continue >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+cpu执行中...
+template_run_mode = SCFA
+i_B = 0/1
+    i_N2 = 0/1
+      进度：0.0% | 步数：                           0/1
+mode:%s
+ SCFA
+test_data: {'Testcase_Name': 'mixedQuantSparseFlashMla_SCFA_decode_TND_BF16_PA_BBND_FP8_E4M3FN_1_64_1_1_8193_512_512_64_000000', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.float8_e4m3fn, 'cmp_kv_type': torch.float8_e4m3fn, 'B': 1, 'S1': 1, 'S2': 8193, 'T1': 1, 'N1': 64, 'N2': 1, 'D': 512, 'K': 512, 'block_num1': 65, 'block_num2': 16, 'block_size1': 128, 'block_size2': 128, 'seqused_q': [1], 'cu_seqlens_q': [0, 1], 'seqused_ori_kv': [8193], 'seqused_cmp_kv': [2048], 'cu_seqlens_ori_kv': [0, 8193], 'cu_seqlens_cmp_kv': [0, 2048], 'cmp_residual_kv': [1], 'softmax_scale': 0.04419417, 'cmp_ratio': 4, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 127, 'ori_win_right': 0, 'kv_quant_mode': 2, 'tile_size': 64, 'rope_head_dim': 64, 'template_run_mode': 'SCFA', 'actlen_mode': 'full', 'S1EQS2': False, 'topk_value_mode': 1, 'return_softmax_lse': False}
+mixed_quant_sparse_flash_mla_metadata...
+mixed_quant_sparse_flash_mla...
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0154 - split_count:32768.0; max_diff_hd:10;
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0054 - ---------------------------------------------------------------------------------------
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0060 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0061 - ---------------------------------------------------------------------------------------
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000001 	 0.0003338 	 0.0003338 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000002 	 -0.6250000 	 -0.6250000 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000003 	 -0.3515625 	 -0.3515625 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000004 	 0.3808594 	 0.3808594 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000005 	 0.7265625 	 0.7265625 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000006 	 0.3203125 	 0.3203125 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000007 	 0.6054688 	 0.6054688 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000008 	 0.1650391 	 0.1650391 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000009 	 0.8281250 	 0.8281250 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00000010 	 0.2060547 	 0.2060547 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0070 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032759 	 0.0097656 	 0.0097656 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032760 	 -0.3515625 	 -0.3515625 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032761 	 -0.0844727 	 -0.0844727 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032762 	 -0.0222168 	 -0.0222168 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032763 	 -0.2343750 	 -0.2343750 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032764 	 -0.0903320 	 -0.0903320 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032765 	 -0.0113525 	 -0.0113525 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032766 	 0.0083008 	 0.0083008 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032767 	 -0.0834961 	 -0.0834961 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0051 - 00032768 	 -0.2167969 	 -0.2167969 	 0.0000000 	 0.0000000
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0221 - ---------------------------------------------------------------------------------------
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0223 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0224 - ---------------------------------------------------------------------------------------
+[2026/06/25 02:58:10] [INFO]-result_compare_method.py:0226 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED test_mixed_quant_sparse_flash_mla_single.py::test_mixed_quant_sparse_flash_mla[SCFA_decode_TND_BF16_PA_BBND_FP8_E4M3FN_B1_S11_S28193_D512_K512_000000]
+============================== 1 passed in 55.05s ==============================
+construct_mixed_quant_sparse_flash_mla_atten_out_tensor 开始
+[aclnnMixedQuantSparseFlashMla] atten_out 制作完成
+[aclnnMixedQuantSparseFlashMla] softmax_lse 制作完成
+[aclnnMixedQuantSparseFlashMla] atten_out 非空
+[aclnnMixedQuantSparseFlashMla] softmax_lse 非空
+ACLNN_CMD end =========== 

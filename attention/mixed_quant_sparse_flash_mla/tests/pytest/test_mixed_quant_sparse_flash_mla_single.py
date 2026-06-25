@@ -64,7 +64,7 @@ for params in ENABLED_PARAMS:
         "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
         "ori_win_left": params.get("ori_win_left"),
         "ori_win_right": params.get("ori_win_right"),
-        "kv_quant_mode": params.get("kv_quant_mode"),
+        "quant_mode": params.get("quant_mode"),
         "tile_size": params.get("tile_size"),
         "rope_head_dim": params.get("rope_head_dim"),
         "template_run_mode": params.get("template_run_mode"),
