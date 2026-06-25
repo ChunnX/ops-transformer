@@ -115,6 +115,52 @@ bool IsEmptyTensorList(const aclTensorList *tensorList)
     return shape.GetDimNum() == 1 && shape.GetDim(DIM_0) == 0;
 }
 
+void PrintTensorDebugInfo(const char *stage, const char *name, const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        GmmaqPrint("%s tensor %s: nullptr.", stage, name);
+        return;
+    }
+    GmmaqPrint("%s tensor %s: dtype=%s, storageFormat=%s(primary=%s), viewShape=%s, storageShape=%s, "
+               "viewDim=%zu, storageDim=%zu, isEmpty=%d.",
+               stage, name, op::ToString(tensor->GetDataType()).GetString(),
+               op::ToString(tensor->GetStorageFormat()).GetString(),
+               op::ToString(static_cast<op::Format>(ge::GetPrimaryFormat(tensor->GetStorageFormat()))).GetString(),
+               op::ToString(tensor->GetViewShape()).GetString(),
+               op::ToString(tensor->GetStorageShape()).GetString(),
+               tensor->GetViewShape().GetDimNum(), tensor->GetStorageShape().GetDimNum(),
+               static_cast<int>(tensor->IsEmpty()));
+}
+
+void PrintTensorListDebugInfo(const char *stage, const char *name, const aclTensorList *tensorList)
+{
+    if (tensorList == nullptr) {
+        GmmaqPrint("%s tensorList %s: nullptr.", stage, name);
+        return;
+    }
+    GmmaqPrint("%s tensorList %s: size=%zu.", stage, name, tensorList->Size());
+    for (size_t i = 0; i < tensorList->Size(); ++i) {
+        char tensorName[128] = {};
+        std::snprintf(tensorName, sizeof(tensorName), "%s[%zu]", name, i);
+        PrintTensorDebugInfo(stage, tensorName, (*tensorList)[i]);
+    }
+}
+
+void PrintAclnnInputDebugInfo(const char *stage, const aclTensor *x, const aclTensor *groupList,
+    const aclTensorList *weight, const aclTensorList *weightScale, const aclTensorList *bias,
+    const aclTensor *xScaleOptional, const aclTensor *y, const aclTensor *yScale)
+{
+    GmmaqPrint("%s tensor snapshot.", stage);
+    PrintTensorDebugInfo(stage, "x", x);
+    PrintTensorDebugInfo(stage, "groupList", groupList);
+    PrintTensorListDebugInfo(stage, "weight", weight);
+    PrintTensorListDebugInfo(stage, "weightScale", weightScale);
+    PrintTensorListDebugInfo(stage, "bias", bias);
+    PrintTensorDebugInfo(stage, "xScaleOptional", xScaleOptional);
+    PrintTensorDebugInfo(stage, "y", y);
+    PrintTensorDebugInfo(stage, "yScale", yScale);
+}
+
 void NormalizeEmptyTensorList(const aclTensorList *&tensorList)
 {
     if (IsEmptyTensorList(tensorList)) {
@@ -428,6 +474,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
                   ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
 
+    PrintAclnnInputDebugInfo("before l0op::GroupedMatmulActivationQuant", x, groupList, weight, weightScale, bias,
+                             xScaleOptional, y, yScale);
     GmmaqPrint("In op [%s], call l0op::GroupedMatmulActivationQuant.", OP_NAME);
     auto result = l0op::GroupedMatmulActivationQuant(x, groupList, weight, weightScale, bias, xScaleOptional,
         activationType, transposeWeight, groupListType, tuningConfig, effectiveQuantMode, yDtype, roundMode, scaleAlg,
