@@ -77,7 +77,7 @@ public:
         this->AICore().AddConfig("ascend950", aicore_config);
     }
 };
-
+ 
 OP_ADD(MoeEpCombine);
 
 } // namespace ops
