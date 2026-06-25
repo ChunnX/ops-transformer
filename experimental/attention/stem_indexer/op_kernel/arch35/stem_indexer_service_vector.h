@@ -460,7 +460,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             curS1RealS2Len = static_cast<uint32_t>(curS1RealS2LenTmp > 0 ? curS1RealS2LenTmp : 0);
 
             // 如果正在遍历的s2基本块所在位置大于当前行的实际s2长度，可以跳过不处理，最后一块因为要写索引不能跳过
-            if(!isLastS2InnerLoop && (curS1RealS2Len / s2BaseSize_ <= info.s2Idx)) {
+            if(!isLastS2InnerLoop && (curS1RealS2Len / s2BaseSize_ < info.s2Idx)) {
                 continue;
             }
         }
