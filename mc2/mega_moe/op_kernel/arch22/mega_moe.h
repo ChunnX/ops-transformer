@@ -302,13 +302,13 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
         epilogueCoreNum = static_cast<uint32_t>(aivNum);
         epilogueGranularity = 0U;
     } else if constexpr (isInt8) {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum);
+        epilogueCoreNum = static_cast<uint32_t>(aivNum); // INT8：所有 AIV 参与
         epilogueGranularity = (expertPerRank > 4) ? static_cast<uint32_t>(expertPerRank - 3) :
-                              (expertPerRank > 0) ? static_cast<uint32_t>(expertPerRank - 1) :
-                                                    0U;
+                              (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 1) :
+                                                    1u;
     } else {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum);
-        epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 2) : 0U;
+        epilogueCoreNum = static_cast<uint32_t>(aivNum); // BF16/FP16：所有 AIV 参与
+        epilogueGranularity = (expertPerRank > 2) ? static_cast<uint32_t>(expertPerRank - 2) : 1u;
     }
 
     constexpr bool kRoutingIsQuant =

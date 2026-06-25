@@ -1160,10 +1160,6 @@ private:
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, runtimeRank, params.EP);
         }
 
-        int32_t prevSum = 0;
-        if (coreIdx < params.EP) {
-            prevSum = preSumBeforeRank(coreIdx * params.expertPerRank);
-        }
         AscendC::SyncAll<true>();
 
         AscendC::GlobalTensor<int32_t> ExpertTokenNums;
@@ -1203,8 +1199,7 @@ private:
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
-                    uint32_t rowSrc = prevSum;
-                    prevSum += rows;
+                    uint32_t rowSrc = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
                     GM_ADDR otherRankPtr = shmem(0, dstEpIdx);
                     AscendC::GlobalTensor<ElementABefore> gmRemoteA;
                     gmRemoteA.SetGlobalBuffer(
