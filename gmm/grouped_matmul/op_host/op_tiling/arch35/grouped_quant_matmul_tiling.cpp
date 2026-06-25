@@ -96,12 +96,21 @@ bool GroupedQmmTiling::IsMicroScaling() const
     return inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
 }
 
+bool GroupedQmmTiling::IsMxfp4() const
+{
+    return (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
+           (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2);
+}
+
+bool GroupedQmmTiling::IsWeightNzSingleMultiSingleCandidate() const
+{
+    return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW &&
+           inputParams_.isSingleY && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+}
+
 bool GroupedQmmTiling::IsWeightNzSingleMultiSingleScenario() const
 {
-    const bool isMxfp4 = (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
-                         (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2);
-    return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW && inputParams_.isSingleY &&
-           inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && !(isMxfp4 && inputParams_.hasBias);
+    return IsWeightNzSingleMultiSingleCandidate() && !(IsMxfp4() && inputParams_.hasBias);
 }
 
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
@@ -115,6 +124,10 @@ uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
 
 bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
 {
+    OP_CHECK_IF(IsWeightNzSingleMultiSingleCandidate() && IsMxfp4() && inputParams_.hasBias,
+                OP_LOGE(inputParams_.opName,
+                        "In weightNz single-multi-single MXFP4 case, bias is not supported."),
+                return false);
     if (!IsWeightNzSingleMultiSingleScenario()) {
         return true;
     }
@@ -134,6 +147,12 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
                     "in weightNz single-multi-single case, the tensor num of scale must equal weight"),
                 return false);
     return true;
+}
+
+uint64_t GroupedQmmTiling::GetWeightLogicalNSize(const gert::Shape &wShape) const
+{
+    return static_cast<uint64_t>(inputParams_.transB ? wShape.GetDim(wShape.GetDimNum() - LAST_SECOND_DIM_INDEX) :
+                                                       wShape.GetDim(wShape.GetDimNum() - LAST_FIRST_DIM_INDEX));
 }
 
 bool GroupedQmmTiling::AnalyzeAttrs()
@@ -378,15 +397,6 @@ bool GroupedQmmTiling::AnalyzeDtype()
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
-    const bool isWeightNzSingleMultiSingleCandidate =
-        inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW && inputParams_.isSingleY &&
-        inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
-    const bool isMxfp4 = (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
-                         (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2);
-    OP_CHECK_IF(isWeightNzSingleMultiSingleCandidate && isMxfp4 && inputParams_.hasBias,
-                OP_LOGE(inputParams_.opName,
-                        "In weightNz single-multi-single MXFP4 case, bias is not supported."),
-                return false);
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
         OP_CHECK_IF(!CheckDtypeForWeightNz(nullptr == pertokenScaleDesc),
                     OP_LOGE(inputParams_.opName, "CheckDtypeForWeightNz failed."), return false);
@@ -629,7 +639,7 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t
     OP_CHECK_IF(!CheckWeightNzTransposedDims(wShape, wShapeDimThird, wShapeDimSecond, weightNzLastDim, logicalNSize),
                 OP_LOGE(inputParams_.opName, "CheckWeightNzTransposedDims failed."), return false);
     // 逻辑上最后两根轴对应 N/K：Ascend950 MXFP4 weight NZ 文档要求 n、k 不能为 1；此处对所有 NZ weight 统一约束
-    OP_CHECK_IF(1 == inputParams_.kSize || 1 == inputParams_.nSize,
+    OP_CHECK_IF(1 == inputParams_.kSize || 1 == logicalNSize,
                 OP_LOGE(context_->GetNodeName(),
                         "When the weight is in Nz format, the last two logical axes n and k must not be 1 "
                         "(MXFP4/FLOAT4 weight NZ: nSize>1 and kSize>1), actual nSize=%lu, kSize=%lu.",
@@ -674,6 +684,36 @@ bool GroupedQmmTiling::CheckWeightNzTransposedDims(const gert::Shape &wShape, ui
                     "when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(kSize/",
                     weightNzLastDim, ") = ", CeilDiv(inputParams_.kSize, weightNzLastDim))),
             return false);
+    }
+    return true;
+}
+
+bool GroupedQmmTiling::CheckMultiWeightNzInputs(const gert::StorageShape *xScaleStorageShape) const
+{
+    if (!IsWeightNzSingleMultiSingleScenario()) {
+        return true;
+    }
+
+    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
+    const uint64_t firstNSize =
+        GetWeightLogicalNSize(context_->GetDynamicInputShape(WEIGHT_INDEX, 0)->GetOriginShape());
+    for (uint16_t i = 1; i < weightTensorNum; ++i) {
+        auto curWStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
+        auto curScaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, i);
+        OP_CHECK_IF(curWStorageShape == nullptr || curScaleStorageShape == nullptr,
+                    OP_LOGE(context_->GetNodeName(), "weight or scale shape is nullptr for index %u.", i),
+                    return false);
+        const gert::Shape &curWShape = curWStorageShape->GetOriginShape();
+        const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
+        const uint64_t curNSize = GetWeightLogicalNSize(curWShape);
+        OP_CHECK_IF(curNSize != firstNSize,
+                    OP_LOGE(inputParams_.opName,
+                            "In weightNz single-multi-single case, all weight tensors must share the same logical N."),
+                    return false);
+        OP_CHECK_IF(!CheckQuantParams(xScaleStorageShape, curScaleShape, curNSize),
+                    OP_LOGE(inputParams_.opName, "CheckQuantParams failed for weight index %u.", i), return false);
+        OP_CHECK_IF(!CheckShapeForWeightNz(curWStorageShape->GetStorageShape(), curNSize),
+                    OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed for index %u.", i), return false);
     }
     return true;
 }
@@ -815,30 +855,8 @@ bool GroupedQmmTiling::AnalyzeInputs()
         OP_CHECK_IF(!CheckShapeForWeightNz(weightNzStorageShape),
                     OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed."), return false);
     }
-    if (IsWeightNzSingleMultiSingleScenario()) {
-        const uint64_t firstNSize = inputParams_.nSize;
-        for (uint16_t i = 1; i < GetTensorListSize(WEIGHT_INDEX); ++i) {
-            auto curWStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
-            auto curScaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, i);
-            OP_CHECK_IF(curWStorageShape == nullptr || curScaleStorageShape == nullptr,
-                        OP_LOGE(context_->GetNodeName(), "weight or scale shape is nullptr for index %u.", i),
-                        return false);
-            const gert::Shape &curWShape = curWStorageShape->GetOriginShape();
-            const gert::Shape &curWeightNzStorageShape = curWStorageShape->GetStorageShape();
-            const gert::Shape &curScaleShape = curScaleStorageShape->GetOriginShape();
-            OP_CHECK_IF(!SetMKN(xShape, curWShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-            OP_CHECK_IF(inputParams_.nSize != firstNSize,
-                        OP_LOGE(inputParams_.opName,
-                                "In weightNz single-multi-single case, all weight tensors must share the same logical N."),
-                        return false);
-            OP_CHECK_IF(!CheckQuantParams(xScaleStorageShape, curScaleShape, inputParams_.nSize),
-                        OP_LOGE(inputParams_.opName, "CheckQuantParams failed for weight index %u.", i), return false);
-            OP_CHECK_IF(!CheckShapeForWeightNz(curWeightNzStorageShape, inputParams_.nSize),
-                        OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed for index %u.", i),
-                        return false);
-        }
-        OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "Restore SetMKN failed."), return false);
-    }
+    OP_CHECK_IF(!CheckMultiWeightNzInputs(xScaleStorageShape),
+                OP_LOGE(inputParams_.opName, "CheckMultiWeightNzInputs failed."), return false);
     if (inputParams_.actType != static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_NONE)) {
         OP_CHECK_IF(!CheckActiveMode(wScaleShape, xScaleStorageShape),
                     OP_LOGE(context_->GetNodeName(), "CheckActiveMode failed."), return false);
@@ -1044,9 +1062,7 @@ bool GroupedQmmTiling::SetMKNList()
                             return false);
                 const gert::Shape &wShape = weightShape->GetOriginShape();
                 kList_[i] = static_cast<int32_t>(inputParams_.kSize);
-                nList_[i] = static_cast<int32_t>(
-                    inputParams_.transB ? wShape.GetDim(wShape.GetDimNum() - LAST_SECOND_DIM_INDEX) :
-                                          wShape.GetDim(wShape.GetDimNum() - LAST_FIRST_DIM_INDEX));
+                nList_[i] = static_cast<int32_t>(GetWeightLogicalNSize(wShape));
             }
         } else {
             kList_[0] = static_cast<int32_t>(inputParams_.kSize);
