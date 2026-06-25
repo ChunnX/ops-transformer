@@ -63,6 +63,11 @@ TILING_DATA_FIELD_DEF(int64_t, kcNum);
 TILING_DATA_FIELD_DEF(int64_t, qDim3);
 TILING_DATA_FIELD_DEF(int64_t, kDim3);
 TILING_DATA_FIELD_DEF(int64_t, blockMoveQ);
+TILING_DATA_FIELD_DEF(int64_t, alignedLastDim);      // 【泛化需求】UB中每头D维按32字节对齐后的长度（存储侧）
+TILING_DATA_FIELD_DEF(int64_t, alignedHalfDim);      // 【泛化需求】alignedLastDim/2，用于旋转拷贝的32字节对齐偏移
+TILING_DATA_FIELD_DEF(int64_t, computeAlignedLastDim); // 【泛化需求】计算侧（castDtypeSize）对齐后的D长度
+TILING_DATA_FIELD_DEF(int64_t, computeAlignedHalfDim); // 【泛化需求】计算侧对齐后的half长度
+TILING_DATA_FIELD_DEF(int64_t, singleN);             // 【泛化需求】max(qcNum, kcNum)，qInQueue一次仅放Q或K的最大头数
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingData)
