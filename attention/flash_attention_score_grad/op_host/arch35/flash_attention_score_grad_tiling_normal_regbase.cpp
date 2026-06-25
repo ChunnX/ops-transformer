@@ -214,7 +214,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetPlatformInfo()
 {
     uint32_t coreNum = CORE_INIT_NUM; // 40 is init core num
-
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const FlashAttentionScoreGradCompileInfo *>(context_->GetCompileInfo());
