@@ -102,7 +102,6 @@ transformer-1@ops-transformer:
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_kernel_base.h
                 - ops/ops-transformer/attention/flash_attn/op_host/
                 - ops/ops-transformer/attention/flash_attn/op_kernel/
-                - ops/ops-transformer/attention/flash_attn/op_api/
                 - ops/ops-transformer/attention/flash_attn/op_graph/
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/actual_seq_len_checker.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/actual_seq_len_checker.h
