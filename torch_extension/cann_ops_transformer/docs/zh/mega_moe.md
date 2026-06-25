@@ -488,9 +488,13 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
   <tr>
    <td>num_max_tokens_per_rank</td>
    <td>必选</td>
-   <td>每卡中最大的输入token的数量，即当每卡的num_tokens不同时，最大的num_tokens大小。</td>
+   <td>允许的每卡最大的输入token的数量</td>
    <td>int</td>
-   <td>等于每个卡中最大的num_tokens</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_max_tokens_per_rank ≤ 4096<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_max_tokens_per_rank ≤ 4096<br>
+        Ascend 950PR/Ascend 950DT：1 ≤ num_max_tokens_per_rank ≤ 512</td>
+   </td>
   </tr>
   <tr>
    <td>num_topk</td>
@@ -530,7 +534,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>可选</td>
    <td>每个Rank最大可接收token数，默认值为0表示按通信域能容纳最大的token数自动计算。</td>
    <td>int</td>
-   <td>[0, num_tokens × world_size × min(num_topk, num_experts_per_rank)]</td>
+   <td>[0, num_max_tokens_per_rank × world_size × min(num_topk, num_experts_per_rank)]</td>
   </tr>
   <tr>
    <td>dispatch_quant_mode</td>
@@ -602,10 +606,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
   <tr>
    <td>num_tokens</td>
    <td>当前卡输入的token个数</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_tokens ≤ 4096<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_tokens ≤ 4096<br>
-        Ascend 950PR/Ascend 950DT：1 ≤ num_tokens ≤ 512</td>
+   <td>1 ≤ num_tokens ≤ num_max_tokens_per_rank</td>
   </tr>
   <tr>
    <td>world_size</td>
@@ -613,7 +614,8 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>
         Atlas A2 训练系列产品/Atlas A2 推理系列产品：world_size取值为2、4、8、16、32<br>
         Atlas A3 训练系列产品/Atlas A3 推理系列产品：world_size取值为2、4、8、16、32<br>
-        Ascend 950PR/Ascend 950DT：2 ≤ world_size≤ 768</td>
+        Ascend 950PR/Ascend 950DT：2 ≤ world_size ≤ 768
+   </td>
   </tr>
   <tr>
    <td>num_experts_per_rank</td>
@@ -621,7 +623,8 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
    <td>
         Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_experts_per_rank ≤ 128<br>
         Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_experts_per_rank ≤ 128<br>
-        Ascend 950PR/Ascend 950DT：1 ≤ num_experts_per_rank ≤ 16</td>
+        Ascend 950PR/Ascend 950DT：1 ≤ num_experts_per_rank ≤ 16
+   </td>
   </tr>
  </tbody>
 </table>
