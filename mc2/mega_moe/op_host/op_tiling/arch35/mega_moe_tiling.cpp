@@ -386,6 +386,10 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
         opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
+    } else if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
+               opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E2M1) {
+        // a4w4 场景：weight1 和 activation 都是 fp4，GMM1 走 generic，GMM2 走 A8W4。
+        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4;
     } else {
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
