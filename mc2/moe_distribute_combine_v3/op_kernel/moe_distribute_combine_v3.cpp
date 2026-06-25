@@ -22,10 +22,17 @@
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_a5_mte.h"
 using namespace MoeDistributeCombineV2A5MteImpl;
 #endif
+#if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2.h")
+#include "../moe_distribute_combine_v2/moe_distribute_combine_v2.h"
+#include "../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h"
+#include "../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling_key.h"
+#include "../moe_distribute_combine_v2/moe_distribute_combine_tiling.h"
+#else
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2.h"
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling_key.h"
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
+#endif
 using namespace AscendC;
 using namespace Mc2Kernel;
 using namespace Mc2Tiling;
