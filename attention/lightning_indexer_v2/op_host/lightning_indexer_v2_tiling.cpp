@@ -644,6 +644,13 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.maxSeqlenQ = *opParamInfo_.maxSeqlenQ;
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;
     liInfo.returnValue = *opParamInfo_.returnValue;
+
+    if (!keyStridesVec_.empty()) {
+        liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
+    } else {
+        liInfo.keyStride0 = 0;  // 非PA无需使用stride
+    }
+
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
 }
@@ -740,6 +747,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     tilingData_.set_preTokens(tilingInfo->preTokens);
     tilingData_.set_nextTokens(tilingInfo->nextTokens);
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
+    tilingData_.set_keyStride0(tilingInfo->keyStride0);
     tilingData_.set_returnValue(tilingInfo->returnValue);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);
