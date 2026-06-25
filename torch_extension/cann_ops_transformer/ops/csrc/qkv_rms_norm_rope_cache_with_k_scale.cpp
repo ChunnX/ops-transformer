@@ -33,11 +33,9 @@ struct QkvKScaleParams {
     bool is_tnd;
 };
 
-QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &cu_seq_len,
-                               const at::Tensor &actual_seq_lens, at::IntArrayRef head_nums,
-                               c10::string_view input_layout,
-                               const c10::optional<at::Tensor> &q_rotation,
-                               const c10::optional<at::Tensor> &k_rotation,
+QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &cu_seq_len, const at::Tensor &actual_seq_lens,
+                               at::IntArrayRef head_nums, c10::string_view input_layout,
+                               const c10::optional<at::Tensor> &q_rotation, const c10::optional<at::Tensor> &k_rotation,
                                const c10::optional<at::Tensor> &v_scale)
 {
     TORCH_CHECK(head_nums.size() == HEAD_NUMS_SIZE,
@@ -47,11 +45,11 @@ QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &cu_seq_l
     const int64_t n_v = head_nums[2];
     TORCH_CHECK(n_q > 0 && n_k > 0 && n_v > 0,
                 "qkv_rms_norm_rope_cache_with_k_scale: all head_nums values must be positive.");
-    TORCH_CHECK(n_v == n_k, "qkv_rms_norm_rope_cache_with_k_scale: Nv must equal Nk, but got Nv=", n_v,
-                ", Nk=", n_k, ".");
+    TORCH_CHECK(n_v == n_k, "qkv_rms_norm_rope_cache_with_k_scale: Nv must equal Nk, but got Nv=", n_v, ", Nk=", n_k,
+                ".");
 
-    TORCH_CHECK(qkv.dim() == DIM_THREE, "qkv_rms_norm_rope_cache_with_k_scale: qkv must be 3D, but got ",
-                qkv.dim(), "D.");
+    TORCH_CHECK(qkv.dim() == DIM_THREE, "qkv_rms_norm_rope_cache_with_k_scale: qkv must be 3D, but got ", qkv.dim(),
+                "D.");
     const std::string input_layout_str(input_layout);
     const bool is_tnd = input_layout_str == INPUT_LAYOUT_TND;
     const bool is_ntd = input_layout_str == INPUT_LAYOUT_NTD;
@@ -81,12 +79,12 @@ QkvKScaleParams ValidateInputs(const at::Tensor &qkv, const at::Tensor &cu_seq_l
 
 std::tuple<at::Tensor, at::Tensor> MakeOutputs(const at::Tensor &qkv, const QkvKScaleParams &params)
 {
-    c10::SmallVector<int64_t, DIM_THREE> q_out_shape = params.is_tnd ?
-        c10::SmallVector<int64_t, DIM_THREE>{params.token_num, params.n_q, params.head_size} :
-        c10::SmallVector<int64_t, DIM_THREE>{params.n_q, params.token_num, params.head_size};
-    c10::SmallVector<int64_t, DIM_2> q_scale_shape = params.is_tnd ?
-        c10::SmallVector<int64_t, DIM_2>{params.token_num, params.n_q} :
-        c10::SmallVector<int64_t, DIM_2>{params.n_q, params.token_num};
+    c10::SmallVector<int64_t, DIM_THREE> q_out_shape =
+        params.is_tnd ? c10::SmallVector<int64_t, DIM_THREE>{params.token_num, params.n_q, params.head_size} :
+                        c10::SmallVector<int64_t, DIM_THREE>{params.n_q, params.token_num, params.head_size};
+    c10::SmallVector<int64_t, DIM_2> q_scale_shape =
+        params.is_tnd ? c10::SmallVector<int64_t, DIM_2>{params.token_num, params.n_q} :
+                        c10::SmallVector<int64_t, DIM_2>{params.n_q, params.token_num};
 
     at::Tensor q_out;
     at::Tensor q_scale;
@@ -102,54 +100,48 @@ std::tuple<at::Tensor, at::Tensor> MakeOutputs(const at::Tensor &qkv, const QkvK
 void RunQkvKScaleAclnn(const at::Tensor &qkv, const at::Tensor &q_gamma, const at::Tensor &k_gamma,
                        const at::Tensor &cos_sin, const at::Tensor &slot_mapping, const at::Tensor &k_cache,
                        const at::Tensor &v_cache, const at::Tensor &k_scale_cache, const at::Tensor &cu_seq_len,
-                       const at::Tensor &actual_seq_lens, at::IntArrayRef head_nums,
-                       c10::string_view input_layout, const at::Tensor &q_rotation,
-                       const at::Tensor &k_rotation, const at::Tensor &v_scale, double epsilon,
-                       at::Tensor &q_out, at::Tensor &q_scale)
+                       const at::Tensor &actual_seq_lens, at::IntArrayRef head_nums, c10::string_view input_layout,
+                       const at::Tensor &q_rotation, const at::Tensor &k_rotation, const at::Tensor &v_scale,
+                       double epsilon, at::Tensor &q_out, at::Tensor &q_scale)
 {
     const std::string input_layout_str(input_layout);
     char *input_layout_ptr = const_cast<char *>(input_layout_str.c_str());
     float epsilon_value = static_cast<float>(epsilon);
 
-    ACLNN_CMD(aclnnQkvRmsNormRopeCacheWithKScale,
-              qkv, q_gamma, k_gamma, cos_sin, slot_mapping,
-              k_cache, v_cache, k_scale_cache, cu_seq_len, actual_seq_lens,
-              q_rotation, k_rotation, v_scale,
-              head_nums, input_layout_ptr, epsilon_value,
-              q_out, q_scale);
+    ACLNN_CMD(aclnnQkvRmsNormRopeCacheWithKScale, qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache,
+              k_scale_cache, cu_seq_len, actual_seq_lens, q_rotation, k_rotation, v_scale, head_nums, input_layout_ptr,
+              epsilon_value, q_out, q_scale);
 }
 } // namespace
 
 std::tuple<at::Tensor, at::Tensor> qkv_rms_norm_rope_cache_with_k_scale(
     const at::Tensor &qkv, const at::Tensor &q_gamma, const at::Tensor &k_gamma, const at::Tensor &cos_sin,
     const at::Tensor &slot_mapping, const at::Tensor &k_cache, const at::Tensor &v_cache,
-    const at::Tensor &k_scale_cache,
-    const at::Tensor &cu_seq_len, const at::Tensor &actual_seq_lens, at::IntArrayRef head_nums,
-    c10::string_view input_layout, const c10::optional<at::Tensor> &q_rotation,
+    const at::Tensor &k_scale_cache, const at::Tensor &cu_seq_len, const at::Tensor &actual_seq_lens,
+    at::IntArrayRef head_nums, c10::string_view input_layout, const c10::optional<at::Tensor> &q_rotation,
     const c10::optional<at::Tensor> &k_rotation, const c10::optional<at::Tensor> &v_scale, double epsilon)
 {
-    const QkvKScaleParams params = ValidateInputs(qkv, cu_seq_len, actual_seq_lens, head_nums, input_layout,
-                                                  q_rotation, k_rotation, v_scale);
+    const QkvKScaleParams params =
+        ValidateInputs(qkv, cu_seq_len, actual_seq_lens, head_nums, input_layout, q_rotation, k_rotation, v_scale);
     auto outputs = MakeOutputs(qkv, params);
     at::Tensor q_out = std::get<0>(outputs);
     at::Tensor q_scale = std::get<1>(outputs);
 
     RunQkvKScaleAclnn(qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache, cu_seq_len,
-                      actual_seq_lens, head_nums, input_layout, q_rotation.value(), k_rotation.value(),
-                      v_scale.value(), epsilon, q_out, q_scale);
+                      actual_seq_lens, head_nums, input_layout, q_rotation.value(), k_rotation.value(), v_scale.value(),
+                      epsilon, q_out, q_scale);
     return {q_out, q_scale};
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
-qkv_rms_norm_rope_cache_with_k_scale_functional(
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> qkv_rms_norm_rope_cache_with_k_scale_functional(
     const at::Tensor &qkv, const at::Tensor &q_gamma, const at::Tensor &k_gamma, const at::Tensor &cos_sin,
     const at::Tensor &slot_mapping, const at::Tensor &k_cache, const at::Tensor &v_cache,
     const at::Tensor &k_scale_cache, const at::Tensor &cu_seq_len, const at::Tensor &actual_seq_lens,
     at::IntArrayRef head_nums, c10::string_view input_layout, const c10::optional<at::Tensor> &q_rotation,
     const c10::optional<at::Tensor> &k_rotation, const c10::optional<at::Tensor> &v_scale, double epsilon)
 {
-    const QkvKScaleParams params = ValidateInputs(qkv, cu_seq_len, actual_seq_lens, head_nums, input_layout,
-                                                  q_rotation, k_rotation, v_scale);
+    const QkvKScaleParams params =
+        ValidateInputs(qkv, cu_seq_len, actual_seq_lens, head_nums, input_layout, q_rotation, k_rotation, v_scale);
 
     at::Tensor k_cache_clone = k_cache.clone();
     at::Tensor v_cache_clone = v_cache.clone();

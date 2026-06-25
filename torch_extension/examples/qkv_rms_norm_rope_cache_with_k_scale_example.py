@@ -10,7 +10,7 @@
 # -----------------------------------------------------------------------------------------------------------
 """Run and compare cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale.
 
-The default run covers 60 inplace cases across NTD/TND layouts, Nq/Nk/Nv
+The default run covers generated inplace cases across NTD/TND layouts, Nq/Nk/Nv
 combinations, multi-batch prefix sums, non-contiguous slots, actual_seq_lens
 history offsets, T axes greater than 5k, and strided cache views. Each case runs
 the torch NPU interface and prints match rates against a CPU golden
@@ -118,6 +118,16 @@ def build_cases() -> Tuple[Case, ...]:
         ("large_mb17_79_3_dpad", (17, 79, 3), (17, 79, 3), "random", 32),
         ("large_offset_multi_dpad", (33, 17, 49), (4129, 17, 8241), "random", 32),
     )
+    n64_specs = (
+        ("decode1", (1,), (1,), "linear", 8, "contiguous", 0),
+        ("prefill19", (19,), (19,), "reverse", 8, "contiguous", 0),
+        ("prefill73", (73,), (73,), "random", 8, "contiguous", 0),
+        ("mb5_11_23", (5, 11, 23), (5, 11, 23), "stride3", 8, "contiguous", 0),
+        ("offset_b0", (17, 1), (8209, 1), "stride3", 8, "contiguous", 0),
+        ("offset_b1", (1, 29), (1, 8221), "reverse", 8, "contiguous", 0),
+        ("offset_multi", (7, 13, 5), (4103, 13, 8197), "random", 8, "contiguous", 0),
+        ("long5819_dpad", (5819,), (5819,), "random", 512, "d_pad", 8),
+    )
 
     cases: List[Case] = []
     seed = 20260623
@@ -161,6 +171,25 @@ def build_cases() -> Tuple[Case, ...]:
                     )
                 )
                 seed += 1
+    for suffix, seq_lens, actual_lens, slot_pattern, block_num, cache_stride, cache_pad in n64_specs:
+        for layout in ("NTD", "TND"):
+            cases.append(
+                Case(
+                    name=f"n64_kv8_{suffix}_{layout.lower()}",
+                    batch_seq_lens=seq_lens,
+                    actual_seq_lens=actual_lens,
+                    n_q=64,
+                    n_k=8,
+                    n_v=8,
+                    input_layout=layout,
+                    slot_pattern=slot_pattern,
+                    seed=seed,
+                    block_num=block_num,
+                    cache_stride=cache_stride,
+                    cache_pad=cache_pad,
+                )
+            )
+            seed += 1
     return tuple(cases)
 
 
@@ -591,7 +620,8 @@ def run_case(case: Case, args) -> float:
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--case", action="append", help="case name to run; may be repeated; default: all 60 cases")
+    parser.add_argument("--case", action="append",
+                        help=f"case name to run; may be repeated; default: all {len(CASES)} cases")
     parser.add_argument("--list-cases", action="store_true")
     parser.add_argument("--device", default="npu")
     parser.add_argument("--min-match-rate", type=float, default=0.99)
