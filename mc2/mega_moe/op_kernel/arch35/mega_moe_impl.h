@@ -148,7 +148,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
     using LayoutB = Std::conditional_t<
         IsWeightNZ,
-        Te::ZNLayoutPtn,
+        Std::conditional_t<transB, Te::ZNLayoutPtn, Te::NZLayoutPtn>,
         Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>>;
     using LayoutBias = Te::NDExtLayoutPtn;
     using LayoutC = Te::NDExtLayoutPtn;
@@ -328,7 +328,7 @@ __aicore__ inline void GroupMatmul2(
     using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
     using LayoutB = Std::conditional_t<
         IsWeightNZ,
-        Te::ZNLayoutPtn,
+        Std::conditional_t<transB, Te::ZNLayoutPtn, Te::NZLayoutPtn>,
         Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>>;
     using LayoutBias = Te::NDExtLayoutPtn;
     using LayoutC = Te::NDExtLayoutPtn;
