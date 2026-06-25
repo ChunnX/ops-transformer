@@ -188,6 +188,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
     constInfo.topk = tilingData->topk;
     constInfo.cmpRatio = tilingData->cmpRatio;
     constInfo.batchSupperFlag = tilingData->batchSupperFlag;
+    constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.outputLayout = LAYOUT_T;  // 输出和输入形状一致
     if (LAYOUT_T == LI_V2_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
