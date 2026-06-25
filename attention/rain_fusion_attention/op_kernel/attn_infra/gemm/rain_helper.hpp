@@ -12,8 +12,11 @@
 #define RAIN_HELPER_HPP
 
 #include "../../attn_infra/rain_base_defs.hpp"
+#include "../../attn_infra/arch/rain_arch.hpp"
 #include "../../attn_infra/layout/rain_layout.hpp"
 #include "../../attn_infra/gemm/rain_gemm_type.hpp"
+
+#include <type_traits>
 
 namespace NpuArch::Gemm::helper 
 {
@@ -186,7 +189,7 @@ struct ElementAccumulatorSelector<int32_t, int32_t> {
     using ElementAccumulator = int32_t;
 };
 
-template<class GmAType, class GmBType>
+template<class ArchTag, class GmAType, class GmBType>
 struct L1AndL0TypeSelectorGemm{
     static_assert(DEPENDENT_FALSE<GmAType>,
         "Unsupported layout selector, can not find the specialization.");
@@ -194,59 +197,63 @@ struct L1AndL0TypeSelectorGemm{
         "Unsupported layout selector, can not find the specialization.");
 };
 
-template<class Element>
-struct L1AndL0TypeSelectorGemm<Gemm::GemmType<Element, layout::RowMajor>, Gemm::GemmType<Element, layout::RowMajor>>{
+// Ascend950 generation targets zN for L0A, while AtlasA2 targets zZ.
+template<class ArchTag>
+using L0ALayoutGemm = std::conditional_t<std::is_same_v<ArchTag, Arch::Ascend950>, layout::zN, layout::zZ>;
+
+template<class ArchTag, class Element>
+struct L1AndL0TypeSelectorGemm<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::GemmType<Element, layout::RowMajor>>{
     using L1AType = Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>;
     using L1BType = Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::B1>;
-    using L0AType = Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::A2>;
+    using L0AType = Gemm::GemmType<Element, L0ALayoutGemm<ArchTag>, AscendC::TPosition::A2>;
     using L0BType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::B2>;
 };
 
-template<>
-struct L1AndL0TypeSelectorGemm<Gemm::GemmType<int8_t, layout::RowMajor>, Gemm::GemmType<int8_t, layout::RowMajor>>{
+template<class ArchTag>
+struct L1AndL0TypeSelectorGemm<ArchTag, Gemm::GemmType<int8_t, layout::RowMajor>, Gemm::GemmType<int8_t, layout::RowMajor>>{
     using L1AType = Gemm::GemmType<int8_t, layout::zN, AscendC::TPosition::A1>;
     using L1BType = Gemm::GemmType<int8_t, layout::zN, AscendC::TPosition::B1>;
-    using L0AType = Gemm::GemmType<int8_t, layout::zZ, AscendC::TPosition::A2>;
+    using L0AType = Gemm::GemmType<int8_t, L0ALayoutGemm<ArchTag>, AscendC::TPosition::A2>;
     using L0BType = Gemm::GemmType<int8_t, layout::nZ, AscendC::TPosition::B2>;
 };
 
-template<class Element>
-struct L1AndL0TypeSelectorGemm<Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::GemmType<Element, layout::ColumnMajor>>{
+template<class ArchTag, class Element>
+struct L1AndL0TypeSelectorGemm<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::GemmType<Element, layout::ColumnMajor>>{
     using L1AType = Gemm::GemmType<Element, layout::nN, AscendC::TPosition::A1>;
     using L1BType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::B1>;
-    using L0AType = Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::A2>;
+    using L0AType = Gemm::GemmType<Element, L0ALayoutGemm<ArchTag>, AscendC::TPosition::A2>;
     using L0BType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::B2>;
 };
 
-template<>
-struct L1AndL0TypeSelectorGemm<Gemm::GemmType<int8_t, layout::ColumnMajor>, Gemm::GemmType<int8_t, layout::ColumnMajor>>{
+template<class ArchTag>
+struct L1AndL0TypeSelectorGemm<ArchTag, Gemm::GemmType<int8_t, layout::ColumnMajor>, Gemm::GemmType<int8_t, layout::ColumnMajor>>{
     using L1AType = Gemm::GemmType<int8_t, layout::nZ, AscendC::TPosition::A1>;
     using L1BType = Gemm::GemmType<int8_t, layout::nZ, AscendC::TPosition::B1>;
-    using L0AType = Gemm::GemmType<int8_t, layout::zZ, AscendC::TPosition::A2>;
+    using L0AType = Gemm::GemmType<int8_t, L0ALayoutGemm<ArchTag>, AscendC::TPosition::A2>;
     using L0BType = Gemm::GemmType<int8_t, layout::nZ, AscendC::TPosition::B2>;
 };
 
-template<class Element>
-struct L1AndL0TypeSelectorGemm<Gemm::GemmType<Element, layout::RowMajor>, Gemm::GemmType<Element, layout::ColumnMajor>>{
+template<class ArchTag, class Element>
+struct L1AndL0TypeSelectorGemm<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::GemmType<Element, layout::ColumnMajor>>{
     using L1AType = Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>;
     using L1BType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::B1>;
-    using L0AType = Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::A2>;
+    using L0AType = Gemm::GemmType<Element, L0ALayoutGemm<ArchTag>, AscendC::TPosition::A2>;
     using L0BType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::B2>;
 };
 
-template<class Element>
-struct L1AndL0TypeSelectorGemm<Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::GemmType<Element, layout::RowMajor>>{
+template<class ArchTag, class Element>
+struct L1AndL0TypeSelectorGemm<ArchTag, Gemm::GemmType<Element, layout::ColumnMajor>, Gemm::GemmType<Element, layout::RowMajor>>{
     using L1AType = Gemm::GemmType<Element, layout::nN, AscendC::TPosition::A1>;
     using L1BType = Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::B1>;
-    using L0AType = Gemm::GemmType<Element, layout::zZ, AscendC::TPosition::A2>;
+    using L0AType = Gemm::GemmType<Element, L0ALayoutGemm<ArchTag>, AscendC::TPosition::A2>;
     using L0BType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::B2>;
 };
 
-template<>
-struct L1AndL0TypeSelectorGemm<Gemm::GemmType<int8_t, layout::ColumnMajor>, Gemm::GemmType<int8_t, layout::RowMajor>>{
+template<class ArchTag>
+struct L1AndL0TypeSelectorGemm<ArchTag, Gemm::GemmType<int8_t, layout::ColumnMajor>, Gemm::GemmType<int8_t, layout::RowMajor>>{
     using L1AType = Gemm::GemmType<int8_t, layout::nZ, AscendC::TPosition::A1>;
     using L1BType = Gemm::GemmType<int8_t, layout::zN, AscendC::TPosition::B1>;
-    using L0AType = Gemm::GemmType<int8_t, layout::zZ, AscendC::TPosition::A2>;
+    using L0AType = Gemm::GemmType<int8_t, L0ALayoutGemm<ArchTag>, AscendC::TPosition::A2>;
     using L0BType = Gemm::GemmType<int8_t, layout::nZ, AscendC::TPosition::B2>;
 };
 ///////////////////////////////////////

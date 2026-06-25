@@ -26,6 +26,16 @@ struct AtlasA2 {
     static constexpr uint32_t L0C_SIZE = 128U * 1024U;
 };
 
+struct Ascend950 {
+    static constexpr uint32_t BIAS_SIZE = 4U * 1024U;
+    static constexpr uint32_t FIXBUF_SIZE = 16U * 1024U;
+    static constexpr uint32_t UB_SIZE = 248U * 1024U;
+    static constexpr uint32_t L1_SIZE = 512U * 1024U;
+    static constexpr uint32_t L0A_SIZE = 64U * 1024U;
+    static constexpr uint32_t L0B_SIZE = 64U * 1024U;
+    static constexpr uint32_t L0C_SIZE = 256U * 1024U;
+};
+
 struct PositionGM {
     static constexpr AscendC::TPosition POSITION = AscendC::TPosition::GM;
 };

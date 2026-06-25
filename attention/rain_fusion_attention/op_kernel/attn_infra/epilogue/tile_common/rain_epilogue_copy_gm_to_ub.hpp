@@ -85,6 +85,64 @@ struct CopyGm2Ub<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout>> {
     };
 };
 
+template <typename Element>
+struct CopyGm2Ub<Arch::Ascend950, Gemm::GemmType<Element, layout::RowMajor>> {
+    using LayoutSrc = layout::RowMajor;
+    using LayoutDst = layout::RowMajor;
+
+    static constexpr uint32_t ELE_NUM_PER_BLK = static_cast<uint32_t>(BYTE_PER_BLK) / static_cast<uint32_t>(sizeof(Element));
+
+    __aicore__ inline
+    CopyGm2Ub() = default;
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        layout::RowMajor const &layoutDst,
+        layout::RowMajor const &layoutSrc)
+    {
+        AscendC::DataCopyExtParams dataCopyParams(
+            layoutSrc.shape(0),
+            layoutSrc.shape(1) * sizeof(Element),
+            (layoutSrc.stride(0) - layoutSrc.shape(1)) * sizeof(Element),
+            (layoutDst.stride(0) - layoutDst.shape(1)) / ELE_NUM_PER_BLK,
+            0
+        );
+        AscendC::DataCopyPadExtParams<Element> padParams(false, 0, 0, 0);
+        AscendC::DataCopyPad(dstTensor, srcTensor, dataCopyParams, padParams);
+    };
+};
+
+template <typename Element>
+struct CopyGm2Ub<Arch::Ascend950, Gemm::GemmType<Element, layout::VectorLayout>> {
+    using LayoutSrc = layout::VectorLayout;
+    using LayoutDst = layout::VectorLayout;
+
+    static constexpr uint32_t ELE_NUM_PER_BLK = static_cast<uint32_t>(BYTE_PER_BLK) / static_cast<uint32_t>(sizeof(Element));
+
+    __aicore__ inline
+    CopyGm2Ub() = default;
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        layout::VectorLayout const &layoutDst,
+        layout::VectorLayout const &layoutSrc)
+    {
+        AscendC::DataCopyExtParams dataCopyParams(
+            1,
+            layoutSrc.shape(0) * sizeof(Element),
+            0,
+            0,
+            0
+        );
+        AscendC::DataCopyPadExtParams<Element> padParams(false, 0, 0, 0);
+        AscendC::DataCopyPad(dstTensor, srcTensor, dataCopyParams, padParams);
+    };
+};
+
 /// @brief This copy instruction used to copy per token scale from GM to UB.
 /// Copy the scale of shape (m,1) on GM to the first column of shape (m,n) on UB,
 /// and pad the first block of each row (i.e. pad to shape (m,8) when element type is float).
@@ -140,6 +198,51 @@ struct CopyGm2UbAligned {
 
 template <typename Element>
 struct CopyGm2UbAligned<Arch::AtlasA2, Gemm::GemmType<Element, layout::RowMajor>> {
+    using LayoutSrc = layout::RowMajor;
+    using LayoutDst = layout::RowMajor;
+
+    static constexpr uint32_t ELE_NUM_PER_BLK = static_cast<uint32_t>(BYTE_PER_BLK) / static_cast<uint32_t>(sizeof(Element));
+    static constexpr uint32_t BLOCK_LEN_LIMIT = 65536;
+    static constexpr uint32_t MAX_REPEAT = 4095;
+    static constexpr uint32_t STRIDE_LIMIT = 65536;
+
+    __aicore__ inline
+    CopyGm2UbAligned() = default;
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        layout::RowMajor const &layoutDst,
+        layout::RowMajor const &layoutSrc)
+    {
+        uint32_t rows = layoutSrc.shape(0);
+        uint32_t cols = layoutSrc.shape(1);
+        uint32_t srcStride = (layoutSrc.stride(0) - layoutSrc.shape(1)) / ELE_NUM_PER_BLK;
+        uint32_t dstStride = (layoutDst.stride(0) - layoutDst.shape(1)) / ELE_NUM_PER_BLK;
+
+        if ((layoutSrc.shape(1) == layoutSrc.stride(0)) && (layoutDst.shape(1) == layoutDst.stride(0))) {
+            DataCopy(dstTensor, srcTensor, rows * cols);
+        } else if (srcStride < STRIDE_LIMIT && dstStride < STRIDE_LIMIT && (cols / ELE_NUM_PER_BLK) < BLOCK_LEN_LIMIT) {
+            uint32_t rLoops = CeilDiv(rows, MAX_REPEAT);
+            for (uint32_t i = 0; i < rLoops; ++i) {
+                uint32_t rActual = (i < rLoops - 1) ? MAX_REPEAT : rows - i * MAX_REPEAT;
+                AscendC::DataCopyParams dataCopyParams(
+                    rActual, cols / ELE_NUM_PER_BLK, srcStride, dstStride
+                );
+                DataCopy(dstTensor[i * MAX_REPEAT * layoutDst.stride(0)],
+                         srcTensor[i * MAX_REPEAT * layoutSrc.stride(0)], dataCopyParams);
+            }
+        } else {
+            for (uint32_t i = 0; i < rows; ++i) {
+                DataCopy(dstTensor[i * layoutDst.stride(0)], srcTensor[i * layoutSrc.stride(0)], cols);
+            }
+        }
+    };
+};
+
+template <typename Element>
+struct CopyGm2UbAligned<Arch::Ascend950, Gemm::GemmType<Element, layout::RowMajor>> {
     using LayoutSrc = layout::RowMajor;
     using LayoutDst = layout::RowMajor;
 

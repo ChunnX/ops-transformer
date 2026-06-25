@@ -14,6 +14,8 @@
 #include "../../../attn_infra/rain_base_defs.hpp"
 #include "../../../attn_infra/arch/rain_arch.hpp"
 #include "../../../attn_infra/gemm/rain_gemm_type.hpp"
+
+#include <type_traits>
 namespace NpuArch::Gemm::Tile {
 
 enum class ScaleGranularity {
@@ -91,6 +93,46 @@ struct CopyL0CToGmQuantMode<
     ScaleGranularity::PER_CHANNEL
 > {
     static constexpr auto VALUE = QuantMode_t::VDEQF16;
+};
+
+// CopyL0CToGm cast fp32 to fp16 (Ascend950)
+template <>
+struct CopyL0CToGmQuantMode<
+    NpuArch::Arch::Ascend950,
+    float, half,
+    ScaleGranularity::NO_QUANT
+> {
+    static constexpr auto VALUE = QuantMode_t::F322F16;
+};
+
+// CopyL0CToGm cast fp32 to bf16 (Ascend950)
+template <>
+struct CopyL0CToGmQuantMode<
+    NpuArch::Arch::Ascend950,
+    float, bfloat16_t,
+    ScaleGranularity::NO_QUANT
+> {
+    static constexpr auto VALUE = QuantMode_t::F322BF16;
+};
+
+// CopyL0CToGm output fp32 (Ascend950)
+template <>
+struct CopyL0CToGmQuantMode<
+    NpuArch::Arch::Ascend950,
+    float, float,
+    ScaleGranularity::NO_QUANT
+> {
+    static constexpr auto VALUE = QuantMode_t::NoQuant;
+};
+
+// CopyL0CToGm output int32 (Ascend950)
+template <>
+struct CopyL0CToGmQuantMode<
+    NpuArch::Arch::Ascend950,
+    int32_t, int32_t,
+    ScaleGranularity::NO_QUANT
+> {
+    static constexpr auto VALUE = QuantMode_t::NoQuant;
 };
 
 template <
@@ -185,6 +227,96 @@ struct CopyL0CToGm<NpuArch::Arch::AtlasA2,
 
         // Call AscendC Fixpipe
         AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_NZ>(dst, src, intriParams);
+    }
+};
+
+////////////////////////////////////CopyL0CToGm(Ascend950)////////////////////////////////////////////////
+template <
+    class ElementAccumulator_,
+    class ElementDst_,
+    bool ReluEnable_
+>
+struct CopyL0CToGm<NpuArch::Arch::Ascend950,
+                   ElementAccumulator_,
+                   Gemm::GemmType<ElementDst_, layout::RowMajor>,
+                   ScaleGranularity::NO_QUANT,
+                   ReluEnable_>
+{
+    using ArchTag = NpuArch::Arch::Ascend950;
+    using ElementDst = ElementDst_;
+    using ElementSrc = ElementAccumulator_;
+    using LayoutSrc = NpuArch::layout::zN;
+    using LayoutDst = NpuArch::layout::RowMajor;
+    static constexpr auto quantPre = CopyL0CToGmQuantMode<ArchTag, ElementSrc, ElementDst,
+        ScaleGranularity::NO_QUANT>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    __aicore__ inline
+    void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
+        LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
+    {
+        AscendC::DataCopyCO12DstParams intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = dstLayout.shape(1);
+        intriParams.mSize = dstLayout.shape(0);
+        intriParams.srcStride = srcLayout.stride(3) / srcLayout.stride(0);
+        intriParams.dstStride = dstLayout.stride(0);
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.nz2ndEn = true;
+        intriParams.reluPre = reluEn;
+        intriParams.unitFlag = unitFlag;
+
+        AscendC::SetFixpipeNz2ndFlag(1, 1, 1);
+        AscendC::DataCopy(dst, src, intriParams);
+    }
+};
+
+template <
+    class ElementAccumulator_,
+    class ElementDst_,
+    bool ReluEnable_
+>
+struct CopyL0CToGm<NpuArch::Arch::Ascend950,
+                   ElementAccumulator_,
+                   Gemm::GemmType<ElementDst_, layout::zN>,
+                   ScaleGranularity::NO_QUANT,
+                   ReluEnable_>
+{
+    using ArchTag = NpuArch::Arch::Ascend950;
+    using ElementDst = ElementDst_;
+    using ElementSrc = ElementAccumulator_;
+    using LayoutSrc = NpuArch::layout::zN;
+    using LayoutDst = NpuArch::layout::zN;
+    static constexpr auto quantPre = CopyL0CToGmQuantMode<ArchTag, ElementSrc, ElementDst,
+        ScaleGranularity::NO_QUANT>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    __aicore__ inline
+    void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
+        LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
+    {
+        AscendC::DataCopyCO12DstParams intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = dstLayout.shape(2) * dstLayout.shape(3);
+        intriParams.mSize = dstLayout.shape(0) * dstLayout.shape(1);
+        intriParams.srcStride = srcLayout.stride(3) / srcLayout.shape(2);
+        intriParams.dstStride = dstLayout.stride(3) / (BYTE_PER_C0 / sizeof(ElementDst));
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.nz2ndEn = false;
+        intriParams.reluPre = reluEn;
+        intriParams.unitFlag = unitFlag;
+
+        if constexpr (std::is_same_v<ElementSrc, float> && std::is_same_v<ElementDst, float>) {
+            intriParams.channelSplit = true;
+        }
+
+        AscendC::DataCopy(dst, src, intriParams);
     }
 };
 

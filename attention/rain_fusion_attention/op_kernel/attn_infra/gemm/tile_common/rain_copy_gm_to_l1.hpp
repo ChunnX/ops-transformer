@@ -176,6 +176,130 @@ struct CopyGmToL1IntervalDataCopy<Arch::AtlasA2, Gemm::GemmType<half, layout::Pa
     }
 };
 
+///////////////// CopyGmToL1IntervalDataCopy Ascend950 /////////////////
+
+/// Partial specialization for Ascend950, half, RowMajor in and zN out.
+template<>
+struct CopyGmToL1IntervalDataCopy<Arch::Ascend950, Gemm::GemmType<half, layout::RowMajor>> {
+    using LayoutDst = layout::zN;
+    using LayoutSrc = layout::RowMajor;
+    using Element = half;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+
+    __aicore__ inline
+    CopyGmToL1IntervalDataCopy() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        for (int i = 0; i < layoutSrc.shape(0); ++i) {
+            AscendC::DataCopyParams dataCopyParams(
+                CeilDiv(layoutSrc.shape(1), layoutDst.shape(2)),
+                layoutDst.shape(2) / ELE_NUM_PER_C0,
+                0,
+                (layoutDst.stride(3) - layoutDst.shape(2)) / ELE_NUM_PER_C0
+            );
+            AscendC::DataCopy(dstTensor[i * layoutDst.shape(2)], srcTensor[i * layoutSrc.stride(0)], dataCopyParams);
+        }
+    }
+};
+
+/// Partial specialization for Ascend950, half, PaddingRowMajor in and zN out.
+template<>
+struct CopyGmToL1IntervalDataCopy<Arch::Ascend950, Gemm::GemmType<half, layout::PaddingRowMajor>> {
+    using LayoutDst = layout::zN;
+    using LayoutSrc = layout::PaddingRowMajor;
+    using Element = half;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+
+    __aicore__ inline
+    CopyGmToL1IntervalDataCopy() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        for (int i = 0; i < layoutSrc.orgShape(0); ++i) {
+            AscendC::DataCopyParams dataCopyParams(
+                CeilDiv(layoutSrc.orgShape(1), layoutDst.shape(2)),
+                layoutDst.shape(2) / ELE_NUM_PER_C0,
+                0,
+                (layoutDst.stride(3) - layoutDst.shape(2)) / ELE_NUM_PER_C0
+            );
+            AscendC::DataCopy(dstTensor[i * layoutDst.shape(2)], srcTensor[i * layoutSrc.stride(0)], dataCopyParams);
+        }
+    }
+};
+
+/// Partial specialization for Ascend950, half, ColumnMajor in and nZ out.
+template<>
+struct CopyGmToL1IntervalDataCopy<Arch::Ascend950, Gemm::GemmType<half, layout::ColumnMajor>> {
+    using LayoutDst = layout::nZ;
+    using LayoutSrc = layout::ColumnMajor;
+    using Element = half;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+
+    __aicore__ inline
+    CopyGmToL1IntervalDataCopy() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        for (int i = 0; i < layoutSrc.shape(1); ++i) {
+            AscendC::DataCopyParams dataCopyParams(
+                CeilDiv(layoutSrc.shape(0), layoutDst.shape(0)),
+                layoutDst.shape(0) / ELE_NUM_PER_C0,
+                0,
+                (layoutDst.stride(1) - layoutDst.shape(0)) / ELE_NUM_PER_C0
+            );
+            AscendC::DataCopy(dstTensor[i * layoutDst.shape(0)], srcTensor[i * layoutSrc.stride(1)], dataCopyParams);
+        }
+    }
+};
+
+/// Partial specialization for Ascend950, half, PaddingColumnMajor in and nZ out.
+template<>
+struct CopyGmToL1IntervalDataCopy<Arch::Ascend950, Gemm::GemmType<half, layout::PaddingColumnMajor>> {
+    using LayoutDst = layout::nZ;
+    using LayoutSrc = layout::PaddingColumnMajor;
+    using Element = half;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+
+    __aicore__ inline
+    CopyGmToL1IntervalDataCopy() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        for (int i = 0; i < layoutSrc.orgShape(1); ++i) {
+            AscendC::DataCopyParams dataCopyParams(
+                CeilDiv(layoutSrc.orgShape(0), layoutDst.shape(0)),
+                layoutDst.shape(0) / ELE_NUM_PER_C0,
+                0,
+                (layoutDst.stride(1) - layoutDst.shape(0)) / ELE_NUM_PER_C0
+            );
+            AscendC::DataCopy(dstTensor[i * layoutDst.shape(0)], srcTensor[i * layoutSrc.stride(2)], dataCopyParams);
+        }
+    }
+};
+
+///////////////// CopyGmToL1IntervalDataCopy Ascend950 /////////////////
+
 /// new add gemm
 template <class ArchTag, class Element>
 struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::RowMajor>, Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>> {
@@ -1061,6 +1185,219 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout, AscendC
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+/// Partial specialization for Ascend950, RowMajor in and zN out.
+template <class Element>
+struct CopyGmToL1<Arch::Ascend950, Gemm::GemmType<Element, layout::RowMajor>> {
+    using LayoutDst = layout::zN;
+    using LayoutSrc = layout::RowMajor;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+
+    // Mehtods
+
+    __aicore__ inline
+    CopyGmToL1() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        AscendC::Nd2NzParams intriParams;
+
+        intriParams.ndNum = 1;
+        intriParams.nValue = layoutSrc.shape(0);
+        intriParams.dValue = layoutSrc.shape(1);
+        intriParams.srcDValue = layoutSrc.stride(0);
+
+        intriParams.dstNzC0Stride = layoutDst.stride(3) / ELE_NUM_PER_C0;
+        intriParams.dstNzNStride = layoutDst.stride(0) / ELE_NUM_PER_C0;
+
+        intriParams.srcNdMatrixStride = 0;
+        intriParams.dstNzMatrixStride = 0;
+
+        AscendC::DataCopy(dstTensor, srcTensor, intriParams);
+    }
+
+    // layoutSrc must be the layout of one of the src matrices
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc,
+        uint32_t ndNum, uint32_t srcNdMatrixStride,
+        uint32_t dstNzNStride, uint32_t dstNzMatrixStride,
+        uint32_t dstNzC0Stride)
+    {
+        AscendC::Nd2NzParams intriParams;
+
+        intriParams.ndNum = ndNum;
+        intriParams.nValue = layoutSrc.shape(0);
+        intriParams.dValue = layoutSrc.shape(1);
+        intriParams.srcDValue = layoutSrc.stride(0);
+
+        intriParams.dstNzNStride = dstNzNStride;
+        intriParams.dstNzC0Stride = dstNzC0Stride;
+        intriParams.srcNdMatrixStride = srcNdMatrixStride;
+        intriParams.dstNzMatrixStride = dstNzMatrixStride;
+        AscendC::DataCopy(dstTensor, srcTensor, intriParams);
+    }
+};
+
+
+/// Partial specialization for Ascend950, ColumnMajor in and nZ out.
+template <class Element>
+struct CopyGmToL1<Arch::Ascend950, Gemm::GemmType<Element, layout::ColumnMajor>> {
+    using LayoutDst = layout::nZ;
+    using LayoutSrc = layout::ColumnMajor;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+
+    // Mehtods
+
+    __aicore__ inline
+    CopyGmToL1() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        AscendC::Nd2NzParams intriParams;
+
+        intriParams.ndNum = 1;
+        intriParams.nValue = layoutSrc.shape(1);
+        intriParams.dValue = layoutSrc.shape(0);
+        intriParams.srcDValue = layoutSrc.stride(1);
+
+        intriParams.dstNzC0Stride = layoutDst.stride(1) / ELE_NUM_PER_C0;
+        intriParams.dstNzNStride = layoutDst.stride(2) / ELE_NUM_PER_C0;
+
+        intriParams.srcNdMatrixStride = 0;
+        intriParams.dstNzMatrixStride = 0;
+
+        AscendC::DataCopy(dstTensor, srcTensor, intriParams);
+    }
+};
+
+/// Partial specialization for Ascend950, PaddingRowMajor in and zN out.
+template <class Element>
+struct CopyGmToL1<Arch::Ascend950, Gemm::GemmType<Element, layout::PaddingRowMajor>> {
+    using LayoutDst = layout::zN;
+    using LayoutSrc = layout::PaddingRowMajor;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+
+    // Mehtods
+
+    __aicore__ inline
+    CopyGmToL1() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        AscendC::Nd2NzParams intriParams;
+
+        intriParams.ndNum = 1;
+        intriParams.dValue = layoutSrc.orgShape(1);
+        intriParams.srcNdMatrixStride = 0;
+        intriParams.dstNzC0Stride = layoutDst.stride(3) / ELE_NUM_PER_C0;
+        intriParams.dstNzMatrixStride = 0;
+
+        intriParams.nValue = layoutSrc.orgShape(0);
+        intriParams.srcDValue = layoutSrc.stride(0);
+        intriParams.dstNzNStride = layoutDst.stride(0) / ELE_NUM_PER_C0;
+        AscendC::DataCopy(dstTensor, srcTensor, intriParams);
+    }
+};
+
+/// Partial specialization for Ascend950, PaddingColumnMajor in and nZ out.
+template <class Element>
+struct CopyGmToL1<Arch::Ascend950, Gemm::GemmType<Element, layout::PaddingColumnMajor>> {
+    using LayoutDst = layout::nZ;
+    using LayoutSrc = layout::PaddingColumnMajor;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+
+    // Mehtods
+
+    __aicore__ inline
+    CopyGmToL1() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        AscendC::Nd2NzParams intriParams;
+
+        intriParams.ndNum = 1;
+        intriParams.dValue = layoutSrc.orgShape(0);
+        intriParams.srcNdMatrixStride = 0;
+        intriParams.dstNzC0Stride = layoutDst.stride(1) / ELE_NUM_PER_C0;
+        intriParams.dstNzMatrixStride = 0;
+
+        intriParams.nValue = layoutSrc.orgShape(1);
+        intriParams.srcDValue = layoutSrc.stride(2);
+        intriParams.dstNzNStride = layoutDst.stride(2) / ELE_NUM_PER_C0;
+        AscendC::DataCopy(dstTensor, srcTensor, intriParams);
+    }
+};
+
+/// Partial specialization for Ascend950, RowMajor in and RowMajor out.
+template <class Element>
+struct CopyGmToL1<Arch::Ascend950, Gemm::GemmType<Element, layout::RowMajor>,
+    Gemm::GemmType<Element, layout::RowMajor, AscendC::TPosition::A1>> {
+    using LayoutDst = layout::RowMajor;
+    using LayoutSrc = layout::RowMajor;
+
+    static constexpr uint32_t ELE_NUM_PER_BLK = BYTE_PER_BLK / sizeof(Element);
+    static constexpr uint32_t BLOCK_LEN_LIMIT = 65536;
+    static constexpr uint32_t MAX_REPEAT = 4095;
+
+    // Mehtods
+
+    __aicore__ inline
+    CopyGmToL1() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::GlobalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        uint32_t rows = layoutSrc.shape(0);
+        uint32_t cols = layoutSrc.shape(1);
+        uint32_t srcStride = (layoutSrc.stride(0) - layoutSrc.shape(1)) / ELE_NUM_PER_BLK;
+        uint32_t dstStride = (layoutDst.stride(0) - layoutDst.shape(1)) / ELE_NUM_PER_BLK;
+
+        if ((layoutSrc.shape(1) == layoutSrc.stride(0)) && (layoutDst.shape(1) == layoutDst.stride(0))) {
+            DataCopy(dstTensor, srcTensor, rows * cols);
+        } else if (srcStride < STRIDE_LIMIT && dstStride < STRIDE_LIMIT && (cols / ELE_NUM_PER_BLK) < BLOCK_LEN_LIMIT) {
+            uint32_t rLoops = CeilDiv(rows, MAX_REPEAT);
+            for (uint32_t i = 0; i < rLoops; ++i) {
+                uint32_t rActual = (i < rLoops - 1) ? MAX_REPEAT : rows - i * MAX_REPEAT;
+                AscendC::DataCopyParams dataCopyParams(
+                    rActual, cols / ELE_NUM_PER_BLK, srcStride, dstStride
+                );
+                DataCopy(dstTensor[i * MAX_REPEAT * layoutDst.stride(0)],
+                         srcTensor[i * MAX_REPEAT * layoutSrc.stride(0)], dataCopyParams);
+            }
+        } else {
+            for (uint32_t i = 0; i < rows; ++i) {
+                DataCopy(dstTensor[i * layoutDst.stride(0)], srcTensor[i * layoutSrc.stride(0)], cols);
+            }
+        }
+    }
+};
 
 } // namespace NpuArch::Gemm::Tile
 
