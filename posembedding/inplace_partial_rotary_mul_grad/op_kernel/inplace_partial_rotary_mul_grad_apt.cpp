@@ -46,13 +46,29 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
     (void)dsin;
     (void)workspace;
 
+    AscendC::printf("before GET_CORE_TYPE\n");
+
     if (g_coreType == AIC) {
         return;
     }
 
+    AscendC::printf("after GET_CORE_TYPE\n");
+
+    AscendC::printf("before REGISTER_TILING_DEFAULT\n");
+
     REGISTER_TILING_DEFAULT(InplacePartialRotaryMulGradTilingData);
+
+    AscendC::printf("after REGISTER_TILING_DEFAULT\n");
+
+    AscendC::printf("before GET_TILING_DATA_WITH_STRUCT\n");
     GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, tilingData, tiling);
 
+    AscendC::printf("after GET_TILING_DATA_WITH_STRUCT\n");
+    AscendC::printf("before TILING_KEY_IS\n");
+    if (TILING_KEY_IS(TILING_KEY_BAB)) {
+        AscendC::printf("if TILING_KEY_IS(TILING_KEY_BAB)\n");
+    }
+    AscendC::printf("after TILING_KEY_IS\n");
     AscendC::printf("leave inplace_partial_rotary_mul_grad\n");
     // // No-op: empty slice
     // if (tilingData.sliceLength == 0) {
