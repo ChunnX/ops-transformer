@@ -25,8 +25,8 @@
 #include "moe_distribute_combine_v2_tiling.h"
 #include "moe_distribute_combine_v2_quant.h"
 #include "../../../common/inc/kernel/mc2_moe_context.h"
-#include "../../../moe_distribute_dispatch_v2/ascend910_93/op_kernel/moe_distribute_v2_constant.h"
-#include "../../../moe_distribute_dispatch_v2/ascend910_93/op_kernel/moe_distribute_v2_base.h"
+#include "../../../moe_distribute_dispatch_v2/arch22/op_kernel/moe_distribute_v2_constant.h"
+#include "../../../moe_distribute_dispatch_v2/arch22/op_kernel/moe_distribute_v2_base.h"
 
 namespace MoeDistributeCombineV2Impl {
 using namespace MoeDistributeV2Base;

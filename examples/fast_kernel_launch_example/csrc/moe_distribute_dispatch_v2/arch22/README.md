@@ -23,7 +23,7 @@
 
 该算子支持的平台为ascend910_93，默认构建环境为ascend910b，在ascend910_93 构建环境下构建，请先执行命令：
 ```sh
-export NPU_ARCH=ascend910_93    
+export NPU_SOC_VERSION=ascend910_93    
 ```
 
 ## <<<>>> Kernel直调调用流程
@@ -76,7 +76,7 @@ Python层(MoeDistributeBuffer)
 ### 目录结构
 
 ```
-moe_distribute_dispatch_v2/ascend910_93/
+moe_distribute_dispatch_v2/arch22/
 ├── moe_distribute_dispatch_v2_torch.cpp      # C++ Extension主实现
 ├── moe_distribute_dispatch_v2_torch.h        # Tensor地址获取辅助函数
 ├── moe_distribute_dispatch_v2_torch_validate.cpp  # 输入参数校验
@@ -303,7 +303,7 @@ moe_distribute_dispatch_v2_generic Kernel基于HCCL Window机制实现MoE分发�
 
 ## 构建说明
 
-构建前设置环境变量：export NPU_ARCH=ascend910_93，source cann包环境并激活conda
+构建前设置环境变量：export NPU_SOC_VERSION=ascend910_93，source cann包环境并激活conda
 
 编译方法：进入examples\fast_kernel_launch_example目录，开启命令：python3 -m build --wheel -n
 编译完成后，开启命令

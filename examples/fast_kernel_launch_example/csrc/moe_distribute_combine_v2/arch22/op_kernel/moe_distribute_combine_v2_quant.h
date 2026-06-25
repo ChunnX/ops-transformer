@@ -16,8 +16,8 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_V2_QUANT_H
 #define MOE_DISTRIBUTE_COMBINE_V2_QUANT_H
 
-#include "../../../moe_distribute_dispatch_v2/ascend910_93/op_kernel/moe_distribute_v2_constant.h"
-#include "../../../moe_distribute_dispatch_v2/ascend910_93/op_kernel/moe_distribute_v2_base.h"
+#include "../../../moe_distribute_dispatch_v2/arch22/op_kernel/moe_distribute_v2_constant.h"
+#include "../../../moe_distribute_dispatch_v2/arch22/op_kernel/moe_distribute_v2_base.h"
 
 namespace Mc2Kernel {
 using namespace AscendC;

@@ -24,7 +24,7 @@
 #include "kernel_operator.h"
 #include "moe_distribute_combine_v2_entry.h"
 #include "op_kernel/moe_distribute_combine_v2_tiling.h"
-#include "../../moe_distribute_dispatch_v2/ascend910_93/moe_distribute_dispatch_v2_torch.h"
+#include "../../moe_distribute_dispatch_v2/arch22/moe_distribute_dispatch_v2_torch.h"
 #include "moe_distribute_combine_v2_torch_validate.h"
 #include "../../common/inc/kernel/mc2_profiling.h"
 
