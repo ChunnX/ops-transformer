@@ -40,14 +40,7 @@
 ## 函数原型
 
 ```
-cann_ops_transformer.inplace_partial_rotary_mul(
-    x: torch.Tensor,
-    r1: torch.Tensor,
-    r2: torch.Tensor,
-    *,
-    rotary_mode: str = "interleave",
-    partial_slice: Optional[List[int]] = None
-) -> None
+cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="interleave", partial_slice=None) -> None
 ```
 
 ## 参数说明
@@ -95,7 +88,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(
         <td>r2</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>位置编码张量，对应公式中的sin分量。</td>
+        <td>位置编码张量，对应公式中的sin分量，`r2`和`r1`的数据类型必须一致。</td>
         <td>BFLOAT16、FLOAT16、FLOAT32</td>
         <td>4维，需与x满足广播关系</td>
         <td>×</td>
@@ -121,13 +114,6 @@ cann_ops_transformer.inplace_partial_rotary_mul(
 </tbody>
 </table>
 
-**说明**
-- `r1`的数据类型需与`x`一致，或者为FLOAT32。
-- `r2`的数据类型需与`x`一致，或者为FLOAT32。
-- `r1`和`r2`的数据类型必须一致。
-- `rotary_mode`当前仅支持`"interleave"`，对应底层`rotary_mode=1`；暂不支持`"half"`、`"quarter"`、`"interleave-half"`。
-- `partial_slice`为两个整数组成的列表。不指定时按`[0, 0]`处理；当`start`和`end`相等时不做旋转位置编码。
-
 ## 返回值说明
 
 该接口无返回值。计算结果直接写回输入张量`x`，`x`在计算后shape和数据类型保持不变，`partial_slice`指定范围以外的数据保持原值。
@@ -137,9 +123,7 @@ cann_ops_transformer.inplace_partial_rotary_mul(
 - 该接口支持训练、推理场景下使用。
 - 该接口支持单算子模式和图模式调用。
 - 不支持非连续Tensor。
-- `x`的shape必须为4维BSND格式。
 - `x`最后一维D大小不超过1024，且D必须为2的倍数。
-- 仅支持interleave模式（`rotary_mode`为`"interleave"`）。
 - `partial_slice`必须包含两个整数，满足`start >= 0`、`end >= 0`、`end <= D`、`end - start >= 0`。
 - `partial_slice`切片长度（即`end - start`）必须为2的倍数。当`end`和`start`相等时，不做旋转位置编码，直接返回。
 - `r1`、`r2`最后一维大小必须相同，且必须等于`partial_slice`的切片长度（即`end - start`）。
