@@ -26,15 +26,11 @@ constexpr int64_t GE_DTYPE_FLOAT8_E5M2 = 35;
 constexpr int64_t GE_DTYPE_FLOAT8_E4M3FN = 36;
 constexpr int64_t GE_DTYPE_FLOAT8_E8M0 = 37;
 constexpr int64_t ACL_DTYPE_OFFSET = 256;
-constexpr int64_t DEFAULT_Y_DTYPE = GE_DTYPE_FLOAT8_E4M3FN;
 constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
 constexpr int64_t DIM_3 = 3;
 constexpr int64_t MX_GROUP_SIZE = 64;
-constexpr int64_t MAX_GROUP_NUM = 1024;
-constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
-constexpr float FLOAT_EPS = 1e-6F;
 
 template <typename ShapeT>
 std::string ShapeToString(const ShapeT &shape)
@@ -140,6 +136,20 @@ at::ScalarType GetYScalarType(int64_t yDtype)
     TORCH_CHECK(false, "y_dtype only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got ", yDtype, ".");
 }
 
+int64_t ResolveYGeDtype(const c10::optional<int64_t> &yDtype, aclDataType xAclDtype)
+{
+    if (yDtype.has_value()) {
+        return NormalizeGeDtype(yDtype.value());
+    }
+    if (xAclDtype == ACL_FLOAT8_E4M3FN) {
+        return GE_DTYPE_FLOAT8_E4M3FN;
+    }
+    if (xAclDtype == ACL_FLOAT8_E5M2) {
+        return GE_DTYPE_FLOAT8_E5M2;
+    }
+    TORCH_CHECK(false, "y_dtype is None only supports inferring from FP8 x dtype.");
+}
+
 int64_t CeilDiv(int64_t value, int64_t factor)
 {
     return (value + factor - 1) / factor;
@@ -203,11 +213,6 @@ void CheckTensorList(const std::vector<at::Tensor> &tensorList, const char *name
     TORCH_CHECK(tensorList[0].defined(), name, "[0] must be a defined tensor.");
 }
 
-void CheckBias(const std::vector<at::Tensor> &bias)
-{
-    TORCH_CHECK(bias.empty(), "bias must be an empty tensor list in current MXFP8 mode.");
-}
-
 std::vector<int64_t> GetExpectedWeightStorageShape(const WeightLayout &weightLayout, int64_t e, int64_t k)
 {
     if (weightLayout.transpose) {
@@ -220,9 +225,6 @@ at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const We
     int64_t e, int64_t k, c10::SmallVector<at::Tensor, 1> &weightVec)
 {
     at::Tensor weightForNz = weight[DIM_0];
-    TORCH_CHECK(at_npu::native::get_npu_format(weightForNz) == ACL_FORMAT_FRACTAL_NZ,
-        "weight must be FRACTAL_NZ format. Please call torch_npu.npu_format_cast(weight, 29) before this op.");
-
     auto expectedStorageShape = GetExpectedWeightStorageShape(weightLayout, e, k);
     auto storageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
     std::printf("[GMMAQ torch] weight storage sizes: actual=%s, expected=%s.\n",
@@ -239,13 +241,13 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     const at::Tensor &groupList,
     const std::vector<at::Tensor> &weight,
     const std::vector<at::Tensor> &weightScale,
-    const std::vector<at::Tensor> &bias,
     std::string activationType,
+    const c10::optional<std::vector<at::Tensor>> &biasOptional,
     const c10::optional<at::Tensor> &xScaleOptional,
     int64_t groupListType,
     const c10::optional<std::vector<int64_t>> &tuningConfig,
     c10::optional<c10::string_view> quantModeOptional,
-    int64_t yDtype,
+    c10::optional<int64_t> yDtype,
     std::string roundMode,
     int64_t scaleAlg,
     float dstTypeMax,
@@ -256,20 +258,8 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
 {
     CheckTensorList(weight, "weight");
     CheckTensorList(weightScale, "weight_scale");
-    CheckBias(bias);
     TORCH_CHECK(xScaleOptional.has_value() && xScaleOptional.value().defined(),
         "x_scale must be provided in current MXFP8 mode.");
-    TORCH_CHECK(activationType == "gelu_tanh", "activation_type only supports gelu_tanh, but got ", activationType, ".");
-    TORCH_CHECK(roundMode == "rint", "round_mode only supports rint, but got ", roundMode, ".");
-    TORCH_CHECK(groupListType == 0 || groupListType == 1, "group_list_type only supports 0 or 1, but got ",
-        groupListType, ".");
-    TORCH_CHECK(scaleAlg == 0 || scaleAlg == 1, "scale_alg only supports 0 or 1, but got ", scaleAlg, ".");
-    TORCH_CHECK(std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) <= FLOAT_EPS,
-        "dst_type_max is reserved and only supports 0.0 currently, but got ", dstTypeMax, ".");
-
-    int64_t yDtypeValue = NormalizeGeDtype(yDtype);
-    TORCH_CHECK(yDtypeValue == GE_DTYPE_FLOAT8_E4M3FN || yDtypeValue == GE_DTYPE_FLOAT8_E5M2,
-        "y_dtype only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got ", yDtype, ".");
 
     const at::Tensor &weightTensor = weight[0];
     const at::Tensor &weightScaleTensor = weightScale[0];
@@ -280,36 +270,25 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     TORCH_CHECK(weightTensor.dim() == 3,
         "weight must be a 3D logical tensor, but got ", weightTensor.dim(), "D.");
     TORCH_CHECK(weightScaleTensor.dim() == 4, "weight_scale must be 4D, but got ", weightScaleTensor.dim(), "D.");
-    TORCH_CHECK(groupList.scalar_type() == at::kLong, "group_list dtype must be torch.int64.");
 
     int64_t m = x.size(DIM_0);
     int64_t k = x.size(DIM_1);
     int64_t e = groupList.size(DIM_0);
-    TORCH_CHECK(e >= 1 && e <= MAX_GROUP_NUM, "group_list first dim must be in [1, 1024], but got ", e, ".");
     WeightLayout weightLayout = InferWeightLayout(weightTensor, weightScaleTensor, e, k);
     int64_t n = weightLayout.n;
-    TORCH_CHECK(m == 0 || n == 0 || k > 0, "K must be greater than 0 unless M or N is 0.");
-    TORCH_CHECK(n % MX_GROUP_SIZE == 0, "N must be divisible by 64, but got ", n, ".");
-    TORCH_CHECK(xScale.size(DIM_0) == m && xScale.size(DIM_1) == CeilDiv(k, MX_GROUP_SIZE) &&
-                    xScale.size(DIM_2) == 2,
-        "x_scale shape must be (M, ceil(K / 64), 2).");
 
     aclDataType xAclDtype = GetTensorAclDataType(xDtype, x);
     aclDataType weightAclDtype = GetTensorAclDataType(weightDtype, weightTensor);
     aclDataType weightScaleAclDtype = GetTensorAclDataType(weightScaleDtype, weightScaleTensor);
     aclDataType xScaleAclDtype = GetTensorAclDataType(xScaleDtype, xScale);
-    TORCH_CHECK(xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2,
-        "x only supports FLOAT8_E4M3FN or FLOAT8_E5M2.");
-    TORCH_CHECK(weightAclDtype == ACL_FLOAT8_E4M3FN, "weight only supports FLOAT8_E4M3FN.");
-    TORCH_CHECK(weightScaleAclDtype == ACL_FLOAT8_E8M0, "weight_scale only supports FLOAT8_E8M0.");
-    TORCH_CHECK(xScaleAclDtype == ACL_FLOAT8_E8M0, "x_scale only supports FLOAT8_E8M0.");
     c10::string_view quantModeView = quantModeOptional.value_or("");
     std::string quantMode(quantModeView.data(), quantModeView.size());
-    if (quantMode.empty() && (xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2)) {
+    if (!quantModeOptional.has_value() && (xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2)) {
         quantMode = "MX";
     }
-    TORCH_CHECK(!(xAclDtype == ACL_FLOAT8_E4M3FN || xAclDtype == ACL_FLOAT8_E5M2) || quantMode == "MX",
-        "当xdtype为float8_e4m3 或 float8_e5m2时，quant_mode必须为MX");
+    TORCH_CHECK(!quantModeOptional.has_value() || quantMode == "MX",
+        "输入FP8且quant_mode为None时，自动将quant_mode推导为MX，quant_mode显式传值时必须为MX");
+    int64_t yDtypeValue = ResolveYGeDtype(yDtype, xAclDtype);
 
     at::Tensor y;
     at::Tensor yScale;
@@ -324,6 +303,8 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     c10::SmallVector<at::Tensor, 1> weightVec;
     at::TensorList weightRef = PrepareWeightList(weight, weightLayout, e, k, weightVec);
     at::TensorList weightScaleRef = weightScale;
+    const std::vector<at::Tensor> emptyBias;
+    const std::vector<at::Tensor> &bias = biasOptional.has_value() ? biasOptional.value() : emptyBias;
     at::TensorList biasRef = bias;
     c10::optional<at::IntArrayRef> tuningConfigRef = c10::nullopt;
     if (tuningConfig.has_value()) {
