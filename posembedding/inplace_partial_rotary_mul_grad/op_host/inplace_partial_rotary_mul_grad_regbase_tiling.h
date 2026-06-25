@@ -47,6 +47,7 @@ TILING_DATA_FIELD_DEF(int64_t, sliceEnd);
 TILING_DATA_FIELD_DEF(int64_t, sliceLength);
 TILING_DATA_FIELD_DEF(int64_t, dSplitCoef);
 END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(InplacePartialRotaryMulGrad, InplacePartialRotaryMulGradRegbaseTilingData)
 REGISTER_TILING_DATA_CLASS(InplacePartialRotaryMulGrad_203, InplacePartialRotaryMulGradRegbaseTilingData)
 
 constexpr static int64_t WORKSPACE_COUNT = 1;
