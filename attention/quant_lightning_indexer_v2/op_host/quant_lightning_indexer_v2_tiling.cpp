@@ -25,47 +25,47 @@ namespace optiling {
 // --------------------------QLIV2InfoParser类成员函数定义-------------------------------------
 ge::graphStatus QLIV2InfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE(opName_, "Desc of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE(opName_, "Shape of tensor key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor key"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE(opName_, "Desc of tensor key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor key"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr, OP_LOGE(opName_, "Shape of tensor weights is nullptr"),
+    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor weights"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr, OP_LOGE(opName_, "Desc of tensor weights is nullptr"),
+    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor weights"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.query_dequant_scale.shape == nullptr,
-               OP_LOGE(opName_, "Shape of tensor query_dequant_scale is nullptr"), return ge::GRAPH_FAILED);
+               OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query_dequant_scale"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.query_dequant_scale.desc == nullptr,
-               OP_LOGE(opName_, "Desc of tensor query_dequant_scale is nullptr"), return ge::GRAPH_FAILED);
+               OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query_dequant_scale"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key_dequant_scale.shape == nullptr,
-               OP_LOGE(opName_, "Shape of tensor key_dequant_scale is nullptr"), return ge::GRAPH_FAILED);
+               OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor key_dequant_scale"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key_dequant_scale.desc == nullptr,
-               OP_LOGE(opName_, "Desc of tensor key_dequant_scale is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
+               OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor key_dequant_scale"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QLIV2InfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.layOutQuery == nullptr, OP_LOGE(opName_, "attr layout_query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layOutQuery == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr layout_query"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr, OP_LOGE(opName_, "attr layout_key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr layout_key"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.sparseCount == nullptr, OP_LOGE(opName_, "attr sparse_count is nullptr"),
+    OP_CHECK_IF(opParamInfo_.sparseCount == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr sparse_count"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE(opName_, "attr sparse_mode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr sparse_mode"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.quantMode == nullptr, OP_LOGE(opName_, "query_quant_mode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.quantMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "query_quant_mode"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -83,7 +83,7 @@ ge::graphStatus QLIV2InfoParser::CheckRequiredParaExistence() const
 ge::graphStatus QLIV2InfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("QuantLightningIndexerV2", "opName got from TilingContext is nullptr");
+        OP_LOGE_WITH_INVALID_INPUT("QuantLightningIndexerV2", "opName got from TilingContext");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -299,49 +299,71 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
     outputType_ = opParamInfo_.attenOut.desc->GetDataType();
 
     OP_CHECK_IF(!(inputQType_ == inputKType_),
-               OP_LOGE(opName_, "The data types of the input query and key must be the same."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
+                    QSFADataTypeToSerialString(inputQType_) + " and " + QSFADataTypeToSerialString(inputKType_),
+                    "The data types of the input query and key must be the same"),
                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         !(inputQueryScaleType_ == inputKeyScaleType_),
-        OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be the same."),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
+            QSFADataTypeToSerialString(inputQueryScaleType_) + " and " + QSFADataTypeToSerialString(inputKeyScaleType_),
+            "The data types of the input query_dequant_scale and key_dequant_scale must be the same"),
         return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(inputQType_ != ge::DT_INT8,
-               OP_LOGE(opName_, "The data types of the input query and key must be int8."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
+                        QSFADataTypeToSerialString(inputQType_) + " and " + QSFADataTypeToSerialString(inputKType_),
+                        "The data types of the input query and key must be int8"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             inputQueryScaleType_ != ge::DT_FLOAT16,
-            OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
+                QSFADataTypeToSerialString(inputQueryScaleType_) + " and " + QSFADataTypeToSerialString(inputKeyScaleType_),
+                "The data types of the input query_dequant_scale and key_dequant_scale must be float16"),
             return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
         if (*opParamInfo_.quantMode == 1) {
             OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN,
-                OP_LOGE(opName_, "When quant_mode is 1, the data types of the input query and key"
-                    " must be float8_e4m3."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
+                    QSFADataTypeToSerialString(inputQType_) + " and " + QSFADataTypeToSerialString(inputKType_),
+                    "When quant_mode is 1, the data types of the input query and key must be float8_e4m3"),
                 return ge::GRAPH_FAILED);
         } else if (*opParamInfo_.quantMode == 4) {
             OP_CHECK_IF(inputQType_ != ge::DT_HIFLOAT8,
-                OP_LOGE(opName_, "When quant_mode is 4, the data types of the input query and key"
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
+                    QSFADataTypeToSerialString(inputQType_) + " and " + QSFADataTypeToSerialString(inputKType_),
+                    "When quant_mode is 4, the data types of the input query and key"
                     " must be hifloat8."),
                 return ge::GRAPH_FAILED);
         }
         OP_CHECK_IF(
             inputQueryScaleType_ != ge::DT_FLOAT,
-            OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float."),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
+                QSFADataTypeToSerialString(inputQueryScaleType_) + " and " + QSFADataTypeToSerialString(inputKeyScaleType_),
+                "The data types of the input query_dequant_scale and key_dequant_scale must be float"),
             return ge::GRAPH_FAILED);
     }
 
     if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
-                OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                    QSFADataTypeToSerialString(weightsType_).c_str(),
+                    "The data types of the input weights must be float16"),
+                return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
-                OP_LOGE(opName_, "The data types of the input weights must be float."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                    QSFADataTypeToSerialString(weightsType_).c_str(),
+                    "The data types of the input weights must be float"),
+                return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
-               OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "sparse_indices",
+                    QSFADataTypeToSerialString(outputType_).c_str(),
+                    "The data types of the output sparse_indices must be int32"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -375,11 +397,11 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
     if (kLayout_ == DataLayout::PA_BBND) {
         // PA_BBND: block_table 必传, seqused_k 必传, cu_seqlens_k 不传
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-            OP_LOGE(opName_, "key layout is PA_BBND, input block_table must not be null"),
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "input block_table"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             opParamInfo_.sequsedK.tensor == nullptr,
-            OP_LOGE(opName_, "key layout is PA_BBND, input seqused_k must not be null"),
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "input seqused_k"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.cuSeqLensK.tensor != nullptr,
             OP_LOGE(opName_, "key layout is PA_BBND, input cu_seqlens_k must not be provided"),
@@ -392,7 +414,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
     } else if (kLayout_ == DataLayout::TND) {
         // TND: cu_seqlens_k 必传, seqused_k 可选, cu_seqlens_k 不传
         OP_CHECK_IF(opParamInfo_.cuSeqLensK.tensor == nullptr,
-            OP_LOGE(opName_, "when layout_key is TND, input cu_seqlens_k must not be null"),
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "input cu_seqlens_k"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.cuSeqLensK.desc->GetDataType() != ge::DT_INT32,
             OP_LOGE(opName_, "input cu_seqlens_k data type only support int32"),
@@ -427,8 +449,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
     if (opParamInfo_.cmpRatio != nullptr && *opParamInfo_.cmpRatio != 1 &&
         opParamInfo_.sparseMode != nullptr && *opParamInfo_.sparseMode != 0) {
         OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor == nullptr,
-            OP_LOGE(opName_, "cmp_ratio is not 1 and sparse_mode is not 0, "
-                "input cmp_residual_k must not be null"),
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "input cmp_residual_k"),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor != nullptr,
@@ -447,7 +468,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
     if (qLayout_ == DataLayout::TND) {
         // TND: cu_seqlens_q 必传, seqused_q 可选
         OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor == nullptr,
-            OP_LOGE(opName_, "when layout_query is TND, input cu_seqlens_q must not be null"),
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "input cu_seqlens_q"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.cuSeqLensQ.desc->GetDataType() != ge::DT_INT32,
             OP_LOGE(opName_, "input cu_seqlens_q data type only support int32"),
@@ -472,8 +493,8 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
 
     // metadata 必传
     OP_CHECK_IF(opParamInfo_.metadata.tensor == nullptr,
-               OP_LOGE(opName_, "input metadata must not be null"),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "input metadata"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

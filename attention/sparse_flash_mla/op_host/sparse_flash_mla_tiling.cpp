@@ -239,25 +239,25 @@ static std::string SMLADataTypeToSerialString(ge::DataType type)
 // --------------------------SMLAInfoParser类成员函数定义------------------------------------
 ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.q.desc == nullptr, OP_LOGE(opName_, "Desc of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.q.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr, OP_LOGE(opName_, "tensor of oriKv is nullptr"),
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "tensor of oriKv"),
                 return ge::GRAPH_FAILED);
     if (std::string(opParamInfo_.layoutKv) == "PA_BBND") {
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
-                    OP_LOGE(opName_, "tensor of oriBlockTable is nullptr when layoutKv is PA_BBND"),
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "tensor of oriBlockTable"),
                     return ge::GRAPH_FAILED);
     }
     if (perfMode_ == SMLATemplateMode::CFA_TEMPLATE_MODE) {
-        OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr, OP_LOGE(opName_, "tensor of cmpKv is nullptr"),
+        OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "tensor of cmpKv"),
                     return ge::GRAPH_FAILED);
     }
     if (perfMode_ == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
-        OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr, OP_LOGE(opName_, "tensor of cmpKv is nullptr"),
+        OP_CHECK_IF(opParamInfo_.cmpKv.tensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "tensor of cmpKv"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor == nullptr, OP_LOGE(opName_, "cmpSparseIndices is nullptr"),
+        OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpSparseIndices"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -286,7 +286,7 @@ ge::graphStatus SMLAInfoParser::CheckUnrequiredParaExistence() const
 ge::graphStatus SMLAInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("SparseFlashMla", "opName got from TilingContext is nullptr");
+        OP_LOGE_WITH_INVALID_INPUT("SparseFlashMla", "opName got from TilingContext");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
