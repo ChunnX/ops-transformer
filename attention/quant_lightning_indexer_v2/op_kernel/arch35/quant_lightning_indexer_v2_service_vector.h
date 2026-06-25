@@ -788,7 +788,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 
             if (returnValueFlag) {
                 WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-                liV2Vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
+                vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
                 // 无效值刷0
                 if (validS2Len < topkCount_) {
                     uint64_t mask[1];
@@ -796,13 +796,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                     mask[0] = mask[0] << (validS2Len % 16);
                     PipeBarrier<PIPE_V>();
                     Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16],
-                            constInfo_.NEG_INF_FLOAT, mask, 1, 1, 0);
+                            constInfo_.NEG_INF_BFLOAT, mask, 1, 1, 0);
                 }
             
                 if (validS2Len / 16 * 16 + 64 < topkCount_) {
                     PipeBarrier<PIPE_V>();
                     Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64],
-                            constInfo_.NEG_INF_FLOAT,
+                            constInfo_.NEG_INF_BFLOAT,
                             topkCount_ - (validS2Len / 16 * 16 + 64));
                 }
                 SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);

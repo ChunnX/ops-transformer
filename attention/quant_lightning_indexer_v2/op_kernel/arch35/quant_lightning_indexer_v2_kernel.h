@@ -166,7 +166,8 @@ protected:
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                               GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                               GlobalTensor<uint32_t> &cuSeqlensQGm,
+                                               GlobalTensor<uint32_t> &sequsedQGm,
                                                uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
                                                   uint32_t cmpResiduaKLenDims, bool isAccumSeq,
