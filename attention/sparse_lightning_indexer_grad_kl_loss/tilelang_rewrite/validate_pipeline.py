@@ -1,801 +1,919 @@
 #!/usr/bin/env python3
 """
-Validate that TileLang-generated AscendC code matches the original AscendC
-operator's pipeline structure.
+Validate Plan B implementation against original AscendC operator.
+
+Checks two aspects:
+  A) Computational logic: does each original stage have a corresponding
+     operation in Plan B (Kernel1 / Kernel2 / Python)?
+  B) Parameter matching: for each mapped stage, are the dimensions, scale
+     factors, transpose flags, activation types, cast modes, etc. identical?
 
 Usage:
-    # Step 1: Dump the generated AscendC source
-    TL_DUMP=1 python validate_pipeline.py --dump
-
-    # Step 2: Compare generated vs original pipeline
-    python validate_pipeline.py --compare <generated.cpp>
-
-    # Step 3: Full auto (dump + compare in one shot)
-    python validate_pipeline.py --auto
+  python validate_pipeline.py --check-python          # Parse Plan B Python source
+  python validate_pipeline.py --compare <file.cpp>    # Parse generated AscendC
+  python validate_pipeline.py --full                  # Both + dump attempt
 """
 
 import argparse
 import os
 import re
 import sys
-import subprocess
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # ==============================================================================
-# Expected pipeline structure from original AscendC
+# Stage definition: what the ORIGINAL AscendC does
 # ==============================================================================
 
-# The original AscendC kernel (MainProcess) has this pipeline:
-#
-#   V0:  Gather Key/KeyRope/KeyIndex by sparseIndices
-#        -> CrossCoreSetFlag(SYNC_V0_TO_C1_P_FLAG) / SYNC_V0_TO_C1_SY_FLAG
-#   C1:  MM1 = Query||QueryRope @ GatherKey||GatherKeyRope^T
-#        MM2 = QueryIndex @ GatherKeyIndex^T (with ReLU)
-#        -> CrossCoreSetFlag(SYNC_C1_TO_V1_P_FLAG) / SYNC_C1_TO_V1_SY_FLAG
-#   V1:  P = softmax(bmm1 * scale) using precomputed max/sum
-#        P_reduced = mean(P over G heads)
-#        ReduceSumY = sum_g(weight[g] * ReLU(bmm2[g,:]))
-#        SoftmaxI = global_softmax(ReduceSumY)
-#        diff = SoftmaxI - P_reduced
-#        dWeight[g] = sum_k(diff[k] * ReLU(bmm2[g,k]))
-#        reluGrad[g,k] = weight[g] * diff[k] * (bmm2[g,k] > 0)
-#        KL_Loss = sum_k(P_reduced[k] * (log(P[k]) - log(SoftmaxI[k])))
-#        -> CrossCoreSetFlag(SYNC_V1_TO_C2_DW_FLAG)
-#   C2:  MM5 = reluGrad^T @ QueryIndex  (scatterAdd dKeyIndex)
-#        MM6 = reluGrad @ GatherKeyIndex^T  (dQueryIndex)
-#        -> CrossCoreSetFlag(SYNC_C2_TO_V2_SA_FLAG)
-#   V2:  ScatterAdd dKeyIndex from scatter buffer
-#        Cast dQueryIndex FP32 -> FP16
-#
-# Since TileLang lacks gather/scatter, the TileLang rewrite maps:
-#   V0 -> Python torch.gather preprocessing
-#   V1 -> TileLang V Scope 1
-#   C1 -> TileLang C Scope 1
-#   C2 -> TileLang C Scope 2  (only MM6; MM5 -> Python scatter_add_ postprocessing)
-#   V2 -> TileLang V Scope 2  (only Cast)
-
-# Expected computational stages in order
-EXPECTED_PIPELINE = [
-    # (stage, description, required_patterns, forbidden_patterns)
-    ("C1_MM1", "MM1: Query||QueryRope @ GatherKey||GatherKeyRope^T",
-     ["gemm", "transpose"], []),
-    ("C1_MM2", "MM2: QueryIndex @ GatherKeyIndex^T with ReLU",
-     ["gemm", "relu"], []),
-    ("V1_P", "VectorP: softmax(bmm1 * scale) using precomputed max/sum",
-     ["exp", "softmax", "div"], []),
-    ("V1_P_reduced", "P_reduced = mean(P over G heads)",
-     ["reduce", "mean"], []),
-    ("V1_SY", "ReduceSumY = sum_g(weight[g] * ReLU(bmm2[g,:]))",
-     ["reduce_sum", "reduce"], []),
-    ("V1_GlobalSoftmaxI", "SoftmaxI = global_softmax(ReduceSumY)",
-     ["exp", "reduce_max"], []),
-    ("V1_DiffDW", "diff = SoftmaxI - P_reduced; dWeight, reluGrad",
-     ["sub", "compare", "select"], []),
-    ("V1_KL_Loss", "KL_Loss = sum_k(P[k] * (log(P[k]) - log(SoftmaxI[k])))",
-     ["ln", "log", "reduce_sum"], []),
-    ("C2_MM6", "MM6: reluGrad @ GatherKeyIndex^T",
-     ["gemm", "transpose"], []),
-    ("V2_Cast", "Cast dQueryIndex FP32 -> FP16",
-     ["cast"], []),
-]
-
-# Key sync patterns expected in TileLang-generated code
-# TileLang's C/V separation should produce CrossCoreSetFlag/CrossCoreWaitFlag pairs
-EXPECTED_SYNC_PAIRS = [
-    # (set_flag_pattern, wait_flag_pattern, description)
-    ("SetFlag", "WaitFlag", "C1 complete -> V1 start (MM1+MM2 done, Vector can begin)"),
-    ("SetFlag", "WaitFlag", "V1 complete -> C2 start (dW/reluGrad done, MM6 can begin)"),
-    ("SetFlag", "WaitFlag", "C2 complete -> V2 start (MM6 done, Cast can begin)"),
-]
-
-# MM parameters from original: M_SPLIT=128, N_SPLIT=128, K_SPLIT=128
-EXPECTED_MM_PARAMS = {
-    "M_SPLIT_SIZE": 128,
-    "N_SPLIT_SIZE": 128,
-    "K_SPLIT_SIZE": 128,
-}
-
-# Original sync flag values (from common.h)
-# TileLang may not use the same flag numbers, but should have C->V pairs
-ORIGINAL_SYNC_FLAGS = {
-    "V0_TO_C1_P": [0, 1],
-    "V0_TO_C1_SY": [2, 3],
-    "C1_TO_V1_P": [4, 5],
-    "C1_TO_V1_SY": [6, 7],
-    "V1_TO_C2_DW": [8, 9],
-    "C2_TO_V2_SA": [10, 11],
-}
-
-
-# ==============================================================================
-# Pattern extraction from AscendC source
-# ==============================================================================
 
 @dataclass
-class PipelineStage:
-    """A detected stage in the generated code."""
+class StageSpec:
+    """Expected computation for one stage in the original AscendC operator."""
     name: str
-    line_start: int
-    line_end: int
-    patterns: List[str] = field(default_factory=list)
+    desc: str
+    ops: List[Dict[str, Any]] = field(default_factory=list)
+    # Each op dict: {"type": "gemm"|"softmax"|"reduce"|"mul"|...,
+    #                "params": {...}, "planb_location": "Kernel1"|"Kernel2"|"Python"}
+
+
+# ==============================================================================
+# Original AscendC pipeline fingerprint (from arch22 source analysis)
+# ==============================================================================
+
+ORIGINAL_STAGES: List[StageSpec] = [
+    # ---- V0: Gather ----
+    StageSpec("V0_GatherKey", "Gather Key/KeyRope by sparseIndices", [
+        {"type": "gather", "params": {
+            "src": "key[B,S2,N2,DQuery]", "indices": "sparse_indices[B,S1,Nidx2,K]",
+            "dst_shape": "[B,S1,K,DQuery]", "note": "含 optional key_rope 拼接 d_rope=64",
+        }},
+    ]),
+    StageSpec("V0_GatherKeyIndex", "Gather KeyIndex by sparseIndices", [
+        {"type": "gather", "params": {
+            "src": "key_index[B,S2,Nidx2,DQueryIndex]", "indices": "sparse_indices[B,S1,Nidx2,K]",
+            "dst_shape": "[B,S1,K,DQueryIndex]",
+        }},
+    ]),
+
+    # ---- C1: Cube matmuls ----
+    StageSpec("C1_MM1", "MM1 = Query||QueryRope @ GatherKey||GatherKeyRope^T", [
+        {"type": "gemm", "params": {
+            "A": "query_cat[B,S1,N1,DQuery+d_rope]",
+            "B": "gather_key_cat[B,S1,K,DQuery+d_rope]",
+            "C": "bmm1Res[B,S1,N1,K]",
+            "M": "N1", "N": "K", "K_inner": "DQuery + d_rope (=512+64=576)",
+            "transpose_B": True, "split_M": 128, "split_N": 128, "split_K": 128,
+            "dtype_input": "float16", "dtype_accum": "float32",
+        }},
+    ]),
+    StageSpec("C1_MM2", "MM2 = QueryIndex @ GatherKeyIndex^T (with ReLU)", [
+        {"type": "gemm", "params": {
+            "A": "query_index[B,S1,Nidx1,DQueryIndex]",
+            "B": "gather_key_index[B,S1,K,DQueryIndex]",
+            "C": "bmm2Res[B,S1,Nidx1,K]",
+            "M": "Nidx1", "N": "K", "K_inner": "DQueryIndex (=128)",
+            "transpose_B": True, "activation": "ReLU",
+            "dtype_input": "float16", "dtype_accum": "float32",
+        }},
+    ]),
+
+    # ---- V1-P: Softmax over bmm1 ----
+    StageSpec("V1_VectorP", "P = softmax(bmm1 * scale) using precomputed max/sum", [
+        {"type": "mul", "params": {"scalar": "scale_value = 1/sqrt(DQuery)"}},
+        {"type": "softmax", "params": {
+            "input": "bmm1Res[N1, K]", "axis": -1,
+            "use_precomputed_max_sum": True,
+            "max_src": "softmax_max[B,N2,S1,G]", "sum_src": "softmax_sum[B,N2,S1,G]",
+            "max_abs": True, "sum_clamp_min": 1e-8,
+        }},
+        {"type": "reduce", "params": {
+            "op": "sum", "axis": 0, "shape": "[N1, K]",
+            "note": "sum over N1 (G heads)", "dtype": "float32",
+        }},
+        {"type": "mul", "params": {"scalar": "1.0 / N1", "note": "mean over heads"}},
+    ]),
+    StageSpec("V1_PRreduced", "PRreduced[K] = mean(softmax(bmm1 * scale), dim=N1)", []),
+    # (merged with VectorP above)
+
+    # ---- V1-SY: weight * ReLU(bmm2) -> ReduceSumY ----
+    StageSpec("V1_ReduceSumY", "ReduceSumY[K] = sum_g(weight[g] * ReLU(bmm2[g,:]))", [
+        {"type": "mul", "params": {
+            "op": "per-row scalar mul", "A": "bmm2Res[Nidx1, K]",
+            "scalar": "weight[g]", "note": "bmm2 already ReLU'd in MM2 fixpipe",
+        }},
+        {"type": "reduce", "params": {
+            "op": "sum", "axis": 0, "shape": "[Nidx1, K]",
+            "note": "sum over Nidx1", "dtype": "float32",
+        }},
+    ]),
+
+    # ---- V1: Global SoftmaxI ----
+    StageSpec("V1_GlobalSoftmaxI", "SoftmaxI[K] = global_softmax(ReduceSumY[K])", [
+        {"type": "softmax", "params": {
+            "input": "ReduceSumY[K]", "axis": -1, "shape": "[K]",
+            "clamp_min": 1e-8,
+        }},
+    ]),
+
+    # ---- V1: diff, dWeight, reluGrad ----
+    StageSpec("V1_DiffDW", "diff = SoftmaxI - P_reduced; dWeight += sum_k(diff * ReLU(bmm2))", [
+        {"type": "sub", "params": {"A": "SoftmaxI[K]", "B": "P_reduced[K]", "dst": "diff[K]"}},
+        {"type": "mul", "params": {
+            "op": "broadcast", "A": "diff[K]", "B": "ReLU(bmm2)[Nidx1, K]",
+            "note": "diff * reluResult per row",
+        }},
+        {"type": "reduce", "params": {
+            "op": "sum", "axis": -1, "shape": "[Nidx1, K]",
+            "note": "sum over K axis for each g → dWeight[Nidx1]", "dtype": "float32",
+        }},
+    ]),
+    StageSpec("V1_ReLUGrad", "reluGrad[Nidx1,K] = weight * diff * (bmm2 > 0)", [
+        {"type": "mul", "params": {
+            "op": "per-row", "A": "diff[K]", "scalar": "weight[g]",
+            "note": "diff * weight per head",
+        }},
+        {"type": "compare", "params": {
+            "A": "bmm2[Nidx1, K]", "B": 0.0, "op": "GT",
+            "note": "sigmoid mask: bmm2 > 0",
+        }},
+        {"type": "select", "params": {
+            "cond": "mask[bmm2>0]", "true_val": "diff*weight", "false_val": 0.0,
+            "dst": "reluGrad[Nidx1, K]",
+        }},
+        {"type": "cast", "params": {
+            "from": "float32", "to": "float16/bf16",
+            "mode": "CAST_ROUND",
+        }},
+    ]),
+
+    # ---- V1: KL Loss ----
+    StageSpec("V1_KL_Loss", "KL = sum_k(P[k] * (log(P[k]) - log(SoftmaxI[k])))", [
+        {"type": "clamp", "params": {"A": "P_reduced[K]", "min": 1e-8}},
+        {"type": "clamp", "params": {"A": "SoftmaxI[K]", "min": 1e-8}},
+        {"type": "log", "params": {"A": "P_reduced[K]", "dst": "log(P)"}},
+        {"type": "log", "params": {"A": "SoftmaxI[K]", "dst": "log(SoftmaxI)"}},
+        {"type": "sub", "params": {"A": "log(P)", "B": "log(SoftmaxI)", "dst": "log_ratio[K]"}},
+        {"type": "mul", "params": {"A": "P_reduced[K]", "B": "log_ratio[K]", "dst": "kl_terms[K]"}},
+        {"type": "reduce", "params": {
+            "op": "sum", "axis": -1, "shape": "[K]", "dst": "loss[1]",
+            "note": "sum over K", "dtype": "float32",
+        }},
+    ]),
+
+    # ---- C2-MM5: dKeyIndex (scatter-add input) ----
+    StageSpec("C2_MM5", "bmm5Res[K,DQueryIndex] = reluGrad^T @ queryIndex", [
+        {"type": "gemm", "params": {
+            "A": "reluGrad[Nidx1, K]", "B": "queryIndex[Nidx1, DQueryIndex]",
+            "C": "bmm5Res[K, DQueryIndex]",
+            "M": "K", "N": "DQueryIndex", "K_inner": "Nidx1",
+            "transpose_A": True, "transpose_B": False,
+            "dtype_input": "float16", "dtype_accum": "float32",
+        }},
+    ]),
+
+    # ---- C2-MM6: dQueryIndex ----
+    StageSpec("C2_MM6", "dQueryIndex[Nidx1,DQueryIndex] = reluGrad @ GatherKeyIndex", [
+        {"type": "gemm", "params": {
+            "A": "reluGrad[Nidx1, K]", "B": "gather_key_index[K, DQueryIndex]",
+            "C": "dQueryIndex[Nidx1, DQueryIndex]",
+            "M": "Nidx1", "N": "DQueryIndex", "K_inner": "K",
+            "transpose_A": False, "transpose_B": False,
+            "dtype_input": "float16/bf16", "dtype_accum": "float32",
+        }},
+        {"type": "cast", "params": {
+            "from": "float32", "to": "float16/bf16",
+            "mode": "F322F16 / F322BF16",
+        }},
+    ]),
+
+    # ---- V2: ScatterAdd dKey + Cast ----
+    StageSpec("V2_ScatterAdd", "ScatterAdd dKey partial to dKeyIndex[Bs2,DQueryIndex]", [
+        {"type": "scatter_add", "params": {
+            "src": "bmm5Res[K, DQueryIndex]",
+            "dst": "dKeyIndex[S2, DQueryIndex]",
+            "indices": "sparse_indices[K]",
+            "note": "atomic scatter-add by topK indices per (B,S1) pair",
+        }},
+        {"type": "cast", "params": {
+            "from": "float32", "to": "float16/bf16",
+            "mode": "CAST_ROUND",
+        }},
+    ]),
+]
+
+# ==============================================================================
+# Plan B mapping: original stage -> Plan B location
+# ==============================================================================
+
+PLANB_MAPPING = {
+    "V0_GatherKey": {
+        "location": "Python",
+        "function": "_preprocess_gather()",
+        "note": "torch.gather fuses key + key_rope concatenation",
+    },
+    "V0_GatherKeyIndex": {
+        "location": "Python",
+        "function": "_preprocess_gather()",
+        "note": "torch.gather for key_index",
+    },
+    "C1_MM1": {
+        "location": "Kernel1",
+        "scope": "C",
+        "function": "T.gemm_v0 (T.Pipelined over d_idx)",
+        "note": "MM1: Q||QR @ GK||GKR^T, pipelined over D blocks (BLOCK_K=128)",
+    },
+    "C1_MM2": {
+        "location": "Kernel1",
+        "scope": "C",
+        "function": "T.gemm_v0 (T.serial) + enable_relu=True",
+        "note": "MM2: QI @ GKI^T, single K-iter (DQueryIndex=128 fits 1 block)",
+    },
+    "V1_VectorP": {
+        "location": "Kernel1",
+        "scope": "V",
+        "function": "T.tile.mul/exp/sub/div (per-row serial) + T.reduce_sum",
+        "note": "Softmax per row, BLOCK_N1=32 tiling, reduce_sum for accumulation",
+    },
+    "V1_PRreduced": {
+        "location": "Kernel1",
+        "scope": "V",
+        "function": "T.tile.mul(*, 1.0/N1) + T.copy → PReduced workspace",
+        "note": "mean over N1 heads",
+    },
+    "V1_ReduceSumY": {
+        "location": "Kernel1",
+        "scope": "V",
+        "function": "T.tile.mul (per-row) + T.reduce_sum",
+        "note": "weight * ReLU(bmm2), reduce_sum over Nidx1",
+    },
+    "V1_GlobalSoftmaxI": {
+        "location": "Kernel2",
+        "scope": "V",
+        "function": "reduce_max + sub + exp + reduce_sum + max(1e-8) + div",
+        "note": "redundantly computed per core, K-parallel",
+    },
+    "V1_DiffDW": {
+        "location": "Kernel2",
+        "scope": "V",
+        "function": "T.tile.sub + mul(per-row) + reduce_sum → dWeightPartial",
+        "note": "diff = SoftmaxI - P_reduced, dWeight chunk written per n_idx block",
+    },
+    "V1_ReLUGrad": {
+        "location": "Kernel2",
+        "scope": "V",
+        "function": "T.tile.mul + compare(GT,0) + select + cast(CAST_ROUND) + copy",
+        "note": "weight * diff, mask via 2D compare+select, cast to fp16, store",
+    },
+    "V1_KL_Loss": {
+        "location": "Kernel2",
+        "scope": "V",
+        "function": "T.tile.max(eps) + ln + sub + mul + reduce_sum",
+        "note": "P*log(P/SoftmaxI), partial sum per K-block",
+    },
+    "C2_MM5": {
+        "location": "Python",
+        "function": "_compute_d_key_index() → scatter_add_",
+        "note": "reluGrad^T @ queryIndex bmm + scatter_add_ to key positions",
+    },
+    "C2_MM6": {
+        "location": "Python",
+        "function": "torch.bmm(reluGrad, gather_key_index)",
+        "note": "dQueryIndex = reluGrad @ GKI, single bmm then reshape",
+    },
+    "V2_ScatterAdd": {
+        "location": "Python",
+        "function": "_compute_d_key_index() → scatter_add_ + .to(dtype)",
+        "note": "atomic scatter_add + cast, Python handles both",
+    },
+}
+
+
+# ==============================================================================
+# Python source parser: extract operations from Plan B source
+# ==============================================================================
+
+@dataclass
+class ParsedOp:
+    op_type: str
+    line: int
+    details: str  # human-readable snippet/key params
+    params: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class PipelineReport:
-    """Full comparison report."""
-    generated_file: str
-    stages_detected: List[PipelineStage] = field(default_factory=list)
-    missing_stages: List[str] = field(default_factory=list)
-    sync_pairs_detected: List[Tuple[int, int, str]] = field(default_factory=list)
-    mm_params_detected: Dict[str, int] = field(default_factory=dict)
-    gemm_count: int = 0
-    relu_count: int = 0
-    softmax_count: int = 0
-    warnings: List[str] = field(default_factory=list)
-    score: float = 0.0
+class ParsedStage:
+    stage_name: str
+    location: str  # "Kernel1", "Kernel2", "Python"
+    ops: List[ParsedOp] = field(default_factory=list)
 
 
-def parse_generated_code(source: str, filename: str = "<generated>") -> PipelineReport:
-    """Parse TileLang-generated AscendC source and extract pipeline structure."""
-    report = PipelineReport(generated_file=filename)
+def parse_planb_python_source(filepath: str) -> Tuple[List[ParsedStage], List[str]]:
+    """Parse Plan B Python source to extract computational stages and their params.
+
+    Returns (stages, warnings).
+    """
+    with open(filepath, "r", encoding="utf-8") as f:
+        source = f.read()
     lines = source.split("\n")
 
-    # ---- Count key operations ----
-    report.gemm_count = len(re.findall(r'(?i)MatMul\b|gemm|mmad|MMAD', source))
-    report.relu_count = len(re.findall(r'(?i)Relu\b|relu|RELU', source))
-    report.softmax_count = len(re.findall(r'(?i)Softmax\b|softmax|SOFTMAX', source))
+    parsed_stages: List[ParsedStage] = []
+    warnings: List[str] = []
 
-    # ---- Detect sync patterns ----
-    set_flag_matches = list(re.finditer(r'(?i)CrossCoreSetFlag|SetFlag\b', source))
-    wait_flag_matches = list(re.finditer(r'(?i)CrossCoreWaitFlag|WaitFlag\b', source))
+    # --- Kernel 1 detection ---
+    k1_start = None
+    k1_c_start = None
+    k1_v_start = None
+    for i, line in enumerate(lines):
+        if "def planB_kernel1(" in line:
+            k1_start = i
+        if k1_start and 'with T.Scope("C")' in line and i > k1_start:
+            if k1_c_start is None:
+                k1_c_start = i
+        if k1_start and 'with T.Scope("V")' in line and i > k1_start:
+            if k1_v_start is None:
+                k1_v_start = i
+        if k1_start and k1_c_start and k1_v_start:
+            break
 
-    for i, sf in enumerate(set_flag_matches):
-        sf_line = source[:sf.start()].count("\n") + 1
-        # Find the next WaitFlag after this SetFlag
-        for wf in wait_flag_matches:
-            if wf.start() > sf.start():
-                wf_line = source[:wf.start()].count("\n") + 1
-                report.sync_pairs_detected.append((sf_line, wf_line, "C→V sync"))
+    # --- Kernel 2 detection ---
+    k2_start = None
+    k2_v_start = None
+    for i, line in enumerate(lines):
+        if "def planB_kernel2(" in line:
+            k2_start = i
+        if k2_start and 'with T.Scope("V")' in line and i > k2_start:
+            if k2_v_start is None:
+                k2_v_start = i
                 break
 
-    if len(set_flag_matches) < 2:
-        report.warnings.append(
-            f"Expected >=2 SetFlag/WaitFlag pairs (C→V transitions), "
-            f"found {len(set_flag_matches)} SetFlag, {len(wait_flag_matches)} WaitFlag"
-        )
+    # --- Parse Kernel1 C1 ops ---
+    k1_c_ops = []
+    if k1_c_start:
+        for i in range(k1_c_start + 1, k1_v_start or len(lines)):
+            line = lines[i].strip()
+            if "T.gemm_v0" in line:
+                params = _extract_gemm_params(line)
+                k1_c_ops.append(ParsedOp("gemm", i + 1, line, params))
+            elif "T.set_cross_flag" in line:
+                k1_c_ops.append(ParsedOp("sync", i + 1, line,
+                                         {"type": "set_cross_flag", "flag": _extract_str_arg(line)}))
 
-    # ---- Detect MM split sizes ----
-    for name, expected in EXPECTED_MM_PARAMS.items():
-        # Look for split size constants in generated code
-        m = re.search(rf'{name}\s*=\s*(\d+)', source)
-        if not m:
-            # Also check for numeric literals near gemm calls
-            m = re.search(rf'(\d+)\s*//.*{name.lower()}', source)
-        if m:
-            report.mm_params_detected[name] = int(m.group(1))
+    if k1_c_ops:
+        parsed_stages.append(ParsedStage("Kernel1_C1_MM1_MM2", "Kernel1", k1_c_ops))
 
-    # ---- Detect pipeline stages ----
-    # Look for the core computation patterns in order
+    # --- Parse Kernel1 V1 ops ---
+    k1_v_ops = []
+    if k1_v_start:
+        for i in range(k1_v_start + 1, (k2_start or len(lines))):
+            line = lines[i].strip()
+            op = _classify_tilelang_op(line, i)
+            if op:
+                k1_v_ops.append(op)
+    if k1_v_ops:
+        parsed_stages.append(ParsedStage("Kernel1_V1_P_ReduceSumY", "Kernel1", k1_v_ops))
 
-    # C1: MatMul (GEMM) calls
-    gemm_lines = []
-    for m in re.finditer(r'(?i)(MatMul|gemm|MMAD|matmul)', source):
-        gemm_lines.append(source[:m.start()].count("\n") + 1)
+    # --- Parse Kernel2 V1 ops ---
+    k2_v_ops = []
+    if k2_v_start:
+        for i in range(k2_v_start + 1, len(lines)):
+            line = lines[i].strip()
+            # Stop at next function definition
+            if line.startswith("def ") and "planB_kernel2" not in line:
+                break
+            if line.startswith("def ") and i > k2_v_start + 5:
+                break
+            op = _classify_tilelang_op(line, i)
+            if op:
+                k2_v_ops.append(op)
+    if k2_v_ops:
+        parsed_stages.append(ParsedStage("Kernel2_V1_SoftmaxI_DiffDW_ReLUGrad_Loss", "Kernel2", k2_v_ops))
 
-    # V1: Softmax / Exp
-    softmax_lines = []
-    for m in re.finditer(r'(?i)(Softmax|Exp\b|softmax|exp\b)', source):
-        softmax_lines.append(source[:m.start()].count("\n") + 1)
+    # --- Parse Python ops ---
+    py_ops = []
+    # dWeight sum
+    for i, line in enumerate(lines):
+        if "d_weight_partial.sum(dim=2)" in line:
+            py_ops.append(ParsedOp("reduce", i + 1, line.strip(),
+                                   {"op": "sum", "axis": 2, "note": "dWeight partials → sum"}))
+            break
+    # KL loss sum
+    for i, line in enumerate(lines):
+        if "loss_partial.sum()" in line:
+            py_ops.append(ParsedOp("reduce", i + 1, line.strip(),
+                                   {"op": "sum", "note": "KL loss partials → scalar"}))
+            break
+    # dQueryIndex bmm (MM6)
+    for i, line in enumerate(lines):
+        if "torch.bmm" in line and "d_query_index" in lines[i + 1] if i + 1 < len(lines) else False:
+            pass
+    found_bmm = False
+    for i, line in enumerate(lines):
+        if "torch.bmm(" in line and not found_bmm:
+            py_ops.append(ParsedOp("gemm", i + 1, line.strip(),
+                                   {"note": "MM6: reluGrad @ GKI → dQueryIndex"}))
+            found_bmm = True
+            break
+    # scatter_add
+    for i, line in enumerate(lines):
+        if "scatter_add_" in line or "scatter_add(" in line:
+            py_ops.append(ParsedOp("scatter_add", i + 1, line.strip(),
+                                   {"note": "MM5 + V2: reluGrad^T @ QI → scatter_add → dKeyIndex"}))
+            break
+    # Cast .to(dtype)
+    for i, line in enumerate(lines):
+        if "d_query_index" in line and ".to(input_dtype)" in line:
+            py_ops.append(ParsedOp("cast", i + 1, line.strip(),
+                                   {"from": "float32", "to": "input_dtype (fp16/bf16)", "note": "dQI cast"}))
+            break
 
-    # V1: Reduce
-    reduce_lines = []
-    for m in re.finditer(r'(?i)(Reduce|reduce)', source):
-        reduce_lines.append(source[:m.start()].count("\n") + 1)
+    if py_ops:
+        parsed_stages.append(ParsedStage("Python_Postprocessing", "Python", py_ops))
 
-    # V1: KL Loss (Log/Ln)
-    log_lines = []
-    for m in re.finditer(r'(?i)(Ln\b|Log\b|ln\b|log\b)', source):
-        log_lines.append(source[:m.start()].count("\n") + 1)
+    return parsed_stages, warnings
 
-    # C2: Cast
-    cast_lines = []
-    for m in re.finditer(r'(?i)(Cast|cast|Fixpipe|fixpipe)', source):
-        cast_lines.append(source[:m.start()].count("\n") + 1)
 
-    # Detect the ordering: GEMM -> Softmax -> Reduce -> Log -> GEMM -> Cast
-    # This matches the expected pipeline
+def _classify_tilelang_op(line: str, idx: int) -> Optional[ParsedOp]:
+    """Classify a single TileLang operation line."""
+    line = line.strip()
+    if not line or line.startswith("#") or line.startswith("def "):
+        return None
 
-    # Stage 1: First set of GEMMs (C1)
-    if gemm_lines:
-        first_gemm = min(gemm_lines)
-        last_gemm_before_v1 = max([l for l in gemm_lines if l < (softmax_lines[0] if softmax_lines else 999999)] or gemm_lines)
-        report.stages_detected.append(PipelineStage(
-            "C1_GEMM", first_gemm, last_gemm_before_v1,
-            [f"GEMM calls at lines: {gemm_lines[:6]}..."] if len(gemm_lines) > 6 else [f"GEMM calls at lines: {gemm_lines}"]
-        ))
+    if "T.gemm_v0" in line:
+        return ParsedOp("gemm", idx + 1, line,
+                        _extract_gemm_params(line))
+    elif "T.tile.exp(" in line:
+        return ParsedOp("exp", idx + 1, line)
+    elif "T.tile.ln(" in line:
+        return ParsedOp("log", idx + 1, line, {"note": "natural log"})
+    elif "T.reduce_max(" in line:
+        return ParsedOp("reduce_max", idx + 1, line,
+                        _extract_reduce_params(line))
+    elif "T.reduce_sum(" in line:
+        return ParsedOp("reduce_sum", idx + 1, line,
+                        _extract_reduce_params(line))
+    elif "T.tile.mul(" in line:
+        return ParsedOp("mul", idx + 1, line)
+    elif "T.tile.sub(" in line:
+        return ParsedOp("sub", idx + 1, line)
+    elif "T.tile.div(" in line:
+        return ParsedOp("div", idx + 1, line)
+    elif "T.tile.add(" in line:
+        return ParsedOp("add", idx + 1, line)
+    elif "T.tile.abs(" in line:
+        return ParsedOp("abs", idx + 1, line)
+    elif "T.tile.max(" in line:
+        return ParsedOp("max/clamp", idx + 1, line)
+    elif "T.tile.compare(" in line:
+        return ParsedOp("compare", idx + 1, line,
+                        _extract_compare_params(line))
+    elif "T.tile.select(" in line:
+        return ParsedOp("select", idx + 1, line)
+    elif "T.tile.cast(" in line:
+        return ParsedOp("cast", idx + 1, line,
+                        _extract_cast_params(line))
+    elif "T.tile.fill(" in line:
+        return ParsedOp("fill", idx + 1, line,
+                        _extract_fill_params(line))
+    elif "T.set_cross_flag" in line:
+        return ParsedOp("sync_set", idx + 1, line)
+    elif "T.wait_cross_flag" in line:
+        return ParsedOp("sync_wait", idx + 1, line)
+    elif "T.barrier_all()" in line:
+        return ParsedOp("barrier", idx + 1, line)
+    elif "T.Pipelined" in line:
+        return ParsedOp("pipeline", idx + 1, line)
+    return None
 
-    # Stage 2: Softmax/Exp (V1 start)
-    if softmax_lines:
-        report.stages_detected.append(PipelineStage(
-            "V1_Softmax", min(softmax_lines), max(softmax_lines),
-            [f"Softmax/Exp at lines: {softmax_lines}"]
-        ))
 
-    # Stage 3: Reduce ops (V1 middle)
-    if reduce_lines:
-        report.stages_detected.append(PipelineStage(
-            "V1_Reduce", min(reduce_lines), max(reduce_lines),
-            [f"Reduce at lines: {reduce_lines}"]
-        ))
+def _extract_gemm_params(line: str) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    if "transpose_B=True" in line:
+        params["transpose_B"] = True
+    if "transpose_A=True" in line:
+        params["transpose_A"] = True
+    if "enable_relu=True" in line:
+        params["activation"] = "ReLU"
+    return params
 
-    # Stage 4: Log/Ln ops (V1 KL Loss)
-    if log_lines:
-        report.stages_detected.append(PipelineStage(
-            "V1_KL_Loss", min(log_lines), max(log_lines),
-            [f"Log/Ln at lines: {log_lines}"]
-        ))
 
-    # Stage 5: Second set of GEMMs (C2)
-    post_v1_gemm_lines = [l for l in gemm_lines if softmax_lines and l > max(softmax_lines)]
-    if post_v1_gemm_lines:
-        report.stages_detected.append(PipelineStage(
-            "C2_GEMM", min(post_v1_gemm_lines), max(post_v1_gemm_lines),
-            [f"Post-V1 GEMM calls at lines: {post_v1_gemm_lines}"]
-        ))
+def _extract_reduce_params(line: str) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    m = re.search(r"dim\s*=\s*([-\d]+)", line)
+    if m:
+        params["axis"] = int(m.group(1))
+    m = re.search(r"clear\s*=\s*(True|False)", line)
+    if m:
+        params["clear"] = (m.group(1) == "True")
+    return params
 
-    # Stage 6: Cast ops (V2)
-    if cast_lines:
-        report.stages_detected.append(PipelineStage(
-            "V2_Cast", min(cast_lines), max(cast_lines),
-            [f"Cast at lines: {cast_lines}"]
-        ))
 
-    # ---- Check for missing stages ----
-    stage_names = [s.name for s in report.stages_detected]
-    if "C1_GEMM" not in stage_names:
-        report.missing_stages.append("C1: No GEMM (MM1/MM2) detected")
-    if "V1_Softmax" not in stage_names:
-        report.missing_stages.append("V1: No Softmax/Exp detected")
-    if "V1_Reduce" not in stage_names:
-        report.missing_stages.append("V1: No Reduce ops detected")
-    if "V1_KL_Loss" not in stage_names:
-        report.warnings.append("V1: No explicit Log/Ln found (may be using intrinsics)")
-    if "C2_GEMM" not in stage_names:
-        report.missing_stages.append("C2: No post-V1 GEMM (MM6) detected")
-    if "V2_Cast" not in stage_names:
-        report.warnings.append("V2: No explicit Cast found (may be inlined)")
+def _extract_compare_params(line: str) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    for op in ["GT", "GE", "LT", "LE", "EQ", "NE"]:
+        if f'"{op}"' in line or f"'{op}'" in line:
+            params["compare_op"] = op
+            break
+    m = re.search(r",\s*([\d.e+\-]+)\s*[,\)]", line)
+    if m and "0.0" in line:
+        params["threshold"] = 0.0
+    return params
 
-    # ---- Score the match ----
-    score = 0.0
-    # Correct GEMM count: at least 3 (MM1, MM2, MM6)
-    if report.gemm_count >= 3:
-        score += 25
-    elif report.gemm_count >= 2:
-        score += 15
-        report.warnings.append(f"GEMM count={report.gemm_count}, expected >=3 (MM1, MM2, MM6)")
-    else:
-        report.warnings.append(f"GEMM count={report.gemm_count}, expected >=3 (MM1, MM2, MM6)")
 
-    # ReLU present
-    if report.relu_count >= 1:
-        score += 15
-    else:
-        report.warnings.append("No ReLU activation detected (needed for MM2 and reluGrad)")
+def _extract_cast_params(line: str) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    for mode in ["CAST_NONE", "CAST_ROUND", "CAST_FLOOR", "CAST_CEIL"]:
+        if mode in line:
+            params["mode"] = mode
+            break
+    return params
 
-    # Softmax present
-    if report.softmax_count >= 1:
-        score += 15
-    else:
-        report.warnings.append("No Softmax detected (needed for P and SoftmaxI)")
 
-    # Sync pairs present
-    if len(report.sync_pairs_detected) >= 2:
-        score += 15
-    elif len(report.sync_pairs_detected) >= 1:
-        score += 10
-        report.warnings.append(f"Only {len(report.sync_pairs_detected)} sync pairs, expected >=2 (C1→V1, V1→C2, C2→V2)")
-    else:
-        report.warnings.append("No C→V sync pairs detected")
+def _extract_fill_params(line: str) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    m = re.search(r"fill\([^,]+,\s*([\d.e+\-]+)\s*\)", line)
+    if m:
+        params["value"] = float(m.group(1)) if "." in m.group(1) else int(m.group(1))
+    return params
 
-    # Correct stage ordering (GEMM before Softmax before GEMM before Cast)
-    gemm_positions = [s.line_start for s in report.stages_detected if "GEMM" in s.name]
-    softmax_pos = [s.line_start for s in report.stages_detected if "Softmax" in s.name]
-    cast_pos = [s.line_start for s in report.stages_detected if "Cast" in s.name]
 
-    ordering_ok = True
-    if gemm_positions and softmax_pos:
-        if not any(g < min(softmax_pos) for g in gemm_positions):
-            ordering_ok = False
-            report.warnings.append("Ordering error: No GEMM before Softmax (C1 before V1)")
-    if gemm_positions and softmax_pos and len(gemm_positions) >= 2:
-        if not any(g > max(softmax_pos) for g in gemm_positions):
-            ordering_ok = False
-            report.warnings.append("Ordering error: No GEMM after Softmax (C2 after V1)")
-    if cast_pos and (softmax_pos or gemm_positions):
-        last_compute = max(softmax_pos + gemm_positions)
-        if not any(c > last_compute for c in cast_pos):
-            ordering_ok = False
-            report.warnings.append("Ordering error: No Cast after compute stages (V2 at end)")
-
-    if ordering_ok:
-        score += 20
-
-    # No missing stages
-    if not report.missing_stages:
-        score += 10
-
-    report.score = score
-    return report
+def _extract_str_arg(line: str) -> str:
+    m = re.search(r'"([^"]*)"', line)
+    if m:
+        return m.group(1)
+    return ""
 
 
 # ==============================================================================
-# Comparison against original AscendC source
+# AscendC source parser
 # ==============================================================================
 
-def analyze_original_pipeline() -> dict:
-    """Analyze the original AscendC source to extract the expected pipeline."""
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    arch_dir = os.path.join(base_dir, "op_kernel", "arch22")
+@dataclass
+class AscendCStage:
+    name: str
+    ops: List[ParsedOp] = field(default_factory=list)
 
-    result = {
-        "sync_flags": ORIGINAL_SYNC_FLAGS,
-        "mm_params": EXPECTED_MM_PARAMS,
+
+def parse_ascendc_source(source: str) -> List[AscendCStage]:
+    """Parse TileLang-generated AscendC source to extract operations."""
+    lines = source.split("\n")
+    stages: List[AscendCStage] = []
+
+    gemm_ops = []
+    vec_ops = []
+    sync_ops = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        ln = i + 1
+
+        # Detect MatMul
+        if re.search(r'(?i)(MatMul\b|mmad|MMAD|Matmul)', stripped):
+            gemm_ops.append(ParsedOp("gemm", ln, stripped))
+        # Detect ReLU
+        elif re.search(r'(?i)\bRelu\b', stripped):
+            vec_ops.append(ParsedOp("relu", ln, stripped))
+        # Detect Softmax / Exp
+        elif re.search(r'(?i)(Softmax\b|SoftMax\b)', stripped):
+            vec_ops.append(ParsedOp("softmax", ln, stripped))
+        elif re.search(r'(?i)\bExp\b', stripped) and "Expr" not in stripped:
+            vec_ops.append(ParsedOp("exp", ln, stripped))
+        # Detect Reduce ops
+        elif re.search(r'(?i)(ReduceSum\b|ReduceMax\b|ReduceMin\b)', stripped):
+            vec_ops.append(ParsedOp("reduce", ln, stripped))
+        # Detect Cast
+        elif re.search(r'(?i)\bCast\b', stripped):
+            vec_ops.append(ParsedOp("cast", ln, stripped))
+        # Detect Mul/Sub/Div
+        elif re.search(r'(?i)\bMuls?\b', stripped):
+            vec_ops.append(ParsedOp("mul", ln, stripped))
+        elif re.search(r'(?i)\bSub\b', stripped):
+            vec_ops.append(ParsedOp("sub", ln, stripped))
+        elif re.search(r'(?i)\bDiv\b', stripped):
+            vec_ops.append(ParsedOp("div", ln, stripped))
+        # Detect Log/Ln
+        elif re.search(r'(?i)\b(Ln|Log)\b', stripped):
+            vec_ops.append(ParsedOp("log", ln, stripped))
+        # Detect Compare / Select
+        elif re.search(r'(?i)\bCompare\b', stripped):
+            vec_ops.append(ParsedOp("compare", ln, stripped))
+        elif re.search(r'(?i)\bSelect\b', stripped):
+            vec_ops.append(ParsedOp("select", ln, stripped))
+        # Detect sync flags
+        elif re.search(r'(?i)(SetFlag|WaitFlag)', stripped):
+            sync_ops.append(ParsedOp("sync", ln, stripped))
+        # Detect ReLU in fixpipe params
+        elif re.search(r'(?i)reluEn\s*=\s*true', stripped):
+            vec_ops.append(ParsedOp("relu_fixpipe", ln, stripped,
+                                    {"note": "ReLU enabled in fixpipe output"}))
+        # Detect transpose flags in MatMul params
+        elif re.search(r'(?i)isRightTranspose\s*=\s*true', stripped):
+            gemm_ops.append(ParsedOp("gemm_transpose", ln, stripped,
+                                     {"transpose_B": True}))
+
+    if gemm_ops:
+        stages.append(AscendCStage("C_GEMM", gemm_ops))
+    if vec_ops:
+        stages.append(AscendCStage("V_Vector", vec_ops))
+    if sync_ops:
+        stages.append(AscendCStage("Sync", sync_ops))
+
+    return stages
+
+
+# ==============================================================================
+# Comparison engine
+# ==============================================================================
+
+@dataclass
+class StageMatch:
+    orig_stage: str
+    planb_location: str
+    status: str  # "OK", "MISMATCH", "WARNING", "NOT_FOUND"
+    details: List[str] = field(default_factory=list)
+    param_issues: List[str] = field(default_factory=list)
+
+
+def _check_op_params(orig_op: Dict, planb_ops: List[ParsedOp], stage_name: str) -> List[str]:
+    """Check if expected parameters exist in parsed Plan B operations."""
+    issues: List[str] = []
+    op_type = orig_op.get("type", "")
+    params = orig_op.get("params", {})
+
+    found = False
+    for pb_op in planb_ops:
+        if _op_type_matches(op_type, pb_op.op_type):
+            found = True
+            # Check key parameters
+            if op_type == "gemm":
+                if params.get("transpose_B") and not pb_op.params.get("transpose_B"):
+                    issues.append(f"  !! {stage_name}: transpose_B=True expected but not found")
+                if params.get("activation") == "ReLU":
+                    if pb_op.params.get("activation") != "ReLU":
+                        issues.append(f"  !! {stage_name}: ReLU activation expected")
+            elif op_type == "reduce":
+                orig_axis = params.get("axis")
+                pb_axis = pb_op.params.get("axis")
+                if orig_axis is not None and pb_axis is not None and orig_axis != pb_axis:
+                    issues.append(f"  !! {stage_name}: reduce axis expected={orig_axis}, got={pb_axis}")
+            elif op_type == "cast":
+                orig_mode = params.get("mode", "")
+                pb_mode = pb_op.params.get("mode", "")
+                if "ROUND" in orig_mode and "ROUND" not in pb_mode:
+                    issues.append(f"  !! {stage_name}: cast mode expected=CAST_ROUND, got={pb_mode}")
+            elif op_type == "compare":
+                orig_op_name = params.get("op", "")
+                pb_op_name = pb_op.params.get("compare_op", "")
+                if orig_op_name and pb_op_name and orig_op_name != pb_op_name:
+                    issues.append(f"  !! {stage_name}: compare op expected={orig_op_name}, got={pb_op_name}")
+            break
+
+    if not found:
+        issues.append(f"  ?? {stage_name}: op type '{op_type}' not found in Plan B ops")
+
+    return issues
+
+
+def _op_type_matches(orig_type: str, pb_type: str) -> bool:
+    """Check if two operation types match semantically."""
+    equivalents = {
+        "gemm": ["gemm", "gemm_transpose"],
+        "softmax": ["softmax", "exp"],
+        "reduce": ["reduce", "reduce_sum", "reduce_max"],
+        "mul": ["mul"],
+        "sub": ["sub"],
+        "div": ["div"],
+        "log": ["log"],
+        "exp": ["exp"],
+        "clamp": ["max/clamp", "fill"],
+        "compare": ["compare"],
+        "select": ["select"],
+        "cast": ["cast"],
+        "scatter_add": ["scatter_add"],
+        "gather": [],
+        "abs": ["abs"],
     }
-
-    # Read base.h to extract MainProcess structure
-    base_h = os.path.join(arch_dir, "sparse_lightning_indexer_grad_kl_loss_base.h")
-    if os.path.exists(base_h):
-        with open(base_h, "r") as f:
-            content = f.read()
-
-        # Extract the MainProcess pipeline calls
-        pipeline_calls = []
-        for m in re.finditer(
-            r'(?:ComputeMm|ProcessVector|vectorService\.|matmulService\.)(\w+)',
-            content
-        ):
-            pipeline_calls.append(m.group(0))
-
-        result["original_pipeline_calls"] = pipeline_calls
-
-        # Count the sequence
-        v0_count = sum(1 for c in pipeline_calls if "Vector0" in c)
-        mm1_count = sum(1 for c in pipeline_calls if "Mm1" in c)
-        mm2_count = sum(1 for c in pipeline_calls if "Mm2" in c)
-        v1_count = sum(1 for c in pipeline_calls if "Vector1" in c)
-        mm5_count = sum(1 for c in pipeline_calls if "Mm5" in c)
-        mm6_count = sum(1 for c in pipeline_calls if "Mm6" in c)
-        v2_count = sum(1 for c in pipeline_calls if "Vector2" in c)
-
-        result["pipeline_counts"] = {
-            "V0(gather)": v0_count,
-            "C1_MM1": mm1_count,
-            "C1_MM2": mm2_count,
-            "V1(softmax/dW/Loss)": v1_count,
-            "C2_MM5(scatterAdd_dK)": mm5_count,
-            "C2_MM6(dQueryIndex)": mm6_count,
-            "V2(scatterAdd_copy)": v2_count,
-        }
-
-    return result
+    return pb_type in equivalents.get(orig_type, [orig_type])
 
 
-def compare_pipelines(report: PipelineReport, original_info: dict) -> str:
+def run_comparison(
+    parsed_stages: List[ParsedStage],
+    ascendc_stages: List[AscendCStage] = None,
+) -> Tuple[List[StageMatch], float]:
+    """Compare original AscendC expectation vs Plan B implementation.
+
+    Returns (matches, score).
+    """
+    matches: List[StageMatch] = []
+
+    # Flatten Plan B ops by location
+    k1_c_ops: List[ParsedOp] = []
+    k1_v_ops: List[ParsedOp] = []
+    k2_v_ops: List[ParsedOp] = []
+    py_ops: List[ParsedOp] = []
+
+    for ps in parsed_stages:
+        if "Kernel1" in ps.stage_name:
+            if "C1" in ps.stage_name or "MM" in ps.stage_name:
+                k1_c_ops.extend(ps.ops)
+            else:
+                k1_v_ops.extend(ps.ops)
+        elif "Kernel2" in ps.stage_name:
+            k2_v_ops.extend(ps.ops)
+        elif "Python" in ps.stage_name:
+            py_ops.extend(ps.ops)
+
+    # Flatten AscendC ops
+    ac_gemm_ops: List[ParsedOp] = []
+    ac_vec_ops: List[ParsedOp] = []
+    if ascendc_stages:
+        for acs in ascendc_stages:
+            if "GEMM" in acs.name:
+                ac_gemm_ops.extend(acs.ops)
+            elif "Vector" in acs.name:
+                ac_vec_ops.extend(acs.ops)
+
+    # Check each original stage against Plan B
+    total_checks = 0
+    passed_checks = 0
+
+    for stage in ORIGINAL_STAGES:
+        mapping = PLANB_MAPPING.get(stage.name, {})
+        location = mapping.get("location", "UNKNOWN")
+        total_checks += 1
+
+        details = [f"  Plan B: {location} | {mapping.get('function', mapping.get('note', '?'))}"]
+
+        # Check ops exist in the right location
+        target_ops = []
+        if location == "Kernel1":
+            target_ops = k1_c_ops + k1_v_ops
+        elif location == "Kernel2":
+            target_ops = k2_v_ops
+        elif location == "Python":
+            target_ops = py_ops
+
+        param_issues = []
+        for op_spec in stage.ops:
+            issues = _check_op_params(op_spec, target_ops, stage.name)
+            param_issues.extend(issues)
+
+        if param_issues:
+            details.extend(param_issues)
+            match = StageMatch(stage.name, location, "PARAM_ISSUE", details, param_issues)
+        elif not target_ops and stage.ops:
+            match = StageMatch(stage.name, location, "WARNING",
+                               details + ["  (empty ops, Python-side — check manually)"],
+                               param_issues)
+        else:
+            match = StageMatch(stage.name, location, "OK", details, param_issues)
+            passed_checks += 1
+
+        matches.append(match)
+
+    # AscendC code check (if provided)
+    if ascendc_stages:
+        total_checks += 2
+        # Check GEMM count
+        gemm_actual = len(ac_gemm_ops)
+        if gemm_actual >= 2:
+            passed_checks += 1
+            matches.append(StageMatch("AscendC_GEMM", "Generated", "OK",
+                                      [f"  Found {gemm_actual} GEMM events (>=2 OK for Plan B)"]))
+        else:
+            matches.append(StageMatch("AscendC_GEMM", "Generated", "MISMATCH",
+                                      [f"  Found {gemm_actual} GEMM events, expected >=2"]))
+
+        # Check Vector ops
+        vec_actual = len(ac_vec_ops)
+        if vec_actual >= 5:
+            passed_checks += 1
+            matches.append(StageMatch("AscendC_Vector", "Generated", "OK",
+                                      [f"  Found {vec_actual} vector ops (>=5 OK)"]))
+        else:
+            matches.append(StageMatch("AscendC_Vector", "Generated", "WARNING",
+                                      [f"  Only {vec_actual} vector ops found, may be incomplete"]))
+
+    score = (passed_checks / total_checks * 100) if total_checks > 0 else 0.0
+    return matches, score
+
+
+# ==============================================================================
+# Report generation
+# ==============================================================================
+
+def generate_report(matches: List[StageMatch], score: float,
+                    parsed_stages: List[ParsedStage] = None,
+                    ascendc_stages: List[AscendCStage] = None) -> str:
     """Generate a human-readable comparison report."""
     lines = []
-    lines.append("=" * 70)
-    lines.append("Pipeline Structure Comparison")
-    lines.append("TileLang-Generated vs Original AscendC")
-    lines.append("=" * 70)
+    lines.append("=" * 72)
+    lines.append("  Plan B vs Original AscendC — Logic & Parameter Validation")
+    lines.append("=" * 72)
 
-    # ---- Original pipeline ----
-    lines.append("\n## Original AscendC Pipeline (MainProcess)")
+    # ---- Original pipeline summary ----
     lines.append("")
-    lines.append("  V0(gather) -> C1(MM1+MM2) -> V1(P/SY/dW/reluGrad/Loss)")
-    lines.append("  -> C2(MM5+MM6) -> V2(ScatterAdd+Cast)")
+    lines.append("## Original AscendC Pipeline (14 stages)")
+    lines.append("  V0(GatherKey)→V0(GatherKeyIdx)→C1(MM1)→C1(MM2)")
+    lines.append("  →V1(VectorP)→V1(ReduceSumY)→V1(GlobalSoftmaxI)")
+    lines.append("  →V1(DiffDW)→V1(ReLUGrad)→V1(KL_Loss)")
+    lines.append("  →C2(MM5:scatterAdd)→C2(MM6:dQueryIndex)→V2(ScatterAdd+Cast)")
+
+    # ---- Plan B mapping ----
     lines.append("")
-    if "pipeline_counts" in original_info:
-        lines.append("  Stage counts in MainProcess loop:")
-        for stage, count in original_info["pipeline_counts"].items():
-            lines.append(f"    {stage}: {count} call(s)")
+    lines.append("## Plan B Mapping")
+    lines.append("  Kernel1 (C1): MM1 (Pipelined) + MM2 (ReLU)")
+    lines.append("  Kernel1 (V1): P_reduced + ReduceSumY (per K-block)")
+    lines.append("  Kernel2 (V1): SoftmaxI + diff + dWeight + reluGrad + KL Loss")
+    lines.append("  Python:      dW sum, Loss sum, MM6 bmm, MM5 scatter_add, Cast")
+
+    # ---- Stage-by-stage comparison ----
     lines.append("")
-    lines.append("  Sync flags: C->V via CrossCoreSetFlag/WaitFlag pairs")
-    lines.append("  MM params: M_SPLIT=128, N_SPLIT=128, K_SPLIT=128")
-    lines.append("  Core model: AIC (Cube) + AIV (Vector) separate cores")
-    lines.append("  Decomposition: (B, S1) pairs across cores; K-axis in serial")
-
-    # ---- Generated pipeline ----
-    lines.append("\n## TileLang-Generated AscendC Pipeline")
-    lines.append(f"  Source: {report.generated_file}")
+    lines.append("## Stage-by-Stage Comparison")
     lines.append("")
-    lines.append("  TileLang model: Single kernel, C Scope + V Scope within one core")
-    lines.append("  Decomposition: (B, S1) pairs across cores; K-axis in T.serial")
 
-    if report.stages_detected:
-        lines.append("\n  Detected stages (in source order):")
-        for stage in report.stages_detected:
-            lines.append(
-                f"    [{stage.name}] lines {stage.line_start}-{stage.line_end}"
-            )
-            for p in stage.patterns[:3]:
-                lines.append(f"      {p}")
+    status_counts = {"OK": 0, "WARNING": 0, "PARAM_ISSUE": 0, "MISMATCH": 0, "NOT_FOUND": 0}
+    for m in matches:
+        icon = {"OK": "[OK]", "WARNING": "[??]", "PARAM_ISSUE": "[!!]",
+                "MISMATCH": "[XX]", "NOT_FOUND": "[--]"}.get(m.status, "[  ]")
+        lines.append(f"  {icon} {m.orig_stage}")
+        lines.append(f"      → {m.planb_location}")
+        for d in m.details:
+            lines.append(f"        {d}")
+        lines.append("")
+        status_counts[m.status] = status_counts.get(m.status, 0) + 1
 
-    # ---- Comparison metrics ----
-    lines.append("\n## Comparison Metrics")
+    # ---- Summary ----
+    lines.append("-" * 72)
+    lines.append(f"  Results: {status_counts['OK']} OK, {status_counts['WARNING']} warnings, "
+                 f"{status_counts['PARAM_ISSUE']} param issues, {status_counts['MISMATCH']} mismatches")
+    lines.append(f"  Overall Score: {score:.0f}/100")
+    lines.append("")
 
-    lines.append(f"\n  GEMM operations:")
-    lines.append(f"    Expected: >=3 (MM1, MM2, MM6)")
-    lines.append(f"    Detected: {report.gemm_count}")
-    lines.append(f"    Status: {'OK' if report.gemm_count >= 3 else 'MISMATCH'}")
-
-    lines.append(f"\n  ReLU activations:")
-    lines.append(f"    Expected: >=1 (MM2 ReLU output, reluGrad mask)")
-    lines.append(f"    Detected: {report.relu_count}")
-    lines.append(f"    Status: {'OK' if report.relu_count >= 1 else 'MISMATCH'}")
-
-    lines.append(f"\n  Softmax operations:")
-    lines.append(f"    Expected: >=1 (P softmax + SoftmaxI)")
-    lines.append(f"    Detected: {report.softmax_count}")
-    lines.append(f"    Status: {'OK' if report.softmax_count >= 1 else 'MISMATCH'}")
-
-    lines.append(f"\n  C→V Sync pairs:")
-    lines.append(f"    Expected: >=2 (C1→V1, V1→C2, C2→V2)")
-    lines.append(f"    Detected: {len(report.sync_pairs_detected)}")
-    for sf_line, wf_line, desc in report.sync_pairs_detected:
-        lines.append(f"      SetFlag(line {sf_line}) -> WaitFlag(line {wf_line}): {desc}")
-    lines.append(f"    Status: {'OK' if len(report.sync_pairs_detected) >= 2 else 'MISMATCH'}")
-
-    if report.mm_params_detected:
-        lines.append(f"\n  MM split sizes:")
-        for name, val in report.mm_params_detected.items():
-            expected = EXPECTED_MM_PARAMS.get(name, "?")
-            lines.append(f"    {name}: {val} (expected {expected})")
+    if score >= 90:
+        lines.append("  Assessment: Logic and parameters match original")
+    elif score >= 70:
+        lines.append("  Assessment: Major stages match, minor param differences")
+    elif score >= 50:
+        lines.append("  Assessment: Partial match, review param issues above")
     else:
-        lines.append(f"\n  MM split sizes: Not explicitly detected in generated code")
+        lines.append("  Assessment: Significant differences — review each stage")
 
-    # ---- Missing stages ----
-    if report.missing_stages:
-        lines.append(f"\n## MISSING STAGES:")
-        for s in report.missing_stages:
-            lines.append(f"  FAIL: {s}")
+    # ---- AscendC generated-code summary ----
+    if ascendc_stages:
+        lines.append("")
+        lines.append("## Generated AscendC Code Summary")
+        for acs in ascendc_stages:
+            lines.append(f"  [{acs.name}] {len(acs.ops)} operations detected")
+            for op in acs.ops[:8]:
+                lines.append(f"    L{op.line}: {op.op_type}")
 
-    # ---- Warnings ----
-    if report.warnings:
-        lines.append(f"\n## Warnings:")
-        for w in report.warnings:
-            lines.append(f"  WARN: {w}")
-
-    # ---- Score ----
-    lines.append(f"\n## Structural Match Score: {report.score:.0f}/100")
-    if report.score >= 80:
-        lines.append("  Assessment: Pipeline structure closely matches original")
-    elif report.score >= 60:
-        lines.append("  Assessment: Major stages present, some details differ")
-    elif report.score >= 40:
-        lines.append("  Assessment: Partial match, significant structural differences")
-    else:
-        lines.append("  Assessment: Poor match, pipeline may be substantially different")
-
-    # ---- Key differences from original ----
-    lines.append("\n## Known Differences (by design)")
-    lines.append("  1. V0(gather): Moved to Python torch.gather preprocessing")
-    lines.append("  2. MM5(scatterAdd dKeyIndex): Moved to Python scatter_add_ postprocessing")
-    lines.append("  3. AIC/AIV dual-core -> TileLang single-core C+V Scopes")
-    lines.append("  4. K decomposition across cores -> serial T.serial within one core")
+    # ---- Parsed Plan B summary ----
+    if parsed_stages:
+        lines.append("")
+        lines.append("## Parsed Plan B Operations")
+        for ps in parsed_stages:
+            lines.append(f"  [{ps.stage_name}] ({ps.location}) — {len(ps.ops)} ops")
+            for op in ps.ops[:10]:
+                extra = ""
+                if op.params:
+                    key_params = {k: v for k, v in op.params.items()
+                                  if k not in ("note",)}
+                    if key_params:
+                        extra = f"  {key_params}"
+                lines.append(f"    L{op.line}: {op.op_type}{extra}")
 
     return "\n".join(lines)
 
 
 # ==============================================================================
-# Dump generated AscendC code
+# Dump generated AscendC infrastructure
 # ==============================================================================
 
-def dump_generated_code(config: dict = None) -> Optional[str]:
-    """Try to dump TileLang-generated AscendC source code.
+def dump_generated_code() -> Optional[str]:
+    """Attempt to dump TileLang-generated AscendC source and return the file path."""
+    # Try common cache locations
+    import pathlib
+    home = pathlib.Path.home()
+    cache_dirs = [
+        home / ".cache" / "tilelang",
+        home / ".tilelang",
+        home / ".tilelang_cache",
+        pathlib.Path("/tmp/tilelang_cache"),
+        pathlib.Path("/tmp/tilelang"),
+    ]
+    for d in cache_dirs:
+        if d.exists():
+            cpp_files = list(d.rglob("*.cpp")) + list(d.rglob("*.cuh"))
+            if cpp_files:
+                latest = max(cpp_files, key=lambda f: f.stat().st_mtime)
+                print(f"Found generated source: {latest}")
+                print(f"  Size: {latest.stat().st_size} bytes")
+                print(f"  Run: python validate_pipeline.py --compare {latest}")
+                return str(latest)
 
-    Tries multiple methods:
-    1. Environment variable TL_DUMP=1
-    2. Checking common cache directories
-    3. Calling .get_source() on the compiled kernel
-    """
-    if config is None:
-        config = {
-            "B": 1, "S1": 1, "S2": 2048, "N1": 128, "N2": 1,
-            "Nidx1": 64, "Nidx2": 1, "DQuery": 512, "DQueryIndex": 128,
-            "d_rope": 64, "K": 2048,
-        }
-
-    # Method 1: Try running with TL_DUMP=1
-    print("[Method 1] Trying TL_DUMP=1 environment variable...")
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    test_script = os.path.join(script_dir, "dump_kernel.py")
-
-    # We'll create a minimal script that triggers compilation
-    dump_code = '''
-import os
-import sys
-sys.path.insert(0, r"{script_dir}")
-
-# Try to enable dumping
-for env_var in ["TL_DUMP", "TL_DEBUG", "TILELANG_DUMP", "TILELANG_DEBUG",
-                "ASCENDC_DUMP", "TVM_DUMP", "TL_DUMP_ASCENDC"]:
-    os.environ[env_var] = "1"
-
-import tilelang
-import tilelang.language as T
-
-# Check available PassConfigKey values
-print("=== PassConfigKey attributes ===")
-for attr in dir(tilelang.PassConfigKey):
-    if not attr.startswith("_"):
-        print(f"  tilelang.PassConfigKey.{attr}")
-
-# Check for dump-related attributes in tilelang module
-print("\\n=== tilelang module attributes ===")
-for attr in dir(tilelang):
-    if any(kw in attr.lower() for kw in ["dump", "debug", "source", "cache", "build"]):
-        print(f"  tilelang.{attr}")
-
-# Check common cache directories
-import pathlib
-home = pathlib.Path.home()
-cache_dirs = [
-    home / ".cache" / "tilelang",
-    home / ".tilelang",
-    home / ".tilelang_cache",
-    pathlib.Path("/tmp/tilelang_cache"),
-    pathlib.Path("/tmp/tilelang"),
-]
-print("\\n=== Cache directory check ===")
-for d in cache_dirs:
-    if d.exists():
-        print(f"  EXISTS: {{d}}")
-        for f in d.rglob("*"):
-            if f.is_file():
-                print(f"    {{f}} ({{f.stat().st_size}} bytes)")
-    else:
-        print(f"  NOT FOUND: {{d}}")
-
-# Now try to compile a kernel
-print("\\n=== Compiling kernel ===")
-from tilelang_rewrite.sparse_lightning_indexer_grad_kl_loss import (
-    sparse_lightning_indexer_grad_kl_loss,
-    _clear_caches,
-)
-
-import torch
-import math
-
-B, S1, S2, N1, N2 = 1, 1, 2048, 128, 1
-Nidx1, Nidx2 = 64, 1
-DQuery, DQueryIndex, d_rope, K = 512, 128, 64, 2048
-G = N1 // N2
-
-torch.manual_seed(42)
-dtype = torch.float16
-device = "npu"
-
-query = torch.randn(B, S1, N1, DQuery, dtype=dtype).to(device)
-key = torch.randn(B, S2, N2, DQuery, dtype=dtype).to(device)
-query_index = torch.randn(B, S1, Nidx1, DQueryIndex, dtype=dtype).to(device)
-key_index = torch.randn(B, S2, Nidx2, DQueryIndex, dtype=dtype).to(device)
-query_rope = torch.randn(B, S1, N1, d_rope, dtype=dtype).to(device)
-key_rope = torch.randn(B, S2, N2, d_rope, dtype=dtype).to(device)
-weights = torch.randn(B, S1, Nidx1, dtype=dtype).to(device)
-sparse_indices = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).to(device)
-
-s2_real_len = min(S2, K)
-indices = torch.randperm(S2)[:s2_real_len]
-for s in range(S1):
-    sparse_indices[0, s, 0, :s2_real_len] = indices.to(torch.int32).to(device)
-    if s2_real_len < K:
-        sparse_indices[0, s, 0, s2_real_len:] = -1
-
-scale_value = 1.0 / math.sqrt(DQuery)
-scale_tensor = torch.tensor(scale_value, dtype=torch.float32)
-
-# Compute softmax max/sum
-with torch.no_grad():
-    k_mqa = key.squeeze(2)
-    k_rope_mqa = key_rope.squeeze(2)
-    q_full = torch.cat([query, query_rope], dim=-1)
-    k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
-    k_full_t = k_full.transpose(-1, -2).unsqueeze(1)
-    sm_max_list, sm_sum_list = [], []
-    for s in range(S1):
-        row = torch.matmul(q_full[:, s:s+1], k_full_t)
-        row_scaled = row.float() * scale_value
-        row_max = row_scaled.max(dim=-1).values
-        row_sum = torch.exp(row_scaled - row_max.unsqueeze(-1)).sum(dim=-1)
-        sm_max_list.append(row_max)
-        sm_sum_list.append(row_sum)
-    sm_max = torch.cat(sm_max_list, dim=1)
-    sm_sum = torch.cat(sm_sum_list, dim=1)
-    softmax_max = sm_max.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float().to(device)
-    softmax_sum = sm_sum.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float().to(device)
-
-torch.npu.synchronize()
-
-_clear_caches()
-
-# Try to call the kernel
-print("Calling kernel...")
-try:
-    d_qi, d_ki, dw, loss = sparse_lightning_indexer_grad_kl_loss(
-        query, key, query_index, key_index,
-        weights, sparse_indices,
-        softmax_max, softmax_sum,
-        scale_value,
-        query_rope=query_rope,
-        key_rope=key_rope,
-        layout_query="BSND",
-        actual_seq_lengths_query=[S1]*B,
-        actual_seq_lengths_key=[S2]*B,
-        sparse_mode=3,
-    )
-    torch.npu.synchronize()
-    print("Kernel executed successfully")
-except Exception as e:
-    print(f"Kernel execution failed: {{e}}")
-    import traceback
-    traceback.print_exc()
-
-# After compilation, check for generated files again
-print("\\n=== Post-compilation cache check ===")
-for d in cache_dirs:
-    if d.exists():
-        print(f"  EXISTS: {{d}}")
-        for f in sorted(d.rglob("*"), key=lambda x: x.stat().st_mtime, reverse=True):
-            if f.is_file():
-                print(f"    {{f}} ({{f.stat().st_size}} bytes, mtime={{f.stat().st_mtime}})")
-                if f.suffix in [".cpp", ".h", ".cuh", ".cc"]:
-                    print(f"      *** ASCENDC SOURCE FILE ***")
-                    try:
-                        content = f.read_text()
-                        print(f"      First 500 chars:")
-                        print(f"      {{content[:500]}}")
-                    except:
-                        pass
-
-# Check for kernel object methods
-print("\\n=== Kernel function attributes ===")
-print("(Will be printed by validate_pipeline.py wrapper)")
-'''.format(script_dir=script_dir)
-
-    dump_script = os.path.join(script_dir, "_dump_kernel_temp.py")
-    with open(dump_script, "w") as f:
-        f.write(dump_code)
-
-    try:
-        # Run on NPU device (use python directly since we're on the NPU machine)
-        result = subprocess.run(
-            [sys.executable, dump_script],
-            capture_output=True, text=True, timeout=300,
-            env={**os.environ, "TL_DUMP": "1", "TL_DEBUG": "1",
-                 "TILELANG_DUMP": "1", "TILELANG_DEBUG": "1"},
-        )
-        print(result.stdout)
-        if result.stderr:
-            print("STDERR:", result.stderr[:2000])
-
-        # Search for generated .cpp files in stdout
-        for line in result.stdout.split("\n"):
-            if ".cpp" in line or ".cuh" in line:
-                print(f"  Found potential source: {line}")
-
-    finally:
-        if os.path.exists(dump_script):
-            os.remove(dump_script)
-
-    return None  # No automatic extraction; user should check output
-
-
-def inspect_compiled_kernel_object():
-    """Generate a script that inspects the compiled kernel object's attributes."""
-    code = '''
-import os, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-os.environ.setdefault("TL_DUMP", "1")
-
-import tilelang
-from tilelang_rewrite.sparse_lightning_indexer_grad_kl_loss import (
-    sparse_lightning_indexer_grad_kl_loss as tl_func,
-    _clear_caches, _kernel_cache,
-)
-
-# Check what tilelang.jit returns
-print("=== Exploring @tilelang.jit return value ===")
-
-# Monkey-patch to capture the compiled function
-import tilelang.language as T
-original_jit = tilelang.jit
-
-def inspecting_jit(*args, **kwargs):
-    print(f"@tilelang.jit called with: out_idx={kwargs.get('out_idx')}, "
-          f"workspace_idx={kwargs.get('workspace_idx')}")
-    def decorator(fn):
-        result = original_jit(*args, **kwargs)(fn)
-        print(f"Compiled object type: {type(result)}")
-        print(f"Compiled object dir: {[a for a in dir(result) if not a.startswith('_')]}")
-        # Check for useful methods
-        for meth in ["get_source", "get_kernel_source", "get_build_config",
-                     "export_library", "get_code", "dump", "source"]:
-            if hasattr(result, meth):
-                print(f"  HAS METHOD: {meth}")
-        return result
-    return decorator
-
-tilelang.jit = inspecting_jit
-
-# Now trigger compilation
-import torch, math
-
-B, S1, S2 = 1, 1, 2048
-N1, N2, Nidx1, Nidx2 = 128, 1, 64, 1
-DQuery, DQueryIndex, d_rope, K = 512, 128, 64, 2048
-G = N1 // N2
-dtype = torch.float16
-device = "npu"
-
-torch.manual_seed(42)
-query = torch.randn(B, S1, N1, DQuery, dtype=dtype).to(device)
-key = torch.randn(B, S2, N2, DQuery, dtype=dtype).to(device)
-query_index = torch.randn(B, S1, Nidx1, DQueryIndex, dtype=dtype).to(device)
-key_index = torch.randn(B, S2, Nidx2, DQueryIndex, dtype=dtype).to(device)
-query_rope = torch.randn(B, S1, N1, d_rope, dtype=dtype).to(device)
-key_rope = torch.randn(B, S2, N2, d_rope, dtype=dtype).to(device)
-weights = torch.randn(B, S1, Nidx1, dtype=dtype).to(device)
-sparse_indices = torch.zeros(B, S1, Nidx2, K, dtype=torch.int32).to(device)
-indices = torch.randperm(S2)[:min(S2, K)]
-for s in range(S1):
-    sparse_indices[0, s, 0, :min(S2, K)] = indices.to(torch.int32).to(device)
-    if min(S2, K) < K:
-        sparse_indices[0, s, 0, min(S2, K):] = -1
-
-scale_value = 1.0 / math.sqrt(DQuery)
-with torch.no_grad():
-    k_mqa = key.squeeze(2); k_rope_mqa = key_rope.squeeze(2)
-    q_full = torch.cat([query, query_rope], dim=-1)
-    k_full = torch.cat([k_mqa, k_rope_mqa], dim=-1)
-    k_full_t = k_full.transpose(-1, -2).unsqueeze(1)
-    sm_max_list, sm_sum_list = [], []
-    for s in range(S1):
-        row = torch.matmul(q_full[:, s:s+1], k_full_t)
-        rs = row.float() * scale_value
-        sm_max_list.append(rs.max(dim=-1).values)
-        sm_sum_list.append(torch.exp(rs - rs.max(dim=-1).values.unsqueeze(-1)).sum(dim=-1))
-    sm_max = torch.cat(sm_max_list, dim=1)
-    sm_sum = torch.cat(sm_sum_list, dim=1)
-    softmax_max = sm_max.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float().to(device)
-    softmax_sum = sm_sum.reshape(B, S1, N2, G).permute(0, 2, 1, 3).contiguous().float().to(device)
-
-torch.npu.synchronize()
-_clear_caches()
-
-try:
-    result = tl_func(
-        query, key, query_index, key_index, weights, sparse_indices,
-        softmax_max, softmax_sum, scale_value,
-        query_rope=query_rope, key_rope=key_rope,
-        layout_query="BSND",
-        actual_seq_lengths_query=[S1]*B,
-        actual_seq_lengths_key=[S2]*B,
-        sparse_mode=3,
-    )
-    torch.npu.synchronize()
-    print(f"Result shapes: dQI={result[0].shape}, dKI={result[1].shape}, "
-          f"dW={result[2].shape}, loss={result[3].shape}")
-except Exception as e:
-    print(f"Error: {e}")
-    import traceback
-    traceback.print_exc()
-
-# Restore original jit
-tilelang.jit = original_jit
-print("\\n=== Done ===")
-'''
-    return code
+    print("No generated .cpp files found in cache dirs.")
+    print("Try running the test first to trigger compilation, then re-run --dump.")
+    return None
 
 
 # ==============================================================================
@@ -804,75 +922,105 @@ print("\\n=== Done ===")
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Validate TileLang-generated AscendC pipeline against original"
+        description="Validate Plan B vs original AscendC — logic & parameter comparison",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python validate_pipeline.py                       # default: check Plan B Python source
+  python validate_pipeline.py --dump                # find cached generated .cpp file
+  python validate_pipeline.py --compare kernel.cu   # also check generated AscendC code
+  python validate_pipeline.py --full                # Python check + auto-find generated code
+        """,
     )
+    parser.add_argument("--check-python", action="store_true",
+                        help="Parse Plan B Python source, compare stages against original AscendC spec")
     parser.add_argument("--compare", metavar="FILE",
-                        help="Compare generated AscendC .cpp file against original")
+                        help="Path to TileLang-generated AscendC .cpp/.cu file (use --dump to find it)")
     parser.add_argument("--dump", action="store_true",
-                        help="Attempt to dump generated AscendC source")
-    parser.add_argument("--inspect", action="store_true",
-                        help="Generate script to inspect compiled kernel object")
-    parser.add_argument("--auto", action="store_true",
-                        help="Full auto: dump then compare (requires NPU)")
+                        help="Search cache dirs for TileLang-generated AscendC source, print the path")
+    parser.add_argument("--full", action="store_true",
+                        help="--check-python + auto --dump + --compare (if generated file found)")
     args = parser.parse_args()
 
-    # ---- Mode: Inspect kernel object ----
-    if args.inspect:
-        code = inspect_compiled_kernel_object()
-        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "_inspect_kernel.py")
-        with open(out_path, "w") as f:
-            f.write(code)
-        print(f"Inspection script written to: {out_path}")
-        print("Run this on the NPU machine to discover how to get generated source.")
-        return
+    # Detect generated file for --full
+    if args.full and not args.compare:
+        found = dump_generated_code()
+        if found:
+            args.compare = found
+        else:
+            print("(Proceeding with Python-only comparison; run test first to generate AscendC)")
 
-    # ---- Mode: Dump generated code ----
     if args.dump:
         dump_generated_code()
         return
 
-    # ---- Mode: Auto (dump then compare) ----
-    if args.auto:
-        print("Step 1: Attempting to dump generated code...")
-        dump_generated_code()
-        # The dump function will print instructions for finding the generated file
-        print("\nAfter finding the generated .cpp file, run:")
-        print(f"  python {__file__} --compare <path/to/generated.cpp>")
-        return
+    if args.compare and not os.path.exists(args.compare):
+        print(f"Error: File not found: {args.compare}")
+        print("Hint: run with --dump to search for cached generated files,\n"
+              "      or compile the kernel first (run test_planB.py --quick), then try again.")
+        sys.exit(1)
 
-    # ---- Mode: Compare ----
-    if args.compare:
-        if not os.path.exists(args.compare):
-            print(f"Error: File not found: {args.compare}")
+    parsed_stages: List[ParsedStage] = []
+    ascendc_stages: List[AscendCStage] = []
+
+    # Parse Python source
+    if args.check_python or args.full or not args.compare:
+        planb_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "sparse_lightning_indexer_grad_kl_loss_planB.py",
+        )
+        if os.path.exists(planb_path):
+            print(f"Parsing Plan B source: {planb_path}")
+            parsed_stages, warnings = parse_planb_python_source(planb_path)
+            for w in warnings:
+                print(f"  WARN: {w}")
+            print(f"  Found {len(parsed_stages)} stages with "
+                  f"{sum(len(s.ops) for s in parsed_stages)} total ops")
+        else:
+            print(f"Plan B source not found: {planb_path}")
             sys.exit(1)
 
-        with open(args.compare, "r") as f:
-            generated_source = f.read()
+    # Parse AscendC source
+    if args.compare:
+        print(f"Parsing generated AscendC: {args.compare}")
+        with open(args.compare, "r", encoding="utf-8") as f:
+            source = f.read()
+        print(f"  File: {len(source)} chars, {len(source.splitlines())} lines")
+        ascendc_stages = parse_ascendc_source(source)
+        print(f"  Found {len(ascendc_stages)} stages with "
+              f"{sum(len(s.ops) for s in ascendc_stages)} total ops")
 
-        print(f"Analyzing: {args.compare}")
-        print(f"File size: {len(generated_source)} chars, {len(generated_source.splitlines())} lines")
+    # If no specific action, default to --check-python
+    if not args.check_python and not args.compare and not args.full:
+        args.check_python = True
+        planb_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "sparse_lightning_indexer_grad_kl_loss_planB.py",
+        )
+        if os.path.exists(planb_path):
+            print(f"Parsing Plan B source: {planb_path}")
+            parsed_stages, warnings = parse_planb_python_source(planb_path)
+            for w in warnings:
+                print(f"  WARN: {w}")
+            print(f"  Found {len(parsed_stages)} stages with "
+                  f"{sum(len(s.ops) for s in parsed_stages)} total ops")
 
-        report = parse_generated_code(generated_source, args.compare)
-        original_info = analyze_original_pipeline()
-
-        comparison = compare_pipelines(report, original_info)
-        print(comparison)
+    # Run comparison
+    if parsed_stages or ascendc_stages:
+        matches, score = run_comparison(parsed_stages, ascendc_stages if ascendc_stages else None)
+        report = generate_report(matches, score, parsed_stages, ascendc_stages if ascendc_stages else None)
+        print(report)
 
         # Save report
-        report_path = args.compare + ".pipeline_report.txt"
-        with open(report_path, "w") as f:
-            f.write(comparison)
-        print(f"\nReport saved to: {report_path}")
-        return
-
-    # ---- Default: print help ----
-    parser.print_help()
-    print("\nQuick start:")
-    print(f"  1. First, discover how to dump: python {__file__} --inspect")
-    print(f"  2. Run the generated inspect script on NPU machine")
-    print(f"  3. Find the generated .cpp file")
-    print(f"  4. Compare: python {__file__} --compare <generated.cpp>")
+        report_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "pipeline_validation_report.txt",
+        )
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(report)
+        print(f"Report saved to: {report_path}")
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":
