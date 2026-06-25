@@ -454,10 +454,7 @@ __simd_callee__ inline void LoadAttenMask8(
     MaskReg &preg_compare3, MaskReg &preg_compare4,
     MaskReg &preg_compare5, MaskReg &preg_compare6,
     MaskReg &preg_compare7, MaskReg &preg_compare8,
-    __ubuf__ uint32_t *&maskUb1, __ubuf__ uint32_t *&maskUb2,
-    __ubuf__ uint32_t *&maskUb3, __ubuf__ uint32_t *&maskUb4,
-    __ubuf__ uint32_t *&maskUb5, __ubuf__ uint32_t *&maskUb6,
-    __ubuf__ uint32_t *&maskUb7, __ubuf__ uint32_t *&maskUb8,
+    VREG_FLOAT_MASKUB_REF_8_DECL,
     const uint32_t nPadding)
 {
     DO_LOADALIGN_MASK_8(preg_compare, maskUb, nPadding);
@@ -467,9 +464,7 @@ __simd_callee__ inline void LoadAttenMask6(
     MaskReg &preg_compare1, MaskReg &preg_compare2,
     MaskReg &preg_compare3, MaskReg &preg_compare4,
     MaskReg &preg_compare5, MaskReg &preg_compare6,
-    __ubuf__ uint32_t *&maskUb1, __ubuf__ uint32_t *&maskUb2,
-    __ubuf__ uint32_t *&maskUb3, __ubuf__ uint32_t *&maskUb4,
-    __ubuf__ uint32_t *&maskUb5, __ubuf__ uint32_t *&maskUb6,
+    VREG_FLOAT_MASKUB_REF_6_DECL,
     const uint32_t nPadding)
 {
     DO_LOADALIGN_MASK_6(preg_compare, maskUb, nPadding);
@@ -602,7 +597,7 @@ __simd_callee__ static inline void ProcessVec1TailLoop512(
 
     Duplicate(vreg_min, minValue);
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                    pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+                  pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
         Arange(vreg_alibi1, posShift);
         Adds(vreg_alibi7, vreg_alibi1, floatRepSize * 6, preg_all);
         Adds(vreg_alibi8, vreg_alibi1, floatRepSize * 7, preg_all);
