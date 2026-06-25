@@ -49,6 +49,63 @@ enum SparseMode : uint8_t {
     TREE = 9,
 };
 
+enum class BinaryRepeatOp : uint8_t {
+    DivOp,
+    SubOp,
+    MaxOp,
+    AddOp,
+};
+
+__aicore__ inline BinaryRepeatParams GetColumnBinaryRepeatParams(uint32_t columnCount, uint32_t dstRepStride)
+{
+    BinaryRepeatParams repeatParams;
+    repeatParams.src0BlkStride = 1;
+    repeatParams.src1BlkStride = 1;
+    repeatParams.dstBlkStride = 1;
+    repeatParams.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParams.src1RepStride = 0;
+    repeatParams.dstRepStride = dstRepStride;
+    return repeatParams;
+}
+
+template <BinaryRepeatOp op>
+__aicore__ inline void BinaryRepeatCompute(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
+                                           LocalTensor<float> src1Ub, uint32_t mask, uint32_t repeatTimes,
+                                           BinaryRepeatParams repeatParams)
+{
+    if constexpr (op == BinaryRepeatOp::DivOp) {
+        Div(dstUb, src0Ub, src1Ub, mask, repeatTimes, repeatParams);
+    } else if constexpr (op == BinaryRepeatOp::SubOp) {
+        Sub(dstUb, src0Ub, src1Ub, mask, repeatTimes, repeatParams);
+    } else if constexpr (op == BinaryRepeatOp::MaxOp) {
+        Max(dstUb, src0Ub, src1Ub, mask, repeatTimes, repeatParams);
+    } else if constexpr (op == BinaryRepeatOp::AddOp) {
+        Add(dstUb, src0Ub, src1Ub, mask, repeatTimes, repeatParams);
+    }
+}
+
+template <BinaryRepeatOp op>
+__aicore__ inline void BinaryRepeatByColumn(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
+                                            LocalTensor<float> src1Ub, uint32_t dealRowCount, uint32_t columnCount,
+                                            uint32_t actualColumnCount, uint32_t dstRepStride)
+{
+    uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
+    uint32_t dLoop = actualColumnCount / dtypeMask;
+    uint32_t dRemain = actualColumnCount % dtypeMask;
+    BinaryRepeatParams repeatParams = GetColumnBinaryRepeatParams(columnCount, dstRepStride);
+
+    uint32_t offset = 0;
+    for (uint32_t i = 0; i < dLoop; i++) {
+        BinaryRepeatCompute<op>(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParams);
+        offset += dtypeMask;
+    }
+
+    if (dRemain > 0) {
+        BinaryRepeatCompute<op>(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask],
+                                dRemain, dealRowCount, repeatParams);
+    }
+}
+
 __aicore__ inline bool IsExistInvalidRows(int64_t nextTokensPerBatch, int64_t preTokensPerBatch, uint32_t mode,
                                           bool attenMaskFlag, bool isRowInvalid)
 {
@@ -91,12 +148,12 @@ __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     // dstRepStride为0~255,columnCount需要小于2048
     if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
-        repeatParams.dstBlkStride = 1;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
-        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstBlkStride = 1;
         repeatParams.src0RepStride = 0;
         repeatParams.src1RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
         uint32_t loopCount = actualColumnCount / mask;
         uint32_t remainCount = actualColumnCount % mask;
@@ -227,12 +284,12 @@ __aicore__ inline void VecAddMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     // dstRepStride为0~255,columnCount需要小于2048
     if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
-        repeatParams.dstBlkStride = 1;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
-        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstBlkStride = 1;
         repeatParams.src0RepStride = 0;
         repeatParams.src1RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
         uint32_t loopCount = actualColumnCount / mask;
         uint32_t remainCount = actualColumnCount % mask;
@@ -303,12 +360,12 @@ __aicore__ inline void RowDivs(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         }
     } else {
         BinaryRepeatParams columnRepeatParams;
+        columnRepeatParams.dstBlkStride = 1;
         columnRepeatParams.src0BlkStride = 1;
         columnRepeatParams.src1BlkStride = 0;
-        columnRepeatParams.dstBlkStride = 1;
+        columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src1RepStride = 0;
-        columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         uint32_t offset = 0;
         for (uint32_t i = 0; i < dealRowCount; i++) {
             Div(dstUb[offset], src0Ub[offset], src1Ub[i * blockNum], repeatNum, columnRepeatCount, columnRepeatParams);
@@ -344,12 +401,12 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
     // REPEATE_STRIDE_UP_BOUND=256， 此限制由于src0RepStride数据类型为uint8之多256个datablock间距
     if (columnCount < REPEATE_STRIDE_UP_BOUND * blockElementNum) {
         BinaryRepeatParams repeatParams;
+        repeatParams.dstBlkStride = 1;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 0;
-        repeatParams.dstBlkStride = 1;
+        repeatParams.dstRepStride = columnCount / blockElementNum;
         repeatParams.src0RepStride = columnCount / blockElementNum;
         repeatParams.src1RepStride = 1;
-        repeatParams.dstRepStride = columnCount / blockElementNum;
 
         // 如果以列为repeat所处理的次数小于行处理次数，则以列方式处理。反之则以行进行repeat处理
         if (dLoop <= dealRowCount) {
@@ -362,9 +419,9 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
             BinaryRepeatParams columnRepeatParams;
             columnRepeatParams.src0BlkStride = 1;
             columnRepeatParams.src1BlkStride = 0;
-            columnRepeatParams.dstBlkStride = 1;
             columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             columnRepeatParams.src1RepStride = 0;
+            columnRepeatParams.dstBlkStride = 1;
             columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             for (uint32_t i = 0; i < dealRowCount; i++) {
                 Mul(dstUb[i * columnCount], src0Ub[i * columnCount], src1Ub[i * blockElementNum], repeatElementNum,
@@ -383,8 +440,8 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         repeatParams.src0BlkStride = 1;
         repeatParams.src1RepStride = 0;
         repeatParams.src1BlkStride = 0;
-        repeatParams.dstRepStride = 8;
         repeatParams.dstBlkStride = 1;
+        repeatParams.dstRepStride = 8;
         // 每次计算一行，共计算dealRowCount行
         for (uint32_t i = 0; i < dealRowCount; i++) {
             // 计算一行中的dLoop个repeat, 每个repeat计算256/block_size 个data_block
@@ -575,109 +632,27 @@ __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, Local
 __aicore__ inline void MatDivsVec(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
                                   uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
-
-    BinaryRepeatParams repeatParamsDiv;
-    repeatParamsDiv.src0BlkStride = 1;
-    repeatParamsDiv.src1BlkStride = 1;
-    repeatParamsDiv.dstBlkStride = 1;
-    repeatParamsDiv.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsDiv.src1RepStride = 0;
-    repeatParamsDiv.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    uint32_t columnRepeatCount = dLoop;
-    uint32_t offset = 0;
-    for (uint32_t i = 0; i < dLoop; i++) {
-        Div(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParamsDiv);
-        offset += dtypeMask;
-    }
-
-    if (dRemain > 0) {
-        Div(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
-            repeatParamsDiv);
-    }
+    BinaryRepeatByColumn<BinaryRepeatOp::DivOp>(dstUb, src0Ub, src1Ub, dealRowCount, columnCount, actualColumnCount,
+                                                columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM);
 }
 
 __aicore__ inline void RowSub(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
-
-    BinaryRepeatParams repeatParamsSub;
-    repeatParamsSub.src0BlkStride = 1;
-    repeatParamsSub.src1BlkStride = 1;
-    repeatParamsSub.dstBlkStride = 1;
-    repeatParamsSub.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsSub.src1RepStride = 0;
-    repeatParamsSub.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    uint32_t columnRepeatCount = dLoop;
-    uint32_t offset = 0;
-    for (uint32_t i = 0; i < dLoop; i++) {
-        Sub(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParamsSub);
-        offset += dtypeMask;
-    }
-
-    if (dRemain > 0) {
-        Sub(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
-            repeatParamsSub);
-    }
+    BinaryRepeatByColumn<BinaryRepeatOp::SubOp>(dstUb, src0Ub, src1Ub, dealRowCount, columnCount, actualColumnCount,
+                                                columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM);
 }
 
 __aicore__ inline void ColMax(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
-
-    BinaryRepeatParams repeatParamsMax;
-    repeatParamsMax.src0BlkStride = 1;
-    repeatParamsMax.src1BlkStride = 1;
-    repeatParamsMax.dstBlkStride = 1;
-    repeatParamsMax.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsMax.src1RepStride = 0;
-    repeatParamsMax.dstRepStride = 0;
-    uint32_t columnRepeatCount = dLoop;
-    uint32_t offset = 0;
-    for (uint32_t i = 0; i < dLoop; i++) {
-        Max(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParamsMax);
-        offset += dtypeMask;
-    }
-
-    if (dRemain > 0) {
-        Max(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
-            repeatParamsMax);
-    }
+    BinaryRepeatByColumn<BinaryRepeatOp::MaxOp>(dstUb, src0Ub, src1Ub, dealRowCount, columnCount, actualColumnCount, 0);
 }
 
 __aicore__ inline void ColAdd(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t dLoop = actualColumnCount / dtypeMask;
-    uint32_t dRemain = actualColumnCount % dtypeMask;
-
-    BinaryRepeatParams repeatParamsAdd;
-    repeatParamsAdd.src0BlkStride = 1;
-    repeatParamsAdd.src1BlkStride = 1;
-    repeatParamsAdd.dstBlkStride = 1;
-    repeatParamsAdd.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsAdd.src1RepStride = 0;
-    repeatParamsAdd.dstRepStride = 0;
-    uint32_t columnRepeatCount = dLoop;
-    uint32_t offset = 0;
-    for (uint32_t i = 0; i < dLoop; i++) {
-        Add(dstUb[offset], src0Ub[offset], src1Ub[offset], dtypeMask, dealRowCount, repeatParamsAdd);
-        offset += dtypeMask;
-    }
-
-    if (dRemain > 0) {
-        Add(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
-            repeatParamsAdd);
-    }
+    BinaryRepeatByColumn<BinaryRepeatOp::AddOp>(dstUb, src0Ub, src1Ub, dealRowCount, columnCount, actualColumnCount, 0);
 }
 
 template <typename T>
