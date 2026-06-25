@@ -241,7 +241,12 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
     __gm__ uint8_t *prefix = nullptr;
     vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale,
         prefix, attenMask, blockTable, queryPaddingSize, kvPaddingSize, softmaxMax, softmaxSum, workspace, singleCoreOffset, this->aicIdx, constInfo);
-    cubeBlock.InitCubeInput(key, value, &sharedParams, &attenMaskInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
+    // NTD 的 query 走 offsetCalculator(NGTD)，其 ACCUM(no-zero-head) parser 期望「不含前导0的累加序列」
+    // [s0, s0+s1, ...]：GetTSize() 取末元素=总 token 数(决定 head/n2 的 stride=d*T、d*T*g)，
+    // GetTBase(b)=arr[b-1]=batch b 的 token 起始。cuSeqlens 含前导0 [0,s0,s0+s1,...]，故传 prefixSeqQlenAddr+1
+    // 去掉前导0。否则 B>1 时 GetTSize 取到单 batch 长度而非总 T，head>=1 的 query 读取整体错位，精度大面积错。
+    // (KV 为 PA，靠 blockTable 寻址，不依赖该 parser，保持 actualSeqKvlenAddr。)
+    cubeBlock.InitCubeInput(key, value, &sharedParams, &attenMaskInfo, prefixSeqQlenAddr + 1, actualSeqKvlenAddr);
     cubeBlock.InitDequantParams(deqScaleQ, deqScaleK, deqScaleV);
 }
 
