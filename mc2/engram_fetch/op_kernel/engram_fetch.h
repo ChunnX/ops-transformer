@@ -24,13 +24,13 @@ struct EngramCommContext {
     uint64_t hcommHandle_[MAX_QP_SIZE];
 };
 
-namespace EngramFetchImpl {
+namespace Mc2Kernel {
 constexpr uint32_t UB_ALIGN = 32U;
 constexpr uint32_t TILE_BYTES = 32U * 1024U;
 constexpr uint32_t HCOMM_INIT_SIZE = 512UL;
 
 using namespace AscendC;
 using namespace Mc2Aclnn;
-} // namespace EngramFetchImpl
+} // namespace Mc2Kernel
 
 #endif

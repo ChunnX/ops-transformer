@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -249,6 +249,13 @@ static EngramFetchTestParam g_testCases[] = {
      {8}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      512, 4, 99, "3510",
+     ge::GRAPH_FAILED, 0UL, "", {}},
+
+    {"fail_num_entries_exceed_int32max",
+     {4 * 512}, ge::DT_INT32, ge::FORMAT_ND,
+     {8}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
+     512, 2147483648L, static_cast<int64_t>(ge::DT_BF16), "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 };
 
