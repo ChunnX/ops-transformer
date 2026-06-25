@@ -598,7 +598,7 @@ __simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T * sumUb, __ubuf__ T * maxU
     // 注意：当m大于64的时候需要开启循环
     LoadAlign(vreg_max, maxUb);
     LoadAlign(vreg_sum, sumUb);
-    Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
+    Compares<T, CMPMODE::LE>(preg_compare, vreg_max, minValue, preg_all);
     Select(vreg_sum_new, vreg_max_value, vreg_sum, preg_compare);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
         (__ubuf__ T *&)sumUb, vreg_sum_new, preg_all);

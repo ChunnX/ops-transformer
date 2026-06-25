@@ -466,7 +466,7 @@ __simd_vf__ inline void InvalidLineUpdateVF(__ubuf__ T * dstUb, __ubuf__ T * src
     Duplicate(vreg_invalid_value, invalidValue);
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUb + i);
-        Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
+        Compares<T, CMPMODE::LE>(preg_compare, vreg_max, minValue, preg_all);
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input, srcUb + i * d + j * floatRepSize);
             Select(vreg_input_brc, vreg_invalid_value, vreg_input, preg_compare);
