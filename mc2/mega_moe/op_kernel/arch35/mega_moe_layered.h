@@ -146,7 +146,7 @@ private:
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
 
     static constexpr uint32_t ELEMS_PER_BYTE = (QuantMode == E2M1_QUANT) ? 2 : 1;
-    static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
+    static constexpr int32_t DISPATCH_BUFFER_NUM = 2;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
     LocalTensor<uint32_t> gatherMaskInt32Tensor_;
@@ -315,7 +315,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的tokenCnt数；
     // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至32字节；
     uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr +
-        static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
+        static_cast<uint32_t>(6) * COPY_TMP_BUFFER_SIZE;
     uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
@@ -500,10 +500,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
 {
     uint32_t xInBytes = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     uint32_t recordPayloadBytes = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
-    uint32_t xOutAddr = copyTmpBaseAddr_ + xInBytes;
+    uint32_t startOffset = copyTmpBaseAddr_ + TOKEN_SCALE_SIZE * 2;
+    uint32_t xOutAddr = startOffset + xInBytes;
     uint32_t mxTempAddr = xOutAddr + recordPayloadBytes;
 
-    LocalTensor<bfloat16_t> xInTensor(TPosition::VECCALC, copyTmpBaseAddr_, xInBytes / sizeof(bfloat16_t));
+    LocalTensor<bfloat16_t> xInTensor(TPosition::VECCALC, startOffset, xInBytes / sizeof(bfloat16_t));
     LocalTensor<ActivationType> xOutTensor(TPosition::VECCALC, xOutAddr,
         recordPayloadBytes / sizeof(ActivationType));
     LocalTensor<uint16_t> mxTempTensor(TPosition::VECCALC, mxTempAddr, (2 * 1024) / sizeof(uint16_t));
@@ -914,14 +915,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         }
     } while (true);
     // PRINTF("BEGIN READDATA\n");
-    // hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
-    // hcomm_.Drain(channel);
-    PRINTF("BEGIN READDATA %u,bufferIdx: %d, relayRank: %d\n",sizeof(ActivationType), bufferIdx, relayRank);
+    hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
+    hcomm_.Drain(channel);
+    PRINTF("BEGIN READDATA\n");
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
-    scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
-    DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum / sizeof(ActivationType));
-    PipeBarrier<PIPE_ALL>();
+    scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
+    DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
 }
 
 // ============================================================================
@@ -974,12 +974,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
     // 6-buffer SW 流水 MTE2 + MTE3
     // Phase 2 prime: 发出前 BufferNum 个 token 的 MTE2
     int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
-    printf("primeCount: %d\n", primeCount);
     for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
         int32_t tokenIndex = tripleTensor_[primeIdx * INT32_PER_256B].GetValue(TOKEN_ID);
         uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
         TEventID eventId = kBufEvents[primeIdx];
-        printf("primeIdx :%d\n", primeIdx);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, primeIdx, copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
