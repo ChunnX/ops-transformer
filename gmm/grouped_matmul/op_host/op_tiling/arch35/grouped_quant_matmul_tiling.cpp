@@ -96,13 +96,7 @@ bool GroupedQmmTiling::IsMicroScaling() const
     return inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
 }
 
-bool GroupedQmmTiling::IsMxfp4() const
-{
-    return (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
-           (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2);
-}
-
-bool GroupedQmmTiling::IsWeightNzSingleMultiSingleCandidate() const
+bool GroupedQmmTiling::IsWeightNzSingleMultiSingleLayout() const
 {
     return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW &&
            inputParams_.isSingleY && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
@@ -110,7 +104,7 @@ bool GroupedQmmTiling::IsWeightNzSingleMultiSingleCandidate() const
 
 bool GroupedQmmTiling::IsWeightNzSingleMultiSingleScenario() const
 {
-    return IsWeightNzSingleMultiSingleCandidate() && !(IsMxfp4() && inputParams_.hasBias);
+    return IsWeightNzSingleMultiSingleLayout() && !inputParams_.hasBias;
 }
 
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
@@ -124,9 +118,9 @@ uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
 
 bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
 {
-    OP_CHECK_IF(IsWeightNzSingleMultiSingleCandidate() && IsMxfp4() && inputParams_.hasBias,
-                OP_LOGE(inputParams_.opName,
-                        "In weightNz single-multi-single MXFP4 case, bias is not supported."),
+    OP_CHECK_IF(IsWeightNzSingleMultiSingleLayout() && inputParams_.hasBias,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "bias", "nonnull",
+                    "in weightNz single-multi-single case, bias must be nullptr"),
                 return false);
     if (!IsWeightNzSingleMultiSingleScenario()) {
         return true;
