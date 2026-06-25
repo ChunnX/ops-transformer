@@ -172,9 +172,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     recvXGm_.SetGlobalBuffer((__gm__ XType*)recvX);
     recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
-    if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-        recvScalesGm_.SetGlobalBuffer((__gm__ ScalesType*)recvScales);
-    }
 
     // hitCountStride_: 每 aiv 的 hitCount 存储步长，对齐到 8 个 int32 (32 bytes)
     // 确保 CopyFromWindowByExpert 中 Cast 读取地址始终 32B 对齐
@@ -200,10 +197,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
 
-    scaleOffset_ =  Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
-    scaleBytes_ = tilingData->scaleBytes;
-    scalesElems_ = (scaleBytes_ == 0U) ? 0U : (scaleBytes_ / sizeof(ScalesType));
-    uint32_t scalesBytesAlign = Ceil(scaleBytes_, UB_ALIGN) * UB_ALIGN;
 
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
@@ -223,8 +216,14 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+        scaleOffset_ =  Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
+        scaleBytes_ = tilingData->scaleBytes;
+        scalesElems_ = (scaleBytes_ == 0U) ? 0U : (scaleBytes_ / sizeof(ScalesType));
+        uint32_t scalesBytesAlign = Ceil(scaleBytes_, UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(ubScalesBuf_, scalesBytesAlign);
         ubScales_ = ubScalesBuf_.Get<ScalesType>();
+        recvScalesGm_.SetGlobalBuffer((__gm__ ScalesType*)recvScales);
+
     }
 
     ubToken_     = ubTokenBuf_.Get<XType>();
@@ -432,7 +431,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
                             static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
                         DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
                     }
-                    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);

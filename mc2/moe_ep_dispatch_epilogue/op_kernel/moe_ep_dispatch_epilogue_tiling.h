@@ -12,7 +12,6 @@ struct MoeEpDispatchEpilogueInfo {
     uint32_t aivNum             = 0;
     uint64_t totalUbSize        = 0;
     uint32_t cached             = 0;   // 0 = non-cached path, 1 = cached path
-    uint32_t hasScales          = 0;   // 0 = no recvScales output, 1 = copy scales for fp8 path
     uint32_t scaleBytes         = 0;   // bytes per expanded row in recvScales
 };
 

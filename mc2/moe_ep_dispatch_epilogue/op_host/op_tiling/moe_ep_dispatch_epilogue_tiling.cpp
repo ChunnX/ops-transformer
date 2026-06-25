@@ -79,7 +79,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogu
               info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
     OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
               info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
-    OP_LOGD(nodeName, "aivNum=%u, cached=%u", info.aivNum, info.cached);
+    OP_LOGD(nodeName, "aivNum=%u, cached=%u, scaleBytes=%u", info.aivNum, info.cached, info.scaleBytes);
 }
 
 // ---------------------------------------------------------------------------
@@ -188,7 +188,7 @@ static ge::graphStatus CheckInputDataType(const gert::TilingContext *context, co
 // 必须先于本函数完成 attr 校验，依赖 epWorldSize / numLocalExperts / nmt
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
-                                                const MoeEpDispatchEpilogueInfo &info, bool cached)
+                                             const MoeEpDispatchEpilogueInfo &info, bool cached)
 {
     // ---- context: dim 必须 = 1 ----
     const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
@@ -275,7 +275,6 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
     auto recvScalesShape = context->GetOutputShape(OUT_RECV_SCALES_INDEX);
     const bool isFp8 = (recvXDtype == ge::DT_FLOAT8_E5M2 || recvXDtype == ge::DT_FLOAT8_E4M3FN);
     if (!isFp8) {
-        info.hasScales = 0U;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -302,7 +301,6 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
             expectedDim1, recvScalesShape->GetStorageShape().GetDim(1)),
         return ge::GRAPH_FAILED);
 
-    info.hasScales = 1U;
     info.scaleBytes = static_cast<uint32_t>(expectedDim1 * ((scalesDtype == ge::DT_FLOAT) ? sizeof(float) : 1));
     return ge::GRAPH_SUCCESS;
 }
