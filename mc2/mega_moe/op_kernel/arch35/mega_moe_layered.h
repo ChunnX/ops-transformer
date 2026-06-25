@@ -977,6 +977,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineByUrma(
     GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx)
 {
+    printf("ProcessCombineByUrma expertIdx %d\n", expertIdx);
     // 量化模式下所有 AIV 核参与，按 rank 分核
     uint32_t aivIdx = aivCoreIdx_;
     uint32_t aivNum = blockAivNum_;
