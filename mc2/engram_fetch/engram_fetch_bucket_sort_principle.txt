@@ -1,0 +1,97 @@
+## 桶排优化原理
+
+### 一、问题本质：稀疏查找
+
+engram_fetch 的核心任务是：给定 numTokens 个全局索引 indices[i]，每个索引落在某个 owner rank 的区间 [idxStart, idxEnd) 内，把该 rank 上对应的 hidden 向量拷贝到输出 fetched[i]。
+
+这本质上是一个按区间归类问题：把 numTokens 个索引按"属于哪个 rank"分成 numRanks 组。
+
+### 二、原实现的低效根源：重复全扫 + 逐项过滤
+
+原代码用双重循环：
+
+    for ownerRank in [aivId, aivId+totalBlocks, ...):   // 外层：遍历自己负责的 rank
+        for i in [0, numTokens):                          // 内层：扫全部 token
+            if indices[i] not in [idxStart, idxEnd):  continue  // 过滤
+            ...处理命中...
+
+低效点：
+
+1. 重复扫描：每个 ownerRank 都要从头扫一遍全部 numTokens。若一个 AIV 负责 K 个 rank，就要扫 K × numTokens 次。
+
+2. 命中率极低：每个 rank 的区间只占全局的 1/numRanks。假设 numRanks=8，则 7/8 的 token 都被 continue 掉，属于纯无效遍历。
+
+3. 分支不可预测：逐 token 做 globalIdx < idxStart || globalIdx >= idxEnd 判断，命中概率 1/numRanks，分支预测器几乎无法预测，每个判断都可能造成流水线气泡。
+
+4. 标量串行：indicesLocal(i) 是标量读，S 向量单元逐条执行，无向量化收益。
+
+### 三、桶排原理：一次分类，多次直取
+
+桶排（bucket sort）的核心思想是先花 O(N) 把数据按 key 分桶，之后每个桶只遍历自己的数据。
+
+#### 步骤拆解
+
+    key = globalIdx / numEntriesPerRank   // 算出属于哪个 rank（桶号）
+
+    阶段A 计数：扫一遍 indices，统计每个桶有多少元素
+        counts[r] = 该桶元素数
+
+    阶段B 前缀和：算出每个桶在紧凑数组中的起始位置
+        offsets[0] = 0
+        offsets[r+1] = offsets[r] + counts[r]
+
+    阶段C 散列：再扫一遍 indices，把 token 下标按桶写入紧凑数组
+        bucketPos[offsets[key] + 偏移] = i
+
+    处理阶段：每个 ownerRank 只遍历自己的桶
+        for b in [offsets[ownerRank], offsets[ownerRank+1]):
+            i = bucketPos[b]          // 直接是命中的 token，无需判断
+            ...处理...
+
+#### 关键性质
+
+- 桶内元素 100% 命中：分桶时已按 key 归类，处理时无需再做范围判断。
+- 无分支：处理阶段是连续遍历紧凑数组，没有 if/continue。
+- 线性复杂度：分类是 O(numTokens)（常数次扫描），处理是 O(总命中数)。
+
+### 四、为什么能提速
+
+#### 1. 扫描次数从 O(K×N) 降到 O(N)
+
+原实现：一个 AIV 负责 K 个 rank → 扫 K × numTokens 次。
+桶排：分类只扫 2 × numTokens（计数+散列），处理阶段只扫命中数。
+
+举例：numTokens=8192，numRanks=8，totalBlocks=8（每个 AIV 负责 1 个 rank）：
+- 原：每个核扫 8192 次 × 1 rank = 8192 次
+- 桶排：每个核扫 2×8192（分类，全核共担）+ 命中数 ≈ 1024（1/8 命中）
+
+当 numRanks > totalBlocks（一个 AIV 负责多个 rank）时，差距更大。
+
+#### 2. 消除分支预测失败
+
+原实现的 if (命中) 处理 else continue 命中率仅 1/numRanks，分支预测准确率低。
+桶排后处理阶段完全没有条件分支，是连续内存访问，CPU/向量单元流水满载。
+
+#### 3. 访存局部性更好
+
+bucketPos 是连续紧凑数组，处理阶段顺序读，cache/UB 命中率高。原实现随机跳过无效 token，访问模式不连续。
+
+### 五、代价分析
+
+桶排并非免费，需权衡：
+
+| 代价 | 说明 |
+|---|---|
+| 额外扫描 | 多扫一遍 indices（计数+散列共 2 次），但原实现每个 rank 扫一遍，rank 数 >2 时桶排总扫描量更少 |
+| 额外 UB | counts + offsets + bucketPos ≈ (2×numRanks + numTokens) × 4B，典型场景约 33KB |
+| 散列写随机 | bucketPos[offsets[key]+...] 写位置由 key 决定，非严格顺序，但都在 UB 内，延迟可接受 |
+
+### 六、适用边界
+
+桶排收益取决于命中率低和重复扫描多：
+
+- numRanks 小 + numTokens 大 → 命中率低、无效遍历多 → 收益最大
+- numRanks 大（如 ≥ totalBlocks）→ 每个 AIV 只负责 1 个 rank，原实现只扫一遍 → 桶排的"减少重复扫描"优势消失，仅剩"消除分支"的小收益
+- numTokens 极小（几十）→ 标量循环本身开销可忽略 → 桶排的额外分类开销可能反超收益
+
+当前场景（分布式 embedding，numTokens 通常千~万级，numRanks 通常 4~16）正好落在桶排的高收益区间。

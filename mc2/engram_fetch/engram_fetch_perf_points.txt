@@ -1,0 +1,43 @@
+基于对 mc2/engram_fetch（及配套 engram_fetch_wait）完整代码的分析，性能优化点如下：
+
+## 已有的优化点
+
+**1. 异步远程读 + 解耦等待（核心优化）**
+engram_fetch_arch35.h:127 用 hcomm_.ReadNbi<false>（非阻塞）发起远程 GM→GM 读，每个 channel 批量 Commit（line 133），不在此算子内等待完成。等待拆分到独立的 EngramFetchWait 算子（engram_fetch_wait_arch35.h:65 调 Drain），让框架可在 issue 与 wait 之间插入其它算子，实现通信/计算重叠。
+
+**2. Rank 级 stride 并行**
+engram_fetch_arch35.h:102 AIV 块按 ownerRank = aivId; ownerRank += totalBlocks 切分远端 rank，而非按 token 切分。fetch 与 wait 用相同的 block→rank 映射（tiling 里都用 CalcTschNumBlocks(aivNum,0,aivNum)），保证发/收同核对应、负载均衡。
+
+**3. 本地路径走 UB 分块搬运**
+LocalCopySlice（line 139-157）用 32KB UB 中转（TILE_BYTES），把 hidden 拆成 32KB 块 GM→UB→GM，避免一次性大拷贝占满 UB。
+
+**4. Host 侧预计算 hiddenBytes**
+engram_fetch_tiling.cpp:369-373 按 dtype 预乘字节数下发，device 侧免乘。
+
+**5. 128 对齐 hidden_size**
+engram_fetch_tiling.cpp:270 强制 hidden_size % 128 == 0，保证 DMA 对齐。
+
+**6. 手动同步 + --cce-auto-sync=off**
+显式 SetFlag/WaitFlag（SyncFunc，line 20-26）控制 MTE2/MTE3 流水，关闭编译器自动同步减少冗余 barrier。
+
+## 可进一步优化的点
+
+**7. 本地拷贝的同步开销大（最明显瓶颈）**
+LocalCopySlice 每个分块都做 MTE2_MTE3 + MTE3_MTE2 两次 SetFlag/WaitFlag（line 152-154），32KB 块在 hidden 很大时会产生大量串行 barrier。可考虑：用多 buffer 轮转（ping-pong）把 MTE2/MTE3 流水真正重叠起来，或用 DataCopy（整块对齐时）替代 DataCopyPad 减少开销。
+
+**8. indices 全量搬入 UB 后串行遍历**
+line 99 一次性 DataCopyPad 全部 indices，随后 line 108 逐 token 标量读 indicesLocal(i) 并做范围判断。token 数大时 S 向量纯标量循环开销高。可按 rank 范围预先做桶排/分组，减少逐 token 判断和分支跳转。
+
+**9. 无 token 级并行**
+当前并行维度仅 rank；若 numRanks_ 远小于 AIV 数，大量核空转。可在 rank 内部再按 token 段二次切分，或对 ownerRank == rankId_ 的本地大表拷贝做 token 级并行。
+
+**10. pendingReadCount 未用于批量提交粒度控制**
+每个 channel 只在 rank 处理完后 Commit 一次（line 132-134）。若单 rank 命中 token 极多，中间无 flush，可能造成 channel 缓冲压力；可按阈值分批 Commit 提前发出，提高链路利用率。
+
+**11. 本地路径未复用 Hcomm 通道**
+ownerRank == rankId_ 走 UB 中转（line 120-123），而远端走直读 GM。本地也可考虑 GM→GM 直接 DataCopy（hidden 已 128 对齐），省去 UB 中转与 MTE2/MTE3 同步。
+
+**12. workspace 固定 16MB 但 kernel 未实际使用**
+engram_fetch_tiling.cpp:40 预留 16MB 但 device 侧 workspaceGM 仅传参未用，属冗余占用（非算力瓶颈，但影响显存）。
+
+最值得动的是 #7（本地拷贝流水）和 #8/#9（indices 分组 + token 并行）。
