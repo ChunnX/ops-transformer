@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file flash_attention_noquant_kernel_base.h
+ * \file flash_attn_kernel_noquant_gqa.h
  * \brief
  */
 
-#ifndef FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
-#define FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
+#ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
+#define FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
 
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
@@ -24,7 +24,7 @@
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
-#include "flash_attention_noquant_block_vec_flashdecode.h"
+#include "flash_attn_block_vec_noquant_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -106,7 +106,6 @@ public:
     uint32_t coreGS1Loops = 0U;
     uint32_t frontGS1Count = 0U;
     uint32_t invalidGS1Size = 0U;
-    uint32_t accGS1Loops = 0U;
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
@@ -400,7 +399,6 @@ public:
         createdTaskCount = 0;
         uint32_t executedTaskCount = 0;
         mloop = 0;
-        accGS1Loops = 0;
         headS2Split = false;
         tailS2Split = false;
 
@@ -424,9 +422,6 @@ public:
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    if ASCEND_IS_AIV {
-                        vecFaBlock.DealZeroActSeqLen(bN2Cur);
-                    }
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     continue;
                 } else {
@@ -447,7 +442,13 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
+        if (bN2Cur != bN2End_) {
+            return bN2Cur < bN2End_;
+        }
+        if (gS1Cur != gS1OEnd_) {
+            return gS1Cur < gS1OEnd_;
+        }
+        return s2Cur < s2OEnd_;
     }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
@@ -490,13 +491,14 @@ public:
             prevBN2Idx = bN2Cur;
             prevGS1Idx = gS1Cur;
         }
-
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
+        // S2有效块区间为[curS2Start, curS2End), s2Cur尚未到达有效区间且该行有有效块,
+        // 需快进到curS2Start继续计算, 不能跳行 (BAND等sparse模式curS2Start常>0)
+        if (s2Cur < curS2Start && curS2Start < curS2End) {
+            return TASK_DEAL_MODE::NOT_START;
         }
-
+        // 该行无有效块(curS2Start>=curS2End)或s2Cur已越过有效区间, 跳过当前行
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
+            return TASK_DEAL_MODE::SKIP_REMAINING_S2;
         }
 
         if (s2Cur == curS2Start) {
@@ -606,7 +608,7 @@ public:
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
         RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
+        
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
@@ -615,6 +617,7 @@ public:
             }
         }
         if (loop >= PRELOAD_N) {
+            RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
@@ -748,28 +751,24 @@ public:
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
-            s2Cur++;
+        // 尚未到达有效区间, 快进s2Cur到curS2Start, 不跳行
+        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            s2Cur = curS2Start;
             return;
         }
-
-        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
-            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-            accGS1Loops++;
+        if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
+            // 当前S2未处理完
+            if (s2Cur + 1 < s2LoopTimes) {
+                s2Cur++;
+                return;
+            }
         }
-
         // 当前BN2未处理完
         s2Cur = 0;
         if (gS1Cur + 1 < gS1LoopTimes) {
             gS1Cur++;
             return;
         }
-
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
-            accGS1Loops++;
-        }
-
         // 当前BN2已处理完
         gS1Cur = 0;
         bN2Cur++;
@@ -856,4 +855,4 @@ public:
 
 } // namespace BaseApi
 
-#endif // FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
+#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
