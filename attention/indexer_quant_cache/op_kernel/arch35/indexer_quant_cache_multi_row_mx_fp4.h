@@ -34,15 +34,13 @@ public:
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
-        cacheCol = (tilingData->d + 1) / 2;  // fp4 打包后每行字节数
+        cacheCol = (tilingData->d + 1) / 2;
 
         xGm.SetGlobalBuffer((__gm__ T0*)x);
         slotMappingGm.SetGlobalBuffer((__gm__ int32_t*)slotMapping);
         cacheGm.SetGlobalBuffer((__gm__ int8_t*)cache);  // fp4 cache 按字节寻址
         cacheScaleGm.SetGlobalBuffer((__gm__ T2*)cacheScale);
 
-        // scale Que 必须最先 InitBuffer：使其落在 UB 64B 对齐基址上(双缓冲两块均为 64B 的整数倍跨度，
-        // 故都保持 64B 对齐)，满足 DIST_PACK_B16 存储的 64B 对齐要求(见 mx_fp4_base.h ScaleRowAlignMxFp4)。
         pipe->InitBuffer(
             cacheScaleQue, 2,
             tilingData->rowFactor * ScaleRowAlignMxFp4(tilingData->scaleCol) * sizeof(T2));
