@@ -9,12 +9,11 @@
 
 ## 功能说明
 
-Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为单个算子，实现计算和通信的掩盖。
+Mega MoE 将 MoE 层的专家 FFN 的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
 
 - API 功能：
 
-    [mega\_moe](#mega_moe接口说明)与 [get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明) 配套使用，该算子将 MoE 层的专家 FFN 的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
-
+    [mega\_moe](#mega_moe接口说明)与 [get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明) 配套使用，
 - 计算公式：
     - 输入：
         - $\mathbf{X} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{hidden}}$：激活矩阵，对应入参 `x`。$\text{total\_num\_tokens}$ 是全局总 token 数，$\text{hidden}$ 是隐藏层维度。
@@ -222,13 +221,13 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
             记原始 INT8 激活矩阵为 $\mathbf{X}^{\text{int8}}$，拆分后的高位和低位 INT4 激活矩阵分别为 $\mathbf{X}_1^{\text{int4}}$ 和 $\mathbf{X}_2^{\text{int4}}$，权重矩阵为 $\mathbf{W}$。恢复关系为：
 
             $$
-            \mathbf{X}^{\text{int8}} = 16 \times \mathbf{X}_1^{\text{int4}} + (\mathbf{X}_2^{\text{int4}} + 8 \cdot \mathbf{1}_{\text{mat}}),
+            \mathbf{X}^{\text{int8}} = 16 \times \mathbf{X}_1^{\text{int4}} + (\mathbf{X}_2^{\text{int4}} + 8 \cdot \mathbf{1}_{\text{mat}})
             $$
 
             其中 $\mathbf{1}_{\text{mat}}$ 为与 $\mathbf{X}_2^{\text{int4}}$ 形状相同的全 1 矩阵，用于逐元素加 8。令 $\mathbf{1}$ 为形状与输入特征维度一致的全 1 列向量，则矩阵乘展开为：
 
             $$
-            \mathbf{X}^{\text{int8}} \cdot \mathbf{W} = 16 \cdot (\mathbf{X}_1^{\text{int4}} \cdot \mathbf{W}) + (\mathbf{X}_2^{\text{int4}} \cdot \mathbf{W}) + 8 \cdot (\mathbf{1}^\top \cdot \mathbf{W}).
+            \mathbf{X}^{\text{int8}} \cdot \mathbf{W} = 16 \cdot (\mathbf{X}_1^{\text{int4}} \cdot \mathbf{W}) + (\mathbf{X}_2^{\text{int4}} \cdot \mathbf{W}) + 8 \cdot (\mathbf{1}^\top \cdot \mathbf{W})
             $$
 
             这里 $\mathbf{1}^\top \cdot \mathbf{W}$ 表示对权重矩阵 $\mathbf{W}$ 的每一列求和，其结果为一个行向量（形状与输出维度相同）。在具体实现中，该行向量会被广播到批次维度，加到所有 token 的输出上。可见，若只计算前两项，会缺失一个正数项。为了精确恢复结果，需预先计算补偿偏置：
@@ -447,8 +446,187 @@ Mega MoE 将 EP Dispatch、Linear1、SwiGLU、Linear2 和 EP Combine 融合为�
         - $\mathrm{DQ}_{\text{MX}}(\cdot)$：MX 逐组反量化操作，在 matmul 内部隐式执行。
         </details>
 
+## get\_symm\_buffer\_for\_mega\_moe 接口说明
+
+### API 功能
+该接口完成专家并行通信域的资源创建和初始化。该接口只需在创建通信域后调用一次，并将输出sym\_buffer传递给mega\_moe接口对应参数即可。
+
+### 接口原型
+```
+get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> SymmBuffer:
+```
+### 参数说明
+
+<table>
+ <thead>
+  <tr>
+   <th>参数名</th>
+   <th>必选/可选</th>
+   <th>描述</th>
+   <th>类型</th>
+   <th>取值范围</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>group</td>
+   <td>必选</td>
+   <td>分布式通信的进程组句柄</td>类型
+   <td>torch.distributed.ProcessGroup</td>
+   <td>-</td>
+  </tr>
+  <tr>
+   <td>num_experts</td>
+   <td>必选</td>
+   <td>MoE 模型的总专家数量。</td>
+   <td>int</td>
+   <td>[world_size, 1024]，且 num_experts % world_size == 0</td>
+  </tr>
+  <tr>
+   <td>num_max_tokens_per_rank</td>
+   <td>必选</td>
+   <td>每卡中最大的输入token的数量，即当每卡的num_tokens不同时，最大的num_tokens大小。</td>
+   <td>int</td>
+   <td>等于每个卡中最大的num_tokens</td>
+  </tr>
+  <tr>
+   <td>num_topk</td>
+   <td>必选</td>
+   <td>表示每个token选择的专家数。</td>
+   <td>int</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_topk ≤ 16<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_topk ≤ 16<br>
+        Ascend 950PR/Ascend 950DT：num_topk 取值为 6 或 8
+    </td>
+  </tr>
+  <tr>
+   <td>hidden</td>
+   <td>必选</td>
+   <td>表示每个token大小。</td>
+   <td>int</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
+        Ascend 950PR/Ascend 950DT：hidden 取值为 4096、5120 或 7168
+   </td>
+  </tr>
+  <tr>
+   <td>intermediate_hidden</td>
+   <td>必选</td>
+   <td>表示中间层投影维度。</td>
+   <td>int</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ intermediate_hidden ≤ 8192 且 intermediate_hidden % 512 = 0<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ intermediate_hidden ≤ 8192 且 intermediate_hidden % 512 = 0<br>
+        Ascend 950PR/Ascend 950DT：intermediate_hidden 取值为 1024、2048、3072、4096 或 7168
+   </td>
+  </tr>
+  <tr>
+   <td>max_recv_token_num</td>
+   <td>可选</td>
+   <td>每个Rank最大可接收token数，默认值为0表示按通信域能容纳最大的token数自动计算。</td>
+   <td>int</td>
+   <td>[0, num_tokens × world_size × min(num_topk, num_experts_per_rank)]</td>
+  </tr>
+  <tr>
+   <td>dispatch_quant_mode</td>
+   <td>可选</td>
+   <td>dispatch通信前的token隐藏状态的量化模式。</td>
+   <td>int</td>
+   <td>0（非量化），2（pertoken量化），4（MX模式）</td>
+  </tr>
+  <tr>
+   <td>dispatch_quant_out_dtype</td>
+   <td>可选</td>
+   <td>dispatch通信前的token隐藏状态量化后的数据类型，默认值None表示非量化。</td>
+   <td>ScalarType</td>
+   <td>torch.int8，torch.float8_e5m2，torch.float8_e4m3fn</td>
+  </tr>
+  <tr>
+   <td>combine_quant_mode</td>
+   <td>可选</td>
+   <td>预留参数，使用默认值即可。</td>
+   <td>-</td>
+   <td>-</td>
+  </tr>
+  <tr>
+   <td>comm_alg</td>
+   <td>可选</td>
+   <td>预留参数，使用默认值即可。</td>
+   <td>-</td>
+   <td>-</td>
+  </tr>
+ </tbody>
+</table>
+
+### 输出说明
+<table>
+ <thead>
+  <tr>
+   <th>参数名</th>
+   <th>描述</th>
+   <th>类型</th>
+   <th>数据类型</th>
+   <th>数据格式</th>
+   <th>维度(shape)</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>sym_buffer</td>
+   <td>封装了通信域上下文和算子配置信息。需传递给mage_moe接口的对应参数。</td>
+   <td>SymmBuffer</td>
+   <td>-</td>
+   <td>-</td>
+   <td>-</td>
+  </tr>
+ </tbody>
+</table>
+
+### 参数相关变量说明
+<table>
+ <thead>
+  <tr>
+   <th>变量名</th>
+   <th>描述</th>
+   <th>取值范围</th>
+  </tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td>num_tokens</td>
+   <td>当前卡输入的token个数</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_tokens ≤ 4096<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_tokens ≤ 4096<br>
+        Ascend 950PR/Ascend 950DT：1 ≤ num_tokens ≤ 512</td>
+  </tr>
+  <tr>
+   <td>world_size</td>
+   <td>专家并行通信域大小，即world_size = torch.distributed.get_world_size(group)</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：world_size取值为2、4、8、16、32<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：world_size取值为2、4、8、16、32<br>
+        Ascend 950PR/Ascend 950DT：2 ≤ world_size≤ 768</td>
+  </tr>
+  <tr>
+   <td>num_experts_per_rank</td>
+   <td>每卡部署的专家数，即num_experts_per_rank = num_experts // world_size</td>
+   <td>
+        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_experts_per_rank ≤ 128<br>
+        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_experts_per_rank ≤ 128<br>
+        Ascend 950PR/Ascend 950DT：1 ≤ num_experts_per_rank ≤ 16</td>
+  </tr>
+ </tbody>
+</table>
+
 ## mega\_moe 接口说明
 
+### API 功能
+该接口完成Dispatch + Linear1 + SwiGLU + Linear2 + Combine的通信和计算。
+
+### 接口原型
 ```
 mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, weight1_type=None, weight2_type=None) -> (Tensor, Tensor)
 ```
@@ -724,10 +902,10 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
   </tbody>
   <tfoot>
     <tr>
-      <td colspan="10">注1：上角标<sup>1</sup>表示Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品不支持，上角标<sup>2</sup>表示Ascend 950PR/Ascend 950DT不支持，产品不支持的参数使用默认值即可。</td>
+      <td colspan="10">上角标<sup>1</sup>表示Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品不支持，上角标<sup>2</sup>表示Ascend 950PR/Ascend 950DT不支持，产品不支持的参数使用默认值即可。</td>
     </tr>
     <tr>
-      <td colspan="10">注2：表格中的<code>CeilDiv(<var>x</var>, <var>y</var>) = (<var>x</var> + <var>y</var> - 1) // <var>y</var></code>，其中 <code>//</code> 表示整数除法（即取商的整数部分，舍去小数）</td>
+      <td colspan="10">表格中的<code>CeilDiv(<var>x</var>, <var>y</var>) = (<var>x</var> + <var>y</var> - 1) // <var>y</var></code></td>
     </tr>
   </tfoot>
 </table>
@@ -769,210 +947,106 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - **参数一致性约束**：
   - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 num_experts、hidden、intermediate_hidden 等）保持一致。
-  - 调用算子过程中使用的 `num_max_tokens_per_rank`、`HCCL_BUFFSIZE` 等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+  - 所有卡的 `num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`参数取值和通信域缓存区大小需保持一致
   - mega_moe 支持四种计算场景（A16W16、A8W8-INT、A8W4-INT、A8W8-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
     <table>
       <thead>
         <tr>
           <th>场景</th>
-          <th><code>l1_weights</code> / <code>l2_weights</code> 数据类型</th>
-          <th><code>l1_weights_sf</code></th>
-          <th><code>l2_weights_sf</code></th>
-          <th><code>l1_bias</code></th>
-          <th><code>l2_bias</code></th>
-          <th><code>dispatch_quant_mode</code><br>（用于 <code>get_symm_buffer</code>）</th>
+          <th>x</th>
+          <th>l1_weights</th>
+          <th>l2_weights</th>
+          <th>l1_weights_sf</th>
+          <th>l2_weights_sf</th>
+          <th>l1_bias</th>
+          <th>l2_bias</th>
+          <th>y</th>
+          <th>dispatch_quant_mode</th>
+          <th>dispatch_quant_out_dtype</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><strong>A16W16</strong></td>
           <td>BFLOAT16</td>
+          <td>BFLOAT16</td>
+          <td>BFLOAT16</td>
           <td>–</td>
           <td>–</td>
           <td>–</td>
           <td>–</td>
+          <td>BFLOAT16</td>
           <td>0</td>
+          <td>–</td>
         </tr>
         <tr>
           <td><strong>A8W8-INT</strong></td>
+          <td>BFLOAT16</td>
+          <td>INT8</td>
           <td>INT8</td>
           <td>UINT64</td>
           <td>UINT64</td>
           <td>–</td>
           <td>–</td>
+          <td>BFLOAT16</td>
           <td>2</td>
+          <td>torch.int8</td>
         </tr>
         <tr>
           <td><strong>A8W4-INT</strong></td>
+          <td>BFLOAT16</td>
+          <td>INT4</td>
           <td>INT4</td>
           <td>UINT64</td>
           <td>UINT64</td>
           <td>FLOAT32</td>
           <td>FLOAT32</td>
+          <td>BFLOAT16</td>
           <td>2</td>
+          <td>torch.int8</td>
         </tr>
         <tr>
-          <td><strong>A8W8-FP</strong>（MXFP）</td>
-          <td>FLOAT8_E5M2 或 FLOAT8_E4M3FN</td>
+          <td><strong>A8W8-FP</strong></td>
+          <td>BFLOAT16</td>
+          <td>FLOAT8_E5M2</td>
+          <td>FLOAT8_E5M2</td>
           <td>FLOAT8_E8M0</td>
           <td>FLOAT8_E8M0</td>
           <td>–</td>
           <td>–</td>
+          <td>BFLOAT16</td>
           <td>4</td>
+          <td>torch.float8_e5m2</td>
+        </tr>
+        <tr>
+          <td><strong>A8W8-FP</strong></td>
+          <td>BFLOAT16</td>
+          <td>FLOAT8_E4M3FN</td>
+          <td>FLOAT8_E4M3FN</td>
+          <td>FLOAT8_E8M0</td>
+          <td>FLOAT8_E8M0</td>
+          <td>–</td>
+          <td>–</td>
+          <td>BFLOAT16</td>
+          <td>4</td>
+          <td>torch.float8_e4m3fn</td>
         </tr>
       </tbody>
+      <tfoot>
+          <tr>
+            <td colspan="9">“–” 表示该场景下<strong>不需要</strong>提供该参数，传入 <code>None</code> 或保持默认即可。</td>
+          </tr>
+          <tr>
+            <td colspan="9">直接填写数据类型（如 <code>UINT64</code>）表示该场景下该参数为<strong>必选</strong>，且必须使用该数据类型</td>
+          </tr>
+      </tfoot>
     </table>
 
-<p style="margin-top: 8px; font-size: 13px;">
-  <strong>表尾规则：</strong><br>
-  • “–” 表示该场景下<strong>不需要</strong>提供该参数，传入 <code>None</code> 或保持默认即可。<br>
-  • 直接填写数据类型（如 <code>UINT64</code>）表示该场景下该参数为<strong>必选</strong>，且必须使用该数据类型，否则算子行为未定义。
-</p>
-
-- **通信域使用约束**：
-    - 所有卡的 `num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank` 参数取值需保持一致。  
-
-#### Atlas A2 训练系列产品/Atlas A3 训练系列产品/Atlas A3 推理系列产品 约束
-
-- **参数约束**：
-    - ep_world_size 仅支持 2, 4, 8, 16, 32
-    - num_experts_per_rank = num_experts / ep_world_size，取值范围 [1, 128]。
-
-#### Ascend 950PR/Ascend 950DT 约束
-
-- **参数约束**：
-    - BS（x.dim0）范围 [1, 512]。
-    - num_experts_per_rank（weight1.dim0）范围 [1, 16]。
-    - N（weight1.dim1）仅支持 1024、2048、3072、4096、7168。
-    - ep_world_size 范围 [2, 768]。
-    - maxRecvTokenNum 范围 [0, BS × ep_world_size × min(topK, num_experts_per_rank)]。
-    - 当前版本仅支持 MXFP 量化模式（dispatchQuantMode = 4），dispatch 阶段使用 MX 逐组量化（group size = 32），量化缩放因子类型为 FLOAT8_E8M0。
-    - xActiveMask 参数当前版本必须传入空指针，不支持非空输入。
-    - combineQuantMode 必须为 0，commAlg 必须为空字符串 ""。
-    - y 的数据类型与 x 相同。
-    - weight1 的 dim1（N）必须等于 weight2 的 dim2 的二倍，这是因为 SwiGLU 激活需要将中间维度从 N 减半为 N/2。
-    - weightScales1 和 weightScales2 不可为空指针。
-    - num_experts_per_rank = num_experts / ep_world_size，必须为整数且在 [1, 16] 范围内。
-
-- **MXFP 量化场景约束**：
-    - weight1 shape 为 (num_experts_per_rank, N, H)，weight2 shape 为 (num_experts_per_rank, H, N/2)。
-    - weightScales1 shape 为 (num_experts_per_rank, N, CeilDiv(H, 64), 2)，其中 CeilDiv(H, 64) = (H + 63) / 64。
-    - weightScales2 shape 为 (num_experts_per_rank, H, CeilDiv(N/2, 64), 2)，其中 CeilDiv(N/2, 64) = (N/2 + 63) / 64。
-
-## get\_symm\_buffer\_for\_mega\_moe 接口说明
-```
-get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> SymmBuffer:
-```
-### 参数说明
-
-<table>
- <thead>
-  <tr>
-   <th>参数名</th>
-   <th>必选/可选</th>
-   <th>描述</th>
-   <th>类型</th>
-   <th>取值范围</th>
-  </tr>
- </thead>
- <tbody>
-  <tr>
-   <td>group</td>
-   <td>必选</td>
-   <td>分布式通信的进程组句柄</td>类型
-   <td>torch.distributed.ProcessGroup</td>
-   <td>-</td>
-  </tr>
-  <tr>
-   <td>num_experts</td>
-   <td>必选</td>
-   <td>MoE 模型的总专家数量。</td>
-   <td>int</td>
-   <td>[ep_world_size, 1024]，且 num_experts % ep_world_size == 0</td>
-  </tr>
-  <tr>
-   <td>num_max_tokens_per_rank</td>
-   <td>必选</td>
-   <td>每卡中最大的输入token的数量，即当每卡的num_tokens不同时，最大的num_tokens大小。</td>
-   <td>int</td>
-   <td>等于每个卡中最大的num_tokens</td>
-  </tr>
-  <tr>
-   <td>num_topk</td>
-   <td>必选</td>
-   <td>表示每个token选择的专家数。</td>
-   <td>int</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1 ≤ num_topk ≤ 16<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1 ≤ num_topk ≤ 16<br>
-        Ascend 950PR/Ascend 950DT：num_topk 取值为 6 或 8
-    </td>
-  </tr>
-  <tr>
-   <td>hidden</td>
-   <td>必选</td>
-   <td>表示每个token大小。</td>
-   <td>int</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ hidden ≤ 8192 且 hidden % 512 = 0<br>
-        Ascend 950PR/Ascend 950DT：hidden 取值为 4096、5120 或 7168
-   </td>
-  </tr>
-  <tr>
-   <td>intermediate_hidden</td>
-   <td>必选</td>
-   <td>表示中间层投影维度。</td>
-   <td>int</td>
-   <td>
-        Atlas A2 训练系列产品/Atlas A2 推理系列产品：1024 ≤ intermediate_hidden ≤ 8192 且 intermediate_hidden % 512 = 0<br>
-        Atlas A3 训练系列产品/Atlas A3 推理系列产品：1024 ≤ intermediate_hidden ≤ 8192 且 intermediate_hidden % 512 = 0<br>
-        Ascend 950PR/Ascend 950DT：intermediate_hidden 取值为 1024、2048、3072、4096 或 7168
-   </td>
-  </tr>
-  <tr>
-   <td>max_recv_token_num</td>
-   <td>可选</td>
-   <td>每个Rank最大可接收token数，默认值为0表示按通信域能容纳最大的token数自动计算。</td>
-   <td>int</td>
-   <td>[0, num_tokens × ep_world_size × min(num_topk, num_experts_per_rank)]</td>
-  </tr>
-  <tr>
-   <td>dispatch_quant_mode</td>
-   <td>可选</td>
-   <td>dispatch通信前的token隐藏状态的量化模式。</td>
-   <td>int</td>
-   <td>0（非量化），2（pertoken量化），4（MX模式）</td>
-  </tr>
-  <tr>
-   <td>dispatch_quant_out_dtype</td>
-   <td>可选</td>
-   <td>dispatch通信前的token隐藏状态量化后的数据类型，默认值None表示非量化。</td>
-   <td>ScalarType</td>
-   <td>torch.int8，torch.float8_e5m2，torch.float8_e4m3fn</td>
-  </tr>
-  <tr>
-   <td>combine_quant_mode</td>
-   <td>可选</td>
-   <td>预留参数，使用默认值即可。</td>
-   <td>-</td>
-   <td>-</td>
-  </tr>
-  <tr>
-   <td>comm_alg</td>
-   <td>可选</td>
-   <td>预留参数，使用默认值即可。</td>
-   <td>-</td>
-   <td>-</td>
-  </tr>
- </tbody>
-</table>
-
-### 输出说明
-
--   **sym\_buffer** (`SymmBuffer`)：
-
-
+- **通信域和组网约束**：
+    - 各卡的通信域缓存区大小（`HCCL_BUFFSIZE`）应当一致。
+    - 通信域各节点的驱动版本应当相同。
+    - Atlas A2 训练系列产品/Atlas A2 推理系列产品：多机通信域要求交换机组网，不支持双机直连组网。
+    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
 
 ## 调用示例
 -   单算子模式调用
