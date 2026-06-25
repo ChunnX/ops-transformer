@@ -18,6 +18,26 @@
 
 using namespace ge;
 namespace ops {
+namespace {
+constexpr int64_t UNKNOWN_DIM = -1;
+
+int64_t InferAllGatherMdim(int64_t dimM, int64_t rankSize)
+{
+    if (dimM == UNKNOWN_DIM || rankSize <= 0) {
+        return UNKNOWN_DIM;
+    }
+    return dimM * rankSize;
+}
+
+int64_t InferReduceScatterMdim(int64_t dimM, int64_t rankSize)
+{
+    if (dimM == UNKNOWN_DIM || rankSize <= 0) {
+        return UNKNOWN_DIM;
+    }
+    return dimM / rankSize;
+}
+} // namespace
+
 // infershape 公共函数
 ge::graphStatus CommonParamCheck(
     const gert::InferShapeContext* context, const size_t isTransAIndex, const size_t isTransBIndex, CommParas& commParas)
@@ -38,18 +58,13 @@ ge::graphStatus CommonParamCheck(
     const int64_t* rankSizeAttr = attrs->GetAttrPointer<int64_t>(RANK_SIZE);
 
     const char* groupStr = attrs->GetAttrPointer<char>(GROUP);
-    OP_LOGE_IF(groupStr == nullptr, GRAPH_FAILED, context->GetNodeName(), "Get group failed.");
-    commParas.rankSize = -1;
-    uint32_t rankNum = 0;
+
+    if (groupStr == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "groupStr");
+        return ge::GRAPH_FAILED;
+    }
     if (*rankSizeAttr <= 0) {
-        if ((Mc2Hcom::MC2HcomTopology::CommGetInstSizeByGroup(groupStr, &rankNum)) != HCCL_SUCCESS || rankNum == 0) {
-            OP_LOGE(
-                context->GetNodeName(), "Get rank size failed, group [%s], rankSize [%u]", groupStr, rankNum);
-            return ge::GRAPH_FAILED;
-        } else {
-            commParas.rankSize = rankNum;
-        }
-        commParas.rankSize = static_cast<int64_t>(rankNum);
+        commParas.rankSize = UNKNOWN_DIM;
     } else {
         commParas.rankSize = *rankSizeAttr;
     }
@@ -79,10 +94,6 @@ ge::graphStatus AllGatherMatmulInferYShape(gert::InferShapeContext* context, Com
     OP_LOGE_IF(
         CommonParamCheck(context, AG_IS_TRANS_A, AG_IS_TRANS_B, commParas) != GRAPH_SUCCESS, GRAPH_FAILED,
         context->GetNodeName(), "CommonParamCheck excute failed.");
-    // 动态shape入图时 m轴-1时，不再进行(dimM * rankSize)的处理
-    if (commParas.dimM == -1) {
-        commParas.rankSize = 1;
-    }
     // 不支持k = 0
     if (commParas.dimKX1 == 0) {
         commParas.dimM = commParas.dimN = 0;
@@ -92,7 +103,7 @@ ge::graphStatus AllGatherMatmulInferYShape(gert::InferShapeContext* context, Com
     gert::Shape* yShape = context->GetOutputShape(0);
     OPS_CHECK_NULL_WITH_CONTEXT(context, yShape);
     yShape->SetDimNum(SUPPORT_DIM_SIZE);
-    yShape->SetDim(0, commParas.dimM * commParas.rankSize);
+    yShape->SetDim(0, InferAllGatherMdim(commParas.dimM, commParas.rankSize));
     yShape->SetDim(1, commParas.dimN);
     return ge::GRAPH_SUCCESS;
 }
@@ -110,7 +121,7 @@ ge::graphStatus AllGatherMatmulInferGatherOutShape(gert::InferShapeContext* cont
     OPS_CHECK_NULL_WITH_CONTEXT(context, gatherOutShape);
     if (*isGatherOut) {
         gatherOutShape->SetDimNum(SUPPORT_DIM_SIZE);
-        gatherOutShape->SetDim(0, commParas.dimM * commParas.rankSize);
+        gatherOutShape->SetDim(0, InferAllGatherMdim(commParas.dimM, commParas.rankSize));
         gatherOutShape->SetDim(1, commParas.dimKX1);
     } else {
         gatherOutShape->SetDimNum(1);
@@ -139,10 +150,6 @@ ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext* context)
     OP_LOGE_IF(
         CommonParamCheck(context, RS_IS_TRANS_A, RS_IS_TRANS_B, commParas) != GRAPH_SUCCESS, GRAPH_FAILED,
         context->GetNodeName(), "CommonParamCheck excute failed.");
-    // 动态shape入图时 m轴-1时，不再进行(dimM / rankSize)的处理
-    if (commParas.dimM == -1) {
-        commParas.rankSize = 1;
-    }
     if (commParas.dimKX1 == 0) {
         commParas.dimM = commParas.dimN = 0;
         OP_LOGE(context->GetNodeName(), "X1/X2 are empty tensors with zero dimK");
@@ -151,7 +158,7 @@ ge::graphStatus InferMatmulReduceScatterCommon(gert::InferShapeContext* context)
     gert::Shape* yShape = context->GetOutputShape(0);
     OPS_CHECK_NULL_WITH_CONTEXT(context, yShape);
     yShape->SetDimNum(SUPPORT_DIM_SIZE);
-    yShape->SetDim(0, commParas.dimM / commParas.rankSize);
+    yShape->SetDim(0, InferReduceScatterMdim(commParas.dimM, commParas.rankSize));
     yShape->SetDim(1, commParas.dimN);
     return GRAPH_SUCCESS;
 }
