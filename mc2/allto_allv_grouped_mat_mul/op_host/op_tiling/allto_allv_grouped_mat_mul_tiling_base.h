@@ -22,7 +22,7 @@
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
+#include "../../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
 
 namespace optiling {
 constexpr uint32_t NON_QUANT_MM_X_INDEX = 4U;

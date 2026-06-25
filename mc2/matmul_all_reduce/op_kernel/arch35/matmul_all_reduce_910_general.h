@@ -24,7 +24,7 @@
 #include "../common.h"
 #include "matmul_all_reduce_based_a2a_rs_ag.h"
 #include "matmul_all_reduce_based_all_reduce.h"
-#include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
+#include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;

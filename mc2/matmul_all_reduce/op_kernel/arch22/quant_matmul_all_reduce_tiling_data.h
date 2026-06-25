@@ -17,14 +17,9 @@
 #define QUANT_MATMUL_ALL_REDUCE_TILING_DATA_H
 
 #include "kernel_tiling/kernel_tiling.h"
-
-#ifdef __CCE_KT_TEST__
 #include "../../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_tiling_data.h"
-#else
-#include "../../common/op_kernel/mc2_tiling_struct.h"
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_tiling_data.h"
-#endif
+
 namespace Mc2Tiling {
 
 #pragma pack(push, 8)
