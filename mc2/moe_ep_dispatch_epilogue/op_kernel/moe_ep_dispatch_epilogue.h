@@ -49,7 +49,8 @@ private:
     __aicore__ inline void CopyFromWindowByExpert();
     __aicore__ inline void CopyInputsToOutputs();
 
-    __aicore__ inline void SplitToCore(uint32_t totalCnt, uint32_t &startId, uint32_t &endId, uint32_t &perCoreCnt);
+    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
+                                       uint32_t &endId, uint32_t &sendNum, bool isFront);
 
     TPipe* tpipe_{nullptr};
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
@@ -118,18 +119,19 @@ private:
 
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::SplitToCore(
-    uint32_t totalCnt, uint32_t &startId, uint32_t &endId, uint32_t &perCoreCnt)
+    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId, uint32_t &sendNum, bool isFront)
 {
-    perCoreCnt = totalCnt / aivNum_;
-    uint32_t remainder = totalCnt % aivNum_;
-    startId = perCoreCnt * aivId_;
-    if (aivId_ < remainder) {
-        perCoreCnt += 1;
-        startId += aivId_;
+    sendNum = curSendCnt / curUseAivNum;
+    uint32_t remainderNum = curSendCnt % curUseAivNum;
+    uint32_t newAivId = isFront ? aivId_ : aivId_;
+    startId = sendNum * newAivId;
+    if (newAivId < remainderNum) {
+        sendNum += 1;
+        startId += newAivId;
     } else {
-        startId += remainder;
+        startId += remainderNum;
     }
-    endId = startId + perCoreCnt;
+    endId = startId + sendNum;
 }
 
 template <typename XType, uint32_t IsCached>
@@ -281,7 +283,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
         if (slotCnt == 0) { continue; }
 
         uint32_t slotStart, slotEnd, slotCntPerAiv;
-        SplitToCore(static_cast<uint32_t>(slotCnt), slotStart, slotEnd, slotCntPerAiv);
+        SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv, false);
         if (slotStart >= slotEnd) { continue; }
 
         GM_ADDR srcRankBase = localWinAddr_
@@ -359,7 +361,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
             if (slotCnt == 0) { continue; }
 
             uint32_t slotStart, slotEnd, slotCntPerAiv;
-            SplitToCore(static_cast<uint32_t>(slotCnt), slotStart, slotEnd, slotCntPerAiv);
+            SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv, false);
             if (slotStart >= slotEnd) { continue; }
 
             GM_ADDR srcRankBase = localWinAddr_
