@@ -28,6 +28,29 @@ constexpr int64_t INT32_ONE_BLOCK_NUM = 8;
 
 constexpr int64_t ASSIST_NUM = 256;
 constexpr int64_t ASSIST_INDEX_NUM = 32;
+constexpr int64_t SORT32_ALIGN_ELEMENT = 32;
+constexpr int64_t SCATTER_UB_SIZE = 192 * 1024;
+constexpr int64_t SCATTER_PER_LOOP_ALIGN = 512;
+
+__aicore__ inline int64_t CalcScatterPerLoopMaxRows(int64_t useCoreNum)
+{
+    int64_t perLoopMaxRows =
+        (SCATTER_UB_SIZE - ASSIST_NUM * static_cast<int64_t>(sizeof(float)) -
+         SCATTER_PER_LOOP_ALIGN * static_cast<int64_t>(sizeof(float))) /
+        (SORT32_ALIGN_ELEMENT * 2) / 2;
+    return (perLoopMaxRows / SCATTER_PER_LOOP_ALIGN) * SCATTER_PER_LOOP_ALIGN;
+}
+
+// 稀疏 block 布局：assist[i*8]=i，与 moe_v2 assist 一致，供 scatter 按 idx*8 取值。
+const __gm__ int32_t scatterAssist[256] = {
+    0,  0, 0, 0, 0, 0, 0, 0, 1,  0, 0, 0, 0, 0, 0, 0, 2,  0, 0, 0, 0, 0, 0, 0, 3,  0, 0, 0, 0, 0, 0, 0,
+    4,  0, 0, 0, 0, 0, 0, 0, 5,  0, 0, 0, 0, 0, 0, 0, 6,  0, 0, 0, 0, 0, 0, 0, 7,  0, 0, 0, 0, 0, 0, 0,
+    8,  0, 0, 0, 0, 0, 0, 0, 9,  0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0,
+    12, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0,
+    16, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 19, 0, 0, 0, 0, 0, 0, 0,
+    20, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 0, 0, 0, 0, 22, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0,
+    24, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0, 27, 0, 0, 0, 0, 0, 0, 0,
+    28, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 0, 0, 0, 0, 31, 0, 0, 0, 0, 0, 0, 0};
 
 constexpr int64_t MERGE_LIST_TWO = 2;
 constexpr int64_t MERGE_LIST_THREE = 3;

@@ -76,8 +76,8 @@ COLUMN_MAP = {
     'attn_mask_dtype':     None,
     'learnable_sink':      None,
     'metadata':            None,
-    'max_seqlen_q':        None,
-    'max_seqlen_kv':       None,
+    'max_seqlen_q':        'max_seqlen_q',
+    'max_seqlen_kv':       'max_seqlen_kv',
     # ---- 格式2: varlen 测试表 ----
     'testcase_name':       '_key_',
     'enable':              '_enable_',
@@ -116,6 +116,7 @@ KEY_ORDER = [
     'mask_mode', 'win_left', 'win_right',
     'winLeft', 'winRight',
     'seqused_q', 'seqused_kv',
+    'max_seqlen_q', 'max_seqlen_kv',
     'cu_seqlens_q', 'cu_seqlens_kv',
     'block_table', 'block_size',
     'atten_mask_dtype', 'atten_mask_layout',
@@ -266,7 +267,7 @@ def convert_row(headers, row_values):
 
         # ---- 整数标量 ----
         if key in ('B', 'N1', 'N2', 'S1', 'S2', 'D', 'mask_mode', 'block_size',
-                   'win_left', 'win_right'):
+                   'win_left', 'win_right', 'max_seqlen_q', 'max_seqlen_kv'):
             case_dict[key] = [int(float(val))]
 
         # ---- 字符串标量 (layout) ----
@@ -287,9 +288,9 @@ def convert_row(headers, row_values):
         elif key in ('scale',):
             case_dict[key] = [float(val)]
 
-        # ---- winLeft / winRight (保持字符串，与 test_cases 模块一致) ----
+        # ---- winLeft / winRight ----
         elif key in ('winLeft', 'winRight'):
-            case_dict[key] = [val_str]
+            case_dict[key] = [int(float(val))]
 
         # ---- seqused_q / seqused_kv → [int, ...] ----
         elif key in ('seqused_q', 'seqused_kv'):

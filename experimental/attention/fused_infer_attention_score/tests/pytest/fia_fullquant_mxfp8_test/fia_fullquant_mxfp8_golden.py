@@ -1228,4 +1228,4 @@ if __name__ == '__main__':
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
         cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, ACTUAL_SEQ_Q, "TND")
- 	    result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
+        result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)

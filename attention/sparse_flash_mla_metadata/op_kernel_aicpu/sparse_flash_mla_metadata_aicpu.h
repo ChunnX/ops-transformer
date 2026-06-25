@@ -22,14 +22,21 @@
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
+#include "../../sparse_flash_mla/op_kernel/sparse_flash_mla_metadata.h"
+#include "../../common/op_kernel/aicpu_common.h"
 
 namespace aicpu {
-
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
+constexpr uint32_t COST_WEIGHT_M = 6U;
+constexpr uint32_t COST_WEIGHT_S2 = 10U;
+constexpr bool ORI_KV = false;
+constexpr bool CMP_KV = true;
+constexpr uint32_t NO_MASK = 0;
+constexpr uint32_t HAS_MASK = 1;
 
 enum BlockType : uint32_t {
-    WIN_NORMAL_BLOCK = 0,
-    WIN_TAIL_BLOCK,
+    ORI_NORMAL_BLOCK = 0,
+    ORI_TAIL_BLOCK,
     CMP_NORMAL_BLOCK,
     CMP_TAIL_BLOCK,
     BLOCK_MAX_TYPE
@@ -42,6 +49,11 @@ enum class SparseMode : uint8_t {
     RIGHT_DOWN_CAUSAL,
     BAND,
     SPARSE_BUTT,
+};
+
+enum class ValidSocVersion {
+    ASCEND910 = 0,
+    ASCEND950
 };
 
 template<class T>
@@ -68,67 +80,6 @@ inline bool IsWithinTolerance(T limit, T tolerance, T value)
     return limit + tolerance >= value;
 }
 
-template <typename T>
-inline typename std::enable_if<std::is_integral_v<T>, bool>::type GetAttrValue(CpuKernelContext &ctx,
-                                                                               const std::string &name, T &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (!attr) {
-        KERNEL_LOG_ERROR("attr is null: %s", name.c_str());
-        return false;
-    }
-    value = static_cast<T>(attr->GetInt());
-    return true;
-}
-
-inline bool GetAttrValue(CpuKernelContext &ctx, const std::string &name, std::string &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (!attr) {
-        KERNEL_LOG_ERROR("attr is null: %s", name.c_str());
-        return false;
-    }
-    value = attr->GetString();
-    return true;
-}
-
-inline bool GetAttrValue(CpuKernelContext &ctx, const std::string &name, bool &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (!attr) {
-        KERNEL_LOG_ERROR("attr is null: %s", name.c_str());
-        return false;
-    }
-    value = attr->GetBool();
-    return true;
-}
-
-template <typename T>
-inline typename std::enable_if<std::is_integral_v<T>, void>::type GetAttrValueOpt(CpuKernelContext &ctx,
-                                                                                  const std::string &name, T &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (attr != nullptr) {
-        value = static_cast<T>(attr->GetInt());
-    }
-}
-
-inline void GetAttrValueOpt(CpuKernelContext &ctx, const std::string &name, std::string &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (attr != nullptr) {
-        value = attr->GetString();
-    }
-}
-
-inline void GetAttrValueOpt(CpuKernelContext &ctx, const std::string &name, bool &value)
-{
-    auto attr = ctx.GetAttr(name);
-    if (attr != nullptr) {
-        value = attr->GetBool();
-    }
-}
-
 // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
 struct FlashDecodeResult {
     uint32_t fdUsedVecNum { 0U };             // 归约过程使用的vector数量
@@ -143,8 +94,8 @@ struct FlashDecodeResult {
     std::vector<uint32_t> fdMStart {};          // FD负载均衡阶段，每个vector处理的归约任务的m轴起点
     std::vector<uint32_t> fdMNum {};            // FD负载均衡阶段，每个vector处理的归约任务的m轴行数
 
-    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum) :
-        fdBN2Idx(aicNum),
+    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum)
+        : fdBN2Idx(aicNum),
         fdMIdx(aicNum),
         fdWorkspaceIdx(aicNum),
         fdS2SplitNum(aicNum),
@@ -164,10 +115,11 @@ struct SplitResult {
     int64_t maxCost { 0 };            // 慢核开销
     uint32_t numOfFdHead { 0U };        // 归约任务数量
     uint32_t maxS2SplitNum { 0U };      // 单个归约任务最大分核数量
+    uint32_t maxS2GBaseNum { 0U };      // 单个核最大s2基本块数量
     FlashDecodeResult fdRes { 0U, 0U };     // FD信息
 
-    SplitResult(uint32_t aicNum, uint32_t aivNum) :
-        bN2End(aicNum),
+    SplitResult(uint32_t aicNum, uint32_t aivNum)
+        : bN2End(aicNum),
         gS1End(aicNum),
         s2End(aicNum),
         firstFdDataWorkspaceIdx(aicNum),
@@ -177,16 +129,20 @@ struct SplitResult {
 // 分核功能模块内部使用：记录切分信息
 struct SplitInfo {
     std::vector<uint32_t> s1GBaseNum {};                   // S1G方向，切了多少个基本块
-    std::vector<uint32_t> s2BaseNum {};                    // S2方向，切了多少个基本块
+    std::vector<uint32_t> oriS2BaseNum {};                    // oriS2方向，切了多少个基本块
+    std::vector<uint32_t> cmpS2BaseNum {};                    // cmpS2方向，切了多少个基本块
     std::vector<uint32_t> s1GTailSize {};                  // S1G方向，尾块size
-    std::vector<uint32_t> s2TailSize {};                   // S2方向，尾块size
+    std::vector<uint32_t> oriS2TailSize {};                   // oriS2方向，尾块size
+    std::vector<uint32_t> cmpS2TailSize {};                   // cmpS2方向，尾块size
     bool isKvSeqAllZero { true };
 
-    explicit SplitInfo(uint32_t batchSize) :
-        s1GBaseNum(batchSize),
-        s2BaseNum(batchSize),
+    explicit SplitInfo(uint32_t batchSize)
+        : s1GBaseNum(batchSize),
+        oriS2BaseNum(batchSize),
+        cmpS2BaseNum(batchSize),
         s1GTailSize(batchSize),
-        s2TailSize(batchSize) {}
+        oriS2TailSize(batchSize),
+        cmpS2TailSize(batchSize) {}
 };
 
 // 分核功能模块内部使用：记录batch的开销信息
@@ -198,8 +154,8 @@ struct CostInfo {
     int64_t totalCost { 0 };
     int64_t maxS1GCost { 0 };  // 记录所有S1G行中的最大开销
 
-    explicit CostInfo(uint32_t batchSize) :
-        bN2CostOfEachBatch(batchSize),
+    explicit CostInfo(uint32_t batchSize)
+        : bN2CostOfEachBatch(batchSize),
         bN2BlockOfEachBatch(batchSize),
         bN2LastBlockCostOfEachBatch(batchSize) {}
 };
@@ -209,8 +165,8 @@ struct SplitContext {
     SplitInfo splitInfo { 0U };
     CostInfo costInfo { 0U };
 
-    explicit SplitContext(uint32_t batchSize) :
-        splitInfo(batchSize),
+    explicit SplitContext(uint32_t batchSize)
+        : splitInfo(batchSize),
         costInfo(batchSize) {}
 };
 
@@ -218,9 +174,12 @@ struct SplitContext {
 struct BatchCache {
     uint32_t bIdx { 0U };
     uint32_t s1Size { 0U };
-    uint32_t s2Size { 0U };
-    int64_t preTokenLeftUp { 0 };
-    int64_t nextTokenLeftUp { 0 };
+    uint32_t oriS2Size { 0U };
+    uint64_t cmpRevertS2Size { 0U };
+    int64_t oriPreTokenLeftUp { 0 };
+    int64_t oriNextTokenLeftUp { 0 };
+    int64_t cmpPreTokenLeftUp { 0 };
+    int64_t cmpNextTokenLeftUp { 0 };
     BlockCost<int64_t> typeCost {};
 };
 
@@ -230,24 +189,23 @@ struct S1GCache {
     uint32_t s1GIdx { 0U };
     uint32_t s2Start { 0U };
     uint32_t s2End { 0U };
-    uint32_t winS2Start { 0U };
-    uint32_t winS2End { 0U };
+    uint32_t oriS2Start { 0U };
+    uint32_t oriS2End { 0U };
     uint32_t cmpS2Start { 0U };  // win部分与cmp部分的切分点
     uint32_t cmpS2End { 0U };
     int64_t s1GCost { 0 };
     int64_t s1GLastBlockCost { 0 };
     uint32_t s1GBlock { 0U };
-    int64_t s1GNormalBlockCost { 0 };
-    uint32_t winS1GBlock { 0U };
-    int64_t winS1GCost { 0 };
-    int64_t winS1GLastBlockCost { 0 };
-    int64_t winS1GNormalBlockCost { 0 };
+    uint32_t oriS1GBlock { 0U };
+    int64_t oriS1GCost { 0 };
+    int64_t oriS1GLastBlockCost { 0 };
+    int64_t oriS1GNormalBlockCost { 0 };
     uint32_t cmpS1GBlock { 0U };
     int64_t cmpS1GCost { 0 };
     int64_t cmpS1GLastBlockCost { 0 };
     int64_t cmpS1GNormalBlockCost { 0 };
+    int64_t oriS2TailSize {0};
     int64_t cmpS2TailSize {0};
-    int64_t winS2TailSize {0};
 };
 
 // 分核功能模块内部使用：记录分配过程中，当前核的负载信息
@@ -265,7 +223,6 @@ struct AssignContext {
     uint32_t curS2Idx { 0U };
     uint32_t curCoreIdx { 0U };
     int64_t unassignedCost { 0 };
-    uint32_t usedCoreNum { 0U };
     uint32_t curKvSplitPart { 1U };
     uint32_t preFdDataNum { 0U };
 
@@ -286,28 +243,39 @@ public:
 private:
     bool Prepare(CpuKernelContext &ctx);
     int32_t GetQueryBatchSize();
+    void CalcOriMaskMode();
+    void CalcCmpMaskMode();
+    ValidSocVersion ProcessSocVersion();
+    bool ParamsCheck();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetadata(SplitResult &splitRes);
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
-    uint32_t GetS2SeqSize(uint32_t bIdx);
-    uint32_t GetS1ValidSeqSize(uint32_t bIdx);
-    int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
-    int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
-    Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache);
-    int64_t WinCalcCost(uint32_t basicM, uint32_t basicS2);
+    uint32_t GetOriS2SeqSize(uint32_t bIdx);
+    uint32_t GetCmpS2SeqSize(uint32_t bIdx);
+    uint64_t GetRevertS2Size(uint32_t bIdx);
+    uint32_t GetOriTopkLength();
+    uint32_t GetCmpTopkLength();
+    int64_t CalcOriPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
+    int64_t CalcOriNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
+    int64_t CalcCmpPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
+    int64_t CalcCmpNextTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
+    Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache, bool isCmpKv);
+    int64_t OriCalcCost(uint32_t basicM, uint32_t basicS2);
     int64_t CmpCalcCost(uint32_t basicM, uint32_t basicS2);
-    void CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
-    uint32_t winS2TailSize, uint32_t cmpS2TailSize);
+    void CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t oriS2TailSize,
+        uint32_t cmpS2TailSize);
 
     // cache calculation
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
-    void CalcBlockRangeAndTailSize(Range<int64_t> &oriS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
-    void CalcWinS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
+    void CalcOriBlockRange(const Range<int64_t> &oriS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
+    void CalcCmpBlockRange(const Range<int64_t> &cmpS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
+    void CalcOriS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
     void CalcCmpS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
-    void GatherWinAndCmpCache(S1GCache &s1GCache);
-    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache);
+    void GatherOriAndCmpCache(S1GCache &s1GCache);
+    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache,
+        S1GCache &s1GCache);
 
     // preprocess
     void CalcSplitInfo(SplitContext &splitContext);
@@ -318,7 +286,7 @@ private:
     void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
-    int64_t CalcCurBlockCost(AssignContext &assignContext);
+    int64_t CalcCurBlockCost(const AssignContext &assignContext);
     void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
     void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignBlocksToCore(const SplitContext &splitContext, AssignContext &assignContext, SplitResult &result);
@@ -330,67 +298,77 @@ private:
     // main
     void SplitFD(SplitResult &splitRes);
     void CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
-    void SplitCore();
 
 private:
     // input
-    Tensor *actSeqLenQ_ = nullptr;
-    Tensor *actSeqLenOriKv_ = nullptr;
-    Tensor *actSeqLenCmpKv_ = nullptr;
-    Tensor *seqUsedQ_ = nullptr;
-    Tensor *seqUsedKv_ = nullptr;
+    Tensor *cuSeqlensQ_ = nullptr;
+    Tensor *cuSeqlensOriKv_ = nullptr;
+    Tensor *cuSeqlensCmpKv_ = nullptr;
+    Tensor *sequsedQ_ = nullptr;
+    Tensor *sequsedOriKv_ = nullptr;
+    Tensor *sequsedCmpKv_ = nullptr;
+    Tensor *cmpResidualKv_ = nullptr;
+    Tensor *oriTopkLength_ = nullptr;
+    Tensor *cmpTopkLength_ = nullptr;
 
     // output
     Tensor *metadata_ = nullptr;
 
     // attributes
     int32_t batchSize_ = 0;
-    int32_t querySeqSize_ = 0;
-    int32_t queryHeadNum_ = 0;
-    int32_t kvSeqSize_ = 0;
-    int32_t kvHeadNum_ = 0;
+    int32_t maxSeqlenQ_ = 0;
+    int32_t numHeadsQ_ = 0;
+    int32_t maxSeqlenOriKv_ = 0;
+    int32_t maxSeqlenCmpKv_ = 0;
+    int32_t numHeadsKv_ = 1;
     int32_t headDim_ = 0;
     int32_t oriTopK_ = 0;
     int32_t cmpTopK_ = 0;
-    int32_t cmpRatio_ = -1;
-    int32_t oriMaskMode_ = 4;
-    int32_t cmpMaskMode_ = 3;
-    int64_t winLeft_ = 127;
-    int64_t winRight_ = 0;
-    std::string layoutQuery_ = "BSND";
-    std::string layoutKv_ = "PA_BNBD";
+    int32_t cmpRatio_ = 1;
+    int32_t oriMaskMode_ = static_cast<int32_t>(SparseMode::BAND);
+    int32_t cmpMaskMode_ = static_cast<int32_t>(SparseMode::RIGHT_DOWN_CAUSAL);
+    int64_t oriWinLeft_ = 127;
+    int64_t oriWinRight_ = 0;
+    std::string layoutQ_ = "BSND";
+    std::string layoutKv_ = "PA_BBND";
     bool hasOriKv_ = true;
     bool hasCmpKv_ = true;
-    uint32_t aicCoreNum_ = 24U;
-    uint32_t aivCoreNum_ = 48U;
+    uint32_t aicCoreNum_ = optiling::AIC_CORE_MAX_NUM;
+    uint32_t aivCoreNum_ = optiling::AIV_CORE_MAX_NUM;
 
     // attr
-    std::string socVersion_ = "ascend910B";
-    int64_t preToken_ = 0; // new
-    int64_t nextToken_ = 0; // new
+    std::string socVersion_ = "Ascend950";
+    int64_t oriPreToken_ = 0;
+    int64_t oriNextToken_ = 0;
+    int64_t cmpPreToken_ = 0;
+    int64_t cmpNextToken_ = 0;
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 0;
-    uint32_t s2BaseSize_ = 0;
+    uint32_t s2BaseSize_ = 128U;
     bool isS1G_ = true;
-    bool isCFA = false;
-    bool isSCFA = false;
     bool supportFd = false;
-    uint32_t sparseMode_ = 0;
-    uint32_t attentionMode_ = 1;
-    BlockCost<int64_t> typeCost_;
-    bool isHighPorfScfa_ = false;
-
+    uint32_t oriAttentionMode_ = HAS_MASK;
+    uint32_t cmpAttentionMode_ = HAS_MASK;
+    BlockCost<int64_t> typeCost_ = {};
+    bool isSplitG_ = false;
+    bool isSparseOriKv_ = false;
+    bool isSparseCmpKv_ = false;
+    
 private:
     enum class ParamId : uint32_t {
     // input
-    actSeqLenQ = 0,
-    actSeqLenOriKv = 1,
-    actSeqLenCmpKv = 2,
-    seqUsedQ = 3,
-    seqUsedKv = 4,
+    cuSeqlensQ = 0,
+    cuSeqlensOriKv = 1,
+    cuSeqlensCmpKv = 2,
+    sequsedQ = 3,
+    sequsedOriKv = 4,
+    sequsedCmpKv = 5,
+    cmpResidualKv = 6,
+    oriTopkLength = 7,
+    cmpTopkLength = 8,
     // output
-    metadata = 0,
-  };
+    metaData = 0,
+    };
 };
 } // namespace aicpu
 

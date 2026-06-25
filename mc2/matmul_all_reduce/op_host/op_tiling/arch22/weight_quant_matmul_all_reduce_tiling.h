@@ -81,6 +81,7 @@ protected:
     CutResult GetTilingResult() override;
 
 private:
+    ge::graphStatus CheckInputDtype() const;
     ge::graphStatus CheckAxisSize();
     Mc2Tiling::WeightQuantMatmulAllReduceTilingData weightQuantMatmulAllReduceTilingDataSelf_{};
     Mc2Tiling::WeightQuantMatmulAllReduceTilingData &weightQuantMatmulAllReduceTilingData_;

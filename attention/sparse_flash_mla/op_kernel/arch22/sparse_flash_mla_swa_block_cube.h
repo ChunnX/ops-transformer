@@ -413,7 +413,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
 
                     uint32_t headStride  = constInfo.headDim;
                     uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
-                    uint32_t batchStride = constInfo.kvSeqSize * seqStride;
+                    uint64_t batchStride = (constInfo.oriKvStride0 == 0) ?
+                        static_cast<uint64_t>(constInfo.kvSeqSize) * seqStride : constInfo.oriKvStride0;
 
                     uint64_t curS2 = (uint64_t)info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
                     uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride + \
@@ -507,11 +508,7 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                             shape.copyRowNum = copyRowCnt;
                             shape.copyRowNumAlign = nL1SizeAlign;
                             kTensor = bL1Tensor[copyFinishRowCnt * 16 + oriSizeCur * 16];
-                            if (nL1 == 0) {
-                                DataCopyPA<KV_T>(kTensor, oriKvGm, oriBlockTableGm, shape, startPos);
-                            } else {
-                                DataCopyPA<KV_T>(kTensor, cmpKvGm, cmpBlockTableGm, shape, startPos);
-                            }
+                            DataCopyPA<KV_T>(kTensor, cmpKvGm, cmpBlockTableGm, shape, startPos);
                             // 更新循环变量
                             copyFinishRowCnt += copyRowCnt;
                             curS2Offset += copyRowCnt;
@@ -531,7 +528,9 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                     uint32_t headStride  = constInfo.headDim;
                     uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
                     if (oriSizeCur > 0) {
-                        uint32_t batchStride = constInfo.kvSeqSize * seqStride;
+                        nd2nzPara.nValue = oriSizeCur;
+                        uint64_t batchStride = (constInfo.oriKvStride0 == 0) ?
+                            static_cast<uint64_t>(constInfo.kvSeqSize) * seqStride : constInfo.oriKvStride0;
                         uint64_t curS2 = (uint64_t)info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint + \
                             nL1 * N_SPLIT_SIZE;
                         uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride + \
@@ -539,7 +538,9 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                         DataCopy(bL1Tensor, oriKvGm[offset], nd2nzPara);
                     }
                     if (cmpSizeCur > 0) {
-                        uint32_t batchStride = constInfo.kvSeqSize / constInfo.cmpRatio * seqStride;
+                        nd2nzPara.nValue = cmpSizeCur;
+                        uint64_t batchStride = (constInfo.cmpKvStride0 == 0) ?
+                            static_cast<uint64_t>(constInfo.cmpSeqSize) * seqStride : constInfo.cmpKvStride0;
                         uint32_t cmpMixsizeCur = N_SPLIT_SIZE - info.actualSingleProcessSInnerOriSize % N_SPLIT_SIZE;
                         uint32_t oriOnlyLoopTimes = info.actualSingleProcessSInnerOriSize / N_SPLIT_SIZE;
                         uint32_t cmpLoopTimes = nL1 - oriOnlyLoopTimes;
@@ -625,7 +626,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
 
                     uint32_t headStride  = constInfo.headDim;
                     uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
-                    uint32_t batchStride = constInfo.kvSeqSize / constInfo.cmpRatio * seqStride;
+                    uint64_t batchStride = (constInfo.cmpKvStride0 == 0) ?
+                        static_cast<uint64_t>(constInfo.cmpSeqSize) * seqStride : constInfo.cmpKvStride0;
 
                     uint64_t curS2 = static_cast<uint64_t>(info.relativeS2Idx) * constInfo.s2BaseSize + \
                         info.s2StartPoint + nL1 * N_SPLIT_SIZE;
@@ -844,7 +846,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
 
                         uint32_t headStride  = constInfo.headDim;
                         uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
-                        uint32_t batchStride = constInfo.kvSeqSize * seqStride;
+                        uint64_t batchStride = (constInfo.oriKvStride0 == 0) ?
+                            static_cast<uint64_t>(constInfo.kvSeqSize) * seqStride : constInfo.oriKvStride0;
 
                         uint64_t curS2 = (uint64_t)info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint + \
                             kL1 * K_L0_SPLIT_SIZE;
@@ -962,7 +965,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
                         if (oriSizeCur > 0) {
                             subvTensor = bL1Tensor[(kL1 - kOffset) * K_L0_SPLIT_SIZE * N_SPLIT_SIZE];
                             nd2nzPara.nValue = oriSizeCur;
-                            uint32_t batchStride = constInfo.kvSeqSize * seqStride;
+                            uint64_t batchStride = (constInfo.oriKvStride0 == 0) ?
+                                static_cast<uint64_t>(constInfo.kvSeqSize) * seqStride : constInfo.oriKvStride0;
                             uint64_t curS2 = (uint64_t)info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint +
                                 kL1 * K_L0_SPLIT_SIZE;
                             uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride +
@@ -972,7 +976,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
                         if (cmpSizeCur > 0) {
                             nd2nzPara.nValue = cmpSizeCur;
                             subvTensor = bL1Tensor[(kL1 - kOffset) * K_L0_SPLIT_SIZE * N_SPLIT_SIZE + oriSizeCur * 16];
-                            uint32_t batchStride = constInfo.kvSeqSize / constInfo.cmpRatio * seqStride;
+                            uint64_t batchStride = (constInfo.cmpKvStride0 == 0) ?
+                                static_cast<uint64_t>(constInfo.cmpSeqSize) * seqStride : constInfo.cmpKvStride0;
                             uint32_t cmpMixsizeCur = K_L0_SPLIT_SIZE - \
                                 info.actualSingleProcessSInnerOriSize % K_L0_SPLIT_SIZE;
                             uint32_t oriOnlyLoopTimes = info.actualSingleProcessSInnerOriSize / K_L0_SPLIT_SIZE;
@@ -1061,7 +1066,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
 
                         uint32_t headStride  = constInfo.headDim;
                         uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
-                        uint32_t batchStride = constInfo.kvSeqSize / constInfo.cmpRatio * seqStride;
+                        uint64_t batchStride = (constInfo.cmpKvStride0 == 0) ?
+                            static_cast<uint64_t>(constInfo.cmpSeqSize) * seqStride : constInfo.cmpKvStride0;
 
                         uint64_t curS2 = (uint64_t)info.relativeS2Idx * constInfo.s2BaseSize + info.s2StartPoint + \
                             K_L0_SPLIT_SIZE * kL1;

@@ -33,6 +33,8 @@ struct GMMAddrInfo {
     GM_ADDR bGlobal;
     GM_ADDR aScaleGlobal;
     GM_ADDR bScaleGlobal;
+    GM_ADDR gmm1OutGlobal;
+    GM_ADDR gmm2OutGlobal;
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
 };
@@ -43,7 +45,7 @@ struct PeermemInfo {
     GM_ADDR quantTokenScalePtr;      // 量化结果，包括data+scale
     GM_ADDR combineSendPtr;
     __aicore__ inline PeermemInfo() = default;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)
     {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
@@ -62,7 +64,8 @@ struct PeermemInfo {
 
         quantTokenScalePtr = base + offset;
         uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
-        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h / elemsPerByte,
+            static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
         uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
         uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
         offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
@@ -108,6 +111,16 @@ __aicore__ inline void NotifyVector(uint16_t value = 0)
 __aicore__ inline void WaitForCube(uint16_t value = 0)
 {
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
+}
+
+__aicore__ inline void NotifyVectorToCopyIn(uint16_t value = 0)
+{
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPILOGUE_FLAG + FLAG_ID_MAX_PER_V + value);
+}
+
+__aicore__ inline void WaitForCubeFinishCopyout(uint16_t value = 0)
+{
+    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
 }
 
 __aicore__ inline void EndSync(int32_t& vecSetSyncCom)

@@ -300,7 +300,7 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetAttrsParams()
 }
 
 ge::graphStatus MoeInitRoutingV2TilingBase::ValidateInputShapes(const gert::Shape &xShape,
-                                                                const gert::Shape &expertIdxShape)
+                                                                const gert::Shape &expertIdxShape) const
 {
     size_t xDimNnum = xShape.GetDimNum();
     CHECK_FAIL(context_, xDimNnum != DIM_TWO,
@@ -328,7 +328,7 @@ ge::graphStatus MoeInitRoutingV2TilingBase::ValidateInputShapes(const gert::Shap
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeInitRoutingV2TilingBase::ValidateAttrsParams(const gert::Shape &xShape)
+ge::graphStatus MoeInitRoutingV2TilingBase::ValidateAttrsParams(const gert::Shape &xShape) const
 {
     CHECK_FAIL(context_, expertCapacity < 0,
                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expertCapacity",

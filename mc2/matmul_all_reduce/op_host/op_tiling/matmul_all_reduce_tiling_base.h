@@ -191,6 +191,8 @@ protected:
     ge::graphStatus DoMatmulTiling(matmul_tiling::MultiCoreMatmulTiling& mm1, AscendC::tiling::TCubeTiling& cubeTiling);
     void DoL2CacheTiling(Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling);
     void setUseBufferType();
+    uint8_t CalcBufferTypeByWindowSize();
+    void CalcSendOffWithPadM(uint64_t& tileSendOff, uint64_t& tailSendOff);
 
     void Reset();
     bool AnalyzeAttrs();
@@ -200,16 +202,20 @@ protected:
     void GetAtomicAddData();
     bool CheckBiasShape(const uint64_t nValue) const;
     bool CheckDequantScaleShape(const uint64_t nValue) const;
+    bool CheckDequantScalePerBlock(const gert::StorageShape* dequantScaleShape) const;
     bool CheckPerblockShape(const uint64_t mValue, const uint64_t kValue) const;
     bool CheckPertokenScaleShape(const uint64_t mValue, const uint64_t kValue) const;
     bool CheckCommQuantScaleShape(const uint64_t nValue) const;
     bool CheckAntiQuantScaleShape(const uint64_t kValue, const uint64_t nValue);
     bool CheckAntiQuantOffsetValid() const;
+    bool CheckAntiQuantOffsetShape(const gert::StorageShape* scale) const;
     bool CheckA16W4Shape(const uint64_t kValue, const uint64_t nValue);
     bool CheckPlatformInfo() const;
     bool CheckMXScenarioScaleShape(
         const uint64_t dimZeroValue, const uint64_t kValue,
         const gert::StorageShape* scaleShape, const bool isPertoken, const bool isMXfp4) const;
+    void GetScaleMNAndKIdx(const gert::StorageShape* scaleShape, bool isPertoken,
+        uint64_t scaleDimNum, uint64_t& MN, uint64_t& K) const;
     AllReduceScenario GetAllReduceScenario(
         const ge::DataType aType, const ge::DataType bType, const gert::StorageShape* dequantScale,
         const gert::StorageShape* antiQuantScale) const;
@@ -221,6 +227,7 @@ protected:
     uint64_t GetMValue() const;
     uint64_t GetBatchValue() const;
     virtual ge::graphStatus CheckInput();
+    ge::graphStatus CheckInputBias() const;
     ge::graphStatus CheckA16W16();
     ge::graphStatus CheckA8W8();
     ge::graphStatus CheckA16W8();
@@ -239,6 +246,9 @@ protected:
         (void)useNewPara;
     };
     bool CalL2TilePara(L2TilePara& tileL2, uint64_t mValue, uint64_t kValue, uint64_t nValue, uint32_t cubeCoreNum);
+    void CalcL2TileBlock(L2TilePara& tileL2, uint64_t mValue, uint64_t nValue, uint64_t kValue,
+        uint64_t blockBaseM, uint64_t blockBaseN, uint32_t tileSize, uint32_t tileLimit,
+        uint64_t sizeA, uint64_t sizeB, uint32_t cubeCoreNum) const;
     AntiQuantType GetAntiQuantType();
     bool HasAntiQuantOffset() const;
     void CalcUbTiling();

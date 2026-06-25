@@ -563,8 +563,11 @@ inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step)
 ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant);
 ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant);
 ge::graphStatus CheckAttentionInShape(gert::TilingContext *context);
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context);
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context);
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d);
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
+ge::graphStatus CheckDtypeValid(gert::TilingContext *context);
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams);
 ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
