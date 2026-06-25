@@ -11,6 +11,8 @@
 /*!
  * \file moe_init_routing.cpp
  * \brief MoE init routing operator, bridging PyTorch to aclnnMoeInitRoutingV4.
+ *        Structure mirrors op-plugin MoeInitRoutingV2KernelNpuOpApi.cpp for maintainability,
+ *        with V4 additions (topk_weight / expanded_topk_weight).
  */
 
 #include <torch/extension.h>
@@ -18,24 +20,76 @@
 
 namespace op_api {
 
-constexpr int DIM_TWO = 2;
-constexpr int64_t COLS_ALIGN_FACTOR = 256;
+// ---- Constants (from MoeInitRoutingV2KernelNpuOpApi.cpp) ----
+constexpr int64_t DIM_X = 2;
+constexpr int64_t DIM_EXPERT_IDX = 2;
+constexpr int64_t MXQUANT_BLOCK_SIZE = 32;
+constexpr int64_t FP8_QUANT_BLOCK_SIZE = 128;
+constexpr int64_t PAD_TO_EVEN_FACTOR = 2;
+constexpr int64_t INT4_NUMS_IN_INT8 = 2;
+constexpr int64_t SCALE_BLOCK_SIZE = 64;
+constexpr int64_t SCALE_THIRD_DIM_SIZE = 2;
+constexpr int64_t EXPERT_TOKENS_KEY_VALUE = 2;
 
-enum MoeInitRoutingQuantMode {
-    MOE_QUANT_MODE_NO_QUANT = -1,
-    MOE_QUANT_MODE_STATIC_QUANT = 0,
-    MOE_QUANT_MODE_DYNAMIC_QUANT = 1,
-    MOE_QUANT_MODE_MXFP8_E5M2 = 2,
-    MOE_QUANT_MODE_MXFP8_E4M3FN = 3,
-    MOE_QUANT_MODE_HIFLOAT8_DIRECT = 6,
-    MOE_QUANT_MODE_HIFLOAT8_PERTENSOR = 7,
-    MOE_QUANT_MODE_HIFLOAT8_PERTOKEN = 8,
-    MOE_QUANT_MODE_MXFP4 = 9,
-    MOE_QUANT_MODE_FP8_PERBLOCK_128_E5M2 = 11,
-    MOE_QUANT_MODE_FP8_PERBLOCK_128_E4M3FN = 12,
-    MOE_QUANT_MODE_INT4_DYNAMIC_QUANT = 13,
+// ---- Quant mode enum (from MoeInitRoutingV2KernelNpuOpApi.cpp) ----
+enum MoeQuantMode {
+    QUANT_MODE_UNQUANT = -1,
+    QUANT_MODE_STATIC = 0,
+    QUANT_MODE_DYNAMIC = 1,
+    QUANT_MODE_MXFP8_E5M2 = 2,
+    QUANT_MODE_MXFP8_E4M3FN = 3,
+    QUANT_MODE_HIF8_CAST = 6,
+    QUANT_MODE_HIF8_PERTENSOR = 7,
+    QUANT_MODE_HIF8_PER_TOKEN_DIM = 8,
+    QUANT_MODE_MXFP4_E2M1 = 9,
+    QUANT_MODE_FP8_PERBLOCK_E5M2 = 11,
+    QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12,
+    QUANT_MODE_INT4_DYNAMIC = 13,
 };
 
+// ---- Helper functions (from MoeInitRoutingV2KernelNpuOpApi.cpp) ----
+inline bool IsQuantModeMXFP4(int64_t quantMode)
+{
+    return quantMode == QUANT_MODE_MXFP4_E2M1;
+}
+
+inline bool IsQuantModeMXFP8(int64_t quantMode)
+{
+    return quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN;
+}
+
+inline bool IsQuantModeFP8(int64_t quantMode)
+{
+    return quantMode == QUANT_MODE_FP8_PERBLOCK_E5M2 || quantMode == QUANT_MODE_FP8_PERBLOCK_E4M3FN;
+}
+
+inline bool IsQuantModeHIF8(int64_t quantMode)
+{
+    return quantMode == QUANT_MODE_HIF8_CAST || quantMode == QUANT_MODE_HIF8_PERTENSOR ||
+           quantMode == QUANT_MODE_HIF8_PER_TOKEN_DIM;
+}
+
+inline bool IsInt4OutputDtype(const c10::optional<int64_t> &xDtype)
+{
+    return xDtype.has_value() && xDtype.value() == static_cast<int64_t>(DType::INT4);
+}
+
+inline bool IsDynamicQuantInt4Output(int64_t quantMode, const c10::optional<int64_t> &xDtype)
+{
+    return quantMode == QUANT_MODE_INT4_DYNAMIC && (!xDtype.has_value() || IsInt4OutputDType(xDtype));
+}
+
+inline int64_t CeilDiv(int64_t a, int64_t b)
+{
+    return (a + b - 1) / b;
+}
+
+inline int64_t CeilAlign(int64_t a, int64_t b)
+{
+    return CeilDiv(a, b) * b;
+}
+
+// ---- Main function ----
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_routing(
     const at::Tensor &x, const at::Tensor &expert_idx,
     const c10::optional<at::Tensor> &scale, const c10::optional<at::Tensor> &offset,
@@ -44,14 +98,16 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
     int64_t drop_pad_mode, int64_t expert_tokens_num_type, bool expert_tokens_num_flag,
     int64_t quant_mode,
     const c10::optional<std::vector<int64_t>> &active_expert_range,
-    int64_t row_idx_type)
+    int64_t row_idx_type,
+    const c10::optional<int64_t> &x_dtype)
 {
-    TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D, but got ", x.dim(), "D.");
-    TORCH_CHECK(expert_idx.dim() == DIM_TWO, "expert_idx must be 2D, but got ", expert_idx.dim(), "D.");
+    // ---- Input validation ----
+    TORCH_CHECK(x.dim() == DIM_X, "x must be 2D, but got ", x.dim(), "D.");
+    TORCH_CHECK(expert_idx.dim() == DIM_EXPERT_IDX, "expert_idx must be 2D, but got ", expert_idx.dim(), "D.");
     TORCH_CHECK(expert_num > 0, "expert_num must be greater than 0, current is: ", expert_num);
     TORCH_CHECK((drop_pad_mode == 0 || drop_pad_mode == 1),
         "drop_pad_mode must be 0 or 1, current is: ", drop_pad_mode);
-    TORCH_CHECK((expert_tokens_num_type == 0 || expert_tokens_num_type == 1 || expert_tokens_num_type == 2),
+    TORCH_CHECK((expert_tokens_num_type >= 0 && expert_tokens_num_type <= EXPERT_TOKENS_KEY_VALUE),
         "expert_tokens_num_type must be 0, 1 or 2, current is: ", expert_tokens_num_type);
     TORCH_CHECK((row_idx_type == 0 || row_idx_type == 1),
         "row_idx_type must be 0 or 1, current is: ", row_idx_type);
@@ -59,8 +115,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
         TORCH_CHECK(expert_capacity > 0,
             "expert_capacity must be greater than 0 when drop_pad_mode=1, current is: ", expert_capacity);
     }
-    if (topk_weight.has_value() && topk_weight.value().defined()) {
-        TORCH_CHECK(topk_weight.value().dim() == DIM_TWO,
+    bool has_topk_weight = topk_weight.has_value() && topk_weight.value().defined();
+    if (has_topk_weight) {
+        TORCH_CHECK(topk_weight.value().dim() == DIM_X,
             "topk_weight must be 2D, but got ", topk_weight.value().dim(), "D.");
         TORCH_CHECK(topk_weight.value().size(0) == x.size(0),
             "topk_weight row count must equal x row count, got ", topk_weight.value().size(0),
@@ -72,113 +129,190 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
             "topk_weight dtype must be float32, got ", topk_weight.value().scalar_type());
     }
 
+    // ---- Dimension computation (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp) ----
+    auto x_size = x.sizes();
+    auto expert_idx_size = expert_idx.sizes();
+    const at::Tensor &p_scale = c10::value_or_else(scale, [] { return at::Tensor(); });
+    const at::Tensor &p_offset = c10::value_or_else(offset, [] { return at::Tensor(); });
+
+    int64_t bs = x_size[0];
+    int64_t h = x_size[1];
+    int64_t k = expert_idx_size[1];
+    bool has_scale = p_scale.defined();
+
+    // x_dtype: determine actual ACL dtype and adjust h for float4 (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp)
+    aclDataType x_acl_type = x_dtype.has_value()
+        ? GetAclDataType(x_dtype.value())
+        : ConvertToAclDataType(x.scalar_type());
+    if (x_acl_type == aclDataType::ACL_FLOAT4_E2M1) {
+        h = h * INT4_NUMS_IN_INT8;
+    }
+
+    // ---- Allocate output tensors under DeviceGuard (critical for multi-card) ----
     at::Tensor expanded_x;
     at::Tensor expanded_row_idx;
     at::Tensor expert_tokens_count_or_cumsum;
     at::Tensor expanded_scale;
     at::Tensor expanded_topk_weight;
-
-    int64_t n = x.size(0);
-    int64_t cols = x.size(1);
-    int64_t k = expert_idx.size(1);
-
-    int64_t active_num_real = std::min((active_num < 0) ? n * k : active_num, n * k);
-    int64_t out_num = active_num_real;
-
-    int64_t expanded_x_rows = out_num;
-    if (drop_pad_mode == 1) {
-        expanded_x_rows = expert_num * expert_capacity;
-    }
-
-    auto output_dtype = x.scalar_type();
-    if (quant_mode == MOE_QUANT_MODE_STATIC_QUANT ||
-        quant_mode == MOE_QUANT_MODE_DYNAMIC_QUANT ||
-        quant_mode == MOE_QUANT_MODE_INT4_DYNAMIC_QUANT) {
-        output_dtype = at::kChar;
-    } else if (quant_mode == MOE_QUANT_MODE_MXFP8_E5M2 ||
-               quant_mode == MOE_QUANT_MODE_FP8_PERBLOCK_128_E5M2) {
-        output_dtype = at::kFloat8_e5m2;
-    } else if (quant_mode == MOE_QUANT_MODE_MXFP8_E4M3FN ||
-               quant_mode == MOE_QUANT_MODE_FP8_PERBLOCK_128_E4M3FN) {
-        output_dtype = at::kFloat8_e4m3fn;
-    }
-
-    bool has_topk_weight = topk_weight.has_value() && topk_weight.value().defined();
+    c10::optional<at::Tensor> expanded_topk_weight_opt;
 
     {
-        auto localDevice = c10::Device(x.device());
-        const c10::OptionalDeviceGuard deviceGuard(localDevice);
+        auto local_device = c10::Device(x.device());
+        const c10::OptionalDeviceGuard device_guard(local_device);
 
-        expanded_x = at::empty({expanded_x_rows, cols}, x.options().dtype(output_dtype));
-        expanded_row_idx = at::empty({expanded_x_rows}, x.options().dtype(at::kInt));
+        // expanded_x and expanded_scale_len (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp)
+        int64_t expanded_scale_len = 0;
 
+        if (drop_pad_mode == 1) {
+            expanded_scale_len = expert_num * expert_capacity;
+            if (quant_mode == QUANT_MODE_UNQUANT) {
+                expanded_x = at::empty({expert_num, expert_capacity, h}, x.options());
+            } else {
+                at::ScalarType output_dtype = at::kChar;
+                if (IsQuantModeMXFP8(quant_mode)) {
+                    output_dtype = (quant_mode == QUANT_MODE_MXFP8_E5M2) ? at::kFloat8_e5m2 : at::kFloat8_e4m3fn;
+                } else if (IsQuantModeFP8(quant_mode)) {
+                    output_dtype = (quant_mode == QUANT_MODE_FP8_PERBLOCK_E5M2) ? at::kFloat8_e5m2 : at::kFloat8_e4m3fn;
+                } else if (IsQuantModeHIF8(quant_mode)) {
+                    output_dtype = at::kByte;
+                } else if (IsQuantModeMXFP4(quant_mode) || quant_mode == QUANT_MODE_INT4_DYNAMIC) {
+                    output_dtype = at::kByte;
+                }
+                expanded_x = at::empty({expert_num, expert_capacity, h}, x.options().dtype(output_dtype));
+            }
+        } else {
+            expanded_scale_len = (active_num <= 0) ? bs * k : std::min<int64_t>(active_num, bs * k);
+            switch (quant_mode) {
+                case QUANT_MODE_MXFP8_E5M2:
+                    expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e5m2));
+                    break;
+                case QUANT_MODE_MXFP8_E4M3FN:
+                    expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e4m3fn));
+                    break;
+                case QUANT_MODE_MXFP4_E2M1:
+                    expanded_x = at::empty({expanded_scale_len, h / INT4_NUMS_IN_INT8}, x.options().dtype(at::kByte));
+                    break;
+                case QUANT_MODE_STATIC:
+                case QUANT_MODE_DYNAMIC:
+                    expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kChar));
+                    break;
+                case QUANT_MODE_INT4_DYNAMIC:
+                    expanded_x = at::empty({expanded_scale_len, h / INT4_NUMS_IN_INT8}, x.options().dtype(at::kByte));
+                    break;
+                case QUANT_MODE_HIF8_CAST:
+                case QUANT_MODE_HIF8_PERTENSOR:
+                case QUANT_MODE_HIF8_PER_TOKEN_DIM:
+                    expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kByte));
+                    break;
+                case QUANT_MODE_FP8_PERBLOCK_E5M2:
+                    expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e5m2));
+                    break;
+                case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
+                    expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e4m3fn));
+                    break;
+                default:
+                    expanded_x = at::empty({expanded_scale_len, x_size[1]}, x.options());
+                    break;
+            }
+        }
+
+        // expanded_row_idx (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp)
+        expanded_row_idx = at::empty({bs * k}, x.options().dtype(at::kInt));
+
+        // expert_tokens_count_or_cumsum (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp)
         int64_t expert_range_end = expert_num;
         int64_t expert_range_start = 0;
         if (active_expert_range.has_value() && active_expert_range.value().size() >= 2) {
             expert_range_start = active_expert_range.value()[0];
             expert_range_end = active_expert_range.value()[1];
         }
-        int64_t expert_tokens_count_size = expert_range_end - expert_range_start;
-        if (expert_tokens_num_type == 1 && expert_tokens_num_flag) {
-            expert_tokens_count_size = expert_tokens_count_size + 1;
-        }
-        if (expert_tokens_num_type == 2) {
-            expert_tokens_count_size = expert_num;
-        }
-        expert_tokens_count_or_cumsum = at::empty(
-            (expert_tokens_num_type == 2) ? std::vector<int64_t>{expert_tokens_count_size, 2}
-                                          : std::vector<int64_t>{expert_tokens_count_size},
-            x.options().dtype(at::kLong));
+        int64_t expert_length = expert_range_end - expert_range_start;
 
-        int64_t scale_out_rows = expanded_x_rows;
-        if (quant_mode == MOE_QUANT_MODE_NO_QUANT ||
-            quant_mode == MOE_QUANT_MODE_STATIC_QUANT ||
-            quant_mode == MOE_QUANT_MODE_DYNAMIC_QUANT ||
-            quant_mode == MOE_QUANT_MODE_INT4_DYNAMIC_QUANT) {
-            expanded_scale = at::empty({scale_out_rows}, x.options().dtype(at::kFloat));
-        } else if (quant_mode == MOE_QUANT_MODE_HIFLOAT8_PERTOKEN) {
-            expanded_scale = at::empty({scale_out_rows, 1}, x.options().dtype(at::kFloat));
-        } else if (quant_mode == MOE_QUANT_MODE_MXFP8_E5M2 ||
-                   quant_mode == MOE_QUANT_MODE_MXFP8_E4M3FN) {
-            int64_t mx_cols_aligned = ((cols + 31) / 32 + 1) / 2 * 2;
-            expanded_scale = at::empty({scale_out_rows, mx_cols_aligned}, x.options().dtype(at::kFloat));
-        } else if (quant_mode == MOE_QUANT_MODE_MXFP4) {
-            int64_t mxfp4_m = (cols + 63) / 64;
-            expanded_scale = at::empty({scale_out_rows, mxfp4_m, 2}, x.options().dtype(at::kFloat));
-        } else if (quant_mode == MOE_QUANT_MODE_FP8_PERBLOCK_128_E5M2 ||
-                   quant_mode == MOE_QUANT_MODE_FP8_PERBLOCK_128_E4M3FN) {
-            int64_t fp8_cols_aligned = (cols + 255) / 256;
-            expanded_scale = at::empty({scale_out_rows, fp8_cols_aligned, 2}, x.options().dtype(at::kFloat));
+        if (expert_tokens_num_type < EXPERT_TOKENS_KEY_VALUE) {
+            expert_tokens_count_or_cumsum = at::empty({expert_length}, x.options().dtype(at::kLong));
         } else {
-            expanded_scale = at::empty({0}, x.options().dtype(at::kFloat));
+            expert_tokens_count_or_cumsum = at::empty({expert_num, 2}, x.options().dtype(at::kLong));
         }
 
+        // expanded_scale (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp)
+        if (IsQuantModeMXFP8(quant_mode)) {
+            int64_t scale_cols = CeilAlign(CeilDiv(h, MXQUANT_BLOCK_SIZE), PAD_TO_EVEN_FACTOR);
+            expanded_scale = at::empty({expanded_scale_len, scale_cols}, x.options().dtype(at::kFloat8_e8m0fnu));
+        } else if (IsQuantModeFP8(quant_mode)) {
+            int64_t block_size = FP8_QUANT_BLOCK_SIZE * 2;
+            expanded_scale = at::empty({expanded_scale_len, CeilDiv(h, block_size), SCALE_THIRD_DIM_SIZE},
+                                       x.options().dtype(at::kFloat));
+        } else if (quant_mode == QUANT_MODE_UNQUANT && has_scale &&
+                   (x.scalar_type() == at::kFloat8_e5m2 || x.scalar_type() == at::kFloat8_e4m3fn ||
+                    x_acl_type == aclDataType::ACL_FLOAT4_E2M1)) {
+            expanded_scale = at::empty({expanded_scale_len, CeilDiv(h, SCALE_BLOCK_SIZE), SCALE_THIRD_DIM_SIZE},
+                                       x.options().dtype(at::kFloat8_e8m0fnu));
+        } else if (IsQuantModeMXFP4(quant_mode)) {
+            expanded_scale = at::empty({expanded_scale_len, CeilDiv(h, SCALE_BLOCK_SIZE), SCALE_THIRD_DIM_SIZE},
+                                       x.options().dtype(at::kFloat8_e8m0fnu));
+        } else {
+            expanded_scale = at::empty({expanded_scale_len}, x.options().dtype(at::kFloat));
+        }
+
+        // expanded_topk_weight (V4 addition over V3)
         if (has_topk_weight) {
-            expanded_topk_weight = at::empty({expanded_x_rows, 1}, x.options().dtype(at::kFloat));
+            expanded_topk_weight = at::empty({expanded_scale_len, 1}, x.options().dtype(at::kFloat));
+            expanded_topk_weight_opt = expanded_topk_weight;
         } else {
             expanded_topk_weight = at::empty({0}, x.options().dtype(at::kFloat));
         }
     }
 
-    // topk_weight和expanded_topk_weight必须同时传入或同时不传入aclnn（联动约束）
-    // 当topk_weight未提供时，expanded_topk_weight传nullptr而非空shape tensor
-    c10::optional<at::Tensor> expanded_topk_weight_opt =
-        has_topk_weight ? c10::optional<at::Tensor>(expanded_topk_weight) : c10::optional<at::Tensor>();
-
-    // active_expert_range: std::vector → at::IntArrayRef for ACLNN_CMD
-    c10::optional<at::IntArrayRef> active_expert_range_opt;
-    if (active_expert_range.has_value()) {
-        active_expert_range_opt = c10::optional<at::IntArrayRef>(at::IntArrayRef(active_expert_range.value()));
-    } else {
-        active_expert_range_opt = c10::optional<at::IntArrayRef>();
+    // ---- Early return for empty input (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp) ----
+    if (bs == 0) {
+        expert_tokens_count_or_cumsum.zero_();
+        return std::tie(expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum,
+                        expanded_scale, expanded_topk_weight);
     }
 
-    ACLNN_CMD(aclnnMoeInitRoutingV4, x, expert_idx, scale, offset, topk_weight,
+    // ---- TensorWrapper for dtype overrides (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp) ----
+    bool non_quant_fp8_or_fp4_input = (quant_mode == QUANT_MODE_UNQUANT) &&
+        (x.scalar_type() == at::kFloat8_e5m2 || x.scalar_type() == at::kFloat8_e4m3fn ||
+         x_acl_type == aclDataType::ACL_FLOAT4_E2M1);
+
+    auto scale_acl_dtype = non_quant_fp8_or_fp4_input
+        ? ACL_FLOAT8_E8M0
+        : ConvertToAclDataType(p_scale.defined() ? p_scale.scalar_type() : at::kFloat);
+    TensorWrapper scale_wrapper = {p_scale, scale_acl_dtype};
+
+    auto expanded_scale_acl_dtype = non_quant_fp8_or_fp4_input
+        ? ACL_FLOAT8_E8M0
+        : ConvertToAclDataType(expanded_scale.scalar_type());
+    TensorWrapper expanded_scale_wrapper = {expanded_scale, expanded_scale_acl_dtype};
+
+    TensorWrapper x_wrapper = {x, (quant_mode == QUANT_MODE_UNQUANT && x_dtype.has_value())
+        ? x_acl_type
+        : ConvertToAclDataType(x.scalar_type())};
+    TensorWrapper expanded_x_wrapper = {expanded_x, ConvertToAclDataType(expanded_x.scalar_type())};
+
+    if (quant_mode == QUANT_MODE_UNQUANT && x_dtype.has_value()) {
+        expanded_x_wrapper.dtype = x_acl_type;
+    } else if (IsDynamicQuantInt4Output(quant_mode, x_dtype)) {
+        expanded_x_wrapper.dtype = ACL_INT4;
+    } else if (IsQuantModeHIF8(quant_mode)) {
+        expanded_x_wrapper.dtype = ACL_HIFLOAT8;
+    } else if (IsQuantModeMXFP4(quant_mode)) {
+        expanded_x_wrapper.dtype = ACL_FLOAT4_E2M1;
+    }
+
+    // ---- active_expert_range: std::vector -> at::IntArrayRef ----
+    c10::optional<at::IntArrayRef> active_expert_range_opt;
+    if (active_expert_range.has_value()) {
+        active_expert_range_opt = at::IntArrayRef(active_expert_range.value());
+    }
+
+    // ---- Call aclnnMoeInitRoutingV4 ----
+    ACLNN_CMD(aclnnMoeInitRoutingV4, x_wrapper, expert_idx, scale_wrapper, p_offset, topk_weight,
               active_num, expert_capacity, expert_num, drop_pad_mode,
               expert_tokens_num_type, expert_tokens_num_flag, quant_mode,
               active_expert_range_opt, row_idx_type,
-              expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum,
-              expanded_scale, expanded_topk_weight_opt);
+              expanded_x_wrapper, expanded_row_idx, expert_tokens_count_or_cumsum,
+              expanded_scale_wrapper, expanded_topk_weight_opt);
 
     return std::tie(expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum,
                     expanded_scale, expanded_topk_weight);
