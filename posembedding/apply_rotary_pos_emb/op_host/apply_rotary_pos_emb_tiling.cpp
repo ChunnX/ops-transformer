@@ -29,7 +29,8 @@ static const int64_t DIM_1 = 1;
 static const int64_t DIM_2 = 2;
 static const int64_t DIM_3 = 3;
 static const int64_t DIM_4 = 4;
-static const int64_t LASTDIM_ALIGN_BASE = 16; // [泛化SBND需求] D维对齐基数，支持16的倍数
+static const int64_t LASTDIM_64 = 64;
+static const int64_t LASTDIM_128 = 128;
 static const int64_t BLOCK_SIZE = 32;
 static const int64_t REPEAT_FP32 = 64;
 static const int64_t REPEAT_FP16 = 128;
@@ -104,13 +105,6 @@ struct ApplyRotaryPosEmbParams {
     int64_t qcdNum = 0;
     int64_t kcdNum = 0;
     int64_t coscdNum = 0;
-    int64_t qcdNumAlign = 0;   // [泛化SBND需求] qcdNum按per-head lastDimAlign对齐后的值
-    int64_t kcdNumAlign = 0;   // [泛化SBND需求] kcdNum按per-head lastDimAlign对齐后的值
-    int64_t coscdNumAlign = 0; // [泛化SBND需求] coscdNum按per-head lastDimAlign对齐后的值
-    int64_t halfDimBytes = 0;    // [泛化SBND需求] halfNum * dtypeSize
-    int64_t halfDimPadBytes = 0; // [泛化SBND需求] halfDimAlign * dtypeSize
-    int64_t lastDimBytes = 0;    // [泛化SBND需求] lastDim * dtypeSize
-    int64_t lastDimPadBytes = 0; // [泛化SBND需求] lastDimAlign * dtypeSize
     int64_t qkcNum = 0;
     int64_t mulNum = 0;
     int64_t qcdHalfNum = 0;
@@ -120,9 +114,12 @@ struct ApplyRotaryPosEmbParams {
     int64_t blockLenq2q1 = 0;
     int64_t mask = 0;
     int64_t tilingKey = 0;
-    int64_t halfDimAlign = 0; // [泛化SBND需求] halfNum按32B对齐后的值
-    int64_t lastDimAlign = 0; // [泛化SBND需求] lastDim按32B对齐后的值
-    int64_t blockMoveQ = 0; // [泛化SBND需求] 部分维度旋转搬运block数
+    int64_t blockMoveQ = 0;
+    int64_t alignedLastDim = 0;      // 【泛化需求】存储侧D维按32字节对齐后的长度
+    int64_t alignedHalfDim = 0;      // 【泛化需求】存储侧half长度对齐值
+    int64_t computeAlignedLastDim = 0; // 【泛化需求】计算侧D维按32字节对齐后的长度
+    int64_t computeAlignedHalfDim = 0; // 【泛化需求】计算侧half长度对齐值
+    int64_t singleN = 0;             // 【泛化需求】max(qcNum, kcNum)
     platform_ascendc::SocVersion  socVersion = platform_ascendc::SocVersion::ASCEND910B;
 };
 
@@ -223,17 +220,21 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
     const int64_t *layoutAttr = attrs->GetAttrPointer<int64_t>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutAttr);
     ApplyRotaryPosEmbLayout layout = static_cast<ApplyRotaryPosEmbLayout>(*layoutAttr);
-    if (layout != ApplyRotaryPosEmbLayout::BSND && layout != ApplyRotaryPosEmbLayout::SBND && layout != ApplyRotaryPosEmbLayout::TND) { // [泛化SBND需求] 新增允许SBND(2)
+    // 【泛化需求】增加SBND(layout=2)支持
+    if (layout != ApplyRotaryPosEmbLayout::BSND && layout != ApplyRotaryPosEmbLayout::SBND &&
+        layout != ApplyRotaryPosEmbLayout::TND) {
         std::string layoutStr = std::to_string(static_cast<int64_t>(layout));
         OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "layout",
-            layoutStr.c_str(), "1 or 2 or 4"); // [泛化SBND需求] 错误提示同步更新
+            layoutStr.c_str(), "1, 2 or 4");
         return ge::GRAPH_FAILED;
     }
-    if ((layout == ApplyRotaryPosEmbLayout::BSND || layout == ApplyRotaryPosEmbLayout::SBND) && params.qDims != DIM_4) { // [泛化SBND需求] SBND与BSND同样要求4D
+    // 【泛化需求】BSND/SBND均要求query为4维
+    if ((layout == ApplyRotaryPosEmbLayout::BSND || layout == ApplyRotaryPosEmbLayout::SBND) &&
+        params.qDims != DIM_4) {
         std::string dimStr = std::to_string(params.qDims) + "D";
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "query",
             dimStr.c_str(),
-            "The shape dims of input query must be 4 when the attr layout is 1 (BSND) or 2 (SBND)"); // [泛化SBND需求]
+            "The shape dims of input query must be 4 when the attr layout is 1 (BSND) or 2 (SBND)");
         return ge::GRAPH_FAILED;
     }
     if (layout == ApplyRotaryPosEmbLayout::TND && params.qDims != DIM_3) {
@@ -272,10 +273,11 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
             shapeMsg.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (params.cosDim3 % LASTDIM_ALIGN_BASE != 0) { // [泛化SBND需求] cosDim3改为校验16的倍数
+    // 【泛化需求】cos/sin的D维支持16~128且为16倍数
+    if (params.cosDim3 % 16 != 0 || params.cosDim3 > LASTDIM_128 || params.cosDim3 < 16) {
         std::string shapeStr = ToString(cosShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos",
-            shapeStr.c_str(), "The last dim of input cos should be a multiple of 16"); // [泛化SBND需求]
+            shapeStr.c_str(), "The last dim of input cos should be a multiple of 16 in range [16, 128]");
         return ge::GRAPH_FAILED;
     }
     if (params.qDim3 < params.cosDim3) {
@@ -285,16 +287,17 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
             "The last dim of input query should be greater than or equal to the last dim of input cos");
         return ge::GRAPH_FAILED;
     }
-    if (params.qDim3 % LASTDIM_ALIGN_BASE != 0 || params.qDim3 < params.cosDim3) { // [泛化SBND需求] qDim3改为校验16的倍数且>=cosDim3
+    // 【泛化需求】query的D维支持16~128且为16倍数
+    if (params.qDim3 % 16 != 0 || params.qDim3 > LASTDIM_128 || params.qDim3 < 16) {
         std::string shapeStr = ToString(qShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "query",
-            shapeStr.c_str(), "The last dim of input query should be a multiple of 16 and >= cos last dim"); // [泛化SBND需求]
+            shapeStr.c_str(), "The last dim of input query should be a multiple of 16 in range [16, 128]");
         return ge::GRAPH_FAILED;
     }
     if (params.coscNum != 1) {
         std::string reasonMsg =
             "The N axis of input cos should be 1, "
-            "where N refers to the 2nd dim when the attr layout is 1 (BSND) or 2 (SBND), " // [泛化SBND需求] 错误提示同步
+            "where N refers to the 2nd dim when the attr layout is 1 (BSND), "
             "or the 1st dim when the attr layout is 4 (TND)";
         std::string shapeStr = ToString(cosShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos",
@@ -333,6 +336,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
 ge::graphStatus ApplyRotaryPosEmbTiling::ComputeAB(gert::TilingContext *context, ApplyRotaryPosEmbParams &params)
 {
     // 一个batch搬运及计算使用的UB size (2: ping-pong)
+    // 【泛化需求】qPart1Ub已改为singleN*alignedLastDim*dtypeSize，cosPart1Ub仍按实际D
     int64_t oneLoop = params.qPart1Ub * 2 + params.cosPart1Ub * 4 + params.qPart1Ub + params.q2q1Part1Ub * 2 +
                       static_cast<int64_t>(params.isCast) * (params.sin1UbSize * 2);
     OP_LOGD(context->GetNodeName(), "oneLoop ub size %ld", oneLoop);
@@ -379,13 +383,12 @@ ge::graphStatus ApplyRotaryPosEmbTiling::ComputeAB(gert::TilingContext *context,
     params.comBatchLLL = params.lastCBatchL - params.preCLLTimes * params.comBatchBB;
 
     params.blockLenQ = params.qcdNum / params.oneBlock;  // Q_ND block数，搬运
-    params.srcStrideK = params.kcdNum / params.oneBlock;  // K_ND blcok数，搬入Q时为K预留的拼接空间
-    // [泛化SBND需求] blockLenq2q1使用halfDimAlign，保证q2q1交换时32B对齐
-    params.blockLenq2q1 = params.halfDimAlign / params.oneBlockFp32;
-    // [泛化SBND需求] 按lastDimAlign计算dstRepSBr，适配UB内padding排布
-    params.dstRepSBr = params.lastDimAlign / params.oneBlockFp32;
-    // [泛化SBND需求] 按lastDimAlign计算mulNum，适配UB内padding排布
-    params.mulNum = params.qkcNum * params.lastDimAlign / params.oneBlockFp32;
+    params.srcStrideK = params.kcdNum / params.oneBlock;  // K_ND blcok数，保留字段，新逻辑下不再作为拼接间隔
+
+    // 【泛化需求】计算相关stride使用对齐后的computeAlignedLastDim/2
+    params.dstRepSBr = params.computeAlignedLastDim / params.oneBlockFp32;
+    params.blockLenq2q1 = params.computeAlignedHalfDim / params.oneBlockFp32;
+    params.mulNum = params.singleN * params.computeAlignedHalfDim * DIM_2 / params.oneBlockFp32;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -410,21 +413,29 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.mask = (params.isCast || params.isFp32) ? REPEAT_FP32 : REPEAT_FP16;
     params.mask = (params.cosDim3 <= params.mask) ? params.cosDim3 : params.mask;
     params.lastDim = params.cosDim3;
+    params.blockMoveQ = params.lastDim / params.oneBlock;  // 部分维度旋转搬运block数
     params.halfNum = params.lastDim / DIM_2;
-    params.blockMoveQ = params.lastDim / params.oneBlock;  // [泛化SBND需求] 部分维度旋转搬运block数
-    // [泛化SBND需求] halfDim按32B对齐，保证UB内q/k排布的两半之间offset满足32B对齐要求
-    params.halfDimAlign = ((params.halfNum + params.oneBlock - 1) / params.oneBlock) * params.oneBlock;
-    // [泛化SBND需求] lastDim对齐后的长度，用于UB buffer大小计算
-    params.lastDimAlign = params.halfDimAlign * DIM_2;
-    // [泛化SBND需求] 按per-head lastDimAlign计算q/k/cos的对齐后总长度，用于UB内边界偏移
-    params.qcdNumAlign = params.qcNum * params.lastDimAlign;
-    params.kcdNumAlign = params.kcNum * params.lastDimAlign;
-    params.coscdNumAlign = params.coscNum * params.lastDimAlign;
-    // [泛化SBND需求] 计算未对齐D拷贝所需的bytes参数
-    params.halfDimBytes = params.halfNum * params.dtypeSize;
-    params.halfDimPadBytes = params.halfDimAlign * params.dtypeSize;
-    params.lastDimBytes = params.lastDim * params.dtypeSize;
-    params.lastDimPadBytes = params.lastDimAlign * params.dtypeSize;
+
+    // 【泛化需求】计算32字节对齐后的D长度与half长度
+    // 存储侧使用原始dtypeSize，计算侧使用castDtypeSize
+    auto AlignLastDim = [](int64_t dim, int64_t elemBytes) -> int64_t {
+        int64_t alignElems = BLOCK_SIZE / elemBytes; // 32字节对应的元素个数
+        int64_t half = dim / DIM_2;
+        int64_t alignedHalf = ((half + alignElems - 1) / alignElems) * alignElems;
+        return alignedHalf * DIM_2;
+    };
+    params.alignedLastDim = AlignLastDim(params.lastDim, params.dtypeSize);
+    params.alignedHalfDim = params.alignedLastDim / DIM_2;
+    params.computeAlignedLastDim = AlignLastDim(params.lastDim, params.castDtypeSize);
+    params.computeAlignedHalfDim = params.computeAlignedLastDim / DIM_2;
+    params.singleN = (params.qcNum > params.kcNum) ? params.qcNum : params.kcNum;
+
+    // 【泛化需求】部分维度旋转时，要求lastDim为2*oneBlock倍数，确保半边界32字节对齐
+    if (params.qDim3 > params.lastDim && params.lastDim % (DIM_2 * BLOCK_SIZE / params.dtypeSize) != 0) {
+        OP_LOGE(context->GetNodeName(), "Partial rotation requires lastDim to be %ld-byte aligned at half boundary",
+                DIM_2 * BLOCK_SIZE / params.dtypeSize);
+        return ge::GRAPH_FAILED;
+    }
 
     params.qcdNum = params.qcNum * params.lastDim;       // Q_n * lastDim ：这里指的是搬运的q的元素数据量
     params.kcdNum = params.kcNum * params.lastDim;       // K_n * lastDim ：这里指的是搬运的k的元素数据量
@@ -441,24 +452,21 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.kCoreOffset = params.preCoreBatch * params.kcNum * params.kDim3;
     params.cosCoreOffset = params.preCoreBatch * params.coscdNum;
     // ub size
-    // [泛化SBND需求] UB buffer大小使用lastDimAlign，保证UB内排布满足32B对齐
-    params.qPart1Ub = params.qkcNum * params.lastDimAlign * params.castDtypeSize; // 搬运 (Q_n + K_n) * D_align * 4(fp32)/2(fp16/bf16)
-    params.cosPart1Ub = params.coscNum * params.lastDimAlign * params.dtypeSize; // 搬运 1 * D_align * 4(fp32)/2(fp16/bf16)
-    params.q2q1Part1Ub = params.qkcNum * params.lastDimAlign * params.castDtypeSize; // 计算 (Q_n + K_n) * D_align * 4(bf16/fp32)/2(fp16)
-    params.sin1UbSize = params.coscNum * params.lastDimAlign * params.castDtypeSize; // 计算 1 * D_align * 4， 为BF16 cast使用
+    // 【泛化需求】qInQueue一次仅放Q或K，故按singleN * alignedLastDim分配
+    params.qPart1Ub = params.singleN * params.alignedLastDim * params.dtypeSize; // 搬运 singleN * alignedD * dtypeSize
+    params.cosPart1Ub = params.coscNum * params.lastDim * params.dtypeSize; // 搬运 1 * D * dtypeSize
+    params.q2q1Part1Ub = params.singleN * params.computeAlignedLastDim * params.castDtypeSize; // 计算 singleN * alignedD * castDtypeSize
+    params.sin1UbSize = params.coscNum * params.lastDim * params.castDtypeSize; // 计算 1 * D * castDtypeSize，为BF16 cast使用
     int64_t speUb = params.qPart1Ub * 2 + params.cosPart1Ub * 2 + params.q2q1Part1Ub * 2 +
                     static_cast<int64_t>(params.isCast) * (params.sin1UbSize * 2);
     OP_LOGD(context->GetNodeName(), "speUb is %ld, totalUbSize is %ld", speUb, params.totalUbSize);
 
-    // 小shape，每核处理一个batch
-    if (params.preCoreBatch == 1 && speUb <= params.totalUbSize) {
+    // 小shape，每核处理一个batch；部分维度旋转不走Small路径
+    if (params.preCoreBatch == 1 && speUb <= params.totalUbSize && params.qDim3 == params.lastDim) {
         params.tilingKey = static_cast<int64_t>(ApplyRotaryPosEmbTilingKey::TILINGKEY_SMALL);
-        // [泛化SBND需求] 按lastDimAlign计算mulNum，适配UB内padding排布
-        params.mulNum = params.qkcNum * params.lastDimAlign;
-        // [泛化SBND需求] blockLenQ使用halfDimAlign / oneBlockFp32，避免fp16下40/16整除丢数据
-        params.blockLenQ = params.halfDimAlign / params.oneBlockFp32; // D/2_align 占用block数，搬运
-        // [泛化SBND需求] 按lastDimAlign计算dstRepSBr，适配UB内padding排布
-        params.dstRepSBr = params.lastDimAlign / params.oneBlockFp32; // D_align 占用block数，计算
+        params.mulNum = params.qkcNum * params.lastDim;
+        params.blockLenQ = params.halfNum / params.oneBlockFp32; // D/2 占用block数，搬运
+        params.dstRepSBr = params.lastDim / params.oneBlockFp32; // D 占用block数，计算
         params.qcdHalfNum = params.lastDim / params.mask; // D 计算时的repeat次数（按列计算），至少会执行一次，不能为0
         return ge::GRAPH_SUCCESS;
     }
@@ -480,7 +488,9 @@ void ApplyRotaryPosEmbTiling::PrintTilingData(gert::TilingContext *context, Appl
             "preCLLTimes is %ld, qCoreOffset is %ld, kCoreOffset is %ld, cosCoreOffset is %ld,"
             "qcNum is %ld, kcNum is %ld, coscNum is %ld, qcdNum is %ld, kcdNum is %ld,"
             "coscdNum is %ld, qkcNum is %ld, mulNum is %ld, qcdHalfNum is %ld, dstRepSBr is %ld,"
-            "blockLenQ is %ld, srcStrideK is %ld, blockLenq2q1 is %ld,  mask is %ld, tilingKey is %ld, qDim3 is %ld, kDim3 is %ld, blockMoveQ is %ld",
+            "blockLenQ is %ld, srcStrideK is %ld, blockLenq2q1 is %ld,  mask is %ld, tilingKey is %ld,"
+            "qDim3 is %ld, kDim3 is %ld, blockMoveQ is %ld,"
+            "alignedLastDim is %ld, alignedHalfDim is %ld, computeAlignedLastDim is %ld, computeAlignedHalfDim is %ld, singleN is %ld",
             tiling.get_useCoreNum(), tiling.get_lastDim(), tiling.get_halfNum(), tiling.get_preCBatchB(),
             tiling.get_preCBatchL(), tiling.get_lastCBatchL(), tiling.get_comBatchBB(), tiling.get_comBatchBBL(),
             tiling.get_comBatchBLL(), tiling.get_comBatchLLL(), tiling.get_qPart1Ub(), tiling.get_q2q1Part1Ub(),
@@ -489,7 +499,9 @@ void ApplyRotaryPosEmbTiling::PrintTilingData(gert::TilingContext *context, Appl
             tiling.get_kCoreOffset(), tiling.get_cosCoreOffset(), params.qcNum, params.kcNum, params.coscNum,
             tiling.get_qcdNum(), tiling.get_kcdNum(), tiling.get_coscdNum(), tiling.get_qkcNum(), tiling.get_mulNum(),
             tiling.get_qcdHalfNum(), tiling.get_dstRepSBr(), tiling.get_blockLenQ(), tiling.get_srcStrideK(),
-            tiling.get_blockLenq2q1(), tiling.get_mask(), params.tilingKey, tiling.get_qDim3(), tiling.get_kDim3(), tiling.get_blockMoveQ());
+            tiling.get_blockLenq2q1(), tiling.get_mask(), params.tilingKey, tiling.get_qDim3(), tiling.get_kDim3(),
+            tiling.get_blockMoveQ(), tiling.get_alignedLastDim(), tiling.get_alignedHalfDim(),
+            tiling.get_computeAlignedLastDim(), tiling.get_computeAlignedHalfDim(), tiling.get_singleN());
 }
 
 void ApplyRotaryPosEmbTiling::SetTilingData(gert::TilingContext *context, ApplyRotaryPosEmbTilingData &tiling,
@@ -520,10 +532,6 @@ void ApplyRotaryPosEmbTiling::SetTilingData(gert::TilingContext *context, ApplyR
     tiling.set_qcdNum(params.qcdNum);
     tiling.set_kcdNum(params.kcdNum);
     tiling.set_coscdNum(params.coscdNum);
-    // [泛化SBND需求] 将对齐后的qcdNumAlign/kcdNumAlign/coscdNumAlign写入tiling data
-    tiling.set_qcdNumAlign(params.qcdNumAlign);
-    tiling.set_kcdNumAlign(params.kcdNumAlign);
-    tiling.set_coscdNumAlign(params.coscdNumAlign);
     tiling.set_qkcNum(params.qkcNum);
     tiling.set_mulNum(params.mulNum);
     tiling.set_qcdHalfNum(params.qcdHalfNum);
@@ -537,15 +545,12 @@ void ApplyRotaryPosEmbTiling::SetTilingData(gert::TilingContext *context, ApplyR
     tiling.set_qDim3(params.qDim3);
     tiling.set_kDim3(params.kDim3);
     tiling.set_blockMoveQ(params.blockMoveQ);
-    // [泛化SBND需求] 将对齐后的halfDimAlign/lastDimAlign写入tiling data
-    tiling.set_halfDimAlign(params.halfDimAlign);
-    tiling.set_lastDimAlign(params.lastDimAlign);
-    // [泛化SBND需求] 写入dtypeSize及未对齐D拷贝所需的bytes参数
-    tiling.set_dtypeSize(params.dtypeSize);
-    tiling.set_halfDimBytes(params.halfDimBytes);
-    tiling.set_halfDimPadBytes(params.halfDimPadBytes);
-    tiling.set_lastDimBytes(params.lastDimBytes);
-    tiling.set_lastDimPadBytes(params.lastDimPadBytes);
+    // 【泛化需求】将对齐相关参数写入tiling data
+    tiling.set_alignedLastDim(params.alignedLastDim);
+    tiling.set_alignedHalfDim(params.alignedHalfDim);
+    tiling.set_computeAlignedLastDim(params.computeAlignedLastDim);
+    tiling.set_computeAlignedHalfDim(params.computeAlignedHalfDim);
+    tiling.set_singleN(params.singleN);
 
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
