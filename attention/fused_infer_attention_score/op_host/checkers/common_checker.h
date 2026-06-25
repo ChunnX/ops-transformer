@@ -43,6 +43,9 @@ private:
     ge::graphStatus CheckPAKeyValue(const FiaTilingInfo &fiaInfo);
     bool CheckEmptyTensorList(const FiaTilingInfo &fiaInfo);
     bool CheckNormalTensorList(const FiaTilingInfo &fiaInfo);
+    bool CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo);
+    bool CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo);
+    bool CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckTensorList(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckMultiDtype(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAxis(const FiaTilingInfo &fiaInfo);
