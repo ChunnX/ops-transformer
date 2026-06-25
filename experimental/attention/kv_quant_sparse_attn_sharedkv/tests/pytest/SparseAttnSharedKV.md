@@ -43,9 +43,31 @@ L1 cache 中 3buffer KV 占用空间大小为：`128 × 576 × 2 × 3 = 432 KB`�
 
 这样，每个 AICore 的 L1 只需容纳 `S_inner = 128` 的 KV（三份 buffer 共 432 KB）+ `S_q = 64` 的 Q（72 KB），恰好满足容量约束；而 G=128 的计算由两个 AICore 并行完成，**无需二次迭代**。
 
-## 3. GetKVPhyAddr：VF 向量化实现
+## 3. Cube 优化
 
-### 3.1 动机与功能
+### 3.1 旧方案和新方案的区别
+
+> 对比 Cube 优化前后的方案差异。
+
+### 3.2 具体的代码实现
+
+> 关键代码改动与实现细节。
+
+### 3.3 修改后 MAC 性能数据对比
+
+Prefill 场景（N=128, S1=8k, S2=128k）下，Cube 优化把 Cube 总体耗时从 9965µs 降到 6690µs，降幅约三分之一：
+
+| N=128 prefill（S1=8k, S2=128k） | Cube 总体耗时 (µs) |
+|---|---:|
+| 优化前 | 9965 |
+| 优化后 | 6690 |
+| **Δ** | **−33%** |
+
+---
+
+## 4. GetKVPhyAddr：VF 向量化实现
+
+### 4.1 动机与功能
 
 > GetKVPhyAddr 的职责：根据逻辑索引计算 KV Cache 的物理地址。
 
@@ -64,7 +86,7 @@ phys_addr(元素) = phyBlk * kvStride + blkOff * kvDim
 
 `GetKVPhyAddr` 要做的事情是把一整行 query 选中的 `total` 个逻辑索引批量换算成 `total` 个 int64 物理地址,写回 `kvPhyAddrGm`,供后续 `GetRealS2Addr` 取址搬 KV。 `GetKVPhyAddr` 用 VF 实现，把以上换算物理地址换算公式**向量化、并把查表从 GM 标量访问改成 UB 向量 gather**。
 
-### 3.2 标量实现 vs 向量化实现
+### 4.2 标量实现 vs 向量化实现
 
 > 对比标量逐元素计算与 VF 向量化的差异，说明向量化的收益。
 
@@ -97,12 +119,12 @@ phys_addr(元素) = phyBlk * kvStride + blkOff * kvDim
 
 ---
 
-### 3.3 向量化算法细节
+### 4.3 向量化算法细节
 
 > 具体 VF 指令序列、掩码处理、边界条件（非对齐长度）等。
 
 <!-- ![GetKVPhyAddr 向量化流程](fig/getkvphyaddr_vf.png) -->
-### 3.3.1 常量与排布
+### 4.3.1 常量与排布
 
 ```cpp
 s2NumPerLoop   = 128   // 每 loop 处理 128 个逻辑索引
@@ -112,7 +134,7 @@ outOffsetPerReg  = 128 // 64 索引 × 2
 ```
 每 loop 用 `_1`(前 64)、`_2`(后 64)两套寄存器并行同一套运算。
 
-### 3.3.2 VF 指令序列(每 loop,以 `_1` 为例)
+### 4.3.2 VF 指令序列(每 loop,以 `_1` 为例)
 
 逻辑公式 `addr = block_table[idx>>7]*kvStride + (idx - (idx>>7)*blockSize)*kvDim`:
 
@@ -140,13 +162,13 @@ StoreAlign<DIST_INTLV_B32>(kvPhyAddrUb + i*256, vreg_total_offset_L_1, vreg_tota
 
 循环外预置:`Duplicate(vreg_zero, 0)`、`Duplicate(vreg_kvStride, kvStride)`。
 
-### 3.3.3 掩码处理(两类 MaskReg,作用不同)
+### 4.3.3 掩码处理(两类 MaskReg,作用不同)
 
 1. **谓词掩码** `preg_all_b32 = CreateMask<MaskPattern::ALL>()`:每条算术指令的 lane 使能, 当前实现**全开**(所有 64 lane 都算)。
 2. **进位掩码** `add_carry_l_1` / `add_carry_h_1`:**不是 lane 谓词,而是 64 位加法的进位**。
    `Add` 把低 32 位相加产生的进位写入 `add_carry_l_1`,`AddC` 再把它吃进高 32 位 (`高 = overflow + 0 + carry`)。这是用 MaskReg 承载 carry 实现寄存器内 int64 加法的关键。
 
-### 3.3.4 边界条件(非对齐长度 `total % 128 ≠ 0`)
+### 4.3.4 边界条件(非对齐长度 `total % 128 ≠ 0`)
 
 首先计算循环参数:
 ```cpp
@@ -158,17 +180,17 @@ s2Tail = total - (s2Loop - 1) * 128;  // 尾块有效数
 - 输入 `sparseIdxUb` 由 `DataCopyPad` 零填充,尾块读到的是 0,算出的多余地址无害。
 - **正确性靠"写出时按 `total` 截断"保证**:`CopyPhyAddrToGm(..., total, ...)`(`blockLen = total*sizeof(int32)*2/32`)只把前 `total` 个有效地址搬回 GM,多算的尾块不写出。
 
-### 3.4 性能数据
+### 4.4 性能数据
 
 > 向量化前后的 cycles 对比 / 加速比。
 
 ---
 
-## 4. 核间流水排布
+## 5. 核间流水排布
 
-### 4.1 动机与问题
+### 5.1 动机与问题
 
-第 3 节把地址计算向量化后，scalar 耗时大幅下降，但端到端总耗时并未随之明显下降——MFU 依然偏低。参考下表，可见仅压低 scalar 不足以兑现端到端收益：
+第 4 节把地址计算向量化后，scalar 耗时大幅下降，但端到端总耗时并未随之明显下降——MFU 依然偏低。参考下表，可见仅压低 scalar 不足以兑现端到端收益：
 
 | N=128 SCFA prefill（S1=1024, S2=8192） | AIV scalar (µs) | 端到端耗时 (µs) | MFU |
 |---|---:|---:|---:|
@@ -180,7 +202,7 @@ scalar 耗时缩减约三分之一（−221µs），但端到端耗时与 MFU �
 
 本节从**核间流水排布**入手——通过加深流水与改变核间同步的方式，把端到端耗时降下来。
 
-### 4.2 v0preload：加深流水（N=128）
+### 5.2 v0preload：加深流水（N=128）
 
 每个 S2 基本块都要用到一份 **bf16 的反量化 KV**（`s2BaseSize=128 × D=512`，合计 **128KB**），由 AIV 的 `ProcessVec0` 算出后从 UB 搬到 L1 右矩阵缓冲 `l1RightBuffers`。这份右矩阵从产出一直存活到被 bmm2 消费——既作为 bmm1 的右矩阵（当 K，算 Q·Kᵀ），又作为 bmm2 的右矩阵（当 V，算 P·V）。
 
@@ -205,7 +227,7 @@ bmm2(t-3)      // P·V
 
 N=128 的右矩阵本就经 GM 在两个 AIC 之间传递（G=128 跨 2 个 AIC，各算 64 头），不涉及 L1 容量问题。
 
-### 4.3 推广到 N=64：核间同步重构
+### 5.3 推广到 N=64：核间同步重构
 
 N=128 因右矩阵本就经 GM 中转，第 4 份天然能放进 GM；N=64 原先由 AIV 把右矩阵从 UB 直接搬到 L1（`CopyOutKvUb2L1`），没有走 GM 进行数据中转，加深到 4 级就得给第 4 份找落脚处。
 
@@ -215,7 +237,7 @@ N=128 因右矩阵本就经 GM 中转，第 4 份天然能放进 GM；N=64 原�
 
 随之**核间同步从「L1 跨核」改为「GM 跨核」**：barrier 由「右矩阵写完 L1」（`CopyOutKvUb2L1` 的 `CROSS_CORE_SYNC_FORWARD`，AIC 在 `MTE1` 等待）前移到「AIC 预取」（`CopyOutKvUb2Gm` 的 `CROSS_CORE_SYNC_BACKWARD`，AIC 在 `IterateLoadQK` 内以 `MTE2` 等待后再 `DataCopy`），使 AIC 能提前发起 GM→L1 预取、与前序 cube 计算 overlap。这条改写同时统一了代码：N=64 与 N=128 不再按 `IS_SPLIT_G` 分作两条路径，双主循环 `ProcessMainLoopN64`/`ProcessMainLoopN128` 也合并为单一 `ProcessMainLoop`。
 
-### 4.4 性能数据
+### 5.4 性能数据
 
 **N=128**：SCFA 平均加速 **25.3%**、CFA **27.7%**（整体 MFU 49.1% → 65.7% / 67.9%）；SWA 性能持平。
 
@@ -235,7 +257,7 @@ N=128 因右矩阵本就经 GM 中转，第 4 份天然能放进 GM；N=64 原�
 
 ---
 
-## 5. 端到端性能
+## 6. 端到端性能
 
 > 整合以上优化后的端到端性能数据。
 
@@ -248,13 +270,13 @@ N=128 因右矩阵本就经 GM 中转，第 4 份天然能放进 GM；N=64 原�
 
 ---
 
-## 6. 附录
+## 7. 附录
 
-### 6.1 关键数据结构
+### 7.1 关键数据结构
 
 > KV Cache 的内存布局结构体定义等。
 
-### 6.2 术语表
+### 7.2 术语表
 
 | 术语 | 说明 |
 |------|------|
