@@ -86,7 +86,6 @@ private:
     int64_t filteredCount_;
 
     // Vector filter derived constants
-    bool useVectorFilter_;
     int64_t entriesAligned_;
     int64_t maskBytes_;
 
@@ -100,7 +99,7 @@ private:
     int64_t prefixSumLocalOffset_;
     int64_t filteredPairsLocalOffset_;
 
-    // Vector filter additional UB offsets (only used when useVectorFilter_)
+    // Vector filter additional UB offsets
     int64_t expertIdxFp32LocalOffset_;
     int64_t compareMask0Offset_;
     int64_t compareMask1Offset_;
@@ -219,7 +218,7 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::Init(GM_ADDR x, GM_ADDR exper
     filteredPairsLocalOffset_ = offset;
     offset += OpsBaseCeilAlign(maxFilteredCount_ * 2 * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
 
-    // Vector filter additional buffers (only needed when useVectorFilter_)
+    // Vector filter additional buffers
     // expertIdxFp32Local: entriesAligned_ elements of float (independent buffer for CompareScalar)
     expertIdxFp32LocalOffset_ = offset;
     offset += OpsBaseCeilAlign(entriesAligned_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
