@@ -418,7 +418,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>缩放系数。</td>
             <td>
-            建议值：公式中d开根号的倒数。</li>
+            建议值：公式中d开根号的倒数。
             </td>
             <td>FLOAT32</td>
             <td>N/A</td>
@@ -721,7 +721,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         </tr>
         </tbody>
     </table>
-    
+
     - Atlas A2和A3暂不支持maskMode为0
     - Atlas A2和A3暂不支持oriMaskMode为3
 - 规格约束
