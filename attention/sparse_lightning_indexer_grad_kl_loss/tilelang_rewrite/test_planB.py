@@ -93,7 +93,6 @@ def gen_inputs(config, seed=42):
 
 
 def call_tl(inputs, config):
-    _clear_caches()
     return sparse_lightning_indexer_grad_kl_loss(
         inputs["query"], inputs["key"],
         inputs["query_index"], inputs["key_index"],
