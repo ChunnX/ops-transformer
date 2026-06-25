@@ -85,6 +85,10 @@ private:
     __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
+    __aicore__ inline void ParseFdRunInfo(SmlaFdRunInfo &fdRunInfo);
+    __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo,
+        int64_t s2StartPoint, int64_t s2EndPoint,
+        bool isFirstS2RangeTask, bool isLastS2RangeTask);
     TPipe *pipe;
 
     const SparseFlashMlaTilingData *__restrict tilingData;
@@ -436,6 +440,11 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
+    SmlaFdRunInfo fdRunInfo;
+    if ASCEND_IS_AIV {
+        ParseFdRunInfo(fdRunInfo);
+    }
+    (void)fdRunInfo;
     int64_t maxS2LoopCnt = 0;
     if constexpr (IS_SPLIT_G) {
         maxS2LoopCnt = static_cast<int64_t>(metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_MAX_NUM, false)));
@@ -459,9 +468,11 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
     uint32_t bN2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_BN2_END_INDEX, false));
     uint32_t nextGs1Idx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_M_END_INDEX, false));
     uint32_t s2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_END_INDEX, false));
+    uint32_t firstFdDataWorkspaceIdx =
+        metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, false));
     uint32_t s2LoopLimit = 0;
 
-    if (nextGs1Idx != 0) {
+    if (nextGs1Idx != 0 || s2EndIdx != 0) {
         bN2EndIdx++;
     }
 
@@ -469,7 +480,9 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
     bool notLast = true;
     RunInfo runInfo[3];
     RunParamStr runParam;
+    runParam.firstFdDataWorkspaceIdx = firstFdDataWorkspaceIdx;
     int64_t multiCoreInnerIdx = 1;
+    int64_t s2SplitIdxCounter = 0;
     for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
         bool lastBN = (bnIdx == bN2EndIdx - 1);
         runParam.boIdx = bnIdx;
@@ -505,9 +518,23 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(bnIdx, gS1Index, this->cuSeqlensQGm,
                         oriTopkLengthGm, constInfo.hasOriTopkLength, cmpTopkLengthGm,
                         constInfo.hasCmpTopkLength, runParam, this->constInfo);
+                if (!s2NoNeedCalc) {
+                    bool isFirstS2RangeTask = (bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx);
+                    bool isLastS2RangeTask = (lastBN && gS1Index == runParam.gs1LoopEndIdx - 1);
+                    s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo,
+                        static_cast<int64_t>(s2StartIdx) * constInfo.s2BaseSize,
+                        static_cast<int64_t>(s2EndIdx) * constInfo.s2BaseSize,
+                        isFirstS2RangeTask, isLastS2RangeTask);
+                } else {
+                    runParam.isS2Split = false;
+                }
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
+                }
+                runParam.s2SplitIdx = s2SplitIdxCounter;
+                if (runParam.isS2Split) {
+                    s2SplitIdxCounter++;
                 }
                 s2LoopLimit = runParam.s2LoopEndIdx - 1;
                 if constexpr (IS_SPLIT_G) {
@@ -620,6 +647,9 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Se
     runInfo.actualS2OriSize = runParam.actualS2OriSize;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;
+    runInfo.firstFdDataWorkspaceIdx = runParam.firstFdDataWorkspaceIdx;
+    runInfo.isS2Split = runParam.isS2Split;
+    runInfo.s2SplitIdx = runParam.s2SplitIdx;
     this->ComputeBmm1Tail(runInfo, runParam);
     InitUniqueRunInfo(runParam, runInfo);
 }
@@ -655,6 +685,77 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Co
         runInfo.s2RealSize = runInfo.s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
         runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
     }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ParseFdRunInfo(
+    SmlaFdRunInfo &fdRunInfo)
+{
+    uint32_t aivIdx = static_cast<uint32_t>(this->constInfo.aivIdx);
+    fdRunInfo.coreEnable =
+        metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_CORE_ENABLE_INDEX, true)) != 0;
+    if (!fdRunInfo.coreEnable) {
+        return;
+    }
+    fdRunInfo.bn2Idx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_BN2_IDX_INDEX, true));
+    fdRunInfo.mIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_IDX_INDEX, true));
+    fdRunInfo.workspaceIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_IDX_INDEX, true));
+    fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
+    fdRunInfo.mStartIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_START_INDEX, true));
+    fdRunInfo.mNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_NUM_INDEX, true));
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline bool SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ApplyS2MetadataRange(
+    RunParamStr &runParam, ConstInfo &constInfo, int64_t s2StartPoint, int64_t s2EndPoint,
+    bool isFirstS2RangeTask, bool isLastS2RangeTask)
+{
+    int64_t oriStart = runParam.s2OriLineStartIdx;
+    int64_t oriEnd = runParam.s2OriLineEndIdx;
+    int64_t oriLen = oriEnd - oriStart;
+    int64_t cmpStart = runParam.s2CmpLineStartIdx;
+    int64_t cmpEnd = runParam.s2CmpLineEndIdx;
+    int64_t cmpLen = cmpEnd - cmpStart;
+    int64_t totalLen = oriLen + cmpLen;
+
+    int64_t effectiveS2EndPoint = (isLastS2RangeTask && s2EndPoint == 0) ? totalLen : s2EndPoint;
+    int64_t rangeStart = isFirstS2RangeTask ? s2StartPoint : 0;
+    rangeStart = rangeStart < 0 ? 0 : rangeStart;
+    rangeStart = rangeStart < totalLen ? rangeStart : totalLen;
+    int64_t rangeEnd = isLastS2RangeTask ? effectiveS2EndPoint : totalLen;
+    rangeEnd = rangeEnd < 0 ? 0 : rangeEnd;
+    rangeEnd = rangeEnd < totalLen ? rangeEnd : totalLen;
+    if (rangeEnd <= rangeStart) {
+        runParam.oriKvLoopEndIdx = 0;
+        runParam.cmpKvLoopEndIdx = 0;
+        runParam.s2LoopEndIdx = 0;
+        runParam.isS2Split = false;
+        return true;
+    }
+
+    bool hasPrevCore = rangeStart > 0;
+    bool hasNextCore = rangeEnd < totalLen;
+    runParam.isS2Split = hasPrevCore || hasNextCore;
+
+    int64_t oriRangeStart = rangeStart < oriLen ? rangeStart : oriLen;
+    int64_t oriRangeEnd = rangeEnd < oriLen ? rangeEnd : oriLen;
+    runParam.s2OriLineStartIdx = oriStart + oriRangeStart;
+    runParam.s2OriLineEndIdx = oriStart + oriRangeEnd;
+
+    int64_t cmpRangeStart = rangeStart > oriLen ? rangeStart - oriLen : 0;
+    cmpRangeStart = cmpRangeStart < cmpLen ? cmpRangeStart : cmpLen;
+    int64_t cmpRangeEnd = rangeEnd > oriLen ? rangeEnd - oriLen : 0;
+    cmpRangeEnd = cmpRangeEnd < cmpLen ? cmpRangeEnd : cmpLen;
+    runParam.s2CmpLineStartIdx = cmpStart + cmpRangeStart;
+    runParam.s2CmpLineEndIdx = cmpStart + cmpRangeEnd;
+
+    int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
+    int64_t oriRangeLen = runParam.s2OriLineEndIdx - runParam.s2OriLineStartIdx;
+    int64_t cmpRangeLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
+    runParam.oriKvLoopEndIdx = (oriRangeLen + s2BaseSize - 1) / s2BaseSize;
+    runParam.cmpKvLoopEndIdx = (cmpRangeLen + s2BaseSize - 1) / s2BaseSize;
+    runParam.s2LoopEndIdx = runParam.oriKvLoopEndIdx + runParam.cmpKvLoopEndIdx;
+    return runParam.s2LoopEndIdx == 0;
 }
 }
 #endif // SPARSE_FLASH_MLA_SCFA_KERNEL_H
