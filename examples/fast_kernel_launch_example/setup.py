@@ -111,7 +111,7 @@ class CMakeBuildCommand(Command):
         NPU_SOC_VERSION = os.environ.get('NPU_SOC_VERSION', 'ascend910b')
         logging.info(f"Using NPU_SOC_VERSION: {NPU_SOC_VERSION}")
 
-        if NPU_SOC_VERSION == 'ascend950':
+        if NPU_SOC_VERSION.lower() == 'ascend950':
             NPU_ARCH = 'arch35'
         elif NPU_SOC_VERSION.lower() in ('ascend910b', 'ascend910_93'):
             NPU_ARCH = 'arch22'
