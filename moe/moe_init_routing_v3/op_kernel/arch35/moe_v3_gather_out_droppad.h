@@ -256,15 +256,35 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
             LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
-            for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
-                int64_t curLoopCols = (colsLoop == colsLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
-                int64_t colsLoopOffset = colsLoop * perLoopCols_;
-                int64_t curIndex = 0;
-                int64_t globalSortIdx = globalReadOffset;
-                int64_t startRow = globalSortIdx / k_;
-                int64_t endRow = (globalSortIdx + curLoopElements - 1) / k_;
+            int64_t curIndex = 0;
+            int64_t globalSortIdx = globalReadOffset;
+            int64_t startRow = globalSortIdx / k_;
+            int64_t endRow = (globalSortIdx + curLoopElements - 1) / k_;
 
-                for (int64_t row = startRow; row <= endRow; row++) {
+            for (int64_t row = startRow; row <= endRow; row++) {
+                int64_t rowStartIndex = curIndex;
+                int64_t rowGlobalSortIdx = globalSortIdx;
+                int64_t rowEndIndex = curIndex;
+                bool hasValidOutput = false;
+
+                while (rowEndIndex < curLoopElements && rowGlobalSortIdx / k_ == row) {
+                    int64_t outPosition = subRowIdxLocal.GetValue(rowEndIndex);
+                    if (outPosition >= 0 && outPosition < outputRows_) {
+                        hasValidOutput = true;
+                    }
+                    rowEndIndex++;
+                    rowGlobalSortIdx++;
+                }
+
+                if (!hasValidOutput) {
+                    curIndex = rowEndIndex;
+                    globalSortIdx = rowGlobalSortIdx;
+                    continue;
+                }
+
+                for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
+                    int64_t curLoopCols = (colsLoop == colsLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
+                    int64_t colsLoopOffset = colsLoop * perLoopCols_;
                     SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
                     CopyXIn(row * cols_ + colsLoopOffset, row, curLoopCols);
                     LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
@@ -277,10 +297,8 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
 
                     DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
                     DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-                    while (curIndex < curLoopElements && globalSortIdx / k_ == row) {
-                        int64_t outPosition = subRowIdxLocal.GetValue(curIndex);
-                        curIndex++;
-                        globalSortIdx++;
+                    for (int64_t idx = rowStartIndex; idx < rowEndIndex; idx++) {
+                        int64_t outPosition = subRowIdxLocal.GetValue(idx);
                         if (outPosition < 0 || outPosition >= outputRows_) {
                             continue;
                         }
@@ -295,6 +313,9 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                     }
                     xCopyInQueue_.FreeTensor(xLocal);
                 }
+
+                curIndex = rowEndIndex;
+                globalSortIdx = rowGlobalSortIdx;
             }
             expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
         }
