@@ -19,11 +19,7 @@
 #include "../a2av_gmm_utils.h"
 #include "kernel_operator.h"
 
-#if __has_include("../../../3rd/grouped_matmul/op_kernel/gqmm_cube_on_the_fly.h")
-#include "../../../3rd/grouped_matmul/op_kernel/gqmm_cube_on_the_fly.h"
-#else
 #include "../../../../3rd/grouped_matmul/op_kernel/gqmm_cube_on_the_fly.h"
-#endif
 
 using namespace AscendC;
 

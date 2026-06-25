@@ -27,7 +27,7 @@
 #include "lib/hccl/hccl.h"
 #endif
 #include "../common.h"
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16.h"
+#include "../../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_bf16.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "matmul_all_reduce_quant_perchannel.h"
 #include "matmul_all_reduce_quant_reduce_sum.h"
