@@ -52,7 +52,7 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
-constexpr int64_t MAX_EP_WORLD_SIZE = 768;
+constexpr int64_t MAX_EP_WORLD_SIZE = 128;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
@@ -62,6 +62,8 @@ constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;
 constexpr int64_t H_MIN = 1;
 constexpr int64_t H_MAX = 8192;
+constexpr int64_t K_MAX = 32;
+constexpr int64_t META_INNER_DIM = 3;
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &info)
 {
@@ -90,6 +92,9 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         return ge::GRAPH_FAILED);
     const int64_t recvxDim0 = recvxShape->GetStorageShape().GetDim(0);
     const int64_t recvxDim1 = recvxShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(recvxDim0 <= 0,
+        OP_LOGE(nodeName, "recvxDim0(A) must be positive, got %ld.", recvxDim0),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK((recvxDim1 < H_MIN) || (recvxDim1 > H_MAX),
         OP_LOGE(nodeName, "recvxDim1(hidden) is invalid, should be in [%ld, %ld], got %ld.",
             H_MIN, H_MAX, recvxDim1),
@@ -100,19 +105,35 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIdxShape);
     OP_TILING_CHECK(topkIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(nodeName, "topkIdxShape dims must be 2."), return ge::GRAPH_FAILED);
-        
-    info.cfg.numTokens = static_cast<uint32_t>(topkIdxShape->GetStorageShape().GetDim(0));
-    info.cfg.topK = static_cast<uint32_t>(topkIdxShape->GetStorageShape().GetDim(1));
+    const int64_t topkDim0 = topkIdxShape->GetStorageShape().GetDim(0);
+    const int64_t topkDim1 = topkIdxShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(topkDim0 <= 0,
+        OP_LOGE(nodeName, "topkIdx dim0(numTokens) must be positive, got %ld.", topkDim0),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(topkDim1 <= 0 || topkDim1 > K_MAX,
+        OP_LOGE(nodeName, "topkIdx dim1(topK) must be in (0, %ld], got %ld.", K_MAX, topkDim1),
+        return ge::GRAPH_FAILED);
+    info.cfg.numTokens = static_cast<uint32_t>(topkDim0);
+    info.cfg.topK = static_cast<uint32_t>(topkDim1);
 
     const gert::StorageShape *recvSrcMetadataShape = context->GetInputShape(RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetadataShape);
     OP_TILING_CHECK(recvSrcMetadataShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(nodeName, "recvSrcMetadataShape dims must be 2."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvSrcMetadataShape->GetStorageShape().GetDim(1) != META_INNER_DIM,
+        OP_LOGE(nodeName, "recvSrcMetadata dim1 must be %ld, got %ld.",
+            META_INNER_DIM, recvSrcMetadataShape->GetStorageShape().GetDim(1)),
+        return ge::GRAPH_FAILED);
 
     const gert::StorageShape *numRecvPerExpertShape = context->GetInputShape(NUM_RECV_PER_EXPERT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertShape);
     OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDimNum() != ONE_DIMS,
         OP_LOGE(nodeName, "numRecvPerExpertShape dims must be 1."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(numRecvPerExpertShape->GetStorageShape().GetDim(0) !=
+        static_cast<int64_t>(info.cfg.numLocalExperts),
+        OP_LOGE(nodeName, "numRecvPerExpert dim0 must equal numLocalExperts=%u, got %ld.",
+            info.cfg.numLocalExperts, numRecvPerExpertShape->GetStorageShape().GetDim(0)),
+        return ge::GRAPH_FAILED);
 
     bool hasTopkWeights = (context->GetOptionalInputDesc(TOPK_WEIGHTS_INDEX) != nullptr);
     if (hasTopkWeights) {

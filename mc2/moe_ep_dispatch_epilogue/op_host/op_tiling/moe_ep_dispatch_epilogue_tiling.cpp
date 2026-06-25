@@ -64,12 +64,9 @@ constexpr int64_t META_INNER_DIM = 3;            // recvSrcMetadata dim(1) = 3
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr int64_t MAX_EP_WORLD_SIZE = 128;
-constexpr int64_t MIN_EP_WORLD_SIZE = 1;
-constexpr int64_t MIN_EXPERT_ALIGNMENT = 1;
+constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t H_MIN = 0;
 constexpr int64_t H_MAX = 8192;
-constexpr int64_t BS_UPPER_BOUND = 8192;
 constexpr uint32_t HIDDEN_ALIGN = 32U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
@@ -129,9 +126,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     OP_TILING_CHECK(*cclBufferSizePtr <= 0,
         OP_LOGE(nodeName, "cclBufferSize must be positive, got %ld.", *cclBufferSizePtr),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*expertAlignmentPtr < MIN_EXPERT_ALIGNMENT,
-        OP_LOGE(nodeName, "expertAlignment must be >= %ld, got %ld.",
-            MIN_EXPERT_ALIGNMENT, *expertAlignmentPtr),
+    OP_TILING_CHECK(*expertAlignmentPtr != 1,
+        OP_LOGE(nodeName, "expertAlignment must be 1, got %ld.", *expertAlignmentPtr),
         return ge::GRAPH_FAILED);
 
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
@@ -330,8 +326,8 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
         OP_LOGE(nodeName, "recvX dim0(A_alloc) must be in [0, ep*nmt*min(topK,numLocalExperts)=%ld], got %ld.",
             aUpper, aAlloc),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((hidden < H_MIN) || (hidden > H_MAX),
-        OP_LOGE(nodeName, "recvX dim1(hidden) must be in [%ld, %ld], got %ld.", H_MIN, H_MAX, hidden),
+    OP_TILING_CHECK((hidden <= 0) || (hidden > H_MAX),
+        OP_LOGE(nodeName, "recvX dim1(hidden) must be in (0, %ld], got %ld.", H_MAX, hidden),
         return ge::GRAPH_FAILED);
 
     auto recvXDesc = context->GetOutputDesc(OUT_RECV_X_INDEX);

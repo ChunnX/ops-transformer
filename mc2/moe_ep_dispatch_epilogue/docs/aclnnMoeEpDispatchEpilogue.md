@@ -22,7 +22,9 @@
 
     $$recvX = Rearrange(alltoallXOut, numRecvTokensPerRank, numRecvTokensPerExpert)$$
 
-    $$recvTopkWeights = RearrangeTopkWeights(alltoallXOut, recvSrcMetadataInternal)$$
+    $$recvTopkWeights = RearrangeTopkWeights(alltoallXOut, dstBufferSlotIdx)$$
+
+    $$recvScales = RearrangeScales(alltoallXOut, numRecvTokensPerRank)$$
 
 > 注意该接口为内部中间步骤算子，由aclnnMoeEpDispatch内部自动调用，用户无需直接使用。
 
@@ -34,9 +36,9 @@
 aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
     const aclTensor*  context,
     const aclTensor*  dstBufferSlotIdx,
-    const aclTensor*  recvSrcMetadataInternal,
-    const aclTensor*  numRecvTokensPerRankHostPinned,
-    const aclTensor*  numRecvTokensPerExpertHostPinned,
+    const aclTensor*  numRecvTokensPerRank,
+    const aclTensor*  numRecvTokensPerExpert,
+    const aclTensor*  cachedRecvSrcMetadata,
     int64_t           epWorldSize,
     int64_t           epRankId,
     int64_t           numExperts,
@@ -46,8 +48,7 @@ aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
     aclTensor*        recvX,
     aclTensor*        recvTopkWeights,
     aclTensor*        recvSrcMetadata,
-    aclTensor*        numRecvTokensPerRank,
-    aclTensor*        numRecvTokensPerExpert,
+    aclTensor*        recvScales,
     uint64_t*         workspaceSize,
     aclOpExecutor**   executor)
 ```
@@ -108,19 +109,9 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>×</td>
     </tr>
     <tr>
-    <td>recvSrcMetadataInternal（aclTensor*）</td>
+    <td>numRecvTokensPerRank（aclTensor*）</td>
     <td>输入</td>
-    <td>内部接收元数据，由aclnnMoeEpDispatch输出。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(A, 3)。</li></ul></td>
-    <td>INT32</td>
-    <td>ND</td>
-    <td>2</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>numRecvTokensPerRankHostPinned（aclTensor*）</td>
-    <td>输入</td>
-    <td>各卡接收token数量的host pinned内存张量，由aclnnMoeEpDispatch输出。</td>
+    <td>各卡接收token数量的张量，由aclnnMoeEpDispatch输出。</td>
     <td><ul><li>不支持空Tensor。</li><li>shape为(epWorldSize,)。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
@@ -128,9 +119,9 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>×</td>
     </tr>
     <tr>
-    <td>numRecvTokensPerExpertHostPinned（aclTensor*）</td>
+    <td>numRecvTokensPerExpert（aclTensor*）</td>
     <td>输入</td>
-    <td>每个本地专家接收token数量的host pinned内存张量，由aclnnMoeEpDispatch输出。</td>
+    <td>每个本地专家接收token数量的张量，由aclnnMoeEpDispatch输出。</td>
     <td><ul><li>不支持空Tensor。</li><li>shape为(numLocalExperts,)。</li></ul></td>
     <td>INT64</td>
     <td>ND</td>
@@ -138,10 +129,20 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>×</td>
     </tr>
     <tr>
+    <td>cachedRecvSrcMetadata（aclTensor*）</td>
+    <td>输入</td>
+    <td>cached模式下复用的接收元数据张量。</td>
+    <td><ul><li>Optional参数，非cached模式下传入空指针。</li><li>cached模式下必选，shape为(A, 3)。</li></ul></td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>2</td>
+    <td>×</td>
+    </tr>
+    <tr>
     <td>epWorldSize（int64_t）</td>
     <td>输入</td>
     <td>EP通信域大小。</td>
-    <td><ul><li>取值范围[2, 768]。</li></ul></td>
+    <td><ul><li>取值范围[2, 128]。</li></ul></td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -161,7 +162,7 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>numExperts（int64_t）</td>
     <td>输入</td>
     <td>MoE专家总数量。</td>
-    <td><ul><li>取值范围[1, 2048]，且满足numExperts % epWorldSize = 0。</li></ul></td>
+    <td><ul><li>取值范围[2, 2048]，且满足numExperts % epWorldSize = 0。</li></ul></td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -202,7 +203,7 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>输出</td>
     <td>接收的token数据，对应公式中recvX。</td>
     <td><ul><li>不支持空Tensor。</li><li>shape为(A, H)。</li></ul></td>
-    <td>BFLOAT16、FLOAT16</td>
+    <td>BFLOAT16、FLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
     <td>ND</td>
     <td>2</td>
     <td>×</td>
@@ -220,31 +221,21 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <tr>
     <td>recvSrcMetadata（aclTensor*）</td>
     <td>输出</td>
-    <td>整理后的接收元数据。</td>
-    <td><ul><li>不支持空Tensor。</li></ul></td>
+    <td>整理后的接收元数据，字段为[src_token_idx, src_rank_id, src_topk_idx]。</td>
+    <td><ul><li>不支持空Tensor。</li><li>shape为(A, 3)。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     <td>2</td>
     <td>×</td>
     </tr>
     <tr>
-    <td>numRecvTokensPerRank（aclTensor*）</td>
+    <td>recvScales（aclTensor*）</td>
     <td>输出</td>
-    <td>整理后的各卡接收token数量。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(epWorldSize,)。</li></ul></td>
-    <td>INT32</td>
+    <td>接收的动态量化缩放因子，用于FP8量化场景。</td>
+    <td><ul><li>Optional参数，非量化场景传入空指针。</li></ul></td>
+    <td>FLOAT、FLOAT8_E8M0</td>
     <td>ND</td>
-    <td>1</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>numRecvTokensPerExpert（aclTensor*）</td>
-    <td>输出</td>
-    <td>整理后的每个本地专家接收token数量。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(numLocalExperts,)。</li></ul></td>
-    <td>INT64</td>
-    <td>ND</td>
-    <td>1</td>
+    <td>-</td>
     <td>×</td>
     </tr>
     <tr>
@@ -330,14 +321,14 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
 
 - 确定性说明：aclnnMoeEpDispatchEpilogue默认确定性实现。
 - 该接口为内部中间步骤算子，由aclnnMoeEpDispatch内部自动调用，用户无需直接使用。
-- 所有输入参数需与aclnnMoeEpDispatch中对应参数保持一致。
+- dstBufferSlotIdx、numRecvTokensPerRank、numRecvTokensPerExpert等输入参数需与aclnnMoeEpDispatch中对应输出参数保持一致。
 - 参数里Shape使用的变量如下：
-    - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank。
-    - H：表示hidden size隐藏层大小。取值为[1024, 8192]。
+    - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank \* MIN(K, numLocalExperts)。
+    - H：表示hidden size隐藏层大小。取值范围为(0, 8192]。
     - BS：表示batch sequence size，即本卡的token数量。
-    - K：表示选取topK个专家，取值范围为1 < K ≤ 32。
+    - K：表示选取topK个专家，取值范围为1 ≤ K ≤ 32。
     - numLocalExperts：表示本卡专家数量，numLocalExperts = numExperts / epWorldSize。
-- <term>Atlas A5 训练系列产品/Atlas A5 推理系列产品</term>：recvX仅支持BFLOAT16数据类型输出，FLOAT16暂不支持。
+- <term>Atlas A5 训练系列产品/Atlas A5 推理系列产品</term>：recvX支持BFLOAT16、FLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN数据类型输出。
 
 ## 调用示例
 

@@ -21,8 +21,8 @@ extern "C" {
  * @param [in] x                     expert-side tokens [A, hidden] bf16
  * @param [in] topkIdx      [num_tokens, top_k] int32 handle field
  * @param [in] recvSrcMetadata       [A, 3] int32 handle field
- * @param [in] numRecvTokensPerExpert  [ep_world_size] int32 handle field
- * @param [in] topkWeightsOptional   [num_tokens, top_k] float; nullptr for training forward
+ * @param [in] numRecvTokensPerExpert  [num_local_experts] int64 handle field
+ * @param [in] topkWeightsOptional   [A] float; nullptr for pure accumulate combine
  * @param [in] biasOptional0         nullptr (reserved, first release must be null)
  * @param [in] biasOptional1         nullptr (reserved, first release must be null)
  * @param [in] epWorldSize           EP world size
