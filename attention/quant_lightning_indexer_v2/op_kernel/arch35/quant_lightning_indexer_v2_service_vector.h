@@ -644,26 +644,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             AscendC::DataCopyPad(ldScoreGm[offset], scoreOutLocal_, ldCopyScoreOutParams);
             AscendC::DataCopyPad(ldIndexGm[offset], indicesOutLocal_.ReinterpretCast<int32_t>(), ldCopyOutParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-
-            // if (returnValueFlag) {
-            //     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-
-            //     Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.NEG_INF_BFLOAT, topkCount_);
-
-            //     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            //     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-
-            //     AscendC::DataCopyParams copyOutValueParams;
-            //     copyOutValueParams.blockCount = 1;
-            //     copyOutValueParams.blockLen = topkCount_ * sizeof(bfloat16_t);
-            //     copyOutValueParams.srcStride = 0;
-            //     copyOutValueParams.dstStride = 0;
-            //     AscendC::DataCopyPad(
-            //         valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
-            //         valueOutLocal_,
-            //         copyOutValueParams);
-            //     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            // }
             continue;
         }
 
@@ -864,39 +844,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             AscendC::DataCopyPad(ldScoreGm[offset], scoreOutLocal_, ldCopyScoreOutParams);
             AscendC::DataCopyPad(ldIndexGm[offset], indicesOutLocal_.ReinterpretCast<int32_t>(), ldCopyOutParams);
         }
-
-        // if (returnValueFlag) {
-        //     WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-        //     vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
-        //     // 无效值刷0
-        //     if (validS2Len < topkCount_) {
-        //         uint64_t mask[1];
-        //         mask[0] = ~0;
-        //         mask[0] = mask[0] << (validS2Len % 16);
-        //         PipeBarrier<PIPE_V>();
-        //         Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
-        //                   constInfo_.NEG_INF_BFLOAT, mask, 1, 1, 0);
-        //     }
-        
-        //     if (validS2Len / 16 * 16 + 64 < topkCount_) {
-        //         PipeBarrier<PIPE_V>();
-        //         Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
-        //                   constInfo_.NEG_INF_BFLOAT,
-        //                   topkCount_ - (validS2Len / 16 * 16 + 64));
-        //     }
-        //     SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-        //     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-        //     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-
-        //     AscendC::DataCopyParams copyOutValueParams;
-        //     copyOutValueParams.blockCount = 1;
-        //     copyOutValueParams.blockLen = topkCount_ * sizeof(bfloat16_t); // bytes
-        //     copyOutValueParams.srcStride = 0;
-        //     copyOutValueParams.dstStride = 0;
-        //     // 搬运到GM
-        //     AscendC::DataCopyPad(valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
-        //         valueOutLocal_, copyOutValueParams);
-        // }
     }
 }
 

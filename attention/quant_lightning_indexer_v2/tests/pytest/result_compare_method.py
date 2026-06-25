@@ -113,33 +113,6 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
-# def find_batch_and_position(act_q, x):
-#     """
-#     判断x属于哪个batch以及在该batch中的位置
-
-#     参数:
-#         act_q: 前缀和列表，act_q[b_idx]表示前(b_idx+1)个batch的总长度
-#         x: 需要判断的数值
-
-#     返回:
-#         tuple: (batch_idx, position)
-#                - batch_idx: 所属的batch索引（从0开始），超出范围则为-1
-#                - position: 在该batch中的位置（从0开始），超出范围则为-1
-#     """
-#     if not act_q:
-#         return (-1, -1)
-#     # 遍历前缀和列表查找所属批次
-#     for batch_idx in range(len(act_q)):
-#         # 计算当前批次的起始位置
-#         start = act_q[batch_idx - 1] if batch_idx > 0 else 0
-#         # 判断是否在当前批次范围内
-#         if start <= x < act_q[batch_idx]:
-#             # 计算在当前批次中的位置（偏移量）
-#             position = x - start
-#             return (batch_idx, position)
-#     # 超出所有批次范围
-#     return (-1, -1)
-
 def find_batch_and_position(cu_seqlens, x):
     """
     判断x属于哪个batch以及在该batch中的位置
@@ -519,10 +492,10 @@ def check_result_return_value(expect, result, params):
     rtol=0.005
     atol=0.000025
     max_error_idx = 10000000
-    cpu_output = expect.cpu().numpy()
-    npu_output = result.cpu().numpy()
-    real_data = result.cpu().numpy()
-    data_compe = expect.cpu().numpy()
+    cpu_output = expect.cpu().float().numpy()
+    npu_output = result.cpu().float().numpy()
+    real_data = result.cpu().float().numpy()
+    data_compe = expect.cpu().float().numpy()
     real_data = npu_output.flatten()
     data_compe = cpu_output.flatten()
     diff_cpu = []
@@ -538,8 +511,8 @@ def check_result_return_value(expect, result, params):
         total_rows = 0
         sp = (0, 0)
     print(f"total_line is {total_rows}")
-    npu_reshape = npu_output.reshape([total_rows, topk])
-    cpu_reshape = cpu_output.reshape([total_rows, topk])
+    npu_reshape = npu_output.reshape([total_rows, sparse_count])
+    cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)

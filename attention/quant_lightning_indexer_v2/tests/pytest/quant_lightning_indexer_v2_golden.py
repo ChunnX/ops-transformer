@@ -857,11 +857,11 @@ def qliv2_output_single(params):
 
     # seqused tensor
     if seqused_q is not None:
-        seqused_q_tensor = torch.tensor(lengths_q_list).to(actual_seq_dtype).npu()
+        seqused_q_tensor = torch.tensor(seqused_q).to(actual_seq_dtype).npu()
     else:
         seqused_q_tensor = None
     if seqused_k is not None:
-        seqused_k_tensor = torch.tensor(lengths_k_list).to(actual_seq_dtype).npu()
+        seqused_k_tensor = torch.tensor(seqused_k).to(actual_seq_dtype).npu()
     else:
         seqused_k_tensor = None
 
@@ -1117,6 +1117,7 @@ def qliv2_output_single(params):
                                                     return_value = return_value)
 
     torch.npu.synchronize()
+    npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
     return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
 
 def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
