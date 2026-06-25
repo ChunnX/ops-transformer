@@ -132,7 +132,7 @@ public:
     {
         // true: 开启返回hisValueLocal
         if (s2LoopNum == 1) {
-            if (isNeedLD) {
+            if (isNeedLD || returnValueFlag) {
                 topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
                     idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
             } else {
