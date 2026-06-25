@@ -25,7 +25,7 @@
 #include "adv_api/activation/silu.h"
 #include "adv_api/activation/gelu.h"
 #include "lib/matmul_intf.h"
-#include "../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
+#include "../../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
 #include "allto_all_all_gather_batch_mat_mul_tiling_struct.h"
 
 using namespace AscendC;
