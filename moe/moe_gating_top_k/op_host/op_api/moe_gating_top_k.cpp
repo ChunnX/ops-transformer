@@ -39,13 +39,7 @@ MoeGatingTopKResult MoeGatingTopK(
 
     auto y = executor->AllocTensor(y_out->GetViewShape(), y_out->GetDataType(), Format::FORMAT_ND);
     auto expert_idx = executor->AllocTensor(expert_idx_out->GetViewShape(), expert_idx_out->GetDataType(), Format::FORMAT_ND);
-
-    const aclTensor* out_out_alloc = nullptr;
-    if (out_flag) {
-        out_out_alloc = executor->AllocTensor(out_out->GetViewShape(), out_out->GetDataType(), Format::FORMAT_ND);
-    } else {
-        out_out_alloc = executor->AllocTensor({1}, y_out->GetDataType(), Format::FORMAT_ND);
-    }
+    auto out_out_alloc = executor->AllocTensor(out_out->GetViewShape(), out_out->GetDataType(), Format::FORMAT_ND);
 
     MoeGatingTopKResult emptyResult = {nullptr, nullptr, nullptr};
     if (!y->IsEmpty()) {
@@ -57,7 +51,7 @@ MoeGatingTopKResult MoeGatingTopK(
         OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return emptyResult,
                                             "MoeGatingTopK ADD_TO_LAUNCHER_LIST_AICORE failed.");
     }
-    MoeGatingTopKResult result = {y, expert_idx, out_flag ? out_out_alloc : nullptr};
+    MoeGatingTopKResult result = {y, expert_idx, out_out_alloc};
     return result;
 }
 }  // namespace l0op

@@ -137,6 +137,7 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKV2GetWorkspaceSize(
                                       uniqueExecutor.get());
     CHECK_RET(result.y != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(result.expertIdx != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(result.outOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto viewCopyYOutResult = l0op::ViewCopy(result.y, yOut, uniqueExecutor.get());
     CHECK_RET(viewCopyYOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -144,10 +145,8 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKV2GetWorkspaceSize(
     auto viewCopyExpertIdxResult = l0op::ViewCopy(result.expertIdx, expertIdxOut, uniqueExecutor.get());
     CHECK_RET(viewCopyExpertIdxResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    if (outFlag) {
-        auto viewCopyOutOutResult = l0op::ViewCopy(result.outOut, outOut, uniqueExecutor.get());
-        CHECK_RET(viewCopyOutOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
+    auto viewCopyOutOutResult = l0op::ViewCopy(result.outOut, outOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyOutOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
