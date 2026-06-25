@@ -44,9 +44,7 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
 
     AscendC::printf("before GET_CORE_TYPE\n");
 
-    if (g_coreType == AIC) {
-        return;
-    }
+    TPipe pipe;
 
     AscendC::printf("after GET_CORE_TYPE\n");
     AscendC::printf("before TILING_KEY_IS\n");
@@ -55,16 +53,16 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
         GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradRegbaseTilingData, tilingDataBab, tiling);
         const InplacePartialRotaryMulGradRegbaseTilingData *__restrict tilingData = &tilingDataBab;
         AscendC::printf("after GET_TILING_DATA_WITH_STRUCT\n");
-        AscendC::printf("if TILING_KEY_IS(TILING_KEY_BAB)\n");
+        if (tilingData->sliceLength == 0) {
+            return;
+        }
+        InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op(&pipe, tilingData);
+        op.Init(dy, cos, sin, dx);
+        op.Process();
     }
     AscendC::printf("after TILING_KEY_IS\n");
     AscendC::printf("leave inplace_partial_rotary_mul_grad\n");
-    // // No-op: empty slice
-    // if (tilingData.sliceLength == 0) {
-    //     return;
-    // }
 
-    // TPipe pipe;
 
     // if (TILING_KEY_IS(TILING_KEY_ABA)) {
     //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
