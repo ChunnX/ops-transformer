@@ -76,7 +76,7 @@ inline bool IsInt4OutputDtype(const c10::optional<int64_t> &xDtype)
 
 inline bool IsDynamicQuantInt4Output(int64_t quantMode, const c10::optional<int64_t> &xDtype)
 {
-    return quantMode == QUANT_MODE_INT4_DYNAMIC && (!xDtype.has_value() || IsInt4OutputDType(xDtype));
+    return quantMode == QUANT_MODE_INT4_DYNAMIC && (!xDtype.has_value() || IsInt4OutputDtype(xDtype));
 }
 
 inline int64_t CeilDiv(int64_t a, int64_t b)
