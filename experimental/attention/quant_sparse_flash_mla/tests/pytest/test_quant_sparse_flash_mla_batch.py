@@ -25,6 +25,7 @@ import result_compare_method
 import check_valid_param
 from batch import quant_sparse_flash_mla_process
 import utils
+import logging
 
 testcase_path = os.environ.get("QSMLA_PT_DIR", "qsmla_testcase")
 result_path = Path('result.xlsx')
@@ -50,7 +51,7 @@ def qsmla(testcase_files):
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
-        print("NPU ERROR：", e)
+        logging.exception(e)
         result = "NPU ERROR"
         fulfill_percent = 0
 
