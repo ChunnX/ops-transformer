@@ -577,7 +577,6 @@ public:
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         
-
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
@@ -588,7 +587,7 @@ public:
             s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
             s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
         } else {
-            if ((s1GFirstToken / static_cast<int64_t>(actSeqLensQ)) == (s1GLastToken / static_cast<int64_t>(actSeqLensQ))) {
+            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
                 // start and end locate in one G
                 s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ);
                 s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ);
