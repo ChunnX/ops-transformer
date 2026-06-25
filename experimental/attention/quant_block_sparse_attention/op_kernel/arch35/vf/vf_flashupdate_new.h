@@ -488,7 +488,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
         MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregRes, vregMax, pregAll);
 
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregAll);
-        MicroAPI::Select<T>(vregResFinal, vregInfValue, vregRes, pregCompare);
+        MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
 
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + (i * floatRepSize), vregResFinal, pregAll);
     }
@@ -501,7 +501,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
         MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregRes, vregMax, pregTail);
 
         MicroAPI::Compare<float, CMPMODE::EQ>(pregCompare, vregMax, vregMinValue, pregTail);
-        MicroAPI::Select<T>(vregResFinal, vregInfValue, vregRes, pregCompare);
+        MicroAPI::Select<T>(vregResFinal, vregMinValue, vregRes, pregCompare);
 
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(dstUb + floatRepSize * updateLoops, vregResFinal, pregTail);
     }

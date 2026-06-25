@@ -166,7 +166,7 @@ void QuantBlockSparseAttentionTiling::FillInputParams()
     inputParams.set_paBlockNumSum(info.paBlockNumSum);
     inputParams.set_attenMaskS1Size(info.s1Size);
     inputParams.set_paLayoutType(BSA_PA_LAYOUT_TYPE_BNBD);
-    inputParams.set_isRowInvalid(0);
+    inputParams.set_isRowInvalid(1);
     inputParams.set_paBlockStride(info.paBlockStrideVal);
     inputParams.set_qBlockSize(info.qBlockSizeVal);
     inputParams.set_kvBlockSize(info.kvBlockSizeVal);
@@ -213,8 +213,8 @@ void QuantBlockSparseAttentionTiling::FillInitOutputParams()
     auto &initOutputParams = tilingData_.initOutputParams;
     const int64_t totalOutputSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size * BSA_D_SIZE;
     const int64_t totalSoftmaxLseSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size;
-    initOutputParams.set_singleCoreSize(0);
-    initOutputParams.set_needInit(0);
+    initOutputParams.set_singleCoreSize((totalOutputSize + static_cast<int64_t>(usedCoreNum_) - 1) / static_cast<int64_t>(usedCoreNum_));
+    initOutputParams.set_needInit(1);
     initOutputParams.set_isOneN(info.n1Size == 1U ? 1 : 0);
     uint8_t rsvd[2] = {};
     initOutputParams.set_rsvd(rsvd);

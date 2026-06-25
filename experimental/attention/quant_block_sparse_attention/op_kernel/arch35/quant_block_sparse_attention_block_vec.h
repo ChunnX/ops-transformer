@@ -497,8 +497,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::RowInvalid(LocalTensor<VEC2_R
     int64_t vec2S1Idx, RunInfo &runInfo, ConstInfo &constInfo, int64_t dSizeAligned64)
 {
     if constexpr (hasAtten) {
-        if ((!constInfo.isRowInvalid ||
-            attenMaskInfoPtr->compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE))) {
+        if (!constInfo.isRowInvalid) {
             return;
         }
 
@@ -964,7 +963,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLseOutputSingleCore(Const
             singleCoreLseSize += initParams.totalSoftMaxLseOutputSize % coreNum;
         }
         InitOutput<float>(softmaxLseGm[constInfo.aivIdx * (initParams.totalSoftMaxLseOutputSize / coreNum)], 
-            singleCoreLseSize, 3e+99);
+            singleCoreLseSize, BSA_EMPTY_LSE_VALUE);
     }
 }
 
