@@ -1112,6 +1112,7 @@ def qliv2_output_single(params):
                     continue
                 else:
                     for i_n in range(k_head_num):
+                        key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
                         if mxfp8_flag == 1:
                             key_dequant_scale[cur_block_id, :, i_n, :, :] = key_dequant_scale_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size, :, :]
                         else:
