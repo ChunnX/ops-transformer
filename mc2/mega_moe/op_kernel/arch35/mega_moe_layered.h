@@ -146,7 +146,7 @@ private:
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
 
     static constexpr uint32_t ELEMS_PER_BYTE = (QuantMode == E2M1_QUANT) ? 2 : 1;
-    static constexpr int32_t DISPATCH_BUFFER_NUM = 2;
+    static constexpr int32_t DISPATCH_BUFFER_NUM = 1;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
     LocalTensor<uint32_t> gatherMaskInt32Tensor_;
