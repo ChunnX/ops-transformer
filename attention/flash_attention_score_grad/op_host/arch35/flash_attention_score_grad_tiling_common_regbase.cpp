@@ -1106,6 +1106,25 @@ ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoPar
         return ge::GRAPH_FAILED;
     }
 
+    auto deqScaleQShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_Q));
+    auto deqScaleKShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_K));
+    auto deqScaleVShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_V));
+    auto deqScaleDyShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_DY));
+    
+    if (fBaseParams.queryType != ge::DT_HIFLOAT8) {
+        std::string dScaleShapesMsg = "{" + Ops::Base::ToString(deqScaleQShape->GetStorageShape()) + ", " +
+                                    Ops::Base::ToString(deqScaleKShape->GetStorageShape()) + ", " +
+                                    Ops::Base::ToString(deqScaleVShape->GetStorageShape()) + ", " +
+                                    Ops::Base::ToString(deqScaleDyShape->GetStorageShape()) + "}";
+        OP_CHECK_IF(deqScaleQShape != nullptr || deqScaleKShape != nullptr || deqScaleVShape != nullptr ||
+                    deqScaleDyShape != nullptr,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad",
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional", dScaleShapesMsg.c_str(),
+                        "When the dType of input is not HIFLOAT8, "
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional and dScaleDyOptional must be empty tensor"),
+                    return ge::GRAPH_FAILED);
+    }
+
     fBaseParams.outDtype = fBaseParams.inputDtype;
     return ge::GRAPH_SUCCESS;
 }
