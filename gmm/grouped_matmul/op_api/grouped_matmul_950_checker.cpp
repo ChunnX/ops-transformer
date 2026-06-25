@@ -56,12 +56,13 @@ size_t GetInputTensorSize(const aclTensor *input)
 
 bool HasInputTensor(const aclTensorList *input)
 {
-    return input != nullptr && input->Size() > 0 && (*input)[0] != nullptr;
+    return input != nullptr && input->Size() > 0 && (*input)[0] != nullptr &&
+           (*input)[0]->GetStorageShape().GetShapeSize() != 0;
 }
 
 bool HasInputTensor(const aclTensor *input)
 {
-    return input != nullptr;
+    return input != nullptr && input->GetStorageShape().GetShapeSize() != 0;
 }
 
 std::string ShapeToStringWithoutBracket(const op::Shape &shape)
@@ -113,7 +114,7 @@ template <typename T>
 typename AclnnGroupedMatmulDAV3510Checker<T>::TensorIndexInfo
 AclnnGroupedMatmulDAV3510Checker<T>::GetTensorIndexInfo(size_t index) const
 {
-    const bool singleMultiSingle = IsWeightNzSingleMultiSingleScenario();
+    const bool singleMultiSingle = IsWeightNzSingleMultiSingleLayout();
     return {
         singleMultiSingle ? GetInputTensorSize(gmmParams_.weight) : GetInputTensorSize(gmmParams_.x),
         singleMultiSingle ? 0 : index,
@@ -263,7 +264,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(const a
     auto weightStorageShapeDim = weightStorage.GetDimNum();
     constexpr size_t weightNzMultiTensorStorageDim = 4;
     size_t expectedStorageDim =
-        IsWeightNzSingleMultiSingleScenario() ? weightNzMultiTensorStorageDim : QUANT_WEIGHTNZ_STORAGE_DIM;
+        IsWeightNzSingleMultiSingleLayout() ? weightNzMultiTensorStorageDim : QUANT_WEIGHTNZ_STORAGE_DIM;
     GMM_CHECK_REPORT(weightStorageShapeDim == expectedStorageDim,
         OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
             std::to_string(weightStorageShapeDim), std::to_string(expectedStorageDim)));
