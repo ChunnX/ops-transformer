@@ -449,26 +449,13 @@ def planB_kernel2(
 
                 T.set_cross_flag("FIX", 2)
 
-            # C1: MM6 — dQueryIndex = reluGrad @ GKI (K-parallel, atomic_add)
+            # C1: minimal test — just copy one element to confirm V→C works
             with T.Scope("C"):
                 T.wait_cross_flag(2)
-
-                RG_L1 = T.alloc_L1((BLOCK_NIDX1, n_block), input_dtype)
-                GKIT_L1 = T.alloc_L1((BLOCK_K, n_block), input_dtype)
-                DQ_L0C = T.alloc_L0C((BLOCK_NIDX1, BLOCK_K), calc_dtype)
-
-                for s1_row in T.serial(s1_start, s1_end):
-                    for nidx_c in T.serial(nidx1_num):
-                        nidx_s = nidx_c * BLOCK_NIDX1
-                        T.copy(reluGradRes[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end], RG_L1)
-                        for dq_c in T.serial(dq_num):
-                            dq_s = dq_c * BLOCK_K
-                            T.copy(GatherKeyIndexT[bz, s1_row, dq_s:dq_s + BLOCK_K, k_start:k_end], GKIT_L1)
-                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
-                            T.tile.atomic_add(
-                                dQueryIndex[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, dq_s:dq_s + BLOCK_K],
-                                DQ_L0C,
-                            )
+                dummy_L1 = T.alloc_L1((1,), calc_dtype)
+                dummy_ub = T.alloc_shared((1,), calc_dtype)
+                T.tile.fill(dummy_ub, 0.0)
+                T.copy(dummy_ub, dummy_L1)
 
     return main
 
