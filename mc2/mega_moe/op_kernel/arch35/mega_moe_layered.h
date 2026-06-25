@@ -916,7 +916,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     // PRINTF("BEGIN READDATA\n");
     // hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     // hcomm_.Drain(channel);
-    PRINTF("BEGIN READDATA%u,\n",sizeof(ActivationType));
+    PRINTF("BEGIN READDATA%u,bufferIdx: %d\n",sizeof(ActivationType), bufferIdx);
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
