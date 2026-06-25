@@ -130,6 +130,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
         if constexpr (IS_SPLIT_G) {
             uint32_t firstHalfG = (constInfo.gSize + 1) >> 1;
             uint32_t secondHalfG = constInfo.gSize - firstHalfG;
+            // 2 for cv ratio
             runParam.mRealSize = runParam.s1RealSize * ((constInfo.aicIdx % 2 == 0) ? firstHalfG : secondHalfG);
         }
     }
