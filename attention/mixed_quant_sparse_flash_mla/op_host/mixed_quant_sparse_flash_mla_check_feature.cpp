@@ -37,25 +37,34 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureWinKV() const
 
 ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantShape() const
 {
-    OP_CHECK_IF(bSize_ <= 0, OP_LOGE(opName_, "batch_size should be greater than 0, but got %u", bSize_),
+    OP_CHECK_IF(bSize_ <= 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "batch_size",
+                    std::to_string(bSize_).c_str(), "batch_size should be greater than 0"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == MQSMLALayout::TND),
-                OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of query",
+                    std::to_string(qTSize_).c_str(), "T_size of query should be greater than 0"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n2Size_ != 1, OP_LOGE(opName_, "kv_head_num only support 1, but got %u", n2Size_),
+    OP_CHECK_IF(n2Size_ != 1,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kv_head_num",
+                    std::to_string(n2Size_).c_str(), "kv_head_num only support 1"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
-                OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "q_head_num and kv_head_num",
+                    std::to_string(n1Size_) + " and " + std::to_string(n2Size_),
+                    "q_head_num must be divisible by kv_head_num"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(dSize_ != 512, // 512:当前不泛化
-                OP_LOGE(opName_, "Head dim of input q only support 512, but got %u", dSize_), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "Head dim of input q",
+                    std::to_string(dSize_).c_str(), "Head dim of input q only support 512"), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(dSizeV_ != 512, // 512:当前不泛化
-                OP_LOGE(opName_, "dSizeV only support 512, but got %u", dSizeV_), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "dSizeV",
+                    std::to_string(dSizeV_).c_str(), "dSizeV only support 512"), return ge::GRAPH_FAILED);
 
     if (quant_mode_ == 1) {
         OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
@@ -85,11 +94,11 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantLayout() const
 ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantDtype() const
 {
     OP_CHECK_IF(qType_ != ge::DT_BF16,
-                OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
-                        MQSMLADataTypeToSerialString(ge::DT_BF16).c_str(),
-                        MQSMLADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
-                        MQSMLADataTypeToSerialString(qType_).c_str()),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "query",
+            MQSMLADataTypeToSerialString(qType_).c_str(),
+            "query dtype only support " + MQSMLADataTypeToSerialString(ge::DT_BF16) + " and " +
+            MQSMLADataTypeToSerialString(ge::DT_FLOAT16)),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -101,12 +110,15 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantAttr() const
 
     if (*opParamInfo_.quantMode == 1 || *opParamInfo_.quantMode == 2) {
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
-                    OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "oriKv", "DT_HIFLOAT8",
+                "oriKv dtype only support DT_FLOAT8_E4M3FN"),
                     return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(*opParamInfo_.ropeHeadDim != 64, // 64:当前不泛化
-                OP_LOGE(opName_, "rope_head_dim only support 64, but got %ld", *opParamInfo_.ropeHeadDim),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rope_head_dim",
+            std::to_string(*opParamInfo_.ropeHeadDim).c_str(),
+            "rope_head_dim only support 64"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
