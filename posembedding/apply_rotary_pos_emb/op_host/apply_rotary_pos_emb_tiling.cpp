@@ -327,7 +327,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
             return ge::GRAPH_FAILED;
         }
     }
-    params.isCast = qDtype == ge::DT_BF16;
+    params.isCast = qDtype != ge::DT_FLOAT;
     params.isFp32 = qDtype == ge::DT_FLOAT;
     params.dtypeSize = ge::GetSizeByDataType(qDtype);
     return ge::GRAPH_SUCCESS;

@@ -95,7 +95,7 @@ __aicore__ inline void ARPESmall<T1, T2>::Init(
     repeatParams.src0RepStride = tilingData->dstRepSBr;
     repeatParams.src1RepStride = 0;
 
-#if ORIG_DTYPE_QUERY == DT_BF16
+#if ORIG_DTYPE_QUERY != DT_FLOAT
     pipe.InitBuffer(cosCast, tilingData->sin1UbSize);
     pipe.InitBuffer(sinCast, tilingData->sin1UbSize);
 #endif
@@ -117,7 +117,7 @@ __aicore__ inline void ARPESmall<T1, T2>::ComputeRotary(
     LocalTensor<T1>& qUb, LocalTensor<T1>& cosUb, LocalTensor<T1>& sinUb, LocalTensor<T1>& qoutSize,
     const int64_t headNum, const ApplyRotaryPosEmbTilingData* tilingData)
 {
-#if ORIG_DTYPE_QUERY == DT_BF16
+#if ORIG_DTYPE_QUERY != DT_FLOAT
     ComputeBF16(qUb, cosUb, sinUb, qoutSize, headNum, tilingData);
 #else
     LocalTensor<T1> mul2Ub = mul2.Get<T1>();

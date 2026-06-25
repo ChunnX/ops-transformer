@@ -68,7 +68,7 @@ private:
     TQue<QuePosition::VECOUT, bufferNum> qOutQueue;
     TBuf<QuePosition::VECCALC> mul1;
     TBuf<QuePosition::VECCALC> mul2;
-#if ORIG_DTYPE_QUERY == DT_BF16
+#if ORIG_DTYPE_QUERY != DT_FLOAT
     TBuf<QuePosition::VECCALC> cosC;
     TBuf<QuePosition::VECCALC> sinC;
 #endif
@@ -100,7 +100,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::Init(
     pipe.InitBuffer(qOutQueue, bufferNum, tilingData->qPart1Ub);
     pipe.InitBuffer(mul2, tilingData->q2q1Part1Ub);
 
-#if ORIG_DTYPE_QUERY == DT_BF16
+#if ORIG_DTYPE_QUERY != DT_FLOAT
     pipe.InitBuffer(cosC, tilingData->sin1UbSize);
     pipe.InitBuffer(sinC, tilingData->sin1UbSize);
 #endif
@@ -151,7 +151,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryBF16(
     const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
     LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData)
 {
-#if ORIG_DTYPE_QUERY == DT_BF16
+#if ORIG_DTYPE_QUERY != DT_FLOAT
     LocalTensor<T2> qFP32 = mul2.Get<T2>();
     LocalTensor<T2> rotOrOut = mul1.Get<T2>();
     LocalTensor<T2> cosC1 = cosC.Get<T2>();
@@ -199,7 +199,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotary(
     const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
     LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData)
 {
-#if ORIG_DTYPE_QUERY == DT_BF16
+#if ORIG_DTYPE_QUERY != DT_FLOAT
     ComputeRotaryBF16(preCBatchB, cNum, qSize, cosSize, sinSize, outUb, tilingData);
 #else
     ComputeRotaryNoCast(preCBatchB, cNum, qSize, cosSize, sinSize, outUb, tilingData);
