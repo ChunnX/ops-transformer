@@ -44,3 +44,5 @@ from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .graph_convert.graph_convert_kv_compress_epilog import convert_kv_compress_epilog
 from .graph_convert.graph_convert_indexer_quant_cache import convert_indexer_quant_cache
+from .compressor import compressor
+from .graph_convert.graph_convert_compressor import convert_compressor
