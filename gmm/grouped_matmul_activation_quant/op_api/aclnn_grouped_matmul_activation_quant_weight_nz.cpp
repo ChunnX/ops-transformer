@@ -200,6 +200,33 @@ aclnnStatus CreateEmptyTensorList(const aclDataType dataType, const aclTensorLis
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus WrapWeightNzTensorList(const aclTensorList *&weight, aclOpExecutor *executor)
+{
+    CHECK_RET(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    std::vector<const aclTensor *> tensors;
+    tensors.reserve(weight->Size());
+    for (size_t i = 0; i < weight->Size(); ++i) {
+        const aclTensor *tensor = (*weight)[i];
+        CHECK_RET(tensor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+        PrintTensorDebugInfo("WrapWeightNzTensorList input", "weight", tensor);
+        op::Shape viewShape = tensor->GetViewShape();
+        op::Shape storageShape = tensor->GetStorageShape();
+        auto wrappedTensor = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
+        CHECK_RET(wrappedTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        wrappedTensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+        wrappedTensor->SetOriginalFormat(tensor->GetViewFormat());
+        wrappedTensor->SetViewShape(tensor->GetViewShape());
+        wrappedTensor->SetStorageShape(storageShape);
+        PrintTensorDebugInfo("WrapWeightNzTensorList output", "weight", wrappedTensor);
+        tensors.emplace_back(wrappedTensor);
+    }
+    weight = executor->AllocTensorList(tensors.data(), tensors.size());
+    CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    PrintTensorListDebugInfo("after WrapWeightNzTensorList", "weight", weight);
+    return ACLNN_SUCCESS;
+}
+
 int64_t CeilDivInt64(int64_t dividend, int64_t divisor)
 {
     return static_cast<int64_t>(Ops::Base::CeilDiv(dividend, divisor));
@@ -473,6 +500,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     CHECK_RET(CreateEmptyTensorList(aclDataType::ACL_FLOAT, bias, uniqueExecutor.get(), "bias") ==
                   ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(WrapWeightNzTensorList(weight, uniqueExecutor.get()) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
     PrintAclnnInputDebugInfo("before l0op::GroupedMatmulActivationQuant", x, groupList, weight, weightScale, bias,
                              xScaleOptional, y, yScale);
