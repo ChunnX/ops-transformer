@@ -84,13 +84,15 @@ class MoEElasticBuffer:
         x, scales = x if isinstance(x, tuple) else (x, None)
         cached = handle is not None
         if cached:
-            assert topk_idx is None and topk_weights is None
-            assert do_cpu_sync is None or do_cpu_sync is False
+            torch._check((topk_idx is None), lambda: (f"topk_idx is not surpport when cached."))
+            torch._check(((do_cpu_sync is None) or (do_cpu_sync is False)),
+                lambda: (f"do_cpu_sync is not surpport when cached."))
             topk_idx = handle.topk_idx
             do_cpu_sync = False
             ne, ea, nm = handle.num_experts, handle.expert_alignment, handle.num_max_tokens_per_rank
         else:
-            assert topk_idx is not None and topk_weights is not None
+            torch._check(((topk_idx is None) and (topk_weights is not None)),
+                lambda: (f"topk_idx and topk_weights are required when no-cached."))
             do_cpu_sync = True if do_cpu_sync is None else do_cpu_sync
             ne = num_experts if num_experts is not None else self.num_experts
             nm = num_max_tokens_per_rank if num_max_tokens_per_rank is not None else self.num_max_tokens_per_rank
@@ -160,7 +162,7 @@ class MoEElasticBuffer:
         bias: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor], None] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         bias_0, bias_1 = self._unpack_bias(bias)
-        assert bias_0 is None and bias_1 is None, "bias not supported in first release"
+        torch._check(((bias_0 is None) and (bias_1 is None)), lambda: (f"bias are not supported."))
 
         combined_x, combined_topk_weights = _op.npu_moe_ep_combine(
             self.context, x, handle.topk_idx, handle.recv_src_metadata,
