@@ -46,7 +46,6 @@ public:
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
@@ -163,11 +162,6 @@ public:
                                             this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
                                             this->actualSeqLengthsGmQ, this->actualSeqLengthsGm, keyPtr, postQuantScale,
                                             postQuantOffset);
-                if (learnableSink != nullptr) {
-                    sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
-                    constInfo.learnableSinkFlag = true;
-                    vecFdBlock.InitLearnableSinkGm(sinkGm);
-                }
                 if (constInfo.isSoftmaxLseEnable) {
                     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
@@ -219,11 +213,7 @@ public:
 
         auto fiaBaseParams = this->tilingData->fiaBaseParams;
         auto fiaAttenMaskParams = this->tilingData->fiaAttenMaskParams;
-        auto fiaPseParams = this->tilingData->fiaPseParams;
-        auto fiaSystemPrefixParams = this->tilingData->fiaSystemPrefixParams;
         auto fiaPageAttentionParams = this->tilingData->fiaPageAttentionParams;
-        auto fiaLeftPaddingParams = this->tilingData->fiaLeftPaddingParams;
-        auto fiaPostQuantParams = this->tilingData->fiaPostQuantParams;
         auto fiaWorkspaceParams = this->tilingData->fiaWorkspaceParams;
         auto fiaS1OuterSplitCoreParams = this->tilingData->fiaS1OuterSplitCoreParams;
         auto fiaEmptyTensorParams = this->tilingData->fiaEmptyTensorParams;
@@ -263,23 +253,9 @@ public:
         constInfo.isRowInvalidOpen = fiaAttenMaskParams.isRowInvalidOpen;
         constInfo.isExistRowInvalid = fiaAttenMaskParams.isExistRowInvalid;
 
-        if ASCEND_IS_AIV {
-            if constexpr (VecFaBlockType::hasPse) {
-                constInfo.pseShiftByBatch = fiaPseParams.pseShiftByBatch;
-                constInfo.pseS1Size = fiaPseParams.pseS1Size;
-                constInfo.pseS2Size = fiaPseParams.pseS2Size;
-                constInfo.pseStride = s2BaseSize;
-            }
-        }
-
-        constInfo.isPostQuantPerChnl = fiaPostQuantParams.isPostQuantPerChnl;
-        constInfo.isPostQuantBF16 = fiaPostQuantParams.isPostQuantBF16;
-
         constInfo.accumOutSize = fiaWorkspaceParams.accumOutSize;
         constInfo.logSumExpSize = fiaWorkspaceParams.logSumExpSize;
 
-        constInfo.isQHasLeftPadding = fiaLeftPaddingParams.isQHasLeftPadding;
-        constInfo.isKVHasLeftPadding = fiaLeftPaddingParams.isKVHasLeftPadding;
         // pageAttention
         if constexpr (PAGE_ATTENTION) {
             constInfo.maxBlockNumPerBatch = fiaPageAttentionParams.maxBlockNumPerBatch;
@@ -289,15 +265,7 @@ public:
         // LSE
         constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
         // prefix
-        if constexpr (HAS_PREFIX) {
-            constInfo.isActualSharedPrefixLenNull = fiaSystemPrefixParams.isActualSharedPrefixLenNull;
-            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize = fiaSystemPrefixParams.prefixSeqInnerSize;
-            if (!constInfo.isActualSharedPrefixLenNull) {
-                constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
-            }
-        } else {
-            constInfo.actualKVPrefixSize = 0;
-        }
+        constInfo.actualKVPrefixSize = 0;
         // learnableSink
         constInfo.learnableSinkFlag = false;
 
@@ -323,21 +291,6 @@ public:
             constInfo.coreFirstTmpOutWsPos =
                 fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         }
-
-        if (constInfo.isQHasLeftPadding) {
-            constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
-            if (constInfo.queryRightPaddingSize < 0) {
-                constInfo.queryRightPaddingSize = 0;
-            }
-        }
-
-        if (constInfo.isKVHasLeftPadding) {
-            constInfo.kvRightPaddingSize = ((__gm__ int64_t *)kvPaddingSize)[0];
-            if (constInfo.kvRightPaddingSize < 0) {
-                constInfo.kvRightPaddingSize = 0;
-            }
-        }
-
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }
 
@@ -499,11 +452,6 @@ public:
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
             return TASK_DEAL_MODE::SKIP_ZERO;
-        }
-        // 对paddingSize设置不合理的任务结果置0
-        if ((constInfo.isQHasLeftPadding && (actSeqLensQ + constInfo.queryRightPaddingSize > constInfo.s1Size)) ||
-            (constInfo.isKVHasLeftPadding && (actSeqLensKv + constInfo.kvRightPaddingSize > constInfo.s2Size))) {
-            return TASK_DEAL_MODE::DEAL_ZERO;
         }
         // 计算每一行的起止点，只有当换行时（bN2Cur、gS1Cur更新）才需要重新计算
         if (isFirstTask || bN2Cur != prevBN2Idx || gS1Cur != prevGS1Idx) {
@@ -723,13 +671,6 @@ public:
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
-        if (constInfo.isQHasLeftPadding) {
-            info.qPaddingBeginOffset = constInfo.s1Size - actSeqLensQ - constInfo.queryRightPaddingSize;
-        }
-        if (constInfo.isKVHasLeftPadding) {
-            info.kvPaddingBeginOffset = constInfo.s2Size - actSeqLensKv - constInfo.kvRightPaddingSize;
-        }
-
         if (constInfo.isKvContinuous) {
             info.isChangeBatch = false;
         } else {
@@ -936,7 +877,6 @@ public:
         }
     }
 }; // FlashAttentionNoQuantGqaKernel
-
 } // namespace BaseApi
 
 #endif // FIA_KERNEL_NOQUANT_GQA_H_
