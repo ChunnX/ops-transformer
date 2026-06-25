@@ -39,56 +39,56 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
                                                                       GM_ADDR dx, GM_ADDR dcos, GM_ADDR dsin,
                                                                       GM_ADDR workspace, GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    (void)x;
-    (void)dcos;
-    (void)dsin;
-    (void)workspace;
+    // KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    // (void)x;
+    // (void)dcos;
+    // (void)dsin;
+    // (void)workspace;
 
-    if (g_coreType == AIC) {
-        return;
-    }
+    // if (g_coreType == AIC) {
+    //     return;
+    // }
 
-    REGISTER_TILING_DEFAULT(InplacePartialRotaryMulGradTilingData);
-    GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, tilingData, tiling);
+    // REGISTER_TILING_DEFAULT(InplacePartialRotaryMulGradTilingData);
+    // GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradTilingData, tilingData, tiling);
 
-    // No-op: empty slice
-    if (tilingData.sliceLength == 0) {
-        return;
-    }
+    // // No-op: empty slice
+    // if (tilingData.sliceLength == 0) {
+    //     return;
+    // }
 
-    TPipe pipe;
+    // TPipe pipe;
 
-    if (TILING_KEY_IS(TILING_KEY_ABA)) {
-        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-        InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, false> op;
-        op.Init(&pipe, &params, dy, cos, sin, dx);
-        op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_BA)) {
-        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-        InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, true> op;
-        op.Init(&pipe, &params, dy, cos, sin, dx);
-        op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_BAB)) {
-        AscendC::printf("if TILING_KEY_IS(TILING_KEY_BAB)\n");
-        // const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-        // InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op;
-        // op.Init(&pipe, &params, dy, cos, sin, dx);
-        // op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_AB)) {
-        const InplacePartialRotaryMulGradRegbaseABParams &params = tilingData.inplacePartialRotaryMulGradABParams;
-        InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS> op;
-        op.Init(&pipe, &params, dy, cos, sin, dx);
-        op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_A)) {
-        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-        InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, false> op;
-        op.Init(&pipe, &params, dy, cos, sin, dx);
-        op.Process();
-    } else if (TILING_KEY_IS(TILING_KEY_B)) {
-        const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-        InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, true> op;
-        op.Init(&pipe, &params, dy, cos, sin, dx);
-        op.Process();
-    }
+    // if (TILING_KEY_IS(TILING_KEY_ABA)) {
+    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
+    //     InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, false> op;
+    //     op.Init(&pipe, &params, dy, cos, sin, dx);
+    //     op.Process();
+    // } else if (TILING_KEY_IS(TILING_KEY_BA)) {
+    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
+    //     InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, true> op;
+    //     op.Init(&pipe, &params, dy, cos, sin, dx);
+    //     op.Process();
+    // } else if (TILING_KEY_IS(TILING_KEY_BAB)) {
+    //     AscendC::printf("if TILING_KEY_IS(TILING_KEY_BAB)\n");
+    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
+    //     InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op;
+    //     op.Init(&pipe, &params, dy, cos, sin, dx);
+    //     op.Process();
+    // } else if (TILING_KEY_IS(TILING_KEY_AB)) {
+    //     const InplacePartialRotaryMulGradRegbaseABParams &params = tilingData.inplacePartialRotaryMulGradABParams;
+    //     InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS> op;
+    //     op.Init(&pipe, &params, dy, cos, sin, dx);
+    //     op.Process();
+    // } else if (TILING_KEY_IS(TILING_KEY_A)) {
+    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
+    //     InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, false> op;
+    //     op.Init(&pipe, &params, dy, cos, sin, dx);
+    //     op.Process();
+    // } else if (TILING_KEY_IS(TILING_KEY_B)) {
+    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
+    //     InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, true> op;
+    //     op.Init(&pipe, &params, dy, cos, sin, dx);
+    //     op.Process();
+    // }
 }
