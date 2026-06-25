@@ -21,8 +21,7 @@ from pathlib import Path
 def should_skip_directory(dir_name, skip_patterns=None):
     if skip_patterns is None:
         skip_patterns = [
-            "all_gather_matmul_v2",
-            "quant_grouped_mat_mul_allto_allv"
+            "matmul_all_reduce"
         ]
     
     return dir_name in skip_patterns
