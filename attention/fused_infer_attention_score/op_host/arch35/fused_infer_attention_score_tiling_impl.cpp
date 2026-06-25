@@ -1745,7 +1745,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaT
         inputParams.set_attenMaskShapeType(0);
         baseParams.set_maskQsSize(0);
         baseParams.set_maskKVsSize(0);
-        return;
+        return ge::GRAPH_SUCCESS;
     }
 
     auto attenMaskTensor = fiaInfo.opParamInfo.attenMask.tensor;
