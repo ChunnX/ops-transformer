@@ -77,6 +77,7 @@ constexpr uint64_t FP8_DTYPE_SIZE = 1UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;   // sizeof(int32)=sizeof(float)=4
 constexpr int64_t SCALES_GROUP_SIZE_MXFP = 32;
 constexpr int64_t SCALES_GROUP_SIZE_PERGROUP = 128;
+constexpr int64_t SCALES_ALIGN_EVEN = 2;    // fp8 align 2
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info)
 {
@@ -300,7 +301,10 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
             static_cast<int32_t>(scalesDtype)),
         return ge::GRAPH_FAILED);
     const int64_t groupSize = (scalesDtype == ge::DT_FLOAT) ? SCALES_GROUP_SIZE_PERGROUP : SCALES_GROUP_SIZE_MXFP;
-    const int64_t expectedDim1 = (hidden + groupSize - 1) / groupSize;
+    int64_t expectedDim1 = (hidden + groupSize - 1) / groupSize;
+    if (scalesDtype == ge::DT_FLOAT8_E8M0) {
+        expectedDim1 = (expectedDim1 + SCALES_ALIGN_EVEN - 1) / SCALES_ALIGN_EVEN * SCALES_ALIGN_EVEN;
+    }
     OP_TILING_CHECK(recvScalesShape->GetStorageShape().GetDim(1) != expectedDim1,
         OP_LOGE(nodeName, "recvScales dim1 must be %ld, got %ld.",
             expectedDim1, recvScalesShape->GetStorageShape().GetDim(1)),

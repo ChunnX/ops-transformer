@@ -66,6 +66,7 @@ constexpr uint64_t FP8_DTYPE_SIZE = 1UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;   // sizeof(int32)=sizeof(float)=4
 constexpr int64_t SCALES_GROUP_SIZE_MXFP = 32;
 constexpr int64_t SCALES_GROUP_SIZE_PERGROUP = 128;
+constexpr int64_t SCALES_ALIGN_EVEN = 2;    // fp8 align 2
 
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
@@ -197,6 +198,9 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
         int64_t scalesDim1 = scalesShape->GetStorageShape().GetDim(1);
         int64_t groupSize = (scalesDtype == ge::DT_FLOAT) ? SCALES_GROUP_SIZE_PERGROUP : SCALES_GROUP_SIZE_MXFP;
         int64_t expectedDim1 = (static_cast<int64_t>(info.cfg.hidden) + groupSize - 1) / groupSize;
+        if (scalesDtype == ge::DT_FLOAT8_E8M0) {
+            expectedDim1 = (expectedDim1 + SCALES_ALIGN_EVEN - 1) / SCALES_ALIGN_EVEN * SCALES_ALIGN_EVEN;
+        }
         OP_TILING_CHECK(scalesDim0 != static_cast<int64_t>(info.cfg.numTokens), OP_LOGE(nodeName,
             "scales dim0 must equal x dim0, got %ld vs %u.", scalesDim0, info.cfg.numTokens), return false);
         OP_TILING_CHECK(scalesDim1 != expectedDim1, OP_LOGE(nodeName,
