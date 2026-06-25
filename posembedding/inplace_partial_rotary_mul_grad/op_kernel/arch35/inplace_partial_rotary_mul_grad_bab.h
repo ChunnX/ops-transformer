@@ -30,7 +30,7 @@ public:
     __aicore__ inline InplacePartialRotaryMulGradBAB()
     {
     }
-    __aicore__ inline void Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling, GM_ADDR dy,
+    __aicore__ inline void Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseTilingData *tiling, GM_ADDR dy,
                                 GM_ADDR cos, GM_ADDR sin, GM_ADDR dx);
     __aicore__ inline void Process();
 
@@ -55,7 +55,7 @@ private:
     GlobalTensor<TCOS> cosGm_;
     GlobalTensor<TCOS> sinGm_;
 
-    const InplacePartialRotaryMulGradRegbaseParams *tilingData_{nullptr};
+    const InplacePartialRotaryMulGradRegbaseTilingData *tilingData_{nullptr};
     DataCopyPadExtParams<TDY> padParamsDy_{false, 0, 0, static_cast<TDY>(0)};
     uint32_t dSplitSizeDy_{0};
     uint32_t dSplitSizeCos_{0};
@@ -71,7 +71,7 @@ private:
 
 template <typename TDY, typename TCOS>
 __aicore__ inline void
-InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseParams *tiling,
+InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(TPipe *pipe, const InplacePartialRotaryMulGradRegbaseTilingData *tiling,
                                                 GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx)
 {
     AscendC::printf("InplacePartialRotaryMulGradBAB::Init() blockIdx=%d\n", GetBlockIdx());
