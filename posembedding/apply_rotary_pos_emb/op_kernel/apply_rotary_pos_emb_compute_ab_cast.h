@@ -65,7 +65,7 @@ private:
     TQue<QuePosition::VECIN, bufferNumdb> qInQueue;
     TQue<QuePosition::VECIN, bufferNumdb> cosInQueue;
     TQue<QuePosition::VECIN, bufferNumdb> sinInQueue;
-    TQue<QuePosition::VECOUT, bufferNum> qOutQueue;
+    TQue<QuePosition::VECOUT, bufferNumdb> qOutQueue;
     TBuf<QuePosition::VECCALC> mul1;
     TBuf<QuePosition::VECCALC> mul2;
 #if ORIG_DTYPE_QUERY != DT_FLOAT
@@ -97,7 +97,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::Init(
     pipe.InitBuffer(qInQueue, bufferNumdb, tilingData->qPart1Ub);
     pipe.InitBuffer(sinInQueue, bufferNumdb, tilingData->cosPart1Ub);
     pipe.InitBuffer(mul1, tilingData->q2q1Part1Ub);
-    pipe.InitBuffer(qOutQueue, bufferNum, tilingData->qPart1Ub);
+    pipe.InitBuffer(qOutQueue, bufferNumdb, tilingData->qPart1Ub);
     pipe.InitBuffer(mul2, tilingData->q2q1Part1Ub);
 
 #if ORIG_DTYPE_QUERY != DT_FLOAT
@@ -151,7 +151,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryBF16(
     const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
     LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData)
 {
-#if ORIG_DTYPE_QUERY != DT_FLOAT
+// #if ORIG_DTYPE_QUERY != DT_FLOAT
     LocalTensor<T2> qFP32 = mul2.Get<T2>();
     LocalTensor<T2> rotOrOut = mul1.Get<T2>();
     LocalTensor<T2> cosC1 = cosC.Get<T2>();
@@ -180,7 +180,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryBF16(
         // second half: q[:halfNum] * sin[halfNum:]
         Mul<T2>(rotOrOut[qOff + tilingData->halfNum], qFP32[qOff], sinC1[sOff + tilingData->halfNum],
                  tilingData->halfNum, cNum, repeatParams);
-        // q * cos -> qFP32（覆盖原q视图）
+        // q * cos -> qFP32
         // 【泛化需求】FP32计算时按tilingData->mask分chunk处理，支持lastDim>64
         for (int64_t k = 0; k < fullChunks; k++) {
             int64_t offset = k * fullMask;
@@ -191,7 +191,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryBF16(
         Add(rotOrOut[qOff], rotOrOut[qOff], qFP32[qOff], cNum * tilingData->lastDim);
     }
     Cast(outUb, rotOrOut, RoundMode::CAST_ROUND, preCBatchB * cNum * tilingData->lastDim);
-#endif
+// #endif
 }
 
 template <typename T1, typename T2>

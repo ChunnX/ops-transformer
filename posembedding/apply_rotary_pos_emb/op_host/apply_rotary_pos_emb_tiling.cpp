@@ -337,7 +337,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::ComputeAB(gert::TilingContext *context,
 {
     // 一个batch搬运及计算使用的UB size (2: ping-pong)
     // 【泛化需求】qPart1Ub已改为singleN*alignedLastDim*dtypeSize，cosPart1Ub仍按实际D
-    int64_t oneLoop = params.qPart1Ub * 2 + params.cosPart1Ub * 4 + params.qPart1Ub + params.q2q1Part1Ub * 2 +
+    int64_t oneLoop = params.qPart1Ub * 2 + params.cosPart1Ub * 4 + params.qPart1Ub * 2 + params.q2q1Part1Ub * 2 +
                       static_cast<int64_t>(params.isCast) * (params.sin1UbSize * 2);
     OP_LOGD(context->GetNodeName(), "oneLoop ub size %ld", oneLoop);
     OP_CHECK_IF(oneLoop > params.totalUbSize || oneLoop <= 0,
@@ -345,7 +345,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::ComputeAB(gert::TilingContext *context,
     int64_t times = params.totalUbSize / oneLoop; // ub一次可以计算的batch数量
     int64_t shengUb = params.totalUbSize % oneLoop;
     // shengMte：如果有剩余ub空间，再计算几个单batch后一起搬出，减少mte3次数
-    int64_t shengMte = shengUb / (params.qPart1Ub * 2 + params.cosPart1Ub * 4 + params.qPart1Ub);
+    int64_t shengMte = shengUb / (params.qPart1Ub * 2 + params.cosPart1Ub * 4 + params.qPart1Ub * 2);
     shengMte = params.isCast ? 0 : shengMte;
     if (times > params.preCoreBatch) { // UB可以一次放下当前核要出的batch数量
         times = params.preCoreBatch;
@@ -359,7 +359,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::ComputeAB(gert::TilingContext *context,
     OP_LOGD(context->GetNodeName(), "times is %ld, shengMte %ld", times, shengMte);
 
     // ub外循环次数计算
-    params.preCBatchB = times + shengMte;                                               // 大核内ub一次计算的batch数
+    params.preCBatchB = times + shengMte;                                               // 大核内ub一次循环计算的batch数
     params.preCLTimes = ComputeTimes(params.preCoreBatch, params.preCBatchB);           // 大核的ub loop times
     params.preCBatchL = params.preCoreBatch - params.preCBatchB * params.preCLTimes;    // 大核内最后一次计算的batch数
     params.lastCLTimes = ComputeTimes(params.lastCoreBatch, params.preCBatchB);         // 尾核的ub loop times
