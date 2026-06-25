@@ -27,7 +27,9 @@ using namespace AscendC;
 
 constexpr uint8_t NUMONE = 1;
 constexpr uint8_t NUMTWO = 2;
-constexpr int64_t AIV_AIC_RATE = 2;
+constexpr uint8_t PRE_MODE = 0;
+constexpr uint8_t POST_MODE = 1;
+constexpr uint8_t RES_MODE = 2;
 constexpr int64_t WS_BUFFER_INTERVAL = 1024;
 constexpr float FLT_MAX = 3.402823466e+38F;
 
@@ -63,6 +65,8 @@ private:
     __aicore__ inline void ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2K);
     __aicore__ inline void SinkhornGradSimdVf(LocalTensor<float> skGradLocal, uint64_t bsIdx, uint64_t bsLen);
     __aicore__ inline void ExpGradSimdVf(LocalTensor<float> skGrad, LocalTensor<float> expGrad, LocalTensor<float> zResLocal, uint64_t bsIdx, uint64_t bsLen);
+    template<bool INVRMS_MODE>
+    __aicore__ inline void ComputeGradZ(GlobalTensor<float> gradZOut, U scalar, uint64_t bsLen, uint64_t bsOffset, uint64_t count, uint64_t offset);
 
     
 private:
@@ -459,6 +463,25 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::A
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
+template<bool INVRMS_MODE>
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGradZ(
+    GlobalTensor<float> gradZOut, U scalar, uint64_t bsLen, uint64_t bsOffset, uint64_t count, uint64_t offset)
+{
+    LocalTensor<U> gradZLocal = gradZBuf_.Get<U>();
+    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
+        if constexpr (INVRMS_MODE) {
+            int64_t curBsIdx = bsOffset + bsLoop;
+            scalar = invRmsGm_(curBsIdx);
+        }
+        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal, scalar, count, bsLoop * count);
+    }
+    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    CopyOut(gradZOut[bsOffset * k_ + offset], gradZLocal, bsLen, count, 0, k_);
+}
+
+template<typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeFirst(uint64_t bsIdx, uint64_t bsLen)
 {
     LocalTensor<U> gradHPreLocal = gradHPreBuf_.Get<U>();   //buf 中间结果
@@ -511,16 +534,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     ComputeGradAlphaAndBias(bsLen, n_);
     CopyOutAlphaAndBias(blockIdx_, blockIdx_ * n_);
     //grad_Z_pre ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
-    LocalTensor<U> gradZLocal = gradZBuf_.Get<U>();
-    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
-        int64_t curBsIdx = bsOffset + bsLoop;
-        U invRms = invRmsLocal(bsLoop);
-        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, alphaPre_, n_, curBsIdx * k_);
-        event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradHcBeforeNormWs_, invRms, n_, curBsIdx * k_);
-    }
+    ComputeGradZ<false>(gradNormOutWs_, alphaPre_, bsLen, bsOffset, n_, 0);
+    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    ComputeGradZ<true>(gradHcBeforeNormWs_, alphaPre_, bsLen, bsOffset, n_, 0);
 
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, hcBeforeNormOffset + n_, alphaPost_, n_);
     CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
@@ -529,15 +547,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     CopyOutAlphaAndBias(blockIdx_ + usedAivNum_, blockIdx_ * n_ + usedAivNum_ * n_);
 
     // grad_Z_post ->workspace宏鹏哥实现，完成grad_norm_out计算，并搬运到workspace
-    for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
-        int64_t curBsIdx = bsOffset + bsLoop;
-        U invRms = invRmsLocal(bsLoop);
-        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradNormOutWs_, alphaPost_, n_, curBsIdx * k_ + n_);
-        event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-        ComputeGradNormOutOrGradHcBeforeNorm(gradZLocal[bsLoop * n_], gradHcBeforeNormWs_, invRms, n_, curBsIdx * k_ + n_);
-    }
+    ComputeGradZ<false>(gradNormOutWs_, alphaPost_, bsLen, bsOffset, n_, n_);
+    // event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    ComputeGradZ<true>(gradHcBeforeNormWs_, alphaPost_, bsLen, bsOffset, n_, n_);
 
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, hcBeforeNormOffset + 2 * n_, alphaRes_, 2 * n_);
     invRmsQue_.FreeTensor(invRmsLocal);
@@ -1168,15 +1182,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 ExpGradSimdVf(skGradLocal, expGradLocal, zReslocal, bsIdx, bsLen);
                 // 计算gradNormOut from gradZRes
                 int64_t  bsOffset = blockIdx_ * curCoreProcessbsTask_ + bsIdx * bsLoopDataLen_;
-                for (int64_t bsLoop = 0; bsLoop < bsLen; bsLoop++) {
-                    int64_t curBsIdx = bsOffset + bsLoop;
-                    U invRms = invRmsGm_(curBsIdx);
-                    ComputeGradNormOutOrGradHcBeforeNorm(expGradLocal[bsLoop * n_ * n_], gradNormOutWs_, alphaRes_, n_ * n_, curBsIdx * k_ + 2 * n_);
-                    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-                    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                    ComputeGradNormOutOrGradHcBeforeNorm(expGradLocal[bsLoop * n_ * n_], gradHcBeforeNormWs_, invRms, n_ * n_, curBsIdx * k_ + 2 * n_);
-                }
+                ComputeGradZ<false>(gradNormOutWs_, alphaRes_, bsLen, bsOffset, n_ * n_, 2 * n_);
+                event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                ComputeGradZ<true>(gradHcBeforeNormWs_, alphaRes_, bsLen, bsOffset, n_, n_);
             }
         }
         // 计算GradXFromRms

@@ -252,15 +252,20 @@ __aicore__ inline void ComputeForwardPart(__local_mem__ U* hcBeformNormAddr, __l
 *   2、计算完成GradHcBeforeNorm后需添加syncAll，保证matmul的确定性。
 ******************************************************************************/
 template <typename T>
-__aicore__ inline void ComputeGradNormOutOrGradHcBeforeNorm(
-    const LocalTensor<T>& gradZLocal, const GlobalTensor<T>& dstGlobal, T scalar, uint32_t dataCount, uint32_t offset)
+__aicore__ inline void ComputeGradNormOutOrGradHcBeforeNorm(const LocalTensor<T>& gradZLocal, T scalar, uint32_t count, uint32_t offset)
 {
-    Muls(gradZLocal, gradZLocal, scalar, dataCount);
-    event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-    DataCopyExtParams copyParams = {1, static_cast<uint32_t>(dataCount * sizeof(T)), 0, 0, 0};
-    DataCopyPad(gradNormOut[offset], gradZLocal, copyParams);
+    __local_mem__ T* addr = (__local_mem__ T*)gradZLocal.GetPhyAddr() + offset;
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<T> gradZReg;
+        MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(count);
+        MicroAPI::UnalignReg u0;
+        MicroAPI::DataCopyUnAlignPre(u0, addr);
+        MicroAPI::DataCopyUnAlign(gradZReg, u0, addr, count);
+        MicroAPI::Muls(gradZReg, gradZReg, scalar, preg);
+        MicroAPI::DataCopyUnAlign(addr, gradZReg, u0, count);
+        MicroAPI::DataCopyUnAlignPost(addr, u0, 0);
+    }
 }
 
 template <typename T>
