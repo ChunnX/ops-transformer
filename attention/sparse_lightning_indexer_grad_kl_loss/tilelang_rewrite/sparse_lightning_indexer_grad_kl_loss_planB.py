@@ -281,11 +281,10 @@ def planB_kernel1(
 
 
 # ==============================================================================
-# Kernel 2: S1-parallel dWeight/reluGrad/Loss + MM6 + Cast
+# Kernel 2: K-parallel dWeight/reluGrad/Loss + MM6 (partial outputs)
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
-    workspace_idx=[6],
     pass_configs=pass_configs,
 )
 def planB_kernel2(
@@ -308,23 +307,27 @@ def planB_kernel2(
         PReduced: T.Tensor((B, S1, K), calc_dtype),
         SoftmaxI: T.Tensor((B, S1, K), calc_dtype),
         GatherKeyIndexT: T.Tensor((B, S1, DQueryIndex, K), input_dtype),
-        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
-        dWeight: T.Tensor((B, S1, Nidx1), input_dtype),
+        dQueryIndexPartial: T.Tensor((B, S1, n_num, Nidx1, DQueryIndex), calc_dtype),
+        dWeightPartial: T.Tensor((B, S1, n_num, Nidx1), calc_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
-        LossOut: T.Tensor((B, S1), calc_dtype),
+        LossPartial: T.Tensor((B, S1, n_num), calc_dtype),
     ):
-        with T.Kernel(B * s1_tile_num, is_npu=True) as (cid, vid):
-            bz = cid // s1_tile_num
-            m = cid % s1_tile_num
+        # K-parallel: block_num = B * s1_tile_num * n_num
+        with T.Kernel(B * s1_tile_num * n_num, is_npu=True) as (cid, vid):
+            bz = cid // (s1_tile_num * n_num)
+            r = cid % (s1_tile_num * n_num)
+            m = r // n_num
+            n_idx = r % n_num
+
             s1_start = m * s1_block
             s1_end = T.min(s1_start + s1_block, S1)
+            k_start = n_idx * n_block
+            k_end = k_start + n_block
 
             # ============================================================
-            # V Scope 1: dWeight, reluGrad, Loss (serial over K)
+            # V Scope 1: dWeight, reluGrad, Loss for this K-block
             # ============================================================
             with T.Scope("V"):
-                # UB allocation
                 bmm2_ub = T.alloc_shared((BLOCK_NIDX1, n_block), calc_dtype)
                 weight_ub = T.alloc_shared(Nidx1, calc_dtype)
                 weight_fp16_ub = T.alloc_shared(Nidx1, input_dtype)
@@ -338,7 +341,6 @@ def planB_kernel2(
                 dw_total_ub = T.alloc_shared(Nidx1, calc_dtype)
                 dw_chunk_ub = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
                 dw_temp_ub = T.alloc_shared(BLOCK_NIDX1, calc_dtype)
-                dw_fp16_ub = T.alloc_shared(Nidx1, input_dtype)
 
                 eps_ub = T.alloc_shared(n_block, calc_dtype)
                 mask_ub = T.alloc_shared(n_block, calc_dtype)
@@ -346,87 +348,81 @@ def planB_kernel2(
                 loss_ub = T.alloc_shared(n_block, calc_dtype)
                 loss_log_p_ub = T.alloc_shared(n_block, calc_dtype)
                 loss_log_si_ub = T.alloc_shared(n_block, calc_dtype)
-                loss_accum_ub = T.alloc_shared(1, calc_dtype)
                 rsy_tmp_ub = T.alloc_shared(1, calc_dtype)
 
                 T.tile.fill(eps_ub, 1e-8)
 
                 for s1_id in T.serial(s1_start, s1_end):
-                    # Load weights
+                    # Load weights (shared across all K-blocks for this s1_id)
                     T.copy(Weights[bz, s1_id, 0:Nidx1], weight_fp16_ub)
                     T.tile.cast(weight_ub, weight_fp16_ub, "CAST_NONE", Nidx1)
                     T.barrier_all()
 
-                    # ---- Pass 4: dWeight + reluGrad ----
+                    # Load Diff, SoftmaxI, PReduced for this K-block
+                    T.copy(Diff[bz, s1_id, k_start:k_end], diff_ub)
+                    T.copy(SoftmaxI[bz, s1_id, k_start:k_end], si_chunk_ub)
+                    T.copy(PReduced[bz, s1_id, k_start:k_end], p_chunk_ub)
+                    T.barrier_all()
+
+                    # ---- Pass 4: dWeight partial + reluGrad for this K-block ----
                     T.tile.fill(dw_total_ub, 0.0)
 
-                    for n_idx in T.serial(n_num):
-                        T.copy(Diff[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block], diff_ub)
-                        T.copy(SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block], si_chunk_ub)
-                        T.copy(PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block], p_chunk_ub)
+                    for nidx_c in T.serial(nidx1_num):
+                        nidx_s = nidx_c * BLOCK_NIDX1
+                        T.copy(
+                            bmm2Res[bz, s1_id, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end],
+                            bmm2_ub,
+                        )
+
+                        # dWeight: dw_chunk[g] = sum_k(diff[k] * bmm2[g,k])
+                        for g_i in T.serial(BLOCK_NIDX1):
+                            T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, bmm2_ub[g_i, :])
+                        T.barrier_all()
+                        T.reduce_sum(rg_chunk_ub, dw_chunk_ub, dim=-1, clear=True, real_shape=[BLOCK_NIDX1, n_block])
+                        T.barrier_all()
+                        T.copy(dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1], dw_temp_ub)
+                        T.tile.add(dw_temp_ub, dw_temp_ub, dw_chunk_ub)
+                        T.copy(dw_temp_ub, dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1])
+
+                        # reluGrad: weight[g] * diff[k] * bool(bmm2[g,k] > 0)
+                        for g_i in T.serial(BLOCK_NIDX1):
+                            g_abs = nidx_s + g_i
+                            T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, weight_ub[g_abs])
+                            T.tile.compare(mask_ub, bmm2_ub[g_i, :], 0.0, "GT")
+                            T.tile.select(rg_chunk_ub[g_i, :], mask_ub, rg_chunk_ub[g_i, :], 0.0, "VSEL_TENSOR_SCALAR_MODE")
                         T.barrier_all()
 
-                        for nidx_c in T.serial(nidx1_num):
-                            nidx_s = nidx_c * BLOCK_NIDX1
+                        # Cast and store reluGrad
+                        T.tile.cast(rg_fp16_ub, rg_chunk_ub, "CAST_ROUND", BLOCK_NIDX1 * n_block)
+                        T.barrier_all()
+                        for g_i in T.serial(BLOCK_NIDX1):
+                            g_abs = nidx_s + g_i
                             T.copy(
-                                bmm2Res[bz, s1_id, nidx_s:nidx_s + BLOCK_NIDX1, n_idx * n_block:(n_idx + 1) * n_block],
-                                bmm2_ub,
+                                rg_fp16_ub[g_i, :],
+                                reluGradRes[bz, s1_id, g_abs, k_start:k_end],
                             )
 
-                            # dWeight: dw_chunk[g] = sum_k(diff[k] * bmm2[g,k])
-                            for g_i in T.serial(BLOCK_NIDX1):
-                                T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, bmm2_ub[g_i, :])
-                            T.barrier_all()
-                            T.reduce_sum(rg_chunk_ub, dw_chunk_ub, dim=-1, clear=True, real_shape=[BLOCK_NIDX1, n_block])
-                            T.barrier_all()
-                            T.copy(dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1], dw_temp_ub)
-                            T.tile.add(dw_temp_ub, dw_temp_ub, dw_chunk_ub)
-                            T.copy(dw_temp_ub, dw_total_ub[nidx_s:nidx_s + BLOCK_NIDX1])
+                    # Store dWeight partial (FP32, summed in Python)
+                    T.copy(dw_total_ub, dWeightPartial[bz, s1_id, n_idx, 0:Nidx1])
 
-                            # reluGrad: weight[g] * diff[k] * bool(bmm2[g,k] > 0)
-                            for g_i in T.serial(BLOCK_NIDX1):
-                                g_abs = nidx_s + g_i
-                                T.tile.mul(rg_chunk_ub[g_i, :], diff_ub, weight_ub[g_abs])
-                                T.tile.compare(mask_ub, bmm2_ub[g_i, :], 0.0, "GT")
-                                T.tile.select(rg_chunk_ub[g_i, :], mask_ub, rg_chunk_ub[g_i, :], 0.0, "VSEL_TENSOR_SCALAR_MODE")
-                            T.barrier_all()
-
-                            # Cast and store reluGrad
-                            T.tile.cast(rg_fp16_ub, rg_chunk_ub, "CAST_ROUND", BLOCK_NIDX1 * n_block)
-                            T.barrier_all()
-                            for g_i in T.serial(BLOCK_NIDX1):
-                                g_abs = nidx_s + g_i
-                                T.copy(
-                                    rg_fp16_ub[g_i, :],
-                                    reluGradRes[bz, s1_id, g_abs, n_idx * n_block:(n_idx + 1) * n_block],
-                                )
-
-                        # ---- Loss partial for this K-block ----
-                        T.tile.max(p_chunk_ub, p_chunk_ub, eps_ub)
-                        T.tile.ln(loss_log_p_ub, p_chunk_ub)
-                        T.barrier_all()
-                        T.tile.max(si_chunk_ub, si_chunk_ub, eps_ub)
-                        T.tile.ln(loss_log_si_ub, si_chunk_ub)
-                        T.barrier_all()
-                        T.tile.sub(loss_ub, loss_log_p_ub, loss_log_si_ub)
-                        T.tile.mul(loss_ub, p_chunk_ub, loss_ub)
-                        T.barrier_all()
-                        T.reduce_sum(loss_ub, rsy_tmp_ub, dim=-1, clear=True, real_shape=[1, n_block])
-                        T.barrier_all()
-                        T.tile.add(loss_accum_ub, loss_accum_ub, rsy_tmp_ub[0])
-
-                    # Store dWeight
-                    T.tile.cast(dw_fp16_ub, dw_total_ub, "CAST_ROUND", Nidx1)
+                    # ---- Loss partial for this K-block ----
+                    T.tile.max(p_chunk_ub, p_chunk_ub, eps_ub)
+                    T.tile.ln(loss_log_p_ub, p_chunk_ub)
                     T.barrier_all()
-                    T.copy(dw_fp16_ub, dWeight[bz, s1_id, 0:Nidx1])
-
-                    # Store Loss
-                    T.copy(loss_accum_ub, LossOut[bz, s1_id:s1_id + 1])
+                    T.tile.max(si_chunk_ub, si_chunk_ub, eps_ub)
+                    T.tile.ln(loss_log_si_ub, si_chunk_ub)
+                    T.barrier_all()
+                    T.tile.sub(loss_ub, loss_log_p_ub, loss_log_si_ub)
+                    T.tile.mul(loss_ub, p_chunk_ub, loss_ub)
+                    T.barrier_all()
+                    T.reduce_sum(loss_ub, rsy_tmp_ub, dim=-1, clear=True, real_shape=[1, n_block])
+                    T.barrier_all()
+                    T.copy(rsy_tmp_ub, LossPartial[bz, s1_id, n_idx:n_idx + 1])
 
                 T.set_cross_flag("V", 12)
 
             # ============================================================
-            # C Scope 2: MM6 (dQueryIndex = sum_K reluGrad @ GKI^T)
+            # C Scope 2: MM6 partial for this K-block
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(12)
@@ -437,46 +433,19 @@ def planB_kernel2(
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
-                        for n_idx in T.serial(n_num):
-                            T.copy(
-                                reluGradRes[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
-                                RG_L1,
-                            )
-                            T.copy(
-                                GatherKeyIndexT[bz, s1_row, d_idx * k_block:(d_idx + 1) * k_block, n_idx * n_block:(n_idx + 1) * n_block],
-                                GKIT_L1,
-                            )
-                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
+                        T.copy(
+                            reluGradRes[bz, s1_row, 0:Nidx1, k_start:k_end],
+                            RG_L1,
+                        )
+                        T.copy(
+                            GatherKeyIndexT[bz, s1_row, d_idx * k_block:(d_idx + 1) * k_block, k_start:k_end],
+                            GKIT_L1,
+                        )
+                        T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
                         T.copy(
                             DQ_L0C,
-                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
+                            dQueryIndexPartial[bz, s1_row, n_idx, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                         )
-
-                T.set_cross_flag("FIX", 3)
-
-            # ============================================================
-            # V Scope 2: Cast dQueryIndex FP32 -> FP16/BF16
-            # ============================================================
-            with T.Scope("V"):
-                T.wait_cross_flag(3)
-
-                dq_fp32_ub = T.alloc_shared((BLOCK_NIDX1, k_block), calc_dtype)
-                dq_fp16_ub = T.alloc_shared((BLOCK_NIDX1, k_block), input_dtype)
-
-                for s1_row in T.serial(s1_start, s1_end):
-                    for d_idx in T.serial(d_num_query_index):
-                        for nidx_c in T.serial(nidx1_num):
-                            nidx_s = nidx_c * BLOCK_NIDX1
-                            T.copy(
-                                dQueryIndex_ws[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, d_idx * k_block:(d_idx + 1) * k_block],
-                                dq_fp32_ub,
-                            )
-                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", BLOCK_NIDX1 * k_block)
-                            T.barrier_all()
-                            T.copy(
-                                dq_fp16_ub,
-                                dQueryIndex[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, d_idx * k_block:(d_idx + 1) * k_block],
-                            )
 
     return main
 
@@ -677,6 +646,7 @@ def sparse_lightning_indexer_grad_kl_loss(
 
     # ---- Workspace ----
     ws_key = (B, S1, N1, Nidx1, K, DQueryIndex, input_dtype, device)
+    n_num = tiling.n_num
     if ws_key in _workspace_cache:
         ws = _workspace_cache[ws_key]
     else:
@@ -684,11 +654,16 @@ def sparse_lightning_indexer_grad_kl_loss(
         bmm2_res_ws = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=device)
         p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=device)
         reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=device)
-        d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=device)
-        ws = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, d_query_index_ws)
+        d_query_index_partial = torch.zeros(B, S1, n_num, Nidx1, DQueryIndex, dtype=torch.float32, device=device)
+        d_weight_partial = torch.zeros(B, S1, n_num, Nidx1, dtype=torch.float32, device=device)
+        loss_partial = torch.zeros(B, S1, n_num, dtype=torch.float32, device=device)
+        relu_grad_ws = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=device)
+        ws = (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws,
+              d_query_index_partial, d_weight_partial, loss_partial, relu_grad_ws)
         _workspace_cache[ws_key] = ws
 
-    bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, d_query_index_ws = ws
+    (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws,
+     d_query_index_partial, d_weight_partial, loss_partial, relu_grad_ws) = ws
 
     # ---- Launch Kernel 1 ----
     bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws = func1(
@@ -702,27 +677,21 @@ def sparse_lightning_indexer_grad_kl_loss(
     # ---- Python Bridge: Global SoftmaxI + diff ----
     softmax_i_ws, diff_ws = _python_bridge(reduce_sum_y_ws, p_reduced_ws)
 
-    # Output tensors for Kernel 2
-    d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=device)
-    d_weight_out = torch.zeros(B, S1, Nidx1, dtype=input_dtype, device=device)
-    relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=device)
-    loss_out = torch.zeros(B, S1, dtype=torch.float32, device=device)
-
-    Zero = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=device)
-    d_query_index_ws.copy_(Zero)
-
-    # ---- Launch Kernel 2 ----
-    results = func2(
+    # ---- Launch Kernel 2 (K-parallel, partial outputs) ----
+    d_query_index_partial, d_weight_partial, relu_grad, loss_partial = func2(
         bmm2_res_ws, weights, diff_ws, p_reduced_ws, softmax_i_ws,
         gather_key_index_t,
-        d_query_index_ws,
-        d_query_index_out, d_weight_out, relu_grad_out, loss_out,
+        d_query_index_partial,
+        d_weight_partial,
+        relu_grad_ws,
+        loss_partial,
     )
 
-    d_query_index = results[0]
-    d_weight = results[1].to(weights_orig_dtype if weights_orig_dtype == torch.float32 else input_dtype)
-    relu_grad = results[2]
-    kl_loss = results[3].sum().reshape(1).to(torch.float32)
+    # ---- Python Reduction: sum partials across K-blocks ----
+    d_query_index = d_query_index_partial.sum(dim=2).to(input_dtype)  # (B, S1, n_num, Nidx1, DQ) → (B, S1, Nidx1, DQ)
+    d_weight = d_weight_partial.sum(dim=2)  # (B, S1, n_num, Nidx1) → (B, S1, Nidx1)
+    d_weight = d_weight.to(weights_orig_dtype if weights_orig_dtype == torch.float32 else input_dtype)
+    kl_loss = loss_partial.sum().reshape(1).to(torch.float32)
 
     # ---- Postprocessing: dKeyIndex via scatter_add ----
     d_key_index = _compute_d_key_index(

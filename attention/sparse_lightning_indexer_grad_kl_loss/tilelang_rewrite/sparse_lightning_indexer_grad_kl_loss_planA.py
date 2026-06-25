@@ -395,7 +395,6 @@ def _python_postprocess(
     """Python implementation of V1 Pass3-5 + C2(MM6) + V2(Cast)."""
     B, S1, Nidx1, K = bmm2_res.shape
     DQueryIndex = gather_key_index.shape[-1]
-    n_num = K // BLOCK_N
 
     # --- Pass 3: Global SoftmaxI ---
     softmax_i = torch.softmax(reduce_sum_y.float(), dim=-1)  # (B, S1, K)
@@ -422,15 +421,8 @@ def _python_postprocess(
     rg_flat = relu_grad.to(input_dtype).reshape(B * S1, Nidx1, K)
     gki_flat = gather_key_index.reshape(B * S1, K, DQueryIndex)
 
-    d_query_index_ws = torch.zeros(B * S1, Nidx1, DQueryIndex, dtype=torch.float32, device=device)
-    for n_idx in range(n_num):
-        k_s = n_idx * BLOCK_N
-        k_e = k_s + BLOCK_N
-        d_query_index_ws += torch.bmm(
-            rg_flat[:, :, k_s:k_e].float(),
-            gki_flat[:, k_s:k_e, :].float(),
-        )
-
+    # Single bmm: (B*S1, Nidx1, K) @ (B*S1, K, DQueryIndex) → (B*S1, Nidx1, DQueryIndex)
+    d_query_index_ws = torch.bmm(rg_flat.float(), gki_flat.float())
     d_query_index = d_query_index_ws.reshape(B, S1, Nidx1, DQueryIndex).to(input_dtype)
 
     d_weight_out = d_weight.to(weights_orig_dtype if weights_orig_dtype == torch.float32 else input_dtype)
