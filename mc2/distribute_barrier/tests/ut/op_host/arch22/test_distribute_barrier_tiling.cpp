@@ -169,4 +169,164 @@ TEST_F(DistributeBarrierArch22TilingTest, TestTilingTimeOutElasticInfo)
     EXPECT_EQ(expectTilingData, tilingDataResult);
 }
 
+// timeout negative: dim0 != 1
+TEST_F(DistributeBarrierArch22TilingTest, TestTilingTimeOutDim0Invalid)
+{
+    struct DistributeBarrierCompileInfo {} compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("DistributeBarrier",
+        {
+            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    TilingInfo tilingInfo;
+    ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+// timeout negative: dim num != 1
+TEST_F(DistributeBarrierArch22TilingTest, TestTilingTimeOutDimNumInvalid)
+{
+    struct DistributeBarrierCompileInfo {} compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("DistributeBarrier",
+        {
+            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    TilingInfo tilingInfo;
+    ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+// timeout negative: wrong dtype
+TEST_F(DistributeBarrierArch22TilingTest, TestTilingTimeOutDtypeInvalid)
+{
+    struct DistributeBarrierCompileInfo {} compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("DistributeBarrier",
+        {
+            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    TilingInfo tilingInfo;
+    ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+// elasticInfo negative: dim0 != 4 + 2 * worldSize
+TEST_F(DistributeBarrierArch22TilingTest, TestTilingElasticInfoDim0Invalid)
+{
+    struct DistributeBarrierCompileInfo {} compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("DistributeBarrier",
+        {
+            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{10}, {10}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    TilingInfo tilingInfo;
+    ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+// elasticInfo negative: dim num != 1
+TEST_F(DistributeBarrierArch22TilingTest, TestTilingElasticInfoDimNumInvalid)
+{
+    struct DistributeBarrierCompileInfo {} compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("DistributeBarrier",
+        {
+            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{36, 1}, {36, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    TilingInfo tilingInfo;
+    ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+// elasticInfo negative: wrong dtype
+TEST_F(DistributeBarrierArch22TilingTest, TestTilingElasticInfoDtypeInvalid)
+{
+    struct DistributeBarrierCompileInfo {} compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("DistributeBarrier",
+        {
+            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{36}, {36}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    TilingInfo tilingInfo;
+    ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+// timeout negative: format is FRACTAL_NZ
+TEST_F(DistributeBarrierArch22TilingTest, TestTilingTimeOutFormatInvalid)
+{
+    struct DistributeBarrierCompileInfo {} compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("DistributeBarrier",
+        {
+            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    TilingInfo tilingInfo;
+    ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+// elasticInfo negative: format is FRACTAL_NZ
+TEST_F(DistributeBarrierArch22TilingTest, TestTilingElasticInfoFormatInvalid)
+{
+    struct DistributeBarrierCompileInfo {} compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara("DistributeBarrier",
+        {
+            {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{36}, {36}}, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ},
+        },
+        {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}},
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    TilingInfo tilingInfo;
+    ASSERT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
 } // namespace

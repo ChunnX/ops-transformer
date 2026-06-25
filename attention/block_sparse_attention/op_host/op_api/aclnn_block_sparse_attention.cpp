@@ -73,26 +73,24 @@ static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
 
 static aclnnStatus ParseblockShapeOptional(const aclIntArray *blockShapeOptional)
 {
-    if (blockShapeOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "blockShapeOptional is null.");
-        return ACLNN_ERR_PARAM_NULLPTR;
-    }
+    if (blockShapeOptional != nullptr) {
+        uint64_t size = blockShapeOptional->Size();
+        if (size != 2) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain two elements [x, y].");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
 
-    uint64_t size = blockShapeOptional->Size();
-    if (size < 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain at least two elements [x, y].");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
+        const int64_t *data = blockShapeOptional->GetData();
+        if (data == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional data is null.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
 
-    const int64_t *data = blockShapeOptional->GetData();
-    if (data == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional data is null.");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    if (data[0] <= 0 || data[1] <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be positive, got [%ld, %ld].", data[0], data[1]);
-        return ACLNN_ERR_PARAM_INVALID;
+        if (data[0] <= 0 || data[1] <= 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be positive, got [%ld, %ld].", data[0],
+                    data[1]);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     return ACLNN_SUCCESS;

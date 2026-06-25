@@ -103,7 +103,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
             if (unlikely(curSeqLengthData < 0)) {
                 std::string valueStr = "actual_seq_lengths[" + std::to_string(bIdx) + "]";
                 std::string reason = "The value of actual_seq_lengths[" + std::to_string(bIdx) +
-                    "] cannot be less than 0.";
+                    "] cannot be less than 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -130,7 +130,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
             if (unlikely(curSeqLengthData < 0)) {
                 std::string valueStr = "actual_seq_lengths[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths[" + std::to_string(i) +
-                    "] cannot be less than 0.";
+                    "] cannot be less than 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -212,7 +212,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
             if (unlikely(curSeqLengthData < 0)) {
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(bIdx) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(bIdx) +
-                    "] cannot be less than 0.";
+                    "] cannot be less than 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -232,7 +232,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
                     "] cannot be greater than KV_S: " +
-                    std::to_string(sOfKeyValue) + ".";
+                    std::to_string(sOfKeyValue);
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -241,7 +241,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
             if (unlikely(curSeqLengthData < 0)) {
                 std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
                 std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
-                    "] cannot be less than 0.";
+                    "] cannot be less than 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
                     std::to_string(curSeqLengthData).c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -379,7 +379,7 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureAlibi(const FiaTilingInfo &fiaI
                     "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
                 std::string valueStr = std::to_string(actualSeqLengthsQData) + " and " +
                     std::to_string(actualSeqLengthsKvData);
-                std::string reason = attrName + " must be the same when pseType is 2 or 3.";
+                std::string reason = attrName + " must be the same when pseType is 2 or 3";
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, attrName.c_str(),
                     valueStr.c_str(), reason.c_str());
                 return ge::GRAPH_FAILED;
@@ -399,6 +399,38 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fia
         OP_CHECK_IF((qLayout != FiaLayout::TND) && (qLayout != FiaLayout::NTD),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "actualSeqLengthsQ",
                     "actualSeqLengthsQ must be empty in IFA MLA and non-TND/NTD scenarios"),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ActualSeqLenChecker::CheckFeatureFP8GQAFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.fullQuantMode != FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.isMaxWorkspace) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    constexpr int64_t minQuerySeqLen = 1;
+    constexpr int64_t maxQuerySeqLen = 65536; // 64K
+    constexpr int64_t maxKVSeqLen = 262144; // 256K
+
+    uint32_t batchSize = fiaInfo.bSize;
+    for (uint32_t bIdx = 0; bIdx < batchSize; bIdx++) {
+        int64_t qSeqLen = GetActualSeqLengthsQData(fiaInfo, bIdx);
+        OP_CHECK_IF(qSeqLen < minQuerySeqLen || qSeqLen > maxQuerySeqLen,
+            OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, query sequence length(%ld) should be in range of [%ld, %ld].",
+                    qSeqLen, minQuerySeqLen, maxQuerySeqLen),
+            return ge::GRAPH_FAILED);
+
+        int64_t kvSeqLen = GetActualSeqLengthsKvData(fiaInfo, bIdx);
+        OP_CHECK_IF(kvSeqLen < 0 || kvSeqLen > maxKVSeqLen,
+            OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, kv sequence length(%ld) should be in range of [0, %ld].",
+                    kvSeqLen, maxKVSeqLen),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -494,7 +526,8 @@ ge::graphStatus ActualSeqLenChecker::CheckCrossFeature(const FiaTilingInfo &fiaI
     }
 
     if (enableFullQuant_) {
-        if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)) {
+        if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo) ||
+            ge::GRAPH_SUCCESS != CheckFeatureFP8GQAFullquant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }

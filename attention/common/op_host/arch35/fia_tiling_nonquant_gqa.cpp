@@ -16,6 +16,7 @@
 #include "fia_tiling_nonquant_gqa.h"
 #include <map>
 #include <vector>
+#include <tuple>
 #include <numeric>
 #include <algorithm>
 #include <graph/utils/type_utils.h>
@@ -31,6 +32,61 @@ using namespace AscendC;
 namespace optiling {
 using namespace arch35FIA;
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
+
+uint64_t GetGqaAlignedD(uint64_t val, const std::vector<uint64_t> &candidates)
+{
+    for (auto c : candidates) {
+        if (val <= c) {
+            return c;
+        }
+    }
+    return val;
+}
+
+using ConfigGqaSplitKey = std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>;
+
+const std::map<ConfigGqaSplitKey, uint64_t> &GetGqaSplitConfigMap()
+{
+    static const std::map<ConfigGqaSplitKey, uint64_t> configMap = {
+        {std::make_tuple(SOUTER_64, SINNER_64, DSIZE_256, DSIZE_256),
+         Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_64, SINNER_64, DSIZE_512, DSIZE_512),
+         Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_64, DSIZE_64),
+         Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_128, DSIZE_128),
+         Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_64, DSIZE_64),
+         Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_128, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_192, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_256, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_256, DSIZE_256),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_512, DSIZE_512),
+         Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512},
+        {std::make_tuple(SOUTER_128, SINNER_256, DSIZE_64, DSIZE_64),
+         Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_128, DSIZE_576, DSIZE_512),
+         Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_256, DSIZE_256),
+         Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_128, SINNER_256, DSIZE_128, DSIZE_128),
+         Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_128, DSIZE_64),
+         Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_64, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_128, DSIZE_64),
+         Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_64, DSIZE_128),
+         Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128},
+    };
+    return configMap;
+}
 
 void FiaTilingNonQuantArch35::InitTilingInfo(TilingInfo *tilingInfo)
 {
@@ -66,6 +122,7 @@ bool FiaTilingNonQuantArch35::IsCapable()
         fiaInfo_->isOutQuantEnable ||  // 使能后量化
         fiaInfo_->learnableSinkFlag || // 使能sink
         fiaInfo_->isQKVDDifferent ||   // D<=128情况下，D不等长
+        fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST ||                    // 使能tensorlist
         (fiaInfo_->sparseMode == SPARSE_MODE_ALL_MASK || fiaInfo_->sparseMode == SPARSE_MODE_LEFT_UP ||
          fiaInfo_->sparseMode == SPARSE_MODE_BAND) ||                               // sparse mode=1/2/4
         (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) || // sparse mode=0且传入mask
@@ -109,7 +166,6 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo_->opName, "Set plat memory info fail."),
                 return ge::GRAPH_FAILED);
 
-    // TODO，增加空tensor、路径6 STC验证用例
     if (fiaInfo_->emptyTensorFlag) {
         int64_t outSize = fiaInfo_->opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
         int64_t lseSize =
@@ -143,6 +199,7 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     if (fiaInfo_->isMaxWorkspace) {
         // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
         CalcMaxWorkspaceSize();
+        // tiling下沉场景需传入有效Tilingkey，FE会严格校验tilingkey
         GenTilingKey();
         CalcNumBlocks(platformInfo_.aicNum);
 
@@ -628,66 +685,17 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyConfig()
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512) {
         dSize = fiaInfo_->qkHeadDim + fiaInfo_->ropeHeadDim;
     }
-    if (dSize <= DSIZE_64)
-        dSize = DSIZE_64;
-    else if (dSize <= DSIZE_128)
-        dSize = DSIZE_128;
-    else if (dSize <= DSIZE_256)
-        dSize = DSIZE_256;
-    else if (dSize <= DSIZE_512)
-        dSize = DSIZE_512;
-    else if (dSize <= DSIZE_576)
-        dSize = DSIZE_576;
+    dSize = GetGqaAlignedD(dSize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512, DSIZE_576});
+    dVsize = GetGqaAlignedD(dVsize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512});
 
-    if (dVsize <= DSIZE_64)
-        dVsize = DSIZE_64;
-    else if (dVsize <= DSIZE_128)
-        dVsize = DSIZE_128;
-    else if (dVsize <= DSIZE_256)
-        dVsize = DSIZE_256;
-    else if (dVsize <= DSIZE_512)
-        dVsize = DSIZE_512;
-
-    if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
+    const auto &configMap = GetGqaSplitConfigMap();
+    auto it = configMap.find(std::make_tuple(sOuter, sInner, dSize, dVsize));
+    if (it != configMap.end()) {
+        tilingKeyInfo_.config = it->second;
+        if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128 &&
+            fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
             tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128;
-        } else {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
         }
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_192 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_128 && dSize == DSIZE_576 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128; // qkvd不等长
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128; // qkvd不等长
     } else {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
     }
@@ -744,7 +752,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
         tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
         UpdateTilingKeyHasRope();
 
-        // tilingKeyInfo_.isPa = fiaInfo_->pageAttentionFlag;
         tilingKeyInfo_.kvLayoutType = tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType;
 
         if (fiaInfo_->pageAttentionFlag) {
@@ -761,7 +768,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
 
         tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
         tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
-        // tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
         tilingKeyInfo_.isReconstructTemp = true;
     }
 }
@@ -813,7 +819,6 @@ void FiaTilingNonQuantArch35::CalcWorkspaceSize()
 
     workspaceSize_ = sysWorkspaceSize;
 
-    // TODO，确认这段workspace分配逻辑
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
@@ -922,7 +927,7 @@ void FiaTilingNonQuantArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
-    tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout); // TODO 后续整改
+    tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
 
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
@@ -959,6 +964,17 @@ void FiaTilingNonQuantArch35::SetFATilingData()
     tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit || needInit_;
+
+    if (!fiaInfo_->isTensorV1) {
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
+        if (fiaInfo_->kRopeStrides != nullptr) {
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
+        }
+    }
 }
 
 ge::graphStatus FiaTilingNonQuantArch35::SetTilingData(FusedInferAttentionScoreTilingData &tilingData)
@@ -1064,5 +1080,5 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(
     FusedInferAttentionScore, FiaTilingNonQuantArch35, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}),
-    28); // TODO，29改28，注册时未区分npu arch，会存在多重定义，是否要修改fia_tiling_templates_registry.h？
+    28); // 29改28，注册时未区分npu arch，会存在多重定义
 } // namespace optiling

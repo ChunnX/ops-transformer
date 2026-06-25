@@ -128,7 +128,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 
     if (keyDesc != nullptr) {
         if (keyDesc->GetDataType() != queryDtype) {
-            std::string reason = "The dtype of key must be the same as dtype(" + ToString(queryDtype) + ") of query.";
+            std::string reason = "The dtype of key must be the same as dtype(" + ToString(queryDtype) + ") of query";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "key",
                 ToString(keyDesc->GetDataType()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
@@ -137,7 +137,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 
     if (valueDesc != nullptr) {
         if (valueDesc->GetDataType() != queryDtype) {
-            std::string reason = "The dtype of value must be the same as dtype(" + ToString(queryDtype) + ") of query.";
+            std::string reason = "The dtype of value must be the same as dtype(" + ToString(queryDtype) + ") of query";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "value",
                 ToString(valueDesc->GetDataType()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
@@ -147,7 +147,7 @@ ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
     if (attnOutDesc != nullptr) {
         if (attnOutDesc->GetDataType() != queryDtype) {
             std::string reason = "The dtype of attn_out must be the same as dtype(" +
-                ToString(queryDtype) + ") of query.";
+                ToString(queryDtype) + ") of query";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "attn_out",
                 ToString(attnOutDesc->GetDataType()).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
@@ -193,7 +193,7 @@ ge::graphStatus CommonChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
 ge::graphStatus CommonChecker::CheckAxis(const FaTilingInfo &faInfo)
 {
     if (faInfo.bSize >= B_LIMIT || faInfo.bSize <= 0) {
-        std::string reason = "The value of B must be within the range (0, " + std::to_string(B_LIMIT) + ").";
+        std::string reason = "The value of B must be within the range (0, " + std::to_string(B_LIMIT) + ")";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "axis B",
             std::to_string(faInfo.bSize).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
@@ -343,7 +343,7 @@ ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FaTilingInfo &
 
     if (faInfo.blockSize % kvBlockElemNum != 0) {
         std::string reason = "The value of block_size must be a multiple of " + std::to_string(kvBlockElemNum) +
-            " (32 / sizeof(kv_dtype)).";
+            " (32 / sizeof(kv_dtype))";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "block_size",
             std::to_string(faInfo.blockSize).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
@@ -380,12 +380,12 @@ ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
             return CheckKVShapeForPageAttention(faInfo);
         }
         std::string reason = "block_table cannot be empty when layout_kv is " +
-            LayoutToSerialString(faInfo.kvLayout) + ".";
+            LayoutToSerialString(faInfo.kvLayout);
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "block_table", reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
-    std::string reason = "layout_kv: " + LayoutToSerialString(faInfo.kvLayout) + " is not supported.";
+    std::string reason = "layout_kv: " + LayoutToSerialString(faInfo.kvLayout) + " is not supported";
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv",
         LayoutToSerialString(faInfo.kvLayout).c_str(), reason.c_str());
     return ge::GRAPH_FAILED;

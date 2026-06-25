@@ -144,8 +144,8 @@ protected:
 
     ge::graphStatus GetInputShapes(gert::Shape &xShape, gert::Shape &expertIdxShape);
     ge::graphStatus GetAttrsParams();
-    ge::graphStatus ValidateInputShapes(const gert::Shape &xShape, const gert::Shape &expertIdxShape);
-    ge::graphStatus ValidateAttrsParams(const gert::Shape &xShape);
+    ge::graphStatus ValidateInputShapes(const gert::Shape &xShape, const gert::Shape &expertIdxShape) const;
+    ge::graphStatus ValidateAttrsParams(const gert::Shape &xShape) const;
     ge::graphStatus ProcessParamsAndSetTilingData(const gert::Shape &xShape, const gert::Shape &expertIdxShape);
     ge::graphStatus ValidateExpandedXShape(const gert::Shape &expandedXShape, bool isRegbase);
 

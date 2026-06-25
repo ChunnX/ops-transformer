@@ -59,17 +59,24 @@ constexpr T GetOrDefault(const T* ptr, T defaultValue)
 
 bool CheckCoreNum(gert::TilingContext *context, uint32_t aicNum, uint32_t aivNum)
 {
-    OP_CHECK_IF(aicNum <= 0 || aivNum <= 0,
-        OP_LOGE(OP_NAME, "Invalid aicNum[%u] or aivNum[%u], expect greater than 0",
-            aicNum, aivNum),
-        return false);
+    if (unlikely(aicNum <= 0)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "aicNum", std::to_string(aicNum),
+            "The aicNum must be greater than 0");
+        return false;
+    }
 
-    OP_CHECK_IF(aicNum * AIC_AIV_CORE_RATIO != aivNum,
-        OP_LOGE(OP_NAME,
-            "Invalid cube/vector core ratio. Expected cube:vector = 1:%u, "
-            "but got cube=%u, vector=%u",
-            AIC_AIV_CORE_RATIO, aicNum, aivNum),
-        return false);
+    if (unlikely(aivNum <= 0)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "aivNum", std::to_string(aivNum),
+            "The aivNum must be greater than 0");
+        return false;
+    }
+
+    if (unlikely(aicNum * AIC_AIV_CORE_RATIO != aivNum)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "AIC_AIV_CORE_RATIO",
+            std::to_string(aicNum) + ":" + std::to_string(aivNum),
+            "The cube:vector core ratio must be 1:" + std::to_string(AIC_AIV_CORE_RATIO));
+        return false;
+    }
     return true;
 }
 
@@ -107,66 +114,66 @@ bool IsDynamicInputEmpty(const gert::TilingContext& context, uint32_t index)
     return storageShape.GetShapeSize() == 0 || storageShape.GetShapeSize() == 1;
 }
 
-ge::graphStatus CheckTilingDataCapacity(gert::TilingContext& context, uint64_t tilingDataSize)
+bool CheckTilingDataCapacity(gert::TilingContext& context, uint64_t tilingDataSize)
 {
     const auto *rawTiling = context.GetRawTilingData();
     OP_CHECK_IF(rawTiling == nullptr,
         OP_LOGE(OP_NAME, "GetRawTilingData can not be empty."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(rawTiling->GetData() == nullptr,
         OP_LOGE(OP_NAME, "RawTilingData cannot be a null pointer."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(rawTiling->GetCapacity() < tilingDataSize,
         OP_LOGE(OP_NAME,
             "context tiling data capacity %zu < actual tiling data size %zu.",
             rawTiling->GetCapacity(), tilingDataSize),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
+        return false);
+    return true;
 }
 
-ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSize)
+bool CheckContext(gert::TilingContext& context, uint64_t tilingDataSize)
 {
     const auto *attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr,
         OP_LOGE(OP_NAME, "Function context.GetAttrs() failed!"),
-        return ge::GRAPH_FAILED);
+        return false);
 
     OP_CHECK_IF(context.GetInputDesc(X_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc x is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetInputDesc(X_SCALE_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc xScale is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetInputDesc(GROUPLIST_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc groupList is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc weight is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_SCALE_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "InputDesc weightScale is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetOutputDesc(Y_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "OutputDesc y is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
     OP_CHECK_IF(context.GetOutputDesc(Y_SCALE_INDEX) == nullptr,
         OP_LOGE(OP_NAME, "OutputDesc yScale is nullptr."),
-        return ge::GRAPH_FAILED);
+        return false);
 
     if (unlikely(!IsDynamicInputEmpty(context, WEIGHT_ASSIST_MATRIX_INDEX))) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "weightAssistMatrix",
             "not nullptr", "weightAssistMatrix is not supported, please pass a null pointer or an empty list");
-        return ge::GRAPH_FAILED;
+        return false;
     }
     if (unlikely(context.GetOptionalInputDesc(BIAS_INDEX) != nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "bias",
             "not nullptr", "bias is not supported, please pass a null pointer");
-        return ge::GRAPH_FAILED;
+        return false;
     }
     if (unlikely(context.GetOptionalInputDesc(SMOOTH_SCALE_INDEX) != nullptr)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "smoothScale",
             "not nullptr", "smoothScale is not supported, please pass a null pointer");
-        return ge::GRAPH_FAILED;
+        return false;
     }
 
     return CheckTilingDataCapacity(context, tilingDataSize);
@@ -209,7 +216,8 @@ bool CheckAttrs([[maybe_unused]] const gert::TilingContext& context, const GMMSQ
     if (unlikely(params.dequantDtype != ge::DataType::DT_FLOAT)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "dequantDtype",
             std::to_string(params.dequantDtype),
-            "dequantDtype must be " + std::to_string(ge::DataType::DT_FLOAT) + " (DT_FLOAT)");
+            "dequantDtype must be " + std::to_string(ge::DataType::DT_FLOAT) +
+            " (" + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT) + ")");
         return false;
     }
 
@@ -223,7 +231,8 @@ bool CheckAttrs([[maybe_unused]] const gert::TilingContext& context, const GMMSQ
     if (unlikely(params.quantDtype != ge::DataType::DT_FLOAT8_E4M3FN)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "quantDtype",
             std::to_string(params.quantDtype),
-            "quantDtype must be " + std::to_string(ge::DataType::DT_FLOAT8_E4M3FN) + " (DT_FLOAT8_E4M3FN)");
+            "quantDtype must be " + std::to_string(ge::DataType::DT_FLOAT8_E4M3FN) +
+            " (" + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E4M3FN) + ")");
         return false;
     }
 
@@ -252,38 +261,38 @@ bool CheckDtypes(const gert::TilingContext& context, const GMMSQWeightQuantInput
     const auto *wScaleDesc = context.GetInputDesc(WEIGHT_SCALE_INDEX);
     const auto *groupListDesc = context.GetInputDesc(GROUPLIST_INDEX);
 
-    if (unlikely(xDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)) {
+    if (unlikely(xDesc->GetDataType() != ge::DataType::DT_FLOAT8_E4M3FN)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "x",
             ge::TypeUtils::DataTypeToSerialString(xDesc->GetDataType()),
-            "The dtype of x must be FLOAT8_E4M3FN");
+            "The dtype of x must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E4M3FN));
         return false;
     }
 
-    if (unlikely(wDesc->GetDataType() != ge::DT_FLOAT4_E2M1)) {
+    if (unlikely(wDesc->GetDataType() != ge::DataType::DT_FLOAT4_E2M1)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "weight",
             ge::TypeUtils::DataTypeToSerialString(wDesc->GetDataType()),
-            "The dtype of weight must be FLOAT4_E2M1");
+            "The dtype of weight must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT4_E2M1));
         return false;
     }
 
-    if (unlikely(xScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0)) {
+    if (unlikely(xScaleDesc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "xScale",
             ge::TypeUtils::DataTypeToSerialString(xScaleDesc->GetDataType()),
-            "The dtype of xScale must be FLOAT8_E8M0");
+            "The dtype of xScale must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E8M0));
         return false;
     }
 
-    if (unlikely(wScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0)) {
+    if (unlikely(wScaleDesc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "weightScale",
             ge::TypeUtils::DataTypeToSerialString(wScaleDesc->GetDataType()),
-            "The dtype of weightScale must be FLOAT8_E8M0");
+            "The dtype of weightScale must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT8_E8M0));
         return false;
     }
 
-    if (unlikely(groupListDesc->GetDataType() != ge::DT_INT64)) {
+    if (unlikely(groupListDesc->GetDataType() != ge::DataType::DT_INT64)) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "groupList",
             ge::TypeUtils::DataTypeToSerialString(groupListDesc->GetDataType()),
-            "The dtype of groupList must be INT64");
+            "The dtype of groupList must be " + ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_INT64));
         return false;
     }
 
@@ -549,38 +558,35 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetPlatformInfo()
         compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_, compileInfoPtr_->ubSize_,
         compileInfoPtr_->baseM_, compileInfoPtr_->baseN_, compileInfoPtr_->supportL12BtBf16);
 
-    OP_CHECK_IF(!CheckCoreNum(context_, compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_),
-        OP_LOGE(OP_NAME, "Invalid core number ratio"),
-        return ge::GRAPH_FAILED);
+    if (!CheckCoreNum(context_, compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetShapeAttrsInfo()
 {
-    OP_CHECK_IF(!GetContext(inputParams_, *context_),
-        OP_LOGE(OP_NAME, "Failed to get context."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckContext(*context_, sizeof(GMMSQArch35Tiling::GMMSQWeightQuantTilingData)) != ge::GRAPH_SUCCESS,
-        OP_LOGE(OP_NAME, "Invalid context."),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(!GetAttrs(inputParams_, *context_),
-        OP_LOGE(OP_NAME, "Failed to GetAttrs."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CheckAttrs(*context_, inputParams_),
-        OP_LOGE(OP_NAME, "Failed to check attrs."),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(!CheckDtypes(*context_, inputParams_),
-        OP_LOGE(OP_NAME, "Failed to check dtypes."),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(!GetInputs(inputParams_, *context_),
-        OP_LOGE(OP_NAME, "Failed to GetInputs."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CheckInputs(*context_, inputParams_),
-        OP_LOGE(OP_NAME, "Failed to check inputs."),
-        return ge::GRAPH_FAILED);
+    if (!GetContext(inputParams_, *context_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckContext(*context_, sizeof(GMMSQArch35Tiling::GMMSQWeightQuantTilingData))) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!GetAttrs(inputParams_, *context_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckAttrs(*context_, inputParams_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckDtypes(*context_, inputParams_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!GetInputs(inputParams_, *context_)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (!CheckInputs(*context_, inputParams_)) {
+        return ge::GRAPH_FAILED;
+    }
 
     PrintInputParams(*context_, inputParams_);
     return ge::GRAPH_SUCCESS;
@@ -631,11 +637,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::PostTiling()
             tilingData_.coreNum, sizeof(tilingData_));
 
     context_->SetBlockDim(tilingData_.coreNum);
-    const auto *rawTiling = context_->GetRawTilingData();
+    auto *rawTiling = context_->GetRawTilingData();
     OP_CHECK_IF(rawTiling == nullptr, OP_LOGE(OP_NAME, "RawTilingData is nullptr."),
                 return ge::GRAPH_FAILED);
-    errno_t ret = memcpy_s(const_cast<void *>(rawTiling->GetData()), rawTiling->GetCapacity(),
-                           reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
+    errno_t ret = memcpy_s(rawTiling->GetData(), rawTiling->GetCapacity(),
+                           static_cast<void *>(&tilingData_), sizeof(tilingData_));
     if (ret != EOK) {
         OP_LOGE(OP_NAME, "memcpy_s failed, ret = %d", ret);
         return ge::GRAPH_FAILED;
@@ -649,11 +655,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::PostTiling()
 void GroupedMatmulSwigluQuantV2WeightQuantTiling::Reset()
 {
     tilingData_ = GMMSQArch35Tiling::GMMSQWeightQuantTilingData();
-    const auto *rawTiling = context_->GetRawTilingData();
+    auto *rawTiling = context_->GetRawTilingData();
     if (rawTiling == nullptr || rawTiling->GetData() == nullptr) {
         return;
     }
-    OP_CHECK_IF(memset_s(const_cast<void *>(rawTiling->GetData()), rawTiling->GetCapacity(), 0,
+    OP_CHECK_IF(memset_s(rawTiling->GetData(), rawTiling->GetCapacity(), 0,
                          rawTiling->GetCapacity()) != EOK,
                 OP_LOGE(OP_NAME, "Fail to clear tiling data"), return);
 }

@@ -24,6 +24,7 @@ using AscendC::QuePosition;
 namespace regbaseutil {
 constexpr uint16_t regBytes = 256;
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+constexpr float SINK_MIN_INF = -3.40E+38;
 enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1, DN_INDEX = 2, NZ_INDEX = 3};
 enum class DTemplateType {
     Aligned16 = 16,
@@ -82,6 +83,7 @@ struct RunParamStr;
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
     uint32_t s1RealSize; \
     uint32_t s1RealSizeAlign32;    /* dn场景使用 */ \
+    uint32_t s1RealSizeAlign64;    /* dn场景使用 */ \
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
     int64_t tensorQOffset;         /* query的offset souter层确定 */ \
@@ -150,6 +152,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t goIdx = 0; /* g轴的index */ \
     int32_t s1RealSize; \
     int32_t s1RealSizeAlign32; \
+    int32_t s1RealSizeAlign64; \
     int32_t halfS1RealSize; /* vector侧实际的s1基本块大小，如果Cube基本块=128，那么halfS1RealSize=64 */ \
     int32_t firstHalfS1RealSize; /* 当s1RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s1 size */ \
     int32_t s2RealSize; /* s2方向基本块的真实长度 */ \
@@ -169,7 +172,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t attentionOutOffset; \
     uint64_t s1ScaleNumAcc; \
     uint64_t s2ScaleNumAcc; \
-    int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
+    int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s1之和（每个batch的s1不同） */ \
     int64_t s2SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
     int64_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
     int64_t actualS2Size; /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */ \
@@ -296,7 +299,14 @@ struct RunInfo<false> {
     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
     bool learnableSinkFlag = false; /* attentionsink */ \
     float pScale;\
-    float sinkValue = 0.0f;
+    float sinkValue = SINK_MIN_INF; \
+    /* strides */ \
+    uint64_t keyBnStride; \
+    uint64_t keyN2Stride; \
+    uint64_t valueBnStride; \
+    uint64_t valueN2Stride; \
+    uint64_t keyRopeBnStride; \
+    uint64_t keyRopeN2Stride
 
 
 #define ROPE_INFO \
@@ -518,6 +528,13 @@ struct CVSharedParams<true, true> {
     int32_t blockTableDim2;
     int32_t paBlockNumSum;
     uint32_t paLayoutType;
+
+    uint64_t keyBnStride;
+    uint64_t keyN2Stride;
+    uint64_t valueBnStride;
+    uint64_t valueN2Stride;
+    uint64_t keyRopeBnStride;
+    uint64_t keyRopeN2Stride;
 
     // prefix
     bool isActualSharedPrefixLenNull;

@@ -19,55 +19,21 @@
 #include "kernel_tiling/kernel_tiling.h"
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
-// Inputs Index
-constexpr uint32_t QUERY_INPUT_INDEX = 0;
-constexpr uint32_t KEY_INPUT_INDEX = 1;
-constexpr uint32_t WEIGHT_INPUT_INDEX = 2;
-constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
-constexpr uint32_t ATTN_SOFTMAX_L1_NORM_INPUT_INDEX = 4;
-constexpr uint32_t CU_SEQLENS_QUERY_INPUT_INDEX = 5;
-constexpr uint32_t CU_SEQLENS_KEY_INPUT_INDEX = 6;
-constexpr uint32_t SEQUSED_QUERY_INPUT_INDEX = 7;
-constexpr uint32_t SEQUSED_KEY_INPUT_INDEX = 8;
-constexpr uint32_t CMP_RESIDUAL_KEY_INPUT_INDEX = 9;
-constexpr uint32_t METADATA_INPUT_INDEX = 10;
 
-// Outputs Index
-constexpr uint32_t D_QUERY_OUTPUT_INDEX = 0;
-constexpr uint32_t D_KEY_OUTPUT_INDEX = 1;
-constexpr uint32_t D_WEIGHTS_OUTPUT_INDEX = 2;
-constexpr uint32_t SOFTMAX_OUT_OUTPUT_INDEX = 3;
-
-// Attributes Index
-constexpr uint32_t LAYOUT_Q_ATTR_INDEX = 0;
-constexpr uint32_t LAYOUT_K_ATTR_INDEX = 1;
-constexpr uint32_t MASK_MODE_ATTR_INDEX = 2;
-constexpr uint32_t CMP_RATIO_ATTR_INDEX = 3;
-
-// Dim Num
-constexpr size_t DIM_NUM_TWO = 2;
-constexpr size_t DIM_NUM_THREE = 3;
-constexpr size_t DIM_NUM_FOUR = 4;
 // 常量
-constexpr uint32_t MAX_BLOCK_SIZE = 1024;
-constexpr uint32_t COPYND2NZ_SRC_STRIDE_LIMITATION = 65535;
-constexpr uint32_t NUM_BYTES_FLOAT = 4;
-constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
-constexpr uint32_t NUM_BYTES_BF16 = 2;
-constexpr uint32_t BYTE_BLOCK = 32;
 const uint32_t SLI_MAX_AIC_CORE_NUM = 26; // 25 + 1 保证数组8字节对齐
 
 // ------------------公共定义--------------------------
 constexpr uint32_t MAX_CORE_NUM = 25; // 目前使用AIC核的最大值为25
 
-struct InnerSplitParams {
-    uint32_t s1GBaseSize = 1;
-    uint32_t s2BaseSize = 1;
-};
+// struct InnerSplitParams {
+//     uint32_t s1GBaseSize = 1;
+//     uint32_t s2BaseSize = 1;
+// };
 
-enum class SparseMode : uint32_t {
-    RIGHT_DOWN_CAUSAL = 3  // 右下角点划分的下三角部分
-};
+// enum class SparseMode : uint32_t {
+//     RIGHT_DOWN_CAUSAL = 3  // 右下角点划分的下三角部分
+// };
 
 // -----------算子TilingData定义---------------
 class SLIKLLossGradBaseParams {

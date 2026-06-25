@@ -183,19 +183,19 @@ remove_init_py() {
 remove_whl_package() {
   local python_dir="${TARGET_VERSION_DIR}/python/site-packages"
 
-  if [ -d "${python_dir}/npu_ops_transformer" ]; then
-    logandprint "[INFO]: Removing npu_ops_transformer whl package from ${python_dir}"
+  if [ -d "${python_dir}/cann_ops_transformer" ]; then
+    logandprint "[INFO]: Removing cann_ops_transformer whl package from ${python_dir}"
 
     # 尝试使用 pip 卸载
     if command -v pip3 &>/dev/null; then
-      pip3 uninstall -y npu_ops_transformer --target="${python_dir}" 2>/dev/null
+      pip3 uninstall -y cann_ops_transformer --target="${python_dir}" 2>/dev/null
     fi
 
     # 直接删除目录（确保清理干净）
-    rm -rf "${python_dir}/npu_ops_transformer" 2>/dev/null
-    rm -f ${python_dir}/npu_ops_transformer-*.whl 2>/dev/null
-    rm -rf ${python_dir}/npu_ops_transformer-*.egg-info 2>/dev/null
-    rm -rf ${python_dir}/npu_ops_transformer-*.dist-info 2>/dev/null
+    rm -rf "${python_dir}/cann_ops_transformer" 2>/dev/null
+    rm -f ${python_dir}/cann_ops_transformer-*.whl 2>/dev/null
+    rm -rf ${python_dir}/cann_ops_transformer-*.egg-info 2>/dev/null
+    rm -rf ${python_dir}/cann_ops_transformer-*.dist-info 2>/dev/null
 
     # 如果目录为空，删除它
     if [ -d "${python_dir}" ] && [ -z "$(ls -A ${python_dir} 2>/dev/null)" ]; then
@@ -207,7 +207,7 @@ remove_whl_package() {
       fi
     fi
 
-    logandprint "[INFO]: npu_ops_transformer whl package removed"
+    logandprint "[INFO]: cann_ops_transformer whl package removed"
   fi
 }
 
