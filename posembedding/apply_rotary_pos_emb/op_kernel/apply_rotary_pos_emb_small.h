@@ -91,8 +91,8 @@ __aicore__ inline void ARPESmall<T1, T2>::Init(
     repeatParams.src0BlkStride = 1;
     repeatParams.src1BlkStride = 1;
     // 【泛化需求】repeat stride使用computeAlignedLastDim，使各头按对齐后长度排布
-    repeatParams.dstRepStride = dstRepSBr;
-    repeatParams.src0RepStride = dstRepSBr;
+    repeatParams.dstRepStride = tilingData->dstRepSBr;
+    repeatParams.src0RepStride = tilingData->dstRepSBr;
     repeatParams.src1RepStride = 0;
 
 #if ORIG_DTYPE_QUERY == DT_BF16
