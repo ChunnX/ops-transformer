@@ -41,6 +41,7 @@ public:
         TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
     __aicore__ inline void SendCrossCoreFlag();
     __aicore__ inline void InitLocalBuffer();
+    __aicore__ inline void UninitLocalBuffer();
     __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<Q_T> &l1Tensor, const GlobalTensor<Q_T> &gmTensor, 
         uint32_t ndNum, uint32_t nValue, uint32_t dValue, uint32_t srcNdMatrixStride, uint32_t srcDValue, uint32_t dstNzC0Stride, uint32_t dstNzMatrixStride);
     __aicore__ inline void IterateBmm1(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, const int64_t &subTaskId,
@@ -93,6 +94,16 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitLocalB
     mmL0ABuffers.Init(l0aBufferManager, (L0A_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES);  // 双缓冲 l0a内存大小为32K
     mmL0BBuffers.Init(l0bBufferManager, (L0B_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES);  // 双缓冲 l0b内存大小32K
     mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / DOUBLE_BUFFER_NUM) * KB_TO_BYTES); // 双缓冲 l0c内存大小128K
+}
+
+ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::UninitLocalBuffer()
+{
+    // Uninit, remove unnecessary setflag
+    mm1AL1Buffers.Uninit(*l1BufferManagerPtr);
+    mmL0ABuffers.Uninit(l0aBufferManager);  
+    mmL0BBuffers.Uninit(l0bBufferManager);  
+    mmL0CBuffers.Uninit(l0cBufferManager); 
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
@@ -254,6 +265,7 @@ public:
         TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr) {}
     __aicore__ inline void SendCrossCoreFlag() {}
     __aicore__ inline void InitLocalBuffer() {}
+    __aicore__ inline void UninitLocalBuffer() {}
 };
 
 template <typename T>
