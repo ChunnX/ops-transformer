@@ -321,6 +321,20 @@ ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const F
     auto deqScaleKShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_K));
     auto deqScaleVShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_V));
     auto deqScaleDyShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_DY));
+    
+    if (fBaseParams.queryType != ge::DT_HIFLOAT8) {
+        std::string dScaleShapesMsg = "{" + Ops::Base::ToString(deqScaleQShape->GetStorageShape()) + ", " +
+                                      Ops::Base::ToString(deqScaleKShape->GetStorageShape()) + ", " +
+                                      Ops::Base::ToString(deqScaleVShape->GetStorageShape()) + ", " +
+                                      Ops::Base::ToString(deqScaleDyShape->GetStorageShape()) + "}";
+        OP_CHECK_IF(deqScaleQShape != nullptr || deqScaleKShape != nullptr || deqScaleVShape != nullptr ||
+                    deqScaleDyShape != nullptr,
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad",
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional", dScaleShapesMsg.c_str(),
+                        "When the dType of input is not HIFLOAT8, "
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional and dScaleDyOptional must be empty tensor"),
+                    return ge::GRAPH_FAILED);
+    }
     if (deqScaleQShape != nullptr && deqScaleKShape != nullptr
         && deqScaleVShape != nullptr && deqScaleDyShape != nullptr) {
         auto deqScaleQStorageShape = deqScaleQShape->GetStorageShape();
@@ -367,14 +381,14 @@ ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const F
                 return ge::GRAPH_FAILED);
         }
 
-        std::string deqScaleKvShapeMsg = Ops::Base::ToString(deqScaleKStorageShape) +
-                                         Ops::Base::ToString(deqScaleVStorageShape);
+        std::string deqScaleKvShapeMsg = "{" + Ops::Base::ToString(deqScaleKStorageShape) + ", " +
+                                         Ops::Base::ToString(deqScaleVStorageShape) + "}";
         OP_CHECK_IF(deqScaleKStorageShape != deqScaleVStorageShape,
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dScaleKOptional, dScaleVOptional",
                 deqScaleKvShapeMsg.c_str(), "The shape of dScaleKOptional and dScaleVOptional must be same"),
             return ge::GRAPH_FAILED);
-        std::string deqScaleQdyShapeMsg = Ops::Base::ToString(deqScaleQStorageShape) +
-                                          Ops::Base::ToString(deqScaleDyStorageShape);
+        std::string deqScaleQdyShapeMsg = "{" + Ops::Base::ToString(deqScaleQStorageShape) + ", " +
+                                          Ops::Base::ToString(deqScaleDyStorageShape) + "}";
         OP_CHECK_IF(deqScaleQStorageShape != deqScaleDyStorageShape,
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dScaleQOptional, dScaleDyOptional",
                 deqScaleQdyShapeMsg.c_str(), "The shape of dScaleQOptional and dScaleDyOptional must be same"),
