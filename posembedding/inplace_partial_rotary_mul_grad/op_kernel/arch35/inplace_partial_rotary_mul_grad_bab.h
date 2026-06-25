@@ -56,7 +56,6 @@ private:
     GlobalTensor<TCOS> sinGm_;
 
     const InplacePartialRotaryMulGradRegbaseTilingData *tilingData_{nullptr};
-    DataCopyPadExtParams<TDY> padParamsDy_{false, 0, 0, static_cast<TDY>(0)};
     uint32_t dSplitSizeDy_{0};
     uint32_t dSplitSizeCos_{0};
     int64_t dAlignLenDy_{0};

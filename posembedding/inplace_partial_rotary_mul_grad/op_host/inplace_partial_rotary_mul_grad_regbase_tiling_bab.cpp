@@ -222,6 +222,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::PostTiling()
     rawTilingDataPtr->SetDataSize(tilingDataBab_.GetDataSize());
 
     tilingKey_ = static_cast<uint64_t>(TILING_KEY_BAB);
+    context_->SetTilingKey(tilingKey_);
     context_->SetBlockDim(usedCoreNum_);
 
     std::cout << "=== PostTiling InplacePartialRotaryMulGrad BAB ===" << std::endl
