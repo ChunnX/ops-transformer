@@ -15,7 +15,7 @@
 
 #ifndef __MHC_POST_TILLING_DATA_H__
 #define __MHC_POST_TILLING_DATA_H__
- 
+
 struct MhcPostTilingData {
     int64_t n;
     int64_t d;
