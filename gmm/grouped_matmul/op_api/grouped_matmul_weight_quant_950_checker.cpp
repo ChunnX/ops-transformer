@@ -80,6 +80,12 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4() const
     return (xDtype_ == ge::DT_FLOAT16 || xDtype_ == ge::DT_BF16) && weightDtype_ == ge::DT_INT4;
 }
 
+bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsWeightNzMxSingleMultiSingle() const
+{
+    return gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz && gmmParams_.groupType == SPLIT_M &&
+           gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() > 1 && gmmParams_.y->Size() == 1;
+}
+
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorNotNull(size_t idx) const
 {
     CHECK_RET(CheckTensorNotNullPtr(gmmParams_.x, idx, "x") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
@@ -814,7 +820,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupTypeScenario(
     } else {
         errorMessage = gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ? "When splited axis is M"
                                                                        : "When groupType is 0 (split M)";
-        if (unlikely(!(gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() == 1 && gmmParams_.y->Size() == 1))) {
+        if (unlikely(!(gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() == 1 && gmmParams_.y->Size() == 1) &&
+                     !IsWeightNzMxSingleMultiSingle())) {
             std::string incorrectSizes = "x size: " + std::to_string(gmmParams_.x->Size()) +
                 ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
                 ", y size: " + std::to_string(gmmParams_.y->Size());
@@ -865,6 +872,12 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorListSize() const
 {
+    if (IsWeightNzMxSingleMultiSingle() && gmmParams_.biasOptional != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "biasOptional", "not nullptr",
+            "BiasOptional is not supported in WeightNz MX single x, multi weight, single y scenario");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     if (gmmParams_.antiquantScaleOptional != nullptr) {
         if (unlikely(gmmParams_.antiquantScaleOptional->Size() != gmmParams_.weight->Size())) {
             std::string incorrectSizes = "antiquantScaleOptional size: " +
