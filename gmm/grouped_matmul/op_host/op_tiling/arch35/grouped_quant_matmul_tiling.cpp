@@ -141,11 +141,13 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
                     std::to_string(weightTensorNum) + ", " + std::to_string(inputParams_.groupNum),
                     "in weightNz single-multi-single case, the tensor num of weight must equal group num"),
                 return false);
-    OP_CHECK_IF(scaleTensorNum != weightTensorNum,
-                OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "scale, weight",
-                    std::to_string(scaleTensorNum) + ", " + std::to_string(weightTensorNum),
-                    "in weightNz single-multi-single case, the tensor num of scale must equal weight"),
-                return false);
+    if (scaleTensorNum != 0 && inputParams_.cDtype != ge::DT_INT32) {
+        OP_CHECK_IF(scaleTensorNum != weightTensorNum,
+                    OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "scale, weight",
+                        std::to_string(scaleTensorNum) + ", " + std::to_string(weightTensorNum),
+                        "in weightNz single-multi-single case, the tensor num of scale must equal weight"),
+                    return false);
+    }
     return true;
 }
 
