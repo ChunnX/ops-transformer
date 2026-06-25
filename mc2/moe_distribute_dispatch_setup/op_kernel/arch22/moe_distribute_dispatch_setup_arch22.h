@@ -22,8 +22,8 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "../moe_distribute_dispatch/moe_distribute_base.h"
-#include "../moe_distribute_dispatch_setup/moe_distribute_dispatch_setup_tiling.h"
+#include "../moe_distribute_base.h"
+#include "../moe_distribute_dispatch_setup_tiling.h"
 
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
