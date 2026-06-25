@@ -871,7 +871,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckOptionalListSize(
     const aclTensorList *optional, const aclTensorList *reference,
-    const char *optionalName, const char *referenceName, const char *opName)
+    const char *optionalName, const char *referenceName,
+    const char *displayName, const char *combinedName, const char *opName)
 {
     if (optional == nullptr) {
         return ACLNN_SUCCESS;
@@ -880,10 +881,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckOptionalListSize(
         std::string incorrectSizes = std::string(optionalName) + " size: " +
             std::to_string(optional->Size()) + ", " + std::string(referenceName) +
             " size: " + std::to_string(reference->Size());
-        std::string combinedName = std::string(optionalName) + ", " + std::string(referenceName);
-        std::string reason = std::string(optionalName) + " size must be equal to " +
+        std::string reason = std::string(displayName) + " size must be equal to " +
             std::string(referenceName) + " size";
-        OP_LOGE_FOR_INVALID_LISTSIZE(opName, combinedName.c_str(), incorrectSizes, reason.c_str());
+        OP_LOGE_FOR_INVALID_LISTSIZE(opName, combinedName, incorrectSizes, reason.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -892,19 +892,29 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckOptionalListSize(
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorListSize() const
 {
     CHECK_RET(CheckOptionalListSize(gmmParams_.antiquantScaleOptional, gmmParams_.weight,
-                                    "antiquantScaleOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+                                    "antiquantScaleOptional", "weight",
+                                    "AntiquantScaleOptional", "antiquantScaleOptional, weight",
+                                    GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckOptionalListSize(gmmParams_.antiquantOffsetOptional, gmmParams_.weight,
-                                    "antiquantOffsetOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+                                    "antiquantOffsetOptional", "weight",
+                                    "AntiquantOffsetOptional", "antiquantOffsetOptional, weight",
+                                    GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckOptionalListSize(gmmParams_.biasOptional, gmmParams_.weight,
-                                    "biasOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+                                    "biasOptional", "weight",
+                                    "BiasOptional", "biasOptional, weight",
+                                    GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckOptionalListSize(gmmParams_.perTokenScaleOptional, gmmParams_.x,
-                                    "perTokenScaleOptional", "x", GetAclnnName()) == ACLNN_SUCCESS,
+                                    "perTokenScaleOptional", "x",
+                                    "PerTokenScaleOptional", "perTokenScaleOptional",
+                                    GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckOptionalListSize(gmmParams_.scaleOptional, gmmParams_.weight,
-                                    "scaleOptional", "weight", GetAclnnName()) == ACLNN_SUCCESS,
+                                    "scaleOptional", "weight",
+                                    "ScaleOptional", "scaleOptional, weight",
+                                    GetAclnnName()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }

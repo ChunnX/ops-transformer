@@ -52,6 +52,7 @@ private:
     aclnnStatus CheckS8S4NZScaleShape() const;
     static aclnnStatus CheckOptionalListSize(const aclTensorList *optional, const aclTensorList *reference,
                                              const char *optionalName, const char *referenceName,
+                                             const char *displayName, const char *combinedName,
                                              const char *opName);
     aclnnStatus CheckGroupSize(size_t idx) const;
 
