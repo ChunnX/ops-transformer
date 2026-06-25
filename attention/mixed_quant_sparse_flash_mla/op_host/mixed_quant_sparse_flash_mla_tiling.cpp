@@ -31,7 +31,7 @@ struct QSMLACompileInfo {
 // --------------------------QSMLAInfoParser类成员函数定义-------------------------------------
 ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE(opName_, "Shape of tensor q is nullptr"),
+    OP_CHECK_IF(opParamInfo_.q.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor q"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -55,7 +55,7 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredParaExistence() const
 ge::graphStatus QSMLAInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("MixedQuantSparseFlashMla", "opName got from TilingContext is nullptr");
+        OP_LOGE_WITH_INVALID_INPUT("MixedQuantSparseFlashMla", "opName got from TilingContext");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -357,7 +357,8 @@ ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
     }
     uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
     if (oriDimNum != DIM_NUM_TWO) {
-        OP_LOGE(opName_, "the dim num of ori_block_table is %u, it should be %u.", oriDimNum, DIM_NUM_TWO);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "ori_block_table",
+            std::to_string(oriDimNum).c_str(), std::to_string(DIM_NUM_TWO).c_str());
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
@@ -370,7 +371,8 @@ ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
     if (opParamInfo_.cmpBlockTable.tensor != nullptr) {
         uint32_t cmpDimNum = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDimNum();
         if (cmpDimNum != DIM_NUM_TWO) {
-            OP_LOGE(opName_, "the dim num of cmp_block_table is %u, it should be %u.", cmpDimNum, DIM_NUM_TWO);
+            OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "cmp_block_table",
+                std::to_string(cmpDimNum).c_str(), std::to_string(DIM_NUM_TWO).c_str());
             return ge::GRAPH_FAILED;
         }
         if (opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
