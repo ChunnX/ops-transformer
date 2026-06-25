@@ -45,11 +45,11 @@ def is_arch35_soc(device_name=None):
     if device_name is None:
         try:
             device_name = torch_npu.npu.get_device_name(torch_npu.npu.current_device())
-        except Exception:  # pylint: disable=broad-except
+        except Exception:
             return False
     # Imported lazily: importing the front-end module triggers a JIT kernel build,
     # which util.py callers (mask helpers) should not pay for unless they ask for SoC info.
-    from cann_ops_transformer.ops.block_sparse_attention import (  # pylint: disable=import-outside-toplevel
+    from cann_ops_transformer.ops.block_sparse_attention import (
         _is_arch220_soc,
     )
     return not _is_arch220_soc(device_name)

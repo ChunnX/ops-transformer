@@ -115,7 +115,7 @@ def _guard_soc_capabilities(query, q_input_layout, kv_input_layout):
         if index is None:
             index = torch_npu.npu.current_device()
         device_name = torch_npu.npu.get_device_name(index)
-    except Exception:  # pylint: disable=broad-except
+    except Exception:
         # Can't identify the SoC — don't block; let the kernel decide.
         return
     if _is_arch220_soc(device_name):
