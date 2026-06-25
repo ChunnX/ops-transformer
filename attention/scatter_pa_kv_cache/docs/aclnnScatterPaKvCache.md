@@ -361,7 +361,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>561002</td>
+      <td>561103</td>
       <td>key的维数不等于3维或4维，value的维数不等于0维、3维或4维。</td>
     </tr>
   </tbody>
@@ -429,6 +429,7 @@ aclnnStatus aclnnScatterPaKvCache(
 - k_head_size和v_head_size必须32字节对齐（对应场景七）。
 - num_head必须小于4095（对应场景七）。
 - block_size * k_head_size和block_size * v_head_size必须小于UINT32_MAX（对应场景七）。
+- （num_head * k_head_size + num_head * v_head_size） * sizeof(dtype_key)必须小于196608（对应场景七）。
 
 ## 调用示例
 
