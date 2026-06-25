@@ -50,7 +50,7 @@ private:
     __aicore__ inline void CopyInputsToOutputs();
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
-                                       uint32_t &endId, uint32_t &sendNum, bool isFront);
+                                       uint32_t &endId, uint32_t &sendNum);
 
     TPipe* tpipe_{nullptr};
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
@@ -119,11 +119,11 @@ private:
 
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::SplitToCore(
-    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId, uint32_t &sendNum, bool isFront)
+    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId, uint32_t &sendNum)
 {
     sendNum = curSendCnt / curUseAivNum;
     uint32_t remainderNum = curSendCnt % curUseAivNum;
-    uint32_t newAivId = isFront ? aivId_ : aivId_;
+    uint32_t newAivId = aivId_;
     startId = sendNum * newAivId;
     if (newAivId < remainderNum) {
         sendNum += 1;
@@ -283,7 +283,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
         if (slotCnt == 0) { continue; }
 
         uint32_t slotStart, slotEnd, slotCntPerAiv;
-        SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv, false);
+        SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv);
         if (slotStart >= slotEnd) { continue; }
 
         GM_ADDR srcRankBase = localWinAddr_
@@ -361,7 +361,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
             if (slotCnt == 0) { continue; }
 
             uint32_t slotStart, slotEnd, slotCntPerAiv;
-            SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv, false);
+            SplitToCore(static_cast<uint32_t>(slotCnt), aivNum_, slotStart, slotEnd, slotCntPerAiv);
             if (slotStart >= slotEnd) { continue; }
 
             GM_ADDR srcRankBase = localWinAddr_
