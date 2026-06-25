@@ -142,7 +142,7 @@ public:
             PipeBarrier<PIPE_V>();
             Cast(indicesOutLocal, tmpIndexLocal, RoundMode::CAST_NONE, topK);
             if (outputIdxOffset != 0) {
-                liV2Topkb32gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
+                vector1::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
             }
             return;
         }
