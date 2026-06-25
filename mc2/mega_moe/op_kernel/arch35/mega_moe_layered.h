@@ -916,7 +916,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     // PRINTF("BEGIN READDATA\n");
     // hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     // hcomm_.Drain(channel);
-    PRINTF("BEGIN READDATA%u,bufferIdx: %d\n",sizeof(ActivationType), bufferIdx);
+    PRINTF("BEGIN READDATA %u,bufferIdx: %d, relayRank: %d\n",sizeof(ActivationType), bufferIdx, relayRank);
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
@@ -974,10 +974,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
     // 6-buffer SW 流水 MTE2 + MTE3
     // Phase 2 prime: 发出前 BufferNum 个 token 的 MTE2
     int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
+    printf("primeCount: %d\n", primeCount);
     for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
         int32_t tokenIndex = tripleTensor_[primeIdx * INT32_PER_256B].GetValue(TOKEN_ID);
         uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, static_cast<uint32_t>(tokenIndex));
         TEventID eventId = kBufEvents[primeIdx];
+        printf("primeIdx :%d\n", primeIdx);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, primeIdx, copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
