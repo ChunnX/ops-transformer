@@ -710,7 +710,7 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ProcessMatmul1(
 
     mm1_.SetTensorA(gradH2Global_[taskOffset * mm1K_]);
     mm1_.SetTensorB(phiGlobal_);
-    mm1_.SetHF32(false, 0);
+    mm1_.SetHF32(true, 1);   // HF32 matmul; golden HF32-ifies operands, phi input HF32-conditioned
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
     // grad_x fp32-accumulate: write grad_x_from_matmul as fp32 into its OWN workspace (cube is the
     // single writer here -> enAtomic=0). The combine adds it to the vector's fp32 hin+rms and casts
@@ -779,7 +779,7 @@ __aicore__ inline void MhcPreSinkhornBackwardOneStage<T, U>::ProcessMatmul2(
 
     mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true);
     mm2_.SetTensorB(xFp32Global_[taskOffset * mm2N_]);
-    mm2_.SetHF32(false, 0);
+    mm2_.SetHF32(true, 1);   // HF32 matmul; golden HF32-ifies operands (grad_hc_before_norm & x)
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
     mm2_.template IterateAll<false> (gradPhiGlobal_, 1);
     mm2_.End();
