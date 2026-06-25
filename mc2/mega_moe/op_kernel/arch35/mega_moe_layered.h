@@ -590,7 +590,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                 __gm__ int32_t* dedupPtr = reinterpret_cast<__gm__ int32_t*>(
                     params_.workspaceInfo.sendDedupMaskPtr +
                     static_cast<uint64_t>(targetServer) * sendDedupStrideBytes_) + tokenIdx;
-                // Todo: 使用UB性能更好
+                // TODO: 使用UB性能更好
                 if (ReadGmByPassDCache(dedupPtr) != 0) {
                     continue;
                 }
@@ -663,7 +663,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     ++cursor;
                     WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
                 }
-
+                
+                // TODO:优化
                 bool allComputeDone = true;
                 for (uint32_t idx = 0; idx < realComputeCoreNum; ++idx) {
                     if (ReadGmByPassDCache(donePtr + idx) < roundTag) {
