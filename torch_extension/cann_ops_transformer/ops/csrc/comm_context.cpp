@@ -36,7 +36,7 @@ struct CommContext {
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {};   // 支持ROCE或者URMA
-    uint64_t urmacclBuffer_[HCCL_MAX_RANK_SIZE] = {};  // URMA通信buffer
+    bool isCrossServer = false;
 };
 
 // ======================== Common Types and Utilities ========================
@@ -480,6 +480,7 @@ public:
 
         GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
 
+        commContextStruct->isCrossServer = isCrossServer_;
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy context from host to device failed, ret: ", hcclRet);
@@ -551,6 +552,7 @@ public:
     std::unordered_map<uint32_t, uint32_t> layerMap_;
     std::unordered_map<uint32_t, uint32_t> urmaLayerMap_;
     bool isCrossServer_ = false;
+    bool IsCrossServer() const {return isCrossServer_; }
 };
 
 // ======================== CommContextManager ========================
@@ -580,6 +582,7 @@ public:
     }
 
     int64_t ccl_buffer_size() const { return cclBufferSize_; }
+    bool is_cross_server() const {return is_cross_server_; }
 
 private:
     static int64_t context_tensor_size()
@@ -605,6 +608,7 @@ private:
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
                 builder.Build(group_, worldSize_, cclBufferSize_, tensor);
+                is_cross_server_ = builder.IsCrossServer();
                 return;
             }
             default:
@@ -617,6 +621,7 @@ private:
     py::object backend_;
     BackendMode mode_;
     int64_t cclBufferSize_ = 0;
+    bool is_cross_server_ = false;
 };
 
 // Bind the CommContextManager class to Python module
@@ -628,5 +633,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("create_context", &CommContextManager::create_context)
         .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
         .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);
+        .def("is_cross_server", &CommContextManager::is_cross_server);
 }
 } // op_api
