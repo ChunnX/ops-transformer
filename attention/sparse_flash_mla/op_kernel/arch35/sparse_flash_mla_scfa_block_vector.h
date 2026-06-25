@@ -21,6 +21,20 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
+#if __has_include("../../../common/op_kernel/arch35/flash_decode_s2_split.h")
+#include "../../../common/op_kernel/arch35/flash_decode_s2_split.h"
+#elif __has_include("../../common/op_kernel/arch35/flash_decode_s2_split.h")
+#include "../../common/op_kernel/arch35/flash_decode_s2_split.h"
+#else
+#include "../common/arch35/flash_decode_s2_split.h"
+#endif
+
+#if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
+#include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#else
+#include "../common/arch35/vf/vf_flash_decode.h"
+#endif
+
 #if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
 #include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
 #else
@@ -116,11 +130,54 @@ public:
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
         RunInfo &runInfo,
         ConstInfo &constInfo);
+    __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) { s2SplitStagingBase = base; }
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
 
 private:
+    __aicore__ inline uint32_t StagingMSize(const ConstInfo &constInfo) const
+    {
+        if constexpr (IS_SPLIT_G) {
+            return regbaseutil::S2_SPLIT_STAGING_M_SIZE_SPLIT_G;
+        } else {
+            return static_cast<uint32_t>(constInfo.gSize);
+        }
+    }
+
+    __aicore__ inline uint32_t GetStagingSlotNum() const
+    {
+        if constexpr (IS_SPLIT_G) {
+            return regbaseutil::MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
+        } else {
+            return regbaseutil::MAX_S2_SPLIT_NUM * GetBlockNum();
+        }
+    }
+
+    __aicore__ inline uint32_t GetFaStagingWorkspaceIdx(const RunInfo &runInfo) const
+    {
+        return static_cast<uint32_t>(runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx);
+    }
+
+    __aicore__ inline uint32_t GetFaStagingMOffset(const RunInfo &runInfo, const ConstInfo &constInfo) const
+    {
+        uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
+            static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
+        if constexpr (IS_SPLIT_G) {
+            if (runInfo.goIdx == regbaseutil::S2_SPLIT_STAGING_M_SIZE) {
+                stagingMOffset += regbaseutil::S2_SPLIT_STAGING_M_SIZE;
+            }
+        }
+        return stagingMOffset;
+    }
+
+    __aicore__ inline AttentionCommon::S2SplitFdStagingLayout GetS2SplitFdStagingLayout(
+        const ConstInfo &constInfo) const
+    {
+        return {StagingMSize(constInfo), dTemplateAlign64, GetStagingSlotNum(),
+            regbaseutil::FD_BROADCAST_ELEMS_PER_ROW, regbaseutil::FD_REDUCE_CHUNK_ROWS};
+    }
+
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos);
@@ -192,6 +249,7 @@ private:
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2];
     TBuf<> outLseBuf[2];
+    __gm__ uint8_t *s2SplitStagingBase = nullptr;
 
     T negativeFloatScalar;
     bool isSinks = false;
@@ -577,6 +635,16 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
+    if (runInfo.isS2Split && runInfo.halfMRealSize > 0 &&
+        runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+        AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
+        uint32_t workspaceIdx = GetFaStagingWorkspaceIdx(runInfo);
+        uint32_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
+        LocalTensor<float> tmpUb = this->stage2OutBuf.template Get<float>();
+        AttentionCommon::StageVec1Lse(stagingLayout, s2SplitStagingBase,
+            workspaceIdx, stagingMOffset, static_cast<uint32_t>(runInfo.halfMRealSize),
+            maxUb, sumUb, tmpUb, vToMte3Id[1], mte3ToVId[1]);
+    }
     if (constInfo.returnSoftmaxLse && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
         DataCopyExtParams dataCopyParams;
@@ -797,6 +865,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
     vToMte3AttnOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     vToMte3LseOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+    vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     mte3ToMte2[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
     mte3ToMte2[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
     SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[0]);
@@ -826,8 +900,8 @@ public:
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ,
         __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
         __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV) {};
+    __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) {}
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
 };
 }
 #endif // SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H
-

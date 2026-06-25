@@ -23,6 +23,11 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+constexpr uint32_t MAX_S2_SPLIT_NUM = 2;
+constexpr uint32_t S2_SPLIT_STAGING_M_SIZE = 64;
+constexpr uint32_t S2_SPLIT_STAGING_M_SIZE_SPLIT_G = 128;
+constexpr uint32_t FD_BROADCAST_ELEMS_PER_ROW = 8;
+constexpr uint32_t FD_REDUCE_CHUNK_ROWS = 16;
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \

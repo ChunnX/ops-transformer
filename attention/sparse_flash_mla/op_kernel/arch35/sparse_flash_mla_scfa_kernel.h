@@ -127,6 +127,7 @@ private:
     bool hasActualSeqCmpKvlen = false;
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
+    __gm__ uint8_t *s2SplitStagingBase = nullptr;
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -178,6 +179,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
         tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
     InitMMResBuf(workspace);
+    vecBlock.InitS2SplitStaging(s2SplitStagingBase);
     cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
     this->ComputeConstexpr();
     
@@ -379,6 +381,16 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
         v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
         crossCoreSyncBufId++;
     }
+    uint32_t fdStagingOffset = 0U;
+    if constexpr (IS_SPLIT_G || TEMPLATE_MODE == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
+        constexpr uint32_t TRIPLE_BUFFER_NUM = 3U;
+        constexpr uint32_t S2_REAL_BUF_LEN = 128U;
+        uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
+        uint32_t v0LogicalSlotCount = IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum();
+        fdStagingOffset = v0ResSize * TRIPLE_BUFFER_NUM * v0LogicalSlotCount;
+        fdStagingOffset += TRIPLE_BUFFER_NUM * S2_REAL_BUF_LEN * sizeof(int32_t) * GetBlockNum();
+    }
+    s2SplitStagingBase = workspace + fdStagingOffset;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
