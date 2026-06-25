@@ -676,7 +676,6 @@ public:
 
         uint32_t reduceGlobaLoop = 0;
         uint32_t reduceMLoop = 0;
-
         uint32_t tmpFdS1gOuterMStart = 0;
         uint32_t tmpFdS1gOuterMEnd = fdBalanceMSplitNum - 1;
         taskInfo.bIdx = fd.fdBN2Idx / constInfo.n2Size;
