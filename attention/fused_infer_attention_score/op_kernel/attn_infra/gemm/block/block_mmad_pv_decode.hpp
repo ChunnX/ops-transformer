@@ -182,9 +182,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
         if (crossCoreSyncTrigger) {
             Arch::CrossCoreWaitFlag(softmaxFlag);
-
         }
-
         uint32_t mL1Loop = NpuArch::Detail::Alignment::CeilDiv(rowNum, L1TileShape::M);
         uint32_t kL1Loop = NpuArch::Detail::Alignment::CeilDiv(stackSeqTile, l1KDynamic);
         uint32_t nL1Loop = NpuArch::Detail::Alignment::CeilDiv(embed, L0TileShape::N);

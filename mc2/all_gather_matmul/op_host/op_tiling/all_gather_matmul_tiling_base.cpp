@@ -132,9 +132,8 @@ static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64
     return args.mValue;
 }
 
-static bool CheckOutputParamDim0(gert::TilingContext* context)
+static bool CheckOutputParamDim0(const gert::TilingContext* context)
 {
-    Mc2Tiling::AllGatherMatmulTilingData* tilingData = context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
     auto outputShape = context->GetOutputShape(OUTPUT_IDX);
     uint64_t outputDim0 = outputShape->GetStorageShape().GetDim(DIM0_IDX);
     const gert::StorageShape* x1Shape = context->GetInputShape(INPUT_X1_IDX);
@@ -167,9 +166,10 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
             "The value of shape dim must not be 0"),
         return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context)),
-        OP_LOGE(context->GetNodeName(), "the output's dim0 is invalid"),
-        return ge::GRAPH_FAILED);
+    if (!CheckOutputParamDim0(context)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "output", "output_dim0_mismatch", "output dim0 check failed");
+        return ge::GRAPH_FAILED;
+    }
 
     if (context->GetAttrs() == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs");
@@ -570,8 +570,10 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
         context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
     mc2tiling::TilingArgs args;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
-    OP_TILING_CHECK(AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "param is invalid"), return ge::GRAPH_FAILED);
+    if (AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context->GetNodeName(), "AllGatherParamsCheck failed");
+        return ge::GRAPH_FAILED;
+    }
 
     auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(index++);
     auto isTransB = context->GetAttrs()->GetAttrPointer<bool>(index++);
