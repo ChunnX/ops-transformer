@@ -35,7 +35,7 @@ constexpr uint32_t MAX_MODULE_DEVICE_NUM = 32;
 constexpr uint32_t EP_RANK_OFFSET_STEP = 8192;
 
 namespace Mc2Kernel {
-constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL;
+constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL * 2UL;
 }
 
 struct HcclSignalInfo {
