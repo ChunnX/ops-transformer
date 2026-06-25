@@ -331,7 +331,7 @@ def planB_kernel2(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         PReduced: T.Tensor((B, S1, K), calc_dtype),
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),
-        GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
+        GatherKeyIndexT: T.Tensor((B, S1, DQueryIndex, K), input_dtype),
         dWeightPartial: T.Tensor((B, S1, n_num, Nidx1), calc_dtype),
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
         LossPartial: T.Tensor((B, S1, n_num), calc_dtype),
@@ -449,12 +449,12 @@ def planB_kernel2(
 
                 T.set_cross_flag("FIX", 2)
 
-            # C1: MM6 — dQueryIndex = reluGrad @ GatherKeyIndex (K-parallel, atomic_add)
+            # C1: MM6 — dQueryIndex = reluGrad @ GKI (K-parallel, atomic_add)
             with T.Scope("C"):
                 T.wait_cross_flag(2)
 
                 RG_L1 = T.alloc_L1((BLOCK_NIDX1, n_block), input_dtype)
-                GKI_L1 = T.alloc_L1((n_block, BLOCK_K), input_dtype)
+                GKIT_L1 = T.alloc_L1((BLOCK_K, n_block), input_dtype)
                 DQ_L0C = T.alloc_L0C((BLOCK_NIDX1, BLOCK_K), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
@@ -463,8 +463,8 @@ def planB_kernel2(
                         T.copy(reluGradRes[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end], RG_L1)
                         for dq_c in T.serial(dq_num):
                             dq_s = dq_c * BLOCK_K
-                            T.copy(GatherKeyIndex[bz, s1_row, k_start:k_end, dq_s:dq_s + BLOCK_K], GKI_L1)
-                            T.gemm_v0(RG_L1, GKI_L1, DQ_L0C, transpose_B=False, init=True)
+                            T.copy(GatherKeyIndexT[bz, s1_row, dq_s:dq_s + BLOCK_K, k_start:k_end], GKIT_L1)
+                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
                             T.tile.atomic_add(
                                 dQueryIndex[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, dq_s:dq_s + BLOCK_K],
                                 DQ_L0C,
@@ -719,10 +719,12 @@ def sparse_lightning_indexer_grad_kl_loss(
         _pt["kernel1"] = time.perf_counter()
 
     # ---- Launch Kernel 2 (V1: dWeight/reluGrad/Loss → C1: MM6 dQueryIndex) ----
+    # Pre-transpose GKI for MM6: (B,S1,K,DQ) → (B,S1,DQ,K), proven pattern for Cube gemm
+    gather_key_index_t = gather_key_index.transpose(-1, -2).contiguous()
     d_query_index_ws.zero_()
     d_weight_partial, relu_grad, loss_partial, d_query_index_ws = func2(
         bmm2_res_ws, weights, p_reduced_ws, reduce_sum_y_ws,
-        gather_key_index,
+        gather_key_index_t,
         d_weight_partial,
         relu_grad_ws,
         loss_partial,
