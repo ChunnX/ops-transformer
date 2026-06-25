@@ -328,14 +328,18 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeInputs()
     OP_LOGD(context_->GetNodeName(), "GMMAQ AnalyzeInputs after SetMKN: M=%lu, K=%lu, N=%lu.",
             inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
     if (wShape.GetDimNum() == WEIGHT_NZ_DIM_NUM) {
+        OP_CHECK_IF(wScaleShape.GetDimNum() != MXFP_TYPE_M_SCALE_DIM_NUM,
+                    OP_LOGE(inputParams_.opName, "weightScale shape dim num must be %u, actual is %u.",
+                            MXFP_TYPE_M_SCALE_DIM_NUM, static_cast<uint32_t>(wScaleShape.GetDimNum())),
+                    return false);
         inputParams_.mSize = static_cast<uint64_t>(xShape.GetDim(0));
         inputParams_.kSize = static_cast<uint64_t>(xShape.GetDim(1));
         inputParams_.nSize = inputParams_.transB ?
-            static_cast<uint64_t>(weightStorageShape.GetDim(WEIGHT_NZ_BLOCK2_DIM_INDEX) * WEIGHT_NZ_C0_DIM) :
-            static_cast<uint64_t>(weightStorageShape.GetDim(WEIGHT_NZ_BLOCK1_DIM_INDEX) * WEIGHT_NZ_LAST_DIM_FP8);
-        std::printf("[GMMAQ tiling] AnalyzeInputs recover MKN from WeightNZ storage: M=%lu, K=%lu, N=%lu.\n",
+            static_cast<uint64_t>(wScaleShape.GetDim(WEIGHT_SCALE_TRANS_N_DIM_INDEX)) :
+            static_cast<uint64_t>(wScaleShape.GetDim(WEIGHT_SCALE_N_DIM_INDEX));
+        std::printf("[GMMAQ tiling] AnalyzeInputs recover MKN from weightScale origin: M=%lu, K=%lu, N=%lu.\n",
                     inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
-        OP_LOGD(context_->GetNodeName(), "GMMAQ AnalyzeInputs recover MKN from WeightNZ storage: M=%lu, K=%lu, N=%lu.",
+        OP_LOGD(context_->GetNodeName(), "GMMAQ AnalyzeInputs recover MKN from weightScale origin: M=%lu, K=%lu, N=%lu.",
                 inputParams_.mSize, inputParams_.kSize, inputParams_.nSize);
     }
     OP_CHECK_IF(inputParams_.nSize % N_SIZE_ALIGN != 0,
