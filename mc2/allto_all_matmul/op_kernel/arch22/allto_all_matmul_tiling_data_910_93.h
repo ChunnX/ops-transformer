@@ -17,8 +17,8 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../common/op_kernel/mc2_tiling_struct.h"
-#include "../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_tiling_data.h"
+#include "../../../common/op_kernel/mc2_tiling_struct.h"
+#include "../../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_tiling_data.h"
 
 struct AlltoAllMatmulTilingInfoA3 {
     uint32_t rankDim;      // 卡数:kernel能通过hccl接口获取到就直接删除

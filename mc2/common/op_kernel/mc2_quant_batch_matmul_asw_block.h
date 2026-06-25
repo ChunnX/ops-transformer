@@ -15,7 +15,7 @@
 #ifndef NEW_MC2_QUANT_BMMV3_ASW_BLOCK_H
 #define NEW_MC2_QUANT_BMMV3_ASW_BLOCK_H
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3_base.h"
-#include "../../common/op_kernel/mc2_tiling_struct.h"
+#include "mc2_tiling_struct.h"
 
 namespace Mc2MatmulV3 {
 constexpr uint64_t PER_BLOCK_SIZE = 128;
