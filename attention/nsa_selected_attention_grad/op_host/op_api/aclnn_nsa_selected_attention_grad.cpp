@@ -73,6 +73,26 @@ static aclnnStatus CheckParams(const NsaSelectedAttentionGradParams &params)
     CHECK_COND(params.dqOut != nullptr, ACLNN_ERR_PARAM_NULLPTR, "dqOut must not be nullptr.");
     CHECK_COND(params.dkOut != nullptr, ACLNN_ERR_PARAM_NULLPTR, "dkOut must not be nullptr.");
     CHECK_COND(params.dvOut != nullptr, ACLNN_ERR_PARAM_NULLPTR, "dvOut must not be nullptr.");
+
+    auto query_dtype = params.query->GetDataType();
+    CHECK_COND(query_dtype == ACL_FLOAT16 || query_dtype == ACL_BF16, ACLNN_ERR_PARAM_INVALID,
+               "The dtype of query is not support.");
+    CHECK_COND(query_dtype == params.key->GetDataType(), ACLNN_ERR_PARAM_INVALID, "key dtype error.");
+    CHECK_COND(query_dtype == params.value->GetDataType(), ACLNN_ERR_PARAM_INVALID, "value dtype error.");
+    CHECK_COND(query_dtype == params.attentionOut->GetDataType(), ACLNN_ERR_PARAM_INVALID, "attentionOut dtype error.");
+    CHECK_COND(query_dtype == params.attentionOutGrad->GetDataType(), ACLNN_ERR_PARAM_INVALID,
+               "attentionOutGrad dtype error.");
+    CHECK_COND(query_dtype == params.dqOut->GetDataType(), ACLNN_ERR_PARAM_INVALID, "dqOut dtype error.");
+    CHECK_COND(query_dtype == params.dkOut->GetDataType(), ACLNN_ERR_PARAM_INVALID, "dkOut dtype error.");
+    CHECK_COND(query_dtype == params.dvOut->GetDataType(), ACLNN_ERR_PARAM_INVALID, "dvOut dtype error.");
+
+    auto softmaxMax_dtype = params.softmaxMax->GetDataType();
+    auto softmaxSum_dtype = params.softmaxSum->GetDataType();
+    auto topkIndices_dtype = params.topkIndices->GetDataType();
+    CHECK_COND(softmaxMax_dtype == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID, "softmaxMax dtype error.");
+    CHECK_COND(softmaxSum_dtype == ACL_FLOAT, ACLNN_ERR_PARAM_INVALID, "softmaxSum dtype error.");
+    CHECK_COND(topkIndices_dtype == ACL_INT32, ACLNN_ERR_PARAM_INVALID, "topkIndices dtype error.");
+
     return ACLNN_SUCCESS;
 }
 

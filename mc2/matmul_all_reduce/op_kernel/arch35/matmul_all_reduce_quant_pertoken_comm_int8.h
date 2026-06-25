@@ -317,9 +317,9 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
 
     if (g_coreType == AscendC::AIV) {
         // wait所有的allGather任务 + dequant
-        const uint64_t outGmTileOffset =
+        const uint64_t outGmTileOff =
             tilingData_->tilematmulTiling.matmulTiling.M * tilingData_->tilematmulTiling.matmulTiling.N * sizeof(YType);
-        const uint64_t outGmTailOffset =
+        const uint64_t outGmTailOff =
             tilingData_->tailmatmulTiling.matmulTiling.M * tilingData_->tailmatmulTiling.matmulTiling.N * sizeof(YType);
         for (uint32_t i = 0U; i < (mc2Tiling.tileCnt + mc2Tiling.tailCnt); ++i) { // 尾块偏移
             hccl_.Wait(allGatherHandleId_[i]);
@@ -329,14 +329,14 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
                     allGatherOutGM_, commQuantScale2GM_, outGM_, tPipe_, tilingData_->tilematmulTiling.matmulTiling.N,
                     tilingData_->tilematmulTiling.matmulTiling.M);
                 allGatherOutGM_ += tilePadDataCnt_ * sizeof(int8_t);
-                outGM_ += outGmTileOffset;
+                outGM_ += outGmTileOff;
                 SyncAll();
             } else {
                 MatmulAllReduceDequantPerchannelCommInt8<YType>(
                     allGatherOutGM_, commQuantScale2GM_, outGM_, tPipe_, tilingData_->tailmatmulTiling.matmulTiling.N,
                     tilingData_->tailmatmulTiling.matmulTiling.M);
                 allGatherOutGM_ += tailPadDataCnt_ * sizeof(int8_t);
-                outGM_ += outGmTailOffset;
+                outGM_ += outGmTailOff;
                 SyncAll();
             }
         }

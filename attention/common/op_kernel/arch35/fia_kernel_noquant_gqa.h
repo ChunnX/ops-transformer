@@ -249,6 +249,11 @@ public:
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
 
+        constInfo.keyStrides.bnStride = fiaBaseParams.keyStrides.bnStride;
+        constInfo.keyStrides.n2Stride = fiaBaseParams.keyStrides.n2Stride;
+        constInfo.valueStrides.bnStride = fiaBaseParams.valueStrides.bnStride;
+        constInfo.valueStrides.n2Stride = fiaBaseParams.valueStrides.n2Stride;
+
         constInfo.sparseMode = fiaAttenMaskParams.sparseMode;
         constInfo.preTokens = fiaAttenMaskParams.preTokens;
         constInfo.nextTokens = fiaAttenMaskParams.nextTokens;

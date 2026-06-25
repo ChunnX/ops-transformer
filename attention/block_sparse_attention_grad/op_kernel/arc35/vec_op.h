@@ -53,8 +53,11 @@ private:
     GlobalTensor<float> lse_gm_;
     GlobalTensor<float> sftg_workspace_;
     LocalTensor<float> lse_tensor_;
-    LocalTensor<float> sft_front_tensor_;
-    LocalTensor<INPUT_TYPE> softmax_res_tensor_;
+    LocalTensor<float> lse_tensor_ping_;
+    LocalTensor<float> lse_tensor_pong_;
+    LocalTensor<float> sftg_front_tensor_;
+    LocalTensor<float> sftg_front_tensor_ping_;
+    LocalTensor<float> sftg_front_tensor_pong_;
     LocalTensor<INPUT_TYPE> softmax_res_nz_tensor_;
     LocalTensor<INPUT_TYPE> sftg_res_nz_tensor_;
 
@@ -90,6 +93,9 @@ private:
     uint64_t lse_gm_offset_;
     uint64_t sftg_gm_offset_;
     uint64_t l1_offset_;
+    TEventID event_ping_ = EVENT_ID3;
+    TEventID event_pong_ = EVENT_ID4;
+    TEventID event_id;
 
 public:
     __aicore__ inline VecOp(){};
@@ -122,17 +128,30 @@ public:
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
         // local_tensor
-        lse_tensor_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
-        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
-        sft_front_tensor_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
-        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
-
-        softmax_res_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
-        ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
         softmax_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
         ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
         sftg_res_nz_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
         ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
+        lse_tensor_ping_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
+        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
+        lse_tensor_pong_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
+        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
+        sftg_front_tensor_ping_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
+        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
+        sftg_front_tensor_pong_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
+        ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
+    }
+
+    __aicore__ inline void SetFlag()
+    {
+        SET_FLAG(V, MTE2, event_ping_);
+        SET_FLAG(V, MTE2, event_pong_);
+    }
+
+    __aicore__ inline void WaitFlag()
+    {
+        WAIT_FLAG(V, MTE2, event_ping_);
+        WAIT_FLAG(V, MTE2, event_pong_);
     }
 
     __aicore__ inline void SendVecPre(const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
@@ -162,6 +181,7 @@ public:
         constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
         uint32_t process_s1_size = SFTG_TILE_LEN / head_dim_;
         uint32_t ub_offset = 0;
+        uint32_t sftg_ping_pong_idx = 0;
         dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
         dy_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
@@ -170,7 +190,6 @@ public:
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
         attention_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
-
         dy_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(float);
         dy_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
@@ -186,6 +205,8 @@ public:
         sftg_tmp_tensor = ub_buffer.GetWithOffset<uint8_t>(tilingData->sftgTmpSpaceSize, ub_offset);
         ub_offset += tilingData->sftgTmpSpaceSize;
 
+        SET_FLAG(MTE3, MTE2, event_ping_);
+        SET_FLAG(MTE3, MTE2, event_pong_);
         for (uint32_t b_idx = 0; b_idx < batch_num_; b_idx++) {
             int64_t current_q_seqlen, last_seq_total_len;
             if constexpr (INPUT_LAYOUT == TND) {
@@ -209,17 +230,22 @@ public:
                     in_gm_offset = last_seq_total_len * q_head_num_ * head_dim_ + n1_idx * head_dim_;
                     out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * current_q_seqlen * 8;
                 }
-
+                TEventID event_id = sftg_ping_pong_idx ? event_ping_ : event_pong_;
                 ComputeEvenCoreInfo(info, current_q_seqlen, process_s1_size);
+
+                WAIT_FLAG(MTE3, MTE2, event_id);
                 ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info,
-                                        tilingData);
-                SET_FLAG(MTE3, MTE2, EVENT_ID0);
-                WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+                                        tilingData, sftg_ping_pong_idx);
+                SET_FLAG(MTE3, MTE2, event_id);
+                sftg_ping_pong_idx = 1 - sftg_ping_pong_idx;
             }
         }
+
+        WAIT_FLAG(MTE3, MTE2, event_ping_);
+        WAIT_FLAG(MTE3, MTE2, event_pong_);
     }
 
-    __aicore__ inline void SendVecSftPreProcess(const RunTimeInfo &runTimeInfo)
+    __aicore__ inline void SendVecSftPreProcess(const RunTimeInfo &runTimeInfo, uint32_t pingpong_idx)
     {
         s1_process_ = runTimeInfo.s1Len;
         s1_process_align_ = runTimeInfo.s1LenAlign;
@@ -238,10 +264,13 @@ public:
         l1_offset_ = v_sub_core_idx_ * half_s1_process_align_ * C0_SIZE;
 
         if (half_s1_process_real_ > 0) {
-            SET_FLAG(V, MTE2, EVENT_ID0);
-            WAIT_FLAG(V, MTE2, EVENT_ID0);
+            lse_tensor_ = pingpong_idx == 0 ? lse_tensor_ping_ : lse_tensor_pong_;
+            sftg_front_tensor_ = pingpong_idx == 0 ? sftg_front_tensor_ping_ : sftg_front_tensor_pong_;
+            event_id = pingpong_idx == 0 ? event_ping_ : event_pong_;
+
+            WAIT_FLAG(V, MTE2, event_id);
             CopyInLSE(lse_tensor_, lse_gm_[lse_gm_offset_], half_s1_process_real_);
-            DataCopy(sft_front_tensor_, sftg_workspace_[sftg_gm_offset_], half_s1_process_real_ * 8);
+            DataCopy(sftg_front_tensor_, sftg_workspace_[sftg_gm_offset_], half_s1_process_real_ * 8);
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
         }
@@ -290,7 +319,8 @@ public:
         }
         ComputeSoftmaxGrad((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
                            (__ubuf__ float *)softmax_ub_tensor.GetPhyAddr(),
-                           (__ubuf__ float *)sft_front_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
+                           (__ubuf__ float *)sftg_front_tensor_.GetPhyAddr(), half_s1_process_align_,
+                           s2_process_align_);
 
         CastND2NZ<INPUT_TYPE>(sftg_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
@@ -303,6 +333,7 @@ public:
         dataCopyParams.dstStride =
             (s1_process_align_ - half_s1_process_align_) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         DataCopy(dst_l1_tensor[l1_offset_], sftg_res_nz_tensor_, dataCopyParams);
+        SET_FLAG(V, MTE2, event_id);
     }
 
     __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,
@@ -315,6 +346,7 @@ public:
         uint64_t dq_size = tilingData->dqSize;
         uint64_t dkv_size = tilingData->dkSize;
         uint32_t ub_offset = 0;
+        uint32_t post_ping_pong_idx = 0;
         vec_in_ping_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(float);
         vec_in_pong_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
@@ -323,18 +355,18 @@ public:
         ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
         vec_out_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
+        SET_FLAG(MTE3, MTE2, event_ping_);
+        SET_FLAG(MTE3, MTE2, event_pong_);
 
         EvenCoreInfo info;
         ComputeEvenCoreInfo(info, dkv_size, POST_TILE_LEN);
-        ComputeVecPost<false>(dv_out_gm, dv_workspace, info);
-        SET_FLAG(MTE3, MTE2, EVENT_ID0);
-        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
-        ComputeVecPost<true>(dk_out_gm, dk_workspace, info);
-
-        SET_FLAG(MTE3, MTE2, EVENT_ID0);
-        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        ComputeVecPost<false>(dv_out_gm, dv_workspace, info, post_ping_pong_idx);
+        ComputeVecPost<true>(dk_out_gm, dk_workspace, info, post_ping_pong_idx);
         ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
-        ComputeVecPost<true>(dq_out_gm, dq_workspace, info);
+        ComputeVecPost<true>(dq_out_gm, dq_workspace, info, post_ping_pong_idx);
+
+        WAIT_FLAG(MTE3, MTE2, event_ping_);
+        WAIT_FLAG(MTE3, MTE2, event_pong_);
     }
 
 private:
@@ -371,16 +403,16 @@ private:
     __aicore__ inline void ComputeSoftmaxGradFront(const GlobalTensor<float> &dst_gm,
                                                    const GlobalTensor<INPUT_TYPE> &dy_gm,
                                                    const GlobalTensor<INPUT_TYPE> &out_gm, const EvenCoreInfo &info,
-                                                   const TILING_CLASS *tilingData)
+                                                   const TILING_CLASS *tilingData, const uint32_t sftg_ping_pong_idx)
     {
         if (info.start_idx >= info.data_size) {
             return;
         }
-        LocalTensor<INPUT_TYPE> dy_tensor = dy_in_ping_;
-        LocalTensor<INPUT_TYPE> attention_tensor = attention_in_ping_;
-        LocalTensor<float> dy_out_tensor = dy_out_ping_;
-        LocalTensor<float> attention_out_tensor = attention_out_ping_;
-        LocalTensor<float> sftg_front_tensor = sftg_front_ping_;
+        LocalTensor<INPUT_TYPE> dy_tensor = sftg_ping_pong_idx ? dy_in_ping_ : dy_in_pong_;
+        LocalTensor<INPUT_TYPE> attention_tensor = sftg_ping_pong_idx ? attention_in_ping_ : attention_in_pong_;
+        LocalTensor<float> dy_out_tensor = sftg_ping_pong_idx ? dy_out_ping_ : dy_out_pong_;
+        LocalTensor<float> attention_out_tensor = sftg_ping_pong_idx ? attention_out_ping_ : attention_out_pong_;
+        LocalTensor<float> sftg_front_tensor = sftg_ping_pong_idx ? sftg_front_ping_ : sftg_front_pong_;
         uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
         uint32_t src_stride;
         if constexpr (INPUT_LAYOUT == BSND) {
@@ -441,14 +473,15 @@ private:
 
     template <bool MULS>
     __aicore__ inline void ComputeVecPost(const GlobalTensor<INPUT_TYPE> &dst_tensor,
-                                          const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info)
+                                          const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info,
+                                          uint32_t &post_ping_pong_idx)
     {
         if (info.start_idx >= info.data_size) {
             return;
         }
 
-        LocalTensor<float> vecIn = vec_in_ping_;
-        LocalTensor<INPUT_TYPE> vecOut = vec_out_ping_;
+        LocalTensor<float> vecIn;
+        LocalTensor<INPUT_TYPE> vecOut;
         uint32_t process_size = info.max_process_size;
 
         for (uint32_t i = 0; i < info.loop_num; i++) {
@@ -458,8 +491,12 @@ private:
                     break;
                 }
             }
+            vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
+            vecOut = post_ping_pong_idx ? vec_out_ping_ : vec_out_pong_;
+            event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
             uint64_t gm_offset = info.start_idx + i * info.max_process_size;
 
+            WAIT_FLAG(MTE3, MTE2, event_id);
             DataCopy(vecIn, src_tensor[gm_offset], process_size);
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -474,11 +511,14 @@ private:
             SET_FLAG(V, MTE3, EVENT_ID0);
             WAIT_FLAG(V, MTE3, EVENT_ID0);
             DataCopy(dst_tensor[gm_offset], vecOut, process_size);
-            SET_FLAG(MTE3, MTE2, EVENT_ID0);
-            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+            SET_FLAG(MTE3, MTE2, event_id);
+            post_ping_pong_idx = 1 - post_ping_pong_idx;
         }
 
         if (info.pad_tail > 0) {
+            vecIn = post_ping_pong_idx ? vec_in_ping_ : vec_in_pong_;
+            vecOut = post_ping_pong_idx ? vec_out_ping_ : vec_out_pong_;
+            event_id = post_ping_pong_idx ? event_ping_ : event_pong_;
             uint64_t gm_offset = info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
             uint32_t pad_tail_align = RoundUp<uint32_t>(info.pad_tail, 16);
             DataCopyParams copyParam;
@@ -486,6 +526,8 @@ private:
             copyParam.blockLen = info.pad_tail * sizeof(float);
             copyParam.srcStride = 0;
             copyParam.dstStride = 0;
+
+            WAIT_FLAG(MTE3, MTE2, event_id);
             DataCopyPad(vecIn, src_tensor[gm_offset], copyParam, {false, 0, 0, 0});
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -501,6 +543,8 @@ private:
             WAIT_FLAG(V, MTE3, EVENT_ID0);
             copyParam.blockLen = info.pad_tail * sizeof(INPUT_TYPE);
             DataCopyPad(dst_tensor[gm_offset], vecOut, copyParam);
+            SET_FLAG(MTE3, MTE2, event_id);
+            post_ping_pong_idx = 1 - post_ping_pong_idx;
         }
     }
 

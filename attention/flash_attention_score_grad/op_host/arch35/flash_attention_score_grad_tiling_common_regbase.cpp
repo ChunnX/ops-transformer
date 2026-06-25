@@ -142,6 +142,53 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context)
+{
+    auto softmaxMax = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
+    auto softmaxSum = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SOFTMAX_SUM));
+    OP_CHECK_IF(softmaxMax == nullptr || softmaxSum == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "softmaxMaxOptional or softmaxSumOptional"),
+                return ge::GRAPH_FAILED);
+
+    auto softmaxMaxType = softmaxMax->GetDataType();
+    auto softmaxSumType = softmaxSum->GetDataType();
+
+    bool softmaxTypeCheck = (softmaxMaxType == softmaxSumType) && (softmaxMaxType == ge::DT_FLOAT);
+    std::string dtypeMsg = "{" + ge::TypeUtils::DataTypeToSerialString(softmaxMaxType) + ", " +
+                            ge::TypeUtils::DataTypeToSerialString(softmaxSumType) + "}";
+    OP_CHECK_IF(softmaxTypeCheck != true,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad",
+                    "softmaxMaxOptional, softmaxSumOptional", dtypeMsg.c_str(),
+                    "The dtype of softmaxMaxOptional and softmaxSumOptional must be FLOAT32"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context)
+{
+    auto query = context->GetInputDesc(static_cast<size_t>(InputIndex::QUERY));
+    auto attentionIn = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::ATTENTION_IN));
+    OP_CHECK_IF(query == nullptr || attentionIn == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "query or attentionInOptional"),
+                return ge::GRAPH_FAILED);
+
+    auto queryType = query->GetDataType();
+    auto attentionInType = attentionIn->GetDataType();
+
+    if (queryType == ge::DT_HIFLOAT8) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    std::string dtypeMsg = "{" + ge::TypeUtils::DataTypeToSerialString(queryType) + ", " +
+                            ge::TypeUtils::DataTypeToSerialString(attentionInType) + "}";
+    OP_CHECK_IF(queryType != attentionInType,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad",
+                    "query, attentionInOptional", dtypeMsg.c_str(),
+                    "The dtype of query and attentionInOptional must be the same"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d)
 {
     auto isShapeInValid = (b == 0 || n1 == 0 || s1 == 0 || d == 0);
@@ -190,6 +237,25 @@ ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int
     }
 
     ret = CheckSoftmaxMaxSumTndShape(context, t1, n1);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CheckDtypeValid(gert::TilingContext *context)
+{
+    if (context == nullptr) {
+        OP_LOGE(context, "context is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+
+    auto ret = CheckSoftmaxDtype(context);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+    ret = CheckAttentionInDtype(context);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -1120,6 +1186,10 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
         return ge::GRAPH_FAILED;
     }
 
+    if (CheckDtypeValid(context_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     return (strcmp(inputLayout, "TND") == 0) ?
                CheckTndShapeValid(context_, fBaseParams.t1, fBaseParams.n1, fBaseParams.d) :
                CheckShapeValid(context_, fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.d);
@@ -1712,9 +1782,7 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
                         (fBaseParams.n1 == fBaseParams.n2) &&
                         (fBaseParams.d <= BN2_MAX_D) &&
                         (fBaseParams.queryType != ge::DT_FLOAT) &&
-                        (fBaseParams.d == fBaseParams.d1) &&
                         !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8) &&
-                        !fBaseParams.hasRope &&
                         (fBaseParams.tailZeroCount == 0);
 
     bool bnLimit = ((fBaseParams.b * fBaseParams.n1) >= BN2_MULTIBLK_BN_256) ||
@@ -1730,20 +1798,22 @@ void SetSplitAxis(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbas
                                 fBaseParams.d <= BN2_MAX_D &&
                                 (fBaseParams.queryType != ge::DT_FLOAT) &&
                                 (fBaseParams.d == fBaseParams.d1) &&
-                                !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN || fBaseParams.queryType == ge::DT_HIFLOAT8) &&
+                                !(fBaseParams.queryType == ge::DT_FLOAT8_E5M2 ||
+                                fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
+                                fBaseParams.queryType == ge::DT_HIFLOAT8) &&
                                 !fBaseParams.hasRope;
     fBaseParams.isBn2 = fBaseParams.isBn2MultiBlk ? true : fBaseParams.isBn2; // 多基本块场景是原始bn2的子集
     if (fBaseParams.isBn2 && !fBaseParams.isBn2MultiBlk) {
         fBaseParams.isDeterministic = false;
-        if ((fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.d > ALIGN128)
-            || fBaseParams.dropoutIsDivisibleBy8 == 0) {
+        if ((fBaseParams.layoutType == INPUT_FORMAT_TND && fBaseParams.d > ALIGN128) ||
+                fBaseParams.dropMaskOuter) {
             fBaseParams.isBn2 = false;
             fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
         }
     }
     if (fBaseParams.isBn2MultiBlk) {
         fBaseParams.isDeterministic = false;
-        if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
+        if (fBaseParams.dropMaskOuter) {
             fBaseParams.isBn2 = false;
             fBaseParams.isBn2MultiBlk = false;
             fBaseParams.isDeterministic = (context_->GetDeterministic() == 1);
