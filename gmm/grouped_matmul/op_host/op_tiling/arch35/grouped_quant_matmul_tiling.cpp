@@ -588,25 +588,28 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t
 {
     auto wDimNum = wShape.GetDimNum();
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
-    OP_CHECK_IF(wDimNum != WEIGHTNZ_DIM_NUM,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight", std::to_string(wDimNum), "5"),
+    constexpr size_t weightNzMultiTensorDimNum = 4;
+    size_t expectedWeightNzDimNum = IsWeightNzSingleMultiSingleLayout() ? weightNzMultiTensorDimNum : WEIGHTNZ_DIM_NUM;
+    OP_CHECK_IF(wDimNum != expectedWeightNzDimNum,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight", std::to_string(wDimNum),
+                                             std::to_string(expectedWeightNzDimNum)),
                 return false);
     const bool isWeight4Bit = inputParams_.bDtype == ge::DT_INT4 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
                               inputParams_.bDtype == ge::DT_FLOAT4_E1M2;
     const uint32_t weightNzLastDim = isWeight4Bit ? WEIGHTNZ_64 : WEIGHTNZ_32;
-    OP_CHECK_IF(static_cast<uint64_t>(wShape[WEIGHTNZ_FIFTH_DIM]) != static_cast<uint64_t>(weightNzLastDim),
+    OP_CHECK_IF(static_cast<uint64_t>(wShape[wDimNum - 1]) != static_cast<uint64_t>(weightNzLastDim),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams_.opType, "weight", ShapeToString(wShape),
-                    StrCat("when the format of weight is FRACTAL_NZ, fifth dimension must be ", weightNzLastDim,
+                    StrCat("when the format of weight is FRACTAL_NZ, last dimension must be ", weightNzLastDim,
                            " for ", (isWeight4Bit ? "4-bit" : "8-bit"), " weight")),
                 return false);
-    OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_16,
+    OP_CHECK_IF(wShape[wDimNum - 2] != WEIGHTNZ_16,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams_.opType, "weight", ShapeToString(wShape),
-                    "when the format of weight is FRACTAL_NZ, forth dimension must be 16"),
+                    "when the format of weight is FRACTAL_NZ, second last dimension must be 16"),
                 return false);
-    auto wShapeDimThird = static_cast<uint64_t>(wShape[WEIGHTNZ_THIRD_DIM]);
-    auto wShapeDimSecond = static_cast<uint64_t>(wShape[WEIGHTNZ_SECOND_DIM]);
+    auto wShapeDimThird = static_cast<uint64_t>(wShape[wDimNum - 3]);
+    auto wShapeDimSecond = static_cast<uint64_t>(wShape[wDimNum - 4]);
     if (!inputParams_.transB) {
         OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_16),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
