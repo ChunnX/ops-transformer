@@ -349,21 +349,20 @@ aclnnStatus aclnnScatterPaKvCache(
       <td>传入的key、keyCacheRef、slotMapping、value、valueCacheRef是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="3">161002</td>
+      <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="4">161002</td>
       <td>参数key、value的数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>key、keyCacheRef、value、valueCacheRef的数据类型不一致。</td>
     </tr>
     <tr>
-      <td>slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型不一致。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>561103</td>
       <td>key的维数不等于3维或4维，value的维数不等于0维、3维或4维。</td>
     </tr>
+    <tr>
+      <td>slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型不一致。</td>
+    </tr>
+
   </tbody>
   </table>
 
@@ -416,7 +415,7 @@ aclnnStatus aclnnScatterPaKvCache(
   - aclnnScatterPaKvCache默认确定性实现。
 - key、value、keyCacheRef、valueCacheRef的数据类型必须一致；
 - 当cacheModeOptional为“PA_NZ”时key、keyCacheRef和value、valueCacheRef的数据类可以不一致；
-- slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型必须一致（对应场景一；
+- slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型必须一致（对应场景一）；
 - slotMapping的取值范围[0,num_blocks*block_size-1]，且slotMapping内的元素值保证不重复，重复时不保证正确性；
 - 当key和value都是3维，则key和value的前两维shape必须相同；
 - 当key和value都是4维，则key和value的前三维shape必须相同，且keyCacheRef和valueCacheRef的第三维必须是1；
