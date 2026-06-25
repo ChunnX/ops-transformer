@@ -98,8 +98,10 @@ __aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout,
     uint32_t mSizeAlign8 = (validRows + layout.broadcastElems - 1) /
         layout.broadcastElems * layout.broadcastElems;
     uint32_t brcbRepeat = mSizeAlign8 / layout.broadcastElems;
-    Brcb(tmpMaxBlockUb, maxUb, brcbRepeat, {1, layout.broadcastElems});
-    Brcb(tmpSumBlockUb, sumUb, brcbRepeat, {1, layout.broadcastElems});
+    Brcb(tmpMaxBlockUb, maxUb, brcbRepeat,
+        AscendC::BrcbRepeatParams(1, static_cast<uint8_t>(layout.broadcastElems)));
+    Brcb(tmpSumBlockUb, sumUb, brcbRepeat,
+        AscendC::BrcbRepeatParams(1, static_cast<uint8_t>(layout.broadcastElems)));
     SetFlag<HardEvent::V_MTE3>(vToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
 
