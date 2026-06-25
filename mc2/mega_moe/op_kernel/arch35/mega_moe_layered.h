@@ -581,8 +581,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
         for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
             for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
                 int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
-                if (globalExpertId < 0 ||
-                    (globalExpertId % static_cast<int32_t>(expertPerRank_)) != localExpertId) {
+                if ((globalExpertId % static_cast<int32_t>(expertPerRank_)) < localExpertId) {
+                    break;
+                }
+                if ((globalExpertId % static_cast<int32_t>(expertPerRank_)) != localExpertId) {
                     continue;
                 }
                 uint32_t targetRank = static_cast<uint32_t>(globalExpertId) / expertPerRank_;
