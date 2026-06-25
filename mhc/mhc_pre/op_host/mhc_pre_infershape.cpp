@@ -115,6 +115,7 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
     if (xDim == BSND_DIM_NUM) {
         // b,s,n,d
         uint64_t b = xShape->GetDim(0), s = xShape->GetDim(1), n = xShape->GetDim(2), d = xShape->GetDim(3);
+        // dim of phi,bias
         uint64_t matN = hasResi ? (n * n + 2 * n) : (2 * n);
         SetShape3D(outShapes[OUT_H_IN_INDEX], b, s, d);
         SetShape3D(outShapes[OUT_H_POST_INDEX], b, s, n);
@@ -129,6 +130,7 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
     } else {
         // t,n,d
         uint64_t t = xShape->GetDim(0), n = xShape->GetDim(1), d = xShape->GetDim(2);
+        // dim of phi,bias
         uint64_t matN = hasResi ? (n * n + 2 * n) : (2 * n);
         SetShape2D(outShapes[OUT_H_IN_INDEX], t, d);
         SetShape2D(outShapes[OUT_H_POST_INDEX], t, n);

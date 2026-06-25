@@ -249,7 +249,8 @@ static bool CheckInputOutShape(const MhcParamsBase &params)
     int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
     int64_t expectedPhiRows = 0;
     int64_t expectedBiasSize = 0;
-
+    
+    // dim of phi,bias
     if (alphaSize == ALPHA_DIM_SIZE_2) {
         expectedPhiRows = 2 * n;
         expectedBiasSize = 2 * n;
