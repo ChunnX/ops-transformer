@@ -105,7 +105,7 @@ private:
     GM_ADDR localWinAddr_{nullptr};
     uint32_t scaleOffset_{0};
     uint32_t scaleBytes_{0};
-    uint32_t scalesAlign_{0};
+    uint32_t scalesElems_{0};
     uint32_t metaOffset_{0};
     uint32_t hitCountOffset_{0};
     uint32_t metaBytes_{0};
@@ -164,7 +164,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     epRankId_ = mc2Context_->epRankId;
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_);
-    metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
+    metaOffset_ = Ceil((uint32_t)(axisH_ * 2), UB_ALIGN) * UB_ALIGN;
 
     numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
@@ -200,11 +200,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
 
-    scaleOffset_ = tilingData->scaleOffset;
+    scaleOffset_ =  Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
     scaleBytes_ = tilingData->scaleBytes;
-    scalesAlign_ = (scaleBytes_ == 0U) ? 0U : (scaleBytes_ / sizeof(ScalesType));
+    scalesElems_ = (scaleBytes_ == 0U) ? 0U : (scaleBytes_ / sizeof(ScalesType));
     uint32_t scalesBytesAlign = Ceil(scaleBytes_, UB_ALIGN) * UB_ALIGN;
-    maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
 
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
@@ -225,6 +224,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
         tpipe_->InitBuffer(ubScalesBuf_, scalesBytesAlign);
+        ubScales_ = ubScalesBuf_.Get<ScalesType>();
     }
 
     ubToken_     = ubTokenBuf_.Get<XType>();
@@ -241,9 +241,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
     ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
     ubStageMeta_    = ubStageMetaBuf_.Get<int32_t>();
-    if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-        ubScales_ = ubScalesBuf_.Get<ScalesType>();
-    }
 
     DataCopyExtParams expertPfxCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int64_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int64_t> expertPfxPadParams{false, 0U, 0U, 0};
@@ -420,9 +417,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
                     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                         GlobalTensor<ScalesType> srcScalesTensor;
                         srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType*>(slotAddr + scaleOffset_),
-                            scalesAlign_);
+                            scalesElems_);
                         DataCopyParams scalesCopyParams{1U,
-                            static_cast<uint16_t>(scalesAlign_ * sizeof(ScalesType)), 0U, 0U};
+                            static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
                         DataCopyPadParams scalesPadParams{false, 0, 0, 0};
                         DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
                     }
@@ -432,8 +429,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
 
                     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
                         DataCopyParams scalesCopyParams{1U,
-                            static_cast<uint16_t>(scalesAlign_ * sizeof(ScalesType)), 0U, 0U};
-                        DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesAlign_], ubScales_, scalesCopyParams);
+                            static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+                        DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
                     }
                     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
