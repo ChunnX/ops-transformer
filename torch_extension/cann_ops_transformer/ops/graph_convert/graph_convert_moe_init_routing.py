@@ -27,7 +27,7 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor([False, False, False, False, False],
-        [True, True, True, False, False])
+        [False, False, True, True, True])
     def MoeInitRoutingV3(x: Tensor, expert_idx: Tensor, scale: Optional[Tensor],
                           offset: Optional[Tensor], topk_weight: Optional[Tensor], *,
                           active_num: int, expert_capacity: int, expert_num: int,
@@ -131,6 +131,7 @@ if _TORCHAIR_AVAILABLE:
         quant_mode: int = -1,
         active_expert_range: list = None,
         row_idx_type: int = 0,
+        x_dtype: int = None,
         meta_outputs: TensorSpec = None):
         return MoeInitRoutingV3(
             x=x,

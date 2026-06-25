@@ -50,7 +50,7 @@ class _MoeReRoutingOpBuilder(OpBuilder):
             permute_tokens = tokens.new_empty((A, H), dtype=tokens.dtype)
 
             if per_token_scales is not None:
-                permute_per_token_scales = per_token_scales.new_empty(per_token_scales.sizes(),
+                permute_per_token_scales = per_token_scales.new_empty(per_token_scales.shape,
                                                                        dtype=per_token_scales.dtype)
             else:
                 permute_per_token_scales = tokens.new_empty((A,), dtype=torch.float32)
@@ -60,7 +60,7 @@ class _MoeReRoutingOpBuilder(OpBuilder):
                                                                     dtype=expert_token_num_per_rank.dtype)
 
             if expert_topk_weight is not None:
-                permute_topk_weight = expert_topk_weight.new_empty(expert_topk_weight.sizes(),
+                permute_topk_weight = expert_topk_weight.new_empty(expert_topk_weight.shape,
                                                                     dtype=expert_topk_weight.dtype)
             else:
                 permute_topk_weight = tokens.new_empty((0,), dtype=torch.float32)
