@@ -1720,7 +1720,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
 
-    SetMaskTilingData(fiaInfo);
+    if (SetMaskTilingData(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     SetSparseCompressMode(fiaInfo, inputParams);
     inputParams.set_sparseType(ComputeSparseType(fiaInfo));
     SetAlibiStartIdx(fiaInfo);
@@ -1733,7 +1735,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
     return ge::GRAPH_SUCCESS;
 }
 
-void FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaTilingInfo &fiaInfo)
+ge::graphStatus FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaTilingInfo &fiaInfo)
 {
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
@@ -1748,7 +1750,12 @@ void FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaTilingInfo &
         return;
     }
 
-    const auto &shape = fiaInfo.opParamInfo.attenMask.tensor->GetStorageShape();
+    auto attenMaskTensor = fiaInfo.opParamInfo.attenMask.tensor;
+    if (attenMaskTensor == nullptr) {
+        OP_LOGE(fiaInfo.opName, "attenMaskFlag is true but attenMask tensor is null.");
+        return ge::GRAPH_FAILED;
+    }
+    const auto &shape = attenMaskTensor->GetStorageShape();
     uint64_t maskDimNum = shape.GetDimNum();
     uint64_t maskBatch = (maskDimNum != 2 || fiaInfo.s1Size == 1) ? shape.GetDim(0) : 1;
     uint64_t maskS1Size = shape.GetDim(maskDimNum - 2);
@@ -1759,6 +1766,7 @@ void FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaTilingInfo &
     inputParams.set_attenMaskS2Size(maskS2Size);
     baseParams.set_maskQsSize(maskS1Size);
     baseParams.set_maskKVsSize(maskS2Size);
+    return ge::GRAPH_SUCCESS;
 }
 
 
@@ -1865,6 +1873,10 @@ void FusedInferAttentionScoreTilingImpl::SetAntiQuantInfo(const FiaTilingInfo &f
     }
 
     auto scaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
+    if (scaleTensor == nullptr) {
+        inputParams.set_antiquantPerTensorFlag(0);
+        return;
+    }
     uint32_t scaleDimNum = scaleTensor->GetStorageShape().GetDimNum();
     uint32_t scaleShape = scaleTensor->GetStorageShape().GetDim(0);
     bool perTensor = (scaleDimNum == 1 && scaleShape == 1);

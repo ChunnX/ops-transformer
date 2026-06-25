@@ -73,7 +73,7 @@ protected:
     int64_t CalcRequiredL2Size(const FiaTilingInfo &fiaInfo);
     void SplitOutSeq(const FiaTilingInfo &fiaInfo);
     ge::graphStatus ComputeTilingData(const FiaTilingInfo &fiaInfo);
-    void SetMaskTilingData(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus SetMaskTilingData(const FiaTilingInfo &fiaInfo);
     uint8_t ComputeSparseType(const FiaTilingInfo &fiaInfo) const;
     void SetAlibiStartIdx(const FiaTilingInfo &fiaInfo);
     void SetLayoutType(const FiaTilingInfo &fiaInfo);
