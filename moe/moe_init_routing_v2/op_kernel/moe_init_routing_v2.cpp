@@ -120,6 +120,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
         MoeV2SrcToDstOpSimt srcToDstOpSimt;
         srcToDstOpSimt.Init<MoeInitRoutingV2TilingData>(expandedRowIdx, userWS, t);
         srcToDstOpSimt.Process();
+    } else if (TILING_KEY_IS(10011) || TILING_KEY_IS(11011) || TILING_KEY_IS(10012) || TILING_KEY_IS(11012)) {
+        // Drop/Pad arch35 mapping is produced in MoeV2ExpertTokenOutSimt to keep per-expert counts cumulative even
+        // when the merge output is split into multiple fragments for the same expert.
     } else {
         MoeV2SrcToDstWithCapacitySimt<DTYPE_X, MoeInitRoutingV2TilingData> srcToDstWithCapacityOpSimt;
         srcToDstWithCapacityOpSimt.Init(expandedRowIdx, expandedX, userWS, t);
