@@ -76,15 +76,11 @@ struct QL1BuffSel {
 /* ============确定Key的L1类型============= */
 template <typename INPUT_T, uint32_t s2BaseSize, uint32_t dBaseSize>
 struct KVL1BuffSel {
-    constexpr static bool isFP8DType =  
-            std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
-           std::is_same_v<INPUT_T, fp8_e5m2_t> ||
-           std::is_same_v<INPUT_T, hifloat8_t>;
     using Type = std::conditional_t<
-            (isFP8DType && s2BaseSize == 128 && dBaseSize == 576),
+            false,
             BuffersPolicy4buff<BufferType::L1>,
             std::conditional_t<
-                (!(isFP8DType) && s2BaseSize == 256 && dBaseSize > 128),
+                (s2BaseSize == 256 && dBaseSize > 128),
                 BuffersPolicySingleBuffer<BufferType::L1>,
                 BuffersPolicyDB<BufferType::L1>
             >
@@ -120,9 +116,9 @@ struct L0CBuffSel {
 };
 
 /* ============确定bmm2ResBuffer的类型============= */
-template <bool useDn, bool isFp8, bool optionalDn>
+template <bool useDn, bool optionalDn>
 struct Bmm2ResBuffSel {
-    using Type = std::conditional_t<((useDn && isFp8) || optionalDn),
+    using Type = std::conditional_t<(useDn || optionalDn),
         BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
         BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
@@ -140,23 +136,19 @@ public:
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t s2SplitSize = (uint32_t)256;
-    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
-                                IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                                IsSameType<INPUT_T, hifloat8_t>::value;
-    static constexpr bool isMlaFullQuant = isFp8 && hasRope;
     static constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
-    static constexpr bool useDn = optionalDn || IsDn(((IsSameType<INPUT_T, float>::value) || isFp8),
-                                                     (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten,
+    static constexpr bool useDn = optionalDn || IsDn((IsSameType<INPUT_T, float>::value),
+                                                     (s2BaseSize == 256), pseMode, hasAtten,
                                                      hasDrop, s1BaseSize == 64, dTemplateType, hasRope,
                                                      enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
-    using ROPE_T = std::conditional_t<isMlaFullQuant, bfloat16_t, INPUT_T>;
+    using ROPE_T = std::conditional_t<false, bfloat16_t, INPUT_T>;
     static constexpr TPosition bmm2OutPos = GetC2Position(
         dVTemplateType, UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
-        s1BaseSize == 64), (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant, false, optionalDn);
+        s1BaseSize == 64), (s2BaseSize == 256 && s1BaseSize == 64), false, false, optionalDn);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
-    static constexpr uint32_t l1BaseD = isFp8 ? 256: ((IsSameType<INPUT_T, float>::value) ? (dBaseSize > 128 ? 64 : 128): 128);
+    static constexpr uint32_t l1BaseD = (IsSameType<INPUT_T, float>::value) ? (dBaseSize > 128 ? 64 : 128): 128;
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
@@ -346,63 +338,44 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitCubeInput(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitLocalBuffer() {
-    if constexpr (isMlaFullQuant) {
-        constexpr uint32_t dRopeBaseSize = dBaseSize - dVBaseSize;
-        constexpr uint32_t mm1QSize = s1BaseSize * dVBaseSize * sizeof(INPUT_T);
-        constexpr uint32_t mm1QRopeSize = s1BaseSize * dRopeBaseSize * sizeof(bfloat16_t);
-        constexpr uint32_t mm1KSize = dVBaseSize * s2BaseSize * sizeof(INPUT_T);
-        constexpr uint32_t mm1KRopeSize =  dRopeBaseSize * s2BaseSize * sizeof(bfloat16_t);
-        constexpr uint32_t mm1PSize =  s1BaseSize * s2BaseSize * sizeof(INPUT_T);
-
-        l1QBuffers.Init((*l1BufferManagerPtr), mm1QSize + mm1QRopeSize);
-        l1KBuffers.Init((*l1BufferManagerPtr), mm1KSize + mm1KRopeSize);
-
-        l0aBufferManager.Init(tPipe, MLA_L0A_SIZE * KB_TO_BYTES); //MLA_L0A_SIZE =64
-        l0bBufferManager.Init(tPipe, MLA_L0B_SIZE * KB_TO_BYTES); //MLA_L0B_SIZE =64
-        l0cBufferManager.Init(tPipe, L0C_SIZE *KB_TO_BYTES);
-        mmL0ABuffers.Init(l0aBufferManager, (MLA_L0A_SIZE / NUM_2) * KB_TO_BYTES);
-        mmL0BBuffers.Init(l0bBufferManager, (MLA_L0B_SIZE / NUM_2) * KB_TO_BYTES);
-        mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
+    if constexpr ((dBaseSize > 256) || IsSameType<INPUT_T, float>::value) {
+        /* Float32场景以及D大于256的其他dtype场景，Bmm1左矩阵不开DB + 驻留 + 复用 + L1切K 
+        Bmm2左矩阵3 Buffer循环，Bmm1右矩阵和Bmm2右矩阵在L1上切D轴，并开启DoubleBuffer
+        唯一不同的是D=256场景下的D轴只能切分到96，其余都可以切分到128，原因是D=256场景S1Base是128
+        */
+        constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(INPUT_T);
+        /* fp8场景bmm1右矩阵在L1上全载*/
+        constexpr uint32_t mm1RightSize = s2BaseSize * l1BaseD * sizeof(INPUT_T);
+        constexpr uint32_t mm2RightSize = s2BaseSize * l1BaseD * sizeof(INPUT_T);
+        l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
+        l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
+        l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
     } else {
-        if constexpr ((dBaseSize > 256) || IsSameType<INPUT_T, float>::value) {
-            /* Float32场景以及D大于256的其他dtype场景，Bmm1左矩阵不开DB + 驻留 + 复用 + L1切K 
-            Bmm2左矩阵3 Buffer循环，Bmm1右矩阵和Bmm2右矩阵在L1上切D轴，并开启DoubleBuffer
-            唯一不同的是D=256场景下的D轴只能切分到96，其余都可以切分到128，原因是D=256场景S1Base是128
-            */
-            constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(INPUT_T);
-            /* fp8场景bmm1右矩阵在L1上全载*/
-            constexpr uint32_t mm1RightSize = isFp8 ? (dBaseSize * s2BaseSize * sizeof(INPUT_T)) : (s2BaseSize * l1BaseD * sizeof(INPUT_T));
-            constexpr uint32_t mm2RightSize = s2BaseSize * l1BaseD * sizeof(INPUT_T);
-            l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-            l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
-            l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
-        } else {
-            constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(INPUT_T);
-            constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(INPUT_T);
-            constexpr uint32_t mm2RightSize = (uint32_t)dVTemplateType * s2BaseSize * sizeof(INPUT_T);
-            l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-            l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
-            l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
-        }
+        constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(INPUT_T);
+        constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(INPUT_T);
+        constexpr uint32_t mm2RightSize = (uint32_t)dVTemplateType * s2BaseSize * sizeof(INPUT_T);
+        l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
+        l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
+        l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
+    }
 
-        // L0A B C 当前写死，能否通过基础api获取
-        l0aBufferManager.Init(tPipe, 65536); // 64 * 1024
-        l0bBufferManager.Init(tPipe, 65536); // 64 * 1024
-        l0cBufferManager.Init(tPipe, 262144); // 256 * 1024
-        // L0A B C当前写死，要改成通过计算获取
-        if (IsSameType<INPUT_T, float>::value) {
-            mmL0ABuffers.Init(l0aBufferManager, 64 * 1024);
-            mmL0BBuffers.Init(l0bBufferManager, 64 * 1024);
-        } else {
-            mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
-            mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
-        }
+    // L0A B C 当前写死，能否通过基础api获取
+    l0aBufferManager.Init(tPipe, 65536); // 64 * 1024
+    l0bBufferManager.Init(tPipe, 65536); // 64 * 1024
+    l0cBufferManager.Init(tPipe, 262144); // 256 * 1024
+    // L0A B C当前写死，要改成通过计算获取
+    if (IsSameType<INPUT_T, float>::value) {
+        mmL0ABuffers.Init(l0aBufferManager, 64 * 1024);
+        mmL0BBuffers.Init(l0bBufferManager, 64 * 1024);
+    } else {
+        mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
+        mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
+    }
 
-        if constexpr (s1BaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 && s1BaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
-            mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
-        } else {
-            mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
-        }
+    if constexpr (s1BaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 && s1BaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
+        mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
+    } else {
+        mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
     }
 }
 
@@ -534,39 +507,21 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1(
 {
     CalcS1Coord(runInfo, constInfo);
     CalcS2Coord(runInfo, constInfo);
-    if constexpr (isMlaFullQuant) {
-        IterateBmm1MLAFullQuant(outputBuf,  runInfo, constInfo);
-    } else { 
-        if constexpr (isFp8) {
-            if constexpr (dBaseSize > 256) {
-                IterateBmm1NdL0Split(outputBuf, runInfo, constInfo);
+    if constexpr (dBaseSize > 256 || IsSameType<INPUT_T, float>::value) {
+        IterateBmm1NdL1SplitK(outputBuf, runInfo, constInfo);
+    } else {
+        if constexpr (useDn) {
+            // D > 256 不支持Dn
+            if constexpr (dBaseSize > 128){
+                IterateBmm1DnSplitK(outputBuf, runInfo, constInfo);
             } else {
-                if constexpr (useDn) {
-                    IterateBmm1Dn(outputBuf, runInfo, constInfo);
-                } else if constexpr (useNz) {
-                    IterateBmm1Nz(outputBuf, runInfo, constInfo);
-                } else {
-                    IterateBmm1Nd(outputBuf, runInfo, constInfo);
-                }
+                IterateBmm1Dn(outputBuf, runInfo, constInfo);
             }
         } else {
-            if constexpr (dBaseSize > 256 || IsSameType<INPUT_T, float>::value) {
-                IterateBmm1NdL1SplitK(outputBuf, runInfo, constInfo);
+            if constexpr (dBaseSize > 128) {
+                IterateBmm1NdL0Split(outputBuf, runInfo, constInfo);
             } else {
-                if constexpr (useDn) {
-                    // D > 256 不支持Dn
-                    if constexpr (dBaseSize > 128){
-                        IterateBmm1DnSplitK(outputBuf, runInfo, constInfo);
-                    } else {
-                        IterateBmm1Dn(outputBuf, runInfo, constInfo);
-                    }
-                } else {
-                    if constexpr (dBaseSize > 128) {
-                        IterateBmm1NdL0Split(outputBuf, runInfo, constInfo);
-                    } else {
-                        IterateBmm1Nd(outputBuf, runInfo, constInfo);
-                    }
-                }
+                IterateBmm1Nd(outputBuf, runInfo, constInfo);
             }
         }
     }
@@ -614,11 +569,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
             shape.actHeadDim = realN;
             shape.maxblockNumPerBatch = maxBlockNumPerBatch;
             shape.copyRowNum = runInfo.s2RealSize;
-            if constexpr (isFp8) {
-                shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
-            } else {
-                shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-            }
+            shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
             shape.pageStride = constInfo.valueBnStride;
             shape.n2Stride = constInfo.valueN2Stride;
             GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
@@ -705,9 +656,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    if constexpr (isMlaFullQuant) {
-        IterateBmm2MLAFullQuant(outputBuf, inputBuf, runInfo, constInfo);
-    } else if constexpr (useNz) {
+    if constexpr (useNz) {
         IterateBmm2Nz(outputBuf, inputBuf, runInfo, constInfo);
     } else {
         if constexpr (isInfer && layout == LayOutTypeEnum::LAYOUT_BNSD) {
@@ -741,11 +690,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                 shape.actHeadDim = constInfo.dSizeV;
                 shape.maxblockNumPerBatch = maxBlockNumPerBatch;
                 shape.copyRowNum = runInfo.s2RealSize;
-                if constexpr (isFp8) {
-                    shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
-                } else {
-                    shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-                }
+                shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
                 shape.pageStride = constInfo.valueBnStride;
                 shape.n2Stride = constInfo.valueN2Stride;
                 GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
@@ -786,8 +731,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                 param.realM = (uint32_t)runInfo.s1RealSize;
             }
             mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
-            if constexpr (isFp8) {
-                MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+            if constexpr ((uint32_t)dVTemplateType > 128) {
+                MatmulN<INPUT_T, INPUT_T, T, (uint32_t)s1TemplateType, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
                     mm2A.GetTensor<INPUT_T>(),
                     mm2BTensor,
                     mmL0ABuffers,
@@ -795,8 +740,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                     mm2ResL0C.GetTensor<T>(),
                     param);
             } else {
-                if constexpr ((uint32_t)dVTemplateType > 128) {
-                    MatmulN<INPUT_T, INPUT_T, T, (uint32_t)s1TemplateType, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+                if constexpr (s2BaseSize == 128) {
+                    MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
                         mm2A.GetTensor<INPUT_T>(),
                         mm2BTensor,
                         mmL0ABuffers,
@@ -804,23 +749,13 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                         mm2ResL0C.GetTensor<T>(),
                         param);
                 } else {
-                    if constexpr (s2BaseSize == 128) {
-                        MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                            mm2A.GetTensor<INPUT_T>(),
-                            mm2BTensor,
-                            mmL0ABuffers,
-                            mmL0BBuffers,
-                            mm2ResL0C.GetTensor<T>(),
-                            param);
-                    } else {
-                        MatmulBase<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-                            mm2A.GetTensor<INPUT_T>(),
-                            mm2BTensor,
-                            mmL0ABuffers,
-                            mmL0BBuffers,
-                            mm2ResL0C.GetTensor<T>(),
-                            param);
-                    }
+                    MatmulBase<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                        mm2A.GetTensor<INPUT_T>(),
+                        mm2BTensor,
+                        mmL0ABuffers,
+                        mmL0BBuffers,
+                        mm2ResL0C.GetTensor<T>(),
+                        param);
                 }
             }
             
@@ -872,11 +807,6 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitDequantParams(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV)
 {
-    if constexpr (isFp8) {
-        deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
-        deScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
-        deScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
-    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1034,9 +964,6 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
         
         if constexpr (hasRope) {
             uint32_t dstNzC0Stride = (runInfo.s1RealSize + 15) >> 4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数;
-            if constexpr (isFp8) {
-                dstNzC0Stride = (runInfo.s1RealSize + 31) >> 5 << 5; // fp8场景在L1上M方向32对齐，防止loadL12L0出现地址越界
-            }
             uint64_t gmRopeOffset = this->queryRopeGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
                 runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s1Coord, 0);
             CopyToL1Nd2Nz<INPUT_T>(mm1ATensor[dstNzC0Stride * constInfo.dSize],
@@ -1070,11 +997,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
         shape.actHeadDim = constInfo.dSize;
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
-        if constexpr (isFp8) {
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
-        } else {
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-        }
+        shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         shape.pageStride = constInfo.keyBnStride;
         shape.n2Stride = constInfo.keyN2Stride;
         GlobalTensor<INPUT_T> mm1BGmTensor = this->keyGm.gmTensor;
@@ -1095,9 +1018,6 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
         LoadKeyToL1Nz(mm1BTensor, runInfo, constInfo);
         if constexpr (hasRope) {
             uint32_t dstNzC0Stride = (runInfo.s2RealSize + 15) >> 4 << 4; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数;
-            if constexpr (isFp8) {
-                dstNzC0Stride = (runInfo.s2RealSize + 31) >> 5 << 5; // fp8场景在L1上M方向32对齐，防止loadL12L0出现地址越界
-            }
             uint64_t gmRopeOffset = this->keyRopeGm.offsetCalculator.GetOffset(runInfo.boIdx,
                 runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
             CopyToL1Nd2Nz<INPUT_T>(mm1BTensor[dstNzC0Stride * constInfo.dSize], this->keyRopeGm.gmTensor[gmRopeOffset],
@@ -1126,19 +1046,11 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
             mm1ResL0C.GetTensor<T>(),
             param);
     } else {
-        if constexpr (isFp8) {
-            MatmulK<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
-                mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<T>(),
-                param);
-        } else {
-            MatmulK<INPUT_T, INPUT_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
-                mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<T>(),
-                param);
-        }
+        MatmulK<INPUT_T, INPUT_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+            mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(),
+            mmL0ABuffers, mmL0BBuffers,
+            mm1ResL0C.GetTensor<T>(),
+            param);
     }
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         mm1A.Set<HardEvent::MTE1_MTE2>();
@@ -1352,28 +1264,6 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nz(
 
     float deScaleValueTile1 = 1.0f;
     float deScaleValueTile2 = 1.0f;
-    if constexpr (isFp8) {
-        int64_t deScaleQOffset = 0;
-        int64_t deScaleKvOffset = 0;
-        // 训练模板：128*128 推理模板：128*256
-        int64_t s1BlockCnt = CeilDivision(constInfo.s1Size, 128);
-        int64_t s2BlockCnt = CeilDivision(constInfo.s2Size, 256);
-        /* Q的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, G, Ceil(S1, 128), 1] */
-        deScaleQOffset = runInfo.boIdx * constInfo.n2G * s1BlockCnt +
-                                runInfo.n2oIdx * constInfo.gSize * s1BlockCnt +
-                                runInfo.goIdx * s1BlockCnt + runInfo.s1oIdx;
-        /* KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, Ceil(S2, 256), 1] */
-        runInfo.deScaleKvOffset = runInfo.boIdx * constInfo.n2Size * s2BlockCnt +
-                                runInfo.n2oIdx * s2BlockCnt +
-                                (runInfo.s2StartIdx >> 8) + (runInfo.s2LoopCount * 2); // 8 ：按照256分块计算deScaleKv偏移
-        deScaleKvOffset = runInfo.deScaleKvOffset;
-        float deScaleQValue = this->deScaleQGm.GetValue(deScaleQOffset);
-        float deScaleKValue = this->deScaleKGm.GetValue(deScaleKvOffset);
-        deScaleValueTile1 = constInfo.scaleValue * deScaleQValue * deScaleKValue;
-        if (runInfo.s2RealSize > 256) {
-            deScaleValueTile2 = constInfo.scaleValue * deScaleQValue * this->deScaleKGm.GetValue(deScaleKvOffset + 1);
-        }
-    }
 
     uint32_t nLoop = (runInfo.s2RealSize + 255) >> 8;
     for (int n = 0; n < nLoop; n++) {
@@ -1629,11 +1519,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         shape.actHeadDim = constInfo.dSize;
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
-        if constexpr (isFp8) {
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
-        } else {
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-        }
+        shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         shape.pageStride = constInfo.keyBnStride;
         shape.n2Stride = constInfo.keyN2Stride;
         GlobalTensor<INPUT_T> mm1BGmTensor = GetKeyGm(runInfo, constInfo);
@@ -1970,11 +1856,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     }
     fixpipeParams.mSize = runInfo.s2RealSize; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
     fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
-    if constexpr (useDn && isFp8) {
-        fixpipeParams.dstStride = 64;
-    } else {
-        fixpipeParams.dstStride = fixpipeParams.nSize / 2; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
-    }
+    fixpipeParams.dstStride = fixpipeParams.nSize / 2; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
 
     fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
@@ -2191,7 +2073,6 @@ __aicore__ inline bool FANoQuantBlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo<i
 TEMPLATES_DEF
 class FANoQuantBlockCubeDummy {
 public:
-    static constexpr bool isFp8 = FANoQuantBlockCube<TEMPLATE_ARGS>::isFp8;
     static constexpr bool splitD = FANoQuantBlockCube<TEMPLATE_ARGS>::splitD;
     static constexpr bool useDn = FANoQuantBlockCube<TEMPLATE_ARGS>::useDn;
     static constexpr bool useNz = FANoQuantBlockCube<TEMPLATE_ARGS>::useNz;

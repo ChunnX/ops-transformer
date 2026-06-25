@@ -37,9 +37,7 @@ public:
     static constexpr uint32_t gSplitMax = 16;
     static constexpr uint32_t preloadTimes = 3;
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value && !IsSameType<OUTPUT_T, float>::value;
-    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value || IsSameType<INPUT_T, hifloat8_t>::value;
-    static constexpr bool isMlaFullQuant = isFp8 && hasRope;
-    static constexpr bool isMlaNoQuant = !isFp8 && hasRope && isInfer && (dTemplateType == DTemplateType::Aligned576);
+    static constexpr bool isMlaNoQuant = hasRope && isInfer && (dTemplateType == DTemplateType::Aligned576);
     
     /* =====================GM变量========================== */
     GlobalTensor<float> softmaxLseGm;
@@ -361,14 +359,6 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitUniqueLocalBuf
             this->tPipe->InitBuffer(postQuantOffsetQue, 1, 2048); // 2K
         }
     }
-    if constexpr (isMlaFullQuant) {
-        constexpr uint32_t softmaxRowmaxBufSize = 256; // s1 baseSize * 4b(fp32)
-        this->tPipe->InitBuffer(BaseClass::queryScaleQue[0], 1, BaseClass::s1BaseSize / CV_RATIO * sizeof(float));
-        this->tPipe->InitBuffer(BaseClass::queryScaleQue[1], 1, BaseClass::s1BaseSize / CV_RATIO * sizeof(float));
-        this->tPipe->InitBuffer(BaseClass::pScaleBuf[0], softmaxRowmaxBufSize);
-        this->tPipe->InitBuffer(BaseClass::pScaleBuf[1], softmaxRowmaxBufSize);
-        this->tPipe->InitBuffer(BaseClass::pScaleBuf[2], softmaxRowmaxBufSize); // 2: pScaleBuf index
-    }
     if (constInfo.learnableSinkFlag) {
         this->tPipe->InitBuffer(sinkQue, 1, 256); // buffer size = 256 bytes
     }
@@ -662,7 +652,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
     } else {
         intriParams1.dstStride = 0;
     }
-    if constexpr (isMlaFullQuant || isMlaNoQuant) {
+    if constexpr (isMlaNoQuant) {
         if (layout == LayOutTypeEnum::LAYOUT_BSH) {
             intriParams1.dstStride = sizeof(float) * (constInfo.s1Size - 1);
         } else {
