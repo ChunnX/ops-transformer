@@ -555,6 +555,35 @@ static bool ValidatePertokenScaleShape(gert::TilingContext *contex, int64_t mSiz
     return true;
 }
 
+static bool CheckKNAlignmentAndMinSize(int64_t kSize, int64_t nSize)
+{
+    if (unlikely(kSize % ALIGN_SIZE_KN != 0)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "x",
+            "K=" + std::to_string(kSize),
+            "K of x must be aligned to " + std::to_string(ALIGN_SIZE_KN));
+        return false;
+    }
+    if (unlikely(nSize % ALIGN_SIZE_KN != 0)) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "weight",
+            "N=" + std::to_string(nSize),
+            "N of weight must be aligned to " + std::to_string(ALIGN_SIZE_KN));
+        return false;
+    }
+    if (unlikely(kSize < MIN_KN_SIZE)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "x",
+            "K=" + std::to_string(kSize),
+            "K of x must be >= " + std::to_string(MIN_KN_SIZE));
+        return false;
+    }
+    if (unlikely(nSize < MIN_KN_SIZE)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight",
+            "N=" + std::to_string(nSize),
+            "N of weight must be >= " + std::to_string(MIN_KN_SIZE));
+        return false;
+    }
+    return true;
+}
+
 bool CheckMxA8W4InputShape(gert::TilingContext *contex)
 {
     // Get w format first
@@ -583,33 +612,8 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
         return false;
     }
 
-    // Validate K and N alignment for MX-A8W4 weight quant
-    if (unlikely(kSize % ALIGN_SIZE_KN != 0)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "x",
-            "K=" + std::to_string(kSize),
-            "K of x must be aligned to " + std::to_string(ALIGN_SIZE_KN));
-        return false;
-    }
-    if (unlikely(nSize % ALIGN_SIZE_KN != 0)) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "weight",
-            "N=" + std::to_string(nSize),
-            "N of weight must be aligned to " + std::to_string(ALIGN_SIZE_KN));
-        return false;
-    }
-
-    // Validate K and N minimum size for MX-A8W4 weight quant
-    if (unlikely(kSize < MIN_KN_SIZE)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "x",
-            "K=" + std::to_string(kSize),
-            "K of x must be >= " + std::to_string(MIN_KN_SIZE));
-        return false;
-    }
-    if (unlikely(nSize < MIN_KN_SIZE)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "weight",
-            "N=" + std::to_string(nSize),
-            "N of weight must be >= " + std::to_string(MIN_KN_SIZE));
-        return false;
-    }
+    OP_CHECK_IF(!CheckKNAlignmentAndMinSize(kSize, nSize),
+                OP_LOGE(contex->GetNodeName(), "CheckKNAlignmentAndMinSize failed."), return false);
 
     // 3. Validate group_list shape
     OP_CHECK_IF(!ValidateGroupListShape(contex, eFromW),
