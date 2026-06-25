@@ -324,11 +324,14 @@ public:
         LocalTensor<KV_DTYPE> realLocal = k[0];
         LocalTensor<KV_DTYPE> imagLocal = realLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF * NUM_TWO];
         LocalTensor<KV_DTYPE> buf_ = imagLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF * NUM_TWO];
+        // Split the tail block of bufferXSquare[b*192] as rope result buffer in [b*64], this ONLY works under V2 scenario.
+        LocalTensor<KV_DTYPE> outLocal = buf_[this->rowsPerBlock * this->ROPE_LENGTH * NUM_TWO];
        
         LocalTensor<float> realLocalFp32 = realLocal.template ReinterpretCast<float>();
         LocalTensor<float> imagLocalFp32 = imagLocal.template ReinterpretCast<float>();
         LocalTensor<float> cosLocalFp32 = cosLocal.template ReinterpretCast<float>();
         LocalTensor<float> sinLocalFp32 = sinLocal.template ReinterpretCast<float>();
+        LocalTensor<float> outLocalFp32 = outLocal.template ReinterpretCast<float>();
         PipeBarrier<PIPE_V>();
 
         uint64_t rsvdCnt = 0;
@@ -345,7 +348,7 @@ public:
         PipeBarrier<PIPE_V>();
 
         uint64_t mask[NUM_TWO] = {MASK_CONFIG, 0}; // mask this->ROPE_LENGTH_HALF Elements
-        LocalTensor<float> outLocalFp32 = xFp32Local.template ReinterpretCast<float>();
+        
         Mul(outLocalFp32, realLocalFp32, cosLocalFp32, mask, this->rowsPerBlock,
             {1, 1, 1, NUM_EIGHT, NUM_FOUR, NUM_EIGHT});
         Mul(outLocalFp32[this->ROPE_LENGTH_HALF], imagLocalFp32, cosLocalFp32[this->ROPE_LENGTH_HALF], mask,
@@ -365,6 +368,9 @@ public:
         Add(outLocalFp32, outLocalFp32, bufFp32, this->rowsPerBlock * this->ROPE_LENGTH);
         PipeBarrier<PIPE_V>();
 
+        // Overwrite the head 64 elements in each batch with rope result
+        // xLocal in 2 * 192 / 32 = 12 blocks for each batch
+        // outLocalFp32 from the EXACT tail of bufferXSquare in 4 * 64 / 32 = 8 blocks for each batch
         if constexpr (std::is_same<KV_DTYPE, bfloat16_t>::value) {
             Cast(xLocal, outLocalFp32, RoundMode::CAST_RINT, this->ROPE_LENGTH, this->rowsPerBlock, {1, 1, NUM_TWELVE, NUM_EIGHT});
         } else if constexpr (std::is_same<KV_DTYPE, half>::value) {
