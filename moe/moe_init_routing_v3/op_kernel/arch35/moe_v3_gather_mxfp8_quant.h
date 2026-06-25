@@ -304,10 +304,10 @@ private:
 
 private:
     TPipe *pipe_;
-    TQue<QuePosition::VECIN, 1> xInQueue_;
-    TQue<QuePosition::VECIN, 1> sortedRowIdxInQueue_;
-    TQue<QuePosition::VECOUT, 1> xQuantOutQueue_;
-    TQue<QuePosition::VECOUT, 1> mxScaleOutQueue_;
+    TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> xInQueue_;
+    TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> sortedRowIdxInQueue_;
+    TQue<QuePosition::VECOUT, GATHER_OUT_BUFFER_NUM> xQuantOutQueue_;
+    TQue<QuePosition::VECOUT, GATHER_OUT_BUFFER_NUM> mxScaleOutQueue_;
     TBuf<QuePosition::VECCALC> maxExpBuffer_;
     TBuf<QuePosition::VECCALC> invScaleBuffer_;
 
@@ -384,10 +384,10 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U>::Init(GM_ADDR xAddr, GM_ADDR
     expandedScaleOutGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedScaleAddr);
 
     // perrows * 2 * 2 * 4 expandRowIdx + sortedExpertId
-    pipe_->InitBuffer(sortedRowIdxInQueue_, 1, AlignBytes(perLoopRows_, sizeof(int32_t)));
-    pipe_->InitBuffer(xInQueue_, 1, AlignBytes(perLoopCols_, sizeof(T)));
-    pipe_->InitBuffer(xQuantOutQueue_, 1, AlignBytes(perLoopCols_ / 4, sizeof(int8_t)) * 4);
-    pipe_->InitBuffer(mxScaleOutQueue_, 1, AlignBytes(perLoopScaleCols_, sizeof(int8_t)));
+    pipe_->InitBuffer(sortedRowIdxInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopRows_, sizeof(int32_t)));
+    pipe_->InitBuffer(xInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));
+    pipe_->InitBuffer(xQuantOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_ / 4, sizeof(int8_t)) * 4);
+    pipe_->InitBuffer(mxScaleOutQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopScaleCols_, sizeof(int8_t)));
     pipe_->InitBuffer(maxExpBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
     pipe_->InitBuffer(invScaleBuffer_, AlignBytes(perLoopScaleCols_, sizeof(T)));
     if constexpr (IsSameType<U, fp8_e4m3fn_t>::value) {
