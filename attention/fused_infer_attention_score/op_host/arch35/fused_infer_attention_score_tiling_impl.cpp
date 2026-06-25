@@ -1251,7 +1251,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
     }
 }
 
-void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(auto sInner, auto sOuter, auto dSize, auto dVsize)
+void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(uint32_t sInner, uint32_t sOuter, uint32_t dSize, uint32_t dVsize)
 {
     sInner = sInnerFactorSize_;
     sOuter = sOuterFactor_;
@@ -1281,7 +1281,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(auto sIn
     }
 }
 
-void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyNonQuantConfig(const FiaTilingInfo &fiaInfo, auto sOuter, auto sInner, auto dSize, auto dVsize)
+void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyNonQuantConfig(const FiaTilingInfo &fiaInfo, uint32_t sOuter, uint32_t sInner, uint32_t dSize, uint32_t dVsize)
 {
     if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
