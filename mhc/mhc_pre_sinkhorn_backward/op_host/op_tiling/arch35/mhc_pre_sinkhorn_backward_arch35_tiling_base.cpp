@@ -391,14 +391,19 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
 
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
-    auto bf16DataType = matmul_tiling::DataType::DT_BF16;
 
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
 
     mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bf16DataType);
+    // grad_x fp32-accumulate: mm1 (grad_x_from_matmul) now writes fp32 into a dedicated fp32
+    // workspace (cube is the sole writer). The vector writes grad_x_from_hin + grad_x_from_rms to a
+    // second fp32 workspace; the final combine pass adds the two fp32 blocks and casts to gradX
+    // (half) ONCE (matches golden, which sums the three contributions in fp32 and casts once).
+    // Previously mm1's C-type was bf16 and it atomic-added half onto a half grad_x -> double fp16
+    // rounding -> grad_x ~96.x% precision.
+    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetOrgShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetBias(false);
@@ -460,7 +465,9 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoOpTiling()
 
 uint64_t MhcPreSinkhornBackwardArch35Tiling::GetTilingKey() const
 {
-    bool isDeterministic = false;
+    // deterministic == 1 -> TilingKey 1 (deterministic reduction in OneStage kernel)
+    // deterministic == 0 -> TilingKey 0 (original atomic-add reduction, zero regression)
+    bool isDeterministic = (context_->GetDeterministic() == 1);
     return GET_TPL_TILING_KEY(isDeterministic);
 }
 
@@ -479,8 +486,18 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
     size_t gradHat2Workspace = batchSize_ * seqLength_ * (n_ * n_ + 2 * n_ + n_ * c_) * sizeof(float);
+    // Deterministic reduction per-core partial region: aivNum * PAD(32) floats, placed right after
+    // gradHat2Workspace in the user workspace (see InitGM/detPartialWs_ in one_stage.h). Always
+    // reserved (cheap, <=80*128B) so the layout is identical for TilingKey 0 and 1.
+    constexpr int64_t DET_PARTIAL_PAD = 32;
+    size_t detPartialWorkspace = static_cast<size_t>(coreNumAiv_) * DET_PARTIAL_PAD * sizeof(float);
+    // grad_x fp32-accumulate workspace: TWO B*S*N*C-float blocks placed right after detPartialWorkspace.
+    //  - block 1: mm1 grad_x_from_matmul (cube single-writer)
+    //  - block 2: vector grad_x_from_hin + grad_x_from_rms
+    // The final combine adds the two fp32 blocks and casts once to the half gradX output.
+    size_t gradXFp32Workspace = 2 * static_cast<size_t>(batchSize_) * seqLength_ * n_ * c_ * sizeof(float);
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
-    size_t usrWorkSpaceSize = gradHat2Workspace;
+    size_t usrWorkSpaceSize = gradHat2Workspace + detPartialWorkspace + gradXFp32Workspace;
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(currentWorkspace == nullptr, OP_LOGE(opName, "fail to GetWorkspaceSizes"), return ge::GRAPH_FAILED);
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;

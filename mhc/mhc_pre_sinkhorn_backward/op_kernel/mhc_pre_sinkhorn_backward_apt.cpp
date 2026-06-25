@@ -18,7 +18,6 @@
 #include "arch35/mhc_pre_sinkhorn_backward_one_stage.h"
 #include "arch35/mhc_pre_sinkhorn_backward_data_arch35.h"
 #include "arch35/mhc_pre_sinkhorn_backward_key_arch35.h"
-#include "arch35/mhc_pre_sinkhorn_backward_deterministic.h"
 
 using namespace AscendC;
 using namespace MicroAPI;
@@ -42,10 +41,19 @@ __global__ __aicore__ void mhc_pre_sinkhorn_backward(
     REGISTER_TILING_DEFAULT(MhcPreSinkhornBackwardArch35TilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
+    // Both TilingKey 0 (non-deterministic) and TilingKey 1 (deterministic) now run the same proven
+    // base OneStage kernel over the same base TilingData struct. The only difference is the
+    // deterministic_ flag, which switches the grad_alpha/grad_bias cross-core reduction from
+    // floating-point atomic-add (non-reproducible order) to a fixed-order per-core partial sum.
     if constexpr (DETERMINISTIC) {
-        REGISTER_TILING_FOR_TILINGKEY("DETERMINISTIC == true", MhcPreSinkhornBackwardArch35DeterminiticTilingData);
-        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardArch35DeterminiticTilingData, tilingData, tiling);
-        MhcPreSinkhornBackwardDeterministic<DTYPE_X, DTYPE_GRAD_HIN, float> op;
+        REGISTER_TILING_FOR_TILINGKEY("DETERMINISTIC == true", MhcPreSinkhornBackwardArch35TilingData);
+        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardArch35TilingData, tilingData, tiling);
+        MhcPreSinkhornBackwardOneStage<DTYPE_PHI, DTYPE_GRAD_HIN> op;
+        op.mm1_.SetSubBlockIdx(0);
+        op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
+        op.mm2_.SetSubBlockIdx(0);
+        op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
+        op.deterministic_ = true;
         op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias,
             hc_before_norm, inv_rms, sum_out, norm_out, grad_x, grad_phi,
             grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
@@ -58,6 +66,7 @@ __global__ __aicore__ void mhc_pre_sinkhorn_backward(
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
         op.mm2_.SetSubBlockIdx(0);
         op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
+        op.deterministic_ = false;
         op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias,
             hc_before_norm, inv_rms, sum_out, norm_out, grad_x, grad_phi,
             grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);

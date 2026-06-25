@@ -33,7 +33,7 @@ ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
         ASCENDC_TPL_BOOL_SEL(DETERMINISTIC, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(MhcPreSinkhornBackwardArch35DeterminiticTilingData)
+        ASCENDC_TPL_TILING_STRUCT_SEL(MhcPreSinkhornBackwardArch35TilingData)
     )
 )
 

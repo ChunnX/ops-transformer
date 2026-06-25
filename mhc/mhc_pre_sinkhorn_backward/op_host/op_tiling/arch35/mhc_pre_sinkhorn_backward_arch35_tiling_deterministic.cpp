@@ -67,12 +67,11 @@ using namespace AscendC;
 
 bool MhcPreSinkhornBackwardArch35DeterminiticTiling::IsCapable()
 {
-    auto isDeterministic = (context_->GetDeterministic() == 1);
-    if (!isDeterministic) {
-        return false;
-    }
-    
-    return true;
+    // Deterministic mode is now handled by the base tiling template (priority 10), which routes
+    // deterministic == 1 to TilingKey 1 over the same base TilingData struct and base OneStage
+    // kernel with a deterministic reduction. This legacy deterministic template is permanently
+    // disabled so it is never selected. The .cpp is kept only so CMake still compiles it.
+    return false;
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
@@ -158,9 +157,12 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     cLoopDataLen_ = c_;
     bsLoopDataLen_ = bsTaskCount_;
     ubBlock_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)) - UB_RESERVE_SIZE;
-    auto restSize = static_cast<int64_t>(-1);
- 
-    while (restSize > 0) {
+    int64_t restSize = 0;
+    // Shrink bsLoopDataLen_/cLoopDataLen_ until the per-core UB footprint fits ubSize_. The original
+    // loop initialised restSize=-1 with condition `while (restSize > 0)`, so it NEVER executed and no
+    // shrinking happened: for large c (e.g. 4096/7168) the kernel then InitBuffer'd far more than the
+    // 221184B SIMT UB budget, hanging the launch. Loop while it does NOT fit.
+    while (true) {
         int64_t occupy = DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +   //x
                         DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                     //h_pre And grad_h_pre
                         DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +         //grad_h_in
@@ -189,10 +191,15 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
                         bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);                                //expGradBuf_
 
         restSize = ubSize_ - occupy;
-        if (restSize <= 0 && bsLoopDataLen_ > 1) {
+        if (restSize >= 0) {
+            break;                       // fits in UB
+        }
+        if (bsLoopDataLen_ > 1) {
             bsLoopDataLen_--;
-        } else {
+        } else if (cLoopDataLen_ > 1) {
             cLoopDataLen_--;
+        } else {
+            break;                       // cannot shrink further
         }
     }
 
@@ -202,12 +209,15 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     auto tailBsncTaskCount_ = totalBs * n_ * c_ - bsncTaskCount * (finalUsedAivNum_ - 1);
     cBlockCount_ = bsncTaskCount;
     cBlockTailCount_ = tailBsncTaskCount_;
-    restSize = static_cast<int64_t>(-1);
-    while (restSize > 0) {
+    while (true) {
         int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_);
-        restSize = ubSize_ - occupy;
-        if (restSize < 0 && cBlockCount_ > 1) {
+        if (ubSize_ - occupy >= 0) {
+            break;                       // fits in UB
+        }
+        if (cBlockCount_ > 1) {
             cBlockCount_--;
+        } else {
+            break;                       // cannot shrink further
         }
     }
     cBlockLoops_ = Ops::Base::CeilDiv(bsncTaskCount, cBlockCount_);
@@ -230,6 +240,9 @@ uint64_t MhcPreSinkhornBackwardArch35DeterminiticTiling::GetTilingKey() const
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::PostTiling()
 {
+    // Declare the dynamic UB size, same as the base branch PostTiling. Omitting this for a MIX
+    // (AIC+AIV) kernel can leave the framework with an incorrect UB budget for the AIV sub-cores.
+    context_->SetDynUBufSize(ubSize_);
     context_->SetBlockDim(coreNumAic_);
     context_->SetScheduleMode(1);
 
