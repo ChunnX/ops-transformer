@@ -141,9 +141,9 @@ public:
 private:
     QkvRmsNormRopeCacheWithKScaleParams params_;
 
-    struct TensorNullRule {
+    struct PointerNullRule {
         const char *paramName;
-        const aclTensor *tensor;
+        const void *ptr;
         const char *reason;
     };
 
@@ -237,7 +237,7 @@ private:
     // 1. Null pointer check
     aclnnStatus CheckNotNull()
     {
-        const TensorNullRule tensorRules[] = {
+        const PointerNullRule rules[] = {
             {"qkv", params_.qkv, "qkv can not be nullptr"},
             {"qGamma", params_.qGamma, "qGamma can not be nullptr"},
             {"kGamma", params_.kGamma, "kGamma can not be nullptr"},
@@ -251,38 +251,18 @@ private:
             {"optionalQRotation", params_.optionalQRotation, "optionalQRotation can not be nullptr"},
             {"optionalKRotation", params_.optionalKRotation, "optionalKRotation can not be nullptr"},
             {"optionalVScale", params_.optionalVScale, "optionalVScale can not be nullptr"},
+            {"headNums", params_.headNums, "headNums can not be nullptr"},
+            {"inputLayout", params_.inputLayout, "inputLayout can not be nullptr"},
+            {"qOut", params_.qOut, "qOut can not be nullptr"},
+            {"qScale", params_.qScale, "qScale can not be nullptr"},
+            {"workspaceSize", params_.workspaceSize, "workspaceSize can not be nullptr"},
+            {"executor", params_.executor, "executor can not be nullptr"},
         };
-        for (const auto &rule : tensorRules) {
-            if (rule.tensor == nullptr) {
+        for (const auto &rule : rules) {
+            if (rule.ptr == nullptr) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, rule.paramName, "nullptr", rule.reason);
                 return ACLNN_ERR_PARAM_NULLPTR;
             }
-        }
-        if (params_.headNums == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "headNums", "nullptr", "headNums can not be nullptr");
-            return ACLNN_ERR_PARAM_NULLPTR;
-        }
-        if (params_.inputLayout == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "inputLayout", "nullptr",
-                                                  "inputLayout can not be nullptr");
-            return ACLNN_ERR_PARAM_NULLPTR;
-        }
-        if (params_.qOut == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qOut", "nullptr", "qOut can not be nullptr");
-            return ACLNN_ERR_PARAM_NULLPTR;
-        }
-        if (params_.qScale == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qScale", "nullptr", "qScale can not be nullptr");
-            return ACLNN_ERR_PARAM_NULLPTR;
-        }
-        if (params_.workspaceSize == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "workspaceSize", "nullptr",
-                                                  "workspaceSize can not be nullptr");
-            return ACLNN_ERR_PARAM_NULLPTR;
-        }
-        if (params_.executor == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "executor", "nullptr", "executor can not be nullptr");
-            return ACLNN_ERR_PARAM_NULLPTR;
         }
         return ACLNN_SUCCESS;
     }
