@@ -25,7 +25,7 @@ TILING_DATA_FIELD_DEF(uint8_t, groupListType);
 TILING_DATA_FIELD_DEF(uint8_t, activationType);
 TILING_DATA_FIELD_DEF(uint8_t, quantDtype);
 TILING_DATA_FIELD_DEF(uint8_t, roundMode);
-TILING_DATA_FIELD_DEF(uint8_t, dequantDtype);
+TILING_DATA_FIELD_DEF(uint8_t, reserved0);
 TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
 TILING_DATA_FIELD_DEF(uint16_t, reserved);
 TILING_DATA_FIELD_DEF(uint32_t, rowLen);
