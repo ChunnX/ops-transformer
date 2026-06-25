@@ -50,9 +50,15 @@ private:
     uint32_t numTokens_{0};
     uint32_t hiddenBytes_{0};
 
-    TBuf<> dataBuf_;
+    TBuf<> dataBuf0_;
+    TBuf<> dataBuf1_;
+    int32_t ppEvtMte2ToMte3_[2] = {0, 0};
+    int32_t ppEvtMte3ToMte2_[2] = {0, 0};
     TBuf<> indicesBuf_;
     TBuf<> hcommBuf_;
+    TBuf<> countsBuf_;
+    TBuf<> offsetsBuf_;
+    TBuf<> bucketPosBuf_;
     LocalTensor<uint8_t> hcommTensor_;
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -80,10 +86,21 @@ __aicore__ inline void EngramFetchArch35::Init(
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(dataBuf_, TILE_BYTES);
+    tpipe_->InitBuffer(dataBuf0_, TILE_BYTES);
+    tpipe_->InitBuffer(dataBuf1_, TILE_BYTES);
+    ppEvtMte2ToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+    ppEvtMte2ToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+    ppEvtMte3ToMte2_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    ppEvtMte3ToMte2_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
     uint32_t indicesBufSize = Ceil(numTokens_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
-    
+
+    uint32_t countsBufSize = Ceil(numRanks_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(countsBuf_, countsBufSize);
+    uint32_t offsetsBufSize = Ceil((numRanks_ + 1U) * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(offsetsBuf_, offsetsBufSize);
+    uint32_t bucketPosBufSize = Ceil(numTokens_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(bucketPosBuf_, bucketPosBufSize);
 }
 
 __aicore__ inline void EngramFetchArch35::Process()
@@ -99,21 +116,64 @@ __aicore__ inline void EngramFetchArch35::Process()
         DataCopyPad(indicesLocal, indicesGlobal, params, pad);
         SyncFunc<HardEvent::MTE2_S>();
 
+        if (numEntriesPerRank_ == 0) {
+            return;
+        }
+
+        LocalTensor<uint32_t> counts = countsBuf_.Get<uint32_t>();
+        LocalTensor<uint32_t> offsets = offsetsBuf_.Get<uint32_t>();
+        LocalTensor<uint32_t> bucketPos = bucketPosBuf_.Get<uint32_t>();
+
+        for (uint32_t r = 0; r < numRanks_; r++) {
+            counts(r) = 0;
+        }
+        for (uint32_t i = 0; i < numTokens_; i++) {
+            int32_t globalIdx = indicesLocal(i);
+            if (globalIdx < 0) {
+                continue;
+            }
+            uint32_t gIdx = static_cast<uint32_t>(globalIdx);
+            uint32_t ownerRank = gIdx / numEntriesPerRank_;
+            if (ownerRank >= numRanks_) {
+                continue;
+            }
+            counts(ownerRank) += 1;
+        }
+
+        offsets(0) = 0;
+        for (uint32_t r = 0; r < numRanks_; r++) {
+            offsets(r + 1) = offsets(r) + counts(r);
+        }
+
+        for (uint32_t r = 0; r < numRanks_; r++) {
+            counts(r) = 0;
+        }
+        for (uint32_t i = 0; i < numTokens_; i++) {
+            int32_t globalIdx = indicesLocal(i);
+            if (globalIdx < 0) {
+                continue;
+            }
+            uint32_t gIdx = static_cast<uint32_t>(globalIdx);
+            uint32_t ownerRank = gIdx / numEntriesPerRank_;
+            if (ownerRank >= numRanks_) {
+                continue;
+            }
+            uint32_t pos = offsets(ownerRank) + counts(ownerRank);
+            bucketPos(pos) = i;
+            counts(ownerRank) += 1;
+        }
+
         for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks) {
             uint32_t idxStart = ownerRank * numEntriesPerRank_;
-            uint32_t idxEnd = idxStart + numEntriesPerRank_;
+            uint32_t bucketStart = offsets(ownerRank);
+            uint32_t bucketEnd = offsets(ownerRank + 1);
+            uint32_t cnt = bucketEnd - bucketStart;
 
-            uint32_t pendingReadCount = 0;
             uint32_t channelIdx = ownerRank;
-            for (uint32_t i = 0; i < numTokens_; i++) {
+            uint32_t pendingReadCount = 0;
+            for (uint32_t b = 0; b < cnt; b++) {
+                uint32_t i = bucketPos(bucketStart + b);
                 int32_t globalIdx = indicesLocal(i);
-                if (globalIdx < 0) {
-                    continue;
-                }
-                if (static_cast<uint32_t>(globalIdx) < idxStart || static_cast<uint32_t>(globalIdx) >= idxEnd) {
-                    continue;
-                }
-
                 uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
                 GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(i) * hiddenBytes_;
 
@@ -138,21 +198,41 @@ __aicore__ inline void EngramFetchArch35::Process()
 
 __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    LocalTensor<uint8_t> tmp = dataBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> tmp0 = dataBuf0_.Get<uint8_t>();
+    LocalTensor<uint8_t> tmp1 = dataBuf1_.Get<uint8_t>();
     GlobalTensor<uint8_t> srcGm;
     GlobalTensor<uint8_t> dstGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
     DataCopyPadExtParams<uint8_t> pad{false, 0, 0, 0};
+
     uint64_t off = 0;
+    uint32_t tileIdx = 0;
     while (off < len) {
         uint64_t thisLen = (len - off > TILE_BYTES) ? TILE_BYTES : (len - off);
         DataCopyExtParams cp{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
+        uint32_t bufIdx = tileIdx % 2U;
+        LocalTensor<uint8_t> tmp = (bufIdx == 0U) ? tmp0 : tmp1;
+
+        if (tileIdx >= 2U) {
+            AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
+        }
+
         DataCopyPad(tmp, srcGm[off], cp, pad);
-        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+        AscendC::SetFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
+        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
         DataCopyPad(dstGm[off], tmp, cp);
-        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        AscendC::SetFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
+
         off += thisLen;
+        tileIdx++;
+    }
+
+    if (tileIdx >= 1U) {
+        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
+    }
+    if (tileIdx >= 2U) {
+        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
     }
 }
 } // namespace EngramFetchImpl
