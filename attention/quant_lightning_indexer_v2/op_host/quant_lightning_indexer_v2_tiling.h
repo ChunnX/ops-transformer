@@ -137,8 +137,6 @@ struct QLIV2ParaInfo {
     const int32_t *sparseCount = nullptr;
     const int32_t *cmpRatio = nullptr;
     const int32_t *returnValue = nullptr;
-    int64_t keyStride0 = 0;
-    int64_t keyDequantScaleStride0 = 0;
 };
 
 // -----------算子Tiling入参信息类---------------
