@@ -926,7 +926,6 @@ def qliv2_output_single(params):
                 else:
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
-        key = key.npu()
         # 构建PA场景的key_dequant_scale
         key_dequant_scale_expand = torch.zeros((batch_size, k_head_num, k_max_block_num_per_batch * block_size), dtype= dequant_dtype)
         key_dequant_scale_expand[:,:,:k_max_s2] = key_dequant_scale_bns
@@ -939,6 +938,20 @@ def qliv2_output_single(params):
                 else:
                     for i_n in range(k_head_num):
                         key_dequant_scale_block[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
+        # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
+        properties = torch.npu.get_device_properties()
+        if quant_mode != 4 and "Ascend950" in properties.name:
+            bytes_per_token = head_dim + key_dequant_scale_block.element_size() // key.element_size()
+            blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
+            key_flat = key.view(block_num, block_size * k_head_num * head_dim)
+            scale_flat = key_dequant_scale_block.view(block_num, block_size * k_head_num).view(qk_dtype)
+            blockFusion[:, :block_size * k_head_num * head_dim] = key_flat
+            blockFusion[:, block_size * k_head_num * head_dim:] = scale_flat
+            blockFusion = blockFusion.npu()
+            key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
+            key_dequant_scale_block = blockFusion[:, block_size * k_head_num * head_dim:].view(dequant_dtype).view(block_num, block_size, k_head_num)
+
+        key = key.npu()
         if quant_mode == 4:
             key_dequant_scale = torch.tensor([k_scale]).to(dequant_dtype).npu()
         else:
