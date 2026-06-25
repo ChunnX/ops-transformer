@@ -65,28 +65,46 @@ ge::graphStatus MQSMLATilingCheck::CheckUnrequiredParaExistence() const
 ge::graphStatus MQSMLATilingCheck::CheckCmpSparseIndicesExistence()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
+<<<<<<< HEAD
         if (qLayout_ == MQSMLALayout::BSND) {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 512 &&
                 opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 1024) {
                 OP_LOGE(opName_, "When qLayout is BSND, topK should be 512 or 1024, but got %ld",
                         opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(3));
+=======
+        if (qLayout_ == QSMLALayout::BSND) {
+            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 512
+                && opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 1024) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
+                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    "When qLayout is BSND, topK should be 512 or 1024, but got " +
+                    std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3)));
+>>>>>>> e803373c8... modify err_msg
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_1) != s1Size_) {
-                OP_LOGE(opName_, "When qLayout is BSND, cmpSparseIndices's S should be equal to s1Size:%u, but got %ld",
-                        s1Size_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(1));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
+                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    "When qLayout is BSND, cmpSparseIndices's S should be equal to s1Size:" +
+                    std::to_string(s1Size_) + ", but got " +
+                    std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(1)));
                 return ge::GRAPH_FAILED;
             }
         } else {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 512 &&
                 opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 1024) {
-                OP_LOGE(opName_, "When qLayout is TND, topK should be 512 or 1024, but got %ld",
-                        opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(2));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
+                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    "When qLayout is TND, topK should be 512 or 1024, but got " +
+                    std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(2)));
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_0) != qTSize_) {
-                OP_LOGE(opName_, "When qLayout is TND, cmpSparseIndices's T should be equal to qTSize:%u, but got %ld",
-                        qTSize_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(0));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
+                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    "When qLayout is TND, cmpSparseIndices's T should be equal to qTSize:" +
+                    std::to_string(qTSize_) + ", but got " +
+                    std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_0)));
                 return ge::GRAPH_FAILED;
             }
         }
@@ -101,8 +119,13 @@ ge::graphStatus MQSMLATilingCheck::CheckSWAExistence()
     }
     OP_CHECK_IF(
         opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.oriBlockTable.tensor == nullptr &&
+<<<<<<< HEAD
             kvLayout_ == MQSMLALayout::PA_BBND,
         OP_LOGE(opName_, "oriBlockTable must not be empty when kvLayout is PA_BBND and cmpKv is not provided. "),
+=======
+            kvLayout_ == QSMLALayout::PA_BBND,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "oriBlockTable"),
+>>>>>>> e803373c8... modify err_msg
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -113,19 +136,21 @@ ge::graphStatus MQSMLATilingCheck::CheckHCAExistence()
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr,
-                OP_LOGE(opName_, "oriKv must not be empty in HCA mode."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "oriKv"),
+        return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr &&
-                    opParamInfo_.cmpRatio != nullptr,
-                OP_LOGE(opName_, "cmpKv must not be empty in HCA mode."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr
+        && opParamInfo_.cmpRatio != nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpKv"),
+        return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
-            opParamInfo_.cmpRatio == nullptr,
-        OP_LOGE(opName_, "cmpRatio must not be empty in HCA mode."),
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr
+        && opParamInfo_.cmpRatio == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpRatio"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
+<<<<<<< HEAD
                     opParamInfo_.cmpRatio == nullptr,
                 OP_LOGE(opName_, "cmpRatio must not be empty in HCA mode."), return ge::GRAPH_FAILED);
 
@@ -136,6 +161,11 @@ ge::graphStatus MQSMLATilingCheck::CheckHCAExistence()
     OP_CHECK_IF(kvLayout_ == MQSMLALayout::PA_BBND && opParamInfo_.sequsedCmpKv.tensor == nullptr,
                 OP_LOGE(opName_, "sequsedCmpKv must not be empty when kvLayout is PA_BBND in HCA mode."),
                 return ge::GRAPH_FAILED);
+=======
+        opParamInfo_.cmpRatio == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpBlockTable"),
+        return ge::GRAPH_FAILED);
+>>>>>>> e803373c8... modify err_msg
 
     OP_CHECK_IF(kvLayout_ == MQSMLALayout::TND && opParamInfo_.cuSeqLensCmpKv.tensor == nullptr,
                 OP_LOGE(opName_, "cuSeqLensCmpKv must not be empty when kvLayout is TND in HCA mode."),
@@ -150,17 +180,17 @@ ge::graphStatus MQSMLATilingCheck::CheckCSAExistence()
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr &&
                     opParamInfo_.cmpSparseIndices.tensor != nullptr,
-                OP_LOGE(opName_, "cmpKv must not be empty when cmpKv and cmpSparseIndices are provided."),
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "cmpKv"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr &&
                     opParamInfo_.cmpSparseIndices.tensor != nullptr,
-                OP_LOGE(opName_, "oriKv must not be empty when cmpKv and cmpSparseIndices are provided."),
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "oriKv"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor == nullptr &&
                     opParamInfo_.cmpSparseIndices.tensor != nullptr,
-                OP_LOGE(opName_, "oriKv and cmpKv must not be empty when cmpKv and cmpSparseIndices are provided."),
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "oriKv and cmpKv"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(kvLayout_ == MQSMLALayout::PA_BBND && opParamInfo_.cmpBlockTable.tensor == nullptr,
