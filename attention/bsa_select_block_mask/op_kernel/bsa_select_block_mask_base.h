@@ -570,8 +570,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
     uint32_t qChunkStart, uint32_t curQChunkSize)
 {
     // printf("ProcessMatmulSoftmax\n");
-    uint32_t CV_EXEC_RATIO = 1;
     uint32_t loopChunkSize = CV_EXEC_RATIO * constInfo.kChunkSize;
+    uint32_t flagId = 0;
     for (uint32_t kChunkStart = 0; kChunkStart < constInfo.yBlocks;
          kChunkStart += loopChunkSize) {
 
@@ -581,16 +581,17 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
         if ASCEND_IS_AIC {
             matmulService.ComputeMatmulChunk(qChunkStart, curQChunkSize,
                                              kChunkStart, curKChunkSize, batchIdx, headIdx);
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[kChunkStart & 1]);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[flagId & SYNC_C1_TO_V1_FLAG_NUMS]);
         }
 
         if ASCEND_IS_AIV {
-            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[kChunkStart & 1]);
+            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[flagId & SYNC_C1_TO_V1_FLAG_NUMS]);
             // printf("qChunkStart: %d, curQChunkSize:  %d, kChunkStart: %d, curKChunkSize: %d\n",
             //     qChunkStart, curQChunkSize, kChunkStart, curKChunkSize);
             vectorService.OnlineSoftmaxFirstPassChunk(
                 qChunkStart, curQChunkSize, kChunkStart, curKChunkSize);
         }
+        flagId++;
     }
 }
 
@@ -599,11 +600,11 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessSoftmaxSecondPass(
     uint32_t qChunkStart, uint32_t curQChunkSize, uint32_t batchIdx, uint32_t headIdx)
 {
     // printf("ProcessSoftmaxSecondPass\n");
-
+    uint32_t loopChunkSize = CV_EXEC_RATIO * constInfo.kChunkSize;
     for (uint32_t kChunkStart = 0; kChunkStart < constInfo.yBlocks;
-         kChunkStart += constInfo.kChunkSize) {
+         kChunkStart += loopChunkSize) {
 
-        uint32_t kChunkEnd = BSAMin(kChunkStart + constInfo.kChunkSize, constInfo.yBlocks);
+        uint32_t kChunkEnd = BSAMin(kChunkStart + loopChunkSize, constInfo.yBlocks);
         uint32_t curKChunkSize = kChunkEnd - kChunkStart; // 实际执行k的blocks, 即k_comp的行数
 
         // printf("qChunkStart: %d, curQChunkSize:  %d, kChunkStart: %d, curKChunkSize: %d, batchIdx: %d, headIdx:  %d\n",
