@@ -18,13 +18,14 @@
 #include <cstdint>
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
-#include "../op_kernel/arch35/mhc_post_tiling_data.h"
-#include "../op_kernel/arch35/mhc_post_tiling_key.h"
+#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 
 struct MhcPostCompileInfo {
     uint32_t aicNum;
     uint32_t aivNum;
+    platform_ascendc::SocVersion socVersion;
+    NpuArch npuArch;
 };
 } // namespace optiling
