@@ -415,21 +415,44 @@ __aicore__ inline void Conv1dNeedStateSingleTailBH(LocalTensor<T> &xUb, LocalTen
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
 
     if (isResidualConnection == 1) {
-        if (convStateLen == 2) {
-            Conv1dNeedStateSingleTailConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
-        } else {
-            uint32_t stateSLen = 2;
-            uint32_t xSLen = 1;
-            Conv1dNeedStateSingleTailConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        if (convStateLen >= 1) {
+            Conv1dNeedStateSingleTailConVF(xAddr, weightAddr, stateAddr, yAddr, 3, 1, dimLen);
+        }
+        if (convStateLen >= 2) {
+            Conv1dNeedStateSingleTailConVF(xAddr, weightAddr, stateAddr + dimLen, yAddr + dimLen, 2, 2, dimLen);
+        }
+        if (convStateLen >= 3) {
+            Conv1dNeedStateSingleTailConVF(xAddr, weightAddr, stateAddr + 2 * dimLen, yAddr + 2 * dimLen, 1, 3, dimLen);
         }
     } else {
-        if (convStateLen == 2) {
-            Conv1dNeedStateSingleTailNoConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
-        } else {
-            uint32_t stateSLen = 2;
-            uint32_t xSLen = 1;
-            Conv1dNeedStateSingleTailNoConVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, xSLen, dimLen);
+        if (convStateLen >= 1) {
+            Conv1dNeedStateSingleTailNoConVF(xAddr, weightAddr, stateAddr, yAddr, 3, 1, dimLen);
         }
+        if (convStateLen >= 2) {
+            Conv1dNeedStateSingleTailNoConVF(xAddr, weightAddr, stateAddr + dimLen, yAddr + dimLen, 2, 2, dimLen);
+        }
+        if (convStateLen >= 3) {
+            Conv1dNeedStateSingleTailNoConVF(xAddr, weightAddr, stateAddr + 2 * dimLen, yAddr + 2 * dimLen, 1, 3, dimLen);
+        }
+    }
+}
+
+template <typename T>
+__aicore__ inline void Conv1dPureXW4SingleTail(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &yUb,
+                                               uint32_t xWindowOffset, uint32_t yOffset, uint32_t dimLen,
+                                               int32_t isResidualConnection)
+{
+    __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
+    __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
+    __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
+    __ubuf__ T *stateAddr = xAddr + xWindowOffset;
+    __ubuf__ T *currentXAddr = stateAddr + 3 * dimLen;
+    __ubuf__ T *currentYAddr = yAddr + yOffset;
+
+    if (isResidualConnection == 1) {
+        Conv1dNeedStateSingleTailConVF(currentXAddr, weightAddr, stateAddr, currentYAddr, 3, 1, dimLen);
+    } else {
+        Conv1dNeedStateSingleTailNoConVF(currentXAddr, weightAddr, stateAddr, currentYAddr, 3, 1, dimLen);
     }
 }
 

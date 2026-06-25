@@ -10,12 +10,13 @@
 
 /*!
  * \file test_aclnn_fused_causal_conv1d.cpp
- * \brief
+ * \brief W=4 correctness smoke test for FusedCausalConv1d.
  */
 
+#include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <vector>
-#include <cmath>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_fused_causal_conv1d.h"
 
@@ -51,24 +52,45 @@ int Init(int32_t deviceId, aclrtStream *stream)
     return 0;
 }
 
-// IEEE 754 fp16 decode (uint16_t → float)
 float Fp16ToFloat(uint16_t raw)
 {
     uint32_t sign = (raw >> 15) & 0x1;
     uint32_t exp = (raw >> 10) & 0x1F;
     uint32_t mant = raw & 0x3FF;
-    float val;
     if (exp == 0) {
-        // subnormal or zero
-        val = (sign ? -1.0f : 1.0f) * (static_cast<float>(mant) / 1024.0f) * (1.0f / 16384.0f);
-    } else if (exp == 31) {
-        // infinity or NaN
-        val = (mant == 0) ? (sign ? -HUGE_VALF : HUGE_VALF) : NAN;
-    } else {
-        val = (sign ? -1.0f : 1.0f) * (1.0f + static_cast<float>(mant) / 1024.0f) *
-              ldexpf(1.0f, static_cast<int>(exp) - 15);
+        return (sign ? -1.0f : 1.0f) * (static_cast<float>(mant) / 1024.0f) * (1.0f / 16384.0f);
     }
-    return val;
+    if (exp == 31) {
+        return (mant == 0) ? (sign ? -HUGE_VALF : HUGE_VALF) : NAN;
+    }
+    return (sign ? -1.0f : 1.0f) * (1.0f + static_cast<float>(mant) / 1024.0f) *
+           ldexpf(1.0f, static_cast<int>(exp) - 15);
+}
+
+uint16_t FloatToFp16(float value)
+{
+    if (value == 0.0f) {
+        return 0;
+    }
+    uint16_t sign = value < 0.0f ? 0x8000 : 0;
+    float absValue = value < 0.0f ? -value : value;
+    int exp = 0;
+    float mant = std::frexp(absValue, &exp);
+    exp -= 1;
+    int fp16Exp = exp + 15;
+    if (fp16Exp <= 0) {
+        return sign;
+    }
+    if (fp16Exp >= 31) {
+        return sign | 0x7C00;
+    }
+    float normalized = mant * 2.0f - 1.0f;
+    uint16_t fp16Mant = static_cast<uint16_t>(std::round(normalized * 1024.0f));
+    if (fp16Mant == 1024) {
+        fp16Mant = 0;
+        fp16Exp += 1;
+    }
+    return sign | (static_cast<uint16_t>(fp16Exp) << 10) | (fp16Mant & 0x03FF);
 }
 
 template <typename T>
@@ -88,6 +110,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
     *tensor = aclCreateTensor(shape.data(), static_cast<int64_t>(shape.size()), dataType, strides.data(), 0, format,
                               shape.data(), static_cast<int64_t>(shape.size()), *deviceAddr);
+    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed.\n"); return -1);
     return 0;
 }
 
@@ -101,126 +124,112 @@ void FreeTensorAndBuffer(aclTensor *tensor, void *deviceAddr)
     }
 }
 
+bool CheckValue(const char *name, int64_t index, uint16_t actualRaw, float expected)
+{
+    float actual = Fp16ToFloat(actualRaw);
+    float diff = std::fabs(actual - expected);
+    if (diff > 1e-2f) {
+        LOG_PRINT("%s[%lld] mismatch: actual=%f expected=%f diff=%f raw=0x%04x\n", name, static_cast<long long>(index),
+                  static_cast<double>(actual), static_cast<double>(expected), static_cast<double>(diff), actualRaw);
+        return false;
+    }
+    return true;
+}
+
 int main()
 {
     int32_t deviceId = 0;
-    aclrtStream stream;
+    aclrtStream stream = nullptr;
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    int64_t K = 3;            // kernel width
-    int64_t dim = 128;        // feature dimension
-    int64_t batch = 4;        // number of sequences
-    int64_t numSlots = 8;     // total cache slots (>= batch for non-APC)
-    int64_t stateLen = K - 1; // cache state length per slot (= 2)
-    // prefill: seq_lens = [5, 3, 7, 4], cuSeqLen = 19
-    int64_t cuSeqLen = 19;
+    constexpr int64_t K = 4;
+    constexpr int64_t batch = 1;
+    constexpr int64_t seqLen = 5;
+    constexpr int64_t dim = 128;
+    constexpr int64_t stateLen = K - 1;
 
-    // ---- Tensor shapes ----
-    std::vector<int64_t> xShape = {cuSeqLen, dim};
+    std::vector<int64_t> xShape = {seqLen, dim};
     std::vector<int64_t> weightShape = {K, dim};
-    std::vector<int64_t> convStatesShape = {numSlots, stateLen, dim};
+    std::vector<int64_t> convStatesShape = {batch, stateLen, dim};
     std::vector<int64_t> queryStartLocShape = {batch + 1};
-    std::vector<int64_t> cacheIndicesShape = {batch}; // 1D: non-APC
-    std::vector<int64_t> initialStateModeShape = {batch};
-    std::vector<int64_t> biasShape = {dim};
-    std::vector<int64_t> numAcceptedTokensShape = {batch};
-    std::vector<int64_t> yShape = {cuSeqLen, dim};
+    std::vector<int64_t> yShape = {seqLen, dim};
 
-    // ---- Host data ----
-    std::vector<uint16_t> hostX(cuSeqLen * dim, 0x3C00); // fp16 1.0
+    std::vector<float> stateRows = {10.0f, 20.0f, 30.0f};
+    std::vector<float> xRows = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    std::vector<float> weightRows = {1.0f, 2.0f, 4.0f, 8.0f};
 
-    // weight: pass-through at k=0, zero elsewhere — 用于简化 golden 验证
-    std::vector<uint16_t> hostWeight(K * dim, 0);
-    for (int64_t d = 0; d < dim; d++) {
-        hostWeight[0 * dim + d] = 0x3C00; // k=0: 1.0
+    std::vector<uint16_t> hostX(batch * seqLen * dim);
+    for (int64_t s = 0; s < seqLen; ++s) {
+        for (int64_t d = 0; d < dim; ++d) {
+            hostX[s * dim + d] = FloatToFp16(xRows[s]);
+        }
     }
 
-    // conv_states: zero-initialized, shape [8, 2, 128]
-    std::vector<uint16_t> hostConvStates(numSlots * stateLen * dim, 0);
+    std::vector<uint16_t> hostWeight(K * dim);
+    for (int64_t k = 0; k < K; ++k) {
+        for (int64_t d = 0; d < dim; ++d) {
+            hostWeight[k * dim + d] = FloatToFp16(weightRows[k]);
+        }
+    }
 
-    // query_start_loc: [0, 5, 8, 15, 19]
-    std::vector<int32_t> hostQueryStartLoc = {0, 5, 8, 15, 19};
+    std::vector<uint16_t> hostConvStates(batch * stateLen * dim);
+    for (int64_t h = 0; h < stateLen; ++h) {
+        for (int64_t d = 0; d < dim; ++d) {
+            hostConvStates[h * dim + d] = FloatToFp16(stateRows[h]);
+        }
+    }
 
-    // cache_indices: each batch uses a distinct cache slot
-    std::vector<int32_t> hostCacheIndices = {0, 3, 1, 5};
+    std::vector<int32_t> hostQueryStartLoc = {0, static_cast<int32_t>(seqLen)};
+    std::vector<uint16_t> hostY(seqLen * dim, 0);
 
-    // initial_state_mode: 1=from cache, 0=zero-init, 2=from cache (MTP variant)
-    std::vector<int32_t> hostInitialStateMode = {1, 0, 2, 1};
+    void *xDev = nullptr;
+    void *weightDev = nullptr;
+    void *convStatesDev = nullptr;
+    void *queryStartLocDev = nullptr;
+    void *yDev = nullptr;
+    aclTensor *xTensor = nullptr;
+    aclTensor *weightTensor = nullptr;
+    aclTensor *convStatesTensor = nullptr;
+    aclTensor *queryStartLocTensor = nullptr;
+    aclTensor *yTensor = nullptr;
 
-    // bias: zero (unused)
-    std::vector<uint16_t> hostBias(dim, 0);
-
-    // num_accepted_tokens: 0 for prefill (no speculative decoding)
-    std::vector<int32_t> hostNumAcceptedTokens(batch, 0);
-
-    // y output buffer
-    std::vector<uint16_t> hostY(cuSeqLen * dim, 0);
-
-    // ---- Device pointers and aclTensors ----
-    void *xDev = nullptr, *weightDev = nullptr, *convStatesDev = nullptr;
-    void *queryStartLocDev = nullptr, *cacheIndicesDev = nullptr;
-    void *initialStateModeDev = nullptr, *biasDev = nullptr;
-    void *numAcceptedTokensDev = nullptr, *yDev = nullptr;
-
-    aclTensor *xTensor = nullptr, *weightTensor = nullptr, *convStatesTensor = nullptr;
-    aclTensor *queryStartLocTensor = nullptr, *cacheIndicesTensor = nullptr;
-    aclTensor *initialStateModeTensor = nullptr, *biasTensor = nullptr;
-    aclTensor *numAcceptedTokensTensor = nullptr, *yTensor = nullptr;
-
-    // ---- Create required tensors ----
     ret = CreateAclTensor(hostX, xShape, &xDev, ACL_FLOAT16, &xTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-
     ret = CreateAclTensor(hostWeight, weightShape, &weightDev, ACL_FLOAT16, &weightTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-
     ret =
         CreateAclTensor(hostConvStates, convStatesShape, &convStatesDev, ACL_FLOAT16, &convStatesTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-
     ret = CreateAclTensor(hostQueryStartLoc, queryStartLocShape, &queryStartLocDev, ACL_INT32, &queryStartLocTensor,
                           ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    ret = CreateAclTensor(hostCacheIndices, cacheIndicesShape, &cacheIndicesDev, ACL_INT32, &cacheIndicesTensor,
-                          ACL_FORMAT_ND);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    ret = CreateAclTensor(hostInitialStateMode, initialStateModeShape, &initialStateModeDev, ACL_INT32,
-                          &initialStateModeTensor, ACL_FORMAT_ND);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    ret = CreateAclTensor(hostBias, biasShape, &biasDev, ACL_FLOAT16, &biasTensor, ACL_FORMAT_ND);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
-    ret = CreateAclTensor(hostNumAcceptedTokens, numAcceptedTokensShape, &numAcceptedTokensDev, ACL_INT32,
-                          &numAcceptedTokensTensor, ACL_FORMAT_ND);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-
     ret = CreateAclTensor(hostY, yShape, &yDev, ACL_FLOAT16, &yTensor, ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    int64_t activationMode = 0; // 0: None
-    int64_t padSlotId = -1;     // -1: no pad-slot skipping
-    int64_t runMode = 0;        // 0: prefill
-    int64_t maxQueryLen = cuSeqLen;
-    int64_t residualConnection = 0; // 0: no residual
-    int64_t blockSize = 0;          // 0: non-APC
-    int64_t convMode = 0;           // 0: Qwen/Pangu7B
+    int64_t activationMode = 0;
+    int64_t padSlotId = -1;
+    int64_t runMode = 1;
+    int64_t maxQueryLen = seqLen;
+    int64_t residualConnection = 0;
+    int64_t blockSize = 0;
+    int64_t convMode = 0;
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-
-    ret = aclnnFusedCausalConv1dGetWorkspaceSize(xTensor, weightTensor, convStatesTensor, queryStartLocTensor,
-                                                 cacheIndicesTensor, initialStateModeTensor, biasTensor,
-                                                 numAcceptedTokensTensor,
-                                                 nullptr, // num_computed_tokens (non-APC: nullptr)
-                                                 nullptr, // block_idx_first_scheduled_token
-                                                 nullptr, // block_idx_last_scheduled_token
-                                                 nullptr, // initial_state_idx
-                                                 activationMode, padSlotId, runMode, maxQueryLen, residualConnection,
-                                                 blockSize, convMode, yTensor, &workspaceSize, &executor);
+    ret = aclnnFusedCausalConv1dGetWorkspaceSize(
+        xTensor, weightTensor, convStatesTensor,
+        queryStartLocTensor, // 2D BH decode path: one batch with rows [0, seqLen)
+        nullptr, // cache_indices: slot defaults to batch index
+        nullptr, // initial_state_mode
+        nullptr, // bias
+        nullptr, // num_accepted_tokens: offset = stateLen - (K - 1) = 0
+        nullptr, // num_computed_tokens
+        nullptr, // block_idx_first_scheduled_token
+        nullptr, // block_idx_last_scheduled_token
+        nullptr, // initial_state_idx
+        activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, yTensor,
+        &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
@@ -236,49 +245,57 @@ int main()
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    auto ySize = GetShapeSize(yShape);
-    std::vector<uint16_t> yResult(ySize, 0);
-    ret = aclrtMemcpy(yResult.data(), ySize * sizeof(uint16_t), yDev, ySize * sizeof(uint16_t),
+    std::vector<uint16_t> yResult(hostY.size(), 0);
+    ret = aclrtMemcpy(yResult.data(), yResult.size() * sizeof(uint16_t), yDev, yResult.size() * sizeof(uint16_t),
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy y from device to host failed. ERROR: %d\n", ret); return ret);
 
-    auto csSize = GetShapeSize(convStatesShape);
-    std::vector<uint16_t> csResult(csSize, 0);
-    ret = aclrtMemcpy(csResult.data(), csSize * sizeof(uint16_t), convStatesDev, csSize * sizeof(uint16_t),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
+    std::vector<uint16_t> stateResult(hostConvStates.size(), 0);
+    ret = aclrtMemcpy(stateResult.data(), stateResult.size() * sizeof(uint16_t), convStatesDev,
+                      stateResult.size() * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy convStates from device to host failed. ERROR: %d\n", ret);
               return ret);
 
-    LOG_PRINT("=== y output (first 10 elements) ===\n");
-    for (int64_t i = 0; i < 10 && i < ySize; i++) {
-        LOG_PRINT("  y[%lld] = %f\n", (long long)i, (double)Fp16ToFloat(yResult[i]));
-    }
-    LOG_PRINT("  ...\n");
+    std::vector<float> expectY(seqLen, 0.0f);
+    expectY[0] = 10.0f * 1.0f + 20.0f * 2.0f + 30.0f * 4.0f + 1.0f * 8.0f;
+    expectY[1] = 20.0f * 1.0f + 30.0f * 2.0f + 1.0f * 4.0f + 2.0f * 8.0f;
+    expectY[2] = 30.0f * 1.0f + 1.0f * 2.0f + 2.0f * 4.0f + 3.0f * 8.0f;
+    expectY[3] = 1.0f * 1.0f + 2.0f * 2.0f + 3.0f * 4.0f + 4.0f * 8.0f;
+    expectY[4] = 2.0f * 1.0f + 3.0f * 2.0f + 4.0f * 4.0f + 5.0f * 8.0f;
 
-    LOG_PRINT("=== convStates output (first 10 elements) ===\n");
-    for (int64_t i = 0; i < 10 && i < csSize; i++) {
-        LOG_PRINT("  convStates[%lld] = %f\n", (long long)i, (double)Fp16ToFloat(csResult[i]));
+    bool ok = true;
+    for (int64_t s = 0; s < seqLen; ++s) {
+        for (int64_t d = 0; d < dim; ++d) {
+            ok = CheckValue("y", s * dim + d, yResult[s * dim + d], expectY[s]) && ok;
+        }
     }
-    LOG_PRINT("  ...\n");
+
+    std::vector<float> expectState = {3.0f, 4.0f, 5.0f};
+    for (int64_t h = 0; h < stateLen; ++h) {
+        for (int64_t d = 0; d < dim; ++d) {
+            ok = CheckValue("convStates", h * dim + d, stateResult[h * dim + d], expectState[h]) && ok;
+        }
+    }
+
+    LOG_PRINT("Expected W4 y rows: [%f, %f, %f, %f, %f]\n", static_cast<double>(expectY[0]),
+              static_cast<double>(expectY[1]), static_cast<double>(expectY[2]), static_cast<double>(expectY[3]),
+              static_cast<double>(expectY[4]));
+    LOG_PRINT("Expected updated state rows: [%f, %f, %f]\n", static_cast<double>(expectState[0]),
+              static_cast<double>(expectState[1]), static_cast<double>(expectState[2]));
 
     FreeTensorAndBuffer(xTensor, xDev);
     FreeTensorAndBuffer(weightTensor, weightDev);
     FreeTensorAndBuffer(convStatesTensor, convStatesDev);
     FreeTensorAndBuffer(queryStartLocTensor, queryStartLocDev);
-    FreeTensorAndBuffer(cacheIndicesTensor, cacheIndicesDev);
-    FreeTensorAndBuffer(initialStateModeTensor, initialStateModeDev);
-    FreeTensorAndBuffer(biasTensor, biasDev);
-    FreeTensorAndBuffer(numAcceptedTokensTensor, numAcceptedTokensDev);
     FreeTensorAndBuffer(yTensor, yDev);
-
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }
-
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
 
-    LOG_PRINT("Test completed successfully!\n");
+    CHECK_RET(ok, LOG_PRINT("FusedCausalConv1d W=4 correctness test failed.\n"); return 1);
+    LOG_PRINT("FusedCausalConv1d W=4 correctness test passed.\n");
     return 0;
 }

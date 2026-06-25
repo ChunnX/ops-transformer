@@ -865,7 +865,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
 
         // conv_mode==1 + useZeroCache: all-zero output for the leading tokens
         bool allZeroConv = (convMode_ == 1 && meta.useZeroCache);
-        uint32_t dimRem = dimSize - (dimSize / (DIM_ALIGN * 2)) * (DIM_ALIGN * 2);
+        uint32_t dimRem = dimSize - (dimSize / DIM_ALIGN) * DIM_ALIGN;
         if (needCacheTokens > 0) {
             // tokens that need cache state (positions 0..K-2)
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
@@ -906,12 +906,15 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
             LocalTensor<T> xSlice = xLocal[xStartIdx * dimSize];
             LocalTensor<T> ySlice = yLocal[(yOutOff + needCacheTokens) * dimSize];
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-            if (dimRem == 0) {
-                Conv1dNoNeedState(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
-            } else if (dimRem > DIM_ALIGN) {
-                Conv1dNoStateDoubleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
-            } else {
-                Conv1dNoStateSingleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
+            for (uint32_t blockIdx = 0; blockIdx < noCacheTokens; ++blockIdx) {
+                uint32_t xWindowOffset = blockIdx * dimSize;
+                uint32_t yOffset = blockIdx * dimSize;
+                if (dimRem == 0) {
+                    Conv1dPureXW4(xSlice, weightLocal, ySlice, xWindowOffset, yOffset, dimSize, residualConnection_);
+                } else {
+                    Conv1dPureXW4SingleTail(xSlice, weightLocal, ySlice, xWindowOffset, yOffset, dimSize,
+                                            residualConnection_);
+                }
             }
         }
 

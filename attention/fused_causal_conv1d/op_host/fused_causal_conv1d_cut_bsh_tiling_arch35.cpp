@@ -230,10 +230,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckWeightDim()
             context_->GetNodeName(), "weight", std::to_string(weightDim).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (kernelWidth_ != 3) {
+    if (kernelWidth_ != 4) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "weight", std::to_string(kernelWidth_).c_str(),
-            "The value of kernel_width must be equal to 3");
+            "The value of kernel_width must be equal to 4");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

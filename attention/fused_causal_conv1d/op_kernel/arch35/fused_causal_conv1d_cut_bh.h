@@ -126,7 +126,7 @@ private:
     int64_t seqLen_;     // 序列长度（m+1）
     int64_t cuSeqLen_;   // 累积序列长度（2D输入用）
     int64_t dim_;        // 特征维度
-    int64_t kernelSize_; // 卷积核大小（K=3）
+    int64_t kernelSize_; // 卷积核大小（K=4）
     int64_t stateLen_;   // cache_state第二维 (K-1+m)
     int64_t xInputMode_; // 输入模式：0=3D, 1=2D
 
@@ -592,7 +592,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
         cacheQueueOut.FreeTensor<T>(convStatesLocalOut);
 
         // ========== 卷积计算（情况A：seq[0, K-2]含cache；情况B：seq[K-1, end]纯x）==========
-        uint32_t convStateLen = (curBatchSeq < 2) ? curBatchSeq : kernelSize_ - 1;
+        uint32_t convStateLen = (curBatchSeq < (kernelSize_ - 1)) ? curBatchSeq : (kernelSize_ - 1);
         LocalTensor<T> xSlice = xLocal[curBatchUbOffset];
         uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / (CAST_REP_SIZE * 2) * (CAST_REP_SIZE * 2);
         if (convStateLen > 0) {
@@ -612,15 +612,18 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
 
         int16_t blockCount = curBatchSeq - convStateLen;
         if (blockCount > 0) {
-            uint8_t xSLen = static_cast<uint8_t>(blockCount);
             LocalTensor<T> y2Slice = yLocal[yUbOffset + convStateLen * dimSizeInLoop_];
-            uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / (2 * CAST_REP_SIZE) * (2 * CAST_REP_SIZE);
-            if (dimRem == 0) {
-                Conv1dNoNeedState(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
-            } else if (dimRem <= CAST_REP_SIZE) {
-                Conv1dNoStateSingleTail(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
-            } else {
-                Conv1dNoStateDoubleTail(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
+            uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / CAST_REP_SIZE * CAST_REP_SIZE;
+            for (int16_t blockIdx = 0; blockIdx < blockCount; ++blockIdx) {
+                uint32_t xWindowOffset = static_cast<uint32_t>(blockIdx) * dimSizeInLoop_;
+                uint32_t yOffset = static_cast<uint32_t>(blockIdx) * dimSizeInLoop_;
+                if (dimRem == 0) {
+                    Conv1dPureXW4(xSlice, weightLocal, y2Slice, xWindowOffset, yOffset, dimSizeInLoop_,
+                                  isResidualConnection_);
+                } else {
+                    Conv1dPureXW4SingleTail(xSlice, weightLocal, y2Slice, xWindowOffset, yOffset, dimSizeInLoop_,
+                                            isResidualConnection_);
+                }
             }
         }
         // ========== F3 convMode: Pangu v2 前 width-1 token 置零 ==========
@@ -630,7 +633,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
                 SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
                 lastResetIdx = lastResetIdx < curBatchSeq ? lastResetIdx : curBatchSeq;
                 if (isResidualConnection_ == 1)
-                    DataCopy(yLocal[yUbOffset], xLocal[yUbOffset], lastResetIdx * dimSizeInLoop_);
+                    DataCopy(yLocal[yUbOffset], xLocal[curBatchUbOffset], lastResetIdx * dimSizeInLoop_);
                 else {
                     Duplicate(yLocal[yUbOffset], static_cast<T>(0), lastResetIdx * dimSizeInLoop_);
                 }

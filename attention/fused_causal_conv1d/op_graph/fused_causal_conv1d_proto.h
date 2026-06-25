@@ -25,7 +25,7 @@ namespace ge {
  *
  * @par Inputs:
  * @li x: Input sequence tensor. shape [cu_seq_len, dim] or [batch, seqlen, dim]. Supports float16, bfloat16.
- * @li weight: Convolution kernel of shape [K, dim], K fixed to 3. Same type as x.
+ * @li weight: Convolution kernel of shape [K, dim], K fixed to 4. Same type as x.
  * @li conv_states: Cache state tensor storing historical tokens per sequence, updated in-place. Same type as x.
  * @li query_start_loc: Optional. Start offset of each sequence in x. shape [batch+1]. int32.
  * @li cache_indices: Optional. Index mapping each sequence to its cache slot. 1D [batch] or 2D [batch, max_num_blocks].
