@@ -219,16 +219,21 @@ def test_performance():
 
 
 def test_profile():
-    """Run once with profiling enabled, print stage-by-stage timing."""
+    """Warmup then profile to show steady-state stage timing."""
     print("\n" + "=" * 60)
     print("Plan B - Stage Profiling")
     print("=" * 60)
     cfg = DEFAULT_CONFIG.copy()
     inputs = gen_inputs(cfg)
+
+    # Warmup: trigger JIT compilation without profiling
+    print("Warmup (compiling kernels)...")
     _clear_caches()
+    call_tl(inputs, cfg, profile=False)
     torch.npu.synchronize()
 
-    print("Running with profile=True...")
+    # Now profile steady-state execution
+    print("Profiling steady-state...")
     call_tl(inputs, cfg, profile=True)
     torch.npu.synchronize()
 
@@ -238,7 +243,7 @@ def test_profile():
         return
 
     total = pt["total"]
-    print(f"\n  Stage timing breakdown (total={total:.3f}ms):")
+    print(f"\n  Stage timing breakdown (steady-state, total={total:.3f}ms):")
     print(f"  {'Stage':<25} {'Time(ms)':>10} {'Pct':>8}")
     print(f"  {'-'*43}")
     for name in ["gather_compile", "kernel1", "kernel2", "python"]:
