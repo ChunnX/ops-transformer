@@ -124,8 +124,7 @@ def check_param_valid(
 # Plan A Kernel: C1(MM1+MM2) + V1(P_reduced, ReduceSumY) per K-block
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-4, -3, -2, -1],
-    workspace_idx=[10, 11, 12, 13],
+    out_idx=[-3, -2, -1],
     pass_configs=pass_configs,
 )
 def planA_kernel(
@@ -159,10 +158,6 @@ def planA_kernel(
         bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),
         PReduced: T.Tensor((B, S1, K), calc_dtype),
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
-        dWeight: T.Tensor((B, S1, Nidx1), input_dtype),
-        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
-        LossOut: T.Tensor((B, S1), calc_dtype),
     ):
         # block_num = B * s1_tile_num * n_num (K-parallel)
         with T.Kernel(B * s1_tile_num * n_num, is_npu=True) as (cid, vid):
@@ -550,20 +545,13 @@ def sparse_lightning_indexer_grad_kl_loss(
 
     bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws = ws
 
-    # Placeholder output tensors (needed for kernel interface but not used)
-    d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=device)
-    d_weight_out = torch.zeros(B, S1, Nidx1, dtype=input_dtype, device=device)
-    relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=device)
-    loss_out = torch.zeros(B, S1, dtype=torch.float32, device=device)
-
     # ---- Launch kernel ----
-    func(
+    bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws = func(
         query, query_rope, gather_key, gather_key_rope,
         query_index, gather_key_index,
         weights, softmax_max, softmax_sum,
         bmm1_res_ws, bmm2_res_ws,
         p_reduced_ws, reduce_sum_y_ws,
-        d_query_index_out, d_weight_out, relu_grad_out, loss_out,
     )
 
     # ---- Python: V1 rest + C2 + V2 ----

@@ -135,7 +135,7 @@ def check_param_valid(
 # Kernel 1: K-parallel MM1+MM2+P_reduced+ReduceSumY
 # ==============================================================================
 @tilelang.jit(
-    workspace_idx=[10, 11, 12, 13],
+    out_idx=[-3, -2, -1],
     pass_configs=pass_configs,
 )
 def planB_kernel1(
@@ -285,7 +285,7 @@ def planB_kernel1(
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
-    workspace_idx=[9],
+    workspace_idx=[6],
     pass_configs=pass_configs,
 )
 def planB_kernel2(
@@ -691,7 +691,7 @@ def sparse_lightning_indexer_grad_kl_loss(
     bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, d_query_index_ws = ws
 
     # ---- Launch Kernel 1 ----
-    func1(
+    bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws = func1(
         query, query_rope, gather_key, gather_key_rope,
         query_index, gather_key_index,
         weights, softmax_max, softmax_sum,
