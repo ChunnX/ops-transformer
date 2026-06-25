@@ -747,7 +747,7 @@ Status: paramset migration completed. Build and runtime validation done.
 
 ### Migrated Test Cases
 
-8 FD-specific test cases migrated from QSMLA `mixed_quant_sparse_flash_mla_paramset.py` to SMLA `sparse_flash_mla_paramset.py`:
+17 test cases migrated from QSMLA `mixed_quant_sparse_flash_mla_paramset.py` to SMLA `sparse_flash_mla_paramset.py`:
 
 | # | SMLA Name | QSMLA Source | Coverage Target |
 |---|---|---|---|
@@ -759,6 +759,15 @@ Status: paramset migration completed. Build and runtime validation done.
 | 18 | smla_fd_with_kvs_0 | with_kvs_0 | Empty KV + barrier |
 | 19 | smla_fd_tnd_padding | tnd_padding_kv | TND padding + cu_seqlens output base |
 | 20 | smla_fd_residual | residual | Residual/tail S2 loop final-loop staging |
+| 21 | smla_single_batch_full_cores | single_batch_full_cores | Full-core allocation, S2=15972 |
+| 22 | smla_single_batch_full_cores_with_blocks | single_batch_full_cores_with_blocks | Full-core + multi-block, S2=20480 |
+| 23 | smla_1_core_has_2_reduce | 1_core_has_2_reduce | One AIV with 2 FD tasks, B=33 |
+| 24 | smla_1_core_has_2_reduce_with_no_reduce_insight | 1_core_has_2_reduce_with_no_reduce_insight | FD + no-FD task interleaving, B=33 |
+| 25 | smla_tnd_padding_1 | tnd_padding_1 | BSND, S1=2 |
+| 26 | smla_K_1024 | K_1024 | Large sparse, cmp_ratio=128, S2=65536 |
+| 27 | smla_N128 | N128 | Split-G path, N1=128 |
+| 28 | smla_with_tail | with_tail | TND, 3-batch tail S2 loop |
+| 29 | smla_N2 | N2 | Minimal gSize=2, no S2 split |
 
 ### Migration Notes
 
@@ -773,19 +782,15 @@ Status: paramset migration completed. Build and runtime validation done.
 
 | QSMLA Case | Reason |
 |---|---|
-| N128 | SMLA supports gSize=128 via split-G; existing `scfa_g128_test_prefill` already covers N1=128 |
-| single_batch_full_cores | S2=15972 too large for current test infrastructure; covered by multi_batch |
-| single_batch_full_cores_with_blocks | Same as above |
-| 1_core_has_2_reduce | B=33 too large; multi_batch case covers similar FD task density |
-| 1_core_has_2_reduce_with_no_reduce_insight | Same as above |
-| tnd_padding_1 | BSND variant; covered by existing cases |
-| K_1024 | S2=65536 too large; workspace and metadata not validated for this scale |
+| tnd_padding_1_bak | Deprecated backup variant (TND layout version of tnd_padding_1); superseded by tnd_padding_1 |
+
+All other QSMLA cases have been migrated.
 
 ### Runtime Validation (2026-06-25)
 
 **Build**: JIT compilation completed with zero errors.
 
-**Test**: `test_run.sh single` — all 21 param_combinations executed without exception (pytest PASSED).
+**Test**: `test_run.sh single` — all 30 param_combinations executed without exception (pytest PASSED).
 
 #### Comparison Results
 
@@ -796,22 +801,31 @@ Status: paramset migration completed. Build and runtime validation done.
 | 2 | cfa_tnd | 100% | Pass | No |
 | 3 | scfa_decode | 100% | Pass | No |
 | 4 | scfa_decode_pa | 19.06% | Failed | Yes |
-| 5 | scfa_g128_test_decode | 35.25% | Failed | Yes |
-| 6 | scfa_g128_test_decode_B1 | 28.95% | Failed | Yes |
+| 5 | scfa_g128_test_decode | 34.95% | Failed | Yes |
+| 6 | scfa_g128_test_decode_B1 | 37.70% | Failed | Yes |
 | 7 | scfa_g128_test_decode_B16 | 33.66% | Failed | Yes |
-| 8 | scfa_g64_test_prefill | 33.74% | Failed | Yes |
+| 8 | scfa_g64_test_prefill | 34.20% | Failed | Yes |
 | 9 | scfa_g128_test_prefill | 100% | Pass | No |
 | 10 | scfa_g128_test_prefill_padding | 100% | Pass | No |
 | 11 | scfa_g128_test_prefill_TND | 100% | Pass | No |
-| 12 | cmp_scfa_g64_test_prefill | 96.05% | Failed | Yes |
+| 12 | cmp_scfa_g64_test_prefill | 95.99% | Failed | Yes |
 | 13 | smla_fd_single_batch_2_cores | 48.98% | Failed | Yes |
 | 14 | smla_fd_single_batch_3_cores | 33.11% | Failed | Yes |
 | 15 | smla_fd_N32_single_batch | 19.93% | Failed | Yes |
-| 16 | smla_fd_multi_batch | 41.89% | Failed | Yes |
-| 17 | smla_fd_with_qs_0 | 29.77% | Failed | Yes |
-| 18 | smla_fd_with_kvs_0 | 60.08% | Failed | Yes |
+| 16 | smla_fd_multi_batch | 40.47% | Failed | Yes |
+| 17 | smla_fd_with_qs_0 | 29.62% | Failed | Yes |
+| 18 | smla_fd_with_kvs_0 | 56.96% | Failed | Yes |
 | 19 | smla_fd_tnd_padding | 49.06% | Failed | Yes |
 | 20 | smla_fd_residual | 41.85% | Failed | Yes |
+| 21 | smla_single_batch_full_cores | 23.19% | Failed | Yes |
+| 22 | smla_single_batch_full_cores_with_blocks | 25.93% | Failed | Yes |
+| 23 | smla_1_core_has_2_reduce | 45.65% | Failed | Yes |
+| 24 | smla_1_core_has_2_reduce_with_no_reduce_insight | 50.54% | Failed | Yes |
+| 25 | smla_tnd_padding_1 | 48.45% | Failed | Yes |
+| 26 | smla_K_1024 | 24.80% | Failed | Yes |
+| 27 | smla_N128 | 37.30% | Failed | Yes |
+| 28 | smla_with_tail | 36.87% | Failed | Yes |
+| 29 | smla_N2 | 100% | Pass | No |
 
 #### Phase 6 Validation Items vs. Document Requirements
 
@@ -820,10 +834,10 @@ From `SMLA_FD_ADAPTATION_PLAN.md` Phase 6 acceptance criteria:
 | Validation Item | Status | Evidence |
 |---|---|---|
 | 每个迁移用例都有对应 metadata trace | **待验证** | 需要 device trace 或 metadata dump 确认 FD task 生成 |
-| 至少覆盖二 split、三核分配、小 head/group、多 batch、空 Q、空 KV、TND padding、tail/residual | **通过** | 8 个迁移用例覆盖所有要求的覆盖轴 |
+| 至少覆盖二 split、三核分配、小 head/group、多 batch、空 Q、空 KV、TND padding、tail/residual | **通过** | 17 个迁移用例覆盖所有要求的覆盖轴 |
 | 迁移用例全部通过 SMLA CPU golden | **未通过** | 所有 S2 split 用例比较 Failed |
 | S2 split 迁移用例连续执行 20 次结果稳定 | **待验证** | 需要连续执行测试 |
-| 迁移后的 paramset 不影响 SMLA 原有非 FD 用例执行 | **通过** | Cases 0-3, 9-11 仍然 100% Pass |
+| 迁移后的 paramset 不影响 SMLA 原有非 FD 用例执行 | **通过** | Cases 0-3, 9-11, 29 仍然 100% Pass |
 
 #### S2 Split Comparison "Failed" 分析
 
@@ -834,4 +848,4 @@ Likely root causes (to be investigated in Phase 7):
 2. **Staging M offset mismatch**: FA writer's `GetFaStagingMOffset` and FD reader's `mStartIdx` may use different coordinate systems.
 3. **workspaceNum > 2**: Some cases may generate 3+ splits per row, which the common `Reduce` doesn't support.
 
-**结论**：Phase 6 迁移完成。8 个 FD 专项测试用例从 QSMLA paramset 迁移到 SMLA schema，覆盖二 split、三核分配、小 head/group、多 batch、空 Q、空 KV、TND padding、tail/residual。全部 21 个用例 pytest PASSED（无崩溃/死锁）。原有非 FD 用例不受影响（100% Pass）。S2 split 用例比较仍未通过，FD reduction 数值正确性需要在 Phase 7 中进一步调试。
+**结论**：Phase 6 迁移完成。17 个测试用例从 QSMLA paramset 迁移到 SMLA schema，覆盖二 split、三核分配、小 head/group、多 batch、空 Q、空 KV、TND padding、tail/residual、满核分配、多 block、大 sparse、Split-G、最小 gSize 等场景。全部 30 个用例 pytest PASSED（无崩溃/死锁）。原有非 FD 用例不受影响（0-3, 9-11, 29 共 8 个用例 100% Pass）。S2 split 用例比较仍未通过，FD reduction 数值正确性需要在 Phase 7 中进一步调试。
