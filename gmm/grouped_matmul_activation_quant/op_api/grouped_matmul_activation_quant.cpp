@@ -73,11 +73,11 @@ void PrintTensorListInfo(const char *name, const aclTensorList *tensorList)
     }
 }
 
-void PrintLaunchInfo(const aclTensor *x, const aclTensor *groupList, const aclTensorList *weight,
+void PrintLaunchInfo(const char *stage, const aclTensor *x, const aclTensor *groupList, const aclTensorList *weight,
     const aclTensorList *weightScale, const aclTensorList *bias, const aclTensor *xScale, const aclTensor *out,
     const aclTensor *scaleOut)
 {
-    GmmaqPrint("GroupedMatmulActivationQuant L0 launch tensor info before ADD_TO_LAUNCHER_LIST_AICORE.");
+    GmmaqPrint("GroupedMatmulActivationQuant L0 launch tensor info %s.", stage);
     PrintTensorInfo("x", x);
     PrintTensorInfo("groupList", groupList);
     PrintTensorListInfo("weight", weight);
@@ -119,6 +119,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND);
     GmmaqPrint("GroupedMatmulActivationQuant L0 allocated outputs. out=%p, scaleOut=%p.", out, scaleOut);
 
+    PrintLaunchInfo("before INFER_SHAPE", x, groupList, weight, weightScale, bias, xScale, out, scaleOut);
     GmmaqPrint("GroupedMatmulActivationQuant L0 call INFER_SHAPE.");
     auto ret = INFER_SHAPE(GroupedMatmulActivationQuant,
         OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
@@ -130,7 +131,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulActivationQuant(const ac
     }
 
     GmmaqPrint("GroupedMatmulActivationQuant L0 INFER_SHAPE success, call ADD_TO_LAUNCHER_LIST_AICORE.");
-    PrintLaunchInfo(x, groupList, weight, weightScale, bias, xScale, out, scaleOut);
+    PrintLaunchInfo("after INFER_SHAPE before ADD_TO_LAUNCHER_LIST_AICORE", x, groupList, weight, weightScale, bias,
+        xScale, out, scaleOut);
     ret = ADD_TO_LAUNCHER_LIST_AICORE(GroupedMatmulActivationQuant,
         OP_INPUT(x, groupList, weight, weightScale, bias, xScale), OP_OUTPUT(out, scaleOut),
         OP_ATTR(activationType, transposeWeight, groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg,
