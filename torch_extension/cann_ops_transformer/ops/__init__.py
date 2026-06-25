@@ -19,9 +19,8 @@ from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch import converter_moe_distribute_dispatch
 from .graph_convert.graph_convert_moe_distribute_combine import convert_npu_moe_distribute_combine
 from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
-from .flash_attn import npu_flash_attn
-from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
-from .flash_attn_metadata import npu_flash_attn_metadata
+from .flash_attn import flash_attn, flash_attn_metadata
+from .graph_convert.graph_convert_flash_attn import convert_flash_attn
 from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata
 from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla import (
     convert_mixed_quant_sparse_flash_mla_metadata
@@ -40,7 +39,3 @@ from .graph_convert.graph_convert_quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
-from .kv_compress_epilog import kv_compress_epilog
-from .indexer_quant_cache import indexer_quant_cache
-from .graph_convert.graph_convert_kv_compress_epilog import convert_kv_compress_epilog
-from .graph_convert.graph_convert_indexer_quant_cache import convert_indexer_quant_cache
