@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_teardown_tiling_data.h"
-#include "../../../moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h"
+#include "../../../moe_distribute_combine_setup/op_kernel/moe_distribute_base.h"
 
 namespace MoeDistributeCombineTeardownImpl {
 
