@@ -167,7 +167,7 @@ bool FusedInferAttentionScoreTilingImpl::CheckActualSeqLenAligned(const FiaTilin
 }
 
 bool FusedInferAttentionScoreTilingImpl::CheckAntiQuantGSMerge(const FiaTilingInfo &fiaInfo,
-                                                                bool actualSeqLenUnequal) const
+                                                               bool actualSeqLenUnequal) const
 {
     if (fiaInfo.s1Size == 1 && !fiaInfo.enableAlibiPse) {
         return true;
@@ -220,9 +220,9 @@ void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaI
 }
 
 void FusedInferAttentionScoreTilingImpl::InitTilingFlags(const FiaTilingInfo &fiaInfo,
-                                                          const gert::Tensor *actSeqLenQ, uint32_t qDims,
-                                                          const gert::Tensor *actSeqLenKV, uint32_t kvDims,
-                                                          const gert::Tensor *actSharedPrefixLen, uint32_t prefixDims)
+                                                         const gert::Tensor *actSeqLenQ, uint32_t qDims,
+                                                         const gert::Tensor *actSeqLenKV, uint32_t kvDims,
+                                                         const gert::Tensor *actSharedPrefixLen, uint32_t prefixDims)
 {
     if (fiaInfo.isMaxWorkspace) {
         actualSeqLenQFlag_ = false;
@@ -384,7 +384,6 @@ void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingI
     bool isRopeSplit512 = (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT &&
                            fiaInfo.vHeadDim == DSIZE_512);
     bool isOptLayout = IsSupportedQLayout(fiaInfo.qLayout);
-
     if (isRopeSplit512 && !isOptLayout) {
         preTokensLeftUp = SPARSE_MODE_INT_MAX;
         nextTokensLeftUp = SPARSE_MODE_INT_MAX;
@@ -1227,7 +1226,6 @@ void FusedInferAttentionScoreTilingImpl::ApplySinnerSouterOverrides(const FiaTil
 {
     dnFlag_ = CheckEnableDN(fiaInfo);
     isQKVActualSeqLengthsRightFlag_ = CheckQKVActualSeqLengthsRight(fiaInfo);
-
     if (dnFlag_ && isQKVActualSeqLengthsRightFlag_ && fiaInfo.qkHeadDim == fiaInfo.vHeadDim &&
         fiaInfo.qkHeadDim == DSIZE_64) {
         sInnerFactor_ = SINNER_256;
@@ -1915,7 +1913,8 @@ void FusedInferAttentionScoreTilingImpl::ComputeNeedInit(const FiaTilingInfo &fi
         OP_LOGI(fiaInfo.opName, "preTokensPerbatch[%u] is %ld, nextTokensPerbatch[%u] is %ld",
                 i, preTokensPerbatch, i, nextTokensPerbatch);
         OP_LOGI(fiaInfo.opName,
-                "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %ld, needInit is %u",
+                "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, ", 
+                "actualSharedPrefixLen is %ld, needInit is %u.",
                 i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
     }
 }
