@@ -596,18 +596,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                 }
                 WriteGmByPassDCache(dedupPtr, int32_t(1));
 
-                if (targetServer == serverId_) {
-                    uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-                    GM_ADDR recordAddr = GetUrmaAddrByRankId(mc2Context_,
-                        targetServer * rankPerServer_ + rankInServer_) + params_.peermemInfo.relayTokenDataPtr +
-                        relayOffset;
-                } else {
+                uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
+                GM_ADDR recordAddr = GetUrmaAddrByRankId(mc2Context_,
+                    targetServer * rankPerServer_ + rankInServer_) + params_.peermemInfo.relayTokenDataPtr +
+                    relayOffset;
+                if (targetServer != serverId_) {
                     __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                     params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServer));
                     int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
                     uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
                         static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
-                    GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
+                    recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
                 }
                 QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
             }
