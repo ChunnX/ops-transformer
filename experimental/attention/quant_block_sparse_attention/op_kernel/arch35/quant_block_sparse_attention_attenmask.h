@@ -179,7 +179,11 @@ __aicore__ inline int64_t ComputeOffsetForCausal(const int64_t &delta, const uin
         if (delta >= 0) {
             return Min(delta, s2BaseSize) + vecCoreOffset;
         }
-        return (Min(-1 * delta, s1BaseSize)) * attenMaskS2Size + vecCoreOffset + 1;
+        // 非对齐 RDC：deltaN(=actualS1Size-actualS2Size) 非 0、非 128 倍数时，diagonal-crossing 的
+        // sparse block 走 delta<0 分支。原 "+1" 在 DN(转置) 读取下把对角线右移一列，使该块多保留
+        // 一列 kv(causal 过宽，c<=r+D+1 而非 c<=r+D)，导致 555/666 等非对齐 shape 在需要 partial mask
+        // 的 q block 上精度大面积越界(对齐场景 deltaN=0、对角块走 delta==0 的 >=0 分支，不触发此 +1，故不受影响)。
+        return (Min(-1 * delta, s1BaseSize)) * attenMaskS2Size + vecCoreOffset;
     }
     if (delta <= 0) {
         return Min(-1 * delta, s1BaseSize) + vecCoreOffset * attenMaskS2Size;
