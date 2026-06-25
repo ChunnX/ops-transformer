@@ -369,16 +369,12 @@ public:
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
         this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-        uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
+        constexpr uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
+        constexpr uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
-        uint16_t copyCount = (runInfo.actMSizeAlign32 >> 1) >> 4;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            uint64_t subLoopOffset = pScaleDataLen * 2;
-            uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
             for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
-                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {copyCount, 1, 0, dstStride});
-                DataCopy(mm2AScaleL1Tensor[subLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
-                    {4, 1, 0, dstStride});
+                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, dstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
             for (uint16_t i = 0; i < 2; i++) {
@@ -390,9 +386,9 @@ public:
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
         constexpr uint16_t elementSize = 32;
-        uint32_t singleProcessSOuterSize = mBaseSize >> 1;
-        uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
-        uint32_t actVec0Align32 = mBaseSize >> 1;
+        constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
+        constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
+        constexpr uint32_t actVec0Align32 = mBaseSize >> 1;
         uint32_t s2RealSizeAlign = (((runInfo.actSingleLoopS2Size + 63) >> 6) << 6);
         for (uint32_t i = 0; i < actCopyCount; i++) {
             uint32_t dstOffset = 32 * s2BaseSizeCur * i + subLoopOffset;
