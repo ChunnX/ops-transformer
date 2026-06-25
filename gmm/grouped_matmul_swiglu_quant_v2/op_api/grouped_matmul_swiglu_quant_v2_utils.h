@@ -188,9 +188,10 @@ protected:
         if (shape.GetDimNum() < MX_SPLIT_K_PER_TOKEN_SCALE_DIM) {
             return false;
         }
-        int64_t firstLastDim = shape.GetDimNum() - 1;
-        int64_t secondLastDim = shape.GetDimNum() - LAST_SECOND_DIM_INDEX;
-        int64_t thirdLastDim = shape.GetDimNum() - LAST_THIRD_DIM_INDEX;
+        const int64_t dimNum = static_cast<int64_t>(shape.GetDimNum());
+        int64_t firstLastDim = dimNum - 1;
+        int64_t secondLastDim = dimNum - static_cast<int64_t>(LAST_SECOND_DIM_INDEX);
+        int64_t thirdLastDim = dimNum - static_cast<int64_t>(LAST_THIRD_DIM_INDEX);
         auto strides = tensor->GetViewStrides();
         if (strides[firstLastDim] == 1 && strides[thirdLastDim] == MXFP_MULTI_BASE_SIZE &&
             strides[secondLastDim] == shape.GetDim(thirdLastDim) * MXFP_MULTI_BASE_SIZE) {
@@ -202,12 +203,13 @@ protected:
     bool IsTransposeLastTwoDims(const aclTensor *tensor) const
     {
         auto shape = tensor->GetViewShape();
-        int64_t dim1 = shape.GetDimNum() - 1;
-        int64_t dim2 = shape.GetDimNum() - 2;
+        const int64_t dimNum = static_cast<int64_t>(shape.GetDimNum());
+        int64_t dim1 = dimNum - 1;
+        int64_t dim2 = dimNum - static_cast<int64_t>(LAST_SECOND_DIM_INDEX);
         auto strides = tensor->GetViewStrides();
         if (strides[dim2] == 1 && strides[dim1] == shape.GetDim(dim2)) {
             int64_t tmpNxD = shape.GetDim(dim1) * shape.GetDim(dim2);
-            for (int64_t batchDim = shape.GetDimNum() - 3; batchDim >= 0; batchDim--) {
+            for (int64_t batchDim = dimNum - static_cast<int64_t>(LAST_THIRD_DIM_INDEX); batchDim >= 0; batchDim--) {
                 if (strides[batchDim] != tmpNxD) {
                     return false;
                 }
@@ -253,7 +255,7 @@ protected:
             shape.SetScalar();
             // 2: the second last dimension; in for-loops, it indicates dimensions before the second last remain
             // unchanged.
-            for (uint32_t i = 0; i < viewShapeDimsNum - 2; ++i) {
+            for (uint32_t i = 0; i < viewShapeDimsNum - LAST_SECOND_DIM_INDEX; ++i) {
                 shape.AppendDim(viewShape.GetDim(i));
             }
             // viewShapeDimsNum - 1, the dim value of the last dim. viewShapeDimsNum - 2, the dim value of the second
