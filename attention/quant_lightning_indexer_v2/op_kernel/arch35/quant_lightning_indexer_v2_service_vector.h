@@ -775,13 +775,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                     mask[0] = ~0;
                     mask[0] = mask[0] << (validS2Len % 16);
                     PipeBarrier<PIPE_V>();
-                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16],
+                    Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
                             constInfo_.NEG_INF_BFLOAT, mask, 1, 1, 0);
                 }
             
                 if (validS2Len / 16 * 16 + 64 < topkCount_) {
                     PipeBarrier<PIPE_V>();
-                    Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64],
+                    Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
                             constInfo_.NEG_INF_BFLOAT,
                             topkCount_ - (validS2Len / 16 * 16 + 64));
                 }

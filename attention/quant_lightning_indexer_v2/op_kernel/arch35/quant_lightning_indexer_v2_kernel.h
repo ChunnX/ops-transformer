@@ -422,7 +422,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
         uint64_t actualSeqQPrefixSum = 0;
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
-            actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.bIdx);
+            actualSeqQPrefixSum = cuSeqlensQGm.GetValue(ldInfo.bIdx);
         } else { // BSND
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
         }
