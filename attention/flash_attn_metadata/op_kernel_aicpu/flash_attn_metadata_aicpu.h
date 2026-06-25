@@ -56,9 +56,9 @@ private:
     bool ParamsInit();
     void InitDeviceInfo();
     void InitBaseInfo();
-    void InitLoadBalnceParams();
+    void InitLoadBalanceParams();
     void LoadActualQuerySeq();
-    void LoadActaulKvSeq();
+    void LoadActualKvSeq();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:

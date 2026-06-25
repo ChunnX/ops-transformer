@@ -78,7 +78,7 @@ struct FaMetadata {
             faMetadata[i] = 0U;
         }
         for (size_t i = 0; i < sectionNum * AIV_CORE_NUM * FD_METADATA_STRIDE; ++i) {
-            faMetadata[i] = 0U;
+            fdMetadata[i] = 0U;
         }
     }
 

@@ -111,7 +111,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
 {
     InitDeviceInfo();
     InitBaseInfo();
-    InitLoadBalnceParams();
+    InitLoadBalanceParams();
     return true;
 }
 
@@ -123,7 +123,7 @@ void FlashAttnMetadataCpuKernel::InitDeviceInfo()
     deviceInfo.aivCoreMinNum = aivCoreNum_;
 }
 
-void FlashAttnMetadataCpuKernel::InitLoadBalnceParams()
+void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
 {
     uint32_t qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
     if (baseInfo.layoutQuery == Layout::BSH || baseInfo.layoutQuery == Layout::BSND) {
@@ -159,7 +159,7 @@ void FlashAttnMetadataCpuKernel::InitBaseInfo()
     baseInfo.queryType = load_balance::DataType::FP16;
     baseInfo.kvType = load_balance::DataType::FP16;
     LoadActualQuerySeq();
-    LoadActaulKvSeq();
+    LoadActualKvSeq();
 }
 
 void FlashAttnMetadataCpuKernel::LoadActualQuerySeq()
@@ -179,7 +179,7 @@ void FlashAttnMetadataCpuKernel::LoadActualQuerySeq()
     } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1U;
         baseInfo.batchSize = batchSize_;
-        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensQ_, sequsedQ_->GetTensorShape()->GetDimSize(0));
+        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensQ_, cuSeqlensQ_->GetTensorShape()->GetDimSize(0));
         baseInfo.actualQuerySeqSize.assign(tmpSeq.begin() + 1, tmpSeq.end());
         baseInfo.querySeqSize = 0Us;
         for (size_t i = 1; i < tmpSeq.size(); ++i) {
@@ -190,7 +190,7 @@ void FlashAttnMetadataCpuKernel::LoadActualQuerySeq()
     return;
 }
 
-void FlashAttnMetadataCpuKernel::LoadActaulKvSeq()
+void FlashAttnMetadataCpuKernel::LoadActualKvSeq()
 {
     baseInfo.actualKvSeqSize.clear();
     baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
@@ -203,7 +203,7 @@ void FlashAttnMetadataCpuKernel::LoadActaulKvSeq()
             std::partial_sum(tmpSeq.begin(), tmpSeq.end(), baseInfo.actualKvSeqSize.begin());
         }
     } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensKv_, sequsedKv_->GetTensorShape()->GetDimSize(0));
+        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensKv_, cuSeqlensKv_->GetTensorShape()->GetDimSize(0));
         baseInfo.actualKvSeqSize.assign(tmpSeq.begin() + 1, tmpSeq.end());
         baseInfo.kvSeqSize = 0Us;
         for (size_t i = 1; i < tmpSeq.size(); ++i) {
