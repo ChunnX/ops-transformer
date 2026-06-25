@@ -10,7 +10,7 @@ import result_compare_method
 # 配置区
 # ==============================================================================
 # GRAPH_PATH: 0=单算子, 5=动态图, 7=aclgraph
-GRAPH_PATH = 7
+GRAPH_PATH = 0
 DEVICE_ID = 0
 
 B = 1
@@ -576,6 +576,8 @@ def fia_gqa_torch_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
                 if t is not None:
                     torch._dynamo.mark_static(t)
             atten_out, lse_out = npu_mode(*fa_args)
+        else:
+            raise ValueError(f"Unsupported GRAPH_PATH: {GRAPH_PATH}, only support 0/5/7")
 
         atten_out = atten_out.cpu().detach()
         lse_out = lse_out.cpu().detach()
