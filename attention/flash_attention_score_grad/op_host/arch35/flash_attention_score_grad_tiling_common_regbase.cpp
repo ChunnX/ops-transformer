@@ -898,16 +898,23 @@ ge::graphStatus ProcessSinkInfo(
     gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     auto sinkShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINK_IDX));
+    auto dsinkShape = context_->GetOutputShape(DSINKOUT_IDX);
     if (sinkShape == nullptr || sinkShape->GetStorageShape().GetDimNum() == 0) {
         OP_LOGD(context_, "ProcessSinkInfo, sinkShape is null : %d", sinkShape == nullptr);
         fBaseParams.sinkOptional = EMPTY_TENSOR;
         return ge::GRAPH_SUCCESS;
     }
-    std::string reasonMsg = "The shape of sink must be [" + std::to_string(fBaseParams.n1) + "]";
+    std::string sinkReasonMsg = "The shape of sinkInOptional must be [" + std::to_string(fBaseParams.n1) + "]";
     OP_CHECK_IF((sinkShape->GetStorageShape().GetDimNum() != 1 ||
         sinkShape->GetStorageShape().GetDim(0) != fBaseParams.n1),
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "sinkInOptional",
-            Ops::Base::ToString(sinkShape->GetStorageShape()).c_str(), reasonMsg.c_str()),
+            Ops::Base::ToString(sinkShape->GetStorageShape()).c_str(), sinkReasonMsg.c_str()),
+        return ge::GRAPH_FAILED);
+    std::string dsinkReasonMsg = "The shape of dsinkOut must be [" + std::to_string(fBaseParams.n1) + "]";
+    OP_CHECK_IF((dsinkShape->GetStorageShape().GetDimNum() != 1 ||
+        dsinkShape->GetStorageShape().GetDim(0) != fBaseParams.n1),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dsinkOut",
+            Ops::Base::ToString(dsinkShape->GetStorageShape()).c_str(), dsinkReasonMsg.c_str()),
         return ge::GRAPH_FAILED);
     auto sinkInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SINK_IDX));
     if (sinkInput != nullptr) {
@@ -1104,6 +1111,31 @@ ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoPar
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad", "query",
             ge::TypeUtils::DataTypeToSerialString(queryDType).c_str(), "The dtype of query is invalid");
         return ge::GRAPH_FAILED;
+    }
+    
+    if (fBaseParams.queryType != ge::DT_HIFLOAT8) {
+        auto deqScaleQShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_Q));
+        auto deqScaleKShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_K));
+        auto deqScaleVShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_V));
+        auto deqScaleDyShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_DY));
+        std::string dScaleShapesMsg = "{";
+        dScaleShapesMsg += deqScaleQShape != nullptr ?
+            Ops::Base::ToString(deqScaleQShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += deqScaleKShape != nullptr ?
+            Ops::Base::ToString(deqScaleKShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += deqScaleVShape != nullptr ?
+            Ops::Base::ToString(deqScaleVShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += deqScaleDyShape != nullptr ?
+            Ops::Base::ToString(deqScaleDyShape->GetStorageShape()) + "}" : "nullptr}";
+        OP_CHECK_IF((deqScaleQShape != nullptr && deqScaleQShape->GetStorageShape().GetDimNum() != 0) ||
+                    (deqScaleKShape != nullptr && deqScaleKShape->GetStorageShape().GetDimNum() != 0) ||
+                    (deqScaleVShape != nullptr && deqScaleVShape->GetStorageShape().GetDimNum() != 0) ||
+                    (deqScaleDyShape != nullptr && deqScaleDyShape->GetStorageShape().GetDimNum() != 0),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad",
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional", dScaleShapesMsg.c_str(),
+                        "When the dType of input is not HIFLOAT8, "
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional and dScaleDyOptional must be empty tensor"),
+                    return ge::GRAPH_FAILED);
     }
 
     fBaseParams.outDtype = fBaseParams.inputDtype;
