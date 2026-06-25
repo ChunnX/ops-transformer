@@ -7,12 +7,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from typing import Optional
 import torch
 import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-from typing import Optional
 
 
 class CompressorOpBuilder(OpBuilder):
@@ -39,7 +39,7 @@ class CompressorOpBuilder(OpBuilder):
         """
         @impl(AS_LIBRARY, self.name, "Meta")
         def compressor_meta(x, wkv, wgate, state_cache,
-                                ape, cmp_ratio=4,*,
+                                ape, cmp_ratio=4, *,
                                 state_block_table=None, cu_seqlens=None,
                                 seqused=None, start_pos=None,
                                 coff=1, cache_mode=1):
@@ -71,7 +71,7 @@ def compressor(
             ape: torch.Tensor,
             cmp_ratio: int = 4,
             *,
-            state_block_table: Optional[torch.Tensor] = None ,
+            state_block_table: Optional[torch.Tensor] = None,
             cu_seqlens: Optional[torch.Tensor] = None,
             seqused: Optional[torch.Tensor] = None,
             start_pos: Optional[torch.Tensor] = None,

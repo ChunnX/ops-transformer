@@ -77,10 +77,10 @@ at::Tensor construct_compressor_output_tensor(const at::Tensor &x, const at::Ten
 }
 
 at::Tensor compressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &state_cache,
-                          const at::Tensor &ape, int64_t cmp_ratio,
-                          const c10::optional<at::Tensor> &state_block_table,
-                          const c10::optional<at::Tensor> &cu_seqlens, const c10::optional<at::Tensor> &seqused,
-                          const c10::optional<at::Tensor> &start_pos, int64_t coff, int64_t cache_mode)
+                      const at::Tensor &ape, int64_t cmp_ratio,
+                      const c10::optional<at::Tensor> &state_block_table,
+                      const c10::optional<at::Tensor> &cu_seqlens, const c10::optional<at::Tensor> &seqused,
+                      const c10::optional<at::Tensor> &start_pos, int64_t coff, int64_t cache_mode)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
     auto x_dim = x.dim();
@@ -104,10 +104,10 @@ at::Tensor compressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tens
 }
 
 at::Tensor compressor_meta(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
-                               at::Tensor &state_cache, const at::Tensor &ape,
-                               int64_t cmp_ratio, const c10::optional<at::Tensor> &state_block_table,
-                               const c10::optional<at::Tensor> &cu_seqlens, const c10::optional<at::Tensor> &seqused,
-                               const c10::optional<at::Tensor> &start_pos, int64_t coff, int64_t cache_mode)
+                           at::Tensor &state_cache, const at::Tensor &ape,
+                           int64_t cmp_ratio, const c10::optional<at::Tensor> &state_block_table,
+                           const c10::optional<at::Tensor> &cu_seqlens, const c10::optional<at::Tensor> &seqused,
+                           const c10::optional<at::Tensor> &start_pos, int64_t coff, int64_t cache_mode)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
     auto x_dim = x.dim();
