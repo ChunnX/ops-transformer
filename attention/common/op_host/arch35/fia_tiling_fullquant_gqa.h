@@ -70,8 +70,6 @@ protected:
 private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
-    bool CheckS1OutSplit();
-    void SplitOutSeq();
     void ComputeTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
