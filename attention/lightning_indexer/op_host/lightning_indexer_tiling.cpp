@@ -347,9 +347,9 @@ ge::graphStatus LIInfoParser::CheckShapeDim()
                OP_LOGE(opName_, "the dim num of weights's shape should be %u, but now is %u", qExpectShapeDim - 1,
                 weightsShapeDim),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.valuesOut.shape->GetStorageShape().GetShapeSize() != 0 && !(*opParamInfo_.returnValue),
-                OP_LOGE(opName_, "when returnValue is false, valuesOut must be null."),
-                return ge::GRAPH_FAILED);
+    if (opParamInfo_.valuesOut.shape->GetStorageShape().GetShapeSize() != 0 && !(*opParamInfo_.returnValue)) {
+        OP_LOGW(opName_, "when returnValue is false, valuesOut must be null.");
+    }
     return ge::GRAPH_SUCCESS;
 }
 
