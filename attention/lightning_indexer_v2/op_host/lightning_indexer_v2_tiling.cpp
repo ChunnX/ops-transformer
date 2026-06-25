@@ -24,21 +24,21 @@ namespace optiling {
     // --------------------------LIV2InfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE(opName_, "Desc of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE(opName_, "Shape of tensor k is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor k"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE(opName_, "Desc of tensor k is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor k"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr, OP_LOGE(opName_, "Shape of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor value"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr, OP_LOGE(opName_, "Desc of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor value"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -46,16 +46,16 @@ ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus LIV2InfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.layOut == nullptr, OP_LOGE(opName_, "attr layout_query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layOut == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr layout_query"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr, OP_LOGE(opName_, "attr layout_key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr layout_key"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.topk == nullptr, OP_LOGE(opName_, "attr topk is nullptr"),
+    OP_CHECK_IF(opParamInfo_.topk == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr topk"),
                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.maskMode == nullptr, OP_LOGE(opName_, "attr mask_mode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.maskMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr mask_mode"),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -73,7 +73,7 @@ ge::graphStatus LIV2InfoParser::CheckRequiredParaExistence() const
 ge::graphStatus LIV2InfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("LightningIndexerV2", "opName got from TilingContext is nullptr");
+        OP_LOGE_WITH_INVALID_INPUT("LightningIndexerV2", "opName got from TilingContext");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -184,23 +184,37 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) != "PA_BBND")
         && (std::string(opParamInfo_.layOut) != std::string(opParamInfo_.layOutKey))),
-        OP_LOGE(opName_, "under non-PA conditions, layout_query and layout_key should be equal."),
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "query and key",
+            std::string(opParamInfo_.layOut) + " and " + std::string(opParamInfo_.layOutKey),
+            "under non-PA conditions, layout_query and layout_key should be equal"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) != "PA_BBND") && (std::string(opParamInfo_.layOutKey) != "BSND")
         && (std::string(opParamInfo_.layOutKey) != "TND")),
-        OP_LOGE(opName_, "input attr layout_key only supported PA_BBND, BSND or TND"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(opName_, "key",
+            std::string(opParamInfo_.layOutKey),
+            "input attr layout_key only supported PA_BBND, BSND or TND"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOut) != "BSND") && (std::string(opParamInfo_.layOut) != "TND")),
-               OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(opName_, "query",
+                    std::string(opParamInfo_.layOut),
+                    "input attr layout_query only supported BSND or TND"),
+               return ge::GRAPH_FAILED);
     OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= TOPK_MAX))),
- 	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk",
+                        std::to_string(*opParamInfo_.topk),
+                        "input attr topk must > 0 and <= 8192"),
  	                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.maskMode == 0) || (*opParamInfo_.maskMode == SPARSE_MODE_LOWER)),
-               OP_LOGE(opName_, "input attr mask_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mask_mode",
+                    std::to_string(*opParamInfo_.maskMode),
+                    "input attr mask_mode only supported 0 or 3"),
+               return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128),
-                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, "
-                        "but now cmpRatio is %ld.",
-                *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmpRatio",
+                    std::to_string(*opParamInfo_.cmpRatio),
+                    "input attr cmpRatio must > 0 and <= 128"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -224,20 +238,30 @@ ge::graphStatus LIV2InfoParser::GetAndCheckInOutDataType()
 
     bool inDTypeAllEqual = (inputQType_ == inputKType_) ;
     OP_CHECK_IF(!inDTypeAllEqual,
-            OP_LOGE(opName_, "The data types of the input query and key must be the same."),
-            return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
+                    QSFADataTypeToSerialString(inputQType_) + " and " + QSFADataTypeToSerialString(inputKType_),
+                    "The data types of the input query and key must be the same"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(((inputQType_ != ge::DT_FLOAT16) && (inputQType_ != ge::DT_BF16)),
-               OP_LOGE(opName_, "The data types of the input query, key must be float16 or bfloat16."),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
+                    QSFADataTypeToSerialString(inputQType_) + " and " + QSFADataTypeToSerialString(inputKType_),
+                    "The data types of the input query, key must be float16 or bfloat16"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((weightsType_ != ge::DT_FLOAT),
-            OP_LOGE(opName_, "The data type of the input weights must be float32."),
-            return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                    QSFADataTypeToSerialString(weightsType_).c_str(),
+                    "The data type of the input weights must be float32"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
-               OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "sparse_indices",
+                    QSFADataTypeToSerialString(outputType_).c_str(),
+                    "The data types of the output sparse_indices must be int32"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(valuesOutType_ != ge::DT_FLOAT,
-               OP_LOGE(opName_, "The data types of the output sparse_values must be float32."),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "sparse_values",
+                    QSFADataTypeToSerialString(valuesOutType_).c_str(),
+                    "The data types of the output sparse_values must be float32"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -270,19 +294,19 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
 {
     if (kLayout_ == DataLayout::BnBsND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE(opName_, "when layout_key is PA_BBND, input block_table must not be null"),
-                   return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "input block_table"),
+                    return ge::GRAPH_FAILED);
         // TODO
         OP_CHECK_IF(
             opParamInfo_.sequsedK.tensor == nullptr,
-            OP_LOGE(opName_, "when layout_key is PA_BBND, input sequsedK must not be null"),
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "input sequsedK"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
     } else if (kLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor == nullptr,
-                OP_LOGE(opName_, "when layout_key is TND, input cu_seqlens_k must not be null"),
-                return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "input cu_seqlens_k"),
+                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor != nullptr &&
                 opParamInfo_.cuSeqlensK.desc->GetDataType() != ge::DT_INT32,
@@ -294,11 +318,11 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                 return ge::GRAPH_FAILED);
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.cuSeqlensQ.tensor == nullptr,
-                OP_LOGE(opName_, "when layout_query is TND, input cu_seqlens_q must not be null"),
-                return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "input cu_seqlens_q"),
+                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
-                OP_LOGE(opName_, "when key layout is not PA_BBND, input block_table must be null"),
+                OP_LOGE_WITH_INVALID_INPUT(opName_, "input block_table"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -307,7 +331,10 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
 {
     OP_CHECK_IF((opParamInfo_.blockTable.tensor != nullptr) &&
                    (opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum() != DIM_NUM_TWO),
-               OP_LOGE(opName_, "the dim num of block_table's shape should be 2"), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "block_table",
+                    std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum()).c_str(), "2"),
+                return ge::GRAPH_FAILED);
+                
 
     uint32_t kShapeDim = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
     uint32_t qShapeDim = opParamInfo_.query.shape->GetStorageShape().GetDimNum();
@@ -322,20 +349,21 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
         kExpectShapeDim = DIM_NUM_THREE;
     }
     OP_CHECK_IF(kShapeDim != kExpectShapeDim,
-               OP_LOGE(opName_, "the dim num of key's shape should be %u, but now is %u", kExpectShapeDim, kShapeDim),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "key",
+                    std::to_string(kShapeDim).c_str(), std::to_string(kExpectShapeDim).c_str()),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(qShapeDim != qExpectShapeDim,
-               OP_LOGE(opName_, "the dim num of query's shape should be %u, but now is %u",
-                qExpectShapeDim, qShapeDim),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "query",
+                    std::to_string(qShapeDim).c_str(), std::to_string(qExpectShapeDim).c_str()),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(outShapeDim != qExpectShapeDim,
-               OP_LOGE(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u",
-                qExpectShapeDim, outShapeDim),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "sparse_indices",
+                    std::to_string(outShapeDim).c_str(), std::to_string(qExpectShapeDim).c_str()),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!(weightsShapeDim == qExpectShapeDim - 1),
-               OP_LOGE(opName_, "the dim num of weights's shape should be %u, but now is %u", qExpectShapeDim - 1,
-                weightsShapeDim),
-               return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPEDIM(opName_, "weights",
+                    std::to_string(weightsShapeDim).c_str(), std::to_string(qExpectShapeDim - 1).c_str()),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

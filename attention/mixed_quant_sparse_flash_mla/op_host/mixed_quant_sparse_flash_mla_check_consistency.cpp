@@ -26,9 +26,9 @@ ge::graphStatus QSMLATilingCheck::CheckDTypeConsistency(const ge::DataType &actu
     const ge::DataType &expectDtype, const std::string &name) const
 {
     if (actualDtype != expectDtype) {
-        OP_LOGE(opName_, "%s dtype should be %s, but it's %s.", name.c_str(),
-            QSMLADataTypeToSerialString(expectDtype).c_str(),
-            QSMLADataTypeToSerialString(actualDtype).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, name.c_str(),
+            QSFADataTypeToSerialString(actualDtype).c_str(),
+            QSMLADataTypeToSerialString(expectDtype).c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -38,14 +38,13 @@ ge::graphStatus QSMLATilingCheck::GetActualSeqLenSize(uint32_t &size, const gert
     const QSMLALayout &layout, const std::string &name) const
 {
     if (tensor == nullptr) {
-        OP_LOGE(opName_, "when layout of query is %s, %s must be provided.",
-            QSMLALayoutToSerialString(layout).c_str(), name.c_str());
+        OP_LOGE_WITH_INVALID_INPUT(opName_, name.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
     if (shapeSize <= 0) {
-        OP_LOGE(opName_, "the shape size of %s is %ld, it should be greater than 0.",
-            name.c_str(), shapeSize);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, name.str(), std::to_string(shapeSize).c_str()
+            "the shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
