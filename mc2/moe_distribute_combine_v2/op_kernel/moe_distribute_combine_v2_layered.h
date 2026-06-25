@@ -17,8 +17,13 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_combine_v2_tiling.h"
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
+#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
+#endif
 
 namespace Mc2Kernel {
 constexpr uint32_t UB_ALIGN_SIZE = 32;
