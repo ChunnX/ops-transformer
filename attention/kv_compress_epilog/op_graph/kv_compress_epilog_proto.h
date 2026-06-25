@@ -22,7 +22,7 @@ namespace ge {
 
 /**
  * @brief Compresses cached key/value data in the KV-cache epilog stage by applying
- *        group-wise dynamic quantization (FP8 group / E8M0 / HiFloat8) with scale factors. \n
+ *        group-wise dynamic quantization (FP8 group / E8M0) with scale factors. \n
  *        The quantized rows are scattered into cache for each valid slot. \n
 
  * @par Inputs:
@@ -39,12 +39,17 @@ namespace ge {
 
  * @par Attributes:
  * @li quant_group_size: An optional int attribute. Quant group size. Defaults to 64.
+ *   For quant_mode 2 only 16/32/64 are supported and (d-64) must be divisible by it.
  * @li quant_mode: An optional int attribute. Quantization mode.
- *   - 0: group quantization, scale stored as bfloat16
- *   - 1: group quantization, scale stored as float8_e8m0 (default)
- *   - 2: HiFloat8 quantization (whole-row, scale attribute applied)
- * @li round_scale: An optional bool attribute. Whether to round the group scale value. Defaults to true.
- * @li x_scale: An optional float attribute. Global scale multiplier for HiFloat8 mode. Defaults to 1.0.
+ *   - 0: nope per-group(64) FP8(E4M3) dynamic quant, scale stored as bfloat16, rope kept as bf16
+ *   - 1: same as 0 but scale stored as float8_e8m0 (default)
+ *   - 2: rope static hifloat8 quant (scaled by x_scale), nope per-group FLOAT4_E2M1 dynamic quant
+ *        (scale = group amax / 6, stored as bfloat16). Row layout (bytes):
+ *        [rope hifloat8 64B][nope fp4 (d-64)/2 B][nope bf16 scale nGroup*2 B][pad to 128]
+ * @li round_scale: An optional bool attribute. Whether to round the group scale value for
+ *   quant_mode 0/1. Defaults to true. Ignored when quant_mode==2.
+ * @li x_scale: An optional float attribute. For quant_mode 2 it is the rope hifloat8 static
+ *   quant scale; reserved/unused for quant_mode 0/1. Defaults to 1.0.
 
  * @par Outputs:
  * @li cache: Updated key/value cache after in-place compression.
@@ -54,6 +59,7 @@ namespace ge {
  *  - cache is both input and output (in-place update).
  *  - slot_mapping dimensions should equal x dimensions minus 1.
  *  - The last dimension (d) of x must be 64-aligned (d % 64 == 0) and greater than 64.
+ *  - For quant_mode==2, quant_group_size must be 16/32/64 and (d-64) divisible by it.
  *  - Ascend950PR/Ascend950DT.
  * @endcode
  */
