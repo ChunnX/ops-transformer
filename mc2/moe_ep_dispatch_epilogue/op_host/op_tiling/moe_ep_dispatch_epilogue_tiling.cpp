@@ -43,10 +43,9 @@ constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 3U;
 constexpr uint32_t CACHED_RECV_SRC_METADATA_INDEX = 4U;
 
 constexpr uint32_t OUT_RECV_X_INDEX = 0U;
-constexpr uint32_t OUT_RECV_TOPK_IDX_INDEX = 1U;
-constexpr uint32_t OUT_RECV_TOPK_WEIGHTS_INDEX = 2U;
-constexpr uint32_t OUT_RECV_SRC_METADATA_INDEX = 3U;
-constexpr uint32_t OUT_RECV_SCALES_INDEX = 4U;
+constexpr uint32_t OUT_RECV_TOPK_WEIGHTS_INDEX = 1U;
+constexpr uint32_t OUT_RECV_SRC_METADATA_INDEX = 2U;
+constexpr uint32_t OUT_RECV_SCALES_INDEX = 3U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -303,26 +302,6 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
                      && recvXDtype != ge::DT_FLOAT8_E5M2 && recvXDtype != ge::DT_FLOAT8_E4M3FN,
         OP_LOGE(nodeName, "recvX dtype must be bf16/fp16/fp8_e5m2/fp8_e4m3fn, got %d.",
             static_cast<int32_t>(recvXDtype)),
-        return ge::GRAPH_FAILED);
-
-    // ---- recvTopkIdx [A_alloc, top_k] int32 ----
-    auto recvTopkIdxShape = context->GetOutputShape(OUT_RECV_TOPK_IDX_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkIdxShape);
-    OP_TILING_CHECK(recvTopkIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "recvTopkIdx dims must be 2."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvTopkIdxShape->GetStorageShape().GetDim(0) != aAlloc,
-        OP_LOGE(nodeName, "recvTopkIdx dim0 must equal recvX dim0=%ld, got %ld.",
-            aAlloc, recvTopkIdxShape->GetStorageShape().GetDim(0)),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvTopkIdxShape->GetStorageShape().GetDim(1) != topK,
-        OP_LOGE(nodeName, "recvTopkIdx dim1 must equal topK=%ld, got %ld.",
-            topK, recvTopkIdxShape->GetStorageShape().GetDim(1)),
-        return ge::GRAPH_FAILED);
-    auto recvTopkIdxDesc = context->GetOutputDesc(OUT_RECV_TOPK_IDX_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkIdxDesc);
-    OP_TILING_CHECK(recvTopkIdxDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "recvTopkIdx dtype must be int32, got %d.",
-            static_cast<int32_t>(recvTopkIdxDesc->GetDataType())),
         return ge::GRAPH_FAILED);
 
     // ---- recvTopkWeights [A_alloc] float ----

@@ -13,12 +13,13 @@
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
 #include "../common/op_kernel/mc2_kernel_utils.h"
+#include "../moe_ep_dispatch/moe_ep_dispatch_base.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../../moe_ep_dispatch/op_kernel/moe_ep_dispatch_base.h"
 #endif
 
-#include "../../moe_ep_dispatch/op_kernel/moe_ep_dispatch_base.h"
 #include "moe_ep_dispatch_epilogue_tiling.h"
 
 namespace MoeEpDispatchEpilogueImpl {
@@ -36,7 +37,7 @@ public:
         GM_ADDR context,
         GM_ADDR dstBufferSlotIdx,
         GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
-        GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
+        GM_ADDR recvX, GM_ADDR recvTopkWeights,
         GM_ADDR recvSrcMetadata, GM_ADDR recvScales,
         GM_ADDR workspace, GM_ADDR tilingGM,
         TPipe* pipe, const MoeEpDispatchEpilogueInfo* tilingData);
@@ -136,7 +137,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
     GM_ADDR context,
     GM_ADDR dstBufferSlotIdx,
     GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
-    GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
+    GM_ADDR recvX, GM_ADDR recvTopkWeights,
     GM_ADDR recvSrcMetadata, GM_ADDR recvScales,
     GM_ADDR workspace, GM_ADDR tilingGM,
     TPipe* pipe, const MoeEpDispatchEpilogueInfo* tilingData)
@@ -239,7 +240,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Init(
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Process()
 {
-    AscendC::printf("Start DispatchEpilogue kernel Process\n");
     ComputePrefixSums();
     CountHits();
     SyncAll<true>();
@@ -256,7 +256,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::Process()
     if (aivId_ == 0) {
         CopyInputsToOutputs();
     }
-    AscendC::printf("End DispatchEpilogue kernel Process\n");
+
 }
 
 template <typename XType, uint32_t IsCached>
@@ -274,7 +274,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::ComputePrefixSum
 template <typename XType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
 {
-    AscendC::printf("---------CountHits start--------.\n");
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
 
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
@@ -397,7 +396,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 
                     DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
-                    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
                     if constexpr (!IsCached) {
@@ -410,6 +408,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     }
                     stageIdx++;
                     localWrittenRow++;
+                    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
                 }
             }
         }
