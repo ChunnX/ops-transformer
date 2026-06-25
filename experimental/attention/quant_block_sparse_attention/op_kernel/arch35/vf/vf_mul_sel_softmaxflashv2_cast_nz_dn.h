@@ -23,6 +23,9 @@ using namespace MicroAPI;
 #define VMULSCVT false
 #define DROPOUT false
 
+// 空行(全 mask)的 lse 哨兵值，等价于 common.h 的 BSA_EMPTY_LSE_VALUE(-FLT_MAX)
+constexpr float BSA_EMPTY_LSE_VALUE = -3.4028234663852886e38F;
+
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
@@ -93,6 +96,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
     RegTensor<float> vreg_min;
+    RegTensor<float> vreg_zero;
+    RegTensor<float> vreg_empty_lse;
+    MaskReg preg_invalid_cur;
 
     RegTensor<float> vreg_qscale_vec;
     RegTensor<float> vreg_kscale_val;
@@ -120,6 +126,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     Duplicate(max2, minValue);
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
+    Duplicate(vreg_zero, 0.0f);
+    Duplicate(vreg_empty_lse, BSA_EMPTY_LSE_VALUE);
 
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
@@ -205,11 +213,13 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
+    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
     Muls(max0, max0, dScale, preg_108);
     
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
+    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
 
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
 
@@ -246,6 +256,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
+        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
+        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
+        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
+        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
 
         Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
         Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
@@ -256,6 +270,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
         FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
         FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
         FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
+        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
+        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
+        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
+        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
         Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
@@ -419,6 +437,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
     RegTensor<float> vreg_min;
+    RegTensor<float> vreg_zero;
+    RegTensor<float> vreg_empty_lse;
+    MaskReg preg_invalid_cur;
 
     RegTensor<float> vreg_qscale_vec;
     RegTensor<float> vreg_kscale_val;
@@ -446,6 +467,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     Duplicate(max2, minValue);
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
+    Duplicate(vreg_zero, 0.0f);
+    Duplicate(vreg_empty_lse, BSA_EMPTY_LSE_VALUE);
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
@@ -531,11 +554,13 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
+    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
     Muls(max0, max0, dScale, preg_108);
 
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
+    Select(max0, vreg_empty_lse, max0, preg_invalid_cur);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
@@ -577,6 +602,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
+        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
+        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
+        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
+        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
 
         Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
         Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
@@ -587,6 +616,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
         FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
         FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
+        Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
+        Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
+        Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
+        Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
 
         Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
         Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
