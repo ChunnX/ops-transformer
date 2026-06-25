@@ -97,7 +97,7 @@ TEST_PARAMS = {
         "k_seq": [3000],
         "q_t_size":[1],
         "k_t_size":[1],
-        "q_head_num": [32],
+        "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
         "block_size": [256], # 取16的整数倍，最多支持到1024
@@ -132,7 +132,7 @@ TEST_PARAMS = {
         "k_seq": [3000],
         "q_t_size":[1],
         "k_t_size":[1],
-        "q_head_num": [32],
+        "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
         "block_size": [256], # 取16的整数倍，最多支持到1024
@@ -167,7 +167,7 @@ TEST_PARAMS = {
         "k_seq": [3000],
         "q_t_size":[1],
         "k_t_size":[1],
-        "q_head_num": [32],
+        "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
         "block_size": [256], # 取16的整数倍，最多支持到1024
@@ -202,7 +202,7 @@ TEST_PARAMS = {
         "k_seq": [513],
         "q_t_size":[3],
         "k_t_size":[1],
-        "q_head_num": [4],
+        "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
         "block_size": [896], # 取16的整数倍，最多支持到1024
@@ -237,7 +237,7 @@ TEST_PARAMS = {
         "k_seq": [3967],
         "q_t_size":[1],
         "k_t_size":[1],
-        "q_head_num": [16],
+        "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
         "block_size": [384], # 取16的整数倍，最多支持到1024
@@ -307,7 +307,7 @@ TEST_PARAMS = {
         "k_seq": [2049],
         "q_t_size":[48],
         "k_t_size":[1],
-        "q_head_num": [5],
+        "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
         "block_size": [1024], # 取16的整数倍，最多支持到1024
@@ -342,7 +342,7 @@ TEST_PARAMS = {
         "k_seq": [4000],
         "q_t_size":[1],
         "k_t_size":[1],
-        "q_head_num": [16],
+        "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
         "block_size": [384], # 取16的整数倍，最多支持到1024
