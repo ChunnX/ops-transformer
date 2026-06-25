@@ -197,7 +197,7 @@ def planB_kernel1(
 
                 for s1_row in T.serial(s1_start, s1_end):
                     # MM1: T.pipelined enables Double Buffer (overlap copy with gemm)
-                    for d_idx in T.Pipelined(d_num_total, num_stages=2):
+                    for d_idx in T.Pipelined(d_num_total, num_stages=3):
                         if d_idx < d_num_query:
                             T.copy(Query[bz, s1_row, 0:N1, d_idx * k_block:(d_idx + 1) * k_block], Q_L1)
                         else:
@@ -376,7 +376,7 @@ def planB_kernel2(
                     T.tile.fill(dw_total_ub, 0.0)
 
                     # T.Pipelined to overlap bmm2Res copy with dWeight/reluGrad compute
-                    for nidx_c in T.Pipelined(nidx1_num, num_stages=2):
+                    for nidx_c in T.Pipelined(nidx1_num, num_stages=3):
                         nidx_s = nidx_c * BLOCK_NIDX1
                         T.copy(
                             bmm2Res[bz, s1_id, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end],
