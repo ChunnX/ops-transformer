@@ -50,10 +50,7 @@ private:
     uint32_t numTokens_{0};
     uint32_t hiddenBytes_{0};
 
-    TBuf<> dataBuf0_;
-    TBuf<> dataBuf1_;
-    int32_t ppEvtMte2ToMte3_[2] = {0, 0};
-    int32_t ppEvtMte3ToMte2_[2] = {0, 0};
+    TBuf<> dataBuf_;
     TBuf<> indicesBuf_;
     TBuf<> hcommBuf_;
     TBuf<> countsBuf_;
@@ -86,12 +83,7 @@ __aicore__ inline void EngramFetchArch35::Init(
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(dataBuf0_, TILE_BYTES);
-    tpipe_->InitBuffer(dataBuf1_, TILE_BYTES);
-    ppEvtMte2ToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
-    ppEvtMte2ToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
-    ppEvtMte3ToMte2_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-    ppEvtMte3ToMte2_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    tpipe_->InitBuffer(dataBuf_, TILE_BYTES);
     uint32_t indicesBufSize = Ceil(numTokens_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
 
@@ -198,41 +190,21 @@ __aicore__ inline void EngramFetchArch35::Process()
 
 __aicore__ inline void EngramFetchArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    LocalTensor<uint8_t> tmp0 = dataBuf0_.Get<uint8_t>();
-    LocalTensor<uint8_t> tmp1 = dataBuf1_.Get<uint8_t>();
+    LocalTensor<uint8_t> tmp = dataBuf_.Get<uint8_t>();
     GlobalTensor<uint8_t> srcGm;
     GlobalTensor<uint8_t> dstGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
     DataCopyPadExtParams<uint8_t> pad{false, 0, 0, 0};
-
     uint64_t off = 0;
-    uint32_t tileIdx = 0;
     while (off < len) {
         uint64_t thisLen = (len - off > TILE_BYTES) ? TILE_BYTES : (len - off);
         DataCopyExtParams cp{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
-        uint32_t bufIdx = tileIdx % 2U;
-        LocalTensor<uint8_t> tmp = (bufIdx == 0U) ? tmp0 : tmp1;
-
-        if (tileIdx >= 2U) {
-            AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
-        }
-
         DataCopyPad(tmp, srcGm[off], cp, pad);
-        AscendC::SetFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
-        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
         DataCopyPad(dstGm[off], tmp, cp);
-        AscendC::SetFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
-
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         off += thisLen;
-        tileIdx++;
-    }
-
-    if (tileIdx >= 1U) {
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
-    }
-    if (tileIdx >= 2U) {
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
     }
 }
 } // namespace EngramFetchImpl
