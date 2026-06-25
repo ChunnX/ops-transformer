@@ -10,10 +10,9 @@ static constexpr size_t EPILOGUE_INPUT_NUM_RECV_PER_EXPERT_INDEX = 3;
 static constexpr size_t EPILOGUE_INPUT_CACHED_RECV_SRC_METADATA_INDEX = 4;
 
 static constexpr size_t EPILOGUE_OUTPUT_RECV_X_INDEX = 0;
-static constexpr size_t EPILOGUE_OUTPUT_RECV_TOPK_IDX_INDEX = 1;
-static constexpr size_t EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX = 2;
-static constexpr size_t EPILOGUE_OUTPUT_RECV_SRC_METADATA_INDEX = 3;
-static constexpr size_t EPILOGUE_OUTPUT_RECV_SCALES_INDEX = 4;
+static constexpr size_t EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX = 1;
+static constexpr size_t EPILOGUE_OUTPUT_RECV_SRC_METADATA_INDEX = 2;
+static constexpr size_t EPILOGUE_OUTPUT_RECV_SCALES_INDEX = 3;
 
 static constexpr size_t EPILOGUE_ATTR_EP_WORLD_SIZE_INDEX = 0;
 static constexpr size_t EPILOGUE_ATTR_EP_RANK_ID_INDEX = 1;
@@ -46,12 +45,6 @@ static ge::graphStatus InferShapeMoeEpDispatchEpilogue(gert::InferShapeContext *
     recvX->SetDim(0U, aAlloc);
     recvX->SetDim(1U, -1);
 
-    gert::Shape *recvTopkIdx = context->GetOutputShape(EPILOGUE_OUTPUT_RECV_TOPK_IDX_INDEX);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, recvTopkIdx);
-    recvTopkIdx->SetDimNum(DIM_TWO);
-    recvTopkIdx->SetDim(0U, aAlloc);
-    recvTopkIdx->SetDim(1U, topK);
-
     gert::Shape *recvTopkWeights = context->GetOutputShape(EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeights);
     recvTopkWeights->SetDimNum(DIM_ONE);
@@ -70,7 +63,6 @@ static ge::graphStatus InferShapeMoeEpDispatchEpilogue(gert::InferShapeContext *
 static ge::graphStatus InferDataTypeMoeEpDispatchEpilogue(gert::InferDataTypeContext *context) {
     if (context == nullptr) { return ge::GRAPH_FAILED; }
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_X_INDEX, ge::DT_BF16);
-    context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_TOPK_IDX_INDEX, ge::DT_INT32);
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_TOPK_WEIGHTS_INDEX, ge::DT_FLOAT);
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_SRC_METADATA_INDEX, ge::DT_INT32);
     context->SetOutputDataType(EPILOGUE_OUTPUT_RECV_SCALES_INDEX, ge::DT_FLOAT);

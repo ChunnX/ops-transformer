@@ -68,9 +68,9 @@ class MoeEpDispatchEpilogueOpBuilder(OpBuilder):
                "Tensor num_recv_tokens_per_rank, Tensor num_recv_tokens_per_expert, " \
                "Tensor? cached_recv_src_metadata, int ep_world_size, int ep_rank_id, " \
                "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, *, " \
-               "int expert_alignment=1, Tensor recv_x, Tensor recv_topk_idx, " \
+               "int expert_alignment=1, Tensor recv_x, " \
                "Tensor recv_topk_weights, Tensor recv_src_metadata, Tensor? recv_scales) " \
-               "-> (Tensor, Tensor, Tensor, Tensor, Tensor?)"
+               "-> (Tensor, Tensor, Tensor, Tensor?)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -78,10 +78,10 @@ class MoeEpDispatchEpilogueOpBuilder(OpBuilder):
                                               num_recv_per_expert, cached_recv_src_metadata,
                                               ep_world_size, ep_rank_id, num_experts,
                                               num_max_tokens_per_rank, ccl_buffer_size, *, expert_alignment=1,
-                                              recv_x, recv_topk_idx, recv_topk_weights,
+                                              recv_x, recv_topk_weights,
                                               recv_src_metadata, recv_scales):
             recv_scales_out = recv_scales if recv_scales is not None else None
-            return (recv_x, recv_topk_idx, recv_topk_weights, recv_src_metadata, recv_scales_out)
+            return (recv_x, recv_topk_weights, recv_src_metadata, recv_scales_out)
 
 
 moe_ep_dispatch_op_builder = MoeEpDispatchOpBuilder()
@@ -108,10 +108,10 @@ def npu_moe_ep_dispatch(context, x, topk_idx, topk_weights, scales,
 def npu_moe_ep_dispatch_epilogue(context, dst_buffer_slot_idx, num_recv_per_rank, num_recv_per_expert,
                                  cached_recv_src_metadata, ep_world_size, ep_rank_id, num_experts,
                                  num_max_tokens_per_rank, ccl_buffer_size, *, expert_alignment=1,
-                                 recv_x, recv_topk_idx, recv_topk_weights, recv_src_metadata, recv_scales):
+                                 recv_x, recv_topk_weights, recv_src_metadata, recv_scales):
     return op_module_epilogue.npu_moe_ep_dispatch_epilogue(
         context, dst_buffer_slot_idx, num_recv_per_rank, num_recv_per_expert,
         cached_recv_src_metadata, ep_world_size, ep_rank_id, num_experts,
         num_max_tokens_per_rank, ccl_buffer_size, expert_alignment,
-        recv_x, recv_topk_idx, recv_topk_weights, recv_src_metadata, recv_scales
+        recv_x, recv_topk_weights, recv_src_metadata, recv_scales
     )

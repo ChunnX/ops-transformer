@@ -29,8 +29,14 @@
 #include "adv_api/hcomm/hcomm.h"
 #include "moe_ep_dispatch_tiling.h"
 #include "moe_ep_dispatch_base.h"
+
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
+#include "../common/op_kernel/mc2_kernel_utils.h"
+#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
+#endif
 
 namespace MoeEpDispatchImpl {
 
@@ -670,7 +676,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         uint32_t sendTokenNum = sendNumPerRankTensor.GetValue(dstRankId - startRankId_);
         GM_ADDR notifyAddr = GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + cntPerRankSizeAlign512_ + 
                                 moeExpertNumAlign512_;
-        printf("cur 694 dstRankId %d, count %d, epRankId_ %d, aivId %d\n", dstRankId, sendTokenNum, epRankId_, aivId_);
         if (unlikely(dstRankId == epRankId_)) {
             SyncFunc<AscendC::HardEvent::MTE3_S>();
             GlobalTensor<uint64_t> statusGMTensor;
@@ -792,7 +797,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessDire
     // PipeBarrier<PIPE_ALL>();
     // int64_t end = AscendC::GetSystemCycle();
     // int64_t duration = (end - start) / 1000;
-    // printf("duration %ld [us], ranId %d, aivId %d\n", duration, epRankId_, aivId_);
     // SyncAll<true>();
     PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
@@ -813,7 +817,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
     if ASCEND_IS_AIV { // 全aiv处理
         ProcessDirect();
     }
-    AscendC::printf("End MoeEpDispatch kernel Process\n");
+
 }
 
 }  // namespace MoeEpDispatchImpl

@@ -49,8 +49,6 @@ TEST_F(MoeEpDispatchEpilogueInfershape, InferShape0)
             {{}, ge::DT_BF16, ge::FORMAT_ND},
             {{}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
          {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -62,7 +60,6 @@ TEST_F(MoeEpDispatchEpilogueInfershape, InferShape0)
     int64_t aAlloc = 8 * 2048;
     std::vector<std::vector<int64_t>> xOutputShape = {
         {aAlloc, -1},      // recv_x (hidden is -1, dynamic)
-        {aAlloc, 8},       // recv_topk_idx
         {aAlloc},          // recv_topk_weights
         {aAlloc, 3},       // recv_src_metadata
     };
@@ -78,24 +75,22 @@ TEST_F(MoeEpDispatchEpilogueInfershape, InferDtype0)
     ge::DataType numRecvPerExpertType = ge::DT_INT64;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-                             .NodeIoNum(4, 5)
+                             .NodeIoNum(4, 4)
                              .InputDataTypes({&contextType, &dstSlotIdxType, &numRecvPerRankType,
                                               &numRecvPerExpertType})
                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                              .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
                              .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
                              .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
-                             .NodeOutputTd(4, ge::FORMAT_ND, ge::FORMAT_ND)
                              .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeEpDispatchEpilogue")->infer_datatype;
     ASSERT_EQ(inferDtypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_INT32);
-    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_INT32);
-    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(2), ge::DT_FLOAT);
-    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(3), ge::DT_INT32);
-    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(4), ge::DT_FLOAT);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_FLOAT);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(2), ge::DT_INT32);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(3), ge::DT_FLOAT);
 }
 
 // Small shape test
@@ -118,8 +113,6 @@ TEST_F(MoeEpDispatchEpilogueInfershape, InferShapeSmall)
             {{}, ge::DT_BF16, ge::FORMAT_ND},
             {{}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {{"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
          {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -130,7 +123,7 @@ TEST_F(MoeEpDispatchEpilogueInfershape, InferShapeSmall)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     int64_t aAlloc = 4 * 512;
     std::vector<std::vector<int64_t>> xOutputShape = {
-        {aAlloc, -1}, {aAlloc, 4}, {aAlloc}, {aAlloc, 3},
+        {aAlloc, -1}, {aAlloc}, {aAlloc, 3},
     };
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, xOutputShape);
 }

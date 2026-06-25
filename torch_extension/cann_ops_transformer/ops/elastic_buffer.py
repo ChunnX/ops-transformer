@@ -123,33 +123,30 @@ class MoEElasticBuffer:
             actual_a = ep_world_size * nm * min(self.num_topk, ne // ep_world_size)
 
         recv_x = torch.empty((actual_a, self.hidden), dtype=x.dtype, device=x.device)
-        recv_topk_idx = torch.empty((actual_a, self.num_topk), dtype=torch.int32, device=x.device)
         recv_topk_weights = torch.empty((actual_a,), dtype=torch.float32, device=x.device)
         recv_src_meta = torch.empty((actual_a, 3), dtype=torch.int32, device=x.device)
         recv_scales = None
         if scales is not None:
             recv_scales = torch.empty((actual_a, scales.shape[1]), dtype=scales.dtype, device=x.device)
 
-        # 打桩调试 控制epilogue启动时间
-        import time
-        time.sleep(20)
-
-        recv_x, recv_topk_idx, recv_topk_weights, recv_src_meta, recv_scales = \
+        recv_x, recv_topk_weights, recv_src_meta, recv_scales = \
             _op.npu_moe_ep_dispatch_epilogue(
                 self.context, dst_slot, num_recv_per_rank, num_recv_per_expert, cached_recv_src_metadata,
                 ep_world_size, self.rank_id, ne, nm, self.ccl_buffer_size, expert_alignment=ea,
-                recv_x=recv_x, recv_topk_idx=recv_topk_idx,
-                recv_topk_weights=recv_topk_weights, recv_src_metadata=recv_src_meta,
+                recv_x=recv_x, recv_topk_weights=recv_topk_weights, recv_src_metadata=recv_src_meta,
                 recv_scales=recv_scales
             )
 
         recv_x = (recv_x, recv_scales) if recv_scales is not None else recv_x
+        recv_topk_idx = None
         new_handle = EPHandle(
             dst_buffer_slot_idx=dst_slot,
             recv_src_metadata=recv_src_meta,
             num_recv_tokens_per_rank=num_recv_per_rank,
             num_recv_tokens_per_expert=num_recv_per_expert,
-            num_experts=ne, expert_alignment=ea, num_max_tokens_per_rank=nm,
+            num_experts=ne,
+            expert_alignment=ea,
+            num_max_tokens_per_rank=nm,
             topk_idx=(topk_idx.clone() if topk_idx is not None else handle.topk_idx),
         )
         return recv_x, recv_topk_idx, recv_topk_weights, new_handle

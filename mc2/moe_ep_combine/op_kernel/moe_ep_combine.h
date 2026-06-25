@@ -457,7 +457,6 @@ __aicore__ inline void KernelMoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process
 {
     SendPhaseExpertToToken();
     RecvPhaseReduce();
-    // printf("moe_ep_combine End\r\n");
 }
 
 } // namespace MoeEpCombineImpl
