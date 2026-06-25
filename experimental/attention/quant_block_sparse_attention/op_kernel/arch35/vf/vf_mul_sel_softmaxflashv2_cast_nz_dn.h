@@ -23,8 +23,8 @@ using namespace MicroAPI;
 #define VMULSCVT false
 #define DROPOUT false
 
-// 空行(全 mask)的 lse 哨兵值，等价于 common.h 的 BSA_EMPTY_LSE_VALUE(-FLT_MAX)
-constexpr float BSA_EMPTY_LSE_VALUE = -3.4028234663852886e38F;
+// Empty-row lse sentinel, equivalent to common.h BSA_EMPTY_LSE_VALUE(-FLT_MAX).
+constexpr float VF_BSA_EMPTY_LSE_VALUE = -3.4028234663852886e38F;
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
@@ -127,7 +127,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
-    Duplicate(vreg_empty_lse, BSA_EMPTY_LSE_VALUE);
+    Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
 
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
@@ -171,6 +171,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, vreg_data_tmp1, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
+    }
+    mem_bar(VST_VLD);
+
+    // Tail columns may have zero scale when the second sparse block is absent.
+    // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -468,7 +476,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
-    Duplicate(vreg_empty_lse, BSA_EMPTY_LSE_VALUE);
+    Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
@@ -511,6 +519,14 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, vreg_data_tmp1, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
+    }
+    mem_bar(VST_VLD);
+
+    // Tail columns may have zero scale when the second sparse block is absent.
+    // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -888,6 +904,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, 
     }
     mem_bar(VST_VLD);
 
+    // Tail columns may have zero scale when the second sparse block is absent.
+    // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    }
+    mem_bar(VST_VLD);
+
     if (needAtten) {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
@@ -1198,6 +1222,14 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(__ubuf__ T2 *x_exp, __
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub1 + iter_m * m * 4, vreg_data_tmp1, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub2 + iter_m * m * 4, vreg_data_tmp2, preg_135);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub3 + iter_m * m * 4, vreg_data_tmp3, preg_135);
+    }
+    mem_bar(VST_VLD);
+
+    // Tail columns may have zero scale when the second sparse block is absent.
+    // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
+    for (uint16_t i = originN; i < ubN; ++i) {
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 

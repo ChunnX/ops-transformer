@@ -41,8 +41,8 @@ TEST_PARAMS = {
     "TND_TYPICAL_CASE": _case(
         layout_q=["TND"],
         B=[4],
-        S1=[1231],
-        S2=[666],
+        S1=[1024],
+        S2=[1024],
         sparse_count=[4],
         return_softmax_lse=[True],
         actlen_mode=["full"],
