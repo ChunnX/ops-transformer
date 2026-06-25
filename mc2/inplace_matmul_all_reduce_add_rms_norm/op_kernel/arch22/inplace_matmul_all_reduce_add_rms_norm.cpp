@@ -30,8 +30,10 @@ using DTYPE_Y = DTYPE_RESIDUAL;
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_quant.h"
 #elif defined(MC2_WEIGHT_QUANT)
+    #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_weight_quant.h"
 #else
+    #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_910_general.h"
 #endif
 
