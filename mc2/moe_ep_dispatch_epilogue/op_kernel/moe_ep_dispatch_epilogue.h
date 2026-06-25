@@ -34,6 +34,7 @@
 namespace MoeEpDispatchEpilogueImpl {
 
 using namespace AscendC;
+
 static constexpr uint32_t UB_ALIGN = 32U;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 3;

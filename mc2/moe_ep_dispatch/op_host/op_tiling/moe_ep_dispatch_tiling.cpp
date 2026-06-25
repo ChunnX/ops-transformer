@@ -209,6 +209,7 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
         
         uint32_t scalesSize = scalesDtype == ge::DT_FLOAT ? sizeof(float) : FP8_DTYPE_SIZE;
         info.cfg.scalesBytes = static_cast<uint32_t>(expectedDim1 * scalesSize);
+        info.isMxQuant = (scalesDtype == ge::DT_FLOAT8_E8M0) ? 1U : 0U;
     }
     return true;
 }
@@ -530,11 +531,13 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const MoeEpDis
 }
 
 static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached,
-                             const uint32_t isTopkWeights, const uint32_t networkMode)
+                             const uint32_t isTopkWeights, const uint32_t isMxQuant,
+                             const uint32_t networkMode)
 {
     bool cpuSyncMode = false;
     bool CachedMode = false;
     bool topkWeightsMode = false;
+    bool mxQuantMode = false;
     if (doCpuSync) {
         cpuSyncMode = true;
     }
@@ -544,8 +547,11 @@ static uint64_t CalTilingKey(const uint32_t doCpuSync, const uint32_t isCached,
     if (isTopkWeights) {
         topkWeightsMode = true;
     }
+    if (isMxQuant) {
+        mxQuantMode = true;
+    }
 
-    return GET_TPL_TILING_KEY(cpuSyncMode, CachedMode, topkWeightsMode,
+    return GET_TPL_TILING_KEY(cpuSyncMode, CachedMode, topkWeightsMode, mxQuantMode,
                               static_cast<uint8_t>(networkMode));
 }
 
@@ -595,7 +601,8 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(SetWorkSpace(context, info, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Set workspace failed."), return ge::GRAPH_FAILED);
 
-    uint64_t tilingKey = CalTilingKey(info.doCpuSync, info.isCached, info.isTopkWeights, info.networkMode);
+    uint64_t tilingKey = CalTilingKey(info.doCpuSync, info.isCached, info.isTopkWeights,
+                                      info.isMxQuant, info.networkMode);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
     PrintTilingDataInfo(nodeName, info);

@@ -312,6 +312,7 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
 
     uint32_t scalesSize = (scalesDtype == ge::DT_FLOAT) ? sizeof(float) : FP8_DTYPE_SIZE;
     info.scalesBytes = static_cast<uint32_t>(expectedDim1 * scalesSize);
+    info.isMxQuant = (scalesDtype == ge::DT_FLOAT8_E8M0) ? 1U : 0U;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -485,10 +486,11 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512;
 
-    uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U,
+                                             info.isMxQuant ? 1U : 0U);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u",
-        tilingKey, blockDim, aivNum, info.cached);
+    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u, isMxQuant=%u",
+        tilingKey, blockDim, aivNum, info.cached, info.isMxQuant);
 
     PrintTilingDataInfo(nodeName, info);
     return ge::GRAPH_SUCCESS;

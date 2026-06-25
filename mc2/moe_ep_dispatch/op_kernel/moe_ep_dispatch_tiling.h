@@ -39,6 +39,7 @@ struct MoeEpDispatchInfo {
     uint32_t doCpuSync;
     uint32_t isCached;
     uint32_t isTopkWeights;
+    uint32_t isMxQuant;
     uint32_t networkMode;
     uint32_t numScaleupRanks;
     uint32_t numScaleoutRanks;
