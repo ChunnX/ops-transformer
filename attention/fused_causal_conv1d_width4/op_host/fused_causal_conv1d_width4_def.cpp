@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file fused_causal_conv1d_def.cpp
- * \brief FusedCausalConv1d ascendc impl
+ * \file fused_causal_conv1d_width4_def.cpp
+ * \brief FusedCausalConv1dWidth4 ascendc impl
  */
 
 #include "register/op_def_registry.h"
 
 namespace ops {
-class FusedCausalConv1d : public OpDef {
+class FusedCausalConv1dWidth4 : public OpDef {
 public:
-    explicit FusedCausalConv1d(const char* name) : OpDef(name)
+    explicit FusedCausalConv1dWidth4(const char* name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -90,10 +90,10 @@ public:
 			.DynamicShapeSupportFlag(true)
 			.NeedCheckSupportFlag(false)
 			.PrecisionReduceFlag(true)
-            .ExtendCfgInfo("opFile.value", "fused_causal_conv1d_apt");
+            .ExtendCfgInfo("opFile.value", "fused_causal_conv1d_width4_apt");
         this->AICore().AddConfig("ascend950", config_950);
     }
 };
 
-OP_ADD(FusedCausalConv1d);
+OP_ADD(FusedCausalConv1dWidth4);
 } // namespace ops

@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file fused_causal_conv1d_cut_bh_tiling_arch35.h
- * \brief FusedCausalConv1dCutBH tiling implementation
+ * \file fused_causal_conv1d_width4_cut_bh_tiling_arch35.h
+ * \brief FusedCausalConv1dWidth4CutBH tiling implementation
  *
  * BH 模板（CutBH）：沿 Batch 和 Hidden（dim）两个维度做核间切分。
  * 与 BSH 模板的区别在于：BH 模板 seqLen 较小（[1,8]），
  * 核间切分只考虑 batch × dim，核内 UB 循环以 (batch, dim) 为粒度。
  */
-#ifndef FUSED_CAUSAL_CONV1D_CUT_BH_TILING_H
-#define FUSED_CAUSAL_CONV1D_CUT_BH_TILING_H
+#ifndef FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BH_TILING_H
+#define FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BH_TILING_H
 
 #include "log/log.h"
 #include "platform/platform_info.h"
@@ -28,11 +28,11 @@
 #include "util/math_util.h"
 #include "util/platform_util.h"
 #include "util/shape_util.h"
-#include "../op_kernel/arch35/fused_causal_conv1d_cut_bh_struct.h"
+#include "../op_kernel/arch35/fused_causal_conv1d_width4_cut_bh_struct.h"
 
 namespace optiling {
 
-struct FusedCausalConv1dCutBHCompileInfo {
+struct FusedCausalConv1dWidth4CutBHCompileInfo {
     uint64_t coreNum = 0; // AIV 核数
     uint64_t ubSize = 0;  // 单核 UB 大小（字节）
 };
@@ -87,9 +87,9 @@ constexpr int64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024; // 系统为运行时预�
 constexpr int64_t X_INPUT_3D = 0; // 3D 输入 [batch, seq_len, dim]
 constexpr int64_t X_INPUT_2D = 1; // 2D 输入 [cu_seq_len, dim]，需配合 query_start_loc 拆分 batch
 
-class FusedCausalConv1dCutBHTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class FusedCausalConv1dWidth4CutBHTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit FusedCausalConv1dCutBHTiling(gert::TilingContext *context, bool isInplace = false)
+    explicit FusedCausalConv1dWidth4CutBHTiling(gert::TilingContext *context, bool isInplace = false)
         : TilingBaseClass(context), isInplace_(isInplace)
     {
     }
@@ -236,9 +236,9 @@ private:
     int64_t lastCoreubMainFactorDim_ = 0; // 最后一个 dim 核的 UB 主块 dim 大小
     int64_t lastCoreubTailFactorDim_ = 0; // 最后一个 dim 核的 UB 尾块 dim 大小
 
-    FusedCausalConv1dCutBHTilingData tilingData_;
+    FusedCausalConv1dWidth4CutBHTilingData tilingData_;
 };
 
 } // namespace optiling
 
-#endif // FUSED_CAUSAL_CONV1D_CUT_BH_TILING_H
+#endif // FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BH_TILING_H

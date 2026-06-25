@@ -9,7 +9,7 @@
  */
 
 #include <tuple>
-#include "fused_causal_conv1d.h"
+#include "fused_causal_conv1d_width4.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/aicpu/aicpu_task.h"
 #include "opdev/op_def.h"
@@ -22,9 +22,9 @@
 using namespace op;
 
 namespace l0op {
-OP_TYPE_REGISTER(FusedCausalConv1d);
+OP_TYPE_REGISTER(FusedCausalConv1dWidth4);
 
-bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
+bool FusedCausalConv1dWidth4(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
                        const aclTensor *queryStartLoc, const aclTensor *cacheIndices, const aclTensor *initialStateMode,
                        const aclTensor *bias, const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
                        const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
@@ -32,19 +32,19 @@ bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *c
                        int64_t maxQueryLen, int64_t residualConnection, int64_t blockSize, int64_t convMode,
                        aclTensor *y, aclOpExecutor *executor)
 {
-    L0_DFX(FusedCausalConv1d, x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias,
+    L0_DFX(FusedCausalConv1dWidth4, x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias,
            numAcceptedTokens, numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken,
            initialStateIdx, activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode,
            y);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        FusedCausalConv1d,
+        FusedCausalConv1dWidth4,
         OP_INPUT(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
                  numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx),
         OP_OUTPUT(convStates, y),
         OP_ATTR(activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedCausalConv1d ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedCausalConv1dWidth4 ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return false;
     }
     return true;

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file fused_causal_conv1d_cut_bsh_tiling_arch35.cpp
+ * \file fused_causal_conv1d_width4_cut_bsh_tiling_arch35.cpp
  * \brief
  */
 
-#include "fused_causal_conv1d_cut_bsh_tiling_arch35.h"
+#include "fused_causal_conv1d_width4_cut_bsh_tiling_arch35.h"
 
 namespace optiling {
 constexpr uint64_t DIM_0 = 0;
@@ -64,7 +64,7 @@ constexpr uint64_t TILING_KEY_BSH_BF16 = 10000UL;
 constexpr uint64_t TILING_KEY_BSH_FP16 = 10001UL;
 constexpr uint64_t SYS_WORKSPACE_SIZE = static_cast<uint64_t>(16 * 1024 * 1024);
 
-bool FusedCausalConv1dCutBSHTiling::IsCapable()
+bool FusedCausalConv1dWidth4CutBSHTiling::IsCapable()
 {
     if (context_ == nullptr) {
         return false;
@@ -93,12 +93,12 @@ bool FusedCausalConv1dCutBSHTiling::IsCapable()
     return true;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::DoLibApiTiling()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::GetPlatformInfo()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::GetPlatformInfo()
 {
     ubBlockSize_ = Ops::Base::GetUbBlockSize(context_);
     auto platformInfo = context_->GetPlatformInfo();
@@ -132,7 +132,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetPlatformInfo()
 }
 
 // 检查输入数据类型
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDtype()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CheckInputDtype()
 {
     if (xType_ != ge::DataType::DT_FLOAT16 && xType_ != ge::DataType::DT_BF16) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -188,7 +188,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDtype()
 }
 
 // 检查输入数据维度
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckXDim()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CheckXDim()
 {
     uint64_t xDimNum = xShape_.GetDimNum();
     if (xDimNum != X_DIM_NUM) {
@@ -214,7 +214,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckXDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckWeightDim()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CheckWeightDim()
 {
     uint64_t weightDimNum = weightShape_.GetDimNum();
     if (weightDimNum != WEIGHT_DIM_NUM) {
@@ -239,7 +239,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckWeightDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheStatesDim()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CheckCacheStatesDim()
 {
     uint64_t cacheStatesDimNum = cacheStatesShape_.GetDimNum();
     if (cacheStatesDimNum != CACHE_STATES_DIM_NUM) {
@@ -266,7 +266,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheStatesDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckIndexDims()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CheckIndexDims()
 {
     auto seqStartIndexStorageShape = context_->GetOptionalInputShape(INPUT_QUERY_START_LOC_INDEX);
     if (seqStartIndexStorageShape == nullptr) {
@@ -293,7 +293,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckIndexDims()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDim()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CheckInputDim()
 {
     if (CheckXDim() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
@@ -314,7 +314,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputDim()
 }
 
 // 检查输入参数
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputParams()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CheckInputParams()
 {
     if (CheckInputDtype() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -325,7 +325,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckInputParams()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckOutputParams()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CheckOutputParams()
 {
     auto outputYDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outputYDesc);
@@ -352,7 +352,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckOutputParams()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputShapes()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::GetInputShapes()
 {
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(INPUT_X_INDEX));
     xShape_ = context_->GetInputShape(INPUT_X_INDEX)->GetOriginShape();
@@ -377,7 +377,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputShapes()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputDtypes()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::GetInputDtypes()
 {
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(INPUT_X_INDEX));
     xType_ = context_->GetInputDesc(INPUT_X_INDEX)->GetDataType();
@@ -395,7 +395,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputDtypes()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputStrides()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::GetInputStrides()
 {
     if (context_->InputIsView(INPUT_X_INDEX)) {
         auto *xStride = context_->GetInputStride(INPUT_X_INDEX);
@@ -433,9 +433,9 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputStrides()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::GetShapeAttrsInfo()
 {
-    OP_CHECK_IF(context_ == nullptr, OP_LOGE("FusedCausalConv1dCutBSH", "context is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_ == nullptr, OP_LOGE("FusedCausalConv1dWidth4CutBSH", "context is null"), return ge::GRAPH_FAILED);
 
     if (GetInputShapes() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
@@ -515,8 +515,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
 }
 
 // 辅助函数：计算切cu_seq_len时的核间切分信息（均分多尾核策略）
-FusedCausalConv1dCutBSHTiling::CuSeqLenSplitInfo
-FusedCausalConv1dCutBSHTiling::CalculateCuSeqLenSplitInfo(uint64_t cuSeqLen, uint64_t bsOverlap, uint64_t coreNum) const
+FusedCausalConv1dWidth4CutBSHTiling::CuSeqLenSplitInfo
+FusedCausalConv1dWidth4CutBSHTiling::CalculateCuSeqLenSplitInfo(uint64_t cuSeqLen, uint64_t bsOverlap, uint64_t coreNum) const
 {
     CuSeqLenSplitInfo info;
 
@@ -549,7 +549,7 @@ FusedCausalConv1dCutBSHTiling::CalculateCuSeqLenSplitInfo(uint64_t cuSeqLen, uin
 }
 
 // 计算二维切分时的tiling（支持不均匀切分 + dim循环）
-ge::graphStatus FusedCausalConv1dCutBSHTiling::CalcCoreUbTiling(uint64_t coreDim, uint64_t coreBS,
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::CalcCoreUbTiling(uint64_t coreDim, uint64_t coreBS,
                                                                 uint64_t bsBlockFactor, int64_t availableUbSize,
                                                                 uint64_t weightCacheCoeffPerDim, uint64_t bsOverlap,
                                                                 uint64_t &ubFactorBS, uint64_t &ubFactorDim,
@@ -599,7 +599,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CalcCoreUbTiling(uint64_t coreDim
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::Calculate2DTiling()
 {
     uint64_t bsOverlap = kernelWidth_ - 1;
     auto alignUp = [](uint64_t x, uint64_t a) -> uint64_t { return ((x + a - 1) / a) * a; };
@@ -629,7 +629,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
     int64_t availableUbSize = static_cast<int64_t>(ubSize_) - static_cast<int64_t>(fixedUbSize);
     OP_CHECK_IF(availableUbSize <= 0,
                 OP_LOGE(context_->GetNodeName(),
-                        "FusedCausalConv1dCutBSH availableUbSize <= 0 (ubSize_=%lu fixedUbSize=%lu)", ubSize_,
+                        "FusedCausalConv1dWidth4CutBSH availableUbSize <= 0 (ubSize_=%lu fixedUbSize=%lu)", ubSize_,
                         fixedUbSize),
                 return ge::GRAPH_FAILED);
 
@@ -684,7 +684,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::SearchBestCoreSplit(uint64_t N, uint64_t bsOverlap,
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::SearchBestCoreSplit(uint64_t N, uint64_t bsOverlap,
                                                                    uint64_t &bestDimCores,
                                                                    CuSeqLenSplitInfo &bestBSSplitInfo)
 {
@@ -745,7 +745,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::SearchBestCoreSplit(uint64_t N, u
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::ApplyDimSplit(uint64_t N, uint64_t bestDimCores)
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::ApplyDimSplit(uint64_t N, uint64_t bestDimCores)
 {
     if (bestDimCores == 0) {
         OP_LOGE(context_->GetNodeName(), "ApplyDimSplit: bestDimCores is 0");
@@ -762,7 +762,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::ApplyDimSplit(uint64_t N, uint64_
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::DoOpTiling()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::DoOpTiling()
 {
     uint64_t bsOverlap = kernelWidth_ - 1;
     constexpr uint64_t DIM_GRANULARITY = DIM_ALIGN_ELEMENTS;
@@ -795,7 +795,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::DoOpTiling()
     return Calculate2DTiling();
 }
 
-uint64_t FusedCausalConv1dCutBSHTiling::GetTilingKey() const
+uint64_t FusedCausalConv1dWidth4CutBSHTiling::GetTilingKey() const
 {
     // 根据数据类型返回不同的 tiling key
     if (xType_ == ge::DataType::DT_BF16) {
@@ -805,7 +805,7 @@ uint64_t FusedCausalConv1dCutBSHTiling::GetTilingKey() const
     }
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::GetWorkspaceSize()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::GetWorkspaceSize()
 {
     workspaceSize_ = SYS_WORKSPACE_SIZE;
 
@@ -827,7 +827,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBSHTiling::PostTiling()
+ge::graphStatus FusedCausalConv1dWidth4CutBSHTiling::PostTiling()
 {
     // Set block dimension (number of cores to use)
     context_->SetBlockDim(realCoreNum_);
@@ -886,7 +886,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::PostTiling()
     tilingData_.lastCoreubTailFactorDim = lastCoreubTailFactorDim_;
 
     // Save tiling data to buffer
-    auto tilingDataSize = sizeof(FusedCausalConv1dCutBSHTilingData);
+    auto tilingDataSize = sizeof(FusedCausalConv1dWidth4CutBSHTilingData);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), tilingDataSize);
     if (ret != EOK) {
@@ -898,7 +898,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void FusedCausalConv1dCutBSHTiling::DumpTilingInfo()
+void FusedCausalConv1dWidth4CutBSHTiling::DumpTilingInfo()
 {
     std::ostringstream info;
     info << "cuSeqLen: " << cuSeqLen_ << std::endl;

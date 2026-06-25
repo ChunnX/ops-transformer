@@ -22,5 +22,6 @@ Changed scope:
 Validation note:
 
 - The original K=3-specialized no-state VF functions remain in the copied source but are no longer called from the BH/BSH W4 pure-x paths.
+- The copy has been renamed to the independent op/API/kernel names `FusedCausalConv1dWidth4`, `aclnnFusedCausalConv1dWidth4`, and `fused_causal_conv1d_width4`, so it no longer registers the same op type as the original `FusedCausalConv1d` directory.
 - This is a correctness-first W4 port. It still needs CANN compile and A5 hardware validation before performance conclusions.
-- Keep the original `fused_causal_conv1d` directory unchanged. Do not build both directories as independent ops with the same op type in one full repo build unless op/type names are also renamed.
+- Keep the original `fused_causal_conv1d` directory unchanged.

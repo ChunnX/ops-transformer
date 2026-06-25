@@ -9,14 +9,14 @@
  */
 
 /*!
- * \file fused_causal_conv1d_cut_bsh_struct.h
+ * \file fused_causal_conv1d_width4_cut_bsh_struct.h
  * \brief tiling data struct
  */
 
-#ifndef __FUSED_CAUSAL_CONV1D_CUT_BSH_TILING_DATA_H__
-#define __FUSED_CAUSAL_CONV1D_CUT_BSH_TILING_DATA_H__
+#ifndef __FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BSH_TILING_DATA_H__
+#define __FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BSH_TILING_DATA_H__
 
-struct FusedCausalConv1dCutBSHTilingData {
+struct FusedCausalConv1dWidth4CutBSHTilingData {
     // ===== 核内UB切分参数 =====
     uint64_t loopNumBS;                // 每个核内BS方向的loop循环数
     uint64_t loopNumDim;               // 每个核内Dim方向的loop循环数（2D时固定为1）

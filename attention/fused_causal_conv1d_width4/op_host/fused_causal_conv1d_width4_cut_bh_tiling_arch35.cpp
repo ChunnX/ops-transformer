@@ -9,28 +9,28 @@
  */
 
 /*!
- * \file fused_causal_conv1d_cut_bh_tiling_arch35.cpp
- * \brief FusedCausalConv1dCutBH tiling implementation
+ * \file fused_causal_conv1d_width4_cut_bh_tiling_arch35.cpp
+ * \brief FusedCausalConv1dWidth4CutBH tiling implementation
  */
 
-#include "fused_causal_conv1d_cut_bh_tiling_arch35.h"
+#include "fused_causal_conv1d_width4_cut_bh_tiling_arch35.h"
 #include <algorithm>
 #include "securec.h"
 
 namespace optiling {
 
-bool FusedCausalConv1dCutBHTiling::IsCapable()
+bool FusedCausalConv1dWidth4CutBHTiling::IsCapable()
 {
     return true;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::GetPlatformInfo()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::GetPlatformInfo()
 {
     ubBlockSize_ = Ops::Base::GetUbBlockSize(context_);
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         // 无运行时平台信息，降级使用编译期 CompileInfo
-        auto compileInfoPtr = reinterpret_cast<const FusedCausalConv1dCutBHCompileInfo *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const FusedCausalConv1dWidth4CutBHCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         totalCoreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
@@ -54,9 +54,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeAttrsInfo()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::GetShapeAttrsInfo()
 {
-    OP_CHECK_IF(context_ == nullptr, OP_LOGE("FusedCausalConv1dCutBH", "context is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_ == nullptr, OP_LOGE("FusedCausalConv1dWidth4CutBH", "context is null"), return ge::GRAPH_FAILED);
 
     if (GetShapeInfo() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
@@ -77,7 +77,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::GetShapeInfo()
 {
     // 获取 x 的 shape
     auto xShape = context_->GetInputShape(X_INDEX);
@@ -162,7 +162,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::GetTypeInfo()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::GetTypeInfo()
 {
     xDtype_ = context_->GetInputDesc(X_INDEX)->GetDataType();
     weightDtype_ = context_->GetInputDesc(WEIGHT_INDEX)->GetDataType();
@@ -201,7 +201,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetTypeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::GetAttrInfo()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -272,7 +272,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::GetStrideInfo()
 {
     // 获取 x 的 stride（3D 输入取 DIM_1 stride；2D 输入取 DIM_0 stride）
     bool xIsView = context_->InputIsView(X_INDEX);
@@ -329,7 +329,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateXShape()
 {
     if (batchSize_ < MIN_BATCH || batchSize_ > MAX_BATCH) {
         std::string reasonMsg =
@@ -383,7 +383,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightShape()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateWeightShape()
 {
     auto weightShape = context_->GetInputShape(WEIGHT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightShape);
@@ -400,7 +400,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateConvStatesShape()
 {
     auto convStatesShape = context_->GetInputShape(CONV_STATES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, convStatesShape);
@@ -440,7 +440,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateCacheIndicesShape()
 {
     auto indicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
     if (indicesShape == nullptr) {
@@ -489,7 +489,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateNumAcceptedTokenShape()
 {
     if (context_->GetOptionalInputTensor(NUM_ACCEPTED_TOKEN_INDEX) == nullptr) {
         return ge::GRAPH_SUCCESS; // 可选输入，不存在时跳过
@@ -519,7 +519,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateQueryStartLocShape()
 {
     if (xInputMode_ == X_INPUT_3D) {
         return ge::GRAPH_SUCCESS; // 3D 输入不需要 query_start_loc
@@ -553,7 +553,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXType()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateXType()
 {
     if (xDtype_ != ge::DataType::DT_FLOAT16 && xDtype_ != ge::DataType::DT_BF16) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -564,7 +564,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightType()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateWeightType()
 {
     if (weightDtype_ != xDtype_) {
         std::string dtypeMsg = Ops::Base::ToString(xDtype_) + " and " + Ops::Base::ToString(weightDtype_);
@@ -576,7 +576,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesType()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateConvStatesType()
 {
     if (convStatesDtype_ != xDtype_) {
         std::string dtypeMsg = Ops::Base::ToString(xDtype_) + " and " + Ops::Base::ToString(convStatesDtype_);
@@ -588,7 +588,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesType()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateCacheIndicesType()
 {
     auto cacheIndicesDesc = context_->GetOptionalInputDesc(CACHE_INDICES_INDEX);
     if (cacheIndicesDesc == nullptr) {
@@ -604,7 +604,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocType()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateQueryStartLocType()
 {
     if (xInputMode_ == X_INPUT_3D) {
         return ge::GRAPH_SUCCESS;
@@ -626,7 +626,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenType()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateNumAcceptedTokenType()
 {
     auto numAcceptedTokenDesc = context_->GetOptionalInputDesc(NUM_ACCEPTED_TOKEN_INDEX);
     if (numAcceptedTokenDesc == nullptr) {
@@ -642,7 +642,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::CheckInputParams()
 {
     // 形状校验
     if (ValidateXShape() != ge::GRAPH_SUCCESS)
@@ -679,7 +679,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
 // Tiling 主入口，根据 dim 大小选择细粒度（< 1024）或粗粒度（>= 1024）策略：
 //   细粒度：dim 按 128 元素分块（DIM_ALIGN_ELEMENT）
 //   粗粒度：dim 按 1024 元素分块（COARSE_GRAIN_ELEMENT）
-ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::DoOpTiling()
 {
     if (dim_ >= COARSE_GRAIN_THRESHOLD) {
         // 粗粒度模式（dim >= 1024）：更大的切块粒度
@@ -699,7 +699,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
 }
 
 // ComputeInterCoreSplit（细粒度核间切分）
-ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ComputeInterCoreSplit()
 {
     // N = dim / 128，即 dim 方向可用的对齐块数；dimRemainder 为不足 128 的余数元素
     int64_t N = dim_ / DIM_ALIGN_ELEMENT;
@@ -787,7 +787,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
 //   weight + conv_states 部分：BUFFER_NUM * (kernelSize + (kernelSize-1)*2) * DTYPE_SIZE
 //   x 部分（包含 x_in 和 y_out 双 buffer）：BUFFER_NUM * coreBS * seqLen * DTYPE_SIZE * 2
 // 优先保持 batch 完整（outUbBS = coreBS），若 UB 不足则逐步减小 batch
-void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
+void FusedCausalConv1dWidth4CutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
                                                 int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim,
                                                 int64_t &outLoopBS, int64_t &outUbTailDim, int64_t &outUbTailBS)
 {
@@ -838,7 +838,7 @@ void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t co
 // ComputeIntraCoreUbTiling（细粒度核内 UB 切分）
 // 1. 计算固定 UB 占用（acceptTokenBuf / indicesBuf / queryStartLocBuf 等辅助 buffer）
 // 2. 分别对大核（main core）和小核（tail core）调用 ComputeUbFor 计算 UB 循环参数
-ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ComputeIntraCoreUbTiling()
 {
     // 固定 UB 占用：acceptTokenBuf（每核始终分配，存放 batch 级别的 accepted token 数）
     int64_t numAcceptedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
@@ -948,7 +948,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
 // CalculateLimitedCoreNum（细粒度）
 // 根据输入数据量估算合理的最大核数：
 //   每 256 字节（= 128 元素 × 2 字节）分配 1 核，最多不超过 totalCoreNum_
-int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNum()
+int64_t FusedCausalConv1dWidth4CutBHTiling::CalculateLimitedCoreNum()
 {
     // 只考虑 batch × dim 的数据量（不含 seqLen，因为 seqLen 较小且固定）
     int64_t xSizeBytes = batchSize_ * dim_ * DTYPE_SIZE;
@@ -965,7 +965,7 @@ int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNum()
 
 // CalculateLimitedCoreNumCoarse（粗粒度）
 // 粗粒度模式下按 2048 字节（= 1024 元素）粒度估算合理核数
-int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNumCoarse()
+int64_t FusedCausalConv1dWidth4CutBHTiling::CalculateLimitedCoreNumCoarse()
 {
     int64_t xSizeBytes = batchSize_ * dim_ * DTYPE_SIZE;
 
@@ -978,7 +978,7 @@ int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNumCoarse()
 
 // GetTilingKey
 // 根据 x 数据类型返回对应的 TilingKey，框架据此选择 kernel 分支
-uint64_t FusedCausalConv1dCutBHTiling::GetTilingKey() const
+uint64_t FusedCausalConv1dWidth4CutBHTiling::GetTilingKey() const
 {
     if (xDtype_ == ge::DataType::DT_BF16) {
         return TILING_KEY_BH_BF16;
@@ -990,7 +990,7 @@ uint64_t FusedCausalConv1dCutBHTiling::GetTilingKey() const
 // PostTiling
 // 将所有 tiling 计算结果写入 tilingData_，并通过 memcpy 复制到 RawTilingData
 // 同时调用 SetBlockDim 告知框架实际使用的核数
-ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::PostTiling()
 {
     // 设置实际使用的核数（由框架传递给 runtime 调度器）
     context_->SetBlockDim(usedCoreNum_);
@@ -1059,7 +1059,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
     tilingData_.lastCoreubTailFactorDim = lastCoreubTailFactorDim_;
 
     // 将 tilingData_ 序列化到 RawTilingData（供 kernel 侧反序列化）
-    auto tilingDataSize = sizeof(FusedCausalConv1dCutBHTilingData);
+    auto tilingDataSize = sizeof(FusedCausalConv1dWidth4CutBHTilingData);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), tilingDataSize);
     if (ret != EOK) {
@@ -1073,9 +1073,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
 
 // DumpTilingInfo
 // 打印所有 tiling 参数（INFO 级别日志），用于调试和问题定位
-void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
+void FusedCausalConv1dWidth4CutBHTiling::DumpTilingInfo()
 {
-    OP_LOGI(context_->GetNodeName(), "=== FusedCausalConv1dCutBH DumpTilingInfo ===");
+    OP_LOGI(context_->GetNodeName(), "=== FusedCausalConv1dWidth4CutBH DumpTilingInfo ===");
 
     // 核分布参数
     OP_LOGI(context_->GetNodeName(), "usedCoreNum: %ld", tilingData_.usedCoreNum);
@@ -1139,12 +1139,12 @@ void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "lastCoreubTailFactorDim: %ld", tilingData_.lastCoreubTailFactorDim);
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::DoLibApiTiling()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::GetWorkspaceSize()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::GetWorkspaceSize()
 {
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -1155,7 +1155,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetWorkspaceSize()
 }
 
 // ComputeInterCoreSplitCoarse（粗粒度核间切分，dim >= 1024）
-ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ComputeInterCoreSplitCoarse()
 {
     // 计算粗粒度块数和余数细块数
     int64_t coarseBlocks = dim_ / COARSE_GRAIN_ELEMENT; // 1024 元素块数
@@ -1218,7 +1218,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
 }
 
 // ComputeUbForCoarse（粗粒度 UB 切分核心计算）
-void FusedCausalConv1dCutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
+void FusedCausalConv1dWidth4CutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
                                                       int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim,
                                                       int64_t &outLoopBS, int64_t &outUbTailDim, int64_t &outUbTailBS)
 {
@@ -1263,7 +1263,7 @@ void FusedCausalConv1dCutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int6
     outUbTailBS = (outLoopBS == 1) ? outUbBS : (coreBS - (outLoopBS - 1) * outUbBS);
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
+ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ComputeIntraCoreUbTilingCoarse()
 {
     // 固定 UB 占用（与细粒度版本相同）
     int64_t numAcceptedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
@@ -1337,6 +1337,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
 }
 
 // 向框架注册 BH 模板，优先级为 1
-REGISTER_OPS_TILING_TEMPLATE(FusedCausalConv1dCutBH, FusedCausalConv1dCutBHTiling, 1);
+REGISTER_OPS_TILING_TEMPLATE(FusedCausalConv1dWidth4CutBH, FusedCausalConv1dWidth4CutBHTiling, 1);
 
 } // namespace optiling

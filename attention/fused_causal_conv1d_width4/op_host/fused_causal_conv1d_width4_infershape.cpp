@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file fused_causal_conv1d_infershape.cpp
+ * \file fused_causal_conv1d_width4_infershape.cpp
  * \brief
  */
 
@@ -37,9 +37,9 @@ constexpr int64_t INPUT_INITIAL_STATE_IDX_INDEX = 11;
 constexpr int64_t OUTPUT_CONV_STATES_INDEX = 0;
 constexpr int64_t OUTPUT_Y_INDEX = 1;
 
-ge::graphStatus InferShape4FusedCausalConv1d(gert::InferShapeContext *context)
+ge::graphStatus InferShape4FusedCausalConv1dWidth4(gert::InferShapeContext *context)
 {
-    OP_LOGD(context, "Begin to do InferShape4FusedCausalConv1d");
+    OP_LOGD(context, "Begin to do InferShape4FusedCausalConv1dWidth4");
 
     // inferShape y: same shape as input x
     auto inputXShape = context->GetInputShape(INPUT_X_INDEX);
@@ -55,25 +55,25 @@ ge::graphStatus InferShape4FusedCausalConv1d(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, outputConvStatesShape);
     *outputConvStatesShape = *inputConvStatesShape;
 
-    OP_LOGD(context, "End to do InferShape4FusedCausalConv1d");
+    OP_LOGD(context, "End to do InferShape4FusedCausalConv1dWidth4");
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataType4FusedCausalConv1d(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataType4FusedCausalConv1dWidth4(gert::InferDataTypeContext *context)
 {
-    OP_LOGD(context, "Begin to do InferDataType4FusedCausalConv1d");
+    OP_LOGD(context, "Begin to do InferDataType4FusedCausalConv1dWidth4");
 
     // output y dtype: same as input x
     context->SetOutputDataType(OUTPUT_Y_INDEX, context->GetInputDataType(INPUT_X_INDEX));
     // output convStates dtype: same as input convStates
     context->SetOutputDataType(OUTPUT_CONV_STATES_INDEX, context->GetInputDataType(INPUT_CONV_STATES_INDEX));
 
-    OP_LOGD(context, "End to do InferDataType4FusedCausalConv1d");
+    OP_LOGD(context, "End to do InferDataType4FusedCausalConv1dWidth4");
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(FusedCausalConv1d)
-    .InferShape(InferShape4FusedCausalConv1d)
-    .InferDataType(InferDataType4FusedCausalConv1d);
+IMPL_OP_INFERSHAPE(FusedCausalConv1dWidth4)
+    .InferShape(InferShape4FusedCausalConv1dWidth4)
+    .InferDataType(InferDataType4FusedCausalConv1dWidth4);
 
 } // namespace ops

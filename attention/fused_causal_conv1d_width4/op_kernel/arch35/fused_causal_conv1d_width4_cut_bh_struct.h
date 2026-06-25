@@ -9,14 +9,14 @@
  */
 
 /*!
- * \file fused_causal_conv1d_cut_bh_struct.h
- * \brief FusedCausalConv1dCutBH tiling struct
+ * \file fused_causal_conv1d_width4_cut_bh_struct.h
+ * \brief FusedCausalConv1dWidth4CutBH tiling struct
  */
 
-#ifndef FUSED_CAUSAL_CONV1D_CUT_BH_STRUCT_H
-#define FUSED_CAUSAL_CONV1D_CUT_BH_STRUCT_H
+#ifndef FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BH_STRUCT_H
+#define FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BH_STRUCT_H
 
-struct FusedCausalConv1dCutBHTilingData {
+struct FusedCausalConv1dWidth4CutBHTilingData {
     // Core distribution parameters
     int64_t usedCoreNum;  // Total used core number
     int64_t dimCoreCnt;   // Number of cores for dim direction

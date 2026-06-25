@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_aclnn_fused_causal_conv1d.cpp
+ * \file test_aclnn_fused_causal_conv1d_width4.cpp
  * \brief
  */
 
@@ -17,7 +17,7 @@
 #include <vector>
 #include <cmath>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_fused_causal_conv1d.h"
+#include "aclnnop/aclnn_fused_causal_conv1d_width4.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -136,7 +136,7 @@ int main()
         hostWeight[0 * dim + d] = 0x3C00; // k=0: 1.0
     }
 
-    // conv_states: zero-initialized, shape [8, 2, 128]
+    // conv_states: zero-initialized, shape [8, 3, 128]
     std::vector<uint16_t> hostConvStates(numSlots * stateLen * dim, 0);
 
     // query_start_loc: [0, 5, 8, 15, 19]
@@ -212,7 +212,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    ret = aclnnFusedCausalConv1dGetWorkspaceSize(xTensor, weightTensor, convStatesTensor, queryStartLocTensor,
+    ret = aclnnFusedCausalConv1dWidth4GetWorkspaceSize(xTensor, weightTensor, convStatesTensor, queryStartLocTensor,
                                                  cacheIndicesTensor, initialStateModeTensor, biasTensor,
                                                  numAcceptedTokensTensor,
                                                  nullptr, // num_computed_tokens (non-APC: nullptr)
@@ -221,7 +221,7 @@ int main()
                                                  nullptr, // initial_state_idx
                                                  activationMode, padSlotId, runMode, maxQueryLen, residualConnection,
                                                  blockSize, convMode, yTensor, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dWidth4GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     void *workspaceAddr = nullptr;
@@ -230,8 +230,8 @@ int main()
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
 
-    ret = aclnnFusedCausalConv1d(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1d failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnFusedCausalConv1dWidth4(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dWidth4 failed. ERROR: %d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

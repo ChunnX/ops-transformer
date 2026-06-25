@@ -9,23 +9,23 @@
  */
 
 /*!
- * \file fused_causal_conv1d_cut_bsh.h
+ * \file fused_causal_conv1d_width4_cut_bsh.h
  * \brief BSH kernel — simplified rewrite with CopyIn/Compute separation,
  *        unified metadata (PrepareBatchMeta), unified cache writeback (WriteCacheToStates),
  *        batch-level sync, and distributed APC fill from xLocal (UB).
  */
 
-#ifndef FUSED_CAUSAL_CONV1D_CUT_BSH_H
-#define FUSED_CAUSAL_CONV1D_CUT_BSH_H
+#ifndef FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BSH_H
+#define FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BSH_H
 
 #include "kernel_operator.h"
-#include "vf/fused_causal_conv1d_128dim.h"
-#include "vf/fused_causal_conv1d_state_single_tail.h"
-#include "vf/fused_causal_conv1d_no_state_single_tail.h"
-#include "vf/fused_causal_conv1d_no_state_double_tail.h"
-#include "fused_causal_conv1d_cut_bsh_struct.h"
+#include "vf/fused_causal_conv1d_width4_128dim.h"
+#include "vf/fused_causal_conv1d_width4_state_single_tail.h"
+#include "vf/fused_causal_conv1d_width4_no_state_single_tail.h"
+#include "vf/fused_causal_conv1d_width4_no_state_double_tail.h"
+#include "fused_causal_conv1d_width4_cut_bsh_struct.h"
 
-namespace FusedCausalConv1dCutBSHNs {
+namespace FusedCausalConv1dWidth4CutBSHNs {
 
 using namespace AscendC;
 
@@ -34,21 +34,21 @@ constexpr uint32_t ALIGN_BYTES = 32;
 constexpr uint32_t DIM_ALIGN = 64;
 
 template <typename T>
-class FusedCausalConv1dCutBSH {
+class FusedCausalConv1dWidth4CutBSH {
 public:
-    __aicore__ inline FusedCausalConv1dCutBSH()
+    __aicore__ inline FusedCausalConv1dWidth4CutBSH()
     {
     }
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
                                 GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
                                 GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y,
-                                GM_ADDR workspace, const FusedCausalConv1dCutBSHTilingData *tiling);
+                                GM_ADDR workspace, const FusedCausalConv1dWidth4CutBSHTilingData *tiling);
     __aicore__ inline void Process();
 
 private:
     // ---- Init helpers ----
-    __aicore__ inline void ParseTiling(const FusedCausalConv1dCutBSHTilingData *t);
+    __aicore__ inline void ParseTiling(const FusedCausalConv1dWidth4CutBSHTilingData *t);
     __aicore__ inline void InitQueues();
     __aicore__ inline void LoadMetadata();
 
@@ -278,7 +278,7 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausalConv1dCutBSHTilingData *tiling)
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::ParseTiling(const FusedCausalConv1dWidth4CutBSHTilingData *tiling)
 {
     dim_ = tiling->dim;
     kernelWidth_ = tiling->kernelWidth;
@@ -335,10 +335,10 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausal
 
 template <typename T>
 __aicore__ inline void
-FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
+FusedCausalConv1dWidth4CutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
                                  GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
                                  GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y,
-                                 GM_ADDR workspace, const FusedCausalConv1dCutBSHTilingData *tiling)
+                                 GM_ADDR workspace, const FusedCausalConv1dWidth4CutBSHTilingData *tiling)
 {
     (void)y; // y may be unused when inplace_==true; suppress warning
     ParseTiling(tiling);
@@ -408,7 +408,7 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::InitQueues()
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::InitQueues()
 {
     uint32_t K = kernelWidth_;
 
@@ -447,7 +447,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::InitQueues()
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::LoadMetadata()
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::LoadMetadata()
 {
     seqStartLocal_ = seqStartBuf_.Get<int32_t>();
     {
@@ -485,7 +485,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::LoadMetadata()
 }
 
 template <typename T>
-__aicore__ inline uint32_t FusedCausalConv1dCutBSH<T>::FindBatchIdx(uint64_t globalSeqIdx)
+__aicore__ inline uint32_t FusedCausalConv1dWidth4CutBSH<T>::FindBatchIdx(uint64_t globalSeqIdx)
 {
     uint32_t lo = 0;
     uint32_t hi = batchSize_ - 1;
@@ -501,7 +501,7 @@ __aicore__ inline uint32_t FusedCausalConv1dCutBSH<T>::FindBatchIdx(uint64_t glo
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::ResolveCacheIndices(uint32_t batchIdx, int64_t &readCIdx,
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::ResolveCacheIndices(uint32_t batchIdx, int64_t &readCIdx,
                                                                        int64_t &writeCIdx)
 {
     if (apcEnabled_) {
@@ -519,7 +519,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ResolveCacheIndices(uint32_t 
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::PrepareBatchMeta(uint32_t batchIdx, uint32_t curSeqIdx, BatchMeta &m)
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::PrepareBatchMeta(uint32_t batchIdx, uint32_t curSeqIdx, BatchMeta &m)
 {
     uint32_t K = kernelWidth_;
 
@@ -571,7 +571,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::PrepareBatchMeta(uint32_t bat
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::Process()
 {
     uint32_t blockIdx = GetBlockIdx();
     if (blockIdx >= realCoreNum_) {
@@ -721,7 +721,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart,
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::CopyIn(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart,
                                                           uint32_t dimSize)
 {
     uint32_t K = kernelWidth_;
@@ -753,7 +753,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyIn(uint32_t curBsStart, u
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart,
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::Compute(uint32_t curBsStart, uint32_t curBS, uint32_t dimStart,
                                                            uint32_t dimSize, uint32_t dimBlocks, uint32_t iStart,
                                                            uint32_t batchIdx, uint32_t curSeqIdx,
                                                            uint64_t coreGlobalEnd, uint32_t &endBatchIdx)
@@ -1031,7 +1031,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
 
 template <typename T>
 __aicore__ inline void
-FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd,
+FusedCausalConv1dWidth4CutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd,
                                                uint32_t curBatchLen, uint32_t cachedStateLen, bool hasCacheLocal,
                                                int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
                                                uint32_t dimBlocks, uint32_t cacheSkipBlocks, uint64_t batchGmEnd)
@@ -1098,7 +1098,7 @@ FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, Local
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::WriteDeferredCacheSimple()
 {
     if (!deferred_.active)
         return;
@@ -1179,7 +1179,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::ExecuteDeferredRunningCache()
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::ExecuteDeferredRunningCache()
 {
     if (!cacheDeferred_.active)
         return;
@@ -1255,7 +1255,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ExecuteDeferredRunningCache()
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::RefreshApcState(uint32_t curBatch, uint32_t batchLen)
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::RefreshApcState(uint32_t curBatch, uint32_t batchLen)
 {
     if (apcState_.batchIdx == curBatch)
         return;
@@ -1286,7 +1286,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::RefreshApcState(uint32_t curB
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t curBatch, uint64_t batchSt,
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::FillApcChunksInRange(uint32_t curBatch, uint64_t batchSt,
                                                                         uint32_t batchLen, uint32_t curBsStart,
                                                                         uint32_t curBS, LocalTensor<T> &xLocal,
                                                                         uint32_t dimStart, uint32_t dimSize,
@@ -1352,7 +1352,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcChunksInRange(uint32_t
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::FillApcCachePrefixChunks()
 {
     if (!apcEnabled_)
         return;
@@ -1547,7 +1547,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcCachePrefixChunks()
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
+__aicore__ inline void FusedCausalConv1dWidth4CutBSH<T>::CopyYToX()
 {
     uint32_t K = kernelWidth_;
     bool isBsFirstCore = (bsIdx_ == 0);
@@ -1613,6 +1613,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
     }
 }
 
-} // namespace FusedCausalConv1dCutBSHNs
+} // namespace FusedCausalConv1dWidth4CutBSHNs
 
-#endif // FUSED_CAUSAL_CONV1D_CUT_BSH_H
+#endif // FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BSH_H

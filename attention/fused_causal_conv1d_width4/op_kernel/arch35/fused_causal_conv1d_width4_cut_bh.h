@@ -9,19 +9,19 @@
  */
 
 /*!
- * \file fused_causal_conv1d_cut_bh.h
- * \brief FusedCausalConv1dCutBH kernel implementation
+ * \file fused_causal_conv1d_width4_cut_bh.h
+ * \brief FusedCausalConv1dWidth4CutBH kernel implementation
  */
 
-#ifndef CAUSAL_CONV1D_CUT_BH_H
-#define CAUSAL_CONV1D_CUT_BH_H
+#ifndef CAUSAL_CONV1D_WIDTH4_CUT_BH_H
+#define CAUSAL_CONV1D_WIDTH4_CUT_BH_H
 
 #include "kernel_operator.h"
-#include "fused_causal_conv1d_cut_bh_struct.h"
-#include "vf/fused_causal_conv1d_state_single_tail.h"
-#include "vf/fused_causal_conv1d_no_state_single_tail.h"
-#include "vf/fused_causal_conv1d_no_state_double_tail.h"
-#include "vf/fused_causal_conv1d_128dim.h"
+#include "fused_causal_conv1d_width4_cut_bh_struct.h"
+#include "vf/fused_causal_conv1d_width4_state_single_tail.h"
+#include "vf/fused_causal_conv1d_width4_no_state_single_tail.h"
+#include "vf/fused_causal_conv1d_width4_no_state_double_tail.h"
+#include "vf/fused_causal_conv1d_width4_128dim.h"
 
 using namespace AscendC;
 
@@ -32,20 +32,20 @@ constexpr int32_t MAX_SEQUENCE_LEN = 8; // F4: m最大为7，seqLen最大为m+1=
 constexpr int32_t CAST_REP_SIZE = 64;
 
 template <typename T>
-class FusedCausalConv1dCutBH {
+class FusedCausalConv1dWidth4CutBH {
 public:
-    __aicore__ inline FusedCausalConv1dCutBH(TPipe *pipe) : pipe_(pipe){};
+    __aicore__ inline FusedCausalConv1dWidth4CutBH(TPipe *pipe) : pipe_(pipe){};
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
                                 GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
                                 GM_ADDR blockIdxFirstScheduledToken, GM_ADDR blockIdxLastScheduledToken,
-                                GM_ADDR initialStateIdx, GM_ADDR y, const FusedCausalConv1dCutBHTilingData *tilingData);
+                                GM_ADDR initialStateIdx, GM_ADDR y, const FusedCausalConv1dWidth4CutBHTilingData *tilingData);
 
     __aicore__ inline void Process();
 
 private:
     // ========== Init子函数 ==========
-    __aicore__ inline void InitParams(const FusedCausalConv1dCutBHTilingData *tilingData);
+    __aicore__ inline void InitParams(const FusedCausalConv1dWidth4CutBHTilingData *tilingData);
     __aicore__ inline void InitQueues();
 
     // ========== 三阶段流水线函数 ==========
@@ -162,10 +162,10 @@ private:
 
 template <typename T>
 __aicore__ inline void
-FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
+FusedCausalConv1dWidth4CutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
                                 GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
                                 GM_ADDR blockIdxFirstScheduledToken, GM_ADDR blockIdxLastScheduledToken,
-                                GM_ADDR initialStateIdx, GM_ADDR y, const FusedCausalConv1dCutBHTilingData *tilingData)
+                                GM_ADDR initialStateIdx, GM_ADDR y, const FusedCausalConv1dWidth4CutBHTilingData *tilingData)
 {
     InitParams(tilingData);
 
@@ -213,7 +213,7 @@ FusedCausalConv1dCutBH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, G
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalConv1dCutBHTilingData *tilingData)
+__aicore__ inline void FusedCausalConv1dWidth4CutBH<T>::InitParams(const FusedCausalConv1dWidth4CutBHTilingData *tilingData)
 {
     // === 核间切分参数（二维：Dim方向 × Batch方向） ===
     dimCoreCnt_ = tilingData->dimCoreCnt;
@@ -304,7 +304,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
+__aicore__ inline void FusedCausalConv1dWidth4CutBH<T>::InitQueues()
 {
     // xWeightQueue: x和weight合并，前半段x，后半段weight
     int32_t xQueueSize = ubMainFactorBS_ * seqLen_ * ubMainFactorDim_ * sizeof(T);
@@ -357,7 +357,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
+__aicore__ inline void FusedCausalConv1dWidth4CutBH<T>::Process()
 {
     DataCopyPadParams padParams{false, 0, 0, 0};
     uint32_t indicesBlockLen = batchSize_ * sizeof(int32_t);
@@ -444,7 +444,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBH<T>::CopyIn(int32_t batchLoop, int32_t dimLoop, uint16_t blockCount,
+__aicore__ inline void FusedCausalConv1dWidth4CutBH<T>::CopyIn(int32_t batchLoop, int32_t dimLoop, uint16_t blockCount,
                                                          int64_t xOffset)
 {
     LocalTensor<T> xWeightLocal = xWeightQueue.AllocTensor<T>();
@@ -473,7 +473,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::CopyIn(int32_t batchLoop, int3
 }
 
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
+__aicore__ inline void FusedCausalConv1dWidth4CutBH<T>::Compute(
     int32_t batchLoop, int32_t dimLoop, const LocalTensor<int32_t> &indicesLocal,
     const LocalTensor<int32_t> &acceptTokenLocal, const LocalTensor<int32_t> &queryStartLocLocal,
     const LocalTensor<int32_t> &numComputedTokensLocal, const LocalTensor<int32_t> &blockIdxFirstLocal,
@@ -659,7 +659,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(
 
 // ========== F5: UpdateConvStates（尾对齐机制重构）==========
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBH<T>::UpdateConvStates(const LocalTensor<T> &xLocal,
+__aicore__ inline void FusedCausalConv1dWidth4CutBH<T>::UpdateConvStates(const LocalTensor<T> &xLocal,
                                                                    const LocalTensor<T> &convStatesLocal,
                                                                    int32_t curBatchUbOffset, int64_t writeCacheLine,
                                                                    int32_t curBatchSeq, int32_t offset)
@@ -701,7 +701,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::UpdateConvStates(const LocalTe
 
 // ========== F1: APC prefix cache 写入 ==========
 template <typename T>
-__aicore__ inline void FusedCausalConv1dCutBH<T>::WriteApcPrefixCache(
+__aicore__ inline void FusedCausalConv1dWidth4CutBH<T>::WriteApcPrefixCache(
     const LocalTensor<T> &xLocal, const LocalTensor<T> &convStatesLocalOut, const LocalTensor<int32_t> &indicesLocal,
     const LocalTensor<int32_t> &blockIdxFirstLocal, const LocalTensor<int32_t> &blockIdxLastLocal, int32_t curBatchIdx,
     int32_t curBatchUbOffset, int32_t curBatchSeq, int32_t numComputed)
@@ -758,4 +758,4 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::WriteApcPrefixCache(
     }
 }
 
-#endif // CAUSAL_CONV1D_CUT_BH_H
+#endif // CAUSAL_CONV1D_WIDTH4_CUT_BH_H

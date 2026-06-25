@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_FUSED_CAUSAL_CONV1D_H_
-#define OP_API_INC_FUSED_CAUSAL_CONV1D_H_
+#ifndef OP_API_INC_FUSED_CAUSAL_CONV1D_WIDTH4_H_
+#define OP_API_INC_FUSED_CAUSAL_CONV1D_WIDTH4_H_
 
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
@@ -19,10 +19,10 @@ extern "C" {
 #endif
 
 /**
- * @brief aclnnFusedCausalConv1d的第一段接口，根据具体的计算流程，计算workspace大小（非原地版本）。
+ * @brief aclnnFusedCausalConv1dWidth4的第一段接口，根据具体的计算流程，计算workspace大小（非原地版本）。
  * @domain aclnn_ops_infer
  */
-ACLNN_API aclnnStatus aclnnFusedCausalConv1dGetWorkspaceSize(
+ACLNN_API aclnnStatus aclnnFusedCausalConv1dWidth4GetWorkspaceSize(
     const aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *queryStartLoc,
     const aclTensor *cacheIndices, const aclTensor *initialStateMode, const aclTensor *bias,
     const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
@@ -31,8 +31,8 @@ ACLNN_API aclnnStatus aclnnFusedCausalConv1dGetWorkspaceSize(
     int64_t residualConnection, int64_t blockSize, int64_t convMode, aclTensor *y, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
-/* @brief aclnnFusedCausalConv1d的第二段接口，用于执行计算（非原地版本）。 */
-ACLNN_API aclnnStatus aclnnFusedCausalConv1d(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+/* @brief aclnnFusedCausalConv1dWidth4的第二段接口，用于执行计算（非原地版本）。 */
+ACLNN_API aclnnStatus aclnnFusedCausalConv1dWidth4(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                              aclrtStream stream);
 
 #ifdef __cplusplus

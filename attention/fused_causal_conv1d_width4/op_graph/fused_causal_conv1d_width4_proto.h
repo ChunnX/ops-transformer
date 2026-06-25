@@ -9,23 +9,23 @@
  */
 
 /*!
- * \file fused_causal_conv1d_proto.h
+ * \file fused_causal_conv1d_width4_proto.h
  * \brief
  */
 
-#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSED_CAUSAL_CONV1D_H_
-#define OPS_BUILT_IN_OP_PROTO_INC_FUSED_CAUSAL_CONV1D_H_
+#ifndef OPS_BUILT_IN_OP_PROTO_INC_FUSED_CAUSAL_CONV1D_WIDTH4_H_
+#define OPS_BUILT_IN_OP_PROTO_INC_FUSED_CAUSAL_CONV1D_WIDTH4_H_
 
 #include "graph/operator_reg.h"
 
 namespace ge {
 
 /**
- * @brief Function FusedCausalConv1d.
+ * @brief Function FusedCausalConv1dWidth4.
  *
  * @par Inputs:
  * @li x: Input sequence tensor. shape [cu_seq_len, dim] or [batch, seqlen, dim]. Supports float16, bfloat16.
- * @li weight: Convolution kernel of shape [K, dim], K fixed to 3. Same type as x.
+ * @li weight: Convolution kernel of shape [K, dim], K fixed to 4. Same type as x.
  * @li conv_states: Cache state tensor storing historical tokens per sequence, updated in-place. Same type as x.
  * @li query_start_loc: Optional. Start offset of each sequence in x. shape [batch+1]. int32.
  * @li cache_indices: Optional. Index mapping each sequence to its cache slot. 1D [batch] or 2D [batch, max_num_blocks].
@@ -54,7 +54,7 @@ namespace ge {
  * @li conv_states: Updated cache state tensor. Same shape and type as input conv_states.
  * @li y: Output sequence tensor. Same shape and type as x.
  */
-REG_OP(FusedCausalConv1d)
+REG_OP(FusedCausalConv1dWidth4)
     .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
     .INPUT(weight, TensorType({DT_BF16, DT_FLOAT16}))
     .INPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
@@ -76,8 +76,8 @@ REG_OP(FusedCausalConv1d)
     .ATTR(conv_mode, Int, 0)
     .OUTPUT(conv_states, TensorType({DT_BF16, DT_FLOAT16}))
     .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))
-    .OP_END_FACTORY_REG(FusedCausalConv1d)
+    .OP_END_FACTORY_REG(FusedCausalConv1dWidth4)
 
 } // namespace ge
 
-#endif // OPS_BUILT_IN_OP_PROTO_INC_FUSED_CAUSAL_CONV1D_H_
+#endif // OPS_BUILT_IN_OP_PROTO_INC_FUSED_CAUSAL_CONV1D_WIDTH4_H_

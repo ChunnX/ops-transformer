@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file fused_causal_conv1d_cut_bsh_tiling_arch35.h
+ * \file fused_causal_conv1d_width4_cut_bsh_tiling_arch35.h
  * \brief
  */
-#ifndef FUSED_CAUSAL_CONV1D_CUT_BSH_TILING_H
-#define FUSED_CAUSAL_CONV1D_CUT_BSH_TILING_H
+#ifndef FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BSH_TILING_H
+#define FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BSH_TILING_H
 #include "log/log.h"
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
@@ -22,15 +22,15 @@
 #include "util/math_util.h"
 #include "util/platform_util.h"
 #include "util/shape_util.h"
-#include "attention/fused_causal_conv1d/op_kernel/arch35/fused_causal_conv1d_cut_bsh_struct.h"
+#include "attention/fused_causal_conv1d_width4/op_kernel/arch35/fused_causal_conv1d_width4_cut_bsh_struct.h"
 #include "platform/platform_ascendc.h"
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
 
-class FusedCausalConv1dCutBSHTiling : public TilingBaseClass {
+class FusedCausalConv1dWidth4CutBSHTiling : public TilingBaseClass {
 public:
-    explicit FusedCausalConv1dCutBSHTiling(gert::TilingContext *context, bool isInplace = false)
+    explicit FusedCausalConv1dWidth4CutBSHTiling(gert::TilingContext *context, bool isInplace = false)
         : TilingBaseClass(context), isInplace_(isInplace)
     {
     }
@@ -157,8 +157,8 @@ private:
     uint64_t hasCacheIndices_ = 0;      // 是否提供 cache_indices
     int64_t maxQueryLen_ = -1;          // 路由参考值
 
-    FusedCausalConv1dCutBSHTilingData tilingData_;
+    FusedCausalConv1dWidth4CutBSHTilingData tilingData_;
 };
 
 } // namespace optiling
-#endif // FUSED_CAUSAL_CONV1D_CUT_BSH_TILING_H
+#endif // FUSED_CAUSAL_CONV1D_WIDTH4_CUT_BSH_TILING_H

@@ -1,6 +1,6 @@
-# aclnnFusedCausalConv1d
+# aclnnFusedCausalConv1dWidth4
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/fused_causal_conv1d)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/fused_causal_conv1d_width4)
 
 ## 产品支持情况
 
@@ -266,10 +266,10 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnFusedCausalConv1dGetWorkspaceSize`接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnFusedCausalConv1d`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnFusedCausalConv1dWidth4GetWorkspaceSize`接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnFusedCausalConv1dWidth4`接口执行计算。
 
 ```Cpp
-aclnnStatus aclnnFusedCausalConv1dGetWorkspaceSize(
+aclnnStatus aclnnFusedCausalConv1dWidth4GetWorkspaceSize(
   const aclTensor *x,
   const aclTensor *weight,
   aclTensor       *convStates,
@@ -295,14 +295,14 @@ aclnnStatus aclnnFusedCausalConv1dGetWorkspaceSize(
 ```
 
 ```Cpp
-aclnnStatus aclnnFusedCausalConv1d(
+aclnnStatus aclnnFusedCausalConv1dWidth4(
   void          *workspace,
   uint64_t       workspaceSize,
   aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
-## aclnnFusedCausalConv1dGetWorkspaceSize
+## aclnnFusedCausalConv1dWidth4GetWorkspaceSize
 
 - **参数说明**：
 
@@ -589,7 +589,7 @@ aclnnStatus aclnnFusedCausalConv1d(
     </tr>
   </tbody></table>
 
-## aclnnFusedCausalConv1d
+## aclnnFusedCausalConv1dWidth4
 
 - **参数说明：**
 
@@ -613,7 +613,7 @@ aclnnStatus aclnnFusedCausalConv1d(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnFusedCausalConv1dGetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnFusedCausalConv1dWidth4GetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>
@@ -635,7 +635,7 @@ aclnnStatus aclnnFusedCausalConv1d(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnFusedCausalConv1d默认确定性实现。
+  - aclnnFusedCausalConv1dWidth4默认确定性实现。
 
 - 输入shape限制：
   - prefill场景：
@@ -690,7 +690,7 @@ aclnnStatus aclnnFusedCausalConv1d(
 #include <vector>
 #include <cmath>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_fused_causal_conv1d.h"
+#include "aclnnop/aclnn_fused_causal_conv1d_width4.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -809,7 +809,7 @@ int main()
         hostWeight[0 * dim + d] = 0x3C00; // k=0: 1.0
     }
 
-    // conv_states: zero-initialized, shape [8, 2, 128]
+    // conv_states: zero-initialized, shape [8, 3, 128]
     std::vector<uint16_t> hostConvStates(numSlots * stateLen * dim, 0);
 
     // query_start_loc: [0, 5, 8, 15, 19]
@@ -885,7 +885,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    ret = aclnnFusedCausalConv1dGetWorkspaceSize(xTensor, weightTensor, convStatesTensor, queryStartLocTensor,
+    ret = aclnnFusedCausalConv1dWidth4GetWorkspaceSize(xTensor, weightTensor, convStatesTensor, queryStartLocTensor,
                                                  cacheIndicesTensor, initialStateModeTensor, biasTensor,
                                                  numAcceptedTokensTensor,
                                                  nullptr, // num_computed_tokens (non-APC: nullptr)
@@ -894,7 +894,7 @@ int main()
                                                  nullptr, // initial_state_idx
                                                  activationMode, padSlotId, runMode, maxQueryLen, residualConnection,
                                                  blockSize, convMode, yTensor, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dGetWorkspaceSize failed. ERROR: %d\n", ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dWidth4GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     void *workspaceAddr = nullptr;
@@ -903,8 +903,8 @@ int main()
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
 
-    ret = aclnnFusedCausalConv1d(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1d failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnFusedCausalConv1dWidth4(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedCausalConv1dWidth4 failed. ERROR: %d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);

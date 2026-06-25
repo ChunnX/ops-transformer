@@ -8,14 +8,14 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_LEVEL0_FUSED_CAUSAL_CONV1D_L0OP_H_
-#define OP_API_INC_LEVEL0_FUSED_CAUSAL_CONV1D_L0OP_H_
+#ifndef OP_API_INC_LEVEL0_FUSED_CAUSAL_CONV1D_WIDTH4_L0OP_H_
+#define OP_API_INC_LEVEL0_FUSED_CAUSAL_CONV1D_WIDTH4_L0OP_H_
 
 #include <tuple>
 #include "opdev/op_executor.h"
 
 namespace l0op {
-bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
+bool FusedCausalConv1dWidth4(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
                        const aclTensor *queryStartLoc, const aclTensor *cacheIndices, const aclTensor *initialStateMode,
                        const aclTensor *bias, const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
                        const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
@@ -24,4 +24,4 @@ bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *c
                        aclTensor *y, aclOpExecutor *executor);
 } // namespace l0op
 
-#endif // OP_API_INC_LEVEL0_FUSED_CAUSAL_CONV1D_L0OP_H_
+#endif // OP_API_INC_LEVEL0_FUSED_CAUSAL_CONV1D_WIDTH4_L0OP_H_

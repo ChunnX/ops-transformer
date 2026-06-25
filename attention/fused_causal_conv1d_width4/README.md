@@ -1,4 +1,4 @@
-# FusedCausalConv1d
+# FusedCausalConv1dWidth4
 
 ## 产品支持情况
 
@@ -489,8 +489,8 @@
   
   | 调用方式  | 样例代码                                                     | 说明                                                         |
   | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-  | aclnn接口 | [test_aclnn_fused_causal_conv1d](./examples/test_aclnn_fused_causal_conv1d.cpp) | 通过[aclnnFusedCausalConv1d](./docs/aclnnFusedCausalConv1d.md)调用FusedCausalConv1d算子 |
-  | 图模式 | - | 通过[算子IR](./op_graph/fused_causal_conv1d_proto.h)构图方式调用FusedCausalConv1d算子 |
+  | aclnn接口 | [test_aclnn_fused_causal_conv1d_width4](./examples/test_aclnn_fused_causal_conv1d_width4.cpp) | 通过[aclnnFusedCausalConv1dWidth4](./docs/aclnnFusedCausalConv1dWidth4.md)调用FusedCausalConv1dWidth4算子 |
+  | 图模式 | - | 通过[算子IR](./op_graph/fused_causal_conv1d_width4_proto.h)构图方式调用FusedCausalConv1dWidth4算子 |
 
 
   

@@ -9,20 +9,20 @@
  */
 
 /*!
- * \file fused_causal_conv1d_apt.cpp
- * \brief FusedCausalConv1d kernel entry point
+ * \file fused_causal_conv1d_width4_apt.cpp
+ * \brief FusedCausalConv1dWidth4 kernel entry point
  */
-#include "./arch35/fused_causal_conv1d_cut_bsh.h"
-#include "./arch35/fused_causal_conv1d_cut_bh.h"
+#include "./arch35/fused_causal_conv1d_width4_cut_bsh.h"
+#include "./arch35/fused_causal_conv1d_width4_cut_bh.h"
 
 #define TILING_KEY_BSH_BF16 10000
 #define TILING_KEY_BSH_FP16 10001
 #define TILING_KEY_BH_BF16 20000
 #define TILING_KEY_BH_FP16 20001
 
-using namespace FusedCausalConv1dCutBSHNs;
+using namespace FusedCausalConv1dWidth4CutBSHNs;
 extern "C" __global__ __aicore__ void
-fused_causal_conv1d(GM_ADDR x,                           // 输入0: x
+fused_causal_conv1d_width4(GM_ADDR x,                           // 输入0: x
                     GM_ADDR weight,                      // 输入1: weight
                     GM_ADDR convStates,                  // 输入2: convStates
                     GM_ADDR queryStartLoc,               // 输入3: queryStartLoc (optional)
@@ -40,37 +40,37 @@ fused_causal_conv1d(GM_ADDR x,                           // 输入0: x
                     GM_ADDR tiling)                      // tiling
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    REGISTER_TILING_DEFAULT(FusedCausalConv1dCutBSHTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR >= 20000)", FusedCausalConv1dCutBHTilingData);
+    REGISTER_TILING_DEFAULT(FusedCausalConv1dWidth4CutBSHTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR >= 20000)", FusedCausalConv1dWidth4CutBHTilingData);
     TPipe pipe;
 
     if (TILING_KEY_IS(TILING_KEY_BH_BF16)) {
-        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBHTilingData, tilingData, tiling);
-        FusedCausalConv1dCutBH<bfloat16_t> op(&pipe);
+        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dWidth4CutBHTilingData, tilingData, tiling);
+        FusedCausalConv1dWidth4CutBH<bfloat16_t> op(&pipe);
         op.Init(x, weight, convStates, queryStartLoc, cacheIndices, numAcceptedToken, numComputedTokens,
                 blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, y, &tilingData);
         op.Process();
     }
 
     if (TILING_KEY_IS(TILING_KEY_BH_FP16)) {
-        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBHTilingData, tilingData, tiling);
-        FusedCausalConv1dCutBH<half> op(&pipe);
+        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dWidth4CutBHTilingData, tilingData, tiling);
+        FusedCausalConv1dWidth4CutBH<half> op(&pipe);
         op.Init(x, weight, convStates, queryStartLoc, cacheIndices, numAcceptedToken, numComputedTokens,
                 blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, y, &tilingData);
         op.Process();
     }
 
     if (TILING_KEY_IS(TILING_KEY_BSH_BF16)) {
-        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBSHTilingData, tilingData, tiling);
-        FusedCausalConv1dCutBSH<bfloat16_t> op;
+        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dWidth4CutBSHTilingData, tilingData, tiling);
+        FusedCausalConv1dWidth4CutBSH<bfloat16_t> op;
         op.Init(x, weight, convStates, queryStartLoc, cacheIndices, numAcceptedToken, numComputedTokens,
                 blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, y, workspace, &tilingData);
         op.Process();
     }
 
     if (TILING_KEY_IS(TILING_KEY_BSH_FP16)) {
-        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBSHTilingData, tilingData, tiling);
-        FusedCausalConv1dCutBSH<half> op;
+        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dWidth4CutBSHTilingData, tilingData, tiling);
+        FusedCausalConv1dWidth4CutBSH<half> op;
         op.Init(x, weight, convStates, queryStartLoc, cacheIndices, numAcceptedToken, numComputedTokens,
                 blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, y, workspace, &tilingData);
         op.Process();
