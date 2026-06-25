@@ -181,7 +181,8 @@ void FusedInferAttentionScoreTilingImpl::InitImplParamPrefixFlag(const FiaTiling
 
 void FusedInferAttentionScoreTilingImpl::InitImplParamSeqLen(const FiaTilingInfo &fiaInfo,
                                                              const gert::Tensor *actSeqLenQ,
-                                                             const gert::Tensor *actSeqLenKV, uint32_t actSeqLenQDims,
+                                                             const gert::Tensor *actSeqLenKV,
+                                                             uint32_t actSeqLenQDims,
                                                              uint32_t actSeqLenKVDims, uint32_t bIdx)
 {
     if (actualSeqLenQFlag_) {
@@ -1256,7 +1257,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
     }
 }
 
-void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(uint32_t sInner, uint32_t sOuter, 
+void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(uint32_t sInner, uint32_t sOuter,
                                                                         uint32_t dSize, uint32_t dVsize)
 {
     sInner = sInnerFactorSize_;
@@ -1288,7 +1289,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(uint32_t
 }
 
 void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyNonQuantConfig(const FiaTilingInfo &fiaInfo,
-                                                                       uint32_t sOuter, uint32_t sInner, 
+                                                                       uint32_t sOuter, uint32_t sInner,
                                                                        uint32_t dSize, uint32_t dVsize)
 {
     if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
