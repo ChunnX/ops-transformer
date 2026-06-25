@@ -16,20 +16,20 @@
 #define LIGHTNING_INDEXER_TOPK_H
 
 #include "kernel_operator.h"
-#include "vf_topk.h"
+#include "common/vf_topk.h"
+#include "common/lightning_indexer_topk_base.h"
 #include "vf_topk_gather.h"
 
 namespace topk {
 template<typename T>
 class LITopk {
-public:
-    __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
-                                      LocalTensor<T>& inputLocal,
-                                      uint32_t s2SeqLen)
-    {
-    }
+    public:
+        __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
+                                        LocalTensor<T>& inputLocal,
+                                        uint32_t s2SeqLen)
+        {
+        }
 };
-
 template<>
 class LITopk<uint32_t> {
 public:
