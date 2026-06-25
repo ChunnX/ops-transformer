@@ -172,16 +172,9 @@ static ge::graphStatus ValidateQkvShapeForOutput(gert::InferShapeContext *contex
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ParseInferAttrs(gert::InferShapeContext *context, InferAttrs &inferAttrs)
+static ge::graphStatus ParseInferAttrs(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs,
+                                       InferAttrs &inferAttrs)
 {
-    if (CheckNotNull(context, context, "context", "context can not be nullptr") != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    auto attrs = context->GetAttrs();
-    if (CheckNotNull(context, attrs, "attrs", "attrs can not be nullptr") != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (ParseQHeadNum(context, attrs, inferAttrs.qHeads) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -258,8 +251,11 @@ static void SetOutputShapes(const InputShapes &input, const OutputShapes &output
 
 ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext *context)
 {
-    InferAttrs attrs;
-    if (ParseInferAttrs(context, attrs) != ge::GRAPH_SUCCESS) {
+    if (CheckNotNull(context, context, "context", "context can not be nullptr") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    const auto *runtimeAttrs = context->GetAttrs();
+    if (CheckNotNull(context, runtimeAttrs, "attrs", "attrs can not be nullptr") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -268,13 +264,18 @@ ge::graphStatus InferShape4QkvRmsNormRopeCacheWithKScale(gert::InferShapeContext
         return ge::GRAPH_FAILED;
     }
 
-    QOutputDims dims;
-    if (ValidateQkvShapeForOutput(context, input.qkv, attrs, dims) != ge::GRAPH_SUCCESS) {
+    OutputShapes output;
+    if (GetOutputShapes(context, output) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    OutputShapes output;
-    if (GetOutputShapes(context, output) != ge::GRAPH_SUCCESS) {
+    InferAttrs attrs;
+    if (ParseInferAttrs(context, runtimeAttrs, attrs) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    QOutputDims dims;
+    if (ValidateQkvShapeForOutput(context, input.qkv, attrs, dims) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     SetOutputShapes(input, output, attrs, dims);
