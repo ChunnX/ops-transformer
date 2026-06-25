@@ -53,10 +53,11 @@ constexpr uint32_t AIV_STATE_SIZE = 64U;
 constexpr uint32_t SFFVALUE_SIZE = 64U;
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
-#else
-constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
+constexpr uint32_t STATE_OFFSET_A5 = 128U;
+constexpr uint64_t CNT_OFFSET = 1024UL * 1024UL;
+constexpr uint64_t CNT_DOUBLEBUFF_OFFSET = 512UL * 1024UL;
 #endif
+constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
 constexpr uint32_t RUNPOS_CALCUMSUM = 2U;
 constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
@@ -153,7 +154,11 @@ private:
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + CNT_OFFSET + dataState_ * CNT_DOUBLEBUFF_OFFSET;
+#else
         return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + dataState_ * WIN_STATE_OFFSET;
+#endif
     }
 
     TPipe *tpipe_{nullptr};
@@ -412,11 +417,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     rscvStatusNum_ = isShareExpertRankFlag_ ? epWorldSize_ : (epWorldSize_ * moeExpertNumPerRank_);
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
     statusCntAlign_ = Ceil(totalExpertNum_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    aivUsedCumSum_ = totalExpertNum_ / 16; // 单核处理32个专家cnt发送
-#else
     aivUsedCumSum_ = totalExpertNum_ / 32; // 单核处理32个专家cnt发送
-#endif
     aivUsedCumSum_ = (aivUsedCumSum_ == 0) ? 1 : aivUsedCumSum_;
     aivUsedCumSum_ = (aivUsedCumSum_ >= (aivNum_ / 2)) ? (aivNum_ / 2) : aivUsedCumSum_;
     aivUsedCumSum_ = (aivUsedCumSum_ >= CUMSUM_MAX_CORE_NUM) ? CUMSUM_MAX_CORE_NUM : aivUsedCumSum_;
@@ -484,7 +485,11 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     sendCountsOutGM_ = sendCountsOut;
     recvCntWorkspaceGM_ = workspaceGM;
     statusSpaceGM_ = GetWindStateAddrByRankId(epRankIdOriginal_);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_ + epRankId_ * STATE_OFFSET_A5));
+#else
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_));
+#endif
     selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float*)(statusDataSpaceGM_));
     windowGM_ = GetWindAddrByRankId(epRankIdOriginal_);
     hCopyParams_ = {1U, static_cast<uint32_t>(copyInAxisH_ * sizeof(XInType)), 0U, 0U};
@@ -1077,7 +1082,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     if (newAivId < epWorldSize_)
         SyncFunc<AscendC::HardEvent::S_MTE3>();
     for (uint32_t dstRankId = newAivId; dstRankId < epWorldSize_; dstRankId += aivUsedCumSum_) {
-        uint32_t offset = STATE_OFFSET * epRankId_;
+        uint32_t offset = STATE_OFFSET_A5 * (epRankId_ + dstRankId);
         if (isScalingDownFlag_) {
             dstRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + dstRankId);
         }
@@ -1086,7 +1091,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         if (dstRankId >= sharedExpertRankNum_) {
             uint32_t startStatusIdx =
                 (dstRankId - sharedExpertRankNum_) * moeExpertNumPerRank_ + sharedExpertRankNum_;
-            DataCopyParams cntCopyParams = {uint16_t(moeExpertNumPerRank_), 1U, 0U, uint16_t(epWorldSize_ - 1)};
+            DataCopyParams cntCopyParams = {uint16_t(moeExpertNumPerRank_), 1U, 0U,
+                uint16_t(epWorldSize_ * STATE_OFFSET_A5 / UB_ALIGN - 1)};
             DataCopy<int32_t>(rankGMTensor, statusTensor_[startStatusIdx * UB_ALIGN_DATA_COUNT], cntCopyParams);
         } else {
             DataCopy<int32_t>(rankGMTensor, statusTensor_[dstRankId * UB_ALIGN_DATA_COUNT], UB_ALIGN_DATA_COUNT);
@@ -1143,14 +1149,24 @@ template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::WaitDispatchClearStatus()
 {
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    DataCopyExtParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_),
+        UB_ALIGN, 0, uint32_t(STATE_OFFSET_A5 - UB_ALIGN), 0};
+#else
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
+#endif
     uint64_t duplicateMask[2] = {0x101010101010101, 0}; // 一次操作256字节，每8个数将首个设置为0
     LocalTensor<int32_t> cleanStateTensor = waitStatusBuf_.Get<int32_t>();
     SyncFunc<AscendC::HardEvent::S_V>();
     Duplicate<int32_t>(cleanStateTensor, 0, duplicateMask, Ceil(recStatusNumPerCore_, 8), 1, 8); // 8 = 256 / 32
     SyncFunc<AscendC::HardEvent::V_MTE3>();
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    DataCopyPad(windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET_A5 / sizeof(float)],
+             cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
+#else
     DataCopy(windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)],
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
+#endif
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -1262,11 +1278,22 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     gatherTmpTensor.SetValue(0, 1);
     float compareTarget = static_cast<float>(1.0) * recStatusNumPerCore_;
     float sumOfFlag = static_cast<float>(-1.0);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    DataCopyExtParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_),
+        UB_ALIGN, uint32_t(STATE_OFFSET_A5 - UB_ALIGN), 0U, 0U};
+    DataCopyPadExtParams<float> copyPadExtParams{false, 0U, 0U, 0U};
+#else
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
+#endif
     SyncFunc<AscendC::HardEvent::S_V>();
     uint64_t performanceTimeStart = static_cast<uint64_t>(GetSystemCycle());
     while (sumOfFlag != compareTarget) {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        DataCopyPad(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET_A5 / sizeof(float)],
+            intriParams, copyPadExtParams);
+#else
         DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)], intriParams);
+#endif
         if (isPerformanceFlag_) {
             RecordRankCommDuration(performanceInfoTensor_, performanceTimeStart);
  	    }
