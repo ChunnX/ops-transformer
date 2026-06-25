@@ -40,10 +40,14 @@ constexpr uint64_t IDX_B2_OFFSET = 8UL;
 constexpr uint64_t IDX_B2_SCALE_OFFSET = 9UL;
 constexpr uint64_t IDX_Y2_OFFSET = 10UL;
 constexpr uint64_t IDX_M_OFFSET = 11UL;
+constexpr uint64_t IDX_GMM1_OFFSET = 12UL;
+constexpr uint64_t IDX_GMM2_OFFSET = 13UL;
 constexpr uint64_t INT32_PER_256B = 8U;
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
+constexpr uint16_t AIC_SYNC_AIV_EPILOGUE_FLAG = 8;
+constexpr uint16_t FLAG_ID_MAX_PER_V = 16;
 constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
@@ -87,6 +91,9 @@ constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 // Combine buffer constants
 constexpr uint32_t TRIPLE_SIZE = 8U;  // 每个 token 的三元组大小（8 个 int32）
+// GroupedMatmul modes
+constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
+constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
 } // namespace
 
 struct WorkspaceInfo {
@@ -98,7 +105,9 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
-    GM_ADDR gmmOutPtr;
+    GM_ADDR cumsumInfoPtr;
+    GM_ADDR gmm1MmadResPtr;
+    GM_ADDR gmm2MmadResPtr;
     GM_ADDR rowGroupCompletePtr;
 
     int64_t workspaceSize;
@@ -140,16 +149,33 @@ struct WorkspaceInfo {
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
 
-        // Quantization-only workspace buffers
-        gmmOutPtr = nullptr;
+        // Conditional allocation for A8W4 / combine-quant paths.
+        // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / CombineQuantMode) 一致，
+        // 由 TilingKey 保证同步。
+        // A8W4-only: cumsum GM backup and GMM1 intermediate result.
+        cumsumInfoPtr = nullptr;
+        gmm1MmadResPtr = nullptr;
+        gmm2MmadResPtr = nullptr;
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4) {
+            // cumsumInfo: per-core backup of cumsum state (expertPerRank × epWorldSize int32 per core).
+            cumsumInfoPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize),
+                ALIGN_32) * tilingData->aicNum;
+            // gmm1MmadRes: GMM1 matmul output (maxOutputSize × hiddenDim bf16).
+            gmm1MmadResPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
+        }
+        // gmm2MmadRes: GMM2 matmul output (maxOutputSize × h bf16), needed by A8W4 and combine-quant.
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+            tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+            gmm2MmadResPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+        }
+
+        // Combine-quant-only workspace buffers
         rowGroupCompletePtr = nullptr;
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-            // GMM2 output buffer (bf16)
-            gmmOutPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h), ALIGN_512);
-
-            // Row group completion counters
             rowGroupCompletePtr = base + workspaceSize;
             int64_t maxTokensPerExpert = static_cast<int64_t>(tilingData->bs) * tilingData->epWorldSize;
             int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, DISPATCH_WAVE_TILE_M);

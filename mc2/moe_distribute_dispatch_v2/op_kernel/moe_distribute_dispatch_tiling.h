@@ -71,14 +71,12 @@ struct MoeDistributeDispatchInfo {
     bool reserved3;                      // reserved
     uint64_t totalUbSize;                // epWorldSize
     uint64_t totalWinSizeEp;
-    uint64_t totalWinSizeTp;
     uint32_t expertTokenNumsType;        // expert token nums type, support 0: cumsum mode, 1: count mode
 };
 
 struct MoeDistributeDispatchTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
-    Mc2CcTiling mc2CcTiling2;
     MoeDistributeDispatchInfo moeDistributeDispatchInfo;
 };
 

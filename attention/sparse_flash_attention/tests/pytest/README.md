@@ -160,10 +160,9 @@ bash test_run.sh batch_exec -P ./custom_pt_dir/       # 执行指定目录下所
 
 下面给一个可直接参考的Excel用例，列名需与batch框架读取字段保持一致：
 
-| Testcase_Prefix | Testcase_Number | layout_query | layout_kv | q_type | kv_type | B | T | T2 | S1 | S2 | N1 | N2 | D | K | scale_value | sparse_block_size | rope_head_dim | sparse_mode | attention_mode | return_softmax_lse | block_size | block_num | actual_seq_q | actual_seq_kv |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| bsnd_basic | 1 | BSND | BSND | torch.float16 | torch.float16 | 1 |  |  | 5 | 262144 | 8 | 1 | 512 | 16 | 0.04419 | 1 | 64 | 0 | 2 | False |  |  | [4] | [4] |
-| tnd_basic | 1 | TND | TND | torch.float16 | torch.float16 | 2 | 8 | 3072 | 4 | 3072 | 8 | 1 | 512 | 32 | 0.04419 | 1 | 64 | 0 | 2 | False |  |  | [4,8] | [1111,3000] |
+| Testcase_Prefix | layout_query | layout_kv | q_type | kv_type | B | T1 | T2 | S1 | S2 | N1 | N2 | D | K | scale_value | sparse_block_size | rope_head_dim | sparse_mode | attention_mode | return_softmax_lse | block_size | block_num | actual_seq_q | actual_seq_kv | range_query | range_key | range_query_rope | range_key_rope |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sfa_bsnd_basic | BSND | BSND | torch.float16 | torch.float16 | 1 |  |  | 5 | 262144 | 8 | 1 | 512 | 16 | 0.041666666666666664 | 1 | 64 | 0 | 2 | True |  |  | [4] | [4] | [-10.0, 100.0] | [5.0, 100.0] |  |  |
 
 
 

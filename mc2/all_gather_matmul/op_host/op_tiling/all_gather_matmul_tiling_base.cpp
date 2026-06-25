@@ -14,7 +14,6 @@
  */
 #include "all_gather_matmul_tiling_base.h"
 #include "ops_utils.h"
-#include "mc2_log.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -133,9 +132,8 @@ static uint32_t MC2_Splite(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64
     return args.mValue;
 }
 
-static bool CheckOutputParamDim0(gert::TilingContext* context)
+static bool CheckOutputParamDim0(const gert::TilingContext* context)
 {
-    Mc2Tiling::AllGatherMatmulTilingData* tilingData = context->GetTilingData<Mc2Tiling::AllGatherMatmulTilingData>();
     auto outputShape = context->GetOutputShape(OUTPUT_IDX);
     uint64_t outputDim0 = outputShape->GetStorageShape().GetDim(DIM0_IDX);
     const gert::StorageShape* x1Shape = context->GetInputShape(INPUT_X1_IDX);
@@ -168,7 +166,7 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
             "The value of shape dim must not be 0"),
         return ge::GRAPH_FAILED);
 
-    if (!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context))) {
+    if (!CheckOutputParamDim0(context)) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "output", "output_dim0_mismatch", "output dim0 check failed");
         return ge::GRAPH_FAILED;
     }

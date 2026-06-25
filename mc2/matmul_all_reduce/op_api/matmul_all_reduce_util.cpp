@@ -386,6 +386,24 @@ bool QuantMatmulAllReduceCheckPertokenScaleShape(
     return true;
 }
 
+bool QuantMatmulAllReduceCheckDequantScale(const aclTensor* dequantScale, const op::Shape& outShape, size_t x1Len)
+{
+    OP_CHECK_MIN_DIM(dequantScale, ONE_DIM, return false);
+    OP_CHECK_MAX_DIM(dequantScale, TWO_DIMS, return false);
+    const size_t scaleLen = dequantScale->GetViewShape().GetDimNum();
+    if (!(scaleLen == DIM_LEN_ONE && (dequantScale->GetViewShape().GetDim(0) == NUM_ONE ||
+                                      dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
+        !(scaleLen == DIM_LEN_TWO && dequantScale->GetViewShape().GetDim(0) == NUM_ONE &&
+          dequantScale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
+        OP_LOGE_FOR_INVALID_SHAPE("MatmulAllReduce", "dequantScale",
+            op::ToString(dequantScale->GetViewShape()).GetString(),
+            std::string("[1] or [n] or [1,n], last dim should be " +
+                std::to_string(outShape.GetDim(x1Len - 1)) + " or 1").c_str());
+        return false;
+    }
+    return true;
+}
+
 bool QuantMatmulAllReduceCheckShape(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output)
@@ -448,17 +466,7 @@ bool QuantMatmulAllReduceCheckShape(
         OP_CHECK_SHAPE_NOT_EQUAL(x3, output, return false);
     }
     // scale和offset为per-tensor则shape为[1]，为per-channel则shape为[n]或者[1,n]
-    OP_CHECK_MIN_DIM(dequantScale, ONE_DIM, return false);
-    OP_CHECK_MAX_DIM(dequantScale, TWO_DIMS, return false);
-    const size_t scaleLen = dequantScale->GetViewShape().GetDimNum();
-    if (!(scaleLen == DIM_LEN_ONE && (dequantScale->GetViewShape().GetDim(0) == NUM_ONE ||
-                                      dequantScale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) &&
-        !(scaleLen == DIM_LEN_TWO && dequantScale->GetViewShape().GetDim(0) == NUM_ONE &&
-          dequantScale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
-        OP_LOGE_FOR_INVALID_SHAPE("MatmulAllReduce", "dequantScale",
-            op::ToString(dequantScale->GetViewShape()).GetString(),
-            std::string("[1] or [n] or [1,n], last dim should be " +
-                std::to_string(output->GetViewShape().GetDim(x1Len - 1)) + " or 1").c_str());
+    if (!QuantMatmulAllReduceCheckDequantScale(dequantScale, outShape, x1Len)) {
         return false;
     }
     if (!QuantMatmulAllReduceCheckPertokenScaleShape(pertokenScale, x1, x1Len)) {
