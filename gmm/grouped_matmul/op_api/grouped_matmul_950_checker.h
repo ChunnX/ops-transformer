@@ -34,11 +34,20 @@ private:
         int64_t groupNum = 0;
         size_t biasDimNum = 0;
     };
+    struct TensorIndexInfo {
+        size_t loopSize = 0;
+        size_t x = 0;
+        size_t weight = 0;
+        size_t y = 0;
+        size_t scale = 0;
+        size_t perTokenScale = 0;
+        size_t bias = 0;
+    };
 
     aclnnStatus CheckGeneralQuantShape() const;
     aclnnStatus CheckQuantCasesFormat() const;
     aclnnStatus CheckWeightNzSpecialParams() const;
-    aclnnStatus CheckWeightStorageShape(int64_t kDimValue, int64_t nDimValue) const;
+    aclnnStatus CheckWeightStorageShape(const aclTensor *weightTensor, int64_t kDimValue, int64_t nDimValue) const;
 
     aclnnStatus CheckGroupedMatmulMxDtype() const;
     aclnnStatus CheckGroupedMatmulPerGroupDim() const;
@@ -64,13 +73,10 @@ private:
     aclnnStatus CheckInputAndOutputDtypeForV3Version() const;
     bool CheckTensorListSizeForEachInput() const;
     bool IsSpecialMXCase(const T *tensorList) const;
+    bool IsMxfp4() const;
+    bool IsWeightNzSingleMultiSingleCandidate() const;
     bool IsWeightNzSingleMultiSingleScenario() const;
-    size_t GetQuantLoopSize() const;
-    size_t GetXTensorIndex(size_t index) const;
-    size_t GetWeightTensorIndex(size_t index) const;
-    size_t GetYTensorIndex(size_t index) const;
-    size_t GetScaleTensorIndex(size_t index) const;
-    size_t GetPerTokenScaleTensorIndex(size_t index) const;
+    TensorIndexInfo GetTensorIndexInfo(size_t index = 0) const;
     aclnnStatus CheckMxFp8TypeKCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     aclnnStatus CheckMxTypeMCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     aclnnStatus CheckMxBiasInputShape(const TensorDimInfo &dimInfo, size_t index) const;
