@@ -1,7 +1,16 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify
- * it under the terms of the CANN Open Software License Agreement Version 2.0.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file moe_ep_dispatch_epilogue.h
+ * \brief
  */
 
 #ifndef MOE_EP_DISPATCH_EPILOGUE_H
@@ -303,23 +312,16 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CountHits()
 
         int32_t calCnt = static_cast<int32_t>(slotCntPerAiv * paddedTopkElems_);
         for (uint32_t localExpertId = 0; localExpertId < numLocalExperts_; ++localExpertId) {
-            int32_t targetExpertId =
-                static_cast<int32_t>(epRankId_ * numLocalExperts_ + localExpertId);
-
+            int32_t targetExpertId = static_cast<int32_t>(epRankId_ * numLocalExperts_ + localExpertId);
             SyncFunc<AscendC::HardEvent::S_V>();
-            Duplicate<int32_t>(ubTargetExpertId_, targetExpertId, calCnt);
-            
-            Sub(ubSubExpertId_, ubTopkIds_, ubTargetExpertId_, calCnt);
-            
+            Duplicate<int32_t>(ubTargetExpertId_, targetExpertId, calCnt);    
+            Sub(ubSubExpertId_, ubTopkIds_, ubTargetExpertId_, calCnt);  
             Abs(ubTargetExpertId_, ubSubExpertId_, calCnt);
-
             Mins(ubSubExpertId_, ubTargetExpertId_, 1, calCnt);
-
             const uint32_t reduceShape[] = {1U, static_cast<uint32_t>(calCnt)};
             ReduceSum<int32_t, AscendC::Pattern::Reduce::AR, true>(
                 ubTargetExpertId_, ubSubExpertId_, reduceShape, true);
             SyncFunc<AscendC::HardEvent::V_S>();
-
             int32_t curOtherExpertCnt = ubTargetExpertId_(0);
             int32_t curExpertCnt = (calCnt >= curOtherExpertCnt) ? (calCnt - curOtherExpertCnt) : 0;
             int32_t currentHits = ubHitCount_.GetValue(localExpertId);
@@ -388,7 +390,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     if (localExpertId != targetExpert) { continue; }
 
                     uint32_t globalRow = static_cast<uint32_t>(expertRowStart + localWrittenRow);
-
                     GM_ADDR slotAddr = srcRankBase + (int64_t)(slotStart + localSlot) * perSlotBytes_;
                     GlobalTensor<XType> srcTokenTensor;
                     srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
@@ -396,7 +397,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, IsCached>::CopyFromWindowBy
                     DataCopyPadParams tokenPadParams{false, 0, 0, 0};
                     DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
                     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-
                     DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
                     float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
                     ubStageWeights_.SetValue(stageIdx, weights);
