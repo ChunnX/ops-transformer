@@ -232,6 +232,7 @@
 
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
+- **该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）**。half（0）、quarter（2）、DeepSeek interleave（3）模式暂未实现。
 
 - 输入张量dyRef支持BSND排布以及其B/S/N维度的广播变体（如111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
   - 输入张量dyRef和xOptional的最后一维大小D必须相同，且D ≤ 1024。
