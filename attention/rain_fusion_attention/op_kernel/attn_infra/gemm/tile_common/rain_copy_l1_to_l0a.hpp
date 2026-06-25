@@ -344,6 +344,78 @@ struct CopyL1ToL0A<ArchTag, Gemm::GemmType<float, layout::nZ, AscendC::TPosition
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// Partial specialization for Ascend950, zN in and zN out.
+/// Ascend950 generation targets zN (instead of zZ) for L0A.
+template <class Element>
+struct CopyL1ToL0A<Arch::Ascend950, Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>> {
+    using LayoutDst = layout::zN;
+    using LayoutSrc = layout::zN;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
+
+    // Methods
+
+    __aicore__ inline
+    CopyL1ToL0A() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::LocalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        AscendC::LoadData2DParamsV2 loadDataParams;
+        loadDataParams.mStartPosition = 0;
+        loadDataParams.kStartPosition = 0;
+        loadDataParams.mStep = layoutDst.shape(1);
+        loadDataParams.kStep = layoutDst.shape(3);
+        loadDataParams.srcStride = CeilDiv<ELE_NUM_PER_FRACTAL>(layoutSrc.stride(3));
+        loadDataParams.dstStride = CeilDiv<ELE_NUM_PER_FRACTAL>(layoutDst.stride(3));
+        loadDataParams.ifTranspose = false;
+
+        AscendC::LoadData(dstTensor, srcTensor, loadDataParams);
+    }
+};
+
+/// Partial specialization for Ascend950, nZ in and zN out. (Transpose A)
+template <class Element>
+struct CopyL1ToL0A<Arch::Ascend950, Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>> {
+    using LayoutDst = layout::zN;
+    using LayoutSrc = layout::nZ;
+
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_FRACTAL = BYTE_PER_FRACTAL / sizeof(Element);
+
+    // Methods
+
+    __aicore__ inline
+    CopyL1ToL0A() {};
+
+    __aicore__ inline
+    void operator()(
+        AscendC::LocalTensor<Element> const &dstTensor,
+        AscendC::LocalTensor<Element> const &srcTensor,
+        LayoutDst const &layoutDst, LayoutSrc const &layoutSrc)
+    {
+        const uint32_t L0M = layoutDst.shape(0) * layoutDst.shape(1);
+        const uint32_t L0K = layoutDst.shape(2) * layoutDst.shape(3);
+        const uint32_t srcOuterStrideRow = layoutSrc.stride(1);
+        const uint32_t dstOuterStrideCol = layoutDst.stride(3);
+
+        AscendC::LoadData2DParamsV2 loadDataParams;
+        loadDataParams.mStartPosition = 0;
+        loadDataParams.kStartPosition = 0;
+        loadDataParams.mStep = CeilDiv<C0_NUM_PER_FRACTAL>(L0K);
+        loadDataParams.kStep = CeilDiv<ELE_NUM_PER_C0>(L0M);
+        loadDataParams.srcStride = CeilDiv<ELE_NUM_PER_FRACTAL>(srcOuterStrideRow);
+        loadDataParams.dstStride = CeilDiv<ELE_NUM_PER_FRACTAL>(dstOuterStrideCol);
+        loadDataParams.ifTranspose = true;
+
+        AscendC::LoadData(dstTensor, srcTensor, loadDataParams);
+    }
+};
+
 } // namespace NpuArch::Gemm::Tile
 
 #endif // GEMM_TILE_COPY_L1_TO_L0A_HPP
