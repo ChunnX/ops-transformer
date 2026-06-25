@@ -613,7 +613,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     if (isSplitG) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     }
-    uint32_t fdStagingMSize = isSplitG ? M_BASE_SIZE_SPLIT_G : tilingInfo->gSize;
+    uint32_t fdStagingMSize = M_BASE_SIZE_SPLIT_G;
     uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1) : aicNum;
     // 末尾的2对应每个split分别暂存max和sum。
     uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM
