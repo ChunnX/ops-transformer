@@ -33,6 +33,36 @@ from typing import Callable, List, Tuple
 import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
 
+
+def is_arch35_soc(device_name=None):
+    """True on Ascend 950 (arch35); False on Atlas A2 (910B*) / A3 (910_93*).
+
+    These two families need different kernel parameters (the 950 supports FP8 +
+    BSND and *requires* innerPrecise=4; A2/A3 are FP16/BF16 + TND/BNSD only and
+    require innerPrecise ∈ {0, 1}). Detection reuses the torch front-end's guard
+    (`_is_arch220_soc`) so the test harness and the op agree on one definition.
+    """
+    if device_name is None:
+        try:
+            device_name = torch_npu.npu.get_device_name(torch_npu.npu.current_device())
+        except Exception:  # pylint: disable=broad-except
+            return False
+    # Imported lazily: importing the front-end module triggers a JIT kernel build,
+    # which util.py callers (mask helpers) should not pay for unless they ask for SoC info.
+    from cann_ops_transformer.ops.block_sparse_attention import (  # pylint: disable=import-outside-toplevel
+        _is_arch220_soc,
+    )
+    return not _is_arch220_soc(device_name)
+
+
+def bsa_inner_precise(device_name=None):
+    """The only `inner_precise` the kernel accepts on the current chip
+    (see block_sparse_attention_tiling.cpp): 950 → 4 (low/high mixed softmax),
+    910 / 910_93 → 0 (fp32 softmax). Lets one test run unchanged on both.
+    """
+    return 4 if is_arch35_soc(device_name) else 0
+
+
 FrameWidths = namedtuple('FrameWidths', ['left_cols', 'right_cols', 'top_rows', 'bottom_rows'])
 BlockGrid = namedtuple('BlockGrid', ['s_q', 's_kv', 'block_size_q', 'block_size_kv'])
 # Workload identity for one benchmark row / one mask build. Carries the full

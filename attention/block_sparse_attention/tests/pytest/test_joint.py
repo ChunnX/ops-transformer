@@ -42,6 +42,7 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 from util import (  # noqa: E402
     create_attention_mask, FrameWidths, WorkloadShape,
     sabi_to_block_sparse_mask, SABI_PAD,
+    bsa_inner_precise,
 )
 
 SEED = 42
@@ -51,6 +52,8 @@ BLOCK_SIZE_Q = 128
 BLOCK_SIZE_KV = 128
 _SABI_PAD = SABI_PAD  # 0xFFFF padding sentinel — single source of truth in util
 torch.npu.set_device(DEVICE)
+# inner_precise is SoC-gated: 950 → 4 (low/high mixed), 910/910_93 → 0 (fp32 softmax).
+INNER_PRECISE = bsa_inner_precise()
 
 OUT_ATOL        = 1e-3   # dense attention_out vs FIAS
 SPARSE_OUT_ATOL = 1e-3   # sparse attention_out vs PFA — block-boundary headroom
@@ -114,7 +117,7 @@ def _run_kernel(q, k, v, H, scale, S, block_mask):
         num_heads=H, num_key_value_heads=H,
         q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
         mask_type=0, scale_value=float(scale),
-        inner_precise=0, 
+        inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=True,

@@ -48,7 +48,11 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 from util import (  # noqa: E402
     create_attention_mask, FrameWidths, WorkloadShape,
     sabi_to_block_sparse_mask, SABI_PAD,
+    bsa_inner_precise,
 )
+
+# inner_precise is SoC-gated: 950 → 4 (low/high mixed), 910/910_93 → 0 (fp32 softmax).
+INNER_PRECISE = bsa_inner_precise()
 
 SEED = 42
 DEVICE = "npu:0"
@@ -219,7 +223,7 @@ def _run_kernel_with_lse_dense(q, k, v, h, scale, seq_len):
         num_heads=h, num_key_value_heads=h,
         q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
         mask_type=0, scale_value=float(scale),
-        inner_precise=0, 
+        inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=True,
@@ -241,7 +245,7 @@ def _run_kernel_with_lse_sparse(q, k, v, h, scale, seq_len, sabi):
         num_heads=h, num_key_value_heads=h,
         q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
         mask_type=0, scale_value=float(scale),
-        inner_precise=0, 
+        inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=True,
@@ -458,7 +462,7 @@ def test_lse_shape_and_dtype(shape):
         num_heads=H, num_key_value_heads=H,
         q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
         mask_type=0, scale_value=float(scale),
-        inner_precise=0, 
+        inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=True,
@@ -489,7 +493,7 @@ def test_lse_disabled_returns_empty(shape):
         num_heads=H, num_key_value_heads=H,
         q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
         mask_type=0, scale_value=float(scale),
-        inner_precise=0, 
+        inner_precise=INNER_PRECISE,
         block_size=0,  # paged cache not yet supported by kernel; must be 0
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=False,

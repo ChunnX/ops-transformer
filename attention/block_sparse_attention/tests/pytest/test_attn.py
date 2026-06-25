@@ -46,7 +46,12 @@ from util import (  # noqa: E402
     gen_pfa_inputs, create_attention_mask, FrameWidths, WorkloadShape,
     ref_attention_launcher,
     sabi_to_block_sparse_mask,
+    bsa_inner_precise,
 )
+
+# inner_precise is SoC-gated: 950 → 4 (low/high mixed), 910/910_93 → 0 (fp32 softmax).
+# Picked from the runtime device so this same test runs on both chips.
+INNER_PRECISE = bsa_inner_precise()
 
 # Global test configurations
 SEED = 42
@@ -96,7 +101,7 @@ def _run_block_sparse_attention(q, k, v, h, scale, s_q, s_kv, sabi):
         num_heads=h, num_key_value_heads=h,
         q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
         mask_type=0, scale_value=float(scale),
-        inner_precise=0,                  # fp32 softmax (high precision)
+        inner_precise=INNER_PRECISE,      # 910: 0 (fp32 sm); 950: 4 (low/high mixed)
         block_size=0,                     # paged cache not yet supported by kernel; must be 0
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=False,
