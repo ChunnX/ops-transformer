@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,12 +9,13 @@
  */
 
 /*!
- * \file engram_fetch_tiling.cpp
- * \brief host侧tiling实现
- */
+* \file engram_fetch_tiling.cpp
+* \brief host侧tiling实现
+*/
 
 #include <string>
 #include <climits>
+#include <cstdint>
 #include <algorithm>
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
@@ -24,9 +25,8 @@
 
 using namespace AscendC;
 using namespace ge;
-using namespace Mc2Tiling;
 
-namespace optiling {
+namespace MC2Tiling {
 constexpr uint32_t COMM_CONTEXT_INDEX = 0U;
 constexpr uint32_t INDICES_INDEX = 1U;
 constexpr uint32_t FETCHED_INDEX = 0U;
@@ -38,10 +38,6 @@ constexpr uint32_t ATTR_OUTPUT_DTYPE_INDEX = 2U;
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
-
-constexpr uint32_t BF16_BYTES = 2U;
-constexpr uint32_t FP16_BYTES = 2U;
-constexpr uint32_t FP32_BYTES = 4U;
 
 constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 
@@ -61,10 +57,10 @@ static void PrintEngramFetchTilingData(const EngramFetchTilingData *tilingData, 
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
 
     OP_LOGD(nodeName, "========== EngramFetchTilingData ==========");
-    OP_LOGD(nodeName, "numTokens is %u", tilingData->numTokens);
-    OP_LOGD(nodeName, "numEntriesPerRank is %u", tilingData->numEntriesPerRank);
-    OP_LOGD(nodeName, "hiddenDim is %u", tilingData->hiddenDim);
-    OP_LOGD(nodeName, "hiddenBytes is %u", tilingData->hiddenBytes);
+    OP_LOGD(nodeName, "numTokens is %ld", tilingData->numTokens);
+    OP_LOGD(nodeName, "numEntriesPerRank is %d", tilingData->numEntriesPerRank);
+    OP_LOGD(nodeName, "hiddenDim is %ld", tilingData->hiddenDim);
+    OP_LOGD(nodeName, "hiddenBytes is %ld", tilingData->hiddenBytes);
     OP_LOGD(nodeName, "aivNum is %u", tilingData->aivNum);
 }
 
@@ -119,7 +115,7 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
 /**
  * @brief 校验tensor维度
  */
-static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, uint32_t &numTokens)
+static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_t &numTokens)
 {
     const char *nodeName = context->GetNodeName();
     // input dim check
@@ -147,7 +143,7 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, uint32
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "indices",
             (std::string("dim0=") + std::to_string(numTokens)).c_str(), ">= 0"),
         return ge::GRAPH_FAILED);
-    OP_LOGD(nodeName, "indices dim0 (numTokens) = %u", numTokens);
+    OP_LOGD(nodeName, "indices dim0 (numTokens) = %ld", numTokens);
 
     // output dim check
     const gert::StorageShape *fetchedShape = context->GetOutputShape(FETCHED_INDEX);
@@ -162,7 +158,7 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, uint32
     const int64_t fetchedDim1 = fetchedShape->GetStorageShape().GetDim(1);
     OP_LOGD(nodeName, "fetched dim0 = %ld", fetchedDim0);
     OP_LOGD(nodeName, "fetched dim1 = %ld", fetchedDim1);
-    OP_TILING_CHECK(fetchedDim0 != static_cast<int64_t>(numTokens),
+    OP_TILING_CHECK(fetchedDim0 != numTokens,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "fetched",
             (std::string("dim0=") + std::to_string(fetchedDim0)).c_str(),
             (std::string("dim0 must equal numTokens=") + std::to_string(numTokens)).c_str()),
@@ -205,7 +201,7 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
 /**
  * @brief 校验所有tensor（指针、数据类型、维度、格式）
  */
-static ge::graphStatus TilingCheckEngramFetch(const gert::TilingContext *context, uint32_t &numTokens)
+static ge::graphStatus TilingCheckEngramFetch(const gert::TilingContext *context, int64_t &numTokens)
 {
     const char *nodeName = context->GetNodeName();
 
@@ -234,7 +230,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context)
     OP_TILING_CHECK(attrs == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
 
-    auto hiddenSizePtr = attrs->GetAttrPointer<int32_t>(ATTR_HIDDEN_SIZE_INDEX);
+    auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE_INDEX);
     OP_TILING_CHECK(hiddenSizePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "hidden_size"), return ge::GRAPH_FAILED);
 
@@ -262,7 +258,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, fetchedDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, fetchedShape);
 
-    auto hiddenSizePtr = attrs->GetAttrPointer<int32_t>(ATTR_HIDDEN_SIZE_INDEX);
+    auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE_INDEX);
     OP_TILING_CHECK(*hiddenSizePtr <= 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "hidden_size",
             std::to_string(*hiddenSizePtr).c_str(), "> 0"),
@@ -272,21 +268,21 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context)
             std::to_string(*hiddenSizePtr).c_str(),
             (std::string("must be ") + std::to_string(HIDDEN_SIZE_ALIGN) + "-aligned").c_str()),
         return ge::GRAPH_FAILED);
-    OP_LOGD(nodeName, "hidden_size is %d", *hiddenSizePtr);
+    OP_LOGD(nodeName, "hidden_size is %ld", *hiddenSizePtr);
 
     // fetched dim1 must equal hidden_size attr
-    uint32_t hiddenDim = static_cast<uint32_t>(*hiddenSizePtr);
+    int64_t hiddenDim = *hiddenSizePtr;
     const int64_t fetchedDim1 = fetchedShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(fetchedDim1 != static_cast<int64_t>(hiddenDim),
+    OP_TILING_CHECK(fetchedDim1 != hiddenDim,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "fetched",
             (std::string("dim1=") + std::to_string(fetchedDim1)).c_str(),
             (std::string("dim1 must equal hidden_size attr(") + std::to_string(hiddenDim) + ").").c_str()),
         return ge::GRAPH_FAILED);
 
     auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK_INDEX);
-    OP_TILING_CHECK(*numEntriesPerRankPtr < 0,
+    OP_TILING_CHECK(*numEntriesPerRankPtr < 0 || *numEntriesPerRankPtr > INT32_MAX,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "num_entries_per_rank",
-            std::to_string(*numEntriesPerRankPtr).c_str(), ">= 0"),
+            std::to_string(*numEntriesPerRankPtr).c_str(), "[0, INT32_MAX]"),
         return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "num_entries_per_rank is %ld", *numEntriesPerRankPtr);
 
@@ -350,31 +346,39 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetch
  * @brief 设置tiling数据
  */
 static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTilingData &tilingData,
-                                      uint32_t numTokens)
+                                      int64_t numTokens)
 {
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
 
     tilingData.numTokens = numTokens;
 
-    auto hiddenSizePtr = attrs->GetAttrPointer<int32_t>(ATTR_HIDDEN_SIZE_INDEX);
-    tilingData.hiddenDim = static_cast<uint32_t>(*hiddenSizePtr);
+    auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE_INDEX);
+    tilingData.hiddenDim = *hiddenSizePtr;
 
     auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK_INDEX);
-    tilingData.numEntriesPerRank = static_cast<uint32_t>(*numEntriesPerRankPtr);
+    tilingData.numEntriesPerRank = static_cast<int32_t>(*numEntriesPerRankPtr);
 
     auto fetchedDesc = context->GetOutputDesc(FETCHED_INDEX);
     ge::DataType fetchedDtype = fetchedDesc->GetDataType();
-    uint32_t hiddenDim = tilingData.hiddenDim;
-    if (fetchedDtype == ge::DT_BF16 || fetchedDtype == ge::DT_FLOAT16) {
-        tilingData.hiddenBytes = hiddenDim * BF16_BYTES;
-    } else {
-        tilingData.hiddenBytes = hiddenDim * FP32_BYTES;
-    }
+    int64_t hiddenDim = tilingData.hiddenDim;
+    int64_t bytesPerElem = ge::GetSizeByDataType(fetchedDtype);
+    OP_TILING_CHECK(hiddenDim > INT64_MAX / bytesPerElem,
+        OP_LOGE(nodeName, "hiddenBytes overflow: hiddenDim=%ld * bytesPerElem=%ld exceeds INT64_MAX",
+            hiddenDim, bytesPerElem),
+        return ge::GRAPH_FAILED);
+    tilingData.hiddenBytes = hiddenDim * bytesPerElem;
 
-    OP_LOGD(nodeName, "SetTilingData: numTokens=%u, hiddenDim=%u, numEntriesPerRank=%u, hiddenBytes=%u",
+    auto platformInfo = context->GetPlatformInfo();
+    OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint64_t ubSize = 0;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    tilingData.ubSize = ubSize;
+
+    OP_LOGD(nodeName, "SetTilingData: numTokens=%ld, hiddenDim=%ld, numEntriesPerRank=%d, hiddenBytes=%ld, ubSize=%lu",
             tilingData.numTokens, tilingData.hiddenDim,
-            tilingData.numEntriesPerRank, tilingData.hiddenBytes);
+            tilingData.numEntriesPerRank, tilingData.hiddenBytes, tilingData.ubSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -420,7 +424,7 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
 
     // 1. tensor check (ptr + dtype + shape + format)
-    uint32_t numTokens = 0;
+    int64_t numTokens = 0;
     OP_TILING_CHECK(TilingCheckEngramFetch(context, numTokens) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "check input/output failed."), return ge::GRAPH_FAILED);
 
@@ -449,16 +453,6 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-struct EngramFetchCompileInfo {};
-
-static ge::graphStatus TilingParseForEngramFetch(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
 IMPL_OP_OPTILING(EngramFetch)
-    .Tiling(EngramFetchTilingFunc)
-    .TilingParse<EngramFetchCompileInfo>(TilingParseForEngramFetch);
-
-} // namespace optiling
+    .Tiling(EngramFetchTilingFunc);
+} // namespace MC2Tiling
