@@ -389,6 +389,14 @@ ge::graphStatus FusedCausalConv1dWidth4CutBHTiling::ValidateWeightShape()
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightShape);
     auto weightOriginShape = weightShape->GetOriginShape();
 
+    int64_t kernelSize = weightOriginShape.GetDim(DIM_0);
+    if (kernelSize != 4) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "weight", std::to_string(kernelSize).c_str(),
+            "The value of kernel_size must be equal to 4");
+        return ge::GRAPH_FAILED;
+    }
+
     int64_t weightDim = weightOriginShape.GetDim(1);
     if (weightDim != dim_) {
         std::string reasonMsg = "Shape [1] of weight must be equal to shape [1] of x (" + std::to_string(dim_) + ")";

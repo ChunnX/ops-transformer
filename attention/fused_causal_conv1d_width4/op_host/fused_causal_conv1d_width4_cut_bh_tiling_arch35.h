@@ -53,8 +53,8 @@ constexpr int32_t BLOCK_IDX_FIRST_SCHEDULED_TOKEN_INDEX = 9; // APC: 首个调�
 constexpr int32_t BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX = 10; // APC: 最后调度 token 所在 block 索引（可选）
 constexpr int32_t INITIAL_STATE_IDX_INDEX = 11;              // 初始状态索引（可选）
 
-constexpr int32_t Y_INDEX = 0;                        // 输出特征 y（与 x 形状相同）
-constexpr int32_t OUTPUT_CONV_STATES_INDEX = 1;       // 更新后的 conv_states（与输入 conv_states 形状相同）
+constexpr int32_t OUTPUT_CONV_STATES_INDEX = 0;       // 更新后的 conv_states（与输入 conv_states 形状相同）
+constexpr int32_t Y_INDEX = 1;                        // 输出特征 y（与 x 形状相同）
 constexpr int32_t ATTR_ACTIVATION_MODE_INDEX = 0;     // 激活函数模式：0=无，1=silu 等
 constexpr int32_t ATTR_PAD_SLOT_ID_INDEX = 1;         // padding slot id，用于标识 padding 样本
 constexpr int32_t ATTR_RUN_MODE_INDEX = 2;            // 运行模式（预留）
