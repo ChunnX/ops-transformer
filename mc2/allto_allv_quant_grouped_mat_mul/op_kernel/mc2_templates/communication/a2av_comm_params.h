@@ -78,20 +78,16 @@ __aicore__ inline void CalcA2avCommAfterParams(
         }
     }
 
-    uint64_t batchStartOffset = 0UL;
-    for (uint64_t i = 0UL; i < startExpertIdx; i++) {
-        for (uint64_t j = 0UL; j < rankDim; j++) {
-            batchStartOffset += static_cast<uint64_t>(rawSendCounts[i + j * e]);
+    uint64_t rankBase = 0UL;
+    for (uint64_t r = 0UL; r < rankDim; r++) {
+        uint64_t batchOffset = 0UL;
+        for (uint64_t i = 0UL; i < startExpertIdx; i++) {
+            batchOffset += static_cast<uint64_t>(rawSendCounts[i + r * e]);
         }
-    }
-    batchStartOffset *= axis;
-    params.sendOffset[0] = batchStartOffset;
-    uint64_t rankRunningOffset = 0UL;
-    for (uint64_t i = 1UL; i < rankDim; i++) {
+        params.sendOffset[r] = (rankBase + batchOffset) * axis;
         for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
-            rankRunningOffset += static_cast<uint64_t>(rawSendCounts[expertIdx + (i - 1) * e]) * axis;
+            rankBase += static_cast<uint64_t>(rawSendCounts[expertIdx + r * e]);
         }
-        params.sendOffset[i] = batchStartOffset + rankRunningOffset;
     }
     params.recvOffset[0] = 0UL;
     for (uint64_t i = 0UL; i < startExpertIdx; i++) {

@@ -34,8 +34,9 @@ public:
     __aicore__ inline void SetDoubleBuffer(GM_ADDR buf0, GM_ADDR buf1)
     {
         gmmOutputBuf_[0] = buf0;
-        gmmOutputBuf_[1] = buf1;
-        useDoubleBuffer_ = (buf1 != nullptr);
+        uint32_t totalLoop = (taskTilingInfo_->e + taskTilingInfo_->expertNum - 1U) / taskTilingInfo_->expertNum;
+        useDoubleBuffer_ = (buf1 != nullptr) && (totalLoop >= 2U);
+        gmmOutputBuf_[1] = useDoubleBuffer_ ? buf1 : nullptr;
     }
 
     __aicore__ inline void Process()
@@ -46,27 +47,34 @@ public:
 
         for (uint32_t start = 0; start < e; start += expertNum) {
             uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
-            uint32_t curBuf = useDoubleBuffer_ ? (loopIdx % 2U) : 0U;
 
             if ASCEND_IS_AIC {
-                if (useDoubleBuffer_ && loopIdx >= 2U) {
-                    AscendC::CrossCoreWaitFlag(10);
-                }
                 if (useDoubleBuffer_) {
+                    uint32_t curBuf = loopIdx % 2U;
+                    if (loopIdx >= 2U) {
+                        AscendC::CrossCoreWaitFlag(11U + ((loopIdx - 2U) % 2U));
+                    }
                     computeOp_.SetOutputBuffer(gmmOutputBuf_[curBuf]);
+                    computeOp_.Process(start, actualExpertNum);
+                    AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9U + curBuf);
+                } else {
+                    computeOp_.Process(start, actualExpertNum);
+                    AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
+                    AscendC::CrossCoreWaitFlag(8);
+                    AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
                 }
-                computeOp_.Process(start, actualExpertNum);
-                AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
             }
             if ASCEND_IS_AIV {
-                AscendC::CrossCoreWaitFlag(9);
                 if (useDoubleBuffer_) {
+                    uint32_t curBuf = loopIdx % 2U;
+                    AscendC::CrossCoreWaitFlag(9U + curBuf);
                     hcclOp_.UpdateSendBuffer(gmmOutputBuf_[curBuf]);
-                }
-                hcclOp_.LaunchCommData(start, actualExpertNum);
-                if (useDoubleBuffer_) {
+                    hcclOp_.LaunchCommData(start, actualExpertNum);
                     hcclOp_.Wait(start);
-                    AscendC::CrossCoreSetFlag<0, PIPE_FIX>(10);
+                    AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(11U + curBuf);
+                } else {
+                    AscendC::CrossCoreWaitFlag(9);
+                    hcclOp_.LaunchCommData(start, actualExpertNum);
                 }
             }
             loopIdx++;
@@ -76,7 +84,15 @@ public:
             shareComputeOp_.Process(0, 1);
         }
 
-        if (!useDoubleBuffer_) {
+        if (useDoubleBuffer_) {
+            uint32_t totalLoop = (e + expertNum - 1U) / expertNum;
+            uint32_t startAck = (totalLoop >= 2U) ? (totalLoop - 2U) : 0U;
+            for (uint32_t i = startAck; i < totalLoop; i++) {
+                if ASCEND_IS_AIC {
+                    AscendC::CrossCoreWaitFlag(11U + (i % 2U));
+                }
+            }
+        } else {
             for (uint32_t start = 0; start < e; start += expertNum) {
                 hcclOp_.Wait(start);
             }

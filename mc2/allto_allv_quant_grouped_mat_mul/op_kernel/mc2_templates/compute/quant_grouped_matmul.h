@@ -45,7 +45,6 @@ public:
     {
         yGM_ = yGM;
         yGlobalBuffer_.SetGlobalBuffer((__gm__ yType *)yGM_);
-        expertTokenOffset_ = 0;
     }
 
 protected:
@@ -134,7 +133,7 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
     }
     if constexpr (PERTENSOR_QUANT_MODE) {
-        uint32_t expertNumMax = tilingData_->taskTilingInfo.expertNum;
+        uint32_t expertNumMax = static_cast<uint32_t>(expertNumInOneRank_);
         ttWeightScaleRepeatGm_ = ptrTableBase_ + TENSOR_LIST_SIZE;
         ttXScaleRepeatGm_ = ttWeightScaleRepeatGm_ + sizeof(float) * expertNumMax;
     }
@@ -270,7 +269,11 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
 {
     xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * h1_);
     wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(startExpertIdx * h1_ * n1_);
-    yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * n1_);
+    if constexpr (!isLocal && !isA2avGmm) {
+        yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(0);
+    } else {
+        yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * n1_);
+    }
 
     if constexpr (MX_QUANT_MODE) {
         uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
