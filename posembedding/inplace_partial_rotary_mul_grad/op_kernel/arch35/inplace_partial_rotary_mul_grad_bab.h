@@ -30,8 +30,6 @@ public:
     __aicore__ inline InplacePartialRotaryMulGradBAB(TPipe *pipe,
                                                      const InplacePartialRotaryMulGradRegbaseTilingData *tiling)
         : pipe_(pipe), tilingData_(tiling){};
-    {
-    }
     __aicore__ inline void Init(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx);
     __aicore__ inline void Process();
 
