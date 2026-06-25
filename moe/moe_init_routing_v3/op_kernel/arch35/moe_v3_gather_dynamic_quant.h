@@ -204,34 +204,21 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
         SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
         float scaleVal = scaleLocal.GetValue(0);
         float quantFactor = (scaleVal != 0.0f) ? (1.0f / scaleVal) : 0.0f;
-        __local_mem__ int4x2_t *outUbAddrInt4 = (__local_mem__ int4x2_t *)outLocal.GetPhyAddr();
+        auto outLocalInt4 = outLocal.template ReinterpretCast<int4b_t>();
+        LocalTensor<float> tempLocal = calcQueue_.AllocTensor<float>();
+        LocalTensor<int32_t> tempInt32 = tempLocal.template ReinterpretCast<int32_t>();
+        LocalTensor<half> tempHalf = tempLocal.template ReinterpretCast<half>();
 
-        sreg = static_cast<uint32_t>(cols_);
-        __VEC_SCOPE__
-        {
-            MicroAPI::RegTensor<float> inReg, quantFactorReg;
-            MicroAPI::RegTensor<int16_t> outRegI16;
-            MicroAPI::RegTensor<half> outRegF16;
-            MicroAPI::RegTensor<uint16_t> packedHalfReg;
-            MicroAPI::RegTensor<int4x2_t> outRegI4;
-            MicroAPI::MaskReg maskRegInLoop;
-            MicroAPI::MaskReg maskRegStore = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
-
-            for (uint16_t i = 0; i < repeatTimes; i++) {
-                maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
-                MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-                MicroAPI::Duplicate(quantFactorReg, quantFactor, maskRegInLoop);
-                MicroAPI::Mul(inReg, inReg, quantFactorReg, maskRegInLoop);
-                MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
-                MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
-                MicroAPI::Pack(packedHalfReg, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
-                MicroAPI::Cast<int4x2_t, half, castTraitF16ToI8>(
-                    outRegI4,
-                    (MicroAPI::RegTensor<half> &)packedHalfReg, maskRegInLoop);
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
-                    outUbAddrInt4 + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI4, maskRegStore);
-            }
-        }
+        Muls(tempLocal, inLocal, quantFactor, cols_);
+        PipeBarrier<PIPE_V>();
+        Cast(tempInt32, tempLocal, RoundMode::CAST_RINT, cols_);
+        PipeBarrier<PIPE_V>();
+        SetDeqScale(static_cast<half>(1.0));
+        PipeBarrier<PIPE_V>();
+        Cast(tempHalf, tempInt32, RoundMode::CAST_ROUND, cols_);
+        PipeBarrier<PIPE_V>();
+        Cast(outLocalInt4, tempHalf, RoundMode::CAST_TRUNC, cols_);
+        calcQueue_.FreeTensor(tempLocal);
     }
 
     inputXOutQueue_.EnQue(outLocal);
@@ -385,36 +372,21 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt4(Local
                                                                            LocalTensor<int8_t> &outLocal,
                                                                            float quantFactor)
 {
-    __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
-    __local_mem__ int4x2_t *outUbAddrInt4 = (__local_mem__ int4x2_t *)outLocal.GetPhyAddr();
+    LocalTensor<float> tempLocal = calcQueue_.AllocTensor<float>();
+    LocalTensor<int32_t> tempInt32 = tempLocal.template ReinterpretCast<int32_t>();
+    LocalTensor<half> tempHalf = tempLocal.template ReinterpretCast<half>();
+    auto outLocalInt4 = outLocal.template ReinterpretCast<int4b_t>();
 
-    uint16_t repeatTimes = Ceil(colsTileLength_, FLOAT_REG_TENSOR_LENGTH);
-    uint32_t sreg = static_cast<uint32_t>(colsTileLength_);
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<float> inReg, scaleReg;
-        MicroAPI::RegTensor<int16_t> outRegI16;
-        MicroAPI::RegTensor<half> outRegF16;
-        MicroAPI::RegTensor<uint16_t> packedHalfReg;
-        MicroAPI::RegTensor<int4x2_t> outRegI4;
-        MicroAPI::MaskReg maskRegLoop;
-        MicroAPI::MaskReg maskRegStore = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
-
-        for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegLoop = MicroAPI::UpdateMask<float>(sreg);
-            MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::Duplicate(scaleReg, quantFactor, maskRegLoop);
-            MicroAPI::Mul(inReg, inReg, scaleReg, maskRegLoop);
-            MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegLoop);
-            MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegLoop);
-            MicroAPI::Pack(packedHalfReg, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
-            MicroAPI::Cast<int4x2_t, half, castTraitF16ToI8>(
-                outRegI4,
-                (MicroAPI::RegTensor<half> &)packedHalfReg, maskRegLoop);
-            MicroAPI::DataCopy<int4x2_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
-                outUbAddrInt4 + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI4, maskRegStore);
-        }
-    }
+    Muls(tempLocal, inLocal, quantFactor, colsTileLength_);
+    PipeBarrier<PIPE_V>();
+    Cast(tempInt32, tempLocal, RoundMode::CAST_RINT, colsTileLength_);
+    PipeBarrier<PIPE_V>();
+    SetDeqScale(static_cast<half>(1.0));
+    PipeBarrier<PIPE_V>();
+    Cast(tempHalf, tempInt32, RoundMode::CAST_ROUND, colsTileLength_);
+    PipeBarrier<PIPE_V>();
+    Cast(outLocalInt4, tempHalf, RoundMode::CAST_TRUNC, colsTileLength_);
+    calcQueue_.FreeTensor(tempLocal);
 }
 
 template <typename T, typename QuantT>
@@ -562,7 +534,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(
     rowIdxType_ = tilingData->rowIdxType;
 
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
-        colsAsInt8_ = cols_ / 2;
+        colsAsInt8_ = Ceil(cols_, static_cast<int64_t>(2));
     } else {
         colsAsInt8_ = cols_;
     }
@@ -600,7 +572,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(
 
     perLoopColsAlign_ = Align(perLoopCols_, sizeof(T));
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
-        perLoopColsAsInt8_ = perLoopCols_ / 2;
+        perLoopColsAsInt8_ = Ceil(perLoopCols_, static_cast<int64_t>(2));
     } else {
         perLoopColsAsInt8_ = perLoopCols_;
     }
