@@ -548,6 +548,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     PipeBarrier<PIPE_MTE3>();
     DataCopyPad(workspaceDstGlobal[mxQuantTokenScaleAlignBytes_], xOutBytesTensor[mxQuantTokenScaleAlignBytes_],
         {1U, static_cast<uint32_t>(ALIGN_32), 0U, 0U, 0U});
+    PipeBarrier<PIPE_ALL>();
 }
 
 // ===============================================================================================
@@ -915,7 +916,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     // PRINTF("BEGIN READDATA\n");
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     hcomm_.Drain(channel);
-    // PRINTF("BEGIN READDATA\n");
+    PRINTF("BEGIN READDATA\n");
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
