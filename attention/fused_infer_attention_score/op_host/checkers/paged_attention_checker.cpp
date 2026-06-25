@@ -110,8 +110,8 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
         if (fiaInfo.isQKVDDifferent) {
             std::string shapeMsg = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
                 ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and key", shapeMsg.c_str(),
-                "When page attention is enabled, the headDim of query and key must be the same");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query, key and value", shapeMsg.c_str(),
+                "When page attention is enabled, the headDim of query, key and value must be the same");
             return ge::GRAPH_FAILED;
         }
     }
