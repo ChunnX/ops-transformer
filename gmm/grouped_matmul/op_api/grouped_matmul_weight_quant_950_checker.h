@@ -43,11 +43,16 @@ private:
     aclnnStatus CheckDimNumAndFormat(size_t idx) const;
     aclnnStatus CheckTransposeStatus() const;
     aclnnStatus CheckDimValue(size_t idx) const;
+    aclnnStatus CheckDimMatching(size_t idx) const;
     aclnnStatus CheckV1GroupList(size_t idx) const;
 
     aclnnStatus CheckAntiQuantDtype(size_t idx) const;
     aclnnStatus CheckAntiQuantShape(size_t idx) const;
     aclnnStatus CheckScaleAndPerTokenScaleShape() const;
+    aclnnStatus CheckS8S4NZScaleShape() const;
+    static aclnnStatus CheckOptionalListSize(const aclTensorList *optional, const aclTensorList *reference,
+                                             const char *optionalName, const char *referenceName,
+                                             const char *opName);
     aclnnStatus CheckGroupSize(size_t idx) const;
 
     bool IsA16MxFp4NZ() const;
