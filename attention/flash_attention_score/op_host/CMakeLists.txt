@@ -18,6 +18,9 @@ endif()
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     set(flash_attention_score_apt_depends attention/common CACHE INTERNAL "Dependencies for flash_attention_score")
+    # PyPTO kernel: runs codegen at configure time and exposes PYPTO_GEN_DIR for the host tiling -I below.
+    # Must be called BEFORE add_modules_sources_with_soc(...) (which reads PYPTO_GEN_DIR).
+    enable_pypto_kernel(flash_attention_score_apt)
     add_ops_compile_options(
         OP_NAME FlashAttentionScore
         COMPUTE_UNIT Ascend950PR_9599

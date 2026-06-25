@@ -16,7 +16,8 @@
 #ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_REGBASE_H_
 
-#include "../../../flash_attention_score/op_kernel/OpTiling_tiling.h"
+// PyPTO-generated; found via the pypto gen dir on the include path.
+#include "OpTiling_tiling.h"
 
 namespace optiling {
 class FlashAttentionScoreEmptyInputTilingDataRegbase {
