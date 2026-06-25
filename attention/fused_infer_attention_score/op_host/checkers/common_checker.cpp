@@ -254,7 +254,7 @@ bool CommonChecker::CheckEmptyTensorList(const FiaTilingInfo &fiaInfo)
 }
 
 bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
-{ // check all H across batches and KVs are the same under BSH layout // check all H across batches and KVs are the same under BSH layout
+{ // check all H across batches and KVs are the same under BSH layout
     auto standardKH = fiaInfo.kCache[0]->GetStorageShape().GetDim(2);
     auto standardVH = fiaInfo.vCache[0]->GetStorageShape().GetDim(2);
     int64_t tmpNKv = (fiaInfo.n2Size != 0) ? fiaInfo.n2Size : fiaInfo.n1Size;
