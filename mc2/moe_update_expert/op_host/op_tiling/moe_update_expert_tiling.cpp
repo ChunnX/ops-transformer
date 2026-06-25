@@ -243,18 +243,22 @@ ge::graphStatus MoeUpdateExpertTiling::CheckFormat(const gert::TilingContext* co
 {
     auto expertIdsDesc = context->GetInputDesc(EXPERT_IDS_INDEX);
     OP_TILING_CHECK(expertIdsDesc == nullptr,
-        OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "expertIdsDesc is null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "expertIds"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat())) ==
                     ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "expertIds format is invalid."),
+        OP_LOGE_FOR_INVALID_FORMAT(MOE_UPDATE_EXPERT_DEBUG, "expertIds",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat()))).c_str(),
+            "FRACTAL_NZ"),
         return ge::GRAPH_FAILED);
 
     auto eplbTableDesc = context->GetInputDesc(EPLB_TABLE_INDEX);
     OP_TILING_CHECK(eplbTableDesc == nullptr,
-        OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "eplbTableDesc is null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "eplbTable"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(eplbTableDesc->GetStorageFormat())) ==
                     ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "eplbTable format is invalid."),
+        OP_LOGE_FOR_INVALID_FORMAT(MOE_UPDATE_EXPERT_DEBUG, "eplbTable",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(eplbTableDesc->GetStorageFormat()))).c_str(),
+            "FRACTAL_NZ"),
         return ge::GRAPH_FAILED);
 
     auto expertScalesDesc = context->GetOptionalInputDesc(EXPERT_SCALES_INDEX);
@@ -262,7 +266,9 @@ ge::graphStatus MoeUpdateExpertTiling::CheckFormat(const gert::TilingContext* co
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat()))
             == ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "expertScales format is invalid."),
+            OP_LOGE_FOR_INVALID_FORMAT(MOE_UPDATE_EXPERT_DEBUG, "expertScales",
+                Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat()))).c_str(),
+                "FRACTAL_NZ"),
             return ge::GRAPH_FAILED);
     }
 
@@ -271,7 +277,9 @@ ge::graphStatus MoeUpdateExpertTiling::CheckFormat(const gert::TilingContext* co
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(pruningThresholdDesc->GetStorageFormat())) ==
                 ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "pruningThreshold format is invalid."),
+            OP_LOGE_FOR_INVALID_FORMAT(MOE_UPDATE_EXPERT_DEBUG, "pruningThreshold",
+                Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(pruningThresholdDesc->GetStorageFormat()))).c_str(),
+                "FRACTAL_NZ"),
             return ge::GRAPH_FAILED);
     }
 
@@ -279,7 +287,9 @@ ge::graphStatus MoeUpdateExpertTiling::CheckFormat(const gert::TilingContext* co
     if (activeMaskDesc != nullptr) {
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(activeMaskDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE(MOE_UPDATE_EXPERT_DEBUG, "activeMask format is invalid."),
+            OP_LOGE_FOR_INVALID_FORMAT(MOE_UPDATE_EXPERT_DEBUG, "activeMask",
+                Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(activeMaskDesc->GetStorageFormat()))).c_str(),
+                "FRACTAL_NZ"),
             return ge::GRAPH_FAILED);
     }
 

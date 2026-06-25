@@ -162,9 +162,11 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+        OP_LOGE_FOR_INVALID_DTYPE(opName_, "y",
+            Ops::Base::ToString(args_.geCType).c_str(),
+            "FLOAT16, BF16, FLOAT or INT8"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return ge::GRAPH_FAILED);
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     if (isUseA2APath && !MutableRCSTilingData().isInputCommQuantScale) {
