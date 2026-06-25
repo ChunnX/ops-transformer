@@ -43,11 +43,18 @@ static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext *context)
     if (context->GetAttrs() != nullptr && context->GetAttrs()->GetInt(ATTR_MAX_QUERY_LEN_INDEX) != nullptr) {
         maxQueryLen = *(context->GetAttrs()->GetInt(ATTR_MAX_QUERY_LEN_INDEX));
     }
+    int64_t runMode = 0;
+    if (context->GetAttrs() != nullptr && context->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX) != nullptr) {
+        runMode = *(context->GetAttrs()->GetInt(ATTR_RUN_MODE_INDEX));
+    }
 
     bool useBH = (xDimNum == 3) || (xDimNum == 2 && maxQueryLen <= MAX_BH_SEQ_LEN);
 
     OP_LOGD(context->GetNodeName(), "FusedCausalConv1d xDimNum=%ld maxQueryLen=%ld useBH=%d", xDimNum, maxQueryLen,
             static_cast<int>(useBH));
+    if (xDimNum == 2 && runMode == 1 && maxQueryLen >= 1 && maxQueryLen <= MAX_BH_SEQ_LEN && useBH) {
+        OP_LOGI(context->GetNodeName(), "HIT_FUSED_CAUSAL_CONV1D_BH_2D_DECODE_VARLEN");
+    }
 
     ge::graphStatus status = ge::GRAPH_FAILED;
     if (useBH) {
