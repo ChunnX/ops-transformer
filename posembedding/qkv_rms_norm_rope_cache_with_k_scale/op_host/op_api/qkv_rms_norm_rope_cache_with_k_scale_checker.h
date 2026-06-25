@@ -153,7 +153,7 @@ private:
         const std::vector<op::DataType> *supportList;
     };
 
-    struct TensorFormatRule {
+    struct TensorRule {
         const char *paramName;
         const aclTensor *tensor;
     };
@@ -213,11 +213,21 @@ private:
         return ACLNN_SUCCESS;
     }
 
-    static aclnnStatus CheckFormatValid(const TensorFormatRule &rule)
+    static aclnnStatus CheckFormatValid(const TensorRule &rule)
     {
         if (unlikely(op::IsPrivateFormat(rule.tensor->GetStorageFormat()))) {
             const std::string incorrectFormat = op::ToString(rule.tensor->GetStorageFormat()).GetString();
             OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, rule.paramName, incorrectFormat.c_str(), "ND");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        return ACLNN_SUCCESS;
+    }
+
+    static aclnnStatus CheckTensorNotEmpty(const TensorRule &rule)
+    {
+        if (rule.tensor->GetViewShape().GetShapeSize() == 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, rule.paramName, "empty tensor",
+                                                  "tensor can not be empty");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -528,7 +538,7 @@ private:
     // 4. Format check
     aclnnStatus CheckFormat()
     {
-        const TensorFormatRule rules[] = {
+        const TensorRule rules[] = {
             {"qkv", params_.qkv},
             {"qGamma", params_.qGamma},
             {"kGamma", params_.kGamma},
@@ -557,14 +567,28 @@ private:
     // 5. Empty tensor check
     aclnnStatus CheckEmptyTensor()
     {
-        int64_t qkvShapeSize = params_.qkv->GetViewShape().GetShapeSize();
-        int64_t kCacheShapeSize = params_.kCache->GetViewShape().GetShapeSize();
-        int64_t vCacheShapeSize = params_.vCache->GetViewShape().GetShapeSize();
-        int64_t actualSeqLensShapeSize = params_.actualSeqLens->GetViewShape().GetShapeSize();
-        if (qkvShapeSize == 0 || kCacheShapeSize == 0 || vCacheShapeSize == 0 || actualSeqLensShapeSize == 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qkv/kCache/vCache/actualSeqLens", "empty tensor",
-                                                  "input tensors can not be empty");
-            return ACLNN_ERR_PARAM_INVALID;
+        const TensorRule rules[] = {
+            {"qkv", params_.qkv},
+            {"qGamma", params_.qGamma},
+            {"kGamma", params_.kGamma},
+            {"cosSin", params_.cosSin},
+            {"slotMapping", params_.slotMapping},
+            {"kCache", params_.kCache},
+            {"vCache", params_.vCache},
+            {"kScaleCache", params_.kScaleCache},
+            {"cuSeqLen", params_.cuSeqLen},
+            {"actualSeqLens", params_.actualSeqLens},
+            {"optionalQRotation", params_.optionalQRotation},
+            {"optionalKRotation", params_.optionalKRotation},
+            {"optionalVScale", params_.optionalVScale},
+            {"qOut", params_.qOut},
+            {"qScale", params_.qScale},
+        };
+        for (const auto &rule : rules) {
+            aclnnStatus ret = CheckTensorNotEmpty(rule);
+            if (ret != ACLNN_SUCCESS) {
+                return ret;
+            }
         }
         return ACLNN_SUCCESS;
     }
