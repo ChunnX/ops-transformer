@@ -98,12 +98,15 @@ bool FiaTilingNonQuantMlaArch35::IsCapableBasicCheckMla()
     if (fiaInfo_ == nullptr) {
         return false;
     }
+    // 不支持空Tensor
     if (fiaInfo_->emptyTensorFlag) {
         return false;
     }
+    // 仅支持非量化
     if (fiaInfo_->quantMode != FiaQuantMode::NO_QUANT) {
         return false;
     }
+    // 仅支持GQA模板
     if (fiaInfo_->mlaMode != MlaMode::ROPE_SPLIT_D512) {
         return false;
     }
@@ -111,15 +114,15 @@ bool FiaTilingNonQuantMlaArch35::IsCapableBasicCheckMla()
 }
 
 bool FiaTilingNonQuantMlaArch35::IsCapableFeatureCheckMla()
-{
-    if (fiaInfo_->sysPrefixFlag ||
-        fiaInfo_->pseShiftFlag ||
-        fiaInfo_->enableAlibiPse ||
-        fiaInfo_->qPaddingSizeFlag ||
-        fiaInfo_->kvPaddingSizeFlag ||
-        fiaInfo_->isOutQuantEnable ||
-        fiaInfo_->learnableSinkFlag ||
-        fiaInfo_->isQKVDDifferent) {
+{ // 路由至重构前模板
+    if (fiaInfo_->sysPrefixFlag ||     // 使能公共前缀
+        fiaInfo_->pseShiftFlag ||      // 使能PSE
+        fiaInfo_->enableAlibiPse ||    // 使能alibi
+        fiaInfo_->qPaddingSizeFlag ||  // 使能Q 左padding
+        fiaInfo_->kvPaddingSizeFlag || // 使能KV 左padding
+        fiaInfo_->isOutQuantEnable ||  // 使能后量化
+        fiaInfo_->learnableSinkFlag || // 使能sink
+        fiaInfo_->isQKVDDifferent) { // D<=128情况下，D不等长
         return false;
     }
     return true;
@@ -127,12 +130,12 @@ bool FiaTilingNonQuantMlaArch35::IsCapableFeatureCheckMla()
 
 bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
 {
-    if (fiaInfo_->sparseMode != 3) {
+    if (fiaInfo_->sparseMode != 3) { // 非sparse mode3
         return false;
     }
     if (fiaInfo_->qLayout == FiaLayout::BSH || fiaInfo_->qLayout == FiaLayout::BSND ||
         fiaInfo_->qLayout == FiaLayout::BNSD || fiaInfo_->qLayout == FiaLayout::TND ||
-        fiaInfo_->qLayout == FiaLayout::NTD) {
+        fiaInfo_->qLayout == FiaLayout::NTD) { // 所有layout暂时先拦截
         return false;
     }
     return true;

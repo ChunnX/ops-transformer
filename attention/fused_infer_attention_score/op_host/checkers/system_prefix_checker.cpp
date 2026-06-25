@@ -392,7 +392,7 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
 
 ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Gt1(const FiaTilingInfo &fiaInfo,
     int64_t keyAntiquantMode, int64_t valueAntiquantMode)
-{
+{ // Q_S > 1，per-channel(per-tensor)模式，key/value，仅支持INT8
     if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
         if (fiaInfo.inputKvType != ge::DT_INT8) {
             std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query > 1, "
@@ -410,7 +410,7 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Gt1(const FiaTilingI
                 ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
-    } else {
+    } else { // 其余量化模式在Q_S > 1时均为非法
         std::string valueStr = std::to_string(keyAntiquantMode) + " and " + std::to_string(valueAntiquantMode);
         std::string reason = "key_antiquant_mode(" + std::to_string(keyAntiquantMode) +
             ") and value_antiquant_mode(" + std::to_string(valueAntiquantMode) + ") is "
@@ -424,10 +424,11 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Gt1(const FiaTilingI
 
 ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingInfo &fiaInfo,
     int64_t keyAntiquantMode, int64_t valueAntiquantMode)
-{
+{ // Q_S = 1
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
     if (keyAntiquantScaleTensor == nullptr || valueAntiquantScaleTensor == nullptr) {
+        // 若不存在keyAntiquantScaleTensor和valueAntiquantScaleTensor，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
@@ -451,7 +452,7 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingI
                 return ge::GRAPH_FAILED;
             }
         }
-    } else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
+    } else if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) { // per-token模式，支持INT8或INT4(INT32)
         if (fiaInfo.inputKvType != ge::DT_INT8 && fiaInfo.inputKvType != ge::DT_INT4) {
             std::string reason = "The dtype of key/value must be INT8 or INT4(INT32) when prefix is enabled"
                 ", S of query is 1, keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode";
@@ -459,7 +460,7 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingI
                 ToString(fiaInfo.inputKvType).c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
-    } else if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
+    } else if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) { // per-tensor-head模式，仅支持INT8
         if (fiaInfo.inputKvType != ge::DT_INT8) {
             std::string reason = "The dtype of key/value must be INT8 when prefix is enabled, S of query is 1, "
                 "keyAntiquantMode is per-tensor-head mode and valueAntiquantMode is per-tensor-head mode";
@@ -513,8 +514,9 @@ ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquantS1Eq1(const FiaTilingI
 }
 
 ge::graphStatus SystemPrefixChecker::CheckFeatureAntiquant(const FiaTilingInfo &fiaInfo)
-{
+{ // 校验prefix叠加伪量化的支持场景
     if (!fiaInfo.sysPrefixFlag) {
+        // 若不使能systemPrefix，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
     int64_t keyAntiquantMode = 0;

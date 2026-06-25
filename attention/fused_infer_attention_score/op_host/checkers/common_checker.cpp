@@ -254,7 +254,7 @@ bool CommonChecker::CheckEmptyTensorList(const FiaTilingInfo &fiaInfo)
 }
 
 bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
-{
+{ // check all H across batches and KVs are the same under BSH layout // check all H across batches and KVs are the same under BSH layout
     auto standardKH = fiaInfo.kCache[0]->GetStorageShape().GetDim(2);
     auto standardVH = fiaInfo.vCache[0]->GetStorageShape().GetDim(2);
     int64_t tmpNKv = (fiaInfo.n2Size != 0) ? fiaInfo.n2Size : fiaInfo.n1Size;
@@ -273,6 +273,7 @@ bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
     }
 
     for (int64_t tmpIdx = 0; tmpIdx < fiaInfo.kCache.size(); ++tmpIdx) {
+        // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
         if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != standardKH) {
             std::string paramName = "key in the " + std::to_string(tmpIdx + 1) + "th tensor";
             std::string shapeStr = ToStringRaw(fiaInfo.kCache[tmpIdx]->GetStorageShape());
@@ -291,7 +292,7 @@ bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
                 shapeStr.c_str(), reason.c_str());
             return false;
         }
-        if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1)) {
+        if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(1)) { // k_s != v_s
             std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                 ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
             std::string reason = "S of key must be equal to S of value";
@@ -300,7 +301,7 @@ bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
             return false;
         }
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) {
+            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) { // k_s != krope_s
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                 std::string reason = "S of key must be equal to S of key_rope";
@@ -314,7 +315,8 @@ bool CommonChecker::CheckNormalTensorListBSH(const FiaTilingInfo &fiaInfo)
 }
 
 bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
-{
+{ // check N and D, respectively, are the same
+    // across batches and KVs under BNSD/BNSD_BSND/BNSD_NBSD
     auto standardN = fiaInfo.kCache[0]->GetStorageShape().GetDim(1);
     auto standardKD = fiaInfo.kCache[0]->GetStorageShape().GetDim(3);
     auto standardVD = fiaInfo.vCache[0]->GetStorageShape().GetDim(3);
@@ -374,8 +376,8 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
                 shapeStr.c_str(), reason.c_str());
             return false;
         }
-        if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) !=
-            fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2)) {
+        if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != // 2: Obtain the second dimension
+            fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2)) { // 2: Obtain the second dimension
             std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                 ToString(fiaInfo.vCache[tmpIdx]->GetStorageShape());
             std::string reason = "S of key must be equal to S of value";
@@ -384,7 +386,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
             return false;
         }
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != keyRopeS) {
+            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != keyRopeS) { // k_s != krope_s
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                 std::string reason = "S of key must be equal to S of key_rope";
@@ -398,7 +400,7 @@ bool CommonChecker::CheckNormalTensorListBNSD(const FiaTilingInfo &fiaInfo)
 }
 
 bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
-{
+{ // check N and D, respectively, are the same across batches and KVs under BSND
     auto standardN = fiaInfo.kCache[0]->GetStorageShape().GetDim(2);
     auto standardKD = fiaInfo.kCache[0]->GetStorageShape().GetDim(3);
     auto standardVD = fiaInfo.vCache[0]->GetStorageShape().GetDim(3);
@@ -427,8 +429,8 @@ bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
     }
 
     for (int64_t tmpIdx = 0; tmpIdx < fiaInfo.kCache.size(); ++tmpIdx) {
-        if ((fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != standardN) ||
-            (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2) != standardN)) {
+        if ((fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(2) != standardN) || // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
+            (fiaInfo.vCache[tmpIdx]->GetStorageShape().GetDim(2) != standardN)) { // 2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
             std::string paramName = "key in the " + std::to_string(tmpIdx + 1) + "th tensor and value in the " +
                 std::to_string(tmpIdx + 1) + "th tensor";
             std::string shapeStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
@@ -467,7 +469,7 @@ bool CommonChecker::CheckNormalTensorListBSND(const FiaTilingInfo &fiaInfo)
             return false;
         }
         if (fiaInfo.opParamInfo.keyRope.tensor != nullptr) {
-            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) {
+            if (fiaInfo.kCache[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) { // k_s != krope_s
                 std::string shapesStr = ToString(fiaInfo.kCache[tmpIdx]->GetStorageShape()) + " and " +
                     ToString(fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape());
                 std::string reason = "S of key must be equal to S of key_rope";

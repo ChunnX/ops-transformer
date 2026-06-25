@@ -98,12 +98,15 @@ bool FiaTilingNonQuantArch35::IsCapableBasicCheckGqa()
     if (fiaInfo_ == nullptr) {
         return false;
     }
+    // 不支持空Tensor
     if (fiaInfo_->emptyTensorFlag) {
         return false;
     }
+    // 仅支持非量化
     if (fiaInfo_->quantMode != FiaQuantMode::NO_QUANT) {
         return false;
     }
+    // 支持GQA（NO_MLA） 和 ROPE_COMBINE_D128
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512 || fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D128) {
         return false;
     }
@@ -111,16 +114,16 @@ bool FiaTilingNonQuantArch35::IsCapableBasicCheckGqa()
 }
 
 bool FiaTilingNonQuantArch35::IsCapableFeatureCheckGqa()
-{
-    if (fiaInfo_->sysPrefixFlag ||
-        fiaInfo_->pseShiftFlag ||
-        fiaInfo_->enableAlibiPse ||
-        fiaInfo_->qPaddingSizeFlag ||
-        fiaInfo_->kvPaddingSizeFlag ||
-        fiaInfo_->isOutQuantEnable ||
-        fiaInfo_->learnableSinkFlag ||
-        fiaInfo_->isQKVDDifferent ||
-        fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
+{ // 以下场景路由至重构前模板
+    if (fiaInfo_->sysPrefixFlag ||     // 使能公共前缀
+        fiaInfo_->pseShiftFlag ||      // 使能PSE
+        fiaInfo_->enableAlibiPse ||    // 使能alibi
+        fiaInfo_->qPaddingSizeFlag ||  // 使能Q 左padding
+        fiaInfo_->kvPaddingSizeFlag || // 使能KV 左padding
+        fiaInfo_->isOutQuantEnable ||  // 使能后量化
+        fiaInfo_->learnableSinkFlag || // 使能sink
+        fiaInfo_->isQKVDDifferent ||   // D<=128情况下，D不等长
+        fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) { // 使能tensorlist
         return false;
     }
     return true;
@@ -129,20 +132,21 @@ bool FiaTilingNonQuantArch35::IsCapableFeatureCheckGqa()
 bool FiaTilingNonQuantArch35::IsCapableSparseLayoutCheckGqa()
 {
     if (fiaInfo_->sparseMode == SPARSE_MODE_ALL_MASK || fiaInfo_->sparseMode == SPARSE_MODE_LEFT_UP ||
-        fiaInfo_->sparseMode == SPARSE_MODE_BAND) {
+        fiaInfo_->sparseMode == SPARSE_MODE_BAND) { // sparse mode=1/2/4
         return false;
     }
-    if (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) {
+    if (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) { // sparse mode=0且传入mask
         return false;
     }
     if (fiaInfo_->qLayout != FiaLayout::BSH && fiaInfo_->qLayout != FiaLayout::BSND &&
-        fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) {
+        fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) { // layout非 BSH/BSND/BNSD/TND
         return false;
     }
-    if (fiaInfo_->qkHeadDim != 128 && fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) {
+    if (fiaInfo_->qkHeadDim != 128 &&
+        fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) { // 非D=128 GQA，且非Prefill MLA
         return false;
     }
-    if (CheckS1OutSplit()) {
+    if (CheckS1OutSplit()) { // 使能S1外切场景
         return false;
     }
     return true;
