@@ -127,8 +127,6 @@ protected:
     GlobalTensor<bfloat16_t> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> outputIdxOffsetGm;
-    GlobalTensor<uint32_t> actualSeqLengthsGmQ;
-    GlobalTensor<uint32_t> actualSeqLengthsGm;
     GlobalTensor<uint32_t> cuSeqlensQGm;
     GlobalTensor<uint32_t> cuSeqlensKGm;
     GlobalTensor<uint32_t> sequsedQGm;

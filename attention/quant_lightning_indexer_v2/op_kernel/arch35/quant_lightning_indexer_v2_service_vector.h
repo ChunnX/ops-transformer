@@ -791,7 +791,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 
                 AscendC::DataCopyParams copyOutValueParams;
                 copyOutValueParams.blockCount = 1;
-                copyOutValueParams.blockLen = topkCount_ * sizeof(float); // bytes
+                copyOutValueParams.blockLen = topkCount_ * sizeof(bfloat16_t); // bytes
                 copyOutValueParams.srcStride = 0;
                 copyOutValueParams.dstStride = 0;
                 // 搬运到GM
