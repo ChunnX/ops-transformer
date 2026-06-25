@@ -116,6 +116,8 @@ const static int64_t SORT_CORE_TILINGKEY_BASE = 1000000LL;
 const static int64_t QUANT_MODE_TILINGKEY_BASE = 10000LL;
 const static int64_t ROWIDX_TYPE_TILINGKEY_BASE = 1000LL;
 const static int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
+const static uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
+const static int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
 
 inline static int64_t CeilLog4(int64_t x)
 {
@@ -211,8 +213,12 @@ private:
     ge::graphStatus ValidateRowIdxType();
     // 校验输入Tensor的Shape、Dtype
     ge::graphStatus CheckSetInputs();
+    // 空tensor场景判定与相关tiling字段设置（含activeNum校验）
+    ge::graphStatus CheckSetEmptyTensor();
     // 校验输出Tensor的Shape、Dtype
     ge::graphStatus CheckOutputs();
+    // 空tensor场景的workspace大小计算
+    ge::graphStatus GetEmptyTensorWorkspaceSize();
 
     // DoGetShapeAttrsInfo使用的子函数
     ge::graphStatus GetInputTensorsInfo();
@@ -387,6 +393,7 @@ private:
 
     // full load flag
     bool isFullload_ = false;
+    bool isEmptyTensor_ = false;
     int64_t ep_ = 0LL;
 
     // input attrs
@@ -489,7 +496,13 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     MIRV3_CHECK_GE_RET(CheckSetAttrs());
     MIRV3_CHECK_GE_RET(CheckSetListAttrs());
     MIRV3_CHECK_GE_RET(CheckSetInputs());
+    MIRV3_CHECK_GE_RET(CheckSetEmptyTensor());
     MIRV3_CHECK_GE_RET(CheckOutputs());
+
+    // 空tensor快速返回，跳过后续tiling计算
+    if (isEmptyTensor_) {
+        return ge::GRAPH_SUCCESS;
+    }
 
     sortLoopMaxElement_ = availUbSize_ / (NUM_FOUR * NUM_TWO * NUM_FOUR) / SORT32_ALIGN_ELEMENT * SORT32_ALIGN_ELEMENT;
     sortLoopMaxElement_ =
@@ -518,6 +531,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
 uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTilingKey()");
+
+    if (isEmptyTensor_) {
+        return EMPTY_TENSOR_TILINGKEY;
+    }
+
     int64_t quantModeFactor = quantMode_ + 1;
 
     if (isFullload_ && IsSupportFullloadQuantMode()) {
@@ -542,6 +560,10 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()");
+    // 空tensor场景：分配少量workspace即可
+    if (isEmptyTensor_) {
+        return GetEmptyTensorWorkspaceSize();
+    }
     // 计算workspace大小
     workspaceSize_ = 0;
     int64_t sortWorkspaceSize =
@@ -584,6 +606,16 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetEmptyTensorWorkspaceSize()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetEmptyTensorWorkspaceSize()");
+    workspaceSize_ = SIZE_16 * LENGTH_1024 * LENGTH_1024;
+    auto *workspacePtr = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workspacePtr);
+    workspacePtr[0] = workspaceSize_;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::PostTiling()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::PostTiling()");
@@ -592,8 +624,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::PostTiling()
     tilingKey_ = GetTilingKey();
     LogBaseTilingData();
 
-    // 设置启动核数（全核启动）
-    context_->SetBlockDim(aivCoreNum_);
+    // 设置启动核数：空tensor场景只用到1个核，否则全核启动
+    if (isEmptyTensor_) {
+        context_->SetBlockDim(1);
+    } else {
+        context_->SetBlockDim(aivCoreNum_);
+    }
     // 设置UB可用大小（必须是减除SIMT用的DCACHE大小后的）
     auto ret = context_->SetLocalMemorySize(availUbSize_);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
@@ -1091,17 +1127,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
         return ge::GRAPH_FAILED;
     }
 
-    if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
-        //! 出于历史调用的兼容性，保留校验activeNum=n*k，但实际上不使用该属性
-        OP_CHECK_IF(
-            activeNum_ != totalLength_,
-            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "active_num", std::to_string(activeNum_),
-                                      ("bs*k(" + std::to_string(totalLength_) + ")")),
-            return ge::GRAPH_FAILED);
-    }
-
-    tilingDataPtr_->activeNum = totalLength_;
-
     // DropPad模式下expertCapacity必须满足 ≤ numRows
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         OP_CHECK_IF(expertCapacity_ > n_,
@@ -1109,6 +1134,34 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
                         std::to_string(expertCapacity_),
                         "less than or equal to " + std::to_string(n_)),
                     return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
+
+    // 空tensor场景：n_==0、k_==0、cols_==0
+    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+        isEmptyTensor_ = true;
+    }
+
+    // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
+    // 归一化为totalLength_，与非arch35版本保持一致，避免语义上合法的空输入误失败。
+    if (isEmptyTensor_) {
+        tilingDataPtr_->activeNum = totalLength_;
+    } else if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
+        //! 出于历史调用的兼容性，保留校验activeNum=n*k，但实际上不使用该属性
+        OP_CHECK_IF(
+            activeNum_ != totalLength_,
+            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "active_num", std::to_string(activeNum_),
+                                      ("bs*k(" + std::to_string(totalLength_) + ")")),
+            return ge::GRAPH_FAILED);
+        tilingDataPtr_->activeNum = totalLength_;
+    } else {
+        tilingDataPtr_->activeNum = totalLength_;
     }
 
     return ge::GRAPH_SUCCESS;
