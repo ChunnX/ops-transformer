@@ -365,9 +365,6 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
 
     uint64_t sLen = (sIdx + sClcSize) > curS ? (curS - sIdx) : sClcSize;
     sLen = sLen > 255 ? 255 : sLen;
-    if (sLen == 0) {
-        return;
-    }
     uint64_t dataLen = sLen * dAlign;
 
     uint64_t ubOffset = 0;
@@ -460,9 +457,6 @@ __aicore__ inline void FlashAttentionScoreGradPost<OUT_TYPE, TILING_TYPE, CAST_D
         sLen = sClcSize > curS ? curS : sClcSize;
         sLen = sLen > (curS - sIdx) ? (curS - sIdx) : sLen;
         sLen = sLen > 255 ? 255 : sLen;
-        if (sLen == 0) {
-            break;
-        }
         dataLen = sLen * dAlign;
         if ((sLen > 0) && (inUbOffset + dataLen + dAlign / C0_SIZE * cal_block_num) * sizeof(float) >
                               ubBaseSize * 2 + nzReservedSize) {
