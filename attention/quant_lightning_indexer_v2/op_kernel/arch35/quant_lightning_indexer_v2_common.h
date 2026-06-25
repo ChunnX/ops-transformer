@@ -108,7 +108,7 @@ struct ConstInfo {
     static constexpr int INVALID_IDX = -1;
     static constexpr uint16_t NEG_INF_BFLOAT = 0xFF80;
 
-    // CUBE和VEC的核间同步EventIDR
+    // CUBE和VEC的核间同步EventID
     uint32_t syncC1V1 = 0U;
     uint32_t syncC1V0 = 2U;
     uint32_t syncV1C1 = 0U;

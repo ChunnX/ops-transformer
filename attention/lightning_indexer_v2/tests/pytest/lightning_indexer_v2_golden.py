@@ -436,7 +436,8 @@ class GeneralizedLIV2:
             next_tokens = S2 - S1
             next_tokens_list.append(next_tokens)
             act_k = actualSeqLengthsK[i]
-            atten_masks = self.create_mask(m_shape, act_k, S1, cmpResidualK[i])
+            residual = cmpResidualK[i] if cmpResidualK is not None else 0
+            atten_masks = self.create_mask(m_shape, act_k, S1, residual)
             re_mask_batch.append(np.array(atten_masks, dtype=np.bool_))
         re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
         cpu_mask = torch.from_numpy(re_mask_np)
