@@ -128,7 +128,7 @@ constexpr int64_t INT64_NUM = 32;
 constexpr uint32_t DKDV_OUT = 2;
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
-constexpr uint32_t UB_RESERVE_SPACE = 8 * 1024;
+constexpr uint32_t UB_RESERVE_SPACE = 26 * 1024;
 
 constexpr int64_t LARGE_INVALID_NUM = 3072;
 
@@ -552,11 +552,8 @@ inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step)
 ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant);
 ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant);
 ge::graphStatus CheckAttentionInShape(gert::TilingContext *context);
-ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context);
-ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context);
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d);
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
-ge::graphStatus CheckDtypeValid(gert::TilingContext *context);
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams);
 bool CheckIsLargeInvalidBlk(const FuzzyBaseInfoParamsRegbase& fBaseParams);
