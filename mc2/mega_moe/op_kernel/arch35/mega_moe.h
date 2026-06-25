@@ -1181,7 +1181,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
             epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
     } else {
         if (subBlockIdx_ == 0) {
-            if (tilingData_->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
                 // A8W8_NZ: fp8 activation × fp8 weight in NZ format
                 MegaMoeImpl::GroupMatmulSwigluQuant<
                     QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>(
@@ -1216,7 +1216,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
         // A8W4 GMM2 only implements the non-quantized combine path.
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
-        if (tilingData_->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+        if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType, true>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
