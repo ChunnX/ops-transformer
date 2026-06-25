@@ -163,7 +163,7 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
     const std::string inputRopeName = inputName + "_rope";
     const uint32_t dimNum = shape.GetDimNum();
     const uint32_t ropeDimNum = ropeShape.GetDimNum();
-    if (dimNum != ropeDimNum) {
+    if (unlikely(dimNum != ropeDimNum)) {
         std::string paramMsg = inputRopeName + " and " + inputName;
         std::string dimMsg = std::to_string(ropeDimNum) + " and " + std::to_string(dimNum);
         std::string reasonMsg =
@@ -173,7 +173,7 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
     }
 
     for (uint32_t i = 0; i < dimNum - 1; i++) {
-        if (shape.GetDim(i) != ropeShape.GetDim(i)) {
+        if (unlikely(shape.GetDim(i) != ropeShape.GetDim(i))) {
             std::string paramMsg = inputRopeName + " and " + inputName;
             std::string shapeMsg = ToString(ropeShape) + " and " + ToString(shape);
             std::string reasonMsg = "The " + std::to_string(i) + "th axis of input " + inputRopeName +
@@ -277,7 +277,7 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
 
     // b = len(kCache)
     const gert::Shape keyRopeShape = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape();
-    if (fiaInfo.kCache.size() != keyRopeShape.GetDim(DIM_NUM_0)) {
+    if (unlikely(fiaInfo.kCache.size() != keyRopeShape.GetDim(DIM_NUM_0))) {
         std::string shapeMsg = ToString(keyRopeShape) + " and " + std::to_string(fiaInfo.kCache.size());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
                                                "The axis B of keyRope must be equal to the tensor number of key");
@@ -293,13 +293,13 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         keyRopeN = keyRopeShape.GetDim(DIM_NUM_1);
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
-            if (keyShape.GetDim(DIM_NUM_2) != keyRopeS) {
+            if (unlikely(keyShape.GetDim(DIM_NUM_2) != keyRopeS)) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
                                                        "The axis S of keyRope must be equal to the axis S of key");
                 return ge::GRAPH_FAILED;
             }
-            if (keyShape.GetDim(DIM_NUM_1) != keyRopeN) {
+            if (unlikely(keyShape.GetDim(DIM_NUM_1) != keyRopeN)) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
                                                        "The axis N of keyRope must be equal to the axis N of key");
@@ -311,13 +311,13 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         keyRopeN = keyRopeShape.GetDim(DIM_NUM_2) / fiaInfo.ropeHeadDim;
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
-            if (keyShape.GetDim(DIM_NUM_1) != keyRopeS) {
+            if (unlikely(keyShape.GetDim(DIM_NUM_1) != keyRopeS)) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
                                                        "The axis S of keyRope must be equal to the axis S of key");
                 return ge::GRAPH_FAILED;
             }
-            if (keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim != keyRopeN) {
+            if (unlikely(keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim != keyRopeN)) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
                                                        "The axis N of keyRope must be equal to the axis N of key");
@@ -329,13 +329,13 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
         keyRopeN = keyRopeShape.GetDim(DIM_NUM_2);
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
-            if (keyShape.GetDim(DIM_NUM_1) != keyRopeS) {
+            if (unlikely(keyShape.GetDim(DIM_NUM_1) != keyRopeS)) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
                                                        "The axis S of keyRope must be equal to the axis S of key");
                 return ge::GRAPH_FAILED;
             }
-            if (keyShape.GetDim(DIM_NUM_2) != keyRopeN) {
+            if (unlikely(keyShape.GetDim(DIM_NUM_2) != keyRopeN)) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
                                                        "The axis N of keyRope must be equal to the axis N of key");
@@ -456,7 +456,7 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo) const
     // 全量化场景下 QS仅支持1-16
     constexpr uint32_t maxQuerySeqLenForMLAFullquant = 16U;
 
-    if (fiaInfo.s1Size < NUM1) {
+    if (unlikely(fiaInfo.s1Size < NUM1)) {
         std::string shapeStr = ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query", shapeStr.c_str(),
                                               "In Decode MLA scenario, query sequence length must be positive");
