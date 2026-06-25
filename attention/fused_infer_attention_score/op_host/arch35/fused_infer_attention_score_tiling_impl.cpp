@@ -157,7 +157,9 @@ void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo
     }
 }
 
-void FusedInferAttentionScoreTilingImpl::InitImplParamPrefixFlag(const FiaTilingInfo &fiaInfo, const gert::Tensor *actSharedPrefixLen, uint32_t actSharedPrefixLenDims)
+void FusedInferAttentionScoreTilingImpl::InitImplParamPrefixFlag(const FiaTilingInfo &fiaInfo, 
+                                                                 const gert::Tensor *actSharedPrefixLen, 
+                                                                 uint32_t actSharedPrefixLenDims)
 {
     if (!fiaInfo.sysPrefixFlag) {
         actualSharedPrefixLenFlag_ = false;
@@ -177,7 +179,9 @@ void FusedInferAttentionScoreTilingImpl::InitImplParamPrefixFlag(const FiaTiling
     }
 }
 
-void FusedInferAttentionScoreTilingImpl::InitImplParamSeqLen(const FiaTilingInfo &fiaInfo, const gert::Tensor *actSeqLenQ, const gert::Tensor *actSeqLenKV, uint32_t actSeqLenQDims, uint32_t actSeqLenKVDims, uint32_t bIdx)
+void FusedInferAttentionScoreTilingImpl::InitImplParamSeqLen(const FiaTilingInfo &fiaInfo, const gert::Tensor *actSeqLenQ, 
+                                                             const gert::Tensor *actSeqLenKV, uint32_t actSeqLenQDims, 
+                                                             uint32_t actSeqLenKVDims, uint32_t bIdx)
 {
     if (actualSeqLenQFlag_) {
         int64_t actSeqLenQData = 0;
@@ -1251,7 +1255,8 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
     }
 }
 
-void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(uint32_t sInner, uint32_t sOuter, uint32_t dSize, uint32_t dVsize)
+void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(uint32_t sInner, uint32_t sOuter, 
+                                                                        uint32_t dSize, uint32_t dVsize)
 {
     sInner = sInnerFactorSize_;
     sOuter = sOuterFactor_;
@@ -1281,7 +1286,9 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(uint32_t
     }
 }
 
-void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyNonQuantConfig(const FiaTilingInfo &fiaInfo, uint32_t sOuter, uint32_t sInner, uint32_t dSize, uint32_t dVsize)
+void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyNonQuantConfig(const FiaTilingInfo &fiaInfo, 
+                                                                       uint32_t sOuter, uint32_t sInner, 
+                                                                       uint32_t dSize, uint32_t dVsize)
 {
     if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
@@ -1753,7 +1760,7 @@ void FusedInferAttentionScoreTilingImpl::SetSparseTilingData(const FiaTilingInfo
 
 void FusedInferAttentionScoreTilingImpl::SetLayoutTilingData(const FiaTilingInfo &fiaInfo)
 {
-    // layout 相关tiling data 
+    // layout 相关tiling data
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
 
