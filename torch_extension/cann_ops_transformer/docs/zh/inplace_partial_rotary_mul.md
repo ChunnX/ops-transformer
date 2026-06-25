@@ -39,80 +39,19 @@
 
 ## 函数原型
 
-```
+```python
 cann_ops_transformer.inplace_partial_rotary_mul(x, r1, r2, *, rotary_mode="interleave", partial_slice=None) -> None
 ```
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 132px">
-<col style="width: 120px">
-<col style="width: 342px">
-<col style="width: 185px">
-<col style="width: 260px">
-<col style="width: 140px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>参数类型</th>
-    <th>可选/必选</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>x</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>待执行旋转位置编码的张量，对应公式中的x。Inplace模式下，计算结果直接写回该Tensor。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>(B, S, N, D)</td>
-        <td>×</td>
-    </tr>
-    <tr>
-        <td>r1</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>位置编码张量，对应公式中的cos分量。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>4维，需与x满足广播关系</td>
-        <td>×</td>
-    </tr>
-    <tr>
-        <td>r2</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>位置编码张量，对应公式中的sin分量，`r2`和`r1`的数据类型必须一致。</td>
-        <td>BFLOAT16、FLOAT16、FLOAT32</td>
-        <td>4维，需与x满足广播关系</td>
-        <td>×</td>
-    </tr>
-    <tr>
-        <td>rotary_mode</td>
-        <td>str</td>
-        <td>可选</td>
-        <td>旋转模式。当前仅支持"interleave"，默认值为"interleave"。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>partial_slice</td>
-        <td>List[int]</td>
-        <td>可选</td>
-        <td>部分旋转的切片范围[start, end)，作用于x的最后一维D维。默认值为None，接口内部按[0, 0]处理。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-</tbody>
-</table>
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| x | Tensor | 必选 | 待执行旋转位置编码的张量，对应公式中的x。Inplace模式下，计算结果直接写回该Tensor。 | bfloat16、float16、float32 | (B, S, N, D) |
+| r1 | Tensor | 必选 | 位置编码张量，对应公式中的cos分量。 | bfloat16、float16、float32 | 4维，需与x满足广播关系 |
+| r2 | Tensor | 必选 | 位置编码张量，对应公式中的sin分量，`r2`和`r1`的数据类型必须一致。 | bfloat16、float16、float32 | 4维，需与x满足广播关系 |
+| rotary_mode | str | 可选 | 旋转模式。当前仅支持"interleave"，默认值为"interleave"。 | - | - |
+| partial_slice | List[int] | 可选 | 部分旋转的切片范围[start, end)，作用于x的最后一维D维。默认值为None，接口内部按[0, 0]处理。 | - | - |
 
 ## 返回值说明
 
