@@ -105,7 +105,7 @@ static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
         attentionOutLayout = it->second.outLayout;
         queryDim = it->second.qDim;
 
-        if (queryShape->GetDimNum() != queryDim) {
+        if (unlikely(queryShape->GetDimNum() != queryDim)) {
             std::string dimStr = std::to_string(queryShape->GetDimNum());
             std::string reason = "The shape dim of query must be " + std::to_string(queryDim) +
                 " when layout is " + queryLayout + ".";
@@ -198,7 +198,7 @@ static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
             return ge::GRAPH_FAILED;
         }
     } else { // 非PA场景
-        if (valueShape->GetDimNum() != queryShape->GetDimNum()) {
+        if (unlikely(valueShape->GetDimNum() != queryShape->GetDimNum())) {
             std::string dimMsg = std::to_string(valueShape->GetDimNum()) + " and " +
                 std::to_string(queryShape->GetDimNum());
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("FusedInferAttentionScore", "value and query", dimMsg.c_str(),
@@ -337,7 +337,7 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
     OP_CHECK_NULL_WITH_CONTEXT(context, numKeyValueHeadsPtr);
 
     // KV_N除零保护, 当KV_N为零时KV_N = Q_N
-    if (*numHeadsPtr == 0) {
+    if (unlikely(*numHeadsPtr == 0)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "num_heads",
             std::to_string(*numHeadsPtr).c_str(), "The value of num_heads cannot be 0");
         return ge::GRAPH_FAILED;
@@ -397,7 +397,7 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
         const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
         if (outTypePtr != nullptr) {
             auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
-            if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
+            if (unlikely(it != TORCH_DTYOE_NOT_SUPPORT_MAP.end())){
                 std::string reason = "The dtype of output cannot be " + it->second + " when Fia graph mode is enabled.";
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FusedInferAttentionScore", "output",
                     it->second.c_str(), reason.c_str());
