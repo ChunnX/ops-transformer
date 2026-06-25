@@ -84,7 +84,7 @@ class MoEElasticBuffer:
         x, scales = x if isinstance(x, tuple) else (x, None)
         cached = handle is not None
         if cached:
-            assert topk_idx is None and topk_weights is None
+            assert topk_idx is None
             assert do_cpu_sync is None or do_cpu_sync is False
             topk_idx = handle.topk_idx
             do_cpu_sync = False
