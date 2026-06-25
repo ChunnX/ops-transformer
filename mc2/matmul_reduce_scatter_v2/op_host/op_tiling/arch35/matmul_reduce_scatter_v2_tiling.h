@@ -21,7 +21,7 @@
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_tiling_registry.h"
 #include "mc2_matmul_tiling_cfg.h"
-#include "../../../op_kernel/arch35/matmul_reduce_scatter_v2_c_tiling.h"
+#include "../../../op_kernel/matmul_reduce_scatter_v2_c_tiling.h"
 
 namespace optiling {
 using namespace mc2_matmul_v3_advanced;

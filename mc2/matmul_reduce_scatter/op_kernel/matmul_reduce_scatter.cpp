@@ -19,11 +19,11 @@
 #endif
 #include "lib/matmul_intf.h"
 
-#include "../matmul_reduce_scatter_tiling.h"
-#include "../matmul_reduce_scatter_tiling_key.h"
+#include "matmul_reduce_scatter_tiling.h"
+#include "matmul_reduce_scatter_tiling_key.h"
 #if __CCE_AICORE__ == 310
 #else
-#include "../matmul_reduce_scatter_full_mesh.h"
+#include "matmul_reduce_scatter_full_mesh.h"
 #endif
 
 #define INVOKE_MATMUL_REDUCE_SCATTER_OP_IMPL(templateClass, ...)                                                       \

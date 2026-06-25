@@ -21,8 +21,8 @@
 #include "matmul_allto_all_tiling_key.h"
 #include "matmul_allto_all_tiling.h"
 #include "matmul_allto_all.h"
-#include "../arch35/matmul_allto_all_pipeline.h" // A3调用kernel模板库
-#include "../arch35/matmul_allto_all_arch35.h"   // A3非量化与A5共用流水
+#include "../matmul_allto_all_pipeline.h" // A3调用kernel模板库
+#include "../matmul_allto_all_arch35.h"   // A3非量化与A5共用流水
 
 using namespace AscendC;
 using namespace matmul_allto_all_910b_tiling_key;
