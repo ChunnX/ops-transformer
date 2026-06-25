@@ -247,9 +247,13 @@ protected:
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
     bool SetGroupNum(uint32_t groupListIndex);
     bool SetMKN(const gert::Shape &xShape, const gert::Shape &wShape);
+    bool IsMxfp4() const;
+    bool IsWeightNzSingleMultiSingleCandidate() const;
     bool IsWeightNzSingleMultiSingleScenario() const;
     uint16_t GetTensorListSize(uint32_t index) const;
     bool CheckWeightTensorListForWeightNz() const;
+    uint64_t GetWeightLogicalNSize(const gert::Shape &wShape) const;
+    bool CheckMultiWeightNzInputs(const gert::StorageShape *xScaleStorageShape) const;
     void SetKernelType();
     virtual bool AnalyzeAttrs();
     virtual bool AnalyzeDtype();
