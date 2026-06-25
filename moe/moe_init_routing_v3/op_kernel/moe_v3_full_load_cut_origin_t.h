@@ -35,7 +35,6 @@ private:
     __aicore__ inline void LoadExpertIdxAndScale();
     __aicore__ inline void LoadXBackground();
     __aicore__ inline void FilterAndCount();
-    __aicore__ inline void FilterAndCountScalar();
     __aicore__ inline void FilterAndCountVector();
     __aicore__ inline void WriteExpertCountToWorkspace();
     __aicore__ inline void ComputeGlobalOffset();
@@ -323,27 +322,6 @@ __aicore__ inline void MoeV3FullLoadCutOriginT<T>::FilterAndCount()
 
     // Modification 3: Branch based on coreEntries_ size
     FilterAndCountVector();
-}
-
-template <typename T>
-__aicore__ inline void MoeV3FullLoadCutOriginT<T>::FilterAndCountScalar()
-{
-    LocalTensor<int32_t> expertIdxLocal = buf_.Get<int32_t>()[expertIdxLocalOffset_ / sizeof(int32_t)];
-    LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
-    LocalTensor<int32_t> filteredPairsLocal = buf_.Get<int32_t>()[filteredPairsLocalOffset_ / sizeof(int32_t)];
-
-    filteredCount_ = 0;
-    for (int64_t i = 0; i < coreEntries_; i++) {
-        int32_t expertId = expertIdxLocal.GetValue(i);
-        int32_t expertOffset = expertId - static_cast<int32_t>(expertStart_);
-        if (expertOffset >= 0 && expertOffset < static_cast<int32_t>(actualExpertNum_)) {
-            int32_t curCount = expertCountLocal.GetValue(expertOffset);
-            expertCountLocal.SetValue(expertOffset, curCount + 1);
-            filteredPairsLocal.SetValue(filteredCount_ * 2, static_cast<int32_t>(i));
-            filteredPairsLocal.SetValue(filteredCount_ * 2 + 1, expertOffset);
-            filteredCount_++;
-        }
-    }
 }
 
 template <typename T>
