@@ -292,13 +292,30 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         }
     }
 
+    bool allS1GFitsInOneBlock = true;
+    for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        if (static_cast<uint64_t>(baseInfo.GetQuerySeqSize(bIdx)) * baseInfo.GetGroupSize() > m_param.mBaseSize) {
+            allS1GFitsInOneBlock = false;
+            break;
+        }
+    }
+    if (allS1GFitsInOneBlock) {
+        gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
+        gridInfo.sectionNum = 1;
+        return;
+    }
+
     // 计算所有head的最大数据量，用于判断是否需要开启section切分
     int64_t maxHeadTokenCost = 0U;
     int64_t headDim = static_cast<int64_t>(baseInfo.GetHeadDim());
+    int64_t kvByteSize = static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType()));
+    int64_t qByteSize = static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetQueryDataType()));
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        int64_t s1Size = static_cast<int64_t>(baseInfo.GetQuerySeqSize(bIdx));
         int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
-        int64_t tokenCost = s2Size * headDim *
-            static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
+        int64_t kvCost = s2Size * headDim * kvByteSize * 2L;   // 2: K和V两份数据
+        int64_t qoCost = s1Size * headDim * qByteSize * 2L;    // 2: Q和O两份数据
+        int64_t tokenCost = kvCost + qoCost;
         if (tokenCost > maxHeadTokenCost) {
             maxHeadTokenCost = tokenCost;
         }
@@ -315,10 +332,12 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     int64_t tokenSize = 0L;
     uint32_t bn2Idx = 0U;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        int64_t s1Size = static_cast<int64_t>(baseInfo.GetQuerySeqSize(bIdx));
         int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
-            int64_t tokenCost = s2Size * headDim *
-                static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
+            int64_t kvCost = s2Size * headDim * kvByteSize * 2L;   // 2: K和V两份数据
+            int64_t qoCost = s1Size * headDim * qByteSize * 2L;    // 2: Q和O两份数据
+            int64_t tokenCost = kvCost + qoCost;
             if (!IsWithinTolerance(static_cast<int64_t>(m_param.l2Byte), 0L, tokenSize + tokenCost) && tokenSize != 0) {
                 gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
                 gridInfo.sectionNum++;
