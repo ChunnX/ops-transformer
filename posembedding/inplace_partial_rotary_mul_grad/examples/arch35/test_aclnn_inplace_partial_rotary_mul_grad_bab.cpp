@@ -10,17 +10,22 @@
 
 /*!
  * \file test_aclnn_inplace_partial_rotary_mul_grad_bab.cpp
- * \brief BAB template test for InplacePartialRotaryMulGrad (1S1D, interleave mode).
+ * \brief BAB template test for InplacePartialRotaryMulGrad (multi-B/N, partial slice, interleave mode).
  *
  * BAB template constraints:
  *   - Layout: BSND (dy shape [B, S, N, D])
- *   - B=1, N=1 (current implementation limitation)
  *   - cosb_==1 (cos/sin broadcast on B dimension)
  *   - rotary_mode=1 (interleave) only
  *
- * Interleave gradient formula:
- *   dx[2k]   = cos[2k]   * dy[2k]   + sin[2k+1] * dy[2k+1]
- *   dx[2k+1] = cos[2k+1] * dy[2k+1] - sin[2k]   * dy[2k]
+ * This test covers:
+ *   - B=2, S=2, N=2, D=8 (multi-batch, multi-head)
+ *   - cos/sin shape [1, 2, 1, 4] (broadcast on B and N)
+ *   - partialSliceData = {2, 6} (rotary applied only to D indices [2, 6))
+ *   - Elements outside the slice pass through unchanged
+ *
+ * Interleave gradient formula (within slice [start, end)):
+ *   dx[start+2k]   = cos[k*2]   * dy[start+2k]   + sin[k*2+1] * dy[start+2k+1]
+ *   dx[start+2k+1] = cos[k*2+1] * dy[start+2k+1] - sin[k*2]   * dy[start+2k]
  */
 
 #include "acl/acl.h"
@@ -83,16 +88,31 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
-// Reference: interleave gradient computation
+// Reference: interleave gradient computation with partial slice
 void InterleaveGradRef(const std::vector<float> &dy, const std::vector<float> &cos, const std::vector<float> &sin,
-                       std::vector<float> &dx, int64_t s, int64_t d)
+                       std::vector<float> &dx, int64_t b, int64_t s, int64_t n, int64_t d,
+                       int64_t sliceStart, int64_t sliceEnd)
 {
-    for (int64_t si = 0; si < s; si++) {
-        for (int64_t k = 0; k < d / 2; k++) {
-            int64_t idx0 = si * d + 2 * k;
-            int64_t idx1 = si * d + 2 * k + 1;
-            dx[idx0] = cos[idx0] * dy[idx0] + sin[idx1] * dy[idx1];
-            dx[idx1] = cos[idx1] * dy[idx1] - sin[idx0] * dy[idx0];
+    int64_t cosD = sliceEnd - sliceStart;
+    for (int64_t bi = 0; bi < b; bi++) {
+        for (int64_t si = 0; si < s; si++) {
+            for (int64_t ni = 0; ni < n; ni++) {
+                int64_t groupOffset = ((bi * s + si) * n + ni) * d;
+                // Copy dy to dx first (pass-through for elements outside the slice)
+                for (int64_t di = 0; di < d; di++) {
+                    dx[groupOffset + di] = dy[groupOffset + di];
+                }
+                // Apply interleave rotary grad on the slice
+                int64_t cosSOffset = si * cosD;
+                for (int64_t k = 0; k < cosD / 2; k++) {
+                    int64_t idx0 = groupOffset + sliceStart + 2 * k;
+                    int64_t idx1 = groupOffset + sliceStart + 2 * k + 1;
+                    int64_t cIdx0 = cosSOffset + 2 * k;
+                    int64_t cIdx1 = cosSOffset + 2 * k + 1;
+                    dx[idx0] = cos[cIdx0] * dy[idx0] + sin[cIdx1] * dy[idx1];
+                    dx[idx1] = cos[cIdx1] * dy[idx1] - sin[cIdx0] * dy[idx0];
+                }
+            }
         }
     }
 }
@@ -104,37 +124,51 @@ int main()
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // BAB 1S1D layout: dy=[1, S, 1, D], cos=[1, S, 1, D], cosb_=1
-    int64_t B = 1;
+    // BSND layout: dy=[B, S, N, D], cos=[1, S, 1, D_cos], cosb_=1
+    int64_t B = 2;
     int64_t S = 2;
-    int64_t N = 1;
-    int64_t D = 4;
+    int64_t N = 2;
+    int64_t D = 8;
 
     std::vector<int64_t> dyShape = {B, S, N, D};
-    std::vector<int64_t> cosShape = {1, S, 1, D};  // cosb_=1: B dimension broadcast
-    std::vector<int64_t> sinShape = {1, S, 1, D};
+    std::vector<int64_t> cosShape = {1, S, 1, 4};  // cosb_=1: B dimension broadcast; D_cos=4
+    std::vector<int64_t> sinShape = {1, S, 1, 4};
     int64_t rotaryMode = 1;  // interleave
-    std::vector<int64_t> partialSliceData = {0, D};
+    std::vector<int64_t> partialSliceData = {2, 6};
 
-    // Test data: 2 sequences, 4 elements each (interleave mode)
-    // S=0: dy=[1.0, 2.0, 3.0, 4.0], cos=[0.5, 0.6, 0.7, 0.8], sin=[0.1, 0.2, 0.3, 0.4]
-    // S=1: dy=[5.0, 6.0, 7.0, 8.0], cos=[0.5, 0.6, 0.7, 0.8], sin=[0.1, 0.2, 0.3, 0.4]
+    // Test data
+    // dy: 8 groups (B*S*N = 2*2*2 = 8) of 8 elements each
+    // Each group: [1, 2, 3, 4, 5, 6, 7, 8]
+    // cos: S=2 groups, each [0.5, 0.6, 0.7, 0.8]
+    // sin: S=2 groups, each [0.1, 0.2, 0.3, 0.4]
     //
-    // Expected (interleave grad):
-    //   dx[2k]   = cos[2k]*dy[2k]     + sin[2k+1]*dy[2k+1]
-    //   dx[2k+1] = cos[2k+1]*dy[2k+1] - sin[2k]*dy[2k]
+    // partialSliceData = {2, 6} => rotary applied to D indices [2, 6), i.e. positions 2,3,4,5
+    // Elements at D indices 0,1,6,7 pass through unchanged.
     //
-    // S=0: dx[0]=0.5*1.0+0.2*2.0=0.9  dx[1]=0.6*2.0-0.1*1.0=1.1
-    //      dx[2]=0.7*3.0+0.4*4.0=3.7  dx[3]=0.8*4.0-0.3*3.0=2.3
-    // S=1: dx[4]=0.5*5.0+0.2*6.0=3.7  dx[5]=0.6*6.0-0.1*5.0=3.1
-    //      dx[6]=0.7*7.0+0.4*8.0=8.1  dx[7]=0.8*8.0-0.3*7.0=4.3
-    std::vector<float> dyHostData = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+    // Interleave grad within slice [2, 6):
+    //   Pair (2,3): cos[0,1]=[0.5,0.6], sin[0,1]=[0.1,0.2]
+    //     dx[2] = 0.5*3 + 0.2*4 = 1.5 + 0.8 = 2.3
+    //     dx[3] = 0.6*4 - 0.1*3 = 2.4 - 0.3 = 2.1
+    //   Pair (4,5): cos[2,3]=[0.7,0.8], sin[2,3]=[0.3,0.4]
+    //     dx[4] = 0.7*5 + 0.4*6 = 3.5 + 2.4 = 5.9
+    //     dx[5] = 0.8*6 - 0.3*5 = 4.8 - 1.5 = 3.3
+    //
+    // Per-group expected dx: [1, 2, 2.3, 2.1, 5.9, 3.3, 7, 8]
+
+    std::vector<float> dyHostData;
+    std::vector<float> expectedDx;
+    for (int i = 0; i < B * S * N; i++) {
+        dyHostData.insert(dyHostData.end(), {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+        expectedDx.insert(expectedDx.end(), {1.0f, 2.0f, 2.3f, 2.1f, 5.9f, 3.3f, 7.0f, 8.0f});
+    }
+
+    // cos/sin: same values for both S positions (broadcast on B and N)
     std::vector<float> cosHostData = {0.5f, 0.6f, 0.7f, 0.8f, 0.5f, 0.6f, 0.7f, 0.8f};
     std::vector<float> sinHostData = {0.1f, 0.2f, 0.3f, 0.4f, 0.1f, 0.2f, 0.3f, 0.4f};
-    std::vector<float> expectedDx = {0.9f, 1.1f, 3.7f, 2.3f, 3.7f, 3.1f, 8.1f, 4.3f};
 
     std::vector<float> referenceDx(expectedDx.size(), 0.0f);
-    InterleaveGradRef(dyHostData, cosHostData, sinHostData, referenceDx, S, D);
+    InterleaveGradRef(dyHostData, cosHostData, sinHostData, referenceDx, B, S, N, D, partialSliceData[0],
+                      partialSliceData[1]);
 
     void *dyRefDeviceAddr = nullptr;
     void *cosDeviceAddr = nullptr;
