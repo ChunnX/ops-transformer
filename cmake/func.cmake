@@ -151,6 +151,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
                     List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MC2_CANNDEV_OPS_HOST_CMAKE_FILES})
                 endif()
             endif()
+
             List(APPEND OP_HOST_CMAKE_FILES ${CANNDEV_OPS_HOST_CMAKE_FILES})
         endif()
     endif()
@@ -464,49 +465,6 @@ function(add_ops_src_copy)
         endif ()
     endif ()
 
-    set(MC2_OPS_LIST "matmul_reduce_scatter;"
-        "matmul_reduce_scatter_v2;"
-        "grouped_mat_mul_allto_allv;"
-        "quant_grouped_mat_mul_allto_allv;"
-        "grouped_mat_mul_all_reduce;"
-        "batch_mat_mul_reduce_scatter_allto_all;"
-        "allto_allv_grouped_mat_mul;"
-        "allto_allv_quant_grouped_mat_mul;"
-        "allto_all_all_gather_batch_mat_mul;"
-        "distribute_barrier;"
-        "distribute_barrier_extend;"
-        "moe_distribute_combine_add_rms_norm;"
-        "moe_distribute_dispatch;"
-        "moe_distribute_combine;"
-        "moe_distribute_dispatch_v2;"
-        "moe_distribute_combine_v2;"
-        "moe_distribute_dispatch_v3;"
-        "moe_distribute_combine_v3;"
-        "moe_update_expert;"
-        "all_gather_matmul;"
-        "all_gather_matmul_v2;"
-        "matmul_all_reduce;"
-        "matmul_all_reduce_apt;"
-        "matmul_all_reduce_add_rms_norm;"
-        "inplace_matmul_all_reduce_add_rms_norm;"
-        "quant_all_reduce;"
-        "quant_reduce_scatter;"
-        "engram_fetch;"
-        "engram_fetch_wait;"
-        "allto_all_matmul;"
-        "matmul_allto_all;"
-        "attention_to_ffn;"
-        "ffn_to_attention;"
-        "bandwidth_test;"
-    ) # mc2算子列表
-
-    get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)
-    list(FIND MC2_OPS_LIST "${FOLDER_NAME}" INDEX)
-    set(BELONG_MC2_OPS FALSE)
-    if(NOT INDEX EQUAL -1)
-        set(BELONG_MC2_OPS TRUE)
-    endif()
-
     file(GLOB_RECURSE CONFIGURE_DEPENDS SRC_FILES ${SRC_COPY_SRC}/*)
     list(FILTER SRC_FILES EXCLUDE REGEX "op_host")
 
@@ -525,12 +483,6 @@ function(add_ops_src_copy)
             COMMAND ${CMAKE_COMMAND} -E make_directory ${SRC_COPY_DST}
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
         )
-        if (BELONG_MC2_OPS)
-            list(APPEND SYNC_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
-                COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
-            )
-        endif()
         list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
         add_custom_command(
             OUTPUT ${_BUILD_FLAG}
@@ -640,7 +592,7 @@ function(add_bin_compile_target)
                             COMPUTE_UNIT
                             ${BINARY_COMPUTE_UNIT}
                             BE_RELIED
-                            ${OP_TARGET_NAME}_src_copy
+                             ${OP_TARGET_NAME}_src_copy
                     )
                 endforeach()
             endif ()

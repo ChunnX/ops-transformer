@@ -27,7 +27,7 @@
 #include "platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_type.h"
-#include "../../3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h"
+#include "../../../3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h"
 
 namespace mc2tiling {
 void NewUpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args,
