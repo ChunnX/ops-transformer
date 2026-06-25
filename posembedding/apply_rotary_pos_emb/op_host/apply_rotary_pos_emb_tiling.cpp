@@ -267,7 +267,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
     if ((params.kDim1 != params.qDim1) || (params.cosDim1 != params.kDim1)) {
         std::string shapeMsg = ToString(qShape) + ", " + ToString(kShape) + " and " + ToString(cosShape);
         std::string reasonMsg =
-            "The 1st dims of input query, key and cos should be equal when the attr layout is 1 (BSND), "
+            "The 1st dims of input query, key and cos should be equal when the attr layout is 1 (BSND) or 2 (SBND), "
             "and the 0th dims of input query, key and cos should be equal when the attr layout is 4 (TND)";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query, key and cos",
             shapeMsg.c_str(), reasonMsg.c_str());
