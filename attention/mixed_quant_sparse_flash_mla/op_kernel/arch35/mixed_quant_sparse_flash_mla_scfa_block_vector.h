@@ -28,13 +28,7 @@
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 using AscendC::Reg::StoreDist;
-#if __has_include("../../../common/op_kernel/arch35/flash_decode_s2_split.h")
-#include "../../../common/op_kernel/arch35/flash_decode_s2_split.h"
-#elif __has_include("../../common/op_kernel/arch35/flash_decode_s2_split.h")
-#include "../../common/op_kernel/arch35/flash_decode_s2_split.h"
-#else
-#include "../common/arch35/flash_decode_s2_split.h"
-#endif
+#include "../../../sparse_flash_mla/op_kernel/arch35/flash_decode.h"
 
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"

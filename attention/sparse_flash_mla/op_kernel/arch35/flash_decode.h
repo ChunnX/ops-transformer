@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_decode_s2_split.h
+ * \file flash_decode.h
  * \brief S2-split Flash Decode data-plane: staging layout, Vec1 LSE staging,
  *        Vec2 partial-O staging, and FD chunk reduction.
  *
@@ -32,11 +32,18 @@
  *
  * workspaceNum limit: currently maxSplits = 2. Caller must ensure 1 <= workspaceNum <= maxSplits.
  */
-#ifndef FLASH_DECODE_S2_SPLIT_H
-#define FLASH_DECODE_S2_SPLIT_H
+#ifndef SPARSE_FLASH_MLA_FLASH_DECODE_H
+#define SPARSE_FLASH_MLA_FLASH_DECODE_H
 
 #include <stdint.h>
-#include "vf/vf_flash_decode.h"
+
+#if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode.h")
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#elif __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
+#include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#else
+#include "../common/arch35/vf/vf_flash_decode.h"
+#endif
 
 namespace AttentionCommon {
 
@@ -217,4 +224,4 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
 
 } // namespace AttentionCommon
 
-#endif  // FLASH_DECODE_S2_SPLIT_H
+#endif  // SPARSE_FLASH_MLA_FLASH_DECODE_H

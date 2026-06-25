@@ -415,11 +415,11 @@ Status: code written and verified. Build and runtime validation completed.
 
 ### Implemented
 
-#### 1. `flash_decode_s2_split.h` — Common FD header fixes
+#### 1. `flash_decode.h` — Common FD header fixes
 
 Fixed compilation errors in the shared common header to enable SMLA inclusion:
 
-- Added `#include "vf/vf_flash_decode.h"` for `ComputeScaleValue_VF` and `ReduceFinalRes_const_VF` declarations.
+- Added `vf_flash_decode.h` include fallback paths for `ComputeScaleValue_VF` and `ReduceFinalRes_const_VF` declarations.
 - Added `static constexpr uint32_t FD_BUFFER_SIZE_BYTE_32B = 32;` in `AttentionCommon` namespace (was undefined when `Reduce` template was instantiated from SMLA).
 - Fixed narrowing conversion: `Brcb(..., {1, layout.broadcastElems})` → `{1, static_cast<uint16_t>(layout.broadcastElems)}`.
 - Qualified `FaVectorApi::ComputeScaleValue_VF` and `FaVectorApi::ReduceFinalRes_const_VF` calls.
@@ -545,7 +545,7 @@ if (runInfo.isS2Split) {
 | SMLA 适配点 | QSMLA 来源 | 搬运状态 |
 |---|---|---|
 | Vec2 partial O staging | `SCFABlockVec::ProcessVec2` lines 965–975 | copied with SMLA field rename |
-| `StageVec2PartialO` call params | Same function signature from `flash_decode_s2_split.h` | copied as-is |
+| `StageVec2PartialO` call params | Same function signature from `flash_decode.h` | copied as-is |
 | `GetS2SplitFdStagingLayout` | Same helper, already implemented in Phase 3 | reused |
 | `GetFaStagingWorkspaceIdx` | Same helper, already implemented in Phase 3 | reused |
 | `GetFaStagingMOffset` | Same helper, already implemented in Phase 3 | reused |

@@ -5,7 +5,7 @@
 本文将提交 `77fc33eb3fc3be10bfdb96914977419c045c4717` 中 MixedQuantSparseFlashMla 的 S2 Split Flash Decode（以下简称 FD）路径抽取到公共目录。目标新文件为：
 
 ```text
-attention/common/op_kernel/arch35/flash_decode_s2_split.h
+attention/sparse_flash_mla/op_kernel/arch35/flash_decode.h
 ```
 
 公共文件只负责以下三个可复用阶段：

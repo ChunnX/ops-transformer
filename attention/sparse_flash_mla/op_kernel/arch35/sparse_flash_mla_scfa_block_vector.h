@@ -21,13 +21,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
-#if __has_include("../../../common/op_kernel/arch35/flash_decode_s2_split.h")
-#include "../../../common/op_kernel/arch35/flash_decode_s2_split.h"
-#elif __has_include("../../common/op_kernel/arch35/flash_decode_s2_split.h")
-#include "../../common/op_kernel/arch35/flash_decode_s2_split.h"
-#else
-#include "../common/arch35/flash_decode_s2_split.h"
-#endif
+#include "flash_decode.h"
 
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode.h")
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode.h"

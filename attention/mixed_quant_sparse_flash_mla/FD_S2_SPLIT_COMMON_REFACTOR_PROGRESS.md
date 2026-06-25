@@ -23,7 +23,7 @@
 
 ## 阶段 1 完成记录（2026-06-24）
 
-- 新增 `attention/common/op_kernel/arch35/flash_decode_s2_split.h`，提供无 QSMLA 依赖的 `AttentionCommon::S2SplitFdStagingLayout`。该 layout 定义 `stagingM`、`dAlign`、`slotCount`、`broadcastElems`，以及 partial O、max、sum 三段的 byte/region helper。
+- 新增 `attention/sparse_flash_mla/op_kernel/arch35/flash_decode.h`，提供无 QSMLA 依赖的 `AttentionCommon::S2SplitFdStagingLayout`。该 layout 定义 `stagingM`、`dAlign`、`slotCount`、`broadcastElems`，以及 partial O、max、sum 三段的 byte/region helper。
 - QSMLA 的 `StagingMSize()`、`GetStagingSlotNum()`、`GetFaStagingWorkspaceIdx()`、`GetFaStagingMOffset()` 未改动。原 `StagingAttenOutBytes()` 和 `StagingMaxSumBytes()` 已改为同名薄包装，转调 common layout。阶段 5 应删除这两个 wrapper，将调用点直接改为 `GetS2SplitFdStagingLayout(constInfo).StagingAttenOutBytes()` / `StagingMaxSumBytes()`。
 - Vec1 的 max/sum staging、Vec2 的 partial O staging、FD reducer 的 partial O/max/sum 起始地址均改为使用同一个 common layout；DMA、VF、event、slot 编号、M offset 和 Split-G 控制流未改动。
 - 源码树相对 include 路径已加入，并保留现有打包路径回退，避免 common header 在直接源码构建时不可见。
@@ -49,7 +49,7 @@
 
 ## 阶段 2 完成记录（2026-06-24）
 
-- 公共 `flash_decode_s2_split.h` 新增 `AttentionCommon::StageVec1Lse`，将 `CopyMaxSumToStaging` 的函数体整体剪切到该公共函数。函数参数包括：layout、stagingBase、workspaceIdx、stagingMOffset、validRows、maxUb、sumUb、tmpUb、vToMte3Id、mte3ToVId。
+- 公共 `flash_decode.h` 新增 `AttentionCommon::StageVec1Lse`，将 `CopyMaxSumToStaging` 的函数体整体剪切到该公共函数。函数参数包括：layout、stagingBase、workspaceIdx、stagingMOffset、validRows、maxUb、sumUb、tmpUb、vToMte3Id、mte3ToVId。
 - 原 `CopyMaxSumToStaging` 保留函数签名，函数体缩减为：从 `runInfo`/`constInfo` 计算 `workspaceIdx` 和 `stagingMOffset`，获取 `dequantScaleBuff` 作为 tmpUb，然后转调 `StageVec1Lse`。
 - Vec1 调用点保持不动：仍只在 `isS2Split && s2LoopCount == s2LoopLimit` 触发原包装函数。
 - 公共函数中使用 `layout.broadcastElems` 替代 `regbaseutil::FD_BROADCAST_ELEMS_PER_ROW`；Brcb、DataCopyPad、SetFlag/WaitFlag 的参数和顺序与原代码逐行等价。
@@ -61,7 +61,7 @@
 
 ## 阶段 3 完成记录（2026-06-24）
 
-- 公共 `flash_decode_s2_split.h` 新增模板函数 `AttentionCommon::StageVec2PartialO<T>`，将 `ProcessVec2` 内 `if (runInfo.isS2Split)` 的 GM 写出分支整体剪切到该公共函数。函数参数包括：layout、stagingBase、workspaceIdx、stagingMOffset、validRows、dValid、vec2ResUb、vToMte3Id、mte3ToVId。
+- 公共 `flash_decode.h` 新增模板函数 `AttentionCommon::StageVec2PartialO<T>`，将 `ProcessVec2` 内 `if (runInfo.isS2Split)` 的 GM 写出分支整体剪切到该公共函数。函数参数包括：layout、stagingBase、workspaceIdx、stagingMOffset、validRows、dValid、vec2ResUb、vToMte3Id、mte3ToVId。
 - 原 `ProcessVec2` 的 `isS2Split` 分支改为组装参数后转调 `StageVec2PartialO<T>`；`FlashUpdateLastNew`、`LastDivNew`、非 split 的 `CopyOutAttentionOut` 分支保持原位置不变。
 - 公共函数中使用 `layout.dAlign` 替代 `dTemplateAlign64`，`dValid` 替代 `constInfo.dSizeV`；DataCopyPad 的 blockLen/srcStride/blockCount 与原代码逐行等价。
 - 阶段 5 应将 `ProcessVec2` 中 `isS2Split` 分支的内联转调保留（不需要 wrapper，直接在 `if` 块内调用公共函数即可）。
@@ -73,7 +73,7 @@
 ## 阶段 4 完成记录（2026-06-24）
 
 - `S2SplitFdStagingLayout` 新增 `chunkRows` 字段（当前为 16），`GetS2SplitFdStagingLayout` 相应更新。
-- 公共 `flash_decode_s2_split.h` 新增模板函数 `AttentionCommon::Reduce<T, D_ALIGN>`，将 `ProcessFlashDecode` 中从 staging region 地址计算到 chunk 规约循环结束的代码段整体剪切到该公共函数。函数参数包括：layout、stagingBase、workspaceIdx、workspaceNum、fdMOffset、mNum、dValid、accumulatedO、lseExpUb、blockMaxUb、blockSumUb、partialOFp32、vToMte2Id0、vToMte2Id1、mte2ToVId。`D_ALIGN` 作为编译期模板参数传入，用于 `ReduceFinalRes_const_VF` 和 `chunkAccumO` 的行偏移。
+- 公共 `flash_decode.h` 新增模板函数 `AttentionCommon::Reduce<T, D_ALIGN>`，将 `ProcessFlashDecode` 中从 staging region 地址计算到 chunk 规约循环结束的代码段整体剪切到该公共函数。函数参数包括：layout、stagingBase、workspaceIdx、workspaceNum、fdMOffset、mNum、dValid、accumulatedO、lseExpUb、blockMaxUb、blockSumUb、partialOFp32、vToMte2Id0、vToMte2Id1、mte2ToVId。`D_ALIGN` 作为编译期模板参数传入，用于 `ReduceFinalRes_const_VF` 和 `chunkAccumO` 的行偏移。
 - 原 `ProcessFlashDecode` 保留函数签名、`InitFDBuffers`、BSND/TND 的输出 offset 计算、LocalTensor 获取和最终 `CopyOutAttentionOut`；规约部分改为单次调用 `Reduce`。
 - 公共函数中使用 `layout.broadcastElems` 替代 `FD_BROADCAST_ELEMS_PER_ROW`，`layout.chunkRows` 替代 `FD_REDUCE_CHUNK_ROWS`，`D_ALIGN` 模板参数替代 `dTemplateAlign64`；chunk 循环、DataCopy、Wait/SetFlag 和 VF 调用逐行等价。
 
@@ -85,7 +85,7 @@
 
 - 删除 `StagingAttenOutBytes()` 和 `StagingMaxSumBytes()` 两个 wrapper，所有原调用点已在前序阶段中替换为直接使用 `GetS2SplitFdStagingLayout(constInfo).StagingAttenOutBytes()` / `StagingMaxSumBytes()` 或不再引用，因此直接删除即可。
 - 删除 `CopyMaxSumToStaging` wrapper 的声明和定义，将 `ProcessVec1` 中的调用点内联为直接组装参数并转调 `StageVec1Lse`。
-- 补充公共头文件 `flash_decode_s2_split.h` 的接口注释，涵盖：GM staging layout（三段连续区域及 per-slot 尺寸）、数值协议（Vec2 必须写归一化 partial O、FD Reduce 的 max/sum/weight 公式）、同步要求（全核 SyncAll 后才能读 staging）、workspaceNum 限制（当前 maxSplits=2）、各函数的 UB 需求和参数说明。
+- 补充公共头文件 `flash_decode.h` 的接口注释，涵盖：GM staging layout（三段连续区域及 per-slot 尺寸）、数值协议（Vec2 必须写归一化 partial O、FD Reduce 的 max/sum/weight 公式）、同步要求（全核 SyncAll 后才能读 staging）、workspaceNum 限制（当前 maxSplits=2）、各函数的 UB 需求和参数说明。
 
 ## 阶段 5 设备验证记录（2026-06-24）
 

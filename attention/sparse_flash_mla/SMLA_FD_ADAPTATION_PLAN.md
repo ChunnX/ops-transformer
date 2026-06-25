@@ -15,7 +15,7 @@ attention/sparse_flash_mla_metadata
 复用的公共文件：
 
 ```text
-attention/common/op_kernel/arch35/flash_decode_s2_split.h
+attention/sparse_flash_mla/op_kernel/arch35/flash_decode.h
 ```
 
 SMLA 侧应复用以下 data-plane 接口：
