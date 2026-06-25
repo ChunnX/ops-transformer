@@ -62,38 +62,4 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
     }
     AscendC::printf("after TILING_KEY_IS\n");
     AscendC::printf("leave inplace_partial_rotary_mul_grad\n");
-
-
-    // if (TILING_KEY_IS(TILING_KEY_ABA)) {
-    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-    //     InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, false> op;
-    //     op.Init(&pipe, &params, dy, cos, sin, dx);
-    //     op.Process();
-    // } else if (TILING_KEY_IS(TILING_KEY_BA)) {
-    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-    //     InplacePartialRotaryMulGradABAAndBA<DTYPE_DY, DTYPE_COS, true> op;
-    //     op.Init(&pipe, &params, dy, cos, sin, dx);
-    //     op.Process();
-    // } else if (TILING_KEY_IS(TILING_KEY_BAB)) {
-    //     AscendC::printf("if TILING_KEY_IS(TILING_KEY_BAB)\n");
-    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-    //     InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op;
-    //     op.Init(&pipe, &params, dy, cos, sin, dx);
-    //     op.Process();
-    // } else if (TILING_KEY_IS(TILING_KEY_AB)) {
-    //     const InplacePartialRotaryMulGradRegbaseABParams &params = tilingData.inplacePartialRotaryMulGradABParams;
-    //     InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS> op;
-    //     op.Init(&pipe, &params, dy, cos, sin, dx);
-    //     op.Process();
-    // } else if (TILING_KEY_IS(TILING_KEY_A)) {
-    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-    //     InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, false> op;
-    //     op.Init(&pipe, &params, dy, cos, sin, dx);
-    //     op.Process();
-    // } else if (TILING_KEY_IS(TILING_KEY_B)) {
-    //     const InplacePartialRotaryMulGradRegbaseParams &params = tilingData.inplacePartialRotaryMulGradParams;
-    //     InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, true> op;
-    //     op.Init(&pipe, &params, dy, cos, sin, dx);
-    //     op.Process();
-    // }
 }
