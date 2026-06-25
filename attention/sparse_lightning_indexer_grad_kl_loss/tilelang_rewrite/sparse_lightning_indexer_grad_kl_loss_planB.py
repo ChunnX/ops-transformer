@@ -673,6 +673,11 @@ def sparse_lightning_indexer_grad_kl_loss(
     (bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws,
      d_weight_partial, loss_partial, relu_grad_ws) = ws
 
+    # ---- Mark compilation done (for profile) ----
+    if profile:
+        torch.npu.synchronize()
+        _pt["compile_done"] = time.perf_counter()
+
     # ---- Launch Kernel 1 ----
     bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws = func1(
         query, query_rope, gather_key, gather_key_rope,
@@ -722,12 +727,12 @@ def sparse_lightning_indexer_grad_kl_loss(
     if profile:
         torch.npu.synchronize()
         _pt["python_post"] = time.perf_counter()
-        # Use .update() to modify in-place (so imported references see the change)
         _profile_result.clear()
         _profile_result.update({
-            "gather": (_pt["kernel1"] - _pt["gather"]) * 1000,
-            "kernel1": (_pt["kernel2"] - _pt["kernel1"]) * 1000,
-            "kernel2_and_python": (_pt["python_post"] - _pt["kernel2"]) * 1000,
+            "gather_compile": (_pt["compile_done"] - _pt["gather"]) * 1000,
+            "kernel1": (_pt["kernel1"] - _pt["compile_done"]) * 1000,
+            "kernel2": (_pt["kernel2"] - _pt["kernel1"]) * 1000,
+            "python": (_pt["python_post"] - _pt["kernel2"]) * 1000,
             "total": (_pt["python_post"] - _pt["gather"]) * 1000,
         })
 

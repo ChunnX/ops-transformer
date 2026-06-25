@@ -241,7 +241,7 @@ def test_profile():
     print(f"\n  Stage timing breakdown (total={total:.3f}ms):")
     print(f"  {'Stage':<25} {'Time(ms)':>10} {'Pct':>8}")
     print(f"  {'-'*43}")
-    for name in ["gather", "kernel1", "kernel2_and_python"]:
+    for name in ["gather_compile", "kernel1", "kernel2", "python"]:
         t = pt[name]
         pct = t / total * 100 if total > 0 else 0
         bar = "#" * max(1, int(pct / 2))
