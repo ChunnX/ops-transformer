@@ -786,11 +786,24 @@ def sparse_lightning_indexer_grad_kl_loss(
     # ---- Launch Kernel 3 (MM6: dQueryIndex = reluGrad @ GKI, C→V, atomic_add) ----
     gather_key_index_t = gather_key_index.transpose(-1, -2).contiguous()
     d_query_index_ws.zero_()
-    (d_query_index_ws,) = func3(
+    d_query_index_ws = func3(
         relu_grad,
         gather_key_index_t,
         d_query_index_ws,
     )
+    if isinstance(d_query_index_ws, tuple):
+        d_query_index_ws = d_query_index_ws[0]
+    # Debug: check if Kernel3 produced valid output
+    dq_has_inf = torch.isinf(d_query_index_ws).any().item()
+    dq_has_nan = torch.isnan(d_query_index_ws).any().item()
+    dq_min = d_query_index_ws.min().item()
+    dq_max = d_query_index_ws.max().item()
+    rg_inf = torch.isinf(relu_grad).any().item()
+    rg_nan = torch.isnan(relu_grad).any().item()
+    gki_inf = torch.isinf(gather_key_index_t).any().item()
+    gki_nan = torch.isnan(gather_key_index_t).any().item()
+    print(f"  [DEBUG] relu_grad: inf={rg_inf} nan={rg_nan} | GKIT: inf={gki_inf} nan={gki_nan}")
+    print(f"  [DEBUG] Kernel3 output: inf={dq_has_inf} nan={dq_has_nan} min={dq_min:.4e} max={dq_max:.4e} shape={d_query_index_ws.shape}")
 
     if profile:
         torch.npu.synchronize()
