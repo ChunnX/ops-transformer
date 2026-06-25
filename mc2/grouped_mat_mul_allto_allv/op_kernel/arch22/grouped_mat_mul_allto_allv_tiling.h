@@ -14,16 +14,7 @@
 #ifndef GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H_ARCH22__
 #define GROUPED_MAT_MUL_ALLTO_ALLV_TILING_H_ARCH22__
 
-#if __has_include("../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h")
-#include "../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
-#elif __has_include("../../quant_grouped_mat_mul_allto_allv/arch35/quant_grouped_mat_mul_allto_allv_tiling.h")
-#include "../../quant_grouped_mat_mul_allto_allv/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
-#elif __has_include(                                                                                              \
-    "../../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h")
 #include "../../../quant_grouped_mat_mul_allto_allv/op_kernel/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
-#else
-#include "../../../quant_grouped_mat_mul_allto_allv/arch35/quant_grouped_mat_mul_allto_allv_tiling.h"
-#endif
 
 #pragma once
 

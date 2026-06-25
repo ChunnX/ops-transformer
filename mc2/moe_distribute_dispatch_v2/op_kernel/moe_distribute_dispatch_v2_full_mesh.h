@@ -25,16 +25,11 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_quant.h"
-#include "../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
-#if __has_include( "../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 #include "hccl_context_holder.h"
 #include "mc2_moe_context_holder.h"
 #define FLOAT_OVERFLOW_MODE_CTRL 60
