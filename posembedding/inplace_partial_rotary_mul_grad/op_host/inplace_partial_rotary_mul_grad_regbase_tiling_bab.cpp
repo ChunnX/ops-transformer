@@ -234,7 +234,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::PostTiling()
               << " dSplitCoef=" << dSplitCoef_ << std::endl
               << "  sliceStart=" << sliceStart_ << " sliceEnd=" << sliceEnd_ << " sliceLength=" << sliceLength_
               << std::endl
-              << "  tilingDataSliceLength=" << sliceLength << " tilingKey=" << tilingKey_ << std::endl;
+              << " tilingKey=" << tilingKey_ << std::endl;
 
     OP_LOGI(context_->GetNodeName(),
             "InplacePartialRotaryMulGradBAB tiling: B=%ld S=%ld D=%ld N=%ld "
@@ -242,10 +242,10 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::PostTiling()
             "ubFactorS=%ld ubFactorB=%ld ubLoopNumN=%ld ubFactorN=%ld ubTailFactorN=%ld "
             "usedCoreNum=%ld rotaryMode=%ld dSplitCoef=%ld "
             "sliceStart=%ld sliceEnd=%ld sliceLength=%ld "
-            "tilingDataSliceLength=%ld tilingKey=%lu",
+            " tilingKey=%lu",
             b_, s_, d_, n_, blockNumB_, blockFactorB_, blockNumS_, blockFactorS_, ubFactorS_, ubFactorB_, ubLoopNumN_,
             ubFactorN_, ubTailFactorN_, usedCoreNum_, static_cast<int64_t>(rotaryMode_), dSplitCoef_, sliceStart_,
-            sliceEnd_, sliceLength_, sliceLength, tilingKey_);
+            sliceEnd_, sliceLength_, tilingKey_);
     return ge::GRAPH_SUCCESS;
 }
 
