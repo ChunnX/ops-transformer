@@ -11,6 +11,7 @@
 #define OP_API_INC_GROUPED_MATMUL_UTIL_H
 #include "opdev/common_types.h"
 #include "opdev/op_executor.h"
+#include <vector>
 
 namespace gmm {
 using namespace op;
@@ -126,7 +127,7 @@ const std::map<DataType, std::string> DTYPE_STRING{
     {DataType::DT_HIFLOAT8, "HIFLOAT8"}
 };
 
-const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
+const std::vector<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                 DataType::DT_BF16};
 
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
