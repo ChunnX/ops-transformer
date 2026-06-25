@@ -897,9 +897,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         GmSignalWaitBarrier(readyFlag, int32_t(1));
         GlobalTensor<ActivationType> relayGlobalTensor;
         relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
-        PipeBarrier<PIPE_ALL>();
         DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
-        PipeBarrier<PIPE_ALL>();
         return;
     }
     GM_ADDR scratchAddr = params_.workspaceInfo.relayReadScratchPtr +
@@ -916,12 +914,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         }
     } while (true);
     // PRINTF("BEGIN READDATA\n");
-    hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
-    hcomm_.Drain(channel);
+    // hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
+    // hcomm_.Drain(channel);
     //PRINTF("BEGIN READDATA\n");
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
-    scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
+    scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
     PipeBarrier<PIPE_ALL>();
 }
