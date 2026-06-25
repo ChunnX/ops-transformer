@@ -135,6 +135,50 @@ END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreSinkhorn, MhcPreSinkhornTilingData)
 
+
+// Regbase TilingData
+BEGIN_TILING_DATA_DEF(MhcPreSinkhornRegbaseTilingData)
+TILING_DATA_FIELD_DEF(int64_t, bs);
+TILING_DATA_FIELD_DEF(int64_t, hcMix);
+TILING_DATA_FIELD_DEF(int64_t, hcMult);
+TILING_DATA_FIELD_DEF(int64_t, d);
+TILING_DATA_FIELD_DEF(int64_t, hcMultAlign);
+TILING_DATA_FIELD_DEF(int64_t, rowOfFormerBlock);
+TILING_DATA_FIELD_DEF(int64_t, rowOfTailBlock);
+TILING_DATA_FIELD_DEF(int64_t, rowLoopOfFormerBlock);
+TILING_DATA_FIELD_DEF(int64_t, rowLoopOfTailBlock);
+TILING_DATA_FIELD_DEF(int64_t, rowFactor);
+TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfFormerBlock);
+TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfTailBlock);
+TILING_DATA_FIELD_DEF(int64_t, dLoop);
+TILING_DATA_FIELD_DEF(int64_t, dFactor);
+TILING_DATA_FIELD_DEF(int64_t, tailDFactor);
+TILING_DATA_FIELD_DEF(int64_t, iterTimes);
+TILING_DATA_FIELD_DEF(float, hcEps);
+TILING_DATA_FIELD_DEF(float, normEps);
+TILING_DATA_FIELD_DEF(int64_t, kBlockFactor);
+TILING_DATA_FIELD_DEF(int64_t, stage2RowFactor);
+TILING_DATA_FIELD_DEF(int64_t, k);
+TILING_DATA_FIELD_DEF(int64_t, kL1Size);
+TILING_DATA_FIELD_DEF(int64_t, mL1Size);
+TILING_DATA_FIELD_DEF(int64_t, cubeBlockDimM);
+TILING_DATA_FIELD_DEF(int64_t, cubeBlockDimK);
+TILING_DATA_FIELD_DEF(int64_t, kUbSize);
+TILING_DATA_FIELD_DEF(int64_t, cvLoopKSize);
+TILING_DATA_FIELD_DEF(int64_t, multCoreSplitKSize);
+TILING_DATA_FIELD_DEF(int64_t, multCoreSplitMSize);
+TILING_DATA_FIELD_DEF(int64_t, secondUsedCoreNum);
+TILING_DATA_FIELD_DEF(int64_t, rowInnerFactor);
+TILING_DATA_FIELD_DEF(int64_t, bufferPool0Size);
+TILING_DATA_FIELD_DEF(int64_t, bufferPool1Size);
+TILING_DATA_FIELD_DEF(int64_t, mUbSize);
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(MhcPreSinkhorn_1000, MhcPreSinkhornRegbaseTilingData)
+REGISTER_TILING_DATA_CLASS(MhcPreSinkhorn_1001, MhcPreSinkhornRegbaseTilingData)
+REGISTER_TILING_DATA_CLASS(MhcPreSinkhorn_2000, MhcPreSinkhornRegbaseTilingData)
+REGISTER_TILING_DATA_CLASS(MhcPreSinkhorn_2001, MhcPreSinkhornRegbaseTilingData)
+
 struct MhcPreSinkhornCompileInfo {
     uint64_t coreNum = 0;
     uint64_t ubSize = 0;
@@ -225,7 +269,7 @@ public:
 private:
     gert::TilingContext *context_ = nullptr;
     uint64_t tilingKey_ = 0;
-    MhcPreSinkhornTilingData tilingData_;
+    MhcPreSinkhornRegbaseTilingData tilingData_;
     uint64_t aivCoreNum_ = 0;
     uint64_t aicCoreNum_ = 0;
     uint64_t workspaceSize_ = 0;
@@ -250,7 +294,7 @@ private:
     int64_t iterTimes_ = 0;
     double hcEps_ = 0.0;
     double normEps_ = 0.0;
-    bool needGrad_ = false;
+    bool needGrad_ = true;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
 };
 
