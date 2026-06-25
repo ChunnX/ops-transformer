@@ -94,12 +94,12 @@ private:
     uint32_t l1KMte1ToMte2BufId = 3; // 3-8, 用于l1K
     uint32_t l1KMte2ToMte1BufId = 3;
 
-    uint32_t l0ABBufId = 0;
-    uint32_t l0ABMToMte1FlagId = 3; // {0, 1}, 用于L0AB
-    uint32_t l0ABMte1ToMFlagId = 3; // {0, 1}, 用于L0AB
+    uint32_t l0ABBufIdx = 0; // 2 buffer, 0-1
+    uint32_t l0ABMToMte1BufId = 9; // 9-10, 用于L0AB
+    uint32_t l0ABMte1ToMBufId = 9;
     uint32_t l0CBufIdx = 0; // 2 buffer, 0-1
-    uint32_t l0CFixToMBufId = 9; // {0, 1}, 用于L0C
-    uint32_t l0CMToFixBufId = 9; // {0, 1}, 用于L0C
+    uint32_t l0CFixToMBufId = 11; // 11-12, 用于L0C
+    uint32_t l0CMToFixBufId = 11;
 
     /* =====================LocalBuffer变量==================== */
     TBuf<TPosition::A1> l1QBuffers;
@@ -148,8 +148,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
     mmL0ATensor = mmL0ABuffers.Get<Q_T>();
     mmL0BTensor = mmL0BBuffers.Get<Q_T>();
     mmL0CTensor = mmL0CBuffers.Get<T>();
-    SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId); // {0, 1}, 用于L0AB
-    SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + 1);
+    // SetFlag<HardEvent::M_MTE1>(l0ABMToMte1BufId); // {0, 1}, 用于L0AB
+    // SetFlag<HardEvent::M_MTE1>(l0ABMToMte1BufId + 1);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
@@ -264,7 +264,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
         l1QTensor[curL1QBufId * BUFFER_SIZE_16K],
         curL1RightTensor,
         mmL0ATensor, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufIdx],
-        param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
+        param, l0ABMToMte1BufId, l0ABMte1ToMBufId, l0ABBufIdx);
 
     l1KMatmul1BufIdx = (l1KMatmul1BufIdx + 1) % 6;
     get_buf(PIPE_MTE1, l1KMte2ToMte1BufId + l1KMatmul1BufIdx, false);
@@ -284,7 +284,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
         l1QTensor[curL1QBufId * BUFFER_SIZE_16K],
         curL1RightTensor[(constInfo.dSize >> 1) * Align16Func(runInfo.s2RealSize)],
         mmL0ATensor, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufIdx],
-        param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
+        param, l0ABMToMte1BufId, l0ABMte1ToMBufId, l0ABBufIdx);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         get_buf(PIPE_MTE1, l1QMte1ToMte2BufId + l1QBufIdx, true);
@@ -341,7 +341,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
         l1PBuffer.GetTensor<Q_T>(),
         curL1RightTensor,
         mmL0ATensor, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufIdx],
-        param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
+        param, l0ABMToMte1BufId, l0ABMte1ToMBufId, l0ABBufIdx);
     get_buf(PIPE_M, l0CMToFixBufId + l0CBufIdx, true);
     rls_buf(PIPE_M, l0CMToFixBufId + l0CBufIdx, true);
     get_buf(PIPE_FIX, l0CMToFixBufId + l0CBufIdx, false);
