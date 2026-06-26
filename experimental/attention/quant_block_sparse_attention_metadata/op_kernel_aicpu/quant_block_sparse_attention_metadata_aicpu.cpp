@@ -45,7 +45,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
     // output
-    metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
+    metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
 
     bool requiredAttrs =
         GetAttrValue(ctx, "soc_version", socVersion_) &&
@@ -91,8 +91,8 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
         return false;
     }
     // OUTPUT tensor check
-    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("metaData is empty");
+    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metadata is empty");
         return false;
     }
     return true;
@@ -316,7 +316,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ScheduleSection(SplitResult &sp
 
 bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
 {
-    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
         return false;
     }
