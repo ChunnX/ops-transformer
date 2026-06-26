@@ -164,20 +164,23 @@ Reduce(...);             // staging -> accumulatedO UB
 | QSMLA 最终输出地址 | `bn2Idx`、`mIdx` |
 | 是否调度 FD | `coreEnable` |
 
-其中前四个规约字段可以形成 common 的最小结构：
+这些字段现在由 common 的 FD run info 承载：
 
 ```cpp
 namespace AttentionCommon {
-struct S2SplitFdRunInfo {
-    uint32_t workspaceIdx;
-    uint32_t workspaceNum;
-    uint32_t mStartIdx;
-    uint32_t mNum;
+struct FdRunInfo {
+    bool coreEnable;
+    int64_t bn2Idx;
+    int64_t mIdx;
+    int64_t workspaceIdx;
+    int64_t workspaceNum;
+    int64_t mStartIdx;
+    int64_t mNum;
 };
 }
 ```
 
-`coreEnable`、`bn2Idx`、`mIdx` 保留在 QSMLA：前者是 QSMLA metadata 调度语义，后两者用于 BSND/TND 输出寻址。当前 `ProcessFlashDecode` 末尾构造临时 `RunInfo`，仅为了复用 `CopyOutAttentionOut` 所需的 `vec2MRealSize` 和 `attentionOutOffset`；这不属于 FD reducer 算法，仍留在 QSMLA 侧。
+`bn2Idx`、`mIdx` 用于各自算子的输出寻址；当前 `ProcessFlashDecode` 末尾构造临时 `RunInfo`，仅为了复用 `CopyOutAttentionOut` 所需的 `vec2MRealSize` 和 `attentionOutOffset`；这不属于 FD reducer 算法，仍留在各算子侧。
 
 ### 3.2 面向 SMLA 的复用边界
 
@@ -185,14 +188,14 @@ struct S2SplitFdRunInfo {
 
 - SMLA 可直接调用 `StageVec1Lse`，前提是提供 max/sum UB、staging GM 基址、slot、M 行偏移和 event id。
 - SMLA 可直接调用 `StageVec2PartialO`，前提是最终 S2 loop 已经得到归一化 FP32 partial O，且使用相同 staging ABI。
-- SMLA 可直接调用 `Reduce`，前提是自身补齐 FD metadata 到 `S2SplitFdRunInfo` 的转换、FD UB、所有核 phase barrier 和最终输出适配。
-- SMLA 不应复用 QSMLA 的 `FdRunInfo` 原结构、`RunInfo`、`ConstInfo`、metadata 解析、S2 区间裁剪或 BSND/TND 输出地址计算。
+- SMLA 可直接调用 `Reduce`，前提是自身补齐 FD metadata 到 common `FdRunInfo` 的解析、FD UB、所有核 phase barrier 和最终输出适配。
+- SMLA 不应复用 QSMLA 的 `RunInfo`、`ConstInfo`、metadata 解析、S2 区间裁剪或 BSND/TND 输出地址计算。
 
 因此 common 只承载 data-plane；QSMLA 和 SMLA 分别保留 control-plane：
 
 ```text
 各自 metadata -> 各自计算 slot/M offset -> common Vec1/Vec2 staging
-各自全核 SyncAll -> 各自 metadata 转 common S2SplitFdRunInfo -> common Reduce
+各自全核 SyncAll -> 各自 metadata 解析到 common FdRunInfo -> common Reduce
 -> 各自输出地址与 CopyOut
 ```
 
@@ -304,9 +307,9 @@ struct S2SplitFdRunInfo {
 
 **改动范围**
 
-- `InitFDBuffers` 保持在 QSMLA，不抽取；它依赖该算子的 TPipe 生命周期与成员 buffer。
+- `FdBuffers` 和 `InitFDBuffers` 抽取到公共 `flash_decode.h`；各算子仍持有自身 `FdBuffers<TBuf<>>` 实例并传入自身 `TPipe`。
 - 仅将 `ProcessFlashDecode` 中从 staging region 计算开始，到 chunk 规约结束的连续代码段整体剪切为公共 `Reduce`；保持 chunk 循环、DataCopy、Wait/SetFlag 和 VF 调用逐行等价。
-- `ProcessFlashDecode` 保留函数签名、`InitFDBuffers`、BSND/TND 的输出 offset、LocalTensor 获取和最终 `CopyOutAttentionOut`；它只将已有局部变量传入 `Reduce`。
+- `ProcessFlashDecode` 保留函数签名、BSND/TND 的输出 offset、LocalTensor 获取和最终 `CopyOutAttentionOut`；FD UB 初始化转调公共 `InitFDBuffers`，规约只将已有局部变量传入 `Reduce`。
 
 **实现要点**
 

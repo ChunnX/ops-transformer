@@ -71,6 +71,7 @@ using namespace optiling;
 using namespace optiling::detail;
 using namespace regbaseutil;
 using namespace matmul;
+using AttentionCommon::FdRunInfo;
 
 namespace BaseApi {
 TEMPLATES_DEF
@@ -143,21 +144,12 @@ public:
         ConstInfo &constInfo);
 
 private:
-    __aicore__ inline uint32_t StagingMSize(const ConstInfo &constInfo) const
-    {
-        if constexpr (IS_SPLIT_G) {
-            return regbaseutil::S2_SPLIT_STAGING_M_SIZE_SPLIT_G;
-        } else {
-            return static_cast<uint32_t>(constInfo.gSize);
-        }
-    }
-
     __aicore__ inline uint32_t GetStagingSlotNum() const
     {
         if constexpr (IS_SPLIT_G) {
-            return regbaseutil::MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
+            return AttentionCommon::FD_MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
         } else {
-            return regbaseutil::MAX_S2_SPLIT_NUM * GetBlockNum();
+            return AttentionCommon::FD_MAX_S2_SPLIT_NUM * GetBlockNum();
         }
     }
 
@@ -172,9 +164,7 @@ private:
         uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
             static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
         if constexpr (IS_SPLIT_G) {
-            if (runInfo.goIdx == regbaseutil::S2_SPLIT_STAGING_M_SIZE) {
-                stagingMOffset += regbaseutil::S2_SPLIT_STAGING_M_SIZE;
-            }
+            stagingMOffset += static_cast<uint32_t>(runInfo.goIdx);
         }
         return stagingMOffset;
     }
@@ -182,8 +172,8 @@ private:
     __aicore__ inline AttentionCommon::S2SplitFdStagingLayout GetS2SplitFdStagingLayout(
         const ConstInfo &constInfo) const
     {
-        return {StagingMSize(constInfo), dTemplateAlign64, GetStagingSlotNum(),
-            regbaseutil::FD_BROADCAST_ELEMS_PER_ROW, regbaseutil::FD_REDUCE_CHUNK_ROWS};
+        return {static_cast<uint32_t>(constInfo.gSize), dTemplateAlign64, GetStagingSlotNum(),
+            AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
     }
 
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -259,11 +249,7 @@ private:
     TBuf<> dequantScaleBuff;
     TBuf<> stage0InBuf[2];
     TBuf<> stage0OutBuf[2];
-    TBuf<> fdPartialBuf;
-    TBuf<> fdAccumOutBuf;
-    TBuf<> fdBlockMaxBuf;
-    TBuf<> fdBlockSumBuf;
-    TBuf<> fdLseExpBuf;
+    AttentionCommon::FdBuffers<TBuf<>> fdBuffers;
     uint32_t pingPongV0 = 0;
 
     T negativeFloatScalar;
@@ -986,11 +972,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     int64_t attentionOutOffset = seqOffset * constInfo.n2GDv +
         fdRunInfo.mIdx * constInfo.n2GDv +
         fdRunInfo.mStartIdx * constInfo.dSizeV;
-    LocalTensor<T> accumulatedO = this->fdAccumOutBuf.template Get<T>();
-    LocalTensor<float> lseExpUb = this->fdLseExpBuf.template Get<float>();
-    LocalTensor<float> blockMaxUb = this->fdBlockMaxBuf.template Get<float>();
-    LocalTensor<float> blockSumUb = this->fdBlockSumBuf.template Get<float>();
-    LocalTensor<T> partialOFp32 = this->fdPartialBuf.template Get<T>();
+    LocalTensor<T> accumulatedO = this->fdBuffers.accumOut.template Get<T>();
+    LocalTensor<float> lseExpUb = this->fdBuffers.lseExp.template Get<float>();
+    LocalTensor<float> blockMaxUb = this->fdBuffers.blockMax.template Get<float>();
+    LocalTensor<float> blockSumUb = this->fdBuffers.blockSum.template Get<float>();
+    LocalTensor<T> partialOFp32 = this->fdBuffers.partialO.template Get<T>();
 
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
     AttentionCommon::Reduce<T, dTemplateAlign64>(stagingLayout, s2SplitStagingBase,
@@ -1173,18 +1159,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
 {
-    this->tPipe->Reset();
-    uint32_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * regbaseutil::FD_REDUCE_CHUNK_ROWS *
-        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
-    uint32_t lseExpSize = regbaseutil::FD_REDUCE_CHUNK_ROWS *
-        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
-    uint32_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * dTemplateAlign64 * sizeof(T);
-    uint32_t partialOSize = regbaseutil::FD_REDUCE_CHUNK_ROWS * dTemplateAlign64 * sizeof(T);
-    this->tPipe->InitBuffer(fdAccumOutBuf, accumOutSize);
-    this->tPipe->InitBuffer(fdBlockMaxBuf, maxSumTotal);
-    this->tPipe->InitBuffer(fdBlockSumBuf, maxSumTotal);
-    this->tPipe->InitBuffer(fdLseExpBuf, lseExpSize);
-    this->tPipe->InitBuffer(fdPartialBuf, partialOSize);
+    AttentionCommon::InitFDBuffers<T, dTemplateAlign64>(fdRunInfo, this->tPipe, fdBuffers);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

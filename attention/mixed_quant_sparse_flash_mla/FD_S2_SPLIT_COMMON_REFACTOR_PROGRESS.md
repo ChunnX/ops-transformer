@@ -74,7 +74,7 @@
 
 - `S2SplitFdStagingLayout` 新增 `chunkRows` 字段（当前为 16），`GetS2SplitFdStagingLayout` 相应更新。
 - 公共 `flash_decode.h` 新增模板函数 `AttentionCommon::Reduce<T, D_ALIGN>`，将 `ProcessFlashDecode` 中从 staging region 地址计算到 chunk 规约循环结束的代码段整体剪切到该公共函数。函数参数包括：layout、stagingBase、workspaceIdx、workspaceNum、fdMOffset、mNum、dValid、accumulatedO、lseExpUb、blockMaxUb、blockSumUb、partialOFp32、vToMte2Id0、vToMte2Id1、mte2ToVId。`D_ALIGN` 作为编译期模板参数传入，用于 `ReduceFinalRes_const_VF` 和 `chunkAccumO` 的行偏移。
-- 原 `ProcessFlashDecode` 保留函数签名、`InitFDBuffers`、BSND/TND 的输出 offset 计算、LocalTensor 获取和最终 `CopyOutAttentionOut`；规约部分改为单次调用 `Reduce`。
+- 原 `ProcessFlashDecode` 保留函数签名、BSND/TND 的输出 offset 计算、LocalTensor 获取和最终 `CopyOutAttentionOut`；FD UB 初始化转调公共 `InitFDBuffers`，规约部分改为单次调用 `Reduce`。
 - 公共函数中使用 `layout.broadcastElems` 替代 `FD_BROADCAST_ELEMS_PER_ROW`，`layout.chunkRows` 替代 `FD_REDUCE_CHUNK_ROWS`，`D_ALIGN` 模板参数替代 `dTemplateAlign64`；chunk 循环、DataCopy、Wait/SetFlag 和 VF 调用逐行等价。
 
 ## 阶段 4 设备验证记录（2026-06-24）

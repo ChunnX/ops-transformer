@@ -46,6 +46,7 @@ using namespace optiling;
 using namespace optiling::detail;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
+using AttentionCommon::FdRunInfo;
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
@@ -639,7 +640,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : (this->constInfo.gSize >> 1U);
     } else {
         runParam.goIdx = 0;
     }

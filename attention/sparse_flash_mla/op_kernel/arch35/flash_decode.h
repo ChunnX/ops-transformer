@@ -47,7 +47,45 @@
 
 namespace AttentionCommon {
 
+constexpr uint32_t FD_MAX_S2_SPLIT_NUM = 2U;
+constexpr uint32_t FD_BROADCAST_ELEMS_PER_ROW = 8U;
+constexpr uint32_t FD_REDUCE_CHUNK_ROWS = 16U;
 static constexpr uint32_t FD_BUFFER_SIZE_BYTE_32B = 32;
+
+struct FdRunInfo {
+    bool coreEnable = false;
+    int64_t bn2Idx = 0;
+    int64_t mIdx = 0;
+    int64_t workspaceIdx = 0;
+    int64_t workspaceNum = 0;
+    int64_t mStartIdx = 0;
+    int64_t mNum = 0;
+};
+
+template <typename BufferType>
+struct FdBuffers {
+    BufferType accumOut;
+    BufferType blockMax;
+    BufferType blockSum;
+    BufferType lseExp;
+    BufferType partialO;
+};
+
+template <typename T, uint32_t D_ALIGN, typename PipeType, typename BufferType>
+__aicore__ inline void InitFDBuffers(const FdRunInfo &fdRunInfo, PipeType *tPipe, FdBuffers<BufferType> &buffers)
+{
+    tPipe->Reset();
+    uint32_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * FD_REDUCE_CHUNK_ROWS *
+        FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+    uint32_t lseExpSize = FD_REDUCE_CHUNK_ROWS * FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
+    uint32_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * D_ALIGN * sizeof(T);
+    uint32_t partialOSize = FD_REDUCE_CHUNK_ROWS * D_ALIGN * sizeof(T);
+    tPipe->InitBuffer(buffers.accumOut, accumOutSize);
+    tPipe->InitBuffer(buffers.blockMax, maxSumTotal);
+    tPipe->InitBuffer(buffers.blockSum, maxSumTotal);
+    tPipe->InitBuffer(buffers.lseExp, lseExpSize);
+    tPipe->InitBuffer(buffers.partialO, partialOSize);
+}
 
 // The three regions are contiguous: partial O, max, then sum.
 // slotCount = maxSplits * physicalCoreSlots (already includes maxSplits).

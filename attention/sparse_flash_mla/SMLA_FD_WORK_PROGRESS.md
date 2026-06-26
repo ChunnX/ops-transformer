@@ -251,11 +251,11 @@ Status: code written for phase 2. Not yet compiled or run.
 
 ### Implemented
 
-#### 1. `util_regbase.h` — New struct and fields
+#### 1. `flash_decode.h` / `util_regbase.h` — Common FD run info and fields
 
-- Added `SmlaFdRunInfo` struct (analogous to QSMLA's `FdRunInfo`, using the same `int64_t` field types after QSMLA consistency cleanup):
+- Added common `AttentionCommon::FdRunInfo` struct (shared by SMLA and QSMLA, using the same `int64_t` field types after QSMLA consistency cleanup):
   ```cpp
-  struct SmlaFdRunInfo {
+  struct FdRunInfo {
       bool coreEnable = false;
       int64_t bn2Idx, mIdx, workspaceIdx, workspaceNum, mStartIdx, mNum;
   };
@@ -299,7 +299,7 @@ Logic (same as QSMLA reference):
 7. `SetRunInfo` now copies `firstFdDataWorkspaceIdx`/`isS2Split`/`s2SplitIdx` to `RunInfo`
 
 **No-work core handling**:
-- `SmlaFdRunInfo fdRunInfo` is default-initialized (`coreEnable = false`, all fields 0)
+- `FdRunInfo fdRunInfo` is default-initialized (`coreEnable = false`, all fields 0)
 - When `hasLoad == 0`, the function returns before entering the FA loop; `fdRunInfo` has no stale state
 - `runParam.isS2Split = false` is set explicitly when `s2NoNeedCalc = true` (no stale value from previous tile)
 
@@ -334,7 +334,7 @@ attention/mixed_quant_sparse_flash_mla/op_kernel/arch35/util_regbase.h
 
 #### Fixed to match QSMLA
 
-- `SmlaFdRunInfo` fields were changed from `uint32_t` to `int64_t`, matching QSMLA `FdRunInfo`.
+- `FdRunInfo` fields use `int64_t`, matching the QSMLA metadata path.
 - `ComputeS1LoopInfo()` now accepts `s2EndIdx` and uses the QSMLA terminal split rule:
 
 ```cpp
@@ -616,13 +616,9 @@ Status: code written and verified. Build and runtime validation completed. FD re
 
 #### 1. `sparse_flash_mla_scfa_block_vector.h` — FD buffers, event IDs, InitFDBuffers, ProcessFlashDecode
 
-**New TBuf members** (for FD reduction UB allocation):
+**New FD buffer group** (for FD reduction UB allocation):
 ```cpp
-TBuf<> fdAccumOutBuf;   // accumulated O output
-TBuf<> fdBlockMaxBuf;   // per-split max values
-TBuf<> fdBlockSumBuf;   // per-split sum values
-TBuf<> fdLseExpBuf;     // LSE exp intermediate
-TBuf<> fdPartialBuf;    // partial O intermediate
+AttentionCommon::FdBuffers<TBuf<>> fdBuffers;
 ```
 
 **New event IDs** (for FD MTE2↔V synchronization):
@@ -633,9 +629,10 @@ TEventID vToMte2V0Id[2];  // V_MTE2 events
 
 Event IDs allocated in `InitLocalBuffer()` with initial `SetFlag<HardEvent::V_MTE2>` to mark partial-O buffer as free.
 
-**InitFDBuffers** (copied from QSMLA `SCFABlockVec::InitFDBuffers`):
+**InitFDBuffers**:
 - Calls `tPipe->Reset()` to reclaim FA-phase UB
 - Allocates FD-specific buffers based on `workspaceNum`, `mNum`, and `FD_REDUCE_CHUNK_ROWS`
+- The allocation order and buffer names are defined by common `AttentionCommon::FdBuffers` / `AttentionCommon::InitFDBuffers`
 
 **ProcessFlashDecode** (adapted from QSMLA `SCFABlockVec::ProcessFlashDecode`):
 - Computes FD output offset from SMLA layout:
@@ -665,8 +662,8 @@ if (fdRunInfo.coreEnable) {
 #### 3. `SCFABlockVecDummy` — Added dummy methods
 
 ```cpp
-__aicore__ inline void InitFDBuffers(SmlaFdRunInfo &fdRunInfo) {}
-__aicore__ inline void ProcessFlashDecode(SmlaFdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
+__aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo) {}
+__aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
 ```
 
 ### QSMLA Consistency Check
@@ -676,7 +673,7 @@ __aicore__ inline void ProcessFlashDecode(SmlaFdRunInfo &fdRunInfo, ConstInfo &c
 | FA/FD phase barrier | `ProcessMainLoop` `SyncAll()` | copied as-is |
 | No-work core barrier | `ProcessMainLoop` `hasLoad == 0` branch | copied as-is |
 | FD dispatch | `if (fdRunInfo.coreEnable > 0)` | copied as-is |
-| `InitFDBuffers` | `SCFABlockVec::InitFDBuffers` | copied with SMLA field rename |
+| `InitFDBuffers` | `AttentionCommon::InitFDBuffers` | shared common helper |
 | `ProcessFlashDecode` | `SCFABlockVec::ProcessFlashDecode` | copied with SMLA-specific output offset |
 | `AttentionCommon::Reduce` call | Same function, same params | copied as-is |
 | FD event IDs | `vToMte2V0Id[2]`, `mte2ToVV0Id[2]` | copied as-is |

@@ -40,12 +40,12 @@ SMLA 侧应复用以下 data-plane 接口：
 
 - `ProcessMainLoop()` 中 FA metadata parse、`s2SplitIdxCounter`、`firstFdDataWorkspaceIdx` 传递，已基本按 QSMLA `mixed_quant_sparse_flash_mla_scfa_kernel.h` 搬运；差异仅保留 SMLA 自身 `ComputeParamBatch()`、`ComputeS2LoopInfo()`、`ProcessVec0()` 参数形式；
 - `ApplyS2MetadataRange()` 算法应保持 QSMLA 原样，仅将 QSMLA 的 `s2LineStartIdx/s2LineOriEndIdx` 字段替换为 SMLA 的 `s2OriLineStartIdx/s2OriLineEndIdx`；
-- `ParseFdRunInfo()` 应保持 QSMLA 原样，仅将 `FdRunInfo` 类型替换为 `SmlaFdRunInfo`，metadata index 仍使用 SMLA 已有 `GetAttrAbsIndex(aivIdx, *, true)`；
+- `ParseFdRunInfo()` 应保持 QSMLA 原样，使用公共 `AttentionCommon::FdRunInfo`，metadata index 仍使用 SMLA 已有 `GetAttrAbsIndex(aivIdx, *, true)`；
 - SMLA 当前尚未搬运 QSMLA 的 `SyncAll() -> ProcessFlashDecode()` FD 阶段、Vec1/Vec2 staging helper、`InitFDBuffers()` 和 final copy-out 适配，这些属于后续阶段必须按 QSMLA 结构补齐的 gap。
 
 不能作为外部依赖直接复用的 QSMLA 私有内容：
 
-- QSMLA 的 `RunInfo`、`ConstInfo`、`FdRunInfo`；
+- QSMLA 的 `RunInfo`、`ConstInfo`；
 - QSMLA metadata 字段编号；
 - QSMLA 的 BSND/TND 输出地址公式；
 - QSMLA 的 Split-G core 映射细节，除非 SMLA 具有完全相同的 head 分配语义。
@@ -242,7 +242,7 @@ mNum
 
 ### 3.2 Kernel FA/FD run info 适配
 
-SMLA kernel 当前已有 `RunInfo`，FA metadata 也已经被 arch35 kernel 解析。FD 适配时应在 `sparse_flash_mla` kernel 内补齐 FD run info，而不是复用 QSMLA 的 `FdRunInfo`。
+SMLA kernel 当前已有 `RunInfo`，FA metadata 也已经被 arch35 kernel 解析。FD 适配时应在 `sparse_flash_mla` kernel 内解析公共 `AttentionCommon::FdRunInfo`，而不是复用 QSMLA 的 `RunInfo` / `ConstInfo`。
 
 建议形成两个逻辑视图：
 
@@ -256,21 +256,24 @@ struct SmlaFaRunInfo {
     // SMLA 原有 FA 必需字段
 };
 
-struct SmlaFdRunInfo {
+struct FdRunInfo {
     bool coreEnable;
-    uint32_t bnIdx;
-    uint32_t mIdx;
-    uint32_t workspaceIdx;
-    uint32_t workspaceNum;
-    uint32_t mStartIdx;
-    uint32_t mNum;
+    int64_t bn2Idx;
+    int64_t mIdx;
+    int64_t workspaceIdx;
+    int64_t workspaceNum;
+    int64_t mStartIdx;
+    int64_t mNum;
 };
 ```
 
-传给 common FD 的最小字段是：
+传给 common FD 的字段来自同一个公共结构：
 
 ```cpp
-AttentionCommon::S2SplitFdRunInfo {
+AttentionCommon::FdRunInfo {
+    coreEnable,
+    bn2Idx,
+    mIdx,
     workspaceIdx,
     workspaceNum,
     mStartIdx,
@@ -278,7 +281,7 @@ AttentionCommon::S2SplitFdRunInfo {
 };
 ```
 
-`bnIdx/mIdx/coreEnable` 留在 SMLA，因为它们属于调度和输出地址语义，不属于 FD reducer。
+`bn2Idx/mIdx/coreEnable` 由 common `FdRunInfo` 承载，各算子仍自行解释输出地址语义。
 
 当前 `sparse_flash_mla_metadata.h` 的 `GetAttrAbsIndex(coreIdx, metaIdx, isAIV)` 已经支持：
 
@@ -339,8 +342,8 @@ UB row width = dAlign
 
 SMLA 的 FD 阶段：
 
-1. parse `SmlaFdRunInfo`；
-2. 如果 `coreEnable == true`，构造 common `S2SplitFdRunInfo`；
+1. parse `AttentionCommon::FdRunInfo`；
+2. 如果 `coreEnable == true`，使用公共 FD run info；
 3. 调用 common `Reduce` 得到 FP32 accumulated O；
 4. 使用 SMLA 自己的 output helper 写回最终输出。
 
@@ -356,7 +359,7 @@ SMLA:
   owns final attentionOut write offset
 ```
 
-也就是说，FD 阶段从 GM staging 读取 `partialO/max/sum` 的 offset 不应在 SMLA 中重复实现；SMLA 只需要把已有 FD metadata 转成 common `S2SplitFdRunInfo` 并传入 layout。最终 `attentionOut` 的写回地址仍由 SMLA 自己计算。
+也就是说，FD 阶段从 GM staging 读取 `partialO/max/sum` 的 offset 不应在 SMLA 中重复实现；SMLA 只需要把已有 FD metadata 解析成 common `FdRunInfo` 并传入 layout。最终 `attentionOut` 的写回地址仍由 SMLA 自己计算。
 
 输出地址必须从 SMLA layout 重新推导：
 
@@ -383,13 +386,13 @@ outputBase =
 | --- | --- | --- | --- |
 | FA/FD phase 调度 | `mixed_quant_sparse_flash_mla_scfa_kernel.h::ProcessMainLoop` | 保持 `ParseFdRunInfo -> FA producer -> SyncAll -> ProcessFlashDecode` 的顺序 | SMLA `ComputeParamBatch/ComputeS2LoopInfo/ProcessVec0` 的参数形式 |
 | S2 metadata 裁剪 | `ApplyS2MetadataRange` | 算法、sentinel 处理、range clamp、loop end 重算保持逐行等价 | `s2LineStartIdx/s2LineOriEndIdx` 替换为 `s2OriLineStartIdx/s2OriLineEndIdx` |
-| FD metadata 解析 | `ParseFdRunInfo` | 读取顺序和 early return 保持一致 | `FdRunInfo` 替换为 `SmlaFdRunInfo`，字段类型按 SMLA metadata ABI |
+| FD metadata 解析 | `ParseFdRunInfo` | 读取顺序和 early return 保持一致 | 使用公共 `AttentionCommon::FdRunInfo`，字段类型按 metadata ABI |
 | FA staging slot | `SCFABlockVec::GetFaStagingWorkspaceIdx` | 函数放在 SMLA Vec block 内，公式保持 `firstFdDataWorkspaceIdx + s2SplitIdx` | 函数名可加 SMLA 前缀但不要改公式 |
 | FA staging M offset | `SCFABlockVec::GetFaStagingMOffset` | 优先搬运 QSMLA subBlock/split-G offset 结构 | 若 SMLA head 分配不同，只替换 offset 计算项 |
 | staging layout | `SCFABlockVec::GetS2SplitFdStagingLayout` | 保持调用 common layout 的字段顺序 | `stagingM`、slot count 按 SMLA host workspace 公式 |
 | Vec1 LSE staging | `SCFABlockVec::ProcessVec1` 中 `isS2Split && final loop` 分支 | 在原 Vec1 final-update 后插入，调用 `StageVec1Lse` 的参数顺序保持一致 | tmp UB、event id 使用 SMLA Vec1 已有资源 |
 | Vec2 partial O staging | `SCFABlockVec::ProcessVec2` 中 `if (runInfo.isS2Split)` 分支 | 保持 final division 之后 split 写 staging、非 split copy out 的结构 | SMLA copy-out helper 和 `dSizeV/dAlign` 来源 |
-| FD UB 初始化 | `SCFABlockVec::InitFDBuffers` | 保持 `tPipe->Reset()` 和按 `workspaceNum/mNum/chunkRows` 申请的结构 | buffer 成员名和 dtype 模板 |
+| FD UB 初始化 | `AttentionCommon::InitFDBuffers` | 保持 `tPipe->Reset()` 和按 `workspaceNum/mNum/chunkRows` 申请的结构 | 各算子持有 `AttentionCommon::FdBuffers<TBuf<>>` 实例 |
 | FD reduce | `SCFABlockVec::ProcessFlashDecode` | 保留输出 offset 前置计算、LocalTensor 获取、`AttentionCommon::Reduce`、最终 copy out 的结构 | 输出 offset 必须按 SMLA layout 重推，不能复制 QSMLA 公式 |
 | no-work core barrier | `ProcessMainLoop` 的 `hasLoad == 0` 分支 | 保持 no-FA core 也 `SyncAll()` 后按 `fdRunInfo.coreEnable` 做 FD | SMLA 当前 Phase 2 尚未接 FD 时可暂不启用，Phase 5 必须补齐 |
 

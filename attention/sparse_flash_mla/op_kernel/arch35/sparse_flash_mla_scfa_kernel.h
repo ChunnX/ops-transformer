@@ -46,6 +46,7 @@ using namespace optiling;
 using namespace optiling::detail;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
+using AttentionCommon::FdRunInfo;
 
 namespace SMLAKernel {
 template <typename CubeBlockType, typename VecBlockType>
@@ -85,7 +86,7 @@ private:
     __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
-    __aicore__ inline void ParseFdRunInfo(SmlaFdRunInfo &fdRunInfo);
+    __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo);
     __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo,
         int64_t s2StartPoint, int64_t s2EndPoint,
         bool isFirstS2RangeTask, bool isLastS2RangeTask);
@@ -452,7 +453,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
-    SmlaFdRunInfo fdRunInfo;
+    FdRunInfo fdRunInfo;
     if ASCEND_IS_AIV {
         ParseFdRunInfo(fdRunInfo);
     }
@@ -628,7 +629,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Co
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : (this->constInfo.gSize >> 1U);
     } else {
         runParam.goIdx = 0;
     }
@@ -708,7 +709,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Co
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ParseFdRunInfo(
-    SmlaFdRunInfo &fdRunInfo)
+    FdRunInfo &fdRunInfo)
 {
     uint32_t aivIdx = static_cast<uint32_t>(this->constInfo.aivIdx);
     fdRunInfo.coreEnable =

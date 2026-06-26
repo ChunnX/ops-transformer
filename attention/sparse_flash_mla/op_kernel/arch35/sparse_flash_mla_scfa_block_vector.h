@@ -62,6 +62,7 @@ using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace matmul;
+using AttentionCommon::FdRunInfo;
 
 namespace SMLAKernel {
 TEMPLATES_DEF
@@ -125,28 +126,19 @@ public:
         RunInfo &runInfo,
         ConstInfo &constInfo);
     __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) { s2SplitStagingBase = base; }
-    __aicore__ inline void InitFDBuffers(SmlaFdRunInfo &fdRunInfo);
-    __aicore__ inline void ProcessFlashDecode(SmlaFdRunInfo &fdRunInfo, ConstInfo &constInfo);
+    __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo);
+    __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo);
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
 
 private:
-    __aicore__ inline uint32_t StagingMSize(const ConstInfo &constInfo) const
-    {
-        if constexpr (IS_SPLIT_G) {
-            return regbaseutil::S2_SPLIT_STAGING_M_SIZE_SPLIT_G;
-        } else {
-            return static_cast<uint32_t>(constInfo.gSize);
-        }
-    }
-
     __aicore__ inline uint32_t GetStagingSlotNum() const
     {
         if constexpr (IS_SPLIT_G) {
-            return regbaseutil::MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
+            return AttentionCommon::FD_MAX_S2_SPLIT_NUM * (GetBlockNum() >> 1U);
         } else {
-            return regbaseutil::MAX_S2_SPLIT_NUM * GetBlockNum();
+            return AttentionCommon::FD_MAX_S2_SPLIT_NUM * GetBlockNum();
         }
     }
 
@@ -160,9 +152,7 @@ private:
         uint32_t stagingMOffset = (constInfo.subBlockIdx == 1) ?
             static_cast<uint32_t>(runInfo.firstHalfMRealSize) : 0U;
         if constexpr (IS_SPLIT_G) {
-            if (runInfo.goIdx == regbaseutil::S2_SPLIT_STAGING_M_SIZE) {
-                stagingMOffset += regbaseutil::S2_SPLIT_STAGING_M_SIZE;
-            }
+            stagingMOffset += static_cast<uint32_t>(runInfo.goIdx);
         }
         return stagingMOffset;
     }
@@ -170,8 +160,8 @@ private:
     __aicore__ inline AttentionCommon::S2SplitFdStagingLayout GetS2SplitFdStagingLayout(
         const ConstInfo &constInfo) const
     {
-        return {StagingMSize(constInfo), dTemplateAlign64, GetStagingSlotNum(),
-            regbaseutil::FD_BROADCAST_ELEMS_PER_ROW, regbaseutil::FD_REDUCE_CHUNK_ROWS};
+        return {static_cast<uint32_t>(constInfo.gSize), dTemplateAlign64, GetStagingSlotNum(),
+            AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
     }
 
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -245,11 +235,7 @@ private:
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2];
     TBuf<> outLseBuf[2];
-    TBuf<> fdAccumOutBuf;
-    TBuf<> fdBlockMaxBuf;
-    TBuf<> fdBlockSumBuf;
-    TBuf<> fdLseExpBuf;
-    TBuf<> fdPartialBuf;
+    AttentionCommon::FdBuffers<TBuf<>> fdBuffers;
     __gm__ uint8_t *s2SplitStagingBase = nullptr;
     TEventID mte2ToVV0Id[2];
     TEventID vToMte2V0Id[2];
@@ -727,25 +713,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(SmlaFdRunInfo &fdRunInfo)
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
 {
-    this->tPipe->Reset();
-    uint32_t maxSumTotal = static_cast<uint32_t>(fdRunInfo.workspaceNum) * regbaseutil::FD_REDUCE_CHUNK_ROWS *
-        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
-    uint32_t lseExpSize = regbaseutil::FD_REDUCE_CHUNK_ROWS *
-        regbaseutil::FD_BROADCAST_ELEMS_PER_ROW * sizeof(float);
-    uint32_t accumOutSize = static_cast<uint32_t>(fdRunInfo.mNum) * dTemplateAlign64 * sizeof(T);
-    uint32_t partialOSize = regbaseutil::FD_REDUCE_CHUNK_ROWS * dTemplateAlign64 * sizeof(T);
-    this->tPipe->InitBuffer(fdAccumOutBuf, accumOutSize);
-    this->tPipe->InitBuffer(fdBlockMaxBuf, maxSumTotal);
-    this->tPipe->InitBuffer(fdBlockSumBuf, maxSumTotal);
-    this->tPipe->InitBuffer(fdLseExpBuf, lseExpSize);
-    this->tPipe->InitBuffer(fdPartialBuf, partialOSize);
+    AttentionCommon::InitFDBuffers<T, dTemplateAlign64>(fdRunInfo, this->tPipe, fdBuffers);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
-    SmlaFdRunInfo &fdRunInfo, ConstInfo &constInfo)
+    FdRunInfo &fdRunInfo, ConstInfo &constInfo)
 {
     InitFDBuffers(fdRunInfo);
     int64_t vec2CalcSize = fdRunInfo.mNum * dTemplateAlign64;
@@ -758,11 +733,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(
     int64_t attentionOutOffset = seqOffset * constInfo.n2GDv +
         fdRunInfo.mIdx * constInfo.n2GDv +
         fdRunInfo.mStartIdx * constInfo.dSizeV;
-    LocalTensor<T> accumulatedO = this->fdAccumOutBuf.template Get<T>();
-    LocalTensor<float> lseExpUb = this->fdLseExpBuf.template Get<float>();
-    LocalTensor<float> blockMaxUb = this->fdBlockMaxBuf.template Get<float>();
-    LocalTensor<float> blockSumUb = this->fdBlockSumBuf.template Get<float>();
-    LocalTensor<T> partialOFp32 = this->fdPartialBuf.template Get<T>();
+    LocalTensor<T> accumulatedO = this->fdBuffers.accumOut.template Get<T>();
+    LocalTensor<float> lseExpUb = this->fdBuffers.lseExp.template Get<float>();
+    LocalTensor<float> blockMaxUb = this->fdBuffers.blockMax.template Get<float>();
+    LocalTensor<float> blockSumUb = this->fdBuffers.blockSum.template Get<float>();
+    LocalTensor<T> partialOFp32 = this->fdBuffers.partialO.template Get<T>();
 
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = GetS2SplitFdStagingLayout(constInfo);
     AttentionCommon::Reduce<T, dTemplateAlign64>(stagingLayout, s2SplitStagingBase,
@@ -973,8 +948,8 @@ public:
         __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV) {};
     __aicore__ inline void InitS2SplitStaging(__gm__ uint8_t *base) {}
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
-    __aicore__ inline void InitFDBuffers(SmlaFdRunInfo &fdRunInfo) {}
-    __aicore__ inline void ProcessFlashDecode(SmlaFdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
+    __aicore__ inline void InitFDBuffers(FdRunInfo &fdRunInfo) {}
+    __aicore__ inline void ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo) {}
 };
 }
 #endif // SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H
