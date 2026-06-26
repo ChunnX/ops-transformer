@@ -22,9 +22,9 @@
 
 extern "C" {
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
-                                             int32_t hiddenSize, int64_t numEntriesPerRank,
-                                             int64_t outputDtype, aclTensor *fetched,
+                                             int32_t hiddenSize, int64_t numEntriesPerRank, aclTensor *fetched, 
                                              uint64_t *workspaceSize, aclOpExecutor **executor);
+                                             
 aclnnStatus aclnnEngramFetch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 }
 
@@ -51,10 +51,9 @@ TEST_F(AclnnEngramFetchTest, ascend950_success) {
 
     int32_t hiddenSize = 512;
     int64_t numEntriesPerRank = 4;
-    int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank, outputDtype),
+                        INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank),
                         OUTPUT(fetched_desc));
 
     uint64_t workspace_size = 0;
@@ -69,10 +68,9 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext) {
 
     int32_t hiddenSize = 512;
     int64_t numEntriesPerRank = 4;
-    int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(nullptr, indices_desc, hiddenSize, numEntriesPerRank, outputDtype),
+                        INPUT(nullptr, indices_desc, hiddenSize, numEntriesPerRank),
                         OUTPUT(fetched_desc));
 
     uint64_t workspace_size = 0;
@@ -87,10 +85,9 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices) {
 
     int32_t hiddenSize = 512;
     int64_t numEntriesPerRank = 4;
-    int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, nullptr, hiddenSize, numEntriesPerRank, outputDtype),
+                        INPUT(commContext_desc, nullptr, hiddenSize, numEntriesPerRank),
                         OUTPUT(fetched_desc));
 
     uint64_t workspace_size = 0;
@@ -105,10 +102,9 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched) {
 
     int32_t hiddenSize = 512;
     int64_t numEntriesPerRank = 4;
-    int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank, outputDtype),
+                        INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank),
                         OUTPUT(nullptr));
 
     uint64_t workspace_size = 0;

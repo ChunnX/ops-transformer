@@ -33,7 +33,6 @@ constexpr uint32_t FETCHED_INDEX = 0U;
 
 constexpr uint32_t ATTR_HIDDEN_SIZE_INDEX = 0U;
 constexpr uint32_t ATTR_NUM_ENTRIES_PER_RANK_INDEX = 1U;
-constexpr uint32_t ATTR_OUTPUT_DTYPE_INDEX = 2U;
 
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
@@ -242,10 +241,6 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context)
     OP_TILING_CHECK(numEntriesPerRankPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "num_entries_per_rank"), return ge::GRAPH_FAILED);
 
-    auto outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_OUTPUT_DTYPE_INDEX);
-    OP_TILING_CHECK(outputDtypePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "output_dtype"), return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -289,23 +284,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context)
             std::to_string(*numEntriesPerRankPtr).c_str(), "[0, INT32_MAX]"),
         return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "num_entries_per_rank is %ld", *numEntriesPerRankPtr);
-
-    auto outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_OUTPUT_DTYPE_INDEX);
-    ge::DataType outputDtype = static_cast<ge::DataType>(*outputDtypePtr);
-    OP_TILING_CHECK(!IsContains(OUTPUT_DTYPE_LIST, outputDtype),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "output_dtype",
-            Ops::Base::ToString(outputDtype).c_str(),
-            "The value of output_dtype must be DT_BF16, DT_FLOAT16 or DT_FLOAT."),
-        return ge::GRAPH_FAILED);
-    OP_LOGD(nodeName, "output_dtype is %ld", *outputDtypePtr);
-
-    ge::DataType fetchedDtype = fetchedDesc->GetDataType();
-    OP_TILING_CHECK(fetchedDtype != outputDtype,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "fetched",
-            Ops::Base::ToString(fetchedDtype).c_str(),
-            (std::string("fetched dtype must match output_dtype attr(") +
-             Ops::Base::ToString(outputDtype).c_str() + ")").c_str()),
-        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
