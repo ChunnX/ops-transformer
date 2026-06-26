@@ -1871,10 +1871,6 @@ void FusedInferAttentionScoreTilingImpl::SetAntiQuantInfo(const FiaTilingInfo &f
     }
 
     auto scaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
-    if (scaleTensor == nullptr) {
-        inputParams.set_antiquantPerTensorFlag(0);
-        return;
-    }
     uint32_t scaleDimNum = scaleTensor->GetStorageShape().GetDimNum();
     uint32_t scaleShape = scaleTensor->GetStorageShape().GetDim(0);
     bool perTensor = (scaleDimNum == 1 && scaleShape == 1);
