@@ -27,6 +27,8 @@ constexpr int64_t QUANT_MODE_STATIC = 0;
 constexpr int64_t QUANT_MODE_DYNAMIC = 1;
 constexpr int64_t QUANT_MODE_MXFP8_E5M2 = 2;
 constexpr int64_t QUANT_MODE_MXFP8_E4M3FN = 3;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E5M2 = 4;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E4M3FN = 5;
 constexpr int64_t QUANT_MODE_HIF8_CAST = 6;
 constexpr int64_t QUANT_MODE_HIF8_PERTENSOR = 7;
 constexpr int64_t QUANT_MODE_HIF8_PERTOKEN = 8;
@@ -34,6 +36,8 @@ constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12;
 constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15;
 // 可选row_idx_type
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0;
 constexpr int64_t ROW_IDX_TYPE_SCATTER = 1;
@@ -66,10 +70,14 @@ ge::DataType GetExpandedXDtype(int64_t quantMode, ge::DataType xDtype, ge::DataT
         case QUANT_MODE_INT4_DYNAMIC:
             return ge::DT_INT4;
         case QUANT_MODE_MXFP8_E5M2:
+        case QUANT_MODE_FP8_GROUP_E5M2:
         case QUANT_MODE_FP8_PERBLOCK_E5M2:
+        case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
             return ge::DT_FLOAT8_E5M2;
         case QUANT_MODE_MXFP8_E4M3FN:
+        case QUANT_MODE_FP8_GROUP_E4M3FN:
         case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
+        case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
             return ge::DT_FLOAT8_E4M3FN;
         case QUANT_MODE_MXFP4_E2M1:
             return ge::DT_FLOAT4_E2M1;
@@ -123,6 +131,14 @@ ExpandedScaleDesc MakeFp8PerBlockScaleDesc(int64_t totalLength, int64_t cols)
     return desc;
 }
 
+ExpandedScaleDesc MakeFp8GroupScaleDesc(int64_t totalLength, int64_t cols)
+{
+    ExpandedScaleDesc desc;
+    desc.dtype = ge::DT_FLOAT;
+    desc.shape = {totalLength, CeilDiv(cols, 128)};
+    return desc;
+}
+
 ExpandedScaleDesc MakeUnquantInputScaleDesc(int64_t totalLength, int64_t cols, ge::DataType xDtype)
 {
     if (IsMxfpXNoQuant(xDtype)) {
@@ -155,6 +171,11 @@ ExpandedScaleDesc GetExpandedScaleDesc(int64_t quantMode, int64_t totalLength, i
         case QUANT_MODE_FP8_PERBLOCK_E5M2:
         case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
             return MakeFp8PerBlockScaleDesc(totalLength, cols);
+        case QUANT_MODE_FP8_GROUP_E5M2:
+        case QUANT_MODE_FP8_GROUP_E4M3FN:
+        case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
+        case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
+            return MakeFp8GroupScaleDesc(totalLength, cols);
         case QUANT_MODE_UNQUANT:
             if (isInputScale) {
                 return MakeUnquantInputScaleDesc(totalLength, cols, xDtype);
@@ -677,6 +698,42 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_perblock_e
 {
     int64_t h = 83;
     RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_PERBLOCK_E4M3FN,
+                              ge::DT_BF16, {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerGroup E5M2
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_group_e5m2)
+{
+    int64_t h = 257;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_GROUP_E5M2,
+                              ge::DT_FLOAT16, {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerGroup E4M3FN
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_group_e4m3)
+{
+    int64_t h = 257;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_GROUP_E4M3FN,
+                              ge::DT_BF16, {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerGroup E5M2 with amax clamp
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_group_amax_e5m2)
+{
+    int64_t h = 257;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_GROUP_AMAX_E5M2,
+                              ge::DT_FLOAT16, {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerGroup E4M3FN with amax clamp
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_group_amax_e4m3)
+{
+    int64_t h = 257;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_GROUP_AMAX_E4M3FN,
                               ge::DT_BF16, {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
