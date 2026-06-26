@@ -129,6 +129,10 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
         return ge::GRAPH_FAILED);
     int64_t commContextDim0 = commContextShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "commContext dim0 = %ld", commContextDim0);
+    OP_TILING_CHECK(commContextDim0 <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "commContext",
+            (std::string("dim0=") + std::to_string(commContextDim0)).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
 
     const gert::StorageShape *indicesShape = context->GetInputShape(INDICES_INDEX);
     OP_TILING_CHECK(indicesShape == nullptr,

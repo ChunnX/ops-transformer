@@ -43,8 +43,8 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
-                                               aclTensor *fetched, int32_t hiddenSize,
-                                               int64_t numEntriesPerRank, int64_t outputDtype,
+                                               int32_t hiddenSize, int64_t numEntriesPerRank,
+                                               int64_t outputDtype, aclTensor *fetched,
                                                uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(commContext, indices, fetched);
