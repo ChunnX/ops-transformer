@@ -28,6 +28,8 @@ from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla import (
     convert_mixed_quant_sparse_flash_mla_metadata
 )
 from .block_sparse_attention import block_sparse_attention
+from .scatter_pa_kv_cache_with_k_scale import scatter_pa_kv_cache_with_k_scale
+from .graph_convert.graph_convert_scatter_pa_kv_cache_with_k_scale import converter_scatter_pa_kv_cache_with_k_scale
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
 from .graph_convert.graph_convert_sparse_flash_mla import convert_sparse_flash_mla_metadata
 from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_indexer_kl_loss_grad
