@@ -2,13 +2,22 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>            |    √    |
+
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+
+- <term>Atlas 推理系列产品</term>：不支持
+
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
--   API功能：
+-   接口功能：
 
     需与[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)配套使用，该算子将`MoE（Mixture of Experts）`以及`FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现`Dispatch + GroupMatmul1 + SwiGLUQuant + GroupMatmul2 + Combine`的端到端融合计算。
 -   计算公式：
@@ -74,8 +83,8 @@
 
 ## 函数原型
 
-```
-mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scales=None, l1_weights_sf=None, l2_weights_sf=None, x_active_mask=None, weight1_type=28, weight2_type=None) -> (Tensor, Tensor)
+```python
+cann_ops_transformer.ops.mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, weight1_type=None, weight2_type=None)
 ```
 
 ## 参数说明
@@ -93,7 +102,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - `max_recv_token_num`：每个Rank最大可接收Token数，默认值为0表示自动计算，数据数据类型支持`int64`。
     - `num_max_tokens_per_rank`：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小，数据数据类型支持`int64`。
     - `dispatch_quant_mode`：dispatch通信时量化模式，目前仅支持4（MX模式），数据数据类型支持`int64`。
-    - `dispatch_quant_out_type`：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn），数据数据类型支持`int64`。
+    - `dispatch_quant_out_dtype`：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn），数据数据类型支持`int64`。
     - `combine_quant_mode`：暂不支持该参数，使用默认值即可。
     - `comm_alg`：暂不支持该参数，使用默认值即可。
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
@@ -104,19 +113,26 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
 -   **weight1\_type** (`int`)：暂不支持该参数，使用默认值即可。
 -   **weight2\_type** (`int`)：暂不支持该参数，使用默认值即可。
 
-## 输出说明
+## 返回值说明
 
 -   **y\_out** (`Tensor`)：表示本卡收到的token数据，要求为2维张量，shape为(BS, H)，当前数据类型支持`bfloat16`。数据格式为$ND$，支持非连续的Tensor。
 -   **expert\_token\_nums** (`Tensor`)：本卡每个专家实际收到的token数量，要求为1维张量，shape为(local\_expert\_num,)，数据类型`int32`，数据格式支持$ND$，支持非连续的Tensor。
 
 ## 约束说明
 
+- **公共约束**：
+    - 适用场景：该接口支持训练、推理场景下使用。
+    - 调用方式：该接口支持单算子模式调用（torchair图模式暂不支持）。
+
+- **确定性计算**：
+    - 默认支持确定性计算。
+
 - **参数一致性约束**：
     - 调用算子过程中使用的`epWorldSize`、`globalBs`、`HCCL_BUFFSIZE`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域使用约束**：
     - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
-    - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_type`、`global_bs`参数取值需保持一致。
+    - 所有卡的`moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`global_bs`参数取值需保持一致。
 
 - **参数约束**：
     - BS（x.dim0）范围 [1, 512]。
@@ -147,10 +163,10 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - xActiveMask和scales必须为空指针。
 
 ## get\_symm\_buffer\_for\_mega\_moe接口说明
+```python
+cann_ops_transformer.ops.get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="")
 ```
-get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, *, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
-```
-## 参数说明
+### 参数说明
 
 - **group**(`String`)：必选参数，EP通信域名称（专家并行通信域）。
 - **num_experts**(`int`)：必选参数，MoE模型的总专家数量。
@@ -161,11 +177,11 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
 - **max_recv_token_num**(`int`)：可选参数，每个Rank最大可接收Token数，默认值为0表示自动计算。
 - **dispatch_quant_mode**(`int`)：可选参数，dispatch通信时量化模式，目前仅支持4（MX模式）。
-- **dispatch_quant_out_type**(`int`)：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
+- **dispatch_quant_out_dtype**(`int`)：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
 - **combine_quant_mode**(`int`)：暂不支持该参数，使用默认值即可。
 - **comm_alg**(`String`)：暂不支持该参数，使用默认值即可。
 
-## 输出说明
+### 返回值说明
 
 -   **sym\_buffer** (`SymmBuffer`)：用于封装输入参数并生成`context`、`ep_world_size`和`ccl_buffer_size`。
     
@@ -258,14 +274,14 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
             weights_scales2=weights_scales2,
             expert_scales=expert_scales,
         )
-        # 构造distribute_buffer
+        # 步骤1：调用get_symm_buffer_for_mega_moe构造对称通信buffer（封装通信域、专家数、量化模式等信息）
         distribute_buffer = get_symm_buffer_for_mega_moe(
             ep_group, num_experts=num_experts,
             num_max_tokens_per_rank=0, num_topk=topK,
             hidden=H, intermediate_hidden=0,
-            dispatch_quant_mode=4, dispatch_quant_out_type=23
+            dispatch_quant_mode=4, dispatch_quant_out_dtype=23
         )
-        # 运行mega_moe
+        # 步骤2：将上一步构造的sym_buffer传入mega_moe，端到端完成Dispatch+GMM1+SwiGLUQuant+GMM2+Combine融合计算
         y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
 
         torch.npu.synchronize()
