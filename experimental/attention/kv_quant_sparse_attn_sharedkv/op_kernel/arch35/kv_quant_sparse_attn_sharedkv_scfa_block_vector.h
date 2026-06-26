@@ -153,12 +153,10 @@ private:
     TBuf<> sinksBuf;
     TBuf<> stage1OutBuf[2]; // 2份表示可能存在pingpong
     TBuf<> stage2OutBuf;
+    uint32_t stage0InBufBufId[2] = {0, 1};
+    uint32_t stage0OutBufBufId[2] = {2, 3};
     TEventID mte3ToVId;
     TEventID vToMte3Id;
-    TEventID mte2ToVV0Id[2];
-    TEventID vToMte2V0Id[2];
-    TEventID vToMte3V0Id[2];
-    TEventID mte3ToVV0Id[2];
     TEventID vToMte3V1Id[2];
     TEventID mte3ToVV1Id[2];
     TBuf<> softmaxMaxBuf[2];
@@ -528,22 +526,30 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
             v0ProcessSize = procSize - i * v0ProcessBase;
         }
 
-        WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
+        get_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], false);
+        rls_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], false);
         LocalTensor<KV_T> kvInUb = stage0InBuf[pingPongV0].Get<KV_T>();
         CopyInKvNotSparse(kvInUb, v0ProcessSize, s2StartIdx, runInfo, constInfo);
-        SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[pingPongV0]);
-        WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[pingPongV0]);
+        get_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], true);
+        rls_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], true);
+        get_buf(PIPE_V, stage0InBufBufId[pingPongV0], false);
+        rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], false);
         // 2、dequant by vf
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
+        get_buf(PIPE_V, stage0OutBufBufId[pingPongV0], false);
+        rls_buf(PIPE_V, stage0OutBufBufId[pingPongV0], false);
         LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pingPongV0].Get<Q_T>();
         DequantKv(kvDequantOutUb, kvInUb, v0ProcessSize, constInfo);
-        SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
+        get_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
+        rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
 
         // 3、copy kv out, ub -> l1
-        SetFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
+        get_buf(PIPE_V, stage0OutBufBufId[pingPongV0], true);
+        rls_buf(PIPE_V, stage0OutBufBufId[pingPongV0], true);
+        get_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], false);
+        rls_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], false);
         CopyOutKvUb2Gm(v0ResGm, kvDequantOutUb, v0ProcessSize, s2StartIdx, runInfo, constInfo);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
+        get_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], true);
+        rls_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], true);
         pingPongV0 ^= 1;
     }
 }
@@ -683,7 +689,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     while ((s2 < procS2End) && !meetEnd) { // 拷贝到s2End或者遇到-1
         int64_t dealRow = 0;
         // 1、copy kv in, gm ->ub
-        WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
+        get_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], false);
+        rls_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], false);
         LocalTensor<KV_T> kvInUb = stage0InBuf[pingPongV0].Get<KV_T>();
         while (dealRow < Min(16, procSize) && s2 < procS2End) { // 拷贝满16行或者遇到-1
             int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1}; // 拷贝进入的8个token的index
@@ -704,22 +711,30 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
                 break;
             }
         }
-        if (dealRow  == 0) {
-            SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
+        if (dealRow == 0) {
+            get_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
+            rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
             return;
         }
-        SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[pingPongV0]);
-        WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[pingPongV0]);
+        get_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], true);
+        rls_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], true);
+        get_buf(PIPE_V, stage0InBufBufId[pingPongV0], false);
+        rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], false);
         // 2、dequant by vf
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
+        get_buf(PIPE_V, stage0OutBufBufId[pingPongV0], false);
+        rls_buf(PIPE_V, stage0OutBufBufId[pingPongV0], false);
         LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pingPongV0].Get<Q_T>();
         DequantKv(kvDequantOutUb, kvInUb, dealRow, constInfo);
-        SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[pingPongV0]);
+        get_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
+        rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
         // 3、copy kv out, ub -> l1
-        SetFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3V0Id[pingPongV0]);
+        get_buf(PIPE_V, stage0OutBufBufId[pingPongV0], true);
+        rls_buf(PIPE_V, stage0OutBufBufId[pingPongV0], true);
+        get_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], false);
+        rls_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], false);
         CopyOutKvUb2Gm(v0ResGm, kvDequantOutUb, dealRow, s2Start, runInfo, constInfo);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[pingPongV0]);
+        get_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], true);
+        rls_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], true);
         s2Start += dealRow;
         pingPongV0 ^= 1;
     }
@@ -1444,18 +1459,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
-    mte2ToVV0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
-    mte2ToVV0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
-    vToMte2V0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
-    vToMte2V0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
-    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
-    SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
-    vToMte3V0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    vToMte3V0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    mte3ToVV0Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    mte3ToVV0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[0]);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVV0Id[1]);
     vToMte3V1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     vToMte3V1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     mte3ToVV1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
