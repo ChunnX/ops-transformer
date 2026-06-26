@@ -445,9 +445,11 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim()
             OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), xName_.c_str(),
                 std::to_string(xDimNumber), std::to_string(MIN_FM_DIM)));
         if (gmmParams_.groupType == SPLIT_M) {
-            GMM_CHECK_REPORT(weightDimNumber == SPLIT_M_SINGLE_WEIGHT_DIM,
+            const size_t expectedWeightDim =
+                IsWeightNzSingleMultiSingleLayout() ? MIN_FM_DIM : SPLIT_M_SINGLE_WEIGHT_DIM;
+            GMM_CHECK_REPORT(weightDimNumber == expectedWeightDim,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
-                    std::to_string(weightDimNumber), std::to_string(SPLIT_M_SINGLE_WEIGHT_DIM)));
+                    std::to_string(weightDimNumber), std::to_string(expectedWeightDim)));
         } else if (gmmParams_.groupType == SPLIT_K) {
             GMM_CHECK_REPORT(weightDimNumber == SPLIT_K_SINGLE_WEIGHT_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), weightName_.c_str(),
