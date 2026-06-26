@@ -970,6 +970,7 @@ def qliv2_output_single(params, is_batch = False):
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (q_t_size, q_head_num))).to(dequant_dtype).npu()
         if output_idx_offset is not None:
             output_idx_offset = torch.tensor(output_idx_offset).reshape(q_t_size, 1).to(torch.int32).npu()
+    properties = torch.npu.get_device_properties()
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(torch.float)
         if hifp8mode == 1:
@@ -986,6 +987,10 @@ def qliv2_output_single(params, is_batch = False):
             key_dequant_scale_cpu = key_dequant_scale.cpu()
         
         block_table = None
+        if "Ascend950" not in properties.name:
+            seqused_q = None
+            seqused_k = None
+            output_idx_offset = None
         cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale_cpu, key_dequant_scale_cpu, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, block_table, output_idx_offset)
 
     elif layout_key == "TND":
@@ -1004,6 +1009,10 @@ def qliv2_output_single(params, is_batch = False):
             key_dequant_scale_cpu = key_dequant_scale.cpu()
         
         block_table = None
+        if layout_query == "TND" and "Ascend950" not in properties.name:
+            seqused_q = None
+            seqused_k = None
+            output_idx_offset = None
         cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale_cpu, key_dequant_scale_cpu, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, block_table, output_idx_offset)
 
     elif layout_key == "PA_BBND":
@@ -1085,6 +1094,9 @@ def qliv2_output_single(params, is_batch = False):
             key_dequant_scale = torch.tensor([k_scale]).to(dequant_dtype).npu()
         else:
             key_dequant_scale = key_dequant_scale_block.npu()
+        if layout_query == "TND" and "Ascend950" not in properties.name:
+            seqused_q = None
+            output_idx_offset = None
         cpu_result, topk_value, cpu_topk_value = test_qliv2.forward(query, key_bnsd, weights, query_dequant_scale_cpu, key_dequant_scale_bns, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     # ======================== metadata 构造 ========================
