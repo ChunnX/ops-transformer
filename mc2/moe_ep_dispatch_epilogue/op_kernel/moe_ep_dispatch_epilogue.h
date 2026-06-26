@@ -39,7 +39,7 @@ static constexpr uint32_t UB_ALIGN = 32U;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 3;
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
+template <typename XType, typename ScalesType, uint32_t IsCached, uint32_t HasTopkWeights>
 class KernelDispatchEpilogue {
 public:
     __aicore__ inline KernelDispatchEpilogue() {};
@@ -133,8 +133,8 @@ private:
     uint32_t perSlotBytes_{0};
 };
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::SplitToCore(
+template <typename XType, typename ScalesType, uint32_t IsCached, uint32_t HasTopkWeights>
+__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId, uint32_t &sendNum)
 {
     sendNum = curSendCnt / curUseAivNum;
@@ -150,8 +150,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Spli
     endId = startId + sendNum;
 }
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init(
+template <typename XType, typename ScalesType, uint32_t IsCached, uint32_t HasTopkWeights>
+__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Init(
     GM_ADDR context,
     GM_ADDR dstBufferSlotIdx,
     GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
@@ -180,7 +180,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
     cachedRecvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)cachedRecvSrcMetadata);
     recvXGm_.SetGlobalBuffer((__gm__ XType*)recvX);
-    recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
+    if constexpr (HasTopkWeights) {
+        recvTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)recvTopkWeights);
+    }
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata);
 
     // hitCountStride_: 每 aiv 的 hitCount 存储步长，对齐到 8 个 int32 (32 bytes)
@@ -208,7 +210,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
 
 
-    uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
 
     tpipe_->InitBuffer(ubTokenBuf_, ubTokenBytes);
@@ -223,7 +224,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(ubHitCountFullBuf_, ubHitCountFullBytes);
     tpipe_->InitBuffer(ubHitCountRowI64Buf_, ubHitCountRowI64Bytes);
-    tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
+    if constexpr (HasTopkWeights) {
+        uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
+        tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
+    }
     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
         scalesOffset_ =  Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
@@ -249,7 +253,9 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     ubExpertPfx_ = ubExpertPfxBuf_.Get<int64_t>();
     ubHitCountFull_ = ubHitCountFullBuf_.Get<int32_t>();
     ubHitCountRowI64_ = ubHitCountRowI64Buf_.Get<int64_t>();
-    ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
+    if constexpr (HasTopkWeights) {
+        ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
+    }
     ubStageMeta_    = ubStageMetaBuf_.Get<int32_t>();
 
     DataCopyExtParams expertPfxCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int64_t)), 0U, 0U, 0U};
@@ -268,8 +274,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 }
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Process()
+template <typename XType, typename ScalesType, uint32_t IsCached, uint32_t HasTopkWeights>
+__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
     ComputePrefixSums();
     CountHits();
@@ -290,8 +296,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Proc
 
 }
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::ComputePrefixSums()
+template <typename XType, typename ScalesType, uint32_t IsCached, uint32_t HasTopkWeights>
+__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::ComputePrefixSums()
 {
     int64_t cumulativeRowOffset = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -302,8 +308,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Comp
     SyncFunc<AscendC::HardEvent::S_V>();
 }
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::CountHits()
+template <typename XType, typename ScalesType, uint32_t IsCached, uint32_t HasTopkWeights>
+__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CountHits()
 {
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
 
@@ -354,8 +360,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Coun
     DataCopyPad(hitCountGm_[(int64_t)aivId_ * hitCountStride_], ubHitCount_, hitCountCopyParams);
 }
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::CopyFromWindowByExpert()
+template <typename XType, typename ScalesType, uint32_t IsCached, uint32_t HasTopkWeights>
+__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
 {
     DataCopyExtParams hitCountFullCopyParams{1U,
         static_cast<uint32_t>(aivNum_ * hitCountStride_ * sizeof(int32_t)), 0U, 0U, 0U};
@@ -434,8 +440,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
                         DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
                     }
 
-                    float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
-                    ubStageWeights_.SetValue(stageIdx, weights);
+                    if constexpr (HasTopkWeights) {
+                        float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
+                        ubStageWeights_.SetValue(stageIdx, weights);
+                    }
                     if constexpr (!IsCached) {
                         ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
                             ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
@@ -453,8 +461,10 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
 
         if (stageIdx > 0) {
             SyncFunc<AscendC::HardEvent::S_MTE3>();
-            DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(stageIdx * sizeof(float)), 0U, 0U, 0U};
-            DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
+            if constexpr (HasTopkWeights) {
+                DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(stageIdx * sizeof(float)), 0U, 0U, 0U};
+                DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
+            }
             if constexpr (!IsCached) {
                  DataCopyExtParams metaOutParams{1U,
                     static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
@@ -469,8 +479,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
 // CopyInputsToOutputs
 //   cached: 把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
 // ---------------------------------------------------------------------------
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::CopyInputsToOutputs()
+template <typename XType, typename ScalesType, uint32_t IsCached, uint32_t HasTopkWeights>
+__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyInputsToOutputs()
 {
     if constexpr (IsCached) {
         DataCopyExtParams copyParams{1U,

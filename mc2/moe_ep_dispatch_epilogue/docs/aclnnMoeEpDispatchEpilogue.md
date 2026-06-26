@@ -22,7 +22,7 @@
 
     $$recvX = Rearrange(alltoallXOut, numRecvTokensPerRank, numRecvTokensPerExpert)$$
 
-    $$recvTopkWeights = RearrangeTopkWeights(alltoallXOut, dstBufferSlotIdx)$$
+    $$recvTopkWeights = RearrangeTopkWeights(alltoallXOut, dstBufferSlotIdx) \quad (recvTopkWeights\ is\ optional)$$
 
     $$recvScales = RearrangeScales(alltoallXOut, numRecvTokensPerRank)$$
 
@@ -212,7 +212,7 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>recvTopkWeights（aclTensor*）</td>
     <td>输出</td>
     <td>接收的topk权重，对应公式中recvTopkWeights。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(A)。</li></ul></td>
+    <td><ul><li>Optional参数，未请求topk权重输出时传入空指针。</li><li>非空时shape为(A)。</li></ul></td>
     <td>FLOAT</td>
     <td>ND</td>
     <td>1</td>

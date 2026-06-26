@@ -18,7 +18,7 @@ using namespace MoeEpDispatchEpilogueImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-template<uint32_t ArchTag, bool IsCached, bool IsMxQuant>
+template<uint32_t ArchTag, bool IsCached, bool HasTopkWeights, bool IsMxQuant>
 __global__ __aicore__ void moe_ep_dispatch_epilogue(
     GM_ADDR context, GM_ADDR dstBufferSlotIdx,
     GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
@@ -33,7 +33,7 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
 
     using ScalesType = typename std::conditional<IsMxQuant, fp8_e8m0_t, float>::type;
 
-    KernelDispatchEpilogue<DTYPE_RECV_X, ScalesType, IsCached> op;
+    KernelDispatchEpilogue<DTYPE_RECV_X, ScalesType, IsCached, HasTopkWeights> op;
     op.Init(context, dstBufferSlotIdx,
             numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata,
             recvX, recvTopkWeights,

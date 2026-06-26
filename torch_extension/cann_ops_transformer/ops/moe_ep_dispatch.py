@@ -69,8 +69,8 @@ class MoeEpDispatchEpilogueOpBuilder(OpBuilder):
                "Tensor? cached_recv_src_metadata, int ep_world_size, int ep_rank_id, " \
                "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, *, " \
                "int expert_alignment=1, Tensor recv_x, " \
-               "Tensor recv_topk_weights, Tensor recv_src_metadata, Tensor? recv_scales) " \
-               "-> (Tensor, Tensor, Tensor, Tensor?)"
+               "Tensor? recv_topk_weights, Tensor recv_src_metadata, Tensor? recv_scales) " \
+               "-> (Tensor, Tensor?, Tensor, Tensor?)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -80,8 +80,9 @@ class MoeEpDispatchEpilogueOpBuilder(OpBuilder):
                                               num_max_tokens_per_rank, ccl_buffer_size, *, expert_alignment=1,
                                               recv_x, recv_topk_weights,
                                               recv_src_metadata, recv_scales):
+            recv_topk_weights_out = recv_topk_weights if recv_topk_weights is not None else None
             recv_scales_out = recv_scales if recv_scales is not None else None
-            return (recv_x, recv_topk_weights, recv_src_metadata, recv_scales_out)
+            return (recv_x, recv_topk_weights_out, recv_src_metadata, recv_scales_out)
 
 
 moe_ep_dispatch_op_builder = MoeEpDispatchOpBuilder()

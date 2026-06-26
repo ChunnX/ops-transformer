@@ -23,7 +23,6 @@ extern "C" {
 static aclnnStatus CheckNotNull(const aclTensor* context, const aclTensor* dstBufferSlotIdx,
                                 const aclTensor* numRecvTokensPerRank,
                                 const aclTensor* numRecvTokensPerExpert, aclTensor* recvX,
-                                aclTensor* recvTopkWeights,
                                 aclTensor* recvSrcMetadata)
 {
     CHECK_RET(context != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -31,7 +30,6 @@ static aclnnStatus CheckNotNull(const aclTensor* context, const aclTensor* dstBu
     CHECK_RET(numRecvTokensPerRank != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(numRecvTokensPerExpert != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(recvX != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(recvTopkWeights != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(recvSrcMetadata != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
@@ -65,7 +63,6 @@ aclnnStatus MoeEpDispatchEpilogueGetWorkspaceSize(
     OP_LOGD("MoeEpDispatchEpilogue", "Begin to do MoeEpDispatchEpilogueGetWorkspaceSize");
     auto retNotNull = CheckNotNull(context, dstBufferSlotIdx, numRecvTokensPerRank,
                                    numRecvTokensPerExpert, recvX,
-                                   recvTopkWeights,
                                    recvSrcMetadata);
     CHECK_RET(retNotNull == ACLNN_SUCCESS, retNotNull);
 
