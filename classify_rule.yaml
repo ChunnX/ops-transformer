@@ -261,7 +261,6 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/mla_prolog_v2/op_kernel/
                 - ops/ops-transformer/attention/mla_prolog_v2/op_graph/
                 - ops/ops-transformer/attention/mla_prolog/op_host/
-                - ops/ops-transformer/attention/mla_prolog/op_api/
                 - ops/ops-transformer/attention/mla_prolog/CMakeLists.txt
                 - ops/ops-transformer/attention/mla_prolog/op_kernel/
                 - ops/ops-transformer/attention/mla_prolog/op_graph/
@@ -270,7 +269,6 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/common/op_host/split_core_v2.cpp
                 - ops/ops-transformer/attention/common/op_host/split_core_v2.h
                 - ops/ops-transformer/attention/common/op_kernel/aicpu_common.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_api/
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch22
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/op_api
