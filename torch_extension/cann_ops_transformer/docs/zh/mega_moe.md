@@ -2,9 +2,18 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>            |    √    |
+
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+
+- <term>Atlas 推理系列产品</term>：不支持
+
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
@@ -147,10 +156,14 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - xActiveMask和scales必须为空指针。
 
 ## get\_symm\_buffer\_for\_mega\_moe接口说明
+
+### 函数原型
+
 ```
 get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, *, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
 ```
-## 参数说明
+
+### 参数说明
 
 - **group**(`String`)：必选参数，EP通信域名称（专家并行通信域）。
 - **num_experts**(`int`)：必选参数，MoE模型的总专家数量。
@@ -165,7 +178,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
 - **combine_quant_mode**(`int`)：暂不支持该参数，使用默认值即可。
 - **comm_alg**(`String`)：暂不支持该参数，使用默认值即可。
 
-## 输出说明
+### 输出说明
 
 -   **sym\_buffer** (`SymmBuffer`)：用于封装输入参数并生成`context`、`ep_world_size`和`ccl_buffer_size`。
     
