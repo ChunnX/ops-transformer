@@ -98,10 +98,11 @@ static void CopyContextToTensor(const CommContext &context, at::Tensor &tensor)
 // ======================== KFC Mode ========================
 class KfcContextBuilder {
 public:
-    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor)
+    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
+               const std::string &a5Group = "")
     {
         if (IsAscend950()) {
-            BuildA5ContextTensor(group, worldSize, cclBufferSize, contextTensor);
+            BuildA5ContextTensor(a5Group.empty() ? group : a5Group, worldSize, cclBufferSize, contextTensor);
             return;
         }
 
@@ -751,9 +752,9 @@ public:
 class CommContextManager {
 public:
     CommContextManager(const std::string &group, int64_t worldSize,
-                       const py::object &backend = py::str("kfc"))
+                       const py::object &backend = py::str("kfc"), const std::string &a5Group = "")
         : group_(group), worldSize_(worldSize),
-          backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
+          backend_(backend), a5Group_(a5Group), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
 
     at::Tensor create_context()
     {
@@ -764,9 +765,12 @@ public:
         return context;
     }
 
-    void update_group(const std::string &group, at::Tensor &contextTensor)
+    void update_group(const std::string &group, at::Tensor &contextTensor, const std::string &a5Group = "")
     {
         group_ = group;
+        if (!a5Group.empty()) {
+            a5Group_ = a5Group;
+        }
         cclBufferSize_ = 0;
         EnsureResolved();
         DispatchBuild(contextTensor);
@@ -792,7 +796,7 @@ private:
         switch (mode_) {
             case BackendMode::KFC: {
                 KfcContextBuilder builder;
-                builder.Build(group_, worldSize_, cclBufferSize_, tensor);
+                builder.Build(group_, worldSize_, cclBufferSize_, tensor, a5Group_);
                 return;
             }
             case BackendMode::CHANNEL: {
@@ -808,6 +812,7 @@ private:
     std::string group_;
     int64_t worldSize_;
     py::object backend_;
+    std::string a5Group_;
     BackendMode mode_;
     int64_t cclBufferSize_ = 0;
 };
@@ -816,10 +821,12 @@ private:
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<CommContextManager>(m, "CommContextManager")
-        .def(py::init<const std::string &, int64_t, const py::object &>(),
-             py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"))
+        .def(py::init<const std::string &, int64_t, const py::object &, const std::string &>(),
+             py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
+             py::arg("a5Group") = std::string(""))
         .def("create_context", &CommContextManager::create_context)
-        .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
+        .def("update_group", &CommContextManager::update_group, py::arg("group"),
+             py::arg("contextTensor").noconvert(), py::arg("a5Group") = std::string(""))
         .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);
 }
 } // op_api

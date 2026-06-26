@@ -18,6 +18,17 @@ from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .comm_context import CommContextManager
 
 
+def _get_process_group_name(group):
+    try:
+        from torch.distributed import distributed_c10d
+        group_name = distributed_c10d._get_process_group_name(group)
+        if group_name != "None":
+            return group_name
+    except Exception:
+        pass
+    return ""
+
+
 def _empty_topk_weights_like(tensor):
     return tensor.new_empty((0,), dtype=torch.float32)
 
@@ -28,7 +39,9 @@ class MoeDistributeBuffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
-        self._ctx_manager = CommContextManager(self.group_name, self.world_size, backend="kfc")
+        self.group_ep = _get_process_group_name(group)
+        self._ctx_manager = CommContextManager(
+            self.group_name, self.world_size, backend="kfc", a5Group=self.group_ep)
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
 
@@ -93,12 +106,13 @@ class MoeDistributeBuffer:
         self.group = new_group
         self.rank_id = torch.distributed.get_rank(new_group)
         self.group_name = new_group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
+        self.group_ep = _get_process_group_name(new_group)
         new_world_size = torch.distributed.get_world_size(new_group)
         torch._check(new_world_size == self.world_size,
                     lambda: (f"New world size should be the same as orginal world size, "
                             f"but got {new_world_size=}, orginial={self.world_size}"
                             f"{ops_error(ErrCode.VALUE)}."),)
-        self._ctx_manager.update_group(self.group_name, self.context)
+        self._ctx_manager.update_group(self.group_name, self.context, self.group_ep)
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         return True
 
