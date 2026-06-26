@@ -133,12 +133,6 @@ uint32_t GetDynamicInputTensorListSize(const gert::TilingContext& context, uint3
     return count;
 }
 
-ge::Format GetDynamicInputPrimaryFormat(const gert::TilingContext& context, uint32_t inputIndex, uint32_t tensorIndex)
-{
-    const auto *desc = context.GetDynamicInputDesc(inputIndex, tensorIndex);
-    return static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat()));
-}
-
 bool CheckDynamicInputDesc(const gert::TilingContext& context, uint32_t inputIndex, uint32_t tensorIndex,
                            const char* inputName, ge::DataType expectedDtype)
 {
@@ -390,7 +384,10 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
 {
     OP_CHECK_IF(!CheckWeightFormat(context, 0),
         OP_LOGE(OP_NAME, "Check weight format failed."), return false);
-    params.wFormat = GetDynamicInputPrimaryFormat(context, WEIGHT_INDEX, 0);
+    const auto *wDesc = context.GetDynamicInputDesc(WEIGHT_INDEX, 0);
+    OP_CHECK_IF(wDesc == nullptr,
+        OP_LOGE(OP_NAME, "Dynamic input desc of weight[0] is nullptr."), return false);
+    params.wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
 
     const auto *xShapePtr = context.GetInputShape(X_INDEX);
     OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, "weight"),
