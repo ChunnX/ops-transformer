@@ -51,6 +51,12 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
                               runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal :
                               runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal + dOriKvSize;
     }
+    // 确定性：dK 改写到本核私有 additional 区（仅片内 atomic 累加，消除跨核 atomicAdd）。
+    // 覆盖范围：非 SCFA 全部、SCFA 的 ori 段（SCFA cmp 段仍走私有 mm4Res + ScatterAdd）。
+    if (deterministic == 1 && (MODE != SMLAG_SCFA_MODE || runInfo.isOri)) {
+        mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkvDetWsAddrF +
+                                          static_cast<int64_t>(cBlockIdx) * dkvStrideF + dkvMainLenF);
+    }
     dSL1TotalSize = selectedCntOffset * selectedBlockSize * AlignTo<int64_t>(mmParam.singleK, SIZE_16);
     if (dSL1TotalSize <= 128 * 512) { // 此时dS可全载
         CopyGmToL1(l1_ds_tensor, dsWorkspaceGm[dsGmOffset], mmParam.singleK, selectedCntOffset * selectedBlockSize, singleN);

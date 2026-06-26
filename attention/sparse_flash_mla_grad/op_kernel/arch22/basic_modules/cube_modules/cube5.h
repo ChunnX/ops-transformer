@@ -47,6 +47,11 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
                               runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal :
                               runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal + dOriKvSize;
     }
+    // 确定性：dV 改写到本核私有 main 区（仅片内 atomic 累加，消除跨核 atomicAdd）。
+    if (deterministic == 1 && (MODE != SMLAG_SCFA_MODE || runInfo.isOri)) {
+        mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkvDetWsAddrF +
+                                          static_cast<int64_t>(cBlockIdx) * dkvStrideF);
+    }
 
     LocalTensor<T1> l1_dy_tensor = l1_dy_tensors[mmPingPongIdx];
     for (int32_t mIdx = blkCntOffset; mIdx < blkCntOffset + selectedCntOffset; mIdx+=blockOffset) {
