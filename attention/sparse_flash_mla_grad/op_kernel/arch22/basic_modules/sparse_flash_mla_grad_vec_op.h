@@ -89,6 +89,10 @@ protected:
     GlobalTensor<float> mm4ResWorkspaceGm; // 24 * 2 * K * Dk
     GlobalTensor<float> mm5ResWorkspaceGm; // 24 * 2 * K * Dv
     GlobalTensor<float> additionalWorkspaceGm;
+    // 确定性专用 workspace
+    GlobalTensor<float> dsinksDetWsGm;     // [aivNum, G]，d_sinks 各核独占槽位
+    GlobalTensor<float> cmpL1DetWsGm;      // [aivNum, singleN]，cmp_softmax_l1 aiv1 交付槽位
+    GlobalTensor<float> dkvDetWsGm;        // [usedCoreNum, stride]，dKV 每核累加区
 
     TBuf<> vecQue;
     LocalTensor<uint8_t> helpTensor;
@@ -189,6 +193,12 @@ protected:
     DataCopyExtParams outParamK;
     uint32_t mergePingPong{0};
     int32_t pingPongIdx = 0;
+
+    // 确定性开关与同步 flag（mode=1：同一 block 的 aiv0/aiv1 间同步）
+    uint32_t deterministic{0};
+    int64_t dkvDetWsAddrF{0};   // dkvDetWsOffset / sizeof(float)
+    int64_t dkvDetStrideF{0};   // 每核步长(float)
+    constexpr static uint32_t DET_CMPL1_FLAG = 8;
 };
 
 template <typename SMLAGT>
@@ -230,6 +240,9 @@ __aicore__ inline void VecOp<SMLAGT>::InitParams(const TILING_CLASS *__restrict 
 
     cmpRatio = tilingData->opInfo.cmpRatio;
     scaleValue = tilingData->opInfo.scaleValue;
+    deterministic = tilingData->opInfo.deterministic;
+    dkvDetWsAddrF = tilingData->opInfo.dkvDetWsOffset / sizeof(float);
+    dkvDetStrideF = tilingData->opInfo.dkvDetStride / sizeof(float);
     selectedBlockCount = tilingData->opInfo.selectedBlockCount;
     selectedBlockSize = tilingData->opInfo.selectedBlockSize;
     mm12WorkspaceLen = tilingData->opInfo.mm12WorkspaceLen;
@@ -331,6 +344,15 @@ __aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_k
     mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
     mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
     additionalWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + additionalAddr);
+
+    // 确定性 workspace：偏移由 Host Tiling 计算（user 相对，单位 B）
+    if (deterministic == 1) {
+        dsinksDetWsGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                      tilingData->opInfo.dsinksDetWsOffset / sizeof(float));
+        cmpL1DetWsGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                     tilingData->opInfo.cmpL1DetWsOffset / sizeof(float));
+        dkvDetWsGm.SetGlobalBuffer((__gm__ float *)workspace + dkvDetWsAddrF);
+    }
 }
 
 template <typename SMLAGT>
@@ -452,6 +474,10 @@ __aicore__ inline void VecOp<SMLAGT>::AtomicClean()
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         DumpGmZero(additionalWorkspaceGm, additionalWorkspaceLen / sizeof(float));
         DumpGmZero(cmpSoftmaxL1Gm, dimTq * dimN2 * selectedBlockCount);
+    }
+    // 确定性：清零 dKV 每核私有累加区（片内 atomicAdd 需从 0 起累）
+    if (deterministic == 1) {
+        DumpGmZero(dkvDetWsGm, dkvDetStrideF * tilingData->opInfo.usedCoreNum);
     }
 }
 
@@ -726,6 +752,12 @@ __aicore__ inline void VecOp<SMLAGT>::CalDsinks(const int32_t processM, const Ru
 template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::CopyOutDsinks()
 {
+    if (deterministic == 1) {
+        // 确定性：写本核独占槽位（无原子，核间无冲突），保序合并交由 SMLAG_DET::ReduceDsinks 完成
+        DataCopyPad(dsinksDetWsGm[static_cast<int64_t>(vecBlockIdx) * dimG], dSinkTensor,
+                    {static_cast<uint16_t>(dimG), sizeof(float), 0, 0});
+        return;
+    }
     SetAtomicAdd<float>();
     DataCopyPad(dSinksGm, dSinkTensor, {static_cast<uint16_t>(dimG), sizeof(float), 0, 0});
     SetAtomicNone();
@@ -893,13 +925,41 @@ __aicore__ inline void VecOp<SMLAGT>::Process(const RunInfo &runInfo)
     }
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         if (!runInfo.isOri) {
-            Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f/(float)dimG, actualSelS2);
-            SET_FLAG(V, MTE3, mte3WaitV);
-            WAIT_FLAG(V, MTE3, mte3WaitV);
-            SetAtomicAdd<float>();
-            DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor, {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
-            SetAtomicNone();
-            SET_FLAG(MTE3, V, runInfo.vWaitMte3Proc);
+            if (deterministic == 1) {
+                // 确定性：同一 block 内 aiv0/aiv1 二分 reduce 的结果，按 aiv0+aiv1 固定序合并后单写者写回。
+                // 每个 (s1,n2,blkCntOffset) 段仅由本 block 产生，不存在跨 block 冲突。
+                if (subBlockIdx == 1) {
+                    // aiv1：把本核部分结果（归一化前）交付到槽位，并通知 aiv0
+                    SET_FLAG(V, MTE3, mte3WaitV);
+                    WAIT_FLAG(V, MTE3, mte3WaitV);
+                    DataCopyPad(cmpL1DetWsGm[static_cast<int64_t>(cubeBlockIdx) * params.singleN], cmpL1NormTensor,
+                                {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
+                    AscendC::CrossCoreSetFlag<1, PIPE_MTE3>(DET_CMPL1_FLAG);
+                } else {
+                    // aiv0：等待 aiv1 交付，按固定序累加 (aiv0 + aiv1)，归一化后无原子覆盖写
+                    AscendC::CrossCoreWaitFlag<1, PIPE_MTE2>(DET_CMPL1_FLAG);
+                    DataCopyPad(dSinkSumTensor, cmpL1DetWsGm[static_cast<int64_t>(cubeBlockIdx) * params.singleN],
+                                {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
+                    SET_FLAG(MTE2, V, vWaitMte2);
+                    WAIT_FLAG(MTE2, V, vWaitMte2);
+                    Add(cmpL1NormTensor, cmpL1NormTensor, dSinkSumTensor, actualSelS2);
+                    PIPE_BARRIER(PIPE_V);
+                    Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f/(float)dimG, actualSelS2);
+                    SET_FLAG(V, MTE3, mte3WaitV);
+                    WAIT_FLAG(V, MTE3, mte3WaitV);
+                    DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor,
+                                {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0});
+                }
+                SET_FLAG(MTE3, V, runInfo.vWaitMte3Proc);
+            } else {
+                Muls(cmpL1NormTensor, cmpL1NormTensor, 1.0f/(float)dimG, actualSelS2);
+                SET_FLAG(V, MTE3, mte3WaitV);
+                WAIT_FLAG(V, MTE3, mte3WaitV);
+                SetAtomicAdd<float>();
+                DataCopyPad(cmpSoftmaxL1Gm[runInfo.indicesGmOffset + runInfo.blkCntOffset], cmpL1NormTensor, {1, (uint32_t)(actualSelS2 * sizeof(float)), 0, 0, 0});
+                SetAtomicNone();
+                SET_FLAG(MTE3, V, runInfo.vWaitMte3Proc);
+            }
         }
     }
 
@@ -917,7 +977,11 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAdd(const RunInfo &runInfo)
     LocalTensor<float> dvInUb;
     int64_t UB_ROW_SIZE = 16;
 
-    GlobalTensor<float> dCmpKvOutGm = dkWorkspaceGm[runInfo.cmpKeyGmOffset + dOriKvSize];
+    // 确定性：cmp 段 dKV（dV+dK*scale，已在本函数内合并）改写到本核私有 main-cmp 区，
+    // 仅片内 atomic 累加，去除跨核 atomicAdd；保序归约在 SMLAG_DET::ReduceDkv 完成。
+    GlobalTensor<float> dCmpKvOutGm = (deterministic == 1)
+        ? dkvDetWsGm[static_cast<int64_t>(cubeBlockIdx) * dkvDetStrideF + dOriKvSize + runInfo.cmpKeyGmOffset]
+        : dkWorkspaceGm[runInfo.cmpKeyGmOffset + dOriKvSize];
     int64_t s2RealSize = runInfo.actualSelectedBlockCount;
     int64_t firstCoreKSize = s2RealSize / 2;
     int64_t currentCoreKSize = subBlockIdx == 0 ? firstCoreKSize : s2RealSize - firstCoreKSize;
