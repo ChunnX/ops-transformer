@@ -10,7 +10,7 @@ import result_compare_method
 # 配置区
 # ==============================================================================
 # GRAPH_PATH: 0=单算子, 5=动态图, 7=aclgraph
-GRAPH_PATH = 7
+GRAPH_PATH = 0
 DEVICE_ID = 0
 
 B = 1
@@ -63,7 +63,7 @@ def get_fp8_per_token_head_quant_scale(tensor):
     per-token-head quant scale: shape (B, N, S, 1)
     """
     tensor = tensor.contiguous()
-    B, N, S, D = tensor.shape
+    B, N, S, _ = tensor.shape
     fp8_e4m3_max = 448.0
     row_max = torch.abs(tensor).max(dim=3, keepdim=True).values
     row_max = torch.max(row_max, torch.tensor(1e-8, device=tensor.device))
@@ -76,7 +76,6 @@ def get_fp8_per_head_quant_scale(tensor):
     per-head quant scale: shape (1, N, 1, 1)
     """
     tensor = tensor.contiguous()
-    B, N, S, D = tensor.shape
     fp8_e4m3_max = 448.0
     head_max = torch.abs(tensor).amax(dim=(0, 2, 3), keepdim=True)
     head_max = torch.max(head_max, torch.tensor(1e-8, device=tensor.device))
@@ -106,7 +105,7 @@ def create_block_table(actual_seq_kv, block_size, seed=SEED_BLOCK_TABLE):
     return block_table
 
 def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_table):
-    """CPU: BNSD to PA K cache, with k scale (fp32) stored in the 4 extra rows"""
+    """BNSD to PA K cache, with k scale (fp32) stored in the 4 extra rows"""
     k_fp8_bnsd = k_fp8_bnsd.contiguous()
     k_scale_fp32_bnsd = k_scale_fp32_bnsd.contiguous()
     B_dim, N_dim, S_dim, D_dim = k_fp8_bnsd.shape
@@ -137,36 +136,8 @@ def bnsd_to_k_cache(k_fp8_bnsd, k_scale_fp32_bnsd, seq_lens, block_size, block_t
 
     return cache.view(FP8_DTYPE).reshape(total_blocks, N_dim, block_size + scale_rows, D_dim).contiguous()
 
-def bns1_to_k_scale_cache_fp32(k_scale_fp32_bnsd, seq_lens, block_size, block_table):
-    """CPU: BNS1 to K scale cache"""
-    k_scale_fp32_bnsd = k_scale_fp32_bnsd.contiguous()
-    B_dim, N_dim, S_dim, _ = k_scale_fp32_bnsd.shape
-    D_dim = block_size
-    block_num_per_seq = [math.ceil(s / block_size) for s in seq_lens]
-    total_blocks = sum(block_num_per_seq)
-
-    scale_rows = 4
-    cache = torch.zeros((total_blocks, N_dim, block_size + scale_rows, D_dim // 4),
-                        dtype=torch.float32, device=k_scale_fp32_bnsd.device).contiguous()
-
-    for b in range(B_dim):
-        for blk_idx in range(block_num_per_seq[b]):
-            block_id = int(block_table[b, blk_idx])
-            start = blk_idx * block_size
-            end = min(start + block_size, seq_lens[b])
-            valid = end - start
-            if valid <= 0:
-                continue
-            for head in range(N_dim):
-                scales_slice = k_scale_fp32_bnsd[b, head, start:end, 0].contiguous()
-                flat_scale = cache[block_id, head, :scale_rows, :].reshape(-1)
-                if valid <= flat_scale.shape[0]:
-                    flat_scale[:valid] = scales_slice
-    
-    return cache.contiguous()
-
 def bnsd_to_v_cache(tensor_bnsd, seq_lens, block_size, block_table):
-    """CPU: BNSD to V cache - V cache 使用 FP8 类型"""
+    """BNSD to V cache - V cache 使用 FP8 类型"""
     tensor_bnsd = tensor_bnsd.contiguous()
     device = tensor_bnsd.device
     batch, heads, S, dim = tensor_bnsd.shape
@@ -189,7 +160,7 @@ def bnsd_to_v_cache(tensor_bnsd, seq_lens, block_size, block_table):
     return out_cache.contiguous()
 
 def generate_data():
-    """CPU: 生成 BNSD FP16 Q/K/V 并做 FP8 量化"""
+    """生成 BNSD FP16 Q/K/V 并做 FP8 量化"""
     max_sq = max(ACTUAL_SEQ_Q)
     max_skv = max(ACTUAL_SEQ_KV) if max(ACTUAL_SEQ_KV) > 0 else 1
     print(f"[INFO] max_sq={max_sq}, max_skv={max_skv}")
@@ -269,8 +240,8 @@ def torch_broadcast_kv(num_heads, num_kv_heads, tensor):
 def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8, 
                             deq_q, deq_k, deq_v, p_scale,
                             actual_seq_q, actual_seq_kv):
-    softmax_scale = get_softmax_scale(SCALE_VALUE, D)
     """CPU golden reference - 所有操作在CPU上执行"""
+    softmax_scale = get_softmax_scale(SCALE_VALUE, D)
     q_tensor = q_fp8.cpu().to(torch.float32).contiguous()
     batch, heads, q_seq, d_dim = q_tensor.shape
 
@@ -387,7 +358,7 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
 # Layout 转换
 # ==============================================================================
 def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
-    """CPU: BNSD → 各种 layout"""
+    """BNSD → 各种 layout"""
     tensor = tensor_bnsd if isinstance(tensor_bnsd, torch.Tensor) else torch.as_tensor(tensor_bnsd)
     tensor = tensor.cpu().contiguous()
     B, N, _, D = tensor.shape
@@ -423,7 +394,7 @@ def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
         raise ValueError(f"Unsupported layout: {layout}")
 
 def convert_scale_to_layout(tensor, seq_lens, scale_type):
-    """CPU: Scale to layout"""
+    """Scale to layout"""
     tensor = tensor.cpu().contiguous()
     if scale_type == "deq_q":
         B, N, _, _ = tensor.shape
@@ -576,6 +547,8 @@ def fia_gqa_torch_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
                 if t is not None:
                     torch._dynamo.mark_static(t)
             atten_out, lse_out = npu_mode(*fa_args)
+        else:
+            raise ValueError(f"Unsupported GRAPH_PATH: {GRAPH_PATH}, only support 0/5/7")
 
         atten_out = atten_out.cpu().detach()
         lse_out = lse_out.cpu().detach()
@@ -612,7 +585,6 @@ def fa_run_npu(q, k, v, mask, actual_seq_q, actual_seq_kv,
         mask = mask.bool().npu()
     k = k[:, :, :128, :]
     v = v[:, :, :128, :]
-    # dequant_scale_k = dequant_scale_k[:, :, :128]
 
     # 打印调试信息
     print(f"[INFO] q dtype: {q.dtype}, shape: {q.shape}")
