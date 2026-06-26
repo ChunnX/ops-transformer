@@ -93,11 +93,11 @@ private:
 
     __aicore__ inline GM_ADDR GetLocalWinAddrByRankId(const int32_t rankId, uint64_t offset)
     {
-        return (GM_ADDR)localUrmaWorkspace_ + offset + totalWinSizeEp_ * rankId;
+        return (GM_ADDR)localUrmaWorkspace_ + offset + localWinSizeEp_ * rankId;
     }
     __aicore__ inline GM_ADDR GetLocalWindStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)localUrmaWorkspace_ + totalWinSizeEp_ * rankId ;
+        return (GM_ADDR)localUrmaWorkspace_ + localWinSizeEp_ / perSlotBytes_ * UB_ALIGN * rankId;
     }
     TPipe *tpipe_{nullptr};
     const MoeEpCombineInfo *tilingData_{nullptr};
@@ -118,6 +118,7 @@ private:
     uint32_t aivNum_{0};
     uint32_t localmoeNum_{0};
     uint32_t totalWinSizeEp_{0};
+    uint64_t localWinSizeEp_{0};  // per-rank local workspace stride (compact, not CCL window size)
 
     uint32_t tStart_{0};
     uint32_t tEnd_{0};
@@ -181,6 +182,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     aivNum_ = tilingData_->aivNum;
     localmoeNum_ = tilingData_->cfg.numLocalExperts;
     totalWinSizeEp_ = tilingData->totalWinSizeEp;
+    localWinSizeEp_ = tilingData->localWinSizeEp;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     // hWeightAlignSize_ = Ceil(axisH_ * sizeof(XType) + sizeof(float), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hWeightAlignSize_ = hAlignSize_ + UB_ALIGN; // UB 32字节对齐
