@@ -33,6 +33,7 @@ MoeGatingTopKResult MoeGatingTopK(
     const aclTensor* y_out, const aclTensor* expert_idx_out, const aclTensor* out_out,
     aclOpExecutor* executor)
 {
+    OP_LOGI("=========MoeGatingTopK=========");
     L0_DFX(MoeGatingTopK, x, bias, input_ids, tid2eid, k, k_group, group_count,
            group_select_mode, renorm, norm_type, out_flag, routed_scaling_factor, eps,
            y_out, expert_idx_out, out_out);
@@ -43,6 +44,7 @@ MoeGatingTopKResult MoeGatingTopK(
 
     MoeGatingTopKResult emptyResult = {nullptr, nullptr, nullptr};
     if (!y->IsEmpty()) {
+        OP_LOGI("=========ADD_TO_LAUNCHER_LIST_AICORE=========");
         auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeGatingTopK,
             OP_INPUT(x, bias, input_ids, tid2eid),
             OP_OUTPUT(y, expert_idx, out_out_alloc),
@@ -51,6 +53,7 @@ MoeGatingTopKResult MoeGatingTopK(
         OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return emptyResult,
                                             "MoeGatingTopK ADD_TO_LAUNCHER_LIST_AICORE failed.");
     }
+    OP_LOGI("=========ADD_TO_LAUNCHER_LIST_AICORE2=========");
     MoeGatingTopKResult result = {y, expert_idx, out_out_alloc};
     return result;
 }

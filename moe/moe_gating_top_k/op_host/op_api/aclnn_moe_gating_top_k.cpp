@@ -86,6 +86,7 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
     const aclTensor* yOut, const aclTensor* expertIdxOut, const aclTensor* outOut,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_LOGI("=========aclnnMoeGatingTopKGetWorkspaceSize=========");
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeGatingTopK,
         DFX_IN(x, biasOptional, k, kGroup, groupCount, groupSelectMode, renorm,
@@ -106,12 +107,13 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
         biasContiguous = l0op::Contiguous(biasOptional, uniqueExecutor.get());
         CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-
+    OP_LOGI("=========MoeGatingTopK1=========");
     auto result = l0op::MoeGatingTopK(xContiguous, biasContiguous, nullptr, nullptr,
                                       k, kGroup, groupCount, groupSelectMode,
                                       renorm, normType, outFlag, routedScalingFactor, eps,
                                       yOut, expertIdxOut, outOut,
                                       uniqueExecutor.get());
+    OP_LOGI("=========MoeGatingTopK2=========");
     CHECK_RET(result.y != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(result.expertIdx != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(result.outOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -127,12 +129,14 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
+    OP_LOGI("=========MoeGatingTopK3=========");
     return ACLNN_SUCCESS;
 }
 
 ACLNN_API aclnnStatus aclnnMoeGatingTopK(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
 {
+    OP_LOGI("=========aclnnMoeGatingTopK=========");
     L2_DFX_PHASE_2(aclnnMoeGatingTopK);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
