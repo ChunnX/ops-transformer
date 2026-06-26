@@ -13,6 +13,8 @@
 
 #include <sstream>
 
+static_assert(false, "zzzlog intentional compile check: grouped_matmul_950_checker.cpp is compiled");
+
 using namespace gmm;
 
 namespace gmm {
