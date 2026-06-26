@@ -18,18 +18,26 @@
 
 namespace op_api {
 
-at::Tensor npu_causal_conv1d_update(const at::Tensor &x, at::Tensor &conv_states,
-                                    const at::Tensor &weight,
-                                    const c10::optional<at::Tensor> &bias,
-                                    const std::string &activation,
-                                    const c10::optional<at::Tensor> &cache_indices,
-                                    const c10::optional<at::Tensor> &num_accepted_tokens,
-                                    const c10::optional<at::Tensor> &query_start_loc,
-                                    int64_t max_query_len, int64_t null_block_id,
-                                    const c10::optional<at::Tensor> &block_idx_last_scheduled_token,
-                                    const c10::optional<at::Tensor> &initial_state_idx)
+at::Tensor causal_conv1d_update(const at::Tensor &x, at::Tensor &conv_states,
+                                const at::Tensor &weight,
+                                const c10::optional<at::Tensor> &bias,
+                                const std::string &activation,
+                                const c10::optional<at::Tensor> &cache_indices,
+                                const c10::optional<at::Tensor> &num_accepted_tokens,
+                                const c10::optional<at::Tensor> &query_start_loc,
+                                int64_t max_query_len, int64_t null_block_id,
+                                const c10::optional<at::Tensor> &block_idx_last_scheduled_token,
+                                const c10::optional<at::Tensor> &initial_state_idx)
 {
-    at::Tensor y = at::empty_like(x);
+    TORCH_CHECK(activation == "silu" || activation == "none",
+                "activation must be 'silu' or 'none', got: ", activation);
+
+    at::Tensor y{nullptr};
+    {
+        auto local_device = c10::Device(x.device());
+        const c10::OptionalDeviceGuard device_guard(local_device);
+        y = at::empty_like(x);
+    }
 
     ACLNN_CMD(aclnnCausalConv1dUpdate, x, weight, conv_states, bias, query_start_loc, cache_indices,
               num_accepted_tokens, block_idx_last_scheduled_token, initial_state_idx,
@@ -40,7 +48,7 @@ at::Tensor npu_causal_conv1d_update(const at::Tensor &x, at::Tensor &conv_states
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_causal_conv1d_update", &npu_causal_conv1d_update, "causal_conv1d decode/update");
+    m.def("causal_conv1d_update", &causal_conv1d_update, "causal_conv1d decode/update");
 }
 
 } // namespace op_api
