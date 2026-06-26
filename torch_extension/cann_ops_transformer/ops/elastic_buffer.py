@@ -189,7 +189,8 @@ class MoEElasticBuffer:
         metadata_dtype_size = 4 # sizeof(int32)/sizeof(float)
         mb_conversion = 1024 * 1024
         metadata_bytes = inline_align(topk * metadata_dtype_size, ub_align)
-        per_token_bytes = inline_align(hidden * max_out_dtype_size + metadata_bytes * 2 + ub_align, win_addr_align)
+        hidden_align = inline_align(hidden * max_out_dtype_size, ub_align)
+        per_token_bytes = inline_align(hidden_align + metadata_bytes * 2 + ub_align, win_addr_align)
         minimum_buffer_size = 2 * world_size * num_max_tokens_per_rank * per_token_bytes
         ## hccl按照2*bufferSize大小开设
         ccl_buffer_size = inline_align(inline_align(minimum_buffer_size, mb_conversion) // mb_conversion, 2) // 2
