@@ -148,12 +148,11 @@ private:
     //       GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
     static constexpr bool ENABLE_A8W4_GMM2 = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value &&
                                             QuantMode != E5M2_QUANT;
-
-    // E2M1 量化模式下 weight 必须为 fp4；tiling 层已拦截，此处为编译期兜底断言。
-    static_assert(!(QuantMode == E2M1_QUANT) ||
-                  (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
-                   Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value),
-                  "E2M1 quant requires both Weight1 and Weight2 to be fp4x2_e2m1_t");
+    // 框架会为所有 tiling key × dtype 组合自动编译；不合理组合（如 E2M1 + fp8 weight）
+    // 在 tiling 层已被拦截，此处通过 ENABLE_VALID 让 Process() 退化为空函数，避免深层模板实例化报错。
+    static constexpr bool ENABLE_VALID = (QuantMode != E2M1_QUANT) ||
+        (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
+         Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value);
 
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
@@ -1251,6 +1250,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
+    if constexpr (!ENABLE_VALID) {
+        return;
+    }
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
