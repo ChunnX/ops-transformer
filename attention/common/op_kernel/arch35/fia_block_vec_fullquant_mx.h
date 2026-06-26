@@ -158,6 +158,7 @@ public:
     T negativeFloatScalar;
     float pScaleValue { 1.0f };
     bool isSkipMask { false };
+    uint32_t minValue { NEGATIVE_MIN_VALUE_FP32 };
 
     // ==================== Functions ======================
     __aicore__ inline FAFullQuantMxBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
@@ -170,6 +171,7 @@ public:
         tPipe = pipe;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar = *((T *)&tmp1);
+        UpdateMinCheckValue();
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
@@ -369,16 +371,17 @@ public:
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
         this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-        uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
+        constexpr uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
+        constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
+        constexpr uint64_t pScaleSubLoopOffset = pScaleDataLen * 2;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         uint16_t copyCount = (runInfo.actMSizeAlign32 >> 1) >> 4;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            uint64_t subLoopOffset = pScaleDataLen * 2;
-            uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
             for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
-                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {copyCount, 1, 0, dstStride});
-                DataCopy(mm2AScaleL1Tensor[subLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
-                    {4, 1, 0, dstStride});
+                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
+                    {copyCount, 1, 0, pScaleDstStride});
+                DataCopy(mm2AScaleL1Tensor[pScaleSubLoopOffset + vecOffset + i * 32], pScaleSubLoop0Tensor[128],
+                    {4, 1, 0, pScaleDstStride});
             }
         } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
             for (uint16_t i = 0; i < 2; i++) {
@@ -390,9 +393,9 @@ public:
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
         constexpr uint16_t elementSize = 32;
-        uint32_t singleProcessSOuterSize = mBaseSize >> 1;
-        uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
-        uint32_t actVec0Align32 = mBaseSize >> 1;
+        constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
+        constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
+        constexpr uint32_t actVec0Align32 = mBaseSize >> 1;
         uint32_t s2RealSizeAlign = (((runInfo.actSingleLoopS2Size + 63) >> 6) << 6);
         for (uint32_t i = 0; i < actCopyCount; i++) {
             uint32_t dstOffset = 32 * s2BaseSizeCur * i + subLoopOffset;
@@ -435,22 +438,21 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateMinCheckValue(uint32_t &min)
+    __aicore__ inline void UpdateMinCheckValue()
     {
-        float minValue = *((float*)&min);
+        float min = *((float*)&minValue);
         if constexpr (USE_DN) {
-            minValue *= constInfo.scaleValue;
+            min *= constInfo.scaleValue;
         }
-        float tmp = minValue / LN2;
-        // int64_t 最大能表示约 9e18。
-        // 如果 tmp 比 -9e18 还要小（说明是绝对值极大的负数，如 -10^37），
-        // 在这个数量级下，float 丢掉了所有小数位，它本身就已经等价于取整后的值了，直接乘回 LN2 即可。
-        if (tmp > -9000000000000000000.0f) {
-            minValue = static_cast<int64_t>(tmp) * LN2; // 最小值是负数，ceil可以直接强转
+        float tmp = min * INV_LN2;
+        // int32_t 范围 [-2147483648, 2147483647]，下限约 -2.1e9
+        // 若 tmp 小于 int32 最小值，float 精度丢失，直接原样计算
+        if (tmp > -2147483648.0f) {
+            min = static_cast<int32_t>(tmp) * LN2;
         } else {
-            minValue = tmp * LN2;
+            min = tmp * LN2;
         }
-        min = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&minValue));
+        minValue = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
     }
 
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
@@ -462,7 +464,7 @@ public:
 
         uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
         uint32_t gmDealRowCount;
-        if (USE_DN) {
+        if constexpr (USE_DN) {
             gmDealRowCount = runInfo.actVecMSize;
         } else {
             uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
@@ -479,10 +481,7 @@ public:
 
         uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         LocalTensor<float> lseUb = this->softmaxLseQueue.template AllocTensor<float>();
-        uint32_t min = 0xFF7FFFFF;
-
-        UpdateMinCheckValue(min);
-        ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, vecMSize, min);
+        ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, vecMSize, minValue);
         softmaxLseQueue.template EnQue(lseUb);
         softmaxLseQueue.DeQue<float>();
 
@@ -516,45 +515,6 @@ public:
 
         softmaxLseQueue.FreeTensor(lseUb);
     }
-
-    // __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
-    //                                                SoftMaxShapeInfo &softmaxShapeInfo)
-    // {
-    //     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    //     SetFlag<HardEvent::V_S>(eventIdVToS);
-    //     WaitFlag<HardEvent::V_S>(eventIdVToS);
-    //     bool isUpdateNeedCheck = false;
-    //     SetMaskCount();
-    //     SetVectorMask<float, MaskMode::COUNTER>(0, softmaxShapeInfo.srcK);
-    //     for (uint32_t i = 0; i < softmaxShapeInfo.srcM; i++) {
-    //         T maxValue = maxUb.GetValue(i);
-    //         uint32_t checkValue = *reinterpret_cast<uint32_t *>(&maxValue);
-    //         if (checkValue == negativeIntScalar) {
-    //             isUpdateNeedCheck = true;
-    //             break;
-    //         }
-    //     }
-    //     SetMaskNorm();
-    //     ResetMask();
-    //     return isUpdateNeedCheck;
-    // }
-
-    // __aicore__ inline void InvalidLineProcess(RunInfoX runInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb)
-    // {
-    //     if (constInfo.softMaxCheckRes) {
-    //         SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(runInfo.actVecMSize), static_cast<uint32_t>(1),
-    //                                           static_cast<uint32_t>(runInfo.actVecMSize), static_cast<uint32_t>(1)};
-    //         bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VALUE_FP32, softmaxShapeInfo);
-    //         if (!res) {
-    //             // constInfo.softMaxCheckRes = false;
-    //         } else {
-    //             if (unlikely(runInfo.isLastS2Loop)) {
-    //                 SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.actVecMSize, this->negativeFloatScalar,
-    //                                     this->positiveFloatScalar);
-    //             }
-    //         }
-    //     }
-    // }
 
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
@@ -767,7 +727,7 @@ public:
                     vec2ResUb, vec2ResUb, sumUb, vecMSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
             }
             uint32_t gmDealRowCount;
-            if (USE_DN) {
+            if constexpr (USE_DN) {
                 gmDealRowCount = runInfo.actVecMSize;
             } else {
                 uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
@@ -881,19 +841,17 @@ public:
             blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
 
             if (blockNeedRowInvalid) {
-                uint32_t min = 0xFF7FFFFF; // min value of float
-                UpdateMinCheckValue(min);
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
                 if constexpr (!POST_QUANT) {
                     RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
-                                              static_cast<uint32_t>(dSizeAligned64), min);
+                                              static_cast<uint32_t>(dSizeAligned64), minValue);
                 } else {
                     uint32_t dStride =
                         CeilDiv(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
                     uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
                     RowInvalidUpdateVF<float>(*((LocalTensor<float> *)&vec2ResUb), maxTensor, mDealSize, dSize,
-                                              dStride, min);
+                                              dStride, minValue);
                 }
             }
         }
