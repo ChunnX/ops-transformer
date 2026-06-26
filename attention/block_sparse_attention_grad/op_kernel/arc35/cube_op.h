@@ -202,7 +202,7 @@ private:
         WAIT_FLAG(M, MTE1, evnet_id);
         load_data_gm_2_l0<true>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_,
                                 q_stride_);
-        if (runTimeInfo.need_copy_kv) {
+        if (runTimeInfo.is_kv_change) {
             load_data_gm_2_l0_trans<false>(l0_b_tensor, l1_b_tensor, rightGm, nProcess, head_dim_, nProcessAlign,
                                            head_dim_align_, kv_stride_);
         } else {
@@ -265,13 +265,13 @@ private:
         madParams.m = nProcess == 1 ? 2 : nProcess;
         madParams.n = head_dim_;
         madParams.k = mProcess;
-        madParams.cmatrixInitVal = runTimeInfo.need_copy_kv;
-        madParams.unitFlag = runTimeInfo.is_singlekv_last ? 3 : 2;
+        madParams.cmatrixInitVal = runTimeInfo.is_kv_change;
+        madParams.unitFlag = runTimeInfo.is_kv_end ? 3 : 2;
         AscendC::Mmad(l0_c_tensor, l0_a_tensor, l0_b_tensor, madParams);
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
-        if (runTimeInfo.is_singlekv_last) {
+        if (runTimeInfo.is_kv_end) {
             AscendC::FixpipeParamsV220 fixpipeParamsV220;
             fixpipeParamsV220.mSize = nProcess;
             fixpipeParamsV220.nSize = head_dim_;
