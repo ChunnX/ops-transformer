@@ -536,8 +536,8 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.actualSingleProcessSInnerSizeAlign =
         QLICommon::Align((uint32_t)runInfo.actualSingleProcessSInnerSize, QLICommon::ConstInfo::BUFFER_SIZE_BYTE_32B);
 
-    runInfo.isFirstS2InnerLoop = s2LoopIdx == splitCoreInfo.s2Start;
     runInfo.isLastS2InnerLoop = s2LoopIdx == tempLoopInfo.s2LoopEnd;
+    runInfo.isFirstS2InnerLoop = s2LoopIdx == splitCoreInfo.s2Start;
     runInfo.isAllLoopEnd = (runInfo.bN2Idx == splitCoreInfo.bN2End) && (runInfo.gS1Idx == splitCoreInfo.gS1End) &&
                            (runInfo.s2Idx == splitCoreInfo.s2End);
 
