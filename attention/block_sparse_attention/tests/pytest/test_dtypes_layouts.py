@@ -94,22 +94,26 @@ def _make_fp8(*shape, device=DEVICE):
 
 # ── Shared helpers ───────────────────────────────────────────────────────────
 
-def _dense_mask(b, n, s_q, s_kv, device=DEVICE):
-    q_blocks = (s_q + BLOCK_Q - 1) // BLOCK_Q
-    kv_blocks = (s_kv + BLOCK_KV - 1) // BLOCK_KV
+def _dense_mask(b, n, s_q, s_kv, device=DEVICE, block_q=BLOCK_Q, block_kv=BLOCK_KV):
+    q_blocks = (s_q + block_q - 1) // block_q
+    kv_blocks = (s_kv + block_kv - 1) // block_kv
     return torch.ones(b, n, q_blocks, kv_blocks, dtype=torch.int8, device=device)
 
 
 def _run_bnsd(q_bnsd, k_bnsd, v_bnsd, n, scale, lse=False, attention_out_dtype=None,
-              dequant=None):
-    """q_*_bnsd: [B, N, S, D]. Returns (out[B,N,S,D], lse_or_none)."""
+              dequant=None, block_kv=BLOCK_KV):
+    """q_*_bnsd: [B, N, S, D]. Returns (out[B,N,S,D], lse_or_none).
+
+    block_kv overrides the KV block size — FP8 requires it to be a multiple of 256
+    (block_sparse_attention_tiling.cpp CheckBlockShapeQuantConstraint); FP16/BF16 use 128.
+    """
     b, _, s_q, _ = q_bnsd.shape
     s_kv = k_bnsd.shape[2]
     qds, kds, vds = (dequant or (None, None, None))
     out, lse_t = cann_ops_transformer.ops.block_sparse_attention(
         q_bnsd, k_bnsd, v_bnsd,
-        block_sparse_mask=_dense_mask(b, n, s_q, s_kv),
-        block_shape=[BLOCK_Q, BLOCK_KV],
+        block_sparse_mask=_dense_mask(b, n, s_q, s_kv, block_kv=block_kv),
+        block_shape=[BLOCK_Q, block_kv],
         actual_seq_lengths=[s_q] * b, actual_seq_lengths_kv=[s_kv] * b,
         num_heads=n, num_key_value_heads=n,
         q_input_layout="BNSD", kv_input_layout="BNSD",
@@ -347,26 +351,38 @@ def test_bsnd_matches_bnsd(shape, dtype):
 #  reference; this gates the API contract and that a binary exists.)
 # ════════════════════════════════════════════════════════════════════════════
 
-def _fp8_dequant_scales(b, n, kv_n, s_q, s_kv, device=DEVICE):
-    ceil_q = (s_q + 127) // 128
-    ceil_kv = (s_kv + 255) // 256
+def _fp8_dequant_scales(b, n, kv_n, s_q, s_kv, block_q=128, block_kv=256, device=DEVICE):
+    # The per-block reverse-quant factor counts must match the block grid the kernel
+    # derives from block_sparse_mask (ValidateGenericDequantScale,
+    # block_sparse_attention_tiling.cpp): q -> ceil(maxQ / blockShapeX),
+    # k/v -> ceil(maxKV / blockShapeY). For FP8 the kernel mandates blockShapeX == 128
+    # and blockShapeY a multiple of 256 (CheckBlockShapeQuantConstraint) — hence the
+    # V2 doc's "ceil(maxKV/256)" for k/v. (My first cut wrongly used a 128 KV block,
+    # which the tiling rejected: "kDequantScale ... expected (1,2,2,1) ... got (1,2,1,1)".)
+    ceil_q = (s_q + block_q - 1) // block_q
+    ceil_kv = (s_kv + block_kv - 1) // block_kv
     qds = torch.rand(b, n, ceil_q, 1, dtype=torch.float32, device=device) + 0.5
     kds = torch.rand(b, kv_n, ceil_kv, 1, dtype=torch.float32, device=device) + 0.5
     vds = torch.rand(b, kv_n, ceil_kv, 1, dtype=torch.float32, device=device) + 0.5
     return qds, kds, vds
 
 
+# FP8 mandates blockShapeX==128 and blockShapeY a multiple of 256 on arch35
+# (block_sparse_attention_tiling.cpp). s=512 with FP8_BLOCK_KV=256 → 2 KV blocks.
+FP8_BLOCK_KV = 256
+
+
 @_arch35_only
 @pytest.mark.parametrize("attention_out_dtype", _EQ_DTYPES, ids=lambda d: "out_" + str(d).split(".")[-1])
 def test_fp8_bnsd_contract(attention_out_dtype):
     torch.manual_seed(SEED)
-    b, n, s, d = 1, 2, 256, 128
+    b, n, s, d = 1, 2, 512, 128
     scale = 1 / math.sqrt(d)
     q = _make_fp8(b, n, s, d)
-    qds, kds, vds = _fp8_dequant_scales(b, n, n, s, s)
+    qds, kds, vds = _fp8_dequant_scales(b, n, n, s, s, block_kv=FP8_BLOCK_KV)
 
     out, _ = _run_bnsd(q, q, q, n, scale, attention_out_dtype=attention_out_dtype,
-                       dequant=(qds, kds, vds))
+                       dequant=(qds, kds, vds), block_kv=FP8_BLOCK_KV)
 
     assert out.shape == (b, n, s, d)
     assert out.dtype == attention_out_dtype
