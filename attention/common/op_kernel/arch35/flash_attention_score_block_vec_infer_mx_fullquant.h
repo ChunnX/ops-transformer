@@ -685,7 +685,7 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::Bmm2FDOut(Loca
                       constInfo.splitKVNum +
                   mStart * constInfo.dSizeV + vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV;
 
-    // 拷贝参数赋值       
+    // 拷贝参数赋值
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = runInfo.vec2S1RealSize;
     dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
@@ -740,7 +740,8 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::CopyFinalResOu
     if constexpr (!POST_QUANT) {
         Cast(tmpBmm2ResCasTBuff, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * dvSizeAligned64);
     } else {
-        FDPostQuant(constInfo, tmpBmm2ResCasTBuff, accumOutLocal, perChannelQuantOffset + startRow * constInfo.dSizeV, dealRowCount, dvSizeAligned64);
+        FDPostQuant(constInfo, tmpBmm2ResCasTBuff, accumOutLocal,
+            perChannelQuantOffset + startRow * constInfo.dSizeV, dealRowCount, dvSizeAligned64);
     }
 
     FDResOutputQue.EnQue(tmpBmm2ResCasTBuff);
@@ -841,7 +842,7 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::PostQuantPerCh
     copyParams.blockCount = gSplitSize;
     copyParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
     copyParams.srcStride = 0;
-    copyParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));  // 32: datablock size
+    copyParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));
 
     LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb =
         this->postQuantScaleQue.template AllocTensor<POSTQUANT_PARAMS_T>();
@@ -895,7 +896,7 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::PostQuant(Cons
             uint32_t splitOffset = startRow * dSizeAlign64;
             if (constInfo.isPostQuantBF16) {
                 PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                    gSplitSize, s1RowCnt, splitOffset, dSizeAlign64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
+                    gSplitSize, s1RowCnt, splitOffset, dSizeAlign64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
             } else {
                 PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
                                     gSplitSize, s1RowCnt, splitOffset, dSizeAlign64, postQuantScaleGm, postQuantOffsetGm);
@@ -909,18 +910,19 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::PostQuant(Cons
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::FDPostQuant(ConstInfo<isInfer, hasRope> &constInfo,
-                                                                   LocalTensor<OUTPUT_T> &attenOut,
-                                                                   LocalTensor<T> &accumOutLocal,
-                                                                   uint64_t perChannelQuantOffset,
-                                                                   uint32_t dealRowCount, uint32_t dSizeAlign64)
+    LocalTensor<OUTPUT_T> &attenOut,
+    LocalTensor<T> &accumOutLocal,
+    uint64_t perChannelQuantOffset,
+    uint32_t dealRowCount,
+    uint32_t dSizeAlign64)
 {
     if (constInfo.isPostQuantPerChnl) {
         if (constInfo.isPostQuantBF16) {
-            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U, dSizeAlign64,
-                             postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
+            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount,
+                1U, 0U, dSizeAlign64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
         } else {
-            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U, dSizeAlign64,
-                             postQuantScaleGm, postQuantOffsetGm);
+            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount,
+                1U, 0U, dSizeAlign64, postQuantScaleGm, postQuantOffsetGm);
         }
     } else {
         PostQuantPerTensorImpl<T, OUTPUT_T, true>(
