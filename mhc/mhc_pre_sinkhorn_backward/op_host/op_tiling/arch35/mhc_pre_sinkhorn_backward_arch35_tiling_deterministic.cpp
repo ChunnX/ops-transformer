@@ -167,7 +167,7 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
                         Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + ubBlock_ +                                     //grad_alpha And grad_bias
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                                    //grad_h_pre
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //grad_z
-                        Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                                                //bias
+                        Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //bias
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //norm_out_forward
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //z
                         Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf1_

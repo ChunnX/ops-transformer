@@ -136,7 +136,7 @@ __aicore__ inline void ComputeGradBias(__local_mem__ U* gradBiasAddr, __local_me
             maskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
             MicroAPI::Duplicate(gradBiasReg, U(0), allMaskReg);
             for (uint16_t j = 0; j < static_cast<uint16_t>(bsLen); j++) {
-                auto gradZAddrStart = gradZAddr + i * colLen;
+                auto gradZAddrStart = gradZAddr + j * colLen + i * vfLen;
                 AscendC::MicroAPI::LoadUnAlignPre(u0, gradZAddrStart);
                 AscendC::MicroAPI::LoadUnAlign(gradZReg, u0, gradZAddrStart);
                 AscendC::MicroAPI::Add(gradBiasReg, gradBiasReg, gradZReg, maskReg);
@@ -201,11 +201,10 @@ __aicore__ inline void ComputeZAndForwardPart(__local_mem__ U* zAddr, __local_me
             uint32_t maskLen = static_cast<uint32_t>(colLen);
             for (uint16_t i = 0; i < loopCnt; i++) {
                 valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
-                AscendC::MicroAPI::AddrReg biasOfst = AscendC::MicroAPI::CreateAddrReg<U>(i, vfLen);
-                AscendC::MicroAPI::LoadUnAlignPre(unAlignNormOutForwardReg, normOutForwardAddrStart);
-                AscendC::MicroAPI::LoadUnAlign(normOutForwardReg, unAlignNormOutForwardReg, normOutForwardAddrStart);
-                AscendC::MicroAPI::LoadUnAlignPre(unAlignBiasReg, biasAddrStart);
-                AscendC::MicroAPI::LoadUnAlign(biasReg, unAlignBiasReg, biasAddrStart);
+                AscendC::MicroAPI::LoadUnAlignPre(unAlignNormOutForwardReg, normOutForwardAddrStart + i * vfLen);
+                AscendC::MicroAPI::LoadUnAlign(normOutForwardReg, unAlignNormOutForwardReg, normOutForwardAddrStart + i * vfLen);
+                AscendC::MicroAPI::LoadUnAlignPre(unAlignBiasReg, biasAddrStart + i * vfLen);
+                AscendC::MicroAPI::LoadUnAlign(biasReg, unAlignBiasReg, biasAddrStart + i * vfLen);
                 AscendC::MicroAPI::Muls(zReg, normOutForwardReg, alpha, valueMaskReg);
                 AscendC::MicroAPI::Add(zReg, zReg, biasReg, valueMaskReg);
                 MicroAPI::StoreUnAlign<U>(zAddrStart, zReg, unStoreZReg, vfLen);

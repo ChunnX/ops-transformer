@@ -295,7 +295,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         //BUF
         pipe_->InitBuffer(gradHPreBuf_, bsnAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(gradZBuf_, bsnnAlignFp32_ * uTypeSize_);
-        pipe_->InitBuffer(biasBuf_, nnAlignFp32_ * uTypeSize_);
+        pipe_->InitBuffer(biasBuf_, kAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(normOutForwardBuf_, bsnnAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(zBuf_, bsnnAlignFp32_ * uTypeSize_);
         pipe_->InitBuffer(gradCalcBuf1_, kAlignFp32_ * uTypeSize_);
@@ -365,7 +365,7 @@ template<typename X_T, typename GRADHIN_T, typename U>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::CopyInHcBeforeNorm(uint64_t bsLen, uint64_t colLen, uint64_t gmOft) 
 {
     LocalTensor<U> hcBeforeNormLocal = hcBeforeNormQue_.AllocTensor<U>();
-    CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[gmOft], bsLen, colLen, 0, k_ - colLen);
+    CopyIn(hcBeforeNormLocal, hcBeforeNormGm_[gmOft], bsLen, colLen, 0, (k_ - colLen) * uTypeSize_);
     hcBeforeNormQue_.EnQue(hcBeforeNormLocal);
 }
 
