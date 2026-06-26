@@ -23,28 +23,12 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *sparseIndices,
-    const aclTensor *blockTableOptional,
-    const aclTensor *actualSeqLengthsQueryOptional,
-    const aclTensor *actualSeqLengthsKvOptional,
-    const aclTensor *queryRopeOptional,
-    const aclTensor *keyRopeOptional,
-    double           scaleValue,
-    int64_t          sparseBlockSizeOptional,
-    char             *layoutQueryOptional,
-    char             *layoutKvOptional,
-    int64_t          sparseMode,
-    int64_t          preTokens,
-    int64_t          nextTokens,
-    int64_t          attentionMode,
-    bool             returnSoftmaxLse,
-    const aclTensor *attentionOut,
-    const aclTensor *softmaxMax,
-    const aclTensor *softmaxSum,
-    uint64_t *workspaceSize,
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparseIndices,
+    const aclTensor *blockTableOptional, const aclTensor *actualSeqLengthsQueryOptional,
+    const aclTensor *actualSeqLengthsKvOptional, const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
+    double scaleValue, int64_t sparseBlockSizeOptional, char *layoutQueryOptional, char *layoutKvOptional,
+    int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t attentionMode, bool returnSoftmaxLse,
+    const aclTensor *attentionOut, const aclTensor *softmaxMax, const aclTensor *softmaxSum, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
 /**
