@@ -71,10 +71,14 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Init(GM_ADDR dy
     }
     this->blockIdx_ = GetBlockIdx();
 
-    this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength, static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY)));
-    this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength, static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS)));
-    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY));
-    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TCOS));
+    this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                                                       static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
+                         tilingData_->dSplitCoef;
+    this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                                                        static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
+                          tilingData_->dSplitCoef;
+    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY));
+    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS));
     this->ubFactorBS_ = tilingData_->ubFactorBS;
     this->ubFactorN_ = tilingData_->ubFactorN;
 
