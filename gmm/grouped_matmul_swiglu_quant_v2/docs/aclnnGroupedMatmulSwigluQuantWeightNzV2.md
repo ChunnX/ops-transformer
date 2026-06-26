@@ -514,7 +514,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       - 仅支持dequantMode和quantMode相同取值。
       - x和xScale支持M为0的空Tensor。
       - weight和weightScale支持N为0的空Tensor。
-      - MXFP8、MXFP4场景下weight和weightScale仅支持tensorlist长度为1；MXA8W4场景下weight和weightScale支持多Tensor场景（tensorlist长度大于1），此时weight的view shape为2D，weightScale的view shape为3D。
+      - MXFP8、MXFP4场景下weight和weightScale仅支持tensorlist长度为1；MXA8W4场景下weight和weightScale支持多Tensor场景（tensorlist长度大于等于1）。
       - MXFP4场景支持weight NZ格式，x和weight为FLOAT4_E2M1或FLOAT4_E1M2（支持交叉），output支持FLOAT8_E4M3FN、FLOAT4_E1M2或FLOAT4_E2M1。
 
 - **返回值**
@@ -907,7 +907,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
           - K >= 32。
           - N >= 128。
           - weight仅支持转置。用户需构造转置的NZ格式weight数据，调用前需transpose成非转置状态。
-          - 多tensor场景下（tensorlist长度大于1），weight和weightScale的tensor数量需一致。
+          - 多tensor场景下（tensorlist长度大于等于1），weight和weightScale的tensor数量需一致。
           - 多tensor场景下，所有weight tensor的K和N需相等。
           - 多tensor场景下，weight的view shape为2D，weightScale的view shape为3D；单tensor场景下，weight的view shape为3D，weightScale的view shape为4D。
 
