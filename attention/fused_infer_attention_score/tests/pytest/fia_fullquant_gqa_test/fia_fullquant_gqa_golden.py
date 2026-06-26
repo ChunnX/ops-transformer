@@ -19,7 +19,7 @@ N_kv = 2
 D = 128
 
 ACTUAL_SEQ_Q = [128]
-ACTUAL_SEQ_KV = [512]
+ACTUAL_SEQ_KV = [256]
 
 # Layout 选择
 INPUT_LAYOUT = "NTD_TND"
@@ -259,6 +259,13 @@ def cpu_fp8_fullquant_gqa_golden(q_fp8, k_fp8, v_fp8,
 
     batch, heads, q_seq, _ = q_tensor.shape
     v_dim = v_tensor.shape[-1]
+
+    # 空 KV 场景：无 KV token 可参与 attention，输出全零，LSE 为 inf
+    if k_tensor.shape[2] == 0:
+        result = torch.zeros((batch, heads, q_seq, v_dim), dtype=torch.float32).contiguous()
+        lse = torch.full((batch, heads, q_seq, 1), float('inf'), dtype=torch.float32).contiguous()
+        return result, lse
+
     out = torch.zeros((batch, heads, q_seq, v_dim), dtype=torch.float32).contiguous()
     o_sum = torch.zeros(q_tensor.shape[:-1], dtype=torch.float32)[..., None].contiguous()
         # 修改1: 使用 NPU 对应的最小值初始化 (0xFF7FFFFF 对应 -FLT_MAX)
@@ -614,6 +621,15 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
                        actual_seq_q, actual_seq_kv):
     """Main NPU quant function - prepares data and calls NPU"""
     softmax_scale = 1.0 / math.sqrt(D)
+    T = sum(actual_seq_q)
+    out_dtype = torch.float16
+
+    # 空 KV 场景：无 KV token 可参与 attention，跳过 NPU 调用，直接返回全零 + inf
+    if max(actual_seq_kv) == 0:
+        atten_out = torch.zeros((T, N_q, D), dtype=out_dtype)
+        lse_out = torch.full((T, N_q, 1), float('inf'), dtype=torch.float32)
+        return (atten_out, lse_out)
+
     accum_seq_q = make_accum_seq(actual_seq_q) if INPUT_LAYOUT in ("NTD_TND", "TND") else actual_seq_q
 
     npu_input_layout = INPUT_LAYOUT
@@ -624,8 +640,6 @@ def npu_fp8_full_quant(q_fp8, k_fp8, v_fp8,
     # dequant scales 使用 float32
     deq_q_npu = convert_scale_to_layout(dequant_scale_q, ACTUAL_SEQ_Q, 'deq_q')
     deq_v_npu = convert_scale_to_layout(dequant_scale_v, ACTUAL_SEQ_KV, 'deq_v')
-    
-    out_dtype = torch.float16
 
     if SPARSE_MODE == 3:
         mask = torch.triu(torch.ones(2048, 2048, dtype=torch.bool), diagonal=1).npu()
