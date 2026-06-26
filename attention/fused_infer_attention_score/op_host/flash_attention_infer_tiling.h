@@ -616,8 +616,10 @@ namespace optiling{
                     endS1Idx : p.curQSBlockNum - 1;
 
                 for (int32_t S1Idx = curStartS1; S1Idx <= curEndS1; S1Idx++) {
-                    int32_t curStartS2 = (BIdx == startBIdx && N1Idx == startN1Idx && S1Idx == startS1Idx) ? startS2Idx : 0;
-                    int32_t curEndS2 = (BIdx == endBIdx && N1Idx == endN1Idx && S1Idx == endS1Idx) ? endS2Idx : p.curKSBlockNum;
+                    int32_t curStartS2 = (BIdx == startBIdx && N1Idx == startN1Idx && S1Idx == startS1Idx) ?
+                        startS2Idx : 0;
+                    int32_t curEndS2 = (BIdx == endBIdx && N1Idx == endN1Idx && S1Idx == endS1Idx) ?
+                        endS2Idx : p.curKSBlockNum;
 
                     uint32_t coveredS2 = curEndS2 - curStartS2;
                     bool isSplitKV = (coveredS2 > 0 && coveredS2 < p.curKSBlockNum);
