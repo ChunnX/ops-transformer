@@ -84,10 +84,10 @@ public:
 
         if (useDoubleBuffer_) {
             uint32_t totalLoop = (e + expertNum - 1U) / expertNum;
-            uint32_t remaining = (totalLoop < 2U) ? 0U : (totalLoop - 2U);
-            for (uint32_t i = 0U; i < remaining; i++) {
+            uint32_t numPending = (totalLoop < 2U) ? totalLoop : 2U;
+            for (uint32_t i = 0U; i < numPending; i++) {
                 if ASCEND_IS_AIC {
-                    uint32_t waitLoop = totalLoop - remaining + i;
+                    uint32_t waitLoop = totalLoop - numPending + i;
                     AscendC::CrossCoreWaitFlag(11U + (waitLoop % 2U));
                 }
             }
