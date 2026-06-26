@@ -537,6 +537,7 @@ def run_one_rank(name, q, ori_kv, cmp_kv, q_lens, ori_prefix_lens, cmp_lens, res
         cmp_ratio=cmp_ratio,
         ori_mask_mode=4,
         cmp_mask_mode=3,
+        cmp_residual_kv=cmp_residual_kv,
         ori_win_left=127,
         ori_win_right=0,
         layout_q="TND",
