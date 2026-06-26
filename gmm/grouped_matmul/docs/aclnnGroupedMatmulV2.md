@@ -17,7 +17,7 @@
 
 - 接口功能：实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。基本功能为矩阵乘，如$y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中g为分组个数，$m_i/k_i/n_i$为对应shape。
     相较于[GroupedMatmul](aclnnGroupedMatmul.md)接口，**此接口新增**：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 支持不同分组轴，由groupType表示。
     - 非量化场景，支持x，weight转置（转置指若shape为[M,K]时，则stride为[1,  M],数据排布为[K,M]的场景）。
     - 非量化场景支持x，weight输入都为float32类型。
@@ -243,7 +243,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     </tr>
   </tbody></table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - x支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - weight支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - biasOptional支持FLOAT16、FLOAT32、INT32
@@ -350,7 +350,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 
 - 确定性计算：
   - aclnnGroupedMatmulV2默认确定性实现。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - 非量化场景支持的输入类型为：
     - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为FLOAT16；
     - x为BFLOAT16、weight为BFLOAT16、biasOptional为FLOAT32、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、 antiquantOffsetOptional为空、y为BFLOAT16；
