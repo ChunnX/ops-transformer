@@ -47,10 +47,10 @@ __global__ __aicore__ void mega_moe(
         //   E2M1 要求 weight 均为 fp4；E5M2 要求 weight 均为 fp8（不支持 fp4）。
         constexpr bool w1IsFp4 = Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value;
         constexpr bool w2IsFp4 = Std::IsSame<DTYPE_WEIGHT2, fp4x2_e2m1_t>::value;
-        constexpr bool skip =
+        constexpr bool unsupported =
             (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && !(w1IsFp4 && w2IsFp4)) ||
             (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && (w1IsFp4 || w2IsFp4));
-        if constexpr (!skip) {
+        if constexpr (!unsupported) {
             MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DTYPE_WEIGHT2,
                 DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
