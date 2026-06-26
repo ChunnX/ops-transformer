@@ -270,7 +270,7 @@ static bool IsTndAllSeqLenZero(gert::TilingContext *context)
     }
     auto qShapeSize = actualSeqQlenTensor->GetShapeSize();
     auto kvShapeSize = actualSeqKvlenTensor->GetShapeSize();
-    if (qShapeSize == 0 || kvShapeSize == 0) {
+    if (qShapeSize == 0 || kvShapeSize == 0 || qShapeSize != kvShapeSize) {
         return false;
     }
     const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
