@@ -56,6 +56,8 @@ constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
 **/
 constexpr uint8_t AIV_ENGINE = 3;
 constexpr uint8_t A5_CCU_ENGINE = 0;
+constexpr uint8_t A5_AICPU_TS_ENGINE = 2;
+constexpr uint8_t A5_CCU_SCHED_ENGINE = 6;
 constexpr uint8_t Y_INDEX = 3;
 constexpr uint8_t COMM_ALG_DEFAULT = 0;
 constexpr uint8_t COMM_ALG_FULL_MESH = 1;
