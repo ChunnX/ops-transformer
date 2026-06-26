@@ -154,7 +154,8 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
 
     // 剔除尾部的无效batch
     for (; constInfo.batchSize > 0; --constInfo.batchSize) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.batchSize - 1);
+        uint32_t bSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(constInfo.batchSize - 1) :
+                                                    tools_.GetSeqLength(constInfo.batchSize - 1);
         if (bSeqUsed > 0) {
             break;
         }
@@ -221,9 +222,11 @@ __aicore__ inline void CompressorKernel<COMP>::SplitK()
 {
     uint32_t mSize = 0;
     for (uint32_t i = 0; i < constInfo.batchSize; i++) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(i);
+        uint32_t bSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(i) : tools_.GetSeqLength(i);
         // 获取m大小
-        mSize += bSeqUsed;
+        if (bSeqUsed > 0) {
+            mSize += tools_.GetSeqLength(i);
+        }
     }
 
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
@@ -259,18 +262,16 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
     for (; batchInfo.bIdx < constInfo.batchSize; ++batchInfo.bIdx) {
-        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
-        if (batchInfo.seqCnt > 0) {
+        uint32_t seqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(batchInfo.bIdx) :
+                                                   tools_.GetSeqLength(batchInfo.bIdx);
+        if (seqUsed > 0) {
             break;
         }
     }
-    batchInfo.remSeqCnt = batchInfo.seqCnt;
-    if (tools_.isExistSeqUsed_) {
-        batchInfo.seqUsedCnt = tools_.GetSeqUsed(batchInfo.bIdx);
-    } else {
-        batchInfo.seqUsedCnt = batchInfo.seqCnt;
-    }
     if (batchInfo.bIdx < constInfo.batchSize) {
+        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
+        batchInfo.remSeqCnt = batchInfo.seqCnt;
+        batchInfo.seqUsedCnt = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(batchInfo.bIdx) : batchInfo.seqCnt;
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
         batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
@@ -298,8 +299,9 @@ __aicore__ inline void CompressorKernel<COMP>::UpdateCurGroup(BasicBlockInfo &ba
     if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.batchSize - 1) && basicBlockInfo.sIdx == batchInfo.seqCnt) {
         basicBlockInfo.sIdx = 0;
         for (basicBlockInfo.bIdx++; basicBlockInfo.bIdx < constInfo.batchSize; ++basicBlockInfo.bIdx) {
-            uint32_t seqCnt = tools_.GetSeqLength(basicBlockInfo.bIdx);
-            if (seqCnt > 0) {
+            uint32_t seqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(basicBlockInfo.bIdx) :
+                                                       tools_.GetSeqLength(basicBlockInfo.bIdx);
+            if (seqUsed > 0) {
                 break;
             }
         }
