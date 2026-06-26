@@ -48,3 +48,5 @@ from .graph_convert.graph_convert_kv_compress_epilog import convert_kv_compress_
 from .graph_convert.graph_convert_indexer_quant_cache import convert_indexer_quant_cache
 from .compressor import compressor
 from .graph_convert.graph_convert_compressor import convert_compressor
+from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
+from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul
