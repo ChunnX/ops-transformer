@@ -23,17 +23,17 @@ namespace MlaProlog {
 template <typename SrcT>
 __aicore__ inline constexpr uint32_t GetC0Num()
 {
-    if (sizeof(SrcT) == sizeof(float)) {
-        return 8;
-    } else if (sizeof(SrcT) == sizeof(int8_t)) {
+    if (sizeof(SrcT) == sizeof(int8_t)) {
         return 32;
+    } else if (sizeof(SrcT) == sizeof(float)) {
+        return 8;
     }
     return 16;
 }
 
 constexpr uint8_t UNIT_FLAG_DISABLE = 0;  // 0: disable: 不配置unitFlag
-constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
 constexpr uint8_t UNIT_FLAG_SET = 0b11; // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
+constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
 
 /**
  * @brief Struct to encapsulate all local tensor objects for matrix multiplication
@@ -42,24 +42,24 @@ constexpr uint8_t UNIT_FLAG_SET = 0b11; // 3: enable: 在k的最后一轮循环�
  */
 template <typename T, typename O_L0C>
 struct mmLocalTensors {
-    LocalTensor<T> aL1Tensor;
-    LocalTensor<T> bL1Tensor;
-    LocalTensor<T> aL0Tensor;
-    LocalTensor<T> bL0Tensor;
-    LocalTensor<O_L0C> cL0Tensor;
-
     /**
      * @brief Initialize all local tensors with buffer addresses from bufParam
      * @param bufParam Buffer parameter object containing all buffer addresses
      */
     __aicore__ inline void Init(const MMBufParams &bufParam)
     {
-        aL1Tensor.SetAddr(bufParam.aL1BufAddr);
-        bL1Tensor.SetAddr(bufParam.bL1BufAddr);
         aL0Tensor.SetAddr(bufParam.aL0BufAddr);
         bL0Tensor.SetAddr(bufParam.bL0BufAddr);
         cL0Tensor.SetAddr(bufParam.cL0BufAddr);
+        aL1Tensor.SetAddr(bufParam.aL1BufAddr);
+        bL1Tensor.SetAddr(bufParam.bL1BufAddr);
     }
+
+    LocalTensor<T> aL0Tensor;
+    LocalTensor<T> bL0Tensor;
+    LocalTensor<O_L0C> cL0Tensor;
+    LocalTensor<T> aL1Tensor;
+    LocalTensor<T> bL1Tensor;
 };
 
 template <typename T>
@@ -247,6 +247,39 @@ __aicore__ inline void GetTensorC(const GlobalTensor<O> &tensorCGm, const LocalT
     Fixpipe(tensorCGm, cL0, fixParams);
 }
 
+
+/**
+ * @brief B矩阵数据加载到L1缓冲区的辅助函数
+ * @tparam T B张量的数据类型
+ * @tparam isContinuousCopy 是否使用连续复制模式
+ * @param bL1 B矩阵L1张量
+ * @param tensorBGm B矩阵GM张量
+ * @param kL1StepSize L1中K维度的步长大小
+ * @param subNL1SplitSize L1中N维度的分割大小
+ * @param para MMParams参数
+ * @param bufParam 缓冲区管理参数
+ * @param nL1 当前N L1迭代
+ * @param kL1 当前K L1迭代
+ * @param kOffesetUnit K维度偏移单位
+ */
+template <typename T, bool isContinuousCopy>
+__aicore__ inline void LoadL1BGroupCompute(LocalTensor<T> &bL1, const GlobalTensor<T> &tensorBGm,
+                                           uint32_t subNL1SplitSize, const MMParams &para, int64_t nL1, uint32_t kL1,
+                                           uint32_t kOffesetUnit)
+{
+    int64_t tensorBGmOffset = para.k * nL1 * para.baseN + kOffesetUnit * kL1;
+    auto tensorBGmForL1 = tensorBGm[tensorBGmOffset];
+    if constexpr (isContinuousCopy) {
+        CopyNZGmToL1(bL1, tensorBGmForL1, para.kL1StepSize, subNL1SplitSize, para.k);
+    } else {
+        // 每次搬运两块K*64拼接成K*128
+        CopyNZGmToL1(bL1, tensorBGmForL1, para.kL1StepSize, subNL1SplitSize >> 1, para.k);
+        LocalTensor<T> b2L1 = bL1[(subNL1SplitSize * para.kL1StepSize) >> 1];
+        auto tensorB2GmForL1 = tensorBGmForL1[DIM_HEAD_SIZE_QCQR * para.k];
+        CopyNZGmToL1(b2L1, tensorB2GmForL1, para.kL1StepSize, subNL1SplitSize >> 1, para.k);
+    }
+}
+
 /**
  * @brief 将AB矩阵从GM加载到L1缓存以进行矩阵乘法运算
  * @tparam T 张量的数据类型
@@ -290,38 +323,6 @@ __aicore__ inline void LoadL1AB(const GlobalTensor<T> &tensorAGm, const GlobalTe
             LoadL1B<T, DataFormat::ND, true>(tensorBGm[para.kL1StepSize * (kL1 + 1) * para.n + nL1Offset], nL1Size,
                                              para.n, para.kL1StepSize, para.kL1StepSize, bufParam);
         }
-    }
-}
-
-/**
- * @brief B矩阵数据加载到L1缓冲区的辅助函数
- * @tparam T B张量的数据类型
- * @tparam isContinuousCopy 是否使用连续复制模式
- * @param bL1 B矩阵L1张量
- * @param tensorBGm B矩阵GM张量
- * @param kL1StepSize L1中K维度的步长大小
- * @param subNL1SplitSize L1中N维度的分割大小
- * @param para MMParams参数
- * @param bufParam 缓冲区管理参数
- * @param nL1 当前N L1迭代
- * @param kL1 当前K L1迭代
- * @param kOffesetUnit K维度偏移单位
- */
-template <typename T, bool isContinuousCopy>
-__aicore__ inline void LoadL1BGroupCompute(LocalTensor<T> &bL1, const GlobalTensor<T> &tensorBGm,
-                                           uint32_t subNL1SplitSize, const MMParams &para, int64_t nL1, uint32_t kL1,
-                                           uint32_t kOffesetUnit)
-{
-    int64_t tensorBGmOffset = para.k * nL1 * para.baseN + kOffesetUnit * kL1;
-    auto tensorBGmForL1 = tensorBGm[tensorBGmOffset];
-    if constexpr (isContinuousCopy) {
-        CopyNZGmToL1(bL1, tensorBGmForL1, para.kL1StepSize, subNL1SplitSize, para.k);
-    } else {
-        // 每次搬运两块K*64拼接成K*128
-        CopyNZGmToL1(bL1, tensorBGmForL1, para.kL1StepSize, subNL1SplitSize >> 1, para.k);
-        LocalTensor<T> b2L1 = bL1[(subNL1SplitSize * para.kL1StepSize) >> 1];
-        auto tensorB2GmForL1 = tensorBGmForL1[para.k * DIM_HEAD_SIZE_QCQR];
-        CopyNZGmToL1(b2L1, tensorB2GmForL1, para.kL1StepSize, subNL1SplitSize >> 1, para.k);
     }
 }
 
