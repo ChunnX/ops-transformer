@@ -1297,7 +1297,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 {
     if (mm2M <= 0)
         return;
-    mm2_.SetTensorA(gradHcBeforeNormWs_[taskOffset * mm2K_], true);
+    mm2_.SetTensorA(gradHcBeforeNormWs_[taskOffset], true);
     mm2_.SetTensorB(xFp32Ws_);
     mm2_.SetHF32(false, 1);
     mm2_.SetSingleShape(mm2M, mm2N_, mm2K_);
