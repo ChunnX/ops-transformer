@@ -255,13 +255,21 @@ __aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t a
     int64_t curAivGS1Idx = curGS1Idx + (blockId_ % 2) * CeilDiv(curGS1ProcNum, 2);
     // 当前AIV核需要处理的GS1行数量
     int64_t curAivGS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curGS1ProcNum, 2) : curGS1ProcNum / 2;
+    if (curAivGS1ProcNum == 0) {
+        return;
+    }
     uint32_t curGlobalGIdx = curAivGS1Idx / actS1Size;
     uint32_t curGlobalS1Idx = curAivGS1Idx % actS1Size;
+    int64_t lastAivGS1Idx = curAivGS1Idx + curAivGS1ProcNum - 1;
+    uint32_t lastGlobalGIdx = lastAivGS1Idx / actS1Size;
+    uint32_t lastGlobalS1Idx = lastAivGS1Idx % actS1Size;
+    uint64_t startPhysicalRow = static_cast<uint64_t>(curGlobalGIdx) * constInfo_.qSeqSize + curGlobalS1Idx;
+    uint64_t endPhysicalRow = static_cast<uint64_t>(lastGlobalGIdx) * constInfo_.qSeqSize + lastGlobalS1Idx;
+    uint64_t clearRowNum = endPhysicalRow - startPhysicalRow + 1;
     int32_t neg = -1;
-    uint64_t outSplit1Offset = indiceOutOffset + (static_cast<uint64_t>(curGlobalGIdx) * constInfo_.qSeqSize + curGlobalS1Idx) *
-                                constInfo_.kSeqSize;
+    uint64_t outSplit1Offset = indiceOutOffset + startPhysicalRow * constInfo_.kSeqSize;
     GlobalTensor<int32_t> indiceSplitOut = sparseIndicesGm[outSplit1Offset];
-    AscendC::InitGlobalMemory(indiceSplitOut, curAivGS1ProcNum * constInfo_.kSeqSize, neg);
+    AscendC::InitGlobalMemory(indiceSplitOut, clearRowNum * constInfo_.kSeqSize, neg);
                                 
 }
 
