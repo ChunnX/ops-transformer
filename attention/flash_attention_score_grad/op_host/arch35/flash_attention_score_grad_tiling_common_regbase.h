@@ -128,7 +128,7 @@ constexpr int64_t INT64_NUM = 32;
 constexpr uint32_t DKDV_OUT = 2;
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
-constexpr uint32_t UB_RESERVE_SPACE = 8 * 1024;
+constexpr uint32_t UB_RESERVE_SPACE = 26 * 1024;
 
 constexpr int64_t LARGE_INVALID_NUM = 3072;
 
