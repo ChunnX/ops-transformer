@@ -247,9 +247,9 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(
     if constexpr (IS_PA) {
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
+        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
-            static_cast<int64_t>(blockSize) * constInfo.dSizeVInput +
-            blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
+            paBlockStride + blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
     } else {
         if (LAYOUT_T == SMLA_LAYOUT::BSND) {
             if (runInfo.isCmp) {
@@ -585,7 +585,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 0;
         WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
-        ComputeLseOutputVF<float>(outLse, sumUb, maxUb, runInfo.halfMRealSize);
+        ComputeLse<float>(outLse, sumUb, maxUb, runInfo.halfMRealSize);
         SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
  	    WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
         DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, dataCopyParams);
