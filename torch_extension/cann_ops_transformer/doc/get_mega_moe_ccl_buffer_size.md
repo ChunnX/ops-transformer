@@ -1,4 +1,4 @@
-# npu\_get\_mega\_moe\_ccl\_buffer\_size
+# get\_mega\_moe\_ccl\_buffer\_size
 
 ## 产品支持情况
 
@@ -8,7 +8,7 @@
 
 ## 功能说明<a name="zh-cn_topic_0000002203575834_section14441124184111"></a>
 
--   API功能：
+-   接口功能：
     
     需与[mega\_moe](mega_moe.md)配套使用，用于计算mega_moe算子所需的HCCL通信buffer\_size大小（单位：MB）。
 -   计算公式：
@@ -36,8 +36,8 @@
 
 ## 函数原型
 
-```
-npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> int:
+```python
+cann_ops_transformer.ops.get_mega_moe_ccl_buffer_size(ep_world_size, moe_expert_num, num_max_tokens_per_rank, num_topk, hidden, dispatch_quant_mode=0, dispatch_quant_out_dtype=28, combine_quant_mode=0, comm_alg="")
 ```
 
 ## 参数说明
@@ -51,7 +51,7 @@ npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_ma
 -   **dispatch\_quant\_out\_type** (`int`)：可选参数，dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
 -   **comm\_alg** (`string`)：暂不支持该参数，使用默认值即可。
 
-## 输出说明
+## 返回值说明
 
 `int`
 
@@ -59,27 +59,44 @@ npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_ma
 
 ## 约束说明
 
--   npu\_get\_mega\_moe\_ccl\_buffer\_size、mega\_moe必须配套使用。
+### 公共约束
+
+-   适用场景：该接口支持训练、推理场景下使用。
+-   调用方式：该接口支持单算子模式调用（torchair图模式暂不支持）。
+
+### 确定性计算
+
+-   默认支持确定性计算。
+
+### 差异化约束
+
+-   get\_mega\_moe\_ccl\_buffer\_size、mega\_moe必须配套使用。
 -   本文公式中的“/”表示整除。
 
 ## 调用示例
+
+- 单算子模式调用
 
 ```python
 import os
 import torch
 import torch_npu
-from cann_ops_transformer.ops import npu_get_mega_moe_ccl_buffer_size
+from cann_ops_transformer.ops import get_mega_moe_ccl_buffer_size
 
 server_num = 1
 rank_per_dev = 2
-world_size = server_num * rank_per_dev
+world_size = server_num * rank_per_dev  # EP通信域大小
 num_experts = 8  # moe专家数
 BS = 256  # token数量
 H = 4096  # 每个token的长度
 topK = 6
 
-buffer_size = npu_get_mega_moe_ccl_buffer_size(world_size, num_experts, BS, topK, H)
-os.environ['HCCL_BUFFSIZE'] = f'buffer_size'
+# 第一步：计算mega_moe算子所需的HCCL通信buffer_size大小（单位：MB）
+buffer_size = get_mega_moe_ccl_buffer_size(world_size, num_experts, BS, topK, H)
+# 第二步：将计算得到的buffer_size设置到环境变量HCCL_BUFFSIZE，供后续mega_moe配套使用
+os.environ['HCCL_BUFFSIZE'] = f'{buffer_size}'
 print(f"buffer_size is {buffer_size}")
 print("run ccl_buffer_size success.")
 ```
+
+- 图模式调用（暂不支持）

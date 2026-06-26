@@ -1,4 +1,4 @@
-# npu\_low\_latency_dispatch<a name="ZH-CN_TOPIC_0000002343094193"></a>
+# low\_latency_dispatch<a name="ZH-CN_TOPIC_0000002343094193"></a>
 
 ## 产品支持情况
 
@@ -8,7 +8,7 @@
 
 ## 功能说明<a name="zh-cn_topic_0000002203575833_section14441124184110"></a>
 
--   API功能：需与[npu\_low\_latency_combine](npu_low_latency_combine.md)配套使用，完成MoE的并行部署下的token的dispatch和combine。
+-   接口功能：需与[low\_latency_combine](low_latency_combine.md)配套使用，完成MoE的并行部署下的token的dispatch和combine。
      - 支持动态量化场景，对token数据先进行量化（可选），进行EP（Expert Parallelism）域的alltoallv通信；
      - 支持特殊专家场景。
 -   计算公式：
@@ -58,18 +58,18 @@
 
          $$Moe(ori\_x)=const\_expert\_alpha\_1*ori\_x+const\_expert\_alpha\_2*const\_expert\_v$$
 
-      参数ori\_x、const\_expert\_alpha\_1、const\_expert\_alpha\_2、const\_expert\_v见[npu\_low\_latency_combine](npu_low_latency_combine.md)文档。
+      参数ori\_x、const\_expert\_alpha\_1、const\_expert\_alpha\_2、const\_expert\_v见[low\_latency_combine](low_latency_combine.md)文档。
 
 ## 函数原型<a name="zh-cn_topic_0000002203575833_section45077510411"></a>
 
-```
-npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank = 0) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
+```python
+MoeDistributeBuffer.low_latency_dispatch(self, x, topk_idx, num_experts, *, quant_mode=0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002203575833_section112637109429"></a>
 
 -   **x** (`Tensor`)：必选参数，表示计算使用的token数据，需根据`topk_idx`来发送给其他卡。要求为2维张量，shape为(BS, H)，表示有BS个token，数据类型支持`bfloat16`、`float16`，数据格式为$ND$，支持非连续的Tensor。
--   **topk\_idx** (`Tensor`)：必选参数，表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2维张量，shape为(BS, K)，数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。对应[npu\_low\_latency\_combine](npu_low_latency_combine.md)的`topk_idx`输入，张量里value取值范围为\[0, num\_experts\)，且同一行中的K个value不能重复。
+-   **topk\_idx** (`Tensor`)：必选参数，表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2维张量，shape为(BS, K)，数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。对应[low\_latency\_combine](low_latency_combine.md)的`topk_idx`输入，张量里value取值范围为\[0, num\_experts\)，且同一行中的K个value不能重复。
 -   **num\_experts** (`int`)：必选参数，MoE专家数量，取值范围[1, 1024]，并且满足以下条件：num\_experts\%(ep\_world\_size - shared\_expert\_rank\_num)\=0。
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
 -   **quant\_mode** (`int`)：可选参数，表示量化模式。支持取值：0表示非量化（默认），2表示动态量化。当`quant_mode`为2，`dynamic_scales`不为None；当`quant_mode`为0，`dynamic_scales`为None。
@@ -97,22 +97,32 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 -   **num\_max\_dispatch\_tokens\_per\_rank** (`int`)：可选参数，表示每张卡上的token数量。当每个rank的BS不同时，最大的BS大小，当每个rank上BS相同时，默认为0。
 
-## 输出说明<a name="zh-cn_topic_0000002203575833_section22231435517"></a>
+## 返回值说明<a name="zh-cn_topic_0000002203575833_section22231435517"></a>
 
 -   **expand\_x** (`Tensor`)：表示本卡收到的token数据，要求为2维张量，shape为(A, H)，A表示在EP通信域可能收到的最大token数，数据类型支持`bfloat16`、`float16`、`int8`。量化时类型为`int8`，非量化时与`x`数据类型保持一致。数据格式为$ND$，支持非连续的Tensor。
 -   **dynamic\_scales** (`Tensor`)：表示计算得到的动态量化参数。当`quant_mode`不为0时才有该输出，要求为1维张量，shape为(A,)，数据类型支持`float`，数据格式支持$ND$，支持非连续的Tensor。
--   **assist\_info\_for\_combine** (`Tensor`)：表示给同一专家发送的token个数，要求是一个1维张量，shape为(A \* 128, )。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。对应[npu\_low\_latency\_combine](npu_low_latency_combine.md)的`assist_info_for_combine`输入。
+-   **assist\_info\_for\_combine** (`Tensor`)：表示给同一专家发送的token个数，要求是一个1维张量，shape为(A \* 128, )。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。对应[low\_latency\_combine](low_latency_combine.md)的`assist_info_for_combine`输入。
 
 -   **expert\_token\_nums** (`Tensor`)：本卡每个专家实际收到的token数量，要求为1维张量，shape为\(local\_expert\_num,\)，数据类型`int64`，数据格式支持$ND$，支持非连续的Tensor。
--   **ep\_recv\_counts** (`Tensor`)：表示EP通信域各卡收到的token数（token数以前缀和的形式表示），要求为1维张量，数据类型`int32`，数据格式支持$ND$，支持非连续的Tensor。对应[npu\_low\_latency\_combine](npu_low_latency_combine.md)的`ep_send_counts`输入。要求shape为\(ep\_world\_size\*local\_expert\_num, \)。
+-   **ep\_recv\_counts** (`Tensor`)：表示EP通信域各卡收到的token数（token数以前缀和的形式表示），要求为1维张量，数据类型`int32`，数据格式支持$ND$，支持非连续的Tensor。对应[low\_latency\_combine](low_latency_combine.md)的`ep_send_counts`输入。要求shape为\(ep\_world\_size\*local\_expert\_num, \)。
 -   **expand\_scales** (`Tensor`)：表示`topk_weights`与`x`一起进行alltoallv之后的输出。暂不支持该输出，返回None。
 
 ## 约束说明<a name="zh-cn_topic_0000002203575833_section12345537164214"></a>
 
--   该接口支持推理场景下使用。
--   该接口支持静态图模式，`npu_low_latency_dispatch`和`npu_low_latency_combine`必须配套使用。
--   在不同产品型号、不同通信算法或不同版本中，`npu_low_latency_dispatch`的Tensor输出`assist_info_for_combine`、`ep_recv_counts`、`tp_recv_counts`、`expand_scales`中的元素值可能不同，使用时直接将上述Tensor传给`npu_low_latency_combine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
--   调用接口过程中使用的`num_experts`、`expert_shard_type`、`shared_expert_num`、`shared_expert_rank_num`、`num_max_dispatch_tokens_per_rank`参数取值所有卡需保持一致，`expert_shard_type`、`num_max_dispatch_tokens_per_rank`网络中不同层中也需保持一致，且和[npu\_low\_latency\_combine](npu_low_latency_combine.md)对应参数也保持一致。
+公共约束：
+
+-   适用场景：该接口支持训练、推理场景下使用。
+-   调用方式：该接口支持单算子模式和torchair图模式调用。
+
+确定性计算：
+
+-   默认支持确定性计算。
+
+差异化约束：
+
+-   该接口支持静态图模式，`low_latency_dispatch`和`low_latency_combine`必须配套使用。
+-   在不同产品型号、不同通信算法或不同版本中，`low_latency_dispatch`的Tensor输出`assist_info_for_combine`、`ep_recv_counts`、`tp_recv_counts`、`expand_scales`中的元素值可能不同，使用时直接将上述Tensor传给`low_latency_combine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
+-   调用接口过程中使用的`num_experts`、`expert_shard_type`、`shared_expert_num`、`shared_expert_rank_num`、`num_max_dispatch_tokens_per_rank`参数取值所有卡需保持一致，`expert_shard_type`、`num_max_dispatch_tokens_per_rank`网络中不同层中也需保持一致，且和[low\_latency\_combine](low_latency_combine.md)对应参数也保持一致。
 -   该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 -   num_experts + zero_expert_num + copy_expert_num + const_expert_num < MAX_INT32。
 -   参数里Shape使用的变量如下：
@@ -142,9 +152,9 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
 -   通信域使用约束：
 
-    -   一个模型中的`npu_low_latency_dispatch`和`npu_low_latency_combine`算子仅支持相同EP通信域，且该通信域中不允许有其他算子。
+    -   一个模型中的`low_latency_dispatch`和`low_latency_combine`算子仅支持相同EP通信域，且该通信域中不允许有其他算子。
 
-    -   一个模型中的`npu_low_latency_dispatch`和`npu_low_latency_combine`算子仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
+    -   一个模型中的`low_latency_dispatch`和`low_latency_combine`算子仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
     -   一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
@@ -286,7 +296,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 
         distribute_buffer = MoeDistributeBuffer(ep_group)
 
-        expand_x, dynamic_scales, assist_info_for_combine, expert_token_nums, ep_recv_counts, _ = distribute_buffer.npu_low_latency_dispatch(
+        expand_x, dynamic_scales, assist_info_for_combine, expert_token_nums, ep_recv_counts, _ = distribute_buffer.low_latency_dispatch(
             x=x,
             topk_idx=topk_idx,
             shared_expert_num=0,
@@ -301,7 +311,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
         if is_quant:
             expand_x = expand_x.to(input_dtype)
 
-        x = distribute_buffer.npu_low_latency_combine(x=expand_x,
+        x = distribute_buffer.low_latency_combine(x=expand_x,
                                                 topk_idx=topk_idx,
                                                 assist_info_for_combine=assist_info_for_combine,
                                                 ep_send_counts=ep_recv_counts,
@@ -410,7 +420,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
         def forward(self, x, topk_idx, group_ep, group_tp, ep_world_size, tp_world_size,
                     ep_rank_id, tp_rank_id, expert_shard_type, shared_expert_rank_num, num_experts,
                     scales, quant_mode, num_max_dispatch_tokens_per_rank, topk_weights, elastic_info, const_expert_alpha_1, const_expert_alpha_2, const_expert_v, zero_expert_num, copy_expert_num, const_expert_num):
-            output_dispatch_npu = self.distribute_buffer.npu_low_latency_dispatch(
+            output_dispatch_npu = self.distribute_buffer.low_latency_dispatch(
                 x=x,
                 topk_idx=topk_idx,
                 shared_expert_num=0,
@@ -426,7 +436,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
             if expand_x_npu.dtype == torch.int8:
                 expand_x_npu = expand_x_npu.to(input_dtype)
 
-            output_combine_npu = self.distribute_buffer.npu_low_latency_combine(
+            output_combine_npu = self.distribute_buffer.low_latency_combine(
                 x=expand_x_npu,
                 topk_idx=topk_idx,
                 topk_weights=topk_weights,
