@@ -98,7 +98,7 @@ class MoeDistributeBuffer:
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         return True
 
-    def npu_low_latency_dispatch(self, x, topk_idx, num_experts: int, *,
+    def low_latency_dispatch(self, x, topk_idx, num_experts: int, *,
                              quant_mode=0, comm_alg="", x_smooth_scale=None,
                              x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0,
                              const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1,
@@ -129,7 +129,7 @@ class MoeDistributeBuffer:
                                              const_expert_num=const_expert_num)
         return expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, expand_scales
 
-    def npu_low_latency_combine(self, x, topk_idx, topk_weights, assist_info_for_combine, ep_send_counts, *,
+    def low_latency_combine(self, x, topk_idx, topk_weights, assist_info_for_combine, ep_send_counts, *,
                             num_experts=0, comm_alg="", comm_quant_mode=0, x_active_mask=None, expand_scales=None,
                             shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None,
                             const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0,
