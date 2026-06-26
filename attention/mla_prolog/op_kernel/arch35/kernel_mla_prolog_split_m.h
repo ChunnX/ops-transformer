@@ -1162,11 +1162,12 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormCq(int64_t tokenIndex, i
         } else {
             scaleOffset = curVecTokenIdx * FP32_BLOCK_ELEMENT_NUM;
         }
-        RmsNormParam rmsNormParams = {baseParams_->reciprocalCq, // reciprocal
-                                      baseParams_->epsilonCq,    // epsilon
-                                      static_cast<uint32_t>(vectorRow_),      // row
-                                      baseParams_->headSizeCq,   // col
-                                      baseParams_->qcQrScale,    baseParams_->isQcQrScaleEnable};
+        RmsNormParam rmsNormParams = {baseParams_->reciprocalCq,         // reciprocal
+                                      baseParams_->epsilonCq,            // epsilon
+                                      static_cast<uint32_t>(vectorRow_), // row
+                                      baseParams_->headSizeCq,           // col
+                                      baseParams_->qcQrScale,
+                                      baseParams_->isQcQrScaleEnable};
 
         if constexpr (std::is_same<rmsNormCqOutputType, int8_t>::value ||
                       std::is_same<rmsNormCqOutputType, FP8E4M3>::value ||
@@ -1284,12 +1285,12 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndScatterCkv(LocalTenso
     LocalTensor<uint8_t> rmsNormShareTmpUb = shareTmpUb[outputLocalSize].template ReinterpretCast<uint8_t>();
 
     RmsNormParam rmsNormParams = {
-        baseParams_->reciprocalCkv,   // reciprocal
-        baseParams_->epsilonCkv,      // epsilon
-        static_cast<uint32_t>(vectorRow_),         // row
-        baseParams_->headSizeCkv,     // col
-        baseParams_->kcScale,         // scale
-        baseParams_->isKcScaleEnable, // isScaleEnable
+        baseParams_->reciprocalCkv,        // reciprocal
+        baseParams_->epsilonCkv,           // epsilon
+        static_cast<uint32_t>(vectorRow_), // row
+        baseParams_->headSizeCkv,          // col
+        baseParams_->kcScale,              // scale
+        baseParams_->isKcScaleEnable,      // isScaleEnable
     };
 
     if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value ||
@@ -1653,9 +1654,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
                               ALIGN_BLOCK_SIZE)};
 
     Rectangle ropeParams{
-        static_cast<uint16_t>(curVecToken),                                                            //  row
-        baseParams_->dimHeadRope,                                                                      // col
-        static_cast<uint32_t>(baseParams_->numHeadSize * (baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope)) // stride
+        static_cast<uint16_t>(curVecToken), //  row
+        baseParams_->dimHeadRope,           // col
+        static_cast<uint32_t>(baseParams_->numHeadSize *
+                              (baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope)) // stride
     };
     int64_t ropeStride = static_cast<int64_t>(baseParams_->numHeadSize) *
                          static_cast<int64_t>(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope);

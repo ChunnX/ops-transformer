@@ -22,8 +22,8 @@
 namespace MlaProlog {
 
 template <typename O, typename C>
-__simd_vf__ inline void RopeVFImpl(__ubuf__ O *outputUb, __ubuf__ C *inputUb, __ubuf__ C *sinUb,
-                                   __ubuf__ C *cosUb, uint32_t row, uint64_t srcStride, uint64_t dstStride, uint64_t sinCosStride)
+__simd_vf__ inline void RopeVFImpl(__ubuf__ O *outputUb, __ubuf__ C *inputUb, __ubuf__ C *sinUb, __ubuf__ C *cosUb,
+                                   uint32_t row, uint64_t srcStride, uint64_t dstStride, uint64_t sinCosStride)
 {
     MicroAPI::RegTensor<C> vregX;
     MicroAPI::RegTensor<C> vregSin;
@@ -69,7 +69,7 @@ __simd_vf__ inline void RopeVFImpl(__ubuf__ O *outputUb, __ubuf__ C *inputUb, __
         // Part1 = [cos_l*even + sin_l*odd, cos_u*odd + sin_u*even] = [y_lower, y_upper]
         MicroAPI::Add(vregRes, vregRes, vregResHigh, maskAll);
         MicroAPI::Add(vregRes, vregRes, vregResLow, maskAll);
-        
+
         if constexpr (std::is_same<C, O>::value) {
             MicroAPI::StoreAlign(curResUb, vregRes, maskAll);
         } else {
@@ -83,8 +83,8 @@ __simd_vf__ inline void RopeVFImpl(__ubuf__ O *outputUb, __ubuf__ C *inputUb, __
 // col == 64
 template <typename O, typename C>
 __aicore__ inline void RotaryPosEmbVF(const LocalTensor<O> &outputLocal, const LocalTensor<C> &inputLocal,
-                                      const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-                                      uint32_t row, uint64_t srcStride, uint64_t dstStride, uint64_t sinCosStride)
+                                      const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal, uint32_t row,
+                                      uint64_t srcStride, uint64_t dstStride, uint64_t sinCosStride)
 {
     __ubuf__ C *inputUb = (__ubuf__ C *)inputLocal.GetPhyAddr();
     __ubuf__ C *sinUb = (__ubuf__ C *)sinLocal.GetPhyAddr();

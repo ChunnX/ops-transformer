@@ -62,12 +62,12 @@ __simd_vf__ void DequantVFImpl(__ubuf__ O *yAddr, __ubuf__ T *xAddr, __ubuf__ C 
             AscendC::MicroAPI::Mul(vregInputFp32, vregInputFp32, vregScalePerChannel, fullMask);
             AscendC::MicroAPI::Mul(vregInputFp32, vregInputFp32, vregScalePerToken, fullMask);
             if constexpr (std::is_same<O, C>::value) {
-                AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(yAddr + colOffset + rowOffset,
-                                                                                              vregInputFp32, fullMask);
+                AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
+                    yAddr + colOffset + rowOffset, vregInputFp32, fullMask);
             } else {
                 AscendC::MicroAPI::Cast<O, C, castTraitB322B16>(vregOutput, vregInputFp32, fullMaskCast);
-                AscendC::MicroAPI::DataCopy<O, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + colOffset + rowOffset,
-                                                                                            vregOutput, fullMaskCast);
+                AscendC::MicroAPI::DataCopy<O, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                    yAddr + colOffset + rowOffset, vregOutput, fullMaskCast);
             }
             rowOffset += stride;
             scaleOffset += fp32BlockElementNum;

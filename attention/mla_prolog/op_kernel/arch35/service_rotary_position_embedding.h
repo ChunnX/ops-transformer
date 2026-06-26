@@ -83,8 +83,7 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
         AscendC::PipeBarrier<PIPE_V>();
     }
-    RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal,
-                       ropeParams.row, ropeParams.col, 0);
+    RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, 0);
     AscendC::PipeBarrier<PIPE_V>();
 }
 
@@ -150,7 +149,8 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
 
         uint8_t blockNumPerRow = ropeParams.col / (ALIGN_BLOCK_SIZE / sizeof(C));
         // row  col stride
-        Rectangle rectangleParams{static_cast<uint32_t>(ropeParams.row), static_cast<uint32_t>(ropeParams.col), static_cast<uint32_t>(ropeParams.col)};
+        Rectangle rectangleParams{static_cast<uint32_t>(ropeParams.row), static_cast<uint32_t>(ropeParams.col),
+                                  static_cast<uint32_t>(ropeParams.col)};
         if constexpr (std::is_same<T, float>::value) {
             Dequant(kFp32Local, kFp32Local, scaleLocal, deQuantScale, rectangleParams);
         } else {
@@ -160,8 +160,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
     }
     AscendC::PipeBarrier<PIPE_V>();
-    RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal,
-                       ropeParams.row, ropeParams.col, ropeParams.col);
+    RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, ropeParams.col);
     AscendC::PipeBarrier<PIPE_V>();
 }
 

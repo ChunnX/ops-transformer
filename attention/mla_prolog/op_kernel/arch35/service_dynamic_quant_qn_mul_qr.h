@@ -90,8 +90,8 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
     // DataCopyParams  : count len srcStrideIn dstStrideIn
     DataCopyParams inputParamsRope{static_cast<uint16_t>(row), static_cast<uint16_t>(colRope / inputBlockAlign),
                                    static_cast<uint16_t>((qrOutputStrideRope - colRope) / inputBlockAlign), 0};
-    DataCopyParams outputParamsRope{static_cast<uint16_t>(subRowRope), static_cast<uint16_t>(colRope / inputBlockAlign), 0,
-                                    static_cast<uint16_t>((qrOutputStrideRope - colRope) / inputBlockAlign)};
+    DataCopyParams outputParamsRope{static_cast<uint16_t>(subRowRope), static_cast<uint16_t>(colRope / inputBlockAlign),
+                                    0, static_cast<uint16_t>((qrOutputStrideRope - colRope) / inputBlockAlign)};
 
     uint64_t inputGmRopeOffset = 0;
     uint64_t dequantScaleOffset = 0;
