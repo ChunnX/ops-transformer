@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 from util import (  # noqa: E402
     create_attention_mask, FrameWidths, WorkloadShape,
     sabi_to_block_sparse_mask, SABI_PAD,
-    bsa_inner_precise,
+    bsa_inner_precise, is_arch35_soc,
 )
 
 SEED = 42
@@ -54,11 +54,21 @@ _SABI_PAD = SABI_PAD  # 0xFFFF padding sentinel — single source of truth in ut
 torch.npu.set_device(DEVICE)
 # inner_precise is SoC-gated: 950 → 4 (low/high mixed), 910/910_93 → 0 (fp32 softmax).
 INNER_PRECISE = bsa_inner_precise()
+_IS_ARCH35 = is_arch35_soc()
 
+# 910 baselines (inner_precise=0, full fp32 softmax → matches the references tightly).
 OUT_ATOL        = 1e-3   # dense attention_out vs FIAS
 SPARSE_OUT_ATOL = 1e-3   # sparse attention_out vs PFA — block-boundary headroom
 LSE_ATOL        = 1e-3   # dense softmax_lse vs FIAS (tight)
 SPARSE_LSE_REF_ATOL = 0.05  # sparse softmax_lse vs python float32 ref (bf16 score-acc headroom)
+
+# A5 (arch35) is forced to inner_precise=4 (online softmax in the input dtype, not fp32),
+# so bf16 deviates from the fp32-accurate references. The references stay ground truth;
+# only the bf16-on-A5 band widens (fp16/fp32 and the whole 910 path keep the baselines):
+#   • attention_out → ~1 bf16 ULP (≤ ~0.0625 over this sweep): match test_attn (0.01/0.08).
+#   • softmax_lse   → ~1% drift over long reductions: a 1.5% relative band.
+ARCH35_OUT_RTOL, ARCH35_OUT_ATOL = 0.01, 0.08
+LSE_BF16_A5_RTOL = 0.015
 
 NO_FRAME = FrameWidths(0, 0, 0, 0)
 
@@ -198,15 +208,18 @@ def test_joint_dense(shape, dtype):
     assert our_lse.shape == torch.Size([B, H, S]), f"lse shape wrong: {our_lse.shape}"
     assert our_lse.dtype == torch.float32,         f"lse dtype wrong: {our_lse.dtype}"
 
-    if not torch.allclose(our_out.cpu(), ref_out.cpu(), rtol=0.005, atol=OUT_ATOL):
+    bf16_a5 = _IS_ARCH35 and dtype == torch.bfloat16
+    out_rtol, out_atol = (ARCH35_OUT_RTOL, ARCH35_OUT_ATOL) if bf16_a5 else (0.005, OUT_ATOL)
+    lse_rtol = LSE_BF16_A5_RTOL if bf16_a5 else 1e-3
+    if not torch.allclose(our_out.cpu(), ref_out.cpu(), rtol=out_rtol, atol=out_atol):
         max_diff = (our_out.cpu() - ref_out.cpu()).abs().max().item()
         pytest.fail(f"attention_out: shape={shape} dtype={dtype} "
-                    f"max_diff={max_diff:.5f} > atol={OUT_ATOL}")
+                    f"max_diff={max_diff:.5f} > rtol={out_rtol} atol={out_atol}")
 
-    if not torch.allclose(our_lse.cpu(), ref_lse.cpu().float(), rtol=1e-3, atol=LSE_ATOL):
+    if not torch.allclose(our_lse.cpu(), ref_lse.cpu().float(), rtol=lse_rtol, atol=LSE_ATOL):
         max_diff = (our_lse.cpu() - ref_lse.cpu().float()).abs().max().item()
         pytest.fail(f"softmax_lse:  shape={shape} dtype={dtype} "
-                    f"max_diff={max_diff:.5f} > atol={LSE_ATOL}")
+                    f"max_diff={max_diff:.5f} > rtol={lse_rtol} atol={LSE_ATOL}")
 
 
 @pytest.mark.parametrize("shape,sparsity", SPARSE_CASES,
@@ -248,15 +261,19 @@ def test_joint_sparse(shape, sparsity):
     assert our_lse.shape == torch.Size([B, H, S]), f"lse shape wrong: {our_lse.shape}"
     assert our_lse.dtype == torch.float32,         f"lse dtype wrong: {our_lse.dtype}"
 
-    if not torch.allclose(our_out.cpu(), pfa_out.cpu(), rtol=0.005, atol=SPARSE_OUT_ATOL):
+    # H==1 bf16 throughout this test; widen only on A5 (see module header).
+    bf16_a5 = _IS_ARCH35
+    out_rtol, out_atol = (ARCH35_OUT_RTOL, ARCH35_OUT_ATOL) if bf16_a5 else (0.005, SPARSE_OUT_ATOL)
+    lse_rtol = LSE_BF16_A5_RTOL if bf16_a5 else 1e-3
+    if not torch.allclose(our_out.cpu(), pfa_out.cpu(), rtol=out_rtol, atol=out_atol):
         max_diff = (our_out.cpu() - pfa_out.cpu()).abs().max().item()
         pytest.fail(f"attention_out: shape={shape} sparsity={sparsity} "
-                    f"max_diff={max_diff:.5f} > atol={SPARSE_OUT_ATOL}")
+                    f"max_diff={max_diff:.5f} > rtol={out_rtol} atol={out_atol}")
 
-    if not torch.allclose(our_lse.cpu(), ref_lse, rtol=1e-3, atol=SPARSE_LSE_REF_ATOL):
+    if not torch.allclose(our_lse.cpu(), ref_lse, rtol=lse_rtol, atol=SPARSE_LSE_REF_ATOL):
         max_diff = (our_lse.cpu() - ref_lse).abs().max().item()
         pytest.fail(f"softmax_lse:  shape={shape} sparsity={sparsity} "
-                    f"max_diff={max_diff:.5f} > atol={SPARSE_LSE_REF_ATOL}")
+                    f"max_diff={max_diff:.5f} > rtol={lse_rtol} atol={SPARSE_LSE_REF_ATOL}")
 
 
 # ── __main__ smoke tests ──────────────────────────────────────────────────────

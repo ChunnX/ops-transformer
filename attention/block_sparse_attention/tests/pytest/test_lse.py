@@ -10,7 +10,7 @@
 """
 Tests for `block_sparse_attention` softmax_lse output.
 
-Mirrors BSA's `test_lse.py` structure. Compares LSE against two references:
+Compares LSE against two references:
   • FIAS (`npu_fused_infer_attention_score`) — used for dense tests.
   • Python float32 reference — used for sparse multi-head tests.
 
@@ -48,11 +48,20 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), ".."
 from util import (  # noqa: E402
     create_attention_mask, FrameWidths, WorkloadShape,
     sabi_to_block_sparse_mask, SABI_PAD,
-    bsa_inner_precise,
+    bsa_inner_precise, is_arch35_soc,
 )
 
 # inner_precise is SoC-gated: 950 → 4 (low/high mixed), 910/910_93 → 0 (fp32 softmax).
 INNER_PRECISE = bsa_inner_precise()
+_IS_ARCH35 = is_arch35_soc()
+
+# On A5 (arch35) the kernel is forced to inner_precise=4 — the online softmax runs in
+# the input dtype, not fp32. For bf16 that drifts from the fp32-accurate reference by
+# ~1% over long reductions (grows with S; fp16 stays tight). The reference stays the
+# fp32 ground truth; we validate to within bf16's achievable precision with a relative
+# band instead of pretending bf16 can hit 1e-4. Applied to bf16 on A5 only — fp16/fp32
+# and the entire 910 path keep their tight tolerances.
+LSE_BF16_A5_RTOL = 0.015  # ~1.5%, covers the ~0.097 (≈1%) max drift seen at S=24000
 
 SEED = 42
 DEVICE = "npu:0"
@@ -304,9 +313,10 @@ def test_lse_vs_fias_dense(shape, dtype):
     assert our_lse.dtype == torch.float32
 
     atol = LSE_ATOL[dtype]
-    if not torch.allclose(our_lse.cpu(), fias_lse.cpu().float(), rtol=1e-3, atol=atol):
+    rtol = LSE_BF16_A5_RTOL if (_IS_ARCH35 and dtype == torch.bfloat16) else 1e-3
+    if not torch.allclose(our_lse.cpu(), fias_lse.cpu().float(), rtol=rtol, atol=atol):
         max_diff = (our_lse.cpu() - fias_lse.cpu().float()).abs().max().item()
-        pytest.fail(f"shape={shape} dtype={dtype}: max_diff={max_diff:.5f} > atol={atol}")
+        pytest.fail(f"shape={shape} dtype={dtype}: max_diff={max_diff:.5f} > rtol={rtol} atol={atol}")
 
 
 # ── Test 2: sparse H=1 LSE vs FIAS (no frame) ────────────────────────────────

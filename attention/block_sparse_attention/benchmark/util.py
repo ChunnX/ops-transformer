@@ -14,9 +14,9 @@ and correctness gate. Contains everything needed to:
   Q/KV block granularity.
 - Build dense `[1, H, S, S]` bool masks from the block patterns (for
   reference kernels that take fine-grained masks).
-- Pack the block selection into `sabi` (uint16, padded `0xFFFF`) — the
-  format BSA's torch interface accepts — or into `block_sparse_mask`
-  (int8 `[B, H, q_blocks, kv_blocks]`) — the format the
+- Pack the block selection into `sabi` — the sparse attention block indices
+  tensor (uint16, padded `0xFFFF`) — or into `block_sparse_mask`
+  (int8 `[B, H, q_blocks, kv_blocks]`), the format the
   `block_sparse_attention` kernel accepts.
 - Time + verify a kernel against `npu_fusion_attention` /
   `npu_fused_infer_attention_score`.
@@ -510,8 +510,9 @@ def _fmt_or_na(value, width, spec=".2f"):
 
 def sabi_to_block_sparse_mask(sabi: torch.Tensor, mask_shape: tuple,
                               device: str = "npu") -> torch.Tensor:
-    """Convert sabi (uint16 keeper-indices, padded 0xFFFF) into the
-    block_sparse_attention kernel's int8 `[B, H, q_blocks, kv_blocks]` mask.
+    """Convert sabi (sparse attention block indices: uint16 keeper-indices,
+    padded 0xFFFF) into the block_sparse_attention kernel's int8
+    `[B, H, q_blocks, kv_blocks]` mask.
 
     `mask_shape`: `(b, h, q_blocks, kv_blocks)`. 1 = block kept; 0 = skipped.
     """

@@ -10,8 +10,8 @@
 """
 attention_out correctness gate for `attention/block_sparse_attention`.
 
-Mirrors BSA's `test_attn.py` parametrization (shapes / frames / sparsities)
-so coverage and tolerances are directly comparable. The reference is
+The sweep (shapes / frames / sparsities) is shared with the LSE and joint
+suites so coverage and tolerances are directly comparable. The reference is
 `torch_npu.npu_fusion_attention` (PFA) with `sparse_mode=0` at sparsity 0
 (force-dense) and `sparse_mode=1` with the per-token `pfa_atten_mask`
 otherwise.
@@ -78,7 +78,7 @@ BLOCK_SIZE_Q = 128
 BLOCK_SIZE_KV = 128
 torch.npu.set_device(DEVICE)
 
-# Sweep parameters — same grid as BSA's test_attn.py so coverage is comparable.
+# Sweep parameters — shared grid across the attn / lse / joint suites so coverage is comparable.
 TORCH_REF_VALS = ["npu_fusion_attention"]
 B_VALS = [1]
 H_VALS = [1, 2, 3, 4]
@@ -97,9 +97,9 @@ FRAME_SPARSITY_IDS = [
 def _run_block_sparse_attention(q, k, v, h, scale, s_q, s_kv, sabi):
     """Single call site for block_sparse_attention from the tests.
 
-    Converts BSA-style sabi (uint16, padded 0xFFFF) into the kernel's int8
-    block_sparse_mask, then issues the kernel. Returns the attention_out
-    tensor only (LSE is exercised in test_lse.py / test_joint.py).
+    Converts sabi (sparse attention block indices; uint16, padded 0xFFFF) into
+    the kernel's int8 block_sparse_mask, then issues the kernel. Returns the
+    attention_out tensor only (LSE is exercised in test_lse.py / test_joint.py).
     """
     b = q.shape[0]
     q_blocks = (s_q + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
