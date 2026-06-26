@@ -98,9 +98,9 @@ private:
     TBuf<TPosition::VECCALC> qScaleBuf_;
     LocalTensor<SCALE_T> qScaleUB_;
 
-    // tmp buff for out
-    TBuf<TPosition::VECCALC> outBuf_;
-    LocalTensor<uint16_t> vec1OutUB_;
+    // // tmp buff for out
+    // TBuf<TPosition::VECCALC> outBuf_;
+    // LocalTensor<uint16_t> vec1OutUB_;
     // tmp buff for LD
 
     // tmp buff for topk
@@ -108,8 +108,7 @@ private:
     LocalTensor<uint16_t> mrgValueLocal_;
 
     TBuf<TPosition::VECCALC> indicesOutBuf_;
-    LocalTensor<uint32_t> indicesOutLocal_;
-    LocalTensor<uint32_t> hisIndexOutLocal_;
+    LocalTensor<uint32_t> globalIndicesOutLocal_;
 
     TBuf<TPosition::VECCALC> scoreOutBuf_;
     LocalTensor<uint16_t> scoreOutLocal_;
@@ -153,25 +152,24 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     qScaleUB_ = qScaleBuf_.Get<SCALE_T>();
     
-    pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(uint16_t));
-    vec1OutUB_ = outBuf_.Get<uint16_t>();
+    // pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(uint16_t));
+    // vec1OutUB_ = outBuf_.Get<uint16_t>();
 
     // Topk
     pipe->InitBuffer(mrgValueBuf_, 2 * (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
     outInvalidLocal_ = mrgValueBuf_.Get<int32_t>();
 
-    pipe->InitBuffer(indicesOutBuf_, ((topkCountAlign256_ + 64) + 2 * topkCountAlign256_) * sizeof(uint32_t));
-    indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
-    hisIndexOutLocal_ = indicesOutLocal_[topkCountAlign256_ + 64];
+    pipe->InitBuffer(indicesOutBuf_, 2 * topkCountAlign256_ * sizeof(uint32_t));
+    globalIndicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
-    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(uint16_t));
-    scoreOutLocal_ = scoreOutBuf_.Get<uint16_t>();
+    // pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(uint16_t));
+    // scoreOutLocal_ = scoreOutBuf_.Get<uint16_t>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
-    topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
+    topkOp_.InitBuffers(topkSharedTmpLocal_, globalIndicesOutLocal_);
 
     //刷-1
     Duplicate(kScaleUB_, static_cast<SCALE_T>(0), 2 * s2BaseSize_ * 16);
@@ -416,6 +414,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
     int64_t curAivS1Idx = curS1Idx + (blockId_ % 2) * CeilDiv(curS1ProcNum, 2);
     int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
     LocalTensor<uint16_t> valueLocal_;
+    LocalTensor<uint32_t> indicesOutLocal_;
 
     AscendC::DataCopyParams copyOutParams;
     copyOutParams.blockCount = 1;
@@ -424,6 +423,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
     copyOutParams.dstStride = 0;
 
     uint32_t mrgValueStride = topkCountAlign256_ + trunkLen_;
+    uint32_t globalIndicesStride = topkCountAlign256_;
     uint32_t loopIdx = ((info.s2Idx + 1) * s2BaseSize_ - 1) / trunkLen_;
     int32_t cuRealAcSeq = info.actS2Size;
 
@@ -436,10 +436,13 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
         uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + i;
         uint32_t mrgValueOffset = mrgValueStride * i;
-        LocalTensor<uint32_t> rowHisIndexLocal = hisIndexOutLocal_[topkCountAlign256_ * i];
-
+        uint32_t globalIndicesOffset = globalIndicesStride * i;
+        indicesOutLocal_ = globalIndicesOutLocal_[globalIndicesOffset];
+        valueLocal_ = mrgValueLocal_[mrgValueOffset + topkCountAlign256_];
+        scoreOutLocal_ = mrgValueLocal_[mrgValueOffset];
         uint16_t zero = 0;
         int32_t neg = -1;
+
         if (constInfo_.attenMaskFlag) {
             validS2Len = (int32_t)i + cuRealAcSeq;
         }
@@ -478,18 +481,15 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                     }
                 }
                 PipeBarrier<PIPE_V>();
-                valueLocal_ = mrgValueLocal_[mrgValueOffset + topkCountAlign256_];
-                topkOp_(valueLocal_, indicesOutLocal_, rowHisIndexLocal, scoreOutLocal_, validS2LenAlign, 0, 1);
+                topkOp_(valueLocal_, indicesOutLocal_, scoreOutLocal_, validS2LenAlign, 0, 1);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, topkCountAlign256_);
             } else {
                 if (loopIdx == 0) {
-                    valueLocal_ = mrgValueLocal_[mrgValueOffset + topkCountAlign256_];
-                    topkOp_(valueLocal_, indicesOutLocal_, rowHisIndexLocal, scoreOutLocal_, trunkLen_, loopIdx, s2LoopNum);
+                    topkOp_(valueLocal_, indicesOutLocal_, scoreOutLocal_, trunkLen_, loopIdx, s2LoopNum);
                     PipeBarrier<PIPE_V>();
-                    AscendC::DataCopy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, topkCountAlign256_);
                 } else {
                     uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len ? validS2Len % trunkLen_ : trunkLen_;
+                    // AscendC::DataCopy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, topkCountAlign256_);
                     // topk如果没有对齐到256，则把topkCountAlign256_ - topkCount_部分刷0
                     if (topkCountAlign256_ != topkCount_) {
                         uint64_t mask[1];
@@ -521,10 +521,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                         }     
                         PipeBarrier<PIPE_V>();
                     }
-                    valueLocal_ = mrgValueLocal_[mrgValueOffset];
-                    topkOp_(valueLocal_, indicesOutLocal_, rowHisIndexLocal, scoreOutLocal_, QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum);
+                    topkOp_(valueLocal_, indicesOutLocal_, scoreOutLocal_, QLICommon::Align(topkCountAlign256_ + validTrunkLen, (uint32_t)256), loopIdx, s2LoopNum);
                     PipeBarrier<PIPE_V>();
-                    AscendC::DataCopy(mrgValueLocal_[mrgValueOffset], scoreOutLocal_, topkCountAlign256_);
                 }
             }
         } else {
