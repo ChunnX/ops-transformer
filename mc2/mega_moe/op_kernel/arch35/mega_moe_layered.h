@@ -1502,6 +1502,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
                 QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
+        SyncAll<true>();
     }
     EndSync(vecSetSyncCom_);
     if constexpr(g_coreType == AIV) {
