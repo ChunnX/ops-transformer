@@ -287,7 +287,6 @@ protected:
     bool CheckAttrs()
     {
         CheckOptionalTensorListEmpty(gmmDsqParams_.weightAssistMatrix);
-        const char *scenario = GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
         if (gmmDsqParams_.tuningConfig != nullptr && gmmDsqParams_.tuningConfig->Size() == 0) {
             gmmDsqParams_.tuningConfig = nullptr;
         }
@@ -344,8 +343,6 @@ protected:
         bool transposeWeight = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[0]);
         bool transposeX = IsTransposeLastTwoDims(gmmDsqParams_.x);
         bool transposeXScale = IsTransposeForMxShape(gmmDsqParams_.xScale);
-        const char *scenario = GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
-
         if (gmmDsqParams_.isMxA8W4) {
             if (!transposeWeight) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "transposeWeight", "false",
