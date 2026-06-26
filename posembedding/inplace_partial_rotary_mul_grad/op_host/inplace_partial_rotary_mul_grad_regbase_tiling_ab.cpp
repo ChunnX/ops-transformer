@@ -64,8 +64,13 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAb::DoOpTiling()
     }
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
     int64_t cosTypeSize = ge::GetSizeByDataType(cosDtype_);
-    int64_t maxTypeSize = std::max(typeSize, cosTypeSize);
-    dAlign_ = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / maxTypeSize) * dSplitCoef_;
+
+    // Compute per-type aligned row sizes (in elements), matching kernel's dAlignLenDy/dAlignLenCos
+    int64_t dAlignDy = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
+    int64_t dAlignCos = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / cosTypeSize) * dSplitCoef_;
+    int64_t dSizeDy = dAlignDy * typeSize;    // bytes per dy/dx row
+    int64_t dSizeCos = dAlignCos * cosTypeSize; // bytes per cos/sin row
+    dAlign_ = dAlignDy; // store dy alignment in tiling data for logging
 
     int64_t coreNum = static_cast<int64_t>(aicoreParams_.numBlocks);
     blockFactorBS_ = Ops::Base::CeilDiv(bs, coreNum);
@@ -88,25 +93,31 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAb::DoOpTiling()
     }
     usedCoreNum_ = blockNumBS_ * blockNumN_;
 
-    int64_t dSizeDy = dAlign_ * typeSize;
-    int64_t dSizeCos = dAlign_ * cosTypeSize;
+    // UB split: derivable rows from half UB with double-buffer headroom
+    //   UB total = 4 * ubFactorBS * (ubFactorN * dSizeDy + dSizeCos) <= ubSize
+    //   => ubFactorBS * (ubFactorN + CeilDiv(dSizeCos, dSizeDy)) <= ubSize/(4*dSizeDy)
+    int64_t effectiveCosOverhead = std::max(int64_t(1), Ops::Base::CeilDiv(dSizeCos, dSizeDy));
     int64_t baseBlockInUb =
         Ops::Base::FloorAlign(static_cast<int64_t>(aicoreParams_.ubSize / CONST_TWO / DB_FLAG), blockSize_) / dSizeDy;
-    if (baseBlockInUb < 1) {
-        OP_LOGE(context_->GetNodeName(), "ubSize can't load 8 d size, d = %ld.", sliceLength_);
+    if (baseBlockInUb < effectiveCosOverhead + 1) {
+        OP_LOGE(context_->GetNodeName(),
+                "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld, baseBlockInUb=%ld.",
+                sliceLength_, dSizeDy, dSizeCos, baseBlockInUb);
         return ge::GRAPH_FAILED;
     }
 
-    // For interleave mode (dSplitCoef_ == 1), ubFactorN_ must be <= MAX_COPY_BLOCK_COUNT
-    ubFactorN_ = std::min(blockFactorN_, baseBlockInUb - 1);
+    ubFactorN_ = std::min(blockFactorN_, baseBlockInUb - effectiveCosOverhead);
     ubFactorN_ = std::min(ubFactorN_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);
+    if (ubFactorN_ <= 0) {
+        ubFactorN_ = 1;
+    }
 
-    ubFactorBS_ = std::min(Ops::Base::FloorDiv(baseBlockInUb, ubFactorN_ + 1), blockFactorBS_);
+    ubFactorBS_ = std::min(Ops::Base::FloorDiv(baseBlockInUb, ubFactorN_ + effectiveCosOverhead), blockFactorBS_);
     ubFactorBS_ = (ubFactorBS_ == 0) ? 1 : ubFactorBS_;
 
-    // Verify UB capacity
-    int64_t dyBytes = DB_FLAG * ubFactorBS_ * ubFactorN_ * dSizeDy;
-    int64_t cosBytes = DB_FLAG * ubFactorBS_ * dSizeCos;
+    // Verify UB capacity (4 = CONST_TWO * DB_FLAG: 2cos+2sin or 2dy+2dx, double-buffered)
+    int64_t dyBytes = CONST_TWO * DB_FLAG * ubFactorBS_ * ubFactorN_ * dSizeDy;
+    int64_t cosBytes = CONST_TWO * DB_FLAG * ubFactorBS_ * dSizeCos;
     if (dyBytes + cosBytes > static_cast<int64_t>(aicoreParams_.ubSize)) {
         OP_LOGE(context_->GetNodeName(), "UB overflow: need %ld > %ld.", dyBytes + cosBytes, aicoreParams_.ubSize);
         return ge::GRAPH_FAILED;
