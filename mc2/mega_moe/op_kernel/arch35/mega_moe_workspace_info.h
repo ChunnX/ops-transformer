@@ -94,6 +94,7 @@ constexpr uint32_t TRIPLE_SIZE = 8U;  // 每个 token 的三元组大小（8 个
 // GroupedMatmul modes
 constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
+constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
 } // namespace
 
 struct WorkspaceInfo {
