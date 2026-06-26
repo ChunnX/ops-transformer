@@ -148,6 +148,13 @@ private:
     //       GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
     static constexpr bool ENABLE_A8W4_GMM2 = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value &&
                                             QuantMode != E5M2_QUANT;
+
+    // E2M1 量化模式下 weight 必须为 fp4；tiling 层已拦截，此处为编译期兜底断言。
+    static_assert(!(QuantMode == E2M1_QUANT) ||
+                  (Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
+                   Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value),
+                  "E2M1 quant requires both Weight1 and Weight2 to be fp4x2_e2m1_t");
+
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
