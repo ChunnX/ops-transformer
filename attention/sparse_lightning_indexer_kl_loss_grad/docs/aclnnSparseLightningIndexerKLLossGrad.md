@@ -4,7 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|     x     |
+|<term>Ascend 950PR/Ascend 950DT</term>|     √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      x     |
@@ -165,7 +165,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>输入</td>
                 <td>Indexer logits的head权重。</td>
                 <td>不支持空Tensor。</td>
-                <td>FLOAT16、BFLOAT16</td>
+                <td>FLOAT32</td>
                 <td>ND</td>
                 <td>(B,S1,N1)、(T1,N1)</td>
                 <td>x</td>
@@ -226,7 +226,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>seqUsedQOptional</td>
                 <td>可选输入</td>
                 <td>预留字段，表示每个batch实际使用的q长度。</td>
-                <td>当前kernel路径暂不使用。</td>
+                <td>长度为B。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>seqUsedKOptional</td>
                 <td>可选输入</td>
                 <td>预留字段，表示每个batch实际使用的k长度。</td>
-                <td>当前kernel路径暂不使用。</td>
+                <td>长度为B。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
@@ -245,8 +245,8 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             <tr>
                 <td>cmpResidualKOptional</td>
                 <td>可选输入</td>
-                <td>maskMode=3且cmpRatio!=1时的预留字段。</td>
-                <td>当前kernel路径暂不使用。</td>
+                <td>maskMode=3且cmpRatio!=1时需要传入。</td>
+                <td>长度为B。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
@@ -296,7 +296,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>cmpRatio</td>
                 <td>输入</td>
                 <td>压缩比。</td>
-                <td>取值范围为0~128。</td>
+                <td>取值范围为1~128。</td>
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
@@ -327,7 +327,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>输出</td>
                 <td>w的梯度。</td>
                 <td>数据类型和shape与w一致。</td>
-                <td>FLOAT16、BFLOAT16</td>
+                <td>FLOAT32</td>
                 <td>ND</td>
                 <td>(B,S1,N1)、(T1,N1)</td>
                 <td>x</td>
@@ -452,7 +452,8 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnSparseLightningIndexerKLLossGrad外部接口不提供deterministic入参，kernel侧优先使用运行时上下文中的确定性配置。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
@@ -526,7 +527,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
     </table>
 
 - 规格约束：
-
     <table style="undefined;table-layout: fixed; width: 942px">
         <colgroup>
             <col style="width: 100px">
@@ -542,21 +542,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
         </thead>
         <tbody>
             <tr>
-                <td>B</td>
-                <td>1~256</td>
-                <td>-</td>
-            </tr>
-            <tr>
-                <td>S1、S2</td>
-                <td>S1支持1~8K，S2支持1~512K</td>
-                <td>S1、S2支持不等长。</td>
-            </tr>
-            <tr>
-                <td>N1</td>
-                <td>8、16、32、64</td>
-                <td>N1需要能被N2整除。</td>
-            </tr>
-            <tr>
                 <td>N2</td>
                 <td>1</td>
                 <td>当前仅支持N2=1。</td>
@@ -567,17 +552,25 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>q和k最后一维需保持一致。</td>
             </tr>
             <tr>
-                <td>K</td>
-                <td>512、1024、2048、4096、8192</td>
-                <td>top-k大小。</td>
-            </tr>
-            <tr>
                 <td>cmpRatio</td>
-                <td>0~128</td>
+                <td>1~128</td>
                 <td>-</td>
             </tr>
         </tbody>
     </table>
+
+  - 参数B的支持情况:
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：B支持1~256。
+    - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
+  - 参数S1、S2的支持情况:
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
+    - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
+  - 参数N1的支持情况:
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：N1支持8、16、32、64。
+    - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
+  - 参数K的支持情况:
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Ascend 950PR/Ascend 950DT</term>：K支持0~2048。
 
 ## 调用示例
 
