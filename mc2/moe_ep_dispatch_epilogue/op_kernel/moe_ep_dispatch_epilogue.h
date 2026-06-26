@@ -57,7 +57,6 @@ private:
     __aicore__ inline void ComputePrefixSums();
     __aicore__ inline void CountHits();
     __aicore__ inline void CopyFromWindowByExpert();
-    __aicore__ inline void CopyInputsToOutputs();
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
                                        uint32_t &endId, uint32_t &sendNum);
@@ -206,8 +205,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     uint32_t ubHitCountFullBytes = Ceil((uint32_t)(aivNum_ * hitCountStride_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
-
-
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
 
@@ -282,10 +279,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Proc
 
     if (myTotalHits != 0) {
         CopyFromWindowByExpert();
-    }
-
-    if (aivId_ == 0) {
-        CopyInputsToOutputs();
     }
 
 }
@@ -449,36 +442,27 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
                     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
                 }
             }
+            SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
 
         if (stageIdx > 0) {
             SyncFunc<AscendC::HardEvent::S_MTE3>();
             DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(stageIdx * sizeof(float)), 0U, 0U, 0U};
             DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
+            DataCopyExtParams recvMetaCopyParams{1U, static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)),
+                                            0U, 0U, 0U};
+            uint32_t gmOffset = expertRowStart * RECV_META_FIELDS;
             if constexpr (!IsCached) {
-                 DataCopyExtParams metaOutParams{1U,
-                    static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
-                DataCopyPad(recvSrcMetadataGm_[expertRowStart * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
+                DataCopyPad(recvSrcMetadataGm_[gmOffset], ubStageMeta_, recvMetaCopyParams);
+            } else {    //cached: 把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
+                DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+                DataCopyPad(ubStageMeta_, cachedRecvSrcMetadataGm_[gmOffset], recvMetaCopyParams, padParams);
+                SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+                DataCopyPad(recvSrcMetadataGm_[gmOffset], ubStageMeta_, recvMetaCopyParams);
+                SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
             }
             SyncFunc<AscendC::HardEvent::MTE3_S>();
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// CopyInputsToOutputs
-//   cached: 把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
-// ---------------------------------------------------------------------------
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::CopyInputsToOutputs()
-{
-    if constexpr (IsCached) {
-        DataCopyExtParams copyParams{1U,
-            static_cast<uint32_t>(expertSum_ * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
-        DataCopyPad(ubMeta_, cachedRecvSrcMetadataGm_, copyParams, padParams);
-        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-        DataCopyPad(recvSrcMetadataGm_, ubMeta_, copyParams);
     }
 }
 
