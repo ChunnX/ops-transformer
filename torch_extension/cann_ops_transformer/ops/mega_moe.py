@@ -35,8 +35,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "str comm_alg=\"\", int num_max_tokens_per_rank=0, str activation=\"swiglu\", " \
             "float? activation_clamp=None, " \
             "int? dispatch_quant_out_dtype=None,  " \
-            "int? weight1_type=None, int? weight2_type=None) -> (Tensor, Tensor)", " \
-            "bool? is_cross_server=None"
+            "int? weight1_type=None, int? weight2_type=None, bool? is_cross_server=None) -> (Tensor, Tensor)", " \
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -243,5 +242,5 @@ def mega_moe(
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
-        sym_buffer.is_cross_server
+        is_cross_server=sym_buffer.is_cross_server
     )

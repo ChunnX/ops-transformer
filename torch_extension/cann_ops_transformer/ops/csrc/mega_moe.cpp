@@ -35,7 +35,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     c10::optional<int64_t> dispatch_quant_out_dtype,
     c10::optional<int64_t> weight1_type,
     c10::optional<int64_t> weight2_type,
-    bool is_cross_server)
+    c10::optional<bool> is_cross_server)
 {
     TORCH_CHECK((ep_world_size > 0), "The ep_world_sizes should be greater than 0, current is: ", ep_world_size);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topk_ids.dim() == DIM_TWO), "The x and topk_ids should be 2D");
