@@ -531,10 +531,16 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::DoCastTiling()
     int64_t qPreBlockTailTmp = allNumQuery % qPreBlockFactor;
     int64_t qPreBlockTail = qPreBlockTailTmp == 0 ? qPreBlockFactor : qPreBlockTailTmp;
 
-    int64_t oriKVPreBlockFactor = (allNumOriKV + usedCoreNum - 1) / usedCoreNum;
-    int64_t oriKVPreBlockTotal = (allNumOriKV + oriKVPreBlockFactor - 1) / oriKVPreBlockFactor;
-    int64_t oriKVPreBlockTailTmp = allNumOriKV % oriKVPreBlockFactor;
-    int64_t oriKVPreBlockTail = oriKVPreBlockTailTmp == 0 ? oriKVPreBlockFactor : oriKVPreBlockTailTmp;
+    int64_t oriKVPreBlockFactor = 0;
+    int64_t oriKVPreBlockTotal = 0;
+    int64_t oriKVPreBlockTailTmp = 0;
+    int64_t oriKVPreBlockTail = 0;
+    if (allNumOriKV != 0) {
+        oriKVPreBlockFactor = (allNumOriKV + usedCoreNum - 1) / usedCoreNum;
+        oriKVPreBlockTotal = (allNumOriKV + oriKVPreBlockFactor - 1) / oriKVPreBlockFactor;
+        oriKVPreBlockTailTmp = allNumOriKV % oriKVPreBlockFactor;
+        oriKVPreBlockTail = oriKVPreBlockTailTmp == 0 ? oriKVPreBlockFactor : oriKVPreBlockTailTmp;
+    }
 
     int64_t cmpKVPreBlockFactor = 0;
     int64_t cmpKVPreBlockTotal = 0;
