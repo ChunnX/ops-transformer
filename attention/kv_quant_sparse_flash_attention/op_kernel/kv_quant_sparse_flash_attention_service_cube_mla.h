@@ -431,14 +431,14 @@ QSFAMatmulService<QSFAT>::CopyInMm1BRopeToL1(LocalTensor<K_ROPE_T> &bL1Tensor, c
     uint32_t blockElementCnt = 32 / sizeof(K_ROPE_T);
 
     Nd2NzParams mm1Nd2NzParamsForB;
-    mm1Nd2NzParamsForB.ndNum = 1;
     mm1Nd2NzParamsForB.nValue = nActCopyRowCount;
     mm1Nd2NzParamsForB.dValue = headSize;
+    mm1Nd2NzParamsForB.ndNum = 1;
     mm1Nd2NzParamsForB.srcDValue = dStride;
-    mm1Nd2NzParamsForB.dstNzNStride = 1;
-    mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.srcNdMatrixStride = 0;
     mm1Nd2NzParamsForB.dstNzMatrixStride = 0;
+    mm1Nd2NzParamsForB.dstNzNStride = 1;
+    mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     DataCopy(bL1Tensor[copyStartRowCnt * blockElementCnt], kRopeGm[kRopeGmBaseOffset], mm1Nd2NzParamsForB);
 }
 
@@ -706,13 +706,13 @@ __aicore__ inline void QSFAMatmulService<QSFAT>::ComputeMm1(const RunInfo &info,
                 SetFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]); // 反向同步, 表示L1已经被mte1消费完
             }
             FixpipeParamsV220 fixParams;
-            fixParams.nSize = nL1SizeAlign;
             fixParams.mSize = mL1SizeAlign;
+            fixParams.nSize = nL1SizeAlign;
             fixParams.srcStride = mL1SizeAlign;
+            fixParams.ndNum = 1; // 输出ND
             // 改成nSizeAlign
             fixParams.dstStride = info.actualSingleProcessSInnerSizeAlign; // mm1ResGm两行之间的间隔
             fixParams.unitFlag = 0b11;
-            fixParams.ndNum = 1; // 输出ND
 
             // 输出偏移info.loop % (constInfo.preLoadNum)) * mmResUbSize是否在matmul里计算
             Fixpipe(mm1ResGm[(info.loop % (constInfo.preLoadNum)) * constInfo.mmResUbSize + nL1 * N_SPLIT_SIZE +
