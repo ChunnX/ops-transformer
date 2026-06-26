@@ -75,28 +75,6 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```python
-cann_ops_transformer.ops.flash_attn_metadata(
-    num_heads_q,
-    num_heads_kv,
-    head_dim,
-    *,
-    cu_seqlens_q=None,
-    cu_seqlens_kv=None,
-    seqused_q=None,
-    seqused_kv=None,
-    batch_size=None,
-    max_seqlen_q=None,
-    max_seqlen_kv=None,
-    mask_mode=None,
-    win_left=None,
-    win_right=None,
-    layout_q=None,
-    layout_kv=None,
-    layout_out=None
-) -> Tensor
-```
-
-```python
 cann_ops_transformer.ops.flash_attn(
     q,
     k,
@@ -120,6 +98,28 @@ cann_ops_transformer.ops.flash_attn(
     layout_out="BSND",
     return_softmax_lse=0
 ) -> (Tensor, Tensor)
+```
+
+```python
+cann_ops_transformer.ops.flash_attn_metadata(
+    num_heads_q,
+    num_heads_kv,
+    head_dim,
+    *,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
+    seqused_q=None,
+    seqused_kv=None,
+    batch_size=None,
+    max_seqlen_q=None,
+    max_seqlen_kv=None,
+    mask_mode=None,
+    win_left=None,
+    win_right=None,
+    layout_q=None,
+    layout_kv=None,
+    layout_out=None
+) -> Tensor
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
