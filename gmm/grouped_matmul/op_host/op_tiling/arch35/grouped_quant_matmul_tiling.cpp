@@ -135,25 +135,32 @@ bool GroupedQmmTiling::AnalyzeAttrs()
                                               inputParams_.transA ? "true" : "false", "false"),
                     return false);
     } else {
-        OP_CHECK_IF(!inputParams_.transA,
-                    OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "transpose_x1",
-                                              inputParams_.transA ? "true" : "false", "true"),
-                    return false);
-        OP_CHECK_IF(inputParams_.transB,
-                    OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "transpose_x2",
-                                              inputParams_.transB ? "true" : "false", "false"),
-                    return false);
-        OP_CHECK_IF(
-            inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
-                inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
-                "when group type is 2, format of weight must be within the range ND"),
-            return false);
+        OP_CHECK_IF(!CheckTransposeAndFormatByGroupType(),
+                    OP_LOGE(inputParams_.opName, "CheckTransposeAndFormatByGroupType failed."), return false);
     }
     inputParams_.isSingleX = (context_->GetDynamicInputDesc(X_INDEX, 1) == nullptr);
     inputParams_.isSingleW = (context_->GetDynamicInputDesc(WEIGHT_INDEX, 1) == nullptr);
     // 2: when x is multi-tensor, y is single-tensor; 3: when x is single-tensor, y is single-tensor
     inputParams_.isSingleY = (inputParams_.splitItem == 2 || inputParams_.splitItem == 3);
+    return true;
+}
+
+bool GroupedQmmTiling::CheckTransposeAndFormatByGroupType() const
+{
+    OP_CHECK_IF(!inputParams_.transA,
+                OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "transpose_x1",
+                                          inputParams_.transA ? "true" : "false", "true"),
+                return false);
+    OP_CHECK_IF(inputParams_.transB,
+                OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "transpose_x2",
+                                          inputParams_.transB ? "true" : "false", "false"),
+                return false);
+    OP_CHECK_IF(
+        inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
+            inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
+            "when group type is 2, format of weight must be within the range ND"),
+        return false);
     return true;
 }
 
@@ -226,26 +233,8 @@ bool GroupedQmmTiling::CheckDtypeForWeightNz(bool isPertokenScaleNull) const
                                                       "INT8"),
                 return false);
     if (!isPertokenScaleNull) {
-        if (isA8W8Int) {
-            OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT ||
-                            (inputParams_.scaleDtype != ge::DT_BF16 && inputParams_.scaleDtype != ge::DT_FLOAT),
-                        OP_LOGE(context_->GetNodeName(),
-                                "When the weight is Nz format and x/weight's dtype are INT8 and pertokenScale exists, \
-the dtype of pertokenScale should be FLOAT and the dtype of scale should be in {BF16, FLOAT}, actual are %s/%s.",
-                                ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
-                                ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
-                        return false);
-        } else if (isA8W8Fp || isA4W4Fp) {
-            OP_CHECK_IF(
-                inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0,
-                OP_LOGE(context_->GetNodeName(),
-                        "When the weight is Nz format and x/weight's dtype are FLOAT8_E4M3 or "
-                        "FLOAT4 (E2M1/E1M2), the dtype "
-                        "of pertokenScale and scale should be FLOAT8_E8M0, actual are %s/%s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
-                return false);
-        }
+        OP_CHECK_IF(!CheckPertokenScaleDtypeForWeightNz(isA8W8Int, isA8W8Fp, isA4W4Fp),
+                    OP_LOGE(inputParams_.opName, "CheckPertokenScaleDtypeForWeightNz failed."), return false);
     } else {
         static const std::vector<ge::DataType> legalScaleDtypes = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
                                                                    ge::DT_BF16};
@@ -260,11 +249,33 @@ be in {UINT64, INT64, FLOAT, BF16}, actual is %s.",
     return true;
 }
 
-bool GroupedQmmTiling::AnalyzeDtype()
+bool GroupedQmmTiling::CheckPertokenScaleDtypeForWeightNz(bool isA8W8Int, bool isA8W8Fp, bool isA4W4Fp) const
 {
-    static const std::vector<ge::DataType> legalInputDtypes = {ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN,
-                                                               ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1,
-                                                               ge::DT_FLOAT4_E1M2};
+    if (isA8W8Int) {
+        OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT ||
+                        (inputParams_.scaleDtype != ge::DT_BF16 && inputParams_.scaleDtype != ge::DT_FLOAT),
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is Nz format and x/weight's dtype are INT8 and pertokenScale exists, \
+the dtype of pertokenScale should be FLOAT and the dtype of scale should be in {BF16, FLOAT}, actual are %s/%s.",
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
+                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+                    return false);
+    } else if (isA8W8Fp || isA4W4Fp) {
+        OP_CHECK_IF(
+            inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0,
+            OP_LOGE(context_->GetNodeName(),
+                    "When the weight is Nz format and x/weight's dtype are FLOAT8_E4M3 or "
+                    "FLOAT4 (E2M1/E1M2), the dtype "
+                    "of pertokenScale and scale should be FLOAT8_E8M0, actual are %s/%s.",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+            return false);
+    }
+    return true;
+}
+
+bool GroupedQmmTiling::ValidateAAndWDtype(const std::vector<ge::DataType> &legalInputDtypes) const
+{
     auto xDesc = context_->GetDynamicInputDesc(X_INDEX, 0);
     OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context_->GetNodeName(), "xDesc is nullptr."), return false);
     inputParams_.aDtype = xDesc->GetDataType();
@@ -286,7 +297,20 @@ bool GroupedQmmTiling::AnalyzeDtype()
                     "FLOAT4_E2M1, FLOAT4_E1M2}, actual is %s.",
             ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
         return false);
-    inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
+    return true;
+}
+
+bool GroupedQmmTiling::AnalyzeDtype()
+{
+    static const std::vector<ge::DataType> legalInputDtypes = {ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN,
+                                                               ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1,
+                                                               ge::DT_FLOAT4_E1M2};
+    OP_CHECK_IF(!ValidateAAndWDtype(legalInputDtypes),
+                OP_LOGE(inputParams_.opName, "ValidateAAndWDtype failed."), return false);
+    auto wDesc = context_->GetDynamicInputDesc(WEIGHT_INDEX, 0);
+    if (wDesc != nullptr) {
+        inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
+    }
     if (inputParams_.aDtype == ge::DT_FLOAT4_E1M2 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2) {
         OP_CHECK_IF(
             inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
@@ -538,8 +562,9 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
     OP_CHECK_IF(static_cast<uint64_t>(wShape[WEIGHTNZ_FIFTH_DIM]) != static_cast<uint64_t>(weightNzLastDim),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams_.opType, "weight", ShapeToString(wShape),
-                    StrCat("when the format of weight is FRACTAL_NZ, fifth dimension must be ", weightNzLastDim,
-                           " for ", (isWeight4Bit ? "4-bit" : "8-bit"), " weight")),
+                    BuildErrorMsgStr("when the format of weight is FRACTAL_NZ, fifth dimension must be ",
+                                     weightNzLastDim, " for ",
+                                     (isWeight4Bit ? "4-bit" : "8-bit"), " weight")),
                 return false);
     OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_16,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -548,37 +573,8 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
                 return false);
     auto wShapeDimThird = static_cast<uint64_t>(wShape[WEIGHTNZ_THIRD_DIM]);
     auto wShapeDimSecond = static_cast<uint64_t>(wShape[WEIGHTNZ_SECOND_DIM]);
-    if (!inputParams_.transB) {
-        OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_16),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        inputParams_.opType, "weight", ShapeToString(wShape),
-                        StrCat("when the format of weight is FRACTAL_NZ, third dimension must be equal to "
-                               "ceil(kSize/16) = ",
-                               CeilDiv(inputParams_.kSize, WEIGHTNZ_16))),
-                    return false);
-        OP_CHECK_IF(
-            wShapeDimSecond != CeilDiv(inputParams_.nSize, weightNzLastDim),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                inputParams_.opType, "weight", ShapeToString(wShape),
-                StrCat("when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(nSize/",
-                       weightNzLastDim, ") = ", CeilDiv(inputParams_.nSize, weightNzLastDim))),
-            return false);
-    } else {
-        OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.nSize, WEIGHTNZ_16),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        inputParams_.opType, "weight", ShapeToString(wShape),
-                        StrCat("when the format of weight is FRACTAL_NZ, third dimension must be equal to "
-                               "ceil(nSize/16) = ",
-                               CeilDiv(inputParams_.nSize, WEIGHTNZ_16))),
-                    return false);
-        OP_CHECK_IF(
-            wShapeDimSecond != CeilDiv(inputParams_.kSize, weightNzLastDim),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                inputParams_.opType, "weight", ShapeToString(wShape),
-                StrCat("when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(kSize/",
-                       weightNzLastDim, ") = ", CeilDiv(inputParams_.kSize, weightNzLastDim))),
-            return false);
-    }
+    OP_CHECK_IF(!CheckWeightNzTransposedDims(wShape, wShapeDimThird, wShapeDimSecond, weightNzLastDim),
+                OP_LOGE(inputParams_.opName, "CheckWeightNzTransposedDims failed."), return false);
     // 逻辑上最后两根轴对应 N/K：Ascend950 MXFP4 weight NZ 文档要求 n、k 不能为 1；此处对所有 NZ weight 统一约束
     OP_CHECK_IF(1 == inputParams_.kSize || 1 == inputParams_.nSize,
                 OP_LOGE(context_->GetNodeName(),
@@ -586,6 +582,45 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
                         "(MXFP4/FLOAT4 weight NZ: nSize>1 and kSize>1), actual nSize=%lu, kSize=%lu.",
                         inputParams_.nSize, inputParams_.kSize),
                 return false);
+    return true;
+}
+
+bool GroupedQmmTiling::CheckWeightNzTransposedDims(const gert::Shape &wShape, uint64_t wShapeDimThird,
+                                                   uint64_t wShapeDimSecond, uint32_t weightNzLastDim) const
+{
+    if (!inputParams_.transB) {
+        OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_16),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        inputParams_.opType, "weight", ShapeToString(wShape),
+                        BuildErrorMsgStr("when the format of weight is FRACTAL_NZ, third dimension must be equal to "
+                               "ceil(kSize/16) = ",
+                               CeilDiv(inputParams_.kSize, WEIGHTNZ_16))),
+                    return false);
+        OP_CHECK_IF(
+            wShapeDimSecond != CeilDiv(inputParams_.nSize, weightNzLastDim),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                inputParams_.opType, "weight", ShapeToString(wShape),
+                BuildErrorMsgStr(
+                    "when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(nSize/",
+                    weightNzLastDim, ") = ", CeilDiv(inputParams_.nSize, weightNzLastDim))),
+            return false);
+    } else {
+        OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.nSize, WEIGHTNZ_16),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        inputParams_.opType, "weight", ShapeToString(wShape),
+                        BuildErrorMsgStr("when the format of weight is FRACTAL_NZ, third dimension must be equal to "
+                               "ceil(nSize/16) = ",
+                               CeilDiv(inputParams_.nSize, WEIGHTNZ_16))),
+                    return false);
+        OP_CHECK_IF(
+            wShapeDimSecond != CeilDiv(inputParams_.kSize, weightNzLastDim),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                inputParams_.opType, "weight", ShapeToString(wShape),
+                BuildErrorMsgStr(
+                    "when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(kSize/",
+                    weightNzLastDim, ") = ", CeilDiv(inputParams_.kSize, weightNzLastDim))),
+            return false);
+    }
     return true;
 }
 

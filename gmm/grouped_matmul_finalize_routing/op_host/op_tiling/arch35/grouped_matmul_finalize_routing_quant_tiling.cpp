@@ -76,7 +76,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalAttr()
     OP_CHECK_IF(sharedInputOffset_ > outputBs_,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     inputParams_.opType, "share_input_offset", std::to_string(sharedInputOffset_),
-                    StrCat("shareInputOffset must be less than or equal to batch(", outputBs_, ")")),
+                    BuildErrorMsgStr("shareInputOffset must be less than or equal to batch(", outputBs_, ")")),
                 return false);
 
     OP_CHECK_IF(outputDtype > OUT_DTYPE_BF16_INDEX,
@@ -100,7 +100,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     inputParams_.opType, "attrs",
                     std::to_string(attrs->GetAttrNum()),
-                    StrCat("the num of attrs must be greater than ", ATTR_INDEX_TUNING_CONFIG + 1)),
+                    BuildErrorMsgStr("the num of attrs must be greater than ", ATTR_INDEX_TUNING_CONFIG + 1)),
                 return false);
     const float *shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
@@ -118,6 +118,34 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
 }
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
+{
+    OP_CHECK_IF(!LoadInputDescsForRouting(),
+                OP_LOGE(inputParams_.opName, "LoadInputDescsForRouting failed."), return false);
+    auto outDesc = context_->GetOutputDesc(Y_INDEX);
+    OP_CHECK_IF(outDesc == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "y", "nullptr",
+                                                      "input outDesc cannot be nullptr"),
+                return false);
+    inputParams_.cDtype = outDesc->GetDataType();
+    OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
+                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype), "DT_FLOAT"),
+                return false);
+
+    auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
+    inputParams_.hasBias = !(biasStorageShape == nullptr || biasStorageShape->GetStorageShape().GetShapeSize() == 0);
+    auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
+    OP_CHECK_IF(inputParams_.hasBias && biasDesc == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "bias", "nullptr",
+                                                      "bias from tensor is nonnull, but bias from desc is nullptr"),
+                return false);
+    inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
+
+    OP_CHECK_IF(!CheckDtype(), OP_LOGE(context_->GetNodeName(), "Required input check failed."), return false);
+    return CheckOptionalInputsForRouting();
+}
+
+bool GroupedMatmulFinalizeRoutingQuantTiling::LoadInputDescsForRouting()
 {
     auto xDesc = context_->GetInputDesc(X_INDEX);
     OP_CHECK_IF(xDesc == nullptr,
@@ -143,41 +171,20 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     } else if (inputParams_.scaleDtype == ge::DT_BF16) {
         scaleType_ = 2; // 2 represents bf16 dtype
     }
-
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
-    auto outDesc = context_->GetOutputDesc(Y_INDEX);
-    OP_CHECK_IF(outDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "y", "nullptr",
-                                                      "input outDesc cannot be nullptr"),
-                return false);
-    inputParams_.cDtype = outDesc->GetDataType();
-    OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype), "DT_FLOAT"),
-                return false);
+    return true;
+}
 
-    auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
-    inputParams_.hasBias = !(biasStorageShape == nullptr || biasStorageShape->GetStorageShape().GetShapeSize() == 0);
-    auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
-    OP_CHECK_IF(inputParams_.hasBias && biasDesc == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "bias", "nullptr",
-                                                      "bias from tensor is nonnull, but bias from desc is nullptr"),
-                return false);
-    inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
-
-    OP_CHECK_IF(!CheckDtype(), OP_LOGE(context_->GetNodeName(), "Required input check failed."), return false);
-
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
+{
     OP_CHECK_IF(!CheckOptional(GROUPLIST_INDEX, "GroupList", ge::DT_INT64),
                 OP_LOGE(context_->GetNodeName(), "GroupList check failed."), return false);
-
     OP_CHECK_IF(!CheckOptional(SHARE_INPUT_INDEX, "SharedInput", ge::DT_BF16),
                 OP_LOGE(context_->GetNodeName(), "SharedInput check failed."), return false);
-
     OP_CHECK_IF(!CheckOptional(LOGIT_INDEX, "LogitIndex", ge::DT_FLOAT),
                 OP_LOGE(context_->GetNodeName(), "LogitIndex check failed."), return false);
-
     if (inputParams_.aDtype != ge::DT_INT8) {
         OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
                     OP_LOGE(context_->GetNodeName(), "RowIndex check failed."), return false);
@@ -192,7 +199,6 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
                         "when inputs are DT_INT8, the dtype of row_index must be within the range DT_INT64/DT_INT32"),
                     return false);
     }
-
     return true;
 }
 
@@ -296,6 +302,12 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDim(const gert::Shape &xShape
                                              std::to_string(DIM_NUM_Y)),
                 return false);
 
+    return CheckScaleAndPerTokenDims(pertokenScaleStorageShape, scaleShape);
+}
+
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
+    const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape) const
+{
     auto scaleDimNum = scaleShape.GetDimNum();
     if (IsMicroScaling()) {
         OP_CHECK_IF(scaleDimNum != DIM_NUM_MX_SCALE,
@@ -372,7 +384,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
         sharedInputLen_ > outputBs_,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "shared_input",
                                               std::to_string(sharedInputLen_),
-                                              StrCat("shared_input_len must be less than or equal to batch(",
+                                              BuildErrorMsgStr("shared_input_len must be less than or equal to batch(",
                                                      outputBs_, ")")),
         return false);
 
@@ -380,7 +392,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     inputParams_.opType, "share_input_offset, shared_input",
                     std::to_string(sharedInputOffset_ + sharedInputLen_),
-                    StrCat("shareInputOffset plus sharedInputLen must be less than or equal to batch(",
+                    BuildErrorMsgStr("shareInputOffset plus sharedInputLen must be less than or equal to batch(",
                            outputBs_, ")")),
                 return false);
 
@@ -400,14 +412,14 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
     OP_CHECK_IF(rowIndex_ > inputParams_.mSize,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "row_index",
                                                       std::to_string(rowIndex_),
-                                                      StrCat("rowIndex must be less than or equal to M (",
+                                                      BuildErrorMsgStr("rowIndex must be less than or equal to M (",
                                                              inputParams_.mSize, ")")),
                 return false);
 
     OP_CHECK_IF(outputBs_ > inputParams_.mSize,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "output_bs",
                                                       std::to_string(outputBs_),
-                                                      StrCat("outputBS must be less than or equal to M (",
+                                                      BuildErrorMsgStr("outputBS must be less than or equal to M (",
                                                              inputParams_.mSize, ")")),
                 return false);
     return true;
