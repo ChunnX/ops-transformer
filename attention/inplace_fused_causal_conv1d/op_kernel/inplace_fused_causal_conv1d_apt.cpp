@@ -10,15 +10,15 @@
 
 /*!
  * \file inplace_fused_causal_conv1d_apt.cpp
- * \brief InplaceFusedCausalConv1d kernel entry point (reuses FusedCausalConv1d kernel implementations)
+ * \brief InplaceCloudCausalConv1dFn kernel entry point (reuses CloudCausalConv1dFn kernel implementations)
  */
  
-#if __has_include("../../fused_causal_conv1d/op_kernel/arch35/fused_causal_conv1d_cut_bsh.h")
-#include "../../fused_causal_conv1d/op_kernel/arch35/fused_causal_conv1d_cut_bsh.h"
-#include "../../fused_causal_conv1d/op_kernel/arch35/fused_causal_conv1d_cut_bh.h"
+#if __has_include("../../cloud_causal_conv1d_fn/op_kernel/arch35/cloud_causal_conv1d_fn_cut_bsh.h")
+#include "../../cloud_causal_conv1d_fn/op_kernel/arch35/cloud_causal_conv1d_fn_cut_bsh.h"
+#include "../../cloud_causal_conv1d_fn/op_kernel/arch35/cloud_causal_conv1d_fn_cut_bh.h"
 #else
-#include "../fused_causal_conv1d/arch35/fused_causal_conv1d_cut_bsh.h"
-#include "../fused_causal_conv1d/arch35/fused_causal_conv1d_cut_bh.h"
+#include "../cloud_causal_conv1d_fn/arch35/cloud_causal_conv1d_fn_cut_bsh.h"
+#include "../cloud_causal_conv1d_fn/arch35/cloud_causal_conv1d_fn_cut_bh.h"
 #endif
 
 #define TILING_KEY_BSH_BF16 10000
@@ -26,7 +26,7 @@
 #define TILING_KEY_BH_BF16 20000
 #define TILING_KEY_BH_FP16 20001
 
-using namespace FusedCausalConv1dCutBSHNs;
+using namespace CloudCausalConv1dFnCutBSHNs;
 extern "C" __global__ __aicore__ void
 inplace_fused_causal_conv1d(GM_ADDR x,                           // 输入0: x
                             GM_ADDR weight,                      // 输入1: weight
@@ -46,27 +46,27 @@ inplace_fused_causal_conv1d(GM_ADDR x,                           // 输入0: x
                             GM_ADDR tiling)                      // tiling
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    REGISTER_TILING_DEFAULT(FusedCausalConv1dCutBSHTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR >= 20000)", FusedCausalConv1dCutBHTilingData);
+    REGISTER_TILING_DEFAULT(CloudCausalConv1dFnCutBSHTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR >= 20000)", CloudCausalConv1dFnCutBHTilingData);
     TPipe pipe;
 
     if (TILING_KEY_IS(TILING_KEY_BH_BF16)) {
-        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBHTilingData, tilingData, tiling);
-        FusedCausalConv1dCutBH<bfloat16_t> op(&pipe);
+        GET_TILING_DATA_WITH_STRUCT(CloudCausalConv1dFnCutBHTilingData, tilingData, tiling);
+        CloudCausalConv1dFnCutBH<bfloat16_t> op(&pipe);
         op.Init(x, weight, bias, convStates, queryStartLoc, cacheIndices, numAcceptedToken, outputX, &tilingData);
         op.Process();
     }
 
     if (TILING_KEY_IS(TILING_KEY_BH_FP16)) {
-        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBHTilingData, tilingData, tiling);
-        FusedCausalConv1dCutBH<half> op(&pipe);
+        GET_TILING_DATA_WITH_STRUCT(CloudCausalConv1dFnCutBHTilingData, tilingData, tiling);
+        CloudCausalConv1dFnCutBH<half> op(&pipe);
         op.Init(x, weight, bias, convStates, queryStartLoc, cacheIndices, numAcceptedToken, outputX, &tilingData);
         op.Process();
     }
 
     if (TILING_KEY_IS(TILING_KEY_BSH_BF16)) {
-        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBSHTilingData, tilingData, tiling);
-        FusedCausalConv1dCutBSH<bfloat16_t> op;
+        GET_TILING_DATA_WITH_STRUCT(CloudCausalConv1dFnCutBSHTilingData, tilingData, tiling);
+        CloudCausalConv1dFnCutBSH<bfloat16_t> op;
         op.Init(x, weight, convStates, queryStartLoc, cacheIndices, numAcceptedToken, numComputedTokens,
                 blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, outputX, workspace,
                 &tilingData);
@@ -74,8 +74,8 @@ inplace_fused_causal_conv1d(GM_ADDR x,                           // 输入0: x
     }
 
     if (TILING_KEY_IS(TILING_KEY_BSH_FP16)) {
-        GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBSHTilingData, tilingData, tiling);
-        FusedCausalConv1dCutBSH<half> op;
+        GET_TILING_DATA_WITH_STRUCT(CloudCausalConv1dFnCutBSHTilingData, tilingData, tiling);
+        CloudCausalConv1dFnCutBSH<half> op;
         op.Init(x, weight, convStates, queryStartLoc, cacheIndices, numAcceptedToken, numComputedTokens,
                 blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, outputX, workspace,
                 &tilingData);

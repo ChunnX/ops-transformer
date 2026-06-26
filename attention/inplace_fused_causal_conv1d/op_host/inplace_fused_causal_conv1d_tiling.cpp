@@ -12,20 +12,20 @@
  * \file inplace_fused_causal_conv1d_tiling.cpp
  * \brief Tiling entry for InplaceFusedCausalConv1d operator (lightweight wrapper)
  *
- * Reuses FusedCausalConv1d BH/BSH tiling implementations with isInplace=true.
+ * Reuses CloudCausalConv1dFn BH/BSH tiling implementations with isInplace=true.
  */
 
 #include "log/log.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_util.h"
 #include "op_host/tiling_templates_registry.h"
-#include "../../fused_causal_conv1d/op_host/fused_causal_conv1d_cut_bh_tiling_arch35.h"
-#include "../../fused_causal_conv1d/op_host/fused_causal_conv1d_cut_bsh_tiling_arch35.h"
+#include "../../cloud_causal_conv1d_fn/op_host/cloud_causal_conv1d_fn_cut_bh_tiling_arch35.h"
+#include "../../cloud_causal_conv1d_fn/op_host/cloud_causal_conv1d_fn_cut_bsh_tiling_arch35.h"
 
 namespace optiling {
 // max_query_len threshold for BH template: 2D input with maxQueryLen <= 8 goes to BH
 constexpr int64_t INPLACE_MAX_BH_SEQ_LEN = 8;
-// attr index for max_query_len (same as in fused_causal_conv1d_cut_bh_tiling_arch35.h)
+// attr index for max_query_len (same as in cloud_causal_conv1d_fn_cut_bh_tiling_arch35.h)
 constexpr int32_t INPLACE_ATTR_MAX_QUERY_LEN_INDEX = 3;
 
 struct InplaceFusedCausalConv1dCompileInfo {
@@ -55,10 +55,10 @@ static ge::graphStatus TilingInplaceFusedCausalConv1d(gert::TilingContext *conte
 
     ge::graphStatus status = ge::GRAPH_FAILED;
     if (useBH) {
-        FusedCausalConv1dCutBHTiling tilingImpl(context, true);  // isInplace=true
+        CloudCausalConv1dFnCutBHTiling tilingImpl(context, true);  // isInplace=true
         status = tilingImpl.DoTiling();
     } else {
-        FusedCausalConv1dCutBSHTiling tilingImpl(context, true); // isInplace=true
+        CloudCausalConv1dFnCutBSHTiling tilingImpl(context, true); // isInplace=true
         status = tilingImpl.DoTiling();
     }
 
