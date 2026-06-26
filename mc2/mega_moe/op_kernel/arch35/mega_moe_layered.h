@@ -565,6 +565,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 // GM_ADDR remoteNotifyAddr = ;//todo
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
                 hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_)); // todo:后续优化
+                PipeBarrier<PIPE_ALL>();
             }
         }
     }
@@ -1060,6 +1061,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBy
 
     // Phase 2: 按 rank 轮询, 只检查每 rank 需要的 row group, 不阻塞等待
     // 当 group 完成时, 批量处理该 rank 在该 group 内的所有 token
+    // batchBaseOffset 是每轮 batch 的 UB 基地址 (VECIN), 每次 loop 重置避免线性增长溢出
+    uint32_t batchBaseOffset = static_cast<uint32_t>(offset);
     uint32_t rankIndex = 0;
     uint32_t totalProcessed = 0;
     while (totalProcessed < totalTokensToProcess) {
@@ -1094,6 +1097,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBy
             if (batchCount > remainingTokens) {
                 batchCount = remainingTokens;
             }
+
+            // 每次 batch 重置 offset, 避免 linear growth 导致 UB 溢出
+            offset = batchBaseOffset;
 
             // 加载该 batch 的 triple info 到 VECIN (从 rankInfoTensor 末尾之后开始, 避免覆盖)
             LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * TRIPLE_SIZE);
@@ -1628,10 +1634,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMoeTypeFunc>::DispatchLevel1(int32
                     // L2 通信时, 本 server 其他卡通过 ReadNbi 从本卡该位置读数据
                     GM_ADDR localUrmaBase = GetUrmaAddrByRankId(mc2Context_, rankId_) +
                         params_.peermemInfo.URMADispatchL1RecvPtr;
-                    uint64_t dataOffset = MegaMoeDispatchImpl::GetL2SrcDataOffset(
-                        myServerId, tokenIdx, l1RecvPerServerSize_, l1SlotDataBytes_);
-                    uint64_t notifyOffset = MegaMoeDispatchImpl::GetL2SrcNotifyOffset(
-                        myServerId, tokenIdx, l1RecvPerServerSize_, l1SlotDataBytes_);
+                    uint64_t recvSectionOffset = MegaMoeDispatchImpl::GetL1RecvSectionOffset(
+                        myServerId, l1RecvPerServerSize_);
+                    uint64_t dataOffset = recvSectionOffset +
+                        MegaMoeDispatchImpl::GetL1RecvDataOffset(tokenIdx, l1SlotSize_);
+                    uint64_t notifyOffset = recvSectionOffset +
+                        MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIdx, l1SlotSize_);
 
                     // 先写 data
                     AscendC::GlobalTensor<uint8_t> dstDataGlobal;
@@ -1785,10 +1793,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
             // 源卡 URMA 窗口 L1 接收区基址
             GM_ADDR srcUrmaBase = GetUrmaAddrByRankId(mc2Context_, srcRankId) +
                 params_.peermemInfo.URMADispatchL1RecvPtr;
-            uint64_t srcDataOffset = MegaMoeDispatchImpl::GetL2SrcDataOffset(
-                sourceServerId, tokenIndex, l1RecvPerServerSize_, l1SlotDataBytes_);
-            uint64_t srcNotifyOffset = MegaMoeDispatchImpl::GetL2SrcNotifyOffset(
-                sourceServerId, tokenIndex, l1RecvPerServerSize_, l1SlotDataBytes_);
+            uint64_t recvSectionOffset = MegaMoeDispatchImpl::GetL1RecvSectionOffset(
+                sourceServerId, l1RecvPerServerSize_);
+            uint64_t srcDataOffset = recvSectionOffset +
+                MegaMoeDispatchImpl::GetL1RecvDataOffset(tokenIndex, l1SlotSize_);
+            uint64_t srcNotifyOffset = recvSectionOffset +
+                MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIndex, l1SlotSize_);
 
             // 轮询读 flag, 确认数据就绪
             __gm__ int32_t* notifyAddr = reinterpret_cast<__gm__ int32_t*>(
@@ -1918,9 +1928,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
                 SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
+                // L1 dispatch: 跨server URMA 发送 (计算核量化+写入中转区, 发送核轮询+WriteWithNotifyNbi)
+                DispatchLevel1(localExpertId);
             }
-            // L1 dispatch: 跨server URMA 发送 (计算核量化+写入中转区, 发送核轮询+WriteWithNotifyNbi)
-            DispatchLevel1(localExpertId);
         }
         if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
             continue;
