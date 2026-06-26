@@ -49,17 +49,17 @@ __global__ __aicore__ void mega_moe(
         //   ┌───────────┬───────────────────┬──────────────────────┐
         //   │ QuantMode │ Weight1 / Weight2 │ 路径                  │
         //   ├───────────┼───────────────────┼──────────────────────┤
-        //   │ E4M3      │ fp8 / fp8         │ a8w8                  │
-        //   │ E4M3      │ fp4 / fp4         │ a8w4                  │
+        //   │ E4M3      │ fp8 / fp8 or fp4  │ a8w8 or a8w4         │
         //   │ E2M1      │ fp4 / fp4         │ a4w4                  │
-        //   │ E5M2      │ fp8 / fp8         │ a8w8-e5m2             │
+        //   │ E5M2      │ fp8 / fp8         │ generic               │
         //   └───────────┴───────────────────┴──────────────────────┘
         constexpr bool w1IsFp4 = Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value;
         constexpr bool w2IsFp4 = Std::IsSame<DTYPE_WEIGHT2, fp4x2_e2m1_t>::value;
-        constexpr bool unsupported =
-            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && !(w1IsFp4 && w2IsFp4)) ||
-            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && (w1IsFp4 || w2IsFp4));
-        if constexpr (!unsupported) {
+        constexpr bool supported =
+            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) ||
+            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && w1IsFp4 && w2IsFp4) ||
+            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && !w1IsFp4 && !w2IsFp4);
+        if constexpr (supported) {
             MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DTYPE_WEIGHT2,
                 DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
