@@ -30,8 +30,13 @@
 #else
 #include "../../common/op_kernel/mc2_moe_context.h"
 #endif
-#include "moe_distribute_v2_base.h"
-#include "check_winsize.h"
+#if __has_include("../common/moe_distribute_v2_base.h")
+#include "../common/moe_distribute_v2_base.h"
+#include "../common/check_winsize.h"
+#else
+#include "../../common/op_kernel/moe_distribute_v2_base.h"
+#include "../../common/op_kernel/check_winsize.h"
+#endif
 #if __has_include("../common/moe_distribute_base.h")
 #include "../common/moe_distribute_base.h"
 #include "../common/mc2_kernel_utils.h"
@@ -39,8 +44,13 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
-#include "hccl_context_holder.h"
-#include "mc2_moe_context_holder.h"
+#if __has_include("../common/hccl_context_holder.h")
+#include "../common/hccl_context_holder.h"
+#include "../common/mc2_moe_context_holder.h"
+#else
+#include "../../common/op_kernel/hccl_context_holder.h"
+#include "../../common/op_kernel/mc2_moe_context_holder.h"
+#endif
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL; // 384 * 2，0/1标识区偏移
