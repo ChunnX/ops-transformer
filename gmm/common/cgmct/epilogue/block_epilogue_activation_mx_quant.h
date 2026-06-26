@@ -733,12 +733,6 @@ BlockEpilogueActivationQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::oper
         return;
     }
     uint64_t singleMInVec = Min(static_cast<uint64_t>(singleM_) - mOffset, singleMPerVec);
-    uint64_t blockMOffset = n_ == 0 ? 0 : Get<Y_IDX>(blockCoord) / n_;
-    if (blockMOffset + mOffset >= static_cast<uint64_t>(m_)) {
-        return;
-    }
-    singleMInVec = Min(singleMInVec, static_cast<uint64_t>(m_) - blockMOffset - mOffset);
-
     vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t);
     UBBlockSize_ = BLOCK_SIZE;
     elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;
