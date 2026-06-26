@@ -632,7 +632,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"))
         .def("create_context", &CommContextManager::create_context)
         .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
-        .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);
-        .def("is_cross_server", &CommContextManager::is_cross_server);
+        .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size)
+        .def_property_readonly("is_cross_server", &CommContextManager::is_cross_server);
 }
 } // op_api
