@@ -16,99 +16,21 @@
 #define LIGHTNING_INDEXER_V2_VECTOR1_H
 
 #include "kernel_operator.h"
+#include "common/lightning_indexer_v2_vector1_base.h"
 
 namespace liV2Vector1 {
 
 template <typename T>
-struct FloatSortTraits;
-
-template <typename T>
 struct UIntSortTraits;
 
-// fp32
+// uint32-fp32
 template <>
-struct FloatSortTraits<float> {
+struct UIntSortTraits<float> {
     using UInt = uint32_t;
     static constexpr UInt ZERO      = 0x00000000;
     static constexpr UInt SIGN_MASK = 0x80000000;
-    static constexpr UInt NAN_MASK  = 0x7FC00000;
+    static constexpr UInt NAN_MASK  = 0xFFC00000;
     static constexpr UInt ALL_ONE   = 0xFFFFFFFF;
-};
-
-// bf16
-template <>
-struct FloatSortTraits<bfloat16_t> {
-    using UInt = uint16_t;
-    static constexpr UInt ZERO      = 0x0000;
-    static constexpr UInt SIGN_MASK = 0x8000;
-    static constexpr UInt NAN_MASK  = 0x7FC0;
-    static constexpr UInt ALL_ONE   = 0xFFFF;
-};
-
-
-template <typename FloatT>
-struct FloatSortConstCtx {
-    using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
-    AscendC::MicroAPI::RegTensor<UInt> zeros;
-    AscendC::MicroAPI::RegTensor<UInt> allOne;
-    AscendC::MicroAPI::RegTensor<UInt> signMask;
-    AscendC::MicroAPI::RegTensor<UInt> nan;
-};
-
-
-template <typename FloatT>
-__simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT>& ctx, AscendC::MicroAPI::MaskReg& maskAll)
-{
-    using Traits = FloatSortTraits<FloatT>;
-    AscendC::MicroAPI::Duplicate(ctx.zeros,    Traits::ZERO,      maskAll);
-    AscendC::MicroAPI::Duplicate(ctx.allOne,   Traits::ALL_ONE,   maskAll);
-    AscendC::MicroAPI::Duplicate(ctx.signMask, Traits::SIGN_MASK, maskAll);
-    AscendC::MicroAPI::Duplicate(ctx.nan,      Traits::NAN_MASK,  maskAll);
-}
-
-
-template <typename FloatT>
-__simd_callee__ inline void FloatToSortableKey
-                                (AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt>& outKey,
-                                 AscendC::MicroAPI::RegTensor<FloatT>& inVal,
-                                 FloatSortConstCtx<FloatT>& ctx,
-                                 AscendC::MicroAPI::MaskReg& maskAll)
-{
-    using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
-
-    AscendC::MicroAPI::RegTensor<UInt> regTemp;
-    AscendC::MicroAPI::RegTensor<UInt> regMask;
-    AscendC::MicroAPI::MaskReg regSelectNan;
-    AscendC::MicroAPI::MaskReg regSelectSign;
-
-    auto& inBits = (AscendC::MicroAPI::RegTensor<UInt>&)inVal;
-
-    // 1. NaN check
-    AscendC::MicroAPI::Compare<UInt, CMPMODE::EQ>(regSelectNan, inBits, ctx.nan, maskAll);
-
-    // 2. NaN -> ALL_ONE
-    AscendC::MicroAPI::Select(outKey, ctx.allOne, inBits, regSelectNan);
-
-    // 3. sign bit
-    AscendC::MicroAPI::And(regTemp, outKey, ctx.signMask, maskAll);
-
-    AscendC::MicroAPI::Compare<UInt, CMPMODE::GT>(regSelectSign, regTemp, ctx.zeros, maskAll);
-
-    // 4. xor mask
-    AscendC::MicroAPI::Select(regMask, ctx.allOne, ctx.signMask, regSelectSign);
-    AscendC::MicroAPI::Xor(outKey, outKey, regMask, maskAll);
-}
-
-// uint16-bf16
-template <>
-struct UIntSortTraits<bfloat16_t> {
-    using UInt = uint16_t;
-    static constexpr UInt ZERO      = 0x0000;
-    static constexpr UInt SIGN_MASK = 0x8000;
-    static constexpr UInt NAN_MASK  = 0xFFC0;
-    static constexpr UInt ALL_ONE   = 0xFFFF;
 };
 
 template <typename FloatT>
@@ -165,135 +87,42 @@ __simd_callee__ inline void UIntToSortableKey(AscendC::MicroAPI::RegTensor<Float
                            (AscendC::MicroAPI::RegTensor<UInt>&)outKey, regMask, maskAll);
 }
 
-__aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
-                                              const LocalTensor<uint16_t> &in,
+__aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
+                                              const LocalTensor<uint32_t> &in,
                                               const uint32_t topK)
 {
-    auto outBuf = (__local_mem__ bfloat16_t*)out_.GetPhyAddr();
-    auto inBuf = (__local_mem__ uint16_t*)in.GetPhyAddr();
+    auto outBuf = (__local_mem__ float*)out_.GetPhyAddr();
+    auto inBuf = (__local_mem__ uint32_t*)in.GetPhyAddr();
 
-    const uint16_t repeatSize16 = 128;
-    uint16_t topkLoopNum = (topK + repeatSize16 - 1) / repeatSize16;
+    const uint16_t repeatSize32 = 128;
+    uint16_t topkLoopNum = (topK + repeatSize32 - 1) / repeatSize32;
 
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<uint16_t> regIn;
-        AscendC::MicroAPI::RegTensor<bfloat16_t> regOut;
-        AscendC::MicroAPI::MaskReg maskAllB16 =
-            AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::RegTensor<uint32_t> regIn[2];
+        AscendC::MicroAPI::RegTensor<float> regOut[2];
+        AscendC::MicroAPI::MaskReg maskAllB32 =
+            AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
 
         for (uint16_t i = 0; i < topkLoopNum; ++i) {
-            AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * 128);
+            AscendC::MicroAPI::LoadAlign<uint32_t>(regIn[0], inBuf + i * repeatSize32);
+            AscendC::MicroAPI::LoadAlign<uint32_t>(regIn[1], inBuf + i * repeatSize32 + 64);
 
-            UIntSortConstCtx<bfloat16_t> uint16Ctx;
-            InitUIntSortConstCtx(uint16Ctx, maskAllB16);
+            UIntSortConstCtx<float> uint32Ctx;
+            InitUIntSortConstCtx(uint32Ctx, maskAllB32);
 
-            UIntToSortableKey<bfloat16_t>(regOut, regIn, uint16Ctx, maskAllB16);
+            UIntToSortableKey<float>(regOut[0], regIn[0], uint32Ctx, maskAllB32);
+            UIntToSortableKey<float>(regOut[1], regIn[1], uint32Ctx, maskAllB32);
 
-            AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
-                outBuf + i * 128, regOut, maskAllB16);
+            AscendC::MicroAPI::StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(outBuf + i * repeatSize32,
+                                                                                          regOut[0],
+                                                                                          maskAllB32);
+            AscendC::MicroAPI::StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                outBuf + i * repeatSize32 + 64,
+                regOut[1],
+                maskAllB32);
         }
     }
-}
-
-template <typename FloatT>
-__simd_callee__ inline void FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<
-                                                    typename FloatSortTraits<FloatT>::UInt>& outKey0,
-                                                 AscendC::MicroAPI::RegTensor<
-                                                    typename FloatSortTraits<FloatT>::UInt>& outKey1,
-                                                 AscendC::MicroAPI::RegTensor<FloatT>& inVal0,
-                                                 AscendC::MicroAPI::RegTensor<FloatT>& inVal1,
-                                                 FloatSortConstCtx<FloatT>& ctx,
-                                                 AscendC::MicroAPI::MaskReg& maskAll)
-{
-    using Traits = FloatSortTraits<FloatT>;
-    using UInt   = typename Traits::UInt;
-
-    AscendC::MicroAPI::RegTensor<UInt> regTemp[2];
-    AscendC::MicroAPI::RegTensor<UInt> regMask[2];
-    AscendC::MicroAPI::MaskReg regSelectNan[2];
-    AscendC::MicroAPI::MaskReg regSelectSign[2];
-
-    auto& inBits0 = (AscendC::MicroAPI::RegTensor<UInt>&)inVal0;
-    auto& inBits1 = (AscendC::MicroAPI::RegTensor<UInt>&)inVal1;
-
-    // 1. NaN check
-    AscendC::MicroAPI::Compare<UInt, CMPMODE::EQ>(regSelectNan[0], inBits0, ctx.nan, maskAll);
-    AscendC::MicroAPI::Compare<UInt, CMPMODE::EQ>(regSelectNan[1], inBits1, ctx.nan, maskAll);
-
-    // 2. NaN -> ALL_ONE
-    AscendC::MicroAPI::Select(outKey0, ctx.allOne, inBits0, regSelectNan[0]);
-    AscendC::MicroAPI::Select(outKey1, ctx.allOne, inBits1, regSelectNan[1]);
-
-    // 3. sign bit
-    AscendC::MicroAPI::And(regTemp[0], outKey0, ctx.signMask, maskAll);
-    AscendC::MicroAPI::And(regTemp[1], outKey1, ctx.signMask, maskAll);
-
-    AscendC::MicroAPI::Compare<UInt, CMPMODE::GT>(regSelectSign[0], regTemp[0], ctx.zeros, maskAll);
-    AscendC::MicroAPI::Compare<UInt, CMPMODE::GT>(regSelectSign[1], regTemp[1], ctx.zeros, maskAll);
-
-    // 4. xor mask
-    AscendC::MicroAPI::Select(regMask[0], ctx.allOne, ctx.signMask, regSelectSign[0]);
-    AscendC::MicroAPI::Select(regMask[1], ctx.allOne, ctx.signMask, regSelectSign[1]);
-    AscendC::MicroAPI::Xor(outKey0, outKey0, regMask[0], maskAll);
-    AscendC::MicroAPI::Xor(outKey1, outKey1, regMask[1], maskAll);
-}
-
-
-template <typename T, size_t N>
-__simd_callee__ inline void DuplicateZero(AscendC::MicroAPI::RegTensor<T> (&regArray)[N],
-                                          AscendC::MicroAPI::MaskReg& mask)
-{
-    static_assert(N <= 4, "N must be <= 4");
-    // 不能用循环, 会导致fatal error: error in backend: Unsupported Inst must be hoisted.
-    if constexpr (N >= 1) {
-        AscendC::MicroAPI::Duplicate(regArray[0], static_cast<T>(0), mask);
-    }
-    if constexpr (N >= 2) {
-        AscendC::MicroAPI::Duplicate(regArray[1], static_cast<T>(0), mask);
-    }
-    if constexpr (N >= 3) {
-        AscendC::MicroAPI::Duplicate(regArray[2], static_cast<T>(0), mask);
-    }
-    if constexpr (N >= 4) {
-        AscendC::MicroAPI::Duplicate(regArray[3], static_cast<T>(0), mask);
-    }
-}
-
-
-template <typename T, size_t N, bool ApplyRelu = true>
-__simd_callee__ inline void WeightedAccum(AscendC::MicroAPI::RegTensor<T> (&accum)[N],
-                                          AscendC::MicroAPI::RegTensor<T> (&input)[N],
-                                          AscendC::MicroAPI::RegTensor<T>& weight,
-                                          AscendC::MicroAPI::MaskReg& mask)
-{
-    static_assert(N <= 2, "N must be <= 2");
-    // ---- Relu block ----
-    if constexpr (ApplyRelu) {
-        if constexpr (N >= 1) {
-            AscendC::MicroAPI::Relu(input[0], input[0], mask);
-        }
-        if constexpr (N >= 2) {
-            AscendC::MicroAPI::Relu(input[1], input[1], mask);
-        }
-    }
-    // ---- MulAdd block ----
-    if constexpr (N >= 1) {
-        AscendC::MicroAPI::MulAddDst(accum[0], input[0], weight, mask);
-    }
-    if constexpr (N >= 2) {
-        AscendC::MicroAPI::MulAddDst(accum[1], input[1], weight, mask);
-    }
-}
-
-
-__simd_callee__ inline void BroadcastLane(AscendC::MicroAPI::RegTensor<float>& dst,
-                                          AscendC::MicroAPI::RegTensor<float>& src,
-                                          uint16_t laneIdx)
-{
-    AscendC::MicroAPI::RegTensor<uint32_t> brcGatherIndex;
-    AscendC::MicroAPI::Duplicate(brcGatherIndex, laneIdx);
-    AscendC::MicroAPI::Gather(dst, src, brcGatherIndex);
 }
 
 __simd_callee__ inline void BroadcastLane(AscendC::MicroAPI::RegTensor<float>& dst,

@@ -270,9 +270,7 @@ namespace SplitFuse {
                 LayoutV layoutVTemp(blockStackNum * pagedBlockSize, strideV);
 #endif
                 for (uint32_t kvSIdx = 0; kvSIdx < kvSLoopNumTotal + preKVNum; kvSIdx += blockStackNum) {
-
                     if (kvSIdx < kvSLoopNumTotal) {
-
                         if (kvSIdx + blockStackNum > kvSLoopNumTotal - 1U) {
                             stackSeqTile = noSkipKvS - kvSIdx * pagedBlockSize;
                         } else {

@@ -267,8 +267,8 @@ x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../doc
 * 不支持跨超节点通信，只支持超节点内。
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
-   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持AICPU通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AI_CPU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信和AI_CPU通信，CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
 
 ## 调用说明
 

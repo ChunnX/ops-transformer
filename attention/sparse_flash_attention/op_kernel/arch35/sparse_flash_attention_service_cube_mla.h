@@ -92,6 +92,8 @@ private:
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void PrepareLeftMatrixBmm1SFA(Buffer<BufferType::L1> &inputLeftBuf,
+        RunInfo &runInfo, ConstInfo &constInfo);
 
     // --------------------Bmm2--------------------------
     __aicore__ inline void IterateBmm2SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -219,28 +221,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     ConstInfo &constInfo)
 {
     Buffer<BufferType::L1> inputLeftBuf;
-    // 左矩阵复用，S2的第一次循环加载左矩阵
-    // 加载左矩阵到L1, 全载
-    if (unlikely(runInfo.s2LoopCount == 0)) { // sOuter循环第一个基本块：搬运Q
-        inputLeftBuf = l1QBuffers.Get();
-        inputLeftBuf.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
-        LocalTensor<Q_T> inputLeftTensor = inputLeftBuf.GetTensor<Q_T>();
-        uint32_t s1Coord = runInfo.s1oIdx * runInfo.qSNumInOneBlock;
-        uint64_t queryGmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
-            runInfo.goIdx, s1Coord, 0);
-        uint64_t queryRopeGmOffset = this->queryRopeGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
-            runInfo.goIdx, s1Coord, 0);
-        CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[queryGmOffset],
-            runInfo.mRealSize, 512, 512); // 64 constInfo.dSize constInfo.mm1Ka
-        CopyToL1Nd2Nz<Q_T>(inputLeftTensor[Align16Func(runInfo.mRealSize) * 512], // 512: Query主维度
-            this->queryRopeGm.gmTensor[queryRopeGmOffset], runInfo.mRealSize,
-            64, 64); // constInfo.dSize constInfo.mm1Ka
-        inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
-    } else { // 非S2的第一次循环直接复用Q
-        inputLeftBuf = l1QBuffers.GetPre();
-        // 左矩阵复用时，sinner循环内不需要MTE2同步等待
-        inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
-    }
+    PrepareLeftMatrixBmm1SFA(inputLeftBuf, runInfo, constInfo);
  
     inputRightBuf.WaitCrossCore();
     SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
@@ -292,6 +273,34 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
         mm1ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
     outputBuf.SetCrossCore();
+}
+
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::PrepareLeftMatrixBmm1SFA(
+    Buffer<BufferType::L1> &inputLeftBuf,
+    RunInfo &runInfo, ConstInfo &constInfo)
+{
+    // 左矩阵复用，S2的第一次循环加载左矩阵
+    // 加载左矩阵到L1, 全载
+    if (unlikely(runInfo.s2LoopCount == 0)) { // sOuter循环第一个基本块：搬运Q
+        inputLeftBuf = l1QBuffers.Get();
+        inputLeftBuf.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
+        LocalTensor<Q_T> inputLeftTensor = inputLeftBuf.GetTensor<Q_T>();
+        uint32_t s1Coord = runInfo.s1oIdx * runInfo.qSNumInOneBlock;
+        uint64_t queryGmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
+            runInfo.goIdx, s1Coord, 0);
+        uint64_t queryRopeGmOffset = this->queryRopeGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
+            runInfo.goIdx, s1Coord, 0);
+        CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[queryGmOffset],
+            runInfo.mRealSize, 512, 512); // 64 constInfo.dSize constInfo.mm1Ka
+        CopyToL1Nd2Nz<Q_T>(inputLeftTensor[Align16Func(runInfo.mRealSize) * 512], // 512: Query主维度
+            this->queryRopeGm.gmTensor[queryRopeGmOffset], runInfo.mRealSize,
+            64, 64); // constInfo.dSize constInfo.mm1Ka
+        inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
+    } else { // 非S2的第一次循环直接复用Q
+        inputLeftBuf = l1QBuffers.GetPre();
+        // 左矩阵复用时，sinner循环内不需要MTE2同步等待
+        inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT

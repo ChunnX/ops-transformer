@@ -394,11 +394,13 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckOneTensorDim(
 const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckInputTensorDim()
 {
     OP_TILING_CHECK(
-        CheckOneTensorDim("x", TensorType::INPUT, X_INDEX, TWO_DIMS) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName_, "x checkdim failed."),
-        return ge::GRAPH_FAILED);
+        CheckOneTensorDim("x", TensorType::INPUT, X_INDEX, TWO_DIMS) != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName_, "x", "checkdim failed",
+            "x must be 2D"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         CheckOneTensorDim("expertIds", TensorType::INPUT, EXPERT_IDS_INDEX, TWO_DIMS) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName_, "expertIds checkdim failed."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName_, "expertIds", "checkdim failed",
+            "expertIds must be 2D"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -434,27 +436,33 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckOutputTensorDim
 {
     OP_TILING_CHECK(
         CheckOneTensorDim("yOut", TensorType::OUTPUT, OUTPUT_Y_INDEX, TWO_DIMS) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName_, "yOut checkdim failed."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName_, "yOut", "checkdim failed",
+            "yOut must be 2D"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         CheckOneTensorDim("expandIdxOut", TensorType::OUTPUT, OUTPUT_EXPAND_IDX_INDEX, ONE_DIMS) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName_, "expandIdxOut checkdim failed."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName_, "expandIdxOut", "checkdim failed",
+            "expandIdxOut must be 1D"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         CheckOneTensorDim("commCmdInfoOut", TensorType::OUTPUT, OUTPUT_COMM_CMD_INFO_INDEX, ONE_DIMS) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName_, "commCmdInfoOut checkdim failed."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName_, "commCmdInfoOut", "checkdim failed",
+            "commCmdInfoOut must be 1D"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckTensorDim()
 {
     OP_TILING_CHECK(
-        CheckInputTensorDim() != ge::GRAPH_SUCCESS, OP_LOGE(nodeName_, "Input param shape is invalid."),
-        return ge::GRAPH_FAILED);
+        CheckInputTensorDim() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "input", "shape invalid",
+            "Input param shape validation failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         CheckOptionalInputTensorDim() != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName_, "Optional input param shape is invalid."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "optional input", "shape invalid",
+            "Optional input param shape validation failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        CheckOutputTensorDim() != ge::GRAPH_SUCCESS, OP_LOGE(nodeName_, "Output param shape is invalid."),
-        return ge::GRAPH_FAILED);
+        CheckOutputTensorDim() != ge::GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "output", "shape invalid",
+            "Output param shape validation failed"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

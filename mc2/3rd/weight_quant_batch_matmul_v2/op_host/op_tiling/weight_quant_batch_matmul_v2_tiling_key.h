@@ -125,9 +125,6 @@ public:
 public:
     void PrintTilingKeyLog() const
     {
-        if (CheckLogLevel(OP, DLOG_INFO) != 1) {
-            return;
-        }
         std::stringstream ss;
         ss << "socVersionType: " << static_cast<uint32_t>(this->socVersionType)
            << " quantizationScenario: " << static_cast<uint32_t>(this->quantizationScenario)

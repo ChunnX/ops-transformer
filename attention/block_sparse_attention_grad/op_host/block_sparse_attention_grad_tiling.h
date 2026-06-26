@@ -30,6 +30,7 @@ TILING_DATA_FIELD_DEF(uint64_t, kvHeadNum);
 TILING_DATA_FIELD_DEF(uint64_t, headDim);
 TILING_DATA_FIELD_DEF(uint64_t, baseM);
 TILING_DATA_FIELD_DEF(uint64_t, baseN);
+TILING_DATA_FIELD_DEF(uint64_t, singleM);
 TILING_DATA_FIELD_DEF(uint64_t, dqSize);
 TILING_DATA_FIELD_DEF(uint64_t, dkSize);
 TILING_DATA_FIELD_DEF(uint64_t, dqWorkspaceOffset);

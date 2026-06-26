@@ -283,14 +283,19 @@ foreach (OP_DIR ${OP_DIR_LIST})
 endforeach ()
 
 if(ENABLE_EXPERIMENTAL)
-    # genop新增experimental算子分类
-    # add_subdirectory(${op_class})
-    add_subdirectory(experimental/attention)
+    should_add_module("attention" ADD_EXPERIMENTAL_ATTENTION)
+    if(ADD_EXPERIMENTAL_ATTENTION)
+        add_subdirectory(experimental/attention)
+    endif()
 else()
-    # genop新增非experimental算子分类
-    # add_subdirectory(${op_class})
-    add_subdirectory(attention)
-    add_subdirectory(mhc)
+    should_add_module("attention" ADD_ATTENTION)
+    if(ADD_ATTENTION)
+        add_subdirectory(attention)
+    endif()
+    should_add_module("mhc" ADD_MHC)
+    if(ADD_MHC)
+        add_subdirectory(mhc)
+    endif()
 endif()
 
 # 编译examples目录下算子
@@ -709,7 +714,6 @@ endif()
 target_link_libraries(
     cust_proto
     PUBLIC ${OPHOST_NAME}_infer_obj
-    PUBLIC $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:${OPHOST_NAME}_tiling_obj>
     PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:${OPGRAPH_NAME}_gentask_obj>
 )
 

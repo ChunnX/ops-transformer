@@ -410,7 +410,8 @@ __aicore__ inline void SMLACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, con
 
                     uint32_t headStride  = constInfo.headDim;
                     uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
-                    uint32_t batchStride = constInfo.kvSeqSize * seqStride;
+                    uint64_t batchStride = (constInfo.oriKvStride0 == 0) ?
+                        static_cast<uint64_t>(constInfo.kvSeqSize) * seqStride : constInfo.oriKvStride0;
 
                     uint32_t curS2 = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
                     uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride + (uint64_t)info.n2Idx * headStride + kL1 * D_SPLIT_SIZE;
@@ -671,7 +672,8 @@ __aicore__ inline void SMLACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, con
 
                         uint32_t headStride  = constInfo.headDim;
                         uint32_t seqStride   = constInfo.kvHeadNum * constInfo.headDim;
-                        uint32_t batchStride = constInfo.kvSeqSize * seqStride;
+                        uint64_t batchStride = (constInfo.oriKvStride0 == 0) ?
+                            static_cast<uint64_t>(constInfo.kvSeqSize) * seqStride : constInfo.oriKvStride0;
 
                         uint32_t curS2 = info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
                         uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride + (uint64_t)info.n2Idx * headStride + nL1 * N_SPLIT_SIZE;

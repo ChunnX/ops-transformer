@@ -28,7 +28,6 @@ struct WeightQuantMMAllReduceTilingKeyParams
     uint8_t quantType{0};
     bool hasAntiQuantOffset{false};
     bool isBiasFp32{false};
-    uint8_t weightFormat{0};
 };
 
 class WeightQuantMatmulAllReduceTilingA5 : public MatmulAllReduceTilingBase

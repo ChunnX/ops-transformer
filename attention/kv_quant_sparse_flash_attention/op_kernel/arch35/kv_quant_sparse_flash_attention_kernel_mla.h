@@ -25,18 +25,16 @@
 #include "kv_quant_sparse_flash_attention_service_vector_mla.h"
 #include "kv_quant_sparse_flash_attention_common_arch35.h"
 #include "kv_quant_sparse_flash_attention_kvcache.h"
-#if __has_include("../../common/op_kernel/matmul.h")
-#include "../../common/op_kernel/matmul.h"
-#else
-#include "../common/matmul.h"
-#endif
-
 #if __has_include("../../common/op_kernel/CopyInL1.h")
 #include "../../common/op_kernel/CopyInL1.h"
 #else
 #include "../common/CopyInL1.h"
 #endif
-
+#if __has_include("../../common/op_kernel/matmul.h")
+#include "../../common/op_kernel/matmul.h"
+#else
+#include "../common/matmul.h"
+#endif
 #if __has_include("../../common/op_kernel/FixpipeOut.h")
 #include "../../common/op_kernel/FixpipeOut.h"
 #else
@@ -182,14 +180,13 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     // 计算总的基本块
     maxS2LoopCnt = 0; // 所有核中最大累计s2Loop
     uint32_t qsfaTotalBaseNum = 0;
-    uint32_t s1GBaseSize = constInfo.gSize;
     uint32_t actBatchS2 = 1;
     uint32_t coreNum = GetBlockNum(); // G128时相邻两个cube核处理一个s1，coreNum减半
     uint32_t currCoreIdx = aicIdx;
 
     if constexpr (IS_SPLIT_G) {
-        coreNum = coreNum >> 1;
         currCoreIdx = currCoreIdx >> 1;
+        coreNum = coreNum >> 1;
     }
 
     uint32_t actBatchS1 = 1;
@@ -240,9 +237,9 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
             }
             if (qsfaAccumBaseNum >= targetBaseNum) {
                 // 更新当前核的End分核信息
+                constInfo.s2End = 0;
                 constInfo.bN2End = bN2Idx;
                 constInfo.gS1End = s1GIdx;
-                constInfo.s2End = 0;
 
                 if (currCoreIdx != 0) {
                     GetAxisStartIdx(constInfo.bN2Start, constInfo.gS1Start, 0);
@@ -278,18 +275,18 @@ __aicore__ inline uint64_t KvQuantSparseFlashAttentionMla<CubeBlockType, VecBloc
     GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths, uint32_t bIdx)
 {
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-        if (bIdx > 0) {
-            return actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
-        } else if (bIdx == 0) {
+        if (bIdx == 0) {
             return actualSeqQlenAddr[0];
+        } else if (bIdx > 0) {
+            return actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
         } else {
             return 0;
         }
     } else {
-        if (constInfo.isActualLenDimsNull == 1) {
-            return constInfo.s1Size;
-        } else {
+        if (constInfo.isActualLenDimsNull == 0) {
             return actualSeqQlenAddr[bIdx];
+        } else {
+            return constInfo.s1Size;
         }
     }
 }
@@ -302,7 +299,6 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     uint32_t qsfaBEndPrev = bN2EndPrev / constInfo.n2Size;
     uint32_t actualSeqQPrev = GetBalanceActualSeqLengths(actualSeqLengthsQGm, qsfaBEndPrev);
     uint32_t s1GPrevBaseNum = actualSeqQPrev;
-
     constInfo.bN2Start = bN2EndPrev;
     constInfo.gS1Start = s1GEndPrev;
     constInfo.s2Start = 0;
@@ -323,6 +319,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     if (actualSeqLengthsQ != nullptr) {
         actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengthsQ;
     }
+
     if (actualSeqLengths != nullptr) {
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
     }
@@ -336,13 +333,8 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitMMResBuf(
     __gm__ uint8_t *workspace)
 {
-    uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
-    uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
-    uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(Q_T);
     uint32_t mm1RightSize = constInfo.s2BaseSize * 576 * sizeof(Q_T);
-
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
-
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
@@ -356,15 +348,9 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         l1RightBuffers.Get().SetCrossCore();
         l1RightBuffers.Get().SetCrossCore();
     }
-
+    uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
+    uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
-    bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
-    crossCoreSyncBufId++;
-
-    if ASCEND_IS_AIV {
-        bmm2Buffers.Get().SetCrossCore();
-    }
 
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
@@ -374,6 +360,14 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     if ASCEND_IS_AIV {
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
+    }
+
+    bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+
+    if ASCEND_IS_AIV {
+        bmm2Buffers.Get().SetCrossCore();
     }
 
     if constexpr (IS_SPLIT_G) {
@@ -420,23 +414,16 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     constInfo.sparseBlockSize = 1;
 
     constInfo.sparseMode = sharedParams.maskMode;
-    constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
-    constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
-
-    constInfo.gD = constInfo.gSize * constInfo.dSize;
-    constInfo.n2GD = constInfo.n2Size * constInfo.gD;
 
     constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
     constInfo.s2Dv = constInfo.s2Size * constInfo.dSizeV;
     constInfo.n2Dv = constInfo.n2Size * constInfo.dSizeV;
 
     constInfo.gDv = constInfo.gSize * constInfo.dSizeV;
-    constInfo.gS1Dv = constInfo.gSize * constInfo.s1Dv;
     constInfo.n2S2Dv = constInfo.n2Size * constInfo.s2Dv;
     constInfo.n2GDv = constInfo.n2Size * constInfo.gDv;
     constInfo.s2BaseN2Dv = constInfo.s2BaseSize * constInfo.n2Dv;
-    constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
 
     constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
@@ -447,7 +434,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
         constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
         if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
+            constInfo.attentionOutStride = \
+                (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
     } else if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
         // BSH/BSNGD
@@ -455,13 +443,14 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
 
         if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
+            constInfo.attentionOutStride = \
+                (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
     }
 
     if ASCEND_IS_AIV {
-        constInfo.softmaxScale = sharedParams.softmaxScale;
         constInfo.blockSize = sharedParams.blockSize;
+        constInfo.softmaxScale = sharedParams.softmaxScale;
         constInfo.maxBlockNumPerBatch = sharedParams.maxBlockNumPerBatch;
     }
 
@@ -626,7 +615,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 
     if ASCEND_IS_AIV {
         if constexpr (IS_SPLIT_G) {
-            for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
+            for (int64_t qsfaLoopCnt = 0; qsfaLoopCnt < maxS2LoopCnt; qsfaLoopCnt++) {
                 CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
                 CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
             }

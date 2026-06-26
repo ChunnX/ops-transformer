@@ -108,6 +108,7 @@ struct ConstInfo {
 
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
+    uint32_t cmpResiduaKLenDims = 0U;   // cmpResidualK的维度
     bool isAccumSeqS1 = false;     // 是否累加模式
     bool isAccumSeqS2 = false;     // 是否累加模式
 

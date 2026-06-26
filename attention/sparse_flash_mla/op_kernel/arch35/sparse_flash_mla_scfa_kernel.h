@@ -65,8 +65,11 @@ public:
     __aicore__ inline void Process();
 private:
     __aicore__ inline void ProcessMainLoop();
-    __aicore__ inline void ParseTilingData(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-        __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV);
+    __aicore__ inline int64_t GetSeqLen(int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
+        GlobalTensor<int32_t>& actualSeqGm, GlobalTensor<int32_t>& cuSeqlensGm, int64_t defaultSize);
+    __aicore__ inline void ParseTilingData(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
+        __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
         __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
         __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
@@ -99,7 +102,7 @@ private:
 
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> l1PBuffers;
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
     GlobalTensor<uint32_t> metadataGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
@@ -111,6 +114,13 @@ private:
     GlobalTensor<int32_t> actualSeqQlenGm;
     GlobalTensor<int32_t> oriTopkLengthGm;
     GlobalTensor<int32_t> cmpTopkLengthGm;
+
+    bool hasCuSeqlensQ = false;
+    bool hasCuSeqlensOriKv = false;
+    bool hasCuSeqlensCmpKv = false;
+    bool hasActualSeqQlen = false;
+    bool hasActualSeqOriKvlen = false;
+    bool hasActualSeqCmpKvlen = false;
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     /* 核Index信息 */
@@ -158,7 +168,8 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
     constInfo.hasCmpTopkLength = (cmpTopkLength != nullptr);
 
     this->pipe = tPipe;
-    this->ParseTilingData(cuSeqlensQ, cuSeqlensOriKv, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
+    this->ParseTilingData(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV,
+        seqUsedCmpKV, cmpResidualKV);
     vecBlock.InitVecBlock(
         tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     vecBlock.CleanOutput(attentionOut, softmaxLse, constInfo);
@@ -173,8 +184,23 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
 }
 
 template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int64_t SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::GetSeqLen(
+    int32_t bIdx, bool hasActualSeq, bool hasCuSeqlens,
+    GlobalTensor<int32_t>& actualSeqGm, GlobalTensor<int32_t>& cuSeqlensGm, int64_t defaultSize)
+{
+    if (hasActualSeq) {
+        return actualSeqGm.GetValue(bIdx);
+    } else if (hasCuSeqlens) {
+        return cuSeqlensGm.GetValue(bIdx + 1) - cuSeqlensGm.GetValue(bIdx);
+    } else {
+        return defaultSize;
+    }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ParseTilingData(
-    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *seqUsedOriKV,
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensOriKv,
+    __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedOriKV,
     __gm__ uint8_t *seqUsedCmpKV, __gm__ uint8_t *cmpResidualKV)
 {
     auto &sparseFlashMLABaseParams = this->tilingData->baseParams;
@@ -223,29 +249,53 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
         constInfo.cmpMaxBlockNumPerBatch = sparseFlashMLACmpParams.cmpMaxBlockNumPerBatch;
     }
 
+    if (cuSeqlensQ != nullptr) {
+        cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+        hasCuSeqlensQ = true;
+    }
+    if (cuSeqlensOriKv != nullptr) {
+        cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+        hasCuSeqlensOriKv = true;
+    }
+
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if (cuSeqlensCmpKv != nullptr) {
+            cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
+            hasCuSeqlensCmpKv = true;
+        }
+    }
+
+    if (sequsedQ != nullptr) {
+        actualSeqQlenGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
+        hasActualSeqQlen = true;
+    }
+    if (seqUsedOriKV != nullptr) {
+        actualSeqOriKvlenGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
+        hasActualSeqOriKvlen = true;
+    }
+
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if (seqUsedCmpKV != nullptr) {
+            actualSeqCmpKvlenGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedCmpKV);
+            hasActualSeqCmpKvlen = true;
+        }
+        if (cmpResidualKV != nullptr) {
+            cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKV);
+        }
+    }
+
     constInfo.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
         int64_t s2Size;
         if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-            GlobalTensor<int32_t> actualSeqLengthsKVGm;
-            actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
-            s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
-        } else if (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
-            GlobalTensor<int32_t> cuSeqlensOriKvGm;
-            cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
-            s2Size = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
+            s2Size = actualSeqOriKvlenGm.GetValue(bIdx);
         } else {
-            s2Size = constInfo.s2Size;
+            s2Size = GetSeqLen(bIdx, hasActualSeqOriKvlen, hasCuSeqlensOriKv,
+                actualSeqOriKvlenGm, cuSeqlensOriKvGm, constInfo.s2Size);
         }
-        int64_t s1Size;
-        if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
-            GlobalTensor<int32_t> cuSeqlensQGm;
-            cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
-            s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
-        } else {
-            s1Size = constInfo.s1Size;
-        }
-        if (s1Size > s2Size) {
+        int64_t s1Size = GetSeqLen(bIdx, hasActualSeqQlen, hasCuSeqlensQ,
+                actualSeqQlenGm, cuSeqlensQGm, constInfo.s1Size);
+        if (s1Size > s2Size || (LAYOUT_T == SMLA_LAYOUT::TND && hasActualSeqQlen)) {
             constInfo.needInit = 1;
             break;
         }
@@ -262,28 +312,6 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
     __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *workspace,
     const SparseFlashMlaTilingData *__restrict tiling, TPipe *tPipe)
 {
-    if (cuSeqlensQ != nullptr) {
-        cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
-    }
-    if (cuSeqlensOriKv != nullptr) {
-        cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
-    }
-    if (cuSeqlensCmpKv != nullptr) {
-        cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
-    }
-    if (sequsedQ != nullptr) {
-        actualSeqQlenGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
-    }
-    if (seqUsedOriKV != nullptr) {
-        actualSeqOriKvlenGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
-    }
-    if (seqUsedCmpKV != nullptr) {
-        actualSeqCmpKvlenGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedCmpKV);
-    }
-    if (cmpResidualKV != nullptr) {
-        cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKV);
-    }
-
     vecBlock.InitGlobalBuffer(oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ,
                               sinks, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     cubeBlock.InitCubeInput(oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ, cuSeqlensQ,
@@ -300,9 +328,9 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-    l1PBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
-    l1PBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
 
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
@@ -448,7 +476,8 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
         runParam.n2oIdx = 0;
         ComputeParamBatch<TEMPLATE_INTF_ARGS>(runParam, this->constInfo,
             this->cuSeqlensQGm, this->cuSeqlensOriKvGm, this->cuSeqlensCmpKvGm, this->actualSeqQlenGm,
-            this->actualSeqOriKvlenGm, this->actualSeqCmpKvlenGm, this->cmpResidualKvGm);
+            this->actualSeqOriKvlenGm, this->actualSeqCmpKvlenGm, this->cmpResidualKvGm,
+            this->hasActualSeqQlen, this->hasActualSeqOriKvlen, this->hasActualSeqCmpKvlen, this->hasCuSeqlensCmpKv);
         ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, lastBN, nextGs1Idx, gS1StartIdx);
 
         int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;

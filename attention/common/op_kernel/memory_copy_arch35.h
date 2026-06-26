@@ -71,12 +71,15 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
     }
 }
 
-template <LayOutTypeEnum LAYOUT, bool useDn = false>
+template <LayOutTypeEnum LAYOUT, bool useDn = false, bool isPerTokenHead = false>
 __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
 {
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
         return GmFormat::BNGSD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
+        if constexpr (isPerTokenHead) {
+            return GmFormat::NGT;
+        }
         if constexpr (!useDn) {
             return GmFormat::NTGD;
         } else {
@@ -106,6 +109,8 @@ __aicore__ inline constexpr GmFormat GetKeyScaleGmFormat()
         return GmFormat::PA_BnBsND;
     } else if constexpr (kvLayoutType == 2) { // KvLayoutType_PA_BNBD
         return GmFormat::PA_BnNBsD;
+    } else if constexpr (kvLayoutType == 4) { // KvLayoutType_PA_BNB1
+        return GmFormat::PA_BnNBs_KS;
     } else {
         return GmFormat::PA_NZ_K_SCALE;
     }

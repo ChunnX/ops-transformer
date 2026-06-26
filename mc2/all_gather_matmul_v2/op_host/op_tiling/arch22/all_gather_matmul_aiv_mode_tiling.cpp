@@ -125,12 +125,12 @@ void SetTilingParam(CoCTiling &cocTilingData, const std::map<int *, TilingValue>
 void DealTilingParamByBuffSize(CoCTiling &cocTilingData)
 {
     auto blockCount = MAX_BLOCK_COUNT;
-    int maxPeerMemPerRank = (LCAL_BUFF_BYTES - FLAG_BUFF_BYTES) / INPUT_DTYPE / cocTilingData.rankSize / blockCount;
-    int maxPValue = maxPeerMemPerRank / cocTilingData.m0 / cocTilingData.k0 / cocTilingData.kLoop;
+    int64_t maxPeerMemPerRank = (LCAL_BUFF_BYTES - FLAG_BUFF_BYTES) / INPUT_DTYPE / cocTilingData.rankSize / blockCount;
+    int64_t maxPValue = maxPeerMemPerRank / cocTilingData.m0 / cocTilingData.k0 / cocTilingData.kLoop;
     cocTilingData.pValue = ClampValue(cocTilingData.pValue, MIN_P_VALUE, maxPValue);
 
-    if (cocTilingData.m0 == DEFAULT_COL &&
-        cocTilingData.pValue * cocTilingData.m0 * cocTilingData.k0 * cocTilingData.kLoop >= maxPeerMemPerRank) {
+    if (cocTilingData.m0 == DEFAULT_COL && static_cast<int64_t>(cocTilingData.pValue) * cocTilingData.m0
+            * cocTilingData.k0 * cocTilingData.kLoop >= maxPeerMemPerRank) {
         cocTilingData.m0 = DEFAULT_ROW;
         cocTilingData.n0 = DEFAULT_COL;
         cocTilingData.mLoop = CeilDev(cocTilingData.m, cocTilingData.m0);
@@ -408,9 +408,9 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
     const auto& cocTiling = tilingData->cocTiling;
     bool hasAAlign = (!IsMatrixAligned(info.M, info.K, info.isTransposeX1, nElemAlign) && info.M != 1);
     bool hasBAlign = !IsMatrixAligned(info.K, info.N, info.isTransposeX2, nElemAlign);
-    int32_t mAlign = AlignUp(info.M, nElemAlign);
-    int32_t kAlign = AlignUp(info.K, nElemAlign);
-    int32_t nAlign = AlignUp(info.N, nElemAlign);
+    uint64_t mAlign = AlignUp<uint64_t>(info.M, nElemAlign);
+    uint64_t kAlign = AlignUp<uint64_t>(info.K, nElemAlign);
+    uint64_t nAlign = AlignUp<uint64_t>(info.N, nElemAlign);
 
     info.aAlignSize = 0;
     info.bAlignSize = 0;
@@ -418,19 +418,21 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
     info.hasBAlign = hasBAlign;
     if (info.hasAAlign) {
         if (elementSize != 0) {
-            info.aAlignSize =
-                static_cast<uint64_t>((info.isTransposeX1 ? info.K * mAlign : info.M * kAlign) * elementSize);
+            info.aAlignSize = (info.isTransposeX1 ?
+                static_cast<uint64_t>(info.K) * mAlign : static_cast<uint64_t>(info.M) * kAlign) * elementSize;
         } else {
-            info.aAlignSize = static_cast<uint64_t>((info.isTransposeX1 ? info.K * mAlign : info.M * kAlign) / 2);
+            info.aAlignSize = (info.isTransposeX1 ?
+                static_cast<uint64_t>(info.K) * mAlign : static_cast<uint64_t>(info.M) * kAlign) / 2;
         }
         userWorkSpaceSize += info.aAlignSize;
     }
     if (info.hasBAlign) {
         if (elementSize != 0) {
-            info.bAlignSize =
-                static_cast<uint64_t>((info.isTransposeX2 ? info.N * kAlign : info.K * nAlign) * elementSize);
+            info.bAlignSize = (info.isTransposeX2 ?
+                static_cast<uint64_t>(info.N) * kAlign : static_cast<uint64_t>(info.K) * nAlign) * elementSize;
         } else {
-            info.bAlignSize = static_cast<uint64_t>((info.isTransposeX2 ? info.N * kAlign : info.K * nAlign) / 2);
+            info.bAlignSize = (info.isTransposeX2 ?
+                static_cast<uint64_t>(info.N) * kAlign : static_cast<uint64_t>(info.K) * nAlign) / 2;
         }
         userWorkSpaceSize += info.bAlignSize;
     }
@@ -438,11 +440,11 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
     info.accumWorkSpacePingPong = false;
     if (info.quantFlag) {
         info.accumWorkSpacePingPong = (info.M >= MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue);
-        int32_t workspaceM = info.accumWorkSpacePingPong ? MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue : info.M;
-        userWorkSpaceSize += static_cast<uint64_t>(workspaceM * info.N * rankSize * sizeof(int32_t));
+        uint32_t workspaceM = info.accumWorkSpacePingPong ? MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue : info.M;
+        userWorkSpaceSize += static_cast<uint64_t>(workspaceM) * info.N * rankSize * sizeof(int32_t);
     }
     if (info.dequantType == DequantType::PER_TOKEN) {
-        userWorkSpaceSize += static_cast<uint64_t>(info.M * rankSize * sizeof(float32_t));
+        userWorkSpaceSize += static_cast<uint64_t>(info.M) * rankSize * sizeof(float32_t);
     }
 }
 

@@ -6,8 +6,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
@@ -166,7 +166,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
         <td>epWorldSize（int64_t）</td>
         <td>输入</td>
         <td>ep通信域的大小。</td>
-        <td><br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</td>
+        <td><br><term>Atlas A3系列产品</term>支持8、16、32、64、128；<br><term>Ascend 950DT</term>支持2、4、8、16、32、64。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -349,8 +349,8 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
 ## 约束说明
 
 - 通信引擎约束：
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持AICPU通信。
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
+  - <term>Ascend 950DT</term>：支持CCU通信。
 
 - 确定性计算：
   - aclnnAlltoAllvGroupedMatMul默认确定性实现。
@@ -378,7 +378,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
 - 本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 - 本示例代码以8卡为例，请根据实际环境卡数修改`EP_WORLD_SIZE`。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950DT</term>：
 
     ```cpp
     #include <thread>

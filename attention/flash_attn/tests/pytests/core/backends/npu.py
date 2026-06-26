@@ -1,8 +1,7 @@
-"""NPU 后端 — 按 npu_flash_attn.md 参数组调用。"""
+"""NPU 后端 — 按 npu_flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
 
 import numpy as np
 import torch
-import torch_npu
 from typing import Any, Dict
 
 from .base import Backend
@@ -12,6 +11,46 @@ try:
     _HAS_NPU = True
 except ImportError:
     _HAS_NPU = False
+
+try:
+    import torchair
+    from torchair.configs.compiler_config import CompilerConfig
+    _HAS_TORCHAIR = True
+except ImportError:
+    _HAS_TORCHAIR = False
+
+
+class FlashAttnGraphNetwork(torch.nn.Module):
+    """torch.compile 图模式包装器。"""
+
+    def forward(self, q, k, v, block_table, attn_mask, metadata,
+                cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
+                softmax_scale, mask_mode, win_left, win_right,
+                max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
+                return_softmax_lse, deterministic):
+        out, lse_out = npu_flash_attn(
+            q, k, v,
+            block_table=block_table,
+            sinks=None,
+            attn_mask=attn_mask,
+            metadata=metadata,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            softmax_scale=softmax_scale,
+            mask_mode=mask_mode,
+            win_left=win_left,
+            win_right=win_right,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_kv=max_seqlen_kv,
+            layout_q=layout_q,
+            layout_kv=layout_kv,
+            layout_out=layout_out,
+            return_softmax_lse=return_softmax_lse,
+            deterministic=deterministic,
+        )
+        return out, lse_out
 
 _AIC_CORE_NUM = 36
 _AIV_CORE_NUM = 72
@@ -89,11 +128,15 @@ def print_metadata(metadata):
 class NPUBackend(Backend):
     name = "npu"
 
-    def __init__(self, device_id: int = 0, meta_only: bool = False):
+    def __init__(self, device_id: int = 0, meta_only: bool = False, graph_mode: bool = False):
         self._device = torch.device(f"npu:{device_id}")
         self._meta_only = meta_only
+        self._graph_mode = graph_mode
+        self._graph_net = None
         if _HAS_NPU:
             torch.npu.set_device(device_id)
+        if graph_mode and not _HAS_TORCHAIR:
+            raise ImportError("graph_mode 需要 torchair，请先安装")
 
     @property
     def device(self) -> torch.device:
@@ -101,6 +144,25 @@ class NPUBackend(Backend):
 
     def is_available(self) -> bool:
         return _HAS_NPU
+
+    def clear_cache(self):
+        if _HAS_NPU:
+            torch.npu.empty_cache()
+
+    def _get_graph_net(self):
+        if self._graph_net is None:
+            torch._dynamo.reset()
+            net = FlashAttnGraphNetwork().npu()
+            config = CompilerConfig()
+            config.mode = "reduce-overhead"
+            config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
+            config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
+            config.experimental_config.frozen_parameter = True
+            config.experimental_config.tiling_schedule_optimize = True
+            config.experimental_config.topology_sorting_strategy = "StableRDFS"
+            npu_backend = torchair.get_npu_backend(compiler_config=config)
+            self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
+        return self._graph_net
 
     def compute(self, inputs: Dict[str, torch.Tensor],
                 params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -120,7 +182,31 @@ class NPUBackend(Backend):
             dummy_out = torch.zeros(bs, n1, s1, d, dtype=inputs["q"].dtype, device="cpu")
             return {"out": dummy_out, "lse": None}
 
-        out, lse = npu_flash_attn(inputs["q"], inputs["k"], inputs["v"],
-                                  metadata=metadata, **kernel_kwargs)
+        if self._graph_mode:
+            net = self._get_graph_net()
+            out, lse = net(
+                inputs["q"], inputs["k"], inputs["v"],
+                kernel_kwargs.get("block_table"),
+                kernel_kwargs.get("attn_mask"),
+                metadata,
+                kernel_kwargs.get("cu_seqlens_q"),
+                kernel_kwargs.get("cu_seqlens_kv"),
+                kernel_kwargs.get("seqused_q"),
+                kernel_kwargs.get("seqused_kv"),
+                kernel_kwargs.get("softmax_scale", 1.0),
+                kernel_kwargs.get("mask_mode", 0),
+                kernel_kwargs.get("win_left", -1),
+                kernel_kwargs.get("win_right", -1),
+                kernel_kwargs.get("max_seqlen_q", -1),
+                kernel_kwargs.get("max_seqlen_kv", -1),
+                kernel_kwargs.get("layout_q", "BNSD"),
+                kernel_kwargs.get("layout_kv", "BNSD"),
+                kernel_kwargs.get("layout_out", "BNSD"),
+                kernel_kwargs.get("return_softmax_lse", 0),
+                0,
+            )
+        else:
+            out, lse = npu_flash_attn(inputs["q"], inputs["k"], inputs["v"],
+                                      metadata=metadata, **kernel_kwargs)
         torch.npu.synchronize()
         return {"out": out, "lse": lse}

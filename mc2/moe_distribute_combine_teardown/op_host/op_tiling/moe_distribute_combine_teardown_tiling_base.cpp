@@ -291,10 +291,14 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckOptionalInputTensor
         OP_TILING_CHECK(tilingData_->moeDistributeCombineTeardownInfo.sharedExpertNum != 0,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName_, "sharedExpertNum", std::to_string(tilingData_->moeDistributeCombineTeardownInfo.sharedExpertNum).c_str(), "0 when sharedExpertX is not nullptr"),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(
-            CheckOneTensorDim("sharedExpertX", OPTIONINPUT, SHARED_EXPERT_X_INDEX, TWO_DIMS) != ge::GRAPH_SUCCESS &&
-                CheckOneTensorDim("sharedExpertX", OPTIONINPUT, SHARED_EXPERT_X_INDEX, THREE_DIMS) != ge::GRAPH_SUCCESS,
-            OP_LOGE(nodeName_, "sharedExpertX checkdim failed, must be 2 or 3 dim."), return ge::GRAPH_FAILED);
+        if (CheckOneTensorDim("sharedExpertX", OPTIONINPUT, SHARED_EXPERT_X_INDEX, TWO_DIMS) != ge::GRAPH_SUCCESS &&
+            CheckOneTensorDim("sharedExpertX", OPTIONINPUT, SHARED_EXPERT_X_INDEX, THREE_DIMS) != ge::GRAPH_SUCCESS) {
+            auto sharedExpertXShape = context_->GetOptionalInputShape(SHARED_EXPERT_X_INDEX);
+            std::string dimStr = std::to_string(sharedExpertXShape->GetStorageShape().GetDimNum()) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "sharedExpertX",
+                dimStr.c_str(), "2D or 3D");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -313,7 +317,8 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDim()
     OP_TILING_CHECK(CheckInputTensorDim() != ge::GRAPH_SUCCESS, OP_LOGE_FOR_INVALID_SHAPE(nodeName_, "input", "invalid", "valid"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckOptionalInputTensorDim() != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName_, "Optional input param shape is invalid."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "optional input", "shape invalid",
+                        "Optional input param shape validation failed"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckOutputTensorDim() != ge::GRAPH_SUCCESS, OP_LOGE_FOR_INVALID_SHAPE(nodeName_, "output", "invalid", "valid"),
                     return ge::GRAPH_FAILED);
@@ -338,38 +343,50 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
     const int64_t tempTokenMsgSize = ops::CeilAlign(
         static_cast<int64_t>(ops::CeilAlign(H, ALIGN_32) + ops::CeilAlign(H, ALIGN_8) / ALIGN_8 * sizeof(float)),
         ALIGN_512);
-    OP_TILING_CHECK(quantExpandXStorageShape->GetStorageShape().GetDim(1) != tempTokenMsgSize,
-                    OP_LOGE(nodeName_, "quantexpandx's dim1[%ld] should be equal to tokenMsgSize[%ld]",
-                            quantExpandXStorageShape->GetStorageShape().GetDim(1), tempTokenMsgSize),
-                    return ge::GRAPH_FAILED);
+    if (quantExpandXStorageShape->GetStorageShape().GetDim(1) != tempTokenMsgSize) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "quantExpandX",
+            (std::string("dim1=") + std::to_string(quantExpandXStorageShape->GetStorageShape().GetDim(1))).c_str(),
+            "quantExpandX dim1 should be equal to tokenMsgSize");
+        return ge::GRAPH_FAILED;
+    }
 
     // 校验xOut的H
-    OP_TILING_CHECK(xOutStorageShape->GetStorageShape().GetDim(1) != H,
-                    OP_LOGE(nodeName_, "expandx's dim1[%ld] should be equal to xout's dim1[%ld]", H,
-                            xOutStorageShape->GetStorageShape().GetDim(1)),
-                    return ge::GRAPH_FAILED);
+    if (xOutStorageShape->GetStorageShape().GetDim(1) != H) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "xOut",
+            (std::string("dim1=") + std::to_string(xOutStorageShape->GetStorageShape().GetDim(1))).c_str(),
+            "xOut dim1 should be equal to H");
+        return ge::GRAPH_FAILED;
+    }
 
     // 校验expertScales、xOut的Bs
-    OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDim(0) != Bs,
-                    OP_LOGE(nodeName_, "expertIds's dim0[%ld] should be equal to expertScales' dim0[%ld]", Bs,
-                            expertScalesStorageShape->GetStorageShape().GetDim(0)),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(xOutStorageShape->GetStorageShape().GetDim(0) != Bs,
-                    OP_LOGE(nodeName_, "expertIds's dim0[%ld] should be equal to xOut's dim0[%ld]", Bs,
-                            xOutStorageShape->GetStorageShape().GetDim(0)),
-                    return ge::GRAPH_FAILED);
+    if (expertScalesStorageShape->GetStorageShape().GetDim(0) != Bs) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expertScales",
+            (std::string("dim0=") + std::to_string(expertScalesStorageShape->GetStorageShape().GetDim(0))).c_str(),
+            "expertScales dim0 should be equal to Bs");
+        return ge::GRAPH_FAILED;
+    }
+    if (xOutStorageShape->GetStorageShape().GetDim(0) != Bs) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "xOut",
+            (std::string("dim0=") + std::to_string(xOutStorageShape->GetStorageShape().GetDim(0))).c_str(),
+            "xOut dim0 should be equal to Bs");
+        return ge::GRAPH_FAILED;
+    }
 
     // 校验expertScales的K
-    OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDim(1) != K,
-                    OP_LOGE(nodeName_, "expertIds's dim1[%ld] should be equal to expertscales' dim1[%ld]", K,
-                            expertScalesStorageShape->GetStorageShape().GetDim(1)),
-                    return ge::GRAPH_FAILED);
+    if (expertScalesStorageShape->GetStorageShape().GetDim(1) != K) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expertScales",
+            (std::string("dim1=") + std::to_string(expertScalesStorageShape->GetStorageShape().GetDim(1))).c_str(),
+            "expertScales dim1 should be equal to K");
+        return ge::GRAPH_FAILED;
+    }
 
     // 校验expandIdx的Bs*K
-    OP_TILING_CHECK(expandIdxStorageShape->GetStorageShape().GetDim(0) != Bs * K,
-                    OP_LOGE(nodeName_, "expandIdx's dim0[%ld] should be equal to Bs[%ld] * K[%ld]",
-                            expandIdxStorageShape->GetStorageShape().GetDim(0), Bs, K),
-                    return ge::GRAPH_FAILED);
+    if (expandIdxStorageShape->GetStorageShape().GetDim(0) != Bs * K) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expandIdx",
+            (std::string("dim0=") + std::to_string(expandIdxStorageShape->GetStorageShape().GetDim(0))).c_str(),
+            "expandIdx dim0 should be Bs * K");
+        return ge::GRAPH_FAILED;
+    }
 
     return CheckTensorShapeRelationSecondPart();
 }
@@ -387,47 +404,44 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
     const auto globalBs = tilingData_->moeDistributeCombineTeardownInfo.globalBs;
 
     // 补充Attr的globalBs校验
-    OP_TILING_CHECK((globalBs != 0) && ((globalBs < Bs * epWorldSize) || (globalBs > MAX_BS * epWorldSize)),
-                    OP_LOGE(nodeName_,
-                            "globalBs[%u] should be >= Bs * epWorldSize[%lu] and <= MaxBs * epWorldSize, or = 0",
-                            globalBs, Bs * epWorldSize),
-                    return ge::GRAPH_FAILED);
+    if ((globalBs != 0) && ((globalBs < Bs * epWorldSize) || (globalBs > MAX_BS * epWorldSize))) {
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "globalBs",
+            std::to_string(globalBs).c_str(),
+            (std::string("0 or [") + std::to_string(Bs * epWorldSize) + ", " +
+             std::to_string(MAX_BS * epWorldSize) + "]").c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     // 校验A的取值约束
     if (tilingData_->moeDistributeCombineTeardownInfo.epRankId < sharedExpertRankNum) { // 共享专家
         bool AisValid = (globalBs == 0) ? (A == Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum) :
                                           (A == globalBs * sharedExpertNum / sharedExpertRankNum);
-        OP_TILING_CHECK(
-            !AisValid,
-            OP_LOGE(nodeName_,
-                    "For shared expert, globalBs[%u], A[%ld] should be equal to Bs[%ld] * epWorldSize[%u] * "
-                    "sharedExpertNum[%u] / sharedExpertRankNum[%u] if globalBs =0, else equal to globalBs[%u] * "
-                    "sharedExpertNum[%u] / sharedExpertRankNum[%u]",
-                    globalBs, A, Bs, epWorldSize, sharedExpertNum, sharedExpertRankNum, globalBs, sharedExpertNum,
-                    sharedExpertRankNum),
-            return ge::GRAPH_FAILED);
+        if (!AisValid) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expandX",
+                (std::string("dim0(A)=") + std::to_string(A)).c_str(),
+                "For shared expert, A should equal Bs*epWorldSize*sharedExpertNum/sharedExpertRankNum or globalBs*sharedExpertNum/sharedExpertRankNum");
+            return ge::GRAPH_FAILED;
+        }
     } else { // MoE专家
         bool AisValid = (globalBs == 0) ?
                             (A >= (Bs * epWorldSize * std::min(static_cast<int64_t>(localMoeExpertNum), K))) :
                             (A >= (globalBs * std::min(static_cast<int64_t>(localMoeExpertNum), K)));
-        OP_TILING_CHECK(
-            !AisValid,
-            OP_LOGE(
-                nodeName_,
-                "For moe expert, globalBs[%u], if globalBs =0, A[%ld] should >= Bs[%ld] * epWorldSize[%u] * "
-                "min(localMoeExpertNum[%u], K[%ld]) / "
-                "sharedExpertRankNum[%u]; else A[%ld] should >= globalBs[%u] * min(localMoeExpertNum[%u], K[%ld]) / "
-                "sharedExpertRankNum[%u]",
-                globalBs, A, Bs, epWorldSize, localMoeExpertNum, K, sharedExpertRankNum, A, globalBs, localMoeExpertNum,
-                K, sharedExpertRankNum),
-            return ge::GRAPH_FAILED);
+        if (!AisValid) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expandX",
+                (std::string("dim0(A)=") + std::to_string(A)).c_str(),
+                "For moe expert, A should be in valid range");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     // 校验quantExpandX的A
-    OP_TILING_CHECK(context_->GetInputShape(QUANT_EXPAND_X_INDEX)->GetStorageShape().GetDim(0) != A,
-                    OP_LOGE(nodeName_, "expandx's dim0[%ld] should be equal to quantexpandx's dim0[%ld]", A,
-                            context_->GetInputShape(QUANT_EXPAND_X_INDEX)->GetStorageShape().GetDim(0)),
-                    return ge::GRAPH_FAILED);
+    if (context_->GetInputShape(QUANT_EXPAND_X_INDEX)->GetStorageShape().GetDim(0) != A) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expandX/quantExpandX",
+            (std::string("expandX dim0=") + std::to_string(A) +
+             ", quantExpandX dim0=" + std::to_string(context_->GetInputShape(QUANT_EXPAND_X_INDEX)->GetStorageShape().GetDim(0))).c_str(),
+            "Dim0 of expandX must be equal to dim0 of quantExpandX");
+        return ge::GRAPH_FAILED;
+    }
 
     return CheckTensorShapeRelationThirdPart();
 }
@@ -445,43 +459,55 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
     const auto epWorldSize = tilingData_->moeDistributeCombineTeardownInfo.epWorldSize;
 
     // 校验commCmdInfoSize的取值约束
-    OP_TILING_CHECK((commCmdInfoSize != (A + epWorldSize) * COMM_CMD_INFO_SIZE),
-                    OP_LOGE(nodeName_, "commCmdInfoSize[%ld] should be (A[%ld] + epWorldSize[%u]) * %u",
-                            commCmdInfoSize, A, epWorldSize, COMM_CMD_INFO_SIZE),
-                    return ge::GRAPH_FAILED);
+    if (commCmdInfoSize != (A + epWorldSize) * COMM_CMD_INFO_SIZE) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "commCmdInfo",
+            (std::string("dim0=") + std::to_string(commCmdInfoSize)).c_str(),
+            "commCmdInfoSize should be (A + epWorldSize) * 16");
+        return ge::GRAPH_FAILED;
+    }
 
     if (tilingData_->moeDistributeCombineTeardownInfo.isActiveMask) {
         auto xActiveMaskStorageShape = context_->GetOptionalInputShape(X_ACTIVE_MASK_INDEX); // Bs
-        OP_TILING_CHECK(xActiveMaskStorageShape->GetStorageShape().GetDim(0) != Bs,
-                        OP_LOGE(nodeName_, "xactivemask's dim0[%lu] should be equal to expertIds's dim0[%lu]",
-                                xActiveMaskStorageShape->GetStorageShape().GetDim(0), Bs),
-                        return ge::GRAPH_FAILED);
+        if (xActiveMaskStorageShape->GetStorageShape().GetDim(0) != Bs) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "xActiveMask",
+                (std::string("dim0=") + std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(0))).c_str(),
+                "xActiveMask dim0 should be equal to Bs");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     if (tilingData_->moeDistributeCombineTeardownInfo.hasSharedExpertX) {
         auto sharedExpertXStorageShape =
             context_->GetOptionalInputShape(SHARED_EXPERT_X_INDEX);                 // Bs, H 或 a, b, H (a * b = Bs)
         if (sharedExpertXStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) { // Bs, H
-            OP_TILING_CHECK(sharedExpertXStorageShape->GetStorageShape().GetDim(0) != Bs,
-                            OP_LOGE(nodeName_, "sharedExpertX's dim0[%ld] should be equal to Bs[%ld]",
-                                    sharedExpertXStorageShape->GetStorageShape().GetDim(0), Bs),
-                            return ge::GRAPH_FAILED);
-            OP_TILING_CHECK(sharedExpertXStorageShape->GetStorageShape().GetDim(1) != H,
-                            OP_LOGE(nodeName_, "sharedExpertX's dim1[%ld] should be equal to expandx's dim1[%ld]",
-                                    sharedExpertXStorageShape->GetStorageShape().GetDim(1), H),
-                            return ge::GRAPH_FAILED);
+            if (sharedExpertXStorageShape->GetStorageShape().GetDim(0) != Bs) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "sharedExpertX",
+                    (std::string("dim0=") + std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(0))).c_str(),
+                    "sharedExpertX dim0 should be equal to Bs");
+                return ge::GRAPH_FAILED;
+            }
+            if (sharedExpertXStorageShape->GetStorageShape().GetDim(1) != H) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "sharedExpertX",
+                    (std::string("dim1=") + std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(1))).c_str(),
+                    "sharedExpertX dim1 should be equal to H");
+                return ge::GRAPH_FAILED;
+            }
         } else if (sharedExpertXStorageShape->GetStorageShape().GetDimNum() == THREE_DIMS) { // a, b, H (a * b = Bs)
-            OP_TILING_CHECK(sharedExpertXStorageShape->GetStorageShape().GetDim(0) *
-                                    sharedExpertXStorageShape->GetStorageShape().GetDim(1) !=
-                                Bs,
-                            OP_LOGE(nodeName_, "sharedExpertX's dim0[%ld] * dim1[%ld] should be equal to Bs[%ld]",
-                                    sharedExpertXStorageShape->GetStorageShape().GetDim(0),
-                                    sharedExpertXStorageShape->GetStorageShape().GetDim(1), Bs),
-                            return ge::GRAPH_FAILED);
-            OP_TILING_CHECK(sharedExpertXStorageShape->GetStorageShape().GetDim(2) != H,
-                            OP_LOGE(nodeName_, "sharedExpertX's dim2[%ld] should be equal to expandx's dim1[%ld]",
-                                    sharedExpertXStorageShape->GetStorageShape().GetDim(2), H),
-                            return ge::GRAPH_FAILED);
+            if (sharedExpertXStorageShape->GetStorageShape().GetDim(0) *
+                    sharedExpertXStorageShape->GetStorageShape().GetDim(1) !=
+                Bs) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "sharedExpertX",
+                    (std::string("dim0=") + std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(0)) +
+                     ", dim1=" + std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(1))).c_str(),
+                    "sharedExpertX dim0 * dim1 should be equal to Bs");
+                return ge::GRAPH_FAILED;
+            }
+            if (sharedExpertXStorageShape->GetStorageShape().GetDim(2) != H) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "sharedExpertX",
+                    (std::string("dim2=") + std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(2))).c_str(),
+                    "sharedExpertX dim2 should be equal to H");
+                return ge::GRAPH_FAILED;
+            }
         }
     }
 
@@ -506,10 +532,12 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeSize()
     }
 
     auto expandIdxStorageShape = context_->GetInputShape(EXPAND_IDX_INDEX); // Bs * K
-    OP_TILING_CHECK((expandIdxStorageShape->GetStorageShape().GetDim(0) != Bs * K),
-                    OP_LOGE(nodeName_, "ExpandIdx should be BS * K [%ld], but got [%ld]", Bs * K,
-                            expandIdxStorageShape->GetStorageShape().GetDim(0)),
-                    return ge::GRAPH_FAILED);
+    if (expandIdxStorageShape->GetStorageShape().GetDim(0) != Bs * K) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expandIdx",
+            (std::string("dim0=") + std::to_string(expandIdxStorageShape->GetStorageShape().GetDim(0))).c_str(),
+            "expandIdx dim0 should be Bs * K");
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -574,13 +602,15 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorDataTypeSecon
         auto shardExpertXDesc = context_->GetOptionalInputDesc(SHARED_EXPERT_X_INDEX);
         OP_TILING_CHECK(shardExpertXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "shardExpertXDesc"),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(
-            (shardExpertXDesc->GetDataType() != expandXDesc->GetDataType()),
-            OP_LOGE(nodeName_,
-                    "shardExpertX dataType is invalid, dataType should be equal to expandX dataType %s, but is %s",
-                    Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
-                    Ops::Base::ToString(shardExpertXDesc->GetDataType()).c_str()),
-            return ge::GRAPH_FAILED);
+        if (shardExpertXDesc->GetDataType() != expandXDesc->GetDataType()) {
+            std::string paramMsg = "shardExpertX and expandX";
+            std::string dtypeMsg = Ops::Base::ToString(shardExpertXDesc->GetDataType()) + " and " +
+                                   Ops::Base::ToString(expandXDesc->GetDataType());
+            std::string reasonMsg = "The dtype of shardExpertX should be the same as the dtype of expandX";
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(nodeName_, paramMsg.c_str(),
+                dtypeMsg.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
 
     auto xOutDesc = context_->GetOutputDesc(X_OUT_INDEX);

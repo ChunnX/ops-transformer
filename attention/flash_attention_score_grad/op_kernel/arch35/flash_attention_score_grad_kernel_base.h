@@ -107,6 +107,9 @@ public:
         (CUBE_BASEM == CUBE_BASEN ? 0 : (CUBE_BASEM > CUBE_BASEN ? 2 : 1));
     constexpr static uint32_t DETER_CUBE_BASEM = CUBE_BASEM < CUBE_BASEN ? CUBE_BASEN : CUBE_BASEM;
     constexpr static uint32_t DETER_CUBE_BASEN = CUBE_BASEM > CUBE_BASEN ? CUBE_BASEM : CUBE_BASEN;
+    constexpr static uint32_t IS_NORMAL_SWIZZLE = !IS_TND && CUBE_BASEM == CUBE_BASEN && SPLIT_AXIS == BN2GS1S2 &&
+                                                  DETER_SPARSE_TYPE == NO_DETER;
+
 protected:
     TPipe *pipe;
  
@@ -136,16 +139,15 @@ protected:
     int64_t s2CvEnd = 0;
     int64_t actualCalcS1Token = 0; // 转换后实际计算使用的S1Token
     int64_t actualCalcS2Token = 0;
-    uint32_t sinkOptional = 0;
  
     // BN2S2模板判断是否有无效S2列
     int64_t curS2oIdx = -1;
     int64_t curS2InvalidTotalNum = 0;
 
     // BN2扩展模板判断S1轴有效始终位置
-    bool isLastS1Outer[2] = {0};
-    bool isFirstS1Outer[2] = {0};
-    Bn2MultiBlkInfo multiBlkInfo;
+    typename std::conditional<IS_BN2_MULTIBLK, bool[2], std::nullptr_t>::type isLastS1Outer;
+    typename std::conditional<IS_BN2_MULTIBLK, bool[2], std::nullptr_t>::type isFirstS1Outer;
+    typename std::conditional<IS_BN2_MULTIBLK, Bn2MultiBlkInfo, std::nullptr_t>::type multiBlkInfo;
  
     FagTilingType tilingData;
     FagConstInfo constInfo;
@@ -219,7 +221,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
                                dropInfo);
     vecBlock.InitUbBuffer();
     vecBlock.InitGlobalBuffer(value, dy, y, pseShift, dropMask, attenMask, softmaxMax, softmaxSum, deqScaleQ, deqScaleK,
-                              deqScaleV, deqScaleDy, dq, dk, dv, sink, dsink, workspace);
+                              deqScaleV, deqScaleDy, dq, dk, dv, dqRope, dkRope, sink, dsink, workspace);
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE) && IS_FP32_INPUT) {
         vecBlock.SetOldDeterFp32Param(constInfo);
     }
@@ -315,16 +317,18 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     }
 
     if constexpr (IS_ATTEN_MASK) {
-        attenMaskInfo.attenMaskShapeType = tilingData->s1s2BNGS1S2BaseParams.attenMaskShapeType;
-        attenMaskInfo.compressMode = tilingData->s1s2BNGS1S2BaseParams.attenMaskCompressMode;
-        attenMaskInfo.attenMaskS2Size = tilingData->s1s2BNGS1S2BaseParams.attenMaskS2Size;
         attenMaskInfo.preTokens = tilingData->s1s2BNGS1S2BaseParams.s1Token;
         attenMaskInfo.nextTokens = tilingData->s1s2BNGS1S2BaseParams.s2Token;
-        attenMaskInfo.prefixNAddr = prefixNAddr;
         attenMaskInfo.bandIndex = tilingData->s1s2BNGS1S2SplitCoreParams.bandIdx;
     }
- 
+
     if ASCEND_IS_AIV {
+        if constexpr (IS_ATTEN_MASK) {
+            attenMaskInfo.attenMaskShapeType = tilingData->s1s2BNGS1S2BaseParams.attenMaskShapeType;
+            attenMaskInfo.compressMode = tilingData->s1s2BNGS1S2BaseParams.attenMaskCompressMode;
+            attenMaskInfo.attenMaskS2Size = tilingData->s1s2BNGS1S2BaseParams.attenMaskS2Size;
+            attenMaskInfo.prefixNAddr = prefixNAddr;
+        }
         if constexpr (IS_PSE) {
             uint32_t pseShapeType = tilingData->s1s2BNGS1S2BaseParams.pseShapeType;
             pseInfo.pseBSize =
@@ -338,7 +342,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             pseInfo.qStartIdx = tilingData->s1s2BNGS1S2BaseParams.qStartIdx;
             pseInfo.kvStartIdx = tilingData->s1s2BNGS1S2BaseParams.kvStartIdx;
         }
-    
         if constexpr (IS_DROP) {
             dropInfo.seed = tilingData->s1s2BNGS1S2BaseParams.seed;
             dropInfo.offset = tilingData->s1s2BNGS1S2BaseParams.offset;
@@ -352,7 +355,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetSwizzleConstInfo()
 {
-    if constexpr (!IS_TND && DETER_SPARSE_TYPE == NO_DETER) {
+    if constexpr (IS_NORMAL_SWIZZLE) {
         if (!tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
             return;
         }
@@ -483,18 +486,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetConstInfo()
 {
-    constInfo.s1Token = tilingData->s1s2BNGS1S2BaseParams.s1Token;
-    constInfo.s2Token = tilingData->s1s2BNGS1S2BaseParams.s2Token;
-    constInfo.sparseMode = tilingData->s1s2BNGS1S2BaseParams.sparseMode;
     // split info
     constInfo.s1Outer = tilingData->s1s2BNGS1S2SplitCoreParams.s1Outer;
     constInfo.s1CvTail = tilingData->s1s2BNGS1S2SplitCoreParams.s1CvTail;
-    constInfo.s1Tail = tilingData->s1s2BNGS1S2SplitCoreParams.s1Tail;
     constInfo.s2Tail = tilingData->s1s2BNGS1S2SplitCoreParams.s2Tail;
     constInfo.s2Outer = tilingData->s1s2BNGS1S2SplitCoreParams.s2Outer;
- 
-    constInfo.commonConstInfo.s1BaseSize = CUBE_BASEM;
-    constInfo.commonConstInfo.s2BaseSize = CUBE_BASEN;
+
     constInfo.bSize = tilingData->s1s2BNGS1S2BaseParams.b;
     constInfo.n2Size = tilingData->s1s2BNGS1S2BaseParams.n2;
     constInfo.commonConstInfo.gSize = tilingData->s1s2BNGS1S2BaseParams.g;
@@ -503,7 +500,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     constInfo.commonConstInfo.dSize = tilingData->s1s2BNGS1S2BaseParams.d;
     constInfo.commonConstInfo.dSizeV = tilingData->s1s2BNGS1S2BaseParams.d1;
     constInfo.commonConstInfo.layoutType = tilingData->s1s2BNGS1S2BaseParams.layout;
- 
     constInfo.commonConstInfo.s1D = constInfo.commonConstInfo.s1Size * constInfo.commonConstInfo.dSize;
     constInfo.commonConstInfo.gS1D = constInfo.commonConstInfo.gSize * constInfo.commonConstInfo.s1D;
     constInfo.commonConstInfo.n2GS1D = constInfo.n2Size * constInfo.commonConstInfo.gS1D;
@@ -554,19 +550,16 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         constInfo.commonConstInfo.n2GDv = constInfo.commonConstInfo.n2GD;
         constInfo.commonConstInfo.bN2GDv = constInfo.commonConstInfo.bN2GD;
     }
- 
-    constInfo.scaleValue = tilingData->s1s2BNGS1S2BaseParams.scaleValue;
+    if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
+        constInfo.isSink = tilingData->s1s2BNGS1S2BaseParams.sinkOptional;
+        constInfo.s1SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s1SinkOuter;
+        constInfo.s2SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s2SinkOuter;
+    }
     constInfo.n2GS1oS2o = constInfo.commonConstInfo.n2G * constInfo.s1Outer * constInfo.s2Outer;
     constInfo.gS1oS2o = constInfo.commonConstInfo.gSize * constInfo.s1Outer * constInfo.s2Outer;
     constInfo.s1oS2o = constInfo.s1Outer * constInfo.s2Outer;
-
-    // sink
-    sinkOptional = tilingData->s1s2BNGS1S2BaseParams.sinkOptional;
-    constInfo.isSink = sinkOptional;
-    constInfo.s1SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s1SinkOuter;
-    constInfo.s2SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s2SinkOuter;
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
-        constInfo.deterConstInfo.noNeedDeter = static_cast<bool>(tilingData->s1s2BNGS1S2SplitCoreParams.noNeedDeter);
+        constInfo.deterConstInfo.noNeedDeter = static_cast<bool>(tilingData->baseDeterParam.noNeedDeter);
         constInfo.deterConstInfo.usedCubeCoreNum =
             static_cast<uint8_t>(tilingData->s1s2BNGS1S2SplitCoreParams.blockOuter);
         // 确定性计算中会用满V核
@@ -592,37 +585,22 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             constInfo.commonConstInfo.mm1Kb = constInfo.commonConstInfo.n2Dv;
             constInfo.mm2Ka = constInfo.commonConstInfo.n2GD;
             constInfo.mm2Kb = constInfo.commonConstInfo.n2D;
-            constInfo.deterConstInfo.deterN2Stride = constInfo.commonConstInfo.gD;
-            constInfo.deterConstInfo.deterGStride = constInfo.commonConstInfo.dSize;
-            constInfo.deterConstInfo.deterS1oStride = constInfo.commonConstInfo.n2GD;
         } else {
             if (constInfo.commonConstInfo.layoutType == BNGSD) {
                 constInfo.commonConstInfo.mm1Ka = constInfo.commonConstInfo.dSizeV;
                 constInfo.commonConstInfo.mm1Kb = constInfo.commonConstInfo.dSizeV;
                 constInfo.mm2Ka = constInfo.commonConstInfo.dSize;
                 constInfo.mm2Kb = constInfo.commonConstInfo.dSize;
-                constInfo.deterConstInfo.deterBStride = constInfo.commonConstInfo.n2GS1D;
-                constInfo.deterConstInfo.deterN2Stride = constInfo.commonConstInfo.gS1D;
-                constInfo.deterConstInfo.deterGStride = constInfo.commonConstInfo.s1D;
-                constInfo.deterConstInfo.deterS1oStride = constInfo.commonConstInfo.dSize;
             } else if (constInfo.commonConstInfo.layoutType == SBNGD) {
                 constInfo.commonConstInfo.mm1Ka = constInfo.commonConstInfo.bN2GDv;
                 constInfo.commonConstInfo.mm1Kb = constInfo.commonConstInfo.bN2Dv;
                 constInfo.mm2Ka = constInfo.commonConstInfo.bN2GD;
                 constInfo.mm2Kb = constInfo.commonConstInfo.bN2D;
-                constInfo.deterConstInfo.deterBStride = constInfo.commonConstInfo.n2GD;
-                constInfo.deterConstInfo.deterN2Stride = constInfo.commonConstInfo.gD;
-                constInfo.deterConstInfo.deterGStride = constInfo.commonConstInfo.dSize;
-                constInfo.deterConstInfo.deterS1oStride = constInfo.commonConstInfo.bN2GD;
             } else if (constInfo.commonConstInfo.layoutType == BSNGD) {
                 constInfo.commonConstInfo.mm1Ka = constInfo.commonConstInfo.n2GDv;
                 constInfo.commonConstInfo.mm1Kb = constInfo.commonConstInfo.n2Dv;
                 constInfo.mm2Ka = constInfo.commonConstInfo.n2GD;
                 constInfo.mm2Kb = constInfo.commonConstInfo.n2D;
-                constInfo.deterConstInfo.deterBStride = constInfo.commonConstInfo.n2GS1D;
-                constInfo.deterConstInfo.deterN2Stride = constInfo.commonConstInfo.gD;
-                constInfo.deterConstInfo.deterGStride = constInfo.commonConstInfo.dSize;
-                constInfo.deterConstInfo.deterS1oStride = constInfo.commonConstInfo.n2GD;
             }
         }
         constInfo.deterConstInfo.deterDqkSrcStride =
@@ -692,13 +670,21 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             } 
         }
     }
+    if constexpr (IS_ATTEN_MASK) {
+        constInfo.s1Token = tilingData->s1s2BNGS1S2BaseParams.s1Token;
+        constInfo.s2Token = tilingData->s1s2BNGS1S2BaseParams.s2Token;
+        constInfo.sparseMode = tilingData->s1s2BNGS1S2BaseParams.sparseMode;
+    }
     constInfo.commonConstInfo.subBlockIdx = vSubBlockIdx;
+    constInfo.scaleValue = tilingData->s1s2BNGS1S2BaseParams.scaleValue;
     constInfo.aicCoreNum = tilingData->s1s2BNGS1S2BaseParams.coreNum >> 1;
     constInfo.enablePreSfmg = ((uint32_t)dTemplateType > 64) && tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg;
     constInfo.dAlign16 = AlignTo16(constInfo.commonConstInfo.dSize);
     constInfo.dvAlign16 = AlignTo16(constInfo.commonConstInfo.dSizeV);
     uint32_t tmp = 0xFF7FFFFF;
     if ASCEND_IS_AIV {
+        constInfo.commonConstInfo.s1BaseSize = CUBE_BASEM;
+        constInfo.commonConstInfo.s2BaseSize = CUBE_BASEN;
         constInfo.attenMaskMinValue = *((float *)&tmp);
         constInfo.commonConstInfo.keepProb = tilingData->s1s2BNGS1S2BaseParams.keepProb;
         constInfo.sfmgMaxLoopSize = VECTOR_BASEM * VECTOR_BASEN / HEAD_DIM_ALIGN; // softmaxGrad每次最大能处理的m轴大小
@@ -706,7 +692,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         constInfo.tndMaxSumLayout = tilingData->s1s2BNGS1S2BaseParams.tndMaxSumLayout;
     }
     SetSwizzleConstInfo();
-    GetDerived()->SetUniqueConstInfo(constInfo);
 }
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -1058,8 +1043,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     }
 
     // BN2扩展模板专用
-    runInfo.isLastS1Outer = isLastS1Outer[taskId & 1];
-    runInfo.isFirstS1Outer = isFirstS1Outer[taskId & 1];
+    if constexpr (IS_BN2_MULTIBLK) {
+        runInfo.isLastS1Outer = isLastS1Outer[taskId & 1];
+        runInfo.isFirstS1Outer = isFirstS1Outer[taskId & 1];
+    }
 
     runInfo.isS2IdxNoChange = (lastS2oCvDimIdx == runInfo.s2oIdx && lastBdimIdx == runInfo.commonRunInfo.boIdx &&
                                lastN2dimIdx == runInfo.commonRunInfo.n2oIdx);
@@ -1068,7 +1055,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
         lastBdimIdx = runInfo.commonRunInfo.boIdx;
         lastN2dimIdx = runInfo.commonRunInfo.n2oIdx;
     }
-    if (unlikely(sinkOptional)) {
+    if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
         runInfo.sinkN1Idx = runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize
             + runInfo.commonRunInfo.goIdx;
         uint64_t s1oIdxSink = vSubBlockIdx == 1 ?
@@ -1078,7 +1065,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             runInfo.commonRunInfo.boIdx * constInfo.s1SinkOuter * constInfo.s2SinkOuter +
             s1oIdxSink * constInfo.s2SinkOuter + runInfo.s2oIdx;
     }
-    GetDerived()->SetUniqueRunInfo(runInfo);
 
     // preload next query and dy offset for l1 preload
     if (taskId == 0) {
@@ -1126,6 +1112,13 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             if constexpr (IS_ROPE) {
                 runInfo.queryOffsetWithRope = GetQueryOffset<false>(runInfo);
                 runInfo.keyOffsetWithRope = GetKeyOffset<false>(runInfo);
+                runInfo.queryOffsetWithRopeForMm12 = GetQueryOffset<true>(runInfo);
+                runInfo.keyOffsetWithRopeForMm12 = GetKeyOffset<true>(runInfo);
+                runInfo.commonRunInfo.qRopeOffset = GetQueryRopeOffset(runInfo);
+                runInfo.commonRunInfo.kRopeOffset = GetKeyRopeOffset(runInfo);
+            }
+        } else {
+            if constexpr (SPLIT_AXIS == BN2 && IS_ROPE) {
                 runInfo.queryOffsetWithRopeForMm12 = GetQueryOffset<true>(runInfo);
                 runInfo.keyOffsetWithRopeForMm12 = GetKeyOffset<true>(runInfo);
                 runInfo.commonRunInfo.qRopeOffset = GetQueryRopeOffset(runInfo);
@@ -1381,7 +1374,24 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBloc
         }
     } else {
         int64_t nextValidBlockInnerIdx = 0;
-        if (!tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
+        if constexpr (IS_NORMAL_SWIZZLE) {
+            if (tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
+                nextValidBlockInnerIdx = GetNextValidIdxForSwizzle(runInfo, curLoopIdx);
+                return nextValidBlockInnerIdx;
+            } else {
+                nextValidBlockInnerIdx = blockInnerIdx;
+                while (!IsValid(runInfo, taskId, nextValidBlockInnerIdx)) {
+                    if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
+                        return -1;
+                    }
+                    nextValidBlockInnerIdx++;
+                }
+                if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
+                    return -1;
+                }
+                return nextValidBlockInnerIdx;
+            }
+        } else {
             nextValidBlockInnerIdx = blockInnerIdx;
             while (!IsValid(runInfo, taskId, nextValidBlockInnerIdx)) {
                 if (nextValidBlockInnerIdx >= tilingData->s1s2BNGS1S2BlockNumList.blockEnds[cBlockIdx]) {
@@ -1393,13 +1403,6 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBloc
                 return -1;
             }
             return nextValidBlockInnerIdx;
-        } else {
-            if constexpr (!IS_TND && DETER_SPARSE_TYPE == NO_DETER) {
-                nextValidBlockInnerIdx = GetNextValidIdxForSwizzle(runInfo, curLoopIdx);
-                return nextValidBlockInnerIdx;
-            } else {
-                return -1;
-            }
         }
     }
 }

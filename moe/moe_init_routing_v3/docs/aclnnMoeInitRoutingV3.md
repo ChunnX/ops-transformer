@@ -241,6 +241,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。</li>
         <li>HIF8 PERTENSOR量化场景下（quantMode为7）,输入要求为1D的Tensor，shape为[1, ]。</li>
         <li>MXFP4量化场景下（quantMode为9）不输入。</li>
+        <li>FP8 PerGroup量化场景下（quantMode为4、5、14、15）不输入。</li>
         <li>FP8 PerBlock量化场景下（quantMode为11、12）不输入。</li>
         </ul></td>
       <td>FLOAT32、FLOAT8_E8M0</td>
@@ -338,6 +339,8 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <br>-1：表示不量化场景;
         <br>2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2;
         <br>3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN;
+        <br>4：表示FP8 PerGroup量化场景（GroupSize=128，RoundScale），expandedXOut量化到FLOAT8_E5M2;
+        <br>5：表示FP8 PerGroup量化场景（GroupSize=128，RoundScale），expandedXOut量化到FLOAT8_E4M3FN;
         <br>6：表示HIF8直转量化场景，expandedXOut量化到HIFLOAT8;
         <br>7：表示HIF8 PERTENSOR量化场景，expandedXOut按照pertensor模式量化到HIFLOAT8;
         <br>8：表示HIF8 PERTOKEN量化场景，expandedXOut按照pertoken模式量化到HIFLOAT8;
@@ -345,6 +348,8 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <br>11：表示FP8 PerBlock量化场景（BlockSize=128），expandedXOut量化到FLOAT8_E5M2，expandedScaleOut为FLOAT32三维布局;
         <br>12：表示FP8 PerBlock量化场景（BlockSize=128），expandedXOut量化到FLOAT8_E4M3FN，expandedScaleOut为FLOAT32三维布局;
         <br>13：表示INT4动态量化场景，expandedXOut量化到INT4;
+        <br>14：表示FP8 PerGroup量化场景（GroupSize=128，RoundScale+Amax），expandedXOut量化到FLOAT8_E5M2;
+        <br>15：表示FP8 PerGroup量化场景（GroupSize=128，RoundScale+Amax），expandedXOut量化到FLOAT8_E4M3FN;
       </td>
       <td>INT64</td>
       <td>-</td>
@@ -381,7 +386,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>Dropless场景shape为[NUM_ROWS * K, H]。</li>
         <li>Active场景shape为[min(activeNum, NUM_ROWS * K), H]。</li>
         <li>Drop/Pad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, H]。</li>
-        <li>非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为13且x数据类型为FLOAT32或BFLOAT16时数据类型支持INT4，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1，quantMode为11、12时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
+        <li>非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、4、14时数据类型支持FLOAT8_E5M2，quantMode为3、5、15时数据类型支持FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1，quantMode为11、12时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为13且x数据类型为FLOAT32或BFLOAT16时数据类型支持INT4。</li>
       </ul></td>
       <td>FLOAT16、BFLOAT16、FLOAT32、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1</td>
       <td>ND</td>
@@ -430,6 +435,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>按照PERTENSOR模式量化到HIFLOAT8场景下，expandedScaleOut不输出。</li>
         <li>按照PERTOKEN模式量化到HIFLOAT8场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, 1]。</li>
         <li>MXFP4量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M, 2]，其中M=CeilDiv(H, 64)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li>
+        <li>FP8 PerGroup量化场景下（quantMode为4、5、14、15），输出FLOAT32类型，Shape为[NUM_ROWS*K, CeilDiv(H,128)]，NUM_ROWS*K的前availableIdxNum行为有效数据。</li>
         <li>FP8 PerBlock量化场景下（quantMode为11、12），输出FLOAT32类型，Shape为[NUM_ROWS*K, CeilDiv(H,256), 2]，NUM_ROWS*K的前availableIdxNum行为有效数据。</li></ul>
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
@@ -505,7 +511,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
     - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
-    - dropPadMode支持取值为0和1，DropPad模式（dropPadMode=1）具有如下额外约束：<ul><li>rowIdxType仅支持取值为0（gather索引）。</li><li>activeExpertRangeOptional必须为[0, expertNum]。</li><li>quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。</li></ul>
+    - dropPadMode支持取值为0和1，DropPad模式（dropPadMode=1）具有如下额外约束：<ul><li>rowIdxType仅支持取值为0（gather索引）。</li><li>activeExpertRangeOptional必须为[0, expertNum]。</li><li>expertTokensNumType仅支持取值为1（count模式）。</li><li>quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。</li></ul>
     - expertTokensNumType仅支持取值0、1、2。
     - expertTokensNumFlag仅支持取值为true。
   - <term>Ascend 950PR/Ascend 950DT</term>支持quantMode为13的INT4动态量化场景，需同时满足：

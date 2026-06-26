@@ -35,23 +35,17 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+#include "hccl_context_holder.h"
+#include "mc2_moe_context_holder.h"
 #define FLOAT_OVERFLOW_MODE_CTRL 60
-namespace MoeDistributeDispatchV2FullMeshImpl {
-constexpr uint8_t BUFFER_NUM = 2;        // 多buf
-constexpr uint32_t STATE_OFFSET = 32U;  // 状态空间偏移地址
-constexpr uint32_t BITS_PER_BYTE = 8U;
-constexpr uint8_t COMM_NUM = 2;  // 通信域大小
-constexpr uint8_t COMM_EP_IDX = 0;
-constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL; // 64 + 320
+namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL; // 384 * 2，0/1标识区偏移
 constexpr uint64_t CUMSUM_CAL_OFFSET = 868UL * 1024UL; // 768 + 100
 constexpr uint64_t CUMSUM_FLAG_OFFSET = 876UL * 1024UL; // 868 + 8
-constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL;  // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
 constexpr uint32_t SYNC_OFFSET = 3U * 1024U; // 核间软同步偏移地址
-constexpr uint32_t EXPAND_IDX_INFO = 3U;  // expand_idx是按3元组保存信息，分别为rank_id token_id topk_id
-constexpr int32_t  MAX_UB_SIZE = 190 * 1024;
+constexpr int32_t  FULL_MESH_MAX_UB_SIZE = 190 * 1024;
 constexpr uint32_t COMPARE_COUNT_PER_BLOCK = 256 / sizeof(int32_t);
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t SPLIT_BLOCK_DATA_COUNT = 120U; // 120 = SPLIT_BLOCK_DATA_SIZE / sizeof(float)
@@ -63,27 +57,20 @@ constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
 #else
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
 #endif
-constexpr uint32_t RANK_LIST_NUM = 2U;
-constexpr uint32_t ELASTIC_INFO_OFFSET = 4U;
 constexpr uint32_t RUNPOS_CALCUMSUM = 2U;
 constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
-constexpr uint8_t EP_WORLD_SIZE_IDX = 1;
-constexpr uint8_t SHARE_RANK_NUM_IDX = 2;
-constexpr uint8_t MOE_NUM_IDX = 3;
 constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U;
-constexpr uint64_t CYCLES_PER_US = 50UL;
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
-constexpr uint32_t FLAG_OFFSET = STATE_OFFSET / sizeof(float);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
-#define TemplateMC2TypeFullmeshClass typename XType, typename ExpandXOutType, int32_t QuantMode, \
-                                     bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateMC2TypeFullmeshFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+#define TemplateMC2TypeFullmeshClass typename ContextHolder, typename XType, typename ExpandXOutType, \
+                                     int32_t QuantMode, bool IsSmoothScaleExist
+#define TemplateMC2TypeFullmeshFunc \
+    ContextHolder, XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
 using namespace AscendC;
-using namespace Mc2Kernel;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Aclnn;
 template <TemplateMC2TypeFullmeshClass>
@@ -107,7 +94,7 @@ public:
     __aicore__ inline MoeDistributeDispatchV2FullMesh() {};
     __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo,
                                 GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
-                                GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
+                                GM_ADDR sendCountsOut,
                                 GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -161,19 +148,12 @@ private:
     __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        if (isMc2Context_) {
-            return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
-        }
-        return GetBaseWindAddrByRankId(winContext_[COMM_EP_IDX], rankId, epRankIdOriginal_) + winDataSizeOffset_;
+        return ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_) + winDataSizeOffset_;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        if (isMc2Context_) {
-            return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
-        }
-        return GetBaseWindStateAddrByRankId(winContext_[COMM_EP_IDX], rankId, epRankIdOriginal_)
-            + dataState_ * WIN_STATE_OFFSET;
+        return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + dataState_ * WIN_STATE_OFFSET;
     }
 
     TPipe *tpipe_{nullptr};
@@ -184,7 +164,6 @@ private:
     GlobalTensor<int64_t> expertTokenNumsOutGMTensor_;
     GlobalTensor<float> windowInstatusFp32Tensor_;
     GlobalTensor<bool> xActiveMaskGMTensor_;
-    GlobalTensor<XOutType> winTpGatherOutGMTensor_;
     GlobalTensor<int32_t> expandIdxGMTensor_;
     GlobalTensor<int32_t> elasticInfoGMTensor_;
     GlobalTensor<int32_t> performanceInfoGMTensor_;
@@ -254,7 +233,6 @@ private:
     TBuf<> calEndBuf_;
     GM_ADDR expandXOutGM_;
     GM_ADDR sendCountsOutGM_;
-    GM_ADDR sendTpCountOutGM_;
     GM_ADDR statusSpaceGM_;
     GM_ADDR windowGM_;
     GM_ADDR recvCntWorkspaceGM_;
@@ -307,9 +285,7 @@ private:
     bool isPerformanceFlag_ = false;
     bool isShareExpertRankFlag_ = false;
     bool isScalingDownFlag_ = false;
-    bool isMc2Context_ = false;
     uint64_t totalWinSize_{0};
-    uint32_t gatherCount_{0};
     uint32_t expertTokenNumsType_{1};
     int32_t expertIdsCnt_{0};
     int32_t tokenQuantAlign_{0};
@@ -336,14 +312,15 @@ private:
     uint32_t copyInAxisH_{0};
     uint32_t copyOutAxisH_{0};
     uint64_t totalUbSize_{0};
-    __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
-    __gm__ Mc2MoeContext* mc2Context_{nullptr};
+
+    // 统一上下文持有器：v2 走 HcclOpParam，v3 走 Mc2MoeContext
+    ContextHolder ctx_;
 
     DataCopyParams hCopyParams_;
     DataCopyParams dataStateParams_{1U, sizeof(uint32_t), 0U, 0U};
 
     MoeDistributeDispatchV2Quant<XInType, ExpandXOutType,
-                XOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather> quantInst_;
+                XOutType, QuantMode, IsSmoothScaleExist> quantInst_;
 };
 
 template <TemplateMC2TypeFullmeshClass>
@@ -457,17 +434,9 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SetDataStatus()
 {
-    uint32_t epRankIdHccl{0};
-    uint32_t epWorldSizeHccl{0};
-    if (isMc2Context_) {
-        epRankIdHccl = mc2Context_->epRankId;
-        statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankIdHccl]);
-        epWorldSizeHccl = epWorldSizeOriginal_;
-    } else {
-        statusDataSpaceGM_ = GetStatusDataSpaceGm(winContext_[COMM_EP_IDX]);
-        epRankIdHccl = Mc2Kernel::GetRankId(winContext_[COMM_EP_IDX]);
-        epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext_[COMM_EP_IDX]);
-    }
+    statusDataSpaceGM_ = ctx_.GetStatusDataSpaceGm();
+    uint32_t epRankIdHccl = ctx_.GetEpRankId();
+    uint32_t epWorldSizeHccl = ctx_.GetEpWorldSize();
     selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGM_ + FLAG_FIELD_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
@@ -485,7 +454,7 @@ template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, 
     GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
     GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
-    GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
+    GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A3不支持MX量化，无需使能饱和模式
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
@@ -496,15 +465,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 #endif
     aivId_ = GetBlockIdx();
     totalWinSize_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    if (tilingData->moeDistributeDispatchV2Info.isMc2Context) {
-        isMc2Context_ = true;
-        // Using Mc2Context instead of hccl context
-        mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
-    } else {
-        winContext_[COMM_EP_IDX] = (__gm__ HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-        auto realWinSize = GetWinSize(winContext_[COMM_EP_IDX]);
-        CheckWindowSize(totalWinSize_, realWinSize, tpipe_, expandXOut);
-    }
+    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSize_, tpipe_,
+                      expandXOut);
     xGMTensor_.SetGlobalBuffer((__gm__ XInType*)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool*)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertIds);
@@ -520,7 +482,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SetDataStatus();
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut;
-    sendTpCountOutGM_ = tpSendCountsOut;
     recvCntWorkspaceGM_ = workspaceGM;
     statusSpaceGM_ = GetWindStateAddrByRankId(epRankIdOriginal_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_));
@@ -1703,7 +1664,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     tpipe_->InitBuffer(expertLeftBuf, expInfoSize);
     tpipe_->InitBuffer(flagMaskBuf, BUFFER_NUM * UB_ALIGN);  // max CompareScalar
     tpipe_->InitBuffer(cleanUpBuf, blockCntPerToken_ * UB_ALIGN);
-    tBufRealSize_ = MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
+    tBufRealSize_ = FULL_MESH_MAX_UB_SIZE - (UB_ALIGN + rscvNumAlign + 2 * aivUsedCumSum_ * UB_ALIGN) -
         (expInfoSize * 3) - BUFFER_NUM * UB_ALIGN - blockCntPerToken_ * UB_ALIGN; // 3为expInfoSize大小buffer申请个数
     tpipe_->InitBuffer(tBuf, tBufRealSize_); // 其余buffer空间统一申请
     expertMapTensor_ = expertMapBuf.Get<uint32_t>();
@@ -1970,5 +1931,5 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     }
 }
 
-} // MoeDistributeDispatchV2FullMeshImpl
+} // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_H

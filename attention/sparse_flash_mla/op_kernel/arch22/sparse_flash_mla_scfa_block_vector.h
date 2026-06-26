@@ -120,6 +120,7 @@ private:
     static constexpr bool FLASH_DECODE = SMLAT::flashDecode;
     static constexpr SMLA_LAYOUT LAYOUT_T = SMLAT::layout;
     static constexpr SMLA_LAYOUT KV_LAYOUT_T = SMLAT::kvLayout;
+    static constexpr bool HEAD_RATIO_ONE = SMLAT::headRatioOne;
 
     static constexpr uint64_t MERGE_CACHE_GM_BUF_NUM = 3;
     static constexpr uint64_t SYNC_INPUT_BUF1_FLAG = 2;
@@ -504,7 +505,9 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::ProcessVec1SingleBuf(const RunInf
     uint32_t loopCount = (mSplitInfo.vecDealM + mSplitSize - 1) / mSplitSize;
     uint32_t tailSplitSize = mSplitInfo.vecDealM - (loopCount - 1) * mSplitSize;
 
-    SliceAndContactSinksValue((mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) % constInfo.qHeadNum,
+    uint32_t sinkHeadIdx = (info.n2IdxReal * constInfo.gSize + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) %
+                           constInfo.qHeadNum;
+    SliceAndContactSinksValue(sinkHeadIdx,
                               mSplitInfo.vecDealM);
 
     for (uint32_t i = 0, dealSize = mSplitSize; i < loopCount; i++) {
@@ -545,10 +548,17 @@ __aicore__ inline int64_t SMLAVectorBlock<SMLAT>::GetKeyGmOffset(int64_t realS2I
                           blkTableOffset * static_cast<int64_t>(constInfo.kvHeadNum) * static_cast<int64_t>(constInfo.headDim);
 
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
-        realKeyGmOffset = runInfo.bIdx * constInfo.kvSeqSize / constInfo.cmpRatio * constInfo.kvHeadNum + realS2Idx * constInfo.kvHeadNum;
+        int64_t batchStride = (constInfo.cmpKvStride0 == 0) ?
+            static_cast<int64_t>(constInfo.cmpSeqSize) * static_cast<int64_t>(constInfo.kvHeadNum) *
+                static_cast<int64_t>(constInfo.headDim) :
+            static_cast<int64_t>(constInfo.cmpKvStride0);
+        realKeyGmOffset = static_cast<int64_t>(runInfo.bIdx) * batchStride +
+            realS2Idx * static_cast<int64_t>(constInfo.kvHeadNum) * static_cast<int64_t>(constInfo.headDim) +
+            static_cast<int64_t>(runInfo.n2Idx) * static_cast<int64_t>(constInfo.headDim);
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
-        realKeyGmOffset = (runInfo.tensorCmpBOffset + realS2Idx * constInfo.kvHeadNum * constInfo.headDim) /
-                           constInfo.headDim;
+        realKeyGmOffset = runInfo.tensorCmpBOffset +
+            realS2Idx * static_cast<int64_t>(constInfo.kvHeadNum) * static_cast<int64_t>(constInfo.headDim) +
+            static_cast<int64_t>(runInfo.n2Idx) * static_cast<int64_t>(constInfo.headDim);
     }
     return realKeyGmOffset;
 }
@@ -568,16 +578,10 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInSingleKv(int64_t &mte2Size,
     intriParams.blockCount = 1;
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
-    DataCopyPadExtParams<KV_T> padParams;
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        DataCopyPad(
-            kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim],
-            cmpKvGm_[keyBNBOffset], intriParams, padParams);
-    } else {
-        DataCopyPad(
-            kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim],
-            cmpKvGm_[keyBNBOffset * constInfo.headDim], intriParams, padParams);
-    }
+    DataCopyPadExtParams<KV_T> padParams{false, 0, 0, 0};
+    DataCopyPad(
+        kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim],
+        cmpKvGm_[keyBNBOffset], intriParams, padParams);
     mte2Size += validS2Count;
 }
 
@@ -594,18 +598,8 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInKv(int64_t &mte2Size, int64
     }
 
     int64_t keySrcStride = 0;
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        int64_t blkTableSrcStride =
-        ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-        (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize * constInfo.headDim);
-        keySrcStride = blkTableSrcStride * sizeof(KV_T);
-    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::BSND) {
-        keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                        (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.headDim * sizeof(KV_T);
-    } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
-        keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                        (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.headDim * sizeof(KV_T);
-    }
+    keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
+                    (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize * constInfo.headDim) * sizeof(KV_T);
     if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0 ||
         realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
         realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit)) {
@@ -619,21 +613,15 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::CopyInKv(int64_t &mte2Size, int64
         intriParams.blockCount = (keyOffset1 >= 0) + (keyOffset2 >= 0);
         intriParams.dstStride = 0;
         intriParams.srcStride = keySrcStride;
-        DataCopyPadExtParams<KV_T> padParams;
+        DataCopyPadExtParams<KV_T> padParams{false, 0, 0, 0};
 
         int64_t startGmOffset = keyOffset1 > -1 ? keyOffset1 : keyOffset2;
         if (keyOffset2 > -1 && keyOffset2 < keyOffset1) {
             startGmOffset = keyOffset2;
         }
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-            DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
-                              (mte2Size - mte3Size) * constInfo.headDim],
-                    cmpKvGm_[startGmOffset], intriParams, padParams);
-        } else {
-            DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
-                              (mte2Size - mte3Size) * constInfo.headDim],
-                    cmpKvGm_[startGmOffset * constInfo.headDim], intriParams, padParams);
-        }
+        DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
+                          (mte2Size - mte3Size) * constInfo.headDim],
+                cmpKvGm_[startGmOffset], intriParams, padParams);
         mte2Size += ((keyOffset1 > -1) + (keyOffset2 > -1)) * constInfo.sparseBlockSize;
     }
 }
@@ -725,7 +713,11 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::ProcessVec1L(const RunInfo &info)
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
 
-        CrossCoreWaitFlag(constInfo.syncC1V1);
+        if constexpr (HEAD_RATIO_ONE) {
+            CrossCoreWaitFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC1V1);
+        } else {
+            CrossCoreWaitFlag(constInfo.syncC1V1);
+        }
         // vec1 compute
         ProcessVec1SingleBuf(info, mSplitInfo);
         CrossCoreSetFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
@@ -771,7 +763,11 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::ProcessVec2L(const RunInfo &info)
             mSplitInfo.vecStartM = mSplitInfo.vecDealM;
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
-        CrossCoreWaitFlag(constInfo.syncC2V2);
+        if constexpr (HEAD_RATIO_ONE) {
+            CrossCoreWaitFlag<ConstInfo::SMLA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V2);
+        } else {
+            CrossCoreWaitFlag(constInfo.syncC2V2);
+        }
         ProcessVec2SingleBuf(info, mSplitInfo);
     }
 }
@@ -899,56 +895,114 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::DealBmm2ResBaseBlock(const RunInf
     uint32_t inOutBaseOffset = mStart * columnCount;
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
 
-    // 除第一个循环外，均需要更新中间计算结果
-    if (!info.isFirstSInnerLoop) {
-        event_t eventIdMte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-        SetFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
-        WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
+    if constexpr (!HEAD_RATIO_ONE) {
+        if (!info.isFirstSInnerLoop) {
+            event_t eventIdMte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+            SetFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
+            WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
 
-        LocalTensor<MM2_OUT_T> bmm2ResPreUb = inputBuff1.Get<MM2_OUT_T>();
-        bmm2ResPreUb = bmm2ResPreUb[pingpongFlag * INPUT1_BUFFER_OFFSET / sizeof(MM2_OUT_T)];
-        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
+            LocalTensor<MM2_OUT_T> bmm2ResPreUb = inputBuff1.Get<MM2_OUT_T>();
+            bmm2ResPreUb = bmm2ResPreUb[pingpongFlag * INPUT1_BUFFER_OFFSET / sizeof(MM2_OUT_T)];
+            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
 
-        uint64_t vec2ResGmOffset = ((info.loop - 1) % constInfo.preLoadNum) * constInfo.bmm2ResUbSize + inOutBaseOffset;
-        DataCopy(bmm2ResPreUb, vec2ResGm[vec2ResGmOffset], vec2ComputeSize);
+            uint64_t vec2ResGmOffset =
+                ((info.loop - 1) % constInfo.preLoadNum) * constInfo.bmm2ResUbSize + inOutBaseOffset;
+            DataCopy(bmm2ResPreUb, vec2ResGm[vec2ResGmOffset], vec2ComputeSize);
 
-        SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
+            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 
-        uint32_t idx = info.loop % (constInfo.preLoadNum);
-        LocalTensor<T> expUb = v0ValidSizeBuff.Get<T>()[384]; // sumUb用临时内存 16 * 32B  = 512B
-        Brcb(expUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset], (dealRowCount + 7) / 8,
-             {1, 8});
-        PipeBarrier<PIPE_V>();
+            uint32_t idx = info.loop % (constInfo.preLoadNum);
+            LocalTensor<T> expUb = v0ValidSizeBuff.Get<T>()[384];
+            Brcb(expUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset],
+                 (dealRowCount + 7) / 8, {1, 8});
+            PipeBarrier<PIPE_V>();
 
-        RowMuls(bmm2ResPreUb, bmm2ResPreUb, expUb, dealRowCount, columnCount, actualColumnCount);
-        AscendC::PipeBarrier<PIPE_V>();
-        Add(bmm2ResUb, bmm2ResUb, bmm2ResPreUb, vec2ComputeSize);
-        AscendC::PipeBarrier<PIPE_V>();
+            RowMuls(bmm2ResPreUb, bmm2ResPreUb, expUb, dealRowCount, columnCount, actualColumnCount);
+            AscendC::PipeBarrier<PIPE_V>();
+            Add(bmm2ResUb, bmm2ResUb, bmm2ResPreUb, vec2ComputeSize);
+            AscendC::PipeBarrier<PIPE_V>();
 
-        SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
-        pingpongFlag ^= 1; // pingpong 0 1 切换
-    }
+            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
+            pingpongFlag ^= 1;
+        }
 
-    // 最后一次输出计算结果，否则将中间结果暂存至workspace
-    if (info.isLastS2Loop) {
-        uint32_t idx = info.loop % (constInfo.preLoadNum);
-        LocalTensor<T> tmpSumUb = v0ValidSizeBuff.Get<T>()[384]; // sumUb用临时内存 16 * 32B  = 512B
-        Brcb(tmpSumUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset], (dealRowCount + 7) / 8,
-             {1, 8});
-        PipeBarrier<PIPE_V>();
-        RowDivs(bmm2ResUb, bmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
-        PipeBarrier<PIPE_V>();
-        Bmm2ResCopyOut(info, bmm2ResUb, mStart, dealRowCount, columnCount, actualColumnCount);
+        if (info.isLastS2Loop) {
+            uint32_t idx = info.loop % (constInfo.preLoadNum);
+            LocalTensor<T> tmpSumUb = v0ValidSizeBuff.Get<T>()[384];
+            Brcb(tmpSumUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset],
+                 (dealRowCount + 7) / 8, {1, 8});
+            PipeBarrier<PIPE_V>();
+            RowDivs(bmm2ResUb, bmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
+            PipeBarrier<PIPE_V>();
+            Bmm2ResCopyOut(info, bmm2ResUb, mStart, dealRowCount, columnCount, actualColumnCount);
+        } else {
+            LocalTensor<T> outUb = outputBuff1.Get<T>();
+            WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+            DataCopy(outUb, bmm2ResUb, dealRowCount * columnCount);
+            SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+            WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+            uint64_t vec2ResGmOffset =
+                (info.loop % constInfo.preLoadNum) * constInfo.bmm2ResUbSize + inOutBaseOffset;
+            DataCopy(vec2ResGm[vec2ResGmOffset], outUb, vec2ComputeSize);
+            SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+        }
     } else {
-        LocalTensor<T> outUb = outputBuff1.Get<T>();
-        WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
-        DataCopy(outUb, bmm2ResUb, dealRowCount * columnCount);
-        SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
-        uint64_t vec2ResGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.bmm2ResUbSize + inOutBaseOffset;
-        DataCopy(vec2ResGm[vec2ResGmOffset], outUb, vec2ComputeSize);
-        SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+        // 除第一个循环外，均需要更新中间计算结果
+        if (!info.isFirstSInnerLoop) {
+            event_t eventIdMte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+            SetFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
+            WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte2WaitMte3);
+
+            LocalTensor<MM2_OUT_T> bmm2ResPreUb = inputBuff1.Get<MM2_OUT_T>();
+            bmm2ResPreUb = bmm2ResPreUb[pingpongFlag * INPUT1_BUFFER_OFFSET / sizeof(MM2_OUT_T)];
+            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
+
+            uint64_t accumGmOffset =
+                ((info.loop - 1) % constInfo.preLoadNum) * constInfo.bmm2ResUbSize + inOutBaseOffset;
+            DataCopy(bmm2ResPreUb, mm2ResGm[accumGmOffset], vec2ComputeSize);
+
+            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
+
+            uint32_t idx = info.loop % (constInfo.preLoadNum);
+            LocalTensor<T> expUb = v0ValidSizeBuff.Get<T>()[384]; // sumUb用临时内存 16 * 32B  = 512B
+            Brcb(expUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset],
+                (dealRowCount + 7) / 8, {1, 8});
+            PipeBarrier<PIPE_V>();
+
+            RowMuls(bmm2ResPreUb, bmm2ResPreUb, expUb, dealRowCount, columnCount, actualColumnCount);
+            AscendC::PipeBarrier<PIPE_V>();
+            Add(bmm2ResUb, bmm2ResUb, bmm2ResPreUb, vec2ComputeSize);
+            AscendC::PipeBarrier<PIPE_V>();
+
+            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
+            pingpongFlag ^= 1; // pingpong 0 1 切换
+        }
+
+        // 最后一次输出计算结果，否则将中间结果暂存至workspace
+        if (info.isLastS2Loop) {
+            uint32_t idx = info.loop % (constInfo.preLoadNum);
+            LocalTensor<T> tmpSumUb = v0ValidSizeBuff.Get<T>()[384]; // sumUb用临时内存 16 * 32B  = 512B
+            Brcb(tmpSumUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset],
+                (dealRowCount + 7) / 8, {1, 8});
+            PipeBarrier<PIPE_V>();
+            RowDivs(bmm2ResUb, bmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
+            PipeBarrier<PIPE_V>();
+            Bmm2ResCopyOut(info, bmm2ResUb, mStart, dealRowCount, columnCount, actualColumnCount);
+        } else if (!info.isFirstSInnerLoop) {
+            LocalTensor<T> outUb = outputBuff1.Get<T>();
+            WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+            DataCopy(outUb, bmm2ResUb, dealRowCount * columnCount);
+            SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+            WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+            uint64_t accumGmOffset =
+                (info.loop % constInfo.preLoadNum) * constInfo.bmm2ResUbSize + inOutBaseOffset;
+            DataCopy(mm2ResGm[accumGmOffset], outUb, vec2ComputeSize);
+            SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+            SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+        }
     }
 }
 

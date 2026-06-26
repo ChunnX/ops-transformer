@@ -1022,19 +1022,16 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     }
     // get valid range
     s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
-    s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
-
     s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / constInfo.s2BaseSize;
-    s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / constInfo.s2BaseSize + 1U;
-
-    // 4. Calc curS2Start, curS2End
     curS2Start = s2StartWithSparse;
-    curS2End = s2EndWithSparse;
-    
     if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1Start) { // first line
         constInfo.headS2Split = constInfo.s2Start > s2StartWithSparse ? true : false;
         curS2Start = Max(s2StartWithSparse, constInfo.s2Start);
     }
+
+    s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+    s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / constInfo.s2BaseSize + 1U;
+    curS2End = s2EndWithSparse;
     if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1End) {  // last line
         constInfo.tailS2Split = constInfo.s2End > 0U ? true : false;
         curS2End = constInfo.s2End > 0U ? Min(s2EndWithSparse, constInfo.s2End) : s2EndWithSparse;

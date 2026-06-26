@@ -240,21 +240,7 @@ public:
 
     __aicore__ inline bool IsInitAttentionOutGm()
     {
-        // TND、NTD场景且不存在无效行,不需要初始化
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD ||
-                      layout == LayOutTypeEnum::LAYOUT_NTD_TND) {
-            /*
-             * tiling中提前算好了是否可能出现无效行, 正常从tiling中提取这个标记位(constInfo.isExistRowInvalid),
-             * 对于FD场景, 有可能整体是没有无效行的,
-             * 但当前FD处理的这部分s2是无效的。为规避潜在的风险，只要带mask(constInfo.isExistRowInvalid)
-             * 就认为可能存在无效行
-             */
-            bool isExistRowInvalid = FLASH_DECODE ? HAS_MASK : constInfo.isExistRowInvalid;
-            if (!isExistRowInvalid) {
-                return false;
-            }
-        }
-        return true;
+        return constInfo.isExistRowInvalid;
     }
 
     __aicore__ inline void InitOutputSingleCore()
@@ -449,13 +435,12 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateMinCheckValueForDn(uint32_t &min)
+    __aicore__ inline void UpdateMinCheckValue(uint32_t &min)
     {
-        if constexpr (!USE_DN) {
-            return;
-        }
         float minValue = *((float*)&min);
-        minValue *= constInfo.scaleValue;
+        if constexpr (USE_DN) {
+            minValue *= constInfo.scaleValue;
+        }
         float tmp = minValue / LN2;
         // int64_t 最大能表示约 9e18。
         // 如果 tmp 比 -9e18 还要小（说明是绝对值极大的负数，如 -10^37），
@@ -475,14 +460,29 @@ public:
             return;
         }
 
+        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
+        uint32_t gmDealRowCount;
+        if (USE_DN) {
+            gmDealRowCount = runInfo.actVecMSize;
+        } else {
+            uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
+            if (constInfo.subBlockIdx == 0) {
+                gmDealRowCount = groupsOf32 * 16 > runInfo.actMSize ? runInfo.actMSize : groupsOf32 * 16;
+            } else {
+                int32_t vec1RemainRows = runInfo.actMSize - 16 * groupsOf32;
+                gmDealRowCount = 0 > vec1RemainRows ? 0 : vec1RemainRows;
+            }
+        }
+        if (gmDealRowCount == 0) {
+            return;
+        }
+
         uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         LocalTensor<float> lseUb = this->softmaxLseQueue.template AllocTensor<float>();
         uint32_t min = 0xFF7FFFFF;
 
-        if constexpr (USE_DN) {
-            UpdateMinCheckValueForDn(min);
-        }
-        ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize, min);
+        UpdateMinCheckValue(min);
+        ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, vecMSize, min);
         softmaxLseQueue.template EnQue(lseUb);
         softmaxLseQueue.DeQue<float>();
 
@@ -491,26 +491,26 @@ public:
             uint64_t bN2Offset = prefixBS1 * constInfo.realN2Size * constInfo.realGSize +
                                  runInfo.realN2Idx * constInfo.realGSize;
             DataCopySoftmaxLseTNDArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx,
-                                                                 runInfo.actVecMSize, constInfo);
+                                                                 gmDealRowCount, constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
                                                        constInfo, s1Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
                                                         constInfo, s1LeftPaddingSize);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize = 0;
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, gmDealRowCount,
                                                         constInfo, qActSeqLens, s1LeftPaddingSize);
         }
 
@@ -882,9 +882,7 @@ public:
 
             if (blockNeedRowInvalid) {
                 uint32_t min = 0xFF7FFFFF; // min value of float
-                if constexpr (USE_DN) {
-                    UpdateMinCheckValueForDn(min);
-                }
+                UpdateMinCheckValue(min);
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
                 if constexpr (!POST_QUANT) {
@@ -904,9 +902,11 @@ public:
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount, uint32_t gmDealRowCount)
     {
-        FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
-                                      .rowCount = dealRowCount,
-                                      .colCount = (uint32_t)(splitD ? constInfo.dBasicBlock : dTemplateAlign64)};
+        // mxfp8 colCount 只能为64或者128，与dDealSize相等
+        FaUbTensor<OUTPUT_T, false> ubTensor{
+            .tensor = attenOutUb,
+            .rowCount = dealRowCount,
+            .colCount = dTemplateAlign64};
         GmCoord gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.realN2Idx,
                         .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
@@ -916,7 +916,7 @@ public:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
     {
         if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -1199,43 +1199,6 @@ public:
         isSkipMask = IsSkipAttentionmask(maskInfo);
         if (!isSkipMask) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
-        }
-    }
-
-    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
-    {
-        uint32_t n2Idx = (bN2Cur / (constInfo.realN2Size / constInfo.n2Size)) % constInfo.n2Size;
-        uint32_t bIdx = bN2Cur / constInfo.realN2Size;
-        // 对整个batch的结果置0
-        if constexpr (POST_QUANT) { // out int8
-                                    // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
-        } else {
-            if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
-                OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
-                OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
-                OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
-                offsetCalculator.Init(constInfo.bSize, constInfo.realN2Size, constInfo.realGSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
-                OffsetCalculator<GmFormat::TNGD> offsetCalculator;
-                offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                      constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
-                OffsetCalculator<GmFormat::NGTD> offsetCalculator;
-                offsetCalculator.Init(constInfo.realN2Size, constInfo.realGSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                      constInfo.actualSeqLenSize);
-                DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-            }
         }
     }
 };

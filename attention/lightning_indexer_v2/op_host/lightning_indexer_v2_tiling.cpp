@@ -91,10 +91,10 @@ ge::graphStatus LIV2InfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    if ((npuArch_ != NpuArch::DAV_2201) &&
+        (npuArch_ != NpuArch::DAV_3510)) {
+        OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
@@ -159,6 +159,13 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
 
+    auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
+    if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
+            keyStridesVec_.push_back(keyStrides->GetStride(i));
+        }
+    }
+
     if (opParamInfo_.layOut != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOut);
     }
@@ -182,14 +189,14 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     }
     OP_LOGI(context_->GetNodeName(), "GetAndCheckAttrParaInfo end");
     OP_CHECK_IF(
-        ((std::string(opParamInfo_.layOutKey) != "PA_BSND")
+        ((std::string(opParamInfo_.layOutKey) != "PA_BBND")
         && (std::string(opParamInfo_.layOut) != std::string(opParamInfo_.layOutKey))),
         OP_LOGE(opName_, "under non-PA conditions, layout_query and layout_key should be equal."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        ((std::string(opParamInfo_.layOutKey) != "PA_BSND") && (std::string(opParamInfo_.layOutKey) != "BSND")
+        ((std::string(opParamInfo_.layOutKey) != "PA_BBND") && (std::string(opParamInfo_.layOutKey) != "BSND")
         && (std::string(opParamInfo_.layOutKey) != "TND")),
-        OP_LOGE(opName_, "input attr layout_key only supported PA_BSND, BSND or TND"), return ge::GRAPH_FAILED);
+        OP_LOGE(opName_, "input attr layout_key only supported PA_BBND, BSND or TND"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOut) != "BSND") && (std::string(opParamInfo_.layOut) != "TND")),
                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
     OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= TOPK_MAX))),
@@ -197,9 +204,8 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
  	                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.maskMode == 0) || (*opParamInfo_.maskMode == SPARSE_MODE_LOWER)),
                OP_LOGE(opName_, "input attr mask_mode only supported 0 or 3."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128) ||
-                ((*opParamInfo_.cmpRatio & (*opParamInfo_.cmpRatio - 1)) != 0),
-                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, "
+    OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128),
+                OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, "
                         "but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -249,7 +255,7 @@ ge::graphStatus LIV2InfoParser::GetQueryKeyAndOutLayout()
     const map<string, DataLayout> layoutMap = {
         {"BSND", DataLayout::BSND},
         {"TND", DataLayout::TND},
-        {"PA_BSND", DataLayout::BnBsND}
+        {"PA_BBND", DataLayout::BnBsND}
     };
 
     std::string layout(opParamInfo_.layOut);
@@ -271,12 +277,12 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
 {
     if (kLayout_ == DataLayout::BnBsND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE(opName_, "when layout_key is PA_BSND, input block_table must not be null"),
+                   OP_LOGE(opName_, "when layout_key is PA_BBND, input block_table must not be null"),
                    return ge::GRAPH_FAILED);
         // TODO
         OP_CHECK_IF(
             opParamInfo_.sequsedK.tensor == nullptr,
-            OP_LOGE(opName_, "when layout_key is PA_BSND, input sequsedK must not be null"),
+            OP_LOGE(opName_, "when layout_key is PA_BBND, input sequsedK must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
@@ -299,7 +305,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                 return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
-                OP_LOGE(opName_, "when key layout is not PA_BSND, input block_table must be null"),
+                OP_LOGE(opName_, "when key layout is not PA_BBND, input block_table must be null"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -340,6 +346,41 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
 
     return ge::GRAPH_SUCCESS;
 }
+
+// key非连续校验：通过shape计算expected stride进行校验
+// PA_BBND时，只允许0轴非连续，其余轴必须连续
+// 非PA_BBND时，所有轴都必须连续
+ge::graphStatus LIV2InfoParser::CheckKeyContiguous() const
+{
+    bool keyNonContiguous = false;
+    // PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 从0轴开始检查
+    // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
+    // Non-PA_BBND: check starts from axis 0
+    size_t checkStartIdx = (kLayout_ == DataLayout::BnBsND) ? 1 : 0;
+    if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
+        auto &shape = opParamInfo_.key.shape->GetStorageShape();
+        std::vector<uint32_t> expectedStrides;
+        if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::BnBsND) {
+            expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3),
+                               shape.GetDim(2) * shape.GetDim(3), shape.GetDim(3), 1};
+        } else if (kLayout_ == DataLayout::TND) {
+            expectedStrides = {shape.GetDim(1) * shape.GetDim(2), shape.GetDim(2), 1};
+        }
+        for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
+            if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
+                keyNonContiguous = true;
+                break;
+            }
+        }
+    }
+    
+    OP_CHECK_IF(keyNonContiguous,
+        OP_LOGE(opName_, "key only support non-continuous keying on the 0-axis."),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 
 ge::graphStatus LIV2InfoParser::GetN1Size()
 {
@@ -391,7 +432,7 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
     // 获取B基准值
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、Q和K都为TND时, cu_seqlens_q必须传入, 以cu_seqlens_q数组的长度为B轴大小
-    // 3、Q为TND，K为PA_BSND时，以cu_seqlens_k数组的长度为B轴大小
+    // 3、Q为TND，K为PA_BBND时，以cu_seqlens_k数组的长度为B轴大小
     if (qLayout_ == DataLayout::BSND) {
         bSize_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_ZERO);
         return ge::GRAPH_SUCCESS;
@@ -539,12 +580,6 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
                 OP_LOGE(opName_, "BSND case input query, key dim 0 are %u, %ld respectively, they must be same.",
                     bSize_, opParamInfo_.key.shape->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
-        OP_CHECK_IF((opParamInfo_.cuSeqlensK.tensor != nullptr) &&
-                    (opParamInfo_.cuSeqlensK.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_k dim 0 are %u, %ld "
-                    "respectively, they must be same.",
-                    bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize()),
-                return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_),
@@ -552,12 +587,6 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQbsnd()
                     "respectively, they must be same.",
                     bSize_, opParamInfo_.weights.shape->GetStorageShape().GetDim(0),
                     opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.cuSeqlensQ.tensor != nullptr) &&
-                   (opParamInfo_.cuSeqlensQ.tensor->GetShapeSize() != bSize_),
-                OP_LOGE(opName_, "BSND case input query, cu_seqlens_q dim 0 are %u, %ld "
-                    "respectively, they must be same",
-                    bSize_, opParamInfo_.cuSeqlensQ.tensor->GetShapeSize()),
                 return ge::GRAPH_FAILED);
     // -----------------------check S1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
@@ -650,13 +679,20 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
     std::string layOutKeyStr(opParamInfo_.layOutKey);
-    liInfo.pageAttentionFlag = layOutKeyStr == "PA_BSND" ? true : false;
+    liInfo.pageAttentionFlag = layOutKeyStr == "PA_BBND" ? true : false;
     liInfo.batchSupperFlag = batchSupperFlag_;
     liInfo.maskMode = *opParamInfo_.maskMode;
     liInfo.topk = *opParamInfo_.topk;
     liInfo.maxSeqlenQ = *opParamInfo_.maxSeqlenQ;
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;
     liInfo.returnValue = *opParamInfo_.returnValue;
+
+    if (!keyStridesVec_.empty()) {
+        liInfo.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
+    } else {
+        liInfo.keyStride0 = 0;  // 非PA无需使用stride
+    }
+
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
 }
@@ -682,7 +718,7 @@ ge::graphStatus LIV2InfoParser::ParseAndCheck(LIV2TilingInfo &liInfo)
         ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch()) {
+    if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch() || ge::GRAPH_SUCCESS != CheckKeyContiguous()) {
         return ge::GRAPH_FAILED;
     }
 
@@ -719,16 +755,25 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     constexpr uint32_t V1_DECODE_DATA_NUM = 2;        // Decode每个核需要存储头和尾部两块数据
     constexpr uint32_t S1_BASE_SIZE = 8;              // S1轴基本块的大小
     constexpr uint32_t TOPK_MAX_SIZE = 8192;          // TopK选取个数
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    // 主流程需Workspace大小
-    uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
-    workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
-    // Decode流程(LD)需要Workspace大小
-    // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
-    workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
-    // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
-    workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
-    
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        constexpr uint32_t li3510S1Base = 4;
+        constexpr uint32_t li3510S2Base = 128;
+        workspaceSize +=
+            li3510S1Base * ((tilingInfo->s2Size + li3510S2Base - 1) / li3510S2Base) * li3510S2Base *
+            sizeof(uint32_t) * aicNum;
+    } else {
+        // 主流程需Workspace大小
+        uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
+        workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
+        // Decode流程(LD)需要Workspace大小
+        // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
+        workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE *
+                         V1_RES_ELEM_SIZE * aicNum;
+        // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
+        workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
+    }
+
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
@@ -744,6 +789,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     tilingData_.set_preTokens(tilingInfo->preTokens);
     tilingData_.set_nextTokens(tilingInfo->nextTokens);
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
+    tilingData_.set_keyStride0(tilingInfo->keyStride0);
     tilingData_.set_returnValue(tilingInfo->returnValue);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);

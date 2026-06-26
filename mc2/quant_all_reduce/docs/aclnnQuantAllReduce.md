@@ -4,8 +4,8 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
+| <term>Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                               |    ×     |
@@ -245,7 +245,7 @@ aclnnStatus aclnnQuantAllReduce(
 - 只在Ascend950系列平台开启。
 - 不支持空Tensor输入。
 - 通信引擎约束：
-  - Ascend950PR/Ascend950DT: 仅支持UB-Memory通信。
+  - Ascend950DT: 仅支持UB-Memory通信。
 - 通信域大小支持2, 4, 8。
 - 通信域使用约束：同一通信域内仅允许连续执行`aclnnQuantAllReduce`和`aclnnQuantReduceScatter`算子，且该通信域中不允许有其他通信算子。
 - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求满足`HCCL_BUFFSIZE`>= 2 * (`xDataSize` + `scalesDataSize + 1`)。其中`xDataSize`为输入`x`的数据大小，计算公式为：`xDataSize = b * s * H * 1 (Byte)`，`scalesDataSize`为`scales`的数据大小，当量化方式为pertoken-pergroup量化时，计算公式为：`scalesDataSize = b * s * H / 128 * 4 (Byte)`，当量化方式为mx量化时，计算公式为：`scalesDataSize = b * s * H / 32 * 1 (Byte)`。
@@ -257,7 +257,7 @@ aclnnStatus aclnnQuantAllReduce(
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclCommInitClusterInfoConfig、HcclGetCommName、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha002/API/hcclapiref/hcclcpp_07_0001.html)。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>
