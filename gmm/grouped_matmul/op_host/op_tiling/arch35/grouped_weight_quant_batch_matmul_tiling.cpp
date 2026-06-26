@@ -1137,7 +1137,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeListMultiXMultiWeightMultiY(co
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckGroupSize(const gert::TilingContext *context) const
+bool GroupedWeightQuantBatchMatmulTiling::CheckGroupSize() const
 {
     // A16W4 pergroup supports groupSize 32/64/128/256
     if (IsA16W4NDPergroup()) {
