@@ -10,23 +10,11 @@
 
 /*!
  * \file test_inplace_partial_rotary_mul_grad_kernel.cpp
- * \brief OpKernel UT for InplacePartialRotaryMulGrad using TTK (ESL/CA simulation)
+ * \brief OpKernel UT for InplacePartialRotaryMulGrad using TTK simulation
  *
- * Coverage per template:
- *   BAB (203): BSND, cosb_==1
- *   AB  (204): SBND
- *   ABA (201): BNSD, cosb_!=1
- *   BA  (202): BNSD, cosb_==1
- *   A   (205): NO_BROADCAST
- *   B   (206): BROADCAST_BSN
- *   EMPTY (403): sliceLength==0
- *
- * Requires:
- *   - Data scripts: tests/ut/op_kernel/inplace_partial_rotary_mul_grad_data/gen_data.py
- *   - Tiling script: tests/ut/op_kernel/inplace_partial_rotary_mul_grad_data/gen_tiling.py
+ * Each test sets up template-specific tiling data matching the kernel's expectations.
  */
 
-#include <array>
 #include <vector>
 #include <iostream>
 #include <string>
@@ -55,100 +43,236 @@ protected:
         cout << "InplacePartialRotaryMulGradKernelTest TearDown\n" << endl;
     }
 
-    void RunTest(const vector<int64_t>& dyShape, const vector<int64_t>& cosShape,
-                 const string& dyDtype, const string& cosDtype,
-                 uint64_t tilingKey, uint32_t blockDim,
-                 int64_t sliceStart, int64_t sliceEnd,
-                 const string& layout,
-                 const vector<float>& dyData, const vector<float>& cosData,
-                 const vector<float>& sinData, const vector<float>& refDx)
+    // Generic GM alloc + copy
+    void AllocAndCopy(uint8_t*& dyGm, uint8_t*& cosGm, uint8_t*& sinGm,
+                      uint8_t*& dxGm, uint8_t*& dcosGm, uint8_t*& dsinGm,
+                      uint8_t*& workspace, uint8_t*& tilingGm,
+                      const vector<float>& dyData, const vector<float>& cosData,
+                      const vector<float>& sinData, size_t dyBytes, size_t cosBytes,
+                      size_t tilingBytes)
     {
-        int64_t dyDtypeSize = (dyDtype == "float32") ? 4 : 2;
-        int64_t cosDtypeSize = (cosDtype == "float32") ? 4 : 2;
+        dyGm      = (uint8_t*)AscendC::GmAlloc(dyBytes);
+        cosGm     = (uint8_t*)AscendC::GmAlloc(cosBytes);
+        sinGm     = (uint8_t*)AscendC::GmAlloc(cosBytes);
+        dxGm      = (uint8_t*)AscendC::GmAlloc(dyBytes);
+        dcosGm    = (uint8_t*)AscendC::GmAlloc(cosBytes);
+        dsinGm    = (uint8_t*)AscendC::GmAlloc(cosBytes);
+        workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
+        tilingGm  = (uint8_t*)AscendC::GmAlloc(tilingBytes);
 
-        size_t dyByteSize = 1;
-        for (auto d : dyShape) dyByteSize *= d;
-        dyByteSize *= dyDtypeSize;
+        AscendC::GmMemcpy(dyGm,  (uint8_t*)dyData.data(),  dyBytes);
+        AscendC::GmMemcpy(cosGm, (uint8_t*)cosData.data(), cosBytes);
+        AscendC::GmMemcpy(sinGm, (uint8_t*)sinData.data(), cosBytes);
+    }
 
-        size_t cosByteSize = 1;
-        for (auto d : cosShape) cosByteSize *= d;
-        cosByteSize *= cosDtypeSize;
+    void FreeAll(uint8_t* dyGm, uint8_t* cosGm, uint8_t* sinGm,
+                 uint8_t* dxGm, uint8_t* dcosGm, uint8_t* dsinGm,
+                 uint8_t* workspace, uint8_t* tilingGm)
+    {
+        AscendC::GmFree(dyGm); AscendC::GmFree(cosGm); AscendC::GmFree(sinGm);
+        AscendC::GmFree(dxGm); AscendC::GmFree(dcosGm); AscendC::GmFree(dsinGm);
+        AscendC::GmFree(workspace); AscendC::GmFree(tilingGm);
+    }
 
-        size_t tilingByteSize = sizeof(InplacePartialRotaryMulGradUTTilingData);
+    // ---- BAB template: BSND layout, cosb_==1 ----
+    void RunBAB(const vector<int64_t>& dyShape, const vector<int64_t>& cosShape,
+                const vector<float>& dyData, const vector<float>& cosData,
+                const vector<float>& sinData, const vector<float>& refDx,
+                int64_t sliceStart, int64_t sliceEnd)
+    {
+        int64_t B = dyShape[0], S = dyShape[1], N = dyShape[2], D = dyShape[3];
+        int64_t cosD = sliceEnd - sliceStart;
+        size_t dyBytes = B * S * N * D * sizeof(float);
+        size_t cosBytes = cosShape[0] * cosShape[1] * cosShape[2] * cosShape[3] * sizeof(float);
+        size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
 
-        // Allocate GM memory
-        uint8_t* dyGm = (uint8_t*)AscendC::GmAlloc(dyByteSize);
-        uint8_t* cosGm = (uint8_t*)AscendC::GmAlloc(cosByteSize);
-        uint8_t* sinGm = (uint8_t*)AscendC::GmAlloc(cosByteSize);
-        uint8_t* dxGm = (uint8_t*)AscendC::GmAlloc(dyByteSize);  // inplace: dx overwrites dy
-        uint8_t* dcosGm = (uint8_t*)AscendC::GmAlloc(cosByteSize);
-        uint8_t* dsinGm = (uint8_t*)AscendC::GmAlloc(cosByteSize);
-        uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-        uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingByteSize);
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+                     dyData, cosData, sinData, dyBytes, cosBytes, tilingBytes);
 
-        // Copy host data to GM
-        if (dyDtype == "float32") {
-            AscendC::GmMemcpy(dyGm, (uint8_t*)dyData.data(), dyByteSize);
-        }
-        AscendC::GmMemcpy(cosGm, (uint8_t*)cosData.data(), cosByteSize);
-        AscendC::GmMemcpy(sinGm, (uint8_t*)sinData.data(), cosByteSize);
+        auto* td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tilingGm);
+        td->b = B; td->s = S; td->d = D; td->n = N;
+        td->blockNumB = B;       td->blockFactorB = 1;  // one block per B
+        td->blockNumS = 1;       td->blockFactorS = S;  // one block for all S
+        td->ubFactorS = 1;       td->ubFactorB = 1;
+        td->ubLoopNumN = N;      td->ubFactorN = 1;     td->ubTailFactorN = 1;
+        td->usedCoreNum = B * 1; // blockNumB * blockNumS
+        td->rotaryMode = 1;      td->dSplitCoef = 1;
+        td->sliceStart = sliceStart; td->sliceEnd = sliceEnd;
+        td->sliceLength = cosD;
 
-        // Set up tiling data with minimal valid values
-        auto* tilingData = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tiling);
-        tilingData->b = dyShape[0];
-        tilingData->s = dyShape[1];
-        tilingData->n = dyShape[2];
-        tilingData->d = dyShape[3];
-        tilingData->blockNumB = blockDim;
-        tilingData->blockFactorB = 1;
-        tilingData->blockNumS = 1;
-        tilingData->blockFactorS = 1;
-        tilingData->ubFactorS = 1;
-        tilingData->ubFactorB = 1;
-        tilingData->ubLoopNumN = 1;
-        tilingData->ubFactorN = 1;
-        tilingData->ubTailFactorN = 1;
-        tilingData->usedCoreNum = blockDim;
-        tilingData->rotaryMode = 1; // interleave
-        tilingData->sliceStart = sliceStart;
-        tilingData->sliceEnd = sliceEnd;
-        tilingData->sliceLength = sliceEnd - sliceStart;
-        tilingData->dSplitCoef = 1;
+        AscendC::SetKernelMode(KernelMode::AIV_MODE);
+        ICPU_SET_TILING_KEY(TILING_KEY_BAB);
+        ICPU_RUN_KF(inplace_partial_rotary_mul_grad, static_cast<uint32_t>(td->usedCoreNum),
+                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+
+        vector<float> result(dyBytes / sizeof(float));
+        AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
+        Verify(result, refDx, "BAB");
+        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+    }
+
+    // ---- ABA&BA template: BNSD layout ----
+    void RunABAorBA(const vector<int64_t>& dyShape, const vector<int64_t>& cosShape,
+                    const vector<float>& dyData, const vector<float>& cosData,
+                    const vector<float>& sinData, const vector<float>& refDx,
+                    int64_t sliceStart, int64_t sliceEnd, uint64_t tilingKey, bool isBBoardcast)
+    {
+        int64_t B = dyShape[0], N = dyShape[1], S = dyShape[2], D = dyShape[3];
+        int64_t cosD = sliceEnd - sliceStart;
+        size_t dyBytes = B * N * S * D * sizeof(float);
+        size_t cosBytes = cosShape[0] * cosShape[1] * cosShape[2] * cosShape[3] * sizeof(float);
+        size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
+
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+                     dyData, cosData, sinData, dyBytes, cosBytes, tilingBytes);
+
+        auto* td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tilingGm);
+        td->b = B; td->s = S; td->d = D; td->n = N;
+        td->blockNumB = B;       td->blockFactorB = 1;
+        td->blockNumS = S;       td->blockFactorS = 1;
+        td->ubFactorB = 1;       td->ubFactorS = 1;
+        td->ubLoopNumN = 0;      td->ubFactorN = 1;     td->ubTailFactorN = 0;
+        td->usedCoreNum = B * S;
+        td->rotaryMode = 1;      td->dSplitCoef = 1;
+        td->sliceStart = sliceStart; td->sliceEnd = sliceEnd;
+        td->sliceLength = cosD;
 
         AscendC::SetKernelMode(KernelMode::AIV_MODE);
         ICPU_SET_TILING_KEY(tilingKey);
-        ICPU_RUN_KF(inplace_partial_rotary_mul_grad, blockDim,
-                    dyGm, cosGm, sinGm, nullptr,  // x=nullptr (optional)
-                    dxGm, dcosGm, dsinGm,
-                    workspace, tiling);
+        ICPU_RUN_KF(inplace_partial_rotary_mul_grad, static_cast<uint32_t>(td->usedCoreNum),
+                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
 
-        // Read back dx (inplace on dy)
-        vector<float> resultDy(dyByteSize / sizeof(float), 0);
-        AscendC::GmMemcpy((uint8_t*)resultDy.data(), dxGm, dyByteSize);
+        vector<float> result(dyBytes / sizeof(float));
+        AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
+        Verify(result, refDx, isBBoardcast ? "BA" : "ABA");
+        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+    }
 
-        // Verify
+    // ---- AB template: SBND layout ----
+    void RunAB(const vector<int64_t>& dyShape, const vector<int64_t>& cosShape,
+               const vector<float>& dyData, const vector<float>& cosData,
+               const vector<float>& sinData, const vector<float>& refDx,
+               int64_t sliceStart, int64_t sliceEnd)
+    {
+        int64_t S = dyShape[0], B = dyShape[1], N = dyShape[2], D = dyShape[3];
+        // AB for SBND+cosb==1: bs = s (B folded into N), n_eff = b * n
+        int64_t bs = S;
+        int64_t nEff = B * N;
+        int64_t cosD = sliceEnd - sliceStart;
+        size_t dyBytes = S * B * N * D * sizeof(float);
+        size_t cosBytes = cosShape[0] * cosShape[1] * cosShape[2] * cosShape[3] * sizeof(float);
+        size_t tilingBytes = sizeof(InplacePartialRotaryMulGradABUTTilingData);
+
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+                     dyData, cosData, sinData, dyBytes, cosBytes, tilingBytes);
+
+        auto* td = reinterpret_cast<InplacePartialRotaryMulGradABUTTilingData*>(tilingGm);
+        td->b = B; td->s = S; td->d = D; td->n = nEff;
+        td->dAlign = 0;         td->dSplitCoef = 1;
+        td->blockNumBS = bs;     td->blockFactorBS = 1;   td->blockTailBS = 1;
+        td->blockNumN = 1;       td->blockFactorN = nEff; td->blockTailN = nEff;
+        td->ubFactorBS = 1;      td->ubFactorN = 1;
+        td->usedCoreNum = bs;
+        td->rotaryMode = 1;
+        td->sliceStart = sliceStart; td->sliceEnd = sliceEnd;
+        td->sliceLength = cosD;
+
+        AscendC::SetKernelMode(KernelMode::AIV_MODE);
+        ICPU_SET_TILING_KEY(TILING_KEY_AB);
+        ICPU_RUN_KF(inplace_partial_rotary_mul_grad, static_cast<uint32_t>(td->usedCoreNum),
+                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+
+        vector<float> result(dyBytes / sizeof(float));
+        AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
+        Verify(result, refDx, "AB");
+        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+    }
+
+    // ---- A&B template: NO_BROADCAST / BROADCAST_BSN (merged B) ----
+    void RunAorB(const vector<int64_t>& dyShape, const vector<int64_t>& cosShape,
+                 const vector<float>& dyData, const vector<float>& cosData,
+                 const vector<float>& sinData, const vector<float>& refDx,
+                 int64_t sliceStart, int64_t sliceEnd, uint64_t tilingKey)
+    {
+        int64_t B = dyShape[0] * dyShape[1] * dyShape[2];  // merged
+        int64_t D = dyShape[3];
+        int64_t cosD = sliceEnd - sliceStart;
+        size_t dyBytes = B * D * sizeof(float);
+        size_t cosBytes = cosShape[0] * cosShape[1] * cosShape[2] * cosShape[3] * sizeof(float);
+        size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
+
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+                     dyData, cosData, sinData, dyBytes, cosBytes, tilingBytes);
+
+        auto* td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tilingGm);
+        td->b = B; td->s = 1; td->d = D; td->n = 1;  // after MergeDim
+        td->blockNumB = (B > 1) ? 2 : 1;  td->blockFactorB = (B > 1) ? B/2 : B;
+        td->blockNumS = 1;       td->blockFactorS = 1;
+        td->ubFactorB = 1;       td->ubFactorS = 1;
+        td->ubLoopNumN = 0;      td->ubFactorN = 1;
+        td->usedCoreNum = td->blockNumB;
+        td->rotaryMode = 1;      td->dSplitCoef = 1;
+        td->sliceStart = sliceStart; td->sliceEnd = sliceEnd;
+        td->sliceLength = cosD;
+
+        AscendC::SetKernelMode(KernelMode::AIV_MODE);
+        ICPU_SET_TILING_KEY(tilingKey);
+        ICPU_RUN_KF(inplace_partial_rotary_mul_grad, static_cast<uint32_t>(td->usedCoreNum),
+                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+
+        vector<float> result(dyBytes / sizeof(float));
+        AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
+        Verify(result, refDx, (tilingKey == TILING_KEY_A) ? "A" : "B");
+        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+    }
+
+    // ---- EMPTY slice: just verify no-op ----
+    void RunEmpty(const vector<float>& dyData, const vector<float>& refDx,
+                  const vector<int64_t>& dyShape, int64_t sliceStart, int64_t sliceEnd)
+    {
+        size_t dyBytes = dyData.size() * sizeof(float);
+        size_t cosBytes = 0;
+        size_t tilingBytes = sizeof(InplacePartialRotaryMulGradUTTilingData);
+
+        uint8_t *dyGm, *cosGm, *sinGm, *dxGm, *dcosGm, *dsinGm, *workspace, *tilingGm;
+        vector<float> emptyCos;
+        AllocAndCopy(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm,
+                     dyData, emptyCos, emptyCos, dyBytes, cosBytes, tilingBytes);
+
+        auto* td = reinterpret_cast<InplacePartialRotaryMulGradUTTilingData*>(tilingGm);
+        td->usedCoreNum = 1;
+        td->sliceStart = sliceStart; td->sliceEnd = sliceEnd;
+        td->sliceLength = 0;
+
+        AscendC::SetKernelMode(KernelMode::AIV_MODE);
+        ICPU_SET_TILING_KEY(TILING_KEY_EMPTY);
+        ICPU_RUN_KF(inplace_partial_rotary_mul_grad, 1,
+                    dyGm, cosGm, sinGm, nullptr, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+
+        vector<float> result(dyBytes / sizeof(float));
+        AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
+        Verify(result, refDx, "EMPTY");
+        FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
+    }
+
+    void Verify(const vector<float>& result, const vector<float>& ref,
+                const string& tag)
+    {
         const float epsilon = 1e-5f;
-        int64_t totalElems = dyByteSize / sizeof(float);
-        bool allPassed = true;
-        for (int64_t i = 0; i < totalElems; i++) {
-            if (std::fabs(resultDy[i] - refDx[i]) >= epsilon) {
-                cout << "MISMATCH at [" << i << "]: got " << resultDy[i]
-                     << ", expected " << refDx[i] << " (ref " << refDx[i] << ")" << endl;
-                allPassed = false;
-                break;  // stop on first mismatch
+        bool ok = true;
+        for (size_t i = 0; i < ref.size(); i++) {
+            if (std::fabs(result[i] - ref[i]) >= epsilon) {
+                cout << "[" << tag << "] MISMATCH at [" << i << "]: got "
+                     << result[i] << ", expected " << ref[i] << endl;
+                ok = false;
+                break;
             }
         }
-        EXPECT_TRUE(allPassed) << "Result mismatch for tilingKey=" << tilingKey
-                               << " layout=" << layout;
-
-        AscendC::GmFree(dyGm);
-        AscendC::GmFree(cosGm);
-        AscendC::GmFree(sinGm);
-        AscendC::GmFree(dxGm);
-        AscendC::GmFree(dcosGm);
-        AscendC::GmFree(dsinGm);
-        AscendC::GmFree(workspace);
-        AscendC::GmFree(tiling);
+        EXPECT_TRUE(ok) << tag << " result mismatch";
     }
 };
 
@@ -156,16 +280,11 @@ protected:
 TEST_F(InplacePartialRotaryMulGradKernelTest, BAB_BSND_interleave)
 {
     int64_t B = 2, S = 2, N = 2, D = 8;
-    int64_t sliceStart = 2, sliceEnd = 6;
-    int64_t cosD = sliceEnd - sliceStart;
+    int64_t sliceStart = 2, sliceEnd = 6, cosD = sliceEnd - sliceStart;
 
     vector<int64_t> dyShape = {B, S, N, D};
     vector<int64_t> cosShape = {1, S, 1, cosD};
 
-    // dy: each (B,S,N) group = [1,2,3,4,5,6,7,8]
-    // cos: S=2 groups of [0.5,0.6,0.7,0.8]
-    // sin: S=2 groups of [0.1,0.2,0.3,0.4]
-    // Expected per-group after interleave on [2,6): [1,2,2.3,2.1,5.9,3.3,7,8]
     vector<float> dyData, expectedDx;
     for (int i = 0; i < B * S * N; i++) {
         dyData.insert(dyData.end(), {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
@@ -177,52 +296,42 @@ TEST_F(InplacePartialRotaryMulGradKernelTest, BAB_BSND_interleave)
     vector<float> refDx(expectedDx.size(), 0.0f);
     InterleaveGradRefBSND(dyData, cosData, sinData, refDx, B, S, N, D, sliceStart, sliceEnd);
 
-    RunTest(dyShape, cosShape, "float32", "float32", TILING_KEY_BAB, B * S,
-            sliceStart, sliceEnd, "BSND", dyData, cosData, sinData, refDx);
+    RunBAB(dyShape, cosShape, dyData, cosData, sinData, refDx, sliceStart, sliceEnd);
 }
 
 // ===================== ABA (201): BNSD, cosb_!=1 =====================
 TEST_F(InplacePartialRotaryMulGradKernelTest, ABA_BNSD_interleave)
 {
     int64_t B = 2, N = 2, S = 2, D = 8;
-    int64_t sliceStart = 2, sliceEnd = 6;
-    int64_t cosD = sliceEnd - sliceStart;
+    int64_t sliceStart = 2, sliceEnd = 6, cosD = sliceEnd - sliceStart;
 
     vector<int64_t> dyShape = {B, N, S, D};
     vector<int64_t> cosShape = {B, 1, S, cosD};
 
-    // dy: BNSD layout, each (B,N,S) = [1..8]
     vector<float> dyData;
     for (int i = 0; i < B * N * S; i++) {
         dyData.insert(dyData.end(), {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
     }
-    // cos: B=2, S=2 → shape [2,1,2,4], each (B,S) group = [0.5,0.6,0.7,0.8]
+    // B=2,S=2: cos[B,1,S,cosD] — each (B,S) unique
     vector<float> cosData = {
-        0.5f, 0.6f, 0.7f, 0.8f,  // B=0,S=0
-        0.9f, 1.0f, 1.1f, 1.2f,  // B=0,S=1
-        1.3f, 1.4f, 1.5f, 1.6f,  // B=1,S=0
-        1.7f, 1.8f, 1.9f, 2.0f   // B=1,S=1
-    };
+        0.5f, 0.6f, 0.7f, 0.8f,  0.9f, 1.0f, 1.1f, 1.2f,
+        1.3f, 1.4f, 1.5f, 1.6f,  1.7f, 1.8f, 1.9f, 2.0f};
     vector<float> sinData = {
-        0.1f, 0.2f, 0.3f, 0.4f,
-        0.5f, 0.6f, 0.7f, 0.8f,
-        0.9f, 1.0f, 1.1f, 1.2f,
-        1.3f, 1.4f, 1.5f, 1.6f
-    };
+        0.1f, 0.2f, 0.3f, 0.4f,  0.5f, 0.6f, 0.7f, 0.8f,
+        0.9f, 1.0f, 1.1f, 1.2f,  1.3f, 1.4f, 1.5f, 1.6f};
 
     vector<float> refDx(dyData.size(), 0.0f);
     InterleaveGradRefBNSD(dyData, cosData, sinData, refDx, B, N, S, D, sliceStart, sliceEnd, false);
 
-    RunTest(dyShape, cosShape, "float32", "float32", TILING_KEY_ABA, B * S,
-            sliceStart, sliceEnd, "BNSD", dyData, cosData, sinData, refDx);
+    RunABAorBA(dyShape, cosShape, dyData, cosData, sinData, refDx,
+               sliceStart, sliceEnd, TILING_KEY_ABA, false);
 }
 
 // ===================== BA (202): BNSD, cosb_==1 =====================
 TEST_F(InplacePartialRotaryMulGradKernelTest, BA_BNSD_interleave)
 {
     int64_t B = 2, N = 2, S = 2, D = 8;
-    int64_t sliceStart = 2, sliceEnd = 6;
-    int64_t cosD = sliceEnd - sliceStart;
+    int64_t sliceStart = 2, sliceEnd = 6, cosD = sliceEnd - sliceStart;
 
     vector<int64_t> dyShape = {B, N, S, D};
     vector<int64_t> cosShape = {1, 1, S, cosD};
@@ -231,28 +340,25 @@ TEST_F(InplacePartialRotaryMulGradKernelTest, BA_BNSD_interleave)
     for (int i = 0; i < B * N * S; i++) {
         dyData.insert(dyData.end(), {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
     }
-    // cos: S=2 broad-cast on B,N
     vector<float> cosData = {0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f};
     vector<float> sinData = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
 
     vector<float> refDx(dyData.size(), 0.0f);
     InterleaveGradRefBNSD(dyData, cosData, sinData, refDx, B, N, S, D, sliceStart, sliceEnd, true);
 
-    RunTest(dyShape, cosShape, "float32", "float32", TILING_KEY_BA, B * S,
-            sliceStart, sliceEnd, "BNSD_BA", dyData, cosData, sinData, refDx);
+    RunABAorBA(dyShape, cosShape, dyData, cosData, sinData, refDx,
+               sliceStart, sliceEnd, TILING_KEY_BA, true);
 }
 
 // ===================== AB (204): SBND =====================
 TEST_F(InplacePartialRotaryMulGradKernelTest, AB_SBND_interleave)
 {
     int64_t S = 2, B = 2, N = 2, D = 8;
-    int64_t sliceStart = 2, sliceEnd = 6;
-    int64_t cosD = sliceEnd - sliceStart;
+    int64_t sliceStart = 2, sliceEnd = 6, cosD = sliceEnd - sliceStart;
 
     vector<int64_t> dyShape = {S, B, N, D};
     vector<int64_t> cosShape = {S, 1, 1, cosD};
 
-    // dy: SBND layout
     vector<float> dyData;
     for (int i = 0; i < S * B * N; i++) {
         dyData.insert(dyData.end(), {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
@@ -263,8 +369,7 @@ TEST_F(InplacePartialRotaryMulGradKernelTest, AB_SBND_interleave)
     vector<float> refDx(dyData.size(), 0.0f);
     InterleaveGradRefSBND(dyData, cosData, sinData, refDx, S, B, N, D, sliceStart, sliceEnd);
 
-    RunTest(dyShape, cosShape, "float32", "float32", TILING_KEY_AB, S * B,
-            sliceStart, sliceEnd, "SBND", dyData, cosData, sinData, refDx);
+    RunAB(dyShape, cosShape, dyData, cosData, sinData, refDx, sliceStart, sliceEnd);
 }
 
 // ===================== A (205): NO_BROADCAST =====================
@@ -272,34 +377,23 @@ TEST_F(InplacePartialRotaryMulGradKernelTest, A_NO_BROADCAST_interleave)
 {
     int64_t B = 2, N = 2, S = 2, D = 4;
     int64_t sliceStart = 0, sliceEnd = 4;
+    int64_t mergedB = B * N * S; // 8
 
-    // After MergeDim: dy = [B*N*S, D] = [8, 4]
-    vector<int64_t> dyShape = {B, N, S, D};  // BNSD form
-    vector<int64_t> cosShape = {B, N, S, D};  // full broadcast
+    vector<int64_t> dyShape = {B, N, S, D};
+    vector<int64_t> cosShape = {B, N, S, D};
 
-    vector<float> dyData(B * N * S * D);
-    vector<float> cosData(B * N * S * D);
-    vector<float> sinData(B * N * S * D);
-    for (int i = 0; i < B * N * S; i++) {
-        dyData[i * D + 0] = 1.0f;
-        dyData[i * D + 1] = 2.0f;
-        dyData[i * D + 2] = 3.0f;
-        dyData[i * D + 3] = 4.0f;
-        cosData[i * D + 0] = 0.5f;
-        cosData[i * D + 1] = 0.6f;
-        cosData[i * D + 2] = 0.7f;
-        cosData[i * D + 3] = 0.8f;
-        sinData[i * D + 0] = 0.1f;
-        sinData[i * D + 1] = 0.2f;
-        sinData[i * D + 2] = 0.3f;
-        sinData[i * D + 3] = 0.4f;
+    vector<float> dyData(mergedB * D), cosData(mergedB * D), sinData(mergedB * D);
+    for (int i = 0; i < mergedB; i++) {
+        dyData[i*D+0]=1.0f; dyData[i*D+1]=2.0f; dyData[i*D+2]=3.0f; dyData[i*D+3]=4.0f;
+        cosData[i*D+0]=0.5f; cosData[i*D+1]=0.6f; cosData[i*D+2]=0.7f; cosData[i*D+3]=0.8f;
+        sinData[i*D+0]=0.1f; sinData[i*D+1]=0.2f; sinData[i*D+2]=0.3f; sinData[i*D+3]=0.4f;
     }
 
     vector<float> refDx(dyData.size(), 0.0f);
     InterleaveGradRefAB(dyData, cosData, sinData, refDx, B, N, S, D, sliceStart, sliceEnd, false);
 
-    RunTest(dyShape, cosShape, "float32", "float32", TILING_KEY_A, B,
-            sliceStart, sliceEnd, "NO_BROADCAST", dyData, cosData, sinData, refDx);
+    RunAorB(dyShape, cosShape, dyData, cosData, sinData, refDx,
+            sliceStart, sliceEnd, TILING_KEY_A);
 }
 
 // ===================== B (206): BROADCAST_BSN =====================
@@ -307,16 +401,14 @@ TEST_F(InplacePartialRotaryMulGradKernelTest, B_BROADCAST_BSN_interleave)
 {
     int64_t B = 2, N = 2, S = 2, D = 4;
     int64_t sliceStart = 0, sliceEnd = 4;
+    int64_t mergedB = B * N * S;
 
-    vector<int64_t> dyShape = {B, N, S, D};  // BNSD form
-    vector<int64_t> cosShape = {1, 1, 1, D};  // broadcast all dims
+    vector<int64_t> dyShape = {B, N, S, D};
+    vector<int64_t> cosShape = {1, 1, 1, D};
 
-    vector<float> dyData(B * N * S * D);
-    for (int i = 0; i < B * N * S; i++) {
-        dyData[i * D + 0] = 1.0f;
-        dyData[i * D + 1] = 2.0f;
-        dyData[i * D + 2] = 3.0f;
-        dyData[i * D + 3] = 4.0f;
+    vector<float> dyData(mergedB * D);
+    for (int i = 0; i < mergedB; i++) {
+        dyData[i*D+0]=1.0f; dyData[i*D+1]=2.0f; dyData[i*D+2]=3.0f; dyData[i*D+3]=4.0f;
     }
     vector<float> cosData = {0.5f, 0.6f, 0.7f, 0.8f};
     vector<float> sinData = {0.1f, 0.2f, 0.3f, 0.4f};
@@ -324,36 +416,23 @@ TEST_F(InplacePartialRotaryMulGradKernelTest, B_BROADCAST_BSN_interleave)
     vector<float> refDx(dyData.size(), 0.0f);
     InterleaveGradRefAB(dyData, cosData, sinData, refDx, B, N, S, D, sliceStart, sliceEnd, true);
 
-    RunTest(dyShape, cosShape, "float32", "float32", TILING_KEY_B, B,
-            sliceStart, sliceEnd, "BROADCAST_BSN", dyData, cosData, sinData, refDx);
+    RunAorB(dyShape, cosShape, dyData, cosData, sinData, refDx,
+            sliceStart, sliceEnd, TILING_KEY_B);
 }
 
 // ===================== EMPTY (403): sliceLength==0 =====================
 TEST_F(InplacePartialRotaryMulGradKernelTest, EMPTY_slice)
 {
     int64_t B = 2, S = 2, N = 2, D = 8;
-    int64_t sliceStart = 4, sliceEnd = 4;  // empty slice
+    int64_t sliceStart = 4, sliceEnd = 4;
 
     vector<int64_t> dyShape = {B, S, N, D};
-    vector<int64_t> cosShape = {1, S, 1, 0};
-
     vector<float> dyData(B * S * N * D);
     for (int i = 0; i < B * S * N; i++) {
-        dyData[i * D + 0] = 1.0f;
-        dyData[i * D + 1] = 2.0f;
-        dyData[i * D + 2] = 3.0f;
-        dyData[i * D + 3] = 4.0f;
-        dyData[i * D + 4] = 5.0f;
-        dyData[i * D + 5] = 6.0f;
-        dyData[i * D + 6] = 7.0f;
-        dyData[i * D + 7] = 8.0f;
+        dyData[i*D+0]=1.0f; dyData[i*D+1]=2.0f; dyData[i*D+2]=3.0f; dyData[i*D+3]=4.0f;
+        dyData[i*D+4]=5.0f; dyData[i*D+5]=6.0f; dyData[i*D+6]=7.0f; dyData[i*D+7]=8.0f;
     }
-    vector<float> cosData = {};
-    vector<float> sinData = {};
+    vector<float> refDx = dyData;  // no change
 
-    // Empty slice: dx = dy (no change)
-    vector<float> refDx = dyData;
-
-    RunTest(dyShape, cosShape, "float32", "float32", TILING_KEY_EMPTY, 1,
-            sliceStart, sliceEnd, "EMPTY", dyData, cosData, sinData, refDx);
+    RunEmpty(dyData, refDx, dyShape, sliceStart, sliceEnd);
 }
