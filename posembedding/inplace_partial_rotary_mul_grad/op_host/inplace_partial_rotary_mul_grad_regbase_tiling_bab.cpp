@@ -119,19 +119,22 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::SplitUb()
     // Per-type aligned row sizes (in elements), matching kernel's dAlignLenDy/dAlignLenCos
     int64_t dAlignDy = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
     int64_t dAlignCos = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / cosTypeSize) * dSplitCoef_;
-    int64_t dSizeDy = dAlignDy * typeSize;    // bytes per dy/dx row
+    int64_t dSizeDy = dAlignDy * typeSize;      // bytes per dy/dx row
     int64_t dSizeCos = dAlignCos * cosTypeSize; // bytes per cos/sin row
+    dAlign_ = dAlignDy;                         // store dy alignment in tiling data for logging
+    int64_t minSize = std::min(dSizeDy, dSizeCos);
 
     // Unified overhead: how many "dy-row equivalents" one cos/sin row occupies
     //   UB = 4 * ubFactorS * (ubFactorN * dSizeDy + dSizeCos) <= ubSize
     //   => ubFactorS * (ubFactorN + CeilDiv(dSizeCos, dSizeDy)) <= ubSize / (4 * dSizeDy)
-    int64_t effectiveCosOverhead = std::max(int64_t(1), Ops::Base::CeilDiv(dSizeCos, dSizeDy));
+    int64_t effectiveCosOverhead =
+        std::max(Ops::Base::CeilDiv(dSizeDy, dSizeCos), Ops::Base::CeilDiv(dSizeCos, dSizeDy));
     int64_t baseBlockInUb =
-        Ops::Base::FloorAlign(static_cast<int64_t>(ubSize_ / MIN_UB_LOAD_D_NUM), blockSize_) / dSizeDy;
+        Ops::Base::FloorAlign(static_cast<int64_t>(ubSize_ / MIN_UB_LOAD_D_NUM), blockSize_) / minSize;
     if (baseBlockInUb < effectiveCosOverhead + 1) {
         OP_LOGE(context_->GetNodeName(),
-                "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld, baseBlockInUb=%ld.",
-                sliceLength_, dSizeDy, dSizeCos, baseBlockInUb);
+                "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld, baseBlockInUb=%ld.", sliceLength_,
+                dSizeDy, dSizeCos, baseBlockInUb);
         return ge::GRAPH_FAILED;
     }
 
