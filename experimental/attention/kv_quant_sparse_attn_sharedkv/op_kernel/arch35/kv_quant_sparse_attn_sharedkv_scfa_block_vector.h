@@ -49,6 +49,9 @@ public:
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr uint32_t dVTemplateTypeInput = 640;
     static constexpr float R0 = 1.0f;
+    static constexpr uint32_t blkTableBufId = 0;
+    static constexpr uint32_t sparseIdxBufId = 1;
+    static constexpr uint32_t kvPhyAddrBufId = 2;
     static constexpr uint32_t syncSinksBufId = 6;
 
     // ==================== Functions ======================
@@ -1279,10 +1282,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     tmpGS1Start = gS1StartIdx;
     bool done = false;
 
-    SetFlag<AscendC::HardEvent::V_MTE2>(3);
-    SetFlag<AscendC::HardEvent::V_MTE2>(4);
-    SetFlag<AscendC::HardEvent::MTE3_V>(7);
-
     for (uint32_t bIdx = bN2StartIdx; bIdx < bN2EndIdx && !done; ++bIdx) {
         bool lastBN = (bIdx == bN2EndIdx - 1);
 
@@ -1301,10 +1300,13 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
 
         int32_t actualS2Size = GetActualS2Size(bIdx, actualSeqKvlenAddr, constInfo);
 
-        WaitFlag<AscendC::HardEvent::V_MTE2>(3);
+        get_buf(PIPE_MTE2, blkTableBufId, false);
+        rls_buf(PIPE_MTE2, blkTableBufId, false);
         CopyPaTableToUb(blkTableUb, bIdx, constInfo);
-        SetFlag<AscendC::HardEvent::MTE2_V>(8);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(8);
+        get_buf(PIPE_MTE2, blkTableBufId, true);
+        rls_buf(PIPE_MTE2, blkTableBufId, true);
+        get_buf(PIPE_V, blkTableBufId, false);
+        rls_buf(PIPE_V, blkTableBufId, false);
 
         for (int32_t s1Idx = tmpGS1Start; s1Idx < s1End; ++s1Idx) {
             int32_t numerator = actualS2Size - actualS1Size + 1 + s1Idx;
@@ -1322,20 +1324,28 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
 
             uint16_t s2Loop = (curValidS2 + s2NumPerLoop - 1) / s2NumPerLoop;
             int32_t s2Tail = curValidS2 - (s2Loop - 1) * s2NumPerLoop;
-            WaitFlag<AscendC::HardEvent::V_MTE2>(4);
+            get_buf(PIPE_MTE2, sparseIdxBufId, false);
+            rls_buf(PIPE_MTE2, sparseIdxBufId, false);
             CopySparseIdxToUb(sparseIdxUb, bS1Idx, s1Idx, curValidS2, constInfo);
-            SetFlag<AscendC::HardEvent::MTE2_V>(6);
+            get_buf(PIPE_MTE2, sparseIdxBufId, true);
+            rls_buf(PIPE_MTE2, sparseIdxBufId, true);
 
-            WaitFlag<AscendC::HardEvent::MTE2_V>(6);
-            WaitFlag<AscendC::HardEvent::MTE3_V>(7);
+            get_buf(PIPE_V, sparseIdxBufId, false);
+            rls_buf(PIPE_V, sparseIdxBufId, false);
+            get_buf(PIPE_V, kvPhyAddrBufId, false);
+            rls_buf(PIPE_V, kvPhyAddrBufId, false);
             GetKVPhyAddrVF<uint32_t>(kvPhyAddrUb, sparseIdxUb, blkTableUb, s2Loop, s2Tail,
                 constInfo.cmpBlockSize, shiftRightNum, constInfo.sparseBlockSize,
                 dVTemplateTypeInput, kvStride);
-            SetFlag<AscendC::HardEvent::V_MTE2>(4);
-            SetFlag<AscendC::HardEvent::V_MTE3>(5);
-            WaitFlag<AscendC::HardEvent::V_MTE3>(5);
+            get_buf(PIPE_V, sparseIdxBufId, true);
+            rls_buf(PIPE_V, sparseIdxBufId, true);
+            get_buf(PIPE_V, kvPhyAddrBufId, true);
+            rls_buf(PIPE_V, kvPhyAddrBufId, true);
+            get_buf(PIPE_MTE3, kvPhyAddrBufId, false);
+            rls_buf(PIPE_MTE3, kvPhyAddrBufId, false);
             CopyPhyAddrToGm(kvPhyAddrUb, bS1Idx, s1Idx, curValidS2, s2NumPerLoop, constInfo);
-            SetFlag<AscendC::HardEvent::MTE3_V>(7);
+            get_buf(PIPE_MTE3, kvPhyAddrBufId, true);
+            rls_buf(PIPE_MTE3, kvPhyAddrBufId, true);
 
             processedCount++;
             if (processedCount >= curCount) {
@@ -1343,13 +1353,17 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
                 break;
             }
         }
-        SetFlag<AscendC::HardEvent::V_MTE2>(3);
+        get_buf(PIPE_V, blkTableBufId, true);
+        rls_buf(PIPE_V, blkTableBufId, true);
         tmpGS1Start = 0;
     }
 
-    WaitFlag<AscendC::HardEvent::V_MTE2>(3);
-    WaitFlag<AscendC::HardEvent::V_MTE2>(4);
-    WaitFlag<AscendC::HardEvent::MTE3_V>(7);
+    get_buf(PIPE_MTE2, blkTableBufId, false);
+    rls_buf(PIPE_MTE2, blkTableBufId, false);
+    get_buf(PIPE_MTE2, sparseIdxBufId, false);
+    rls_buf(PIPE_MTE2, sparseIdxBufId, false);
+    get_buf(PIPE_V, kvPhyAddrBufId, false);
+    rls_buf(PIPE_V, kvPhyAddrBufId, false);
     SyncAll();
     tPipe->Reset();
 }
