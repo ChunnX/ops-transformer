@@ -365,22 +365,22 @@ struct MMBufParams {
 
 struct AicOffset {
     int64_t weightDqOffset = 0;
-    int64_t dequantScaleWDqOffset = 0;
-    int64_t cqResOffset = 0;
-    int64_t rmsNormCqResOffset = 0;
-    int64_t dequantScaleWDkvKrOffset = 0;
-    int64_t weightDkvKrOffset = 0;
-    int64_t ckvKrResOffset = 0;
     int64_t weightUqQrOffset = 0;
     int64_t weightUqOffset = 0;
     int64_t weightQrOffset = 0;
-    int64_t qcQrResOffset = 0;
+    int64_t weightUkOffset = 0;
+    int64_t weightDkvKrOffset = 0;
+    int64_t dequantScaleWDqOffset = 0;
+    int64_t dequantScaleWDkvKrOffset = 0;
     int64_t dequantScaleCqOffset = 0;
+    int64_t dequantScaleWuqqrOffset = 0;
+    int64_t cqResOffset = 0;
+    int64_t rmsNormCqResOffset = 0;
+    int64_t ckvKrResOffset = 0;
+    int64_t qcQrResOffset = 0;
     int64_t qCResOffset = 0;
     int64_t qRResOffset = 0;
     int64_t qcOffset = 0;
-    int64_t weightUkOffset = 0;
-    int64_t dequantScaleWuqqrOffset = 0;
     int64_t qnResOffset = 0;
 };
 
@@ -390,9 +390,9 @@ struct AivOffset {
     int64_t rmsNormCqOffset = 0;
     int64_t rmsNormCqResOffset = 0;
     int64_t rmsNormCkvOffset = 0;
-    int64_t ropeKrOffset = 0;
     int64_t mmQnPreDequantOffset = 0;
     int64_t mmQnPreDequantResOffset = 0;
+    int64_t ropeKrOffset = 0;
     int64_t ropeQrOffset = 0;
     int64_t ropeQrResOffset = 0;
     int64_t ropeQrSplitNOffset = 0;
