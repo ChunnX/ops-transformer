@@ -28,6 +28,7 @@ struct MoeEpCombineInfo {
     uint32_t aivNum             = 0;
     uint64_t totalWinSizeEp     = 0;
     uint64_t totalUbSize        = 0;
+    uint64_t localWinSizeEp     = 0;  // per-rank local workspace stride (compact, not CCL window size)
 };
 
 struct MoeEpCombineTilingData {
