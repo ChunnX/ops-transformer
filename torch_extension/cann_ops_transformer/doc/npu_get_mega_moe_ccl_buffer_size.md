@@ -2,9 +2,18 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>            |    √    |
+
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+
+- <term>Atlas 推理系列产品</term>：不支持
+
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明<a name="zh-cn_topic_0000002203575834_section14441124184111"></a>
 
@@ -62,6 +71,10 @@ npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_ma
 -   npu\_get\_mega\_moe\_ccl\_buffer\_size、mega\_moe必须配套使用。
 -   本文公式中的“/”表示整除。
 
+## 配套接口说明
+
+本接口为[mega\_moe](mega_moe.md)的配套辅助接口，需配合mega\_moe使用：先调用本接口计算mega\_moe算子所需的HCCL通信buffer\_size，再据此设置环境变量`HCCL_BUFFSIZE`，供mega\_moe算子运行时使用。本接口的入参与mega\_moe共享同一EP通信域及token/专家/隐藏层规模，详见[mega\_moe](mega_moe.md)。
+
 ## 调用示例
 
 ```python
@@ -83,3 +96,5 @@ os.environ['HCCL_BUFFSIZE'] = f'buffer_size'
 print(f"buffer_size is {buffer_size}")
 print("run ccl_buffer_size success.")
 ```
+
+图模式调用（暂不支持）：该接口为纯标量入参的辅助计算接口，不参与torchair图模式（GE）下沉，暂不支持图模式调用，请在单算子模式（eager）下直接调用。
