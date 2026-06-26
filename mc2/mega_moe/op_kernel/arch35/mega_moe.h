@@ -327,10 +327,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
     // Tensor用处：ResetFlagList中对于workSpace上的Flag位置区域进行清理；
     // Tensor大小：大小为清理区域大小均分到所有的blockAivNum_；
-    // SwiGluToGmm2区(expertPerRank * INT_CACHELINE)+DispatchToGmm1区(expertPerRank * dispatchFlagSlotsPerExpert_)；
+    // SwiGluToGmm2区(expertPerRank * INT_CACHELINE)+DispatchToGmm1区(expertPerRank * dispatchFlagSlotsPerExpert_)
+    // +SendCntToGmm1区(expertPerRank * aicNum_ * INT_CACHELINE)，三段在workSpace上连续。
     uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     uint64_t totalFlagInt32 = static_cast<uint64_t>(expertPerRank_) *
-        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_));
+        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
+         static_cast<uint64_t>(aicNum_) * static_cast<uint64_t>(INT_CACHELINE));
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         int64_t tokenGroupResetSize = static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE;
         totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize)
@@ -393,11 +395,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr(g_coreType == AIC) {
         return;
     }
-    // workSpace swigluToGmm2Flag 清零（含 dispatch->gmm1 wave-grain 槽位区）。
-    // 总数 = SwiGluToGmm2(expertPerRank * INT_CACHELINE) + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)。
+    // workSpace swigluToGmm2Flag 清零（含 dispatch->gmm1 wave-grain 槽位区 与 sendCnt->gmm1 软同步区）。
+    // 三段在 WorkspaceInfo 中连续分配，一次性清零：
+    //   SwiGluToGmm2(expertPerRank * INT_CACHELINE) + DispatchToGmm1(expertPerRank * dispatchFlagSlotsPerExpert_)
+    //   + SendCntToGmm1(expertPerRank * aicNum_ * INT_CACHELINE)。
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
     int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
-        (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_);
+        (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
+         static_cast<int32_t>(aicNum_) * static_cast<int32_t>(INT_CACHELINE));
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
     DataCopyExtParams rankSyncCopyParams{1U, static_cast<uint32_t>(coreLen * sizeof(int32_t)), 0U, 0U, 0U};
@@ -571,7 +576,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
 // --------------------------------------------------------------------------------------------------
 //   Phase 1: 从本卡 win 将当前 localExpertId 的 worldSize_ 个 [mask|count] 槽位读进 gatherMaskTensor_;
 //   Phase 2: 逐卡读取 count → 累加 sendCnt/cumsumRevCntInRank_, 写 cumsumInfoTensor_;
-//   Phase 3: 写 expertRevNumsGlobalTensor_ + CrossCoreSetFlag 通知 AIC;
+//   Phase 3: 写 expertRevNumsGlobalTensor_ + 对 flagSendCntToGmm1Ptr 软同步位 AtomicAdd 通知 AIC;
 // ==================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t localExpertId,
@@ -618,7 +623,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
                     {1U, static_cast<uint32_t>(worldSize_ * (localExpertId + 1) * sizeof(int32_t)), 0U, 0U, 0U});
     }
     PipeBarrier<PIPE_ALL>();
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(2);
+    // 软同步：mte3 写完 count 后,对本 (expert, core) 的 flag 槽位做 AtomicAdd 通知 aic。
+    // 取代原 CrossCoreSetFlag<...>(2) 硬同步:专家数 > 16 时 aiv1 会连续 set 导致硬同步计数器反转,
+    // 每个 (expert, core) 独占 cache line,不存在共享计数器,故不会反转。
+    __gm__ int32_t* sendCntFlag = (__gm__ int32_t*)params_.workspaceInfo.flagSendCntToGmm1Ptr +
+        static_cast<uint64_t>(localExpertId) * aicNum_ * INT_CACHELINE +
+        static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+    AscendC::AtomicAdd(sendCntFlag, static_cast<int32_t>(1));
 }
 
 // ============================================================================
@@ -825,26 +836,38 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
     }
 
-    // gmm1中当前专家收到的count数是由subBlockIdx_=1的aiv计算出并写入expertRevNumsGlobalTensor_，通知后续aic读取该值
+    // gmm1中当前专家收到的count数由 subBlockIdx_=1 的 aiv(aiv1) 在 SendCntCal 中算好,
+    // 写入 expertRevNumsGlobalTensor_,并对 flagSendCntToGmm1Ptr 的本 (expert, core) 槽位 AtomicAdd。
+    // 两个消费者(aic 与 aiv0)各自独立轮询同一个"只写一次"的槽位读取 count,彼此不再用 CrossCore
+    // 硬同步互相通知:既规避了 aiv1->aic 在专家数 > 16 时的计数器反转,也避免了原 aic->aiv0
+    // flag(3) 在连续空 expert(M==0 走 continue、无 GMM 耦合)场景下 aic 领先 aiv0 导致的同类反转。
     if constexpr (Mode == AddrUpdateMode::kGmm1) {
-        if constexpr (g_coreType == AscendC::AIC) {
-            CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(2 + 16);
+        bool isCntConsumer = (g_coreType == AscendC::AIC);
+        if constexpr (g_coreType == AscendC::AIV) {
+            if (subBlockIdx_ == 1) {
+                // 生产者 aiv1 自身即持有 count
+                Get<M_VALUE>(state.problemShape) = sendCnt;
+            } else {
+                // aiv0 与 aic 一样是消费者,直接轮询软同步槽位
+                isCntConsumer = true;
+            }
+        }
+        if (isCntConsumer) {
+            __gm__ int32_t* sendCntFlag = (__gm__ int32_t*)params_.workspaceInfo.flagSendCntToGmm1Ptr +
+                static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
+                static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+            // 轮询节流:每次 GM 读之间用 GetSystemCycle 差值真实等待一小段,让出内存总线,
+            // 否则 aic 的热轮询会饿住生产者 aiv1 的 AtomicAdd 写,造成活锁卡死。
+            // 与 mega_moe_impl.h 中 dispatchToGmm1Flag 的等待方式保持一致(Nop 在硬件上不会真正 idle)。
+            while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
+            }
             uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
             DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
                 expertRevNumsGlobalTensor_[offsetInCnt]);
             Get<M_VALUE>(state.problemShape) = expertRevNumsGlobalTensor_.GetValue(offsetInCnt);
-            CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(3);
-        }
-        if constexpr (g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 0) {
-                CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(3);
-                uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
-                DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
-                expertRevNumsGlobalTensor_[offsetInCnt]);
-                Get<M_VALUE>(state.problemShape) = expertRevNumsGlobalTensor_.GetValue(offsetInCnt);
-            } else {
-                Get<M_VALUE>(state.problemShape) = sendCnt;
-            }
         }
     } else if constexpr (Mode == AddrUpdateMode::kGmm2) {
         uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
@@ -980,7 +1003,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(
         + aivCoreIdx_ * INT_CACHELINE;
     while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup)
     {
-        AscendC::Nop<200>();
+        int64_t st = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - st < 100) {
+        }
     }
     uint32_t tokenStart = myGroup * L1_TILE_M_256;
     uint32_t tokenCount = (L1_TILE_M_256 < m_expert - tokenStart) ? L1_TILE_M_256 : m_expert - tokenStart;
@@ -1235,8 +1260,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     QuantProcessInRank();        // 对本卡token的量化
     if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
     }
+    SyncAll<false>();
     CrossRankSyncInWorldSize();  // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
