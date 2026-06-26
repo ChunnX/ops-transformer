@@ -1879,7 +1879,6 @@ void FusedInferAttentionScoreTilingImpl::SetAntiQuantInfo(const FiaTilingInfo &f
 
 void FusedInferAttentionScoreTilingImpl::ComputeNeedInit(const FiaTilingInfo &fiaInfo)
 {
-    needInit_ = false;
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
         return;
     }
