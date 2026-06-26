@@ -390,6 +390,13 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     tilingData_.mmTilingData.scaleKBL1 = scaleKL1;
     tilingData_.mmTilingData.isBias = 0;
     tilingData_.mmTilingData.dbL0C = basicTiling_.dbL0c;
+    std::printf("[GMMAQ tiling] DoLibApiTiling: M=%u, N=%u, K=%u, baseM=%u, baseN=%u, baseK=%u, "
+                "kAL1=%u, kBL1=%u, scaleKAL1=%u, scaleKBL1=%u, dbL0C=%u.\n",
+                tilingData_.mmTilingData.m, tilingData_.mmTilingData.n, tilingData_.mmTilingData.k,
+                tilingData_.mmTilingData.baseM, tilingData_.mmTilingData.baseN, tilingData_.mmTilingData.baseK,
+                tilingData_.mmTilingData.kAL1, tilingData_.mmTilingData.kBL1,
+                tilingData_.mmTilingData.scaleKAL1, tilingData_.mmTilingData.scaleKBL1,
+                static_cast<uint32_t>(tilingData_.mmTilingData.dbL0C));
     return ge::GRAPH_SUCCESS;
 }
 

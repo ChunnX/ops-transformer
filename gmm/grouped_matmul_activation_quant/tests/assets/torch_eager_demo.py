@@ -63,7 +63,7 @@ GE_DTYPE_FLOAT8_E5M2 = 35
 E8M0_ONE_BYTE = 127
 ACL_FORMAT_ND = 2
 ACL_FORMAT_FRACTAL_NZ = 29
-DEFAULT_CASE_CSV = os.path.join(REPO_ROOT, "group_matmul_activation_quant_mxfp8_aclnn_converted.csv")
+DEFAULT_CASE_CSV = os.path.join(REPO_ROOT, "group_matmul_activation_quant_mxfp8_88.csv")
 
 
 def log(msg):
@@ -101,6 +101,19 @@ def ge_dtype_to_torch(ge_dtype):
     return dtype_name_to_torch(ge_dtype_to_output_name(ge_dtype))
 
 
+def make_valid_group_list(group_num, m, group_list_type):
+    if group_num <= 0:
+        return np.array([], dtype=np.int64)
+
+    base = m // group_num
+    remain = m % group_num
+    group_sizes = np.full((group_num,), base, dtype=np.int64)
+    group_sizes[:remain] += 1
+    if group_list_type == 1:
+        return group_sizes
+    return np.cumsum(group_sizes)
+
+
 def load_case_from_csv(csv_path, case_index):
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"case csv not found: {csv_path}")
@@ -125,9 +138,16 @@ def load_case_from_csv(csv_path, case_index):
     k = int(x_shape[1])
     transpose_weight = bool(attrs["transpose_weight"])
     n = int(weight_shape[1] if transpose_weight else weight_shape[2])
+    group_list_type = int(attrs["group_list_type"])
+    group_list = attrs.get("group_list_expect", None)
+    if group_list is None:
+        group_list = make_valid_group_list(e, m, group_list_type)
+    else:
+        group_list = np.array(group_list, dtype=np.int64)
 
     return {
         "case_name": row["testcase_name"],
+        "case_index": case_index,
         "e": e,
         "m": m,
         "k": k,
@@ -135,8 +155,8 @@ def load_case_from_csv(csv_path, case_index):
         "x_dtype_name": input_dtypes[0],
         "y_dtype": int(attrs["y_dtype"]),
         "y_output_name": output_dtypes[0],
-        "group_list": np.array(attrs.get("group_list_expect", [m]), dtype=np.int64),
-        "group_list_type": int(attrs["group_list_type"]),
+        "group_list": group_list,
+        "group_list_type": group_list_type,
         "transpose_weight": transpose_weight,
         "scale_alg": int(attrs["scale_alg"]),
         "quant_mode": attrs.get("quant_mode", None),
@@ -145,7 +165,9 @@ def load_case_from_csv(csv_path, case_index):
 
 def make_inputs(case, seed=20260617):
     e, m, k, n = case["e"], case["m"], case["k"], case["n"]
-    log(f"prepare inputs from {case['case_name']}: E={e}, M={m}, K={k}, N={n}, seed={seed}")
+    log(f"prepare inputs from case_index={case['case_index']} {case['case_name']}: "
+        f"E={e}, M={m}, K={k}, N={n}, seed={seed}")
+    log(f"group_list_type={case['group_list_type']}, group_list={case['group_list'].tolist()}")
     rng = np.random.default_rng(seed)
 
     x_f32 = rng.uniform(-0.5, 0.5, size=(m, k)).astype(np.float32)
@@ -226,6 +248,23 @@ def to_numpy_float32(tensor):
     return tensor.detach().cpu().to(torch.float32).numpy()
 
 
+def log_block_match(name, actual, expected, block_size):
+    if actual.shape != expected.shape or actual.ndim != 2:
+        return
+    block_num = ceil_div(actual.shape[1], block_size)
+    ratios = []
+    max_abs_diffs = []
+    for block_idx in range(block_num):
+        start = block_idx * block_size
+        end = min((block_idx + 1) * block_size, actual.shape[1])
+        block_actual = actual[:, start:end]
+        block_expected = expected[:, start:end]
+        ratios.append(float(np.mean(block_actual == block_expected)))
+        max_abs_diffs.append(float(np.max(np.abs(block_actual - block_expected))))
+    log(f"{name} exact match ratio by N-block({block_size}): {ratios}")
+    log(f"{name} max abs diff by N-block({block_size}): {max_abs_diffs}")
+
+
 def run(args):
     log("start torch eager demo")
     log(f"python={sys.version.split()[0]}, torch={torch.__version__}")
@@ -296,6 +335,9 @@ def run(args):
     log(f"first 10 y_scale_ref values: {np.asarray(y_scale_ref).reshape(-1)[:10]}")
     log(f"first 10 y_expected values: {y_expected.reshape(-1)[:10]}")
     log(f"first 10 y_scale_expected values: {y_scale_expected.reshape(-1)[:10]}")
+    log_block_match("y", y_actual, y_expected, 64)
+    log_block_match("y", y_actual, y_expected, 256)
+    log_block_match("y_scale", y_scale_actual, y_scale_expected, 8)
 
     log(f"compare y with golden: atol={args.atol}, rtol={args.rtol}")
     np.testing.assert_allclose(y_actual, y_expected, atol=args.atol, rtol=args.rtol)
