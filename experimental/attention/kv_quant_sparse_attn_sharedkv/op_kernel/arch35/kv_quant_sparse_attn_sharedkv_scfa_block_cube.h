@@ -85,9 +85,9 @@ private:
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
 
     /* =====================运行时变量==================== */
-    uint32_t l1QBufId = 0; // 3 buffer,0-2
-    uint32_t l1QMte1ToMte2FlagId = 0; // 0-2，用于l1Q
-    uint32_t l1QMte2ToMte1FlagId = 0;
+    uint32_t l1QBufIdx = 0; // 3 buffer,0-2
+    uint32_t l1QMte1ToMte2BufId = 0; // 0-2，用于l1Q
+    uint32_t l1QMte2ToMte1BufId = 0;
     uint32_t l1KLoadBufIdx = 0; // 6 buffer,0-5
     uint32_t l1KMatmul1BufIdx = 0;
     uint32_t l1KMatmul2BufIdx = 0;
@@ -98,8 +98,8 @@ private:
     uint32_t l0ABMToMte1FlagId = 3; // {0, 1}, 用于L0AB
     uint32_t l0ABMte1ToMFlagId = 3; // {0, 1}, 用于L0AB
     uint32_t l0CBufIdx = 0; // 2 buffer, 0-1
-    uint32_t l0CFixToMBufId = 9; // {0, 1}, 用于L0C
-    uint32_t l0CMToFixBufId = 9; // {0, 1}, 用于L0C
+    uint32_t l0CFixToMBufId = 11; // 11-12, 用于L0C
+    uint32_t l0CMToFixBufId = 11;
 
     /* =====================LocalBuffer变量==================== */
     TBuf<TPosition::A1> l1QBuffers;
@@ -150,9 +150,6 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
     mmL0CTensor = mmL0CBuffers.Get<T>();
     SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId); // {0, 1}, 用于L0AB
     SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + 1);
-    SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId); // {0, 1, 2}, 用于l1Q
-    SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 1);
-    SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + 2);
 }
 
 /* 初始化GmTensor,设置shape信息并计算strides */
@@ -194,13 +191,15 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::CopyQGmToL1(RunInfo &runInf
     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
         runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
     for (uint32_t i = 0; i < 2; i++) {
-        uint32_t curL1QBufId = (l1QBufId + i) % 3;
-        WaitFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + curL1QBufId);
+        uint32_t curL1QBufId = (l1QBufIdx + i) % 3;
+        get_buf(PIPE_MTE2, l1QMte1ToMte2BufId + curL1QBufId, false);
+        rls_buf(PIPE_MTE2, l1QMte1ToMte2BufId + curL1QBufId, false);
         uint64_t curGmOffset = gmOffset + i * (constInfo.dSize >> 1);
         CopyToL1Nd2Nz<Q_T>(l1QTensor[curL1QBufId * BUFFER_SIZE_16K],
             this->queryGm.gmTensor[curGmOffset], runInfo.mRealSize, constInfo.dSize >> 1,
             constInfo.mm1Ka);
-        SetFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
+        get_buf(PIPE_MTE2, l1QMte2ToMte1BufId + curL1QBufId, true);
+        rls_buf(PIPE_MTE2, l1QMte2ToMte1BufId + curL1QBufId, true);
     }
 }
  	 
@@ -254,9 +253,10 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
                      0,    // isLeftTranspose
                      1     // isRightTranspose
                     };
-    uint32_t curL1QBufId = l1QBufId;
+    uint32_t curL1QBufId = l1QBufIdx;
     if (unlikely(runInfo.s2LoopCount == 0)) {
-        WaitFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
+        get_buf(PIPE_MTE1, l1QMte2ToMte1BufId + curL1QBufId, false);
+        rls_buf(PIPE_MTE1, l1QMte2ToMte1BufId + curL1QBufId, false);
     }
     
     // m,n不切，k切128，mm1B直接用tensor的数据
@@ -273,7 +273,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
 
     curL1QBufId = (curL1QBufId + 1) % 3;
     if (unlikely(runInfo.s2LoopCount == 0)) {
-        WaitFlag<HardEvent::MTE2_MTE1>(l1QMte2ToMte1FlagId + curL1QBufId);
+        get_buf(PIPE_MTE1, l1QMte2ToMte1BufId + curL1QBufId, false);
+        rls_buf(PIPE_MTE1, l1QMte2ToMte1BufId + curL1QBufId, false);
     }
     param.singleK = constInfo.dSize - param.singleK;
     param.isOutKFisrt = false;
@@ -286,9 +287,11 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
         param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + l1QBufId);
-        SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + curL1QBufId);
-        l1QBufId = (l1QBufId + 2) % 3;
+        get_buf(PIPE_MTE1, l1QMte1ToMte2BufId + l1QBufIdx, true);
+        rls_buf(PIPE_MTE1, l1QMte1ToMte2BufId + l1QBufIdx, true);
+        get_buf(PIPE_MTE1, l1QMte1ToMte2BufId + curL1QBufId, true);
+        rls_buf(PIPE_MTE1, l1QMte1ToMte2BufId + curL1QBufId, true);
+        l1QBufIdx = (l1QBufIdx + 2) % 3;
         if (notLastTwoLoop) {
             CopyQGmToL1(runInfoNext, constInfo);
         }
