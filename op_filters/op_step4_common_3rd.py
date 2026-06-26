@@ -33,179 +33,185 @@ else:
     from .utils import normalize_path, setup_logging, read_file_lines, load_dependency_json
 
 
-THIRD_PARTY_OP_MAPPING: Dict[str, List[str]] = {
-    "quant_batch_matmul_v3": [
-        "all_gather_matmul_v2",
-        "allto_all_matmul",
-        "matmul_all_reduce",
-        "matmul_allto_all",
-        "matmul_reduce_scatter_v2"
-    ],
-    "template_linear_algebra": [
-        "all_gather_matmul_v2",
-        "allto_all_matmul",
-        "matmul_allto_all",
-        "matmul_reduce_scatter_v2"
-    ],
-    "batch_mat_mul_v3": [
-        "allto_all_all_gather_batch_mat_mul",
-        "batch_mat_mul_reduce_scatter_allto_all"
-    ],
-    "grouped_matmul": [
-        "allto_allv_quant_grouped_mat_mul",
-        "quant_grouped_mat_mul_allto_all"
-    ],
-    "weight_quant_batch_matmul_v2": [
-        "all_gather_matmul_v2",
-        "matmul_all_reduce"
-    ],
-    "rms_norm": [
-        "matmul_all_reduce_add_rms_norm",
-        "moe_distribute_combine_add_rms_norm"
-    ],
-    "norm_common": [
-        "matmul_all_reduce_add_rms_norm",
-        "moe_distribute_combine_add_rms_norm"
-    ],
-    "add_rms_norm": [
-        "matmul_all_reduce_add_rms_norm"
-    ]
-}
+# [已禁用] 3rd 子目录特殊处理映射 - common/3rd 变更现在直接触发全量测试
+# 如需恢复特殊处理逻辑，取消以下注释即可
+# THIRD_PARTY_OP_MAPPING: Dict[str, List[str]] = {
+#     "quant_batch_matmul_v3": [
+#         "all_gather_matmul_v2",
+#         "allto_all_matmul",
+#         "matmul_all_reduce",
+#         "matmul_allto_all",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "template_linear_algebra": [
+#         "all_gather_matmul_v2",
+#         "allto_all_matmul",
+#         "matmul_allto_all",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "batch_mat_mul_v3": [
+#         "allto_all_all_gather_batch_mat_mul",
+#         "batch_mat_mul_reduce_scatter_allto_all"
+#     ],
+#     "grouped_matmul": [
+#         "allto_allv_quant_grouped_mat_mul",
+#         "quant_grouped_mat_mul_allto_all"
+#     ],
+#     "weight_quant_batch_matmul_v2": [
+#         "all_gather_matmul_v2",
+#         "matmul_all_reduce"
+#     ],
+#     "rms_norm": [
+#         "matmul_all_reduce_add_rms_norm",
+#         "moe_distribute_combine_add_rms_norm"
+#     ],
+#     "norm_common": [
+#         "matmul_all_reduce_add_rms_norm",
+#         "moe_distribute_combine_add_rms_norm"
+#     ],
+#     "add_rms_norm": [
+#         "matmul_all_reduce_add_rms_norm"
+#     ]
+# }
+THIRD_PARTY_OP_MAPPING: Dict[str, List[str]] = {}
 
-COMMON_FILE_OP_MAPPING: Dict[str, List[str]] = {
-    "op_api/mc2_aclnn_util.h": [
-        "all_gather_matmul",
-        "all_gather_matmul_v2",
-        "matmul_all_reduce",
-        "matmul_reduce_scatter_v2",
-        "matmul_reduce_scatter"
-    ],
-    "op_api/mc2_context.h": [
-        "moe_distribute_combine_v2",
-        "moe_distribute_dispatch_v2"
-    ],
-    "op_graph/matmul_all_reduce_gen_task_ops_utils.h": [
-        "inplace_matmul_all_reduce_add_rms_norm",
-        "matmul_all_reduce",
-        "matmul_all_reduce_add_rms_norm"
-    ],
-    "op_host/op_tiling/mc2_fit_based_balance_tiling.cpp": [
-        "all_gather_matmul_v2",
-        "matmul_all_reduce",
-        "matmul_reduce_scatter_v2"
-    ],
-    "op_host/op_tiling/mc2_tiling_struct.h": [
-        "all_gather_matmul_v2",
-        "allto_allv_grouped_mat_mul",
-        "allto_allv_quant_grouped_mat_mul",
-        "batch_mat_mul_reduce_scatter_allto_all"
-    ],
-    "op_host/op_tiling/mc2_tiling_common_var.h": [
-        "allto_all_all_gather_batch_mat_mul",
-        "batch_mat_mul_reduce_scatter_allto_all",
-        "grouped_mat_mul_allto_allv"
-    ],
-    "op_host/op_tiling/mc2_calc_num_blocks.h": [
-        "allto_allv_grouped_mat_mul",
-        "grouped_mat_mul_allto_allv"
-    ],
-    "op_host/op_tiling/one_calc_two_comm_tiling.h": [
-        "allto_all_all_gather_batch_mat_mul",
-        "batch_mat_mul_reduce_scatter_allto_all"
-    ],
-    "op_kernel/mc2_moe_context.h": [
-        "moe_distribute_combine_add_rms_norm",
-        "moe_distribute_combine_v2",
-        "moe_distribute_combine_v3",
-        "moe_distribute_dispatch_v2",
-        "moe_distribute_dispatch_v3"
-    ],
-    "op_kernel/mc2_mat_mul_asw_block.h": [
-        "all_gather_matmul_v2",
-        "matmul_reduce_scatter_v2"
-    ],
-    "op_kernel/mc2_mat_mul_asw_kernel.h": [
-        "all_gather_matmul_v2",
-        "matmul_reduce_scatter_v2"
-    ],
-    "op_kernel/mc2_matmul_compute.h": [
-        "all_gather_matmul",
-        "all_gather_matmul_v2",
-        "matmul_reduce_scatter"
-    ],
-    "op_kernel/mc2_nd_to_nz.h": [
-        "all_gather_matmul",
-        "all_gather_matmul_v2",
-        "matmul_reduce_scatter"
-    ],
-    "op_kernel/mc2_quant_batch_matmul.h": [
-        "all_gather_matmul_v2",
-        "matmul_reduce_scatter_v2"
-    ],
-    "op_kernel/qbmm_mix_perblock_noncontiguous.h": [
-        "all_gather_matmul_v2",
-        "matmul_reduce_scatter_v2"
-    ],
-    "op_kernel/reduce_sum_cast_fp32.h": [
-        "matmul_all_reduce",
-        "matmul_reduce_scatter_v2"
-    ],
-    "op_kernel/gm_ub_gm_copy.h": [
-        "matmul_all_reduce"
-    ],
-    "op_kernel/mc2_common_def.h": [
-        "matmul_reduce_scatter_v2"
-    ],
-    "op_kernel/all_gather_matmul_tiling.h": [
-        "all_gather_matmul",
-        "all_gather_matmul_v2"
-    ],
-    "op_kernel/mc2_templates/scheduler/pipeline_builder.h": [
-        "allto_all_matmul",
-        "matmul_allto_all"
-    ],
-    "op_kernel/mc2_templates/computation/math/mc2_vec_transpose.h": [
-        "allto_all_matmul"
-    ],
-    "op_kernel/mc2_templates/computation/matmul/mc2_fp_matmul.h": [
-        "allto_all_matmul"
-    ],
-    "op_kernel/mc2_templates/communication/comm_stage.h": [
-        "allto_all_matmul"
-    ],
-    "utils/context_util.h": [
-        "all_gather_matmul",
-        "allto_allv_grouped_mat_mul",
-        "allto_allv_quant_grouped_mat_mul",
-        "matmul_reduce_scatter",
-        "quant_grouped_mat_mul_allto_allv"
-    ],
-    "utils/mc2_moe_utils.h": [
-        "allto_all_all_gather_batch_mat_mul",
-        "batch_mat_mul_reduce_scatter_allto_all",
-        "grouped_mat_mul_allto_allv",
-        "quant_grouped_mat_mul_allto_allv"
-    ],
-    "utils/context_transfer.h": [
-        "inplace_matmul_all_reduce_add_rms_norm",
-        "matmul_all_reduce",
-        "matmul_all_reduce_add_rms_norm"
-    ],
-    "utils/mc2_exception_dump.h": [
-        "moe_distribute_combine_v2",
-        "moe_distribute_combine_v3",
-        "moe_distribute_dispatch_v2",
-        "moe_distribute_dispatch_v3"
-    ],
-    "utils/ops_utils.h": [
-        "all_gather_matmul",
-        "matmul_reduce_scatter",
-        "matmul_reduce_scatter_v2"
-    ],
-    "utils/matmul_util.h": [
-        "moe_distribute_combine_teardown"
-    ]
-}
+# [已禁用] common 文件特殊处理映射 - common/3rd 变更现在直接触发全量测试
+# 如需恢复特殊处理逻辑，取消以下注释即可
+# COMMON_FILE_OP_MAPPING: Dict[str, List[str]] = {
+#     "op_api/mc2_aclnn_util.h": [
+#         "all_gather_matmul",
+#         "all_gather_matmul_v2",
+#         "matmul_all_reduce",
+#         "matmul_reduce_scatter_v2",
+#         "matmul_reduce_scatter"
+#     ],
+#     "op_api/mc2_context.h": [
+#         "moe_distribute_combine_v2",
+#         "moe_distribute_dispatch_v2"
+#     ],
+#     "op_graph/matmul_all_reduce_gen_task_ops_utils.h": [
+#         "inplace_matmul_all_reduce_add_rms_norm",
+#         "matmul_all_reduce",
+#         "matmul_all_reduce_add_rms_norm"
+#     ],
+#     "op_host/op_tiling/mc2_fit_based_balance_tiling.cpp": [
+#         "all_gather_matmul_v2",
+#         "matmul_all_reduce",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "op_host/op_tiling/mc2_tiling_struct.h": [
+#         "all_gather_matmul_v2",
+#         "allto_allv_grouped_mat_mul",
+#         "allto_allv_quant_grouped_mat_mul",
+#         "batch_mat_mul_reduce_scatter_allto_all"
+#     ],
+#     "op_host/op_tiling/mc2_tiling_common_var.h": [
+#         "allto_all_all_gather_batch_mat_mul",
+#         "batch_mat_mul_reduce_scatter_allto_all",
+#         "grouped_mat_mul_allto_allv"
+#     ],
+#     "op_host/op_tiling/mc2_calc_num_blocks.h": [
+#         "allto_allv_grouped_mat_mul",
+#         "grouped_mat_mul_allto_allv"
+#     ],
+#     "op_host/op_tiling/one_calc_two_comm_tiling.h": [
+#         "allto_all_all_gather_batch_mat_mul",
+#         "batch_mat_mul_reduce_scatter_allto_all"
+#     ],
+#     "op_kernel/mc2_moe_context.h": [
+#         "moe_distribute_combine_add_rms_norm",
+#         "moe_distribute_combine_v2",
+#         "moe_distribute_combine_v3",
+#         "moe_distribute_dispatch_v2",
+#         "moe_distribute_dispatch_v3"
+#     ],
+#     "op_kernel/mc2_mat_mul_asw_block.h": [
+#         "all_gather_matmul_v2",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "op_kernel/mc2_mat_mul_asw_kernel.h": [
+#         "all_gather_matmul_v2",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "op_kernel/mc2_matmul_compute.h": [
+#         "all_gather_matmul",
+#         "all_gather_matmul_v2",
+#         "matmul_reduce_scatter"
+#     ],
+#     "op_kernel/mc2_nd_to_nz.h": [
+#         "all_gather_matmul",
+#         "all_gather_matmul_v2",
+#         "matmul_reduce_scatter"
+#     ],
+#     "op_kernel/mc2_quant_batch_matmul.h": [
+#         "all_gather_matmul_v2",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "op_kernel/qbmm_mix_perblock_noncontiguous.h": [
+#         "all_gather_matmul_v2",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "op_kernel/reduce_sum_cast_fp32.h": [
+#         "matmul_all_reduce",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "op_kernel/gm_ub_gm_copy.h": [
+#         "matmul_all_reduce"
+#     ],
+#     "op_kernel/mc2_common_def.h": [
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "op_kernel/all_gather_matmul_tiling.h": [
+#         "all_gather_matmul",
+#         "all_gather_matmul_v2"
+#     ],
+#     "op_kernel/mc2_templates/scheduler/pipeline_builder.h": [
+#         "allto_all_matmul",
+#         "matmul_allto_all"
+#     ],
+#     "op_kernel/mc2_templates/computation/math/mc2_vec_transpose.h": [
+#         "allto_all_matmul"
+#     ],
+#     "op_kernel/mc2_templates/computation/matmul/mc2_fp_matmul.h": [
+#         "allto_all_matmul"
+#     ],
+#     "op_kernel/mc2_templates/communication/comm_stage.h": [
+#         "allto_all_matmul"
+#     ],
+#     "utils/context_util.h": [
+#         "all_gather_matmul",
+#         "allto_allv_grouped_mat_mul",
+#         "allto_allv_quant_grouped_mat_mul",
+#         "matmul_reduce_scatter",
+#         "quant_grouped_mat_mul_allto_allv"
+#     ],
+#     "utils/mc2_moe_utils.h": [
+#         "allto_all_all_gather_batch_mat_mul",
+#         "batch_mat_mul_reduce_scatter_allto_all",
+#         "grouped_mat_mul_allto_allv",
+#         "quant_grouped_mat_mul_allto_allv"
+#     ],
+#     "utils/context_transfer.h": [
+#         "inplace_matmul_all_reduce_add_rms_norm",
+#         "matmul_all_reduce",
+#         "matmul_all_reduce_add_rms_norm"
+#     ],
+#     "utils/mc2_exception_dump.h": [
+#         "moe_distribute_combine_v2",
+#         "moe_distribute_combine_v3",
+#         "moe_distribute_dispatch_v2",
+#         "moe_distribute_dispatch_v3"
+#     ],
+#     "utils/ops_utils.h": [
+#         "all_gather_matmul",
+#         "matmul_reduce_scatter",
+#         "matmul_reduce_scatter_v2"
+#     ],
+#     "utils/matmul_util.h": [
+#         "moe_distribute_combine_teardown"
+#     ]
+# }
+COMMON_FILE_OP_MAPPING: Dict[str, List[str]] = {}
 
 
 def is_in_common(file_path: str, mc2_path: str) -> bool:
@@ -335,6 +341,9 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
     """
     检测 common/3rd 目录下的变更文件。
 
+    当前逻辑: common 或 3rd 目录下任何文件变更都直接触发全量测试，
+    不再做特殊文件/子目录到关联算子的映射处理。
+
     Args:
         file_paths: 变更文件列表
         mc2_path: mc2 目录路径
@@ -342,86 +351,84 @@ def filter_common_3rd(file_paths: List[str], mc2_path: str, dependency_data: Dic
         logger: 日志记录器
 
     Returns:
-        包含 common_files、special_common_files、special_common_ops、special_3rd_files、
-        special_3rd_ops、other_3rd_files、other_files、should_full_test 的字典
+        包含 common_files、3rd_files、other_files、should_full_test 的字典
     """
-    special_common_files = []
-    special_common_ops: Set[str] = set()
-    other_common_files = []
-    special_3rd_files = []
-    special_3rd_ops: Set[str] = set()
-    other_3rd_files = []
+    common_files = []
+    third_files = []
     other_files = []
     
     for file_path in file_paths:
         if is_in_common(file_path, mc2_path):
-            common_rel_path = get_common_relative_path(file_path, mc2_path)
-            if common_rel_path in COMMON_FILE_OP_MAPPING:
-                special_common_files.append(file_path)
-                special_common_ops.update(COMMON_FILE_OP_MAPPING[common_rel_path])
-                logger.debug(f"[common 特殊处理] 文件: {file_path}, 映射: {common_rel_path}")
-            else:
-                other_common_files.append(file_path)
+            common_files.append(file_path)
         elif is_in_3rd(file_path, mc2_path):
-            subdir = get_3rd_subdir(file_path, mc2_path)
-            if subdir in THIRD_PARTY_OP_MAPPING:
-                special_3rd_files.append(file_path)
-                special_3rd_ops.update(THIRD_PARTY_OP_MAPPING[subdir])
-                logger.debug(f"[3rd 特殊处理] 文件: {file_path}, 子目录: 3rd/{subdir}")
-            else:
-                other_3rd_files.append(file_path)
+            third_files.append(file_path)
         else:
             other_files.append(file_path)
     
     should_full_test = False
     
-    if other_common_files:
+    if common_files:
         logger.info("=" * 60)
-        logger.info("[触发全量测试] 原因: common 目录下的非特殊处理文件变更")
-        logger.info(f"触发路径 (共 {len(other_common_files)} 个):")
-        for f in other_common_files:
+        logger.info("[触发全量测试] 原因: common 目录下有文件变更")
+        logger.info(f"触发路径 (共 {len(common_files)} 个):")
+        for f in common_files:
             logger.info(f"  -> {f}")
         should_full_test = True
     
-    if other_3rd_files:
+    if third_files:
         logger.info("=" * 60)
-        logger.info("[触发全量测试] 原因: 3rd 目录下的非特殊处理子目录变更")
-        logger.info(f"触发路径 (共 {len(other_3rd_files)} 个):")
-        for f in other_3rd_files:
+        logger.info("[触发全量测试] 原因: 3rd 目录下有文件变更")
+        logger.info(f"触发路径 (共 {len(third_files)} 个):")
+        for f in third_files:
             subdir = get_3rd_subdir(f, mc2_path)
             logger.info(f"  -> {f} (子目录: 3rd/{subdir})")
         should_full_test = True
     
-    if special_common_files:
-        logger.info("=" * 60)
-        logger.info("[common 特殊处理机制] 添加特定关联算子（不做反向依赖推导）")
-        logger.info(f"触发路径 (共 {len(special_common_files)} 个):")
-        for f in special_common_files:
-            common_rel_path = get_common_relative_path(f, mc2_path)
-            logger.info(f"  -> {f}")
-            logger.info(f"     映射配置: {common_rel_path}")
-        logger.info(f"关联算子: {sorted(special_common_ops)}")
-    
-    if special_3rd_files:
-        logger.info("=" * 60)
-        logger.info("[3rd 特殊处理机制] 添加特定关联算子（不做反向依赖推导）")
-        logger.info(f"触发路径 (共 {len(special_3rd_files)} 个):")
-        for f in special_3rd_files:
-            subdir = get_3rd_subdir(f, mc2_path)
-            logger.info(f"  -> {f} (子目录: 3rd/{subdir})")
-        logger.info(f"关联算子: {sorted(special_3rd_ops)}")
-    
-    if not other_common_files and not other_3rd_files and not special_common_files and not special_3rd_files:
+    if not common_files and not third_files:
         logger.info("变更文件不在 common/3rd 目录下")
     
+    # [已禁用] 以下为特殊处理逻辑，如需恢复取消注释并替换上方简单分类逻辑
+    # special_common_files = []
+    # special_common_ops: Set[str] = set()
+    # other_common_files = []
+    # special_3rd_files = []
+    # special_3rd_ops: Set[str] = set()
+    # other_3rd_files = []
+    # other_files = []
+    # for file_path in file_paths:
+    #     if is_in_common(file_path, mc2_path):
+    #         common_rel_path = get_common_relative_path(file_path, mc2_path)
+    #         if common_rel_path in COMMON_FILE_OP_MAPPING:
+    #             special_common_files.append(file_path)
+    #             special_common_ops.update(COMMON_FILE_OP_MAPPING[common_rel_path])
+    #         else:
+    #             other_common_files.append(file_path)
+    #     elif is_in_3rd(file_path, mc2_path):
+    #         subdir = get_3rd_subdir(file_path, mc2_path)
+    #         if subdir in THIRD_PARTY_OP_MAPPING:
+    #             special_3rd_files.append(file_path)
+    #             special_3rd_ops.update(THIRD_PARTY_OP_MAPPING[subdir])
+    #         else:
+    #             other_3rd_files.append(file_path)
+    #     else:
+    #         other_files.append(file_path)
+    # should_full_test = False
+    # if other_common_files:
+    #     should_full_test = True
+    # if other_3rd_files:
+    #     should_full_test = True
+    
     return {
-        "other_common_files": other_common_files,
-        "special_common_files": special_common_files,
-        "special_common_ops": special_common_ops,
-        "special_3rd_files": special_3rd_files,
-        "special_3rd_ops": special_3rd_ops,
-        "other_3rd_files": other_3rd_files,
+        "common_files": common_files,
+        "3rd_files": third_files,
         "other_files": other_files,
+        # [已禁用] 特殊处理相关字段，如需恢复取消注释
+        # "other_common_files": other_common_files,
+        # "special_common_files": special_common_files,
+        # "special_common_ops": special_common_ops,
+        # "special_3rd_files": special_3rd_files,
+        # "special_3rd_ops": special_3rd_ops,
+        # "other_3rd_files": other_3rd_files,
         "should_full_test": should_full_test
     }
 

@@ -8,7 +8,7 @@
 1. 白名单过滤 → 过滤出 mc2 目录下的变更文件
 2. 忽略规则过滤 → 忽略 .md 文件和 tests 目录
 3. 非 mc2 目录检测 → 有 mc2 外文件则触发全量测试
-4. common/3rd 目录检测 → 特殊处理或全量测试
+4. common/3rd 目录检测 → 有变更则直接触发全量测试
 5. 算子提取 → 从文件路径提取算子名称
 6. 反向依赖搜索 → 找出依赖变更算子的算子
 7. SOC 类型过滤 → 根据指定 SOC 类型过滤最终算子
@@ -185,29 +185,35 @@ python op_filters/op_output_step7.py \
 | 白名单过滤后无剩余文件 | 无测试 |
 | 忽略规则过滤后无剩余文件 | 无测试 |
 | mc2 目录外有变更文件 | **全量测试** |
-| common 非特殊处理文件变更 | **全量测试** |
-| 3rd 非特殊处理子目录变更 | **全量测试** |
-| common/3rd 特殊处理 + 其他算子变更 | 部分测试 |
+| common 目录有变更文件 | **全量测试** |
+| 3rd 目录有变更文件 | **全量测试** |
+| 仅算子目录变更 | 部分测试（变更算子 + 反向依赖算子） |
 
-## 特殊处理配置
+> **注意**: common/3rd 的特殊处理映射逻辑已禁用，如需恢复请参考 `op_step4_common_3rd.py` 中的注释代码。
 
-### common 文件特殊处理映射
+## 特殊处理配置（已禁用）
 
-位于 `op_common_3rd_step4.py` 的 `COMMON_FILE_OP_MAPPING`，变更这些文件只触发特定算子：
+> **以下特殊处理映射逻辑已禁用**，common/3rd 目录变更现在直接触发全量测试。
+> 如需恢复，取消 `op_step4_common_3rd.py` 中 `COMMON_FILE_OP_MAPPING` 和 `THIRD_PARTY_OP_MAPPING` 的注释，
+> 并恢复 `filter_common_3rd` 函数中的特殊处理分支逻辑。
+
+### common 文件特殊处理映射（已禁用）
+
+原位于 `op_step4_common_3rd.py` 的 `COMMON_FILE_OP_MAPPING`，变更这些文件只触发特定算子：
 
 - `utils/mc2_exception_dump.h` → moe_distribute_combine_v2, moe_distribute_combine_v3, moe_distribute_dispatch_v2, moe_distribute_dispatch_v3
 - `utils/mc2_moe_utils.h` → allto_all_all_gather_batch_mat_mul, batch_mat_mul_reduce_scatter_allto_all, grouped_mat_mul_allto_allv, quant_grouped_mat_mul_allto_allv
 - `utils/context_util.h` → all_gather_matmul, allto_allv_grouped_mat_mul, allto_allv_quant_grouped_mat_mul, matmul_reduce_scatter, quant_grouped_mat_mul_allto_allv
-- 更多配置见代码...
+- 更多配置见代码中的注释...
 
-### 3rd 子目录特殊处理映射
+### 3rd 子目录特殊处理映射（已禁用）
 
-位于 `op_common_3rd_step4.py` 的 `THIRD_PARTY_OP_MAPPING`，变更这些子目录只触发特定算子：
+原位于 `op_step4_common_3rd.py` 的 `THIRD_PARTY_OP_MAPPING`，变更这些子目录只触发特定算子：
 
 - `quant_batch_matmul_v3` → all_gather_matmul_v2, allto_all_matmul, matmul_all_reduce...
 - `batch_mat_mul_v3` → allto_all_all_gather_batch_mat_mul, batch_mat_mul_reduce_scatter_allto_all
 - `rms_norm` → matmul_all_reduce_add_rms_norm, moe_distribute_combine_add_rms_norm
-- 更多配置见代码...
+- 更多配置见代码中的注释...
 
 ## 输出格式
 

@@ -271,8 +271,11 @@ def main() -> int:
             return 0
         
         other_files = common_3rd_result["other_files"]
-        special_3rd_ops = common_3rd_result["special_3rd_ops"]
-        special_common_ops = common_3rd_result["special_common_ops"]
+        # [已禁用] 特殊处理相关字段，common/3rd 变更现在直接触发全量测试
+        # special_3rd_ops = common_3rd_result["special_3rd_ops"]
+        # special_common_ops = common_3rd_result["special_common_ops"]
+        special_3rd_ops = set()
+        special_common_ops = set()
         logger.info(f"common/3rd过滤后剩余 {len(other_files)} 个变更文件:")
         for f in other_files:
             logger.info(f"  算子文件: {f}")
@@ -311,15 +314,21 @@ def main() -> int:
         
         if special_3rd_ops:
             logger.info("=" * 60)
-            logger.info("合并特殊 3rd 子目录关联算子（不做反向依赖处理）")
-            ops_to_run = ops_to_run.union(special_3rd_ops)
-            logger.info(f"合并后算子数量: {len(ops_to_run)}")
+            # [已禁用] 合并特殊 3rd 子目录关联算子，common/3rd 变更现在直接触发全量测试
+            # 如需恢复，取消注释下方代码
+            # logger.info("合并特殊 3rd 子目录关联算子（不做反向依赖处理）")
+            # ops_to_run = ops_to_run.union(special_3rd_ops)
+            # logger.info(f"合并后算子数量: {len(ops_to_run)}")
+            pass
         
         if special_common_ops:
             logger.info("=" * 60)
-            logger.info("合并特殊 common 文件关联算子（不做反向依赖处理）")
-            ops_to_run = ops_to_run.union(special_common_ops)
-            logger.info(f"合并后算子数量: {len(ops_to_run)}")
+            # [已禁用] 合并特殊 common 文件关联算子，common/3rd 变更现在直接触发全量测试
+            # 如需恢复，取消注释下方代码
+            # logger.info("合并特殊 common 文件关联算子（不做反向依赖处理）")
+            # ops_to_run = ops_to_run.union(special_common_ops)
+            # logger.info(f"合并后算子数量: {len(ops_to_run)}")
+            pass
         
         logger.info("=" * 60)
         logger.info("生成最终算子列表")
