@@ -1110,19 +1110,6 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-namespace {
-ge::graphStatus IsLayoutDimAllowed(const std::vector<std::string> &layouts, const std::string &inputLayout,
-    const std::vector<uint64_t> &allowedDims, const FiaTilingInfo &fiaInfo, const char *errorMsg)
-{
-    if (std::find(layouts.begin(), layouts.end(), inputLayout) != layouts.end()) {
-        OP_CHECK_IF(std::find(allowedDims.begin(), allowedDims.end(), fiaInfo.vHeadDim) == allowedDims.end(),
-            OP_LOGE(fiaInfo.opName, errorMsg, QuantModeToSerialString(fiaInfo.quantMode).c_str(),
-                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.vHeadDim),
-            return ge::GRAPH_FAILED);
-    }
-    return ge::GRAPH_SUCCESS;
-}
-}
 
 ge::graphStatus CommonChecker::ValidateNoRopeLayoutDim(const FiaTilingInfo &fiaInfo, const std::string &inputLayout)
 {
@@ -1165,18 +1152,26 @@ ge::graphStatus CommonChecker::ValidateNoRopeLayoutDim(const FiaTilingInfo &fiaI
                     return ge::GRAPH_FAILED);
     }
 
-    auto ret = IsLayoutDimAllowed(noRopeLayoutSupportListC, inputLayout, {64, 128}, fiaInfo,
-        "In %s %s situation, when input_layout is NTD, BSH_BNSD, BSND_BNSD, NTD_TND, only "
-        "query|key|value headDim = 64/128 are supported, but got %u");
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
+    if (std::find(noRopeLayoutSupportListC.begin(), noRopeLayoutSupportListC.end(), inputLayout) !=
+        noRopeLayoutSupportListC.end()) {
+        OP_CHECK_IF(fiaInfo.vHeadDim != 64 && fiaInfo.vHeadDim != 128,
+                    OP_LOGE(fiaInfo.opName,
+                            "In %s %s situation, when input_layout is NTD, BSH_BNSD, BSND_BNSD, NTD_TND, only "
+                            "query|key|value headDim = 64/128 are supported, but got %u",
+                            QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                            SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.vHeadDim),
+                    return ge::GRAPH_FAILED);
     }
 
-    ret = IsLayoutDimAllowed(noRopeLayoutSupportListD, inputLayout, {64, 128, 192}, fiaInfo,
-        "In %s %s situation, when input_layout is TND, only query|key|value headDim = "
-        "64/128/192 are supported, but got %u");
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
+    if (std::find(noRopeLayoutSupportListD.begin(), noRopeLayoutSupportListD.end(), inputLayout) !=
+        noRopeLayoutSupportListD.end()) {
+        OP_CHECK_IF(fiaInfo.vHeadDim != 64 && fiaInfo.vHeadDim != 128 && fiaInfo.vHeadDim != 192,
+                    OP_LOGE(fiaInfo.opName,
+                            "In %s %s situation, when input_layout is TND, only query|key|value headDim = "
+                            "64/128/192 are supported, but got %u",
+                            QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                            SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.vHeadDim),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1534,6 +1529,11 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         }
     }
     if (CheckShapeConsistency(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B &&
+        enableNonQuant_ && CheckKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
