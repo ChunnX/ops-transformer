@@ -591,7 +591,6 @@ class GeneralizedQLIV2:
             next_tokens_list.append(next_tokens)
             act_k = actualSeqLengthsK[i] *  cmp_ratio + cmp_residual_k[i]
             atten_masks = self.create_mask(m_shape, act_k, S1)
-            # re_mask_batch.append(atten_masks)
             re_mask_batch.append(np.array(atten_masks, dtype=np.bool_))
         re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
         cpu_mask = torch.from_numpy(re_mask_np)
