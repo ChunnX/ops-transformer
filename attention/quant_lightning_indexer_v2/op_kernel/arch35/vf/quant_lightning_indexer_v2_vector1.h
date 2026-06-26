@@ -25,7 +25,6 @@
 namespace vector1 {
 template <typename T>
 struct UIntSortTraits;
-
 template <>
 struct UIntSortTraits<bfloat16_t> {
     using UInt = uint16_t;
@@ -78,6 +77,8 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out
     }
 }
 
+template <typename T>
+struct FloatSortTraits;
 // bf16 
  template <> 
  struct FloatSortTraits<bfloat16_t> { 
