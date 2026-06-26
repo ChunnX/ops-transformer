@@ -76,12 +76,12 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
 
     const size_t maxLength = 7UL;
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+        commMode = mc2tiling::A5_AICPU_TS_ENGINE;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
+        commMode = mc2tiling::A5_CCU_SCHED_ENGINE;
     } else if (strncmp(commModeStr, "", maxLength) == 0) {
         uint32_t rankDim = contextInfo.args_.rankDim;
-        commMode = (rankDim <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
+        commMode = (rankDim <= MAX_CCU_RANKSIZE) ? mc2tiling::A5_CCU_SCHED_ENGINE : mc2tiling::A5_AICPU_TS_ENGINE;
         OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "comm_mode", commModeStr, "The value of comm_mode must be '', 'ai_cpu' or 'ccu'");
