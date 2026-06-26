@@ -515,9 +515,15 @@ public:
             return;
         }
 
+        // 入口 Wait：跨调用 lseBuf free 同步 —— 等上轮本函数 / BroadCastAndCopyOut 出口 SetFlag<MTE3_V>
+        // 实际发出（必然在上轮 DataCopy lseBuf→GM 完成之后），首轮消费 AllocEventID 预置的 SetFlag。
+        // 镜像 master 中 softmaxLseQueue.AllocTensor() 内部的 free WaitFlag 语义。
+        WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
+
         uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         LocalTensor<float> &lseUb = this->lseBuf;
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize);
+        // V→MTE3 ready fence：V 写完 lseBuf → MTE3 可读
         SetFlag<HardEvent::V_MTE3>(lseBufReadyEventId);
         WaitFlag<HardEvent::V_MTE3>(lseBufReadyEventId);
 
@@ -539,8 +545,10 @@ public:
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                         constInfo, qActSeqLens);
         }
+        // 出口 Set：issue 到 MTE3 pipe，硬件流水语义保证其在本轮 DataCopy 完成之后才"发出"。
+        // 镜像 master 中 softmaxLseQueue.FreeTensor() 内部 SetFlag 语义，留给下轮 entry Wait 消费；
+        // 末次调用由 FreeEventID 的 WaitFlag 排干。
         SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-        WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
     }
 
     __aicore__ inline void Vec1SinkCompute(RunInfoX &runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
@@ -1020,21 +1028,29 @@ public:
     __aicore__ inline void BroadCastAndCopyOut(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
                                                LocalTensor<float> &maxUb, int64_t gmOffset, int64_t calculateSize)
     {
+        // 入口 Wait：跨调用 brdcstBuf free 同步 —— 等上轮本函数 / SoftmaxLseCopyOut 出口 SetFlag<MTE3_V>
+        // 实际发出（必然在上轮 DataCopy(brdcstBuf/lseBuf→GM) 完成之后），首轮消费 AllocEventID 预置。
+        // 镜像 master 中 sumBrdcst.AllocTensor() 内部的 free WaitFlag 语义。
+        WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
+
         // Copy sum to gm
         FaVectorApi::BroadcastMaxSum(this->sumBrdcstBuf, sumUb, runInfo.actVecMSize);
+        // V→MTE3 ready fence：V 写完 sumBrdcstBuf → MTE3 可读
         SetFlag<HardEvent::V_MTE3>(brdcstBufReadyEventId);
         WaitFlag<HardEvent::V_MTE3>(brdcstBufReadyEventId);
         DataCopy(softmaxFDSumGm[gmOffset], this->sumBrdcstBuf, calculateSize);
-        SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-        WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
 
-        // Copy max to gm
+        // Copy max to gm —— sum / max 写不同 buf 不冲突；MTE3 pipe FIFO 保证 max DataCopy 排在 sum 之后，
+        // 因此 sum 与 max 之间无需额外 V↔MTE3 fence（与 master 中 sumBrdcst / maxBrdcst 独立 TQue 一致）
         FaVectorApi::BroadcastMaxSum(this->maxBrdcstBuf, maxUb, runInfo.actVecMSize);
         SetFlag<HardEvent::V_MTE3>(brdcstBufReadyEventId);
         WaitFlag<HardEvent::V_MTE3>(brdcstBufReadyEventId);
         DataCopy(softmaxFDMaxGm[gmOffset], this->maxBrdcstBuf, calculateSize);
+
+        // 出口 Set：issue 到 MTE3 pipe，硬件流水语义保证其在 sum + max 两次 DataCopy 都完成之后才"发出"。
+        // 镜像 master 中 maxBrdcst.FreeTensor() 的 SetFlag 语义；留给下轮 entry Wait 消费；
+        // 末次调用由 FreeEventID 的 WaitFlag 排干。
         SetFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
-        WaitFlag<HardEvent::MTE3_V>(lseBufFreeEventId);
     }
 
     __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfoX &runInfo, LocalTensor<float> &sumUb,
