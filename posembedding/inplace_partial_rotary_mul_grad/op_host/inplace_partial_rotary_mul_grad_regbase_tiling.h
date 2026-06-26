@@ -49,6 +49,29 @@ TILING_DATA_FIELD_DEF(int64_t, dSplitCoef);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(InplacePartialRotaryMulGrad, InplacePartialRotaryMulGradRegbaseTilingData)
 
+BEGIN_TILING_DATA_DEF(InplacePartialRotaryMulGradRegbaseTilingDataAb)
+TILING_DATA_FIELD_DEF(int64_t, b);
+TILING_DATA_FIELD_DEF(int64_t, s);
+TILING_DATA_FIELD_DEF(int64_t, d);
+TILING_DATA_FIELD_DEF(int64_t, n);
+TILING_DATA_FIELD_DEF(int64_t, dAlign);
+TILING_DATA_FIELD_DEF(int64_t, dSplitCoef);
+TILING_DATA_FIELD_DEF(int64_t, blockNumBS);
+TILING_DATA_FIELD_DEF(int64_t, blockFactorBS);
+TILING_DATA_FIELD_DEF(int64_t, blockTailBS);
+TILING_DATA_FIELD_DEF(int64_t, blockNumN);
+TILING_DATA_FIELD_DEF(int64_t, blockFactorN);
+TILING_DATA_FIELD_DEF(int64_t, blockTailN);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorBS);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorN);
+TILING_DATA_FIELD_DEF(int64_t, usedCoreNum);
+TILING_DATA_FIELD_DEF(int64_t, rotaryMode);
+TILING_DATA_FIELD_DEF(int64_t, sliceStart);
+TILING_DATA_FIELD_DEF(int64_t, sliceEnd);
+TILING_DATA_FIELD_DEF(int64_t, sliceLength);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(InplacePartialRotaryMulGrad_204, InplacePartialRotaryMulGradRegbaseTilingDataAb)
+
 constexpr static int64_t WORKSPACE_COUNT = 1;
 constexpr static size_t RESERVED_WORKSPACE = static_cast<size_t>(16 * 1024 * 1024);
 struct InplacePartialRotaryMulGradCompileInfo {};
