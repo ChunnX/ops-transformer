@@ -15,8 +15,8 @@
  *  ND format paths use SIMT kernel (gather_pa_kv_cache_simt.h).
  *  NZ format paths keep VEC_SCOPE kernel (gather_pa_kv_cache_nz.h).
  */
-#include "arch35/gather_pa_kv_cache_simt.h"
 #include "arch35/gather_pa_kv_cache_nz.h"
+#include "arch35/gather_pa_kv_cache_simt.h"
 
 #define TILING_KEY_1111 1111
 #define TILING_KEY_1110 1110
