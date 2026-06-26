@@ -296,6 +296,10 @@ else()
     if(ADD_MHC)
         add_subdirectory(mhc)
     endif()
+    should_add_module("mamba" ADD_MAMBA)
+    if(ADD_MAMBA)
+        add_subdirectory(mamba)
+    endif()
 endif()
 
 # 编译examples目录下算子

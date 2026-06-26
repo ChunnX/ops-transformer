@@ -1237,6 +1237,16 @@
     <td>mhc_pre_sinkhorn算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
   </tr>
   <tr>
+    <td>mamba</td>
+    <td><a href="../../mamba/causal_conv1d/README.md">causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成因果一维卷积（Causal Conv1d）计算，支持前向计算（prefill/chunk-prefill）和状态更新（decode/update）两种运行模式，支持APC（Automatic Prefix Caching）、MTP（投机解码）等特性。</td>
+  </tr>
+  <tr>
     <td>posembedding</td>
     <td><a href="../../posembedding/apply_rotary_pos_emb/README.md">apply_rotary_pos_emb</a></td>
     <td>✓</td>
