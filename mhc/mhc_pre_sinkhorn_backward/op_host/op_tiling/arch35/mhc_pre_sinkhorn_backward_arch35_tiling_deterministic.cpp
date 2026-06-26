@@ -172,8 +172,9 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //z
                         Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf1_
                         Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf2_
+                        skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                //normOutBuf_
                         6 * 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +
-                        10 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);
+                        9 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);
                         // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpDiv3Buf_
                         // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpMulBuf_
                         // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //sumOutBuf_

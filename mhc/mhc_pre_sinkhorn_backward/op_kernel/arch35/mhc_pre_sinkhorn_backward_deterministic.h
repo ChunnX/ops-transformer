@@ -313,7 +313,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(tmpMulBuf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(sumOutRowBuf_, skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(sumOutColBuf_, skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
-        pipe_->InitBuffer(normOutBuf_, nnAlignFp32_ * bsLoopDataLen_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(normOutBuf_, skIterCount_ * nnAlignFp32_ * bsLoopDataLen_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(zResBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(zResMaxBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(zResMaxIdxBuf_, bsLoopDataLen_ * nnAlignFp32_ * FP32_BYTE_SIZE);
