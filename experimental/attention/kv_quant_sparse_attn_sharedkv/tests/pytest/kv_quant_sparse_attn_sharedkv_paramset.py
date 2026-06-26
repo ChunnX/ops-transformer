@@ -16,18 +16,18 @@ import torch
 TEST_PARAMS = {
     "decode_first":{
         "Testcase_Name": [None],
-        "layout_q": ["BSND"],
+        "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
-        "B": [48],
-        "S1": [2],
-        "S2": [8192],
-        "N1": [128],
+        "B": [1],
+        "S1": [1],
+        "S2": [8193],
+        "N1": [64],
         "N2": [1],
         "D": [512],
-        "K": [1024],
+        "K": [512],
         "block_num1": [None],
         "block_num2": [None],
         "block_size1": [128],
@@ -35,7 +35,7 @@ TEST_PARAMS = {
         "cu_seqlens_q": [None],
         "seqused_kv": [None],
         "softmax_scale": [0.04419417],
-        "cmp_ratio": [4],
+        "cmp_ratio": [1],
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
@@ -43,7 +43,7 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
-        "template_run_mode": ["SCFA"], # SWA SCFA CFA
+        "template_run_mode": ["SWA"], # SWA SCFA CFA
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False]
     },
