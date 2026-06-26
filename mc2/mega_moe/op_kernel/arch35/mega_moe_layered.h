@@ -926,7 +926,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
     PipeBarrier<PIPE_ALL>();
-    DumpTensor(copyTmpTensors_[bufferIdx], 0, 32);
+    DumpTensor(copyTmpTensors_[bufferIdx], rankId_, 32);
 }
 
 // ============================================================================
