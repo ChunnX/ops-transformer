@@ -262,7 +262,7 @@ __aicore__ inline void FlashAttentionScoreKernelInferMxFullquant<CubeBlockType, 
         SyncAll<false>();
     }
     ProcessMainLoop();
-    // UnInit();
+    
     if constexpr (isFd) {
         if ASCEND_IS_AIV {
             SyncAll();
