@@ -66,11 +66,11 @@ private:
     uint32_t aivId_{0};
     uint32_t rankId_{0};
     uint32_t numRanks_{0};
-    uint32_t numEntriesPerRank_{0};
-    uint32_t ubSize_{0};
+    int32_t numEntriesPerRank_{0};
+    uint64_t ubSize_{0};
     uint32_t indicesBatchSize_{0};
-    uint32_t numTokens_{0};
-    uint32_t hiddenBytes_{0};
+    int64_t numTokens_{0};
+    int64_t hiddenBytes_{0};
 
     TBuf<> pingBuf_;
     TBuf<> pongBuf_;
@@ -99,10 +99,10 @@ __aicore__ inline void EngramFetchArch35::Init(
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
 
-    numEntriesPerRank_ = static_cast<uint32_t>(tilingData->numEntriesPerRank);
-    numTokens_ = static_cast<uint32_t>(tilingData->numTokens);
-    hiddenBytes_ = static_cast<uint32_t>(tilingData->hiddenBytes);
-    ubSize_ = static_cast<uint32_t>(tilingData->ubSize);
+    numEntriesPerRank_ = tilingData->numEntriesPerRank;
+    numTokens_ = tilingData->numTokens;
+    hiddenBytes_ = tilingData->hiddenBytes;
+    ubSize_ = tilingData->ubSize;
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
@@ -122,13 +122,14 @@ __aicore__ inline void EngramFetchArch35::Init(
     uint32_t hcommHandleBufSize = Ceil(numRanks_ * sizeof(uint64_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(hcommHandleBuf_, hcommHandleBufSize);
 
-    constexpr uint32_t ubReserved = 8U * 1024U;
+    constexpr uint64_t ubReserved = 8U * 1024U;
     uint32_t bytesPerIndice = sizeof(int32_t) + numRanks_ * sizeof(uint32_t);
-    uint32_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * 2U + countsBufSize
+    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * 2U + countsBufSize
                     + commBufferBufSize + hcommHandleBufSize;
-    uint32_t availableUb = (ubSize_ > usedUb + ubReserved) ? (ubSize_ - usedUb - ubReserved) : 0U;
-    uint32_t maxBatchSize = availableUb / bytesPerIndice;
-    indicesBatchSize_ = (numTokens_ <= maxBatchSize) ? numTokens_ : maxBatchSize;
+    uint64_t availableUb = (ubSize_ > usedUb + ubReserved) ? (ubSize_ - usedUb - ubReserved) : 0U;
+    uint32_t maxBatchSize = static_cast<uint32_t>(availableUb / bytesPerIndice);
+    uint32_t numTokens = static_cast<uint32_t>(numTokens_);
+    indicesBatchSize_ = (numTokens <= maxBatchSize) ? numTokens : maxBatchSize;
     if (indicesBatchSize_ == 0U) {
         indicesBatchSize_ = 1U;
     }
@@ -180,7 +181,7 @@ __aicore__ inline void EngramFetchArch35::ScatterByRank(
         if (globalIdx < 0) {
             continue;
         }
-        uint32_t ownerRank = static_cast<uint32_t>(globalIdx) / numEntriesPerRank_;
+        uint32_t ownerRank = static_cast<uint32_t>(globalIdx) / static_cast<uint32_t>(numEntriesPerRank_);
         if (ownerRank >= numRanks_) {
             continue;
         }
@@ -207,11 +208,15 @@ __aicore__ inline void EngramFetchArch35::Process()
         LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
         LocalTensor<uint32_t> tokenIdxInRank = tokenIdxInRankBuf_.Get<uint32_t>();
 
+        uint64_t hiddenBytes = static_cast<uint64_t>(hiddenBytes_);
+        uint32_t numTokens = static_cast<uint32_t>(numTokens_);
+        uint32_t numEntriesPerRank = static_cast<uint32_t>(numEntriesPerRank_);
+
         uint32_t indicesBatchStart = 0;
-        while (indicesBatchStart < numTokens_) {
+        while (indicesBatchStart < numTokens) {
             uint32_t indicesBatchLen = indicesBatchSize_;
-            if (indicesBatchStart + indicesBatchLen > numTokens_) {
-                indicesBatchLen = numTokens_ - indicesBatchStart;
+            if (indicesBatchStart + indicesBatchLen > numTokens) {
+                indicesBatchLen = numTokens - indicesBatchStart;
             }
 
             CopyIndicesToUb(indicesBatchStart, indicesBatchLen);
@@ -220,7 +225,7 @@ __aicore__ inline void EngramFetchArch35::Process()
             ScatterByRank(indicesLocal, rankCounts, tokenIdxInRank, indicesBatchLen);
 
             for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks) {
-                uint32_t idxStart = ownerRank * numEntriesPerRank_;
+                uint32_t idxStart = ownerRank * numEntriesPerRank;
                 uint32_t rankStart = ownerRank * indicesBatchSize_;
                 uint32_t cnt = rankCounts(ownerRank);
 
@@ -230,17 +235,17 @@ __aicore__ inline void EngramFetchArch35::Process()
                     uint32_t i = tokenIdxInRank(rankStart + b);
                     int32_t globalIdx = indicesLocal(i);
                     uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - idxStart;
-                    uint32_t globalTokenIdx = indicesBatchStart + i;
-                    GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(globalTokenIdx) * hiddenBytes_;
+                    uint64_t globalTokenIdx = indicesBatchStart + i;
+                    GM_ADDR dst = fetchedGM_ + globalTokenIdx * hiddenBytes;
 
                     if (ownerRank == rankId_) {
-                        GM_ADDR src =
-                            (GM_ADDR)commBufferLocal(rankId_) + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                        LocalCopySlice(dst, src, hiddenBytes_);
+                        GM_ADDR src = (GM_ADDR)commBufferLocal(rankId_)
+                                      + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
+                        LocalCopySlice(dst, src, hiddenBytes);
                     } else {
-                        GM_ADDR remoteSrcAddr =
-                            (GM_ADDR)commBufferLocal(ownerRank) + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
-                        hcomm_.ReadNbi<false>(hcommHandleLocal(channelIdx), dst, remoteSrcAddr, hiddenBytes_);
+                        GM_ADDR remoteSrcAddr = (GM_ADDR)commBufferLocal(ownerRank)
+                                                + static_cast<uint64_t>(localEntryIdx) * hiddenBytes;
+                        hcomm_.ReadNbi<false>(hcommHandleLocal(channelIdx), dst, remoteSrcAddr, hiddenBytes);
                         pendingReadCount++;
                         if (pendingReadCount >= READ_COMMIT_THRESHOLD) {
                             hcomm_.Commit(hcommHandleLocal(channelIdx));

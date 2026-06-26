@@ -13,8 +13,7 @@
  * \brief engram_fetch_wait算子API实现
  */
 
-
-#include "aclnn_engram_fetch_wait.h"
+#include "aclnn/aclnn_base.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
@@ -23,10 +22,6 @@
 #include "aclnnInner_engram_fetch_wait.h"
 
 using namespace op;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 static bool CheckNotNull(const aclTensor *commContext)
 {
@@ -39,6 +34,10 @@ static aclnnStatus CheckParams(const aclTensor *commContext)
     CHECK_RET(CheckNotNull(commContext), ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 aclnnStatus aclnnEngramFetchWaitGetWorkspaceSize(const aclTensor *commContext, uint64_t *workspaceSize,
                                                  aclOpExecutor **executor)
