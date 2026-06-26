@@ -152,12 +152,6 @@ private:
 public:
     __aicore__ inline FiaBlockVecFlashDecode(ConstInfoX &constInfo) : constInfo(constInfo){};
 
-    template <typename U> // 避免重名用U
-    __aicore__ inline U Align(U num, U rnd)
-    {
-        return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
-    }
-
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
                                             GlobalTensor<uint64_t> actualSeqLengthsGmQ,
@@ -191,7 +185,7 @@ public:
     }
     __aicore__ inline void InitParams()
     {
-        this->dSizeV_Align = this->Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM);
+        this->dSizeV_Align = AttentionCommon::Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM);
     }
     __aicore__ inline void InitBuffers(TPipe *pipe)
     {
@@ -432,12 +426,19 @@ protected:
     {
         LocalTensor<SINK_T> sinkCopyInBuf =
             fdSinkCopyInBuf.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM & 1) * BUFFER_SIZE_BYTE_1K);
-        uint32_t copySize = Align(constInfo.gSize, static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T))); // DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处32
-                                                                                                        // byte对齐
+
         uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.gSize;
+        DataCopyExtParams sinkCopyParams;
+        sinkCopyParams.blockCount = 1;
+        sinkCopyParams.blockLen = constInfo.gSize * sizeof(SINK_T);
+        sinkCopyParams.srcStride = 0;
+        sinkCopyParams.dstStride = 0;
+        DataCopyPadExtParams<SINK_T> sinkPadParams;
+        sinkPadParams.isPad = true;
+        sinkPadParams.paddingValue = static_cast<SINK_T>(0);
 
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
-        DataCopy(sinkCopyInBuf, sinkGm[sinkGmOffset], copySize);
+        DataCopyPad(sinkCopyInBuf, sinkGm[sinkGmOffset], sinkCopyParams, sinkPadParams);
         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
 
@@ -675,7 +676,6 @@ public:
 
         uint32_t reduceGlobaLoop = 0;
         uint32_t reduceMLoop = 0;
-
         uint32_t tmpFdS1gOuterMStart = 0;
         uint32_t tmpFdS1gOuterMEnd = fdBalanceMSplitNum - 1;
         taskInfo.bIdx = fd.fdBN2Idx / constInfo.n2Size;

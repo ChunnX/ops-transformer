@@ -185,7 +185,6 @@ public:
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        // TODO，共享buffer初始化放到block层
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         if constexpr (BMM2_TOUB) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
@@ -250,9 +249,12 @@ public:
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
 
-        // if constexpr (HAS_MASK) {
-        constInfo.sparseMode =
-            fiaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+        constInfo.keyStrides.bnStride = fiaBaseParams.keyStrides.bnStride;
+        constInfo.keyStrides.n2Stride = fiaBaseParams.keyStrides.n2Stride;
+        constInfo.valueStrides.bnStride = fiaBaseParams.valueStrides.bnStride;
+        constInfo.valueStrides.n2Stride = fiaBaseParams.valueStrides.n2Stride;
+
+        constInfo.sparseMode = fiaAttenMaskParams.sparseMode;
         constInfo.preTokens = fiaAttenMaskParams.preTokens;
         constInfo.nextTokens = fiaAttenMaskParams.nextTokens;
         constInfo.attenMaskBatch = fiaAttenMaskParams.attenMaskBatch;
@@ -260,7 +262,6 @@ public:
         constInfo.attenMaskS2Size = fiaAttenMaskParams.attenMaskS2Size;
         constInfo.isRowInvalidOpen = fiaAttenMaskParams.isRowInvalidOpen;
         constInfo.isExistRowInvalid = fiaAttenMaskParams.isExistRowInvalid;
-        // }
 
         if ASCEND_IS_AIV {
             if constexpr (VecFaBlockType::hasPse) {
@@ -577,7 +578,7 @@ public:
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
                                    static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
                                1;
 
@@ -622,11 +623,11 @@ public:
 
         if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1OStart) { // first line
             headS2Split = constInfo.s2OStart > s2StartWithSparse ? true : false;
-            curS2Start = Max(s2StartWithSparse, constInfo.s2OStart);
+            curS2Start = AttentionCommon::Max(s2StartWithSparse, constInfo.s2OStart);
         }
         if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1OEnd) { // last line
             tailS2Split = constInfo.s2OEnd > 0U ? true : false;
-            curS2End = constInfo.s2OEnd > 0U ? Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
+            curS2End = constInfo.s2OEnd > 0U ? AttentionCommon::Min(s2EndWithSparse, constInfo.s2OEnd) : s2EndWithSparse;
         }
         return;
     }
@@ -720,7 +721,7 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
         if (constInfo.isQHasLeftPadding) {
             info.qPaddingBeginOffset = constInfo.s1Size - actSeqLensQ - constInfo.queryRightPaddingSize;

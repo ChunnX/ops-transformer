@@ -546,7 +546,7 @@ static bool CheckTensorShape(const char *nodeName, const gert::Shape *xShape, co
     const int64_t yShard)
 {
     if ((xShape == nullptr) || (weightShape == nullptr)) {
-        OP_LOGE(nodeName, "xShape or weightShape is nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, (xShape == nullptr) ? "xShape" : "weightShape");
         return false;
     }
     if (!DimNumCheck(nodeName, xShape, weightShape)) {
@@ -593,7 +593,7 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
     const int64_t *yPtr = attrs->GetInt(static_cast<size_t>(ops::BmmReduceScatterAlltoAllAttrIdx::K_Y_SHARD_TYPE));
 
     if ((epPtr == nullptr) || (tpPtr == nullptr) || (yPtr == nullptr)) {
-        OP_LOGE(nodeName, "attrs index in context is in valid or out of range, attrs got nullptr.");
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "attr pointer");
         return false;
     }
 
@@ -844,8 +844,8 @@ static void SetHcclTiling(const gert::TilingContext *context, BatchMatMulReduceS
     std::string alltoAllConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
 
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(),
-        "GetAttrs returned nullptr!"), return);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
+        return);
     auto epGroup = attrs->GetAttrPointer<char>(ATTR_EP_GROUP_INDEX);
     auto tpGroup = attrs->GetAttrPointer<char>(ATTR_TP_GROUP_INDEX);
 

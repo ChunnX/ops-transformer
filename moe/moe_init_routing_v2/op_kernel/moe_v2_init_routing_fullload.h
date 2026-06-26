@@ -330,6 +330,9 @@ __aicore__ inline void MoeV2FullLoad<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_A
         // dropless
         expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum,
                                                     Align(this->expertNum, sizeof(int32_t)));
+        if (this->blockIdx_ == 0 && this->sortNeedCoreNum_ == 0 && this->expertNum > 0) {
+            InitGlobalMemory(expertTokensCountOrCumsumGm, max(INT32_ONE_BLOCK_NUM, this->expertNum), 0);
+        }
     }
 
     int64_t kvFactor = 2;

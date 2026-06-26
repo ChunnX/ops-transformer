@@ -17,7 +17,7 @@ $$
 out[t] = \sum_{e} \big(in[token\_table[t, e]] \cdot score\_table[t, e]\big)
 $$
 
-其中，仅当 `token_table[t, e] >= 0` 时参与计算。
+其中，仅当`token_table[t, e] >= 0`时参与计算。
 
 ## 参数说明
 

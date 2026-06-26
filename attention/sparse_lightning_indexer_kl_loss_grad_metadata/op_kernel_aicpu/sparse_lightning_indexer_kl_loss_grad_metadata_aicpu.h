@@ -89,16 +89,19 @@ private:
     bool BuildMetadata();
     bool BuildSparseValidArray(std::vector<int64_t> &sparseValidArray);
     bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray);
-    bool InitLoadValue(const std::vector<int64_t> &sparseValidArray,
-                       const std::vector<int64_t> &sparseStartIdx,
-                       std::vector<int64_t> &localValue) const;
-    bool BalanceLoad(const std::vector<int64_t> &sparseValidArray,
-                     std::vector<int64_t> &localValue,
-                     std::vector<int64_t> &sparseStartIdx) const;
-    bool Balance4DLoad(std::vector<int64_t> &sparseStartIdx,
-                       const std::vector<int64_t> &sparseValidArray,
-                       int64_t balanceNum) const;
-    int64_t GetS2RealSize(int64_t s1Size, int64_t s2Size, int64_t s1Idx) const;
+    bool CanSplitWithMaxLoad(const std::vector<int64_t> &sparseValidArray,
+                             int64_t start,
+                             int64_t partNum,
+                             int64_t maxLoad) const;
+    int64_t FindMinMaxLoad(const std::vector<int64_t> &sparseValidArray,
+                           int64_t start,
+                           int64_t partNum) const;
+    bool BuildBalancedSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
+                                     std::vector<int64_t> &sparseStartIdx) const;
+    int64_t GetCmpResidualKey(int64_t bIdx) const;
+    int64_t GetPreCompressS2Len(int64_t bIdx, int64_t s2Size) const;
+    int64_t GetS2RealSize(int64_t bIdx, int64_t s1Size, int64_t s2Size, int64_t s1Idx) const;
+    int64_t GetS1Load(int64_t s2RealSize) const;
     int64_t GetActualSeqLen(Tensor *tensor, int64_t bIdx) const;
     int64_t CalcTotalSize() const;
 

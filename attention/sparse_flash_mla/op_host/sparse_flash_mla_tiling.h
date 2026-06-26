@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_flash_mla_tiling.h
- * \brief
- */
-#ifndef SPARSE_ATTN_SHAREDKV_TILING_H
-#define SPARSE_ATTN_SHAREDKV_TILING_H
+* \file sparse_flash_mla_tiling.h
+* \brief
+*/
+#ifndef SPARSE_FLASH_MLA_TILING_H
+#define SPARSE_FLASH_MLA_TILING_H
 
 #include <graph/utils/type_utils.h>
 #include <exe_graph/runtime/tiling_context.h>
@@ -25,6 +25,7 @@
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 // ------------------公共定义--------------------------
@@ -41,7 +42,7 @@ struct SMLATilingOptionalParaInfo {
 enum class SMLALayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BNBD = 2
+    PA_BBND = 2
 };
 
 enum class SMLAAxis : uint32_t {
@@ -52,15 +53,13 @@ enum class SMLAAxis : uint32_t {
     K = 3,  // sparse_indices的K和key的D枚举值相同，表达相同位置, 最后一维
     T = 5,
     Bn = 6, // block number
-    Bs = 7 // block size
+    Bs = 7  // block size
 };
 
 enum class SMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
     CFA_TEMPLATE_MODE = 1,
-    SCFA_TEMPLATE_MODE = 2,
-    ORI_SCFA_TEMPLATE_MODE = 3,
-    ORI_CMP_SCFA_TEMPLATE_MODE = 4
+    SCFA_TEMPLATE_MODE = 2
 };
 
 enum class KvStorageMode : uint32_t {
@@ -70,7 +69,7 @@ enum class KvStorageMode : uint32_t {
 };
 
 // ------------------算子原型索引常量定义----------------
-// Inputs Index
+// Inputs Index (0-10, common)
 constexpr uint32_t Q_INDEX = 0;
 constexpr uint32_t ORI_KV_INDEX = 1;
 constexpr uint32_t CMP_KV_INDEX = 2;
@@ -82,11 +81,13 @@ constexpr uint32_t CU_SEQLENS_Q_INDEX = 7;
 constexpr uint32_t CU_SEQLENS_ORI_KV_INDEX = 8;
 constexpr uint32_t CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t SEQUSED_Q_INDEX = 10;
-constexpr uint32_t SEQUSED_KV_INDEX = 11;
-constexpr uint32_t ORI_TOPK_LENGTH = 12;
-constexpr uint32_t CMP_TOPK_LENGTH = 13;
-constexpr uint32_t SINKS_INDEX = 14;
-constexpr uint32_t METADATA_INDEX = 15;
+constexpr uint32_t SEQUSED_ORI_KV_INDEX = 11;
+constexpr uint32_t SEQUSED_CMP_KV_INDEX = 12;
+constexpr uint32_t CMP_RESIDUAL_KV_INDEX = 13;
+constexpr uint32_t ORI_TOPK_LENGTH_INDEX = 14;
+constexpr uint32_t CMP_TOPK_LENGTH_INDEX = 15;
+constexpr uint32_t SINKS_INDEX = 16;
+constexpr uint32_t METADATA_INDEX = 17;
 // Outputs Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
 
@@ -99,7 +100,9 @@ constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 4;
 constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 5;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
-constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
+constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 8;   // A2/A3
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 9;
+
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
@@ -126,10 +129,10 @@ constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
 constexpr uint32_t DIM_LIMIT = 512;
-constexpr uint32_t TOPK_LIMIT = 512;
+constexpr uint32_t TOPK_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 
-// -----------算子TilingData定义---------------
+// -----------算子TilingData定义（A2/A3字段顺序 + A5追加字段）---------------
 BEGIN_TILING_DATA_DEF(SparseFlashMlaSwaParams)
 TILING_DATA_FIELD_DEF(uint32_t, batchSize)
 TILING_DATA_FIELD_DEF(uint32_t, qSeqSize)
@@ -138,17 +141,19 @@ TILING_DATA_FIELD_DEF(int64_t, paBlockSize)
 TILING_DATA_FIELD_DEF(int64_t, oriBlockSize)
 TILING_DATA_FIELD_DEF(int64_t, cmpBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, oriMaxBlockNumPerBatch)
-TILING_DATA_FIELD_DEF(uint32_t, oriSparseBlockCount)
 TILING_DATA_FIELD_DEF(uint32_t, nNumOfQInOneGroup)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsQ)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsKV)
-
 TILING_DATA_FIELD_DEF(float, softmaxScale) // 即 scaleValue
 TILING_DATA_FIELD_DEF(uint32_t, outputLayout)
 TILING_DATA_FIELD_DEF(uint64_t, oriMaskMode)
+TILING_DATA_FIELD_DEF(int64_t, oriKvStride0) // A2/A3
 TILING_DATA_FIELD_DEF(int64_t, oriWinLeft)
 TILING_DATA_FIELD_DEF(int64_t, oriWinRight)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
+TILING_DATA_FIELD_DEF(uint32_t, oriSparseBlockCount) // A5
+
+TILING_DATA_FIELD_DEF(int64_t, topkValueMode)
 
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
 
@@ -157,16 +162,22 @@ TILING_DATA_FIELD_DEF(uint32_t, bmm2ResUbSize);
 TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
+
+TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsOriKV)
+TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsCmpKV)
+TILING_DATA_FIELD_DEF(uint32_t, cmpResidualKVSize)
+TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaSwaParamsOp, SparseFlashMlaSwaParams)
 
 BEGIN_TILING_DATA_DEF(SparseFlashMlaCmpParams)
-
 TILING_DATA_FIELD_DEF(uint32_t, cmpMaxBlockNumPerBatch)
-TILING_DATA_FIELD_DEF(uint32_t, cmpSparseBlockCount)
-TILING_DATA_FIELD_DEF(uint32_t, cmpKvSeqSize)
+TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)     // A2/A3
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint64_t, cmpMaskMode)
+TILING_DATA_FIELD_DEF(int64_t, cmpKvStride0)          // A2/A3
+TILING_DATA_FIELD_DEF(uint32_t, cmpSparseBlockCount)  // A5
+TILING_DATA_FIELD_DEF(uint32_t, cmpKvSeqSize)           // A5
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaCmpParamsOp, SparseFlashMlaCmpParams)
 
@@ -174,7 +185,6 @@ BEGIN_TILING_DATA_DEF(SparseFlashMlaTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(SparseFlashMlaSwaParams, baseParams);
 TILING_DATA_FIELD_DEF_STRUCT(SparseFlashMlaCmpParams, cmpParams);
 END_TILING_DATA_DEF
-
 REGISTER_TILING_DATA_CLASS(SparseFlashMla, SparseFlashMlaTilingData)
 
 struct SMLAParaInfo {
@@ -186,10 +196,13 @@ struct SMLAParaInfo {
     SMLATilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
     SMLATilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
     SMLATilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
-    SMLATilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
-    SMLATilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
+    SMLATilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr}; // A5
+    SMLATilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr}; // A5
+    SMLATilingOptionalParaInfo cuSeqLensKv = {nullptr, nullptr};    // A2/A3
     SMLATilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
-    SMLATilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
+    SMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
+    SMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
+    SMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
     SMLATilingOptionalParaInfo oriTopkLength = {nullptr, nullptr};
     SMLATilingOptionalParaInfo cmpTopkLength = {nullptr, nullptr};
     SMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
@@ -204,6 +217,7 @@ struct SMLAParaInfo {
     const uint32_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
+    const uint32_t *topkValueMode = nullptr;
     const bool *returnSoftmaxLse = nullptr;
 };
 
@@ -218,13 +232,13 @@ public:
     SMLAParaInfo opParamInfo;
 
     // Base Param
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    int64_t cmpS2Size = 0;
+    int64_t cmpS2Size = 0; // A5
     uint32_t gSize = 0;
     uint32_t qHeadDim = 0;
     uint32_t oriKvHeadDim = 0;
@@ -238,21 +252,30 @@ public:
     bool isSameActualseq = true;
     uint32_t actualLenDimsKV = 0;
 
+    uint32_t actualLenDimsOriKV = 0;
+    uint32_t actualLenDimsCmpKV = 0;
+    uint32_t cmpResidualKVSize = 0;
+
     float softmaxScale = 0;
     int64_t cmpRatio = 1;
     uint64_t oriMaskMode = 0;
     uint64_t cmpMaskMode = 0;
+    uint64_t oriKvStride0 = 0; // A2/A3
+    uint64_t cmpKvStride0 = 0; // A2/A3
     int64_t oriWinLeft = 0;
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
     int64_t oriSparseBlockCount = 0;
     int64_t cmpSparseBlockCount = 0;
+    int64_t sparseBlockCount = 0;    // A2/A3
+
+    int64_t topkValueMode = 0;
     // Mask
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
     bool returnSoftmaxLse = false;
-    
+
     // PageAttention
     uint32_t blockTypeSize = 0;
     uint32_t oriMaxBlockNumPerBatch = 0;
@@ -272,7 +295,7 @@ public:
     SMLALayout qLayout = SMLALayout::TND;
     SMLALayout cmpSparseIndicesLayout = SMLALayout::TND;
     SMLALayout oriSparseIndicesLayout = SMLALayout::TND;
-    SMLALayout kvLayout = SMLALayout::PA_BNBD;
+    SMLALayout kvLayout = SMLALayout::PA_BBND;
     SMLALayout outLayout = SMLALayout::BSND;
 
     // template mode
@@ -312,6 +335,8 @@ private:
     ge::graphStatus CheckSingleParaCmpKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensOriKv() const;
     ge::graphStatus CheckSingleParaCuSeqLensCmpKv() const;
+    ge::graphStatus CheckSingleParaCmpResidualKv() const;
+    ge::graphStatus CheckSingleParaTopkLength() const;
     ge::graphStatus CheckSingleParaNumHeads() const;
     ge::graphStatus CheckSingleParaKvHeadNums() const;
     ge::graphStatus CheckSingleParaOriSparseIndices() const;
@@ -321,6 +346,8 @@ private:
     ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaOriMaskMode() const;
     ge::graphStatus CheckSingleParaCmpMaskMode() const;
+    ge::graphStatus CheckSingleParaOriKvStride0() const; // A2/A3
+    ge::graphStatus CheckSingleParaCmpKvStride0() const; // A2/A3
     ge::graphStatus CheckSingleParaOriWinLeft() const;
     ge::graphStatus CheckSingleParaOriWinRight() const;
     ge::graphStatus CheckSingleParaOriBlockTable() const;
@@ -357,7 +384,6 @@ private:
     gert::Shape cmpKvSparseIndicesCmp_{};
     gert::Shape attenOutShapeCmp_{};
 
-private:
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
     SMLAParaInfo opParamInfo_;
@@ -369,7 +395,7 @@ private:
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    int64_t cmpS2Size_ = 0;
+    int64_t cmpS2Size_ = 0; // A5
     uint32_t qHeadDim_ = 0;
     uint32_t oriKvHeadDim_ = 0;
     uint32_t cmpKvHeadDim_ = 0;
@@ -378,15 +404,19 @@ private:
     uint32_t kvTSize_ = 0; // 仅TND时生效
     int64_t cmpRatio_ = 1;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
-    uint32_t oriSparseBlockCount_ = 0;
-    uint32_t cmpSparseBlockCount_ = 0;
+    uint32_t oriSparseBlockCount_ = 0; // A5
+    uint32_t cmpSparseBlockCount_ = 0; // A5
+    uint32_t sparseBlockCount_ = 0;    // A2/A3
     int64_t oriWinLeft_ = 0;
     int64_t oriWinRight_ = 0;
+
+    int64_t topkValueMode_;
+
     SMLALayout qLayout_ = SMLALayout::TND;
     SMLALayout cmpSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout oriSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout outLayout_ = SMLALayout::TND;
-    SMLALayout kvLayout_ = SMLALayout::PA_BNBD;
+    SMLALayout kvLayout_ = SMLALayout::PA_BBND;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -396,7 +426,7 @@ private:
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     uint64_t l2CacheSize_ = 0;
 
     bool isSameSeqAllKVTensor_ = true;
@@ -446,8 +476,10 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetBatchSize();
     ge::graphStatus GetQTSize();
+    ge::graphStatus GetKVTSize(); // A2/A3
     ge::graphStatus GetS1Size();
     ge::graphStatus GetS2SizeForPageAttention();
+    ge::graphStatus GetS2SizeForTND(); // A2/A3
     ge::graphStatus GetS2Size();
     ge::graphStatus GetMaxBlockNumPerBatch();
     ge::graphStatus GetBlockSize();
@@ -456,10 +488,10 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     ge::graphStatus GetSinks();
+    uint64_t GetOptionalInputStride0(uint32_t inputIndex) const;
     void GenerateInfo(SMLATilingInfo &smlaInfo);
     ge::graphStatus Parse(SMLATilingInfo &smlaInfo);
 
-public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
@@ -477,21 +509,29 @@ public:
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    int64_t cmpS2Size_ = 0;
+    int64_t cmpS2Size_ = 0; // A5
     uint32_t headDim_ = 0;
     uint32_t qTSize_ = 0;
+    uint32_t orikvTSize_ = 0; // A2/A3
+    uint32_t cmpkvTSize_ = 0; // A2/A3
     uint32_t qHeadDim_ = 0;
     uint32_t oriKvHeadDim_ = 0;
     uint32_t cmpKvHeadDim_ = 0;
     int64_t sparseBlockSize_ = 0;
-    int64_t oriSparseBlockCount_ = 0;
-    int64_t cmpSparseBlockCount_ = 0;
+    int64_t oriSparseBlockCount_ = 0; // A5
+    int64_t cmpSparseBlockCount_ = 0; // A5
+    int64_t sparseBlockCount_ = 0;    // A2/A3
     int64_t oriWinLeft_ = 0;
     int64_t oriWinRight_ = 0;
+    int64_t topkValueMode_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
     uint32_t actualLenDimsKV_ = 0;
     uint32_t actualLenDimsQ_ = 0;
+
+    uint32_t actualLenDimsOriKV_ = 0;
+    uint32_t actualLenDimsCmpKV_ = 0;
+    uint32_t cmpResidualKVSize_ = 0;
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
@@ -500,7 +540,7 @@ public:
     SMLALayout cmpSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout oriSparseIndicesLayout_ = SMLALayout::TND;
     SMLALayout outLayout_ = SMLALayout::BSND;
-    SMLALayout kvLayout_ = SMLALayout::PA_BNBD;
+    SMLALayout kvLayout_ = SMLALayout::PA_BBND;
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -510,7 +550,7 @@ public:
     // template mode
     SMLATemplateMode perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
 
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType qType_ = ge::DT_FLOAT16;
     ge::DataType oriKvType_ = ge::DT_FLOAT16;
     ge::DataType cmpKvType_ = ge::DT_FLOAT16;
@@ -554,10 +594,10 @@ private:
     uint32_t sInnerSize_ = 512; // s2固定切分512
     uint32_t sInnerSizeAlign_ = 0;
     uint32_t usedCoreNum_ = 0;
-    
+
     uint32_t headDimAlign_ = 0;
     uint32_t mBaseSize_ = 64;
 };
 
-}
+} // namespace optiling
 #endif

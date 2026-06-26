@@ -150,6 +150,8 @@ public:
 
         TPipe *permutePipe = GetTPipePtr();
         LocalTensor<fp8_e8m0_t> scaleUbTensor = scaleTBuf_.Get<fp8_e8m0_t>();
+        constexpr uint64_t dataCopyMaxBlockLen = 65535UL;
+        uint64_t actualTileSize = (scaleUbSize < dataCopyMaxBlockLen) ? scaleUbSize : dataCopyMaxBlockLen;
         for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
             for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
                 uint32_t posBefore = rankIndex * e_ + expertIdx;
@@ -157,22 +159,24 @@ public:
                 uint64_t srcOffset = (posBefore == 0U) ? 0UL : recvSumCntBefore[posBefore - 1U] * axis;
                 uint64_t dstOffset = (posAfter == 0U) ? 0UL : recvSumCntAfter[posAfter - 1U] * axis;
                 uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[rankIndex * e_ + expertIdx]) * axis;
-                uint64_t tileNum = CeilDiv(totalCnt, scaleUbSize);
+                uint64_t tileNum = CeilDiv(totalCnt, actualTileSize);
                 for (uint64_t tile = 0UL; tile < tileNum; tile++) {
-                    uint64_t realLength = scaleUbSize;
+                    uint64_t realLength = actualTileSize;
                     if (tile == tileNum - 1UL) {
-                        realLength = totalCnt - tile * scaleUbSize;
+                        realLength = totalCnt - tile * actualTileSize;
                     }
                     DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLength), 0U, 0U};
                     DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
                     // 从commOutBuffer读取（按rank排列）GM->UB
-                    DataCopyPad(scaleUbTensor, recvScaleGlobalBuffer_[srcOffset + tile * scaleUbSize], dataCopyParams,
+                    DataCopyPad(scaleUbTensor,
+                                recvScaleGlobalBuffer_[srcOffset + tile * actualTileSize], dataCopyParams,
                                 dataCopyPadParams);
                     eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
                     SetFlag<HardEvent::MTE2_MTE3>(eventID_);
                     WaitFlag<HardEvent::MTE2_MTE3>(eventID_);
                     // 写入permuteOutBuffer（按专家排列）UB->GM
-                    DataCopyPad(scalePermuteOutBuffer_[dstOffset + tile * scaleUbSize], scaleUbTensor, dataCopyParams);
+                    DataCopyPad(scalePermuteOutBuffer_[dstOffset + tile * actualTileSize],
+                                scaleUbTensor, dataCopyParams);
                     eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
                     SetFlag<HardEvent::MTE3_MTE2>(eventID_);
                     WaitFlag<HardEvent::MTE3_MTE2>(eventID_);

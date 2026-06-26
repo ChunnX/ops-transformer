@@ -142,7 +142,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>gamma</td>
       <td>输入</td>
       <td>公式中用于rms_norm计算的输入数据。</td>
-      <td><ul><li>与 kv 数据类型一致，shape为1维[Dv,]。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>与kv数据类型一致，shape为1维[Dv,]。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>1</td>
@@ -152,7 +152,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>cos</td>
       <td>输入</td>
       <td>公式中用于RoPE计算的输入数据，对输入张量Dk进行余弦变换</td>
-      <td><ul><li>与 kv 数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>与kv数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>4</td>
@@ -162,7 +162,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>sin</td>
       <td>可选输入</td>
       <td>公式中用于RoPE计算的输入数据，对输入张量Dk进行正弦变换。</td>
-      <td><ul><li>与 kv 数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]，与cos的shape保持一致。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>与kv数据类型一致，shape为4维[Bkv,1,Skv,Dk]或[Bkv,1,1,Dk]，与cos的shape保持一致。</li><li>不支持空Tensor。</li></ul></td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>4</td>
@@ -182,7 +182,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>kCacheRef</td>
       <td>输入/输出</td>
       <td>提前申请的cache，输入输出同地址复用。</td>
-      <td><ul><li>非量化场景下，数据类型与输入 kv 一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dk]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dk]。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>非量化场景下，数据类型与输入kv一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dk]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dk]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
       <td>ND</td>
       <td>4</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       <td>ckvCacheRef</td>
       <td>输入/输出</td>
       <td>提前申请的cache，输入输出同地址复用。</td>
-      <td><ul><li>非量化场景下，数据类型与输入 kv 一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dv]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dv]。</li><li>不支持空Tensor。</li></ul></td>
+      <td><ul><li>非量化场景下，数据类型与输入kv一致。</li><li>量化场景下，数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。</li><li>当cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ）时，shape为4维[BlockNum,BlockSize,N,Dv]。</li><li>当cacheModeOptional为Norm场景时，shape为4维[Bcache,N,Scache,Dv]。</li><li>不支持空Tensor。</li></ul></td>
       <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
       <td>ND</td>
       <td>4</td>
@@ -494,7 +494,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. 固定写法，device/stream初始化, 参考acl API手册
+  // 1. 固定写法，device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -605,7 +605,7 @@ int main() {
   aclDestroyTensor(kRope);
   aclDestroyTensor(cKv);
 
-  // 7. 释放device 资源
+  // 7. 释放device资源
   aclrtFree(kvDeviceAddr);
   aclrtFree(gammaDeviceAddr);
   aclrtFree(cosDeviceAddr);

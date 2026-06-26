@@ -775,7 +775,7 @@ template <typename NSAGT>
 __aicore__ inline void SelectedAttentionGrad<NSAGT>::CalSoftmax(const int32_t loopIdx, const int32_t processM,
                                                                 const int64_t mm12Addr, const int64_t mm345Addr)
 {
-    int64_t dataSize = processM * params.sftBaseN;
+    int64_t dataSize = static_cast<int64_t>(processM) * static_cast<int64_t>(params.sftBaseN);
     int64_t maxOffset = loopIdx * params.sftBaseM * BLOCK_FP32;
     auto tmpMaxTensor = maxTensor[maxOffset];
     auto tmpSumTensor = sumTensor[maxOffset];
@@ -810,7 +810,7 @@ template <typename NSAGT>
 __aicore__ inline void SelectedAttentionGrad<NSAGT>::CalSoftmaxGrad(const int32_t loopIdx, const int32_t processM,
                                                                     const int64_t mm12Addr, const int64_t mm345Addr)
 {
-    int64_t dataSize = processM * params.sftBaseN;
+    int64_t dataSize = static_cast<int64_t>(processM) * static_cast<int64_t>(params.sftBaseN);
     int64_t rowsumOffset = loopIdx * params.sftBaseM * BLOCK_FP32;
     auto tmpRowSumOutTensor = rowSumOutTensor[rowsumOffset];
 
@@ -840,7 +840,7 @@ __aicore__ inline void SelectedAttentionGrad<NSAGT>::VectorProcess(int64_t mm12A
     int32_t loop = (params.singleM + params.sftBaseM - 1) / params.sftBaseM;
     int32_t processM = params.sftBaseM;
     int32_t tailM = params.singleM % params.sftBaseM;
-    int64_t dataSize = processM * params.sftBaseN;
+    int64_t dataSize = static_cast<int64_t>(processM) * static_cast<int64_t>(params.sftBaseN);
 
     for (int32_t i = 0; i < loop; i++) {
         if (i == 0) {

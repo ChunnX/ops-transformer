@@ -164,7 +164,7 @@ ge::graphStatus ContextTransfer::CheckMRNCtxInfo(const gert::TilingContext *cont
     OP_TILING_CHECK(x1MValue != residualMValue,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1_b*s",
                         std::to_string(x1MValue).c_str(),
-                        ("should be the same as residual_b*s:" + std::to_string(residualMValue)).c_str()),
+                        "The value of x1_b*s must be the same as that of residual_b*s"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

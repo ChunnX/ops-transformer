@@ -15,25 +15,25 @@
 
 ## 功能说明
 
-- 算子功能：MoE计算中，对输入x做Sigmoid或者SoftMax计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
+- 算子功能：MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
 - 计算公式：                                                                                                                           
    
   **Step 1: 归一化**                                                                                                                 
                 
-  根据 normType 对输入 x 做归一化：
+  根据normType对输入x做归一化：
 
-  $$
-  normOut = 
-  \begin{cases}
-      SoftMax(x),      & normType = 0 \\
-      Sigmoid(x),      & normType = 1 \\
-      Softplus(x),     & normType = 2\ (仅<term>Ascend 950PR/Ascend 950DT</term>支持)
-  \end{cases}
-  $$
+$$
+normOut =
+\begin{cases}
+    \text{SoftMax}(x),      & normType = 0 \\
+    \text{Sigmoid}(x),      & normType = 1 \\
+    \sqrt{\text{Softplus}(x)},     & normType = 2\quad \text{(仅Ascend 950PR/Ascend 950DT支持)}
+\end{cases}
+$$
 
   **Step 2: 加偏置**
 
-  若 bias 不为空，加偏置得到用于选择的值：
+  若bias不为空，加偏置得到用于选择的值：
 
   $$
   normValue = normOut + bias
@@ -41,9 +41,9 @@
 
   否则 $normValue = normOut$。
 
-  **Step 3: 分组筛选**（仅 groupCount > 1 时执行）
+  **Step 3: 分组筛选**（仅groupCount > 1 时执行）
 
-  将 normValue 按 groupCount 分组，根据 groupSelectMode 计算每组得分：
+  将normValue按groupCount分组，根据groupSelectMode计算每组得分：
 
   $$
   groupedValue = Reshape(normValue,\ [batch,\ groupCount,\ -1])
@@ -56,7 +56,7 @@
   \end{cases}
   $$
 
-  选取得分最高的 kGroup 个组，将未选中组的对应位置置为 $-\infty$：
+  选取得分最高的kGroup个组，将未选中组的对应位置置为 $-\infty$：
 
   $$
   groupIdx = TopK(groupScore,\ k=kGroup).indices
@@ -66,23 +66,23 @@
   normValue = Mask(groupedValue,\ groupIdx,\ fillValue=-\infty)
   $$
 
-  **Step 4: Top-K 专家选择**
+  **Step 4: Top-K专家选择**
 
-  对 normValue 取 Top-K 得到专家索引，这里只需要expertIdxOut：
+  对normValue取Top-K得到专家索引，这里只需要expertIdxOut：
 
   $$
   y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
   $$
 
-  **Step 5: Renorm 与缩放**
+  **Step 5: Renorm与缩放**
 
-  根据 expertIdxOut 从 normOut 中取出对应的 k 个专家得分：
+  根据expertIdxOut从normOut中取出对应的k个专家得分：
 
   $$
   gathered = normOut[\text{expertIdxOut}]
   $$
 
-  normType=1 or normType=2 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
+  normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
 
   $$
   if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
@@ -102,7 +102,7 @@
 
   **Step 6: 可选输出**
 
-  若 outFlag 为 True，第三个输出为 normOut；否则为空。
+  若outFlag为True，第三个输出为normOut；否则为空。
 
 ## 函数原型
 
@@ -423,8 +423,8 @@ aclnnStatus aclnnMoeGatingTopK(
     * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
     * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
 * 其他限制：
-    * groupSelectMode取值0和1，0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。
-    * normType取值0和1，0表示使用Softmax函数，1表示使用Sigmoid函数。
+    * groupSelectMode取值0和1，0表示使用最大值对group进行排序， 1表示使用topk2的sum值对group进行排序。
+    * normType取值0、1和2（仅<term>Ascend 950PR/Ascend 950DT</term> 支持），0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
     * normType取值为1时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
     * outFlag取值true和false，true表示输出，false表示不输出。
 
@@ -503,7 +503,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化, 参考AscendCL对外接口列表
+  // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -569,7 +569,7 @@ int main() {
   ret = aclnnMoeGatingTopK(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopK failed. ERROR: %d\n", ret); return ret);
 
-  // 4.（ 固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

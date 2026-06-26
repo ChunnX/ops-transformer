@@ -38,7 +38,7 @@ struct Axis {
     template <uint32_t ALIGN_SIZE=BLOCK_CUBE>
     __aicore__ inline uint32_t AlignedSize() const
     {
-        return Align(sizeAct, ALIGN_SIZE);
+        return (((ALIGN_SIZE) == 0) ? 0 : (((sizeAct) + (ALIGN_SIZE)-1) / (ALIGN_SIZE) * (ALIGN_SIZE)));
     }
 
     __aicore__ inline bool IsTailOf(const Axis& parent) const

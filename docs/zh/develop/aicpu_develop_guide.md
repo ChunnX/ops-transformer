@@ -153,7 +153,7 @@ uint32_t AddExampleCpuKernel::Compute(CpuKernelContext& ctx) {
   // 从CpuKernelContext中获取output tensor
   Tensor* output = ctx.Output(0);
 
-  // 对tensor进行基本校验, 判断是否为空指针
+  // 对tensor进行基本校验，判断是否为空指针
   if (input0 == nullptr || input1 == nullptr || output == nullptr) {
     return kParamInvalid;
   }
@@ -186,7 +186,7 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
 ```
 ## aclnn适配
 
-通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C 的API），无需做其他配置，可直接在应用程序中调用aclnn接口实现调用算子。
+通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C的API），无需做其他配置，可直接在应用程序中调用aclnn接口实现调用算子。
 
 ## 编译部署
 
@@ -197,7 +197,7 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
    参考[工程创建](#工程创建)完成基础环境搭建，同时检查算子开发交付件是否完备，是否在对应算子分类目录下。
 2. **编译自定义算子包。**
 
-   以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../../examples/add_example_aicpu)目录。
+   以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../../examples/add_example/op_kernel_aicpu)目录。
 
    ```bash
    # 编译指定算子，如bash build.sh --pkg --ops=add_example --aicpu_kernel -j16
@@ -206,7 +206,7 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
    - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
    - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"--ops=add_example"。
-   - --aicpu_kernel：使能ENABLE_AICPU_KERNEL，编译kernel_aicpu
+   - --aicpu_kernel：开启ENABLE_AICPU_KERNEL，编译kernel_aicpu
    - --experimental（可选）：若编译的算子为贡献算子，需配置--experimental。
    - -j（可选）：指定编译线程数，加快编译速度。
 
@@ -240,7 +240,7 @@ export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/${vendor_name}_tra
 ```
 - **UT验证**
 
-  算子开发过程中，可通过UT验证（如Kernel）方式进行快速验证，如需查看详细实现，请参考[Kernel UT](../../../examples/add_example_aicpu/tests/ut/op_kernel_aicpu/test_add_example.cpp)。
+  算子开发过程中，可通过UT验证（如Kernel）方式进行快速验证，如需查看详细实现，请参考[Kernel UT](../../../examples/add_example/tests/ut/op_kernel_aicpu/test_add_example.cpp)。
 - **aclnn调用验证**
 
-  开发好的算子完成编译部署后，可通过aclnn方式验证功能，方法请参考[算子调用方式](../invocation/op_invocation.md)。
+  开发好的算子完成编译部署后，可通过aclnn方式验证功能，方法请参考[算子调用方式](../invocation/quick_op_invocation.md)。

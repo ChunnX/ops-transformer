@@ -28,7 +28,7 @@
 
 #include "../utils/flash_attn_utils.h"
 #include "../utils/flash_attn_common_def.h"
-#include "flash_attn_kernel_base_gqa_template.h"
+#include "flash_attn_kernel_noquant_gqa.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "flash_attn_tiling_data.h"
 
@@ -44,6 +44,7 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                       __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                       __gm__ uint8_t *tiling, __gm__ uint8_t *runtimeMetaData)
 {
+    fa_base_matmul::idCounterNum = 0;
     // 1. 解析 q_out layout → (inputLayout, outputLayout)
     constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
@@ -75,7 +76,6 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                       dTemplateType, hasRopeConst, enableKVPrefixConst, true, IsSameType<INPUT_T, hifloat8_t>::value);
     constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
     constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
-
     // 3. Block 类型别名
     using CubeBlock =
         BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,

@@ -1354,13 +1354,53 @@ static ge::graphStatus CheckFAILseOutput(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus ValidateCacheNonFirstAxisContiguous(const gert::TilingContext *context,
+    const uint64_t inputIndex, const gert::Shape &shape, const char *tensorName)
+{
+    auto *stride = context->GetDynamicInputStride(inputIndex, 0);
+    if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    uint64_t expectedStride = 1;
+    for (size_t i = shape.GetDimNum() - 1; i >= 1; --i) {
+        uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(i));
+        if (actualStride != expectedStride) {
+            OP_LOGE(context,
+                    "Tensor %s (irIdx=%lu) dim%zu is non-contiguous: "
+                    "actual stride=%lu, expected contiguous stride=%lu. "
+                    "Only the first axis (dim0) may be non-contiguous.",
+                    tensorName, inputIndex, i, actualStride, expectedStride);
+            return ge::GRAPH_FAILED;
+        }
+        expectedStride *= static_cast<uint64_t>(shape.GetDim(i));
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckFAIKVContiguity(const gert::TilingContext *context)
+{
+    auto KeyShape = context->GetInputShape(KEY_INDEX)->GetStorageShape();
+    auto ValueShape = context->GetInputShape(VALUE_INDEX)->GetStorageShape();
+    OP_CHECK_IF(ValidateCacheNonFirstAxisContiguous(context, KEY_INDEX, KeyShape, "key") != ge::GRAPH_SUCCESS,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "key has non-contiguous axis beyond dim0, "
+                                                            "which is not supported."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateCacheNonFirstAxisContiguous(context, VALUE_INDEX, ValueShape, "value") != ge::GRAPH_SUCCESS,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "value has non-contiguous axis beyond dim0, "
+                                                            "which is not supported."),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckFAIAvailability(gert::TilingContext *context)
 {
     bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
     if (CheckFAIQKV(context, isPageAttention) != ge::GRAPH_SUCCESS ||
         CheckFAIMask(context) != ge::GRAPH_SUCCESS ||
         CheckFAISinglePara(context, isPageAttention) != ge::GRAPH_SUCCESS ||
-        CheckFAILseOutput(context) != ge::GRAPH_SUCCESS) {
+        CheckFAILseOutput(context) != ge::GRAPH_SUCCESS ||
+        CheckFAIKVContiguity(context) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1421,7 +1461,10 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     faInfo.learnableSinkFlag = learnableSinkFlag;
     faInfo.innerPrecise = innerPrecise;
     if (faInfo.pagedCacheFlag) {
-        if (tempK->GetStorageShape().GetDimNum() == 5U && tempV->GetStorageShape().GetDimNum() == 5U) {
+        constexpr int64_t HEAD_SIZE_ALIGN_16 = 16;
+        bool isHeadSizeAligned = (tempQ->GetStorageShape().GetDim(DIM_2) % HEAD_SIZE_ALIGN_16 == 0);
+        if (tempK->GetStorageShape().GetDimNum() == 5U && tempV->GetStorageShape().GetDimNum() == 5U &&
+            isHeadSizeAligned) {
             faInfo.kvcacheNzFlag = true;
         }
         faInfo.maxNumBlocksPerBatch = blockTable->GetStorageShape().GetDim(DIM_1);
@@ -1479,7 +1522,10 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         uint32_t numTasks = faInfo.batch * faInfo.kvHeads;
         bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (maxKVSeqlen >= aicoreNum * 512);
         bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024);
-        if ((!faInfo.lseFlag) && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) && !(faInfo.maskType == MaskType::SWA_MASK) && (!faInfo.learnableSinkFlag) && !(faInfo.innerPrecise == 1) &&
+        if ((faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) &&
+            !(faInfo.maskType == MaskType::SWA_MASK) &&
+            (!faInfo.learnableSinkFlag) &&
+            !(faInfo.innerPrecise == 1) &&
             (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) &&
             (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) &&
             (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
@@ -1497,6 +1543,16 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.isTilingSink = true;
     }
     faInfo.workspaces = context->GetWorkspaceSizes(1);
+
+    auto keyBlockStrides = context->GetDynamicInputStride(KEY_INDEX, 0);
+    if (keyBlockStrides != nullptr && keyBlockStrides->GetDimNum() > 0) {
+        faInfo.keyBnStride = keyBlockStrides->GetStride(0);
+    }
+    auto valueBlockStrides = context->GetDynamicInputStride(VALUE_INDEX, 0);
+    if (valueBlockStrides != nullptr && valueBlockStrides->GetDimNum() > 0) {
+        faInfo.valueBnStride = valueBlockStrides->GetStride(0);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1563,7 +1619,9 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
             int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_3);
             bool isFAIDSize = (tempD <= 256U && tempKD <= 256 && tempVD <= 256) &&
                     (tempD == tempKD && tempD == tempVD) && (blockSize % BLOCK_SIZE_ALIGN_16 == 0);
-            bool blockSizeSupported = (blockSize == 128);
+            isFAIDSize = isFAIDSize && !(tempD == 64 || tempD == 128);
+            bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
+                    (blockSize <= MAX_BLOCK_SIZE);
             if (isFAIDSize && blockSizeSupported) {
                 usingFAI = true;
             }

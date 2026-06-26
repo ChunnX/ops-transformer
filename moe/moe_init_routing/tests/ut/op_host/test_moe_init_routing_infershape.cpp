@@ -16,6 +16,7 @@
 #include <iostream>
 #include "infer_shape_context_faker.h"
 #include "infer_shape_case_executor.h"
+#include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 class MoeInitRouting : public testing::Test
@@ -892,4 +893,50 @@ TEST_F(MoeInitRouting, moe_init_routing_infer_shape_41)
         });
     std::vector<std::vector<int64_t>> expectOutputShape = {{-1, -1}, {-1}, {-1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
+}
+
+TEST_F(MoeInitRouting, moe_init_routing_infer_data_type_01)
+{
+    ge::DataType xDtype = ge::DT_FLOAT;
+    ge::DataType rowIdxDtype = ge::DT_INT32;
+    ge::DataType expertIdxDtype = ge::DT_INT32;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+        .SetOpType("MoeInitRouting")
+        .IrInstanceNum(std::vector<uint32_t>{1, 1, 1}, std::vector<uint32_t>{1, 1, 1})
+        .InputDataTypes({&xDtype, &rowIdxDtype, &expertIdxDtype})
+        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+        .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeInitRouting")->infer_datatype;
+    auto* ctx = contextHolder.GetContext<gert::InferDataTypeContext>();
+    ASSERT_EQ(inferDtypeFunc(ctx), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(ctx->GetOutputDataType(0), ge::DT_FLOAT);
+    EXPECT_EQ(ctx->GetOutputDataType(1), ge::DT_INT32);
+    EXPECT_EQ(ctx->GetOutputDataType(2), ge::DT_INT32);
+}
+
+TEST_F(MoeInitRouting, moe_init_routing_infer_data_type_02)
+{
+    ge::DataType xDtype = ge::DT_FLOAT16;
+    ge::DataType rowIdxDtype = ge::DT_INT32;
+    ge::DataType expertIdxDtype = ge::DT_INT32;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+        .SetOpType("MoeInitRouting")
+        .IrInstanceNum(std::vector<uint32_t>{1, 1, 1}, std::vector<uint32_t>{1, 1, 1})
+        .InputDataTypes({&xDtype, &rowIdxDtype, &expertIdxDtype})
+        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+        .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeInitRouting")->infer_datatype;
+    auto* ctx = contextHolder.GetContext<gert::InferDataTypeContext>();
+    ASSERT_EQ(inferDtypeFunc(ctx), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(ctx->GetOutputDataType(0), ge::DT_FLOAT16);
 }

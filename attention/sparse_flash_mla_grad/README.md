@@ -93,20 +93,6 @@
         <td>ND</td>
     </tr>
     <tr>
-        <td>oriKvOptional</td>
-        <td>输入</td>
-        <td>attention结构的原始输入K(V)。</td>
-        <td>BFLOAT16、FLOAT16</td>
-        <td>ND</td>
-    </tr>
-    <tr>
-        <td>cmpKvOptional</td>
-        <td>输入</td>
-        <td>经过Compressor压缩后的K(V)。</td>
-        <td>BFLOAT16、FLOAT16</td>
-        <td>ND</td>
-    </tr>
-    <tr>
         <td>dOut</td>
         <td>输入</td>
         <td>注意力输出矩阵的梯度。</td>
@@ -125,6 +111,20 @@
         <td>输入</td>
         <td>注意力正向计算的输出lse，计算公式详见正向文档。</td>
         <td>FLOAT32</td>
+        <td>ND</td>
+    </tr>
+    <tr>
+        <td>oriKvOptional</td>
+        <td>输入</td>
+        <td>attention结构的原始输入K(V)。</td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+    </tr>
+    <tr>
+        <td>cmpKvOptional</td>
+        <td>输入</td>
+        <td>经过Compressor压缩后的K(V)。</td>
+        <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
     <tr>
@@ -272,13 +272,6 @@
         <td>属性</td>
         <td>表示输入ori_kv和cmp_kv的数据排布格式。</td>
         <td>STRING</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>deterministic</td>
-        <td>属性</td>
-        <td>表示是否开启确定性，应和全局保持一致。</td>
-        <td>INT64</td>
         <td>-</td>
     </tr>
     <tr>

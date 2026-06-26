@@ -62,6 +62,8 @@ constexpr uint32_t DIM_NUM_MX_SCALE = 4;
 constexpr uint32_t DIM_NUM_Y = 2;
 constexpr uint32_t OUT_DTYPE_BF16_INDEX = 2;
 constexpr int32_t SPLIT_M = 0;
+constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024U;
+constexpr float DETER_WORKSPACE_RATIO = 0.8f; // 减去系统开销后，确定性workspace占比
 } // namespace GroupedMatmulFinalizeRoutingArch35TilingConstant
 
 class GroupedMatmulFinalizeRoutingQuantTiling : public GroupedQmmTiling {
@@ -79,6 +81,10 @@ public:
     }
 
 protected:
+    const char *GetOpType() const override
+    {
+        return "GroupedMatmulFinalizeRouting";
+    }
     // 0、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
@@ -89,14 +95,17 @@ protected:
     uint64_t GetTilingKey() const override;
     // 4、保存Tiling数据
     ge::graphStatus PostTiling() override;
+    // 5、计算Workspace 大小
+    ge::graphStatus GetWorkspaceSize() override;
     void Reset() override;
+    ge::graphStatus DeterministicTilingProcess();
 
 private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    void PrintQuantParams() override;
-    void PrintMatmulParams();
+    int64_t LogQuantParams() const;
+    int64_t LogMatmulParams() const;
     bool SetQuantModeForGMMFinalizeRouting();
 
     bool CheckOptionalAttr();
@@ -111,7 +120,7 @@ private:
     bool CheckDim(const gert::Shape &xShape, const gert::Shape &wShape,
                   const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape,
                   const gert::Shape &yShape) const;
-    bool CheckFp4Shape() const;
+    bool CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     bool CheckCoreNum() const override;
 
     GMMFinalizeRoutingTilingData tilingData_;
@@ -122,6 +131,7 @@ private:
     uint64_t outputBs_ = 0;
     int8_t scaleType_ = 0;
     int8_t rowIndexType_ = 0;
+    uint32_t deterWorkspaceSize_ = 0;
 };
 } // namespace optiling
 

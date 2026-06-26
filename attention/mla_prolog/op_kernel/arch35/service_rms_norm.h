@@ -62,8 +62,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
         Rectangle rectangleParams{
-            (uint32_t)rmsNormParams.row, (uint32_t)rmsNormParams.col,
-            (uint32_t)rmsNormParams.col // columnStride
+            static_cast<uint32_t>(rmsNormParams.row), static_cast<uint32_t>(rmsNormParams.col),
+            static_cast<uint32_t>(rmsNormParams.col) // columnStride
         };
         Dequant(xFp32Local, xFp32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
@@ -73,8 +73,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         Rectangle rectangleParams{
-            (uint32_t)rmsNormParams.row, (uint32_t)rmsNormParams.col,
-            (uint32_t)rmsNormParams.col // columnStride
+            static_cast<uint32_t>(rmsNormParams.row), static_cast<uint32_t>(rmsNormParams.col),
+            static_cast<uint32_t>(rmsNormParams.col) // columnStride
         };
         Dequant(xFp32Local, xInt32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();

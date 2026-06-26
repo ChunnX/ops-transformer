@@ -53,7 +53,7 @@ ge::graphStatus MhcSinkhornBackwardTiling::GetShapeAttrsInfo()
     auto gradYShapePtr = context_->GetInputShape(GRAD_Y_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYShapePtr);
     gradYShape_ = &gradYShapePtr->GetStorageShape();
-    
+
     auto normShapePtr = context_->GetInputShape(NORM_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, normShapePtr);
     normShape_ = &normShapePtr->GetStorageShape();
@@ -86,10 +86,10 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
     auto gradYDtype = gradYDesc->GetDataType();
     OP_CHECK_IF((gradYDtype != ge::DataType::DT_FLOAT),
-        OP_LOGE(opName_,
-            "grad_y dtype %s error, only supports float32. please check.",
-            ge::TypeUtils::DataTypeToSerialString(gradYDtype).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "grad_y",
+                                                      ge::TypeUtils::DataTypeToSerialString(gradYDtype).c_str(),
+                                                      "the dtype of grad_y must be float32"),
+                return ge::GRAPH_FAILED);
 
     inputDTypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(gradYDesc->GetDataType()));
 
@@ -97,29 +97,29 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, normDesc);
     auto normDtype = normDesc->GetDataType();
     OP_CHECK_IF((normDtype != ge::DataType::DT_FLOAT),
-        OP_LOGE(opName_,
-            "norm dtype %s error, only supports float32. please check.",
-            ge::TypeUtils::DataTypeToSerialString(normDtype).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "norm",
+                                                      ge::TypeUtils::DataTypeToSerialString(normDtype).c_str(),
+                                                      "the dtype of norm must be float32"),
+                return ge::GRAPH_FAILED);
 
     auto sumDesc = context_->GetInputDesc(SUM_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, sumDesc);
     auto sumDtype = sumDesc->GetDataType();
     OP_CHECK_IF((sumDtype != ge::DataType::DT_FLOAT),
-        OP_LOGE(opName_,
-            "sum dtype %s error, only supports float32. please check.",
-            ge::TypeUtils::DataTypeToSerialString(sumDtype).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "sum",
+                                                      ge::TypeUtils::DataTypeToSerialString(sumDtype).c_str(),
+                                                      "the dtype of sum must be float32"),
+                return ge::GRAPH_FAILED);
 
     // 验证输出数据类型
     auto gradInputDesc = context_->GetOutputDesc(GRAD_INPUT_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradInputDesc);
     auto gradInputDtype = gradInputDesc->GetDataType();
     OP_CHECK_IF((gradInputDtype != ge::DataType::DT_FLOAT),
-        OP_LOGE(opName_,
-            "grad_input dtype %s error, only supports float32. please check.",
-            ge::TypeUtils::DataTypeToSerialString(gradInputDtype).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "grad_input",
+                                                      ge::TypeUtils::DataTypeToSerialString(gradInputDtype).c_str(),
+                                                      "the dtype of grad_input must be float32"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -128,12 +128,20 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckGradYShape()
 {
     if (isTShape_) {
         if (gradYShape_->GetDim(DIM_2) != nSize_) {
-            OP_LOGE(opName_, "The dim2 and dim3 of grad_y shape should be equal.");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "grad_y",
+                                                  ("dim2=" + std::to_string(gradYShape_->GetDim(DIM_2)) +
+                                                   ", dim3=" + std::to_string(gradYShape_->GetDim(DIM_3)))
+                                                      .c_str(),
+                                                  "dim2 and dim3 of grad_y must be equal");
             return ge::GRAPH_FAILED;
         }
     } else {
         if (gradYShape_->GetDim(DIM_3) != nSize_) {
-            OP_LOGE(opName_, "The dim2 and dim3 of grad_y shape should be equal.");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "grad_y",
+                                                  ("dim2=" + std::to_string(gradYShape_->GetDim(DIM_2)) +
+                                                   ", dim3=" + std::to_string(gradYShape_->GetDim(DIM_3)))
+                                                      .c_str(),
+                                                  "dim2 and dim3 of grad_y must be equal");
             return ge::GRAPH_FAILED;
         }
     }
@@ -144,8 +152,9 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckGradYShape()
 ge::graphStatus MhcSinkhornBackwardTiling::CheckNormShape()
 {
     if (normShape_->GetDim(DIM_0) != 2 * numIters_ * totalLength_ * nSize_ * nAlignSize_) {
-        OP_LOGE(opName_, "The norm shape is invalid, it should be {%ld}.",
-            2 * numIters_ * totalLength_ * nSize_ * nAlignSize_);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            opName_, "norm", std::to_string(normShape_->GetDim(DIM_0)).c_str(),
+            ("should be " + std::to_string(2 * numIters_ * totalLength_ * nSize_ * nAlignSize_)).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -155,13 +164,16 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckNormShape()
 ge::graphStatus MhcSinkhornBackwardTiling::CheckSumShape()
 {
     if (sumShape_->GetDim(DIM_0) != 2 * numIters_ * totalLength_ * nAlignSize_) {
-        OP_LOGE(opName_, "The sum shape is invalid, it should be {%ld}.", 2 * numIters_ * totalLength_ * nAlignSize_);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            opName_, "sum", std::to_string(sumShape_->GetDim(DIM_0)).c_str(),
+            ("should be " + std::to_string(2 * numIters_ * totalLength_ * nAlignSize_)).c_str());
         return ge::GRAPH_FAILED;
     }
 
     int64_t numIters = sumShape_->GetDim(DIM_0) / (2 * totalLength_ * nAlignSize_);
     if (numIters != numIters_) {
-        OP_LOGE(opName_, "The numIters of Sum is invalid, it should be {%ld}.", numIters_);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "numIters", std::to_string(numIters).c_str(),
+                                              ("should be " + std::to_string(numIters_)).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -172,29 +184,44 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckGradInputShape()
 {
     if (isTShape_) {
         if (gradInputShape_->GetDimNum() != GRAD_INPUT_OUTPUT_T_DIMNUM) {
-            OP_LOGE(opName_, "The grad_intput shape dim num is invalid");
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "grad_input",
+                                                     std::to_string(gradInputShape_->GetDimNum()).c_str(),
+                                                     ("must be " + std::to_string(GRAD_INPUT_OUTPUT_T_DIMNUM)).c_str());
             return ge::GRAPH_FAILED;
         }
 
-        if (gradInputShape_->GetDim(DIM_0) != tSize_ ||
-            gradInputShape_->GetDim(DIM_1) != nSize_ ||
+        if (gradInputShape_->GetDim(DIM_0) != tSize_ || gradInputShape_->GetDim(DIM_1) != nSize_ ||
             gradInputShape_->GetDim(DIM_2) != nSize_) {
-            OP_LOGE(opName_, "The grad_input shape is invalid, it should be {%ld, %ld, %ld}.", tSize_,
-                nSize_, nSize_);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "grad_input",
+                                                  ("{" + std::to_string(gradInputShape_->GetDim(DIM_0)) + ", " +
+                                                   std::to_string(gradInputShape_->GetDim(DIM_1)) + ", " +
+                                                   std::to_string(gradInputShape_->GetDim(DIM_2)) + "}")
+                                                      .c_str(),
+                                                  ("should be {" + std::to_string(tSize_) + ", " +
+                                                   std::to_string(nSize_) + ", " + std::to_string(nSize_) + "}")
+                                                      .c_str());
             return ge::GRAPH_FAILED;
         }
     } else {
         if (gradInputShape_->GetDimNum() != GRAD_INPUT_OUTPUT_BS_DIMNUM) {
-            OP_LOGE(opName_, "The grad_intput shape dim num is invalid");
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                opName_, "grad_input", std::to_string(gradInputShape_->GetDimNum()).c_str(),
+                ("must be " + std::to_string(GRAD_INPUT_OUTPUT_BS_DIMNUM)).c_str());
             return ge::GRAPH_FAILED;
         }
 
-        if (gradInputShape_->GetDim(DIM_0) != bSize_ ||
-            gradInputShape_->GetDim(DIM_1) != sSize_ ||
-            gradInputShape_->GetDim(DIM_2) != nSize_ ||
-            gradInputShape_->GetDim(DIM_3) != nSize_) {
-            OP_LOGE(opName_, "The grad_input shape is invalid, it should be {%ld, %ld, %ld, %ld}.", bSize_,
-                sSize_, nSize_, nSize_);
+        if (gradInputShape_->GetDim(DIM_0) != bSize_ || gradInputShape_->GetDim(DIM_1) != sSize_ ||
+            gradInputShape_->GetDim(DIM_2) != nSize_ || gradInputShape_->GetDim(DIM_3) != nSize_) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "grad_input",
+                                                  ("{" + std::to_string(gradInputShape_->GetDim(DIM_0)) + ", " +
+                                                   std::to_string(gradInputShape_->GetDim(DIM_1)) + ", " +
+                                                   std::to_string(gradInputShape_->GetDim(DIM_2)) + ", " +
+                                                   std::to_string(gradInputShape_->GetDim(DIM_3)) + "}")
+                                                      .c_str(),
+                                                  ("should be {" + std::to_string(bSize_) + ", " +
+                                                   std::to_string(sSize_) + ", " + std::to_string(nSize_) + ", " +
+                                                   std::to_string(nSize_) + "}")
+                                                      .c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -203,30 +230,24 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckGradInputShape()
 
 ge::graphStatus MhcSinkhornBackwardTiling::CheckShape()
 {
-    OP_CHECK_IF(gradYShape_ == nullptr,
-        OP_LOGE(opName_, "grad_y shape is null"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(normShape_ == nullptr,
-        OP_LOGE(opName_, "norm shape is null"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sumShape_ == nullptr,
-        OP_LOGE(opName_, "sum shape is null"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(gradInputShape_ == nullptr,
-        OP_LOGE(opName_, "grad_intput shape is null"),
-        return ge::GRAPH_FAILED);
-    
+    OP_CHECK_IF(gradYShape_ == nullptr, OP_LOGE(opName_, "grad_y shape is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(normShape_ == nullptr, OP_LOGE(opName_, "norm shape is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sumShape_ == nullptr, OP_LOGE(opName_, "sum shape is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(gradInputShape_ == nullptr, OP_LOGE(opName_, "grad_intput shape is null"), return ge::GRAPH_FAILED);
+
     if (normShape_->GetDimNum() != NORM_INPUT_DIMNUM) {
-        OP_LOGE(opName_, "The norm shape dim num is invalid");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "norm", std::to_string(normShape_->GetDimNum()).c_str(),
+                                                 ("must be " + std::to_string(NORM_INPUT_DIMNUM)).c_str());
         return ge::GRAPH_FAILED;
     }
     if (sumShape_->GetDimNum() != SUM_INPUT_DIMNUM) {
-        OP_LOGE(opName_, "The sum shape dim num is invalid");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "sum", std::to_string(sumShape_->GetDimNum()).c_str(),
+                                                 ("must be " + std::to_string(SUM_INPUT_DIMNUM)).c_str());
         return ge::GRAPH_FAILED;
     }
-    if (gradYShape_->GetDimNum() != GRAD_Y_INPUT_BS_DIMNUM &&
-        gradYShape_->GetDimNum() != GRAD_Y_INPUT_T_DIMNUM) {
-        OP_LOGE(opName_, "The grad_y shape dim num is invalid");
+    if (gradYShape_->GetDimNum() != GRAD_Y_INPUT_BS_DIMNUM && gradYShape_->GetDimNum() != GRAD_Y_INPUT_T_DIMNUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "grad_y", std::to_string(gradYShape_->GetDimNum()).c_str(),
+                                                 "must be 3 or 4");
         return ge::GRAPH_FAILED;
     }
 
@@ -242,9 +263,9 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckShape()
         totalLength_ = bSize_ * sSize_;
     }
 
-    if (nSize_ != 4 &&  nSize_ != 6 && nSize_ != 8) {
-        OP_LOGE(opName_, "nSize of gradYShape is expected to be 4, 6 or 8, but the current value got %ld.",
-            nSize_);
+    if (nSize_ != 4 && nSize_ != 6 && nSize_ != 8) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "grad_y", std::to_string(nSize_).c_str(),
+                                              "the n dim of grad_y must be 4, 6, or 8");
         return ge::GRAPH_FAILED;
     }
 
@@ -254,22 +275,20 @@ ge::graphStatus MhcSinkhornBackwardTiling::CheckShape()
 
     int64_t normDim0 = normShape_->GetDim(DIM_0);
     if (normDim0 & 1) {
-        OP_LOGE(opName_, "dim0 of norm is expected to be even, but the current value got %ld.",
-            normDim0);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "norm", std::to_string(normDim0).c_str(),
+                                              "dim0 of norm must be an even number");
         return ge::GRAPH_FAILED;
     }
     numIters_ = normDim0 / (2 * totalLength_ * nSize_ * nAlignSize_);
-    
+
     if (numIters_ > 100 || numIters_ < 1) {
-        OP_LOGE(opName_, "num_Iters is expected to be [1, 100], but the current value got %ld.",
-            numIters_);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "numIters", std::to_string(numIters_).c_str(),
+                                              "must be in [1, 100]");
         return ge::GRAPH_FAILED;
     }
 
-    if (CheckGradYShape() != ge::GRAPH_SUCCESS ||
-        CheckNormShape() != ge::GRAPH_SUCCESS ||
-        CheckSumShape() != ge::GRAPH_SUCCESS ||
-        CheckGradInputShape() != ge::GRAPH_SUCCESS) {
+    if (CheckGradYShape() != ge::GRAPH_SUCCESS || CheckNormShape() != ge::GRAPH_SUCCESS ||
+        CheckSumShape() != ge::GRAPH_SUCCESS || CheckGradInputShape() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -298,12 +317,12 @@ ge::graphStatus MhcSinkhornBackwardTiling::DoOpTiling()
 {
     auto ret = CheckDtype();
     if (ret != ge::GRAPH_SUCCESS) {
-    return ret;
+        return ret;
     }
 
     ret = CheckShape();
     if (ret != ge::GRAPH_SUCCESS) {
-    return ret;
+        return ret;
     }
 
     ret = SplitCores();

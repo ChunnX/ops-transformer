@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 #include "fia_tiling_nonquant_gqa.h"
 #include <map>
 #include <vector>
+#include <tuple>
 #include <numeric>
 #include <algorithm>
 #include <graph/utils/type_utils.h>
@@ -32,34 +33,88 @@ namespace optiling {
 using namespace arch35FIA;
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
 
+uint64_t GetGqaAlignedD(uint64_t val, const std::vector<uint64_t> &candidates)
+{
+    for (auto c : candidates) {
+        if (val <= c) {
+            return c;
+        }
+    }
+    return val;
+}
+
+using ConfigGqaSplitKey = std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>;
+
+const std::map<ConfigGqaSplitKey, uint64_t> &GetGqaSplitConfigMap()
+{
+    static const std::map<ConfigGqaSplitKey, uint64_t> configMap = {
+        {std::make_tuple(SOUTER_64, SINNER_64, DSIZE_256, DSIZE_256),
+         Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_64, SINNER_64, DSIZE_512, DSIZE_512),
+         Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_64, DSIZE_64),
+         Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_128, DSIZE_128),
+         Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_64, DSIZE_64),
+         Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_128, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_192, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_256, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_256, DSIZE_256),
+         Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_512, DSIZE_512),
+         Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512},
+        {std::make_tuple(SOUTER_128, SINNER_256, DSIZE_64, DSIZE_64),
+         Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_128, DSIZE_576, DSIZE_512),
+         Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_256, DSIZE_256),
+         Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256},
+        {std::make_tuple(SOUTER_128, SINNER_256, DSIZE_128, DSIZE_128),
+         Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_128, DSIZE_64),
+         Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64},
+        {std::make_tuple(SOUTER_128, SINNER_128, DSIZE_64, DSIZE_128),
+         Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_128, DSIZE_64),
+         Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64},
+        {std::make_tuple(SOUTER_64, SINNER_256, DSIZE_64, DSIZE_128),
+         Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128},
+    };
+    return configMap;
+}
+
 void FiaTilingNonQuantArch35::InitTilingInfo(TilingInfo *tilingInfo)
 {
     fiaInfo_ = static_cast<FiaTilingInfo *>(tilingInfo);
 }
 
-bool FiaTilingNonQuantArch35::IsCapable()
+bool FiaTilingNonQuantArch35::IsCapableBasicCheckGqa()
 {
     if (fiaInfo_ == nullptr) {
         return false;
     }
-
     // 不支持空Tensor
     if (fiaInfo_->emptyTensorFlag) {
         return false;
     }
-
-    ge::DataType qDataType = fiaInfo_->inputQType;
-    ge::DataType kDataType = fiaInfo_->inputKvType;
     // 仅支持非量化
     if (fiaInfo_->quantMode != FiaQuantMode::NO_QUANT) {
         return false;
     }
-
     // 支持GQA（NO_MLA） 和 ROPE_COMBINE_D128
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512 || fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D128) {
         return false;
     }
-    // 以下场景路由至重构前模板
+    return true;
+}
+
+bool FiaTilingNonQuantArch35::IsCapableFeatureCheckGqa()
+{ // 以下场景路由至重构前模板
     if (fiaInfo_->sysPrefixFlag ||     // 使能公共前缀
         fiaInfo_->pseShiftFlag ||      // 使能PSE
         fiaInfo_->enableAlibiPse ||    // 使能alibi
@@ -68,17 +123,46 @@ bool FiaTilingNonQuantArch35::IsCapable()
         fiaInfo_->isOutQuantEnable ||  // 使能后量化
         fiaInfo_->learnableSinkFlag || // 使能sink
         fiaInfo_->isQKVDDifferent ||   // D<=128情况下，D不等长
-        (fiaInfo_->sparseMode == 1 || fiaInfo_->sparseMode == 2 || fiaInfo_->sparseMode == 4) || // sparse mode=1/2/4
-        (fiaInfo_->sparseMode == 0 && fiaInfo_->attenMaskFlag) || // sparse mode=0且传入mask
-        (fiaInfo_->qLayout != FiaLayout::BSH && fiaInfo_->qLayout != FiaLayout::BSND &&
-         fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) || // layout非 BSH/BSND/BNSD/TND
-        (fiaInfo_->qkHeadDim != 128 &&
-         fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) || // 非D=128 GQA，且非Prefill MLA
-        CheckS1OutSplit()                                    // 使能S1外切场景
-    ) {
+        fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) { // 使能tensorlist
         return false;
     }
+    return true;
+}
 
+bool FiaTilingNonQuantArch35::IsCapableSparseLayoutCheckGqa()
+{
+    if (fiaInfo_->sparseMode == SPARSE_MODE_ALL_MASK || fiaInfo_->sparseMode == SPARSE_MODE_LEFT_UP ||
+        fiaInfo_->sparseMode == SPARSE_MODE_BAND) { // sparse mode=1/2/4
+        return false;
+    }
+    if (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag) { // sparse mode=0且传入mask
+        return false;
+    }
+    if (fiaInfo_->qLayout != FiaLayout::BSH && fiaInfo_->qLayout != FiaLayout::BSND &&
+        fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) { // layout非 BSH/BSND/BNSD/TND
+        return false;
+    }
+    if (fiaInfo_->qkHeadDim != 128 &&
+        fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) { // 非D=128 GQA，且非Prefill MLA
+        return false;
+    }
+    if (CheckS1OutSplit()) { // 使能S1外切场景
+        return false;
+    }
+    return true;
+}
+
+bool FiaTilingNonQuantArch35::IsCapable()
+{
+    if (!IsCapableBasicCheckGqa()) {
+        return false;
+    }
+    if (!IsCapableFeatureCheckGqa()) {
+        return false;
+    }
+    if (!IsCapableSparseLayoutCheckGqa()) {
+        return false;
+    }
     return true;
 }
 
@@ -95,8 +179,8 @@ void FiaTilingNonQuantArch35::CalcMaxWorkspaceSize()
     workspaceSize_ += static_cast<uint64_t>(platformInfo_.coreNum) * 2 * 2 * 64;
 
     uint32_t faTmpAttenGmSize = platformInfo_.coreNum * 2 * mSize * dVSize; // 每个核最多有2次写到workspace
-    uint32_t fatmpResLseGmSize = platformInfo_.coreNum * 2 * mSize * 8;
-    workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
+    uint32_t faTmpResLseGmSize = platformInfo_.coreNum * 2 * mSize * 8;
+    workspaceSize_ += (faTmpAttenGmSize + 2 * faTmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
 }
 
 void FiaTilingNonQuantArch35::CalcScheduleMode()
@@ -110,14 +194,13 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo_->opName, "Set plat memory info fail."),
                 return ge::GRAPH_FAILED);
 
-    // TODO，增加空tensor、路径6 STC验证用例
     if (fiaInfo_->emptyTensorFlag) {
         int64_t outSize = fiaInfo_->opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
         int64_t lseSize =
             fiaInfo_->softmaxLseFlag ? fiaInfo_->opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
         uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
         if (fiaInfo_->isOutQuantEnable) {
-            singleCoreSize = AlignUp(singleCoreSize, uint32_t(2));
+            singleCoreSize = AlignUp(singleCoreSize, 2U);
         }
         tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
         tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
@@ -144,6 +227,8 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     if (fiaInfo_->isMaxWorkspace) {
         // tiling下沉场景，无法获取到actual_seq，分核结果未知，workspace设置成最大
         CalcMaxWorkspaceSize();
+        // tiling下沉场景需传入有效Tilingkey，FE会严格校验tilingkey
+        GenTilingKey();
         CalcNumBlocks(platformInfo_.aicNum);
 
         if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
@@ -195,6 +280,22 @@ ge::graphStatus FiaTilingNonQuantArch35::SetPlatMemoryInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+namespace {
+int64_t GetActSeqLenGqa(const gert::Tensor *tensor, uint32_t dims, FiaLayout layout, uint32_t bIdx)
+{
+    if (dims == 1) {
+        return tensor->GetData<int64_t>()[0];
+    }
+    if (layout != FiaLayout::TND && layout != FiaLayout::NTD) {
+        return tensor->GetData<int64_t>()[bIdx];
+    }
+    if (bIdx == 0) {
+        return tensor->GetData<int64_t>()[0];
+    }
+    return tensor->GetData<int64_t>()[bIdx] - tensor->GetData<int64_t>()[bIdx - 1];
+}
+}
+
 void FiaTilingNonQuantArch35::InitImplParam()
 {
     const gert::Tensor *actSeqLenQ = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor;
@@ -225,41 +326,13 @@ void FiaTilingNonQuantArch35::InitImplParam()
 
     for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
         if (actualSeqLenQFlag_) {
-            int64_t actSeqLenQData = 0;
-            if (actSeqLenQDims == 1) {
-                actSeqLenQData = actSeqLenQ->GetData<int64_t>()[0];
-            } else {
-                if (fiaInfo_->qLayout != FiaLayout::TND && fiaInfo_->qLayout != FiaLayout::NTD) {
-                    actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-                } else {
-                    if (bIdx == 0) {
-                        actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-                    } else {
-                        actSeqLenQData =
-                            actSeqLenQ->GetData<int64_t>()[bIdx] - actSeqLenQ->GetData<int64_t>()[bIdx - 1];
-                    }
-                }
-            }
-            actualSeqLengthsQ_.push_back(actSeqLenQData);
+            actualSeqLengthsQ_.push_back(GetActSeqLenGqa(actSeqLenQ, actSeqLenQDims, fiaInfo_->qLayout, bIdx));
         } else {
             actualSeqLengthsQ_.push_back(fiaInfo_->s1Size);
         }
 
         if (actualSeqLenKVFlag_) {
-            if (actSeqLenKVDims == 1) {
-                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[0]);
-            } else {
-                if (fiaInfo_->kvLayout != FiaLayout::TND && fiaInfo_->kvLayout != FiaLayout::NTD) {
-                    actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-                } else {
-                    if (bIdx == 0) {
-                        actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-                    } else {
-                        actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx] -
-                                                      actSeqLenKV->GetData<int64_t>()[bIdx - 1]);
-                    }
-                }
-            }
+            actualSeqLengthsKV_.push_back(GetActSeqLenGqa(actSeqLenKV, actSeqLenKVDims, fiaInfo_->kvLayout, bIdx));
         } else if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
             actualSeqLengthsKV_.push_back(fiaInfo_->kvListSeqLens[bIdx]);
         } else {
@@ -278,12 +351,12 @@ void FiaTilingNonQuantArch35::AdjustSinnerAndSouter()
         uint32_t sparseMode = fiaInfo_->sparseMode;
         int32_t preTokens = fiaInfo_->preToken;
         int32_t nextTokens = fiaInfo_->nextToken;
-        if (sparseMode == 0) {
+        if (sparseMode == SPARSE_MODE_NO_MASK) {
             preTokens = (preTokens > 0) ? 0 : preTokens;
-        } else if (sparseMode == 4) {
+        } else if (sparseMode == SPARSE_MODE_BAND) {
             nextTokens = (nextTokens > 0) ? 0 : nextTokens;
         }
-        bool checkSparseMode = (sparseMode != 2 && preTokens + nextTokens > 128);
+        bool checkSparseMode = (sparseMode != SPARSE_MODE_LEFT_UP && preTokens + nextTokens > 128);
         if (checkQueryAndValueS && checkSparseMode && fiaInfo_->mlaMode != MlaMode::ROPE_SPLIT_D128) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
@@ -305,7 +378,7 @@ void FiaTilingNonQuantArch35::AdjustSinnerAndSouter()
     OP_LOGI(fiaInfo_->opName, "Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
 }
 
-void FiaTilingNonQuantArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength, int64_t actualSeqLengthKV,
+void FiaTilingNonQuantArch35::GetPreNextTokensLeftUp(int64_t actualSeqLengthQ, int64_t actualSeqLengthKV,
                                                      int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
     if (fiaInfo_->sparseMode == SPARSE_MODE_RIGHT_DOWN) {
@@ -313,47 +386,47 @@ void FiaTilingNonQuantArch35::GetPreNextTokensLeftUp(int64_t actualSeqLength, in
         if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT && fiaInfo_->vHeadDim == 512) {
             if (fiaInfo_->qLayout == FiaLayout::BSND || fiaInfo_->qLayout == FiaLayout::BSH ||
                 fiaInfo_->qLayout == FiaLayout::TND) {
-                nextTokensLeftUp = actualSeqLengthKV * fiaInfo_->gSize - actualSeqLength;
+                nextTokensLeftUp = actualSeqLengthKV * fiaInfo_->gSize - actualSeqLengthQ;
             } else { // BNSD场景下分核不做优化
                 nextTokensLeftUp = SPARSE_MODE_INT_MAX;
             }
         } else {
-            nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
+            nextTokensLeftUp = actualSeqLengthKV - actualSeqLengthQ;
         }
     } else if (fiaInfo_->sparseMode == SPARSE_MODE_BAND) {
-        preTokensLeftUp = fiaInfo_->preToken - actualSeqLengthKV + actualSeqLength;
-        nextTokensLeftUp = fiaInfo_->nextToken + actualSeqLengthKV - actualSeqLength;
+        preTokensLeftUp = fiaInfo_->preToken - actualSeqLengthKV + actualSeqLengthQ;
+        nextTokensLeftUp = fiaInfo_->nextToken + actualSeqLengthKV - actualSeqLengthQ;
     } else {
         preTokensLeftUp = fiaInfo_->preToken;
         nextTokensLeftUp = fiaInfo_->nextToken;
     }
 }
 
-void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, int64_t actualSeqLengthKV,
+void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLengthQ, int64_t actualSeqLengthKV,
                                                      int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp)
 {
     // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
     int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
-    nextTokensError = nextTokensError > actualSeqLength ? actualSeqLength : nextTokensError;
+    nextTokensError = nextTokensError > actualSeqLengthQ ? actualSeqLengthQ : nextTokensError;
     int64_t preTokensError = 0;
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512) {
-        preTokensError = (actualSeqLength > actualSeqLengthKV * fiaInfo_->gSize + preTokensLeftUp) ?
-                             (actualSeqLength - actualSeqLengthKV * fiaInfo_->gSize - preTokensLeftUp) :
+        preTokensError = (actualSeqLengthQ > actualSeqLengthKV * fiaInfo_->gSize + preTokensLeftUp) ?
+                             (actualSeqLengthQ - actualSeqLengthKV * fiaInfo_->gSize - preTokensLeftUp) :
                              0;
     } else {
-        preTokensError = (actualSeqLength > actualSeqLengthKV + preTokensLeftUp) ?
-                             (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) :
+        preTokensError = (actualSeqLengthQ > actualSeqLengthKV + preTokensLeftUp) ?
+                             (actualSeqLengthQ - actualSeqLengthKV - preTokensLeftUp) :
                              0;
     }
-    preTokensError = preTokensError > actualSeqLength ? actualSeqLength : preTokensError;
+    preTokensError = preTokensError > actualSeqLengthQ ? actualSeqLengthQ : preTokensError;
 
     // 若出现上方行无效，需要重新计算nexttokens，pretokens，actualseqlen
     nextTokensLeftUp += nextTokensError;
     preTokensLeftUp -= nextTokensError;
-    actualSeqLength -= nextTokensError;
+    actualSeqLengthQ -= nextTokensError;
 
     // 若出现下方行无效，需要重新计算actualseqlen
-    actualSeqLength -= preTokensError;
+    actualSeqLengthQ -= preTokensError;
 }
 
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
@@ -447,7 +520,7 @@ void FiaTilingNonQuantArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo
     baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.s2Size = fiaInfo_->s2Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
-    baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
+    baseInfo.actualLenKvDims = fiaInfo_->actualLenKvDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
     baseInfo.isS1G = (fiaInfo_->qLayout == FiaLayout::BSH) || (fiaInfo_->qLayout == FiaLayout::BSND) ||
@@ -628,67 +701,19 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyConfig()
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512) {
         dSize = fiaInfo_->qkHeadDim + fiaInfo_->ropeHeadDim;
     }
-    if (dSize <= DSIZE_64)
-        dSize = DSIZE_64;
-    else if (dSize <= DSIZE_128)
-        dSize = DSIZE_128;
-    else if (dSize <= DSIZE_256)
-        dSize = DSIZE_256;
-    else if (dSize <= DSIZE_512)
-        dSize = DSIZE_512;
-    else if (dSize <= DSIZE_576)
-        dSize = DSIZE_576;
+    dSize = GetGqaAlignedD(dSize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512, DSIZE_576});
+    dVsize = GetGqaAlignedD(dVsize, {DSIZE_64, DSIZE_128, DSIZE_256, DSIZE_512});
 
-    if (dVsize <= DSIZE_64)
-        dVsize = DSIZE_64;
-    else if (dVsize <= DSIZE_128)
-        dVsize = DSIZE_128;
-    else if (dVsize <= DSIZE_256)
-        dVsize = DSIZE_256;
-    else if (dVsize <= DSIZE_512)
-        dVsize = DSIZE_512;
-
-    if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        if (fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
+    const auto &configMap = GetGqaSplitConfigMap();
+    auto it = configMap.find(std::make_tuple(sOuter, sInner, dSize, dVsize));
+    if (it != configMap.end()) {
+        tilingKeyInfo_.config = it->second;
+        if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128 &&
+            fiaInfo_->ropeMode == RopeMode::ROPE_SPLIT) {
             tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128;
-        } else {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
         }
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_192 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_128 && dSize == DSIZE_576 && dVsize == DSIZE_512) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128; // qkvd不等长
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128; // qkvd不等长
     } else {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
     }
 }
 
@@ -743,7 +768,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
         tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
         UpdateTilingKeyHasRope();
 
-        // tilingKeyInfo_.isPa = fiaInfo_->pageAttentionFlag;
         tilingKeyInfo_.kvLayoutType = tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType;
 
         if (fiaInfo_->pageAttentionFlag) {
@@ -760,7 +784,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
 
         tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
         tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
-        // tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
         tilingKeyInfo_.isReconstructTemp = true;
     }
 }
@@ -785,13 +808,13 @@ void FiaTilingNonQuantArch35::GenTilingKey()
             tilingKeyInfo_.isReconstructTemp);
 }
 
-void FiaTilingNonQuantArch35::CalcNumBlocks(uint32_t aicNum)
+void FiaTilingNonQuantArch35::CalcNumBlocks(uint32_t usedAicNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
-    auto aivNum = aicNum * platformInfo_.cvRatio;
+    auto aivNum = usedAicNum * platformInfo_.cvRatio;
 
-    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
+    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, usedAicNum, aivNum);
+    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, usedAicNum);
 }
 
 void FiaTilingNonQuantArch35::CalcWorkspaceSize()
@@ -812,7 +835,6 @@ void FiaTilingNonQuantArch35::CalcWorkspaceSize()
 
     workspaceSize_ = sysWorkspaceSize;
 
-    // TODO，确认这段workspace分配逻辑
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
@@ -825,17 +847,17 @@ void FiaTilingNonQuantArch35::CalcWorkspaceSize()
             vec2Bytes = mSize * dVBasicBlock * sizeof(float);
         }
     }
-    workspaceSize_ += (bmm2Bytes + vec2Bytes) * 3 * numBlocks_; // 3: perload 2次 需要2+1
+    workspaceSize_ += (bmm2Bytes + vec2Bytes) * PRE_LOAD_NUM_GQA_ARCH35 * numBlocks_;
 
     if (flashDecodeFlag_) {
         uint32_t faTmpAttenGmSize = numBlocks_ * 2 * mSize * dSize; // 每个核最多有2次写到workspace
-        uint32_t fatmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
-        workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
+        uint32_t faTmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
+        workspaceSize_ += (faTmpAttenGmSize + 2 * faTmpResLseGmSize) * sizeof(float); // ResLse有2份，sum和max
         tilingData_.baseTiling.fiaWorkspaceParams.accumOutSize = faTmpAttenGmSize;
-        tilingData_.baseTiling.fiaWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
+        tilingData_.baseTiling.fiaWorkspaceParams.logSumExpSize = faTmpResLseGmSize;
     }
 
-    OP_LOGI(fiaInfo_->opName, "Workspaces: %ld", workspaceSize_);
+    OP_LOGI(fiaInfo_->opName, "Workspaces: %lu", workspaceSize_);
 }
 
 void FiaTilingNonQuantArch35::FillTiling()
@@ -870,9 +892,6 @@ void FiaTilingNonQuantArch35::ComputeTilingData()
     }
     tilingData_.baseTiling.fiaAttenMaskParams.sparseMode = fiaInfo_->sparseMode;
 
-    /*
-     *  alibi 相关tiling data
-     */
     int64_t qStartIdx = 0;
     int64_t kvStartIdx = 0;
     auto qStartIdxTensor = fiaInfo_->opParamInfo.qStartIdx.tensor;
@@ -920,11 +939,11 @@ void FiaTilingNonQuantArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.dSizeRope = fiaInfo_->ropeHeadDim;
     tilingData_.baseTiling.fiaBaseParams.scaleValue = fiaInfo_->scaleValue;
     tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsQSize = fiaInfo_->actualLenQDims;
-    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenDims;
+    tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenKvDims;
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
-    tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout); // TODO 后续整改
+    tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
 
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
@@ -961,6 +980,17 @@ void FiaTilingNonQuantArch35::SetFATilingData()
     tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit || needInit_;
+
+    if (!fiaInfo_->isTensorV1) {
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
+        if (fiaInfo_->kRopeStrides != nullptr) {
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
+        }
+    }
 }
 
 ge::graphStatus FiaTilingNonQuantArch35::SetTilingData(FusedInferAttentionScoreTilingData &tilingData)
@@ -1057,7 +1087,7 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
     }
 
     int64_t cap = context_->GetRawTilingData()->GetCapacity();
-    OP_LOGD(fiaInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);
+    OP_LOGD(fiaInfo_->opName, "Tiling Data context_ GetCapacity: %lld.", cap);
 }
 
 // 值越小表示优先级越高. 对于FIA, 使用3位数表示优先级, 优先级编码含义为:
@@ -1066,5 +1096,5 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(
     FusedInferAttentionScore, FiaTilingNonQuantArch35, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}),
-    28); // TODO，29改28，注册时未区分npu arch，会存在多重定义，是否要修改fia_tiling_templates_registry.h？
+    28); // 29改28，注册时未区分npu arch，会存在多重定义
 } // namespace optiling

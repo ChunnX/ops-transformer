@@ -27,14 +27,6 @@ static constexpr uint32_t ATTR_Q_INPUT_LAYOUT_INDEX = 0;
 static constexpr uint32_t ATTR_KV_INPUT_LAYOUT_INDEX = 1;
 static constexpr uint32_t ATTR_NUM_KV_HEADS_INDEX = 2;
 
-static constexpr uint32_t DIM_BSH = 3;
-static constexpr uint32_t DIM_TND = 3;
-static constexpr uint32_t DIM_BNSD = 4;
-
-static constexpr uint32_t BSH_DIM_B = 0;
-static constexpr uint32_t BSH_DIM_S = 1;
-static constexpr uint32_t BSH_DIM_H = 2;
-
 static constexpr uint32_t TND_DIM_T = 0;
 static constexpr uint32_t TND_DIM_N = 1;
 static constexpr uint32_t TND_DIM_D = 2;
@@ -45,6 +37,13 @@ static constexpr uint32_t BNSD_DIM_N = 1;
 static constexpr uint32_t BNSD_DIM_S = 2;
 static constexpr uint32_t BNSD_DIM_D = 3;
 static constexpr uint32_t BNSD_DIM_NUM = 4;
+
+static constexpr uint32_t BSND_DIM_B = 0;
+static constexpr uint32_t BSND_DIM_S = 1;
+static constexpr uint32_t BSND_DIM_N = 2;
+static constexpr uint32_t BSND_DIM_D = 3;
+static constexpr uint32_t BSND_DIM_NUM = 4;
+
 static constexpr uint32_t LSE_DIM_D = 1;
 
 static constexpr int32_t UNKNOWN_DIMS = -2;
@@ -107,79 +106,113 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
     // 验证Q layout和KV layout
     std::string qLayout(qInputLayoutPtr);
     std::string kvLayout(kvInputLayoutPtr);
-    
-    // 验证Q layout (只支持TND和BNSD)
+
+    // 验证Q layout (支持TND/BNSD/BSND)
     if (qLayout == "TND") {
-        if (queryShape->GetDimNum() != DIM_TND) {
+        if (queryShape->GetDimNum() != TND_DIM_NUM) {
             OP_LOGE(context->GetNodeName(), "Layout TND, queryDims(%zu) must be 3!", queryShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
     } else if (qLayout == "BNSD") {
-        if (queryShape->GetDimNum() != DIM_BNSD) {
+        if (queryShape->GetDimNum() != BNSD_DIM_NUM) {
             OP_LOGE(context->GetNodeName(), "Layout BNSD, queryDims(%zu) must be 4!", queryShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
+    } else if (qLayout == "BSND") {
+        if (queryShape->GetDimNum() != BSND_DIM_NUM) {
+            OP_LOGE(context->GetNodeName(), "Layout BSND, queryDims(%zu) must be 4!", queryShape->GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_LOGE(context->GetNodeName(), "Unsupported Q layout: %s. Only TND and BNSD are supported.", qInputLayoutPtr);
+        OP_LOGE(context->GetNodeName(), "Unsupported Q layout: %s. Only TND/BNSD/BSND are supported.", qInputLayoutPtr);
         return ge::GRAPH_FAILED;
     }
-    
-    // 验证Q和KV格式一致性：如果其中一个是BNSD，另一个也必须是BNSD
-    bool isQBNSD = (qLayout == "BNSD");
-    bool isKvBNSD = (kvLayout == "BNSD");
-    
-    if (isQBNSD != isKvBNSD) {
+
+    // 验证Q和KV格式一致性：两者必须相同
+    if (qLayout != kvLayout) {
         OP_LOGE(context->GetNodeName(),
-                "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
-                "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
+                "The parameters qInputLayout and kvInputLayout must be consistent, but currently qInputLayout is %s "
+                "and kvInputLayout is %s.",
+                qLayout.c_str(), kvLayout.c_str());
         return ge::GRAPH_FAILED;
     }
-    
+
     // 验证KV layout
     if (kvLayout == "TND") {
-        if (keyShape->GetDimNum() != DIM_TND || valueShape->GetDimNum() != DIM_TND) {
+        if (keyShape->GetDimNum() != TND_DIM_NUM || valueShape->GetDimNum() != TND_DIM_NUM) {
             OP_LOGE(context->GetNodeName(), "Layout TND, KV dims must be 3!");
             return ge::GRAPH_FAILED;
         }
-        
+
         // TND格式: [T, N, D]
         int64_t kvN = keyShape->GetDim(TND_DIM_N);
         int64_t kvD = keyShape->GetDim(TND_DIM_D);
-        
+
         if (*numKvHeadsPtr != 0 && kvN != *numKvHeadsPtr) {
             OP_LOGE(context->GetNodeName(), "KV heads mismatch in TND format: %ld != %ld", kvN, *numKvHeadsPtr);
             return ge::GRAPH_FAILED;
         }
-        
+
         if (valueShape->GetDim(TND_DIM_D) != kvD) {
             OP_LOGE(context->GetNodeName(), "K and V head dimension mismatch in TND format");
             return ge::GRAPH_FAILED;
         }
     } else if (kvLayout == "BNSD") {
-        if (keyShape->GetDimNum() != DIM_BNSD || valueShape->GetDimNum() != DIM_BNSD) {
+        if (keyShape->GetDimNum() != BNSD_DIM_NUM || valueShape->GetDimNum() != BNSD_DIM_NUM) {
             OP_LOGE(context->GetNodeName(), "Layout BNSD, KV dims must be 4!");
             return ge::GRAPH_FAILED;
         }
-        
+
         // BNSD格式: [B, N, S, D]
         int64_t kvB = keyShape->GetDim(BNSD_DIM_B);
         int64_t kvN = keyShape->GetDim(BNSD_DIM_N);
         int64_t kvD = keyShape->GetDim(BNSD_DIM_D);
-        
+
         if (*numKvHeadsPtr != 0 && kvN != *numKvHeadsPtr) {
             OP_LOGE(context->GetNodeName(), "KV heads mismatch in BNSD format: %ld != %ld", kvN, *numKvHeadsPtr);
             return ge::GRAPH_FAILED;
         }
-        
+
+        if (valueShape->GetDim(BNSD_DIM_B) != kvB) {
+            OP_LOGE(context->GetNodeName(), "K and V batch dimension mismatch in BNSD format");
+            return ge::GRAPH_FAILED;
+        }
+
         if (valueShape->GetDim(BNSD_DIM_D) != kvD) {
             OP_LOGE(context->GetNodeName(), "K and V head dimension mismatch in BNSD format");
             return ge::GRAPH_FAILED;
         }
+    } else if (kvLayout == "BSND") {
+        if (keyShape->GetDimNum() != BSND_DIM_NUM || valueShape->GetDimNum() != BSND_DIM_NUM) {
+            OP_LOGE(context->GetNodeName(), "Layout BSND, KV dims must be 4!");
+            return ge::GRAPH_FAILED;
+        }
+
+        // BSND格式: [B, S, N, D]
+        int64_t kvB = keyShape->GetDim(BSND_DIM_B);
+        int64_t kvN = keyShape->GetDim(BSND_DIM_N);
+        int64_t kvD = keyShape->GetDim(BSND_DIM_D);
+
+        if (*numKvHeadsPtr != 0 && kvN != *numKvHeadsPtr) {
+            OP_LOGE(context->GetNodeName(), "KV heads mismatch in BSND format: %ld != %ld", kvN, *numKvHeadsPtr);
+            return ge::GRAPH_FAILED;
+        }
+
+        if (valueShape->GetDim(BSND_DIM_B) != kvB) {
+            OP_LOGE(context->GetNodeName(), "K and V batch dimension mismatch in BSND format");
+            return ge::GRAPH_FAILED;
+        }
+
+        if (valueShape->GetDim(BSND_DIM_D) != kvD) {
+            OP_LOGE(context->GetNodeName(), "K and V head dimension mismatch in BSND format");
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_LOGE(context->GetNodeName(), "Unsupported KV layout: %s. Only TND format is supported.", kvInputLayoutPtr);
+        OP_LOGE(context->GetNodeName(), "Unsupported KV layout: %s. Only TND/BNSD/BSND format is supported.",
+                kvInputLayoutPtr);
         return ge::GRAPH_FAILED;
     }
-    
+
     // 设置SoftmaxLse shape (如果需要)
     // SoftmaxLse shape通常是 [batch, num_heads, q_seqlen, 1] 或类似维度
     if (qLayout == "TND") {
@@ -195,11 +228,18 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
         (*softmaxLseShape)[BNSD_DIM_N] = queryShape->GetDim(BNSD_DIM_N);
         (*softmaxLseShape)[BNSD_DIM_S] = queryShape->GetDim(BNSD_DIM_S);
         (*softmaxLseShape)[BNSD_DIM_D] = LSE_DIM_D;
+    } else if (qLayout == "BSND") {
+        // BSND格式
+        softmaxLseShape->SetDimNum(BSND_DIM_NUM);
+        (*softmaxLseShape)[BSND_DIM_B] = queryShape->GetDim(BSND_DIM_B);
+        (*softmaxLseShape)[BSND_DIM_N] = queryShape->GetDim(BSND_DIM_N);
+        (*softmaxLseShape)[BSND_DIM_S] = queryShape->GetDim(BSND_DIM_S);
+        (*softmaxLseShape)[BSND_DIM_D] = LSE_DIM_D;
     } else {
         OP_LOGE(context->GetNodeName(), "Unexpected Q layout in softmaxLse shape calculation: %s", qInputLayoutPtr);
         return ge::GRAPH_FAILED;
     }
-    
+
     OP_LOGD(context->GetNodeName(), "BlockSparseAttention InferShape success.");
     return ge::GRAPH_SUCCESS;
 }

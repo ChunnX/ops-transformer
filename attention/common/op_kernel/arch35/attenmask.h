@@ -18,6 +18,7 @@
 
 #include "util_regbase.h"
 #include "flash_attention_score_common_regbase.h"
+#include "../const_def.h"
 
 using namespace AscendC;
 using namespace AscendC::MicroAPI;
@@ -225,14 +226,14 @@ __aicore__ inline int64_t ComputeOffsetForCausal(const int64_t &delta, const uin
 {
     if (useDn) {
         if (delta >= 0) {
-            return Min(delta, s2BaseSize) + vecCoreOffset + 1;
+            return AttentionCommon::Min(delta, s2BaseSize) + vecCoreOffset + 1;
         }
-        return (Min(-1 * delta, s1BaseSize)) * attenMaskS2Size + vecCoreOffset + 1;
+        return (AttentionCommon::Min(-1 * delta, s1BaseSize)) * attenMaskS2Size + vecCoreOffset + 1;
     }
     if (delta <= 0) {
-        return Min(-1 * delta, s1BaseSize) + vecCoreOffset * attenMaskS2Size;
+        return AttentionCommon::Min(-1 * delta, s1BaseSize) + vecCoreOffset * attenMaskS2Size;
     }
-    return (Min(delta, s2BaseSize) + vecCoreOffset) * attenMaskS2Size;
+    return (AttentionCommon::Min(delta, s2BaseSize) + vecCoreOffset) * attenMaskS2Size;
 }
 
 __aicore__ inline int64_t ComputeOffsetForPrefixRectangle(const int64_t &delta, const uint32_t &s2BaseSize,
@@ -368,8 +369,8 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
             } else if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
                 int64_t tmpPre = attenMaskInfo.preTokens;
                 int64_t tmpNext = attenMaskInfo.nextTokens;
-                int64_t transPreTokens = runInfo.actualS1Size - Max(runInfo.actualS2Size - tmpPre, 0);
-                int64_t transNextTokens = runInfo.actualS2Size - Max(runInfo.actualS1Size - tmpNext, 0);
+                int64_t transPreTokens = runInfo.actualS1Size - AttentionCommon::Max(runInfo.actualS2Size - tmpPre, 0);
+                int64_t transNextTokens = runInfo.actualS2Size - AttentionCommon::Max(runInfo.actualS1Size - tmpNext, 0);
                 deltaPre = s1Offset - s2Offset - transPreTokens - 1;
                 int64_t maskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize, constInfo.s2BaseSize,
                                                                attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
@@ -380,8 +381,8 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                 if (runInfo.boIdx == attenMaskInfo.bandIndex) {
                     int64_t tmpPre = attenMaskInfo.preTokens;
                     int64_t tmpNext = attenMaskInfo.nextTokens;
-                    int64_t transPreTokens = runInfo.actualS1Size - Max(runInfo.actualS2Size - tmpPre, 0);
-                    int64_t transNextTokens = runInfo.actualS2Size - Max(runInfo.actualS1Size - tmpNext, 0);
+                    int64_t transPreTokens = runInfo.actualS1Size - AttentionCommon::Max(runInfo.actualS2Size - tmpPre, 0);
+                    int64_t transNextTokens = runInfo.actualS2Size - AttentionCommon::Max(runInfo.actualS1Size - tmpNext, 0);
                     deltaPre = s1Offset - s2Offset - transPreTokens - 1;
                     int64_t maskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize, constInfo.s2BaseSize,
                                                                 attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);
@@ -395,8 +396,8 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                 if (runInfo.boIdx == attenMaskInfo.bandIndex) {
                     int64_t tmpPre = attenMaskInfo.preTokens;
                     int64_t tmpNext = attenMaskInfo.nextTokens;
-                    int64_t transPreTokens = runInfo.actualS1Size - Max(runInfo.actualS2Size - tmpPre, 0);
-                    int64_t transNextTokens = runInfo.actualS2Size - Max(runInfo.actualS1Size - tmpNext, 0);
+                    int64_t transPreTokens = runInfo.actualS1Size - AttentionCommon::Max(runInfo.actualS2Size - tmpPre, 0);
+                    int64_t transNextTokens = runInfo.actualS2Size - AttentionCommon::Max(runInfo.actualS1Size - tmpNext, 0);
                     deltaPre = s1Offset - s2Offset - transPreTokens - 1;
                     int64_t maskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize, constInfo.s2BaseSize,
                                                                 attenMaskInfo.attenMaskS2Size, runInfo.vecCoreOffset);

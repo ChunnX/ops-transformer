@@ -47,12 +47,12 @@
   </tr>
   <tr>
     <td rowspan="2">Memory</td>
-    <td>Memory 容量(GB)</td>
+    <td>Memory容量(GB)</td>
     <td>64</td>
     <td>128</td>
   </tr>
   <tr>
-    <td>Memory 带宽</td>
+    <td>Memory带宽</td>
     <td>1.6TB/s</td>
     <td>1.6TB/s</td>
   </tr>
@@ -121,7 +121,7 @@
 1. 确认算子涉及的计算单元（Cube/Vector）和对应单元支持的数据类型是否在平台间存在差异。
 2. 确认涉及的数据搬运单元（ND-&gt;NZ、GM&lt;-&gt;Lx、集合通信等）是否在平台间存在差异。
 3. 按硬件能力变更点逐项对照修改（Vector架构、Cube支持数据类型、L1/L0/UB大小、CCU通信等）。
-4. 参考算子迁移样例调整/补齐 Atlas A2/Ascend 950 分支逻辑。
+4. 参考算子迁移样例调整/补齐Atlas A2/Ascend 950 分支逻辑。
 
 ## 四、算子迁移样例
 
@@ -330,13 +330,13 @@ Ascend 950新架构引入UB2L1 & L0C2UB间的直连通路，实现矩阵计算�
 
 启用L0C至UB（L0C2UB）直连通路，通过DataCopy接口，支持融合算子的矩阵计算结果直接搬入UB进行后续向量计算。 
 
-对于切K或多阶段融合场景，可将“L0C搬回GM再读回UB”改为“L0C直达UB累加/后处理”，降低GM往返带宽压力和时延。迁移时建议把中间结果归并、激活/量化前处理放到UB侧完成，并显式梳理MTE1/MTE2/MTE3与计算单元的事件同步顺序，确保跨单元流水连续，避免由于新增通路引入数据可见性或同步时序问题。关键使能接口定义可参考：
+对于切K或多阶段融合场景，可将“L0C搬回GM再读回UB”改为“L0C直达UB累加/后处理”，降低GM往返带宽压力和时延。迁移时建议把中间结果归并、激活/量化前处理放到UB侧完成，并显式梳理MTE1/MTE2/MTE3与计算单元的事件同步顺序，确保跨单元流水连续，避免由于新增通路引入数据可见性或同步时序问题。关键开启接口定义可参考：
 ```cpp
 // 1. 新增: 搬入接口增加UB2L1的Nd2Nz搬入，支持Src&Dst都是LocalTensor的形式
 template <typename T>   
 __aicore__ inline void DataCopy(const LocalTensor<T>& dst, const LocalTensor<T>& src, const Nd2NzParams& intriParams)；
 
-// 2. 新增: 搬出接口增加L0C2UB的搬出, 支持直接从L0C搬出到UB, 支持Src&Dst都是LocalTensor的形式
+// 2. 新增: 搬出接口增加L0C2UB的搬出，支持直接从L0C搬出到UB,支持Src&Dst都是LocalTensor的形式
 template <typename T, typename U, const FixpipeConfig& config = CFG_ROW_MAJOR>
 __aicore__ inline void Fixpipe(const LocalTensor<T>& dst, const LocalTensor<U>& src, const FixpipeParamsC310<config.format>& intriParams);
 template <CO2Layout format = CO2Layout::ROW_MAJOR>
@@ -354,7 +354,7 @@ __aicore__ inline void CrossCoreWaitFlag(uint16_t flagId)
 ```
 
 #### 核间同步信号量匹配
-`CrossCoreSetFlag` 和 `CrossCoreWaitFlag` 是核间同步信号量接口，广泛用于多核间的数据依赖与协同控制。本质上以“信号量”的方式实现不同AICore之间的数据处理阶段解耦与有序推进，常用于流水线控制、双缓冲切换、跨核协作等场景。
+`CrossCoreSetFlag`和`CrossCoreWaitFlag`是核间同步信号量接口，广泛用于多核间的数据依赖与协同控制。本质上以“信号量”的方式实现不同AICore之间的数据处理阶段解耦与有序推进，常用于流水线控制、双缓冲切换、跨核协作等场景。
 
 - `CrossCoreSetFlag`：当前核（或线程）在完成某个阶段的数据处理后，主动设置指定的flag信号，告知依赖方（一般是其它核或下游流水线阶段）本阶段已完成，可以继续执行后续流程。
 - `CrossCoreWaitFlag`：当前核（或线程）需等待某个flag信号被设置（即依赖的数据或事件完成），检测flag后才会继续向下执行。

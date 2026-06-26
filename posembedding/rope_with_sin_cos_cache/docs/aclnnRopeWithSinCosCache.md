@@ -299,7 +299,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <td>mropeSection</td>
         <td>输入</td>
         <td>公式中的mropeSection，mrope模式下用于整合输入的位置编码张量信息。</td>
-        <td>输入mropeSection属性表示使能mrope模式，不使能mrope模式（即rope模式）输入为nullptr。</td>
+        <td>输入mropeSection属性表示开启mrope模式，不开启mrope模式（即rope模式）输入为nullptr。</td>
         <td>aclIntArray</td>
         <td>-</td>
         <td>-</td>
@@ -559,7 +559,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -658,7 +658,7 @@ int main() {
             LOG_PRINT("aclnnRopeWithSinCosCache failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);

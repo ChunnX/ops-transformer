@@ -35,7 +35,13 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
 
     int64_t mm5ResOutBaseOffset;
     if constexpr (MODE == SMLAG_SCFA_MODE) {
-        mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * (selectedBlockCount + oriWinLen) * dimDv + cBlockIdx * (selectedBlockCount + oriWinLen) * dimDv;
+        if (!runInfo.isOri) {
+            mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDv + cBlockIdx * selectedBlockCount * dimDv;
+            mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
+        } else {
+            mm5ResOutBaseOffset = runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal;
+            mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkAddr);
+        }
     } else {
         mm5ResOutBaseOffset = runInfo.isOri ? 
                               runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal :
@@ -60,9 +66,15 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
             int64_t currentOutGmOffset = mm5ResOutOffset + dIdx * perLoopDSize;
             // l0a复用
             uint32_t l0a_ping_pong_flag = ping_pong_flag_l0a_;
-            MmadInnerWithSync<T1, MODE!=SMLAG_SCFA_MODE>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+            if (runInfo.isOri) {
+                MmadInnerWithSync<T1, true>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
                     aL0TensorPingPong, bL0TensorPingPong,
                     mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+            } else {
+                MmadInnerWithSync<T1, MODE!=SMLAG_SCFA_MODE>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
+                    aL0TensorPingPong, bL0TensorPingPong,
+                    mmParam, l0a_ping_pong_flag, ping_pong_flag_l0b_, ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentOutGmOffset]);
+            }
             UpdatePingPongFlag(ping_pong_flag_l0c_);
         }
         SetFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);

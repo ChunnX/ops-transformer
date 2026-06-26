@@ -17,7 +17,7 @@ if (BUILD_OPEN_PROJECT)
             OP_NAME FusedCausalConv1d
             COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
-                    -mllvm 
+                    -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
                     -Wno-deprecated-declarations
                     -Werror
@@ -33,12 +33,13 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
+    add_opbase_modules()
     add_modules_sources_with_soc(
         # 该变量用于判断op_api目录是否从op_host移出
         OP_API_INDEPENDENT ON
         # op_api新的地址
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE fused_causal_conv1d 
+        OPTYPE fused_causal_conv1d
         ACLNNTYPE aclnn_exclude
     )
 endif()

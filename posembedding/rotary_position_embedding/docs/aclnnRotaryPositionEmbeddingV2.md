@@ -20,7 +20,7 @@
 - rotate推荐使用场景
   - interleave模式，且B * N * S > 28800。
   - half模式仅在以下场景时推荐使用：输入矩阵x需要在最后一个维度切分多份时，每一份都需要调用aclnnRotaryPositionEmbedding接口进行旋转位置编码计算，可以通过构造旋转编码矩阵实现一次调用获得性能收益，以x的layout为BSND需要切分为3份为例：
-     x切分为3份，$x = [x1|x2|x3]_{(dim=4)} ∈ R^{B×S×N×D}, x1 ∈ R^{B×S×N×D1},x2 ∈ R^{B×S×N×D2},x3 ∈ R^{B×S×N×D3}, 其中D = D1 + D2 + D3$，那么可以构造一个rotate矩阵，实现调用一次aclnnRotaryPositionEmbeddingV2接口完成x的旋转位置编码计算功能，rotate矩阵构造如下：
+     x切分为3份，$x = [x1|x2|x3]_{(dim=4)} ∈ R^{B×S×N×D}, x1 ∈ R^{B×S×N×D1},x2 ∈ R^{B×S×N×D2},x3 ∈ R^{B×S×N×D3},其中D = D1 + D2 + D3$，那么可以构造一个rotate矩阵，实现调用一次aclnnRotaryPositionEmbeddingV2接口完成x的旋转位置编码计算功能，rotate矩阵构造如下：
 
      $$rotate = diag(rotate1, rotate2, rotate3) = \begin{pmatrix}rotate1&0&0\\0&rotate2&0\\0&0&rotate3\\\end{pmatrix}$$
      
@@ -305,7 +305,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
-  输入张量x支持BNSD、BSND、SBND排布。
+  输入张量x支持BNSD、BSND、SBND、TND排布。
   输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。
   输入张量x和输出张量y的shape必须完全相同。
   输入张量cos和sin的shape必须完全相同.
@@ -313,23 +313,24 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
   - half模式：
     - B，N < 1000;
     - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
-      - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B * N <= S * 8
-      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B * N * 2 <= (S + coreNum -1) / coreNum 或者 D >= 80
+      - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B*N <= S* 8
+      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B*N*2 <= (S + coreNum -1) / coreNum或者D >= 80
     - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
     - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
+    - 当x为TND时，cos、sin支持T1D、TND
   - interleave模式：
-    - B * N < 1000
+    - B * N < 1000（N<1000当x为TND）
     - 当x为BNSD时，cos、sin支持11SD
     - 当x为BSND时，cos、sin支持1S1D
     - 当x为SBND时，cos、sin支持S11D
-
+    - 当x为TND时，cos、sin支持T1D
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
   输入张量x支持BNSD、BSND、SBND、TND排布，不支持辅助矩阵输入。各参数的shape约束可以描述如下：
   - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等1024。对于half、interleave和interleave-half模式，最后一维必须能被2除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播的shape必须等于x的shape。
-## 调用示例
+  - 当x为TND时，cos、sin支持T1D、TND。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -407,7 +408,7 @@ std::vector<float> get_interleave_matrix(int64_t n) {
 }
 
 int main() {
-    // 1. 固定写法，device/stream初始化, 参考acl API手册
+    // 1. 固定写法，device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -507,7 +508,7 @@ int main() {
     aclDestroyTensor(rotate);
     aclDestroyTensor(out);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(xDeviceAddr);
     aclrtFree(cosDeviceAddr);
     aclrtFree(sinDeviceAddr);

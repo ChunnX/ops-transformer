@@ -365,7 +365,7 @@ aclnnStatus aclnnRainFusionAttention(
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="4">161002</td>
-      <td>query，key，value 数据类型不在支持的范围之内。</td>
+      <td>query，key，value数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>qInputLayout或kvInputLayout不合法。</td>
@@ -538,7 +538,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 
 
 int main() {
-    // 1. （固定写法）device/stream初始化
+    // 1.（固定写法）device/stream初始化
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
@@ -585,7 +585,7 @@ int main() {
     ret = CreateAclTensor(valueHostData, kvShape, &valueDeviceAddr, aclDataType::ACL_FLOAT16, &valueTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create value tensor\n"); return ret);
     
-    // 5. 生成稀疏索引 selectIdx 和 selectNumIdx
+    // 5. 生成稀疏索引selectIdx和selectNumIdx
     // selectIdx: [totalQBlocks, numHeads, maxKvBlockNum] - 三维tensor
     // selectNumIdx: [totalQBlocks, numHeads] - 二维tensor
     // 稀疏率为1，即不做稀疏，每个Q块选择所有KV块
@@ -654,7 +654,7 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to copy actualSeqLengthsKv to device\n"); 
               aclrtFree(actualSeqLengthsDevice); aclrtFree(actualSeqLengthsKvDevice); return ret);
     
-    // aclCreateIntArray 期望的是 host 侧的数据指针，而不是 device 侧的数据
+    // aclCreateIntArray期望的是host侧的数据指针，而不是device侧的数据
     aclIntArray *actualSeqLengths = aclCreateIntArray(actualSeqLengthsHost.data(), batch);
     aclIntArray *actualSeqLengthsKv = aclCreateIntArray(actualSeqLengthsKvHost.data(), batch);
     CHECK_RET(actualSeqLengths != nullptr && actualSeqLengthsKv != nullptr, 

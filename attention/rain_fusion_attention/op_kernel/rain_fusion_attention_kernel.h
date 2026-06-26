@@ -24,11 +24,11 @@ using namespace RfaKenelCommon;
 namespace RainFusion {
     /**
      * @brief Rain Fusion Attention Inference Kernel
-     * 
+     *
      * This kernel implements rain fusion attention where attention is computed only on
      * selected KV blocks specified by selectIdx. This reduces computation for long sequences
      * by focusing on relevant tokens.
-     * 
+     *
      * @tparam BlockMmadQK Block-level QK matmul module
      * @tparam BlockMmadPV Block-level PV matmul module
      * @tparam EpilogueOnlineSoftmax Online softmax epilogue
@@ -58,7 +58,7 @@ namespace RainFusion {
 
         using ElementP = typename BlockMmadPV::ElementA;
         using LayoutP = typename BlockMmadPV::LayoutA;
-    
+
         using ElementV = typename BlockMmadPV::ElementB;
         using LayoutV = typename BlockMmadPV::LayoutB;
 
@@ -163,7 +163,7 @@ namespace RainFusion {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID5);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID6);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
-            
+
             static constexpr uint32_t L1_QK_SIZE =
                 BlockMmadQK::L1TileShape::M * BlockMmadQK::L1TileShape::K * sizeof(ElementQ) +
                 BlockMmadQK::L1TileShape::N * BlockMmadQK::L1TileShape::K * sizeof(ElementK) * 2;
@@ -204,30 +204,30 @@ namespace RainFusion {
             uint64_t strideKVB = 0;  // BNSD batch stride for KV
             uint64_t strideKVN = 0;  // BNSD head stride for KV
             uint64_t strideKVS = 0;  // BNSD seq stride for KV
-            
+
             if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q
                 // BNSD: [B, N, S, D]
                 // strideB = N * S * D, strideN = S * D, strideS = D
                 // maxQSeqlen is the third dimension (S) of query shape, set in tiling
-                strideQOB = qHeads * maxQSeqlen * embed;  // batch stride
-                strideQON = maxQSeqlen * embed;  // head stride
+                strideQOB = static_cast<uint64_t>(qHeads) * maxQSeqlen * embed;  // batch stride
+                strideQON = static_cast<uint64_t>(maxQSeqlen) * embed;  // head stride
                 strideQOS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideQO = qHeads * embed;
+                strideQO = static_cast<uint64_t>(qHeads) * embed;
             }
-            
+
             if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                 // BNSD: [B, N, S, D]
                 // maxKvSeqlen is the third dimension (S) of value shape, set in tiling
-                strideKVB = kvHeads * maxKvSeqlen * embed;  // batch stride
-                strideKVN = maxKvSeqlen * embed;  // head stride
+                strideKVB = static_cast<uint64_t>(kvHeads) * maxKvSeqlen * embed;  // batch stride
+                strideKVN = static_cast<uint64_t>(maxKvSeqlen) * embed;  // head stride
                 strideKVS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideKV = kvHeads * embed;
+                strideKV = static_cast<uint64_t>(kvHeads) * embed;
             }
-            
+
             uint32_t embedRound = AlignUp<uint32_t>(embed, BLOCK_SIZE);
             uint32_t groupSize = qHeads / kvHeads;
 
@@ -241,10 +241,10 @@ namespace RainFusion {
             uint32_t preTotalQBlockNum = 0;
             uint32_t curBatch = 0;
             // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
-            uint32_t qSeqlen = useUniformQSeqlen ? maxQSeqlen : 
+            uint32_t qSeqlen = useUniformQSeqlen ? maxQSeqlen :
                               static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
             // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
-            uint32_t kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen : 
+            uint32_t kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen :
                                static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile; // CeilDiv
@@ -262,37 +262,37 @@ namespace RainFusion {
                     ++curBatch;
                     preTotalTaskNum = curTotalTaskNum;
                     preTotalQBlockNum = curTotalQBlockNum;
-                    
+
                     // Update offsets based on layout (compile-time optimization)
                     if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q
                         // BNSD: [B, N, S, D], offset = batch * strideB
-                        qBOffset = curBatch * strideQOB;
-                        oBOffset = curBatch * strideQOB;
+                        qBOffset = static_cast<uint64_t>(curBatch) * strideQOB;
+                        oBOffset = static_cast<uint64_t>(curBatch) * strideQOB;
                     } else {
                         // TND
-                        qBOffset += qSeqlen * strideQO;
-                        oBOffset += qSeqlen * strideQO;
+                        qBOffset += static_cast<uint64_t>(qSeqlen) * strideQO;
+                        oBOffset += static_cast<uint64_t>(qSeqlen) * strideQO;
                     }
-                    
+
                     if constexpr (!PAGED_CACHE_FLAG) {
                         if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                             // BNSD: [B, N, S, D], offset = batch * strideB
-                            kBOffset = curBatch * strideKVB;
-                            vBOffset = curBatch * strideKVB;
+                            kBOffset = static_cast<uint64_t>(curBatch) * strideKVB;
+                            vBOffset = static_cast<uint64_t>(curBatch) * strideKVB;
                         } else {
                             // TND
-                            kBOffset += kvSeqlen * strideKV;
-                            vBOffset += kvSeqlen * strideKV;
+                            kBOffset += static_cast<uint64_t>(kvSeqlen) * strideKV;
+                            vBOffset += static_cast<uint64_t>(kvSeqlen) * strideKV;
                         }
                     } else {
                         blockBOffset += maxNumBlocksPerBatch;
                     }
-                    
+
                     // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
-                    qSeqlen = useUniformQSeqlen ? maxQSeqlen : 
+                    qSeqlen = useUniformQSeqlen ? maxQSeqlen :
                              static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
                     // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
-                    kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen : 
+                    kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen :
                               static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
                     curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
                     qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile;
@@ -313,7 +313,7 @@ namespace RainFusion {
                 uint32_t qNBlockIdxCurGroup = qNBlockIdx % qNBlockNumPerGroup;
                 uint32_t xBlockNum = qSeqlen / qBlockX;
                 uint32_t xTailNum = qSeqlen - xBlockNum * qBlockX;
-                
+
                 uint32_t kvHeadIdx = qNBlockIdx / qNBlockNumPerGroup;
                 uint32_t qHeadIdx = kvHeadIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
                 uint32_t curSelectIdx = preTotalQBlockNum + qXIdx * qHeads + qHeadIdx;
@@ -322,19 +322,19 @@ namespace RainFusion {
                 if (curSelectNum == 0) {
                     continue;
                 }
-                
+
                 uint32_t lastSelectIdx = static_cast<int32_t>(
                     gSelectIdx.GetValue(curSelectIdx * maxKvBlockNum + curSelectNum - 1));
                 uint32_t kvYBlockNum = (kvSeqlen + qBlockY - 1) / qBlockY; // CeilDiv
-                uint32_t curKvSeqLen = (lastSelectIdx == kvYBlockNum - 1 && kvSeqlen % qBlockY != 0) ? 
+                uint32_t curKvSeqLen = (lastSelectIdx == kvYBlockNum - 1 && kvSeqlen % qBlockY != 0) ?
                     qBlockY * (curSelectNum - 1) + kvSeqlen % qBlockY : qBlockY * curSelectNum;
-                
+
                 // Calculate offsets based on layout (compile-time optimization)
                 uint64_t gmOffsetQ = 0;
                 uint64_t gmOffsetK = 0;
                 uint64_t gmOffsetV = 0;
                 uint64_t gmOffsetO = 0;
-                
+
                 if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q: [B, N, S, D]
                     // offset = batch * strideB + head * strideN + seq * strideS
                     uint32_t qSeqOffset = qXIdx * qBlockX + qXInnerIdx * BASIC_BLOCK_SIZE;
@@ -346,7 +346,7 @@ namespace RainFusion {
                     gmOffsetQ = qBOffset + qSeqOffset * strideQO + qHeadIdx * embed;
                     gmOffsetO = oBOffset + qSeqOffset * strideQO + qHeadIdx * embed;
                 }
-                
+
                 if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD: [B, N, S, D]
                     // offset = batch * strideB + head * strideN
                     // seq offset will be handled in blockMmadQK/blockMmadPV based on selectIdx
@@ -358,8 +358,8 @@ namespace RainFusion {
                     gmOffsetV = vBOffset + kvHeadIdx * embed;
                 }
 
-                uint32_t qSBlockSize = (qXIdx == xBlockNum) ? 
-                    (qXInnerIdx == xTailNum / curQSBlockTile ? 
+                uint32_t qSBlockSize = (qXIdx == xBlockNum) ?
+                    (qXInnerIdx == xTailNum / curQSBlockTile ?
                         xTailNum - qXInnerIdx * curQSBlockTile : curQSBlockTile) :
                     ((qXInnerIdx == qBlockInX - 1) ? qBlockX - qXInnerIdx * curQSBlockTile : curQSBlockTile);
 
@@ -586,4 +586,3 @@ namespace RainFusion {
 } // namespace RainFusion
 
 #endif // RAIN_FUSION_ATTENTION_KERNEL_H
-

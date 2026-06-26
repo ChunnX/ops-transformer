@@ -71,7 +71,10 @@ bool Mc2WeightQuantBatchMatmulV2RegBase::IsCapable()
 
     OP_TILING_CHECK(
         matmulInfoPtr_->antiQuantScaleDtype == ge::DT_UINT64,
-        OP_LOGE(opName_, "david do not support antiQuantScaleDtype is uint64."), return false);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "antiQuantScaleDtype",
+            ge::TypeUtils::DataTypeToAscendString(matmulInfoPtr_->antiQuantScaleDtype).GetString(),
+            "The value of antiQuantScaleDtype is not supported as uint64."),
+        return false);
     return true;
 }
 
@@ -311,10 +314,6 @@ void Mc2WeightQuantBatchMatmulV2RegBase::SetAdditionalParam()
 
 void Mc2WeightQuantBatchMatmulV2RegBase::PrintCVTilingData(bool debugLevel) const
 {
-    if (debugLevel && CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     std::stringstream ss;
     ss << " kSize: " << tilingData_->kSize << " groupSize: " << tilingData_->groupSize
        << " nSize: " << tilingData_->nSize << " mSize: " << tilingData_->mSize

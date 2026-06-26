@@ -86,7 +86,7 @@ static ge::graphStatus CheckAllToAllAxesShapeForMatmulAlltoAll(const gert::Infer
             "[" + std::to_string(alltoAllAxes[0]) + ", " + std::to_string(alltoAllAxes[1]) + "]";
         OPS_CHECK((alltoAllAxes[0] != NUM_MINUS_ONE || alltoAllAxes[1] != NUM_MINUS_TWO),
                   OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(INNER_DEBUG, "alltoAllAxes", axesVal.c_str(),
-                  "alltoAllAxes should be [-1, -2]"),
+                  "The value of alltoAllAxes must be [-1, -2]"),
                   return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -98,12 +98,12 @@ static ge::graphStatus CheckAxisKShapeForMatmulAlltoAll(const gert::InferShapeCo
     OPS_CHECK(shape.k1 > AXIS_K_UPPER_LIMIT || shape.k2 > AXIS_K_UPPER_LIMIT,
               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1 and x2",
               (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
-              "axis k cannot exceed " + std::to_string(AXIS_K_UPPER_LIMIT)),
+              "The value of axis k must not exceed the upper limit"),
               return ge::GRAPH_FAILED);
     if (shape.k1 != shape.k2) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1 and x2",
                 (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
-                "x1.k must equal x2.k");
+                "The value of k of x1 must be equal to that of x2");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -172,7 +172,7 @@ static ge::graphStatus CheckRankDimForMatmulAlltoAll(gert::InferShapeContext* co
  */
 static ge::graphStatus InferShapeMatmulAlltoAll(gert::InferShapeContext* context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(INNER_DEBUG, "context"), return ge::GRAPH_FAILED);
     const auto x2Shape = context->GetInputShape(INDEX_IN_X2);
     OPS_CHECK_NULL_WITH_CONTEXT(context, x2Shape);
     const auto x1Shape = context->GetInputShape(INDEX_IN_X1);
@@ -215,7 +215,7 @@ static ge::graphStatus InferShapeMatmulAlltoAll(gert::InferShapeContext* context
  */
 static ge::graphStatus InferDataTypeMatmulAlltoAll(gert::InferDataTypeContext* context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(INNER_DEBUG, "context"), return ge::GRAPH_FAILED);
     OP_LOGD(INNER_DEBUG, "Start to infer datatype of matmul allto all.");
 
     const gert::RuntimeAttrs* attrs = context->GetAttrs();

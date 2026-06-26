@@ -15,10 +15,61 @@
 #ifndef FIA_TILING_SHAPE_H
 #define FIA_TILING_SHAPE_H
 
-#include "fia_tiling_info.h"
+#include <sstream>
+#include "register/tilingdata_base.h"
+#include <exe_graph/runtime/tiling_context.h>
+#include <graph/utils/type_utils.h>
+#include <tiling/platform/platform_ascendc.h>
+#include "err/ops_err.h"
+#include <vector>
+// #include "fia_tiling_info.h"
 
 namespace optiling {
 template <typename T> using CompareFunc = bool (*)(const T&, const T&);
+
+enum class FiaLayout : uint32_t {
+    // stardard
+    BSH = 0,
+    BSND = 1,
+    BNSD = 2,
+    NZ = 3,
+    TND = 4,
+    NBSD = 5,
+    NTD = 6,
+    // for attention mask
+    // Qs != 1
+    S1S2 = 7,
+    // Qs = 1
+    BS2 = 8,
+    // PA
+    BnBsH = 11,
+    BnNBsD = 12,
+    BNS1S2 = 13,
+    INS1S2 = 14,
+    BNS11 = 15,
+    TN1 = 16,
+    BS1S2 = 18,
+    B1S1S2 = 19,
+    IS1S2 = 20,
+    I1S1S2 = 21,
+    S1S1 = 22,
+};
+
+enum class FiaAxis : uint32_t {
+    B = 0,
+    S = 1,
+    N = 2,
+    D = 3,
+    H = 4,
+    T = 5,
+    D1 = 6,
+    D0 = 7,
+    S1 = 8,
+    S2 = 9,
+    Bn = 10,
+    Bs = 11,
+    CONST = 12
+};
 
 enum class FiaCompareType : uint32_t {
     EQUAL = 0,
@@ -59,6 +110,9 @@ static std::string GetShapeStr(gert::Shape shape)
     oss << "]";
     return oss.str();
 }
+
+std::string LayoutToSerialString(FiaLayout layout);
+std::string AxisToSerialString(FiaAxis axis);
 
 class FiaTilingShape {
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
@@ -133,6 +187,7 @@ public:
         if (HasShapeD1() && HasShapeD0()) { return GetShapeD1() * GetShapeD0(); }
         return invalidDimValue_;
     }
+    int64_t GetShapeBlockSize() const { return GetAxisNum(FiaAxis::Bs); }
 
     ge::graphStatus CheckHasShapeB(const std::string &funcName) const { return CheckHasAxis(FiaAxis::B, funcName); }
     ge::graphStatus CheckHasShapeS(const std::string &funcName) const { return CheckHasAxis(FiaAxis::S, funcName); }
@@ -140,6 +195,10 @@ public:
     ge::graphStatus CheckHasShapeN(const std::string &funcName) const { return CheckHasAxis(FiaAxis::N, funcName); }
     ge::graphStatus CheckHasShapeH(const std::string &funcName) const { return CheckHasAxis(FiaAxis::H, funcName); }
     ge::graphStatus CheckHasShapeT(const std::string &funcName) const { return CheckHasAxis(FiaAxis::T, funcName); }
+    ge::graphStatus CheckHasShapeBlockSize(const std::string &funcName) const
+    {
+        return CheckHasAxis(FiaAxis::Bs, funcName);
+    }
 
 private:
     bool HasAxis(const FiaAxis &axis) const;

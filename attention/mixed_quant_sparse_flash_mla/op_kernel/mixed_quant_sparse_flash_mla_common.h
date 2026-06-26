@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef KV_QUANT_SPARSE_FLASH_ATTENTION_COMMON_H
-#define KV_QUANT_SPARSE_FLASH_ATTENTION_COMMON_H
+#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_H
+#define MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_H
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -34,4 +34,4 @@ enum class QSMLATemplateMode {
     CFA_TEMPLATE_MODE = 1,
     SCFA_TEMPLATE_MODE = 2
 };
-#endif // KV_QUANT_SPARSE_FLASH_ATTENTION_COMMON_H
+#endif // MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_H

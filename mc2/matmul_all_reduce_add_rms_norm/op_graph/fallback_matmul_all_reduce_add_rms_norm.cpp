@@ -41,12 +41,12 @@ inline ge::graphStatus GetMatmulPara(
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
 
     para.x1_acl = ConvertMmType(x1, false);
-    OPS_CHECK(para.x1_acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1_acl is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x1_acl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1_acl"), return ge::GRAPH_FAILED);
 
     const bool* trans_x2_ptr = attrs->GetBool(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_TRANS_X2));
     const bool x2_trans = (trans_x2_ptr != nullptr ? *trans_x2_ptr : false);
     para.x2_acl = ConvertMmType(x2, x2_trans, true);
-    OPS_CHECK(para.x2_acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2_acl is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.x2_acl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2_acl"), return ge::GRAPH_FAILED);
 
     return ge::SUCCESS;
 }
@@ -87,14 +87,14 @@ inline ge::graphStatus GetQuantPara(
 
         para.antiquant_scale_acl = ConvertMmType(antiquant_scale, trans_x2);
         OPS_CHECK(
-            para.antiquant_scale_acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "antiquant_scale is null"),
+            para.antiquant_scale_acl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "antiquant_scale"),
             return ge::GRAPH_FAILED);
 
         const auto antiquant_offset = host_api_ctx->GetOptionalInputTensor(offset_idx);
         if (antiquant_offset != nullptr) {
             para.antiquant_offset_acl = ConvertMmType(antiquant_offset, trans_x2);
             OPS_CHECK(
-                para.antiquant_offset_acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "antiquant_offset is null"),
+                para.antiquant_offset_acl == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "antiquant_offset"),
                 return ge::GRAPH_FAILED);
         }
         para.type = Mc2QuantType::K_WEIGHT_QUANT;
@@ -148,10 +148,10 @@ inline ge::graphStatus GetAddRmsNormPara(const gert::OpExecuteContext* host_api_
 {
     para.residual = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(ops::MC2AddRmsNormInputIdx::K_RESIDUAL));
     OPS_CHECK(
-        para.residual == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "residual is null"), return ge::GRAPH_FAILED);
+        para.residual == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "residual"), return ge::GRAPH_FAILED);
 
     para.gamma = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(ops::MC2AddRmsNormInputIdx::K_GAMMA));
-    OPS_CHECK(para.gamma == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "gamma is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.gamma == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "gamma"), return ge::GRAPH_FAILED);
 
     const auto attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
@@ -164,7 +164,7 @@ inline ge::graphStatus GetAddRmsNormPara(const gert::OpExecuteContext* host_api_
 ge::graphStatus MatmulAllreduceExecuteFuncAddRmsNorm(gert::OpExecuteContext* host_api_ctx)
 {
     OP_LOGD("Start to fallback for matmul all reduce add rms norm.");
-    OPS_CHECK(host_api_ctx == nullptr, OP_LOGE(kInnerDebug, "host_api_ctx is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "host_api_ctx"), return ge::GRAPH_FAILED);
 
     MatmulParas mm_para;
     ge::graphStatus retPara = GetMatmulPara(

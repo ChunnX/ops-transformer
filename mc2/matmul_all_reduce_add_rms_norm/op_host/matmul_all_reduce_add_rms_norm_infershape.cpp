@@ -102,17 +102,18 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x1 and x2",
                 (std::to_string(shape.k) + " and " +
                  std::to_string(shape_x2->GetDim(shapeX2KIndex))).c_str(),
-                "The k dimension of input x1 and x2 should be equal"),
+                "The k dimension of x1 must be equal to the k dimension of x2"),
             return ge::GRAPH_FAILED);
         const size_t scale_idx =
             is_arn ? static_cast<size_t>(MC2AddRmsNormInputIdx::K_SCALE) : static_cast<size_t>(MC2InputIdx::K_SCALE);
         const int64_t* p = attrs->GetInt(static_cast<size_t>(MmAllReduceAttrIdx::K_ANTIQUANT_GROUP_SIZE));
         const int64_t group_size = (p != nullptr ? *p : 0);
-        OPS_CHECK(
-            CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
-                ge::GRAPH_SUCCESS,
-            OP_LOGE(context->GetNodeName(), "Failed to check antiquant scale shape."),
-            return ge::GRAPH_FAILED);
+        if (CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
+                ge::GRAPH_SUCCESS) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "scale", "invalid",
+                "antiquant scale shape check failed");
+            return ge::GRAPH_FAILED;
+        }
     }
     shape.output_dim = dim_num_x1;
     OP_LOGD(kInnerDebug, "Matmul x1 dim %zu s %ld m %ld n %ld k %ld.", dim_num_x1, shape.s, shape.m, shape.n, shape.k);
@@ -141,12 +142,12 @@ static bool InferAllZeroShape(const gert::InferShapeContext* context)
 
 static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(kInnerDebug, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "context"), return ge::GRAPH_FAILED);
     MatmulShapeInfo shape;
-    OPS_CHECK(
-        InferShapeForMatmul(context, shape, true) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "Failed to infer shape for matmul all reduce."),
-        return ge::GRAPH_FAILED);
+    if (InferShapeForMatmul(context, shape, true) != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context->GetNodeName(), "Failed to infer shape for matmul all reduce.");
+        return ge::GRAPH_FAILED;
+    }
     size_t residual_idx = static_cast<size_t>(MC2AddRmsNormInputIdx::K_RESIDUAL);
     if (context->GetComputeNodeInputNum() != static_cast<size_t>(MC2AddRmsNormInputIdx::K_MAX) &&
         context->GetOptionalInputShape(static_cast<size_t>(MC2AddRmsNormInputIdx::K_BIAS)) == nullptr) {
@@ -160,7 +161,7 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out_y);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out_norm);
     OPS_CHECK(
-        InferAllZeroShape(context), OP_LOGE(kInnerDebug, "MatmulAllReduceAddRmsNorm does not support k = 0."),
+        InferAllZeroShape(context), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1", "k=0", "The value of x1 k must not be 0"),
         return ge::GRAPH_FAILED);
     const size_t dim_num = res_shape->GetDimNum();
     OPS_CHECK(
@@ -179,7 +180,7 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
 
 static ge::graphStatus InferDtypeForMC2AddRmsNorm(gert::InferDataTypeContext* context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(kInnerDebug, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(kInnerDebug, "context"), return ge::GRAPH_FAILED);
     const ge::DataType out_type = context->GetInputDataType(static_cast<size_t>(MC2AddRmsNormInputIdx::K_RESIDUAL));
     OP_LOGI(context->GetNodeName(), "Start to infer dtype, output dtype is %u.", out_type);
     ge::graphStatus ret = context->SetOutputDataType(static_cast<size_t>(MC2AddRmsNormOutputIdx::K_Y), out_type);

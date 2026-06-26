@@ -1,6 +1,6 @@
-# NPU Ops Transformer
+# CANN Ops Transformer
 
-`npu_ops_transformer` is a high-performance operator extension library designed for Ascend NPU. It leverages Just-In-Time(JIT) compilation to bridge PyTorch functional interfaces with ACLNN library.
+`cann_ops_transformer` is a high-performance operator extension library designed for Ascend NPU. It leverages Just-In-Time(JIT) compilation to bridge PyTorch functional interfaces with ACLNN library.
 
 ## Build & Installation
 
@@ -37,19 +37,19 @@
 
 ## Quick Start
 
-Using `npu_ops_transformer` is seamless. You can invoke NPU-accelerated operators directly through the library's opset.
+Using `cann_ops_transformer` is seamless. You can invoke NPU-accelerated operators directly through the library's opset.
 
 ```python
 import torch
 import torch_npu
-import npu_ops_transformer
+import cann_ops_transformer
 
 # Initialize data on NPU
 x = torch.randn(10, 32, dtype=torch.float32).npu()
 
 # Call the custom NPU operator
 # This triggers JIT compilation on the first call
-npu_result = npu_ops_transformer.ops.abs(x)
+npu_result = cann_ops_transformer.ops.abs(x)
 
 # Verify against CPU ATen implementation
 cpu_x = x.cpu()
@@ -60,6 +60,8 @@ print("Verification successful!")
 ```
 
 ## Developer Guide: Adding a New Operator
+
+> For the full operator development specification — directory layout, naming, per-layer implementation (C++ / Python / torchair graph mode), docstring and DeviceGuard requirements — see [torch_extension 开发规范](cann_ops_transformer/docs/torch_extension_guidelines.md).
 
 To implement a new operator (e.g. `abs`), you need to provide two components: a C++ kernel wrapper and a Python JIT builder.
 
@@ -72,13 +74,13 @@ This file bridges PyTorch tensors to the ACLNN C-API.
 #include "aclnn_common.h"
 
 /**
- * @brief ACLNN Warpper for aclnnAbs
+ * @brief ACLNN Wrapper for aclnnAbs
  * @param x Input Tensor (on NPU)
  * @return Result Tensor
  */
 at::Tensor npu_abs(const at::Tensor &x)
 {
-    // 1. Manually allocate output tensor (standrad PyTorch practice)
+    // 1. Manually allocate output tensor (standard PyTorch practice)
     at::Tensor y = at::empty_like(x);
 
     // 2. Launch ACLNN kernel using the helper macro
@@ -102,8 +104,8 @@ This file manages the JIT compilation logic and registers the operator into the 
 import torch
 import torch_npu
 from torch.library import impl
-from npu_ops_transformer.op_builder.builder import OpBuilder
-from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class AbsOpBuilder(OpBuilder):
     def __init__(self):

@@ -36,7 +36,7 @@
     <tr>
       <td>x</td>
       <td>输入/输出</td>
-      <td>公式中的输入/输出张量x，shape为 (rows, k)</td>
+      <td>公式中的输入/输出张量x，shape为(rows, k)</td>
       <td>BFLOAT16</td>
       <td>ND</td>
     </tr>
@@ -58,7 +58,7 @@
 
 ## 约束说明
 
-- x 仅支持BFLOAT16类型。
+- x仅支持BFLOAT16类型。
 - k <= 16。
 
 ## 调用说明

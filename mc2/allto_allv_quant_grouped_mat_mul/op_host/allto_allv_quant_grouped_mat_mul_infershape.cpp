@@ -157,7 +157,7 @@ static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *co
                 OPS_CHECK(fixFp4 % MXFP4_PACK_FACTOR != 0,
                           OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "gmm_x",
                           std::to_string(fixFp4).c_str(),
-                          "The second dim of gmm_x should be divisible by 2 in mxfp4"),
+                          "When the quantization mode is mxfp4, the second dim of gmm_x must be divisible by 2"),
                           return ge::GRAPH_FAILED);
                 fixFp4 = static_cast<int64_t>(CeilDiv(h, MXFP4_PACK_FACTOR));
             }

@@ -14,6 +14,7 @@
  */
 
 #include <algorithm>
+#include <iterator>
 #include <numeric>
 #include "log.h"
 #include "status.h"
@@ -34,18 +35,14 @@ T CeilDiv(T x, T y)
     return (x + y - 1) / y;
 }
 
-template <typename T>
-T AlignUp(T x, T y)
-{
-    if (y == 0) {
-        return 0;
-    }
-    return (x + y - 1) / y * y;
-}
-
 bool IsTensorValid(Tensor *tensor)
 {
     return tensor != nullptr && tensor->GetData() != nullptr && tensor->GetTensorShape() != nullptr;
+}
+
+int64_t AbsDiff(int64_t lhs, int64_t rhs)
+{
+    return lhs > rhs ? lhs - rhs : rhs - lhs;
 }
 } // namespace
 
@@ -156,6 +153,11 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k length must be at least batch_size + 1.");
         return false;
     }
+    if (IsTensorValid(cmpResidualKey_) && cmpResidualKey_->GetTensorShape()->GetDimSize(0) < bSize_) {
+        KERNEL_LOG_ERROR("cmp_residual_k length must be at least batch_size, but got %ld and batch_size=%ld.",
+                         cmpResidualKey_->GetTensorShape()->GetDimSize(0), bSize_);
+        return false;
+    }
     return true;
 }
 
@@ -177,18 +179,40 @@ int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::CalcTotalSize() const
     return bSize_ * s1Size_;
 }
 
-int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetS2RealSize(int64_t s1Size, int64_t s2Size,
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetCmpResidualKey(int64_t bIdx) const
+{
+    if (!IsTensorValid(cmpResidualKey_)) {
+        return 0;
+    }
+    auto *data = reinterpret_cast<const int32_t *>(cmpResidualKey_->GetData());
+    return static_cast<int64_t>(data[bIdx]);
+}
+
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetPreCompressS2Len(int64_t bIdx, int64_t s2Size) const
+{
+    return std::max<int64_t>(0, s2Size * cmpRatio_ + GetCmpResidualKey(bIdx));
+}
+
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetS2RealSize(int64_t bIdx, int64_t s1Size, int64_t s2Size,
                                                                          int64_t s1Idx) const
 {
-    int64_t s2RealSize = 0;
+    int64_t s2SparseLen = 0;
     if (sparseMode_ == static_cast<int64_t>(SliSparseMode::NO_MASK)) {
-        s2RealSize = s2Size;
+        s2SparseLen = s2Size;
     } else if (sparseMode_ == static_cast<int64_t>(SliSparseMode::RIGHT_DOWN_CAUSAL)) {
-        s2RealSize = (s2Size * cmpRatio_ - s1Size + s1Idx + 1) / cmpRatio_;
-        s2RealSize = std::max<int64_t>(s2RealSize, 1);
+        s2SparseLen = (GetPreCompressS2Len(bIdx, s2Size) - s1Size + s1Idx + 1) / cmpRatio_;
     }
-    s2RealSize = AlignUp(s2RealSize, 512L);
-    return std::min(s2RealSize, kSize_);
+
+    return std::max<int64_t>(0, std::min(s2SparseLen, kSize_));
+}
+
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetS1Load(int64_t s2RealSize) const
+{
+    if (s2RealSize <= 0) {
+        return 0;
+    }
+    int64_t fixedS1Load = std::min<int64_t>(256, std::min<int64_t>(kSize_, std::max<int64_t>(64, kSize_ / 4)));
+    return s2RealSize + fixedS1Load;
 }
 
 bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildSparseValidArray(std::vector<int64_t> &sparseValidArray)
@@ -204,105 +228,136 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildSparseValidArray(st
             int64_t actualS2 = GetActualSeqLen(cuSeqLensKey_, bIdx);
             for (int64_t s1Idx = 0; s1Idx < actualS1 && accumS1 < static_cast<int64_t>(sparseValidArray.size());
                  ++s1Idx, ++accumS1) {
-                sparseValidArray[accumS1] = GetS2RealSize(actualS1, actualS2, s1Idx);
+                sparseValidArray[accumS1] = GetS1Load(GetS2RealSize(bIdx, actualS1, actualS2, s1Idx));
             }
         }
     } else {
         int64_t accum = 0;
         for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
             for (int64_t s1Idx = 0; s1Idx < s1Size_; ++s1Idx, ++accum) {
-                sparseValidArray[accum] = GetS2RealSize(s1Size_, s2Size_, s1Idx);
+                sparseValidArray[accum] = GetS1Load(GetS2RealSize(bIdx, s1Size_, s2Size_, s1Idx));
             }
         }
     }
     return true;
 }
 
-bool SparseLightningIndexerKLLossGradMetadataCpuKernel::InitLoadValue(const std::vector<int64_t> &sparseValidArray,
-                                                                      const std::vector<int64_t> &sparseStartIdx,
-                                                                      std::vector<int64_t> &localValue) const
+bool SparseLightningIndexerKLLossGradMetadataCpuKernel::CanSplitWithMaxLoad(
+    const std::vector<int64_t> &sparseValidArray, int64_t start, int64_t partNum, int64_t maxLoad) const
 {
-    for (int64_t idx = 0; idx < coreNum_; ++idx) {
-        int64_t start = sparseStartIdx[idx];
-        int64_t end = ((idx + 1) < coreNum_) ? sparseStartIdx[idx + 1] : totalSize_;
-        if (start < totalSize_) {
-            localValue[idx] = std::accumulate(sparseValidArray.begin() + start, sparseValidArray.begin() + end, 0LL);
-        }
+    if (partNum == 0) {
+        return start == totalSize_;
     }
-    return true;
-}
-
-bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BalanceLoad(const std::vector<int64_t> &sparseValidArray,
-                                                                    std::vector<int64_t> &localValue,
-                                                                    std::vector<int64_t> &sparseStartIdx) const
-{
-    int64_t maxVal = *std::max_element(localValue.begin(), localValue.end());
-
-    for (int64_t idx = 1; idx < coreNum_; ++idx) {
-        int64_t start = sparseStartIdx[idx];
-        if (start < totalSize_ && start > 0 && ((localValue[idx - 1] + sparseValidArray[start]) < maxVal)) {
-            localValue[idx - 1] += sparseValidArray[start];
-            localValue[idx] -= sparseValidArray[start];
-            sparseStartIdx[idx] += 1;
-        } else if (start == totalSize_) {
-            break;
-        }
+    if (partNum < 0 || start < 0 || start > totalSize_ || totalSize_ - start < partNum) {
+        return false;
     }
-    int64_t tmpMaxVal = *std::max_element(localValue.begin(), localValue.end());
 
-    for (int64_t idx = coreNum_ - 1; idx > 0; --idx) {
-        int64_t start = sparseStartIdx[idx];
-        if (start == totalSize_) {
-            if (sparseStartIdx[idx - 1] == totalSize_) {
-                continue;
+    int64_t usedPartNum = 1;
+    int64_t curLoad = 0;
+    for (int64_t idx = start; idx < totalSize_; ++idx) {
+        int64_t load = sparseValidArray[idx];
+        if (load > maxLoad) {
+            return false;
+        }
+        if (curLoad + load > maxLoad) {
+            ++usedPartNum;
+            curLoad = load;
+            if (usedPartNum > partNum) {
+                return false;
             }
-            localValue[idx - 1] -= sparseValidArray[start - 1];
-            localValue[idx] = sparseValidArray[start - 1];
-            sparseStartIdx[idx] -= 1;
-        } else if (start > 0) {
-            if ((localValue[idx] + sparseValidArray[start - 1]) >= tmpMaxVal) {
-                continue;
-            }
-            localValue[idx - 1] -= sparseValidArray[start - 1];
-            localValue[idx] += sparseValidArray[start - 1];
-            sparseStartIdx[idx] -= 1;
         } else {
-            break;
+            curLoad += load;
         }
     }
-    tmpMaxVal = *std::max_element(localValue.begin(), localValue.end());
-    return tmpMaxVal < maxVal;
+    return usedPartNum <= partNum;
 }
 
-bool SparseLightningIndexerKLLossGradMetadataCpuKernel::Balance4DLoad(std::vector<int64_t> &sparseStartIdx,
-                                                                      const std::vector<int64_t> &sparseValidArray,
-                                                                      int64_t balanceNum) const
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::FindMinMaxLoad(
+    const std::vector<int64_t> &sparseValidArray, int64_t start, int64_t partNum) const
 {
-    int64_t tmpIndex = 0;
-    sparseStartIdx[tmpIndex] = 0;
-    int64_t sumTmpArray = 0;
-    int64_t sumTmpArrayLast = 0;
-    for (int64_t idx = 0; idx < static_cast<int64_t>(sparseValidArray.size()); ++idx) {
-        if (tmpIndex == coreNum_ - 1) {
-            break;
+    int64_t totalLoad = std::accumulate(sparseValidArray.begin() + start, sparseValidArray.end(), 0LL);
+    int64_t minMaxLoad = std::max(*std::max_element(sparseValidArray.begin() + start, sparseValidArray.end()),
+                                  CeilDiv(totalLoad, partNum));
+    int64_t maxLoad = totalLoad;
+    while (minMaxLoad < maxLoad) {
+        int64_t midLoad = minMaxLoad + (maxLoad - minMaxLoad) / 2;
+        if (CanSplitWithMaxLoad(sparseValidArray, start, partNum, midLoad)) {
+            maxLoad = midLoad;
+        } else {
+            minMaxLoad = midLoad + 1;
+        }
+    }
+    return minMaxLoad;
+}
+
+bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildBalancedSparseStartIdx(
+    const std::vector<int64_t> &sparseValidArray, std::vector<int64_t> &sparseStartIdx) const
+{
+    sparseStartIdx.assign(SLI_METADATA_MAX_CORE_NUM, totalSize_);
+    int64_t activeStart = 0;
+    while (activeStart < totalSize_ && sparseValidArray[activeStart] <= 0) {
+        ++activeStart;
+    }
+    if (activeStart >= totalSize_) {
+        return true;
+    }
+
+    int64_t activeCoreNum = std::min(coreNum_, totalSize_ - activeStart);
+    sparseStartIdx[0] = activeStart;
+    if (activeCoreNum == 1) {
+        return true;
+    }
+
+    std::vector<int64_t> prefixLoad(totalSize_ + 1, 0);
+    for (int64_t idx = 0; idx < totalSize_; ++idx) {
+        prefixLoad[idx + 1] = prefixLoad[idx] + sparseValidArray[idx];
+    }
+
+    int64_t maxLoad = FindMinMaxLoad(sparseValidArray, activeStart, activeCoreNum);
+    int64_t prevStart = activeStart;
+    for (int64_t coreIdx = 1; coreIdx < activeCoreNum; ++coreIdx) {
+        int64_t remainingPartNum = activeCoreNum - coreIdx;
+        int64_t minStart = prevStart + 1;
+        int64_t maxStart = totalSize_ - remainingPartNum;
+
+        auto maxLoadIter = std::upper_bound(prefixLoad.begin() + minStart, prefixLoad.begin() + maxStart + 1,
+                                            prefixLoad[prevStart] + maxLoad);
+        maxStart = std::min<int64_t>(maxStart, std::distance(prefixLoad.begin(), maxLoadIter) - 1);
+        if (maxStart < minStart) {
+            KERNEL_LOG_ERROR("Failed to build balanced metadata, invalid range [%ld, %ld].", minStart, maxStart);
+            return false;
         }
 
-        sumTmpArrayLast = sumTmpArray;
-        sumTmpArray += sparseValidArray[idx];
-        if (sumTmpArray == balanceNum) {
-            tmpIndex = std::min(tmpIndex + 1, coreNum_ - 1);
-            sparseStartIdx[tmpIndex] = idx + 1;
-            sumTmpArray = 0;
-        } else if (sumTmpArray > balanceNum) {
-            tmpIndex = std::min(tmpIndex + 1, coreNum_ - 1);
-            if (balanceNum - sumTmpArrayLast >= sumTmpArray - balanceNum) {
-                sparseStartIdx[tmpIndex] = idx + 1;
+        int64_t left = minStart;
+        int64_t right = maxStart;
+        while (left < right) {
+            int64_t mid = left + (right - left) / 2;
+            if (CanSplitWithMaxLoad(sparseValidArray, mid, remainingPartNum, maxLoad)) {
+                right = mid;
             } else {
-                sparseStartIdx[tmpIndex] = idx;
-                idx--;
+                left = mid + 1;
             }
-            sumTmpArray = 0;
         }
+        int64_t lowerFeasibleStart = left;
+        if (!CanSplitWithMaxLoad(sparseValidArray, lowerFeasibleStart, remainingPartNum, maxLoad)) {
+            KERNEL_LOG_ERROR("Failed to build balanced metadata, suffix cannot be split.");
+            return false;
+        }
+
+        int64_t remainingLoad = prefixLoad[totalSize_] - prefixLoad[prevStart];
+        int64_t targetLoad = CeilDiv(remainingLoad, remainingPartNum + 1);
+        int64_t targetPrefixLoad = prefixLoad[prevStart] + targetLoad;
+        auto candidateIter = std::lower_bound(prefixLoad.begin() + lowerFeasibleStart,
+                                              prefixLoad.begin() + maxStart + 1, targetPrefixLoad);
+        int64_t candidate = std::min<int64_t>(std::distance(prefixLoad.begin(), candidateIter), maxStart);
+        if (candidate > lowerFeasibleStart &&
+            AbsDiff(prefixLoad[candidate - 1], targetPrefixLoad) <=
+                AbsDiff(prefixLoad[candidate], targetPrefixLoad)) {
+            --candidate;
+        }
+
+        sparseStartIdx[coreIdx] = candidate;
+        prevStart = candidate;
     }
     return true;
 }
@@ -310,55 +365,8 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::Balance4DLoad(std::vecto
 bool SparseLightningIndexerKLLossGradMetadataCpuKernel::SetSparseStartIdx(
     const std::vector<int64_t> &sparseValidArray)
 {
-    bS1Index_.assign(SLI_METADATA_MAX_CORE_NUM, totalSize_);
-    if (layoutType_ == SliLayout::TND) {
-        std::vector<int64_t> localSparseStartIdx(SLI_METADATA_MAX_CORE_NUM, totalSize_);
-        for (int64_t idx = 0; idx < coreNum_; ++idx) {
-            localSparseStartIdx[idx] = std::min(idx * splitFactorSize_, totalSize_);
-        }
-
-        std::vector<int64_t> localValue(coreNum_, 0);
-        InitLoadValue(sparseValidArray, localSparseStartIdx, localValue);
-
-        std::vector<int64_t> tmpLocalValue(coreNum_, 0);
-        std::vector<int64_t> tmpSparseStartIdx(SLI_METADATA_MAX_CORE_NUM, totalSize_);
-        int64_t sparseArraySum = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL);
-        int64_t avgVal = CeilDiv(sparseArraySum, coreNum_);
-
-        tmpSparseStartIdx[0] = 0;
-        for (int64_t idx = 1; idx < coreNum_; ++idx) {
-            int64_t start = tmpSparseStartIdx[idx - 1];
-            int64_t singleLoadValue = 0;
-            tmpSparseStartIdx[idx] = start;
-            while (singleLoadValue < avgVal && tmpSparseStartIdx[idx] < totalSize_) {
-                singleLoadValue += sparseValidArray[tmpSparseStartIdx[idx]];
-                tmpSparseStartIdx[idx] += 1;
-            }
-
-            if ((start + 1) < tmpSparseStartIdx[idx]) {
-                int64_t redoSingleLoadValue = singleLoadValue - sparseValidArray[tmpSparseStartIdx[idx] - 1];
-                if ((singleLoadValue - avgVal) > (avgVal - redoSingleLoadValue)) {
-                    tmpSparseStartIdx[idx] -= 1;
-                    singleLoadValue = redoSingleLoadValue;
-                }
-                sparseArraySum -= singleLoadValue;
-                avgVal = CeilDiv(sparseArraySum, coreNum_ - idx);
-            }
-        }
-
-        InitLoadValue(sparseValidArray, tmpSparseStartIdx, tmpLocalValue);
-        while (BalanceLoad(sparseValidArray, tmpLocalValue, tmpSparseStartIdx)) {
-        }
-
-        if ((*std::max_element(localValue.begin(), localValue.end())) >
-            (*std::max_element(tmpLocalValue.begin(), tmpLocalValue.end()))) {
-            localSparseStartIdx.swap(tmpSparseStartIdx);
-        }
-        bS1Index_.swap(localSparseStartIdx);
-    } else {
-        int64_t sparseArraySum = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL);
-        int64_t balanceNum = CeilDiv(sparseArraySum, coreNum_);
-        Balance4DLoad(bS1Index_, sparseValidArray, balanceNum);
+    if (!BuildBalancedSparseStartIdx(sparseValidArray, bS1Index_)) {
+        return false;
     }
 
     for (int64_t idx = 1; idx < static_cast<int64_t>(SLI_METADATA_MAX_CORE_NUM); ++idx) {

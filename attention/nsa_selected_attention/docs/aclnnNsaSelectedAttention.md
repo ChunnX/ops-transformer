@@ -123,7 +123,7 @@ aclnnStatus aclnnNsaSelectedAttention(
         <td>topkIndices</td>
         <td>输入</td>
         <td>公式中的topk_indices。</td>
-        <td>shape需为[T_q, N_kv, selected_block_count], 表示所选数据的索引。</td>
+        <td>shape需为[T_q, N_kv, selected_block_count],表示所选数据的索引。</td>
         <td>INT32</td>
         <td>ND</td>
         <td>3</td>
@@ -366,7 +366,7 @@ aclnnStatus aclnnNsaSelectedAttention(
 - 输入query、key、value的inputLayout必须一致。
 - sparseMode目前支持0和2。
 - selectedBlockSize支持<=128且满足16的整数倍。
-- selectedBlockCount：支持[1~128]。 总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
+- selectedBlockCount：支持[1~128]。总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
 - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectedBlockCount * selectedBlockSize`
 - inputLayout目前仅支持TND。
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即N_q / N_kv必须是非0整数，称为G（group），且需满足G <= 32。
@@ -531,7 +531,7 @@ void FreeResource(aclTensor *q, aclTensor *k, aclTensor *v, aclTensor *attention
 
 int main()
 {
-    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -540,7 +540,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2. 构造输入与输出，需要根据API的接口自定义构造
-    // 如果需要修改shape值，需要同步修改../scripts/fa_generate_data.py中 test_nsa_selected_attention 分支下生成
+    // 如果需要修改shape值，需要同步修改../scripts/fa_generate_data.py中test_nsa_selected_attention分支下生成
     // query、key、value对应的shape值，并重新gen data，再执行
     int64_t batch = 2;
     int64_t s1 = 512;
@@ -675,7 +675,7 @@ int main()
                   deviceId, &context, &stream);
               return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
               FreeResource(q, k, v, attentionOut, softmaxMax, softmaxSum, qDeviceAddr, kDeviceAddr, vDeviceAddr,
@@ -688,7 +688,7 @@ int main()
     CopyOutResult<float>(1, softmaxSumShape, &softmaxSumDeviceAddr);
     CopyOutResult<aclFloat16>(2, attentionOutShape, &attentionOutDeviceAddr);
 
-    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改; 释放device资源
+    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改;释放device资源
     FreeResource(q, k, v, attentionOut, softmaxMax, softmaxSum, qDeviceAddr, kDeviceAddr, vDeviceAddr,
         attentionOutDeviceAddr, softmaxMaxDeviceAddr, softmaxSumDeviceAddr, workspaceSize, workspaceAddr,
         deviceId, &context, &stream);

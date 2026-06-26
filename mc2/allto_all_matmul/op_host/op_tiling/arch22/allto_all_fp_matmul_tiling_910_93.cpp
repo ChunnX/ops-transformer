@@ -13,12 +13,14 @@
  * \brief
  */
 #include "allto_all_fp_matmul_tiling_910_93.h"
+
 #include <string>
 #include <vector>
+
 #include "common/utils/op_mc2.h"
+#include "hccl/hccl_types.h"
 #include "mc2_log.h"
 #include "platform/platform_infos_def.h"
-#include "hccl/hccl_types.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -71,22 +73,23 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
 {
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
-    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE(opName, "The input tensor x1 is invalid."),
+    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1"),
                     return ge::GRAPH_FAILED);
     auto x2TensorDesc = context->GetInputDesc(INPUT_X2_INDEX);
-    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE(opName, "The input tensor x2 is invalid."),
+    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2"),
                     return ge::GRAPH_FAILED);
     // 获取数据类型并校验一致性与范围
     ge::DataType x1Dtype = x1TensorDesc->GetDataType();
     ge::DataType x2Dtype = x2TensorDesc->GetDataType();
     OP_TILING_CHECK((x1Dtype != x2Dtype),
-                    OP_LOGE(opName, "The Input x1 and x2 Dtype should be same, but x1 is %s, x2 is %s.",
-                            Ops::Base::ToString(x1Dtype).c_str(), Ops::Base::ToString(x2Dtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName, "x1 and x2",
+                        (Ops::Base::ToString(x1Dtype) + " and " + Ops::Base::ToString(x2Dtype)).c_str(),
+                        "The dtypes of x1 and x2 must be the same"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContains(NON_QUANT_X_DTYPE_LIST, x1Dtype),
-                    OP_LOGE(opName,
-                            "The Input x Dtype should be in non-quant range (float16/bf16), but x1 is %s, x2 is %s.",
-                            Ops::Base::ToString(x1Dtype).c_str(), Ops::Base::ToString(x2Dtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1 and x2",
+                        Ops::Base::ToString(x1Dtype).c_str(),
+                        "The dtype of x1 and x2 must be float16 or bf16 in non-quant range"),
                     return ge::GRAPH_FAILED);
 
     // 校验 bias 数据类型（如果存在）
@@ -95,19 +98,20 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
         if (x1Dtype == ge::DT_BF16) {
             OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
-                            OP_LOGE(opName, "When x1 Dtype is BF16, bias Dtype must be FLOAT32 DType, but bias is %s.",
-                                    Ops::Base::ToString(biasDtype).c_str()),
+                            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias",
+                                Ops::Base::ToString(biasDtype).c_str(),
+                                "When x1 is BF16, bias dtype must be FLOAT32"),
                             return ge::GRAPH_FAILED);
         } else if (x1Dtype == ge::DT_FLOAT16) {
             OP_TILING_CHECK((x1Dtype != biasDtype),
-                            OP_LOGE(opName,
-                                    "When x1 Dtype is FLOAT16, bias Dtype should be same as x Dtype, but bias is %s.",
-                                    Ops::Base::ToString(biasDtype).c_str()),
+                            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias",
+                                Ops::Base::ToString(biasDtype).c_str(),
+                                "When x1 is FLOAT16, the dtype of bias must be same as x"),
                             return ge::GRAPH_FAILED);
         } else {
-            OP_LOGE(opName,
-                    "The non-quantized scene bias Dtype currently only supports FLOAT16 and FP16, but bias is %s.",
-                    Ops::Base::ToString(biasDtype).c_str());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias",
+                Ops::Base::ToString(biasDtype).c_str(),
+                "The dtype of bias must be FLOAT16 or BF16 in non-quant mode");
             return ge::GRAPH_FAILED;
         }
     }
@@ -116,15 +120,17 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckA3NonQuantTensorDataType(cons
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc != nullptr || x2ScaleTensorDesc != nullptr),
-                    OP_LOGE(opName, "Scale tensors should be null in non-quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "x1Scale and x2Scale",
+                        "non-null", "should be null in non-quant mode"), return ge::GRAPH_FAILED);
 
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE(opName, "Output tensor y is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "y"), return ge::GRAPH_FAILED);
     ge::DataType yDtype = yDesc->GetDataType();
     OP_TILING_CHECK((yDtype != x1Dtype),
-                    OP_LOGE(opName, "Output y Dtype should be same as input x Dtype, current x is %s, but y is %s.",
-                            Ops::Base::ToString(x1Dtype).c_str(), Ops::Base::ToString(yDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y",
+                        Ops::Base::ToString(yDtype).c_str(),
+                        "The dtype of y must be same as input x"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -161,8 +167,8 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckOpInputInfo()
  */
 ge::graphStatus AllToAllFpMatmulTilingBaseA3::InitTilingContextParameters()
 {
-    MC2_CHECK_LOG_RET(opName_, 
-        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
+    MC2_CHECK_LOG_RET(
+        opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     return ge::GRAPH_SUCCESS;

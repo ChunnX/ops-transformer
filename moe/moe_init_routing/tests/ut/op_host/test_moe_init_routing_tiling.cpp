@@ -569,3 +569,229 @@ TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_18)
     std::vector<size_t> expectWorkspaces = {44781312}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
+
+// x not 2D → GetShapeAttrsInfo L216-219
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_19)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{5}, {5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{6, 5}, {6, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)}},
+                                              },
+                                              &compileInfo);
+    int64_t expectTilingKey = 0;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// row_idx not 2D → GetShapeAttrsInfo L223-226
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_20)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{6, 5}, {6, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)}},
+                                              },
+                                              &compileInfo);
+    int64_t expectTilingKey = 0;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// row_idx shape != expert_idx shape → GetShapeAttrsInfo L229-234
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_21)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{3, 3}, {3, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{6, 5}, {6, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)}},
+                                              },
+                                              &compileInfo);
+    int64_t expectTilingKey = 0;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// x dim(0) != expert_idx dim(0) → GetShapeAttrsInfo L237-241
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_22)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{3, 5}, {3, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{6, 5}, {6, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)}},
+                                              },
+                                              &compileInfo);
+    int64_t expectTilingKey = 0;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// activateNum < 0 → GetShapeAttrsInfo L244-248
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_23)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{6, 5}, {6, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}},
+                                              },
+                                              &compileInfo);
+    int64_t expectTilingKey = 0;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// expanded_row_idx dim(0) != totalLength → CheckOutShape L187-194
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_24)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{6, 5}, {6, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{7}, {7}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{7}, {7}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)}},
+                                              },
+                                              &compileInfo);
+    int64_t expectTilingKey = 0;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// Ascend950 SOC → IsRegbaseSocVersion=true → covers L128-129
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_25)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{2, 5}, {2, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{6, 5}, {6, 5}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)}},
+                                              },
+                                              &compileInfo,
+                                              "Ascend950");
+    int64_t expectTilingKey = 0;
+    string expectTilingData = "64 2 5 3 1 6 1 6 6 6 1 6 6 6848 0 2048 6 0 1 0 0 0 1 1 1 0 0 0 1 1 0 0 3 6 2 1 1 1 2 2 2 1 1 1 2 2 5 1 ";      // tilingData
+    std::vector<size_t> expectWorkspaces = {16781480}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// n >= aivNum, n >= k, n/2 <= activateNum → SplitN path (L711)
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_26)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{64, 128}, {64, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{64, 200}, {64, 200}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{64, 200}, {64, 200}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{8000, 128}, {8000, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{12800}, {12800}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{12800}, {12800}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(40)}},
+                                              },
+                                              &compileInfo);
+    int64_t expectTilingKey = 2;
+    string expectTilingData = "64 64 128 200 4 3200 1 3200 3200 3200 1 3200 3200 8096 0 1024 64 0 200 0 0 0 200 200 200 0 0 0 200 200 0 0 64 8000 1 200 200 200 1 1 1 200 200 200 1 1 128 0 ";      // tilingData
+    std::vector<size_t> expectWorkspaces = {17139712}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// cols > MAX_COLS_ONE_LOOP (16376) → IsFullLoad return false at L664
+TEST_F(MoeInitRoutingTiling, moe_init_routing_tiling_27)
+{
+    optiling::MoeInitRoutingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MoeInitRouting",
+                                              {
+                                                  {{{2, 20000}, {2, 20000}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{2, 3}, {2, 3}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{6, 20000}, {6, 20000}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{6}, {6}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(6)}},
+                                              },
+                                              &compileInfo);
+    int64_t expectTilingKey = 1;
+    string expectTilingData = "64 2 20000 3 1 6 1 6 6 6 1 6 6 8096 0 1024 6 0 1 0 0 0 1 1 1 0 0 0 1 1 0 0 3 6 2 1 1 1 1 1 2 1 1 1 1 1 16376 1 ";      // tilingData
+    std::vector<size_t> expectWorkspaces = {16781480}; // workspace
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}

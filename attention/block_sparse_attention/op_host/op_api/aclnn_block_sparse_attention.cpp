@@ -73,26 +73,24 @@ static aclnnStatus CheckMandatoryTensors(const aclTensor *query,
 
 static aclnnStatus ParseblockShapeOptional(const aclIntArray *blockShapeOptional)
 {
-    if (blockShapeOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "blockShapeOptional is null.");
-        return ACLNN_ERR_PARAM_NULLPTR;
-    }
+    if (blockShapeOptional != nullptr) {
+        uint64_t size = blockShapeOptional->Size();
+        if (size != 2) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain two elements [x, y].");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
 
-    uint64_t size = blockShapeOptional->Size();
-    if (size < 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional must contain at least two elements [x, y].");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
+        const int64_t *data = blockShapeOptional->GetData();
+        if (data == nullptr) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional data is null.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
 
-    const int64_t *data = blockShapeOptional->GetData();
-    if (data == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional data is null.");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    if (data[0] <= 0 || data[1] <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be positive, got [%ld, %ld].", data[0], data[1]);
-        return ACLNN_ERR_PARAM_INVALID;
+        if (data[0] <= 0 || data[1] <= 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockShapeOptional values must be positive, got [%ld, %ld].", data[0],
+                    data[1]);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     return ACLNN_SUCCESS;
@@ -118,26 +116,25 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     }
     std::string qLayout(qInputLayout);
     std::string kvLayout(kvInputLayout);
-    
+
     // 验证Q layout
-    if (qLayout != "TND" && qLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout only supports TND or BNSD, got %s.", qLayout.c_str());
+    if (qLayout != "TND" && qLayout != "BNSD" && qLayout != "BSND") {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout only supports TND, BNSD or BSND, got %s.", qLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    
+
     // 验证KV layout
-    if (kvLayout != "TND" && kvLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND or BNSD, got %s.", kvLayout.c_str());
+    if (kvLayout != "TND" && kvLayout != "BNSD" && qLayout != "BSND") {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND, BNSD or BSND, got %s.", kvLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    
-    // 验证Q和KV格式一致性：如果其中一个是BNSD，另一个也必须是BNSD
-    bool qIsBNSD = (qLayout == "BNSD");
-    bool kvIsBNSD = (kvLayout == "BNSD");
-    if (qIsBNSD != kvIsBNSD) {
+
+    // 验证Q和KV格式一致性：两者必须相同
+    if (qLayout != kvLayout) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
-                "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
+                "The parameters qInputLayout and kvInputLayout must be consistent, but currently qInputLayout is %s "
+                "and kvInputLayout is %s.",
+                qLayout.c_str(), kvLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
 

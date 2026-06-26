@@ -14,7 +14,7 @@
  */
 
 #include "common/op_host/matmul_common_infershape.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 using namespace gert;
 namespace {
@@ -82,9 +82,9 @@ bool UpdateOutputShapeByBias(const std::string& op_name, gert::Shape* shape_out,
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) != UNKNOWN_DIM) {
             OP_CHECK_IF(
                 shape_bias_new.GetDim(bias_dim - 1) != shape_out->GetDim(1),
-                OP_LOGE(
-                    op_name, "The dimension of n [%ld] and bias [%ld] tensors must be the same", shape_out->GetDim(1),
-                    shape_bias_new.GetDim(bias_dim - 1)),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(op_name, "bias",
+                    (std::to_string(shape_bias_new.GetDim(bias_dim - 1))).c_str(),
+                    "The shape dim of bias must be the same as the n dimension of output."),
                 return false);
         }
         if (shape_bias_new.GetDim(bias_dim - 1) != UNKNOWN_DIM && shape_out->GetDim(1) == UNKNOWN_DIM) {
@@ -179,7 +179,7 @@ static ge::graphStatus InferShapeForMatMulV3(InferShapeContext* context)
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(op_name, "x1 and x2",
                 (std::to_string(shape_x1_new.GetDim(idx_k_a)) + " and " +
                  std::to_string(shape_x2_new.GetDim(idx_k_b))).c_str(),
-                "The k dimension of input x1 and x2 should be the same"),
+                "The k dimension of x1 must be equal to the k dimension of x2"),
             return ge::GRAPH_FAILED);
     }
 

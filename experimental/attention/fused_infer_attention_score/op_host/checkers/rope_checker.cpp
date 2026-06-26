@@ -65,9 +65,42 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
-    OP_CHECK_IF((fiaInfo.qkHeadDim != 128 && fiaInfo.qkHeadDim != 512),
+    if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
+        OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
         OP_LOGE(fiaInfo.opName,
-            "When rope exist, the d size of query and key must be 128 or 512, but current is %u.", fiaInfo.qkHeadDim),
+            "In MXFP8 fullquant scenario, when rope exist, "
+            "the d size of query and key must be 64 or 128, but current is %u.",
+            fiaInfo.qkHeadDim),
+        return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),
+        OP_LOGE(fiaInfo.opName,
+            "When rope exist, the d size of query and key must be 128 or 512, but current is %u.",
+            fiaInfo.qkHeadDim),
+        return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus RopeChecker::CheckKRopeContiguous(const FiaTilingInfo &fiaInfo)
+{
+    // mxfp8全量化场景检查krope连续性
+    if (!enableFullQuant_ || fiaInfo.fullQuantMode != FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const gert::Shape keyRopeShape = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape();
+    const uint32_t keyRopeDimNum = keyRopeShape.GetDimNum();
+    int32_t dimIndex = 0;
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape, fiaInfo.kRopeStrides, dimIndex)) &&
+            !fiaInfo.pageAttentionFlag),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                "In non-PA scenarios, MXFP8 full quantization does not support non-contiguous tensors."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape, fiaInfo.kRopeStrides, dimIndex)) &&
+            (dimIndex != 0 && dimIndex != 1) && fiaInfo.pageAttentionFlag),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                "In MXFP8 Fullquant BnNBsD/NZ scenario, only 0th and 1st axis of keyRope can be non-contiguous, the "
+                + std::to_string(dimIndex) + "th axis of keyRope must be contiguous."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -432,7 +465,8 @@ ge::graphStatus RopeChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 
     if (ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckRopeDtypeConsistency(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckAxisSupport(fiaInfo)) {
+        ge::GRAPH_SUCCESS != CheckAxisSupport(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckKRopeContiguous(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
 

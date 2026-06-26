@@ -90,6 +90,7 @@ protected:
     bool isA2APath_;
     const char* opName_ = nullptr;
     int64_t rankSize_{0};
+    uint8_t commMode_{0};
     uint64_t tileMValue_{0};   // mc2 切块后主块M的大小；
     uint64_t tailMValue_{0};   // mc2 切块后尾块M的大小；
     uint64_t longTileLen_{0};  // mc2 切块后长块的大小；

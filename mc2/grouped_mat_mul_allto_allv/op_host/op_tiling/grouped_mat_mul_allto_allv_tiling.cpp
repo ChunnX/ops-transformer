@@ -54,7 +54,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorNotS
     auto sendCountsTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
     auto recvCountsTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_OPTIONAL_INDEX);
     OP_TILING_CHECK(sendCountsTensorShape != nullptr || recvCountsTensorShape != nullptr,
-                    OP_LOGE(opName_, "sendCountsTensor and recvCountsTensor should all be nullptr now!"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sendCountsTensor/recvCountsTensor",
+                        "not nullptr", "The values of sendCountsTensor/recvCountsTensor must be nullptr."),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -79,7 +80,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckOpInputSingleParamsTensorMM()
     bool allNull = isMmXNull && isMmWeightNull && isMmYNull;
     bool allNotNull = !isMmXNull && !isMmWeightNull && !isMmYNull;
     OP_TILING_CHECK(!allNull && !allNotNull,
-                    OP_LOGE(opName_, "mmXTensor, mmWeightTensor, mmYTensor must exist or not exist at same time."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mmXTensor/mmWeightTensor/mmYTensor",
+                        "inconsistent state", "all must exist or not exist at same time"),
                     return ge::GRAPH_FAILED);
     if (!isMmXNull) {
         localParams_.hasSharedMm = true;
@@ -107,7 +109,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "gmmWeight", Ops::Base::ToString(localParams_.gmmWeightDtype).c_str(), "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.gmmWeightDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(), "should be equal to gmmWeight dtype"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(), "The dtype of gmmX must be the same as that of gmmWeight"),
                     return ge::GRAPH_FAILED);
 
     auto yDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
@@ -117,7 +119,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "y", Ops::Base::ToString(localParams_.yDtype).c_str(), "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.yDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(), "should be equal to y dtype"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "gmmX", Ops::Base::ToString(localParams_.gmmXDtype).c_str(), "The dtype of gmmX must be the same as that of y"),
                     return ge::GRAPH_FAILED);
     localParams_.gmmYDtype = localParams_.yDtype;
 
@@ -164,10 +166,10 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
                     OP_LOGE_FOR_INVALID_DTYPE(opName_, "mmWeight", Ops::Base::ToString(localParams_.mmWeightDtype).c_str(), "DT_FLOAT16 or DT_BF16"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.mmXDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmX", Ops::Base::ToString(localParams_.mmXDtype).c_str(), "should equal gmmX dtype"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmX", Ops::Base::ToString(localParams_.mmXDtype).c_str(), "The dtype of mmX must be the same as that of gmmX"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.mmWeightDtype,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmWeight", Ops::Base::ToString(localParams_.mmWeightDtype).c_str(), "should equal gmmX dtype"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "mmWeight", Ops::Base::ToString(localParams_.mmWeightDtype).c_str(), "The dtype of mmWeight must be the same as that of gmmX"),
                     return ge::GRAPH_FAILED);
     auto mmYDesc = context_->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX);
     OP_TILING_CHECK(mmYDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "mmY"), return ge::GRAPH_FAILED);
@@ -194,7 +196,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
     localParams_.mmWeightDim1 = mmWeightStorageShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t mmYDim0 = mmYStorageShape->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(localParams_.Bs != mmYDim0,
-                    OP_LOGE(opName_, "mmX DIM0 %lu and mmY DIM0 %lu is not valid!", localParams_.Bs, mmYDim0),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "mmX/mmY",
+                        std::to_string(localParams_.Bs).c_str(), "Shape dim 0 of mmX must be equal to shape dim 0 of mmY."),
                     return ge::GRAPH_FAILED);
     localParams_.N2 = mmYStorageShape->GetStorageShape().GetDim(DIM_ONE);
 
@@ -215,9 +218,8 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsAttr()
     OP_TILING_CHECK(transMmWeightPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "transMmWeight"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*transMmWeightPtr == true && !localParams_.hasSharedMm,
-                    OP_LOGE(opName_,
-                            "transMmWeight should not be true when mmX is null! transMmWeight=%d, hasSharedMm=%d.",
-                            *transMmWeightPtr, localParams_.hasSharedMm),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "transMmWeight",
+                        std::to_string(*transMmWeightPtr).c_str(), "should not be true when mmX is null"),
                     return ge::GRAPH_FAILED);
     localParams_.isMmWeightTrans = *transMmWeightPtr;
 
@@ -280,14 +282,15 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLocalParams
 
     bool isEpNumMatch = (localParams_.ep > 0) && (localParams_.ep < 33);
     if (!isEpNumMatch) {
-        OP_LOGE(opName_, "ep (experts per rank) should be in range (0, %ld], but got %lu.", MAX_EXPERT_NUM_PER_RANK,
-                localParams_.ep);
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "ep", std::to_string(localParams_.ep).c_str(),
+            std::to_string(MAX_EXPERT_NUM_PER_RANK).c_str());
         return ge::GRAPH_FAILED;
     }
     uint64_t expertNum = localParams_.ep * rankDim;
     OP_TILING_CHECK(
         expertNum > MAX_EXPERT_NUM,
-        OP_LOGE(opName_, "experts(ep * epWorldSize) max is %lu, but now is %lu !", MAX_EXPERT_NUM, expertNum),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "expertNum", std::to_string(expertNum).c_str(),
+            "exceeds max expert num"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -305,10 +308,51 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+uint32_t GroupedMatmulAllToAllvTiling::GetCommModeIndex() const
+{
+    return ATTR_COMM_MODE;
+}
+
+ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::TilingContext *context,
+    uint8_t &commMode) const
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(commModeStr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "epWorldSize"), return ge::GRAPH_FAILED);
+    int64_t rankDim = *epWorldSizePtr;
+    const size_t maxLength = 6UL;
+    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (strncmp(commModeStr, "", maxLength) == 0) {
+        if (rankDim <= RANK_DIM_BOUNDARY) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        }
+        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+    } else {
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "comm_mode", commModeStr,
+            "'', 'ai_cpu', 'ccu'");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 uint64_t GroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (npuArch_ != NpuArch::DAV_3510) {
+    uint8_t commMode = 0;
+    if (npuArch_ == NpuArch::DAV_3510) {
+        if (GetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    } else {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,

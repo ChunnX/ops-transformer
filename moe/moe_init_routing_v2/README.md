@@ -139,7 +139,7 @@
     <tr>
       <td>expandedRowIdxOut</td>
       <td>输出</td>
-      <td>expandedXOut和x的索引映射关系， 要求是一个1D的Tensor。</td>
+      <td>expandedXOut和x的索引映射关系，要求是一个1D的Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>

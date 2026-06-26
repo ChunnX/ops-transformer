@@ -11,4 +11,3 @@
 
 from utils.data import *
 from utils.compare import *
-from utils.io import *

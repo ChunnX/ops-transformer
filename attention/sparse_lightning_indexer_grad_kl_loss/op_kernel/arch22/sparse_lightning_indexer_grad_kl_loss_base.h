@@ -731,19 +731,27 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::GetRunInfo(in
         runInfo.kBaseSize : (runInfo.kRealSize % runInfo.kBaseSize);
 
     if constexpr (LAYOUT_T == SLILayout::TND) {
-        runInfo.queryTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQuery * (constInfo.dSizeQuery);
-        runInfo.queryRopeTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQuery * (constInfo.dSizeQueryRope);
-        runInfo.queryIndexTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
+        runInfo.queryTensorOffset = runInfo.accumS1Idx * static_cast<int64_t>(constInfo.gSizeQuery) *
+                                    static_cast<int64_t>(constInfo.dSizeQuery);
+        runInfo.queryRopeTensorOffset = runInfo.accumS1Idx * static_cast<int64_t>(constInfo.gSizeQuery) *
+                                      static_cast<int64_t>(constInfo.dSizeQueryRope);
+        runInfo.queryIndexTensorOffset = runInfo.accumS1Idx * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                                         static_cast<int64_t>(constInfo.dSizeQueryIndex);
     } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-        runInfo.queryTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQuery * (constInfo.dSizeQuery);
-        runInfo.queryRopeTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQuery * (constInfo.dSizeQueryRope);
-        runInfo.queryIndexTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
+        runInfo.queryTensorOffset = runInfo.accumS1Idx * static_cast<int64_t>(constInfo.gSizeQuery) *
+                                    static_cast<int64_t>(constInfo.dSizeQuery);
+        runInfo.queryRopeTensorOffset = runInfo.accumS1Idx * static_cast<int64_t>(constInfo.gSizeQuery) *
+                                      static_cast<int64_t>(constInfo.dSizeQueryRope);
+        runInfo.queryIndexTensorOffset = runInfo.accumS1Idx * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                                         static_cast<int64_t>(constInfo.dSizeQueryIndex);
     }
 
     if constexpr (LAYOUT_T == SLILayout::TND) {
-        runInfo.topkGmBaseOffset = runInfo.accumS1Idx * topKSize;
+        runInfo.topkGmBaseOffset = runInfo.accumS1Idx * static_cast<int64_t>(topKSize);
     } else {
-        runInfo.topkGmBaseOffset = runInfo.bIdx * constInfo.s1Size * topKSize + runInfo.s1Idx * topKSize;
+        runInfo.topkGmBaseOffset = runInfo.bIdx * static_cast<int64_t>(constInfo.s1Size) *
+                                   static_cast<int64_t>(topKSize) +
+                                   runInfo.s1Idx * static_cast<int64_t>(topKSize);
     }
 
     runInfo.calcP = ((runInfo.taskIdMod2 == 0 && constInfo.subBlockIdx == 0) ||

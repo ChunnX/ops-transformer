@@ -1937,6 +1937,13 @@ public:
         this->scale_factor_ = static_cast<float>(mlaParams_.mm2.k);
         this->split_size_two_ = mlaParams_.mm2.k;
         this->mm1_out_size_ = mlaParams_.rmsNumCol2;
+        this->kv_cache_block_size_ = mlaParams_.kvCacheBlockSize == 0 ? 128 : mlaParams_.kvCacheBlockSize;
+        uint64_t defaultCacheStride0 = kv_cache_block_size_ *
+            (cacheMode == CACHE_MODE_KVCACHE ? SPLIT_SIZE_ONE : SPLIT_RMSNRORM_SIZE_ONE);
+        uint64_t defaultRopeStride0 = kv_cache_block_size_ * SPLIT_RMSNRORM_SIZE_TWO;
+        this->kv_cache_stride0_ = mlaParams_.kvCacheStride0 == 0 ? defaultCacheStride0 : mlaParams_.kvCacheStride0;
+        this->kv_cache_rope_stride0_ =
+            mlaParams_.kvCacheRopeStride0 == 0 ? defaultRopeStride0 : mlaParams_.kvCacheRopeStride0;
     }
 
     __aicore__ inline void Init(GM_ADDR hiddenStateGm, GM_ADDR gamma1Gm, GM_ADDR beta1Gm, GM_ADDR quantScale1Gm,
@@ -2046,6 +2053,20 @@ private:
     constexpr static uint32_t C0_SIZE = 16;
     constexpr static uint32_t I8_C0_SIZE = 32;
 
+    __aicore__ inline uint64_t GetCacheOffset(uint64_t slotValue, uint64_t innerSize, uint64_t stride0) const
+    {
+        uint64_t blockIdx = slotValue / kv_cache_block_size_;
+        uint64_t blockOffset = slotValue % kv_cache_block_size_;
+        return blockIdx * stride0 + blockOffset * innerSize;
+    }
+
+    __aicore__ inline uint64_t GetNzCacheOffset(uint64_t slotValue, uint64_t c0Size, uint64_t stride0) const
+    {
+        uint64_t blockIdx = slotValue / kv_cache_block_size_;
+        uint64_t blockOffset = slotValue % kv_cache_block_size_;
+        return blockIdx * stride0 + blockOffset * c0Size;
+    }
+
     template <class T1>
     __aicore__ inline void RmsNormAndRopeConvergence1(
         const AscendC::LocalTensor<T1> &srcTensor, const AscendC::LocalTensor<T1> &gammaTensor,
@@ -2080,13 +2101,10 @@ private:
             AscendC::DataCopy(cosTensor, cos1GmTensor[(row_work * vectorBlockIdx + loop) * SPLIT_RMSNRORM_SIZE_TWO],
                               SPLIT_RMSNRORM_SIZE_TWO);
             SET_FLAG(MTE2, V, EVENT_ID0);
-            // ND
-            uint64_t cacheStart = static_cast<uint64_t>(slotValue) * static_cast<uint64_t>(SPLIT_SIZE_ONE);
-            uint64_t cacheStart1 = static_cast<uint64_t>(slotValue) * static_cast<uint64_t>(SPLIT_RMSNRORM_SIZE_ONE);
-            uint64_t cacheStart2 = static_cast<uint64_t>(slotValue) * static_cast<uint64_t>(SPLIT_RMSNRORM_SIZE_TWO);
-            // NZ
-            uint32_t outer_idx = slotValue / 128;
-            uint32_t inner_idx = slotValue % 128;
+            uint64_t cacheSlot = static_cast<uint64_t>(slotValue);
+            uint64_t cacheStart = GetCacheOffset(cacheSlot, SPLIT_SIZE_ONE, kv_cache_stride0_);
+            uint64_t cacheStart1 = GetCacheOffset(cacheSlot, SPLIT_RMSNRORM_SIZE_ONE, kv_cache_stride0_);
+            uint64_t cacheStart2 = GetCacheOffset(cacheSlot, SPLIT_RMSNRORM_SIZE_TWO, kv_cache_rope_stride0_);
             SET_FLAG(S, MTE3, EVENT_ID0);
             /* RmsNorm start */
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -2160,37 +2178,37 @@ private:
                 DataCopy(keycacheGmTensor1[cacheStart], outTmpTensor, SPLIT_SIZE_ONE);
             } else if constexpr (cacheMode == CACHE_MODE_INT8_NZCACHE) {
                 // NZ
-                int64_t cacheSatartI8Nz1 = outer_idx * 128 * 512 + inner_idx * I8_C0_SIZE;
-                uint64_t cacheSatartNz2 = outer_idx * 128 * 64 + inner_idx * C0_SIZE;
+                uint64_t cacheStartI8Nz1 = GetNzCacheOffset(cacheSlot, I8_C0_SIZE, kv_cache_stride0_);
+                uint64_t cacheStartNz2 = GetNzCacheOffset(cacheSlot, C0_SIZE, kv_cache_rope_stride0_);
                 AscendC::DataCopyExtParams outExt;
                 // nope:int8 nz
                 outExt.blockCount = SPLIT_RMSNRORM_SIZE_ONE / I8_C0_SIZE;
                 outExt.blockLen = I8_C0_SIZE * sizeof(int8_t);
                 outExt.srcStride = 0;
-                outExt.dstStride = (128 * I8_C0_SIZE - I8_C0_SIZE) * sizeof(int8_t);
-                DataCopyPad(keycacheGmTensor1[cacheSatartI8Nz1], int8OutTensor, outExt);
+                outExt.dstStride = (kv_cache_block_size_ * I8_C0_SIZE - I8_C0_SIZE) * sizeof(int8_t);
+                DataCopyPad(keycacheGmTensor1[cacheStartI8Nz1], int8OutTensor, outExt);
                 // rope:T1 nz
                 outExt.blockCount = SPLIT_RMSNRORM_SIZE_TWO / C0_SIZE;
                 outExt.blockLen = C0_SIZE * sizeof(T1);
                 outExt.srcStride = 0;
-                outExt.dstStride = (128 * C0_SIZE - C0_SIZE) * sizeof(T1);
-                DataCopyPad(keycacheGmTensor2[cacheSatartNz2], outTmpTensor[SPLIT_RMSNRORM_SIZE_ONE], outExt);
+                outExt.dstStride = (kv_cache_block_size_ * C0_SIZE - C0_SIZE) * sizeof(T1);
+                DataCopyPad(keycacheGmTensor2[cacheStartNz2], outTmpTensor[SPLIT_RMSNRORM_SIZE_ONE], outExt);
             } else if constexpr (cacheMode == CACHE_MODE_NZCACHE) {
-                uint64_t cacheSatartNz1 = outer_idx * 128 * 512 + inner_idx * C0_SIZE;
-                uint64_t cacheSatartNz2 = outer_idx * 128 * 64 + inner_idx * C0_SIZE;
+                uint64_t cacheStartNz1 = GetNzCacheOffset(cacheSlot, C0_SIZE, kv_cache_stride0_);
+                uint64_t cacheStartNz2 = GetNzCacheOffset(cacheSlot, C0_SIZE, kv_cache_rope_stride0_);
                 // nope:T1 nz
                 AscendC::DataCopyExtParams outExt;
                 outExt.blockCount = SPLIT_RMSNRORM_SIZE_ONE / C0_SIZE;
                 outExt.blockLen = C0_SIZE * sizeof(T1);
                 outExt.srcStride = 0;
-                outExt.dstStride = (128 * C0_SIZE - C0_SIZE) * sizeof(T1);
-                DataCopyPad(keycacheGmTensor1[cacheSatartNz1], outTmpTensor, outExt);
+                outExt.dstStride = (kv_cache_block_size_ * C0_SIZE - C0_SIZE) * sizeof(T1);
+                DataCopyPad(keycacheGmTensor1[cacheStartNz1], outTmpTensor, outExt);
                 // rope:T1 nz
                 outExt.blockCount = SPLIT_RMSNRORM_SIZE_TWO / C0_SIZE;
                 outExt.blockLen = C0_SIZE * sizeof(T1);
                 outExt.srcStride = 0;
-                outExt.dstStride = (128 * C0_SIZE - C0_SIZE) * sizeof(T1);
-                DataCopyPad(keycacheGmTensor2[cacheSatartNz2], outTmpTensor[SPLIT_RMSNRORM_SIZE_ONE], outExt);
+                outExt.dstStride = (kv_cache_block_size_ * C0_SIZE - C0_SIZE) * sizeof(T1);
+                DataCopyPad(keycacheGmTensor2[cacheStartNz2], outTmpTensor[SPLIT_RMSNRORM_SIZE_ONE], outExt);
             } else {
                 // keycache1
                 DataCopy(keycacheGmTensor1[cacheStart1], outTmpTensor, SPLIT_RMSNRORM_SIZE_ONE);
@@ -2229,6 +2247,9 @@ private:
     float scale_factor_;
     uint32_t split_size_two_;
     uint32_t mm1_out_size_;
+    uint64_t kv_cache_block_size_;
+    uint64_t kv_cache_stride0_;
+    uint64_t kv_cache_rope_stride0_;
 
     AsdopsBuffer<ArchType::ASCEND_V220> buf;
     AscendC::LocalTensor<half> ubTensor;

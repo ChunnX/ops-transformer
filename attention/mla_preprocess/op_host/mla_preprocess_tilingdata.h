@@ -95,6 +95,9 @@ TILING_DATA_FIELD_DEF(float, epsilon);
 // others
 TILING_DATA_FIELD_DEF(bool, doRmsNorm);
 TILING_DATA_FIELD_DEF(bool, qDownOutFlag);
+TILING_DATA_FIELD_DEF(int64_t, kvCacheBlockSize);
+TILING_DATA_FIELD_DEF(int64_t, kvCacheStride0);
+TILING_DATA_FIELD_DEF(int64_t, kvCacheRopeStride0);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MlaPreprocess, MlaTilingData)
 REGISTER_TILING_DATA_CLASS(MlaPreprocessV2, MlaTilingData)

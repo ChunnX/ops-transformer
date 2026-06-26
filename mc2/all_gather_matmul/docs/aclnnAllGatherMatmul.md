@@ -7,7 +7,7 @@
 | 产品                                                                            | 是否支持 |
 | :------------------------------------------------------------------------------ | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                                                | √       |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        | √       |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                          | √       |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √       |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         | ×       |
 | <term>Atlas 推理系列产品</term>                                                | ×       |
@@ -193,7 +193,7 @@ aclnnStatus aclnnAllGatherMatmul(
     </tr>
     </tbody></table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
         - bias：暂不支持输入为非0的场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - bias：支持输入为非0的场景。
@@ -285,7 +285,7 @@ aclnnStatus aclnnAllGatherMatmul(
     - m为空，k不为空，n为空。
 - 输出为2维，其shape为(m*rank_size, n), rank_size为卡数。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡，并且仅支持HCCS链路all mesh组网。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持2、4、8、16、32卡，并且仅支持HCCS链路double ring组网。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持2、4、8、16、32卡，并且仅支持HCCS链路double ring组网。
 - <term>Ascend 950PR/Ascend 950DT</term>:
   - 支持2、4、8、16、32、64卡，并且仅支持HCCS链路all mesh组网。
   - AllGather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
@@ -295,9 +295,9 @@ aclnnStatus aclnnAllGatherMatmul(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>
@@ -424,7 +424,7 @@ aclnnStatus aclnnAllGatherMatmul(
         // 调用第二阶段接口
         ret = aclnnAllGatherMatmul(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAllGatherMatmul failed. ret = %d \n", ret); return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);

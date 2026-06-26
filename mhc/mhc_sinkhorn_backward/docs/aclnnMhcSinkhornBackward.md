@@ -128,10 +128,10 @@ aclnnStatus aclnnMhcSinkhornBackward(
 
 - **规格约束：**
   
-  - num_iters：取值范围 1~100，超出则报参数无效。
-  - n：输入矩阵最后两维尺寸，仅支持 4、6或8。
-  - align_n：固定为 8，是 n 按 FP32 块大小 32 字节对齐后的值。
-  - 维度数：输入 gradOutput 仅支持 3 维 (T,n,n) 或 4 维 (B,S,n,n)。
+  - num_iters：取值范围1~100，超出则报参数无效。
+  - n：输入矩阵最后两维尺寸，仅支持4、6或8。
+  - align_n：固定为8，是n按FP32块大小32字节对齐后的值。
+  - 维度数：输入gradOutput仅支持3维(T,n,n)或4维(B,S,n,n)。
 
 ## 调用示例
 
@@ -175,7 +175,7 @@ aclnnStatus aclnnMhcSinkhornBackward(
     int64_t size = GetShapeSize(shape);
     std::vector<float> host_data(size, 0.0f);
 
-    // Device -> Host 数据拷贝
+    // Device -> Host数据拷贝
     aclError ret = aclrtMemcpy(
         host_data.data(), size * sizeof(float),
         device_addr, size * sizeof(float),
@@ -243,7 +243,7 @@ aclnnStatus aclnnMhcSinkhornBackward(
               LOG_PRINT("aclrtMalloc failed, error: %d\n", ret); 
               return -1);
 
-    // 3. Host -> Device 数据拷贝
+    // 3. Host -> Device数据拷贝
     ret = aclrtMemcpy(
         device_addr, size,
         host_data.data(), size,

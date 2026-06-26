@@ -69,6 +69,7 @@ struct FusedCausalConv1dCutBHTilingData {
     int64_t inplace;              // 0=非原地，1=原地（y 写回 x）
     int64_t convMode;             // 0=Qwen3；1=Pangu v2（前 width-1 个 token 置零）
     int64_t hasNumComputedTokens; // numComputedTokens 是否有效：0=无，1=有
+    int64_t maxQueryLen;
 
     // ---- dimRemainder（last dim core）相关参数 ----
     int64_t dimRemainderElems;       // dim % 128，最后一个 dim 核额外处理的余数元素数（0 表示无余数）

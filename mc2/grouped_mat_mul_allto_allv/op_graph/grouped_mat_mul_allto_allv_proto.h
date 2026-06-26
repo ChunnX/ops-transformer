@@ -39,6 +39,7 @@ namespace ge {
 * @li recv_counts: An int list. A list containing amount of data to be received.
 * @li trans_gmm_weight: A boolean value. Indicating whether gmm_weight is transposed.
 * @li trans_mm_weight: A boolean value. Indicating whether mm_weight is transposed.
+* @li comm_mode: A String value. Indicating communication type.
 
 * @par Outputs:
 * @li y: A matrix tensor of shape [BSK, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
@@ -59,6 +60,7 @@ REG_OP(GroupedMatMulAlltoAllv)
       .REQUIRED_ATTR(recv_counts, ListInt)
       .ATTR(trans_gmm_weight, Bool, false)
       .ATTR(trans_mm_weight, Bool, false)
+      .ATTR(comm_mode, String, "")
       .OP_END_FACTORY_REG(GroupedMatMulAlltoAllv)
 
 

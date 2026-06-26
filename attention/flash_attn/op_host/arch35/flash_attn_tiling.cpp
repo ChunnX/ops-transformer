@@ -123,7 +123,7 @@ void FlashAttnTilingImpl::SplitPolicy()
         winRight = MASK_MODE_INT_MAX;
     }
     fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
-                                          static_cast<uint32_t>(faInfo_->s1Size), faInfo_->s2Size,
+                                          faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                           static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
@@ -132,10 +132,23 @@ void FlashAttnTilingImpl::SplitPolicy()
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
-    // config (1-bit), D=128 fixed
-    //   config=0: sOuterFactor=64, sInnerFactor=128
-    //   config=1: sOuterFactor=32, sInnerFactor=256
-    tilingKeyInfo_.config = (sOuterFactor_ == arch35FA::SOUTER_32) ? 1 : 0;
+    // config:
+    //   config=0: D=64,  sOuter=64,  sInner=128
+    //   config=1: D=64,  sOuter=32,  sInner=256
+    //   config=2: D=128, sOuter=64,  sInner=128
+    //   config=3: D=128, sOuter=32,  sInner=256
+    //   config=4: D=256, sOuter=32,  sInner=256
+    if (faInfo_->qkHeadDim == 64) {
+        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
+    } else if (faInfo_->qkHeadDim == 128) {
+        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
+    } else if (faInfo_->qkHeadDim == 256) {
+        tilingKeyInfo_.config = 4;
+    } else {
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
+                                               std::to_string(faInfo_->qkHeadDim).c_str(),
+                                               "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
+    }
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
@@ -159,7 +172,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
     } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
-    } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+    } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     }
 }
@@ -169,7 +182,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
-    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == 3) ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
@@ -253,7 +266,7 @@ void FlashAttnTilingImpl::FillTiling()
 void FlashAttnTilingImpl::ComputeTilingData()
 {
     tilingData_.baseTiling.flashAttnAttenMaskParams.sparseMode = faInfo_->maskMode;
-    tilingKeyInfo_.hasAttenMask = faInfo_->maskMode == 3 ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
 
     if (tilingKeyInfo_.hasAttenMask) {
         uint64_t maskBatch = 1;
@@ -274,7 +287,7 @@ void FlashAttnTilingImpl::ComputeTilingData()
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 1;
         } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 0;
-        } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+        } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 2;
         }
     }
@@ -305,9 +318,10 @@ void FlashAttnTilingImpl::SetFATilingData()
 
     tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
     tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = faInfo_->winRight;
-    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK) ||
-        faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+    if (faInfo_->winLeft == -1) {
         tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
+    }
+    if (faInfo_->winRight == -1) {
         tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
@@ -316,16 +330,36 @@ void FlashAttnTilingImpl::SetFATilingData()
         maxBlockNumPerBatch = faInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
-    // 以下三种情况需要刷0
-    // 1、存在seqUsedQ
-    // 2、存在seqUsedKv(可能导致S2小于S1出现行无效)
-    // 3、带mask且S2小于S1
-    if (seqUsedQFlag_ || seqUsedKvFlag_ ||
-       ((faInfo_->s1Size > faInfo_->s2Size) && tilingKeyInfo_.hasAttenMask)) {
-        tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = true;
-    } else {
-        tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = false;
+    tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
+}
+
+bool FlashAttnTilingImpl::CheckNeedInitOutput() const
+{
+    // varlen场景可能存在长度为0的batch, 对应行无计算, 必须清零
+    if (seqUsedQFlag_ || seqUsedKvFlag_) {
+        return true;
     }
+    // TND变长: 各batch的s1/s2比不同, NO_MASK时每行至少算到actSeqLensKv, 有mask时可能存在空行
+    if (faInfo_->qLayout == FaLayout::TND && faInfo_->kvLayout == FaLayout::TND) {
+        return faInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK);
+    }
+    // 非TND固定shape: 按mask模式判断是否存在整行被mask掉的query块
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
+        return false;
+    }
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
+        // 下三角: s1>s2时首个query块的窗口全在s2负侧
+        return faInfo_->s1Size > faInfo_->s2Size;
+    }
+    if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+        // winRight==-1表示右窗口无限大(被转为MASK_MODE_INT_MAX传给kernel), 每行必有有效S2块
+        if (faInfo_->winRight == -1) {
+            return false;
+        }
+        // 窗口右端=s2Size-s1Size+winRight, s1远大于s2时右端为负, 整行被mask
+        return (faInfo_->s1Size - faInfo_->s2Size) > faInfo_->winRight;
+    }
+    return false;
 }
 
 ge::graphStatus FlashAttnTilingImpl::SetTilingData(FlashAttnTilingData &tilingData)

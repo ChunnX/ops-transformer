@@ -414,7 +414,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
      - aclnnDequantRopeQuantKvcache默认确定性实现。
 
 2. cacheModeOptional为contiguous时：kCacheRef的第0维大于x的第0维，indices数据值大于等于0且小于等于vCacheRef的第1维([b，s，n，d]格式中的s)减x的第1维。
-3. cacheModeOptional为page时：indices 数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
+3. cacheModeOptional为page时：indices数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
 4. 输入x不为INT32时，x、cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时activationScaleOptional，weightScaleOptional、biasOptional不生效。
 5. 输入x为INT32时，cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时weightScaleOptional必选，activationScaleOptional、biasOptional可选（biasOptional不需要与其他输入类型一致）。
 6. x的尾轴小于等于4096，且按64对齐。
@@ -495,7 +495,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. 固定写法，device/stream初始化, 参考acl API手册
+  // 1. 固定写法，device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -647,7 +647,7 @@ int main() {
   aclDestroyTensor(input);
   aclDestroyTensor(q);
 
-  // 7. 释放device 资源
+  // 7. 释放device资源
   aclrtFree(inputDeviceAddr);
   aclrtFree(qDeviceAddr);
   if (workspaceSize > 0) {

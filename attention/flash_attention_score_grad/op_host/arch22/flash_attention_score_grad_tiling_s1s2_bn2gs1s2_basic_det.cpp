@@ -83,7 +83,10 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetAttrsInfo()
     fBaseParams.dqPostAbsorb = 0;
 
     OP_CHECK_IF((fBaseParams.keepProb <= 0.0 || fBaseParams.keepProb > 1.0),
-               OP_LOGE(context_, "keepProb is illegal."), return ge::GRAPH_FAILED);
+               OP_LOGE(context_,
+                       "The op [FlashAttentionScoreGrad] received bad params, "
+                       "the reason is: [keepProb should be greater than 0 and less than or equal to 1, keepProb=%f]",
+                       fBaseParams.keepProb), return ge::GRAPH_FAILED);
 
     if (context_->GetAttrs()->GetAttrNum() > static_cast<size_t>(PSETYPE)) {
         auto pseType = *context_->GetAttrs()->GetAttrPointer<int>(PSETYPE);
@@ -103,9 +106,9 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
         fBaseParams.queryType = static_cast<uint32_t>(context_->GetInputDesc(QUERY)->GetDataType());
         fBaseParams.b = queryShape->GetStorageShape().GetDim(DIM_0);
         OP_CHECK_IF(keyShape->GetStorageShape().GetDim(DIM_2) == 0,
-                   OP_LOGE(context_, "dim N2 is 0."), return ge::GRAPH_FAILED);
+                   OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dim N2 is 0.]"), return ge::GRAPH_FAILED);
         fBaseParams.g = queryShape->GetStorageShape().GetDim(DIM_2) / keyShape->GetStorageShape().GetDim(DIM_2);
-        OP_CHECK_IF(fBaseParams.g == 0, OP_LOGE(context_, "g is 0"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(fBaseParams.g == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [g is 0]"), return ge::GRAPH_FAILED);
         fBaseParams.n1 = headNum;
         fBaseParams.n2 = headNum / fBaseParams.g;
         fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_1);
@@ -117,9 +120,9 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
     } else if (strcmp(fBaseParams.inputLayout, BNSD_STR) == 0) {
         fBaseParams.queryType = static_cast<uint32_t>(context_->GetInputDesc(QUERY)->GetDataType());
         fBaseParams.b = queryShape->GetStorageShape().GetDim(DIM_0);
-        OP_CHECK_IF(keyShape->GetStorageShape().GetDim(DIM_1) == 0, OP_LOGE(context_, "dim N2 is 0."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyShape->GetStorageShape().GetDim(DIM_1) == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dim N2 is 0.]"), return ge::GRAPH_FAILED);
         fBaseParams.g = queryShape->GetStorageShape().GetDim(DIM_1) / keyShape->GetStorageShape().GetDim(DIM_1);
-        OP_CHECK_IF(fBaseParams.g == 0, OP_LOGE(context_, "g is 0"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(fBaseParams.g == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [g is 0]"), return ge::GRAPH_FAILED);
         fBaseParams.n1 = queryShape->GetStorageShape().GetDim(DIM_1);
         fBaseParams.n2 = keyShape->GetStorageShape().GetDim(DIM_1);
         fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_2);
@@ -131,9 +134,9 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
     } else if (strcmp(fBaseParams.inputLayout, SBH_STR) == 0) {
         fBaseParams.queryType = static_cast<uint32_t>(context_->GetInputDesc(QUERY)->GetDataType());
         fBaseParams.b = queryShape->GetStorageShape().GetDim(DIM_1);
-        OP_CHECK_IF(keyShape->GetStorageShape().GetDim(DIM_2) == 0, OP_LOGE(context_, "dim N2 is 0."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyShape->GetStorageShape().GetDim(DIM_2) == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dim N2 is 0.]"), return ge::GRAPH_FAILED);
         fBaseParams.g = queryShape->GetStorageShape().GetDim(DIM_2) / keyShape->GetStorageShape().GetDim(DIM_2);
-        OP_CHECK_IF(fBaseParams.g == 0, OP_LOGE(context_, "g is 0"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(fBaseParams.g == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [g is 0]"), return ge::GRAPH_FAILED);
         fBaseParams.n1 = headNum;
         fBaseParams.n2 = headNum / fBaseParams.g;
         fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
@@ -150,7 +153,7 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
             auto kvStartTensor = context_->GetOptionalInputTensor(KV_START_IDX);
 
             if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
-                OP_LOGE(context_, "actualSeqQLenTensor or actualSeqKvLenTensor is nullptr");
+                OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actualSeqQLenTensor or actualSeqKvLenTensor is null]");
                 return ge::GRAPH_FAILED;
             }
             if (qStartTensor != nullptr || kvStartTensor != nullptr) {
@@ -164,9 +167,13 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
             const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvLenTensor->GetShapeSize());
 
             OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
-                    OP_LOGE(context_, "qValue or kvValue is nullptr."), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [qValue or kvValue is null]."), return ge::GRAPH_FAILED);
             OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
-                    OP_LOGE(context_, "actualSeqQLenTensor shapeSize is not equal actualSeqKvLenTensor"),
+                    OP_LOGE(context_,
+                            "In op [FlashAttentionScoreGrad], the tensor shapes of [actualSeqQLenTensor, actualSeqKvLenTensor] are mismatched, "
+                            "the reason is: [actualSeqQLenTensor shape size and actualSeqKvLenTensor shape size should be same, "
+                            "actualSeqQLenTensor shape size=%zu, actualSeqKvLenTensor shape size=%zu]",
+                            seqQShapeSize, kvSeqShapeSize),
                     return ge::GRAPH_FAILED);
 
             for (size_t i = 0; i < seqQShapeSize; i++) {
@@ -197,7 +204,7 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
             fBaseParams.n2 = keyShape->GetStorageShape().GetDim(1);
             fBaseParams.d = queryShape->GetStorageShape().GetDim(DIM_NUM_2);
             fBaseParams.dv = valueShape->GetStorageShape().GetDim(DIM_NUM_2);
-            OP_CHECK_IF(fBaseParams.n2 == 0, OP_LOGE(context_, "dim N2 is 0."), return ge::GRAPH_FAILED);
+            OP_CHECK_IF(fBaseParams.n2 == 0, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [dim N2 is 0.]"), return ge::GRAPH_FAILED);
             fBaseParams.g = fBaseParams.n1 / fBaseParams.n2;
             fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
             fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
@@ -542,7 +549,7 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::GetPlatformInfo()
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo *>(
             context_->GetCompileInfo());
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile_info is null"),
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [compile_info is null]"),
                    return ge::GRAPH_FAILED);
 
         aicoreParams_.numBlocks = compileInfoPtr->aivNum;
@@ -564,7 +571,7 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::GetPlatformInfo()
     }
 
     OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
-               OP_LOGE(context_, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+               OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [num of coreNum(aivNum) is %lu, num of aicNum is %lu.]",
                                            aicoreParams_.numBlocks, aicoreParams_.aicNum),
                return ge::GRAPH_FAILED);
 

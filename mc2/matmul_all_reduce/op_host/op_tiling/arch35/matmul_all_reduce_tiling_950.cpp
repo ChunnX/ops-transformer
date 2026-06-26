@@ -33,16 +33,24 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
 {
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+        OP_LOGE_FOR_INVALID_DTYPE(opName_, "y",
+            Ops::Base::ToString(args_.geCType).c_str(),
+            "FLOAT16, BF16, FLOAT or INT8"),
         return ge::GRAPH_FAILED);
     const uint32_t opType = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLREDUCE);
     const uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return ge::GRAPH_FAILED);
     const std::string algConfig = "AllReduce=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    OP_TILING_CHECK(
+            GetAndConvertCommMode(commMode),
+            OP_LOGE(opName_, "Get commMode failed."),
+            return ge::GRAPH_FAILED);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     OP_TILING_CHECK(
             mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2InitTiling),
@@ -63,9 +71,15 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
     const std::string algConfig1 = "AlltoAll=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType, dataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    OP_TILING_CHECK(
+            GetAndConvertCommMode(commMode),
+            OP_LOGE(opName_, "Get commMode failed."),
+            return ge::GRAPH_FAILED);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2InitTiling),
@@ -148,8 +162,8 @@ uint64_t MatmulAllReduceTilingA5::GetTilingKey() const
         matmulWithAdd = false;
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    uint8_t commMode = GetCommMode();
     bool isA2ARSAG = isUseA2APath;
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_FP_MM,                               \
         false,                                      \
@@ -224,7 +238,7 @@ ge::graphStatus MatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         (sizeof(MatmulAllReduce910TilingDataA5) % sizeof(uint64_t)) != 0,
-        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.", std::to_string(sizeof(MatmulAllReduce910TilingDataA5)).c_str()),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", sizeof(MatmulAllReduce910TilingDataA5)),
         return ge::GRAPH_FAILED);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
@@ -296,20 +310,23 @@ Mc2Tiling::RCSTiling& MatmulAllReduceTilingA5::MutableRCSTilingData()
 
 ge::graphStatus MatmulAllReduceTilingA5::CheckAxisSize()
 {
-    const uint64_t m = MatmulAllReduceTilingBase::GetMValue();
+    const uint64_t mValue = MatmulAllReduceTilingBase::GetMValue();
     OP_TILING_CHECK(
-        m > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(m).c_str(), "exceeds upper limit INT32_MAX"),
+        mValue > static_cast<uint64_t>(INT32_MAX),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
+            std::to_string(mValue).c_str(), "The value of m of x1 exceeds the upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
-    const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
+    const uint64_t kValue = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(
-        k > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(k).c_str(), "exceeds upper limit INT32_MAX"),
+        kValue > static_cast<uint64_t>(INT32_MAX),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
+            std::to_string(kValue).c_str(), "The value of k of x1 exceeds the upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
-    const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
+    const uint64_t nValue = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(
-        n > static_cast<uint64_t>(INT32_MAX),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2", std::to_string(n).c_str(), "exceeds upper limit INT32_MAX"),
+        nValue > static_cast<uint64_t>(INT32_MAX),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
+            std::to_string(nValue).c_str(), "The value of n of x2 exceeds the upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
 
     return CheckEmptyTensor();
@@ -324,7 +341,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "x2",
             (std::to_string(x2DimNum) + "D").c_str(),
-            "Expect x2 dim to be 2"),
+            "The shape dim of x2 must be 2"),
         return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     //  x1 为fp16 或者bf16
@@ -333,7 +350,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "x1",
             std::to_string(static_cast<int32_t>(x1Type)).c_str(),
-            "should be fp16 or bf16"),
+            "The value of x1 dtype must be fp16 or bf16"),
         return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
@@ -342,7 +359,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "x2",
             std::to_string(static_cast<int32_t>(x2Type)).c_str(),
-            "should be same as x1"),
+            "The value of x2 dtype must be the same as that of x1"),
         return ge::GRAPH_FAILED);
     // x1,bias数据类型相同
     if (mmrCtxInfo_.bias_shape != nullptr) {
@@ -352,7 +369,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "bias",
                 std::to_string(static_cast<int32_t>(biasType)).c_str(),
-                "should be same as x1"),
+                "The value of bias dtype must be the same as that of x1"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -361,9 +378,9 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
 ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
 {
     MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
-    OP_TILING_CHECK(
-        CheckX1X2() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "Check input_X failed."), return ge::GRAPH_FAILED);
+    if (CheckX1X2() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     auto outputDimNum = mmrCtxInfo_.y_shape->GetStorageShape().GetDimNum();
     if (mmrCtxInfo_.x3_shape != nullptr) {
         auto x3DimNum = mmrCtxInfo_.x3_shape->GetStorageShape().GetDimNum();
@@ -372,7 +389,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                 context_->GetNodeName(), "x3",
                 (std::to_string(x3DimNum) + "D").c_str(),
-                "should be same as output"),
+                "The shape dim of x3 must be the same as that of output"),
             return ge::GRAPH_FAILED);
         for (size_t i = 0U; i < outputDimNum; i++) {
             auto outputDimValue = mmrCtxInfo_.y_shape->GetStorageShape().GetDim(i);
@@ -382,7 +399,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     context_->GetNodeName(), "x3",
                     Ops::Base::ToString(mmrCtxInfo_.x3_shape->GetStorageShape()).c_str(),
-                    "should be same as output"),
+                "The shape dim of x3 must be the same as that of output"),
                 return ge::GRAPH_FAILED);
         }
     }

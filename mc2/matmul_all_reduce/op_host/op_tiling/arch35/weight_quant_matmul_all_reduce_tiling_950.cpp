@@ -67,7 +67,7 @@ ge::graphStatus WeightQuantTilingTransferHelperA5::GetShapeAttrsInfo()
                         (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(matmulInfoPtr_->opName, "antiQuant",
                         std::to_string(static_cast<int>(matmulInfoPtr_->antiQuantType)).c_str(),
-                        "Nz weight only supports per-channel"),
+                        "When the weight format is Nz, the value of antiQuant must be per-channel"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -131,7 +131,6 @@ WeightQuantMMAllReduceTilingKeyParams WeightQuantAsTilingTransferHelper::GetWeig
         tplParam.biasIsExist = true;
         tplParam.isBiasFp32 = true;
     }
-    tplParam.weightFormat= static_cast<uint8_t>(Mc2WeightFormat::ND);
     return tplParam;
 }
 
@@ -216,7 +215,7 @@ uint64_t WeightQuantMatmulAllReduceTilingA5::GetTilingKey() const
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     bool isA2ARSAG = isUseA2APath;
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = GetCommMode();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_WEIGHT_QUANT_MM,                     \
         WeightQuantTPLPatams_.transB,               \
@@ -229,15 +228,14 @@ uint64_t WeightQuantMatmulAllReduceTilingA5::GetTilingKey() const
         WeightQuantTPLPatams_.antiQuantType,        \
         WeightQuantTPLPatams_.quantType,            \
         WeightQuantTPLPatams_.hasAntiQuantOffset,   \
-        WeightQuantTPLPatams_.isBiasFp32,           \
-        WeightQuantTPLPatams_.weightFormat);
+        WeightQuantTPLPatams_.isBiasFp32);
     OP_LOGD(opName_, "Mc2MatmulAllReduce: transB, biasIsExist is: [%d,%d].",                \
             WeightQuantTPLPatams_.transB, WeightQuantTPLPatams_.biasIsExist);
     OP_LOGD(opName_, "Mc2MatmulAllReduce: templateCustom, antiQuantType, quantType, "       \
-            "hasAntiQuantOffset, isBiasFp32, weightFormat is: [%u, %u,%u,%d,%d,%u].",       \
+            "hasAntiQuantOffset, isBiasFp32 is: [%u, %u,%u,%d,%d].",                          \
             WeightQuantTPLPatams_.templateCustom, WeightQuantTPLPatams_.antiQuantType,      \
             WeightQuantTPLPatams_.quantType, WeightQuantTPLPatams_.hasAntiQuantOffset,      \
-            WeightQuantTPLPatams_.isBiasFp32, WeightQuantTPLPatams_.weightFormat);
+            WeightQuantTPLPatams_.isBiasFp32);
     OP_LOGD(opName_, "Mc2MatmulAllReduce: weight_quant_TilingKey=%lu.", tilingKey);
     return tilingKey;
 }
@@ -354,7 +352,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         dataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.", std::to_string(dataSize).c_str()),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", dataSize),
         return ge::GRAPH_FAILED);
 
     context_->GetRawTilingData()->SetDataSize(dataSize);
@@ -389,9 +387,15 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const c
     const uint32_t opType = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLREDUCE);
     const uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    uint8_t commModeVal = 0;
+    OP_TILING_CHECK(
+            GetAndConvertCommMode(commModeVal),
+            OP_LOGE(opName_, "Get commMode failed."),
+            return ge::GRAPH_FAILED);
+    if (commModeVal == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    } else if (commModeVal == Mc2Comm::COMM_MODE_CCU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
         OP_TILING_CHECK(
@@ -423,9 +427,15 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const cha
     const std::string algConfig1 = "AlltoAll=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType, dataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    uint8_t commModeVal = 0;
+    OP_TILING_CHECK(
+            GetAndConvertCommMode(commModeVal),
+            OP_LOGE(opName_, "Get commMode failed."),
+            return ge::GRAPH_FAILED);
+    if (commModeVal == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    } else if (commModeVal == Mc2Comm::COMM_MODE_CCU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
         OP_TILING_CHECK(
@@ -469,9 +479,11 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
 {
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+        OP_LOGE_FOR_INVALID_DTYPE(opName_, "y",
+            Ops::Base::ToString(args_.geCType).c_str(),
+            "FLOAT16, BF16, FLOAT or INT8"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return ge::GRAPH_FAILED);
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
@@ -521,13 +533,13 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckAxisSize()
     OP_TILING_CHECK(
         m > static_cast<uint64_t>(INT32_MAX),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "x1", std::to_string(m).c_str(), "exceeds upper limit INT32_MAX"),
+            context_->GetNodeName(), "x1", std::to_string(m).c_str(), "The value of m of x1 exceeds the upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(
         k > static_cast<uint64_t>(UINT16_MAX),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(k).c_str(),
-            "exceeds upper limit UINT16_MAX"),
+            "The value of k of x1 exceeds the upper limit UINT16_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(
@@ -540,13 +552,13 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckAxisSize()
         isA16W8_ && (antiQuantType_ == AntiQuantType::PER_GROUP) && ((n % alignDim != 0) || (k % alignDim != 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
             ("k=" + std::to_string(k) + ", n=" + std::to_string(n)).c_str(),
-            "K and N must align to 32 in A16W8/F8 pergroup"),
+            "When the quantization mode is A16W8 or F8 pergroup, K and N of x2 must align to 32"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         isA16W4_ && (antiQuantType_ == AntiQuantType::PER_GROUP) && ((n % alignDim != 0) || (k % alignDim != 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
             ("k=" + std::to_string(k) + ", n=" + std::to_string(n)).c_str(),
-            "K and N must align to 64 in A16W4 pergroup"),
+            "When the quantization mode is A16W4 pergroup, K and N of x2 must align to 64"),
         return ge::GRAPH_FAILED);
     return CheckWeightQuantEmptyTensor();
 }
@@ -577,7 +589,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckBiasInput()
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "bias",
                 std::to_string(static_cast<int32_t>(biasType)).c_str(),
-                ("should be same as x1 type=" + std::to_string(static_cast<int32_t>(x1Type))).c_str()),
+                "The value of bias dtype must be the same as that of x1"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -595,7 +607,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "x2",
             (std::to_string(actualX2DimNum) + "D").c_str(),
-            ("Expect x2 dim=" + std::to_string(x2DimNum)).c_str()),
+            ("The shape dim of x2 must be " + std::to_string(x2DimNum)).c_str()),
         return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     OP_TILING_CHECK(
@@ -603,7 +615,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "x1",
             std::to_string(static_cast<int32_t>(x1Type)).c_str(),
-            "should be fp16 or bf16"),
+            "The value of x1 dtype must be fp16 or bf16"),
         return ge::GRAPH_FAILED);
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK(
@@ -612,7 +624,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "x2",
             std::to_string(static_cast<int32_t>(x2Type)).c_str(),
-            "should be int8, int4, fp8_e4m3 or hif8"),
+            "The value of x2 dtype must be int8, int4, fp8_e4m3 or hif8"),
         return ge::GRAPH_FAILED);
 
     if ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)) {
@@ -633,7 +645,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_->GetNodeName(), "antiquant_scale",
             std::to_string(static_cast<int32_t>(antiquantScaleType)).c_str(),
-            ("should be same as x1 type=" + std::to_string(static_cast<int32_t>(x1Type))).c_str()),
+            "The value of antiquant_scale dtype must be the same as that of x1"),
         return ge::GRAPH_FAILED);
     // antiquantScale和antiquantOffset数据类型相同
     if (mmrCtxInfo_.antiquant_offset_shape != nullptr) {
@@ -643,7 +655,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "antiquant_offset",
                 std::to_string(static_cast<int32_t>(antiquantOffsetType)).c_str(),
-                ("should be same as antiquantScale type=" + std::to_string(static_cast<int32_t>(antiquantScaleType))).c_str()),
+                "The value of antiquant_offset dtype must be the same as that of antiquantScale"),
             return ge::GRAPH_FAILED);
     }
     // antiquantgroupsize 校验
@@ -657,7 +669,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "antiquantGroupSize",
                 std::to_string(groupSize).c_str(),
-                ("should be in [32, min(" + std::to_string(kValue - 1) + ", INT32_MAX)]").c_str()),
+                "The value of antiquantGroupSize must be in the range [32, min(k-1, INT32_MAX)]"),
             return ge::GRAPH_FAILED);
     }
     // pergroup场景下不支持fp8和hif8,增加校验
@@ -687,27 +699,27 @@ WeightQuantMatmulAllReduceTilingA5::WeightQuantMatmulAllReduceTilingA5(gert::Til
 
 CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    CutResult mCutAllreduceOutput;
+    SocVersion inputSocVer = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVer);
+    const gert::StorageShape* commQuantScaleFirst = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleSecond = mmrCtxInfo_.comm_quant_scale_2_shape;
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+        MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
-        mCutAllreduce = allReduceTilingHccl.GetTiling();
+        mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+        MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::EIGHT_P);
-        mCutAllreduce = allReduceTilingHccl.GetTiling();
+        mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
+        allReduceTilingHcclInst.GetTiling();
+        mCutAllreduceOutput = allReduceTilingHcclInst.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutAllreduceOutput;
 }
 
 //注册Tiling类

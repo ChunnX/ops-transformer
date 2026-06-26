@@ -102,6 +102,8 @@ static constexpr uint64_t FLAG_ID_MAX = 16;
 template <typename T>
 __aicore__ inline T CeilAlign(T a, T b)
 {
+    ASCENDC_ASSERT(a <= (std::numeric_limits<T>::max() - b),
+                   { KERNEL_LOG(KERNEL_ERROR, "CeilAlign over limit."); });
     ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return (a + b - 1) / b * b;
 }

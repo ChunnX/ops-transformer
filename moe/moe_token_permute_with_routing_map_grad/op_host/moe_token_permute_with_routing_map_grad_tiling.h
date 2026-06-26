@@ -16,7 +16,7 @@
 #ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_WITH_ROUTING_MAP_GRAD_H
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_WITH_ROUTING_MAP_GRAD_H
 
-#include "moe_token_permute_grad_tiling.h"
+#include "moe_token_permute_with_routing_map_grad_unpermute_tiling.h"
 
 namespace optiling {
 
@@ -27,21 +27,22 @@ TILING_DATA_FIELD_DEF(int64_t, tokenNum)
 TILING_DATA_FIELD_DEF(int64_t, singleCoreLen)
 TILING_DATA_FIELD_DEF(int64_t, lastCoreLen)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(
-    MoeTokenpermuteWithRoutingMapDropPadTilingDataOp, MoeTokenpermuteWithRoutingMapDropPadTilingData)
+REGISTER_TILING_DATA_CLASS(MoeTokenpermuteWithRoutingMapDropPadTilingDataOp,
+                           MoeTokenpermuteWithRoutingMapDropPadTilingData)
 
-REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGradUnpermuteTilingDataOp, MoeTokenPermuteWithRoutingMapGradUnpermuteTilingData)
+REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGradUnpermuteTilingDataOp,
+                           MoeTokenPermuteWithRoutingMapGradUnpermuteTilingData)
 
 BEGIN_TILING_DATA_DEF(MoeTokenPermuteWithRoutingMapGradTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(MoeTokenPermuteWithRoutingMapGradUnpermuteTilingData, moeTokenPermuteWithRoutingMapGradUnpermuteTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(
-    MoeTokenpermuteWithRoutingMapDropPadTilingData, moeTokenpermuteWithRoutingMapDropPadTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(MoeTokenPermuteWithRoutingMapGradUnpermuteTilingData,
+                             moeTokenPermuteWithRoutingMapGradUnpermuteTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(MoeTokenpermuteWithRoutingMapDropPadTilingData,
+                             moeTokenpermuteWithRoutingMapDropPadTilingData)
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(MoeTokenPermuteWithRoutingMapGrad, MoeTokenPermuteWithRoutingMapGradTilingData)
 
-struct MoeTokenPermuteWithRoutingMapGradCompileInfo {
-};
+struct MoeTokenPermuteWithRoutingMapGradCompileInfo {};
 
 } // namespace optiling
 #endif // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_TOKEN_PERMUTE_GRAD_H

@@ -248,7 +248,8 @@ inline ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBuffe
         OP_LOGD(nodeName, "Get cclBufferSize from HCCL");
     }
     OP_TILING_CHECK(*cclBufferSize == 0,
-            OP_LOGE(nodeName, "Get cclBufferSize failed, cclBufferSize is 0"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize", "0", "non-zero"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

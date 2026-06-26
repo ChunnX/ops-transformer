@@ -384,7 +384,6 @@ protected:
     GlobalTensor<T2> mm1WorkspaceGm;
     GlobalTensor<T2> mm2WorkspaceGm;
     GlobalTensor<float> dsinksumWorkSpaceGm;
-    GlobalTensor<uint32_t> dsinksumDataSizeGm;
     // L1 buffer
     TBuf<TPosition::A1> queryBufL1;
     LocalTensor<T1> qL1Tensor;
@@ -742,11 +741,8 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::Init(
     dsinksumWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                             TilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
 
-    dsinksumDataSizeGm.SetGlobalBuffer((__gm__ uint32_t *)workspace +
-                            TilingData->postTilingData.dsinksumDataSizeOffset / sizeof(uint32_t));
-                            
     uint64_t pseAlibiAddr = (workspaceOffsets + cubeCoreNum * matmulWorkspaceSize * INPUT_NUMS *
-                                                    GM_DOUBLE_BUFFER + ADDR_ALIGN_SIZE + TilingData->postTilingData.sinkDataSize) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
+                                                    GM_DOUBLE_BUFFER + ADDR_ALIGN_SIZE) / ADDR_ALIGN_SIZE * ADDR_ALIGN_SIZE;
     this->pseAlibiGm.SetGlobalBuffer((__gm__ half*)(workspace + pseAlibiAddr + cBlockIdx * pseAlibiOffset));
 
     if constexpr (IS_DTM == ENABLE) {
@@ -4118,13 +4114,6 @@ FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SubGrapB(int64_t curIdx, int64_
         AscendC::ReduceSum<float>(localDsink, dyvBuffer, localDsinkSum,  s1ExtendSubGraph * s2ExtendAlign);
         AscendC::PipeBarrier<PIPE_V>();
 
-        int s1Pad = (TilingData->s1s2BNGS1S2BaseParams.s1 + 255)/256*256;
-        int s2Pad = (TilingData->s1s2BNGS1S2BaseParams.s2 + 255)/256*256; 
-
-        int dataSizePerN1 = b * s2Outer * s1Outer;
-
-        AscendC::PipeBarrier<PIPE_ALL>();
-        dsinksumDataSizeGm.SetValue(0, dataSizePerN1 * n2 * g);
         AscendC::PipeBarrier<PIPE_ALL>();
         *dsinkSumLocal += localDsink.GetValue(0);
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -4281,22 +4270,18 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeV
         GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(mte2WaitMte3B);
     }
 
-    // workspace is n1 * b * s1Outer * s2Outer * subcore
     if (unlikely(TilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
-        int32_t s1Pad = (TilingData->postTilingData.s1 + 255) / 256 * 256;
-        int32_t s2Pad = (TilingData->postTilingData.s2 + 255) / 256 * 256;
-        int32_t dataSizePerS1S2 = s1Pad * s2Pad / TilingData->postTilingData.baseMN;
-        int32_t dataSizePerN1 = TilingData->postTilingData.b * dataSizePerS1S2;
-        int32_t dsinksumLoc = cSubIdx;
-        dsinksumLoc += dbParam.s2oIdx * 2;
-        dsinksumLoc += dbParam.s1oIdx * s2Pad / 256 * 2;
-        dsinksumLoc += (dbParam.gIdx + g * dbParam.n2Idx) * dataSizePerN1 + dbParam.bIdx * dataSizePerS1S2;
+        int32_t N = TilingData->postTilingData.n2 * TilingData->postTilingData.g;
+        int32_t headIdx = dbParam.n2Idx * TilingData->postTilingData.g + dbParam.gIdx;
+        int32_t dsinksumLoc = headIdx * TilingData->postTilingData.coreNum + cBlockIdx;
 
         LocalTensor<float> localDsink = unifiedBuffer.GetWithOffset<float>(8, DbBegin + 1024);
         AscendC::PipeBarrier<PIPE_ALL>();
         localDsink.SetValue(0, dsinkSumLocal);
         AscendC::PipeBarrier<PIPE_ALL>();
+        SetAtomicAdd<float>();
         DataCopyPad(dsinksumWorkSpaceGm[dsinksumLoc], localDsink, {1, sizeof(float), 0, 0});
+        SetAtomicNone();
         AscendC::PipeBarrier<PIPE_ALL>();
     }
 }

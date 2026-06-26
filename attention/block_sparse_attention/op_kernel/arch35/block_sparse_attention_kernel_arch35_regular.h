@@ -35,6 +35,7 @@ public:
     using ElementV = typename BlockMmadPV::ElementB;
     using ElementOTmp = typename BlockMmadPV::ElementC;
     using ElementO = typename BlockMmadQK::ElementA;
+    using ElementLse = typename EpilogueRescaleO::ElementLse;
     using ElementSparseMask = typename EpilogueMask2Idx::ElementSparseMask;
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
@@ -45,6 +46,7 @@ public:
     using LayoutP = layout::RowMajor;
     using LayoutV = layout::RowMajor;
     using LayoutO = layout::RowMajor;
+    using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
     using LayoutSparseIdx = layout::RowMajor;
     using LayoutSparseCount = layout::RowMajor;
@@ -81,6 +83,8 @@ public:
         gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t *)params.blockSparseMask);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        AscendC::GlobalTensor<ElementLse> gLse;
+        gLse.SetGlobalBuffer((__gm__ ElementLse *)params.lse);
         AscendC::GlobalTensor<ElementSparseIdx> gSparseIdx;
         gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
@@ -117,34 +121,57 @@ public:
         // Calculate strides based on layout
         // For TND: [T, N, D], stride = N * D
         // For BNSD: [B, N, S, D], strideB = N * S * D, strideN = S * D, strideS = D
+        // For BSND: [B, S, N, D], strideB = S * B * D, strideS = N * D, strideN = D
         int64_t strideQO = 0;
         int64_t strideKV = 0;
-        int64_t strideQOB = 0;  // BNSD batch_ stride for Q
-        int64_t strideQON = 0;  // BNSD head stride for Q
-        int64_t strideQOS = 0;  // BNSD seq stride for Q
-        int64_t strideKVB = 0;  // BNSD batch_ stride for KV
-        int64_t strideKVN = 0;  // BNSD head stride for KV
-        int64_t strideKVS = 0;  // BNSD seq stride for KV
-        if constexpr (qFormat == Format::BNSD) {
+        int64_t strideLse = 0;
+        int64_t strideQOB = 0;  // BNSD/BSND batch_ stride for Q
+        int64_t strideQON = 0;  // BNSD/BSND head stride for Q
+        int64_t strideQOS = 0;  // BNSD/BSND seq stride for Q
+        int64_t strideKVB = 0;  // BNSD/BSND batch_ stride for KV
+        int64_t strideKVN = 0;  // BNSD/BSND head stride for KV
+        int64_t strideKVS = 0;  // BNSD/BSND seq stride for KV
+        int64_t strideLseB = 0;
+        int64_t strideLseN = 0;
+        int64_t strideLseS = 0;
+        if constexpr (qFormat == Format::TND) {
+            strideQO = qHeads_ * embed_;
+            strideLse = qHeads_;
+        } else if constexpr (qFormat == Format::BNSD) {
             strideQOB = qHeads_ * qSeqlenAligned_ * embed_;  // batch_ stride
             strideQON = qSeqlenAligned_ * embed_;  // head stride
             strideQOS = embed_;  // seq stride
-        } else if constexpr (qFormat == Format::TND) {
-            strideQO = qHeads_ * embed_;
+            strideLseB = qHeads_ * qSeqlenAligned_;
+            strideLseN = qSeqlenAligned_;
+            strideLseS = 1;
+        } else if constexpr (qFormat == Format::BSND) {
+            strideQOB = qSeqlenAligned_ * qHeads_ * embed_; // batch_ stride
+            strideQOS = qHeads_ * embed_;                   // seq stride
+            strideQON = embed_;                             // head stride
+            strideLseB = qSeqlenAligned_ * qHeads_;
+            strideLseS = qHeads_;
+            strideLseN = 1;
         }
-        if constexpr (kvFormat == Format::BNSD) {
-            strideKVB = kvHeads_ * kvSeqlenAligned_ * embed_;  // batch_ stride
-            strideKVN = kvSeqlenAligned_ * embed_;  // head stride
-            strideKVS = embed_;  // seq stride
-        } else if constexpr (kvFormat == Format::TND) {
+
+        if constexpr (kvFormat == Format::TND) {
             strideKV = kvHeads_ * embed_;
+        } else if constexpr (kvFormat == Format::BNSD) {
+            strideKVB = kvHeads_ * kvSeqlenAligned_ * embed_; // batch_ stride
+            strideKVN = kvSeqlenAligned_ * embed_;            // head stride
+            strideKVS = embed_;                               // seq stride
+        } else if constexpr (kvFormat == Format::BSND) {
+            strideKVB = kvSeqlenAligned_ * kvHeads_ * embed_; // batch_ stride
+            strideKVS = kvHeads_ * embed_;                    // seq stride
+            strideKVN = embed_;                               // head stride
         }
+
         uint32_t embedRound = RoundUp(embed_, 16);
         uint32_t groupSize = qHeads_ / kvHeads_;
         int64_t qBOffset = 0;
         int64_t kBOffset = 0;
         int64_t vBOffset = 0;
         int64_t oBOffset = 0;
+        int64_t lseBOffset = 0;
         uint32_t preTotalTaskNum = 0;
         uint32_t curBatch = 0;
         int64_t qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
@@ -159,6 +186,7 @@ public:
                 if constexpr (qFormat == Format::TND) {
                     qBOffset += qSeqlen * strideQO;
                     oBOffset += qSeqlen * strideQO;
+                    lseBOffset += qSeqlen * strideLse;
                 }
                 if constexpr (kvFormat == Format::TND) {
                     kBOffset += kvSeqlen * strideKV;
@@ -184,30 +212,49 @@ public:
             int64_t sparseMaskNOffset = qHeadIdx * xBlockNumAligned_ * yBlockNumAligned_;
             int64_t sparseMaskXOffset = xBlockIdx * yBlockNumAligned_;
             int64_t gmOffsetSparseMask = sparseMaskBOffset + sparseMaskNOffset + sparseMaskXOffset;
-            // corresponding Q/K/V/O gm offset of cur task
+            // corresponding Q/K/V/O/Lse gm offset of cur task
             int64_t gmOffsetQ = 0;
             int64_t gmOffsetK = 0;
             int64_t gmOffsetV = 0;
             int64_t gmOffsetO = 0;
+            int64_t gmOffsetLse = 0;
             int64_t qSOffset = xBlockIdx * blockShapeX_ + qSTileIdxCurXBlock * qBaseTile_;
-            if constexpr (qFormat == Format::BNSD) {
-                qBOffset = curBatch * strideQOB;
-                oBOffset = curBatch * strideQOB;
-                gmOffsetQ = qBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
-                gmOffsetO = oBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
-            } else if constexpr (qFormat == Format::TND) {
+
+            if constexpr (qFormat == Format::TND) {
                 gmOffsetQ = qBOffset + qSOffset * strideQO + qHeadIdx * embed_;
                 gmOffsetO = oBOffset + qSOffset * strideQO + qHeadIdx * embed_;
+                gmOffsetLse = lseBOffset + qSOffset * strideLse + qHeadIdx;
+            } else if constexpr (qFormat == Format::BNSD) {
+                qBOffset = curBatch * strideQOB;
+                oBOffset = curBatch * strideQOB;
+                lseBOffset = curBatch * strideLseB;
+                gmOffsetQ = qBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
+                gmOffsetO = oBOffset + qHeadIdx * strideQON + qSOffset * strideQOS;
+                gmOffsetLse = lseBOffset + qHeadIdx * strideLseN + qSOffset * strideLseS;
+            } else if constexpr (qFormat == Format::BSND) {
+                qBOffset = curBatch * strideQOB;
+                oBOffset = curBatch * strideQOB;
+                lseBOffset = curBatch * strideLseB;
+                gmOffsetQ = qBOffset + qSOffset * strideQOS + qHeadIdx * strideQON;
+                gmOffsetO = oBOffset + qSOffset * strideQOS + qHeadIdx * strideQON;
+                gmOffsetLse = lseBOffset + qSOffset * strideLseS + qHeadIdx * strideLseN;
             }
-            if constexpr (kvFormat == Format::BNSD) {
+
+            if constexpr (kvFormat == Format::TND) {
+                gmOffsetK = kBOffset + kvHeadIdx * embed_;
+                gmOffsetV = vBOffset + kvHeadIdx * embed_;
+            } else if constexpr (kvFormat == Format::BNSD) {
                 kBOffset = curBatch * strideKVB;
                 vBOffset = curBatch * strideKVB;
                 gmOffsetK = kBOffset + kvHeadIdx * strideKVN;
                 gmOffsetV = vBOffset + kvHeadIdx * strideKVN;
-            } else if constexpr (kvFormat == Format::TND) {
-                gmOffsetK = kBOffset + kvHeadIdx * embed_;
-                gmOffsetV = vBOffset + kvHeadIdx * embed_;
+            } else if constexpr (kvFormat == Format::BSND) {
+                kBOffset = curBatch * strideKVB;
+                vBOffset = curBatch * strideKVB;
+                gmOffsetK = kBOffset + kvHeadIdx * strideKVN;
+                gmOffsetV = vBOffset + kvHeadIdx * strideKVN;
             }
+
             // the actual x block num of cur batch_, calc by actual qseqlen
             uint32_t xBlockNumAval = static_cast<uint32_t>(CeilDiv(qSeqlen, static_cast<int64_t>(blockShapeX_)));
             uint32_t xBlockSize = (xBlockIdx == xBlockNumAval - 1) ?
@@ -216,12 +263,13 @@ public:
             uint32_t qSTileSizeAct = (qSTileIdxCurXBlock == qSTileNumCurXBlock - 1) ?
                 (xBlockSize - qSTileIdxCurXBlock * qBaseTile_) : qBaseTile_;
             // calc the gathered kvS from sparse mask
-            uint32_t gmOffsetSparseCount =
-                curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx;
+            uint64_t gmOffsetSparseCount =
+                static_cast<uint64_t>(curBatch) * qHeads_ * xBlockNumAligned_ +
+                static_cast<uint64_t>(qHeadIdx) * xBlockNumAligned_ + xBlockIdx;
             uint32_t yBlockNumRsvd = gSparseCount.GetValue(gmOffsetSparseCount);
 
-            uint32_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
-            uint32_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
+            uint64_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
+            uint64_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
             uint32_t lastSparseIdx = gSparseIdx.GetValue(lastIdxOffset);
 
             uint32_t yBlockNumAval = static_cast<uint32_t>(CeilDiv(kvSeqlen, static_cast<int64_t>(blockShapeY_)));
@@ -237,15 +285,20 @@ public:
 #ifdef __DAV_CUBE__
             uint32_t kvShapeCol = 0;
             uint32_t qShapeCol = 0;
-            if constexpr (qFormat == Format::BNSD) {
-                qShapeCol = strideQOS;
-            } else if constexpr (qFormat == Format::TND) {
+
+            if constexpr (qFormat == Format::TND) {
                 qShapeCol = strideQO;
+            } else if constexpr (qFormat == Format::BNSD) {
+                qShapeCol = strideQOS;
+            } else if constexpr (qFormat == Format::BSND) {
+                qShapeCol = strideQOS;
             }
-            if constexpr (kvFormat == Format::BNSD) {
-                kvShapeCol = strideKVS;
-            } else if constexpr (kvFormat == Format::TND) {
+            if constexpr (kvFormat == Format::TND) {
                 kvShapeCol = strideKV;
+            } else if constexpr (kvFormat == Format::BNSD) {
+                kvShapeCol = strideKVS;
+            } else if constexpr (qFormat == Format::BSND) {
+                kvShapeCol = strideKVS;
             }
 
             auto gmQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(qBaseTile_, qShapeCol);
@@ -261,13 +314,22 @@ public:
 #endif
 #ifdef __DAV_VEC__
             uint32_t oShapeCol = 0;
-            if constexpr (qFormat == Format::BNSD) {
-                oShapeCol = strideQOS;
-            } else if constexpr (qFormat == Format::TND) {
+            uint32_t lseShapeCol = 0;
+            if constexpr (qFormat == Format::TND) {
                 oShapeCol = strideQO;
+                lseShapeCol = strideLse;
+            } else if constexpr (qFormat == Format::BNSD) {
+                oShapeCol = strideQOS;
+                lseShapeCol = strideLseS;
+            } else if constexpr (qFormat == Format::BSND) {
+                oShapeCol = strideQOS;
+                lseShapeCol = strideLseS;
             }
+
             auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(qBaseTile_, oShapeCol);
             auto gmOTensorTla = tla::MakeTensor(gO[gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
+            auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, lseShapeCol);
+            auto gmLseTensorTla = tla::MakeTensor(gLse[gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
 #endif
             for (uint32_t gatheredKvSTileIdx = 0; gatheredKvSTileIdx < kvSLoopNum + PRE_LAUNCH; gatheredKvSTileIdx++) {
                 if (gatheredKvSTileIdx < kvSLoopNum) {
@@ -355,7 +417,7 @@ public:
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint32_t curTileMod = gatheredKvSTileIdxDe % (PRE_LAUNCH + 1);
                     epilogueRescaleO(
-                        gmOTensorTla, actualBlockShapePV,
+                        gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
                         curTileMod, gatheredKvSTileIdxDe,
                         (gatheredKvSTileIdxDe == 0),
                         (gatheredKvSTileIdxDe == kvSLoopNum - 1),

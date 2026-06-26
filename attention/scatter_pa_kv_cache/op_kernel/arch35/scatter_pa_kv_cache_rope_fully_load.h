@@ -33,6 +33,25 @@ __aicore__ inline constexpr uint32_t GetVRegSize()
 constexpr uint32_t VECTOR_LENGTH = GetVRegSize();
 constexpr uint32_t VL_B32 = VECTOR_LENGTH / sizeof(uint32_t);
 
+template <typename T, typename U>
+__simd_vf__ inline void CastToOriginFullyVf(__ubuf__ U* srcAddr, __ubuf__ T* dstAddr,
+    uint32_t dataLen, uint16_t loopNum)
+{
+    MicroAPI::RegTensor<U> valueSrc;
+    MicroAPI::MaskReg curpreg;
+    uint32_t sregMask = dataLen;
+    for (uint16_t j = 0; j < loopNum; j++) {
+        curpreg = MicroAPI::UpdateMask<uint32_t>(sregMask);
+        MicroAPI::DataCopy<U, MicroAPI::LoadDist::DIST_NORM>(valueSrc, srcAddr + VL_B32 * j);
+        if constexpr (IsSameType<T, int16_t>::value || IsSameType<T, uint16_t>::value) {
+            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr + VL_B32 * j,
+                                                                      (MicroAPI::RegTensor<T> &)valueSrc, curpreg);
+        } else {
+            MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK4_B32>(dstAddr + VL_B32 * j,
+                                                                       (MicroAPI::RegTensor<T> &)valueSrc, curpreg);
+        }
+    }
+}
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
 class ScatterPaKvCacheRopeFullyLoad {
@@ -242,23 +261,7 @@ __aicore__ inline void ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::
 
     uint16_t loopNum = CeilDivFully(dataLen, VL_B32);
 
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<U> valueSrc;
-        MicroAPI::MaskReg curpreg;
-        uint32_t sregMask = dataLen;
-        for (uint16_t j = 0; j < loopNum; j++) {
-            curpreg = MicroAPI::UpdateMask<uint32_t>(sregMask);
-            MicroAPI::DataCopy<U, MicroAPI::LoadDist::DIST_NORM>(valueSrc, srcPhyAddr + VL_B32 * j);
-            if constexpr (IsSameType<T, int16_t>::value || IsSameType<T, uint16_t>::value) {
-                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK_B32>(dstPhyAddr + VL_B32 * j,
-                                                                          (MicroAPI::RegTensor<T> &)valueSrc, curpreg);
-            } else {
-                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_PACK4_B32>(dstPhyAddr + VL_B32 * j,
-                                                                           (MicroAPI::RegTensor<T> &)valueSrc, curpreg);
-            }
-        }
-    }
+    CastToOriginFullyVf<T, U>((__ubuf__ U*)srcPhyAddr, (__ubuf__ T*)dstPhyAddr, dataLen, loopNum);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>

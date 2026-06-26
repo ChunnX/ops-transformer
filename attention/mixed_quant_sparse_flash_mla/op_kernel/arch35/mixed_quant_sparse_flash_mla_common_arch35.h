@@ -12,14 +12,14 @@
  * \file mixed_quant_sparse_flash_mla_common_arch35.h
  * \brief
  */
-#ifndef KV_QUANT_SPARSE_ATTN_AHSREDKV_COMMON_ARCH35_H
-#define KV_QUANT_SPARSE_ATTN_AHSREDKV_COMMON_ARCH35_H
+#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_ARCH35_H
+#define MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_ARCH35_H
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../mixed_quant_sparse_flash_mla_common.h"
 
 constexpr uint64_t BLOCK_BYTE = 32;
-constexpr uint32_t NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
+constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
 
 constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536; // 65536表示64*1024
 constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024

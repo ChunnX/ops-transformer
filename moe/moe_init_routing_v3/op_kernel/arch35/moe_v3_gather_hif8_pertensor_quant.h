@@ -31,8 +31,8 @@ template <typename T>
 class MoeGatherOutHif8PertensorQuant {
 public:
     __aicore__ inline MoeGatherOutHif8PertensorQuant(){};
-    __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx, 
-                                GM_ADDR expandedX, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe); 
+    __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx,
+                                GM_ADDR expandedX, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -41,6 +41,8 @@ private:
     __aicore__ inline void Compute();
     __aicore__ inline void CopyOutPartialXQuant(int64_t progress);
     __aicore__ inline void ComputePartial(LocalTensor<float> &inLocal, int32_t srcIdx, int64_t dstIndex, int64_t j);
+    __aicore__ inline void InitBasicParams(GM_ADDR sortedExpertIdx,
+                                           const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
     TPipe *pipe_;
@@ -64,14 +66,14 @@ private:
     int64_t cols_;
     int64_t n_;
     int64_t k_;
-    
+
     float scale_;
 
     int64_t totalLength_;
     int64_t perCoreRow_;
     int64_t currentLoopRows_;
     int64_t currentLoopRowsAlign_;
-    
+
     int64_t colsTileLength_;
     int64_t perLoopCols_;
     int64_t perLoopColsAlign_;
@@ -82,7 +84,7 @@ private:
     int64_t perLoopRows_;
     int64_t lastLoopRows_;
     int64_t rowLoops_;
-    
+
     constexpr static MicroAPI::CastTrait castTraitF32toh8 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
@@ -90,7 +92,7 @@ private:
 template <typename T>
 __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::CopyInExpertIdx(int64_t progress)
 {
-    LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.AllocTensor<int32_t>();   
+    LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.AllocTensor<int32_t>();
     DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(currentLoopRows_ * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
     indicesOffset_ = progress * perLoopRows_;
@@ -126,8 +128,8 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Compute()
             maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
             ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegInLoop, i * FLOAT_REG_TENSOR_LENGTH); // 将fp16、bf16转为fp32
             MicroAPI::StoreAlign(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegInLoop); // fp16/bf16转float后写回UB
-            MicroAPI::Muls(inReg, inReg, scaleNum, maskRegInLoop); // quantx = x * scale 
-            MicroAPI::Cast<hifloat8_t, float, castTraitF32toh8>(outRegH8, inReg, maskRegInLoop); 
+            MicroAPI::Muls(inReg, inReg, scaleNum, maskRegInLoop); // quantx = x * scale
+            MicroAPI::Cast<hifloat8_t, float, castTraitF32toh8>(outRegH8, inReg, maskRegInLoop);
             MicroAPI::StoreAlign<hifloat8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
                                                                                 outRegH8, maskRegInLoop);
         }
@@ -218,7 +220,7 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::CopyOutPartialXQuant(i
         int64_t rowOffset = perCoreRow_ * blockIdx_ + perLoopRows_ * progress;
         int32_t srcIdx = indicesLocal.GetValue(i);
         LocalTensor<float> inLocal = inputXInQueue_.AllocTensor<float>();
-      
+
         for (int64_t j = 0; j < colLoops_; j++) {
             colsTileLength_ = perLoopCols_;
             if (j == colLoops_ - 1) {
@@ -232,8 +234,8 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::CopyOutPartialXQuant(i
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx,
-                                                            GM_ADDR expandedX, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::InitBasicParams(GM_ADDR sortedExpertIdx,
+    const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
 #if (__NPU_ARCH__ == 3510)
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
@@ -248,12 +250,12 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, G
     rowIdxType_ = tilingData->rowIdxType;
     cols_ = tilingData->cols;
     pipe_ = tPipe;
-    
-    gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);  
-    // hif8 pertensor core split
+
+    gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
+
     int64_t actualExpertNum_ = tilingData->actualExpertNum;
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)), 1);
+                                         Align(actualExpertNum_, sizeof(int32_t)), 1);
     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
         expertTotalCountGm_);
 
@@ -261,7 +263,7 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, G
     perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
     needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
     int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
-    // hif8 pertensor inner core split
+
     int64_t pertensorPerLoopElements = 0;
     if (blockIdx_ == needCoreNum_ - 1) {
         coreRows_ = lastCoreIndicesElements;
@@ -273,15 +275,23 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, G
     perLoopRows_ = Min(coreRows_, pertensorPerLoopElements);
     rowLoops_ = Ceil(coreRows_, perLoopRows_);
     lastLoopRows_ = coreRows_ - (rowLoops_ - 1) * perLoopRows_;
-    // hif8 pertensor cols split
+
     perLoopCols_ = gatherOutTilingData_->perLoopCols;
     perLoopColsAlign_ = Align(perLoopCols_, sizeof(T));
     lastLoopCols_ = gatherOutTilingData_->lastLoopCols;
     colLoops_ = gatherOutTilingData_->colsLoops;
+}
 
+template <typename T>
+__aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR sortedExpertIdx,
+                                                              GM_ADDR expandedRowIdx, GM_ADDR expandedX,
+                                                              const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                              TPipe *tPipe)
+{
+    InitBasicParams(sortedExpertIdx, tilingData, tPipe);
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
     expandedXGm_.SetGlobalBuffer((__gm__ hifloat8_t *)expandedX);
-    scaleGm_.SetGlobalBuffer((__gm__ float*)scale, 1);
+    scaleGm_.SetGlobalBuffer((__gm__ float *)scale, 1);
     scale_ = scaleGm_.GetValue(0);
 
     currentLoopRowsAlign_ = Align(perLoopRows_, sizeof(int32_t));
@@ -291,7 +301,7 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, G
                                           Align(perCoreRow_, sizeof(int32_t)));
     } else {
         expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) +
-                                              blockIdx_ * perCoreRow_,
+                                          blockIdx_ * perCoreRow_,
                                           Align(perCoreRow_, sizeof(int32_t)));
     }
     expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + blockIdx_ * perCoreRow_,
@@ -300,11 +310,10 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Init(GM_ADDR inputX, G
     int64_t perLoopColsAlignBytes = AlignBytes(perLoopCols_, sizeof(T));
     perLoopColsAlignBytes = Max(static_cast<int64_t>(perLoopColsAlignBytes * sizeof(float) / sizeof(T)),
                                 static_cast<int64_t>(BLOCK_BYTES * 2));
-    pipe_->InitBuffer(inputXInQueue_, GATHER_OUT_HIF8_PERTENSOR_QUANT_BUFFER_NUM,
-                      perLoopColsAlignBytes); // percols * 2  * 4
+    pipe_->InitBuffer(inputXInQueue_, GATHER_OUT_HIF8_PERTENSOR_QUANT_BUFFER_NUM, perLoopColsAlignBytes);
     pipe_->InitBuffer(expandRowIdxInQueue_, GATHER_OUT_HIF8_PERTENSOR_QUANT_BUFFER_NUM,
                       2 * AlignBytes(perLoopRows_, sizeof(int32_t)));
-    pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopCols_, sizeof(hifloat8_t))); // percols * 1
+    pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopCols_, sizeof(hifloat8_t)));
 }
 
 template <typename T>
@@ -312,7 +321,7 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
         currentLoopRows_ = perLoopRows_;
-        if (colLoops_ > 1) {          
+        if (colLoops_ > 1) {
             for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) { // 一行不可以全载，需要列切分
                 CopyInExpertIdx(loop);
                 CopyOutPartialXQuant(loop);
@@ -320,8 +329,8 @@ __aicore__ inline void MoeGatherOutHif8PertensorQuant<T>::Process()
             currentLoopRows_ = lastLoopRows_;
             CopyInExpertIdx(rowLoops_ - 1);
             CopyOutPartialXQuant(rowLoops_ - 1);
-        } else {    
-            for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) { // 一行可以全载        
+        } else {
+            for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) { // 一行可以全载
                 CopyInExpertIdx(loop);
                 CopyOutXQuant(loop);
             }

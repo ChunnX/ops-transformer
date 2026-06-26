@@ -30,7 +30,7 @@ constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
 
 static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexer", "InferShapeContext is nullptr!"),
+    OP_CHECK_IF(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("LightningIndexer", "InferShapeContext"),
                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
@@ -54,7 +54,7 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
     OP_CHECK_IF(
         inputLayoutQueryPtrStr != "TND" && inputLayoutQueryPtrStr != "BSND",
-        OP_LOGE(context, "The attr layout_query should be TND or BSND, but got %s.", inputLayoutQueryPtrStr.c_str()),
+        OP_LOGE_FOR_INVALID_FORMAT("LightningIndexer", "query", inputLayoutQueryPtrStr.c_str(), "BSND or TND"),
         return ge::GRAPH_FAILED);
 
     sparseIndicesShape->SetDimNum(queryShape->GetDimNum());
@@ -94,7 +94,7 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
 
 static ge::graphStatus InferDataTypeLightningIndexer(gert::InferDataTypeContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexer", "InferDataTypeContext is nullptr!"),
+    OP_CHECK_IF(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("LightningIndexer", "InferDataTypeContext"),
                return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter LightningIndexer InferDataType impl.");
     // default set q's dtype as fia's output type

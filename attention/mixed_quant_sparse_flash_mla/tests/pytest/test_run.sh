@@ -1,4 +1,15 @@
 #!/bin/bash
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+set -euo pipefail
 
 # 脚本路径
 QSMLA_PT_SAVE_SCRIPT="./batch/test_mixed_quant_sparse_flash_mla_pt_save.py"
@@ -81,7 +92,7 @@ run_batch() {
     # 根据KEEP_PT决定是否清理pt文件
     if [ "$KEEP_PT" = false ]; then
         echo -e "\n===== 清理pt文件（KEEP_PT=false） ====="
-        rm -rf $PT_SAVE_DIR
+        [ -n "$PT_SAVE_DIR"] && rm -rf $PT_SAVE_DIR
         echo "pt文件已清理"
     else
         echo -e "\n===== 保留pt文件（KEEP_PT=true）保存在 $PT_SAVE_DIR ====="
@@ -198,5 +209,3 @@ case "$COMMAND" in
         exit 1
         ;;
 esac
-
-exit 0

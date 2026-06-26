@@ -201,6 +201,8 @@ macro(add_modules_sources_with_soc)
     set(COMPILED_OP_DIRS ${COMPILED_OP_DIRS} ${PARENT_DIR} CACHE STRING "Compiled Ops Dirs" FORCE)
   endif()
 
+  add_opbase_modules()
+
   # opapi 默认全部编译
   file(GLOB OPAPI_SRCS ${OP_API_SRC_DIR}/*.cpp)
   if (OPAPI_SRCS)
@@ -380,6 +382,7 @@ function(add_opapi_modules)
       PRIVATE
       -Dgoogle=ascend_private
       -DACLNN_LOG_FMT_CHECK
+      -DOP_LOG_LIBOPAPI_ONLY
     )
     target_link_libraries(${OPHOST_NAME}_opapi_obj
       PUBLIC
@@ -396,6 +399,7 @@ function(add_opapi_modules)
       ascend_dump
       ascendalog
       dl
+      PRIVATE $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
       )
   endif()
 endfunction()
@@ -471,7 +475,7 @@ function(add_opbase_modules)
 
   if(OPS_BASE_UTIL_SRC)
     add_library(opbase_util_objs OBJECT ${OPS_BASE_UTIL_SRC})
-    target_include_directories(opbase_util_objs PRIVATE ${OP_TILING_INCLUDE})
+    target_include_directories(opbase_util_objs PRIVATE ${OP_TILING_INCLUDE} ${ASCEND_DIR}/pkg_inc)
     target_compile_options(opbase_util_objs
         PRIVATE
         $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1> -Dgoogle=ascend_private
@@ -772,8 +776,8 @@ function(protobuf_generate_external comp c_var h_var)
       WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
       COMMAND ${CMAKE_COMMAND} -E make_directory "${proto_output_path}"
       COMMAND ${CMAKE_COMMAND} -E echo "generate proto cpp_out ${comp} by ${abs_file}"
-      COMMAND ${Protobuf_PROTOC_EXECUTABLE} -I${file_dir} ${extra_option} --cpp_out=${proto_output_path} ${abs_file}
-      DEPENDS ${abs_file} ascend_protobuf_build_transformer
+      COMMAND ${PROTOBUF_HOST_PROTOC_DIR}/protoc -I${file_dir} ${extra_option} --cpp_out=${proto_output_path} ${abs_file}
+      DEPENDS ${abs_file} host_protoc
       COMMENT "Running C++ protocol buffer compiler on ${file}" VERBATIM)
 
   endforeach()
@@ -803,7 +807,7 @@ function(add_onnx_plugin_modules)
       CXX_STANDARD_REQUIRED ON
       CXX_EXTENSIONS OFF
     )
-    target_include_directories(${ONNX_PLUGIN_NAME}_obj PRIVATE ${OP_PROTO_INCLUDE} ${Protobuf_INCLUDE} ${Protobuf_PATH} ${CMAKE_BINARY_DIR}/proto ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${ABSL_SOURCE_DIR})
+    target_include_directories(${ONNX_PLUGIN_NAME}_obj PRIVATE ${OP_PROTO_INCLUDE} ${HOST_PROTOC_SRC} ${HOST_PROTOC_PATH} ${CMAKE_BINARY_DIR}/proto ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${ABS_INSTALL_DIR})
     target_compile_definitions(${ONNX_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="ONNX_PLUGIN" LOG_CPP)
 
     if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
@@ -824,6 +828,7 @@ function(add_onnx_plugin_modules)
               $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
               $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
               json
+              ascend_protobuf_static
       )
   endif()
 

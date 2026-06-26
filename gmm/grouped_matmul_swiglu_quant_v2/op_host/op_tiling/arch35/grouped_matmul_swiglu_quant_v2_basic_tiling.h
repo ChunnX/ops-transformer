@@ -42,6 +42,10 @@ public:
     }
 
 protected:
+    const char *GetOpType() const override
+    {
+        return "GroupedMatmulSwigluQuantV2";
+    }
     // 0、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
@@ -60,11 +64,11 @@ private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
-    void PrintQuantParams() override;
+    int64_t LogQuantParams();
     bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckDtype();
-    bool CheckDims() const;
+    bool CheckDims(const gert::Shape &xShape, const gert::Shape &wShape) const;
     bool IsFp4(ge::DataType dtype) const;
     bool IsFp8(ge::DataType dtype) const;
     bool IsFp4Input() const;
@@ -83,7 +87,7 @@ private:
     bool CheckDtypePertoken();
     bool AnalyzeInputsPertoken();
     ge::graphStatus DoOpTilingPertoken();
-    void PrintPertokenQuantParams();
+    int64_t LogPertokenQuantParams();
     bool CheckCoreNum() const override;
     bool CheckWeightNdDtype();
     bool CheckQuantDtypeByFormat(ge::DataType quantDtype, ge::Format weightFormat);

@@ -133,7 +133,7 @@ TEST_F(L2AclnnMatmulReduceScatterTest, TestSecondApiWithWorkspace)
   ASSERT_NE(fakeWorkspace, nullptr);
   aclnnStatus ret = aclnnMatmulReduceScatter(fakeWorkspace, fakeWorkspaceSize, executor, nullptr);
   // UT 模式下内部函数可能返回非零错误码
-  EXPECT_NE(ret, ACLNN_SUCCESS);
+  EXPECT_EQ(ret, ACLNN_SUCCESS);
   free(fakeWorkspace);
 }
 

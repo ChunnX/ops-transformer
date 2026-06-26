@@ -33,6 +33,7 @@ namespace gmm_dsq {
 using namespace op;
 constexpr int64_t OUTPUT_IDX_0 = 0L;
 constexpr int64_t OUTPUT_IDX_1 = 1L;
+constexpr char GMM_SWIGLU_QUANT_V2_HANDLER_OP_NAME[] = "grouped_matmul_swiglu_quant_v2";
 constexpr size_t WEIGHT_NZ_DIM_LIMIT = 5UL;
 constexpr size_t WEIGHT_ND_DIM_LIMIT = 3UL;
 
@@ -72,6 +73,7 @@ struct GroupedMatmulSwigluQuantParamsBase {
     bool transposeWeight = false;
     bool isA8W4 = false;
     bool isA4W4 = false;
+    bool isMxA8W4 = false;
 };
 
 class GroupedMatmulSwigluQuantParamsBuilder {
@@ -164,6 +166,8 @@ public:
                     ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT4) ||
                     (this->p_.x->GetDataType() == DataType::DT_INT32 &&
                     ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT32));
+        p_.isMxA8W4 = (this->p_.x->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
+                       ((*this->p_.weight)[0])->GetDataType() == DataType::DT_FLOAT4_E2M1);
         return *this;
     }
 
@@ -346,10 +350,11 @@ protected:
     }
 
 public:
-    void Initialize(const char *opName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
+    void Initialize(const char *apiName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
                     aclOpExecutor **executor)
     {
-        opName_ = opName;
+        opName_ = GMM_SWIGLU_QUANT_V2_HANDLER_OP_NAME;
+        apiName_ = apiName;
         gmmDsqParams_ = params;
         workspaceSize_ = workspaceSize;
         executor_ = executor;
@@ -416,6 +421,7 @@ public:
 
 protected:
     string opName_;
+    string apiName_;
     GroupedMatmulSwigluQuantParamsBase gmmDsqParams_;
     uint64_t *workspaceSize_;
     aclOpExecutor **executor_;

@@ -460,6 +460,7 @@ public:
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
         this->Attr("comm_quant_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("comm_mode").AttrType(OPTIONAL).String("");
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

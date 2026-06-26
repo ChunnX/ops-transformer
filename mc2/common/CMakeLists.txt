@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
-if(BUILD_OPEN_PROJECT)
+if (BUILD_OPEN_PROJECT)
     file(GLOB OPTILING_SRCS 
         utils/context_transfer.cpp
         op_host/op_tiling/hccl_formulaic_tiling.cpp
@@ -17,7 +17,6 @@ if(BUILD_OPEN_PROJECT)
         op_host/op_tiling/matmul_formulaic_tiling.cpp
         op_host/op_tiling/matmul_performance.cpp
         op_host/op_tiling/mc2_fit_based_balance_tiling.cpp
-        op_host/mc2_common_infershape.cpp
         utils/mc2_hcom_topo_info.cpp
         utils/mc2_log.cpp
         op_host/op_tiling/mc2_matmul_tiling_cfg.cpp
@@ -29,12 +28,13 @@ if(BUILD_OPEN_PROJECT)
 
     if(UT_TEST_ALL OR OP_HOST_UT)
         list(FILTER OPTILING_SRCS EXCLUDE REGEX "utils/mc2_hcom_topo_info\\.cpp")
-        file(GLOB MC2_TILING_UT_STUB ${UT_COMMON_INC}/mc2_hcom_topology_mocker.cpp ${UT_COMMON_INC}/op_cache_tiling.cpp)
+        file(GLOB MC2_TILING_UT_STUB ${UT_COMMON_INC}/mc2_hcom_topology_mocker.cpp ${UT_COMMON_INC}/op_cache_tiling.cpp ${UT_COMMON_INC}/rt_soc_spec_mocker.cpp)
         add_library(mc2_tiling_ut_stub SHARED ${MC2_TILING_UT_STUB})
         target_include_directories(mc2_tiling_ut_stub PRIVATE
             ${OPS_TRANSFORMER_DIR}/mc2/common/utils
             ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
             ${OP_TILING_INCLUDE}
+            ${ASCEND_DIR}/pkg_inc
         )
     endif()
     if(OPTILING_SRCS)
@@ -44,12 +44,20 @@ if(BUILD_OPEN_PROJECT)
             target_link_directories(${OPHOST_NAME}_tiling_obj PRIVATE mc2_tiling_ut_stub)
         endif()
     endif()
+    set(MC2_INFER_SRCS
+        op_host/mc2_common_infershape.cpp
+    )
+    if(MC2_INFER_SRCS)
+        add_infer_modules()
+        target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${MC2_INFER_SRCS})
+    endif()
     file(GLOB COMMON_UTILS_SRCS
         utils/mc2_platform_info.cpp
     )
     file(GLOB GENTASK_SRCS
         op_graph/mc2_gen_task_ops_utils.cpp
         op_graph/matmul_all_reduce_gen_task_ops_utils.cpp
+        op_graph/mc2_moe_graph_context.cpp
         op_graph/mc2_moe_gen_task_ops_utils.cpp
     )
     if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950")

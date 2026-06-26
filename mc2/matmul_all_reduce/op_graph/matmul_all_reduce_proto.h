@@ -54,7 +54,9 @@ namespace ge {
 * @li group_size: An int. group_size = group size K | group size N << 16 | group size M << 32. Default: 0.
 * @li y_dtype: An int. The y_dtype only support 0(float32)/1(float16)/27(bfloat16) in current version.
       Default: 28(ge::DataType::DT_UNDEFINED).
-* @li comm_quant_mode: An int. Number of low-bits communicate mode. Static quant: 0. Dynamic quant: 1. Default: 0. \n
+* @li comm_quant_mode: An int. Number of low-bits communicate mode. Static quant: 0. Dynamic quant: 1. Default: 0.
+* @li comm_mode: A string. Communication mode. Default: "ccu". The comm_mode only supports "default", "ccu" or
+*  "aicpu" in current version. \n
 
 * @par Outputs:
 * y: A matrix tensor. The type support float16, bf16. \n
@@ -133,8 +135,9 @@ REG_OP(MatmulAllReduce)
     .ATTR(comm_turn, Int, 0)
     .ATTR(antiquant_group_size, Int, 0)
     .ATTR(group_size, Int, 0)
-    .ATTR(y_dtype, Int, ge::DataType::DT_UNDEFINED)
+    .ATTR(y_dtype, Int, DT_UNDEFINED)
     .ATTR(comm_quant_mode, Int, 0)
+    .ATTR(comm_mode, String, "")
     .OP_END_FACTORY_REG(MatmulAllReduce)
 
 } // namespace ge
