@@ -23,6 +23,7 @@
 #include <cstring>
 #include <atomic>
 #include <cstdint>
+#include <algorithm>
 
 // CANN ACL Runtime API
 #include "acl/acl.h"
@@ -39,7 +40,7 @@
 // torch_npu stream utilities
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 
-namespace op_api {
+namespace Mc2Api {
 
 // Constants
 constexpr static uint8_t COMM_ENGINE_AIV = 4;
@@ -64,7 +65,7 @@ struct HostBufferGuard {
         }
     }
 
-    void release()
+    void Release()
     {
         hostPtr = nullptr;
         registered = false;
@@ -91,7 +92,7 @@ struct CommContext {
     uint32_t epRankId = 0;
     uint32_t rankSize = 0;
     uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};
 };
 
 // ElasticBuffer class - unified interface for distributed Engram storage
@@ -107,7 +108,7 @@ public:
 
     int64_t GetHostBufPtr() const
     {
-        return reinterpret_cast<int64_t>(hostBufPtr);
+        return reinterpret_cast<int64_t>(hostBufPtr_);
     }
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
@@ -129,33 +130,33 @@ private:
     static void CopyContextToTensor(const CommContext &context, at::Tensor &tensor);
     static int64_t ContextTensorSize();
 
-    std::string groupName;
-    int64_t numCpuBytes;
+    std::string groupName_;
+    int64_t numCpuBytes_;
 
-    void *hostBufPtr = nullptr;
-    void *deviceBufPtr = nullptr;
-    HcclMemHandle memHandle = nullptr;
-    HcclComm hcclComm = nullptr;
-    CommContext commContext;
-    at::Tensor contextTensor; // Cached context tensor (created once during init)
+    void *hostBufPtr_ = nullptr;
+    void *deviceBufPtr_ = nullptr;
+    HcclMemHandle memHandle_ = nullptr;
+    HcclComm hcclComm_ = nullptr;
+    CommContext commContext_;
+    at::Tensor contextTensor_; // Cached context tensor (created once during init)
 
-    int64_t hiddenSize = 0;
-    int64_t numEngramEntries = 0;
-    at::ScalarType engramDtype = at::kBFloat16;
+    int64_t hiddenSize_ = 0;
+    int64_t numEngramEntries_ = 0;
+    at::ScalarType engramDtype_ = at::kBFloat16;
 
-    bool destroyed = false;
-    bool writeCalled = false;
-    std::atomic<bool> fetchInProgress{false};
+    bool destroyed_ = false;
+    bool writeCalled_ = false;
+    std::atomic<bool> fetchInProgress_{false};
 };
 
 // Constructor
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes)
-    : groupName(groupName), numCpuBytes(numCpuBytes), destroyed(false), writeCalled(false)
+    : groupName_(groupName), numCpuBytes_(numCpuBytes), destroyed_(false), writeCalled_(false)
 {
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
     BuildCommContext();
-    contextTensor = CreateContext();
+    contextTensor_ = CreateContext();
 }
 
 // Destructor - automatic resource cleanup
@@ -172,16 +173,16 @@ ElasticBuffer::~ElasticBuffer()
 void ElasticBuffer::BuildCommContext()
 {
     AcquireHcclHandle();
-    std::string mc2ContextTag = groupName + "engram_embedding";
+    std::string mc2ContextTag = groupName_ + "engram_embedding";
     TORCH_CHECK(mc2ContextTag.size() <= 255, "Mc2ContextTag is too long, max size is 255, got ", mc2ContextTag.size());
-    CreateContextInternal(hcclComm, mc2ContextTag);
+    CreateContextInternal(hcclComm_, mc2ContextTag);
 }
 
 // Acquire HCCL handle
 void ElasticBuffer::AcquireHcclHandle()
 {
-    auto hcclRet = HcomGetCommHandleByGroupFunc(groupName.c_str(), &hcclComm);
-    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL handle failed, group: ", groupName.c_str(), ", ret: ", hcclRet);
+    auto hcclRet = HcomGetCommHandleByGroupFunc(groupName_.c_str(), &hcclComm_);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL handle failed, group: ", groupName_.c_str(), ", ret: ", hcclRet);
 }
 
 // Allocate and register buffer
@@ -190,12 +191,11 @@ void ElasticBuffer::AllocateAndRegisterBuffer(const HcclComm &commHandle, const 
 {
     HostBufferGuard guard;
 
-    aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
-    TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
-    memset(guard.hostPtr, 0, static_cast<uint64_t>(numCpuBytes));
+    aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes_));
+    TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes_, " B) failed, ret=", ar);
 
-    ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
-    TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
+    ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes_), ACL_HOST_REG_MAPPED);
+    TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes_, " B) failed, ret=", ar);
     guard.registered = true;
 
     void *devPtr = nullptr;
@@ -205,15 +205,15 @@ void ElasticBuffer::AllocateAndRegisterBuffer(const HcclComm &commHandle, const 
     CommMem mem;
     mem.type = COMM_MEM_TYPE_DEVICE;
     mem.addr = devPtr;
-    mem.size = static_cast<uint64_t>(numCpuBytes);
+    mem.size = static_cast<uint64_t>(numCpuBytes_);
 
-    auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &memHandle);
-    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", numCpuBytes,
+    auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &memHandle_);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", numCpuBytes_,
                 ") failed, ret=", hcclRet);
 
-    hostBufPtr = guard.hostPtr;
-    deviceBufPtr = devPtr;
-    guard.release();
+    hostBufPtr_ = guard.hostPtr;
+    deviceBufPtr_ = devPtr;
+    guard.Release();
 }
 
 // Build channel descriptors
@@ -254,7 +254,7 @@ void ElasticBuffer::BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRa
                 desc.remoteEndpoint.commAddr = linkList[i].dstEndpointDesc.commAddr;
                 desc.remoteEndpoint.loc = linkList[i].dstEndpointDesc.loc;
                 desc.notifyNum = 3;
-                desc.memHandles = &memHandle;
+                desc.memHandles = &memHandle_;
                 desc.memHandleNum = 1;
                 channelDesc.push_back(desc);
                 found = true;
@@ -273,7 +273,8 @@ void ElasticBuffer::GetHcclCommChannel(const HcclComm &commHandle, uint32_t rank
     BuildChannelDescs(commHandle, srcRankId, rankDim, descs);
     auto hcclRet = HcclChannelAcquireFunc(commHandle, CommEngine::COMM_ENGINE_AIV, descs.data(),
                                           static_cast<uint32_t>(descs.size()), channelBuf);
-    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelAcquire(AIV, UBC_CTP/UBC_TP, memHandles=1) failed, ret=", hcclRet);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS,
+                "HcclChannelAcquire(AIV, UBC_CTP/UBC_TP, memHandle_s=1) failed, ret=", hcclRet);
     for (size_t i = 0; i < descs.size(); ++i) {
         channels[descs[i].remoteRank] = channelBuf[i];
     }
@@ -287,15 +288,13 @@ void ElasticBuffer::GetHcclCommResource(const HcclComm &commHandle, CommContext 
     ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
     GetHcclCommChannel(commHandle, rankSize, rankId, handlesByRank, rankSize);
 
-    memset(commContextStruct->hcommHandle_, 0, rankSize * sizeof(uint64_t));
-
     for (uint32_t peer = 0; peer < rankSize; ++peer) {
         if (peer == rankId)
             continue;
-        commContextStruct->hcommHandle_[peer] = handlesByRank[peer];
+        commContextStruct->hcommHandle[peer] = handlesByRank[peer];
     }
 
-    commContextStruct->virtualAddrList[rankId] = reinterpret_cast<uint64_t>(deviceBufPtr);
+    commContextStruct->virtualAddrList[rankId] = reinterpret_cast<uint64_t>(deviceBufPtr_);
 
     for (uint32_t i = 0; i < rankSize; ++i) {
         if (i == rankId)
@@ -303,7 +302,7 @@ void ElasticBuffer::GetHcclCommResource(const HcclComm &commHandle, CommContext 
         uint32_t memNum = 0;
         CommMem *remoteMems = nullptr;
         char **memTags = nullptr;
-        auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, commContextStruct->hcommHandle_[i], &memNum,
+        auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, commContextStruct->hcommHandle[i], &memNum,
                                                     &remoteMems, &memTags);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
         // 取自己注册的buffer作为通信buffer
@@ -328,84 +327,98 @@ void ElasticBuffer::GetHcclCommResource(const HcclComm &commHandle, CommContext 
 // Create context internally
 void ElasticBuffer::CreateContextInternal(const HcclComm &commHandle, const std::string &mc2ContextTag)
 {
-    uint64_t commContextSize = sizeof(CommContext);
+    uint64_t commContext_Size = sizeof(CommContext);
     void *ctx = nullptr;
     auto hcclRet =
-        HcclEngineCtxCreateFunc(commHandle, mc2ContextTag.c_str(), CommEngine::COMM_ENGINE_AIV, commContextSize, &ctx);
+        HcclEngineCtxCreateFunc(commHandle, mc2ContextTag.c_str(), CommEngine::COMM_ENGINE_AIV, commContext_Size, &ctx);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Create HCCL context memory failed, ret: ", hcclRet);
 
-    hcclRet = HcclGetRankIdFunc(commHandle, &commContext.epRankId);
+    hcclRet = HcclGetRankIdFunc(commHandle, &commContext_.epRankId);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank ID failed, ret: ", hcclRet);
 
-    hcclRet = HcclGetRankSizeFunc(commHandle, &commContext.rankSize);
+    hcclRet = HcclGetRankSizeFunc(commHandle, &commContext_.rankSize);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
-    TORCH_CHECK(commContext.rankSize >= HCCL_MIN_RANK_SIZE, "rankSize must be at least HCCL_MIN_RANK_SIZE, got ",
-                commContext.rankSize, ", min ", HCCL_MIN_RANK_SIZE);
-    TORCH_CHECK(commContext.rankSize <= HCCL_MAX_RANK_SIZE, "rankSize exceeds HCCL_MAX_RANK_SIZE, got ",
-                commContext.rankSize, ", max ", HCCL_MAX_RANK_SIZE);
+    TORCH_CHECK(commContext_.rankSize >= HCCL_MIN_RANK_SIZE, "rankSize must be at least HCCL_MIN_RANK_SIZE, got ",
+                commContext_.rankSize, ", min ", HCCL_MIN_RANK_SIZE);
+    TORCH_CHECK(commContext_.rankSize <= HCCL_MAX_RANK_SIZE, "rankSize exceeds HCCL_MAX_RANK_SIZE, got ",
+                commContext_.rankSize, ", max ", HCCL_MAX_RANK_SIZE);
 
     std::string memBufferTag = mc2ContextTag + "_buffer";
-    AllocateAndRegisterBuffer(commHandle, memBufferTag, commContext.epRankId);
+    AllocateAndRegisterBuffer(commHandle, memBufferTag, commContext_.epRankId);
 
-    GetHcclCommResource(commHandle, &commContext, commContext.rankSize, memBufferTag);
+    GetHcclCommResource(commHandle, &commContext_, commContext_.rankSize, memBufferTag);
 
-    hcclRet = HcclEngineCtxCopyFunc(commHandle, CommEngine::COMM_ENGINE_AIV, mc2ContextTag.c_str(), &commContext,
-                                    commContextSize, 0);
+    hcclRet = HcclEngineCtxCopyFunc(commHandle, CommEngine::COMM_ENGINE_AIV, mc2ContextTag.c_str(), &commContext_,
+                                    commContext_Size, 0);
     TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy context from host to device failed, ret: ", hcclRet);
 }
 
 // EngramWrite - write data with automatic barrier
 void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 {
-    TORCH_CHECK(!destroyed, "engram_write cannot be called after destroy, "
+    TORCH_CHECK(!destroyed_, "engram_write cannot be called after destroy, "
                             "please create a new ElasticBuffer instance");
 
-    TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(numCpuBytes), "storage size ", storage.nbytes(),
-                " exceeds buffer capacity ", numCpuBytes);
+    TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(numCpuBytes_), "storage size ", storage.nbytes(),
+                " exceeds buffer capacity ", numCpuBytes_);
 
     constexpr int64_t int32Max = static_cast<int64_t>(INT32_MAX);
-    TORCH_CHECK(storage.size(0) * static_cast<int64_t>(commContext.rankSize) <= int32Max,
-                "num_entries * rank_size must not exceed INT32_MAX, got num_entries=", numEngramEntries,
-                ", rank_size=", commContext.rankSize, ", product=", numEngramEntries * commContext.rankSize);
+    TORCH_CHECK(storage.size(0) * static_cast<int64_t>(commContext_.rankSize) <= int32Max,
+                "num_entries * rank_size must not exceed INT32_MAX, got num_entries=", numEngramEntries_,
+                ", rank_size=", commContext_.rankSize, ", product=", numEngramEntries_ * commContext_.rankSize);
 
     EngramBarrier(true);
 
-    hiddenSize = storage.size(1);
-    numEngramEntries = storage.size(0);
-    engramDtype = storage.scalar_type();
+    hiddenSize_ = storage.size(1);
+    numEngramEntries_ = storage.size(0);
+    engramDtype_ = storage.scalar_type();
 
-    if (numEngramEntries > 0) {
-        memcpy(hostBufPtr, storage.data_ptr(), storage.nbytes());
+    if (numEngramEntries_ > 0) {
+        constexpr size_t MEMCPY_MAX_BYTES = 0x7fffffff;
+        size_t totalBytes = storage.nbytes();
+        size_t remaining = totalBytes;
+        uint8_t *dst = static_cast<uint8_t *>(hostBufPtr_);
+        const uint8_t *src = static_cast<const uint8_t *>(storage.data_ptr());
+        while (remaining > 0) {
+            size_t chunkSize = std::min(remaining, MEMCPY_MAX_BYTES);
+            errno_t memRet = memcpy_s(dst, chunkSize, src, chunkSize);
+            TORCH_CHECK(memRet == EOK, "memcpy_s failed, ret=", memRet,
+                        ", offset=", totalBytes - remaining, ", chunkSize=", chunkSize);
+            dst += chunkSize;
+            src += chunkSize;
+            remaining -= chunkSize;
+        }
     }
 
     EngramBarrier(true);
-    writeCalled = true;
+    writeCalled_ = true;
 }
 
 // EngramFetch - fetch data using stored metadata
 std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices)
 {
-    TORCH_CHECK(!destroyed, "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance");
-    TORCH_CHECK(writeCalled, "engram_fetch must be called after at least one engram_write");
-    TORCH_CHECK(!fetchInProgress.load(),
+    TORCH_CHECK(!destroyed_, "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance");
+    TORCH_CHECK(writeCalled_, "engram_fetch must be called after at least one engram_write");
+    TORCH_CHECK(!fetchInProgress_.load(),
                 "Cannot call engram_fetch while previous fetch callback is pending, "
                 "please invoke the callback function returned by the previous engram_fetch first");
 
     int64_t numTokens = indices.size(0);
     if (numTokens == 0) {
-        auto emptyTensor = at::empty({0, hiddenSize}, at::TensorOptions().dtype(engramDtype).device(indices.device()));
+        auto emptyTensor =
+            at::empty({0, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
         return [=]() { return emptyTensor; };
     }
 
-    fetchInProgress.store(true);
+    fetchInProgress_.store(true);
 
-    auto fetched = at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(engramDtype).device(indices.device()));
+    auto fetched =
+        at::empty({numTokens, hiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
 
-    auto dtypeVal = ConvertToAclDataType(engramDtype);
-    ACLNN_CMD(aclnnEngramFetch, contextTensor, indices, fetched, hiddenSize, numEngramEntries, dtypeVal);
+    ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices, hiddenSize_, numEngramEntries_, fetched);
 
-    auto capturedContext = contextTensor;
-    auto fetchFlag = &fetchInProgress;
+    auto capturedContext = contextTensor_;
+    auto fetchFlag = &fetchInProgress_;
     return [capturedContext, fetched, fetchFlag]() {
         aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
         ACLNN_CMD(aclnnEngramFetchWait, capturedContext);
@@ -419,9 +432,9 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 // EngramBarrier - cross-rank synchronization
 void ElasticBuffer::EngramBarrier(bool withDeviceSync)
 {
-    TORCH_CHECK(!destroyed,
+    TORCH_CHECK(!destroyed_,
                 "engram_barrier cannot be called after destroy, please create a new ElasticBuffer instance");
-    TORCH_CHECK(hcclComm != nullptr, "HCCL comm not initialized");
+    TORCH_CHECK(hcclComm_ != nullptr, "HCCL comm not initialized");
 
     if (withDeviceSync) {
         aclError aclRet = aclrtSynchronizeDevice();
@@ -429,7 +442,7 @@ void ElasticBuffer::EngramBarrier(bool withDeviceSync)
     }
 
     aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
-    HcclResult ret = HcclBarrierFunc(hcclComm, stream);
+    HcclResult ret = HcclBarrierFunc(hcclComm_, stream);
     TORCH_CHECK(ret == HCCL_SUCCESS, "HcclBarrier failed, ret: ", ret);
 
     if (withDeviceSync) {
@@ -441,25 +454,25 @@ void ElasticBuffer::EngramBarrier(bool withDeviceSync)
 // Destroy - explicit resource cleanup
 void ElasticBuffer::Destroy()
 {
-    if (destroyed)
+    if (destroyed_)
         return;
 
-    if (hostBufPtr != nullptr) {
-        aclError ret = aclrtHostUnregister(hostBufPtr);
+    if (hostBufPtr_ != nullptr) {
+        aclError ret = aclrtHostUnregister(hostBufPtr_);
         TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
-        ret = aclrtFreeHost(hostBufPtr);
+        ret = aclrtFreeHost(hostBufPtr_);
         TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed, ret: ", ret);
-        hostBufPtr = nullptr;
-        deviceBufPtr = nullptr;
+        hostBufPtr_ = nullptr;
+        deviceBufPtr_ = nullptr;
     }
 
-    destroyed = true;
+    destroyed_ = true;
 }
 
-// CreateContext - create context tensor from commContext
+// CreateContext - create context tensor from commContext_
 at::Tensor ElasticBuffer::CreateContext()
 {
-    TORCH_CHECK(commContext.rankSize > 0, "CommContext not properly initialized");
+    TORCH_CHECK(commContext_.rankSize > 0, "CommContext not properly initialized");
 
     int64_t tensorSize = ContextTensorSize();
     at::Tensor context = at::empty({tensorSize}, at::TensorOptions()
@@ -467,7 +480,7 @@ at::Tensor ElasticBuffer::CreateContext()
                                                      .device(c10::DeviceType::PrivateUse1)
                                                      .memory_format(c10::MemoryFormat::Contiguous));
 
-    CopyContextToTensor(commContext, context);
+    CopyContextToTensor(commContext_, context);
     return context;
 }
 
@@ -476,7 +489,8 @@ void ElasticBuffer::CopyContextToTensor(const CommContext &context, at::Tensor &
 {
     int64_t numElements = sizeof(CommContext) / sizeof(int32_t);
     at::Tensor hostTensor = at::empty({numElements}, at::TensorOptions().dtype(at::kInt));
-    memcpy(hostTensor.data_ptr<int32_t>(), &context, sizeof(CommContext));
+    errno_t memRet = memcpy_s(hostTensor.data_ptr<int32_t>(), sizeof(CommContext), &context, sizeof(CommContext));
+    TORCH_CHECK(memRet == EOK, "memcpy_s failed, ret=", memRet);
     tensor.copy_(hostTensor);
 }
 
@@ -502,18 +516,18 @@ int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hidd
     return numCpuBytes;
 }
 
-} // namespace op_api
+} // namespace Mc2Api
 
 // PyBind11 module definition
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    pybind11::class_<op_api::ElasticBuffer>(m, "ElasticBuffer")
+    pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
         .def(pybind11::init<const std::string &, int64_t>(), pybind11::arg("groupName"), pybind11::arg("numCpuBytes"))
-        .def("engram_write", &op_api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
-        .def("engram_fetch", &op_api::ElasticBuffer::EngramFetch, pybind11::arg("indices").noconvert())
-        .def("engram_barrier", &op_api::ElasticBuffer::EngramBarrier, pybind11::arg("withDeviceSync") = false)
-        .def("destroy", &op_api::ElasticBuffer::Destroy)
-        .def("get_host_buf_ptr", &op_api::ElasticBuffer::GetHostBufPtr)
-        .def_static("get_engram_storage_size_hint", &op_api::ElasticBuffer::GetEngramStorageSizeHint,
+        .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
+        .def("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("indices").noconvert())
+        .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("withDeviceSync") = false)
+        .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
+        .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
+        .def_static("get_engram_storage_size_hint", &Mc2Api::ElasticBuffer::GetEngramStorageSizeHint,
                     pybind11::arg("numEntries"), pybind11::arg("hiddenSize"), pybind11::arg("dtype") = at::kBFloat16);
 }
