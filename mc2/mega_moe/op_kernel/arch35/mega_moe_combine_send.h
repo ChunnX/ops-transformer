@@ -19,7 +19,7 @@
 #include "kernel_operator.h"
 #include "mega_moe_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#include "moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "../common/op_kernel/quantize_functions.h"
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
