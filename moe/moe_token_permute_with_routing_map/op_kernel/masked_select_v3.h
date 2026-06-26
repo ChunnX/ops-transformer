@@ -75,6 +75,13 @@ __aicore__ inline void VToMTE3Sync()
     WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
 }
 
+__aicore__ inline void MTE3ToVSync()
+{
+    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+}
+
 // 二分累加到2 * offset以内，再累加成offset大小
 __aicore__ inline void BinaryAddFunc(
     LocalTensor<float> tmpBuffer, int32_t hiddensizeLen, int32_t threshold, int32_t offset)
@@ -298,6 +305,7 @@ public:
 
             for (int32_t i = 0; i < tileNum; ++i) {
                 CopyInExternalIndex(i);
+                MTE3ToVSync();
                 CopyIn(i);
                 ComputeExternalIndex(i);
                 CopyIndex2WorkSpace();
@@ -362,6 +370,7 @@ private:
         }
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(length * sizeof(int32_t)), 0, 0, 0};
         DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+        VToMTE3Sync();
         DataCopyPad(indexLocal, externalIndexGlobal[regionOffset], copyParams, padParams);
     }
 
