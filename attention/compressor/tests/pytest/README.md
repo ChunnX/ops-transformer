@@ -10,8 +10,8 @@
 
 -   支持D为128/512。
 -   支持H为1K~10K，512对齐。
-- 支持cmp_ratio为2、4、8、16、32、64、128。
-- 当cmp_ratio为4/128时，支持如下三种情况：
+  - 支持block_size为1~1024。
+  - 支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
     -   C4A: D=512, coff=2, cmp_ratio=4;
     -   C4Li: D=128, coff=2, cmp_ratio=4;
     -   C128A: D=512, coff=1, cmp_ratio=128。
