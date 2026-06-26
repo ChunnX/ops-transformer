@@ -78,8 +78,9 @@ constexpr int64_t X_INPUT_2D = 1; // 2D 输入 [cu_seq_len, dim]，需配合 que
 class FusedCausalConv1dCutBHTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit FusedCausalConv1dCutBHTiling(gert::TilingContext *context, bool isInplace = false)
-        : TilingBaseClass(context), isInplace_(isInplace)
+        : TilingBaseClass(context)
     {
+        (void)isInplace;
     }
 
 protected:
@@ -122,9 +123,9 @@ private:
     int64_t CalculateLimitedCoreNumCoarse(); // 粗粒度模式：根据数据量限制最大核数（每 2048 字节分配 1 核）
 
     // ---- GetShapeAttrsInfo 的子函数 ----
-    ge::graphStatus GetShapeInfo();  // 读取 x/weight/conv_states 形状，判断 APC/cacheIndices 是否有效
+    ge::graphStatus GetShapeInfo();  // 读取 x/weight/conv_states 形状，判断 cacheIndices 是否有效
     ge::graphStatus GetTypeInfo();   // 读取各输入的数据类型，判断 hasAcceptTokenNum
-    ge::graphStatus GetAttrInfo();   // 读取算子属性（activation_mode / pad_slot_id / run_mode 等）
+    ge::graphStatus GetAttrInfo();   // 读取算子属性（activation_mode / pad_slot_id）
     ge::graphStatus GetStrideInfo(); // 读取 x 和 conv_states 的 stride（支持非连续张量/view）
 
     // ---- 核间切分（细粒度：dim < 1024）----
@@ -177,20 +178,10 @@ private:
     int64_t cacheStride0_ = 0;       // conv_states 在 batch 维度的 stride
     int64_t cacheStride1_ = 0;       // conv_states 在 state_len 维度的 stride
     int64_t padSlotId_ = -1;         // padding sample 的 slot id（-1 表示无效）
-    int64_t runMode_ = 0;            // 运行模式（预留扩展）
     int64_t xInputMode_ = 0;         // x 输入模式：0=3D，1=2D
     int64_t hasQueryStartLoc_ = 0;   // 是否提供 query_start_loc：0=无，1=有
     int64_t hasAcceptTokenNum_ = 0;  // 是否提供 num_accepted_token 输入：0=否，1=是
-    int64_t residualConnection_ = 0; // 是否使用残差连接：0=否，1=是
-
-    int64_t apcEnable_ = 0;            // APC 开关：0=关闭，1=开启（由 blockIdxLast 是否存在推断）
-    int64_t blockSize_ = 0;            // APC block 大小（由属性读取）
-    int64_t maxNumBlocks_ = 0;         // APC 开启时 cacheIndices 第二维大小
     int64_t hasCacheIndices_ = 0;      // cacheIndices 是否有效：0=无，1=有
-    int64_t inplace_ = 0;              // conv_states 是否原地更新：0=否，1=是（由 isInplace_ 决定）
-    bool isInplace_ = false;           // 构造时传入，替代 attr 读取
-    int64_t convMode_ = 0;             // 卷积模式：0=Qwen3，1=Pangu v2（前 width-1 token 置零）
-    int64_t hasNumComputedTokens_ = 0; // numComputedTokens 是否有效：0=无，1=有
     int64_t maxQueryLen_ = MAX_M + 1;  // 2D 输入时最大序列长度（来自 max_query_len 属性）
 
     int64_t limitedCoreNum_ = 0; // 按数据量限制的最大可用核数（参考值）

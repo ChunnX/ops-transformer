@@ -145,14 +145,10 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
     auto convStatesOriginShape = convStatesShape->GetOriginShape();
     stateLen_ = convStatesOriginShape.GetDim(DIM_1);
 
-    apcEnable_ = 0;
-
     // 判断 cacheIndices 是否提供
     auto cacheIndicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
     hasCacheIndices_ = (cacheIndicesShape != nullptr && cacheIndicesShape->GetOriginShape().GetDimNum() == DIM_1 &&
                         cacheIndicesShape->GetOriginShape().GetDim(DIM_0) > 0) ? 1 : 0;
-
-    hasNumComputedTokens_ = 0;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -232,15 +228,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
             "The value of activation_mode must be 0(None), 1(silu), or 2(swish)");
         return ge::GRAPH_FAILED;
     }
-
-    runMode_ = 1;
-    residualConnection_ = 0;
-    apcEnable_ = 0;
-    blockSize_ = 0;
-    maxNumBlocks_ = 0;
-    inplace_ = 0;
-    convMode_ = 0;
-    hasNumComputedTokens_ = 0;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -852,30 +839,17 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
     int64_t numAcceptedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
     fixedUBSize = numAcceptedTokensUBSize;
 
-    // indicesBuf：非 APC 时存 [batch] 个 cache 索引；APC 时存单个 batch 的 [maxNumBlocks] 个 block 索引
-    int64_t cacheIndicesUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-    if (apcEnable_) {
-        cacheIndicesUBSize = (maxNumBlocks_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+    // indicesBuf：仅 cache_indices 存在时存 [batch] 个 cache 索引
+    if (hasCacheIndices_ == 1) {
+        int64_t cacheIndicesUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+        fixedUBSize += cacheIndicesUBSize;
     }
-    fixedUBSize += cacheIndicesUBSize;
 
     // queryStartLocBuf：2D 输入时需要存储 [batch+1] 个位置信息
     if (hasQueryStartLoc_ == 1) {
         int64_t queryStartLocUBSize =
             ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
         fixedUBSize += queryStartLocUBSize;
-    }
-
-    // numComputedTokensBuf：按 numComputedTokens 是否提供来分配
-    if (hasNumComputedTokens_) {
-        int64_t numComputedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-        fixedUBSize += numComputedTokensUBSize;
-    }
-
-    // APC 开启时额外分配 3 个辅助 buffer：initialStateIdx / blockIdxFirst / blockIdxLast
-    if (apcEnable_) {
-        int64_t apcAuxBufSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-        fixedUBSize += apcAuxBufSize * 3;
     }
 
     // 扣除系统预留和固定占用后的可用 UB
@@ -993,6 +967,7 @@ uint64_t FusedCausalConv1dCutBHTiling::GetTilingKey() const
     } else if (xDtype_ == ge::DataType::DT_FLOAT16) {
         return TILING_KEY_BH_FP16;
     }
+    return TILING_KEY_BH_BF16;
 }
 
 // PostTiling
@@ -1052,15 +1027,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
     tilingData_.hasAcceptTokenNum = hasAcceptTokenNum_;
     tilingData_.hasBias = hasBias_;
     tilingData_.activationMode = activationMode_;
-    tilingData_.residualConnection = residualConnection_;
-
-    tilingData_.apcEnable = apcEnable_;
-    tilingData_.blockSize = blockSize_;
-    tilingData_.maxNumBlocks = maxNumBlocks_;
     tilingData_.hasCacheIndices = hasCacheIndices_;
-    tilingData_.inplace = inplace_;
-    tilingData_.convMode = convMode_;
-    tilingData_.hasNumComputedTokens = hasNumComputedTokens_;
     tilingData_.maxQueryLen = maxQueryLen_;
 
     // ---- dimRemainder（last dim core）相关字段 ----
@@ -1137,14 +1104,7 @@ void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "hasAcceptTokenNum: %ld", tilingData_.hasAcceptTokenNum);
     OP_LOGI(context_->GetNodeName(), "hasBias: %ld", tilingData_.hasBias);
     OP_LOGI(context_->GetNodeName(), "activationMode: %ld", tilingData_.activationMode);
-    OP_LOGI(context_->GetNodeName(), "residualConnection: %ld", tilingData_.residualConnection);
-    OP_LOGI(context_->GetNodeName(), "apcEnable: %ld", tilingData_.apcEnable);
-    OP_LOGI(context_->GetNodeName(), "blockSize: %ld", tilingData_.blockSize);
-    OP_LOGI(context_->GetNodeName(), "maxNumBlocks: %ld", tilingData_.maxNumBlocks);
     OP_LOGI(context_->GetNodeName(), "hasCacheIndices: %ld", tilingData_.hasCacheIndices);
-    OP_LOGI(context_->GetNodeName(), "inplace: %ld", tilingData_.inplace);
-    OP_LOGI(context_->GetNodeName(), "convMode: %ld", tilingData_.convMode);
-    OP_LOGI(context_->GetNodeName(), "hasNumComputedTokens: %ld", tilingData_.hasNumComputedTokens);
     OP_LOGI(context_->GetNodeName(), "maxQueryLen: %ld", maxQueryLen_);
     // dimRemainder（last dim core）相关字段
     OP_LOGI(context_->GetNodeName(), "dimRemainderElems: %ld", tilingData_.dimRemainderElems);
@@ -1283,26 +1243,15 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
     int64_t numAcceptedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
     fixedUBSize = numAcceptedTokensUBSize;
 
-    int64_t cacheIndicesUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-    if (apcEnable_) {
-        cacheIndicesUBSize = (maxNumBlocks_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+    if (hasCacheIndices_ == 1) {
+        int64_t cacheIndicesUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+        fixedUBSize += cacheIndicesUBSize;
     }
-    fixedUBSize += cacheIndicesUBSize;
 
     if (hasQueryStartLoc_ == 1) {
         int64_t queryStartLocUBSize =
             ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
         fixedUBSize += queryStartLocUBSize;
-    }
-
-    if (hasNumComputedTokens_) {
-        int64_t numComputedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-        fixedUBSize += numComputedTokensUBSize;
-    }
-
-    if (apcEnable_) {
-        int64_t apcAuxBufSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-        fixedUBSize += apcAuxBufSize * 3;
     }
 
     int64_t availableUbSize = static_cast<int64_t>(ubSize_ - SYSTEM_RESERVED_UB_SIZE) - fixedUBSize;

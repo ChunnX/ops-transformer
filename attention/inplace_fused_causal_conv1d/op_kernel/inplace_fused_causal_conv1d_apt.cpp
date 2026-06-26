@@ -53,16 +53,14 @@ inplace_fused_causal_conv1d(GM_ADDR x,                           // 输入0: x
     if (TILING_KEY_IS(TILING_KEY_BH_BF16)) {
         GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBHTilingData, tilingData, tiling);
         FusedCausalConv1dCutBH<bfloat16_t> op(&pipe);
-        op.Init(x, weight, convStates, queryStartLoc, cacheIndices, numAcceptedToken, numComputedTokens,
-                blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, outputX, &tilingData);
+        op.Init(x, weight, bias, convStates, queryStartLoc, cacheIndices, numAcceptedToken, outputX, &tilingData);
         op.Process();
     }
 
     if (TILING_KEY_IS(TILING_KEY_BH_FP16)) {
         GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBHTilingData, tilingData, tiling);
         FusedCausalConv1dCutBH<half> op(&pipe);
-        op.Init(x, weight, convStates, queryStartLoc, cacheIndices, numAcceptedToken, numComputedTokens,
-                blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, outputX, &tilingData);
+        op.Init(x, weight, bias, convStates, queryStartLoc, cacheIndices, numAcceptedToken, outputX, &tilingData);
         op.Process();
     }
 

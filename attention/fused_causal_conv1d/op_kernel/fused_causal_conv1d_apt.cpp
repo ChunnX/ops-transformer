@@ -30,7 +30,7 @@ fused_causal_conv1d(GM_ADDR x,                           // 输入0: x
                     GM_ADDR tiling)                      // tiling
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    REGISTER_TILING_DEFAULT(FusedCausalConv1dCutBSHTilingData);
+    REGISTER_TILING_DEFAULT(FusedCausalConv1dCutBHTilingData);
     REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR >= 20000)", FusedCausalConv1dCutBHTilingData);
     TPipe pipe;
 
