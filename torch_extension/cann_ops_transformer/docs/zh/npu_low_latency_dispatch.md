@@ -1,4 +1,4 @@
-# npu\_low\_latency_dispatch<a name="ZH-CN_TOPIC_0000002343094193"></a>
+# npu\_low\_latency\_dispatch<a name="ZH-CN_TOPIC_0000002343094193"></a>
 
 ## 产品支持情况
 
@@ -151,6 +151,13 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
 -   版本配套约束：
 
      静态图模式下，从Ascend Extension for PyTorch 8.0.0版本开始，Ascend Extension for PyTorch框架会对静态图中最后一个节点输出结果做Meta推导与inferShape推导的结果强校验。当图中只有一个Dispatch算子，若CANN版本落后于Ascend Extension for PyTorch版本，会出现Shape不匹配报错，建议用户升级CANN版本，详细的版本配套关系参见《[Ascend Extension for PyTorch版本说明](https://gitcode.com/Ascend/pytorch/blob/v2.7.1-7.3.0/docs/zh/release_notes/release_notes.md)》中“相关产品版本配套说明”。
+
+## 配套接口说明<a name="zh-cn_topic_0000002203575833_section_companion"></a>
+
+`npu_low_latency_dispatch`需与以下接口配套使用：
+
+-   **npu\_low\_latency\_combine**：与本接口成对使用，对经专家计算后的token做反向聚合（combine）。本接口的输出按“输出说明”中标注的对应关系作为`npu_low_latency_combine`的输入（如`assist_info_for_combine`对应其`assist_info_for_combine`输入、`ep_recv_counts`对应其`ep_send_counts`输入），且二者须使用相同的EP通信域。接口原型、参数与输出详见[npu\_low\_latency\_combine](npu_low_latency_combine.md)。
+-   **get\_low\_latency\_ccl\_buffer\_size**：`MoeDistributeBuffer`的静态方法，用于在调用本接口前计算所需的HCCL通信缓冲区大小（用于设置环境变量`HCCL_BUFFSIZE`）。详见[get\_low\_latency\_ccl\_buffer\_size](get_low_latency_ccl_buffer_size.md)。
 
 ## 调用示例<a name="zh-cn_topic_0000002203575833_section14459801435"></a>
 

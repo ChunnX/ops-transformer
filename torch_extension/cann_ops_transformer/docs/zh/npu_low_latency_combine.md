@@ -1,4 +1,4 @@
-# npu\_low\_latency_combine<a name="ZH-CN_TOPIC_0000002309174912"></a>
+# npu\_low\_latency\_combine<a name="ZH-CN_TOPIC_0000002309174912"></a>
 
 ## 产品支持情况
 
@@ -88,7 +88,8 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 
 -   **num\_max\_dispatch\_tokens\_per\_rank** (`int`)：可选参数，表示每张卡上的token数量。当每个rank的BS不同时，最大的BS大小，当每个rank上BS相同时，默认为0。
 
-## 返回值说明<a name="zh-cn_topic_0000002168254826_section22231435517"></a>
+## 输出说明<a name="zh-cn_topic_0000002168254826_section22231435517"></a>
+
 `Tensor`
 
 表示处理后的token，要求为2维张量，shape为\(BS, H\)，数据类型支持`bfloat16`、`float16`，类型与输入`expand_x`保持一致，数据格式为$ND$，不支持非连续的Tensor。
@@ -134,6 +135,13 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
     -   一个模型中的`npu_low_latency_dispatch`和`npu_low_latency_combine`不支持TP通信域。
 
     -   一个通信域内的节点需在一个超节点内，不支持跨超节点。
+
+## 配套接口说明<a name="zh-cn_topic_0000002168254826_section_companion"></a>
+
+`npu_low_latency_combine`需与以下接口配套使用：
+
+-   **npu\_low\_latency\_dispatch**：与本接口成对使用，先由其完成token的dispatch分发。本接口的必选输入`assist_info_for_combine`、`ep_send_counts`分别取自`npu_low_latency_dispatch`的`assist_info_for_combine`、`ep_recv_counts`输出（见“参数说明”中标注的对应关系），输入`x`为经`npu_low_latency_dispatch`分发扩展后的token数据，二者须使用相同的EP通信域。接口原型、参数与输出详见[npu\_low\_latency\_dispatch](npu_low_latency_dispatch.md)。
+-   **get\_low\_latency\_ccl\_buffer\_size**：`MoeDistributeBuffer`的静态方法，用于在调用本接口前计算所需的HCCL通信缓冲区大小（用于设置环境变量`HCCL_BUFFSIZE`），详见[get\_low\_latency\_ccl\_buffer\_size](get_low_latency_ccl_buffer_size.md)。
 
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
