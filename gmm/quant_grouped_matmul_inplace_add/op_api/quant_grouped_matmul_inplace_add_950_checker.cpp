@@ -31,26 +31,10 @@ constexpr size_t DIM_NUM_2D = 2U;
         }                                                        \
     } while (0)
 
-const aclTensor *GetInputTensor(const aclTensorList *input, size_t index = 0)
-{
-    if (input == nullptr || index >= input->Size()) {
-        return nullptr;
-    }
-    return (*input)[index];
-}
-
 const aclTensor *GetInputTensor(const aclTensor *input, size_t index = 0)
 {
     (void)index;
     return input;
-}
-
-size_t GetInputTensorSize(const aclTensorList *input)
-{
-    if (input == nullptr) {
-        return 0;
-    }
-    return input->Size();
 }
 
 size_t GetInputTensorSize(const aclTensor *input)
@@ -184,7 +168,6 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
 {
     auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.weight); ++i) {
-        auto xDimNumber = GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDimNum();
         auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
         auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDimNum();
         auto perTokenDimNumber = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDimNum();

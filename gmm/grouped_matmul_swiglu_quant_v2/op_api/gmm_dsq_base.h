@@ -268,7 +268,7 @@ protected:
         auto n_index = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDimNum() - 1;
         int64_t n = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDim(n_index);
         size_t wLength = gmmDsqParams_.weight->Size();
-        int64_t e = wLength;
+        int64_t e = static_cast<int64_t>(wLength);
         if (wLength == static_cast<size_t>(1)) {
             e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
         }
@@ -460,7 +460,7 @@ protected:
             n = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDim(DIM_IDX_1);
             weightScaleExpectShape = {e, n}; // 单
         } else if (gmmDsqParams_.dequantMode == 0 && wLength != static_cast<size_t>(1)) {
-            e = wLength;
+            e = static_cast<int64_t>(wLength);
             // weightScale入参在perchannel多tensor场景期望shape [N]
             n = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDim(DIM_IDX_0);
             weightScaleExpectShape = {n}; // 多
@@ -472,7 +472,7 @@ protected:
             KGroupSize = KGroupCount > 0 ? k / KGroupCount : k;
             weightScaleExpectShape = {e, KGroupCount, n}; // 单
         } else if (gmmDsqParams_.dequantMode == 1 && wLength != static_cast<size_t>(1)) {
-            e = wLength;
+            e = static_cast<int64_t>(wLength);
             // weightScale入参在pergroup多tensor场景期望shape [KGroupCount, N]
             n = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDim(DIM_IDX_1);
             KGroupCount = ((*gmmDsqParams_.weightScale)[0])->GetViewShape().GetDim(DIM_IDX_0);
