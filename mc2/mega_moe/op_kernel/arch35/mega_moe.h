@@ -856,8 +856,13 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
             __gm__ int32_t* sendCntFlag = (__gm__ int32_t*)params_.workspaceInfo.flagSendCntToGmm1Ptr +
                 static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
                 static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+            // 轮询节流:每次 GM 读之间用 GetSystemCycle 差值真实等待一小段,让出内存总线,
+            // 否则 aic 的热轮询会饿住生产者 aiv1 的 AtomicAdd 写,造成活锁卡死。
+            // 与 mega_moe_impl.h 中 dispatchToGmm1Flag 的等待方式保持一致(Nop 在硬件上不会真正 idle)。
             while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
-                AscendC::Nop<200>();
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {
+                }
             }
             uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
             DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
