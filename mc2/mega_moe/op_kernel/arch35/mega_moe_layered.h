@@ -893,6 +893,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     GM_ADDR remoteRecordAddr = GetUrmaAddrByRankId(mc2Context_, relayRank) +
         params_.peermemInfo.relayTokenDataPtr + remoteCopyOffset;
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
+    printf("remoteRecordAddr %d\n", remoteRecordAddr);
     if (relayRank == rankId_) {
         __gm__ int32_t* readyFlag = reinterpret_cast<__gm__ int32_t*>(remoteRecordAddr + flagOffset);
         GmSignalWaitBarrier(readyFlag, int32_t(1));
