@@ -306,11 +306,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
         pipe_->InitBuffer(gradCalcBuf2_, kAlignFp32_ * uTypeSize_);
 
         // hbj
-        pipe_->InitBuffer(tmpDivBuf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
-        pipe_->InitBuffer(tmpDiv2Buf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
-        pipe_->InitBuffer(tmpDiv3Buf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
-        pipe_->InitBuffer(tmpDiv4Buf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
-        pipe_->InitBuffer(tmpMulBuf_, 2 * skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(tmpDivBuf_, bsnnAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(tmpDiv2Buf_, bsnnAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(tmpDiv3Buf_, bsnnAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(tmpDiv4Buf_, bsnnAlignFp32_ * FP32_BYTE_SIZE);
+        pipe_->InitBuffer(tmpMulBuf_, bsnnAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(sumOutRowBuf_, skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(sumOutColBuf_, skIterCount_ * bsLoopDataLen_ * nAlignFp32_ * FP32_BYTE_SIZE);
         pipe_->InitBuffer(normOutBuf_, skIterCount_ * nnAlignFp32_ * bsLoopDataLen_ * FP32_BYTE_SIZE);
@@ -860,11 +860,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
                     Reg::Add(reduceSumReg, reduceSumReg, tmpReg, maskN);
                 }
 
-                // broadcast (b,s,1,1) -> (b,s,n,n)
-                for (uint16_t k = 0; k < n_; k++) {
-                    Reg::StoreUnAlign(tmpPtr1, reduceSumReg, uregStore2, n_);
-                }
-                Reg::StoreUnAlignPost(tmpPtr1, uregStore2, 0);
+                Reg::StoreAlign(tmpPtr1 + j * nAlignFp32_, reduceSumReg, maskN);
             }
 
             Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
@@ -906,20 +902,19 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::S
             maskN = Reg::UpdateMask<float>(maskLenN);
 
             int64_t bsOffset = j * nn_;
-            int64_t rowSumOffset = j * nAlignFp32_;
+            int64_t nAlignOffset = j * nAlignFp32_;
 
             auto tmpDiv3LocalPtr1 = tmpDiv3LocalPtr + bsOffset;
             auto tmpDiv4LocalPtr1 = tmpDiv4LocalPtr + bsOffset;
 
+            Reg::LoadAlign(gradXRowNormedReg, gradXRowPtr + nAlignOffset);
             for (uint16_t k = 0; k < n_; k++) {
-                auto rowSumValue = *(rowSumPtr + rowSumOffset + k);
+                auto rowSumValue = *(rowSumPtr + nAlignOffset + k);
 
                 Reg::LoadUnAlignPre(ureg6, tmpDivLocalPtr + bsOffset + k * n_);
                 Reg::LoadUnAlign(tmpDivReg, ureg6, tmpDivLocalPtr + bsOffset + k * n_);
                 Reg::LoadUnAlignPre(ureg7, rowNormPtr + bsOffset + k * n_);
                 Reg::LoadUnAlign(rowNormReg, ureg7, rowNormPtr + bsOffset + k * n_); 
-                Reg::LoadUnAlignPre(ureg9, gradXRowPtr + bsOffset + k * n_);
-                Reg::LoadUnAlign(gradXRowNormedReg, ureg9, gradXRowPtr + bsOffset + k * n_);
 
                 Reg::Sub(tmpSubReg, tmpDivReg, gradXRowNormedReg, maskN);
                 Reg::Mul(tmpMul2Reg, tmpSubReg, rowNormReg, maskN);                
