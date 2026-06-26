@@ -53,10 +53,18 @@ tensor_list npu_moe_ep_dispatch(const at::Tensor &context, const at::Tensor &x, 
     dst_slot = at::empty({num_tokens, top_k}, x.options().dtype(at::kInt));
 
     at::Tensor topk_weights_tensor = topk_weights.has_value() ? *topk_weights : at::Tensor();
-    at::Tensor scales_tensor = scales.has_value() ? *scales : at::Tensor();
     at::Tensor cached_slot_tensor = cached_handle_dst_buffer_slot_idx.has_value() ? *cached_handle_dst_buffer_slot_idx : at::Tensor();
 
-    ACLNN_CMD(aclnnMoeEpDispatch, context, x, topk_idx, topk_weights_tensor, scales_tensor, cached_slot_tensor,
+    aclDataType scales_dtype;
+    at::Tensor scales_tensor = scales.has_value() ? *scales : at::Tensor();
+    if (scales_tensor.scalar_type() == at::kByte) {
+        scales_dtype = aclDataType::ACL_FLOAT8_E8M0;
+    } else {
+        scales_dtype = aclDataType::ACL_FLOAT;
+    }
+    TensorWrapper scales_wrapper = TensorWrapper{scales_tensor, scales_dtype};
+
+    ACLNN_CMD(aclnnMoeEpDispatch, context, x, topk_idx, topk_weights_tensor, scales_wrapper, cached_slot_tensor,
         ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank, ccl_buffer_size, expert_alignment,
         do_cpu_sync, host_pinned_counter_addr, num_recv_per_rank, num_recv_per_expert, dst_slot);
 

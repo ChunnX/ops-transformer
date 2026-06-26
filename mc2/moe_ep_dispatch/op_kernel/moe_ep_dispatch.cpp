@@ -27,7 +27,7 @@ using namespace MoeEpDispatchImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-template<bool DoCpuSync, bool IsCached, bool IsTopkWeights, uint8_t NetworkMode>
+template<bool DoCpuSync, bool IsCached, bool IsTopkWeights, bool IsMxQuant, uint8_t NetworkMode>
 __global__ __aicore__ void moe_ep_dispatch(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights, GM_ADDR scales,
     GM_ADDR cachedSlotIdx, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
@@ -37,7 +37,9 @@ __global__ __aicore__ void moe_ep_dispatch(
 
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchTilingData, tilingData, tilingGM);
-    MoeEpDispatch<DTYPE_X, DTYPE_SCALES, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
+    using ScalesType = typename std::conditional<IsMxQuant, fp8_e8m0_t, float>::type;
+
+    MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
     op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank,
             numRecvPerExpert, dstBufferSlotIdx, workspaceGM, &pipe, &tilingData);
     op.Process();
