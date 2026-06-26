@@ -14,6 +14,11 @@
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
+#if __has_include("aclnnop/aclnn_moe_token_permute_v2.h")
+#include "aclnnop/aclnn_moe_token_permute_v2.h"
+#elif __has_include("aclnn_moe_token_permute_v2.h")
+#include "aclnn_moe_token_permute_v2.h"
+#endif
 
 namespace {
 constexpr int64_t DIM_ONE = 1;
@@ -148,7 +153,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_moe_token_permute(
     auto expanded_scale_wrapper = MakeTensorWrapper(output.expandedScale);
     FixMxfp4AclDtypes(effective_quant_mode, permuted_tokens_wrapper, expanded_scale_wrapper);
 
-    ACLNN_CMD(aclnnMoeTokenPermute,
+    ACLNN_CMD(aclnnMoeTokenPermuteV2,
         tokens,
         indices,
         actual_num_out_tokens,

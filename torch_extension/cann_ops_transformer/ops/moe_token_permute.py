@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import os
 from typing import Optional, Tuple
 
 import torch
@@ -52,6 +53,19 @@ class MoeTokenPermuteOpBuilder(OpBuilder):
 
     def sources(self):
         return ['ops/csrc/moe_token_permute.cpp']
+
+    def include_paths(self):
+        paths = super().include_paths()
+        paths.append(os.path.abspath(os.path.join(
+            self._package_path,
+            "..",
+            "..",
+            "moe",
+            "moe_token_permute",
+            "op_host",
+            "op_api",
+        )))
+        return paths
 
     def schema(self) -> str:
         return "npu_moe_token_permute(Tensor tokens, Tensor indices, " \
