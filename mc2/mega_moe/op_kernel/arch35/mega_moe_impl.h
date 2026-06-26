@@ -222,21 +222,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 uint32_t targetValue = (mLoc + L1_TILE_M_256 > m) ? (m - mLoc) : L1_TILE_M_256;
                 __gm__ int32_t* flagValueAddr =
                     (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr() + waveIdx;
-                if (blockIdx < 2 && waveIdx < 2) {
-                    int32_t currentFlag = AscendC::ReadGmByPassDCache(flagValueAddr);
-                    printf("[MMOE_DBG] GMM1 wait block %d m %d mLoc %d wave %d target %d cur %d\n",
-                        static_cast<int32_t>(blockIdx), static_cast<int32_t>(m), static_cast<int32_t>(mLoc),
-                        static_cast<int32_t>(waveIdx), static_cast<int32_t>(targetValue), currentFlag);
-                }
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
-                }
-                if (blockIdx < 2 && waveIdx < 2) {
-                    printf("[MMOE_DBG] GMM1 pass block %d wave %d target %d\n",
-                        static_cast<int32_t>(blockIdx), static_cast<int32_t>(waveIdx),
-                        static_cast<int32_t>(targetValue));
                 }
                 lastWaveWaited = waveIdx;
             }
