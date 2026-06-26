@@ -576,7 +576,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::QuantProcessInRank()
 // --------------------------------------------------------------------------------------------------
 //   Phase 1: 从本卡 win 将当前 localExpertId 的 worldSize_ 个 [mask|count] 槽位读进 gatherMaskTensor_;
 //   Phase 2: 逐卡读取 count → 累加 sendCnt/cumsumRevCntInRank_, 写 cumsumInfoTensor_;
-//   Phase 3: 写 expertRevNumsGlobalTensor_ + CrossCoreSetFlag 通知 AIC;
+//   Phase 3: 写 expertRevNumsGlobalTensor_ + 对 flagSendCntToGmm1Ptr 软同步位 AtomicAdd 通知 AIC;
 // ==================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t localExpertId,
@@ -1261,6 +1261,25 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         SyncAll<true>();
     }
     CrossRankSyncInWorldSize();  // 全卡同步
+
+    // flag 清零(reset)对 AIC 的可见性握手:
+    //   消费循环里 aic/aiv0 会轮询 flagSendCntToGmm1Ptr(region3),但 region3 的清零由 AIV 在
+    //   ResetFlagList 中按 TilingByCore 分段完成、AIC 全程不参与;且 CrossRankSyncInWorldSize 与
+    //   其上的 SyncAll 都只覆盖 AIV。原 flag(2)/flag(2+16) 硬同步曾在每个 expert 把 AIC 卡在 AIV
+    //   之后,顺带保证"清零早已可见";改软同步后该屏障消失,AIC 可抢跑。
+    //   连续复用同一块 workspace 多轮执行时,AIC 会在本轮清零可见前读到上一轮残留的非零 flag 而提前
+    //   放行,读到过期 count -> 下游挂死(首轮 workspace 为 0 不暴露,次轮起必现)。
+    //   这里补一次 per-run 的 AIV(aiv0)->AIC 硬同步:aiv0 已随 ResetFlagList 的 SyncAll 看到全部清零,
+    //   set 之后 AIC 再 wait,即保证 AIC 轮询前本轮清零全局可见。仅单 set/单 wait、不在 expert 循环内,
+    //   不存在计数器反转。aiv0 自身已参与上述 SyncAll,无需握手。
+    if constexpr (g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 0) {
+            CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(2);
+        }
+    }
+    if constexpr (g_coreType == AscendC::AIC) {
+        CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_S>(2 + 16);
+    }
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();
