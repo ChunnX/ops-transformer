@@ -95,6 +95,7 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
+TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexer, LITilingData)
 
@@ -157,6 +158,8 @@ public:
     // Layout
     DataLayout inputQLayout = DataLayout::BSND;
     DataLayout inputKLayout = DataLayout::BnBsND;
+
+    uint32_t keyStride0 = 0;
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
@@ -201,6 +204,7 @@ public:
     ge::graphStatus GetActualSeqInfo();
     void GenerateInfo(LITilingInfo &liInfo);
     ge::graphStatus ParseAndCheck(LITilingInfo &liInfo);
+    ge::graphStatus CheckKeyContiguous() const;
 
 public:
     gert::TilingContext *context_ = nullptr;
@@ -231,6 +235,8 @@ public:
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
     ge::DataType valuesOutType_ = ge::DT_FLOAT16;
+    std::vector<uint32_t> keyStridesVec_;
+    std::vector<uint32_t> keyDequantScaleStridesVec_;
 };
 
 // ---------------算子Tiling类---------------
