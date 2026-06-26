@@ -603,6 +603,24 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t
     auto wDimNum = wShape.GetDimNum();
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
     constexpr size_t weightNzMultiTensorDimNum = 4;
+    constexpr size_t weightNzMultiTensorLogicalDimNum = 2;
+    if (IsWeightNzSingleMultiSingleLayout() && wDimNum == weightNzMultiTensorLogicalDimNum) {
+        auto weightKDimValue = static_cast<uint64_t>(inputParams_.transB ? wShape.GetDim(1) : wShape.GetDim(0));
+        auto weightNDimValue = static_cast<uint64_t>(inputParams_.transB ? wShape.GetDim(0) : wShape.GetDim(1));
+        OP_CHECK_IF(weightKDimValue != inputParams_.kSize || weightNDimValue != logicalNSize,
+                    OP_LOGE_FOR_INVALID_SHAPE(
+                        inputParams_.opType, "weight", ShapeToString(wShape),
+                        inputParams_.transB ? ShapeDimsToString(logicalNSize, inputParams_.kSize)
+                                            : ShapeDimsToString(inputParams_.kSize, logicalNSize)),
+                    return false);
+        OP_CHECK_IF(1 == inputParams_.kSize || 1 == logicalNSize,
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is in Nz format, the last two logical axes n and k must not be 1 "
+                            "(MXFP4/FLOAT4 weight NZ: nSize>1 and kSize>1), actual nSize=%lu, kSize=%lu.",
+                            logicalNSize, inputParams_.kSize),
+                    return false);
+        return true;
+    }
     size_t expectedWeightNzDimNum = IsWeightNzSingleMultiSingleLayout() ? weightNzMultiTensorDimNum : WEIGHTNZ_DIM_NUM;
     OP_CHECK_IF(wDimNum != expectedWeightNzDimNum,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight", std::to_string(wDimNum),
