@@ -14,6 +14,7 @@
 */
 
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
@@ -21,8 +22,8 @@
 
 extern "C" {
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
-                                             aclTensor *fetched, int32_t hiddenSize,
-                                             int64_t numEntriesPerRank, int64_t outputDtype,
+                                             int32_t hiddenSize, int64_t numEntriesPerRank,
+                                             int64_t outputDtype, aclTensor *fetched,
                                              uint64_t *workspaceSize, aclOpExecutor **executor);
 aclnnStatus aclnnEngramFetch(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 }
@@ -53,8 +54,8 @@ TEST_F(AclnnEngramFetchTest, ascend950_success) {
     int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, fetched_desc, hiddenSize, numEntriesPerRank, outputDtype),
-                        OUTPUT());
+                        INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank, outputDtype),
+                        OUTPUT(fetched_desc));
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
@@ -71,8 +72,8 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_commContext) {
     int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(nullptr, indices_desc, fetched_desc, hiddenSize, numEntriesPerRank, outputDtype),
-                        OUTPUT());
+                        INPUT(nullptr, indices_desc, hiddenSize, numEntriesPerRank, outputDtype),
+                        OUTPUT(fetched_desc));
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
@@ -89,8 +90,8 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_indices) {
     int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, nullptr, fetched_desc, hiddenSize, numEntriesPerRank, outputDtype),
-                        OUTPUT());
+                        INPUT(commContext_desc, nullptr, hiddenSize, numEntriesPerRank, outputDtype),
+                        OUTPUT(fetched_desc));
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
@@ -107,11 +108,17 @@ TEST_F(AclnnEngramFetchTest, ascend950_nullptr_fetched) {
     int64_t outputDtype = 1;
 
     auto ut = OP_API_UT(aclnnEngramFetch,
-                        INPUT(commContext_desc, indices_desc, nullptr, hiddenSize, numEntriesPerRank, outputDtype),
-                        OUTPUT());
+                        INPUT(commContext_desc, indices_desc, hiddenSize, numEntriesPerRank, outputDtype),
+                        OUTPUT(nullptr));
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(AclnnEngramFetchTest, ascend950_execute_entry) {
+    aclnnStatus ret = aclnnEngramFetch(nullptr, 0, nullptr, nullptr);
+    EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
+                                    testing::Eq(ACLNN_ERR_PARAM_INVALID), testing::Eq(ACLNN_ERR_INNER)));
 }

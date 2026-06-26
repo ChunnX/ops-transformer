@@ -98,7 +98,7 @@ static EngramFetchTestParam g_testCases[] = {
      ge::GRAPH_SUCCESS, 0UL, "", {16777216}},
 
     {"success_zero_entries_per_rank",
-     {0}, ge::DT_INT32, ge::FORMAT_ND,
+     {4 * 512}, ge::DT_INT32, ge::FORMAT_ND,
      {8}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      512, 0, static_cast<int64_t>(ge::DT_BF16), "3510",
@@ -256,6 +256,13 @@ static EngramFetchTestParam g_testCases[] = {
      {8}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      512, 2147483648L, static_cast<int64_t>(ge::DT_BF16), "3510",
+     ge::GRAPH_FAILED, 0UL, "", {}},
+
+    {"fail_commContext_empty",
+     {0}, ge::DT_INT32, ge::FORMAT_ND,
+     {8}, ge::DT_INT32, ge::FORMAT_ND,
+     {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
+     512, 4, static_cast<int64_t>(ge::DT_BF16), "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 };
 
