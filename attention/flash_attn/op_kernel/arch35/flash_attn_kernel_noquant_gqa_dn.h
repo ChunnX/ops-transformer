@@ -9,20 +9,21 @@
  */
 
 /*!
- * \file flash_attn_kernel_noquant_gqa.h
- * \brief
+ * \file flash_attn_kernel_noquant_gqa_dn.h
+ * \brief FlashAttentionNoQuantGqaKernelDn —— Dn 路径专用 kernel 模板（独立类）。
  */
 
-#ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
-#define FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
+#ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_DN_H_
+#define FLASH_ATTN_KERNEL_NOQUANT_GQA_DN_H_
 
+#include "adv_api/activation/softmax.h" // SoftmaxConfig / SoftmaxMode，fia_public_define.h 依赖
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
-#include "flash_attn_block_cube_noquant_gqa.h"
-#include "flash_attn_block_vec_noquant_gqa.h"
+#include "flash_attn_block_cube_noquant_gqa_dn.h"
+#include "flash_attn_block_vec_noquant_gqa_dn.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "flash_attn_block_vec_noquant_flashdecode.h"
 
@@ -41,14 +42,14 @@ using namespace regbaseutil;
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernel {
+class FlashAttentionNoQuantGqaKernelDn {
 public:
     static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
     static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
+    static constexpr bool USE_DN = true;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
@@ -62,6 +63,7 @@ public:
                   "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
+
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
 
@@ -164,7 +166,7 @@ public:
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernel()
+    __aicore__ inline FlashAttentionNoQuantGqaKernelDn()
         : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
@@ -198,6 +200,7 @@ public:
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                      FA_AIC_CORE_NUM * 16U * sectionNum_);
         
+
         InitQCuSeqLensParser();
         InitKvCuSeqLensParser();
 
@@ -355,18 +358,15 @@ public:
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }
 
-    __aicore__ inline void CrossCoreBufferUnInit()
+    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        if ASCEND_IS_AIC {
-            bmm1Buffers.Get().WaitCrossCore();
-            bmm1Buffers.Get().WaitCrossCore();
-        }
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIC {
-                bmm2Buffers.Get().WaitCrossCore();
-                bmm2Buffers.Get().WaitCrossCore();
-            }
-        }
+        // AICPU metadata format: 16 fields per AIC core, 0-indexed (no leading CORE_ENABLE).
+        // Kernel field constants ( FLASH_ATTN_BN2_START_INDEX=1, etc.) are 1-based, so subtract 1.
+        return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+    }
+    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -390,7 +390,7 @@ public:
         }
     }
 
-    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0);
@@ -405,11 +405,6 @@ public:
             }
         }
     }
-    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
-    {
-        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
-    }
-
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
         if (constInfo.aicIdx >= constInfo.coreNum) {
@@ -597,10 +592,10 @@ public:
         }
 
         // 3. trans index of token to index of block
-        int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
-        int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         uint32_t s2StartWithSparse = 0U;
         uint32_t s2EndWithSparse = 0U;
+        int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
+        int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         // no valid token
         if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
@@ -714,7 +709,8 @@ public:
         info.bIdx = bN2Cur / constInfo.n2Size;
         info.n2Idx = bN2Cur % constInfo.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
+                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
             info.s1Idx = info.gS1Idx / constInfo.gSize;
         } else {
@@ -736,7 +732,16 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        info.isChangeBatch = false;
+        if (constInfo.isKvContinuous) {
+            info.isChangeBatch = false;
+        } else {
+            // for tensor-list
+            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
+                info.isChangeBatch = true;
+            } else {
+                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+            }
+        }
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
@@ -748,13 +753,8 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
-
-        if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
+        info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+        info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -884,6 +884,7 @@ public:
         fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
     }
 
+
     __aicore__ inline void Process()
     {
         if (constInfo.aicIdx < constInfo.coreNum) {
@@ -914,8 +915,8 @@ public:
             CrossCoreBufferUnInit();
         }
     }
-}; // FlashAttentionNoQuantGqaKernel
+}; // FlashAttentionNoQuantGqaKernelDn
 
 } // namespace BaseApi
 
-#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
+#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_DN_H_
