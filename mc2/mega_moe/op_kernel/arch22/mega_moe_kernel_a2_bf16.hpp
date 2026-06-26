@@ -1119,12 +1119,6 @@ private:
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, params.EP);
         }
 
-        int32_t prevSumBeforeRank = 0;
-        int32_t prevSum = 0;
-        if (coreIdx < params.EP) {
-            prevSum = preSumBeforeRankForDispatch(coreIdx * params.expertPerRank);
-        }
-
         AscendC::SyncAll<true>();
 
         AscendC::GlobalTensor<int32_t> ExpertTokenNums;
@@ -1138,7 +1132,7 @@ private:
 
         // prevGroupSum1:   本 core 所处理的 dstEpIdx 在 peer mem 中已接收的 token 基准偏移
         // prevGroupSum2:   rank 的 peer mem 中已接收 token 的基准偏移（所有 core 共享）
-        uint32_t prevGroupSum1 = 0;
+        uint32_t prevGroupSum1Arr[MAX_RANK_SIZE] = {0};
         uint32_t dequantSum1 = 0;
         uint32_t dequantSum2 = 0;
         uint32_t prevGroupSum2 = 0;
@@ -1154,7 +1148,8 @@ private:
             uint32_t currentMSend = 0;
 
             for (int32_t dstEpIdx = static_cast<int32_t>(coreIdx); dstEpIdx < params.EP; dstEpIdx += static_cast<int32_t>(coreNum)) {
-                uint32_t rowStart = prevGroupSum1 +
+                uint32_t arrIdx = static_cast<uint32_t>(dstEpIdx) / coreNum;
+                uint32_t rowStart = prevGroupSum1Arr[arrIdx] +
                     (rank == 0 ? 0u : static_cast<uint32_t>(
                         cumsumMM(tokenPerExpertLayout(rank - 1, dstEpIdx, groupIdx))));
                 currentMSend = static_cast<uint32_t>(
@@ -1164,8 +1159,7 @@ private:
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
-                    uint32_t rowSrc = prevSum;
-                    prevSum += rows;
+                    uint32_t rowSrc = preSumBeforeRankForDispatch(dstEpIdx * params.expertPerRank + groupIdx);
                     AscendC::GlobalTensor<ElementA> gmSrcA;
                     gmSrcA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(
                         shmem.windowsOutAddr() + peermemInfo.offsetA));
@@ -1181,6 +1175,7 @@ private:
                         static_cast<int32_t>(rows), params.problemShape.k(),
                         dstEpIdx, groupIdx, static_cast<int32_t>(rowStart), params);
                 }
+                prevGroupSum1Arr[arrIdx] += currentMSend;
             }
 
             // ── RECV 阶段：各 core 并行等 epoch flag ──
@@ -1204,7 +1199,6 @@ private:
             AscendC::SyncAll<true>();  // 等待所有 core 接收完成，后续 GEMM 可用
 
             // 更新下一轮 groupIdx 的基准偏移
-            prevGroupSum1 += currentMSend;  // dstEpIdx 累计收到的 token 数
             prevGroupSum2 += currentRankM;  // rank 累计收到的 token 数
 
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
