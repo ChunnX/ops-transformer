@@ -43,7 +43,6 @@ private:
 
     TPipe *pipe_{nullptr};
     int64_t blockIdx_{0};
-    int64_t dSplitCoef_{1};
     TQue<QuePosition::VECIN, 1> dyInQue_;
     TQue<QuePosition::VECIN, 1> cosInQue_;
     TQue<QuePosition::VECIN, 1> sinInQue_;
@@ -74,7 +73,6 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(GM_ADDR d
         return;
     }
     this->blockIdx_ = GetBlockIdx();
-    this->dSplitCoef_ = tilingData_->dSplitCoef;
 
     this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
                                                        static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
