@@ -349,8 +349,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         kernel(params);
     }
     else if constexpr (isInt8) {
-        epilogueCoreNum = aivNum / 2;
-        epilogueGranularity = expertPerRank - 1;
+        epilogueCoreNum = aivNum / 2; // INT8 场景仅使用一半 AIV 参与 epilogue
+        epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 1) : 1u;
 
         using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2Int8<BlockMmad, BlockScheduler, ElementGroupList,
                                                                            BlockEpilogue1, BlockEpilogue2>;
@@ -374,8 +374,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         MatmulKernel kernel(params);
         kernel(params);
     } else {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum);
-        epilogueGranularity = expertPerRank - 2;
+        epilogueCoreNum = static_cast<uint32_t>(aivNum); // 所有 AIV 参与
+        epilogueGranularity = (expertPerRank > 2) ? static_cast<uint32_t>(expertPerRank - 2) : 1u;
         using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2BF16<BlockMmad, BlockScheduler, ElementGroupList,
                                                                            BlockEpilogue1, BlockEpilogue2>;
         typename MatmulKernel::Params params{
