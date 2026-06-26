@@ -75,8 +75,6 @@ def _normalize_attr_dtype(dtype, default=None):
 def _normalize_wrapper_dtype(dtype):
     if dtype is None:
         return None
-    if not isinstance(dtype, torch.dtype):
-        raise TypeError(f"dtype attr must be a torch.dtype, but got {type(dtype)}.")
     ge_dtype = _normalize_attr_dtype(dtype)
     if ge_dtype in (GE_DTYPE_FLOAT, GE_DTYPE_FLOAT8_E5M2, GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E8M0):
         return ge_dtype + ACL_DTYPE_OFFSET
@@ -224,10 +222,10 @@ def grouped_matmul_activation_quant(
     round_mode: str = "rint",
     scale_alg: int = 0,
     dst_type_max: float = 0.0,
-    x_dtype: Optional[torch.dtype] = None,
-    weight_dtype: Optional[torch.dtype] = None,
-    weight_scale_dtype: Optional[torch.dtype] = None,
-    x_scale_dtype: Optional[torch.dtype] = None,
+    x_dtype: Optional[int] = None,
+    weight_dtype: Optional[int] = None,
+    weight_scale_dtype: Optional[int] = None,
+    x_scale_dtype: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """GroupedMatmulActivationQuant torch接口，封装 aclnnGroupedMatmulActivationQuantWeightNz。
 
@@ -256,10 +254,10 @@ def grouped_matmul_activation_quant(
         round_mode (str): 舍入模式，当前仅支持 ``"rint"``。
         scale_alg (int): scale算法，当前支持0或1。
         dst_type_max (float): 预留参数，当前仅支持0.0。
-        x_dtype (torch.dtype, optional): x的dtype wrapper覆盖值。
-        weight_dtype (torch.dtype, optional): weight的dtype wrapper覆盖值。
-        weight_scale_dtype (torch.dtype, optional): weight_scale的dtype wrapper覆盖值。
-        x_scale_dtype (torch.dtype, optional): x_scale的dtype wrapper覆盖值。
+        x_dtype (int, optional): x的dtype wrapper覆盖值，传入torch_npu dtype枚举。
+        weight_dtype (int, optional): weight的dtype wrapper覆盖值，传入torch_npu dtype枚举。
+        weight_scale_dtype (int, optional): weight_scale的dtype wrapper覆盖值，传入torch_npu dtype枚举。
+        x_scale_dtype (int, optional): x_scale的dtype wrapper覆盖值，传入torch_npu dtype枚举。
 
     Returns:
         Tuple[Tensor, Tensor]: ``(y, y_scale)``，其中 ``y`` shape为 ``(M, N)``，
@@ -269,10 +267,6 @@ def grouped_matmul_activation_quant(
     weight_scale = _normalize_tensor_list(weight_scale, "weight_scale")
     bias = _normalize_bias(bias)
     y_dtype = None if y_dtype is None else _normalize_wrapper_dtype(y_dtype) - ACL_DTYPE_OFFSET
-    x_dtype = _normalize_wrapper_dtype(x_dtype)
-    weight_dtype = _normalize_wrapper_dtype(weight_dtype)
-    weight_scale_dtype = _normalize_wrapper_dtype(weight_scale_dtype)
-    x_scale_dtype = _normalize_wrapper_dtype(x_scale_dtype)
     return torch.ops.cann_ops_transformer.grouped_matmul_activation_quant(
         x, group_list, weight, weight_scale, activation_type, bias=bias, x_scale=x_scale,
         group_list_type=group_list_type,
