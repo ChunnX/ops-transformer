@@ -115,24 +115,39 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::SplitUb()
 {
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
     int64_t cosTypeSize = ge::GetSizeByDataType(cosDtype_);
-    int64_t maxTypeSize = std::max(typeSize, cosTypeSize);
-    int64_t dAlign = Ops::Base::CeilAlign(sliceLength_ * maxTypeSize / dSplitCoef_, blockSize_) * dSplitCoef_;
 
-    int64_t canLoadDNum = Ops::Base::FloorDiv(ubSize_, dAlign);
-    if (canLoadDNum < MIN_UB_LOAD_D_NUM + MIN_UB_LOAD_D_NUM) {
-        OP_LOGE(context_->GetNodeName(), "ubSize_ can't load 8 d_, d_ = %ld.", sliceLength_);
+    // Per-type aligned row sizes (in elements), matching kernel's dAlignLenDy/dAlignLenCos
+    int64_t dAlignDy = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
+    int64_t dAlignCos = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / cosTypeSize) * dSplitCoef_;
+    int64_t dSizeDy = dAlignDy * typeSize;    // bytes per dy/dx row
+    int64_t dSizeCos = dAlignCos * cosTypeSize; // bytes per cos/sin row
+
+    // Unified overhead: how many "dy-row equivalents" one cos/sin row occupies
+    //   UB = 4 * ubFactorS * (ubFactorN * dSizeDy + dSizeCos) <= ubSize
+    //   => ubFactorS * (ubFactorN + CeilDiv(dSizeCos, dSizeDy)) <= ubSize / (4 * dSizeDy)
+    int64_t effectiveCosOverhead = std::max(int64_t(1), Ops::Base::CeilDiv(dSizeCos, dSizeDy));
+    int64_t baseBlockInUb =
+        Ops::Base::FloorAlign(static_cast<int64_t>(ubSize_ / MIN_UB_LOAD_D_NUM), blockSize_) / dSizeDy;
+    if (baseBlockInUb < effectiveCosOverhead + 1) {
+        OP_LOGE(context_->GetNodeName(),
+                "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld, baseBlockInUb=%ld.",
+                sliceLength_, dSizeDy, dSizeCos, baseBlockInUb);
         return ge::GRAPH_FAILED;
     }
-    canLoadDNum = canLoadDNum / MIN_UB_LOAD_D_NUM;
-    int64_t ubLoopNum = Ops::Base::CeilDiv(n_, (canLoadDNum - 1));
+
+    // N split
+    int64_t ubLoopNum = Ops::Base::CeilDiv(n_, (baseBlockInUb - effectiveCosOverhead));
     ubFactorN_ = std::min(Ops::Base::CeilDiv(n_, ubLoopNum), MAX_COPY_BLOCK_COUNT / dSplitCoef_);
     ubLoopNumN_ = Ops::Base::CeilDiv(n_, ubFactorN_);
     ubTailFactorN_ = (n_ % ubFactorN_ == 0) ? ubFactorN_ : n_ % ubFactorN_;
-    int64_t ubFactorS = Ops::Base::FloorDiv(canLoadDNum, n_ + 1);
+
+    // S split
+    int64_t ubFactorS = Ops::Base::FloorDiv(baseBlockInUb, ubFactorN_ + effectiveCosOverhead);
     ubFactorS_ = (ubFactorS == 0) ? 1 : ubFactorS;
 
-    int64_t dyBytes = 4 * ubFactorS_ * ubFactorN_ * dAlign;
-    int64_t cosBytes = 4 * ubFactorS_ * dAlign;
+    // Verify UB capacity
+    int64_t dyBytes = MIN_UB_LOAD_D_NUM * ubFactorS_ * ubFactorN_ * dSizeDy;
+    int64_t cosBytes = MIN_UB_LOAD_D_NUM * ubFactorS_ * dSizeCos;
     OP_CHECK_IF(dyBytes + cosBytes > static_cast<int64_t>(ubSize_),
                 OP_LOGE(context_->GetNodeName(), "UB overflow: need %ld > %ld.", dyBytes + cosBytes, ubSize_),
                 return ge::GRAPH_FAILED);
