@@ -1,0 +1,470 @@
+# aclnn 算子 aclnnMegaMoe 用例设计文件
+# 配合 generate_megamoe.py 自定义参数约束插件使用
+# 二段式中第一段函数: aclnnStatus aclnnMegaMoeGetWorkspaceSize(...)
+# 用法: atk case -f megamoe.yaml -p generate_megamoe.py
+name: benchmark_function_name
+api_type: function
+aclnn_name: aclnnMegaMoe
+extra_numbers: 0
+generate: megamoe
+standard:
+  acc:
+    cv_fused_double_benchmark:
+      max_re_ratio: 5
+      avg_re_ratio: 1.5
+      root_mean_squared_ratio: 1.5
+  perf: [0.95, 0.95]
+outputs: null
+inputs:
+# ============================================================
+# 0. context — 通信域信息
+# ============================================================
+- name: context
+  type: tensor
+  dtypes:
+    values: [int32]
+  ranges:
+    valid:
+      values: [[0, 1]]
+  shapes:
+    dim_numbers:
+      values: [1]
+    dim_values:
+      values: [[27, 27]]
+
+# ============================================================
+# 1. x — 输入 token 数据
+#     shape[0]=bs, shape[1]=hidden_size
+#     bs ∈ {1, 4, 17, 32, 128, 512, 513, 2048, 4096}
+#     hidden_size ∈ {512, 1024, 4096, 6144, 7168, 8192}
+# ============================================================
+- name: x
+  type: tensor
+  dtypes:
+    values: [bf16]
+  ranges:
+    valid:
+      values: [[-1, 1]]
+  shapes:
+    dim_numbers:
+      values: [2]
+    dim_values:
+      values: [[1, 4096], [512, 8192]]
+
+# ============================================================
+# 2. topk_ids — topk 专家索引
+#     shape=[bs, topk]
+#     topk ∈ {1, 6, 7, 8, 16}
+# ============================================================
+- name: topk_ids
+  type: tensor
+  dtypes:
+    values: [int32]
+  ranges:
+    valid:
+      values: [[0, 255]]
+  shapes:
+    dim_numbers:
+      values: [2]
+    dim_values:
+      values:
+        - [1, 16384]
+        - [1, 16]
+
+# ============================================================
+# 3. topk_weights — topk 权重
+#     shape=[bs, topk]
+# ============================================================
+- name: topk_weights
+  type: tensor
+  dtypes:
+    values: [fp32]
+  ranges:
+    valid:
+      values: [[-1, 1]]
+  shapes:
+    dim_numbers:
+      values: [2]
+    dim_values:
+      values:
+        - [1, 16384]
+        - [1, 16]
+
+# ============================================================
+# 4. weight1 — GMM1 权重 (TensorList)
+#     逻辑 dtype: int4/int8/bf16 (插件负责映射)
+#     YAML 中列出对应的存储 dtype: int32(=int4), int8, bf16
+#     shape=[hidden_size, P1] where P1 = N(非量化) or N/8(int4) or N(int8)
+#     list_len = pe = moe_expert_num / ep_world_size
+# ============================================================
+- name: weight1
+  type: tensors
+  dtypes:
+    values: [int32, int8, bf16]
+  ranges:
+    valid:
+      values: [[-8, 7]]
+  shapes:
+    dim_numbers:
+      values: [2]
+    dim_values:
+      values:
+        - [64, 8192]
+        - [64, 8192]
+  tuple_numbers:
+    values: [1, 128]
+
+# ============================================================
+# 5. weight2 — GMM2 权重 (TensorList)
+#     shape=[N//2, P2]
+# ============================================================
+- name: weight2
+  type: tensors
+  dtypes:
+    values: [int32, int8, bf16]
+  ranges:
+    valid:
+      values: [[-8, 7]]
+  shapes:
+    dim_numbers:
+      values: [2]
+    dim_values:
+      values:
+        - [32, 4096]
+        - [64, 8192]
+  tuple_numbers:
+    values: [1, 128]
+
+# ============================================================
+# 6. weight_scales1 — GMM1 权重量化 scale (TensorList, 可选)
+#     量化时 (int4/int8) 保留，非量化时 (bf16) 移除
+#     shape=[N]
+# ============================================================
+- name: weight_scales1
+  type: tensors
+  dtypes:
+    values: [int64]
+  ranges:
+    valid:
+      values: [[0, 1]]
+  shapes:
+    dim_numbers:
+      values: [1]
+    dim_values:
+      values:
+        - [64, 8192]
+  tuple_numbers:
+    values: [1, 128]
+
+# ============================================================
+# 7. weight_scales2 — GMM2 权重量化 scale (TensorList, 可选)
+#     shape=[hidden_size]
+# ============================================================
+- name: weight_scales2
+  type: tensors
+  dtypes:
+    values: [int64]
+  ranges:
+    valid:
+      values: [[0, 1]]
+  shapes:
+    dim_numbers:
+      values: [1]
+    dim_values:
+      values:
+        - [64, 8192]
+  tuple_numbers:
+    values: [1, 128]
+
+# ============================================================
+# 8. bias1 — GMM1 bias (TensorList, 仅 int4 时保留)
+#     shape=[N]
+# ============================================================
+- name: bias1
+  type: tensors
+  dtypes:
+    values: [fp32]
+  ranges:
+    valid:
+      values: [[-1, 1]]
+  shapes:
+    dim_numbers:
+      values: [1]
+    dim_values:
+      values:
+        - [64, 8192]
+  tuple_numbers:
+    values: [1, 128]
+
+# ============================================================
+# 9. bias2 — GMM2 bias (TensorList, 仅 int4 时保留)
+#     shape=[hidden_size]
+# ============================================================
+- name: bias2
+  type: tensors
+  dtypes:
+    values: [fp32]
+  ranges:
+    valid:
+      values: [[-1, 1]]
+  shapes:
+    dim_numbers:
+      values: [1]
+    dim_values:
+      values:
+        - [64, 8192]
+  tuple_numbers:
+    values: [1, 128]
+
+# ============================================================
+# 10. x_active_mask — token 活跃掩码 (可选)
+#      shape=[bs, topk]
+#      ones 映射: range_values=[-1, -1]
+# ============================================================
+- name: x_active_mask
+  type: tensor
+  dtypes:
+    values: [int8]
+  ranges:
+    valid:
+      values: [[-2, 1]]
+  shapes:
+    dim_numbers:
+      values: [2]
+    dim_values:
+      values:
+        - [1, 16384]
+        - [1, 16]
+
+# ============================================================
+# 11. scales — 专家权重 (暂不支持，固定传入)
+#      shape=[pe, hidden_size]
+# ============================================================
+- name: scales
+  type: tensor
+  dtypes:
+    values: [fp32]
+  ranges:
+    valid:
+      values: [[-1, 1]]
+  shapes:
+    dim_numbers:
+      values: [2]
+    dim_values:
+      values: [[1, 128], [64, 8192]]
+
+# ============================================================
+# 12. moe_expert_num — 总专家数
+#      ∈ {16, 32, 256, 512, 1024}
+# ============================================================
+- name: moe_expert_num
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [16, 32, 256, 512, 1024]
+
+# ============================================================
+# 13. ep_world_size — EP 并行域大小 (固定 16)
+# ============================================================
+- name: ep_world_size
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [16]
+
+# ============================================================
+# 14. ccl_buffer_size — CCL 通信缓冲区大小
+#      固定 -1 (自动计算)
+# ============================================================
+- name: ccl_buffer_size
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [-1]
+
+# ============================================================
+# 15. max_recv_token_num — 最大接收 token 数
+#      插件计算: bs * topk * ep_world_size * 2
+# ============================================================
+- name: max_recv_token_num
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [0]
+
+# ============================================================
+# 16. dispatch_quant_mode — 分发量化模式
+#      插件计算: 量化→2, 非量化→0
+# ============================================================
+- name: dispatch_quant_mode
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [0, 2]
+
+# ============================================================
+# 17. dispatch_quant_out_dtype — 分发量化输出数据类型
+#      插件计算: 量化→2, 非量化→28
+# ============================================================
+- name: dispatch_quant_out_dtype
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [2, 28]
+
+# ============================================================
+# 18. combine_quant_mode — 合并量化模式
+#      固定 0
+# ============================================================
+- name: combine_quant_mode
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [0]
+
+# ============================================================
+# 19. comm_alg — 通信算法
+#      固定 ""
+# ============================================================
+- name: comm_alg
+  type: attr
+  dtypes:
+    values: [string]
+  ranges:
+    valid:
+      values: [""]
+
+# ============================================================
+# 20. num_max_tokens_per_rank — 每 rank 最大 token 数
+#      ≤0 时取 bs, 否则取配置值
+# ============================================================
+- name: num_max_tokens_per_rank
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [0]
+
+# ============================================================
+# 21. activation — 激活函数类型
+#      固定 "swiglu"
+# ============================================================
+- name: activation
+  type: attr
+  dtypes:
+    values: [string]
+  ranges:
+    valid:
+      values: ["swiglu"]
+
+# ============================================================
+# 22. activation_clamp — 激活函数 clamp 值
+#      "max" → 3.4028235e+38
+# ============================================================
+- name: activation_clamp
+  type: attr
+  dtypes:
+    values: [float]
+  ranges:
+    valid:
+      values: [3.4028235e+38]
+
+# ============================================================
+# 23. activation_out_dtype — 激活函数输出数据类型
+#      固定 28 (DT_UNDEFINED)
+# ============================================================
+- name: activation_out_dtype
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [28]
+
+# ============================================================
+# 24. transpose_weight1 — weight1 是否转置
+#      固定 false
+# ============================================================
+- name: transpose_weight1
+  type: attr
+  dtypes:
+    values: [bool]
+  ranges:
+    valid:
+      values: [false]
+
+# ============================================================
+# 25. transpose_weight2 — weight2 是否转置
+#      固定 false
+# ============================================================
+- name: transpose_weight2
+  type: attr
+  dtypes:
+    values: [bool]
+  ranges:
+    valid:
+      values: [false]
+
+# ============================================================
+# 26. weight1_interleave — weight1 交错模式
+#      固定 0
+# ============================================================
+- name: weight1_interleave
+  type: attr
+  dtypes:
+    values: [int64_t]
+  ranges:
+    valid:
+      values: [0]
+
+# ============================================================
+# 27. y — 输出 (output placeholder)
+#     shape=[bs, hidden_size], dtype=x_dtype
+# ============================================================
+- name: y
+  type: tensor
+  dtypes:
+    values: [bf16]
+  ranges:
+    valid:
+      values: [[-1, 1]]
+  shapes:
+    dim_numbers:
+      values: [2]
+    dim_values:
+      values:
+        - [1, 16384]
+        - [64, 8192]
+
+# ============================================================
+# 28. expert_token_nums — 每专家 token 数 (output placeholder)
+#     shape=[pe], dtype=int32
+# ============================================================
+- name: expert_token_nums
+  type: tensor
+  dtypes:
+    values: [int32]
+  ranges:
+    valid:
+      values: [[0, 16384]]
+  shapes:
+    dim_numbers:
+      values: [1]
+    dim_values:
+      values:
+        - [1, 256]
