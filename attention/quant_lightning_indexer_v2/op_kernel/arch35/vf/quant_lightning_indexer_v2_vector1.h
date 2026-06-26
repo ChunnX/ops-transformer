@@ -23,6 +23,15 @@
 #endif
 
 namespace vector1 {
+template <>
+struct UIntSortTraits<bfloat16_t> {
+    using UInt = uint16_t;
+    static constexpr UInt ZERO      = 0x0000;
+    static constexpr UInt SIGN_MASK = 0x8000;
+    static constexpr UInt NAN_MASK  = 0xFFC0;
+    static constexpr UInt ALL_ONE   = 0xFFFF;
+};
+
 template <typename FloatT>
 struct UIntSortConstCtx {
     using Traits = UIntSortTraits<FloatT>;
