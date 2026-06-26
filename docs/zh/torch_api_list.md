@@ -18,7 +18,8 @@
 
 |    接口名   |   说明     | 确定性说明 |
 | ----------- | ------------------- | ------------------- |
-|[flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/npu_flash_attn.md)|完成xx计算。|xx|
+|[flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)|FlashAttention非量化注意力计算。|默认支持确定性计算|
+|[flash_attn_metadata](../../torch_extension/cann_ops_transformer/docs/zh/flash_attn.md)|生成FlashAttn主算子使用的任务切分metadata。|默认支持确定性计算|
 |[lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)|lightning_indexer接口的前置接口，用于计算lightning_indexer的负载均衡。|默认支持确定性计算|
 |[mixed_quant_sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md)|mixed_quant_sparse_flash_mla接口的前置接口，用于计算mixed_quant_sparse_flash_mla的负载均衡。|默认支持确定性计算|
 |[quant_lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/quant_lightning_indexer.md)|quant_lightning_indexer接口的前置接口，用于计算quant_lightning_indexer的负载均衡。|默认支持确定性计算|
