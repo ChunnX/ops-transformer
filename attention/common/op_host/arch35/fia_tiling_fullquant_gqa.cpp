@@ -479,6 +479,7 @@ void FiaTilingFullQuantGqaArch35::SplitPolicy()
         flashDecodeFlag_ = (result.fdRes.fdNum > 0);
     }
 
+<<<<<<< HEAD
     fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) ||
                                    IsActualSeqLengthsKVHasZero(baseInfo));
 }
@@ -492,6 +493,9 @@ bool FiaTilingFullQuantGqaArch35::IsActualSeqLengthsKVHasZero(const split_core_v
         }
     }
     return false;
+=======
+    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo));
+>>>>>>> delete redundant dealzero & opt s2 loop
 }
 
 bool FiaTilingFullQuantGqaArch35::IsExistRowInvalid(const split_core_v2::BaseInfo &baseInfo)
