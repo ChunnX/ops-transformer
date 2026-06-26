@@ -34,10 +34,10 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t>;
 
-// 预留：XType OutputType TopkWeightsType Weight1Type Weight2Type
+// 预留：XType OutputType TopkWeightsType Weight1Type
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, \
-                                  typename Weight1Type, typename Weight2Type, int32_t QuantMode, int32_t CombineQuantMode
-#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, Weight2Type, QuantMode, CombineQuantMode
+                                  typename Weight1Type, int32_t QuantMode, int32_t CombineQuantMode
+#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode
 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
@@ -49,6 +49,7 @@ public:
     using ActivationType = typename std::conditional<
         Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value, uint8_t, QuantOutType>::type;
     using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
+    using Weight2Type = Weight1Type;  // weight1 和 weight2 类型相同，语义别名
     struct ExpertLoopState {
         TupleShape problemShape;
         BlockOffset baseOffset;
