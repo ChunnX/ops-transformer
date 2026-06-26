@@ -197,6 +197,9 @@ transformer-pfa_unevolved@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch35/
                 - ops/ops-transformer/attention/prompt_flash_attention/README.md
                 - ops/ops-transformer/attention/prompt_flash_attention/CMakeLists.txt
+                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_split_Bbn2s2_Us2.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload_dd.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload.h
             opensource_style: null 
             kernel_style: null 
         unrelease:
@@ -279,9 +282,6 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score_v3.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/CMakeLists.txt
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_split_Bbn2s2_Us2.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload_dd.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_cube.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_vec.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h
