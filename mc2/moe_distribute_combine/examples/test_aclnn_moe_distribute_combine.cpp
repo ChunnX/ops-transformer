@@ -280,7 +280,7 @@ int launchOneThreadDispatchAndCombine(Args &args)
     // 调用combine算子第一阶段接口
     ret = aclnnMoeDistributeCombineGetWorkspaceSize(expandX, expertIds, expandIdx, epRecvCounts, expertScales, tpRecvCounts,
         nullptr, nullptr, nullptr, nullptr, nullptr,
-        hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
+        hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, "", 0, 0,
         expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode, groupListType,
         x, &combineWorkspaceSize, &combineExecutor);
     CHECK_RET(
@@ -521,7 +521,7 @@ int main(int argc, char *argv[])
     }
     if (!rank_table_file && !first_rank_id) {
         EP_WORLD_SIZE = 8;
-        TP_WORLD_SIZE = 2;
+        TP_WORLD_SIZE = 1;
         DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
         LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
         int ret = run_example_on_A3A5();

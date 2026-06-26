@@ -102,7 +102,7 @@ private:
 
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> l1PBuffers;
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::INNER_CORE_SYNC> l1RightBuffers;
     /* GM信息 */
     GlobalTensor<uint32_t> metadataGm;
@@ -312,9 +312,9 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-    l1PBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
-    l1PBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     if ASCEND_IS_AIC {
         l1RightBuffers.Init(l1BufferManager, mm1RightSize);
