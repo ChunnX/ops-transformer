@@ -981,6 +981,8 @@ public:
         if (unlikely(runInfo.actVecMSize == 0)) {
             return;
         }
+        uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
+        int64_t calculateSize = vecMSize * fp32BaseSize;
         int64_t calculateSize = runInfo.actVecMSize * fp32BaseSize;
         // 是否要改成halfMRealSize
         int64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * fp32BaseSize + runInfo.vecMbaseIdx * fp32BaseSize;
@@ -990,16 +992,15 @@ public:
     }
 
     __aicore__ inline void Bmm2ResForFDCopyOut(const RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
-                                               uint32_t mDealSize)
+                                               uint32_t mDealSize, uint32_t gmDealRowCount)
     {
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
         uint64_t gmOffset =
             runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
-
         DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = mDealSize;
+        dataCopyParams.blockCount = gmDealRowCount;  // 修改为实际拷出的行数
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
         dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
