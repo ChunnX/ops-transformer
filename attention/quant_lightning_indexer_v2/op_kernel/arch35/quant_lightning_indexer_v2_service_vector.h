@@ -768,7 +768,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 
             if (returnValueFlag) {
                 WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-                vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
+                liV2Vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
                 // 无效值刷0
                 if (validS2Len < topkCount_) {
                     uint64_t mask[1];
