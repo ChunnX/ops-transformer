@@ -404,8 +404,8 @@ private:
         DataCopyParams lensCopyParams = {1, inBlkCnt, 0, 0};
 
         for (int i = 0; i < curblockSize; i++) {
-            uint32_t scroffset = i * eleNumPerBlk;
-            uint32_t dstoffset = i * dstTokenStrideBytes;
+            uint64_t scroffset = i * eleNumPerBlk;
+            uint64_t dstoffset = i * dstTokenStrideBytes;
 
             uint32_t ubLoops = CeilDivision(fracBlockSize, maxBlkPerLoop);
             for (int j = 0; j < ubLoops; j++) {
