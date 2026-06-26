@@ -268,7 +268,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(const a
     size_t expectedStorageDim =
         isWeightNzMultiTensor ? weightNzMultiTensorStorageDim : QUANT_WEIGHTNZ_STORAGE_DIM;
     if (weightStorageShapeDim != expectedStorageDim) {
-        OP_LOGW("[GMM][WeightNzSmsDebug] CheckWeightStorageShape mismatch: apiVersion=%d, xTensorNum=%zu, "
+        OP_LOGI("zzzlog CheckWeightStorageShape mismatch: apiVersion=%d, xTensorNum=%zu, "
                 "weightTensorNum=%zu, yTensorNum=%zu, isLayout=%d, isWeightNzMultiTensor=%d, actualDim=%zu, "
                 "expectedDim=%zu, weightStorageShape=[%s], weightStorageFormat=%s.",
                 static_cast<int32_t>(gmmParams_.apiVersion), GetInputTensorSize(gmmParams_.x),
