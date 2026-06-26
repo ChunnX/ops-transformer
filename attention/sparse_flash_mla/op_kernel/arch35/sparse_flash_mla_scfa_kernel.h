@@ -87,6 +87,8 @@ private:
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
     __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo);
+    __aicore__ inline int64_t ConvertS2MetadataBlockToToken(
+        const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx);
     __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo,
         int64_t s2StartPoint, int64_t s2EndPoint,
         bool isFirstS2RangeTask, bool isLastS2RangeTask);
@@ -537,9 +539,10 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                 if (!s2NoNeedCalc) {
                     bool isFirstS2RangeTask = (bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx);
                     bool isLastS2RangeTask = (lastBN && gS1Index == runParam.gs1LoopEndIdx - 1);
-                    s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo,
-                        static_cast<int64_t>(s2StartIdx) * constInfo.s2BaseSize,
-                        static_cast<int64_t>(s2EndIdx) * constInfo.s2BaseSize,
+                    int64_t s2StartPoint = ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2StartIdx);
+                    int64_t s2EndPoint = (isLastS2RangeTask && s2EndIdx == 0) ? 0 :
+                        ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2EndIdx);
+                    s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo, s2StartPoint, s2EndPoint,
                         isFirstS2RangeTask, isLastS2RangeTask);
                 } else {
                     runParam.isS2Split = false;
@@ -723,6 +726,23 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
     fdRunInfo.workspaceNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_WORKSPACE_NUM_INDEX, true));
     fdRunInfo.mStartIdx = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_START_INDEX, true));
     fdRunInfo.mNum = metadataGm.GetValue(GetAttrAbsIndex(aivIdx, FD_M_NUM_INDEX, true));
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int64_t SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(
+    const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx)
+{
+    int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
+    int64_t oriLen = runParam.s2OriLineEndIdx - runParam.s2OriLineStartIdx;
+    int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
+    int64_t oriBlockNum = (oriLen + s2BaseSize - 1) / s2BaseSize;
+    int64_t blockIdx = static_cast<int64_t>(s2BlockIdx);
+    if (blockIdx <= oriBlockNum) {
+        int64_t oriToken = blockIdx * s2BaseSize;
+        return oriToken < oriLen ? oriToken : oriLen;
+    }
+    int64_t cmpToken = (blockIdx - oriBlockNum) * s2BaseSize;
+    return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
