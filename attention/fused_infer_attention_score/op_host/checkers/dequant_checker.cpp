@@ -1563,7 +1563,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
             std::to_string(queryInputShape.GetDim(DIM_NUM_1)) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
             actualShape.c_str(),
-            ("In FP8 GQA fullquant scenario, the shape of dequant_scale_query should be " + expectedShape + " (NT layout).").c_str());
+            ("In FP8 GQA fullquant scenario, "
+             "the shape of dequant_scale_query should be " + expectedShape + " (NT layout).").c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -1592,7 +1593,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
             std::to_string(fiaInfo.blockSize) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
             actualShape.c_str(),
-            ("In FP8 GQA fullquant scenario, the shape of key_antiquant_scale should be " + expectedShape + " (BnNBs layout).").c_str());
+            ("In FP8 GQA fullquant scenario, "
+             "the shape of key_antiquant_scale should be " + expectedShape + " (BnNBs layout).").c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -1628,7 +1630,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeFP8GQA(const FiaTilingInfo
         std::string expectedShape = "[" + std::to_string(fiaInfo.n2Size) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
             actualShape.c_str(),
-            ("In FP8 GQA fullquant scenario, the shape of value_antiquant_scale should be " + expectedShape + " (N layout).").c_str());
+            ("In FP8 GQA fullquant scenario, "
+             "the shape of value_antiquant_scale should be " + expectedShape + " (N layout).").c_str());
         return ge::GRAPH_FAILED;
     }
 
