@@ -280,10 +280,7 @@ ge::graphStatus GMMTiling::GMMGetTensorShapeSplitM(const gert::TilingContext* co
     if (isSingleX_ && isSingleWeight_ && isSingleY_) {  // split M, s-s-s
       return SplitMSingleXSingleWeightSingleY(xShape, wShape);
     }
-    if (isSingleX_ && !isSingleWeight_ && isSingleY_) {  // split M, s-m-s
-      return SplitMSingleXSeparatedWeight(context, xShape);
-    }
-    if (isSingleX_ && !isSingleWeight_ && !isSingleY_) {  // splitM, s-m-m
+    if (isSingleX_ && !isSingleWeight_) {  // split M, s-m-s/s-m-m
       return SplitMSingleXSeparatedWeight(context, xShape);
     }
     if (!isSingleX_ && !isSingleWeight_ && isSingleY_) {  // split M, m-m-s

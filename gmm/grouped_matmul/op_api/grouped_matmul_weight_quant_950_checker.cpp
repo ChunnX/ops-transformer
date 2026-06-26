@@ -80,11 +80,50 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4() const
     return (xDtype_ == ge::DT_FLOAT16 || xDtype_ == ge::DT_BF16) && weightDtype_ == ge::DT_INT4;
 }
 
+bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsWeightNzMxSingleMultiSingle() const
+{
+    return gmmParams_.apiVersion == gmm::GMMApiVersion::WeightNz && gmmParams_.groupType == SPLIT_M &&
+           gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() > 1 && gmmParams_.y->Size() == 1;
+}
+
+bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsWeightNzSingleMultiSingleScenario() const
+{
+    const bool hasWeightNzStorageFormat = gmmParams_.weight->Size() > 0 && (*gmmParams_.weight)[0] != nullptr &&
+                                          (*gmmParams_.weight)[0]->GetStorageFormat() ==
+                                              op::Format::FORMAT_FRACTAL_NZ;
+    return gmmParams_.apiVersion == GMMApiVersion::WeightNz && gmmParams_.groupType == SPLIT_M &&
+           gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() > 1 && gmmParams_.y->Size() == 1 &&
+           hasWeightNzStorageFormat && gmmParams_.biasOptional == nullptr;
+}
+
+size_t AclnnGroupedMatmulWeightQuantDAV3510Checker::GetLoopSize() const
+{
+    return IsWeightNzSingleMultiSingleScenario() ? gmmParams_.weight->Size() : gmmParams_.x->Size();
+}
+
+size_t AclnnGroupedMatmulWeightQuantDAV3510Checker::GetXTensorIndex(size_t index) const
+{
+    return IsWeightNzSingleMultiSingleScenario() ? 0 : index;
+}
+
+size_t AclnnGroupedMatmulWeightQuantDAV3510Checker::GetWeightTensorIndex(size_t index) const
+{
+    return index;
+}
+
+size_t AclnnGroupedMatmulWeightQuantDAV3510Checker::GetYTensorIndex(size_t index) const
+{
+    return IsWeightNzSingleMultiSingleScenario() ? 0 : index;
+}
+
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorNotNull(size_t idx) const
 {
-    CHECK_RET(CheckTensorNotNullPtr(gmmParams_.x, idx, "x") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckTensorNotNullPtr(gmmParams_.weight, idx, "weight") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckTensorNotNullPtr(gmmParams_.y, idx, "y") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckTensorNotNullPtr(gmmParams_.x, GetXTensorIndex(idx), "x") == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckTensorNotNullPtr(gmmParams_.weight, GetWeightTensorIndex(idx), "weight") == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckTensorNotNullPtr(gmmParams_.y, GetYTensorIndex(idx), "y") == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_NULLPTR);
     if (gmmParams_.antiquantScaleOptional != nullptr) {
         CHECK_RET(CheckTensorNotNullPtr(gmmParams_.antiquantScaleOptional, idx, "antiquantScale") == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_NULLPTR);
@@ -265,24 +304,27 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckQuantParams() cons
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(size_t idx) const
 {
+    const size_t xIdx = GetXTensorIndex(idx);
+    const size_t weightIdx = GetWeightTensorIndex(idx);
+    const size_t yIdx = GetYTensorIndex(idx);
     // check format
-    if (unlikely(op::IsPrivateFormat((*gmmParams_.x)[idx]->GetStorageFormat()))) {
+    if (unlikely(op::IsPrivateFormat((*gmmParams_.x)[xIdx]->GetStorageFormat()))) {
         OP_LOGE_FOR_INVALID_FORMAT(GetAclnnName(), "x", "not ND", "ND");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (unlikely(op::IsPrivateFormat((*gmmParams_.y)[idx]->GetStorageFormat()))) {
+    if (unlikely(op::IsPrivateFormat((*gmmParams_.y)[yIdx]->GetStorageFormat()))) {
         OP_LOGE_FOR_INVALID_FORMAT(GetAclnnName(), "y", "not ND", "ND");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     if (IsA16W8ND() || IsA16F8ND() || IsA16W4()) {
-        if (unlikely(op::IsPrivateFormat((*gmmParams_.weight)[idx]->GetStorageFormat()))) {
+        if (unlikely(op::IsPrivateFormat((*gmmParams_.weight)[weightIdx]->GetStorageFormat()))) {
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(GetAclnnName(), "weight", "NZ",
                 "The format of weight must be ND " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
-        if (unlikely(!op::IsPrivateFormat((*gmmParams_.weight)[idx]->GetStorageFormat()))) {
+        if (unlikely(!op::IsPrivateFormat((*gmmParams_.weight)[weightIdx]->GetStorageFormat()))) {
             OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(GetAclnnName(), "weight", "ND",
                 "The format of weight must be NZ " + GetDataFlowString());
             return ACLNN_ERR_PARAM_INVALID;
@@ -290,9 +332,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
     }
 
     // check dimNum
-    size_t xDimNum = (*gmmParams_.x)[idx]->GetViewShape().GetDimNum();
-    size_t weightDimNum = (*gmmParams_.weight)[idx]->GetViewShape().GetDimNum();
-    size_t yDimNum = (*gmmParams_.y)[idx]->GetViewShape().GetDimNum();
+    size_t xDimNum = (*gmmParams_.x)[xIdx]->GetViewShape().GetDimNum();
+    size_t weightDimNum = (*gmmParams_.weight)[weightIdx]->GetViewShape().GetDimNum();
+    size_t yDimNum = (*gmmParams_.y)[yIdx]->GetViewShape().GetDimNum();
 
     if (gmmParams_.groupType == NO_SPLIT) {
         if (unlikely(!(xDimNum <= MAX_FM_DIM && xDimNum >= MIN_FM_DIM))) {
@@ -376,12 +418,15 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTransposeStatus() 
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t idx) const
 {
+    const size_t xIdx = GetXTensorIndex(idx);
+    const size_t weightIdx = GetWeightTensorIndex(idx);
+    const size_t yIdx = GetYTensorIndex(idx);
     // 校验x, weight, y的各轴匹配
-    size_t xDimNum = (*gmmParams_.x)[idx]->GetViewShape().GetDimNum();
+    size_t xDimNum = (*gmmParams_.x)[xIdx]->GetViewShape().GetDimNum();
     // 验证到倒数第二维，x和y除最后一维其他必须相等
     for (size_t dimIdx = 0; dimIdx < xDimNum - 1; dimIdx++) {
-        size_t xDimValue = (*gmmParams_.x)[idx]->GetViewShape().GetDim(dimIdx);
-        size_t yDimValue = (*gmmParams_.y)[idx]->GetViewShape().GetDim(dimIdx);
+        size_t xDimValue = (*gmmParams_.x)[xIdx]->GetViewShape().GetDim(dimIdx);
+        size_t yDimValue = (*gmmParams_.y)[yIdx]->GetViewShape().GetDim(dimIdx);
         if (unlikely(xDimValue != yDimValue)) {
             std::string incorrectValues = std::to_string(xDimValue) + ", " + std::to_string(yDimValue);
             std::string reason = std::to_string(dimIdx) + " of x[" + std::to_string(idx) + "] must be equal to axis " +
@@ -393,11 +438,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t id
         }
     }
 
-    size_t xKDim = (*gmmParams_.x)[idx]->GetViewShape().GetDim(xDimNum - 1);
-    auto weightNIdx = (*gmmParams_.weight)[idx]->GetViewShape().GetDimNum() - 1;
-    auto weightKIdx = (*gmmParams_.weight)[idx]->GetViewShape().GetDimNum() - 2;
-    size_t weightKDim = (*gmmParams_.weight)[idx]->GetViewShape().GetDim(weightKIdx);
-    size_t weightNDim = (*gmmParams_.weight)[idx]->GetViewShape().GetDim(weightNIdx);
+    size_t xKDim = (*gmmParams_.x)[xIdx]->GetViewShape().GetDim(xDimNum - 1);
+    auto weightNIdx = (*gmmParams_.weight)[weightIdx]->GetViewShape().GetDimNum() - 1;
+    auto weightKIdx = (*gmmParams_.weight)[weightIdx]->GetViewShape().GetDimNum() - 2;
+    size_t weightKDim = (*gmmParams_.weight)[weightIdx]->GetViewShape().GetDim(weightKIdx);
+    size_t weightNDim = (*gmmParams_.weight)[weightIdx]->GetViewShape().GetDim(weightNIdx);
 
     if (unlikely(xKDim != weightKDim)) {
         std::string incorrectValues = "x[" + std::to_string(idx) + "] dim k value " + std::to_string(xKDim) +
@@ -410,7 +455,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t id
         return ACLNN_ERR_PARAM_INVALID;
     }
     // check y[n] = weight[n]
-    size_t yNDim = (*gmmParams_.y)[idx]->GetViewShape().GetDim(xDimNum - 1);
+    size_t yNDim = (*gmmParams_.y)[yIdx]->GetViewShape().GetDim(xDimNum - 1);
     if (unlikely(yNDim != weightNDim)) {
         std::string incorrectValues = "y[" + std::to_string(idx) + "] dim n value " + std::to_string(yNDim) +
             ", weight[" + std::to_string(idx) + "] dim n value " + std::to_string(weightNDim);
@@ -814,11 +859,25 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupTypeScenario(
     } else {
         errorMessage = gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ? "When splited axis is M"
                                                                        : "When groupType is 0 (split M)";
-        if (unlikely(!(gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() == 1 && gmmParams_.y->Size() == 1))) {
+        const bool isSingleSingleSingle =
+            gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() == 1 && gmmParams_.y->Size() == 1;
+        const bool hasWeightNzStorageFormat = gmmParams_.weight->Size() > 0 && (*gmmParams_.weight)[0] != nullptr &&
+                                              (*gmmParams_.weight)[0]->GetStorageFormat() ==
+                                                  op::Format::FORMAT_FRACTAL_NZ;
+        const bool isWeightNzSingleMultiSingleCandidate =
+            gmmParams_.apiVersion == GMMApiVersion::WeightNz && gmmParams_.x->Size() == 1 &&
+            gmmParams_.weight->Size() > 1 && gmmParams_.y->Size() == 1 && hasWeightNzStorageFormat;
+        if (unlikely(isWeightNzSingleMultiSingleCandidate && gmmParams_.biasOptional != nullptr)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "biasOptional", "not nullptr",
+                "In weight NZ single-multi-single weight quant case, biasOptional must be nullptr.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (unlikely(!(isSingleSingleSingle || isWeightNzSingleMultiSingleCandidate))) {
             std::string incorrectSizes = "x size: " + std::to_string(gmmParams_.x->Size()) +
                 ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
                 ", y size: " + std::to_string(gmmParams_.y->Size());
-            std::string reason = errorMessage + ", the sizes of x, weight and y should all be 1";
+            std::string reason = errorMessage +
+                ", the sizes of x, weight and y should all be 1, except weight NZ single-multi-single case.";
             OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "x, weight, y",
                 incorrectSizes, reason);
             return ACLNN_ERR_PARAM_INVALID;
@@ -865,6 +924,12 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorListSize() const
 {
+    if (IsWeightNzMxSingleMultiSingle() && gmmParams_.biasOptional != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "biasOptional", "not nullptr",
+            "BiasOptional is not supported in WeightNz MX single x, multi weight, single y scenario");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     if (gmmParams_.antiquantScaleOptional != nullptr) {
         if (unlikely(gmmParams_.antiquantScaleOptional->Size() != gmmParams_.weight->Size())) {
             std::string incorrectSizes = "antiquantScaleOptional size: " +
@@ -950,17 +1015,20 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupedMatmulWeigh
     CHECK_RET(CheckTransposeStatus() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckScaleAndPerTokenScaleShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    // 当前仅支持单单单/多多多场景，各tensorList的size相同，使用x的Size循环
-    for (size_t i = 0; i < gmmParams_.x->Size(); i++) {
+    // Single-multi-single weight NZ loops by weight; other cases keep the original x-driven loop.
+    for (size_t i = 0; i < GetLoopSize(); i++) {
         CHECK_RET(CheckTensorNotNull(i) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
-        CHECK_RET(CheckTensorDtype(gmmParams_.x, xDtype_, i, "x") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-        CHECK_RET(CheckTensorDtype(gmmParams_.weight, weightDtype_, i, "weight") == ACLNN_SUCCESS,
+        CHECK_RET(CheckTensorDtype(gmmParams_.x, xDtype_, GetXTensorIndex(i), "x") == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);
-        CHECK_RET(CheckTensorDtype(gmmParams_.y, yDtype_, i, "y") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckTensorDtype(gmmParams_.weight, weightDtype_, GetWeightTensorIndex(i), "weight") == ACLNN_SUCCESS,
+                  ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckTensorDtype(gmmParams_.y, yDtype_, GetYTensorIndex(i), "y") == ACLNN_SUCCESS,
+                  ACLNN_ERR_PARAM_INVALID);
 
         CHECK_RET(CheckDimNumAndFormat(i) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-        if (unlikely(IsTransposeLastTwoDims((*gmmParams_.weight)[i]) != gmmParams_.transposeWeight)) {
+        if (unlikely(IsTransposeLastTwoDims((*gmmParams_.weight)[GetWeightTensorIndex(i)]) !=
+                     gmmParams_.transposeWeight)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnName(), "weight[" + std::to_string(i) + "]",
                 "inconsistent",
                 "The transpose state must be the same for each tensor in weight");
@@ -972,7 +1040,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupedMatmulWeigh
         CHECK_RET(CheckV1GroupList(i) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
         if (gmmParams_.biasOptional != nullptr) {
-            CHECK_RET(CheckTensorDtype(gmmParams_.biasOptional, biasDtype_, i, "bias") == ACLNN_SUCCESS,
+            CHECK_RET(CheckTensorDtype(gmmParams_.biasOptional, biasDtype_, GetWeightTensorIndex(i), "bias") ==
+                          ACLNN_SUCCESS,
                       ACLNN_ERR_PARAM_INVALID);
             CHECK_RET(CheckTensorShape(gmmParams_.biasOptional, i, "bias") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         }
