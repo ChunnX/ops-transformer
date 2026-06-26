@@ -47,7 +47,8 @@ at::Tensor sparse_lightning_indexer_kl_loss_grad_metadata(
         output_device = cmp_residual_k.value().device();
     }
 
-    at::Tensor output = torch::empty({SLI_KL_LOSS_GRAD_METADATA_SIZE}, torch::dtype(torch::kInt32).device(output_device));
+    at::Tensor output = torch::empty({SLI_KL_LOSS_GRAD_METADATA_SIZE},
+        torch::dtype(torch::kInt32).device(output_device));
     auto cu_seqlens_q_val = get_valid_tensor(cu_seqlens_q, output_device);
     auto cu_seqlens_k_val = get_valid_tensor(cu_seqlens_k, output_device);
     auto seqused_q_val = get_valid_tensor(seqused_q, output_device);
