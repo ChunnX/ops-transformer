@@ -133,38 +133,15 @@ std::string LayoutToSerialString(FiaLayout layout)
     return "UNKNOWN";
 }
 
+static const std::string AXIS_SERIAL_STRINGS[] = {
+    "B", "S", "N", "D", "H", "T", "D1", "D0", "S1", "S2", "Bn", "Bs", "CONST"
+};
+
 std::string AxisToSerialString(FiaAxis axis)
 {
-    switch (axis) {
-        case FiaAxis::B:
-            return "B";
-        case FiaAxis::S:
-            return "S";
-        case FiaAxis::N:
-            return "N";
-        case FiaAxis::D:
-            return "D";
-        case FiaAxis::H:
-            return "H";
-        case FiaAxis::T:
-            return "T";
-        case FiaAxis::D1:
-            return "D1";
-        case FiaAxis::D0:
-            return "D0";
-        case FiaAxis::S1:
-            return "S1";
-        case FiaAxis::S2:
-            return "S2";
-        case FiaAxis::Bn:
-            return "Bn";
-        case FiaAxis::Bs:
-            return "Bs";
-        case FiaAxis::CONST:
-            return "CONST";
-        default:
-            return "UNKNOWN";
-    }
+    uint32_t idx = static_cast<uint32_t>(axis);
+    return (idx < sizeof(AXIS_SERIAL_STRINGS) / sizeof(AXIS_SERIAL_STRINGS[0]))
+        ? AXIS_SERIAL_STRINGS[idx] : "UNKNOWN";
 }
 
 bool FiaTilingShape::HasAxis(const FiaAxis &axis) const
