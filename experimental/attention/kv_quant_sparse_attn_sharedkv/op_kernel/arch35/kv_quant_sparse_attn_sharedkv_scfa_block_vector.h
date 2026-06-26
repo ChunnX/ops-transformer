@@ -49,7 +49,7 @@ public:
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr uint32_t dVTemplateTypeInput = 640;
     static constexpr float R0 = 1.0f;
-    static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
+    static constexpr uint32_t syncSinksBufId = 6;
 
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
@@ -1400,8 +1400,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo &c
     dataCopyParams.dstStride = 0U;
     DataCopyPadExtParams<T> padParams;
     DataCopyPad(sinksUb, this->sinksGm, dataCopyParams, padParams);
-    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINKS_BUF_FLAG);
-    WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINKS_BUF_FLAG);
+    get_buf(PIPE_MTE2, syncSinksBufId, true);
+    rls_buf(PIPE_MTE2, syncSinksBufId, true);
+    get_buf(PIPE_V, syncSinksBufId, false);
+    rls_buf(PIPE_V, syncSinksBufId, false);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
