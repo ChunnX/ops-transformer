@@ -91,8 +91,8 @@ class MoEElasticBuffer:
             do_cpu_sync = False
             ne, ea, nm = handle.num_experts, handle.expert_alignment, handle.num_max_tokens_per_rank
         else:
-            torch._check(((topk_idx is not None) and (topk_weights is not None)),
-                lambda: (f"topk_idx and topk_weights are required when no-cached."))
+            torch._check((topk_idx is not None),
+                lambda: (f"topk_idx is required when no-cached."))
             do_cpu_sync = True if do_cpu_sync is None else do_cpu_sync
             ne = num_experts if num_experts is not None else self.num_experts
             nm = num_max_tokens_per_rank if num_max_tokens_per_rank is not None else self.num_max_tokens_per_rank
@@ -125,18 +125,20 @@ class MoEElasticBuffer:
             actual_a = ep_world_size * nm * min(self.num_topk, ne // ep_world_size)
 
         recv_x = torch.empty((actual_a, self.hidden), dtype=x.dtype, device=x.device)
-        recv_topk_weights = torch.empty((actual_a,), dtype=torch.float32, device=x.device)
         recv_src_meta = torch.empty((actual_a, 3), dtype=torch.int32, device=x.device)
+        recv_topk_weights = None
+        if topk_weights is not None:
+            recv_topk_weights = torch.empty((actual_a,), dtype=torch.float32, device=x.device)
         recv_scales = None
         if scales is not None:
             recv_scales = torch.empty((actual_a, scales.shape[1]), dtype=scales.dtype, device=x.device)
 
-        recv_x, recv_topk_weights, recv_src_meta, recv_scales = \
+        recv_x, recv_src_meta, recv_topk_weights, recv_scales = \
             _op.npu_moe_ep_dispatch_epilogue(
                 self.context, dst_slot, num_recv_per_rank, num_recv_per_expert, cached_recv_src_metadata,
                 ep_world_size, self.rank_id, ne, nm, self.ccl_buffer_size, expert_alignment=ea,
-                recv_x=recv_x, recv_topk_weights=recv_topk_weights, recv_src_metadata=recv_src_meta,
-                recv_scales=recv_scales
+                recv_x=recv_x, recv_src_metadata=recv_src_meta,
+                recv_topk_weights=recv_topk_weights, recv_scales=recv_scales
             )
 
         recv_x = (recv_x, recv_scales) if recv_scales is not None else recv_x
