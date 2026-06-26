@@ -190,10 +190,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckShape()
             "The shapes of input x and output should be the same");
         return ge::GRAPH_FAILED;
     }
-    if (CheckRotaryModeShapeRelation(xShape.GetDim(DIM_3)) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    return CheckShapeAllPositive();
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckDtypeAndAttr()
@@ -299,6 +296,7 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckRotaryModeShapeRelati
 ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeSliceInfo()
 {
     OP_LOGI(context_, "TEST LOG, sliceStart_ =  %ld. sliceEnd_ =  %ld", sliceStart_, sliceEnd_);
+    isNoOp_ = false;
     if (sliceStart_ < 0 || sliceEnd_ < 0 || sliceLength_ < 0 || sliceEnd_ > d_) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
             ("slice=[" + std::to_string(sliceStart_) + ", " +
@@ -307,12 +305,37 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeSliceInfo()
             "sliceLength must be >= 0, and sliceEnd must be <= D");
         return ge::GRAPH_FAILED;
     }
+    if (sliceLength_ == 0 || cosd_ == 0 || sind_ == 0) {
+        isNoOp_ = true;
+        return ge::GRAPH_SUCCESS;
+    }
     if (sliceLength_ > 0 && (cosd_ != sind_ || cosd_ != sliceLength_)) {
         std::string shapesMsg = std::to_string(sliceLength_) + " (slice), " +
             std::to_string(cosd_) + " (cos_D) and " + std::to_string(sind_) + " (sin_D)";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "slice, cos and sin", shapesMsg.c_str(),
             "When sliceLength > 0, the D axes of cos and sin must equal sliceLength");
         return ge::GRAPH_FAILED;
+    }
+    if (sliceLength_ > 0) {
+        if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::HALF ||
+            rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::INTERLEAVE ||
+            rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
+            if (sliceLength_ % HALF_INTERLEAVE_MODE_COEF != 0) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+                    ("sliceLength=" + std::to_string(sliceLength_)).c_str(),
+                    "sliceLength must be multiples of 2 in half, interleave and interleave-half mode, "
+                    "where sliceLength refers to partialSlice[1] - partialSlice[0]");
+                return ge::GRAPH_FAILED;
+            }
+        } else if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::QUARTER) {
+            if (sliceLength_ % QUARTER_MODE_COEF != 0) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+                    ("sliceLength=" + std::to_string(sliceLength_)).c_str(),
+                    "sliceLength must be multiples of 4 in quarter mode, "
+                    "where sliceLength refers to partialSlice[1] - partialSlice[0]");
+                return ge::GRAPH_FAILED;
+            }
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -336,34 +359,10 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetShapeAttrsInfo()
     auto &xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
     auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
     auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
-    OP_CHECK_IF(JudgeLayoutByShape(xShape, cosShape) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "JudgeLayoutByShape fail."), return ge::GRAPH_FAILED);
 
     d_ = xShape.GetDim(DIM_3);
     cosd_ = cosShape.GetDim(DIM_3);
     sind_ = sinShape.GetDim(DIM_3);
-    if (layout_ == InplacePartialRopeLayout::BSND) {
-        b_ = xShape.GetDim(DIM_0);
-        cosb_ = cosShape.GetDim(DIM_0);
-        s_ = xShape.GetDim(DIM_1);
-        n_ = xShape.GetDim(DIM_2);
-    } else if (layout_ == InplacePartialRopeLayout::BNSD || layout_ == InplacePartialRopeLayout::NO_BROADCAST ||
-               layout_ == InplacePartialRopeLayout::BROADCAST_BSN) {
-        b_ = xShape.GetDim(DIM_0);
-        cosb_ = cosShape.GetDim(DIM_0);
-        n_ = xShape.GetDim(DIM_1);
-        s_ = xShape.GetDim(DIM_2);
-        // 1XXX情况下，reshape成11XX
-        if (is1snd_ == true) {
-            s_ = s_ * n_;
-            n_ = 1;
-        }
-    } else if (layout_ == InplacePartialRopeLayout::SBND) {
-        s_ = xShape.GetDim(DIM_0);
-        b_ = xShape.GetDim(DIM_1);
-        cosb_ = cosShape.GetDim(DIM_1);
-        n_ = xShape.GetDim(DIM_2);
-    }
 
     // 获取slice
     const gert::ContinuousVector *sliceRangeListPtr = attrs->GetAttrPointer<gert::ContinuousVector>(1);
@@ -378,6 +377,37 @@ ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetShapeAttrsInfo()
     sliceLength_ = sliceEnd_ - sliceStart_;
     OP_CHECK_IF(JudgeSliceInfo() != ge::GRAPH_SUCCESS,
                OP_LOGE(context_, "JudgeSliceInfo fail."), return ge::GRAPH_FAILED);
+    if (!IsNoOp()) {
+        OP_CHECK_IF(CheckRotaryModeShapeRelation(d_) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context_, "CheckRotaryModeShapeRelation fail."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(CheckShapeAllPositive() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context_, "CheckShapeAllPositive fail."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(JudgeLayoutByShape(xShape, cosShape) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context_, "JudgeLayoutByShape fail."), return ge::GRAPH_FAILED);
+
+        if (layout_ == InplacePartialRopeLayout::BSND) {
+            b_ = xShape.GetDim(DIM_0);
+            cosb_ = cosShape.GetDim(DIM_0);
+            s_ = xShape.GetDim(DIM_1);
+            n_ = xShape.GetDim(DIM_2);
+        } else if (layout_ == InplacePartialRopeLayout::BNSD || layout_ == InplacePartialRopeLayout::NO_BROADCAST ||
+                   layout_ == InplacePartialRopeLayout::BROADCAST_BSN) {
+            b_ = xShape.GetDim(DIM_0);
+            cosb_ = cosShape.GetDim(DIM_0);
+            n_ = xShape.GetDim(DIM_1);
+            s_ = xShape.GetDim(DIM_2);
+            // 1XXX情况下，reshape成11XX
+            if (is1snd_ == true) {
+                s_ = s_ * n_;
+                n_ = 1;
+            }
+        } else if (layout_ == InplacePartialRopeLayout::SBND) {
+            s_ = xShape.GetDim(DIM_0);
+            b_ = xShape.GetDim(DIM_1);
+            cosb_ = cosShape.GetDim(DIM_1);
+            n_ = xShape.GetDim(DIM_2);
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
