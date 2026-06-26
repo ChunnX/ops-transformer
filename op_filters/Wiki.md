@@ -16,100 +16,31 @@
 
 ## 2. 整体流程图
 
-```
-  +---------------------------+
-  | PR 变更文件列表输入        |
-  | (changed_files.txt)       |
-  +------------+--------------+
-               |
-  +------------v--------------+
-  | Step 0: 动态生成依赖关系   |
-  | 扫描 mc2/ 解析 CMakeLists  |
-  | 生成 result.json           |
-  +------------+--------------+
-               |
-  +------------v--------------+
-  | Step 1: 白名单路径过滤     |
-  | whitelist.txt 路径被忽略   |
-  +------------+--------------+
-               |
-         +-----v-----+
-         | 无剩余？  |
-         +--+-----+--+
-         是        否
-         |         |
-    +----v---+     |
-    |无测试   |     |
-    |输出空列表|    |
-    +--------+     |
-               |
-  +------------v--------------+
-  | Step 2: 忽略规则过滤       |
-  | .md 文件 + tests/ 被忽略  |
-  +------------+--------------+
-               |
-         +-----v-----+
-         | 无剩余？  |
-         +--+-----+--+
-         是        否
-         |         |
-    +----v---+     |
-    |无测试   |     |
-    |输出空列表|    |
-    +--------+     |
-               |
-  +------------v--------------+
-  | Step 3: 非 mc2 目录检测    |
-  +------------+--------------+
-               |
-         +-----v-----+
-         | mc2外文件?|
-         +--+-----+--+
-         是        否
-         |         |
-    +----v---+     |
-    |全量测试 |     |
-    +--------+     |
-               |
-  +------------v--------------+
-  | Step 4: common/3rd 检测    |
-  +------------+--------------+
-               |
-         +-----v------+
-         |common/3rd? |
-         +--+-----+---+
-         是        否
-         |         |
-    +----v---+     |
-    |全量测试 |     |
-    +--------+     |
-               |
-  +------------v--------------+
-  | Step 5: 算子名称提取       |
-  | 从路径提取算子名           |
-  | 检测 arch22/arch35 限制    |
-  +------------+--------------+
-               |
-  +------------v--------------+
-  | Step 6: 反向依赖搜索       |
-  | 变更算子 + 依赖它的算子   |
-  | (只传播一层)               |
-  +------------+--------------+
-               |
-  +------------v--------------+
-  | Step 7: 输出与最终过滤     |
-  | 算子白名单屏蔽             |
-  | arch 裁剪 supported_products|
-  | SOC 类型过滤               |
-  | 输出 op_tests.json         |
-  +---------------------------+
+```mermaid
+flowchart TD
+    A[PR 变更文件列表输入] --> B[Step 0: 动态生成依赖关系\n扫描 mc2/ 解析 CMakeLists\n生成 result.json]
+    B --> C[Step 1: 白名单路径过滤\nwhitelist.txt 路径被忽略]
+    C --> D{过滤后无剩余文件？}
+    D -- 是 --> E1[无测试\n输出空列表]
+    D -- 否 --> F[Step 2: 忽略规则过滤\n.md 文件 + tests/ 被忽略]
+    F --> G{过滤后无剩余文件？}
+    G -- 是 --> E2[无测试\n输出空列表]
+    G -- 否 --> H[Step 3: 非 mc2 目录检测]
+    H --> I{存在 mc2 外文件？}
+    I -- 是 --> J1[全量测试\n流程终止]
+    I -- 否 --> K[Step 4: common/3rd 检测]
+    K --> L{common 或 3rd 有变更？}
+    L -- 是 --> J2[全量测试\n流程终止]
+    L -- 否 --> M[Step 5: 算子名称提取\n从路径提取算子名\n检测 arch22/arch35 限制]
+    M --> N[Step 6: 反向依赖搜索\n变更算子 + 依赖它的算子\n只传播一层]
+    N --> O[Step 7: 输出与最终过滤\n算子白名单屏蔽\narch 裁剪 supported_products\nSOC 类型过滤\n输出 op_tests.json]
 ```
 
 ---
 
 ## 3. 全分支输入文件与逐步过滤演示
 
-以下构造一个覆盖所有分支的输入文件，逐行标注每个文件在哪一步被踢出（~~删除线~~）或保留。
+以下构造一个覆盖所有分支的输入文件，逐行标注每个文件在哪一步被踢出或保留进入下一步。
 
 ### 3.1 输入文件（12 行，覆盖所有分支）
 
@@ -130,63 +61,63 @@ mc2/common/op_kernel/unknown_file.xyz
 
 ### 3.2 逐步过滤过程
 
-> 图例：~~删除线~~ = 该文件在本步被踢出；普通文本 = 保留进入下一步
+> 图例：<span style="color:red">红色</span> = 该文件在本步被踢出；普通文本 = 保留进入下一步
 
 **Step 1 - 白名单路径过滤**（命中 `whitelist.txt` 的文件被忽略）：
 
 ```
-~~mc2/common/op_kernel/mc2_matmul_block.h~~     ← 精确匹配 whitelist.txt
-~~mc2/common/utils/math_util.h~~                 ← 精确匹配 whitelist.txt
-~~mc2/all_gather_matmul/tests/test_main.py~~     ← 通配符匹配 mc2/*/tests/
-mc2/all_gather_matmul/README.md
-mc2/matmul_all_reduce/tests/test_perf.py
-ops-math/CMakeLists.txt
-mc2/common/op_api/mc2_aclnn_util.h
-mc2/3rd/quant_batch_matmul_v3/quant_batch_matmul_v3.cpp
-mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp
-mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp
-mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h
-mc2/common/op_kernel/unknown_file.xyz
+mc2/common/op_kernel/mc2_matmul_block.h          ← 精确匹配 whitelist.txt，踢出
+mc2/common/utils/math_util.h                      ← 精确匹配 whitelist.txt，踢出
+mc2/all_gather_matmul/tests/test_main.py          ← 通配符匹配 mc2/*/tests/，踢出
+mc2/all_gather_matmul/README.md                   → 保留
+mc2/matmul_all_reduce/tests/test_perf.py          → 保留
+ops-math/CMakeLists.txt                           → 保留
+mc2/common/op_api/mc2_aclnn_util.h                → 保留
+mc2/3rd/quant_batch_matmul_v3/quant_batch_matmul_v3.cpp → 保留
+mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp → 保留
+mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp → 保留
+mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h → 保留
+mc2/common/op_kernel/unknown_file.xyz             → 保留
 ```
-> 筛掉 3 个 -> 剩余 9 个
+> 踢出 3 个 -> 剩余 9 个进入 Step 2
 
 **Step 2 - 忽略规则过滤**（`.md` 后缀 + `mc2/<算子>/tests/` 目录被忽略）：
 
 ```
-~~mc2/all_gather_matmul/README.md~~               ← .md 后缀
-~~mc2/matmul_all_reduce/tests/test_perf.py~~      ← tests/ 目录
-ops-math/CMakeLists.txt
-mc2/common/op_api/mc2_aclnn_util.h
-mc2/3rd/quant_batch_matmul_v3/quant_batch_matmul_v3.cpp
-mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp
-mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp
-mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h
-mc2/common/op_kernel/unknown_file.xyz
+mc2/all_gather_matmul/README.md                   ← .md 后缀，踢出
+mc2/matmul_all_reduce/tests/test_perf.py          ← tests/ 目录，踢出
+ops-math/CMakeLists.txt                           → 保留
+mc2/common/op_api/mc2_aclnn_util.h                → 保留
+mc2/3rd/quant_batch_matmul_v3/quant_batch_matmul_v3.cpp → 保留
+mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp → 保留
+mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp → 保留
+mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h → 保留
+mc2/common/op_kernel/unknown_file.xyz             → 保留
 ```
-> 筛掉 2 个 -> 剩余 7 个
+> 踢出 2 个 -> 剩余 7 个进入 Step 3
 
 **Step 3 - 非 mc2 目录检测**（mc2 外文件触发全量测试）：
 
 ```
-~~ops-math/CMakeLists.txt~~                        ← mc2 外文件 -> 全量测试，流程终止
-mc2/common/op_api/mc2_aclnn_util.h
-mc2/3rd/quant_batch_matmul_v3/quant_batch_matmul_v3.cpp
-mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp
-mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp
-mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h
-mc2/common/op_kernel/unknown_file.xyz
+ops-math/CMakeLists.txt                           ← mc2 外文件，触发全量测试，流程终止
+mc2/common/op_api/mc2_aclnn_util.h                → 保留（mc2 内）
+mc2/3rd/quant_batch_matmul_v3/quant_batch_matmul_v3.cpp → 保留（mc2 内）
+mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp → 保留（mc2 内）
+mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp → 保留（mc2 内）
+mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h → 保留（mc2 内）
+mc2/common/op_kernel/unknown_file.xyz             → 保留（mc2 内）
 ```
 > 实际运行到此终止，输出全量算子列表。以下为完整说明继续。
 
 **Step 4 - common/3rd 目录检测**（common/3rd 任何变更触发全量测试）：
 
 ```
-~~mc2/common/op_api/mc2_aclnn_util.h~~             ← common 文件 -> 全量测试
-~~mc2/3rd/quant_batch_matmul_v3/quant_batch_matmul_v3.cpp~~ ← 3rd 文件 -> 全量测试
-mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp
-mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp
-mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h
-~~mc2/common/op_kernel/unknown_file.xyz~~           ← common 文件 -> 全量测试
+mc2/common/op_api/mc2_aclnn_util.h                ← common 文件，触发全量测试
+mc2/3rd/quant_batch_matmul_v3/quant_batch_matmul_v3.cpp ← 3rd 文件，触发全量测试
+mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp → 保留（算子文件）
+mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp → 保留（算子文件）
+mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h → 保留（算子文件）
+mc2/common/op_kernel/unknown_file.xyz             ← common 文件，触发全量测试
 ```
 > 实际运行到此终止。以下继续说明部分测试路径。
 
@@ -194,28 +125,30 @@ mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.
 
 ```
 mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp         → 算子: all_gather_matmul (无 arch 限制)
-mc2/matmul_all_reduce/op_host/op_tiling/arch22/...              → 算子: matmul_all_reduce (arch22)
-mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/...          → 算子: matmul_reduce_scatter (arch35)
+mc2/matmul_all_reduce/op_host/op_tiling/arch22/matmul_all_reduce_tiling.cpp → 算子: matmul_all_reduce (arch22)
+mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling.h → 算子: matmul_reduce_scatter (arch35)
 ```
 
 **Step 6 - 反向依赖搜索**（变更算子 + 依赖它的算子，只传播一层）：
 
 ```
-all_gather_matmul              ← 变更算子本身
-matmul_all_reduce              ← 变更算子本身
-matmul_reduce_scatter          ← 变更算子本身
-matmul_all_reduce_add_rms_norm ← 反向依赖: 依赖 matmul_all_reduce
-inplace_matmul_all_reduce_add_rms_norm ← 反向依赖: 依赖 matmul_all_reduce
+all_gather_matmul              → 变更算子本身，保留
+matmul_all_reduce              → 变更算子本身，保留
+matmul_reduce_scatter          → 变更算子本身，保留
+matmul_all_reduce_add_rms_norm ← 反向依赖扩展: 依赖 matmul_all_reduce，加入
+inplace_matmul_all_reduce_add_rms_norm ← 反向依赖扩展: 依赖 matmul_all_reduce，加入
 ```
 
 **Step 7 - 输出与最终过滤**（算子白名单屏蔽 + arch 裁剪 + SOC 过滤，假设 `--soc ascend910b`）：
 
+白名单屏蔽阶段：
+
 ```
-all_gather_matmul              ← 保留，不在白名单中
-~~matmul_all_reduce~~          ← 屏蔽，在 [ascend910b] 白名单中
-matmul_reduce_scatter          ← 保留，不在白名单中
-~~matmul_all_reduce_add_rms_norm~~ ← 屏蔽，在 [ascend910b] 白名单中
-~~inplace_matmul_all_reduce_add_rms_norm~~ ← 屏蔽，在 [ascend910b] 白名单中
+all_gather_matmul              → 保留，不在白名单中
+matmul_all_reduce              ← 在 [ascend910b] 白名单中，踢出
+matmul_reduce_scatter          → 保留，不在白名单中
+matmul_all_reduce_add_rms_norm ← 在 [ascend910b] 白名单中，踢出
+inplace_matmul_all_reduce_add_rms_norm ← 在 [ascend910b] 白名单中，踢出
 ```
 
 arch 裁剪 + SOC 过滤后：
