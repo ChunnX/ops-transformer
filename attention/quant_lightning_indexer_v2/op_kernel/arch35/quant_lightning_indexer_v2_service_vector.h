@@ -444,9 +444,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     // qkVLstride = 第一个ND块的总占用 = mSize_aligned × dstStride（与Fixpipe的dstNdStride一致）
-    // mSize = CeilAlign(actMBaseSize, 2*G)，匹配Cube侧Fixpipe的实际输出行数
-    // 当QS不满分块时(如qs=1,actMBaseSize=64), CeilAlign(64,128)=128, 而非mBaseSize=256
-    auto qkVLstride = CeilAlign((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
+    // mSize_aligned = Align(actMBaseSize, 2*G)，匹配Cube侧Fixpipe的实际输出行数
+    // 当QS不满分块时(如qs=1,actMBaseSize=64), Align(64,128)=128, 而非mBaseSize=256
+    auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
         * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {
