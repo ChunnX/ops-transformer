@@ -64,12 +64,7 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
     } else {
         DataCopyPad(kLocal, inputGm, copyParams, padParams);
     }
-    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-    LocalTensor<C> ropeShareUB = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt];
-    // RotaryPosEmb内部需要 2*cnt
-    LocalTensor<C> kFp32OutputLocal = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt * 3];
-    uint64_t rsvdCnt = 0;
+    SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
         Rectangle rectangleParams{
@@ -83,21 +78,13 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
             Dequant(kFp32Local, kLocal, channelDeqScaleLocal, scale, rectangleParams);
         }
         AscendC::PipeBarrier<PIPE_V>();
+        AscendC::DataSyncBarrier<MemDsbT::UB>();
     } else if constexpr (std::is_same<T, bfloat16_t>::value) {
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
         AscendC::PipeBarrier<PIPE_V>();
     }
-    if constexpr (std::is_same<O, C>::value) {
-        RotaryPosEmb(outputLocal, kFp32Local, cosLocal, sinLocal, ropeShareUB.template ReinterpretCast<uint8_t>(),
-                     ropeParams.row, ropeParams.col, 0);
-        AscendC::PipeBarrier<PIPE_V>();
-    } else {
-        RotaryPosEmb(kFp32OutputLocal, kFp32Local, cosLocal, sinLocal, ropeShareUB.template ReinterpretCast<uint8_t>(),
-                     ropeParams.row, ropeParams.col, 0);
-        AscendC::PipeBarrier<PIPE_V>();
-        Cast(outputLocal, kFp32OutputLocal, RoundMode::CAST_RINT, cnt);
-        AscendC::PipeBarrier<PIPE_V>();
-    }
+    RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, 0);
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 /**
@@ -150,21 +137,15 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
     } else {
         DataCopyPad(kLocal, inputGm, copyParams, padParams);
     }
-    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
     // scale参数可以和rope使用的空间复用
-    LocalTensor<C> ropeShareUB = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt];
-    LocalTensor<C> scaleLocal = ropeShareUB;
-    // RotaryPosEmb内部需要 2*cnt
-    LocalTensor<C> kFp32OutputLocal = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt * 3];
-    uint64_t rsvdCnt = 0;
+    LocalTensor<C> scaleLocal = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt];
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
         DataCopyExtParams copyParams1{static_cast<uint16_t>(1), static_cast<uint32_t>(ropeParams.col * sizeof(C)),
                                       static_cast<uint32_t>((strideScale - ropeParams.col) * sizeof(C)), 0, 0};
         DataCopyPadExtParams<C> padParams1{false, 0, 0, 0};
         DataCopyPad(scaleLocal, channelDeqScaleGm, copyParams1, padParams1); // 复用内存
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
         uint8_t blockNumPerRow = ropeParams.col / (ALIGN_BLOCK_SIZE / sizeof(C));
         // row  col stride
@@ -179,16 +160,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
     }
     AscendC::PipeBarrier<PIPE_V>();
-    LocalTensor<C> kFp32OutputLocalSinTmp = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt * 2];
-    RotaryPosEmb(kFp32OutputLocal, kFp32Local, cosLocal, sinLocal, ropeShareUB.template ReinterpretCast<uint8_t>(),
-                 ropeParams.row, ropeParams.col, ropeParams.col);
-    AscendC::PipeBarrier<PIPE_V>();
-
-    if constexpr (std::is_same<O, C>::value) {
-        DataCopy(outputLocal, kFp32OutputLocal, cnt);
-    } else {
-        Cast(outputLocal, kFp32OutputLocal, RoundMode::CAST_RINT, cnt);
-    }
+    RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, ropeParams.col);
     AscendC::PipeBarrier<PIPE_V>();
 }
 

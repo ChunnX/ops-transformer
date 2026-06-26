@@ -44,8 +44,7 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
 
     LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
     LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
-    LocalTensor<C> computeLocal = scaleLocal[count + 16].template ReinterpretCast<C>();  // count * sizeof(C)
-    LocalTensor<O> outputLocal = computeLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    LocalTensor<O> outputLocal = scaleLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
     DataCopyParams copyParams{
         static_cast<uint16_t>(dequantRowColStrideParams.row),
@@ -62,17 +61,12 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
         int64_t inputOffset = rowOffset * dequantRowColStrideParams.stride;
         int64_t outputOffset = rowOffset * dequantRowColStrideParams.col;
         // copy in
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         DataCopy(inputLocal, inputGm[inputOffset], copyParams);
         DataCopy(scaleLocal, deqScaleQcQrWGm[inputOffset], copyParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
-        Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
-        // cast
-        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
+        Dequant<T, O>(outputLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -110,11 +104,9 @@ __aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm, const Glo
         int64_t inputOffset = rowOffset * castRowColStrideParams.stride;
         int64_t outputOffset = rowOffset * castRowColStrideParams.col;
         // copy in
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         DataCopy(inputLocal, inputGm[inputOffset], copyParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // cast
         Cast(outputLocal, inputLocal, RoundMode::CAST_RINT, count);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -151,8 +143,7 @@ DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
     int64_t count = dequantRowColStrideParams.col * 1;
     LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
     LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
-    LocalTensor<C> computeLocal = scaleLocal[count + 16].template ReinterpretCast<C>();  // count * sizeof(C)
-    LocalTensor<O> outputLocal = computeLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    LocalTensor<O> outputLocal = scaleLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
     DataCopyParams inputCopyParams{
         static_cast<uint16_t>(1), static_cast<uint16_t>(count * sizeof(T) / 32U),
@@ -175,13 +166,9 @@ DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
         int64_t outputOffset = rowOffset * oriCol + subBlockIdx_ * count;
         WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         DataCopy(inputLocal, inputGm[inputOffset], inputCopyParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
-        Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
-        // cast
-        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
+        Dequant<T, O>(outputLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
