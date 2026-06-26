@@ -191,6 +191,11 @@ __aicore__ inline void Process(
     constexpr uint64_t kByte = sizeof(DTYPE_KEY);
     constexpr uint64_t vByte = sizeof(DTYPE_VALUE);
 
+    PRINTF("[SIMT] gather_pa_kv_cache ND enter, core=%lld, isCumsum=%d, hasSeqOff=%d\n",
+           static_cast<long long>(GetBlockIdx()),
+           static_cast<int>(isSeqLensCumsum),
+           static_cast<int>(hasSeqOffset));
+
     int64_t bc = td->batchCount;
     int64_t bpc = td->batchPerCore;
     int64_t ncn = static_cast<int64_t>(td->needCoreNum);
@@ -295,6 +300,9 @@ __aicore__ inline void Process(
 
     SetFlag<HardEvent::V_S>(0);
     WaitFlag<HardEvent::V_S>(0);
+
+    PRINTF("[SIMT] gather_pa_kv_cache ND exit, core=%lld\n",
+           static_cast<long long>(GetBlockIdx()));
 }
 
 } // namespace NsGatherPaKvCache
