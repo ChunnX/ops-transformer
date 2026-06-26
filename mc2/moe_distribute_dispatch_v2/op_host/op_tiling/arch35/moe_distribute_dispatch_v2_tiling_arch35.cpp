@@ -73,6 +73,8 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 
 constexpr uint32_t EP_WORLD_SIZE_FOUR = 4;
 constexpr uint32_t EP_WORLD_SIZE_TWO = 2;
+constexpr uint32_t EP_WORLD_SIZE_256 = 256;
+constexpr uint32_t EP_WORLD_SIZE_144 = 144;
 
 constexpr uint64_t MX_BLOCK_SIZE = 32U;
 constexpr uint64_t MX_PAD_ALIGN = 256U;
@@ -444,7 +446,8 @@ inline ge::graphStatus CheckEpWorldSizeV1(const char *nodeName, uint32_t epWorld
             return ge::GRAPH_FAILED;
         }
 
-        if ((256 % epWorldSize != 0) && (epWorldSize % 144 != 0)) {
+        if ((EP_WORLD_SIZE_256 % epWorldSize != 0) &&
+            (epWorldSize % EP_WORLD_SIZE_144 != 0)) {
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "epWorldSize",
                 std::to_string(epWorldSize).c_str(),
                 "one of [8, 16, 32, 64, 128, 144, 256, 288]");

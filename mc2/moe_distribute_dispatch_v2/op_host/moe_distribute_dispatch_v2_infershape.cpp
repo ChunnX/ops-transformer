@@ -227,7 +227,6 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     int64_t h = ((xShape->GetDimNum() == 1U) ? NEG_ONE : xShape->GetDim(1));
     int64_t bsTmp = expertIdsShape->GetDimNum() == 1U ? NEG_ONE : expertIdsShape->GetDim(0);
     int64_t k = ((expertIdsShape->GetDimNum() == 1U) ? NEG_ONE : expertIdsShape->GetDim(1));
-
     if ((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0)) {
         std::string shapeStr = std::string("x[") + std::to_string(bs) + "," + std::to_string(h) + "]" +
             ", expert_ids[" + std::to_string(bsTmp) + "," + std::to_string(k) + "]";
