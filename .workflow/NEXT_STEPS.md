@@ -112,7 +112,15 @@
 - VecCompute CalLocalAddrForVf PER_GROUP 地址 + CopyAntiQuantParamsGmToUb offset 搬运 + AntiQuantProcessNd pergroup 分发
 - NdKnLoadScaleOffset PER_GROUP 分支 + AntiQuantInt4PerGroupNdKn（统一 VF，所有 groupSize 共用）
 - AntiQuantInt4PerGroupNdNk 分派器 + 4 个 gs 专用 VF（Gs32/Gs64/Gs128/Gs256）
-- 编译验证：0 errors，42/42 审查项全部通过
+- 2026-06-24 修复 NK 转置路径：weight N 行步长改用 `vecConfig.ubMte2InnerSize >> 1`，输出固定 `WEIGHT_F16_UB_NZ_STRIDE`，gs=32 scale/offset 改为 Select 拼接
+- 2026-06-24 补充修复 NK gs=128：移除误按 gs=256 处理的第二段 128K 加载/写回，`K=128` 时 group 循环只执行一次
+- 2026-06-24 重实现 ND NK group_size=32 反量化：按 `[G,N]` UB 布局逐 group `DIST_BRC_B16` 后用 `Select` 拼接 32-lane scale/offset，并补齐 `K<256` 尾块保护
+- 2026-06-24 调整 ND NK group_size=128 反量化：因 `__VEC_SCOPE__` 内不使用运行期 `if`，改为 `groupNum -> N` 双层 `for`；weight 按转置 `[N,K]` UB 行步长读取，scale/offset 按非转置 `[K//GS,N]` UB 布局寻址
+- 2026-06-24 修复 ND NK group_size=64 反量化：每个 `innerIdx` 仅处理一个 128-lane weight 寄存器，通过 `Select(maskH)` 将相邻两个 group 的 scale/offset 拼成前 64/后 64 lane，避免第二个 128K 段复用错误 scale/offset
+- 2026-06-24 修复 ND NK group_size=32 反量化：每个 `innerIdx` 处理一个 128-lane weight 寄存器，按 GMM `[K//GS,N]` 布局加载 4 个 group 的 scale/offset，并通过 `Select(mask32/mask96/maskH)` 构造 `[A|B|C|D]` 四段 32-lane 寄存器
+- 2026-06-26 修复 ND KN group_size=32 泛化精度：pergroup scale/offset 的 UB 行步长改为 KN 当前 N tile 对齐值，搬运、VF 寻址和 group 行步长保持一致；同时 A16W4 ND pergroup 显式使用 `{bufferNum=2, ubMte2InnerSize=256}` tiling key
+- 2026-06-26 重写 `AntiQuantInt4PerGroupNdKn`：参考 wqbmmv2 `AntiquantComputeKNPerGroup`，改为 `nLoop -> groupNum -> groupTail` 的 `AddrReg` 数据流，`__VEC_SCOPE__` 内不含运行时 `if`
+- 静态检查：`git diff --check` 通过；本轮未编译（用户环境不运行）
 
 **修改文件**（6 个）：
 - `basic_block_config.h` — 4 个 WqmmConfig 实例

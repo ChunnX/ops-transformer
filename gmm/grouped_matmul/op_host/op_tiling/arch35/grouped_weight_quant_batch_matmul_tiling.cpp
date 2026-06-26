@@ -782,6 +782,9 @@ void GroupedWeightQuantBatchMatmulTiling::SetTilingKey(gert::TilingContext *cont
     tilingKeyConfig_.weightFormat =
         weightNzFlag_ ? static_cast<uint8_t>(WeightFormat::FRACTAL_NZ) : static_cast<uint8_t>(WeightFormat::ND);
     tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_256_BUF_NUM_4);
+    if (IsA16W4NDPergroup()) {
+        tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_256_BUF_NUM_2);
+    }
     if (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT4) {
         tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_512_BUF_NUM_DEFAULT);
         if (groupSize_ == 192u) {

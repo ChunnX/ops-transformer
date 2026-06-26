@@ -100,6 +100,7 @@
 **目标**: pergroup scale/offset UB 地址计算 + offset 搬运 + pergroup 分发
 **修改文件**:
 - `weight_quant_vec_compute.h` — CalLocalAddrForVf + CopyAntiQuantParamsGmToUb + AntiQuantProcessNd
+**2026-06-26 修复**: KN pergroup scale/offset 搬运和 VF 寻址统一使用当前 N tile 对齐行步长，修复 gs32 泛化精度
 **验证**: 编译通过
 
 #### 8.4 VF 层 — KN 路径反量化（bTrans=false）
@@ -115,15 +116,23 @@
 - `basic_block_vf_nd.h` — NdNkLoadScaleOffset PER_GROUP 分支 + AntiQuantInt4PerGroupNdNk（含 gs=32/64/128/256）
 **参考**: ops-nn `AntiquantComputeW4NKPerGroup`（reg_base_common.h L1185-1409）
 **核心差异**: GMM scale/offset 固定 `[G,N]` 布局，地址公式为 `gLocal * nTileAlign + nLocal`
-**验证**: 编译通过
+**2026-06-24 修复**: NK weight N 行步长固定为 `vecConfig.ubMte2InnerSize >> 1`，输出 stride 固定 `WEIGHT_F16_UB_NZ_STRIDE`；gs=32 scale/offset 使用 Select 拼接 32 元素分组
+**2026-06-24 gs128 补充修复**: `AntiQuantInt4PerGroupNdNkGs128` 每个 group 仅处理一个 128K 向量，移除误按 gs256 处理的第二段 128K 加载/写回；`K=128` 时 group 循环只执行一次
+**2026-06-24 gs32 重实现**: `AntiQuantInt4PerGroupNdNkGs32` 按 256K inner 分块处理 8 个 32K group；scale/offset 使用逐 group `DIST_BRC_B16` + `Select` 拼接，并对 `K<256` 尾块避免读取不存在的第二个 128K 向量
+**2026-06-24 gs128 调整**: `AntiQuantInt4PerGroupNdNkGs128` 因 `__VEC_SCOPE__` 内不使用运行期 `if`，改为 `groupNum -> N` 双层 `for`；weight 按转置 `[N,K]` UB 行步长读取，scale/offset 按非转置 `[K//GS,N]` UB 布局寻址，输出 stride 保持 NK NZ 布局
+**2026-06-24 gs64 修复**: `AntiQuantInt4PerGroupNdNkGs64` 保持 wqbmmv2 的 `inner(K/128) -> outer(N)` 结构，每个 inner 只处理一个 128-lane weight 寄存器；scale/offset 按 GMM `[G,N]` 读取相邻两个 group 后用 `Select(maskH)` 拼接
+**2026-06-24 gs32 修复**: `AntiQuantInt4PerGroupNdNkGs32` 改为每个 inner 处理一个 128-lane weight 寄存器，按 GMM `[G,N]` 读取 4 个 group 后用 `Select(mask32/mask96/maskH)` 构造 `[A|B|C|D]` 四段 32-lane scale/offset
+**验证**: 本轮不编译，仅执行 `git diff --check` 静态检查
 
-#### 8.6 编译验证
-**目标**: 完整编译验证
+#### 8.6 静态/编译验证
+**目标**: 完整验证 kernel 修改
 **编译命令**: `bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8`
 **验证**:
-- 编译通过（exit code 0）
-- LSP diagnostics 零错误
-- 无新增编译告警
+- 历史 kernel 编译曾通过（exit code 0）
+- 本轮 gs128 `groupNum -> N`、gs64 与 gs32 修改未编译（用户环境不运行）
+- 2026-06-26 A16W4 ND pergroup 显式切到 `{bufferNum=2, ubMte2InnerSize=256}` tiling key，未编译
+- 2026-06-26 `AntiQuantInt4PerGroupNdKn` 参考 wqbmmv2 `AntiquantComputeKNPerGroup` 重写为无运行时 `if` 的 `AddrReg` 数据流，未编译
+- 静态检查：`git diff --check` 通过
 
 ## 阶段三：验证（待启动）
 
@@ -151,9 +160,9 @@
     - [x] 8.1 基础配置层（4 WqmmConfig + 8 apt 分支 + config950 4 条目） ✅
     - [x] 8.2 Controller 层适配（pergroup 偏移 + biasBaseOffset_） ✅
     - [x] 8.3 VecCompute 层适配（CalLocalAddrForVf + CopyAntiQuantParamsGmToUb + AntiQuantProcessNd） ✅
-    - [x] 8.4 VF — KN 路径反量化（NdKnLoadScaleOffset PER_GROUP + AntiQuantInt4PerGroupNdKn） ✅
+    - [x] 8.4 VF — KN 路径反量化（AntiQuantInt4PerGroupNdKn 参考 wqbmmv2 重写，无运行时 if） ✅
     - [x] 8.5 VF — NK 路径反量化（AntiQuantInt4PerGroupNdNk + Gs32/Gs64/Gs128/Gs256） ✅
-    - [x] 8.6 编译验证（0 errors, 42/42 审查通过） ✅
+    - [x] 8.6 静态/编译验证（本轮 gs128/gs64/gs32 修改未编译，仅静态检查） ✅
 - [ ] 阶段三：验证
 
 ## 风险与应对

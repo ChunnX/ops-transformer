@@ -576,99 +576,93 @@ __aicore__ inline void AntiQuantInt4PerGroupNdKn(__local_mem__ xType *antiQuantS
                                                  __local_mem__ xType *antiQuantOffsetBasePhyAddr,
                                                  __local_mem__ wType *weightLowBitPhyAddr0,
                                                  __local_mem__ xType *weightF16PhyAddr0, uint16_t ubLoopK,
-                                                 uint16_t groupSize, uint16_t nBubXTypeAlign)
+                                                 uint16_t bubNLen, uint16_t groupSize,
+                                                 uint16_t antiQuantParamNStride)
 {
-    __local_mem__ xType *antiQuantScaleBasePhyAddr1 = antiQuantScaleBasePhyAddr + VEC_MAX_ELEM_B16;
-    __local_mem__ xType *antiQuantOffsetBasePhyAddr1 = antiQuantOffsetBasePhyAddr + VEC_MAX_ELEM_B16;
-    // int4每次处理128个数即为64B, 256>>2=64
-    __local_mem__ wType *weightLowBitPhyAddr1 = weightLowBitPhyAddr0 + (VECTOR_REG_WIDTH >> 2);
-    __local_mem__ xType *weightF16PhyAddr1 = weightF16PhyAddr0 + WEIGHT_F16_UB_NZ_STRIDE * (VECTOR_REG_WIDTH >> 1);
+    uint16_t nBubXTypeAlign = CeilAlign(bubNLen, static_cast<uint16_t>(BLOCK_CUBE));
+    uint16_t nLoop = CeilDivide(nBubXTypeAlign, static_cast<uint16_t>(VEC_MAX_ELEM_B16));
+    uint16_t groupNum = CeilDivide(ubLoopK, groupSize) - 1;
+    uint16_t groupTail = ubLoopK - groupNum * groupSize;
+    uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
+    int32_t weightOutStride =
+        static_cast<int32_t>(dataBlockStride * VEC_MAX_ELEM_B16 - ubLoopK * static_cast<uint16_t>(BLOCK_CUBE));
+    uint16_t weightNStride = static_cast<uint16_t>(VEC_MAX_ELEM_B16 >> 1);
+    uint16_t weightKStride = static_cast<uint16_t>(vecConfig.ubMte2InnerSize >> 1);
+    uint32_t weightGroupStride = static_cast<uint32_t>(groupSize) * weightKStride;
+    __local_mem__ xType *scaleTailAddr = antiQuantScaleBasePhyAddr + groupNum * antiQuantParamNStride;
+    __local_mem__ xType *offsetTailAddr = antiQuantOffsetBasePhyAddr + groupNum * antiQuantParamNStride;
+    __local_mem__ wType *weightInGroupTailAddr = weightLowBitPhyAddr0 + groupNum * groupSize * weightKStride;
+    __local_mem__ xType *weightOutBaseAddr = weightF16PhyAddr0;
+    uint32_t maskWeightValue = nBubXTypeAlign;
+
     __VEC_SCOPE__
     {
-        RegTensor<xType> antiQuantScaleVreg, antiQuantOffsetVreg, antiQuantScaleVreg1, antiQuantOffsetVreg1;
-        RegTensor<int4x2_t> weightS4Vreg0, weightS4Vreg1;
-        RegTensor<xType> weightF16Vreg0, weightF16Vreg1;
-        MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        RegTensor<xType> antiQuantScaleVreg;
+        RegTensor<xType> antiQuantOffsetVreg;
+        RegTensor<int4x2_t> weightS4Vreg;
+        RegTensor<xType> weightF16Vreg;
         static constexpr MicroAPI::CastTrait castS4ToF16Trait = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                                   MicroAPI::MaskMergeMode::ZEROING,
                                                                   AscendC::RoundMode::UNKNOWN};
 
-        uint16_t groupNum = ubLoopK / groupSize;
-        uint16_t groupTail = ubLoopK % groupSize;
+        for (uint16_t nIdx = 0; nIdx < nLoop; ++nIdx) {
+            MicroAPI::MaskReg maskWeight = MicroAPI::UpdateMask<xType>(maskWeightValue);
+            for (uint16_t gIdx = 0; gIdx < groupNum; ++gIdx) {
+                AddrReg scaleAddrReg =
+                    MicroAPI::CreateAddrReg<xType>(nIdx, VEC_MAX_ELEM_B16, gIdx, antiQuantParamNStride);
+                if constexpr (wqmmConfig.hasAntiQuantOffset) {
+                    MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_NORM>(
+                        antiQuantOffsetVreg, antiQuantOffsetBasePhyAddr, scaleAddrReg);
+                }
+                MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_NORM>(
+                    antiQuantScaleVreg, antiQuantScaleBasePhyAddr, scaleAddrReg);
 
-        for (uint16_t gIdx = 0; gIdx < groupNum; gIdx++) {
-            NdKnLoadScaleOffset<xType, wqmmConfig>(
-                antiQuantScaleBasePhyAddr + gIdx * nBubXTypeAlign,
-                antiQuantScaleBasePhyAddr1 + gIdx * nBubXTypeAlign,
-                antiQuantOffsetBasePhyAddr + gIdx * nBubXTypeAlign,
-                antiQuantOffsetBasePhyAddr1 + gIdx * nBubXTypeAlign, antiQuantScaleVreg, antiQuantScaleVreg1,
-                antiQuantOffsetVreg, antiQuantOffsetVreg1, xType(0));
-
-            for (uint16_t kIdx = 0; kIdx < groupSize; kIdx++) {
-                uint16_t globalKIdx = gIdx * groupSize + kIdx;
-                // DIST_UNPACK4_B8: Vn中一个数字4bit(0.5Byte)
-                // Vn 0 1 2 3 4 5 6 7 8 9 a b c d e f
-                // Vd 0 1 x x x x x x 2 3 x x x x x x
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg0,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 +
-                                               globalKIdx * (vecConfig.ubMte2InnerSize >> 1)));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 +
-                                               globalKIdx * (vecConfig.ubMte2InnerSize >> 1)));
-
-                // PART_P0: Vn 1 2 0 0 0 0 0 0 3 4 0 0 0 0 0 0
-                //          Vd 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg0, weightS4Vreg0, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg1, weightS4Vreg1, maskAll);
-                AddMulWeightF16RegTensorNdKn<xType, wType, wqmmConfig>(
-                    weightF16Vreg0, weightF16Vreg1, antiQuantScaleVreg, antiQuantOffsetVreg, antiQuantScaleVreg1,
-                    antiQuantOffsetVreg1, maskAll, xType(0));
-
-                WeightF16NdRegTensorToNzUb<xType, wType>(weightF16PhyAddr0, weightF16PhyAddr1, weightF16Vreg0,
-                                                         weightF16Vreg1, maskAll);
+                for (uint16_t kIdx = 0; kIdx < groupSize; ++kIdx) {
+                    AddrReg weightAddrReg = MicroAPI::CreateAddrReg<int4x2_t>(
+                        nIdx, weightNStride, gIdx, weightGroupStride, kIdx, weightKStride);
+                    MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+                        weightS4Vreg, (__local_mem__ int4x2_t *)weightLowBitPhyAddr0, weightAddrReg);
+                    MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg, weightS4Vreg, maskWeight);
+                    if constexpr (wqmmConfig.hasAntiQuantOffset) {
+                        MicroAPI::Add(weightF16Vreg, weightF16Vreg, antiQuantOffsetVreg, maskWeight);
+                    }
+                    MicroAPI::Mul(weightF16Vreg, weightF16Vreg, antiQuantScaleVreg, maskWeight);
+                    MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                                       MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                        weightOutBaseAddr, weightF16Vreg, dataBlockStride, 1, maskWeight);
+                }
             }
-        }
 
-        if (groupTail > 0) {
-            NdKnLoadScaleOffset<xType, wqmmConfig>(
-                antiQuantScaleBasePhyAddr + groupNum * nBubXTypeAlign,
-                antiQuantScaleBasePhyAddr1 + groupNum * nBubXTypeAlign,
-                antiQuantOffsetBasePhyAddr + groupNum * nBubXTypeAlign,
-                antiQuantOffsetBasePhyAddr1 + groupNum * nBubXTypeAlign, antiQuantScaleVreg, antiQuantScaleVreg1,
-                antiQuantOffsetVreg, antiQuantOffsetVreg1, xType(0));
-
-            for (uint16_t kIdx = 0; kIdx < groupTail; kIdx++) {
-                uint16_t globalKIdx = groupNum * groupSize + kIdx;
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg0,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 +
-                                               globalKIdx * (vecConfig.ubMte2InnerSize >> 1)));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 +
-                                               globalKIdx * (vecConfig.ubMte2InnerSize >> 1)));
-
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg0, weightS4Vreg0, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg1, weightS4Vreg1, maskAll);
-                AddMulWeightF16RegTensorNdKn<xType, wType, wqmmConfig>(
-                    weightF16Vreg0, weightF16Vreg1, antiQuantScaleVreg, antiQuantOffsetVreg, antiQuantScaleVreg1,
-                    antiQuantOffsetVreg1, maskAll, xType(0));
-
-                WeightF16NdRegTensorToNzUb<xType, wType>(weightF16PhyAddr0, weightF16PhyAddr1, weightF16Vreg0,
-                                                         weightF16Vreg1, maskAll);
+            AddrReg scaleTailAddrReg = MicroAPI::CreateAddrReg<xType>(nIdx, VEC_MAX_ELEM_B16);
+            if constexpr (wqmmConfig.hasAntiQuantOffset) {
+                MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_NORM>(
+                    antiQuantOffsetVreg, offsetTailAddr, scaleTailAddrReg);
             }
+            MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_NORM>(
+                antiQuantScaleVreg, scaleTailAddr, scaleTailAddrReg);
+            for (uint16_t kIdx = 0; kIdx < groupTail; ++kIdx) {
+                AddrReg weightTailAddrReg =
+                    MicroAPI::CreateAddrReg<int4x2_t>(nIdx, weightNStride, kIdx, weightKStride);
+                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+                    weightS4Vreg, (__local_mem__ int4x2_t *)weightInGroupTailAddr, weightTailAddrReg);
+                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg, weightS4Vreg, maskWeight);
+                if constexpr (wqmmConfig.hasAntiQuantOffset) {
+                    MicroAPI::Add(weightF16Vreg, weightF16Vreg, antiQuantOffsetVreg, maskWeight);
+                }
+                MicroAPI::Mul(weightF16Vreg, weightF16Vreg, antiQuantScaleVreg, maskWeight);
+                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    weightOutBaseAddr, weightF16Vreg, dataBlockStride, 1, maskWeight);
+            }
+            weightOutBaseAddr += weightOutStride;
         }
     }
 }
 
-// ============================================================================
-// NK PerGroup INT4 反量化 — gs=128 专用 VF 函数
+// NK PerGroup INT4 反量化 — gs=128 VF
 // 每个 group 恰好 128 个 K 元素 = 1 个向量寄存器宽度
 // Scale UB 布局: [G_tile, VEC_MAX_ELEM_B16]，stride = VEC_MAX_ELEM_B16
 // Scale 地址: base + groupIdx * VEC_MAX_ELEM_B16 + nBubIdx
-// ============================================================================
 template <typename xType, typename wType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 __aicore__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *antiQuantScaleBasePhyAddr,
                                                        __local_mem__ xType *antiQuantOffsetBasePhyAddr,
@@ -676,41 +670,31 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *antiQ
                                                        __local_mem__ xType *weightF16PhyAddr0, uint16_t bubNLen,
                                                        uint16_t bubKLen)
 {
-    __local_mem__ wType *weightLowBitPhyAddr1 = weightLowBitPhyAddr0 + (VECTOR_REG_WIDTH >> 2);
-    __local_mem__ xType *weightF16PhyAddr1 = weightF16PhyAddr0 + WEIGHT_F16_UB_NZ_STRIDE * (VECTOR_REG_WIDTH >> 1);
-
     __VEC_SCOPE__
     {
         RegTensor<xType> antiQuantScaleVreg;
         RegTensor<xType> antiQuantOffsetVreg;
         RegTensor<int4x2_t> weightS4Vreg0;
-        RegTensor<int4x2_t> weightS4Vreg1;
         RegTensor<xType> weightF16Vreg0;
-        RegTensor<xType> weightF16Vreg1;
 
         MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
         static constexpr MicroAPI::CastTrait castS4ToF16Trait = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                                   MicroAPI::MaskMergeMode::ZEROING,
-                                                                   AscendC::RoundMode::UNKNOWN};
+                                                                  MicroAPI::MaskMergeMode::ZEROING,
+                                                                  AscendC::RoundMode::UNKNOWN};
 
         constexpr uint16_t GROUP_SIZE = 128;
-        uint16_t groupNum = bubKLen / GROUP_SIZE;
-        // N 方向 weight 步长（字节）: CeilAlign(K, 32) >> 1
-        uint16_t outerStrideWeight = (bubKLen + 31) / 32 * 32 >> 1;
-        // K 方向 weight 步长（字节）: 128 INT4 = 64 字节
-        constexpr uint16_t innerStrideWeight = 64;
-        // 输出 NZ block 间距
-        uint16_t nAlign = (bubNLen + 15) / 16 * 16;
-        uint16_t dataBlockStride = nAlign + 1;
-        // group 间输出地址偏移
-        uint16_t weightOutAddrOffset = VEC_MAX_ELEM_B16 * dataBlockStride - bubNLen * static_cast<uint16_t>(BLOCK_CUBE);
-
+        constexpr uint16_t INNER_STRIDE_WEIGHT = GROUP_SIZE >> 1;
+        uint16_t groupNum = CeilDivide(bubKLen, GROUP_SIZE);
+        uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize >> 1);
+        uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
+        uint16_t weightOutAddrOffset =
+            VEC_MAX_ELEM_B16 * dataBlockStride - bubNLen * static_cast<uint16_t>(BLOCK_CUBE);
+        __local_mem__ xType *weightOutBaseAddr = weightF16PhyAddr0;
         uint32_t maskLen = bubKLen;
         MicroAPI::MaskReg maskWeight = MicroAPI::UpdateMask<xType>(maskLen);
 
         for (uint16_t groupIdx = 0; groupIdx < groupNum; ++groupIdx) {
             for (uint16_t nBubIdx = 0; nBubIdx < bubNLen; ++nBubIdx) {
-                // GMM [G, N] 布局 scale 地址: base + groupIdx * VEC_MAX_ELEM_B16 + nBubIdx
                 MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
                     antiQuantScaleVreg, antiQuantScaleBasePhyAddr + groupIdx * VEC_MAX_ELEM_B16 + nBubIdx);
                 if constexpr (wqmmConfig.hasAntiQuantOffset) {
@@ -718,45 +702,29 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs128(__local_mem__ xType *antiQ
                         antiQuantOffsetVreg, antiQuantOffsetBasePhyAddr + groupIdx * VEC_MAX_ELEM_B16 + nBubIdx);
                 }
 
-                // DIST_UNPACK4_B8: 加载 128 个 INT4 元素
                 MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg0,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + groupIdx * innerStrideWeight +
-                                               nBubIdx * outerStrideWeight));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 + groupIdx * innerStrideWeight +
-                                               nBubIdx * outerStrideWeight));
-
+                    weightS4Vreg0, (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 +
+                                                              groupIdx * INNER_STRIDE_WEIGHT +
+                                                              nBubIdx * outerStrideWeight));
                 MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg0, weightS4Vreg0, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg1, weightS4Vreg1, maskAll);
 
                 if constexpr (wqmmConfig.hasAntiQuantOffset) {
                     MicroAPI::Add(weightF16Vreg0, weightF16Vreg0, antiQuantOffsetVreg, maskAll);
-                    MicroAPI::Add(weightF16Vreg1, weightF16Vreg1, antiQuantOffsetVreg, maskAll);
                 }
                 MicroAPI::Mul(weightF16Vreg0, weightF16Vreg0, antiQuantScaleVreg, maskAll);
-                MicroAPI::Mul(weightF16Vreg1, weightF16Vreg1, antiQuantScaleVreg, maskAll);
 
                 MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr0, weightF16Vreg0,
-                                                                            dataBlockStride, 1, maskWeight);
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr1, weightF16Vreg1,
-                                                                            dataBlockStride, 1, maskWeight);
+                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    weightOutBaseAddr, weightF16Vreg0, dataBlockStride, 1, maskWeight);
             }
-            weightF16PhyAddr0 += weightOutAddrOffset;
-            weightF16PhyAddr1 += weightOutAddrOffset;
-            maskLen = bubKLen;
+            weightOutBaseAddr += weightOutAddrOffset;
             maskWeight = MicroAPI::UpdateMask<xType>(maskLen);
         }
     }
 }
 
-// ============================================================================
-// NK PerGroup INT4 反量化 — gs=256 专用 VF 函数
+// NK PerGroup INT4 反量化 — gs=256 VF
 // 每个 group 256 K 元素 = 2 个向量寄存器，需 2 次 weight 加载、2 次输出
-// ============================================================================
 template <typename xType, typename wType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 __aicore__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *antiQuantScaleBasePhyAddr,
                                                        __local_mem__ xType *antiQuantOffsetBasePhyAddr,
@@ -773,12 +741,8 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *antiQ
         RegTensor<xType> antiQuantOffsetVreg;
         RegTensor<int4x2_t> weightS4Vreg0;
         RegTensor<int4x2_t> weightS4Vreg1;
-        RegTensor<int4x2_t> weightS4Vreg0_1;
-        RegTensor<int4x2_t> weightS4Vreg1_1;
         RegTensor<xType> weightF16Vreg0;
         RegTensor<xType> weightF16Vreg1;
-        RegTensor<xType> weightF16Vreg0_1;
-        RegTensor<xType> weightF16Vreg1_1;
 
         MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
         static constexpr MicroAPI::CastTrait castS4ToF16Trait = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
@@ -786,15 +750,9 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *antiQ
                                                                    AscendC::RoundMode::UNKNOWN};
 
         constexpr uint16_t GROUP_SIZE = 256;
-        uint16_t groupNum = bubKLen / GROUP_SIZE;
-        uint16_t outerStrideWeight = (bubKLen + 31) / 32 * 32 >> 1;
-        // K 方向 weight 步长（字节）: 256 INT4 = 128 字节
-        constexpr uint16_t innerStrideWeight = 128;
-        uint16_t nAlign = (bubNLen + 15) / 16 * 16;
-        uint16_t dataBlockStride = nAlign + 1;
-        // 2 个向量寄存器的输出偏移
-        __local_mem__ xType *weightF16PhyAddr0_1 = weightF16PhyAddr0 + dataBlockStride * VEC_MAX_ELEM_B16;
-        __local_mem__ xType *weightF16PhyAddr1_1 = weightF16PhyAddr1 + dataBlockStride * VEC_MAX_ELEM_B16;
+        uint16_t groupNum = CeilDivide(bubKLen, GROUP_SIZE);
+        uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize) >> 1;
+        uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
         // group 间输出地址偏移
         uint16_t weightOutAddrOffset =
             2 * VEC_MAX_ELEM_B16 * dataBlockStride - bubNLen * static_cast<uint16_t>(BLOCK_CUBE);
@@ -803,79 +761,46 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs256(__local_mem__ xType *antiQ
         MicroAPI::MaskReg maskWeight = MicroAPI::UpdateMask<xType>(maskLen);
         MicroAPI::MaskReg maskWeight1 = MicroAPI::UpdateMask<xType>(maskLen);
 
-        for (uint16_t groupIdx = 0; groupIdx < groupNum; ++groupIdx) {
-            for (uint16_t nBubIdx = 0; nBubIdx < bubNLen; ++nBubIdx) {
-                // GMM [G, N] 布局 scale 地址
+        for (uint16_t nBubIdx = 0; nBubIdx < bubNLen; ++nBubIdx) {
+            // GMM [G, N] 布局 scale 地址
+            MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
+                antiQuantScaleVreg, antiQuantScaleBasePhyAddr + nBubIdx);
+            if constexpr (wqmmConfig.hasAntiQuantOffset) {
                 MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    antiQuantScaleVreg, antiQuantScaleBasePhyAddr + groupIdx * VEC_MAX_ELEM_B16 + nBubIdx);
-                if constexpr (wqmmConfig.hasAntiQuantOffset) {
-                    MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        antiQuantOffsetVreg, antiQuantOffsetBasePhyAddr + groupIdx * VEC_MAX_ELEM_B16 + nBubIdx);
-                }
-
-                // 第 1 个 128 INT4 元素
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg0,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + groupIdx * innerStrideWeight +
-                                               nBubIdx * outerStrideWeight));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 + groupIdx * innerStrideWeight +
-                                               nBubIdx * outerStrideWeight));
-                // 第 2 个 128 INT4 元素（偏移 64 字节）
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg0_1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + 64 + groupIdx * innerStrideWeight +
-                                               nBubIdx * outerStrideWeight));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg1_1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 + 64 + groupIdx * innerStrideWeight +
-                                               nBubIdx * outerStrideWeight));
-
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg0, weightS4Vreg0, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg1, weightS4Vreg1, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg0_1, weightS4Vreg0_1, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg1_1, weightS4Vreg1_1, maskAll);
-
-                if constexpr (wqmmConfig.hasAntiQuantOffset) {
-                    MicroAPI::Add(weightF16Vreg0, weightF16Vreg0, antiQuantOffsetVreg, maskAll);
-                    MicroAPI::Add(weightF16Vreg1, weightF16Vreg1, antiQuantOffsetVreg, maskAll);
-                    MicroAPI::Add(weightF16Vreg0_1, weightF16Vreg0_1, antiQuantOffsetVreg, maskAll);
-                    MicroAPI::Add(weightF16Vreg1_1, weightF16Vreg1_1, antiQuantOffsetVreg, maskAll);
-                }
-                MicroAPI::Mul(weightF16Vreg0, weightF16Vreg0, antiQuantScaleVreg, maskAll);
-                MicroAPI::Mul(weightF16Vreg1, weightF16Vreg1, antiQuantScaleVreg, maskAll);
-                MicroAPI::Mul(weightF16Vreg0_1, weightF16Vreg0_1, antiQuantScaleVreg, maskAll);
-                MicroAPI::Mul(weightF16Vreg1_1, weightF16Vreg1_1, antiQuantScaleVreg, maskAll);
-
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr0, weightF16Vreg0,
-                                                                            dataBlockStride, 1, maskWeight);
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr1, weightF16Vreg1,
-                                                                            dataBlockStride, 1, maskWeight);
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr0_1, weightF16Vreg0_1,
-                                                                            dataBlockStride, 1, maskWeight1);
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr1_1, weightF16Vreg1_1,
-                                                                            dataBlockStride, 1, maskWeight1);
+                    antiQuantOffsetVreg, antiQuantOffsetBasePhyAddr + nBubIdx);
             }
-            weightF16PhyAddr0 += weightOutAddrOffset;
-            weightF16PhyAddr1 += weightOutAddrOffset;
-            weightF16PhyAddr0_1 += weightOutAddrOffset;
-            weightF16PhyAddr1_1 += weightOutAddrOffset;
-            maskLen = bubKLen;
-            maskWeight = MicroAPI::UpdateMask<xType>(maskLen);
-            maskWeight1 = MicroAPI::UpdateMask<xType>(maskLen);
+
+            // 第 1 个 128 INT4 元素
+            MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+                weightS4Vreg0,
+                (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + nBubIdx * outerStrideWeight));
+            // 第 2 个 128 INT4 元素
+            MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+                weightS4Vreg1,
+                (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 + nBubIdx * outerStrideWeight));
+
+            MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg0, weightS4Vreg0, maskAll);
+            MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg1, weightS4Vreg1, maskAll);
+
+            if constexpr (wqmmConfig.hasAntiQuantOffset) {
+                MicroAPI::Add(weightF16Vreg0, weightF16Vreg0, antiQuantOffsetVreg, maskAll);
+                MicroAPI::Add(weightF16Vreg1, weightF16Vreg1, antiQuantOffsetVreg, maskAll);
+            }
+            MicroAPI::Mul(weightF16Vreg0, weightF16Vreg0, antiQuantScaleVreg, maskAll);
+            MicroAPI::Mul(weightF16Vreg1, weightF16Vreg1, antiQuantScaleVreg, maskAll);
+
+            MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                               MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr0, weightF16Vreg0,
+                                                                        dataBlockStride, 1, maskWeight);
+            MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
+                               MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr1, weightF16Vreg1,
+                                                                        dataBlockStride, 1, maskWeight);
         }
     }
 }
 
-// ============================================================================
-// NK PerGroup INT4 反量化 — gs=64 专用 VF 函数
+// NK PerGroup INT4 反量化 — gs=64 VF
 // 每个 group 64 K 元素 = 半个向量寄存器，需 Select 拼接相邻 2 个 group 的 scale
-// ============================================================================
 template <typename xType, typename wType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 __aicore__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQuantScaleBasePhyAddr,
                                                       __local_mem__ xType *antiQuantOffsetBasePhyAddr,
@@ -883,9 +808,6 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQu
                                                       __local_mem__ xType *weightF16PhyAddr0, uint16_t bubNLen,
                                                       uint16_t bubKLen)
 {
-    __local_mem__ wType *weightLowBitPhyAddr1 = weightLowBitPhyAddr0 + (VECTOR_REG_WIDTH >> 2);
-    __local_mem__ xType *weightF16PhyAddr1 = weightF16PhyAddr0 + WEIGHT_F16_UB_NZ_STRIDE * (VECTOR_REG_WIDTH >> 1);
-
     __VEC_SCOPE__
     {
         RegTensor<xType> oriScale00;
@@ -895,9 +817,7 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQu
         RegTensor<xType> oriOffset01;
         RegTensor<xType> offset0;
         RegTensor<int4x2_t> weightS4Vreg0;
-        RegTensor<int4x2_t> weightS4Vreg1;
         RegTensor<xType> weightF16Vreg0;
-        RegTensor<xType> weightF16Vreg1;
 
         MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
         MicroAPI::MaskReg maskRegSelect = MicroAPI::CreateMask<xType, MicroAPI::MaskPattern::H>();
@@ -905,12 +825,15 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQu
                                                                    MicroAPI::MaskMergeMode::ZEROING,
                                                                    AscendC::RoundMode::UNKNOWN};
 
+        constexpr uint16_t GROUP_SIZE = 64;
+        constexpr uint16_t GROUPS_PER_REG = VEC_MAX_ELEM_B16 / GROUP_SIZE;
+        constexpr uint16_t INNER_K_SIZE = GROUPS_PER_REG * GROUP_SIZE;
+        constexpr uint16_t INNER_STRIDE_WEIGHT = INNER_K_SIZE >> 1;
         // K 方向按 128 元素分块（2 个 group × 64 K）
-        uint16_t innerExtend = (bubKLen + 127) / 128;
+        uint16_t innerExtend = (bubKLen + INNER_K_SIZE - 1) / INNER_K_SIZE;
         uint16_t outerExtend = bubNLen;
-        uint16_t outerStrideWeight = (bubKLen + 31) / 32 * 32 >> 1;
-        uint16_t nAlign = (bubNLen + 15) / 16 * 16;
-        uint16_t dataBlockStride = nAlign + 1;
+        uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize >> 1);
+        uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
         // 每个 innerExtend 迭代后输出地址偏移
         uint16_t outerStride =
             VEC_MAX_ELEM_B16 * dataBlockStride - bubNLen * static_cast<uint16_t>(BLOCK_CUBE);
@@ -923,59 +846,64 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs64(__local_mem__ xType *antiQu
                 // 从 [G, N] 加载 2 个相邻 group 的 scale，用 Select 拼接
                 // group[2*innerIdx] 和 group[2*innerIdx+1] 各 64 个 K 元素
                 MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    oriScale00, antiQuantScaleBasePhyAddr + (innerIdx * 2) * VEC_MAX_ELEM_B16 + outerIdx);
+                    oriScale00,
+                    antiQuantScaleBasePhyAddr + (innerIdx * GROUPS_PER_REG) * VEC_MAX_ELEM_B16 + outerIdx);
                 MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    oriScale01, antiQuantScaleBasePhyAddr + (innerIdx * 2 + 1) * VEC_MAX_ELEM_B16 + outerIdx);
+                    oriScale01,
+                    antiQuantScaleBasePhyAddr + (innerIdx * GROUPS_PER_REG + 1) * VEC_MAX_ELEM_B16 + outerIdx);
                 MicroAPI::Select(scale0, oriScale00, oriScale01, maskRegSelect);
 
                 if constexpr (wqmmConfig.hasAntiQuantOffset) {
                     MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        oriOffset00, antiQuantOffsetBasePhyAddr + (innerIdx * 2) * VEC_MAX_ELEM_B16 + outerIdx);
+                        oriOffset00,
+                        antiQuantOffsetBasePhyAddr + (innerIdx * GROUPS_PER_REG) * VEC_MAX_ELEM_B16 + outerIdx);
                     MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        oriOffset01, antiQuantOffsetBasePhyAddr + (innerIdx * 2 + 1) * VEC_MAX_ELEM_B16 + outerIdx);
+                        oriOffset01,
+                        antiQuantOffsetBasePhyAddr + (innerIdx * GROUPS_PER_REG + 1) * VEC_MAX_ELEM_B16 + outerIdx);
                     MicroAPI::Select(offset0, oriOffset00, oriOffset01, maskRegSelect);
                 }
 
                 // 加载 128 个 INT4 weight（覆盖 2 个 group × 64 K）
                 MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
                     weightS4Vreg0,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + innerIdx * 64 +
-                                               outerIdx * outerStrideWeight));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vreg1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 + innerIdx * 64 +
+                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + innerIdx * INNER_STRIDE_WEIGHT +
                                                outerIdx * outerStrideWeight));
 
                 MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg0, weightS4Vreg0, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg1, weightS4Vreg1, maskAll);
 
                 if constexpr (wqmmConfig.hasAntiQuantOffset) {
-                    MicroAPI::Add(weightF16Vreg0, weightF16Vreg0, offset0, maskAll);
-                    MicroAPI::Add(weightF16Vreg1, weightF16Vreg1, offset0, maskAll);
+                    MicroAPI::Add(weightF16Vreg0, weightF16Vreg0, offset0, maskWeight);
                 }
-                MicroAPI::Mul(weightF16Vreg0, weightF16Vreg0, scale0, maskAll);
-                MicroAPI::Mul(weightF16Vreg1, weightF16Vreg1, scale0, maskAll);
+                MicroAPI::Mul(weightF16Vreg0, weightF16Vreg0, scale0, maskWeight);
 
                 MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                                    MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr0, weightF16Vreg0,
                                                                             dataBlockStride, 1, maskWeight);
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr1, weightF16Vreg1,
-                                                                            dataBlockStride, 1, maskWeight);
             }
             weightF16PhyAddr0 += outerStride;
-            weightF16PhyAddr1 += outerStride;
-            maskLen = bubKLen;
             maskWeight = MicroAPI::UpdateMask<xType>(maskLen);
         }
     }
 }
 
-// ============================================================================
-// NK PerGroup INT4 反量化 — gs=32 专用 VF 函数
+// NK PerGroup INT4 反量化 — gs=32 VF
 // 每个 group 32 K 元素 = 1/4 向量寄存器
-// GMM [G,N] 布局下不能用 DIST_E2B_B16，使用 8 次 DIST_BRC_B16 + 4 次 Interleave + 2 次 Select
-// ============================================================================
+// GMM [G,N] 布局下不能用 DIST_E2B_B16；每个 128K 向量使用 4 次 DIST_BRC_B16 + Select 拼接
+template <typename xType>
+__aicore__ inline void SelectNdNkGs32FourGroups(RegTensor<xType> &dstVreg, RegTensor<xType> &tmp01Vreg,
+                                                 RegTensor<xType> &tmp23Vreg, RegTensor<xType> &group0Vreg,
+                                                 RegTensor<xType> &group1Vreg, RegTensor<xType> &group2Vreg,
+                                                 RegTensor<xType> &group3Vreg, MicroAPI::MaskReg &maskRegSelect32,
+                                                 MicroAPI::MaskReg &maskRegSelect96,
+                                                 MicroAPI::MaskReg &maskRegSelectH)
+{
+    // tmp01: [group0 x 32, group1 x 96], tmp23: [group2 x 96, group3 x 32].
+    MicroAPI::Select(tmp01Vreg, group0Vreg, group1Vreg, maskRegSelect32);
+    MicroAPI::Select(tmp23Vreg, group2Vreg, group3Vreg, maskRegSelect96);
+    // Select with maskH: [group0 x 32, group1 x 32, group2 x 32, group3 x 32].
+    MicroAPI::Select(dstVreg, tmp01Vreg, tmp23Vreg, maskRegSelectH);
+}
+
 template <typename xType, typename wType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 __aicore__ inline void AntiQuantInt4PerGroupNdNkGs32(__local_mem__ xType *antiQuantScaleBasePhyAddr,
                                                       __local_mem__ xType *antiQuantOffsetBasePhyAddr,
@@ -983,156 +911,87 @@ __aicore__ inline void AntiQuantInt4PerGroupNdNkGs32(__local_mem__ xType *antiQu
                                                       __local_mem__ xType *weightF16PhyAddr0, uint16_t bubNLen,
                                                       uint16_t bubKLen)
 {
-    __local_mem__ wType *weightLowBitPhyAddr1 = weightLowBitPhyAddr0 + (VECTOR_REG_WIDTH >> 2);
-    __local_mem__ xType *weightF16PhyAddr1 = weightF16PhyAddr0 + WEIGHT_F16_UB_NZ_STRIDE * (VECTOR_REG_WIDTH >> 1);
-
     __VEC_SCOPE__
     {
-        // Scale 寄存器
-        RegTensor<xType> s0, s1, s2, s3, s4, s5, s6, s7;
-        RegTensor<xType> scaleAB, scaleCD, scaleEF, scaleGH;
-        RegTensor<xType> scale0, scale1;
-        // Offset 寄存器
-        RegTensor<xType> o0, o1, o2, o3, o4, o5, o6, o7;
-        RegTensor<xType> offsetAB, offsetCD, offsetEF, offsetGH;
-        RegTensor<xType> offset0, offset1;
-        // Weight 寄存器
-        RegTensor<int4x2_t> weightS4Vl0_0, weightS4Vl0_1;
-        RegTensor<int4x2_t> weightS4Vl1_0, weightS4Vl1_1;
-        RegTensor<xType> weightF16Vl0_0, weightF16Vl0_1;
-        RegTensor<xType> weightF16Vl1_0, weightF16Vl1_1;
+        RegTensor<xType> scale0;
+        RegTensor<xType> offset0;
+        RegTensor<xType> param0;
+        RegTensor<xType> param1;
+        RegTensor<xType> param2;
+        RegTensor<xType> param3;
+        RegTensor<xType> param01;
+        RegTensor<xType> param23;
+        RegTensor<int4x2_t> weightS4Vreg0;
+        RegTensor<xType> weightF16Vreg0;
 
         MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg maskRegSelect = MicroAPI::CreateMask<xType, MicroAPI::MaskPattern::H>();
+        MicroAPI::MaskReg maskRegSelectH = MicroAPI::CreateMask<xType, MicroAPI::MaskPattern::H>();
+        uint32_t selectLen32 = 32;
+        uint32_t selectLen96 = 96;
+        MicroAPI::MaskReg maskRegSelect32 = MicroAPI::UpdateMask<xType>(selectLen32);
+        MicroAPI::MaskReg maskRegSelect96 = MicroAPI::UpdateMask<xType>(selectLen96);
         static constexpr MicroAPI::CastTrait castS4ToF16Trait = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                                    MicroAPI::MaskMergeMode::ZEROING,
                                                                    AscendC::RoundMode::UNKNOWN};
 
-        // K 方向按 256 元素分块（8 groups × 32 K）
-        uint16_t innerExtend = (bubKLen + 255) / 256;
+        constexpr uint16_t GROUP_SIZE = 32;
+        constexpr uint16_t GROUPS_PER_REG = VEC_MAX_ELEM_B16 / GROUP_SIZE;
+        constexpr uint16_t INNER_K_SIZE = GROUPS_PER_REG * GROUP_SIZE;
+        constexpr uint16_t INNER_STRIDE_WEIGHT = INNER_K_SIZE >> 1;
+        uint16_t innerExtend = CeilDivide(bubKLen, INNER_K_SIZE);
         uint16_t outerExtend = bubNLen;
-        uint16_t outerStrideWeight = (bubKLen + 31) / 32 * 32 >> 1;
-        uint16_t nAlign = (bubNLen + 15) / 16 * 16;
-        uint16_t dataBlockStride = nAlign + 1;
-        // 每个 innerExtend 迭代后输出地址偏移（256 K 元素 = 2 个向量寄存器）
-        uint16_t outDimOffset =
-            2 * VEC_MAX_ELEM_B16 * dataBlockStride - bubNLen * static_cast<uint16_t>(BLOCK_CUBE);
+        uint16_t outerStrideWeight = static_cast<uint16_t>(vecConfig.ubMte2InnerSize >> 1);
+        uint16_t dataBlockStride = WEIGHT_F16_UB_NZ_STRIDE;
+        // 一个 inner 处理 128 个 K 元素，对应 4 个 32K group 和一个输出向量。
+        uint16_t outerStride =
+            VEC_MAX_ELEM_B16 * dataBlockStride - bubNLen * static_cast<uint16_t>(BLOCK_CUBE);
 
         uint32_t maskLen = bubKLen;
-        MicroAPI::MaskReg maskWeight0 = MicroAPI::UpdateMask<xType>(maskLen);
-        MicroAPI::MaskReg maskWeight1 = MicroAPI::UpdateMask<xType>(maskLen);
+        MicroAPI::MaskReg maskWeight = MicroAPI::UpdateMask<xType>(maskLen);
 
         for (uint16_t innerIdx = 0; innerIdx < innerExtend; ++innerIdx) {
+            uint16_t groupBase = innerIdx * GROUPS_PER_REG;
+
             for (uint16_t outerIdx = 0; outerIdx < outerExtend; ++outerIdx) {
-                // 8 次广播加载 8 个 group 的 scale
                 MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    s0, antiQuantScaleBasePhyAddr + (innerIdx * 8 + 0) * VEC_MAX_ELEM_B16 + outerIdx);
+                    param0, antiQuantScaleBasePhyAddr + groupBase * VEC_MAX_ELEM_B16 + outerIdx);
                 MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    s1, antiQuantScaleBasePhyAddr + (innerIdx * 8 + 1) * VEC_MAX_ELEM_B16 + outerIdx);
+                    param1, antiQuantScaleBasePhyAddr + (groupBase + 1) * VEC_MAX_ELEM_B16 + outerIdx);
                 MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    s2, antiQuantScaleBasePhyAddr + (innerIdx * 8 + 2) * VEC_MAX_ELEM_B16 + outerIdx);
+                    param2, antiQuantScaleBasePhyAddr + (groupBase + 2) * VEC_MAX_ELEM_B16 + outerIdx);
                 MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    s3, antiQuantScaleBasePhyAddr + (innerIdx * 8 + 3) * VEC_MAX_ELEM_B16 + outerIdx);
-                MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    s4, antiQuantScaleBasePhyAddr + (innerIdx * 8 + 4) * VEC_MAX_ELEM_B16 + outerIdx);
-                MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    s5, antiQuantScaleBasePhyAddr + (innerIdx * 8 + 5) * VEC_MAX_ELEM_B16 + outerIdx);
-                MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    s6, antiQuantScaleBasePhyAddr + (innerIdx * 8 + 6) * VEC_MAX_ELEM_B16 + outerIdx);
-                MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                    s7, antiQuantScaleBasePhyAddr + (innerIdx * 8 + 7) * VEC_MAX_ELEM_B16 + outerIdx);
-
-                // Interleave 构造 64 元素对（使用独立临时寄存器避免覆盖）
-                RegTensor<xType> abLow, abHigh, cdLow, cdHigh, efLow, efHigh, ghLow, ghHigh;
-                MicroAPI::Interleave(abLow, abHigh, s0, s1);  // [s0×64, s1×64]
-                MicroAPI::Interleave(cdLow, cdHigh, s2, s3);  // [s2×64, s3×64]
-                MicroAPI::Interleave(efLow, efHigh, s4, s5);  // [s4×64, s5×64]
-                MicroAPI::Interleave(ghLow, ghHigh, s6, s7);  // [s6×64, s7×64]
-
-                // Select 拼接 128 元素寄存器
-                MicroAPI::Select(scale0, abLow, cdLow, maskRegSelect);  // [s0×32, s1×32, s2×32, s3×32]
-                MicroAPI::Select(scale1, efLow, ghLow, maskRegSelect);  // [s4×32, s5×32, s6×32, s7×32]
+                    param3, antiQuantScaleBasePhyAddr + (groupBase + 3) * VEC_MAX_ELEM_B16 + outerIdx);
+                SelectNdNkGs32FourGroups<xType>(scale0, param01, param23, param0, param1, param2, param3,
+                                                maskRegSelect32, maskRegSelect96, maskRegSelectH);
 
                 if constexpr (wqmmConfig.hasAntiQuantOffset) {
                     MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        o0, antiQuantOffsetBasePhyAddr + (innerIdx * 8 + 0) * VEC_MAX_ELEM_B16 + outerIdx);
+                        param0, antiQuantOffsetBasePhyAddr + groupBase * VEC_MAX_ELEM_B16 + outerIdx);
                     MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        o1, antiQuantOffsetBasePhyAddr + (innerIdx * 8 + 1) * VEC_MAX_ELEM_B16 + outerIdx);
+                        param1, antiQuantOffsetBasePhyAddr + (groupBase + 1) * VEC_MAX_ELEM_B16 + outerIdx);
                     MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        o2, antiQuantOffsetBasePhyAddr + (innerIdx * 8 + 2) * VEC_MAX_ELEM_B16 + outerIdx);
+                        param2, antiQuantOffsetBasePhyAddr + (groupBase + 2) * VEC_MAX_ELEM_B16 + outerIdx);
                     MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        o3, antiQuantOffsetBasePhyAddr + (innerIdx * 8 + 3) * VEC_MAX_ELEM_B16 + outerIdx);
-                    MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        o4, antiQuantOffsetBasePhyAddr + (innerIdx * 8 + 4) * VEC_MAX_ELEM_B16 + outerIdx);
-                    MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        o5, antiQuantOffsetBasePhyAddr + (innerIdx * 8 + 5) * VEC_MAX_ELEM_B16 + outerIdx);
-                    MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        o6, antiQuantOffsetBasePhyAddr + (innerIdx * 8 + 6) * VEC_MAX_ELEM_B16 + outerIdx);
-                    MicroAPI::DataCopy<xType, MicroAPI::LoadDist::DIST_BRC_B16>(
-                        o7, antiQuantOffsetBasePhyAddr + (innerIdx * 8 + 7) * VEC_MAX_ELEM_B16 + outerIdx);
-
-                    RegTensor<xType> oAbLow, oAbHigh, oCdLow, oCdHigh, oEfLow, oEfHigh, oGhLow, oGhHigh;
-                    MicroAPI::Interleave(oAbLow, oAbHigh, o0, o1);
-                    MicroAPI::Interleave(oCdLow, oCdHigh, o2, o3);
-                    MicroAPI::Interleave(oEfLow, oEfHigh, o4, o5);
-                    MicroAPI::Interleave(oGhLow, oGhHigh, o6, o7);
-
-                    MicroAPI::Select(offset0, oAbLow, oCdLow, maskRegSelect);
-                    MicroAPI::Select(offset1, oEfLow, oGhLow, maskRegSelect);
+                        param3, antiQuantOffsetBasePhyAddr + (groupBase + 3) * VEC_MAX_ELEM_B16 + outerIdx);
+                    SelectNdNkGs32FourGroups<xType>(offset0, param01, param23, param0, param1, param2, param3,
+                                                    maskRegSelect32, maskRegSelect96, maskRegSelectH);
                 }
 
-                // 2 次 weight 加载（各 128 INT4）
                 MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vl0_0,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + innerIdx * 128 +
+                    weightS4Vreg0,
+                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + innerIdx * INNER_STRIDE_WEIGHT +
                                                outerIdx * outerStrideWeight));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vl1_0,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 + innerIdx * 128 +
-                                               outerIdx * outerStrideWeight));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vl0_1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr0 + 64 + innerIdx * 128 +
-                                               outerIdx * outerStrideWeight));
-                MicroAPI::DataCopy<int4x2_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
-                    weightS4Vl1_1,
-                    (__local_mem__ int4x2_t *)(weightLowBitPhyAddr1 + 64 + innerIdx * 128 +
-                                               outerIdx * outerStrideWeight));
-
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vl0_0, weightS4Vl0_0, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vl1_0, weightS4Vl1_0, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vl0_1, weightS4Vl0_1, maskAll);
-                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vl1_1, weightS4Vl1_1, maskAll);
-
+                MicroAPI::Cast<xType, int4x2_t, castS4ToF16Trait>(weightF16Vreg0, weightS4Vreg0, maskAll);
                 if constexpr (wqmmConfig.hasAntiQuantOffset) {
-                    MicroAPI::Add(weightF16Vl0_0, weightF16Vl0_0, offset0, maskAll);
-                    MicroAPI::Add(weightF16Vl1_0, weightF16Vl1_0, offset0, maskAll);
-                    MicroAPI::Add(weightF16Vl0_1, weightF16Vl0_1, offset1, maskAll);
-                    MicroAPI::Add(weightF16Vl1_1, weightF16Vl1_1, offset1, maskAll);
+                    MicroAPI::Add(weightF16Vreg0, weightF16Vreg0, offset0, maskWeight);
                 }
-                MicroAPI::Mul(weightF16Vl0_0, weightF16Vl0_0, scale0, maskAll);
-                MicroAPI::Mul(weightF16Vl1_0, weightF16Vl1_0, scale0, maskAll);
-                MicroAPI::Mul(weightF16Vl0_1, weightF16Vl0_1, scale1, maskAll);
-                MicroAPI::Mul(weightF16Vl1_1, weightF16Vl1_1, scale1, maskAll);
-
+                MicroAPI::Mul(weightF16Vreg0, weightF16Vreg0, scale0, maskWeight);
                 MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr0, weightF16Vl0_0,
-                                                                            dataBlockStride, 1, maskWeight0);
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr1, weightF16Vl1_0,
-                                                                            dataBlockStride, 1, maskWeight0);
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr0, weightF16Vl0_1,
-                                                                            dataBlockStride, 1, maskWeight1);
-                MicroAPI::DataCopy<xType, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
-                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr1, weightF16Vl1_1,
-                                                                            dataBlockStride, 1, maskWeight1);
+                                   MicroAPI::PostLiteral::POST_MODE_UPDATE>(weightF16PhyAddr0, weightF16Vreg0,
+                                                                            dataBlockStride, 1, maskWeight);
             }
-            weightF16PhyAddr0 += outDimOffset;
-            weightF16PhyAddr1 += outDimOffset;
-            maskLen = bubKLen;
-            maskWeight0 = MicroAPI::UpdateMask<xType>(maskLen);
-            maskWeight1 = MicroAPI::UpdateMask<xType>(maskLen);
+            weightF16PhyAddr0 += outerStride;
+            maskWeight = MicroAPI::UpdateMask<xType>(maskLen);
         }
     }
 }

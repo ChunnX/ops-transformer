@@ -651,3 +651,203 @@
 - 新增 A16W4 PerGroup ND 数据流支持
 - 原有 A16W8 perchannel、A8W4、S8S4 路径不受影响（`if constexpr` 隔离）
 - 下一步：阶段三验证（UT + 兼容性回归，需 NPU 硬件环境）
+
+---
+
+### 2026-06-24 | 修复 A16W4 Pergroup ND NK 反量化
+
+**类型**: 🐛 修复
+**范围**: `basic_block_vf_nd.h` 中 arch35 A16W4 INT4 pergroup ND、weight 转置（NK）路径
+
+#### 变更内容
+- 修正 gs=64/128/256 NK 路径 weight N 行步长，使用 `vecConfig.ubMte2InnerSize >> 1` 匹配 `CopyWeightGmToUb` 的 UB 行布局
+- 修正 NK 输出 NZ block stride，统一使用 `WEIGHT_F16_UB_NZ_STRIDE`，避免按 `bubNLen` 动态计算导致 L1 搬运源布局不一致
+- 修正 gs=32 scale/offset 寄存器拼接，改为 8 次 `DIST_BRC_B16` 后用 `Select` 组合 32 元素分组
+- 移除 group 循环内 `maskLen` 重置，保留 `UpdateMask` 跨 group 递减处理 K 尾块
+
+#### 关键决策
+- GMM NK pergroup scale/offset UB 布局固定为 `[G_tile, N_tile_align]`，仍按 `groupIdx * VEC_MAX_ELEM_B16 + nBubIdx` 寻址
+- weight UB 的 N 行 stride 来源于 MTE2 搬运配置，不由当前 VF 的 `bubKLen` 推导
+
+#### 影响范围
+- 仅影响 A16W4 pergroup ND 且 `bTrans=true` 的 NK 反量化路径
+- 原有 perchannel、KN 路径和非 INT4 路径不受影响
+- 编译验证：`bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8` 通过（exit code 0）
+
+---
+
+### 2026-06-24 | 修复 A16W4 Pergroup ND NK gs128 双段反量化
+
+**类型**: 🐛 修复
+**范围**: `basic_block_vf_nd.h` 中 arch35 A16W4 INT4 pergroup ND、weight 转置（NK）、`groupSize=128` 路径
+
+#### 变更内容
+- 修正 `AntiQuantInt4PerGroupNdNkGs128`，移除第二组 128K weight 加载、反量化和写回，避免 `K=128` 时误读下一段 UB 数据
+- 保留 group 维循环：`K=128/groupSize=128` 时只迭代 1 次，`K>128` 时按 group 逐段处理
+- 明确 `CopyWeightGmToUb` 中 `vecConfig.ubMte2InnerSize=256` 在 NK 场景作为 N 行 stride 使用，不表示当前 VF 的有效 K 必须为 256
+
+#### 关键决策
+- gs128 每个 group 只对应一个 128 元素 MicroAPI 向量，不应像 gs256 一样处理两个 128K 向量
+- 本次仅收敛 gs128 NK 反量化数据流，不调整 MTE2 搬运或 scale/offset 布局
+
+#### 影响范围
+- 影响 A16W4 pergroup ND `bTrans=true` 且 `groupSize=128` 的反量化精度
+- 原有 perchannel、KN 路径和非 INT4 路径不受影响
+- 编译验证：`bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8` 通过（exit code 0）
+
+---
+
+### 2026-06-24 | 重实现 A16W4 Pergroup ND NK gs32 反量化
+
+**类型**: 🐛 修复
+**范围**: `basic_block_vf_nd.h` 中 arch35 A16W4 INT4 pergroup ND、weight 转置（NK）、`groupSize=32` 路径
+
+#### 变更内容
+- 重实现 `AntiQuantInt4PerGroupNdNkGs32`，按 256K inner 分块处理 8 个 32K group
+- 按 GMM `[G,N]` scale/offset UB 布局使用逐 group `DIST_BRC_B16` 加 `Select` 拼接 32-lane scale/offset 段
+- 对 `K<256` 尾块避免读取不存在的第二个 128K weight 向量和 group 4-7 scale/offset
+
+#### 关键决策
+- 未复用 WQBMMv2 的 `DIST_E2B_B16`，因为 GMM scale/offset 在 UB 中按 group 行存放，8 个 group 对同一 N 不连续
+- 保持 NK weight 行 stride 为 `vecConfig.ubMte2InnerSize >> 1`，输出 stride 使用 `WEIGHT_F16_UB_NZ_STRIDE`
+
+#### 影响范围
+- 影响 A16W4 pergroup ND `bTrans=true` 且 `groupSize=32` 的反量化精度
+- 原有 perchannel、KN 路径和非 INT4 路径不受影响
+- 编译验证：`bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8` 通过（exit code 0）
+
+---
+
+### 2026-06-24 | 重写 A16W4 Pergroup ND NK gs128 反量化
+
+**类型**: 🐛 修复
+**范围**: `basic_block_vf_nd.h` 中 arch35 A16W4 INT4 pergroup ND、weight 转置（NK）、`groupSize=128` 路径
+
+#### 变更内容
+- 重写 `AntiQuantInt4PerGroupNdNkGs128`，按单个 128K vector 完成 weight 加载、反量化和 NZ 写回
+- 按 GMM `[G,N]` scale/offset UB 布局使用 `groupIdx * VEC_MAX_ELEM_B16 + nBubIdx` 寻址
+- 保持 NK weight N 行步长为 `vecConfig.ubMte2InnerSize >> 1`，输出 stride 使用 `WEIGHT_F16_UB_NZ_STRIDE`
+
+#### 关键决策
+- gs128 每个 group 恰好等于一个 128-lane MicroAPI 向量，不复用 gs256 的第二段加载/写回逻辑
+- `UpdateMask` 保持 POST_UPDATE 语义，跨 group 递减处理 K 尾块，避免尾块写回越界
+- 本次仅修改 VF 层 gs128 函数，不调整 MTE2 搬运、scale/offset UB 布局或其他 groupSize 分支
+
+#### 影响范围
+- 影响 A16W4 pergroup ND `bTrans=true` 且 `groupSize=128` 的反量化精度
+- 原有 perchannel、KN 路径、gs32/64/256 路径和非 INT4 路径不受影响
+- 编译验证：`bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8` 通过（exit code 0）
+
+---
+
+### 2026-06-24 | 调整 A16W4 Pergroup ND NK gs128 为 group-first 实现
+
+**类型**: 🐛 修复
+**范围**: `basic_block_vf_nd.h` 中 arch35 A16W4 INT4 pergroup ND、weight 转置（NK）、`groupSize=128` 路径
+
+#### 变更内容
+- 将 `AntiQuantInt4PerGroupNdNkGs128` 改为 `groupNum -> N` 双层 `for` 循环，避免在 `__VEC_SCOPE__` 中使用运行期 `if`
+- weight 按转置 `[N,K]` UB 布局读取：`nBubIdx * (vecConfig.ubMte2InnerSize >> 1) + groupIdx * 64`
+- scale/offset 按 GMM 非转置 `[K//GS,N]` UB 布局读取：`groupIdx * VEC_MAX_ELEM_B16 + nBubIdx`
+- 输出继续使用 `WEIGHT_F16_UB_NZ_STRIDE`，每个 group 完成 `bubNLen` 行后跳到下一个 128K NZ block
+
+#### 关键决策
+- 与 wqbmmv2 gs128 的 `group -> N` 数据流保持一致，仅调整 scale/offset 地址公式以适配 GMM `[G,N]` 布局
+- 保持 `UpdateMask` 跨 group 递减，覆盖 `bubKLen=128/256` 以及 K 尾块
+- 本轮不进行编译，按用户要求仅做静态检查
+
+#### 影响范围
+- 影响 A16W4 pergroup ND `bTrans=true` 且 `groupSize=128` 的反量化精度
+- 原有 perchannel、KN 路径、gs32/64/256 路径和非 INT4 路径不受影响
+- 静态检查：`git diff --check` 通过；未编译
+
+---
+
+### 2026-06-24 | 修复 A16W4 Pergroup ND NK gs64 反量化
+
+**类型**: 🐛 修复
+**范围**: `basic_block_vf_nd.h` 中 arch35 A16W4 INT4 pergroup ND、weight 转置（NK）、`groupSize=64` 路径
+
+#### 变更内容
+- 修正 `AntiQuantInt4PerGroupNdNkGs64`，每个 `innerIdx` 只处理一个 128-lane weight 寄存器，不再同时处理第二个 128K 段
+- 保持 scale/offset 构造方式：按 GMM `[K//GS,N]` UB 布局加载相邻两个 group，再用 `Select(maskH)` 拼成前 64 lane / 后 64 lane
+- weight 读取保持转置 `[N,K]` packed INT4 布局：`outerIdx * (vecConfig.ubMte2InnerSize >> 1) + innerIdx * 64`
+- 输出保持 `WEIGHT_F16_UB_NZ_STRIDE`，每个 128K inner 块写一个 NZ block
+
+#### 关键决策
+- gs64 与 wqbmmv2 的 `inner(K/128) -> outer(N)` 结构保持一致；GMM 只调整 scale/offset 地址公式为 `[G,N]`
+- 删除原实现中第二个 128K weight/output 路径，避免 `K[128:256]` 使用 `group0/1` 的 scale/offset 重复反量化
+- 本轮不进行编译，按用户要求仅做静态检查
+
+#### 影响范围
+- 影响 A16W4 pergroup ND `bTrans=true` 且 `groupSize=64` 的反量化精度
+- 原有 perchannel、KN 路径、gs32/128/256 路径和非 INT4 路径不受影响
+- 静态检查：`git diff --check` 通过；未编译
+
+---
+
+### 2026-06-24 | 修复 A16W4 Pergroup ND NK gs32 反量化
+
+**类型**: 🐛 修复
+**范围**: `basic_block_vf_nd.h` 中 arch35 A16W4 INT4 pergroup ND、weight 转置（NK）、`groupSize=32` 路径
+
+#### 变更内容
+- 重构 `AntiQuantInt4PerGroupNdNkGs32`，每个 `innerIdx` 只处理一个 128-lane weight 寄存器，对应 4 个 32K group
+- 按 GMM `[K//GS,N]` UB 布局加载 4 个 group 的 scale/offset：`(groupBase + i) * VEC_MAX_ELEM_B16 + n`
+- 通过 `Select(mask32/mask96/maskH)` 构造 `[A|B|C|D]` 四段 32-lane scale/offset 寄存器
+- 删除 gs32 参数加载 helper 中的运行期 `if` 和原实现中的 `hasSecondVector` 运行期分支，保持 `__VEC_SCOPE__` 内为固定 `for` 数据流
+
+#### 关键决策
+- gs32 与 gs64/gs128 保持同一抽象：每次 inner 处理一个 128K 向量，输出一个 NZ block
+- GMM scale/offset 固定 `[G,N]` 布局，不能复用 wqbmmv2 NK 的 `DIST_E2B_B16` 连续 group 加载
+- 本轮不进行编译，按用户要求仅做静态检查
+
+#### 影响范围
+- 影响 A16W4 pergroup ND `bTrans=true` 且 `groupSize=32` 的反量化精度
+- 原有 perchannel、KN 路径、gs64/128/256 路径和非 INT4 路径不受影响
+- 静态检查：`git diff --check` 通过；未编译
+
+---
+
+### 2026-06-26 | 修复 A16W4 Pergroup ND KN gs32 scale/offset stride
+
+**类型**: 🐛 修复
+**范围**: arch35 A16W4 INT4 pergroup ND、weight 非转置（KN）、`groupSize=32` 泛化精度
+
+#### 变更内容
+- `CopyAntiQuantParamsGmToUb` 中 pergroup KN 的 scale/offset 目标行步长改为当前 N tile 对齐值，保持 UB 布局为 `[G_tile, N_tile_align]`
+- `CalLocalAddrForVf` 和 `AntiQuantInt4PerGroupNdKn` 统一使用同一个 `antiQuantParamNStride_` 作为 group 行步长
+- 新增 `{bufferNum=2, ubMte2InnerSize=256}` 的 tiling key 枚举/宏，A16W4 ND pergroup host tiling 与 kernel 分支显式使用该 key
+
+#### 关键决策
+- KN 路径继续复用统一 VF 实现，不按 groupSize 新增 gs32 专用逻辑；问题根因是搬运 stride 与 VF 寻址 stride 不一致
+- perchannel/MX 仍保留原 `{bufferNum=4, ubMte2InnerSize=256}` key；A16W4 ND pergroup 单独走 `{2,256}`
+- 本轮不进行编译，按用户要求仅做静态检查
+
+#### 影响范围
+- 影响 A16W4 pergroup ND `bTrans=false` 的 scale/offset UB 布局，重点修复 `groupSize=32` 泛化精度
+- A16W4 pergroup ND `bTrans=true` 继续使用 `{2,256}` 配置；perchannel、MX、NZ 路径不受影响
+- 静态检查：`git diff --check` 通过；未编译
+
+---
+
+### 2026-06-26 | 重写 A16W4 Pergroup ND KN INT4 反量化
+
+**类型**: 🐛 修复
+**范围**: `basic_block_vf_nd.h` 中 arch35 A16W4 INT4 pergroup ND、weight 非转置（KN）路径
+
+#### 变更内容
+- 重写 `AntiQuantInt4PerGroupNdKn`，参考 wqbmmv2 `AntiquantComputeKNPerGroup` / `AntiquantPerGroupKN` 的 `nLoop -> groupNum -> groupTail` 数据流
+- 使用 `CreateAddrReg` 加载 `[G_tile, N_tile_align]` scale/offset，weight 按 KN UB 布局使用 `nIdx / groupIdx / kIdx` 地址寄存器读取
+- 输出改为单 `weightOutBaseAddr` 的 `DATA_BLOCK_COPY + POST_MODE_UPDATE` 方式，每个 N 向量块处理完 main groups 和 tail group 后按 `weightOutStride` 跳转
+- `__VEC_SCOPE__` 内仅保留 `for` 和 `if constexpr`，移除运行时 `if (groupTail > 0)` 分支
+
+#### 关键决策
+- 函数参数显式区分当前 VF 的实际 `bubNLen` 和 scale/offset 的 `antiQuantParamNStride`，避免将搬运 stride 当作本次 N 长度
+- weight 行跨度继续使用 GMM 的 `vecConfig.ubMte2InnerSize >> 1`，适配统一 `{bufferNum=2, ubMte2InnerSize=256}` 配置
+- 本轮不进行编译，按用户要求仅做静态检查
+
+#### 影响范围
+- 影响 A16W4 pergroup ND `bTrans=false` 的 INT4 pergroup 反量化，覆盖 groupSize 32/64/128/256 统一路径
+- A16W4 pergroup ND `bTrans=true` 的 gs 专用 NK 路径、perchannel、MX、NZ 路径不受影响
+- 静态检查：`git diff --check` 通过；未编译
