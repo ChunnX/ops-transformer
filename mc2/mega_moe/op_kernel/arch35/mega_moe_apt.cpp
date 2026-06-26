@@ -54,10 +54,12 @@ __global__ __aicore__ void mega_moe(
         //   │ E5M2      │ fp8 / fp8         │ generic               │
         //   └───────────┴───────────────────┴──────────────────────┘
         constexpr bool w1IsFp4 = Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value;
-        constexpr bool supported =
+        constexpr bool w1IsFp8 = Std::IsSame<DTYPE_WEIGHT1, fp8_e4m3fn_t>::value ||
+                                 Std::IsSame<DTYPE_WEIGHT1, fp8_e5m2_t>::value;
+        constexpr bool supported = (w1IsFp4 || w1IsFp8) && (
             (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) ||
             (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && w1IsFp4) ||
-            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && !w1IsFp4);
+            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && !w1IsFp4));
         if constexpr (supported) {
             MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
                 DispatchQuantOutType, CombineQuantOutType> op;
