@@ -55,6 +55,10 @@ private:
 
 ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAb::DoOpTiling()
 {
+    if (sliceLength_ == 0) {
+        usedCoreNum_ = 1;
+        return ge::GRAPH_SUCCESS;
+    }
     int64_t bs = b_ * s_;
     bn_ = n_;
     if (cosb_ == 1) {
@@ -67,9 +71,9 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAb::DoOpTiling()
     // Compute per-type aligned row sizes (in elements), matching kernel's dAlignLenDy/dAlignLenCos
     int64_t dAlignDy = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
     int64_t dAlignCos = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / cosTypeSize) * dSplitCoef_;
-    int64_t dSizeDy = dAlignDy * typeSize;    // bytes per dy/dx row
+    int64_t dSizeDy = dAlignDy * typeSize;      // bytes per dy/dx row
     int64_t dSizeCos = dAlignCos * cosTypeSize; // bytes per cos/sin row
-    dAlign_ = dAlignDy; // store dy alignment in tiling data for logging
+    dAlign_ = dAlignDy;                         // store dy alignment in tiling data for logging
 
     int64_t coreNum = static_cast<int64_t>(aicoreParams_.numBlocks);
     blockFactorBS_ = Ops::Base::CeilDiv(bs, coreNum);
@@ -100,8 +104,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAb::DoOpTiling()
         Ops::Base::FloorAlign(static_cast<int64_t>(aicoreParams_.ubSize / CONST_TWO / DB_FLAG), blockSize_) / dSizeDy;
     if (baseBlockInUb < effectiveCosOverhead + 1) {
         OP_LOGE(context_->GetNodeName(),
-                "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld, baseBlockInUb=%ld.",
-                sliceLength_, dSizeDy, dSizeCos, baseBlockInUb);
+                "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld, baseBlockInUb=%ld.", sliceLength_,
+                dSizeDy, dSizeCos, baseBlockInUb);
         return ge::GRAPH_FAILED;
     }
 
@@ -161,7 +165,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAb::PostTiling()
     tilingDataAb_.SaveToBuffer(rawTilingDataPtr->GetData(), rawTilingDataPtr->GetCapacity());
     rawTilingDataPtr->SetDataSize(tilingDataAb_.GetDataSize());
 
-    tilingKey_ = static_cast<uint64_t>(TILING_KEY_AB);
+    tilingKey_ = ((sliceLength_ == 0) ? TILING_KEY_EMPTY : static_cast<uint64_t>(TILING_KEY_AB));
     context_->SetTilingKey(tilingKey_);
     context_->SetBlockDim(usedCoreNum_);
 
