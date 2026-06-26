@@ -84,6 +84,7 @@ constexpr uint32_t SEED_ATTR_IDX = 9;
 constexpr uint32_t OFFSET_ATTR_IDX = 10;
 constexpr uint32_t OUTDTYPE_ATTR_IDX = 11;
 constexpr uint32_t TND_SOFTMAX_IN_ATTR_IDX = 12;
+constexpr uint32_t DSINKOUT_IDX = 6;
 
 constexpr uint32_t GM_ALIGN = 512;
 
@@ -128,7 +129,7 @@ constexpr int64_t INT64_NUM = 32;
 constexpr uint32_t DKDV_OUT = 2;
 constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
-constexpr uint32_t UB_RESERVE_SPACE = 8 * 1024;
+constexpr uint32_t UB_RESERVE_SPACE = 26 * 1024;
 
 constexpr int64_t LARGE_INVALID_NUM = 3072;
 

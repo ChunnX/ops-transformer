@@ -34,8 +34,6 @@
     (v_head_size * sizeof(dtypeValue)) % 32 == 0
     ```
 
-    其中key和value的type可以相同，也可以不同
-
   - 场景二：
 
     ```
@@ -181,7 +179,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">key（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的key值，当前step多个token的key。</td>
-      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">不支持空Tensor。</td>
       <td class="tg-0pky">FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">3-4</td>
@@ -191,7 +189,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">keyCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的key cache，当前layer的key cache。</td>
-      <td class="tg-0pky">当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
+      <td class="tg-0pky">不支持空Tensor。<br>当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4-5</td>
@@ -201,7 +199,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">slotMapping（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">每个token key或value在cache中的存储偏移。</td>
-      <td class="tg-0pky">-</td>
+      <td class="tg-0pky">不支持空Tensor。<br></td>
       <td class="tg-0pky">INT32、INT64</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
@@ -211,7 +209,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">value（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的value值，当前step多个token的value。</td>
-      <td class="tg-0pky">非0维下shape与key一致</td>
+      <td class="tg-0pky">不支持空Tensor。<br>非0维下shape与key一致。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">0、3、4</td>
@@ -221,7 +219,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">valueCacheRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">需要更新的value cache，当前layer的value cache。</td>
-      <td class="tg-0pky">非0维下shape与keyCacheRef一致，当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
+      <td class="tg-0pky">不支持空Tensor。<br>非0维下shape与keyCacheRef一致，当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">0、4、5</td>
@@ -351,18 +349,17 @@ aclnnStatus aclnnScatterPaKvCache(
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="4">161002</td>
-      <td>参数key、value的数据类型不在支持的范围之内。</td>
-    </tr>
-    <tr>
-      <td>key、keyCacheRef、value、valueCacheRef的数据类型不一致。</td>
+      <td>参数key、value、slotMapping的数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>key的维数不等于3维或4维，value的维数不等于0维、3维或4维。</td>
     </tr>
     <tr>
+      <td>key、keyCacheRef、value、valueCacheRef的数据类型不一致。</td>
+    </tr>
+    <tr>
       <td>slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型不一致。</td>
     </tr>
-
   </tbody>
   </table>
 

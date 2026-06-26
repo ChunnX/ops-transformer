@@ -8,23 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
- * \file mhc_post_tiling.h
- * \brief MhcPost tiling header
- */
+#ifndef OP_API_INC_LEVEL0_OP_SCATTER_PA_KV_CACHE_WITH_K_SCALE_OP_H
+#define OP_API_INC_LEVEL0_OP_SCATTER_PA_KV_CACHE_WITH_K_SCALE_OP_H
 
-#pragma once
+#include "opdev/op_executor.h"
+#include <tuple>
 
-#include <cstdint>
-#include <register/tilingdata_base.h>
-#include <tiling/tiling_api.h>
-#include "../op_kernel/arch35/mhc_post_tiling_data.h"
-#include "../op_kernel/arch35/mhc_post_tiling_key.h"
-
-namespace optiling {
-
-struct MhcPostCompileInfo {
-    uint32_t aicNum;
-    uint32_t aivNum;
-};
-} // namespace optiling
+namespace l0op {
+std::tuple<const aclTensor *, const aclTensor *, const aclTensor *> ScatterPaKvCacheWithKScale(const aclTensor *key,
+    const aclTensor *value, aclTensor *keyCacheRef, aclTensor *valueCacheRef, const aclTensor *slotMapping,
+    aclTensor *keyScale, aclTensor *keyScaleCacheRef, char *cacheLayoutOptional, aclOpExecutor *executor);
+}
+#endif

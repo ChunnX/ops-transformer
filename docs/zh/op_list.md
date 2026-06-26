@@ -491,7 +491,7 @@
     <td><a href="../../attention/sparse_flash_mla_grad/README.md">sparse_flash_mla_grad</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✗</td>
+    <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，计算sparse_flash_mla注意力的反向输出。</td>
@@ -505,6 +505,16 @@
     <td>✗</td>
     <td>AI CPU</td>
     <td>sparse_flash_mla算子的前置算子，用于计算sparse_flash_mla的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_lightning_indexer_kl_loss_grad/README.md">sparse_lightning_indexer_kl_loss_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>SparselightningIndexerKlLossGrad算子是LightningIndexer的反向算子，支持输出Loss计算所需Index部分的分数。<td>
   </tr>
   <tr>
     <td>ffn</td>

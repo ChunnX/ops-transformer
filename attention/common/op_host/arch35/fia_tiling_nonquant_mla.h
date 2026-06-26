@@ -70,6 +70,9 @@ public:
 protected:
     void InitTilingInfo(TilingInfo *tilingInfo) override;
     bool IsCapable() override;
+    bool IsCapableBasicCheckMla();
+    bool IsCapableFeatureCheckMla();
+    bool IsCapableSparseLayoutCheckMla();
     ge::graphStatus DoOpTiling() override;
 
 private:
