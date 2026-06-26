@@ -211,7 +211,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">value（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">待更新的value值，当前step多个token的value。</td>
-      <td class="tg-0pky">不支持空Tensor。<br>非0维下shape与key一致</td>
+      <td class="tg-0pky">不支持空Tensor。<br>非0维下shape与key一致。</td>
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">0、3、4</td>
