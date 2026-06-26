@@ -9,20 +9,21 @@
  */
 
 /*!
- * \file flash_attn_kernel_noquant_gqa.h
- * \brief
+ * \file flash_attn_kernel_noquant_gqa_nd.h
+ * \brief FlashAttentionNoQuantGqaKernelNd —— Nd 路径专用 kernel 模板（独立类）。
  */
 
-#ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
-#define FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
+#ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_ND_H_
+#define FLASH_ATTN_KERNEL_NOQUANT_GQA_ND_H_
 
+#include "adv_api/activation/softmax.h" // SoftmaxConfig / SoftmaxMode，fia_public_define.h 依赖
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
-#include "flash_attn_block_cube_noquant_gqa.h"
-#include "flash_attn_block_vec_noquant_gqa.h"
+#include "flash_attn_block_cube_noquant_gqa_nd.h"
+#include "flash_attn_block_vec_noquant_gqa_nd.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "flash_attn_block_vec_noquant_flashdecode.h"
 
@@ -41,14 +42,14 @@ using namespace regbaseutil;
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernel {
+class FlashAttentionNoQuantGqaKernelNd {
 public:
     static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
     static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
+    static constexpr bool USE_DN = false;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
@@ -165,7 +166,7 @@ public:
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernel()
+    __aicore__ inline FlashAttentionNoQuantGqaKernelNd()
         : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
@@ -752,13 +753,7 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
-
-        if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
+        info.actVecMSize = (info.actMSize + 1) >> 1;
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -919,8 +914,8 @@ public:
             CrossCoreBufferUnInit();
         }
     }
-}; // FlashAttentionNoQuantGqaKernel
+}; // FlashAttentionNoQuantGqaKernelNd
 
 } // namespace BaseApi
 
-#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
+#endif // FLASH_ATTN_KERNEL_NOQUANT_GQA_ND_H_
