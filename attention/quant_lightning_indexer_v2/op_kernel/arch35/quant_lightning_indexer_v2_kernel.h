@@ -513,7 +513,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
             isOutputIdxOffsetValid = true;
             outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
         }
-        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm, valueOutGm, outputIdxOffsetGm);
+        vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm,
+                                         valueOutGm, outputIdxOffsetGm);
         
         vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
         vectorService.InitParams(constInfo, ldInfo, tiling);
