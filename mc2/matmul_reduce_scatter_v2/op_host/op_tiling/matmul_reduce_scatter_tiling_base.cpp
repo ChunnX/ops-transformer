@@ -27,7 +27,6 @@
 #include "graph/utils/type_utils.h"
 #include "ops_utils.h"
 #include "register/op_def_registry.h"
-#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "matmul_reduce_scatter_tiling_base.h"
 #include "../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
