@@ -50,16 +50,11 @@ public:
     __aicore__ inline void CalculateSoftmaxGrad(int64_t taskId, int64_t sfmgOutputOffset,
                                                 int64_t curNBurst, int64_t deqScaleIdx = 0);
     __aicore__ inline void DoSoftmaxGrad();
+    template <uint8_t GM_IDX>
+    __aicore__ inline void CopyDqkvToGm(const int64_t& loopIdx);
 
     constexpr static uint32_t HEAD_DIM_ALIGN = static_cast<uint32_t>(dTemplateType);
-    constexpr static uint32_t TEMP_DIM_ALIGN_320 = 320;
-    constexpr static uint32_t TEMP_DIM_ALIGN_384 = 384;
-    constexpr static uint32_t TEMP_DIM_ALIGN_448 = 448;
-    constexpr static uint32_t TEMP_DIM_ALIGN_192 = 192;
-    constexpr static uint32_t TEMP_DIM_ALIGN_128 = 128;
-    constexpr static uint32_t TEMP_DIM_ALIGN_256 = 256;
     constexpr static int64_t BLOCK_BYTE_SIZE = 32;
-    constexpr static uint32_t QUANT_BLOCK_SIZE = 512;
 
     TPipe *pipe;
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm, deqScaleDyGm, sfmgWorkspaceGm;
@@ -87,6 +82,14 @@ public:
     uint64_t dkOffset;
     uint64_t initdvSize;
     uint64_t dvOffset;
+    uint64_t dqLoopNum;
+    uint64_t dkLoopNum;
+    uint64_t dvLoopNum;
+    uint64_t dqBlockTail;
+    uint64_t dkBlockTail;
+    uint64_t dvBlockTail;
+    int64_t singleInitSize;
+    event_t eventIDVToMte3;
 
     int64_t b;
     int64_t n1;
@@ -101,11 +104,6 @@ public:
     int64_t nd = 0;
     int64_t bnd = 0;
 
-    // fp8专用
-    int64_t ns1o = 0;
-    int64_t s1o = 0;
-    int64_t soIdx = 0;
-
     int64_t dAlignToBlock;
     int64_t dAlignToBlockB16;
     int64_t tempDimAlign = 0;
@@ -116,6 +114,12 @@ public:
     LocalTensor<OUTDTYPE> input1Buf;
     LocalTensor<T1> input2Buf;
     LocalTensor<T2> outputBuf;
+    TBuf<> dqInitBuf;
+    TBuf<> dkInitBuf;
+    TBuf<> dvInitBuf;
+    LocalTensor<T2> dqTensor;
+    LocalTensor<T2> dkTensor;
+    LocalTensor<T2> dvTensor;
 
     TQue<QuePosition::VECIN, 1> input1Que[2];
     TQue<QuePosition::VECIN, 1> input2Que[2];
@@ -186,7 +190,38 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         dkOffset = ((uint64_t)vBlockIdx) * kPreBlockFactor;
         initdvSize = vBlockIdx == vPreBlockTotal - 1 ? vPreBlockTail : vPreBlockFactor;
         dvOffset = ((uint64_t)vBlockIdx) * vPreBlockFactor;
-
+        if (SPLIT_AXIS == NUM_FIVE && !(tilingData->preTilingData.sValueZeroUnderTND ||
+                (IS_DETER_NEW(DETER_SPARSE_TYPE) && tilingData->preTilingData.hasInvalidCol))) {
+            singleInitSize = PRE_INIT_UB_SIZE * NUM_THREE / sizeof(T2);
+            dqLoopNum = Ceil(initdqSize, singleInitSize);
+            dkLoopNum = 0;
+            dvLoopNum = 0;
+            dqBlockTail = initdqSize % singleInitSize == 0 ?
+                singleInitSize : initdqSize % singleInitSize;
+            dkBlockTail = 0;
+            dvBlockTail = 0;
+            pipe->InitBuffer(dqInitBuf, PRE_INIT_UB_SIZE * NUM_THREE);
+            dqTensor = dqInitBuf.template Get<T2>();
+        } else {
+            singleInitSize = PRE_INIT_UB_SIZE / sizeof(T2);
+            dqLoopNum = Ceil(initdqSize, singleInitSize);
+            dkLoopNum = Ceil(initdkSize, singleInitSize);
+            dvLoopNum = Ceil(initdvSize, singleInitSize);
+            dqBlockTail = initdqSize % singleInitSize == 0 ?
+                singleInitSize : initdqSize % singleInitSize;
+            dkBlockTail = initdkSize % singleInitSize == 0 ?
+                singleInitSize : initdkSize % singleInitSize;
+            dvBlockTail = initdvSize % singleInitSize == 0 ?
+                singleInitSize : initdvSize % singleInitSize;
+            pipe->InitBuffer(dqInitBuf, PRE_INIT_UB_SIZE);
+            pipe->InitBuffer(dkInitBuf, PRE_INIT_UB_SIZE);
+            pipe->InitBuffer(dvInitBuf, PRE_INIT_UB_SIZE);
+            dqTensor = dqInitBuf.template Get<T2>();
+            dkTensor = dkInitBuf.template Get<T2>();
+            dvTensor = dvInitBuf.template Get<T2>();
+        }
+        eventIDVToMte3 =
+            static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         pipe->InitBuffer(input1Que[0], 1, tilingData->preTilingData.sfmgYBufferLen);
         pipe->InitBuffer(input1Que[1], 1, tilingData->preTilingData.sfmgYBufferLen);
         pipe->InitBuffer(input2Que[0], 1, tilingData->preTilingData.sfmgDyBufferLen);
@@ -202,20 +237,20 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
     if (g_coreType == AIV && vBlockIdx < usedCoreNum) {
         // clear dq dk dv workspace
         if constexpr (IsSameType<T1, float>::value) {
-            InitOutput<T1>(dqGm[dqOffset], initdqSize, 0);
-            InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
-            InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
+            Duplicate<T2>(dqTensor, 0, singleInitSize);
+            Duplicate<T2>(dkTensor, 0, singleInitSize);
+            Duplicate<T2>(dvTensor, 0, singleInitSize);
         } else if constexpr (IsSameType<T1, half>::value || IsSameType<T1, bfloat16_t>::value) {
-            InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
+            Duplicate<T2>(dqTensor, 0, singleInitSize);
             if constexpr (SPLIT_AXIS == 0) {
-                InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
-                InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);
+                Duplicate<T2>(dkTensor, 0, singleInitSize);
+                Duplicate<T2>(dvTensor, 0, singleInitSize);
             } else {
                 if (tilingData->preTilingData.sValueZeroUnderTND ||
                         (IS_DETER_NEW(DETER_SPARSE_TYPE) && tilingData->preTilingData.hasInvalidCol)) {
                     // BN2S2针对TND中有S为0的场景 或 newDeter与无效列叠加场景，增加gm清零
-                    InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
-                    InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
+                    Duplicate<T2>(dkTensor, 0, singleInitSize);
+                    Duplicate<T2>(dvTensor, 0, singleInitSize);
                 }
             }
         } else {
@@ -223,7 +258,7 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
                 InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
             }
         }
-
+        SetFlag<HardEvent::V_MTE3>(eventIDVToMte3);
         CalTempDimAlign();
         DoSoftmaxGrad();
     }
@@ -252,7 +287,6 @@ FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::InitIndex(int
                 nIdx = bTail / (curS * d);
                 int64_t nTail = bTail % (curS * d);
                 sIdx = nTail / d;
-                soIdx = sIdx / QUANT_BLOCK_SIZE;
                 break;
             }
         }
@@ -262,7 +296,6 @@ FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::InitIndex(int
         nIdx = bTail / s1d;
         int64_t nTail = bTail % s1d;
         sIdx = nTail / d;
-        soIdx = sIdx / QUANT_BLOCK_SIZE;
     }
 }
 
@@ -383,6 +416,60 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
 }
 
 PRE_FUNCTION_TEMPLATE
+template <uint8_t GM_IDX>
+__aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::CopyDqkvToGm(
+    const int64_t& loopIdx)
+{
+    if constexpr (IsSameType<T1, float>::value) {
+        if constexpr (GM_IDX == DQ_IDX) {
+            if (loopIdx == dqLoopNum - 1) {
+                DataCopyPad(dqGm[dqOffset + loopIdx * singleInitSize], dqTensor,
+                            {1, static_cast<uint32_t>(dqBlockTail * sizeof(T2)), 0, 0, 0});
+            } else {
+                DataCopy(dqGm[dqOffset + loopIdx * singleInitSize], dqTensor, singleInitSize);
+            }
+        } else if constexpr (GM_IDX == DK_IDX) {
+            if (loopIdx == dkLoopNum - 1) {
+                DataCopyPad(dkGm[dkOffset + loopIdx * singleInitSize], dkTensor,
+                            {1, static_cast<uint32_t>(dkBlockTail * sizeof(T2)), 0, 0, 0});
+            } else {
+                DataCopy(dkGm[dkOffset + loopIdx * singleInitSize], dkTensor, singleInitSize);
+            }
+        } else {
+            if (loopIdx == dvLoopNum - 1) {
+                DataCopyPad(dvGm[dvOffset + loopIdx * singleInitSize], dvTensor,
+                            {1, static_cast<uint32_t>(dvBlockTail * sizeof(T2)), 0, 0, 0});
+            } else {
+                DataCopy(dvGm[dvOffset + loopIdx * singleInitSize], dvTensor, singleInitSize);
+            }
+        }
+    } else {
+        if constexpr (GM_IDX == DQ_IDX) {
+            if (loopIdx == dqLoopNum - 1) {
+                DataCopyPad(dqWorkSpaceGm[dqOffset + loopIdx * singleInitSize], dqTensor,
+                            {1, static_cast<uint32_t>(dqBlockTail * sizeof(T2)), 0, 0, 0});
+            } else {
+                DataCopy(dqWorkSpaceGm[dqOffset + loopIdx * singleInitSize], dqTensor, singleInitSize);
+            }
+        } else if constexpr (GM_IDX == DK_IDX) {
+            if (loopIdx == dkLoopNum - 1) {
+                DataCopyPad(dkWorkSpaceGm[dkOffset + loopIdx * singleInitSize], dkTensor,
+                            {1, static_cast<uint32_t>(dkBlockTail * sizeof(T2)), 0, 0, 0});
+            } else {
+                DataCopy(dkWorkSpaceGm[dkOffset + loopIdx * singleInitSize], dkTensor, singleInitSize);
+            }
+        } else {
+            if (loopIdx == dvLoopNum - 1) {
+                DataCopyPad(dvWorkSpaceGm[dvOffset + loopIdx * singleInitSize], dvTensor,
+                            {1, static_cast<uint32_t>(dvBlockTail * sizeof(T2)), 0, 0, 0});
+            } else {
+                DataCopy(dvWorkSpaceGm[dvOffset + loopIdx * singleInitSize], dvTensor, singleInitSize);
+            }
+        }
+    }
+}
+
+PRE_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::DoSoftmaxGrad()
 {
     // process
@@ -415,7 +502,37 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
             input1Que[1].FreeTensor(input1Buf);
             input2Que[1].FreeTensor(input2Buf);
         }
-        for (int64_t i = 0; i < singleCoreLoopTimes; i++) {
+        int64_t commonLoopTimes = Min(Min(Min(dqLoopNum, dkLoopNum), dvLoopNum), singleCoreLoopTimes);
+        WaitFlag<HardEvent::V_MTE3>(eventIDVToMte3);
+        for (int64_t i = 0; i < commonLoopTimes; i++) {
+            if (i == singleCoreLoopTimes - 1) {
+                nBurst = singleCoreLastLoopNBurstNum;
+            }
+
+            input1Buf = input1Que[taskId & 1].AllocTensor<OUTDTYPE>();
+            input2Buf = input2Que[taskId & 1].AllocTensor<T1>();
+            // sync
+            InitIndex(sfmgOutputOffset * d, curS);
+            CopyInSfmg(nBurst, curS);
+            input1Que[taskId & 1].EnQue(input1Buf);
+            input2Que[taskId & 1].EnQue(input2Buf);
+            CalculateSoftmaxGrad(taskId, sfmgOutputOffset, nBurst);
+            CopyDqkvToGm<DQ_IDX>(i);
+            CopyDqkvToGm<DK_IDX>(i);
+            CopyDqkvToGm<DV_IDX>(i);
+
+            if constexpr (IS_D_NO_EQUAL != 0) {
+                if (i < singleCoreLoopTimes - 1) {
+                    Duplicate<OUTDTYPE>(input1Buf, 0, nBurst * tempDimAlign);
+                    Duplicate<T1>(input2Buf, 0, nBurst * tempDimAlign);
+                }
+            }
+            input1Que[taskId & 1].FreeTensor(input1Buf);
+            input2Que[taskId & 1].FreeTensor(input2Buf);
+            sfmgOutputOffset += tilingData->preTilingData.singleLoopNBurstNum;
+            taskId++;
+        }
+        for (int64_t i = commonLoopTimes; i < singleCoreLoopTimes; i++) {
             if (i == singleCoreLoopTimes - 1) {
                 nBurst = singleCoreLastLoopNBurstNum;
             }
@@ -439,6 +556,15 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
             input2Que[taskId & 1].FreeTensor(input2Buf);
             sfmgOutputOffset += tilingData->preTilingData.singleLoopNBurstNum;
             taskId++;
+        }
+        for (int64_t i = commonLoopTimes; i < dqLoopNum; i++) {
+            CopyDqkvToGm<DQ_IDX>(i);
+        }
+        for (int64_t i = commonLoopTimes; i < dkLoopNum; i++) {
+            CopyDqkvToGm<DK_IDX>(i);
+        }
+        for (int64_t i = commonLoopTimes; i < dvLoopNum; i++) {
+            CopyDqkvToGm<DV_IDX>(i);
         }
     }
 }
