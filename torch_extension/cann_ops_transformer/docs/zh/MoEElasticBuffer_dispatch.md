@@ -44,7 +44,7 @@ MoEElasticBuffer.dispatch(x, topk_idx=None, topk_weights=None, *, handle=None, n
 -   **recv\_topk\_weights** (`Tensor`)：表示本卡收到的topk权重。要求为2维张量，shape为(A, K)，数据类型为`float32`，数据格式为$ND$，作为[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)的`topk_weights`输入。
 -   **handle** (`EPHandle`)：表示dispatch阶段生成的handle对象，包含slot索引、元数据等信息，需传递给[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)使用。handle的属性如下：
     -   **dst\_buffer\_slot\_idx** (`Tensor`)：slot索引，shape为(BS, K)，dtype为`int32`。
-    -   **recv\_src\_metadata** (`Tensor`)：接收元数据，shape为(A, 3)，dtype为`int32`。
+    -   **recv\_src\_metadata** (`Tensor`)：接收元数据，shape为(A, 4)，dtype为`int32`。
     -   **num\_recv\_tokens\_per\_rank** (`Tensor`)：各卡接收token数量，shape为(ep\_world\_size,)，dtype为`int32`。
     -   **num\_recv\_tokens\_per\_expert** (`Tensor`)：每个本地专家接收的token数量，shape为(num\_local\_experts,)，dtype为`int64`。
     -   **num\_experts** (`int`)：专家总数量。

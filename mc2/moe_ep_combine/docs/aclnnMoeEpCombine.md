@@ -126,7 +126,7 @@ aclnnStatus aclnnMoeEpCombine(
     <td>recvSrcMetadata（aclTensor*）</td>
     <td>输入</td>
     <td>接收元数据，由aclnnMoeEpDispatchEpilogue输出。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(A, 3)。</li></ul></td>
+    <td><ul><li>不支持空Tensor。</li><li>shape为(A, 4)。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     <td>2</td>

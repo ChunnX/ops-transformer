@@ -37,7 +37,7 @@ using namespace AscendC;
 
 static constexpr uint32_t UB_ALIGN = 32U;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
-static constexpr uint32_t RECV_META_FIELDS = 3;
+static constexpr uint32_t RECV_META_FIELDS = 4;
 
 template <typename XType, typename ScalesType, uint32_t IsCached>
 class KernelDispatchEpilogue {
@@ -57,6 +57,7 @@ private:
     __aicore__ inline void ComputePrefixSums();
     __aicore__ inline void CountHits();
     __aicore__ inline void CopyFromWindowByExpert();
+    __aicore__ inline void CopyFromWindowByCachedMeta();
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
                                        uint32_t &endId, uint32_t &sendNum);
@@ -268,19 +269,22 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
 template <typename XType, typename ScalesType, uint32_t IsCached>
 __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Process()
 {
-    ComputePrefixSums();
-    CountHits();
-    SyncAll<true>();
+    if constexpr (!IsCached) {
+        ComputePrefixSums();
+        CountHits();
+        SyncAll<true>();
 
-    uint32_t myTotalHits = 0;
-    for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
-        myTotalHits += static_cast<uint32_t>(ubHitCount_.GetValue(localExpertIdx));
+        uint32_t myTotalHits = 0;
+        for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
+            myTotalHits += static_cast<uint32_t>(ubHitCount_.GetValue(localExpertIdx));
+        }
+
+        if (myTotalHits != 0) {
+            CopyFromWindowByExpert();
+        }
+    } else {
+        CopyFromWindowByCachedMeta();
     }
-
-    if (myTotalHits != 0) {
-        CopyFromWindowByExpert();
-    }
-
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached>
@@ -436,6 +440,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
                             ubMeta_.GetValue(metaBase + 2 * axisKAlign_ + 1));
                         ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 2,
                             static_cast<int32_t>(topkIdx));
+                        ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 3,
+                            static_cast<int32_t>(slotStart + localSlot));    
                     }
                     stageIdx++;
                     localWrittenRow++;
@@ -452,18 +458,85 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
             DataCopyExtParams recvMetaCopyParams{1U, static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)),
                                             0U, 0U, 0U};
             uint32_t gmOffset = expertRowStart * RECV_META_FIELDS;
-            if constexpr (!IsCached) {
-                DataCopyPad(recvSrcMetadataGm_[gmOffset], ubStageMeta_, recvMetaCopyParams);
-            } else {    //cached: 把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
-                DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
-                DataCopyPad(ubStageMeta_, cachedRecvSrcMetadataGm_[gmOffset], recvMetaCopyParams, padParams);
-                SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-                DataCopyPad(recvSrcMetadataGm_[gmOffset], ubStageMeta_, recvMetaCopyParams);
-                SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-            }
+            DataCopyPad(recvSrcMetadataGm_[gmOffset], ubStageMeta_, recvMetaCopyParams);
             SyncFunc<AscendC::HardEvent::MTE3_S>();
         }
     }
+}
+
+template <typename XType, typename ScalesType, uint32_t IsCached>
+__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::CopyFromWindowByCachedMeta()
+{
+    if (expertSum_ == 0) { return; }
+
+    uint32_t startId, endId, cnt;
+    SplitToCore(expertSum_, aivNum_, startId, endId, cnt);
+    if (startId >= endId) { return; }
+
+    uint32_t batchCnt = endId - startId;
+
+    DataCopyExtParams metaInParams{1U,
+        static_cast<uint32_t>(batchCnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
+    DataCopyPad(ubStageMeta_,
+                cachedRecvSrcMetadataGm_[(int64_t)startId * RECV_META_FIELDS], metaInParams, metaPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    DataCopyExtParams slotMetaParams{1U, metaBytes_, 0U, 0U, 0U};
+    DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+    DataCopyPadParams tokenPadParams{false, 0, 0, 0};
+
+    for (uint32_t i = 0; i < batchCnt; ++i) {
+        uint32_t metaBase = i * RECV_META_FIELDS;
+        int32_t srcRankId   = ubStageMeta_.GetValue(metaBase + 1);
+        int32_t srcTopkIdx  = ubStageMeta_.GetValue(metaBase + 2);
+        int32_t slotIdx     = ubStageMeta_.GetValue(metaBase + 3);
+
+        GM_ADDR slotAddr = localWinAddr_
+            + (int64_t)srcRankId * numMaxTokensPerRank_ * perSlotBytes_
+            + (int64_t)slotIdx * perSlotBytes_;
+
+        GlobalTensor<XType> srcTokenTensor;
+        srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
+        DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
+
+        if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+            GlobalTensor<ScalesType> srcScalesTensor;
+            srcScalesTensor.SetGlobalBuffer(
+                reinterpret_cast<__gm__ ScalesType*>(slotAddr + scalesOffset_), scalesElems_);
+            DataCopyParams scalesCopyParams{1U,
+                static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+            DataCopyPadParams scalesPadParams{false, 0, 0, 0};
+            DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
+        }
+
+        GlobalTensor<int32_t> srcMetaGm;
+        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset_));
+        DataCopyPad(ubMeta_, srcMetaGm, slotMetaParams, metaPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        float weight = ubMeta_.ReinterpretCast<float>().GetValue(axisKAlign_ + srcTopkIdx);
+        ubStageWeights_.SetValue(i, weight);
+
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        uint32_t globalRow = startId + i;
+        DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
+        if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+            DataCopyParams scalesCopyParams{1U,
+                static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+            DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
+        }
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    }
+
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(batchCnt * sizeof(float)), 0U, 0U, 0U};
+    DataCopyPad(recvTopkWeightsGm_[startId], ubStageWeights_, weightOutParams);
+
+    DataCopyExtParams metaOutParams{1U,
+        static_cast<uint32_t>(batchCnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPad(recvSrcMetadataGm_[(int64_t)startId * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 }  // namespace MoeEpDispatchEpilogueImpl
