@@ -362,6 +362,10 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
+    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table","provided",
+            "When layout_kv is PA, block_table must be provided but got nullptr."),
+        return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
