@@ -90,7 +90,7 @@ $$
 y_i=x_i\times weight_i + bias_i
 $$
 
-详细计算公式（按场景分类：非量化、伪量化、全量化）及版本演进请参见 [GroupedMatmul README](https://gitcode.com/cann/ops-transformer/blob/8cde1c9ef2d33811a441a3dc62152841506b0997/gmm/grouped_matmul/README.md#%E5%8A%9F%E8%83%BD%E8%AF%B4%E6%98%8E)。
+详细计算公式（按场景分类：<abbr title="x 和 weight 均为浮点类型直接计算">非量化</abbr>、<abbr title="weight 低精度存储，通过 antiquantScale/Offset 反量化后计算">伪量化</abbr>、<abbr title="x 和 weight 均为低精度计算，通过 scale 还原">全量化</abbr>）及版本演进请参见 [GroupedMatmul README](https://gitcode.com/cann/ops-transformer/blob/8cde1c9ef2d33811a441a3dc62152841506b0997/gmm/grouped_matmul/README.md#%E5%8A%9F%E8%83%BD%E8%AF%B4%E6%98%8E)。
 
 ---
 <a id="4-函数原型"></a>
@@ -149,8 +149,8 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
   |--------|:---:|------|------|----------|:---:|:---|:---:|
-  | x | 输入 | 公式中的输入 $x$ | TensorList 长度 [1,128] 或 [1,1024]（A5 非量化） | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 2~6 | √ |
-  | weight | 输入 | 公式中的 $weight$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND/NZ | 2~3 | √ |
+  | x | 输入 | 公式中的输入 $x$ | TensorList 长度 [1,128] 或 [1,1024]（A5 非量化） | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
+  | weight | 输入 | 公式中的 $weight$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="仅 Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND/<abbr title="FRACTAL_NZ 格式（亲核排布）">NZ</abbr> | 2~3 | √ |
   | biasOptional | 可选输入 | 公式中的 $bias$ | 长度与 weight 相同 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~2 | √ |
   | scaleOptional | 可选输入 | 公式中的 $scale$，代表量化参数中的缩放因子 | 一般情况下，长度与 weight 相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span>、INT64<span title="仅 Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~4 | √ |
   | offsetOptional | 可选输入 | 公式中的 $offset$，代表量化参数中的偏移量 | 长度与 weight 相同 | FLOAT | ND | 3 | √ |
@@ -165,7 +165,7 @@ aclnnStatus aclnnGroupedMatmulV5(
   | groupType | 输入 | 代表需要分组的轴 | 如矩阵乘为 $C[m,n]=A[m,k]\times B[k,n]$：`-1` = 不分组；`0` = M 轴分组；`2` = K 轴分组 | - | - | - | - |
   | groupListType | 输入 | 代表 groupList 输入的分组方式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | - | - | - | - |
   | actType | 输入 | 代表激活函数类型 | `0`=GMM_ACT_TYPE_NONE / `1`=GMM_ACT_TYPE_RELU / `2`=GMM_ACT_TYPE_GELU_TANH / `3`=GMM_ACT_TYPE_GELU_ERR_FUNC（不支持） / `4`=GMM_ACT_TYPE_FAST_GELU / `5`=GMM_ACT_TYPE_SILU | - | - | - | - |
-  | tuningConfigOptional | 可选输入 | 第一个数代表各个专家处理的 token 数的预期值；第二个数代表 A8W4 可选开启 weight 先转置的 NZ 格式；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
+  | tuningConfigOptional | 可选输入 | 第一个数代表各个专家处理的 token 数的预期值；第二个数代表 <abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W4</abbr> 可选开启 weight 先转置的 NZ 格式；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
   | out | 输出 | 公式中的输出 $y$ | TensorList 长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | - |
   | activationFeatureOutOptional | 输出 | 激活函数的输入数据，当前只支持传入 nullptr | - | - | - | - | - |
   | dynQuantScaleOutOptional | 输出 | 动态量化缩放因子，当前只支持传入 nullptr | - | - | - | - | - |
@@ -296,7 +296,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 - tuningConfigOptional：不支持。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
-  - 全量化下 x/weight=INT8、静态 T-C 或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
+  - 全量化下 x/weight=INT8、静态 <abbr title="pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放">T-C</abbr> 或动态 <abbr title="pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放">K-C</abbr>、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
 
 <a id="721-场景速查表"></a>
 
@@ -307,10 +307,10 @@ aclnnStatus aclnnGroupedMatmulV5(
 | 非量化 | FLOAT32/FLOAT16/BFLOAT16 | FLOAT32/FLOAT16/BFLOAT16 | FLOAT32/FLOAT16/BFLOAT16 | [非量化场景约束](#ascend950-非量化场景约束) |
 | 静态量化 | INT8 | INT8 | BFLOAT16/FLOAT16/INT32/INT8 | [静态量化场景约束](#ascend950-静态量化场景约束) |
 | 静态量化 | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [静态量化场景约束](#ascend950-静态量化场景约束) |
-| 动态量化（T-T/T-C/K-T/K-C） | INT8 | INT8 | BFLOAT16/FLOAT16 | [动态量化（T-T/T-C/K-T/K-C）场景约束](#ascend950-动态量化-ttck) |
+| 动态量化（<abbr title="pertensor-pertensor：输入和权重均为统一缩放">T-T</abbr>/T-C/<abbr title="pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放">K-T</abbr>/K-C） | INT8 | INT8 | BFLOAT16/FLOAT16 | [动态量化（T-T/T-C/K-T/K-C）场景约束](#ascend950-动态量化-ttck) |
 | 动态量化（T-T/T-C/K-T/K-C） | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（T-T/T-C/K-T/K-C）场景约束](#ascend950-动态量化-ttck) |
-| 动态量化（MX） | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（MX）场景约束](#ascend950-动态量化-mx) |
-| 动态量化（G-B） | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（G-B）场景约束](#ascend950-动态量化-gb) |
+| 动态量化（<abbr title="特殊 pergroup 量化（block 粒度 M=1,N=1,K=32）">MX</abbr>） | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（MX）场景约束](#ascend950-动态量化-mx) |
+| 动态量化（<abbr title="pergroup-perblock：输入侧按 K 分组缩放，权重侧按 N×K 分块缩放">G-B</abbr>） | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（G-B）场景约束](#ascend950-动态量化-gb) |
 | 伪量化 | FLOAT16 / BFLOAT16 | INT8/INT4 | FLOAT16 / BFLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 | 伪量化 | FLOAT16 / BFLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | FLOAT16 / BFLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 
@@ -347,8 +347,8 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 | groupType | 子场景 | shape |
 |:---:|:---|:---|
-| 0/2 | perchannel | `(g, N)` |
-| 0/2 | pertensor | `(g, 1)` 或 `(g,)`，输出为 INT8 时不支持 pertensor 场景 |
+| 0/2 | <abbr title="每列独立缩放因子">perchannel</abbr> | `(g, N)` |
+| 0/2 | <abbr title="一个 Tensor 统一缩放因子">pertensor</abbr> | `(g, 1)` 或 `(g,)`，输出为 INT8 时不支持 pertensor 场景 |
 
 </details>
 
@@ -369,7 +369,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 | groupType | 子场景 | shape |
 |:---:|:---|:---|
-| 0 | pertoken | `(M,)` |
+| 0 | <abbr title="每行独立缩放因子">pertoken</abbr> | `(M,)` |
 | 0 | pertensor | `(g, 1)` 或 `(g,)` |
 | 2 | pertoken | `(g, M)` |
 | 2 | pertensor | `(g, 1)` 或 `(g,)` |
@@ -430,7 +430,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 - **动态量化特殊场景处理**：
   - 在动态量化场景 M 分组或 K 分组情况下，当 N 等于 1 且 scaleOptional 的 shape 为 `(g, 1)` 时，weight 既可以 pertensor 量化也可以 perchannel 量化时，优先选择 pertensor 量化模式。
-  - 在动态量化场景 M 分组情况下，当 g = M 且 perTokenScaleOptional 的 shape 为 `(g,)` 时，x 选择 pertoken 量化模式；当 g = M，K ≤ 128 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，根据 weight 的量化模式选择 x 的量化模式（weight 如果是 perchannel 或者 pertensor 量化，x 选择 pertensor 量化；weight 如果是 perblock 量化，x 选择 pergroup 量化）。
+  - 在动态量化场景 M 分组情况下，当 g = M 且 perTokenScaleOptional 的 shape 为 `(g,)` 时，x 选择 pertoken 量化模式；当 g = M，K ≤ 128 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，根据 weight 的量化模式选择 x 的量化模式（weight 如果是 perchannel 或者 pertensor 量化，x 选择 pertensor 量化；weight 如果是 <abbr title="按 K/N 方向固定大小分块">perblock</abbr> 量化，x 选择 <abbr title="按 K 方向等分多组">pergroup</abbr> 量化）。
   - 在动态量化场景 K 分组情况下，K 小于 128，N 小于等于 128 且 scaleOptional 的 shape 为 `(g, 1)` 时，按照现有量化模式区分规则，既可以为非 pergroup 量化，又可以为 G-B 量化，此种场景现一律按照 G-B 量化处理。
   - 在动态量化场景 K 分组情况下，当 M 等于 1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，x 既可以 pertoken 量化也可以 pertensor 量化时，优先选择 pertensor 量化模式。
   - 在动态量化场景 K 分组情况下，K 小于 128，M 等于 1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，如果 N 小于等于 128，x 则选择 pergroup 量化；如果 N 大于 128，根据 weight 的量化模式选择 x 的量化模式（weight 如果是 perchannel 或者 pertensor 量化，x 选择 pertensor 量化；weight 如果是 perblock 量化，x 选择 pergroup 量化）。
@@ -484,11 +484,11 @@ aclnnStatus aclnnGroupedMatmulV5(
 | 非量化 | FLOAT32 | FLOAT32 | FLOAT32 | [非量化场景约束](#非量化场景约束) |
 | 非量化 | BFLOAT16 | BFLOAT16 | BFLOAT16 | [非量化场景约束](#非量化场景约束) |
 | 非量化 | FLOAT16 | FLOAT16 | FLOAT16 | [非量化场景约束](#非量化场景约束) |
-| 全量化-A8W8 | INT8 | INT8 | BFLOAT16/FLOAT16/INT32/INT8 | [A8W8场景约束](#a8w8场景约束) |
-| 全量化-A4W4 | INT4 | INT4 | BFLOAT16/FLOAT16 | [A4W4场景约束](#a4w4场景约束) |
+| 全量化-<abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W8</abbr> | INT8 | INT8 | BFLOAT16/FLOAT16/INT32/INT8 | [A8W8场景约束](#a8w8场景约束) |
+| 全量化-<abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A4W4</abbr> | INT4 | INT4 | BFLOAT16/FLOAT16 | [A4W4场景约束](#a4w4场景约束) |
 | 伪量化-A8W4 | INT8 | INT4 | BFLOAT16/FLOAT16 | [A8W4场景约束](#a8w4场景约束) |
-| 伪量化-A16W8 | BFLOAT16/FLOAT16 | INT8 | BFLOAT16/FLOAT16 | [A16W8场景约束](#a16w8场景约束) |
-| 伪量化-A16W4 | BFLOAT16/FLOAT16 | INT4 | BFLOAT16/FLOAT16 | [A16W4场景约束](#a16w4场景约束) |
+| 伪量化-<abbr title="A16 表示 Activation 采用 16bit 非量化，W8 表示 weight 采用 8bit 量化，同理还有 A16W4">A16W8</abbr> | BFLOAT16/FLOAT16 | INT8 | BFLOAT16/FLOAT16 | [A16W8场景约束](#a16w8场景约束) |
+| 伪量化-<abbr title="A16 表示 Activation 采用 16bit 非量化，W8 表示 weight 采用 8bit 量化，同理还有 A16W4">A16W4</abbr> | BFLOAT16/FLOAT16 | INT4 | BFLOAT16/FLOAT16 | [A16W4场景约束](#a16w4场景约束) |
 
 <a id="非量化场景约束"></a>
 
