@@ -44,11 +44,9 @@ flowchart TD
 
 以下构造一个覆盖所有分支的输入文件，逐行标注每个文件在哪一步被踢出或保留进入下一步。
 
-### 3.1 输入文件（12 行，覆盖所有分支）
+### 3.1 输入文件（10 行，覆盖所有分支）
 
 ```
-mc2/common/op_kernel/mc2_matmul_block.h
-mc2/common/utils/math_util.h
 mc2/all_gather_matmul/tests/test_main.py
 mc2/all_gather_matmul/README.md
 mc2/matmul_all_reduce/tests/test_perf.py
@@ -65,8 +63,6 @@ mc2/common/op_kernel/unknown_file.xyz
 
 > 图例：~~删除线~~ = 被踢出，← 后标注踢出的 Step 和原因；普通文本 = 保留到最终
 
-~~mc2/common/op_kernel/mc2_matmul_block.h~~ ← Step1 精确匹配 whitelist.txt
-~~mc2/common/utils/math_util.h~~ ← Step1 精确匹配 whitelist.txt
 ~~mc2/all_gather_matmul/tests/test_main.py~~ ← Step1 通配符匹配 mc2/*/tests/
 ~~mc2/all_gather_matmul/README.md~~ ← Step2 .md 后缀忽略
 ~~mc2/matmul_all_reduce/tests/test_perf.py~~ ← Step2 tests/ 目录忽略
@@ -111,30 +107,6 @@ matmul_reduce_scatter → supported_products: [ascend910b] (arch35 裁剪为 [91
 |------|------|------|
 | 通配符 | `tests/` | 顶层 tests 目录 |
 | 通配符 | `mc2/*/tests/` | 各算子下的 tests 目录 |
-| 精确 | `mc2/common/op_host/op_tiling/formulaic_tiling_datatype.h` | tiling 数据类型 |
-| 精确 | `mc2/common/op_host/op_tiling/hccl_performance.h` | HCCL 性能配置 |
-| 精确 | `mc2/common/op_host/op_tiling/hccl_performance_arch35.h` | HCCL 性能配置 (arch35) |
-| 精确 | `mc2/common/op_host/op_tiling/matmul_performance.h` | matmul 性能配置 |
-| 精确 | `mc2/common/op_host/op_tiling/matmul_performance_arch35.h` | matmul 性能配置 (arch35) |
-| 精确 | `mc2/common/op_host/op_tiling/new_mc2_matmul_tiling_cfg.h` | matmul tiling 配置 |
-| 精确 | `mc2/common/op_host/op_tiling/tiling_key.h` | tiling key 定义 |
-| 精确 | `mc2/common/op_kernel/moe_distribute_comm_ctx.h` | moe 通信上下文 |
-| 精确 | `mc2/common/op_kernel/mc2_matmul_block.h` | matmul block |
-| 精确 | `mc2/common/op_kernel/mc2_matmul_block_l2cache.h` | matmul block L2 cache |
-| 精确 | `mc2/common/op_kernel/mc2_mat_mul_asw_block.h` | ASW block |
-| 精确 | `mc2/common/op_kernel/qbmm_asw_block_noncontiguous.h` | QBMM block |
-| 精确 | `mc2/common/op_kernel/qbmm_perblock_api_utils_noncontiguous.h` | QBMM API utils |
-| 精确 | `mc2/common/op_kernel/reduce_sum.h` | reduce sum |
-| 精确 | `mc2/common/op_kernel/reduce_sum_utils.h` | reduce sum utils |
-| 精确 | `mc2/common/op_kernel/mc2_templates/communication/communicator/hccl_communicator.h` | HCCL 通信器 |
-| 精确 | `mc2/common/op_kernel/mc2_templates/communication/primitives/hccl_primitives.h` | HCCL 基础操作 |
-| 精确 | `mc2/common/op_kernel/mc2_templates/computation/compute_stage.h` | 计算阶段 |
-| 精确 | `mc2/common/op_kernel/mc2_templates/computation/matmul/matmul_base.h` | matmul 模板基类 |
-| 精确 | `mc2/common/op_kernel/mc2_templates/computation/matmul/mc2_kc_quant_matmul.h` | KC 量化 matmul |
-| 精确 | `mc2/common/op_kernel/mc2_templates/computation/matmul/mc2_mx_quant_matmul.h` | MX 量化 matmul |
-| 精确 | `mc2/common/op_kernel/mc2_templates/quantization/fp8/fp8_dynamic_quant_pertoken.h` | FP8 量化 |
-| 精确 | `mc2/common/op_kernel/mc2_templates/quantization/quantize_stage.h` | 量化阶段 |
-| 精确 | `mc2/common/utils/math_util.h` | 数学工具 |
 
 ### 4.2 算子依赖关系（result.json）
 

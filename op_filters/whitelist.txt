@@ -3,28 +3,4 @@
 # 支持 * (单层目录) 和 ** (多层目录) 通配符
 tests/
 mc2/*/tests/
-mc2/common/op_host/op_tiling/formulaic_tiling_datatype.h
-mc2/common/op_host/op_tiling/hccl_performance.h
-mc2/common/op_host/op_tiling/hccl_performance_arch35.h
-mc2/common/op_host/op_tiling/matmul_performance.h
-mc2/common/op_host/op_tiling/matmul_performance_arch35.h
-mc2/common/op_host/op_tiling/new_mc2_matmul_tiling_cfg.h
-mc2/common/op_host/op_tiling/tiling_key.h
-mc2/common/op_kernel/moe_distribute_comm_ctx.h
-mc2/common/op_kernel/mc2_matmul_block.h
-mc2/common/op_kernel/mc2_matmul_block_l2cache.h
-mc2/common/op_kernel/mc2_mat_mul_asw_block.h
-mc2/common/op_kernel/qbmm_asw_block_noncontiguous.h
-mc2/common/op_kernel/qbmm_perblock_api_utils_noncontiguous.h
-mc2/common/op_kernel/reduce_sum.h
-mc2/common/op_kernel/reduce_sum_utils.h
-mc2/common/op_kernel/mc2_templates/communication/communicator/hccl_communicator.h
-mc2/common/op_kernel/mc2_templates/communication/primitives/hccl_primitives.h
-mc2/common/op_kernel/mc2_templates/computation/compute_stage.h
-mc2/common/op_kernel/mc2_templates/computation/matmul/matmul_base.h
-mc2/common/op_kernel/mc2_templates/computation/matmul/mc2_kc_quant_matmul.h
-mc2/common/op_kernel/mc2_templates/computation/matmul/mc2_mx_quant_matmul.h
-mc2/common/op_kernel/mc2_templates/quantization/fp8/fp8_dynamic_quant_pertoken.h
-mc2/common/op_kernel/mc2_templates/quantization/quantize_stage.h
-mc2/common/utils/math_util.h
 
