@@ -870,6 +870,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
         cumsumRevCntInRank_ += static_cast<uint64_t>(sendCnt);
         cumsumInfoTensor_.SetValue(localExpertId * worldSize_ + calRankId, static_cast<int32_t>(cumsumRevCntInRank_));
     }
+    if (blockIdx_ < 2) {
+        int32_t lastRankIdx = static_cast<int32_t>(worldSize_) - 1;
+        printf("[MMOE_DBG] SendCnt block %d expert %d total %d cumsumLast %d\n",
+            static_cast<int32_t>(blockIdx_), localExpertId, static_cast<int32_t>(totalSendCntInExp_),
+            cumsumInfoTensor_.GetValue(localExpertId * static_cast<int32_t>(worldSize_) + lastRankIdx));
+    }
     
     // Phase 3: 写到 gm 上，并通知 AIC
     expertTokenCntTensor_.SetValue(0, totalSendCntInExp_);
@@ -893,7 +899,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     GM_ADDR remoteRecordAddr = GetUrmaAddrByRankId(mc2Context_, relayRank) +
         params_.peermemInfo.relayTokenDataPtr + remoteCopyOffset;
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
-    printf("remoteRecordAddr %d\n", remoteRecordAddr);
     if (relayRank == rankId_) {
         __gm__ int32_t* readyFlag = reinterpret_cast<__gm__ int32_t*>(remoteRecordAddr + flagOffset);
         GmSignalWaitBarrier(readyFlag, int32_t(1));
@@ -905,7 +910,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     GM_ADDR scratchAddr = params_.workspaceInfo.relayReadScratchPtr +
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
-    printf("scratchAddr %d\n", scratchAddr);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
     do {
         hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
@@ -928,7 +932,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
     PipeBarrier<PIPE_ALL>();
-    // DumpTensor(copyTmpTensors_[bufferIdx],1, 256);
 }
 
 // ============================================================================
@@ -977,13 +980,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
     }
-    if (blockIdx_ < 2 && copyNum > 0) {
-        int32_t tripleDumpRows = copyNum < 2 ? copyNum : 2;
-        printf("[MMOE_DBG] triple local block %d remoteRank %d rowDst %d copyStart %d copyNum %d dumpRows %d\n",
-            static_cast<int32_t>(blockIdx_), remoteRankIdx, rowDstOffsetInCore, copyStartIdx, copyNum, tripleDumpRows);
-        PipeBarrier<PIPE_ALL>();
-        DumpTensor(tripleTensor_, 1, tripleDumpRows * INT32_PER_256B);
-    }
 
     // 6-buffer SW 流水 MTE2 + MTE3
     // Phase 2 prime: 发出前 BufferNum 个 token 的 MTE2
@@ -1005,33 +1001,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         LocalTensor<ActivationType> tokenScalebuf = copyTmpTensors_[outIdx];
         LocalTensor<QuantScaleOutType> bufScale =
             tokenScalebuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
-        if (blockIdx_ < 2 && copyIdx < 2) {
-            int32_t topkIndex = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOPK_INDEX);
-            int32_t tokenIndex = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOKEN_ID);
-            int32_t tokenDumpNum = widthA < 64 ? static_cast<int32_t>(widthA) : 64;
-            int32_t scaleDumpNum = widthAScale < 16 ? static_cast<int32_t>(widthAScale) : 16;
-            printf("[MMOE_DBG] before out rank %d block %d remoteRank %d token %d topk %d row %d copyIdx %d widthA %d scaleW %d\n",
-                rankId_, static_cast<int32_t>(blockIdx_), remoteRankIdx, tokenIndex, topkIndex,
-                rowDstOffsetInCore + copyIdx, copyIdx, static_cast<int32_t>(widthA),
-                static_cast<int32_t>(widthAScale));
-            printf("[MMOE_DBG] copyTmp token first %d elems\n", tokenDumpNum);
-            DumpTensor(tokenScalebuf, 1, tokenDumpNum);
-            printf("[MMOE_DBG] copyTmp scale first %d elems\n", scaleDumpNum);
-            DumpTensor(bufScale, 1, scaleDumpNum);
-        }
         DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScalebuf,
             {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
         DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
             {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
-        if (blockIdx_ < 2 && copyIdx < 2) {
-            int32_t tokenDumpNum = widthA < 64 ? static_cast<int32_t>(widthA) : 64;
-            PipeBarrier<PIPE_ALL>();
-            DataCopy(copyTmpTensors_[outIdx], tokenRevGlobalTensor[copyIdx * widthA], tokenDumpNum);
-            PipeBarrier<PIPE_ALL>();
-            printf("[MMOE_DBG] dispatchRevData row %d readback first %d elems\n",
-                rowDstOffsetInCore + copyIdx, tokenDumpNum);
-            DumpTensor(copyTmpTensors_[outIdx], 1, tokenDumpNum);
-        }
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
 
         // 发下一个槽的 MTE2 (copyIdx + BufferNum,复用 outIdx 槽)
@@ -1113,6 +1086,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                         int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
                         int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
                         int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
+                        if (blockIdx_ < 2 && w < 2) {
+                            printf("[MMOE_DBG] flag add block %d expert %d rowStart %d rows %d wave %d add %d\n",
+                                static_cast<int32_t>(blockIdx_), localExpertId, rowStartLocal, rowsNumInCore,
+                                w, hi - lo);
+                        }
                         AtomicAdd(flagBase + w, int32_t(hi - lo));
                     }
                 }
@@ -1161,6 +1139,11 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParam
             DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
                 expertRevNumsGloablTensor_[offsetInCnt]);
             Get<M_VALUE>(state.problemShape) = expertRevNumsGloablTensor_.GetValue(offsetInCnt);
+            if (blockIdx_ < 2) {
+                printf("[MMOE_DBG] AIC read M block %d expert %d offset %d M %d\n",
+                    static_cast<int32_t>(blockIdx_), static_cast<int32_t>(expertIdx),
+                    static_cast<int32_t>(offsetInCnt), static_cast<int32_t>(Get<M_VALUE>(state.problemShape)));
+            }
             CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_S>(3);
         }
         if constexpr (g_coreType == AscendC::AIV) {
@@ -1170,8 +1153,18 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParam
                 DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
                 expertRevNumsGloablTensor_[offsetInCnt]);
                 Get<M_VALUE>(state.problemShape) = expertRevNumsGloablTensor_.GetValue(offsetInCnt);
+                if (blockIdx_ < 2) {
+                    printf("[MMOE_DBG] AIV0 read M block %d expert %d offset %d M %d\n",
+                        static_cast<int32_t>(blockIdx_), static_cast<int32_t>(expertIdx),
+                        static_cast<int32_t>(offsetInCnt), static_cast<int32_t>(Get<M_VALUE>(state.problemShape)));
+                }
             } else {
                 Get<M_VALUE>(state.problemShape) = totalSendCntInExp_;
+                if (blockIdx_ < 2) {
+                    printf("[MMOE_DBG] AIV1 local M block %d expert %d M %d\n",
+                        static_cast<int32_t>(blockIdx_), static_cast<int32_t>(expertIdx),
+                        static_cast<int32_t>(Get<M_VALUE>(state.problemShape)));
+                }
             }
         }
     } else if constexpr (Mode == AddrUpdateMode::kGmm2) {
