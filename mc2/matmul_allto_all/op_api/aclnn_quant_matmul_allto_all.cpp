@@ -27,7 +27,7 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(
 {
     OP_LOGD("aclnnQuantMatmulAlltoAllGetWorkspaceSize start");
 
-    const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
+    const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ai_cpu" : "";
 
     return aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         x1, x2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
