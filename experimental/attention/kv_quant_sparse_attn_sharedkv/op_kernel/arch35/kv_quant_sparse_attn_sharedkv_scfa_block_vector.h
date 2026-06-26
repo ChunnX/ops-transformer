@@ -155,10 +155,8 @@ private:
     TBuf<> stage2OutBuf;
     uint32_t stage0InBufBufId[2] = {0, 1};
     uint32_t stage0OutBufBufId[2] = {2, 3};
-    TEventID mte3ToVId;
-    TEventID vToMte3Id;
-    TEventID vToMte3V1Id[2];
-    TEventID mte3ToVV1Id[2];
+    uint32_t stage1OutBufBufId[2] = {4, 5};
+    uint32_t stage2OutBufBufId = 6;
     TBuf<> softmaxMaxBuf[2];
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2]; 
@@ -752,7 +750,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
     int64_t stage1Offset = runInfo.taskIdMod2;
-    WaitFlag<HardEvent::MTE3_V>(mte3ToVV1Id[stage1Offset]);
+    get_buf(PIPE_V, stage1OutBufBufId[stage1Offset], false);
+    rls_buf(PIPE_V, stage1OutBufBufId[stage1Offset], false);
     LocalTensor<Q_T> stage1CastTensor = this->stage1OutBuf[stage1Offset].template Get<Q_T>();
 
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
@@ -818,8 +817,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     bmm1ResBuf.SetCrossCore();
 
     // ===================DataCopy to L1 ====================
-    SetFlag<HardEvent::V_MTE3>(vToMte3V1Id[stage1Offset]);
-    WaitFlag<HardEvent::V_MTE3>(vToMte3V1Id[stage1Offset]);
+    get_buf(PIPE_V, stage1OutBufBufId[stage1Offset], true);
+    rls_buf(PIPE_V, stage1OutBufBufId[stage1Offset], true);
+    get_buf(PIPE_MTE3, stage1OutBufBufId[stage1Offset], false);
+    rls_buf(PIPE_MTE3, stage1OutBufBufId[stage1Offset], false);
 
     outputBuf.WaitCrossCore();
     LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>();
@@ -830,7 +831,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
             (uint16_t)(s1BaseSize - runInfo.halfMRealSize)});
     }
 
-    SetFlag<HardEvent::MTE3_V>(mte3ToVV1Id[stage1Offset]);
+    get_buf(PIPE_MTE3, stage1OutBufBufId[stage1Offset], true);
+    rls_buf(PIPE_MTE3, stage1OutBufBufId[stage1Offset], true);
 
     outputBuf.SetCrossCore();
     // ======================================================
@@ -856,7 +858,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-    WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
+    get_buf(PIPE_V, stage2OutBufBufId, false);
+    rls_buf(PIPE_V, stage2OutBufBufId, false);
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
@@ -879,7 +882,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 
         this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
     }
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId);
+    get_buf(PIPE_MTE3, stage2OutBufBufId, true);
+    rls_buf(PIPE_MTE3, stage2OutBufBufId, true);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -892,8 +896,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut (RunInfo &ru
 
     attenOut.SetAddr(vec2ResUb.address_);
     Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, vec2CalcSize);
-    SetFlag<HardEvent::V_MTE3>(vToMte3Id);
-    WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
+    get_buf(PIPE_V, stage2OutBufBufId, true);
+    rls_buf(PIPE_V, stage2OutBufBufId, true);
+    get_buf(PIPE_MTE3, stage2OutBufBufId, false);
+    rls_buf(PIPE_MTE3, stage2OutBufBufId, false);
 
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
@@ -1455,16 +1461,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(stage1OutBuf[0], vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutBuf[1], vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
-
-    mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId);
-    vToMte3V1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    vToMte3V1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    mte3ToVV1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    mte3ToVV1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVV1Id[0]);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVV1Id[1]);
 
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
