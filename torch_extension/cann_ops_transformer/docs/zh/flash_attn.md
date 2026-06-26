@@ -454,7 +454,7 @@ cann_ops_transformer.ops.flash_attn(
         <tr>
             <td>batch_size</td>
             <td>可选输入</td>
-            <td>batch大小。若未传入，则从ori_kv或ori_kv推导。默认值为None</td>
+            <td>batch大小。若未传入，则从cu_seqlens_q或seqused_q推导。默认值为None</td>
             <td>INT</td>
             <td>-</td>
             <td>-</td>
@@ -624,7 +624,7 @@ cann_ops_transformer.ops.flash_attn(
         <tr>
             <td>metadata</td>
             <td>固定输出</td>
-            <td>flash_attn的计算输出</td>
+            <td>flash_attn的任务切分数据</td>
             <td>INT32</td>
             <td>ND</td>
             <td>shape根据batch_size和num_heads_kv动态计算。</td>
@@ -1091,7 +1091,7 @@ mask_mode参数解释
     <tbody>
         <tr>
             <td>metadata</td>
-            <td>tensor_type仅支持INT32；shape由npu_flash_attn_metadata动态计算</td>
+            <td>tensor_type仅支持INT32；shape由flash_attn_metadata动态计算</td>
             <td>可选参数</td>
             <td>无</td>
             <td>传入时需与flash_attn_metadata生成的结果一致</td>
