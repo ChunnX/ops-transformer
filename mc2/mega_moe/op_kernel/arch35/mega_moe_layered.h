@@ -905,6 +905,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     GM_ADDR scratchAddr = params_.workspaceInfo.relayReadScratchPtr +
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
+    printf("scratchAddr %d\n", scratchAddr);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
     do {
         hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
