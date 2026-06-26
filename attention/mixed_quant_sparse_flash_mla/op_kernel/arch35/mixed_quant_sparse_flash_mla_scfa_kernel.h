@@ -46,6 +46,7 @@ using namespace optiling;
 using namespace optiling::detail;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
+using AttentionCommon::FdRunInfo;
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
@@ -86,6 +87,8 @@ private:
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
     __aicore__ inline void ParseFdRunInfo(FdRunInfo &fdRunInfo);
+    __aicore__ inline int64_t ConvertS2MetadataBlockToToken(
+        const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx);
     __aicore__ inline bool ApplyS2MetadataRange(RunParamStr &runParam, ConstInfo &constInfo,
                                                 int64_t s2StartPoint, int64_t s2EndPoint,
                                                 bool isFirstS2RangeTask, bool isLastS2RangeTask);
@@ -478,9 +481,10 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                 if (!s2NoNeedCalc) {
                     bool isFirstS2RangeTask = (bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx);
                     bool isLastS2RangeTask = (lastBN && gS1Index == runParam.gs1LoopEndIdx - 1);
-                    s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo,
-                        static_cast<int64_t>(s2StartIdx) * constInfo.s2BaseSize,
-                        static_cast<int64_t>(s2EndIdx) * constInfo.s2BaseSize,
+                    int64_t s2StartPoint = ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2StartIdx);
+                    int64_t s2EndPoint = (isLastS2RangeTask && s2EndIdx == 0) ? 0 :
+                        ConvertS2MetadataBlockToToken(runParam, this->constInfo, s2EndIdx);
+                    s2NoNeedCalc = ApplyS2MetadataRange(runParam, this->constInfo, s2StartPoint, s2EndPoint,
                         isFirstS2RangeTask, isLastS2RangeTask);
                 } else {
                     runParam.isS2Split = false;
@@ -490,7 +494,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
                     continue;
                 }
                 runParam.s2SplitIdx = s2SplitIdxCounter;
-                if (runParam.isS2Split && gS1Index == runParam.gs1LoopEndIdx - 1) {
+                if (runParam.isS2Split) {
                     s2SplitIdxCounter++;
                 }
                 if constexpr (IS_SPLIT_G) {
@@ -559,6 +563,23 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
     }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int64_t MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(
+    const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx)
+{
+    int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
+    int64_t oriLen = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx;
+    int64_t cmpLen = runParam.s2CmpLineEndIdx - runParam.s2CmpLineStartIdx;
+    int64_t oriBlockNum = (oriLen + s2BaseSize - 1) / s2BaseSize;
+    int64_t blockIdx = static_cast<int64_t>(s2BlockIdx);
+    if (blockIdx <= oriBlockNum) {
+        int64_t oriToken = blockIdx * s2BaseSize;
+        return oriToken < oriLen ? oriToken : oriLen;
+    }
+    int64_t cmpToken = (blockIdx - oriBlockNum) * s2BaseSize;
+    return oriLen + (cmpToken < cmpLen ? cmpToken : cmpLen);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -640,7 +661,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaScfa<CubeBlockType, VecBlockType>
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : (this->constInfo.gSize >> 1U);
     } else {
         runParam.goIdx = 0;
     }

@@ -504,7 +504,7 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Com
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : (this->constInfo.gSize >> 1U);
     } else {
         runParam.goIdx = 0;
     }

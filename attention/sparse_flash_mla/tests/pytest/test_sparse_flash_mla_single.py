@@ -28,8 +28,16 @@ pt_save_path = "data"
 result_path = os.getenv("SAS_RESULT_SAVE_PATH", './result/smla_result.xlsx')
 param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
 
+def _get_testcase_name(params, fallback="unknown"):
+    return params.get("testcase_name") or params.get("Testcase_Name") or fallback
+
+def _gen_testcase_id(params, idx):
+    return _get_testcase_name(params, f"case_{idx:06d}")
+
+testcase_ids = [_gen_testcase_id(p, i) for i, p in enumerate(param_combinations)]
+
 @pytest.mark.ci
-@pytest.mark.parametrize("param_combinations", param_combinations)
+@pytest.mark.parametrize("param_combinations", param_combinations, ids=testcase_ids)
 def test_example(param_combinations):
     test_data = utils.generate_case_with_default_param(param_combinations)
     torch_npu.npu.set_device(0)
@@ -47,3 +55,5 @@ def test_example(param_combinations):
         result, fulfill_percent = result_compare_method.check_result(input_data['softmax_lse'], softmax_lse)
     # 记录结果
     utils.save_result(result, fulfill_percent, test_data, result_path)
+    if result == "Failed":
+        pytest.fail(f"用例精度失败:{_get_testcase_name(test_data)} 精度:{fulfill_percent:.2f}%")
