@@ -370,7 +370,6 @@ inline void *GetOpApiFuncAddr(const char *apiName)
             return funcAddr;
         }
     }
-
     static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
     if (opApiHandler == nullptr) {
         return nullptr;
@@ -973,6 +972,8 @@ auto DecodeDevice(Ts&... args) -> at::Device
             GetOpApiLibName(),                                                                               \
             ", or ",                                                                                         \
             GetOpApiLibName(),                                                                               \
+            ", or ",                                                                                         \
+            GetTransformerOpApiLibName(),                                                                    \
             "not found.");                                                                                   \
         auto acl_stream = c10_npu::getCurrentNPUStream().stream(false);                                      \
         uint64_t workspace_size = 0;                                                                         \
