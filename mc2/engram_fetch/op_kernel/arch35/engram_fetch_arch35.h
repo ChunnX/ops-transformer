@@ -99,10 +99,10 @@ __aicore__ inline void EngramFetchArch35::Init(
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
 
-    numEntriesPerRank_ = tilingData->numEntriesPerRank;
-    numTokens_ = tilingData->numTokens;
-    hiddenBytes_ = tilingData->hiddenBytes;
-    ubSize_ = tilingData->ubSize;
+    numEntriesPerRank_ = static_cast<uint32_t>(tilingData->numEntriesPerRank);
+    numTokens_ = static_cast<uint32_t>(tilingData->numTokens);
+    hiddenBytes_ = static_cast<uint32_t>(tilingData->hiddenBytes);
+    ubSize_ = static_cast<uint32_t>(tilingData->ubSize);
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
@@ -141,18 +141,18 @@ __aicore__ inline void EngramFetchArch35::Init(
 
 __aicore__ inline void EngramFetchArch35::CopyContextToUb()
 {
-    LocalTensor<uint32_t> commBufferLocal = commBufferBuf_.Get<uint32_t>();
-    GlobalTensor<uint32_t> commBufferGm;
-    commBufferGm.SetGlobalBuffer((__gm__ uint32_t *)&ctxPtr_->commBuffer[0]);
-    DataCopyExtParams cpComm{1U, numRanks_ * 2U * static_cast<uint32_t>(sizeof(uint32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<uint32_t> padComm{false, 0, 0, 0};
+    LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
+    GlobalTensor<uint64_t> commBufferGm;
+    commBufferGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->commBuffer[0]);
+    DataCopyExtParams cpComm{1U, numRanks_ * static_cast<uint32_t>(sizeof(uint64_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<uint64_t> padComm{false, 0, 0, 0};
     DataCopyPad(commBufferLocal, commBufferGm, cpComm, padComm);
 
-    LocalTensor<uint32_t> hcommHandleLocal = hcommHandleBuf_.Get<uint32_t>();
-    GlobalTensor<uint32_t> hcommHandleGm;
-    hcommHandleGm.SetGlobalBuffer((__gm__ uint32_t *)&ctxPtr_->hcommHandle_[0]);
-    DataCopyExtParams cpHandle{1U, numRanks_ * 2U * static_cast<uint32_t>(sizeof(uint32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<uint32_t> padHandle{false, 0, 0, 0};
+    LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
+    GlobalTensor<uint64_t> hcommHandleGm;
+    hcommHandleGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->hcommHandle_[0]);
+    DataCopyExtParams cpHandle{1U, numRanks_ * static_cast<uint32_t>(sizeof(uint64_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<uint64_t> padHandle{false, 0, 0, 0};
     DataCopyPad(hcommHandleLocal, hcommHandleGm, cpHandle, padHandle);
 }
 
@@ -201,17 +201,11 @@ __aicore__ inline void EngramFetchArch35::Process()
 
         CopyContextToUb();
 
-        LocalTensor<uint32_t> commBufferLocal = commBufferBuf_.Get<uint32_t>();
-        LocalTensor<uint32_t> hcommHandleLocal = hcommHandleBuf_.Get<uint32_t>();
+        LocalTensor<uint64_t> commBufferLocal = commBufferBuf_.Get<uint64_t>();
+        LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
         LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
         LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
         LocalTensor<uint32_t> tokenIdxInRank = tokenIdxInRankBuf_.Get<uint32_t>();
-
-        auto getAddr64 = [](const LocalTensor<uint32_t> &buf, uint32_t idx) -> GM_ADDR {
-            uint32_t lo = buf(idx * 2U);
-            uint32_t hi = buf(idx * 2U + 1U);
-            return static_cast<GM_ADDR>((static_cast<uint64_t>(hi) << 32U) | lo);
-        };
 
         uint32_t indicesBatchStart = 0;
         while (indicesBatchStart < numTokens_) {
@@ -240,22 +234,23 @@ __aicore__ inline void EngramFetchArch35::Process()
                     GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(globalTokenIdx) * hiddenBytes_;
 
                     if (ownerRank == rankId_) {
-                        GM_ADDR src = getAddr64(commBufferLocal, rankId_) + localEntryIdx * hiddenBytes_;
+                        GM_ADDR src =
+                            (GM_ADDR)commBufferLocal(rankId_) + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
                         LocalCopySlice(dst, src, hiddenBytes_);
                     } else {
-                        GM_ADDR remoteSrcAddr = getAddr64(commBufferLocal, ownerRank) + localEntryIdx * hiddenBytes_;
-                        hcomm_.ReadNbi<false>(getAddr64(hcommHandleLocal, channelIdx), dst, remoteSrcAddr,
-                                              hiddenBytes_);
+                        GM_ADDR remoteSrcAddr =
+                            (GM_ADDR)commBufferLocal(ownerRank) + static_cast<uint64_t>(localEntryIdx) * hiddenBytes_;
+                        hcomm_.ReadNbi<false>(hcommHandleLocal(channelIdx), dst, remoteSrcAddr, hiddenBytes_);
                         pendingReadCount++;
                         if (pendingReadCount >= READ_COMMIT_THRESHOLD) {
-                            hcomm_.Commit(getAddr64(hcommHandleLocal, channelIdx));
+                            hcomm_.Commit(hcommHandleLocal(channelIdx));
                             pendingReadCount = 0;
                         }
                     }
                 }
 
                 if (pendingReadCount > 0) {
-                    hcomm_.Commit(getAddr64(hcommHandleLocal, channelIdx));
+                    hcomm_.Commit(hcommHandleLocal(channelIdx));
                 }
             }
 
