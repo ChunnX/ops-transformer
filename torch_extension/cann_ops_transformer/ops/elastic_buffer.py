@@ -65,8 +65,8 @@ class ElasticBuffer:
         """
         torch._check(num_entries >= 0,
                      lambda: f"num_entries must be non-negative, got {num_entries}")
-        torch._check(hidden_size >= 0,
-                     lambda: f"hidden_size must be non-negative, got {hidden_size}")
+        torch._check(hidden_size > 0,
+                     lambda: f"hidden_size must be positive, got {hidden_size}")
         torch._check(hidden_size % 128 == 0,
                      lambda: f"hidden_size must be 128-aligned, got {hidden_size}")
         torch._check(dtype in (torch.bfloat16, torch.float16, torch.float32),
