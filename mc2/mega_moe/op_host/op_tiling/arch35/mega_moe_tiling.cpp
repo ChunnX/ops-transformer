@@ -386,8 +386,17 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
     if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
         opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
+        // A8W4: fp4_e2m1 weight in NZ_C0_32, dispatched via separate template instantiation
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W4;
+    } else if ((opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E5M2 ||
+                opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) &&
+               weightOneDesc->GetDataType() == GetDataTypeByOpQuantMode(opQuantMode) &&
+               static_cast<ge::Format>(ge::GetPrimaryFormat(
+                   weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
+        // A8W8_NZ: fp8 activation × fp8 weight in NZ format, LayoutB = ZNLayoutPtn
+        tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W8_NZ;
     } else {
+        // Generic: fp8 activation × fp8 weight in ND format
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
@@ -832,11 +841,6 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
         static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE(nodeName,
             "topkWeights format is invalid."), return ge::GRAPH_FAILED);
-    
-    OP_TILING_CHECK(
-        static_cast<ge::Format>(ge::GetPrimaryFormat(weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName,
-            "weightOne format is invalid."), return ge::GRAPH_FAILED);
 
     // A8W4 path: weight1 must use NZ_C0_32 format now.
     if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
@@ -847,12 +851,6 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
                 "FORMAT_FRACTAL_NZ_C0_32"),
             return ge::GRAPH_FAILED);
     }
-    
-    OP_TILING_CHECK(
-        static_cast<ge::Format>(ge::GetPrimaryFormat(weightTwoDesc->GetStorageFormat())) ==
-            ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName,
-            "weightTwo format is invalid."), return ge::GRAPH_FAILED);
     
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(weightScalesOneDesc->GetStorageFormat())) ==
