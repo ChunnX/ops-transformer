@@ -29,7 +29,6 @@
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_quant.h"
 #include "moe_distribute_elastic.h"
-
 #include "check_winsize.h"
 #if __has_include("../common/mc2_moe_context.h")
 #include "../common/mc2_moe_context.h"
