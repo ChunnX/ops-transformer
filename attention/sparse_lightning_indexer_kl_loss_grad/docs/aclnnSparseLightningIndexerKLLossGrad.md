@@ -452,7 +452,8 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
@@ -559,25 +560,17 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
     </table>
 
   - 参数B的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - B支持1~256。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-        - B>0。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：B支持1~256。
+    - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
   - 参数S1、S2的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - S1支持1~8K，S2支持1~512K。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-        - S1>0，S2>0。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
+    - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
   - 参数N1的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - N1支持8、16、32、64。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-        - N1支持1~128。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：N1支持8、16、32、64。
+    - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
   - 参数K的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - K支持512、1024、2048、4096、8192。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-        - K支持0~2048。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+    - <term>Ascend 950PR/Ascend 950DT</term>：K支持0~2048。
 
 ## 调用示例
 

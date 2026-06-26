@@ -681,9 +681,9 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 ## 约束说明
 
 - 确定性计算：
-  
-  - aclnnSparseFlashMlaGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-  Atlas A2和A3暂不支持确定性。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnSparseFlashMlaGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+
+    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseFlashMlaGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
@@ -715,13 +715,11 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>4</td>
             <td>band模式的mask，滑窗范围由oriWinLeft、oriWinRight控制，参数起点为右下角。</td>
-            <td>ori部分支持</td>
+            <td>ori支持</td>
         </tr>
         </tbody>
     </table>
 
-    - Atlas A2和A3暂不支持maskMode为0
-    - Atlas A2和A3暂不支持oriMaskMode为3
 - 规格约束
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
@@ -769,9 +767,18 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         </tbody>
     </table>
 
+  - 参数cmpMaskMode的支持情况:
+
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：cmpMaskMode支持3。
+    - <term>Ascend 950PR/Ascend 950DT</term>：cmpMaskMode支持0、3。
+
+  - 参数oriMaskMode的支持情况:
+
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：oriMaskMode支持4。
+    - <term>Ascend 950PR/Ascend 950DT</term>：oriMaskMode支持0、3、4。
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
 #include <iostream>
