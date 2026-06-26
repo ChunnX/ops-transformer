@@ -245,34 +245,65 @@ struct MLAPType {
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
 };
 
-struct MMParams {
-    uint32_t m;
-    uint32_t n;
-    uint32_t k;
-    uint32_t orgM;
-    uint32_t orgN;
-    uint32_t orgKa;
-    uint32_t orgKb;
-    uint32_t orgKc;
-    uint32_t baseM;
-    uint32_t baseN;
-    uint32_t baseK;
-    uint32_t stepK;
-    uint32_t needSetOrgShape;
-    uint32_t kL1StepSize;
+struct CastQcQrSplitNParams {
+    int64_t mmQnPreCastOffset;
+    int64_t mmQnPreCastResOffset;
+    uint32_t inputOffset;
+    uint32_t outputOffset;
+    uint32_t srcStride;
+    uint32_t dstStride;
 };
 
-struct MMBufParams {
-    uint32_t aL1BufIter = 0;
-    uint32_t bL1BufIter = 0;
-    TBuffAddr aL1BufAddr;
-    TBuffAddr bL1BufAddr;
-    uint32_t aL0BufIter = 0;
-    uint32_t bL0BufIter = 0;
-    uint32_t cL0BufIter = 0;
-    TBuffAddr aL0BufAddr;
-    TBuffAddr bL0BufAddr;
-    TBuffAddr cL0BufAddr;
+struct DequantQcQrSplitNParams {
+    int64_t mmQnPreDequantOffset;
+    int64_t mmQnPreDequantResOffset;
+    uint32_t inputOffset;
+    uint32_t outputOffset;
+    uint32_t srcStride;
+    uint32_t dstStride;
+};
+
+struct RopeQrSplitNParams {
+    int64_t ropeQrOffset;
+    int64_t ropeQrResOffset;
+    uint32_t inputOffsetRope;
+    uint32_t deqScaleOffset;
+    uint32_t outputOffsetRope;
+    int64_t ropeStride;
+    uint32_t ropeDstStride;
+    uint32_t deQuantScaleCqOffset;
+    uint32_t sinCosOffset;
+    uint32_t ropeCnt;
+};
+
+struct CkvkrParams {
+    int64_t tokenIndex;
+    int64_t offset;
+    int64_t curVecTokenIdx;
+    int64_t rowsInCurBatch;
+    int64_t cacheOffset;
+    int64_t nextBatchOffset;
+};
+
+struct UsedBlockParams {
+    uint32_t blockStartIdx;
+    uint32_t blockEndIdx;
+};
+
+struct AivOffset {
+    int64_t curVecToken = 0;
+    int64_t curBlockTokenOffset = 0;
+    int64_t rmsNormCqOffset = 0;
+    int64_t rmsNormCqResOffset = 0;
+    int64_t rmsNormCkvOffset = 0;
+    int64_t ropeKrOffset = 0;
+    int64_t mmQnPreDequantOffset = 0;
+    int64_t mmQnPreDequantResOffset = 0;
+    int64_t ropeQrOffset = 0;
+    int64_t ropeQrResOffset = 0;
+    int64_t ropeQrSplitNOffset = 0;
+    int64_t ropeQrResSplitNOffset = 0;
+    int64_t qcScaleOffsetSplitN = 0;
 };
 
 struct AicOffset {
@@ -296,66 +327,34 @@ struct AicOffset {
     int64_t qnResOffset = 0;
 };
 
-struct AivOffset {
-    int64_t curVecToken = 0;
-    int64_t curBlockTokenOffset = 0;
-    int64_t rmsNormCqOffset = 0;
-    int64_t rmsNormCqResOffset = 0;
-    int64_t rmsNormCkvOffset = 0;
-    int64_t ropeKrOffset = 0;
-    int64_t mmQnPreDequantOffset = 0;
-    int64_t mmQnPreDequantResOffset = 0;
-    int64_t ropeQrOffset = 0;
-    int64_t ropeQrResOffset = 0;
-    int64_t ropeQrSplitNOffset = 0;
-    int64_t ropeQrResSplitNOffset = 0;
-    int64_t qcScaleOffsetSplitN = 0;
+struct MMBufParams {
+    uint32_t aL1BufIter = 0;
+    uint32_t bL1BufIter = 0;
+    TBuffAddr aL1BufAddr;
+    TBuffAddr bL1BufAddr;
+    uint32_t aL0BufIter = 0;
+    uint32_t bL0BufIter = 0;
+    uint32_t cL0BufIter = 0;
+    TBuffAddr aL0BufAddr;
+    TBuffAddr bL0BufAddr;
+    TBuffAddr cL0BufAddr;
 };
 
-struct UsedBlockParams {
-    uint32_t blockStartIdx;
-    uint32_t blockEndIdx;
-};
-
-struct CkvkrParams {
-    int64_t tokenIndex;
-    int64_t offset;
-    int64_t curVecTokenIdx;
-    int64_t rowsInCurBatch;
-    int64_t cacheOffset;
-    int64_t nextBatchOffset;
-};
-
-
-struct RopeQrSplitNParams {
-    int64_t ropeQrOffset;
-    int64_t ropeQrResOffset;
-    uint32_t inputOffsetRope;
-    uint32_t deqScaleOffset;
-    uint32_t outputOffsetRope;
-    int64_t ropeStride;
-    uint32_t ropeDstStride;
-    uint32_t deQuantScaleCqOffset;
-    uint32_t sinCosOffset;
-    uint32_t ropeCnt;
-};
-
-struct DequantQcQrSplitNParams {
-    int64_t mmQnPreDequantOffset;
-    int64_t mmQnPreDequantResOffset;
-    uint32_t inputOffset;
-    uint32_t outputOffset;
-    uint32_t srcStride;
-    uint32_t dstStride;
-};
-
-struct CastQcQrSplitNParams {
-    int64_t mmQnPreCastOffset;
-    int64_t mmQnPreCastResOffset;
-    uint32_t inputOffset;
-    uint32_t outputOffset;
-    uint32_t srcStride;
-    uint32_t dstStride;
+struct MMParams {
+    uint32_t m;
+    uint32_t n;
+    uint32_t k;
+    uint32_t orgM;
+    uint32_t orgN;
+    uint32_t orgKa;
+    uint32_t orgKb;
+    uint32_t orgKc;
+    uint32_t baseM;
+    uint32_t baseN;
+    uint32_t baseK;
+    uint32_t stepK;
+    uint32_t needSetOrgShape;
+    uint32_t kL1StepSize;
 };
 
 constexpr MatmulConfig CFG_MDL_EXCEED_INIT{.doNorm = false,
