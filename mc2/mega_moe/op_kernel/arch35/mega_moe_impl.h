@@ -99,7 +99,8 @@ __aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, 
 // =================================================================================================
 // GroupMatmulSwigluQuant：GMM1 矩阵乘法 + SwiGLU 激活 + 量化
 // =================================================================================================
-template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
+template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
+    bool IsWeightNZ = false>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
@@ -127,7 +128,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     constexpr uint32_t c0SizeScale = 2U;
 
     using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-    using LayoutB = Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutB = Std::conditional_t<
+        IsWeightNZ,
+        Std::conditional_t<transB, Te::ZNLayoutPtn, Te::NZLayoutPtn>,
+        Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>>;
     using LayoutBias = Te::NDExtLayoutPtn;
     using LayoutC = Te::NDExtLayoutPtn;
 
@@ -271,7 +275,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 // 量化模式：AIC 计算结果写入 GM，通过 AtomicAdd 通知 AIV；AIV 不参与计算
 // 非量化模式：AIC 计算结果写入 UB，通过 pingpong 双缓冲通知 AIV；AIV 执行 CombineTokens
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
-          typename ElementMxScaleA, typename ElementMxScaleB>
+          typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
@@ -300,7 +304,10 @@ __aicore__ inline void GroupMatmul2(
     constexpr uint32_t c0SizeScale = 2U;
 
     using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-    using LayoutB = Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutB = Std::conditional_t<
+        IsWeightNZ,
+        Std::conditional_t<transB, Te::ZNLayoutPtn, Te::NZLayoutPtn>,
+        Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>>;
     using LayoutBias = Te::NDExtLayoutPtn;
     using LayoutC = Te::NDExtLayoutPtn;
 
