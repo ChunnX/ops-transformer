@@ -821,7 +821,7 @@ public:
     {
         if constexpr (FLASH_DECODE) {
             if (runInfo.isS2SplitCore) {
-                Bmm2ResForFDCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize);
+                Bmm2ResForFDCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize, gmDealRowCount);
             } else {
                 Bmm2ResCastAndCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize, gmDealRowCount);
             }
