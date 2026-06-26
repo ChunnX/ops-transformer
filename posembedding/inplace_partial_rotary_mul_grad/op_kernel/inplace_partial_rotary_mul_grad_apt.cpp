@@ -20,6 +20,7 @@
 #include "kernel_operator.h"
 #include "arch35/inplace_partial_rotary_mul_grad_common.h"
 #include "arch35/inplace_partial_rotary_mul_grad_bab.h"
+#include "arch35/inplace_partial_rotary_mul_grad_ab.h"
 
 #define TILING_KEY_ABA 201
 #define TILING_KEY_BA 202
@@ -50,6 +51,15 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
             return;
         }
         InplacePartialRotaryMulGradBAB<DTYPE_DY, DTYPE_COS> op(&pipe, tilingData);
+        op.Init(dy, cos, sin, dx);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_AB)) {
+        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradRegbaseTilingDataAb, tilingDataAb, tiling);
+        const InplacePartialRotaryMulGradRegbaseTilingDataAb *__restrict tilingData = &tilingDataAb;
+        if (tilingData->sliceLength == 0) {
+            return;
+        }
+        InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS> op(&pipe, tilingData);
         op.Init(dy, cos, sin, dx);
         op.Process();
     }
