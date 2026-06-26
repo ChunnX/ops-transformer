@@ -231,6 +231,12 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
                     return false);
     }
 
+    return HandleGroupTypeDispatch(context, xShape, wShape, wDimNum);
+}
+
+bool GroupedNoQuantMatmulTiling::HandleGroupTypeDispatch(const gert::TilingContext *context, const gert::Shape &xShape,
+                                                         const gert::Shape &wShape, uint32_t wDimNum)
+{
     if (groupType_ == SPLIT_K) {
         return GMMGetTensorShapeSplitK(context, xShape, wShape);
     }

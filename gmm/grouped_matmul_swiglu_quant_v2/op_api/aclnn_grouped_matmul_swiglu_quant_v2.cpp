@@ -132,13 +132,63 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
         ACLNN_GMM_SWIGLU_QUANT_V2_API_NAME, params, workspaceSize, executor);
 }
 
+static aclnnStatus ProcessSingleWeightNz(const aclTensorList *weight)
+{
+    auto w = (*weight)[0];
+    auto storgeShape = w->GetStorageShape();
+    auto viewShape = w->GetViewShape();
+    aclTensor *weightNZ = const_cast<aclTensor *>(w);
+    std::ostringstream gotShape;
+    gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
+    std::string gotShapeStr = gotShape.str();
+    CHECK_COND((storgeShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
+               GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
+               "storage shape dim num must be 5 when weight NZ v2");
+    CHECK_RET(CheckMxfp4WeightNzViewShape(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, w, viewShape) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
+        weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
+    } else if (viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT) {
+        weightNZ->SetViewFormat(op::Format::FORMAT_ND);
+    }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus ProcessMultiWeightNz(const aclTensorList *weight)
+{
+    size_t wLength = weight->Size();
+    for (size_t i = 0; i < wLength; i++) {
+        auto w = (*weight)[i];
+        auto storgeShape = w->GetStorageShape();
+        auto viewShape = w->GetViewShape();
+        aclTensor *weightNZ = const_cast<aclTensor *>(w);
+        std::ostringstream gotShape;
+        gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
+        std::string gotShapeStr = gotShape.str();
+        CHECK_COND((storgeShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
+                   GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
+                   "storage shape dim num must be 4 when multi-weight NZ v2");
+        weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+        if (viewShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT) {
+            weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
+        } else if (viewShape.GetDimNum() == MULTI_WEIGHT_ND_DIM_LIMIT) {
+            weightNZ->SetViewFormat(op::Format::FORMAT_ND);
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTensor *x,
         const aclTensorList *weight, const aclTensorList *weightScale,
         const aclTensorList *weightAssistMatrix, const aclTensor *bias,
         const aclTensor *xScale, const aclTensor *smoothScale,
-        const aclTensor *groupList, int64_t dequantMode, 
+        const aclTensor *groupList, int64_t dequantMode,
         int64_t dequantDtype, int64_t quantMode,
-        int64_t groupListType, const aclIntArray *tuningConfigOptional, 
+        int64_t groupListType, const aclIntArray *tuningConfigOptional,
         aclTensor *output, aclTensor *outputScale,
         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -146,59 +196,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV2,
                    DFX_IN(x, weight, weightScale, xScale, groupList),
                    DFX_OUT(output, outputScale));
-
-    // weight在该场景下强制绑定StorageFormat 和 ViewFormat 为NZ
     CHECK_RET(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    size_t wLength = weight->Size();
-    if (wLength == 1) {
-        // 单Tensor场景
-        auto w = (*weight)[0];
-        auto storgeShape = w->GetStorageShape();
-        auto viewShape = w->GetViewShape();
-        aclTensor *weightNZ = const_cast<aclTensor *>(w);
-        std::ostringstream gotShape;
-        gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
-        std::string gotShapeStr = gotShape.str();
-        CHECK_COND((storgeShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                   GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
-                   "storage shape dim num must be 5 when weight NZ v2");
-        CHECK_RET(CheckMxfp4WeightNzViewShape(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, w, viewShape) ==
-                      ACLNN_SUCCESS,
-                  ACLNN_ERR_PARAM_INVALID);
-        // weight的StorageFormat无条件视为NZ
-        weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
-        if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
-            // 若weight的viewShape为5维则视为NZ
-            weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
-        } else if (viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT) {
-            // 若weight的viewShape为3维则视为ND
-            weightNZ->SetViewFormat(op::Format::FORMAT_ND);
-        }
+    if (weight->Size() == 1) {
+        CHECK_RET(ProcessSingleWeightNz(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     } else {
-        // 多Tensor场景
-        for (size_t i = 0; i < wLength; i++) {
-            auto w = (*weight)[i];
-            auto storgeShape = w->GetStorageShape();
-            auto viewShape = w->GetViewShape();
-            aclTensor *weightNZ = const_cast<aclTensor *>(w);
-            std::ostringstream gotShape;
-            gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
-            std::string gotShapeStr = gotShape.str();
-            CHECK_COND((storgeShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
-                       "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                       GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
-                       "storage shape dim num must be 4 when multi-weight NZ v2");
-            // weight的StorageFormat无条件视为NZ
-            weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
-            if (viewShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT) {
-                // 若weight的viewShape为4维则视为NZ
-                weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
-            } else if (viewShape.GetDimNum() == MULTI_WEIGHT_ND_DIM_LIMIT) {
-                // 若weight的viewShape为2维则视为ND
-                weightNZ->SetViewFormat(op::Format::FORMAT_ND);
-            }
-        }
+        CHECK_RET(ProcessMultiWeightNz(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
 
     GroupedMatmulSwigluQuantParamsBase params =

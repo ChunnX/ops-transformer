@@ -109,7 +109,7 @@ std::string ShapeDimsToString(const Dims &...dims)
 }
 
 template <typename... Args>
-std::string StrCat(const Args &...args)
+std::string BuildErrorMsgStr(const Args &...args)
 {
     std::ostringstream oss;
     using Expander = int[];
@@ -300,8 +300,13 @@ private:
     bool SetMKNList();
     bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
     bool CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const;
- 	bool CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape);
+    bool CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape);
     virtual bool CheckCoreNum() const;
+    bool CheckTransposeAndFormatByGroupType() const;
+    bool CheckPertokenScaleDtypeForWeightNz(bool isA8W8Int, bool isA8W8Fp, bool isA4W4Fp) const;
+    bool CheckWeightNzTransposedDims(const gert::Shape &wShape, uint64_t wShapeDimThird,
+                                     uint64_t wShapeDimSecond, uint32_t weightNzLastDim) const;
+    bool ValidateAAndWDtype(const std::vector<ge::DataType> &legalInputDtypes) const;
 
     GroupedMatmulTilingData::GMMQuantTilingData tilingData_;
 
