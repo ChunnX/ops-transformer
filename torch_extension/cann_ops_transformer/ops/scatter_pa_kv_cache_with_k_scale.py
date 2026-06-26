@@ -8,6 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+from typing import Optional, Tuple
+
 import torch
 import torch_npu
 from torch.library import impl
@@ -43,10 +45,12 @@ class ScatterPaKvCacheWithKScaleOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch算子签名"""
-        return "scatter_pa_kv_cache_with_k_scale(" \
-               "Tensor key, Tensor value, Tensor(a!) key_cache, Tensor(b!) value_cache, " \
-               "Tensor slot_mapping, Tensor key_scale, Tensor(c!) key_scale_cache, *," \
-               "str cache_layout='BNBD') -> (Tensor(a!), Tensor(b!), Tensor(c!))"
+        return (
+            "scatter_pa_kv_cache_with_k_scale("
+            "Tensor key, Tensor value, Tensor(a!) key_cache, Tensor(b!) value_cache, "
+            "Tensor slot_mapping, Tensor key_scale, Tensor(c!) key_scale_cache, *, "
+            "str cache_layout='BNBD') -> (Tensor(a!), Tensor(b!), Tensor(c!))"
+        )
 
     def register_meta(self):
         """
@@ -90,10 +94,16 @@ op_module = scatter_pa_kv_cache_with_k_scale_op_builder.load()
 
 @impl(AS_LIBRARY, scatter_pa_kv_cache_with_k_scale_op_builder.name, "PrivateUse1")
 def scatter_pa_kv_cache_with_k_scale(
-    key, value, key_cache, value_cache,
-    slot_mapping, key_scale, key_scale_cache,
-    *, cache_layout='BNBD'
-):
+    key: torch.Tensor,
+    value: torch.Tensor,
+    key_cache: torch.Tensor,
+    value_cache: torch.Tensor,
+    slot_mapping: torch.Tensor,
+    key_scale: torch.Tensor,
+    key_scale_cache: torch.Tensor,
+    *,
+    cache_layout: Optional[str] = 'BNBD',
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     torch_npu实现：scatter_pa_kv_cache_with_k_scale
     
@@ -120,63 +130,3 @@ def scatter_pa_kv_cache_with_k_scale(
         slot_mapping, key_scale, key_scale_cache,
         cache_layout
     )
-
-
-# GE Converter for Graph Mode (torchair适配)
-try:
-    import torchair
-    from torchair._ge_concrete_graph import ge_apis as ge
-    from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
-    from torchair._ge_concrete_graph.supported_declaration import Support
-    _TORCHAIR_AVAILABLE = True
-except ImportError:
-    _TORCHAIR_AVAILABLE = False
-
-if _TORCHAIR_AVAILABLE:
-    @declare_supported([
-        Support(torch.float8_e5m2, (2, 2, 64), (2, 2, 64)),
-        Support(torch.float8_e4m3fn, (2, 2, 64), (2, 2, 64)),
-    ])
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.scatter_pa_kv_cache_with_k_scale.default)
-    def converter_scatter_pa_kv_cache_with_k_scale(
-        key: Tensor,
-        value: Tensor,
-        key_cache: Tensor,
-        value_cache: Tensor,
-        slot_mapping: Tensor,
-        key_scale: Tensor,
-        key_scale_cache: Tensor,
-        *,
-        cache_layout: str = 'BNBD',
-        meta_outputs: TensorSpec = None
-    ):
-        """
-        torchair GE转换器：scatter_pa_kv_cache_with_k_scale
-        
-        将PyTorch算子转换为GE图引擎算子，用于图模式执行
-        
-        Args:
-            key: GE Tensor，FP8格式的key输入
-            value: GE Tensor，FP8格式的value输入
-            key_cache: GE Tensor，FP8格式的key cache
-            value_cache: GE Tensor，FP8格式的value cache
-            slot_mapping: GE Tensor，slot偏移索引
-            key_scale: GE Tensor，float32格式的key scale
-            key_scale_cache: GE Tensor，float32格式的key scale cache
-            cache_layout: str，cache布局格式
-            meta_outputs: TensorSpec，输出的shape/dtype信息
-            
-        Returns:
-            tuple: (key_cache_out, value_cache_out, key_scale_cache_out)
-        """
-        return ge.ScatterPaKvCacheWithKScale(
-            key,
-            value,
-            key_cache,
-            value_cache,
-            slot_mapping,
-            key_scale,
-            key_scale_cache,
-            cache_layout=cache_layout
-        )
