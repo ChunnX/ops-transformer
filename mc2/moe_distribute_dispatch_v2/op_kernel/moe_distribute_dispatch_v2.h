@@ -28,9 +28,17 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_quant.h"
-#include "moe_distribute_elastic.h"
+#if __has_include("../common/moe_distribute_elastic.h")
+#include "../common/moe_distribute_elastic.h"
+#else
+#include "../../common/op_kernel/moe_distribute_elastic.h"
+#endif
 
-#include "check_winsize.h"
+#if __has_include("../common/check_winsize.h")
+#include "../common/check_winsize.h"
+#else
+#include "../../common/op_kernel/check_winsize.h"
+#endif
 #if __has_include("../common/mc2_moe_context.h")
 #include "../common/mc2_moe_context.h"
 #include "../common/moe_distribute_base.h"
@@ -38,8 +46,13 @@
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #endif
-#include "hccl_context_holder.h"
-#include "mc2_moe_context_holder.h"
+#if __has_include("../common/hccl_context_holder.h")
+#include "../common/hccl_context_holder.h"
+#include "../common/mc2_moe_context_holder.h"
+#else
+#include "../../common/op_kernel/hccl_context_holder.h"
+#include "../../common/op_kernel/mc2_moe_context_holder.h"
+#endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace Mc2Kernel {
