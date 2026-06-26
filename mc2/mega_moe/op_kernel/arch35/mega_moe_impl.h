@@ -49,25 +49,9 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U)
 constexpr uint32_t TRIPLE_TENSOR_ADDR = 200U * 1024U;  // triple tensor 在 UB 中的起始地址
 
 // =================================================================================================
-// ComputeMaxRowGroupsStride：计算 rowGroupComplete 计数器中每个 expert 的 stride
-// =================================================================================================
-__aicore__ inline int64_t ComputeMaxRowGroupsStride(uint32_t bs, uint32_t epWorldSize, uint32_t blockAivNum)
-{
-    int64_t maxTokensPerExpert = bs * epWorldSize;
-    int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, static_cast<int64_t>(L1_TILE_M_256));
-    int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
-        static_cast<int64_t>(blockAivNum) * INT_CACHELINE, ALIGN_128);
-    return Ops::Base::CeilAlign(maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
-}
-
-// =================================================================================================
 // ComputeCoreGrouping：计算当前 core 所属的 group 及其在 group 内的位置
 // =================================================================================================
 // 将 totalCores 个 core 均匀分配到 numGroups 个 group 中，余数分配给前 remainder 个 group。
-// 例如：totalCores=10, numGroups=3 -> 分配为 [4, 3, 3]
-//   - group 0: core 0-3 (4个core)
-//   - group 1: core 4-6 (3个core)
-//   - group 2: core 7-9 (3个core)
 __aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, uint32_t totalCores,
     uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
 {
@@ -93,22 +77,22 @@ __aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, 
 // ComputeGroupRange：计算指定 group 包含的 core 范围
 // =================================================================================================
 // ComputeCoreGrouping 的逆操作：给定 groupIdx，返回该 group 的起始 core 和 core 数量。
-// 用于 GMM2 量化路径中，AIC 计算完一个 tile 后，通知负责该 row group 的所有 AIV core。
+// 用于 GMM2 量化路径中，AIC 计算完一个 tile 后，通知负责该 token group 的所有 AIV core。
 __aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, uint32_t totalCores,
-    uint32_t& groupCoreStart, uint32_t& groupCoreSize)
+    uint32_t& grpCoreStart, uint32_t& grpCoreSize)
 {
     uint32_t baseSize = totalCores / numGroups;      // 每个 group 的基础 core 数
     uint32_t remainder = totalCores % numGroups;     // 余数，前 remainder 个 group 多分配 1 个 core
     
     if (groupIdx < remainder) {
         // 当前 group 在前 remainder 个 group 中，有 baseSize+1 个 core
-        groupCoreSize = baseSize + 1;
-        groupCoreStart = groupIdx * (baseSize + 1);  // 起始 core = groupIdx * (baseSize+1)
+        grpCoreSize = baseSize + 1;
+        grpCoreStart = groupIdx * (baseSize + 1);  // 起始 core = groupIdx * (baseSize+1)
     } else {
         // 当前 group 在后面的 group 中，只有 baseSize 个 core
-        groupCoreSize = baseSize;
+        grpCoreSize = baseSize;
         // 起始 core = 前 remainder 个 group 占用的 core 数 + 偏移
-        groupCoreStart = remainder * (baseSize + 1) + (groupIdx - remainder) * baseSize;
+        grpCoreStart = remainder * (baseSize + 1) + (groupIdx - remainder) * baseSize;
     }
 }
 
@@ -291,8 +275,7 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
-    int32_t& vecSetSyncCom2, uint32_t groupCnt, uint16_t& pingpongIdx,
-    uint32_t groupIdx, int64_t maxRowGroupsStride)
+    int32_t& vecSetSyncCom2, uint32_t groupCnt, uint16_t& pingpongIdx, uint32_t groupIdx)
 {
     // 非量化模式：仅 subBlockIdx_==0 的核参与
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
@@ -372,10 +355,6 @@ __aicore__ inline void GroupMatmul2(
         l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
     }
 
-    // 量化模式：创建 rowGroupComplete
-    GlobalTensor<int32_t> rowGroupComplete;
-    uint32_t blockAivNum = blockNum * 2;
-
     auto gmA = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
     auto gmB = Te::MakeTensor(
@@ -444,8 +423,10 @@ __aicore__ inline void GroupMatmul2(
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape);
                 NotifyVector(pingpongIdx);
             } else {
+                uint32_t blockAivNum = blockNum * 2;
                 // 量化：输出到 GM
-                rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.rowGroupCompletePtr);
+                GlobalTensor<int32_t> gmm2CombineSyncCounter;
+                gmm2CombineSyncCounter.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
                 auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
                     reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
                 auto gmBlockC = gmC.Slice(
@@ -458,14 +439,13 @@ __aicore__ inline void GroupMatmul2(
                 WaitFlag<HardEvent::FIX_S>(0);
 
                 // AtomicAdd 通知 AIV
-                uint32_t rowGroupIdx = mLoc / TILE_M;
-                uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m, TILE_M);
-                uint32_t groupCoreStart, groupCoreSize;
-                ComputeGroupRange(rowGroupIdx, rowGroupsThisExpert, blockAivNum, groupCoreStart, groupCoreSize);
-                int64_t baseOffset = static_cast<int64_t>(groupIdx) * maxRowGroupsStride
-                    + static_cast<int64_t>(rowGroupIdx) * blockAivNum * INT_CACHELINE;
-                for (uint32_t aivIdx = groupCoreStart; aivIdx < groupCoreStart + groupCoreSize; aivIdx++) {
-                    AscendC::AtomicAdd((__gm__ int32_t*)rowGroupComplete.GetPhyAddr()
+                uint32_t tokenGroupIdx = mLoc / TILE_M;
+                uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(m, TILE_M);
+                uint32_t grpCoreStart, grpCoreSize;
+                ComputeGroupRange(tokenGroupIdx, tokenGroupsThisExpert, blockAivNum, grpCoreStart, grpCoreSize);
+                int64_t baseOffset = static_cast<int64_t>(groupIdx) * blockAivNum * INT_CACHELINE;
+                for (uint32_t aivIdx = grpCoreStart; aivIdx < grpCoreStart + grpCoreSize; aivIdx++) {
+                    AscendC::AtomicAdd((__gm__ int32_t*)gmm2CombineSyncCounter.GetPhyAddr()
                         + baseOffset + aivIdx * INT_CACHELINE, int32_t(1));
                 }
             }
