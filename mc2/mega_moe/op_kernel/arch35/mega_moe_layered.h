@@ -549,7 +549,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     PipeBarrier<PIPE_MTE3>();
     DataCopyPad(workspaceDstGlobal[mxQuantTokenScaleAlignBytes_], xOutBytesTensor[mxQuantTokenScaleAlignBytes_],
         {1U, static_cast<uint32_t>(ALIGN_32), 0U, 0U, 0U});
-    PipeBarrier<PIPE_ALL>();
+    // PipeBarrier<PIPE_ALL>();
 }
 
 // ===============================================================================================
