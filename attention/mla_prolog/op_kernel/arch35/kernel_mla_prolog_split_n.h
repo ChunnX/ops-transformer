@@ -857,33 +857,28 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
 {
     int64_t tokenXOffset = batchOffset * static_cast<int64_t>(baseParams_->headSizeX);
     int64_t dequantScaleXOffset = batchOffset * static_cast<int64_t>(baseParams_->headSizeX) / 32;
+    GlobalTensor<dequantScaleType> scaleAGm{};
+    GlobalTensor<dequantScaleType> scaleBGmDq{};
+    GlobalTensor<dequantScaleType> scaleBGmDkvKr{};
+    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
+        scaleAGm = dequantScaleXGm_[dequantScaleXOffset];
+        scaleBGmDq = dequantScaleWDqGm_[aicOffset.dequantScaleWDqOffset];
+        scaleBGmDkvKr = dequantScaleWDkvkrGm_[aicOffset.dequantScaleWDkvKrOffset];
+    }
     // MatmulCq ──> RmsNorm(Cq)
     // [32, 7168] * [7168, 1536] = [32, 1536]
-    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
-        MatmulSplitN<mmInputType, mmCqOutputType, dequantScaleType>(
-            mmCqResGm_[aicOffset.cqResOffset], tokenXGm_[tokenXOffset], weightDqGm_[aicOffset.weightDqOffset],
-            mmCqParam_, UsedBlockParams{0, baseParams_->mm1BlockNum}, dequantScaleXGm_[dequantScaleXOffset],
-            dequantScaleWDqGm_[aicOffset.dequantScaleWDqOffset]);
-    } else {
-        MatmulSplitN<mmInputType, mmCqOutputType, dequantScaleType>(
-            mmCqResGm_[aicOffset.cqResOffset], tokenXGm_[tokenXOffset], weightDqGm_[aicOffset.weightDqOffset],
-            mmCqParam_, UsedBlockParams{0, baseParams_->mm1BlockNum});
-    }
+    MatmulSplitN<mmInputType, mmCqOutputType, dequantScaleType>(
+        mmCqResGm_[aicOffset.cqResOffset], tokenXGm_[tokenXOffset], weightDqGm_[aicOffset.weightDqOffset],
+        mmCqParam_, UsedBlockParams{0, baseParams_->mm1BlockNum}, scaleAGm, scaleBGmDq);
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CQ);
     // MatmulCkvKr ──> RmsNorm(Ckv)
     //            └──> Rope(Kr)
     // [32, 7168] * [7168, 512+64] = [32, 576]
     CrossCoreWaitFlag(FINISH_VEC_CKVKR);
-    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
-        MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(
-            mmCkvKrResGm_[aicOffset.ckvKrResOffset], tokenXGm_[tokenXOffset],
-            weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2BlockNum},
-            dequantScaleXGm_[dequantScaleXOffset], dequantScaleWDkvkrGm_[aicOffset.dequantScaleWDkvKrOffset]);
-    } else {
-        MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(
-            mmCkvKrResGm_[aicOffset.ckvKrResOffset], tokenXGm_[tokenXOffset],
-            weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2BlockNum});
-    }
+    MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(
+        mmCkvKrResGm_[aicOffset.ckvKrResOffset], tokenXGm_[tokenXOffset],
+        weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2BlockNum},
+        scaleAGm, scaleBGmDkvKr);
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CKVKR);
     CrossCoreWaitFlag(FINISH_VEC_RMSNORM_CQ);
 
@@ -1449,15 +1444,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormCq(int64_t tokenIndex,
                 outputLocal, mmCqResGm_[rmsNormCqOffset], rmsnormGammaCqLocal_, dequantScaleWDqLocal_,
                 dequantScaleXLocal, shareTmpUb, rmsNormParams);
         }
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
         // RmsNorm(Cq)的结果拷进mmCqResGm_中，用于MatmulQcQr的A矩阵
         DataCopy(rmsNormCqResGm_[rmsNormCqResOffset], outputLocal, baseParams_->headSizeCq);
 
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         rmsNormCqOffset += static_cast<int64_t>(baseParams_->headSizeCq);
         rmsNormCqResOffset += static_cast<int64_t>(baseParams_->headSizeCq);
         tokenIndex++;
@@ -1474,16 +1466,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CopyDequantScaleCq(uint64_t d
                                                                       int64_t curBlockTokenOffset)
 {
     if constexpr (std::is_same<rmsNormCqOutputType, FP8E4M3>::value && isFp8E8m0) {
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
         DataCopy(dequantTool_.deQuantScaleCqGm_[curBlockTokenOffset * dequantScaleCqElementNum], dequantScaleQcQr,
                  curVecToken * dequantScaleCqElementNum);
     } else {
         Brcb(dequantTool_.deQuantScaleCqLocal_[curBlockTokenOffset * FP32_BLOCK_ELEMENT_NUM], dequantScaleQcQr,
              curVecToken, {1, 1});
         if constexpr (MLAPT::enableDequantOpt || MLAPT::enableGroupComputeOpt) {
-            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            SetAndWaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             DataCopy(dequantTool_.deQuantScaleCqGm_[curBlockTokenOffset * FP32_BLOCK_ELEMENT_NUM],
                      dequantTool_.deQuantScaleCqLocal_[curBlockTokenOffset * FP32_BLOCK_ELEMENT_NUM],
                      FP32_BLOCK_ELEMENT_NUM * curVecToken);
@@ -1615,16 +1605,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
             dequantScaleWDkvKrLocal_, dequantScaleXLocal, rmsNormShareTmpUb, rmsNormParams);
     }
 
-    SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-    WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
     // Scatter(Ckv)
     // RmsNorm(Ckv) ──> Scatter(Ckv) ──> kv_cache_out
     ScatterCkv(outputLocal, rmsNormAndScatterCkvParams);
 
-    SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
 
 template <typename MLAPT>
@@ -1815,16 +1802,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(LocalTensor<
             outputKrLocal, mmCkvKrResGm_[ropeAndScatterKrParams.offset], cosLocal, sinLocal, ropeShareTmpUb,
             ropeParams);
     }
-    SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-    WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
     // scatter(Kr)
     // Rope(Kr) ──> Scatter(Kr) ──> kr_cache_out
     ScatterKr(outputKrLocal, ropeAndScatterKrParams);
 
-    SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
 
 template <typename MLAPT>
@@ -1892,11 +1876,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormRopeScatterCkvKr(int64
     }
 
     for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVecToken; curVecTokenIdx++) {
-        SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
 
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
         if constexpr (std::is_same<mmCqOutputType, int32_t>::value ||
                       (std::is_same<mmCqOutputType, float>::value && !isFp8E8m0)) {
@@ -1915,8 +1897,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormRopeScatterCkvKr(int64
 
         RmsNormAndScatterCkv(dequantScaleXLocal, shareTmpUb, cosLocalCkvKr, sinLocalCkvKr, rmsNormAndScatterCkvParams);
 
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
         RopeAndScatterKr(dequantScaleXLocal, shareTmpUb, cosLocalCkvKr, sinLocalCkvKr, ropeAndScatterKrParams);
 
@@ -1949,8 +1930,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
         DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
         DataCopyPad(channelDeqScaleLocal, deqScaleQcQrW_[baseParams_->dimHeadSizeQc], copyParams,
                     padParams); // 复用内存
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
         outputLocal = channelDeqScaleLocal[row * col].template ReinterpretCast<ropeOutputType>();
         ropeShareTmpUb = outputLocal[baseParams_->headSizeQr].template ReinterpretCast<uint8_t>();
@@ -1979,15 +1959,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
                 sinLocal_[baseParams_->dimHeadRope * curVecTokenIdx], ropeShareTmpUb, ropeParams);
         }
 
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
 
         DataCopy(qrOutGm_[ropeQrResOffset], outputLocal, baseParams_->headSizeQr);
 
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
         ropeQrOffset += static_cast<int64_t>(baseParams_->numHeadSize) *
                         static_cast<int64_t>(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope);
@@ -2015,8 +1992,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitNGroupCase(int64_t
                                  static_cast<uint32_t>((strideScale - col) * sizeof(float)), 0, 0};
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
     DataCopyPad(channelDeqScaleLocal, deqScaleQcQrW_[deqScaleOffset], copyParams, padParams); // 复用内存
-    SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-    WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+    SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
     LocalTensor<ropeOutputType> outputLocal =
         channelDeqScaleLocal[row * col].template ReinterpretCast<ropeOutputType>();
@@ -2029,28 +2005,23 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitNGroupCase(int64_t
     };
 
     for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVectorBlockNum_; curVecTokenIdx++) {
-        SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
-        WaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
+        SetAndWaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
         // sharetmp共用，待V算完再执行MTE2搬运规避风险
         GatherSinCos<ropeSinCosType, ropeComputType>(cosLocal_, sinLocal_, ropeCosGm_, ropeSinGm_,
                                                      curVecTokenIdx * baseParams_->dimHeadRope, 1, ropeShareTmpUb,
                                                      vectorRow_, baseParams_->dimHeadRope);
 
-        SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
-        WaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
+        SetAndWaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
 
         RotaryPosEmbPerTensor<mmQcQrOutputType, ropeComputType, ropeOutputType, false>(
             outputLocal, mmQcQrResGm_[ropeQrOffset], cosLocal_, sinLocal_, ropeShareTmpUb, ropeParams,
             channelDeqScaleLocal, dequantTool_.deQuantScaleCqLocal_);
 
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
         DataCopy(qrOutGm_[ropeQrResOffset], outputLocal, row * col);
 
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
         ropeQrOffset += static_cast<int64_t>(baseParams_->numHeadSize) * static_cast<int64_t>(baseParams_->dimHeadRope);
         ropeQrResOffset += static_cast<int64_t>(baseParams_->headSizeQr);
@@ -2080,10 +2051,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitN(const RopeQrSpli
     LocalTensor<ropeOutputType> outputLocalRope = shareTmpUb.ReinterpretCast<ropeOutputType>();
     LocalTensor<uint8_t> ropeShareTmpUb = outputLocalRope[ropeCnt * colQr].template ReinterpretCast<uint8_t>();
 
-    SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
-    WaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    SetAndWaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
+    SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
 
     if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
                   (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
@@ -2100,8 +2069,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitN(const RopeQrSpli
             ropeParams, ropeQrSplitNParams.ropeStride);
     }
 
-    SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
-    WaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
+    SetAndWaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
 
     DataCopy(outputGmRope[ropeQrSplitNParams.outputOffsetRope], outputLocalRope, outputRopeParams);
 }
@@ -2130,11 +2098,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CastQcQrSplitN(const CastQcQr
     LocalTensor<mmQcQrOutputType> inputLocal = shareTmpUb.ReinterpretCast<mmQcQrOutputType>();
     LocalTensor<mmQnInputType> outputLocal = inputLocal.template ReinterpretCast<mmQnInputType>();
 
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     DataCopy(inputLocal, inputGm[castQcQrSplitN.inputOffset], inputCopyParams);
-    SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
-    WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+    SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
     // cast
     Cast(outputLocal, inputLocal, RoundMode::CAST_RINT, count);
     SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -2167,8 +2133,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
     LocalTensor<float> scale2Local = dequantTool_.deQuantScaleCqLocal_;
     LocalTensor<mmQcQrOutputType> inputLocal = shareTmpUb.ReinterpretCast<mmQcQrOutputType>();
-    // 可以和inputLocal共享内存地址，减少UB使用
-    LocalTensor<float> computeLocal = shareTmpUb.ReinterpretCast<float>();
     LocalTensor<float> scaleLocal = inputLocal[count + FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<float>();
     // outputLocal比scaleLocal占用UB少，且不会同时使用，故可以复用UB内存
     LocalTensor<mmQnInputType> outputLocal = scaleLocal.template ReinterpretCast<mmQnInputType>();
@@ -2178,18 +2142,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
         colQcSingle, // col
         colQcSingle  // columnStride
     };
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
     DataCopy(inputLocal, inputGm[dequantQcQrSplitN.inputOffset], inputCopyParams);
     DataCopy(scaleLocal, scale1Gm[dequantQcQrSplitN.inputOffset], colQc / cvRatio_);
     SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     // cast
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
-    Dequant(computeLocal, inputLocal, scaleLocal, scale2Local, dequantParams);
-    AscendC::PipeBarrier<PIPE_V>();
-    // cast
-    Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
+    Dequant<mmQcQrOutputType, mmQnInputType>(outputLocal, inputLocal, scaleLocal, scale2Local, dequantParams);
     SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
     // copy out
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -2431,8 +2391,7 @@ MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, 
         return;
     }
     // 等待前面的Qr部分完成
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
     constexpr uint32_t DYNAMIC_QUANT_INPUT_READY = EVENT_ID0;
     constexpr uint32_t MUL_QR_INPUT_COPY_READY = EVENT_ID3;
