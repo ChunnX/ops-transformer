@@ -22,18 +22,13 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_distribute_dispatch_tiling.h"
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
+#include "../moe_distribute_dispatch_tiling.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
-#include "moe_distribute_a2_base.h"
-#include "moe_distribute_a2_adump.h"
-#include "moe_distribute_a2_constant.h"
+#include "../../common/op_kernel/moe_distribute_a2_base.h"
+#include "../../common/op_kernel/moe_distribute_a2_adump.h"
+#include "../../common/op_kernel/moe_distribute_a2_constant.h"
 
 namespace MoeDistributeDispatchA2Impl {
 #define TemplateMC2TypeA2layeredClass typename XType, typename ExpandXOutType,bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
