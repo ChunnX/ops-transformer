@@ -446,39 +446,6 @@ struct CastQcQrSplitNParams {
     uint32_t dstStride;
 };
 
-constexpr MatmulConfig CFG_MDL_EXCEED_INIT{.doNorm = false,
-                                           .doBasicBlock = false,
-                                           .doMultiDataLoad = true,
-                                           .basicM = 0,
-                                           .basicN = 0,
-                                           .basicK = 0,
-                                           .intrinsicsCheck = true,
-                                           .isNBatch = false,
-                                           .enVecND2NZ = false,
-                                           .doSpecialBasicBlock = false,
-                                           .doMTE2Preload = false,
-                                           .singleCoreM = 0,
-                                           .singleCoreN = 0,
-                                           .singleCoreK = 0,
-                                           .stepM = 0,
-                                           .stepN = 0,
-                                           .baseMN = 0,
-                                           .singleCoreMN = 0,
-                                           .enUnitFlag = false,
-                                           .isPerTensor = false,
-                                           .hasAntiQuantOffset = false,
-                                           .doIBShareNorm = false,
-                                           .doSpecialMDL = false,
-                                           .enableInit = false,
-                                           .batchMode = BatchMode::NONE,
-                                           .enableEnd = false,
-                                           .enableGetTensorC = false,
-                                           .enableSetOrgShape = true,
-                                           .enableSetBias = false,
-                                           .enableSetTail = true,
-                                           .enableQuantVector = false,
-                                           .enableSetDefineData = true,
-                                           .iterateMode = IterateMode::ITERATE_MODE_ALL};
 template <uint8_t modeId, pipe_t pipe>
 __aicore__ inline void WaitAllCore(uint16_t flagId)
 {

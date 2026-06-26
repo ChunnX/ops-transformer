@@ -16,9 +16,9 @@
 #ifndef MLA_PROLOG_COMM_H
 #define MLA_PROLOG_COMM_H
 
+#include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
@@ -215,11 +215,11 @@ struct MLAPType {
     using mmQnInputType = bfloat16_t; // matmul计算Qn的输入类型
     using mmCqOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t,
                                                      bfloat16_t>::type; // matmul计算Cq的输出类型
-    using mmCkvKrOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t,
-                                                        bfloat16_t>::type; // matmul计算CkvKr的输出类型
     using mmQcQrOutputType = typename std::conditional<std::is_same<W_T, int8_t>::value, int32_t,
                                                        bfloat16_t>::type; // matmul计算QcQr的输出类型
     using mmQnOutputType = bfloat16_t;                                    // matmul计算Qn的输出类型
+    using mmCkvKrOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t,
+                                                        bfloat16_t>::type; // matmul计算CkvKr的输出类型
     using rmsNormGammaType = bfloat16_t;                                  // gamma的输入类型
     using rmsNormComputType = float;
     using rmsNormCkvOutputType = C_T;
@@ -227,22 +227,22 @@ struct MLAPType {
     using ropeSinCosType = bfloat16_t; // sin cos的输入类型
     using ropeComputType = float;
     using ropeOutputType = bfloat16_t;
+    using dequantScaleQNopeType = float;                  // dequantScaleQNope的类型
+    using dequantScaleQNormType = float;                  // dequantScaleQNorm的类型
+    using dequantScaleType = float;
     using kvCacheType = C_T; // kvcache的类型
     using krCacheType =
         typename std::conditional<((std::is_same<X_T, int8_t>::value && std::is_same<C_T, int8_t>::value) ||
                                    IS_PERTILE),
                                   bfloat16_t, C_T>::type; // krcache的类型
-    using dequantScaleQNopeType = float;                  // dequantScaleQNope的类型
-    using dequantScaleQNormType = float;                  // dequantScaleQNorm的类型
-    using dequantScaleType = float;
 
     static constexpr CACHE_MODE cacheMode = C_M;
-    static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;
     static constexpr bool enableGroupComputeOpt = ENABLE_GROUP_COMPUTE_OPT;
+    static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;
+    static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
     static constexpr EMPTY_TENSOR_MODE emptyMode = EMPTY_MODE;
     static constexpr ACTUAL_SEQ_MODE actualSeqMode = SEQ_MODE;
     static constexpr bool isPertile = IS_PERTILE;
-    static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
 };
 
 struct CastQcQrSplitNParams {
@@ -357,39 +357,6 @@ struct MMParams {
     uint32_t kL1StepSize;
 };
 
-constexpr MatmulConfig CFG_MDL_EXCEED_INIT{.doNorm = false,
-                                           .doBasicBlock = false,
-                                           .doMultiDataLoad = true,
-                                           .basicM = 0,
-                                           .basicN = 0,
-                                           .basicK = 0,
-                                           .intrinsicsCheck = true,
-                                           .isNBatch = false,
-                                           .enVecND2NZ = false,
-                                           .doSpecialBasicBlock = false,
-                                           .doMTE2Preload = false,
-                                           .singleCoreM = 0,
-                                           .singleCoreN = 0,
-                                           .singleCoreK = 0,
-                                           .stepM = 0,
-                                           .stepN = 0,
-                                           .baseMN = 0,
-                                           .singleCoreMN = 0,
-                                           .enUnitFlag = false,
-                                           .isPerTensor = false,
-                                           .hasAntiQuantOffset = false,
-                                           .doIBShareNorm = false,
-                                           .doSpecialMDL = false,
-                                           .enableInit = false,
-                                           .batchMode = BatchMode::NONE,
-                                           .enableEnd = false,
-                                           .enableGetTensorC = false,
-                                           .enableSetOrgShape = true,
-                                           .enableSetBias = false,
-                                           .enableSetTail = true,
-                                           .enableQuantVector = false,
-                                           .enableSetDefineData = true,
-                                           .iterateMode = IterateMode::ITERATE_MODE_ALL};
 template <uint8_t modeId, pipe_t pipe>
 __aicore__ inline void WaitAllCore(uint16_t flagId)
 {

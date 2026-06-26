@@ -48,52 +48,6 @@ struct PerTileQuantParams {
 };
 
 /**
- * @brief vec mul by row;  dstUb[i, j] = src0Ub[j] * src1Ub[i, j],
- * @param dstUb 输出tensor [row, columnStride]
- * @param src0Ub 输入tensor [1, columnStride]
- * @param src1Ub 输入tensor src1Ub:[row, col]
- * @param rectangleParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
- */
-__aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                 const Rectangle &rectangleParams)
-{
-    uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t columnLoopCount = rectangleParams.col / mask;
-    uint32_t remainCount = rectangleParams.col % mask;
-    // 选择迭代较少的方式
-    // dstRepStride为0~255, columnCount需要小于2048
-    if (columnLoopCount < rectangleParams.row &&
-        rectangleParams.stride < REPEAT_STRIDE_UP_BOUND * FP32_BLOCK_ELEMENT_NUM) {
-        BinaryRepeatParams repeatParams;
-        repeatParams.dstBlkStride = 1;
-        repeatParams.src0BlkStride = 1;
-        repeatParams.src1BlkStride = 1;
-        repeatParams.dstRepStride = rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM;
-        repeatParams.src0RepStride = 0;
-        repeatParams.src1RepStride = rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM;
-        uint32_t offset = 0;
-        for (int i = 0; i < columnLoopCount; i++) {
-            // 偏移 offset : i * mask
-            Mul(dstUb[offset], src0Ub[offset], src1Ub[offset], mask, rectangleParams.row, repeatParams);
-            offset += mask;
-        }
-        if (remainCount > 0) {
-            // 偏移 offset : columnLoopCount * mask
-            Mul(dstUb[offset], src0Ub[offset], src1Ub[offset], remainCount, rectangleParams.row, repeatParams);
-        }
-    } else {
-        uint32_t offset = 0;
-        for (int i = 0; i < rectangleParams.row; i++) {
-            Mul(dstUb[offset], src0Ub, src1Ub[offset], rectangleParams.col);
-            offset += rectangleParams.stride;
-        }
-    }
-}
-
-/**
  * @brief RowMuls muls by row, 每行的元素乘以相同的元素，该元素需要扩展到一个数据块；
  *        dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]
  * @param dstUb 输出tensor [row, columnStride]
