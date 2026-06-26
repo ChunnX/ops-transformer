@@ -49,24 +49,22 @@ ge::graphStatus LeftPaddingChecker::CheckShapeAndDim(const FiaTilingInfo &fiaInf
     // the Shape size and Dim number corresponding to the Padding size must both be 1.
     if (fiaInfo.qPaddingSizeFlag) {
         const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-        if (unlikely(ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.queryPaddingSize.tensor,
-            querypaddingsizeShapeNumList))) {
+        OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.queryPaddingSize.tensor,
+            querypaddingsizeShapeNumList),
             OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "query_padding_size",
-                std::to_string(fiaInfo.opParamInfo.queryPaddingSize.tensor->GetShapeSize()).c_str(), "1");
-            return ge::GRAPH_FAILED;
-        }
+                std::to_string(fiaInfo.opParamInfo.queryPaddingSize.tensor->GetShapeSize()).c_str(), "1"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.queryPaddingSize.tensor->GetStorageShape().GetDimNum() != DIM_NUM_1,
                     OP_LOGE(fiaInfo.opName, "The dim number of query paddingsize is not 1!"), return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo.kvPaddingSizeFlag) {
         const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-        if (unlikely(ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.kvPaddingSize.tensor,
-            kvpaddingsizeShapeNumList))) {
+        OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.kvPaddingSize.tensor,
+            kvpaddingsizeShapeNumList),
             OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "kv_padding_size",
-                std::to_string(fiaInfo.opParamInfo.kvPaddingSize.tensor->GetShapeSize()).c_str(), "1");
-            return ge::GRAPH_FAILED;
-        }
+                std::to_string(fiaInfo.opParamInfo.kvPaddingSize.tensor->GetShapeSize()).c_str(), "1"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.kvPaddingSize.tensor->GetStorageShape().GetDimNum() != DIM_NUM_1,
                     OP_LOGE(fiaInfo.opName, "The dim number of key/value paddingsize is not 1!"),
                     return ge::GRAPH_FAILED);
@@ -123,36 +121,30 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaI
     // When left-padding is enabled for Query and Key/Value, BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD scenarios are not supported.
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
-        if (unlikely(layoutStr == "BSH_BNSD")) {
+        OP_CHECK_IF(layoutStr == "BSH_BNSD",
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "BSH_BNSD",
-                "The value of input_layout cannot be BSH_BNSD when leftpadding is enabled");
-            return ge::GRAPH_FAILED;
-        }
-        if (unlikely(layoutStr == "BSND_BNSD")) {
+                "The value of input_layout cannot be BSH_BNSD when leftpadding is enabled"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(layoutStr == "BSND_BNSD",
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "BSND_BNSD",
-                "The value of input_layout cannot be BSND_BNSD when leftpadding is enabled");
-            return ge::GRAPH_FAILED;
-        }
-        if (unlikely(layoutStr == "TND")) {
+                "The value of input_layout cannot be BSND_BNSD when leftpadding is enabled"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(layoutStr == "TND",
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "TND",
-                "The value of input_layout cannot be TND when leftpadding is enabled");
-            return ge::GRAPH_FAILED;
-        }
-        if (unlikely(layoutStr == "NTD")) {
+                "The value of input_layout cannot be TND when leftpadding is enabled"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(layoutStr == "NTD",
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "NTD",
-                "The value of input_layout cannot be NTD when leftpadding is enabled");
-            return ge::GRAPH_FAILED;
-        }
-        if (unlikely(layoutStr == "NTD_TND")) {
+                "The value of input_layout cannot be NTD when leftpadding is enabled"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(layoutStr == "NTD_TND",
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "NTD_TND",
-                "The value of input_layout cannot be NTD_TND when leftpadding is enabled");
-            return ge::GRAPH_FAILED;
-        }
-        if (unlikely(layoutStr == "TND_NTD")) {
+                "The value of input_layout cannot be NTD_TND when leftpadding is enabled"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(layoutStr == "TND_NTD",
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout", "TND_NTD",
-                "The value of input_layout cannot be TND_NTD when leftpadding is enabled");
-            return ge::GRAPH_FAILED;
-        }
+                "The value of input_layout cannot be TND_NTD when leftpadding is enabled"),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;

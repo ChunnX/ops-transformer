@@ -105,14 +105,13 @@ static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
         attentionOutLayout = it->second.outLayout;
         queryDim = it->second.qDim;
 
-        if (unlikely(queryShape->GetDimNum() != queryDim)) {
-            std::string dimStr = std::to_string(queryShape->GetDimNum());
-            std::string reason = "The shape dim of query must be " + std::to_string(queryDim) +
-                " when layout is " + queryLayout;
+        std::string dimStr = std::to_string(queryShape->GetDimNum());
+        std::string reason = "The shape dim of query must be " + std::to_string(queryDim) +
+            " when layout is " + queryLayout;
+        OP_CHECK_IF(queryShape->GetDimNum() != queryDim,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FusedInferAttentionScore", "query",
-                dimStr.c_str(), reason.c_str());
-            return ge::GRAPH_FAILED;
-        }
+                dimStr.c_str(), reason.c_str()),
+            return ge::GRAPH_FAILED);
     } else {
         std::string reason = "The value of input_layout must be in BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, "
             "BSND_BNSD, NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD";
@@ -198,13 +197,12 @@ static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
             return ge::GRAPH_FAILED;
         }
     } else { // 非PA场景
-        if (unlikely(valueShape->GetDimNum() != queryShape->GetDimNum())) {
-            std::string dimMsg = std::to_string(valueShape->GetDimNum()) + " and " +
-                std::to_string(queryShape->GetDimNum());
+        std::string dimMsg = std::to_string(valueShape->GetDimNum()) + " and " +
+            std::to_string(queryShape->GetDimNum());
+        OP_CHECK_IF(valueShape->GetDimNum() != queryShape->GetDimNum(),
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON("FusedInferAttentionScore", "value and query", dimMsg.c_str(),
-                "When Page Attention not enabled, the shape dim of value should be the same as query");
-            return ge::GRAPH_FAILED;
-        }
+                "When Page Attention not enabled, the shape dim of value should be the same as query"),
+            return ge::GRAPH_FAILED);
         if (queryLayout == "BSH") {
             valueD = (*valueShape)[FIA_LAYOUT_DIM2] / numKeyValueHeads;
         } else if (queryLayout == "BSND" || queryLayout == "BNSD") {
@@ -337,11 +335,10 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
     OP_CHECK_NULL_WITH_CONTEXT(context, numKeyValueHeadsPtr);
 
     // KV_N除零保护, 当KV_N为零时KV_N = Q_N
-    if (unlikely(*numHeadsPtr == 0)) {
+    OP_CHECK_IF(*numHeadsPtr == 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "num_heads",
-            std::to_string(*numHeadsPtr).c_str(), "The value of num_heads cannot be 0");
-        return ge::GRAPH_FAILED;
-    }
+            std::to_string(*numHeadsPtr).c_str(), "The value of num_heads cannot be 0"),
+        return ge::GRAPH_FAILED);
     int64_t numKeyValueHeads = (*numKeyValueHeadsPtr == 0) ? *numHeadsPtr : *numKeyValueHeadsPtr;
 
     // set AttentionOut shape
@@ -397,12 +394,10 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
         const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
         if (outTypePtr != nullptr) {
             auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
-            if (unlikely(it != TORCH_DTYOE_NOT_SUPPORT_MAP.end())){
-                std::string reason = "The dtype of output cannot be " + it->second + " when Fia graph mode is enabled";
+            OP_CHECK_IF(it != TORCH_DTYOE_NOT_SUPPORT_MAP.end(),
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("FusedInferAttentionScore", "output",
-                    it->second.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
+                    it->second.c_str(), ("The dtype of output cannot be " + it->second + " when Fia graph mode is enabled").c_str()),
+                return ge::GRAPH_FAILED);
             auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);
             if (iter != TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.end()) {
                 outputType = iter->second;

@@ -56,13 +56,12 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQDim(const FiaTilingInfo &
             return ge::GRAPH_FAILED);
     } else {
         // query为非TND/NTD，actualSeqLengthsQ的长度为1或大于等于query的batch值
-        if (unlikely(actualSeqLengthsQDimNum != DIM_NUM_1 && actualSeqLengthsQDimNum < batchSize)) {
-            std::string correctStr = "greater than or equal to the batchSize: " +
-                std::to_string(batchSize) + " of query or equal to 1.";
+        std::string correctStr = "greater than or equal to the batchSize: " +
+            std::to_string(batchSize) + " of query or equal to 1.";
+        OP_CHECK_IF(actualSeqLengthsQDimNum != DIM_NUM_1 && actualSeqLengthsQDimNum < batchSize,
             OP_LOGE_FOR_INVALID_LISTSIZE(fiaInfo.opName, "actual_seq_lengths",
-                std::to_string(actualSeqLengthsQDimNum).c_str(), correctStr.c_str());
-            return ge::GRAPH_FAILED;
-        }
+                std::to_string(actualSeqLengthsQDimNum).c_str(), correctStr.c_str()),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -100,14 +99,13 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
                     return ge::GRAPH_FAILED);
             }
             // curSeqLengthData应为非负数
-            if (unlikely(curSeqLengthData < 0)) {
-                std::string valueStr = "actual_seq_lengths[" + std::to_string(bIdx) + "]";
-                std::string reason = "The value of actual_seq_lengths[" + std::to_string(bIdx) +
-                    "] cannot be less than 0";
+            std::string valueStr = "actual_seq_lengths[" + std::to_string(bIdx) + "]";
+            std::string reason = "The value of actual_seq_lengths[" + std::to_string(bIdx) +
+                "] cannot be less than 0";
+            OP_CHECK_IF(curSeqLengthData < 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
+                    std::to_string(curSeqLengthData).c_str(), reason.c_str()),
+                return ge::GRAPH_FAILED);
         }
     } else {
         // query的layout为非TND/NTD，其值应不大于Q_S，且为非负数
@@ -127,14 +125,13 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
                 return ge::GRAPH_FAILED);
             
             // curSeqLengthData应为非负数
-            if (unlikely(curSeqLengthData < 0)) {
-                std::string valueStr = "actual_seq_lengths[" + std::to_string(i) + "]";
-                std::string reason = "The value of actual_seq_lengths[" + std::to_string(i) +
-                    "] cannot be less than 0";
+            std::string valueStr = "actual_seq_lengths[" + std::to_string(i) + "]";
+            std::string reason = "The value of actual_seq_lengths[" + std::to_string(i) +
+                "] cannot be less than 0";
+            OP_CHECK_IF(curSeqLengthData < 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
+                    std::to_string(curSeqLengthData).c_str(), reason.c_str()),
+                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -165,13 +162,12 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvDim(const FiaTilingInfo 
             return ge::GRAPH_FAILED);
     } else {
         // key/value的layout为非TND/NTD，actualSeqLengthsKv的长度为1或大于等于batchSize
-        if (unlikely(actualSeqLengthsKvDimNum != DIM_NUM_1 && actualSeqLengthsKvDimNum < batchSize)) {
-            std::string correctStr = "greater than or equal to the batchSize: " +
-                std::to_string(batchSize) + " or equal to 1.";
+        std::string correctStr = "greater than or equal to the batchSize: " +
+            std::to_string(batchSize) + " or equal to 1.";
+        OP_CHECK_IF(actualSeqLengthsKvDimNum != DIM_NUM_1 && actualSeqLengthsKvDimNum < batchSize,
             OP_LOGE_FOR_INVALID_LISTSIZE(fiaInfo.opName, "actual_seq_lengths_kv",
-                std::to_string(actualSeqLengthsKvDimNum).c_str(), correctStr.c_str());
-            return ge::GRAPH_FAILED;
-        }
+                std::to_string(actualSeqLengthsKvDimNum).c_str(), correctStr.c_str()),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -209,14 +205,13 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
                     return ge::GRAPH_FAILED);
             }
             // curSeqLengthData应为非负数
-            if (unlikely(curSeqLengthData < 0)) {
-                std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(bIdx) + "]";
-                std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(bIdx) +
-                    "] cannot be less than 0";
+            std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(bIdx) + "]";
+            std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(bIdx) +
+                "] cannot be less than 0";
+            OP_CHECK_IF(curSeqLengthData < 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
+                    std::to_string(curSeqLengthData).c_str(), reason.c_str()),
+                return ge::GRAPH_FAILED);
         }
     } else {
         // key/value的layout为非TND/NTD，其值应不大于KV_S，且为非负数
@@ -228,24 +223,22 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
             }
             int64_t curSeqLengthData = actualSeqLengthsKvTensor->GetData<int64_t>()[i];
             // curSeqLengthData应不大于KV_S
-            if (unlikely(curSeqLengthData > sOfKeyValue)) {
-                std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
-                std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
-                    "] cannot be greater than KV_S: " +
-                    std::to_string(sOfKeyValue);
+            std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
+            std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
+                "] cannot be greater than KV_S: " +
+                std::to_string(sOfKeyValue);
+            OP_CHECK_IF(curSeqLengthData > sOfKeyValue,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
+                    std::to_string(curSeqLengthData).c_str(), reason.c_str()),
+                return ge::GRAPH_FAILED);
             // curSeqLengthData应为非负数
-            if (unlikely(curSeqLengthData < 0)) {
-                std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
-                std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
-                    "] cannot be less than 0";
+            std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(i) + "]";
+            std::string reason = "The value of actual_seq_lengths_kv[" + std::to_string(i) +
+                "] cannot be less than 0";
+            OP_CHECK_IF(curSeqLengthData < 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
-                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
+                    std::to_string(curSeqLengthData).c_str(), reason.c_str()),
+                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -374,16 +367,15 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureAlibi(const FiaTilingInfo &fiaI
         for (uint32_t bIdx = 0; bIdx < batchSize; bIdx++) {
             actualSeqLengthsQData = GetActualSeqLengthsQData(fiaInfo, bIdx);
             actualSeqLengthsKvData = GetActualSeqLengthsKvData(fiaInfo, bIdx);
-            if (unlikely(actualSeqLengthsQData != actualSeqLengthsKvData)) {
-                std::string attrName = "actualSeqLengthsQ[" + std::to_string(bIdx) +
-                    "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
-                std::string valueStr = std::to_string(actualSeqLengthsQData) + " and " +
-                    std::to_string(actualSeqLengthsKvData);
-                std::string reason = attrName + " must be the same when pseType is 2 or 3";
+            std::string attrName = "actualSeqLengthsQ[" + std::to_string(bIdx) +
+                "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
+            std::string valueStr = std::to_string(actualSeqLengthsQData) + " and " +
+                std::to_string(actualSeqLengthsKvData);
+            std::string reason = attrName + " must be the same when pseType is 2 or 3";
+            OP_CHECK_IF(actualSeqLengthsQData != actualSeqLengthsKvData,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, attrName.c_str(),
-                    valueStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
+                    valueStr.c_str(), reason.c_str()),
+                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
