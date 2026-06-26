@@ -26,8 +26,6 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "simt_api/asc_simt.h"
-#include "simt_api/common_functions.h"
-#include "simt_api/device_sync_functions.h"
 
 namespace NsGatherPaKvCache {
 using namespace AscendC;
