@@ -73,8 +73,10 @@ __aicore__ inline void SetSparseParamBand(const ConstInfo<isInfer, hasRope> &con
     const AttenMaskInfo &attenMaskInfo, RunParamStr<isInfer> &runParam)
 {
     if constexpr (hasRope && dTemplateType == DTemplateType::Aligned576) {
-        runParam.preTokensOfMlaPerBatch = attenMaskInfo.preTokens - runParam.actualS2Size + runParam.actualSeqLengthOfMlaPerBatch;
-        runParam.nextTokensOfMlaPerBatch = attenMaskInfo.nextTokens + runParam.actualS2Size - runParam.actualSeqLengthOfMlaPerBatch;
+        runParam.preTokensOfMlaPerBatch = attenMaskInfo.preTokens -
+            runParam.actualS2Size + runParam.actualSeqLengthOfMlaPerBatch;
+        runParam.nextTokensOfMlaPerBatch = attenMaskInfo.nextTokens +
+            runParam.actualS2Size - runParam.actualSeqLengthOfMlaPerBatch;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
             runParam.preTokensPerBatch = SPARSE_MODE_INT_DEFAULT;
             runParam.nextTokensPerBatch = SPARSE_MODE_INT_DEFAULT;

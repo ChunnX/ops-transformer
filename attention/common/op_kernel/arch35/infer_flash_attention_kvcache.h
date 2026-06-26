@@ -338,7 +338,8 @@ __aicore__ inline void CalcValueCoreOffsetNTD(RunParamStr<isInfer>& runParam,
         actualSeqKVLen = (bIdx == 0) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[bIdx] - actualSeqKvlenAddr[bIdx - 1];
         valueInnerOffsetSize = (bIdx == 0) ? 0 : actualSeqKvlenAddr[bIdx - 1] * constInfo.dSizeV;
     }
-    runParam.valueCoreOffset = valueInnerOffsetSize + runParam.n2oIdx * constInfo.bSize * actualSeqKVLen * constInfo.dSizeV;
+    runParam.valueCoreOffset = valueInnerOffsetSize +
+        runParam.n2oIdx * constInfo.bSize * actualSeqKVLen * constInfo.dSizeV;
 }
 
 TEMPLATE_INTF
@@ -619,9 +620,11 @@ __aicore__ inline void CalcAIVNonMlaAttentionOutOffset(RunParamStr<isInfer>& run
             runParam.sOuterOffset * constInfo.dSizeV;
     } else {
         if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
-            constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND) || layout == LayOutTypeEnum::LAYOUT_TND ||
+            constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND) ||
+            layout == LayOutTypeEnum::LAYOUT_TND ||
             (constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSND_BNSD) &&
-            constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSH_BNSD) && layout == LayOutTypeEnum::LAYOUT_BSH)) {
+            constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSH_BNSD) &&
+            layout == LayOutTypeEnum::LAYOUT_BSH)) {
             runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
                 runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
                 runParam.goIdx * constInfo.dSizeV;
@@ -805,12 +808,15 @@ __aicore__ inline void ComputeOffsetAIV(const RunParamStr<isInfer>& runParam,
     if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
         if constexpr (enableKVPrefix) {
             if (sInnerLoopIdx < constInfo.prefixLoopCount) {
-                runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
+                runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(
+                    runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
             } else {
-                runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(runParam, (sInnerLoopIdx - constInfo.prefixLoopCount) * static_cast<int32_t>(s2TemplateType) + constInfo.actualKVPrefixSize);
+                runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(
+                    runParam, (sInnerLoopIdx - constInfo.prefixLoopCount) * static_cast<int32_t>(s2TemplateType) + constInfo.actualKVPrefixSize);
             }
         } else {
-            runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
+            runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(
+                runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
         }
         if constexpr (isFd) {
             runInfo.pseShiftOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
