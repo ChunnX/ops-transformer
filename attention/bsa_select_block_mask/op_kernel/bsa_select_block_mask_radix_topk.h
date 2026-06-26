@@ -122,6 +122,7 @@ private:
     uint64_t blockOffset_;
 
     uint64_t tileLen_;
+    uint64_t tileLenScoreAlign_;
     uint64_t tileStartId_;
     uint64_t tileNum_;
     uint64_t tileNumAlign_;
@@ -163,6 +164,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->round_ = RADIX_ROUNDS_FP16;
 
     this->tileLen_ = BSAMin(static_cast<uint64_t>(7168), BSAMax(static_cast<uint64_t>(128), sortLen_));
+    this->tileLenScoreAlign_ = BSAAlignTo(tileLen_, static_cast<uint64_t>(UB_BLOCK_SIZE / sizeof(SCORE_T)));
     this->totalTileNum_ = (sortLen_ + tileLen_ - 1) / tileLen_;
     this->tileNum_ = totalTileNum_;
     this->tileNumAlign_ = BSACeilDiv(tileNum_, static_cast<uint64_t>(8)) * 8;
@@ -201,13 +203,13 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
 {
     pipe->Reset();
-    pipe->InitBuffer(xBufPing_, tileLen_ * sizeof(float));
-    pipe->InitBuffer(xBufPong_, tileLen_ * sizeof(float));
-    pipe->InitBuffer(outValueBuf_, tileLen_ * sizeof(float));
-    pipe->InitBuffer(outIndexBuf_, tileLen_ * sizeof(float));
+    pipe->InitBuffer(xBufPing_, tileLenScoreAlign_ * sizeof(float));
+    pipe->InitBuffer(xBufPong_, tileLenScoreAlign_ * sizeof(float));
+    pipe->InitBuffer(outValueBuf_, tileLenScoreAlign_ * sizeof(float));
+    pipe->InitBuffer(outIndexBuf_, tileLenScoreAlign_ * sizeof(float));
     pipe->InitBuffer(tileHistAndTopKBuf_, MAX_TILE_NUM_IN_UB * sizeof(int32_t));
 
-    uint32_t cmpMaskSize = tileLen_ * sizeof(uint8_t) / BYTE_SIZE;
+    uint32_t cmpMaskSize = BSAAlignTo(tileLen_, static_cast<uint64_t>(VEC_ALIGN_SIZE)) * sizeof(uint8_t) / BYTE_SIZE;
     pipe->InitBuffer(tempBuf_, cmpMaskSize);
 
     pipe->InitBuffer(globalHistBuf_, numValue_ * sizeof(int32_t));
@@ -435,7 +437,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateDataForLargest(
 {
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
         LocalTensor<SCORE_T> xLocal = xBuf.Get<SCORE_T>();
-        int32_t ubOffset = (sizeof(SCORE_T) == 2) ? tileLen_ : 0;
+        int32_t ubOffset = (sizeof(SCORE_T) == 2) ? tileLenScoreAlign_ : 0;
         uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
         if constexpr (IsSameType<SCORE_T, bfloat16_t>::value) {
             Muls(xLocal[ubOffset].template ReinterpretCast<half>(),
@@ -454,7 +456,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(
     (void)roundId;
     (void)tileId;
     LocalTensor<SCORE_T> xLocalB16 = xBuf.Get<SCORE_T>();
-    LocalTensor<int16_t> xLocalInt16 = xLocalB16[tileLen_].template ReinterpretCast<int16_t>();
+    LocalTensor<int16_t> xLocalInt16 = xLocalB16[tileLenScoreAlign_].template ReinterpretCast<int16_t>();
 
     LocalTensor<int16_t> signMaskTensor = outValueBuf_.Get<int16_t>();
     LocalTensor<int16_t> tempTensor = outIndexBuf_.Get<int16_t>();
@@ -486,7 +488,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(TBuf<TPosition::VECI
 
     Duplicate<int16_t>(maskTensor.ReinterpretCast<int16_t>(), andMask16_, curTileLen);
     PipeBarrier<PIPE_V>();
-    And(xLocalInt16[tileLen_], xLocalInt16[tileLen_],
+    And(xLocalInt16[tileLenScoreAlign_], xLocalInt16[tileLenScoreAlign_],
         maskTensor.ReinterpretCast<int16_t>(), calcLen);
 }
 
@@ -498,7 +500,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
     LocalTensor<int32_t> xLocalInt32 = xLocalInt16.ReinterpretCast<int32_t>();
     LocalTensor<float> xLocalFp32 = xLocalInt16.ReinterpretCast<float>();
 
-    Cast(xLocalFp32, xLocalInt16[tileLen_], RoundMode::CAST_NONE, curTileLen);
+    Cast(xLocalFp32, xLocalInt16[tileLenScoreAlign_], RoundMode::CAST_NONE, curTileLen);
     PipeBarrier<PIPE_V>();
     Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
     PipeBarrier<PIPE_V>();
@@ -628,7 +630,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyIn(
     LocalTensor<SCORE_T> xLocal = xBuf.Get<SCORE_T>();
     int32_t ubOffset = 0;
     if constexpr (sizeof(SCORE_T) == 2) {
-        ubOffset = tileLen_;
+        ubOffset = tileLenScoreAlign_;
     }
     uint64_t xAlign = UB_BLOCK_SIZE / sizeof(SCORE_T);
     uint8_t xPadNum = static_cast<uint8_t>((xAlign - dataNum % xAlign) % xAlign);
@@ -1338,7 +1340,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
 
-            LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
+            LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLenScoreAlign_].template ReinterpretCast<half>();
 
             SubTopKAndWriteMaskGT(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
 
