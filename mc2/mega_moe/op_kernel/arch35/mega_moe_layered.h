@@ -912,6 +912,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
         if (readyValue == 1) {
             WriteGmByPassDCache(localReadyFlag, int32_t(0));
+            PipeBarrier<PIPE_ALL>();
             break;
         }
     } while (true);
