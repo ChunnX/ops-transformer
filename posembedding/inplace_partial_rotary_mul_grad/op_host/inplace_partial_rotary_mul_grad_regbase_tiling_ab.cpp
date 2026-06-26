@@ -17,7 +17,6 @@ namespace optiling {
 constexpr uint64_t TILING_KEY_AB = 204;
 constexpr uint64_t INPLACE_PARTIAL_ROTARY_MUL_GRAD_AB_TILING_PRIORITY = 25000;
 constexpr int64_t CONST_TWO = 2;
-constexpr int64_t CONST_FOUR = 4;
 constexpr int64_t DB_FLAG = 2;
 
 class InplacePartialRotaryMulGradRegbaseTilingAb : public InplacePartialRotaryMulGradRegbaseTiling {
