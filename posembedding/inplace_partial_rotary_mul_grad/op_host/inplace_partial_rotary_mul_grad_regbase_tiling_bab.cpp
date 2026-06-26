@@ -119,7 +119,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::SplitUb()
     // Per-type aligned row sizes (in elements), matching kernel's dAlignLenDy/dAlignLenCos
     int64_t dAlignDy = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
     int64_t dAlignCos = Ops::Base::CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / cosTypeSize) * dSplitCoef_;
-    int64_t dSizeDy = dAlignDy * typeSize;    // bytes per dy/dx row
+    int64_t dSizeDy = dAlignDy * typeSize;      // bytes per dy/dx row
     int64_t dSizeCos = dAlignCos * cosTypeSize; // bytes per cos/sin row
 
     // Unified overhead: how many "dy-row equivalents" one cos/sin row occupies
@@ -130,8 +130,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::SplitUb()
         Ops::Base::FloorAlign(static_cast<int64_t>(ubSize_ / MIN_UB_LOAD_D_NUM), blockSize_) / dSizeDy;
     if (baseBlockInUb < effectiveCosOverhead + 1) {
         OP_LOGE(context_->GetNodeName(),
-                "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld, baseBlockInUb=%ld.",
-                sliceLength_, dSizeDy, dSizeCos, baseBlockInUb);
+                "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld, baseBlockInUb=%ld.", sliceLength_,
+                dSizeDy, dSizeCos, baseBlockInUb);
         return ge::GRAPH_FAILED;
     }
 
@@ -191,7 +191,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::PostTiling()
     tilingDataBab_.SaveToBuffer(rawTilingDataPtr->GetData(), rawTilingDataPtr->GetCapacity());
     rawTilingDataPtr->SetDataSize(tilingDataBab_.GetDataSize());
 
-    tilingKey_ = static_cast<uint64_t>(TILING_KEY_BAB);
+    tilingKey_ = ((sliceLength_ == 0) ? TILING_KEY_EMPTY : static_cast<uint64_t>(TILING_KEY_BAB));
     context_->SetTilingKey(tilingKey_);
     context_->SetBlockDim(usedCoreNum_);
 
