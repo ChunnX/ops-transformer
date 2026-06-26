@@ -2,13 +2,22 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>            |    √    |
+
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+
+- <term>Atlas 推理系列产品</term>：不支持
+
+- <term>Atlas 训练系列产品</term>：不支持
 
 ## 功能说明
 
--   API功能：
+-   接口功能：
 
     需与[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)配套使用，该算子将`MoE（Mixture of Experts）`以及`FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现`Dispatch + GroupMatmul1 + SwiGLUQuant + GroupMatmul2 + Combine`的端到端融合计算。
 -   计算公式：
@@ -74,8 +83,8 @@
 
 ## 函数原型
 
-```
-mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scales=None, l1_weights_sf=None, l2_weights_sf=None, x_active_mask=None, weight1_type=28, weight2_type=None) -> (Tensor, Tensor)
+```python
+cann_ops_transformer.ops.mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, weight1_type=None, weight2_type=None)
 ```
 
 ## 参数说明
@@ -104,12 +113,19 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
 -   **weight1\_type** (`int`)：暂不支持该参数，使用默认值即可。
 -   **weight2\_type** (`int`)：暂不支持该参数，使用默认值即可。
 
-## 输出说明
+## 返回值说明
 
 -   **y\_out** (`Tensor`)：表示本卡收到的token数据，要求为2维张量，shape为(BS, H)，当前数据类型支持`bfloat16`。数据格式为$ND$，支持非连续的Tensor。
 -   **expert\_token\_nums** (`Tensor`)：本卡每个专家实际收到的token数量，要求为1维张量，shape为(local\_expert\_num,)，数据类型`int32`，数据格式支持$ND$，支持非连续的Tensor。
 
 ## 约束说明
+
+- **公共约束**：
+    - 适用场景：该接口支持训练、推理场景下使用。
+    - 调用方式：该接口支持单算子模式调用（torchair图模式暂不支持）。
+
+- **确定性计算**：
+    - 默认支持确定性计算。
 
 - **参数一致性约束**：
     - 调用算子过程中使用的`epWorldSize`、`globalBs`、`HCCL_BUFFSIZE`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
@@ -147,10 +163,14 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - xActiveMask和scales必须为空指针。
 
 ## get\_symm\_buffer\_for\_mega\_moe接口说明
+
+### 函数原型
+
+```python
+cann_ops_transformer.ops.get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="")
 ```
-get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, *, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
-```
-## 参数说明
+
+### 参数说明
 
 - **group**(`String`)：必选参数，EP通信域名称（专家并行通信域）。
 - **num_experts**(`int`)：必选参数，MoE模型的总专家数量。
@@ -165,7 +185,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
 - **combine_quant_mode**(`int`)：暂不支持该参数，使用默认值即可。
 - **comm_alg**(`String`)：暂不支持该参数，使用默认值即可。
 
-## 输出说明
+### 输出说明
 
 -   **sym\_buffer** (`SymmBuffer`)：用于封装输入参数并生成`context`、`ep_world_size`和`ccl_buffer_size`。
     
@@ -258,16 +278,17 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
             weights_scales2=weights_scales2,
             expert_scales=expert_scales,
         )
-        # 构造distribute_buffer
+        # 步骤1：通过配套接口构造对称通信buffer（封装context/ep_world_size/ccl_buffer_size等）
         distribute_buffer = get_symm_buffer_for_mega_moe(
             ep_group, num_experts=num_experts,
             num_max_tokens_per_rank=0, num_topk=topK,
             hidden=H, intermediate_hidden=0,
             dispatch_quant_mode=4, dispatch_quant_out_type=23
         )
-        # 运行mega_moe
+        # 步骤2：将上一步得到的sym_buffer传入mega_moe，执行端到端融合计算
         y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
 
+        # 步骤3：等待NPU计算完成后再取结果
         torch.npu.synchronize()
         print(f"[INFO] device_{rank} finish\n")
         dist.destroy_process_group()
