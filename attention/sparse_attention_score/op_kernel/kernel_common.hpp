@@ -29,6 +29,10 @@ struct SparseAttentionScoreTilingData {
     float scaleValue;
     uint32_t innerPrecise;
     uint32_t maxQSeqlen;
+    uint64_t mm1OutSize;
+    uint64_t smOnlineOutSize;
+    uint64_t mm2OutSize;
+    uint64_t updateSize;
     uint64_t workSpaceSize;
     uint64_t tilingKey;
     uint32_t groupSize;

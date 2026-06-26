@@ -24,6 +24,10 @@ constexpr uint64_t SASA_FP16_D128_TILING = SASA_BASE_TILING + 1;
 constexpr uint64_t SASA_BF16_D128_TILING = SASA_BASE_TILING + 2;
 constexpr uint64_t SASA_FP8_D128_TILING = SASA_BASE_TILING + 3;
 
+constexpr uint64_t SASA_BASE_ARCH22_TILING = 20000;
+constexpr uint64_t SASA_FP16_D128_ARCH22_TILING = SASA_BASE_ARCH22_TILING + 1;
+constexpr uint64_t SASA_BF16_D128_ARCH22_TILING = SASA_BASE_ARCH22_TILING + 2;
+
 BEGIN_TILING_DATA_DEF(SparseAttentionScoreTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch);
 TILING_DATA_FIELD_DEF(uint32_t, numHeads);
@@ -38,6 +42,11 @@ TILING_DATA_FIELD_DEF(uint32_t, firstBatchTaskNum);
 TILING_DATA_FIELD_DEF(float, scaleValue);
 TILING_DATA_FIELD_DEF(uint32_t, innerPrecise);
 TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen);
+// Workspace大小
+TILING_DATA_FIELD_DEF(uint64_t, mm1OutSize);
+TILING_DATA_FIELD_DEF(uint64_t, smOnlineOutSize);
+TILING_DATA_FIELD_DEF(uint64_t, mm2OutSize);
+TILING_DATA_FIELD_DEF(uint64_t, updateSize);
 TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
 TILING_DATA_FIELD_DEF(uint32_t, groupSize);
@@ -107,6 +116,10 @@ private:
     const int32_t *qSeqLenList_ = nullptr;
     const int32_t *kvSeqLenList_ = nullptr;
 
+    uint64_t mm1OutSize_ = 0;
+    uint64_t smOnlineOutSize_ = 0;
+    uint64_t mm2OutSize_ = 0;
+    uint64_t updateSize_ = 0;
     uint64_t workSpaceSize_ = 0;
 
     uint32_t blockDim_ = 20;
@@ -115,7 +128,8 @@ private:
     uint64_t ubSize_ = 0;
     uint64_t l1Size_ = 0;
     uint64_t libapiSize_ = 0;
-
+    uint32_t socVer_ = 0;
+    
     ge::DataType dataType_ = ge::DT_FLOAT16;
 
     SparseAttentionScoreTilingData *tilingData_ = nullptr;

@@ -73,6 +73,7 @@ ge::graphStatus SASATiling::GetNpuInfo(gert::TilingContext *context)
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size_);
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
+    socVer_ = static_cast<uint32_t>(ascendcPlatform.GetSocVersion());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -182,9 +183,21 @@ ge::graphStatus SASATiling::CalculateTaskSplit(gert::TilingContext *context)
 
 ge::graphStatus SASATiling::CalculateWorkSpace(gert::TilingContext *context)
 {
-    uint32_t dtypeSize = (dataType_ == ge::DT_FLOAT8_E4M3FN) ? 1 : 2;
-    uint64_t perTaskWorkspace = static_cast<uint64_t>(topK_) * blockSize_ * embeddingSize_ * dtypeSize * 2;
-    workSpaceSize_ = libapiSize_ + static_cast<uint64_t>(blockDim_) * perTaskWorkspace;
+    if (socVer_ != SOC_VER_950_CODE) {
+        constexpr uint32_t WORKSPACE_BLOCK_SIZE_DB = 131072;
+        constexpr uint32_t NUM3 = 3;
+        mm1OutSize_ = static_cast<uint64_t>(blockDim_) * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
+        smOnlineOutSize_ = static_cast<uint64_t>(blockDim_) * WORKSPACE_BLOCK_SIZE_DB * sizeof(uint16_t) * NUM3;
+        mm2OutSize_ = static_cast<uint64_t>(blockDim_) * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
+        updateSize_ = static_cast<uint64_t>(blockDim_) * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
+        uint64_t identityIdxSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
+        workSpaceSize_ = libapiSize_ + identityIdxSize + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_;
+    } else {
+        uint32_t dtypeSize = (dataType_ == ge::DT_FLOAT8_E4M3FN) ? 1 : 2;
+        uint64_t perTaskWorkspace = static_cast<uint64_t>(topK_) * blockSize_ * embeddingSize_ * dtypeSize * 2;
+        uint64_t identityIdxSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
+        workSpaceSize_ = libapiSize_ + identityIdxSize + static_cast<uint64_t>(blockDim_) * perTaskWorkspace;
+    }
 
     context->SetBlockDim(blockDim_);
     size_t *workspaceArray = context->GetWorkspaceSizes(1);
@@ -197,6 +210,15 @@ ge::graphStatus SASATiling::CalculateWorkSpace(gert::TilingContext *context)
 
 uint64_t SASATiling::GenerateTilingKey()
 {
+    if (socVer_ != SOC_VER_950_CODE) {
+        if (dataType_ == ge::DT_BF16 && embeddingSize_ == 128 && blockSize_ == 128) {
+            return SASA_BF16_D128_ARCH22_TILING;
+        }
+        if (dataType_ == ge::DT_FLOAT16 && embeddingSize_ == 128 && blockSize_ == 128) {
+            return SASA_FP16_D128_ARCH22_TILING;
+        }
+        return SASA_FP16_D128_ARCH22_TILING;
+    }
     if (dataType_ == ge::DT_FLOAT8_E4M3FN && embeddingSize_ == 128 && blockSize_ == 128) {
         return SASA_FP8_D128_TILING;
     }
@@ -224,6 +246,10 @@ ge::graphStatus SASATiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_innerPrecise(innerPrecise_);
     tilingData_->set_maxQSeqlen(maxQSeqlen_);
+    tilingData_->set_mm1OutSize(mm1OutSize_);
+    tilingData_->set_smOnlineOutSize(smOnlineOutSize_);
+    tilingData_->set_mm2OutSize(mm2OutSize_);
+    tilingData_->set_updateSize(updateSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);
     uint32_t groupSize = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
     tilingData_->set_groupSize(groupSize);
