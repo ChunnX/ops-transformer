@@ -34,7 +34,7 @@
 #include "register/tilingdata_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/moe_distribute_combine_v2_tiling.h"
-#include "../../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
+#include "../../../op_kernel/arch35/moe_distribute_combine_v2_apt_tiling_key.h"
 #include "moe_distribute_combine_tiling_arch35.h"
 using namespace Mc2Tiling;
 
