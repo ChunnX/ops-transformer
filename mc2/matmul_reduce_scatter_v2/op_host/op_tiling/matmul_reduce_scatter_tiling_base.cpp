@@ -27,7 +27,6 @@
 #include "graph/utils/type_utils.h"
 #include "ops_utils.h"
 #include "register/op_def_registry.h"
-#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "matmul_reduce_scatter_tiling_base.h"
 #include "../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
@@ -50,6 +49,7 @@ constexpr uint32_t IS_TRANS_B = 3;
 constexpr uint32_t COMM_TURN = 4;
 constexpr int64_t AICPU_STRLEN = 6;
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
+const std::set<std::string> SUPPORT_COMM_MODE{"ai_cpu", "ccu"};
 
 uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt) const
 {
@@ -388,6 +388,10 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
     OP_TILING_CHECK(
         commMode == nullptr,
         OP_LOGE_WITH_INVALID_ATTR(opName_, "commMode", "null", "not null"),
+        return false);
+    OP_TILING_CHECK(
+        SUPPORT_COMM_MODE.find(commMode) == SUPPORT_COMM_MODE.end(),
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\" or \"ccu\""),
         return false);
     return CheckInputScale();
 }
