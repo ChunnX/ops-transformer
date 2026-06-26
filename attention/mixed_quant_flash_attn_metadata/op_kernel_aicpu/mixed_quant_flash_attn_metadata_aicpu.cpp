@@ -265,7 +265,12 @@ bool MixedQuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &spl
         return false;
     }
     uint32_t sectionNum = splitRes.sectionNum;
-    detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
+    bool isS1G = (layoutQ_ == "BSND" || layoutQ_ == "BSH" || layoutQ_ == "TND");
+    detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum,
+        static_cast<uint32_t>(aicCoreNum_), static_cast<uint32_t>(aivCoreNum_));
+    faMetadata.SetHeadMetadata(optiling::HEAD_AIC_CORE_NUM_INDEX, static_cast<uint32_t>(aicCoreNum_));
+    faMetadata.SetHeadMetadata(optiling::HEAD_AIV_CORE_NUM_INDEX, static_cast<uint32_t>(aivCoreNum_));
+    faMetadata.SetHeadMetadata(optiling::HEAD_IS_S1G_INDEX, isS1G ? 1U : 0U);
     faMetadata.SetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX, sectionNum);
 
     faMetadata.SetHeadMetadata(optiling::HEAD_IS_FD_INDEX, 0);
@@ -281,7 +286,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &spl
 
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         // Clear
-        for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+        for (uint32_t i = 0; i < static_cast<uint32_t>(aicCoreNum_); ++i) {
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, 0U);
@@ -290,7 +295,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &spl
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, 0U);
             faMetadata.SetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
         }
-        for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+        for (uint32_t i = 0; i < static_cast<uint32_t>(aivCoreNum_); ++i) {
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, 0U);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, 0U);
             faMetadata.SetFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX, 0U);
