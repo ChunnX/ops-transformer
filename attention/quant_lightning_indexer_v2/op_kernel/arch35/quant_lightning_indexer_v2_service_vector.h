@@ -443,8 +443,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    // qkVLstride = 第一个ND块的总占用 = mSize × dstStride（与Fixpipe的dstNdStride一致）
-    auto qkVLstride = constInfo_.mBaseSize * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
+    // qkVLstride = 第一个ND块的总占用 = actMSize × dstStride（与Fixpipe的dstNdStride一致）
+    // 使用 actMBaseSize 而非 mBaseSize，以正确处理 QS 方向不满分块的情况
+    auto qkVLstride = info.actMBaseSize * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {
         // MXFP8: QK 已含 qScale×kScale，只需 weights 广播乘法 + ReduceSum
