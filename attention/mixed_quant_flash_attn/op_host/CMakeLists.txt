@@ -9,8 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
-set(FLASH_ATTN_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging header for this operator")
-set(FLASH_ATTN_INNER_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging inner header for this operator")
+set(MIXED_QUANT_FLASH_ATTN_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging header for this operator")
+set(MIXED_QUANT_FLASH_ATTN_INNER_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging inner header for this operator")
 
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
@@ -20,9 +20,9 @@ endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(flash_attn_depends attention/incre_flash_attention attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for flash_attn")
+    set(mixed_quant_flash_attn_depends attention/common CACHE INTERNAL "Dependencies for mixed_quant_flash_attn")
     add_ops_compile_options(
-        OP_NAME FlashAttn
+        OP_NAME MixedQuantFlashAttn
         COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
     )
@@ -34,14 +34,14 @@ file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
 
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
-            OP_NAME FlashAttn
+            OP_NAME MixedQuantFlashAttn
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
     )
 else()
     add_ops_compile_options(
-            OP_NAME FlashAttn
+            OP_NAME MixedQuantFlashAttn
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
@@ -56,7 +56,7 @@ else()
         OP_API_INDEPENDENT ON
         # op_api新的地址
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE flash_attn
+        OPTYPE mixed_quant_flash_attn
         ACLNNTYPE aclnn_inner
     )
 endif()
