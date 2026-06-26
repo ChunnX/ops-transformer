@@ -11,297 +11,326 @@
 /*!
  * \file gather_pa_kv_cache_simt.h
  * \brief SIMT implementation of GatherPaKvCache ND format.
- *
- *  Replaces gather_pa_kv_cache_nd.h VEC_SCOPE path with SIMT kernels.
- *  NZ format continues to use gather_pa_kv_cache_nz.h unchanged.
- *
- *  VEC_SCOPE → SIMT mapping:
- *    TPipe/TBuf/DataCopyPad → __simt_vf__ + asc_vf_call + __gm__ pointer
- *    class-based → namespace + free functions
  */
 
-#ifndef GATHER_PA_KV_CACHE_SIMT_H
-#define GATHER_PA_KV_CACHE_SIMT_H
+#ifndef GATHER_PA_KV_CACHE_SIMT_H_
+#define GATHER_PA_KV_CACHE_SIMT_H_
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "simt_api/asc_simt.h"
+#include "simt_api/common_functions.h"
+#include "simt_api/device_sync_functions.h"
 
 namespace NsGatherPaKvCache {
 using namespace AscendC;
 
-constexpr uint32_t THREADS_32 = 2048;
-constexpr uint32_t THREADS_64 = 1024;
+constexpr uint32_t THREAD_NUM = 1024;
 
-constexpr uint32_t NC_K_CACHE = 1 << 0;
-constexpr uint32_t NC_V_CACHE = 1 << 1;
-constexpr uint32_t NC_K_OUT   = 1 << 2;
-constexpr uint32_t NC_V_OUT   = 1 << 3;
-constexpr uint32_t NC_K_SLOT  = 1 << 4;
-constexpr uint32_t NC_K_HEAD  = 1 << 5;
-constexpr uint32_t NC_V_SLOT  = 1 << 6;
-constexpr uint32_t NC_V_HEAD  = 1 << 7;
+// ==================== VF: 连续块拷贝/填零 ====================
 
-// ==================== VF: 连续块拷贝 ====================
-template <typename IDX_T, uint32_t THREADS>
-__simt_vf__ __aicore__ __launch_bounds__(THREADS) inline void GatherCopyBlock(
-    IDX_T byteCount, __gm__ uint8_t* dst, __gm__ uint8_t* src)
+template <typename T>
+__simt_vf__ __aicore__ __launch_bounds__(THREAD_NUM) inline void GatherContigCopyVf(
+    uint64_t count, __gm__ T *dst, __gm__ T *src, uint32_t fillZero)
 {
-    for (IDX_T i = static_cast<IDX_T>(blockIdx.x) * THREADS + static_cast<IDX_T>(threadIdx.x);
-         i < byteCount; i += THREADS * static_cast<IDX_T>(gridDim.x)) {
-        dst[i] = src[i];
-    }
-}
-
-// ==================== VF: 连续块填零 ====================
-template <typename IDX_T, uint32_t THREADS>
-__simt_vf__ __aicore__ __launch_bounds__(THREADS) inline void GatherZeroBlock(
-    IDX_T byteCount, __gm__ uint8_t* dst)
-{
-    for (IDX_T i = static_cast<IDX_T>(blockIdx.x) * THREADS + static_cast<IDX_T>(threadIdx.x);
-         i < byteCount; i += THREADS * static_cast<IDX_T>(gridDim.x)) {
-        dst[i] = 0;
-    }
-}
-
-// ==================== Launch Helpers ====================
-template <typename IDX_T, uint32_t THREADS>
-__aicore__ inline void LaunchCopy(IDX_T byteCount, __gm__ uint8_t* dst, __gm__ uint8_t* src)
-{
-    asc_vf_call<GatherCopyBlock<IDX_T, THREADS>>(dim3(THREADS), byteCount, dst, src);
-}
-
-template <typename IDX_T, uint32_t THREADS>
-__aicore__ inline void LaunchZero(IDX_T byteCount, __gm__ uint8_t* dst)
-{
-    asc_vf_call<GatherZeroBlock<IDX_T, THREADS>>(dim3(THREADS), byteCount, dst);
-}
-
-// ==================== CeilDiv ====================
-template <typename A, typename B>
-__aicore__ __attribute__((always_inline)) inline A CeilDiv(A a, B b) { return (a + b - 1) / b; }
-
-// ==================== 连续块处理 ====================
-template <typename IDX_T, uint32_t THREADS>
-__aicore__ inline void CopyBlockContig(
-    __gm__ uint8_t* cacheGm, __gm__ uint8_t* outGm,
-    uint64_t cacheStartBytes, uint64_t totalBytes, bool isZero, uint64_t& outOffBytes)
-{
-    if (isZero) {
-        LaunchZero<IDX_T, THREADS>(static_cast<IDX_T>(totalBytes), outGm + outOffBytes);
-    } else {
-        LaunchCopy<IDX_T, THREADS>(static_cast<IDX_T>(totalBytes), outGm + outOffBytes, cacheGm + cacheStartBytes);
-    }
-    outOffBytes += totalBytes;
-}
-
-// ==================== 非连续slot拷贝 ====================
-template <typename IDX_T, uint32_t THREADS>
-__aicore__ inline void CopyBlockNcSlot(
-    __gm__ uint8_t* cacheGm, __gm__ uint8_t* outGm,
-    int64_t curBlockSize, uint64_t hiddenSizeB,
-    uint64_t blockStartBytes, uint64_t slotSrcStride,
-    uint64_t dstSlotStride, bool isZero, uint64_t& outOffBytes)
-{
-    uint64_t baseOff = outOffBytes;
-    for (int64_t s = 0; s < curBlockSize; s++) {
-        uint64_t dstOff = baseOff + static_cast<uint64_t>(s) * dstSlotStride;
-        if (isZero) {
-            LaunchZero<IDX_T, THREADS>(static_cast<IDX_T>(hiddenSizeB), outGm + dstOff);
+    for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * THREAD_NUM + static_cast<uint64_t>(threadIdx.x);
+         idx < count; idx += THREAD_NUM * static_cast<uint64_t>(gridDim.x)) {
+        if (fillZero) {
+            dst[idx] = static_cast<T>(0);
         } else {
-            uint64_t srcOff = blockStartBytes + static_cast<uint64_t>(s) * slotSrcStride;
-            LaunchCopy<IDX_T, THREADS>(static_cast<IDX_T>(hiddenSizeB), outGm + dstOff, cacheGm + srcOff);
+            dst[idx] = src[idx];
         }
     }
-    outOffBytes = baseOff + static_cast<uint64_t>(curBlockSize) * dstSlotStride;
 }
 
-// ==================== 非连续slot+head拷贝 ====================
-template <typename IDX_T, uint32_t THREADS>
-__aicore__ inline void CopyBlockNcHead(
-    __gm__ uint8_t* cacheGm, __gm__ uint8_t* outGm,
-    int64_t curBlockSize, uint64_t numHeads, uint64_t headBytes,
-    uint64_t blockStartBytes, uint64_t slotSrcStride, uint64_t headSrcStride,
-    uint64_t dstSlotStride, bool isZero, uint64_t& outOffBytes)
+// ==================== VF: 跨slot连续段拷贝/填零 ====================
+
+template <typename T>
+__simt_vf__ __aicore__ __launch_bounds__(THREAD_NUM) inline void GatherStridedCopyVf(
+    uint64_t totalCount, __gm__ T *dst, __gm__ T *src,
+    uint64_t unitSize, uint64_t srcStride, uint64_t dstStride, uint32_t fillZero)
 {
-    uint64_t baseOff = outOffBytes;
-    for (int64_t s = 0; s < curBlockSize; s++) {
-        uint64_t dstSlotOff = baseOff + static_cast<uint64_t>(s) * dstSlotStride;
-        for (uint64_t h = 0; h < numHeads; h++) {
-            uint64_t dstOff = dstSlotOff + h * headBytes;
-            if (isZero) {
-                LaunchZero<IDX_T, THREADS>(static_cast<IDX_T>(headBytes), outGm + dstOff);
-            } else {
-                uint64_t srcOff = blockStartBytes + static_cast<uint64_t>(s) * slotSrcStride + h * headSrcStride;
-                LaunchCopy<IDX_T, THREADS>(static_cast<IDX_T>(headBytes), outGm + dstOff, cacheGm + srcOff);
-            }
+    for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * THREAD_NUM + static_cast<uint64_t>(threadIdx.x);
+         idx < totalCount; idx += THREAD_NUM * static_cast<uint64_t>(gridDim.x)) {
+        uint64_t slot = idx / unitSize;
+        uint64_t off = idx - slot * unitSize;
+        if (fillZero) {
+            dst[slot * dstStride + off] = static_cast<T>(0);
+        } else {
+            dst[slot * dstStride + off] = src[slot * srcStride + off];
         }
-    }
-    outOffBytes = baseOff + static_cast<uint64_t>(curBlockSize) * dstSlotStride;
-}
-
-// ==================== 非连续整体调度 ====================
-template <typename IDX_T, uint32_t THREADS>
-__aicore__ inline void CopyBlockNonContig(
-    __gm__ uint8_t* cacheGm, __gm__ uint8_t* outGm,
-    int64_t blockId, int64_t curBlockSize,
-    uint32_t ncFlag, uint64_t hiddenSizeB, uint64_t elemByteSize,
-    int64_t kvCacheBlockSize, uint64_t numHeads,
-    int64_t cacheStride0, int64_t cacheStride1, int64_t cacheStride2,
-    int64_t outStride1, bool isSlotNC, bool isHeadNC, bool isOutNC,
-    bool isZero, uint64_t& outOffBytes)
-{
-    uint64_t slotSrcStride = static_cast<uint64_t>(cacheStride1) * elemByteSize;
-    uint64_t headSrcStride = static_cast<uint64_t>(cacheStride2) * elemByteSize;
-    uint64_t blockStartBytes = static_cast<uint64_t>(blockId) * static_cast<uint64_t>(cacheStride0) * elemByteSize;
-    uint64_t dstSlotStride = isOutNC ? static_cast<uint64_t>(outStride1) * elemByteSize : hiddenSizeB;
-
-    if (!isSlotNC) {
-        uint64_t totalBytes = static_cast<uint64_t>(curBlockSize) * hiddenSizeB;
-        CopyBlockContig<IDX_T, THREADS>(cacheGm, outGm, blockStartBytes, totalBytes, isZero, outOffBytes);
-    } else if (!isHeadNC) {
-        CopyBlockNcSlot<IDX_T, THREADS>(cacheGm, outGm, curBlockSize, hiddenSizeB,
-            blockStartBytes, slotSrcStride, dstSlotStride, isZero, outOffBytes);
-    } else {
-        uint64_t headB = (numHeads > 0) ? (hiddenSizeB / numHeads) : hiddenSizeB;
-        CopyBlockNcHead<IDX_T, THREADS>(cacheGm, outGm, curBlockSize, numHeads, headB,
-            blockStartBytes, slotSrcStride, headSrcStride, dstSlotStride, isZero, outOffBytes);
     }
 }
 
 // ==================== Process 主函数 ====================
+
 template <typename T, typename T_INDEX, bool isSeqLensCumsum, bool hasSeqOffset>
 __aicore__ inline void Process(
-    GM_ADDR key_cache, GM_ADDR value_cache,
-    GM_ADDR block_tables, GM_ADDR seq_lens,
-    GM_ADDR key_out, GM_ADDR value_out,
-    GM_ADDR seq_offset,
-    const GatherPaKvCacheTilingDataV35* td)
+    GM_ADDR keyCache, GM_ADDR valueCache, GM_ADDR blockTables, GM_ADDR seqLens,
+    GM_ADDR keyIn, GM_ADDR valueIn, GM_ADDR seqOffset,
+    GM_ADDR keyOut, GM_ADDR valueOut,
+    const GatherPaKvCacheTilingDataV35 *tl)
 {
-    __gm__ uint8_t* kc = (__gm__ uint8_t*)key_cache;
-    __gm__ uint8_t* vc = (__gm__ uint8_t*)value_cache;
-    __gm__ T_INDEX* bt = (__gm__ T_INDEX*)block_tables;
-    __gm__ T_INDEX* sl = (__gm__ T_INDEX*)seq_lens;
-    __gm__ uint8_t* ko = (__gm__ uint8_t*)key_out;
-    __gm__ uint8_t* vo = (__gm__ uint8_t*)value_out;
-    __gm__ T_INDEX* so = (__gm__ T_INDEX*)seq_offset;
+    __gm__ T *keyCacheGm = (__gm__ T *)keyCache;
+    __gm__ T *valueCacheGm = (__gm__ T *)valueCache;
+    __gm__ T_INDEX *blockTablesGm = (__gm__ T_INDEX *)blockTables;
+    __gm__ T_INDEX *seqLensGm = (__gm__ T_INDEX *)seqLens;
+    __gm__ T_INDEX *seqOffGm = (__gm__ T_INDEX *)seqOffset;
+    __gm__ T *outKeyGm = (__gm__ T *)keyOut;
+    __gm__ T *outValueGm = (__gm__ T *)valueOut;
 
-    constexpr uint64_t kByte = sizeof(DTYPE_KEY);
-    constexpr uint64_t vByte = sizeof(DTYPE_VALUE);
+    int64_t cacheBlockSize = tl->kvCacheBlockSize;
+    uint32_t batchPerCore = tl->batchPerCore;
+    uint32_t needCoreNum = tl->needCoreNum;
+    int64_t batchCount = tl->batchCount;
+    int64_t blockTableWidth = tl->blockTableWidth;
+    uint64_t hiddenSizeK = tl->hiddenSizeK * sizeof(DTYPE_KEY);
+    uint64_t hiddenSizeV = tl->hiddenSizeV * sizeof(DTYPE_VALUE);
+    int64_t numBlocks = tl->numBlocks;
+    int64_t numTokens = tl->numTokens;
+    uint32_t nonContiguousFlag = tl->nonContiguousFlag;
 
-    PRINTF("[SIMT] gather_pa_kv_cache ND enter, core=%lld, isCumsum=%d, hasSeqOff=%d\n",
-           static_cast<long long>(GetBlockIdx()),
-           static_cast<int>(isSeqLensCumsum),
-           static_cast<int>(hasSeqOffset));
+    uint64_t hiddenSize = (hiddenSizeK > hiddenSizeV) ? hiddenSizeK : hiddenSizeV;
+    uint64_t maxUb = tl->maxUbHiddenSize;
+    int64_t kCacheStride0 = tl->kCacheStride0;
+    int64_t kCacheStride1 = tl->kCacheStride1;
+    int64_t kCacheStride2 = tl->kCacheStride2;
+    int64_t vCacheStride0 = tl->vCacheStride0;
+    int64_t vCacheStride1 = tl->vCacheStride1;
+    int64_t vCacheStride2 = tl->vCacheStride2;
+    int64_t keyOutStride0 = tl->keyOutStride0;
+    int64_t keyOutStride1 = tl->keyOutStride1;
+    int64_t valueOutStride0 = tl->valueOutStride0;
+    int64_t valueOutStride1 = tl->valueOutStride1;
+    uint64_t numHeadsK = tl->numHeadsK;
+    uint64_t numHeadsV = tl->numHeadsV;
+    uint64_t elemSizeK = sizeof(DTYPE_KEY);
+    uint64_t elemSizeV = sizeof(DTYPE_VALUE);
 
-    int64_t bc = td->batchCount;
-    int64_t bpc = td->batchPerCore;
-    int64_t ncn = static_cast<int64_t>(td->needCoreNum);
-    int64_t cbs = td->kvCacheBlockSize;
-    int64_t btw = td->blockTableWidth;
-    int64_t nb = td->numBlocks;
-    int64_t nt = td->numTokens;
-    uint64_t hkb = td->hiddenSizeK * kByte;
-    uint64_t hvb = td->hiddenSizeV * vByte;
-    uint64_t cbbK = static_cast<uint64_t>(cbs) * hkb;
-    uint64_t cbbV = static_cast<uint64_t>(cbs) * hvb;
-    uint32_t ncF = td->nonContiguousFlag;
+    // Non-contiguous path
+    if (nonContiguousFlag != 0) {
+        const uint64_t coreIdx = static_cast<uint64_t>(GetBlockIdx());
+        const uint64_t coreNum = static_cast<uint64_t>(needCoreNum);
+        uint64_t globalBlk = 0;
+        int64_t runningOffset = 0;
 
-    int64_t coreIdx = GetBlockIdx();
-    int64_t batchStart = coreIdx * bpc;
-    int64_t batchEnd = batchStart + bpc;
-    if (coreIdx == ncn - 1) { batchEnd = bc; }
+        for (int64_t i = 0; i < batchCount; i++) {
+            int64_t seqLen;
+            int64_t batchOffset, accumSeqLen;
+            if constexpr (isSeqLensCumsum) {
+                seqLen = static_cast<int64_t>(seqLensGm[i + 1]) - static_cast<int64_t>(seqLensGm[i]);
+                batchOffset = static_cast<int64_t>(seqLensGm[i]);
+                accumSeqLen = static_cast<int64_t>(seqLensGm[i + 1]);
+            } else {
+                seqLen = static_cast<int64_t>(seqLensGm[i]);
+                batchOffset = runningOffset;
+                accumSeqLen = runningOffset + seqLen;
+                runningOffset = accumSeqLen;
+            }
+            if (batchOffset >= numTokens) { break; }
+            if (numTokens > batchOffset && numTokens <= accumSeqLen) { seqLen = numTokens - batchOffset; }
+
+            uint64_t seqOff = 0;
+            if constexpr (hasSeqOffset) {
+                seqOff = static_cast<uint64_t>(seqOffGm[i]) / static_cast<uint64_t>(cacheBlockSize);
+            }
+
+            uint64_t blkCnt = static_cast<uint64_t>((seqLen + cacheBlockSize - 1) / cacheBlockSize);
+            uint64_t _seqLen = static_cast<uint64_t>(seqLen);
+
+            for (uint64_t blkIdx = 0; blkIdx < blkCnt; blkIdx++) {
+                if ((globalBlk + blkIdx) % coreNum != coreIdx) { continue; }
+
+                uint64_t tblOff = blkIdx + seqOff;
+                uint32_t fillZero = 0;
+                int64_t blockId = 0;
+                if (tblOff >= static_cast<uint64_t>(blockTableWidth)) {
+                    fillZero = 1;
+                } else {
+                    blockId = static_cast<int64_t>(blockTablesGm[static_cast<uint64_t>(blockTableWidth) *
+                                                                  static_cast<uint64_t>(i) + tblOff]);
+                    if (blockId >= numBlocks || blockId < 0) { fillZero = 1; blockId = 0; }
+                }
+
+                uint64_t curSize = static_cast<uint64_t>(cacheBlockSize);
+                if (blkIdx == blkCnt - 1) {
+                    curSize = _seqLen - (blkCnt - 1) * static_cast<uint64_t>(cacheBlockSize);
+                }
+
+                bool isKSlotNC = (nonContiguousFlag >> 4) & 1;
+                bool isKHeadNC = (nonContiguousFlag >> 5) & 1;
+                bool isVSlotNC = (nonContiguousFlag >> 6) & 1;
+                bool isVHeadNC = (nonContiguousFlag >> 7) & 1;
+                bool isKOutNC  = (nonContiguousFlag >> 2) & 1;
+                bool isVOutNC  = (nonContiguousFlag >> 3) & 1;
+
+                uint64_t baseToken = static_cast<uint64_t>(batchOffset) + blkIdx * static_cast<uint64_t>(cacheBlockSize);
+                uint64_t keyBaseOff = isKOutNC ? (baseToken * static_cast<uint64_t>(keyOutStride0) * elemSizeK)
+                                               : (baseToken * hiddenSizeK);
+                uint64_t valueBaseOff = isVOutNC ? (baseToken * static_cast<uint64_t>(valueOutStride0) * elemSizeV)
+                                                 : (baseToken * hiddenSizeV);
+
+                uint64_t keySrcBase = static_cast<uint64_t>(blockId) * static_cast<uint64_t>(kCacheStride0) * elemSizeK;
+                uint64_t valueSrcBase = static_cast<uint64_t>(blockId) * static_cast<uint64_t>(vCacheStride0) * elemSizeV;
+
+                // Key
+                if (!isKSlotNC && !isKHeadNC && !isKOutNC) {
+                    uint64_t kCnt = curSize * hiddenSizeK;
+                    asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), kCnt,
+                                                       outKeyGm + keyBaseOff,
+                                                       keyCacheGm + keySrcBase, fillZero);
+                } else {
+                    uint64_t dstSlotStride = isKOutNC ? static_cast<uint64_t>(keyOutStride0) * elemSizeK : hiddenSizeK;
+                    uint64_t srcSlotStride = static_cast<uint64_t>(kCacheStride1) * elemSizeK;
+                    uint64_t srcHeadStride = static_cast<uint64_t>(kCacheStride2) * elemSizeK;
+                    uint64_t dstHeadStride = static_cast<uint64_t>(keyOutStride1) * elemSizeK;
+                    bool isOutHeadNC = (nonContiguousFlag >> 8) & 1;
+                    bool needHeadLoop = isKHeadNC || isOutHeadNC;
+                    uint64_t hBytes = (numHeadsK > 0) ? (hiddenSizeK / numHeadsK) : hiddenSizeK;
+
+                    if (!needHeadLoop) {
+                        uint64_t totalCnt = curSize * hBytes * numHeadsK;
+                        asc_vf_call<GatherStridedCopyVf<T>>(dim3(THREAD_NUM), totalCnt,
+                                                            outKeyGm + keyBaseOff,
+                                                            keyCacheGm + keySrcBase,
+                                                            hBytes * numHeadsK, srcSlotStride, dstSlotStride, fillZero);
+                    } else {
+                        for (uint64_t h = 0; h < numHeadsK; h++) {
+                            uint64_t totalCnt = curSize * hBytes;
+                            asc_vf_call<GatherStridedCopyVf<T>>(dim3(THREAD_NUM), totalCnt,
+                                                                outKeyGm + keyBaseOff + h * dstHeadStride,
+                                                                keyCacheGm + keySrcBase + h * srcHeadStride,
+                                                                hBytes, srcSlotStride, dstSlotStride, fillZero);
+                            SetFlag<HardEvent::V_S>(0);
+                            WaitFlag<HardEvent::V_S>(0);
+                        }
+                    }
+                }
+                SetFlag<HardEvent::V_S>(0);
+                WaitFlag<HardEvent::V_S>(0);
+
+                // Value
+                if (!isVSlotNC && !isVHeadNC && !isVOutNC) {
+                    uint64_t vCnt = curSize * hiddenSizeV;
+                    asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), vCnt,
+                                                       outValueGm + valueBaseOff,
+                                                       valueCacheGm + valueSrcBase, fillZero);
+                } else {
+                    uint64_t dstSlotStride = isVOutNC ? static_cast<uint64_t>(valueOutStride0) * elemSizeV : hiddenSizeV;
+                    uint64_t srcSlotStride = static_cast<uint64_t>(vCacheStride1) * elemSizeV;
+                    uint64_t srcHeadStride = static_cast<uint64_t>(vCacheStride2) * elemSizeV;
+                    uint64_t dstHeadStride = static_cast<uint64_t>(valueOutStride1) * elemSizeV;
+                    bool isOutHeadNC = (nonContiguousFlag >> 9) & 1;
+                    bool needHeadLoop = isVHeadNC || isOutHeadNC;
+                    uint64_t hBytes = (numHeadsV > 0) ? (hiddenSizeV / numHeadsV) : hiddenSizeV;
+
+                    if (!needHeadLoop) {
+                        uint64_t totalCnt = curSize * hBytes * numHeadsV;
+                        asc_vf_call<GatherStridedCopyVf<T>>(dim3(THREAD_NUM), totalCnt,
+                                                            outValueGm + valueBaseOff,
+                                                            valueCacheGm + valueSrcBase,
+                                                            hBytes * numHeadsV, srcSlotStride, dstSlotStride, fillZero);
+                    } else {
+                        for (uint64_t h = 0; h < numHeadsV; h++) {
+                            uint64_t totalCnt = curSize * hBytes;
+                            asc_vf_call<GatherStridedCopyVf<T>>(dim3(THREAD_NUM), totalCnt,
+                                                                outValueGm + valueBaseOff + h * dstHeadStride,
+                                                                valueCacheGm + valueSrcBase + h * srcHeadStride,
+                                                                hBytes, srcSlotStride, dstSlotStride, fillZero);
+                            SetFlag<HardEvent::V_S>(0);
+                            WaitFlag<HardEvent::V_S>(0);
+                        }
+                    }
+                }
+                SetFlag<HardEvent::V_S>(0);
+                WaitFlag<HardEvent::V_S>(0);
+            }
+            globalBlk += blkCnt;
+        }
+        return;
+    }
+
+    // ===== Contiguous path =====
+    int64_t batchStart = static_cast<int64_t>(GetBlockIdx()) * static_cast<int64_t>(batchPerCore);
+    int64_t batchEnd = batchStart + static_cast<int64_t>(batchPerCore);
+    if (static_cast<uint32_t>(GetBlockIdx()) == needCoreNum - 1) { batchEnd = batchCount; }
 
     int64_t coreOff = 0;
-    if constexpr (!isSeqLensCumsum) {
-        for (int64_t i = 0; i < batchStart; i++) { coreOff += static_cast<int64_t>(sl[i]); }
+    if constexpr (isSeqLensCumsum) {
+        coreOff = static_cast<int64_t>(seqLensGm[batchStart]);
+    } else {
+        for (int64_t i = 0; i < batchStart; i++) { coreOff += static_cast<int64_t>(seqLensGm[i]); }
     }
 
-    for (int64_t b = batchStart; b < batchEnd; b++) {
-        T_INDEX seqLen;
-        int64_t batchOffset;
-        int64_t accum;
+    for (int64_t i = batchStart; i < batchEnd; i++) {
+        int64_t seqLen;
+        int64_t batchOffset, accumSeqLen;
         if constexpr (isSeqLensCumsum) {
-            seqLen = sl[b + 1] - sl[b];
-            batchOffset = static_cast<int64_t>(sl[b]);
-            accum = static_cast<int64_t>(sl[b + 1]);
+            seqLen = static_cast<int64_t>(seqLensGm[i + 1]) - static_cast<int64_t>(seqLensGm[i]);
+            batchOffset = static_cast<int64_t>(seqLensGm[i]);
+            accumSeqLen = static_cast<int64_t>(seqLensGm[i + 1]);
         } else {
-            seqLen = sl[b];
+            seqLen = static_cast<int64_t>(seqLensGm[i]);
             batchOffset = coreOff;
-            accum = coreOff + static_cast<int64_t>(sl[b]);
-            coreOff = accum;
+            accumSeqLen = coreOff + seqLen;
+            coreOff = accumSeqLen;
         }
-        if (batchOffset >= nt) break;
-        if (nt > batchOffset && nt <= accum) { seqLen = static_cast<T_INDEX>(nt - batchOffset); }
 
-        int64_t seqOff = 0;
-        if constexpr (hasSeqOffset) { seqOff = static_cast<int64_t>(so[b]) / cbs; }
+        if (batchOffset >= numTokens) { break; }
+        uint64_t _seqLen = static_cast<uint64_t>(seqLen);
+        if (numTokens > batchOffset && numTokens <= accumSeqLen) {
+            _seqLen = static_cast<uint64_t>(numTokens - batchOffset);
+        }
 
-        int64_t blkCnt = static_cast<int64_t>(CeilDiv(seqLen, static_cast<T_INDEX>(cbs)));
-        uint64_t keyOff = static_cast<uint64_t>(batchOffset) * hkb;
-        uint64_t valOff = static_cast<uint64_t>(batchOffset) * hvb;
+        uint64_t seqOff = 0;
+        if constexpr (hasSeqOffset) {
+            seqOff = static_cast<uint64_t>(seqOffGm[i]) / static_cast<uint64_t>(cacheBlockSize);
+        }
 
-        for (int64_t blk = 0; blk < blkCnt; blk++) {
-            int64_t btIdx = blk + seqOff;
-            bool isZero;
-            int64_t blockId;
-            if (btIdx >= btw || btIdx < 0) {
-                isZero = true; blockId = 0;
+        uint64_t blkCnt = (_seqLen + static_cast<uint64_t>(cacheBlockSize) - 1) /
+                          static_cast<uint64_t>(cacheBlockSize);
+        uint64_t keyOff = static_cast<uint64_t>(batchOffset) * hiddenSizeK;
+        uint64_t valueOff = static_cast<uint64_t>(batchOffset) * hiddenSizeV;
+
+        for (uint64_t blkIdx = 0; blkIdx < blkCnt; blkIdx++) {
+            uint64_t tblOff = blkIdx + seqOff;
+            uint32_t fillZero = 0;
+            int64_t blockId = 0;
+            if (tblOff >= static_cast<uint64_t>(blockTableWidth)) {
+                fillZero = 1;
             } else {
-                isZero = false;
-                blockId = static_cast<int64_t>(bt[b * btw + btIdx]);
-                if (blockId >= nb || blockId < 0) { isZero = true; blockId = 0; }
+                blockId = static_cast<int64_t>(blockTablesGm[static_cast<uint64_t>(blockTableWidth) *
+                                                              static_cast<uint64_t>(i) + tblOff]);
+                if (blockId >= numBlocks || blockId < 0) { fillZero = 1; blockId = 0; }
             }
-            int64_t curSz = cbs;
-            if (blk == blkCnt - 1) { curSz = static_cast<int64_t>(seqLen) - (blkCnt - 1) * cbs; }
 
-            bool kNC = (ncF & (NC_K_CACHE | NC_K_SLOT | NC_K_HEAD | NC_K_OUT)) != 0;
-            bool vNC = (ncF & (NC_V_CACHE | NC_V_SLOT | NC_V_HEAD | NC_V_OUT)) != 0;
-            uint64_t kBlkBytes = static_cast<uint64_t>(curSz) * hkb;
-            uint64_t vBlkBytes = static_cast<uint64_t>(curSz) * hvb;
-            bool use32 = (kBlkBytes <= static_cast<uint64_t>(INT32_MAX) &&
-                          vBlkBytes <= static_cast<uint64_t>(INT32_MAX));
-
-            if (use32) {
-                if (!kNC) {
-                    CopyBlockContig<uint32_t, THREADS_32>(kc, ko, static_cast<uint64_t>(blockId) * cbbK, kBlkBytes, isZero, keyOff);
-                } else {
-                    CopyBlockNonContig<uint32_t, THREADS_32>(kc, ko, blockId, curSz, ncF, hkb, kByte, cbs, td->numHeadsK,
-                        td->kCacheStride0, td->kCacheStride1, td->kCacheStride2, td->keyOutStride1,
-                        (ncF & NC_K_SLOT) != 0, (ncF & NC_K_HEAD) != 0, (ncF & NC_K_OUT) != 0, isZero, keyOff);
-                }
-                if (!vNC) {
-                    CopyBlockContig<uint32_t, THREADS_32>(vc, vo, static_cast<uint64_t>(blockId) * cbbV, vBlkBytes, isZero, valOff);
-                } else {
-                    CopyBlockNonContig<uint32_t, THREADS_32>(vc, vo, blockId, curSz, ncF, hvb, vByte, cbs, td->numHeadsV,
-                        td->vCacheStride0, td->vCacheStride1, td->vCacheStride2, td->valueOutStride1,
-                        (ncF & NC_V_SLOT) != 0, (ncF & NC_V_HEAD) != 0, (ncF & NC_V_OUT) != 0, isZero, valOff);
-                }
-            } else {
-                if (!kNC) {
-                    CopyBlockContig<uint64_t, THREADS_64>(kc, ko, static_cast<uint64_t>(blockId) * cbbK, kBlkBytes, isZero, keyOff);
-                } else {
-                    CopyBlockNonContig<uint64_t, THREADS_64>(kc, ko, blockId, curSz, ncF, hkb, kByte, cbs, td->numHeadsK,
-                        td->kCacheStride0, td->kCacheStride1, td->kCacheStride2, td->keyOutStride1,
-                        (ncF & NC_K_SLOT) != 0, (ncF & NC_K_HEAD) != 0, (ncF & NC_K_OUT) != 0, isZero, keyOff);
-                }
-                if (!vNC) {
-                    CopyBlockContig<uint64_t, THREADS_64>(vc, vo, static_cast<uint64_t>(blockId) * cbbV, vBlkBytes, isZero, valOff);
-                } else {
-                    CopyBlockNonContig<uint64_t, THREADS_64>(vc, vo, blockId, curSz, ncF, hvb, vByte, cbs, td->numHeadsV,
-                        td->vCacheStride0, td->vCacheStride1, td->vCacheStride2, td->valueOutStride1,
-                        (ncF & NC_V_SLOT) != 0, (ncF & NC_V_HEAD) != 0, (ncF & NC_V_OUT) != 0, isZero, valOff);
-                }
+            uint64_t curSize = static_cast<uint64_t>(cacheBlockSize);
+            if (blkIdx == blkCnt - 1) {
+                curSize = _seqLen - (blkCnt - 1) * static_cast<uint64_t>(cacheBlockSize);
             }
+
+            uint64_t keySrcBase = static_cast<uint64_t>(blockId) * static_cast<uint64_t>(cacheBlockSize) * hiddenSizeK;
+            uint64_t valueSrcBase = static_cast<uint64_t>(blockId) * static_cast<uint64_t>(cacheBlockSize) * hiddenSizeV;
+
+            uint64_t kCnt = curSize * hiddenSizeK;
+            asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), kCnt,
+                                               outKeyGm + keyOff,
+                                               keyCacheGm + keySrcBase, fillZero);
+            SetFlag<HardEvent::V_S>(0);
+            WaitFlag<HardEvent::V_S>(0);
+
+            uint64_t vCnt = curSize * hiddenSizeV;
+            asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), vCnt,
+                                               outValueGm + valueOff,
+                                               valueCacheGm + valueSrcBase, fillZero);
+            SetFlag<HardEvent::V_S>(0);
+            WaitFlag<HardEvent::V_S>(0);
+
+            keyOff += kCnt;
+            valueOff += vCnt;
         }
     }
-
-    SetFlag<HardEvent::V_S>(0);
-    WaitFlag<HardEvent::V_S>(0);
-
-    PRINTF("[SIMT] gather_pa_kv_cache ND exit, core=%lld\n",
-           static_cast<long long>(GetBlockIdx()));
 }
 
 } // namespace NsGatherPaKvCache
-#endif // GATHER_PA_KV_CACHE_SIMT_H
+#endif // GATHER_PA_KV_CACHE_SIMT_H_

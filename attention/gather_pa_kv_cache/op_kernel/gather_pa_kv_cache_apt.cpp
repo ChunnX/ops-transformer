@@ -15,8 +15,8 @@
  *  ND format paths use SIMT kernel (gather_pa_kv_cache_simt.h).
  *  NZ format paths keep VEC_SCOPE kernel (gather_pa_kv_cache_nz.h).
  */
-#include "arch35/gather_pa_kv_cache_nz.h"
 #include "arch35/gather_pa_kv_cache_simt.h"
+#include "arch35/gather_pa_kv_cache_nz.h"
 
 #define TILING_KEY_1111 1111
 #define TILING_KEY_1110 1110
@@ -33,52 +33,39 @@ extern "C" __global__ __aicore__ void gather_pa_kv_cache(GM_ADDR key_cache, GM_A
                                                           GM_ADDR key_out, GM_ADDR value_out,
                                                           GM_ADDR workspace, GM_ADDR tiling)
 {
+// ND路径: SIMT实现, 无需TPipe
+#define TILING_KEY_BRANCH_SIMT(tilingKey, isCumsum, hasOffset) {                                              \
+    if (TILING_KEY_IS(tilingKey)) {                                                                             \
+        NsGatherPaKvCache::Process<uint8_t, DTYPE_SEQ_LENS, isCumsum, hasOffset>(                              \
+            key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset,                       \
+            key_out, value_out, &tilingData);                                                                    \
+    }                                                                                                           \
+} while(0)
+// NZ路径: SIMD实现, 需要TPipe
+#define TILING_KEY_BRANCH_NZ(tilingKey, isCumsum, hasOffset) {                                                \
+    if (TILING_KEY_IS(tilingKey)) {                                                                             \
+        GatherPaKvCacheV35::GatherPaKvCacheNz<uint8_t, DTYPE_SEQ_LENS, isCumsum, hasOffset> op(&pipe, &tilingData); \
+        op.Init(key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset, key_out, value_out); \
+        op.Process();                                                                                           \
+    }                                                                                                           \
+} while(0)
+
     GET_TILING_DATA_WITH_STRUCT(GatherPaKvCacheTilingDataV35, tilingData, tiling);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    // ===== ND paths: SIMT =====
-    if (TILING_KEY_IS(TILING_KEY_1111)) {
-        NsGatherPaKvCache::Process<uint8_t, DTYPE_SEQ_LENS, true, true>(
-            key_cache, value_cache, block_tables, seq_lens, key_out, value_out, seq_offset, &tilingData);
-    } else if (TILING_KEY_IS(TILING_KEY_1110)) {
-        NsGatherPaKvCache::Process<uint8_t, DTYPE_SEQ_LENS, true, false>(
-            key_cache, value_cache, block_tables, seq_lens, key_out, value_out, seq_offset, &tilingData);
-    } else if (TILING_KEY_IS(TILING_KEY_1101)) {
-        NsGatherPaKvCache::Process<uint8_t, DTYPE_SEQ_LENS, false, true>(
-            key_cache, value_cache, block_tables, seq_lens, key_out, value_out, seq_offset, &tilingData);
-    } else if (TILING_KEY_IS(TILING_KEY_1100)) {
-        NsGatherPaKvCache::Process<uint8_t, DTYPE_SEQ_LENS, false, false>(
-            key_cache, value_cache, block_tables, seq_lens, key_out, value_out, seq_offset, &tilingData);
-    }
-    // ===== NZ paths: keep VEC_SCOPE =====
-    else {
-        AscendC::TPipe pipe;
+    // ND (SIMT)
+    TILING_KEY_BRANCH_SIMT(TILING_KEY_1111, true,  true)
+    TILING_KEY_BRANCH_SIMT(TILING_KEY_1110, true,  false)
+    TILING_KEY_BRANCH_SIMT(TILING_KEY_1101, false, true)
+    TILING_KEY_BRANCH_SIMT(TILING_KEY_1100, false, false)
 
-#define NZ_BRANCH(tilingKey, isCumsum, hasOffset) {                                                       \
-    if (TILING_KEY_IS(tilingKey)) {                                                                         \
-        GatherPaKvCacheV35::GatherPaKvCacheNz<uint8_t, DTYPE_SEQ_LENS, isCumsum, hasOffset> op(&pipe, &tilingData); \
-        op.Init(key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset, key_out, value_out); \
-        op.Process();                                                                                       \
-    }                                                                                                       \
-} while(0)
+    // NZ (SIMD)
+    AscendC::TPipe pipe;
+    TILING_KEY_BRANCH_NZ(TILING_KEY_1011, true,  true)
+    TILING_KEY_BRANCH_NZ(TILING_KEY_1010, true,  false)
+    TILING_KEY_BRANCH_NZ(TILING_KEY_1001, false, true)
+    TILING_KEY_BRANCH_NZ(TILING_KEY_1000, false, false)
 
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wconstant-conversion"
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wconstant-conversion"
-#endif
-        NZ_BRANCH(TILING_KEY_1011, true,  true)
-        NZ_BRANCH(TILING_KEY_1010, true,  false)
-        NZ_BRANCH(TILING_KEY_1001, false, true)
-        NZ_BRANCH(TILING_KEY_1000, false, false)
-#ifdef __clang__
-#pragma clang diagnostic pop
-#else
-#pragma GCC diagnostic pop
-#endif
-
-#undef NZ_BRANCH
-    }
+#undef TILING_KEY_BRANCH_SIMT
+#undef TILING_KEY_BRANCH_NZ
 }
