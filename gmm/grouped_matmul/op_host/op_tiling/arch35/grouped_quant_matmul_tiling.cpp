@@ -384,11 +384,13 @@ bool GroupedQmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
-    OP_CHECK_IF(wScaleDimNum != MXFP_TYPE_M_SCALE_DIM_NUM,
+    const size_t expectedWScaleDimNum =
+        IsWeightNzSingleMultiSingleLayout() ? MXFP_TYPE_K_SCALE_DIM_NUM : MXFP_TYPE_M_SCALE_DIM_NUM;
+    OP_CHECK_IF(wScaleDimNum != expectedWScaleDimNum,
                 OP_LOGE(inputParams_.opName,
-                        "When split m, the dim num of scale should be 4 in mx quant mode, but actual \
+                        "When split m, the dim num of scale should be %zu in mx quant mode, but actual \
 is %zu",
-                        wScaleDimNum),
+                        expectedWScaleDimNum, wScaleDimNum),
                 return false);
     OP_CHECK_IF(xScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
                 OP_LOGE(inputParams_.opName,
@@ -396,12 +398,12 @@ is %zu",
 actual is %zu",
                         xScaleDimNum),
                 return false);
-    auto wScaleEDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
     auto wScaleNDim = static_cast<uint64_t>(
-        inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2)); // 2 is index for the third dim
-    auto wScaleKDim =
-        static_cast<uint64_t>(inputParams_.transB ? wScaleShape.GetDim(2) : // 2 is index for the third dim
-                                                    wScaleShape.GetDim(1));
+        IsWeightNzSingleMultiSingleLayout() ? (inputParams_.transB ? wScaleShape.GetDim(0) : wScaleShape.GetDim(1)) :
+                                              (inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2)));
+    auto wScaleKDim = static_cast<uint64_t>(
+        IsWeightNzSingleMultiSingleLayout() ? (inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(0)) :
+                                              (inputParams_.transB ? wScaleShape.GetDim(2) : wScaleShape.GetDim(1)));
     auto xScaleMDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) : xScaleShape.GetDim(0));
     auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
     auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
@@ -409,6 +411,17 @@ actual is %zu",
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
     if (wScaleKDim != 1 && wScaleNDim != 1) {
+        if (IsWeightNzSingleMultiSingleLayout()) {
+            OP_CHECK_IF(
+                wScaleKDim != expectedKDimValue || wScaleNDim != logicalNSize ||
+                    wScaleLastDim != MXFP_MULTI_BASE_SIZE,
+                OP_LOGE_FOR_INVALID_SHAPE(
+                    inputParams_.opType, "scale", ShapeToString(wScaleShape),
+                    inputParams_.transB ? ShapeDimsToString(logicalNSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)
+                                        : ShapeDimsToString(expectedKDimValue, logicalNSize, MXFP_MULTI_BASE_SIZE)),
+                return false);
+        } else {
+            auto wScaleEDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
             OP_CHECK_IF(
                 wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue ||
                     wScaleNDim != logicalNSize || wScaleLastDim != MXFP_MULTI_BASE_SIZE,
@@ -419,6 +432,7 @@ actual is %zu",
                                     : ShapeDimsToString(inputParams_.groupNum, expectedKDimValue, logicalNSize,
                                                         MXFP_MULTI_BASE_SIZE)),
             return false);
+        }
     }
     OP_CHECK_IF(
         xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue || xScaleLastDim != MXFP_MULTI_BASE_SIZE,
