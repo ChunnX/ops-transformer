@@ -23,6 +23,7 @@
 #include "arch35/moe_v3_gather_dynamic_quant.h"
 #include "arch35/moe_v3_gather_mxfp8_quant.h"
 #include "arch35/moe_v3_gather_fp8_perblock_quant.h"
+#include "arch35/moe_v3_gather_fp8_group_quant.h"
 #include "arch35/moe_v3_gather_hif8_pertensor_quant.h"
 #include "arch35/moe_v3_gather_hif8_pertoken_quant.h"
 #include "arch35/moe_v3_gather_hif8_quant.h"
@@ -71,6 +72,14 @@
 #define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER 10031000   // 单核排序、MXFP8量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER 11030000  // 多核排序、MXFP8量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_SCATTER 11031000 // 多核排序、MXFP8量化、SCATTER索引
+
+/*
+ * FP8 PerGroup量化
+ */
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER 10050000    // 单核排序、FP8 PerGroup量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER 10051000   // 单核排序、FP8 PerGroup量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER 11050000  // 多核排序、FP8 PerGroup量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER 11051000 // 多核排序、FP8 PerGroup量化、SCATTER索引
 
 /*
  * Hif8 直转
@@ -126,11 +135,21 @@
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_SCATTER 11141000
 
 /*
+ * FP8 PerGroup量化 + amax clamp
+ */
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER 10150000
+#define MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER 10151000
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER 11150000
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER 11151000
+
+/*
  * 全载模版
  */
 #define MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED 200000   // 全载、非量化
 #define MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT 210000  // 全载、静态量化
 #define MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT 220000 // 全载、动态量化
+
+#define EMPTY_TENSOR 3000000
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -162,6 +181,64 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     auto t = &tilingData;
     const bool isInt8DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_DYNAMIC;
     const bool isInt4DynamicQuant = t->quantMode == MOE_INIT_ROUTING_V3_QUANT_MODE_INT4_DYNAMIC;
+
+    if (TILING_KEY_IS(EMPTY_TENSOR)) {
+        if (GetBlockIdx() != 0) {
+            return;
+        }
+        // EMPTY_TENSOR分支主要适用于n==0或k==0的空tensor场景，此时expandedRowIdx/expandedScale为0元素。
+        // 当cols==0但n*k>0时（n>0且k>0），expandedRowIdx和expandedScale仍有n*k个元素，需初始化后再返回。
+        if (t->n > 0 && t->k > 0) {
+            int64_t rowIdxElements = t->n * t->k;
+            GlobalTensor<int32_t> expandedRowIdxGm;
+            expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, rowIdxElements);
+            InitGlobalMemory(expandedRowIdxGm, rowIdxElements, static_cast<int32_t>(0));
+
+            constexpr bool isMXFPXNoQuant = IsSameType<DTYPE_X, fp8_e4m3fn_t>::value ||
+                                            IsSameType<DTYPE_X, fp8_e5m2_t>::value ||
+                                            IsSameType<DTYPE_X, fp4x2_e2m1_t>::value;
+            const int64_t quantModeUnquant = -1;
+            const int64_t quantModeDynamic = 1;
+            const int64_t quantModeHif8Pertoken = 8;
+            const int64_t quantModeInt4Dynamic = 13;
+            // expandedScale为1D float [n*k]（或droppad时[expertNum*expertCapacity]）的量化模式，
+            // 无论isInputScale是否为1，输出均有元素需初始化。MXFP8/MXFP4/FP8_PERBLOCK在cols==0时
+            // expandedScale含ceilDiv(0,blockSize)=0的维度，总元素为0，无需init。
+            bool needScaleInit = !isMXFPXNoQuant &&
+                (t->quantMode == quantModeUnquant || t->quantMode == quantModeDynamic ||
+                 t->quantMode == quantModeInt4Dynamic || t->quantMode == quantModeHif8Pertoken);
+            if (needScaleInit) {
+                int64_t scaleElements = rowIdxElements;
+                if (t->dropPadMode == DROP_PAD_MODE && t->quantMode != quantModeHif8Pertoken) {
+                    scaleElements = t->expertNum * t->expertCapacity;
+                }
+                if (scaleElements > 0) {
+                    GlobalTensor<float> expandedScaleGm;
+                    expandedScaleGm.SetGlobalBuffer((__gm__ float *)expandedScale, scaleElements);
+                    InitGlobalMemory(expandedScaleGm, scaleElements, 0.0f);
+                }
+            }
+        }
+        if (t->expertTokensNumFlag) {
+            GlobalTensor<int64_t> expertTokensCountGm;
+            TBuf<TPosition::VECCALC> zeroBuf;
+            TPipe pipe;
+            int32_t expertCountElements = (t->expertTokensNumType == EXERPT_TOKENS_KEY_VALUE) ?
+                static_cast<int32_t>(t->expertNum * EXERPT_TOKENS_KEY_VALUE) :
+                static_cast<int32_t>(t->actualExpertNum);
+            expertTokensCountGm.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum, expertCountElements);
+            pipe.InitBuffer(zeroBuf, AlignBytes(expertCountElements, sizeof(int64_t)));
+
+            LocalTensor<int64_t> zeroLocal = zeroBuf.Get<int64_t>();
+            Duplicate<int32_t>(zeroLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
+                        static_cast<int32_t>(Align(expertCountElements, static_cast<int32_t>(sizeof(int64_t))) * 2));
+            DataCopyExtParams dataCopyParams = {1, static_cast<uint32_t>(expertCountElements * sizeof(int64_t)),
+                                                0, 0, 0};
+            DataCopyPad(expertTokensCountGm, zeroLocal, dataCopyParams);
+            pipe.Destroy();
+        }
+        return;
+    }
 
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED)) {
         if constexpr (!IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value &&
@@ -237,6 +314,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_INT4_DYNAMICQUANT_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_GATHER) ||
@@ -246,7 +325,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER)) {
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_SCATTER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
         // 单核排序
         MoeSortOneCore op;
         op.Init(expertIdx, expandedRowIdx, userWS, t, &sortPipe);
@@ -262,6 +343,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_GATHER) ||
@@ -271,7 +354,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER) ||
-               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_SCATTER)) {
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
         // 多核排序
         MoeSortMultiCore op;
         op.Init(expertIdx, expandedRowIdx, userWS, t, &sortPipe);
@@ -297,6 +382,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMICQUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_GATHER) ||
@@ -306,7 +393,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8PERBLOCK_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER)) {
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8PERBLOCK_QUANT_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER)) {
         // GATHER索引
         TPipe rowIdxPipe;
         RowIdxGather rowIdxGatherOp;
@@ -423,6 +512,19 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             gatherMxfp8QuantOp.Process();
             gatherPipe.Destroy();
         }
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER)) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
+                      (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
+                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
+            TPipe gatherPipe;
+            MoeV3GatherFP8GroupQuant<DTYPE_X, DTYPE_EXPANDED_X, false> gatherFP8GroupQuantOp;
+            gatherFP8GroupQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+            gatherFP8GroupQuantOp.Process();
+            gatherPipe.Destroy();
+        }
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8CAST_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8CAST_GATHER) ||
@@ -486,6 +588,19 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             MoeGatherOutFP8PerBlockQuant<DTYPE_X, DTYPE_EXPANDED_X> gatherFP8PerBlockQuantOp;
             gatherFP8PerBlockQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherFP8PerBlockQuantOp.Process();
+            gatherPipe.Destroy();
+        }
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
+                      (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
+                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
+            TPipe gatherPipe;
+            MoeV3GatherFP8GroupQuant<DTYPE_X, DTYPE_EXPANDED_X, true> gatherFP8GroupQuantOp;
+            gatherFP8GroupQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+            gatherFP8GroupQuantOp.Process();
             gatherPipe.Destroy();
         }
     }

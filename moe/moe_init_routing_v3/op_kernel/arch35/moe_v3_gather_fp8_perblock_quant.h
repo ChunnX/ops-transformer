@@ -151,9 +151,6 @@ private:
     int64_t rowIdxType_ = 0;
 
     float fp8MaxValue_;
-
-    const uint32_t ubBlockSize_ = Ops::Base::GetUbBlockSize();
-    const uint32_t numElemPerUbBlock_ = ubBlockSize_ / sizeof(T);
 };
 
 template <typename T, typename U>
@@ -212,6 +209,8 @@ MoeGatherOutFP8PerBlockQuant<T, U>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr
                                             Align(actualExpertNum_, sizeof(int32_t)),
                                         actualExpertNum_);
 
+    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
+        expertTotalCountGm_);
     int64_t expertTotalCount_ = expertTotalCountGm_.GetValue(0);
     perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
     needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
@@ -243,7 +242,9 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::InitBuffer()
 {
     int64_t inQueueBuffer = AlignBytes(perLoopCols_, sizeof(T));
     int64_t outQueueBuffer = AlignBytes(perLoopCols_, sizeof(U));
-    int64_t scaleQueueBuffer = AlignBytes(perLoopScaleCols_, sizeof(float));
+    // scale buffer至少分配一个VReg大小，避免Duplicate等向量指令写入时溢出
+    int64_t scaleQueueBuffer = Max(static_cast<int64_t>(AlignBytes(perLoopScaleCols_, sizeof(float))),
+                                   static_cast<int64_t>(AscendC::VECTOR_REG_WIDTH));
 
     pipe_->InitBuffer(inQueue_, GATHER_OUT_BUFFER_NUM, inQueueBuffer);
     pipe_->InitBuffer(outQueue_, GATHER_OUT_BUFFER_NUM, outQueueBuffer);
@@ -282,6 +283,7 @@ template <typename T, typename U>
 __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyExpandedXandFP8Quant(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = sortedRowIdxInQueue_.DeQue<int32_t>();
+    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     for (int64_t index = 0; index < currentLoopRows_; index++) {
         int32_t srcIdx = indicesLocal.GetValue(index);
@@ -297,6 +299,7 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyExpandedXandFP8Qu
             CopyOut(dstIdx, j, loopCols, loopScaleCols);
         }
     }
+    sortedRowIdxInQueue_.FreeTensor(indicesLocal);
 }
 
 template <typename T, typename U>
@@ -306,17 +309,6 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::CopyIn(int64_t srcIdx
 
     DataCopyExtParams copyParams = {1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
-
-    int64_t loopColsTail = loopCols % FP8_PERBLOCK_BLOCK_SIZE;
-    if (loopColsTail != 0) {
-        padParams.isPad = true;
-        if (loopColsTail > numElemPerUbBlock_) {
-            padParams.rightPadding = numElemPerUbBlock_ - (loopColsTail - numElemPerUbBlock_);
-        } else {
-            padParams.rightPadding = numElemPerUbBlock_;
-        }
-    }
-
     DataCopyPad<T, PaddingMode::Compact>(inLocal, xInGm_[srcIdx * cols_ + colIdx * perLoopCols_], copyParams,
                                          padParams);
 

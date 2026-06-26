@@ -33,5 +33,6 @@ struct MegaMoeTilingData {
     uint32_t aicNum;
     uint32_t blockAivNum;
     int64_t combineQuantMode;
+    uint8_t groupedMatmulMode;
 };
 #endif

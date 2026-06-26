@@ -26,6 +26,8 @@ from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_qu
 from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla import (
     convert_mixed_quant_sparse_flash_mla_metadata
 )
+from .scatter_pa_kv_cache_with_k_scale import scatter_pa_kv_cache_with_k_scale
+from .graph_convert.graph_convert_scatter_pa_kv_cache_with_k_scale import converter_scatter_pa_kv_cache_with_k_scale
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
 from .graph_convert.graph_convert_sparse_flash_mla import convert_sparse_flash_mla_metadata
 from .sparse_lightning_indexer_kl_loss_grad import (
@@ -40,3 +42,11 @@ from .graph_convert.graph_convert_quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .kv_compress_epilog import kv_compress_epilog
+from .indexer_quant_cache import indexer_quant_cache
+from .graph_convert.graph_convert_kv_compress_epilog import convert_kv_compress_epilog
+from .graph_convert.graph_convert_indexer_quant_cache import convert_indexer_quant_cache
+from .compressor import compressor
+from .graph_convert.graph_convert_compressor import convert_compressor
+from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
+from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul

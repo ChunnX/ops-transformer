@@ -293,18 +293,17 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
         layout::VectorLayout layoutPerChannelScale{blockSizeCoord.n()};
         layout::VectorLayout layoutPerTokenScale{blockSizeCoord.m()};
         layout::VectorLayout layoutBias{blockSizeCoord.n()};
+        __gm__ biasType *gmBiasOffset = (biasGM_ != 0)
+            ? (reinterpret_cast<__gm__ biasType *>(biasGM_) + blockLocCoord.n()) : nullptr;
         if (needPerChannel & needPerToken) {
             blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, perTokenScale + blockLocCoord.m(),
-                          layoutPerTokenScale, reinterpret_cast<__gm__ biasType *>(biasGM_) + blockLocCoord.n(),
-                          layoutBias, workspace + gmOffsetC, layout_tmp, gmPeerMem + gmOffsetC, layout_tmp,
-                          blockSizeCoord);
+                          layoutPerTokenScale, gmBiasOffset, layoutBias, workspace + gmOffsetC, layout_tmp,
+                          gmPeerMem + gmOffsetC, layout_tmp, blockSizeCoord);
         } else if (needPerChannel) {
-            blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                          reinterpret_cast<__gm__ biasType *>(biasGM_) + blockLocCoord.n(), layoutBias,
+            blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, gmBiasOffset, layoutBias,
                           workspace + gmOffsetC, layout_tmp, gmPeerMem + gmOffsetC, layout_tmp, blockSizeCoord);
         } else if (needPerToken) {
-            blockEpilogue(perTokenScale + blockLocCoord.m(), layoutPerTokenScale,
-                          reinterpret_cast<__gm__ biasType *>(biasGM_) + blockLocCoord.n(), layoutBias,
+            blockEpilogue(perTokenScale + blockLocCoord.m(), layoutPerTokenScale, gmBiasOffset, layoutBias,
                           gmPeerMem + gmOffsetC, layout_tmp, gmPeerMem + gmOffsetC, layout_tmp, blockSizeCoord);
         }
     }

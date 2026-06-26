@@ -918,6 +918,77 @@ FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContex
     return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &fiaInfo);
 }
 
+int32_t GetLayoutGroup(const std::string &inputLayoutStr)
+{
+    if (inputLayoutStr == "BNSD_BSND" || inputLayoutStr == "BSND_BNSD" || inputLayoutStr == "BNSD_NBSD" ||
+        inputLayoutStr == "BSND_NBSD" || inputLayoutStr == "BNSD" || inputLayoutStr == "BSND") {
+        return 0;
+    } else if (inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD" || inputLayoutStr == "BSH_BNSD") {
+        return 1;
+    } else if (inputLayoutStr == "TND" || inputLayoutStr == "NTD" || inputLayoutStr == "TND_NTD" ||
+               inputLayoutStr == "NTD_TND") {
+        return 2;
+    }
+    return -1;
+}
+
+bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::Shape &qStorageShape,
+    const gert::StorageShape *qRopeShape, int64_t numHeads, int64_t &queryD, int64_t &queryRopeD)
+{
+    if (layoutGroup == 0) {
+        if (qStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
+            return false;
+        }
+        queryD = qStorageShape.GetDim(BNSD_D_IDX);
+        if (qRopeShape != nullptr) {
+            queryRopeD = qRopeShape->GetStorageShape().GetDim(BNSD_D_IDX);
+        }
+    } else if (layoutGroup == 1) {
+        if (qStorageShape.GetDimNum() != DIM_BSH) {
+            return false;
+        }
+        queryD = qStorageShape.GetDim(BSH_H_IDX) / numHeads;
+        if (qRopeShape != nullptr) {
+            queryRopeD = qRopeShape->GetStorageShape().GetDim(BSH_H_IDX) / numHeads;
+        }
+    } else if (layoutGroup == 2) {
+        if (qStorageShape.GetDimNum() != DIM_TND) {
+            return false;
+        }
+        queryD = qStorageShape.GetDim(TND_NTD_D_IDX);
+        if (qRopeShape != nullptr) {
+            queryRopeD = qRopeShape->GetStorageShape().GetDim(TND_NTD_D_IDX);
+        }
+    } else {
+        return false;
+    }
+    return true;
+}
+
+bool GetValueDByLayoutGroup(int32_t layoutGroup, const gert::Shape &vStorageShape,
+    int64_t numKvHeads, int64_t &valueD)
+{
+    if (layoutGroup == 0) {
+        if (vStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
+            return false;
+        }
+        valueD = vStorageShape.GetDim(BNSD_D_IDX);
+    } else if (layoutGroup == 1) {
+        if (vStorageShape.GetDimNum() != DIM_BSH) {
+            return false;
+        }
+        valueD = vStorageShape.GetDim(BSH_H_IDX) / numKvHeads;
+    } else if (layoutGroup == 2) {
+        if (vStorageShape.GetDimNum() != DIM_TND) {
+            return false;
+        }
+        valueD = vStorageShape.GetDim(TND_NTD_D_IDX);
+    } else {
+        return false;
+    }
+    return true;
+}
+
 bool GetPaValueD(const gert::TilingContext *context, int64_t &valueD)
 {
     auto attrs = context->GetAttrs();
@@ -945,8 +1016,6 @@ bool GetValueD(gert::TilingContext *context, int64_t &valueD)
     if (vShape == nullptr) {
         return false;
     }
-    auto vStorageShape = vShape->GetStorageShape();
-
     bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr;
     if (isPageAttention) {
         return GetPaValueD(context, valueD);
@@ -959,28 +1028,8 @@ bool GetValueD(gert::TilingContext *context, int64_t &valueD)
         numKvHeads = numHeads;
     }
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    if (inputLayoutStr == "BNSD_BSND" || inputLayoutStr == "BSND_BNSD" || inputLayoutStr == "BNSD_NBSD" ||
-        inputLayoutStr == "BSND_NBSD" || inputLayoutStr == "BNSD" || inputLayoutStr == "BSND") {
-        if (vStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
-            return false;
-        }
-        valueD = vStorageShape.GetDim(BNSD_D_IDX);
-    } else if (inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD" || inputLayoutStr == "BSH_BNSD") {
-        if (vStorageShape.GetDimNum() != DIM_BSH) {
-            return false;
-        }
-        valueD = vStorageShape.GetDim(BSH_H_IDX) / numKvHeads;
-    } else if (inputLayoutStr == "TND" || inputLayoutStr == "NTD" || inputLayoutStr == "TND_NTD" ||
-               inputLayoutStr == "NTD_TND") {
-        if (vStorageShape.GetDimNum() != DIM_TND) {
-            return false;
-        }
-        valueD = vStorageShape.GetDim(TND_NTD_D_IDX);
-    } else {
-        return false;
-    }
-
-    return true;
+    int32_t layoutGroup = GetLayoutGroup(inputLayoutStr);
+    return GetValueDByLayoutGroup(layoutGroup, vShape->GetStorageShape(), numKvHeads, valueD);
 }
 
 bool GetQS(const gert::TilingContext *context, int64_t &queryS)
@@ -1019,45 +1068,16 @@ bool GetQkvD(gert::TilingContext *context, int64_t &queryD, int64_t &queryRopeD,
     if (qShape == nullptr) {
         return false;
     }
-    auto qStorageShape = qShape->GetStorageShape();
-
     auto attrs = context->GetAttrs();
     if (attrs == nullptr) {
         return false;
     }
-
     int64_t numHeads = *attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    if (inputLayoutStr == "BNSD_BSND" || inputLayoutStr == "BSND_BNSD" || inputLayoutStr == "BNSD_NBSD" ||
-        inputLayoutStr == "BSND_NBSD" || inputLayoutStr == "BNSD" || inputLayoutStr == "BSND") {
-        if (qStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
-            return false;
-        }
-        queryD = qStorageShape.GetDim(BNSD_D_IDX);
-        if (qRopeShape != nullptr) {
-            queryRopeD = qRopeShape->GetStorageShape().GetDim(BNSD_D_IDX);
-        }
-    } else if (inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD" || inputLayoutStr == "BSH_BNSD") {
-        if (qStorageShape.GetDimNum() != DIM_BSH) {
-            return false;
-        }
-        queryD = qStorageShape.GetDim(BSH_H_IDX) / numHeads;
-        if (qRopeShape != nullptr) {
-            queryRopeD = qRopeShape->GetStorageShape().GetDim(BSH_H_IDX) / numHeads;
-        }
-    } else if (inputLayoutStr == "TND" || inputLayoutStr == "NTD" || inputLayoutStr == "TND_NTD" ||
-               inputLayoutStr == "NTD_TND") {
-        if (qStorageShape.GetDimNum() != DIM_TND) {
-            return false;
-        }
-        queryD = qStorageShape.GetDim(TND_NTD_D_IDX);
-        if (qRopeShape != nullptr) {
-            queryRopeD = qRopeShape->GetStorageShape().GetDim(TND_NTD_D_IDX);
-        }
-    } else {
+    int32_t layoutGroup = GetLayoutGroup(inputLayoutStr);
+    if (!GetQueryDByLayoutGroup(layoutGroup, qShape->GetStorageShape(), qRopeShape, numHeads, queryD, queryRopeD)) {
         return false;
     }
-
     return GetValueD(context, valueD);
 }
 
@@ -1142,10 +1162,42 @@ bool CheckGqaFeatureSupport(const gert::TilingContext *context)
     return true;
 }
 
-bool CheckSpecConditions(const gert::TilingContext *context)
+bool CheckSpecCondNoPA(int64_t tempQD, int64_t tempKD, int64_t tempVD)
 {
+    bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) && (tempQD == tempKD && tempQD == tempVD);
+    return isFAIDSize;
+}
+
+bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::Shape &kShape,
+    const gert::Shape &vShape, int64_t kvHeadNum)
+{
+    int64_t tempKD = kShape.GetDim(DIM_2) / kvHeadNum;
+    int64_t tempVD = vShape.GetDim(DIM_2) / kvHeadNum;
+    int64_t blockSize = kShape.GetDim(DIM_1);
     constexpr int64_t BLOCKSIZE_ALIGN_16 = 16;
     constexpr int64_t MAX_BLOCKSIZE = 512;
+    bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) && (tempQD == tempKD && tempQD == tempVD);
+    bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
+    return isFAIDSize && blockSizeSupported;
+}
+
+bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::Shape &kShape,
+    const gert::Shape &vShape)
+{
+    int64_t tempKD = kShape.GetDim(DIM_2) * 16;
+    int64_t tempVD = vShape.GetDim(DIM_2) * 16;
+    int64_t blockSize = kShape.GetDim(DIM_3);
+    constexpr int64_t BLOCKSIZE_ALIGN_16 = 16;
+    constexpr int64_t MAX_BLOCKSIZE = 512;
+    bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) &&
+            (tempQD == tempKD && tempQD == tempVD) && (tempQD % BLOCKSIZE_ALIGN_16 == 0);
+    isFAIDSize = isFAIDSize && !(tempQD == 64U || tempQD == 128U);
+    bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
+    return isFAIDSize && blockSizeSupported;
+}
+
+bool CheckSpecConditions(const gert::TilingContext *context)
+{
     auto tempQ = context->GetInputShape(QUERY_INDEX);
     auto tempK = context->GetInputShape(KEY_INDEX);
     auto tempV = context->GetInputShape(VALUE_INDEX);
@@ -1181,43 +1233,22 @@ bool CheckSpecConditions(const gert::TilingContext *context)
     bool mhaConditions = isMha && !((qDataType == ge::DT_BF16) && (innerPrecise == 1)) &&
                          !((sparseMode == 0) && (tempAttnMaskShape != nullptr));
     bool nonMhaConditions = !isMha && (innerPrecise == 0);
-    bool specConditionFlag = false;
     bool quantScale2Flag = context->GetOptionalInputTensor(QUANT_SCALE2_INDEX) != nullptr ? true : false;
-    if (isLayoutSupported && isLearnableSinkFlag && !isRopeSplitMla && sparseModeSupported &&
-        (nonMhaConditions || mhaConditions) && !quantScale2Flag) {
-        int64_t tempQD = tempQ->GetStorageShape().GetDim(DIM_2);
-        if (!isPageAttention) {
-            int64_t tempKD = tempK->GetStorageShape().GetDim(DIM_2);
-            int64_t tempVD = tempV->GetStorageShape().GetDim(DIM_2);
-            bool isFAIDSize =
-                (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) && (tempQD == tempKD && tempQD == tempVD);
-            if (isFAIDSize) {
-                specConditionFlag = true;
-            }
-        } else if (kvDimNum == 3U) {
-            int64_t tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) / kvHeadNum;
-            int64_t tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) / kvHeadNum;
-            int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_1);
-            bool isFAIDSize =
-                (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) && (tempQD == tempKD && tempQD == tempVD);
-            bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
-            if (isFAIDSize && blockSizeSupported) {
-                specConditionFlag = true;
-            }
-        } else if (kvDimNum == 5U) {
-            int64_t tempKD = (tempK->GetStorageShape().GetDim(DIM_2)) * 16;
-            int64_t tempVD = (tempV->GetStorageShape().GetDim(DIM_2)) * 16;
-            int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_3);
-            bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) &&
-                    (tempQD == tempKD && tempQD == tempVD) && (tempQD % BLOCKSIZE_ALIGN_16 == 0);
-            isFAIDSize = isFAIDSize && !(tempQD == 64U || tempQD == 128U);
-            bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
-            if (isFAIDSize && blockSizeSupported) {
-                specConditionFlag = true;
-            }
-        }
+    if (!(isLayoutSupported && isLearnableSinkFlag && !isRopeSplitMla && sparseModeSupported &&
+          (nonMhaConditions || mhaConditions) && !quantScale2Flag)) {
+        return false;
     }
-    return specConditionFlag;
+
+    int64_t tempQD = tempQ->GetStorageShape().GetDim(DIM_2);
+    if (!isPageAttention) {
+        return CheckSpecCondNoPA(tempQD, tempK->GetStorageShape().GetDim(DIM_2),
+                                 tempV->GetStorageShape().GetDim(DIM_2));
+    } else if (kvDimNum == 3U) {
+        return CheckSpecCondPA3Dim(tempQD, tempK->GetStorageShape(), tempV->GetStorageShape(), kvHeadNum);
+    } else if (kvDimNum == 5U) {
+        return CheckSpecCondPA5Dim(tempQD, tempK->GetStorageShape(), tempV->GetStorageShape());
+    }
+    return false;
 }
 
 bool isNotLegacyGQA(gert::TilingContext *context)
@@ -1309,7 +1340,7 @@ bool CheckMlaConstrain(gert::TilingContext *context)
     return false;
 }
 
-bool RouteToFia(gert::TilingContext *context)
+bool CheckRouteToFiaPrerequisites(gert::TilingContext *context)
 {
     if ((context == nullptr) || context->GetAttrs() == nullptr || (context->GetInputDesc(QUERY_INDEX) == nullptr) ||
         (context->GetInputDesc(KEY_INDEX) == nullptr)) {
@@ -1320,11 +1351,26 @@ bool RouteToFia(gert::TilingContext *context)
     if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P) {
         return false;
     }
-
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     if ((aicNum != aivNum) && (aicNum * 2U != aivNum)) {
         OP_LOGI(context->GetNodeName(), "aicNum(%u):aivNum(%u) only support 1:1 or 1:2.", aicNum, aivNum);
+        return false;
+    }
+    return true;
+}
+
+bool IsLegacyTemplatePreferred(int64_t queryD, int64_t valueD, int64_t queryRopeD, int64_t queryS,
+    const std::string &inputLayoutStr, bool isPrefix, bool isMha, bool isPageAttention)
+{
+    return queryD == valueD && queryRopeD == 0 && queryS == 1 &&
+           (inputLayoutStr == "BNSD" || inputLayoutStr == "BSND" || inputLayoutStr == "BSH") &&
+           ((queryD == 256U && !isPrefix) || (queryD == 80U && isPrefix)) && isMha && !isPageAttention;
+}
+
+bool RouteToFia(gert::TilingContext *context)
+{
+    if (!CheckRouteToFiaPrerequisites(context)) {
         return false;
     }
 
@@ -1333,44 +1379,43 @@ bool RouteToFia(gert::TilingContext *context)
     bool isRopeSplit = (context->GetOptionalInputTensor(QUERY_ROPE_INDEX) != nullptr &&
                         context->GetOptionalInputTensor(KEY_ROPE_INDEX) != nullptr);
 
-    if ((qDataType == ge::DT_FLOAT16 || qDataType == ge::DT_BF16) && (qDataType == kDataType)) {
-        auto attrs = context->GetAttrs();
-        int64_t headNum = *(attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX));
-        int64_t kvHeadNum = *(attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX));
-        bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
-        bool isPageAttention = (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr);
-        bool isPrefix = (context->GetOptionalInputShape(KEY_SHARED_PREFIX_INDEX) != nullptr) ||
-                        (context->GetOptionalInputShape(VALUE_SHARED_PREFIX_INDEX) != nullptr);
-
-        int64_t queryD = 0;
-        int64_t queryRopeD = 0;
-        int64_t valueD = 0;
-        int64_t queryS = 0;
-        if (!GetQkvD(context, queryD, queryRopeD, valueD)) {
-            return false;
-        }
-        if (!GetQS(context, queryS)) {
-            return false;
-        }
-
-        const std::string inputLayoutStr =
-            std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-        // 部分场景性能在重构前的模板性能更好，路由到老模板处理
-        if (queryD == valueD && queryRopeD == 0 && queryS == 1 &&
-            (inputLayoutStr == "BNSD" || inputLayoutStr == "BSND" || inputLayoutStr == "BSH") &&
-            ((queryD == 256U && !isPrefix) || (queryD == 80U && isPrefix)) && isMha && !isPageAttention) {
-            return false;
-        }
-        if (!isRopeSplit) {
-            if (CheckSpecConditions(context)) {
-                return false;
-            }
-        }
-        if (inputLayoutStr == "NSD") {
-            return false;
-        }
-        return true;
+    if ((qDataType != ge::DT_FLOAT16 && qDataType != ge::DT_BF16) || (qDataType != kDataType)) {
+        return false;
     }
-    return false;
+
+    auto attrs = context->GetAttrs();
+    int64_t headNum = *(attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX));
+    int64_t kvHeadNum = *(attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX));
+    bool isMha = (kvHeadNum == 0) || (headNum == kvHeadNum);
+    bool isPageAttention = (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr);
+    bool isPrefix = (context->GetOptionalInputShape(KEY_SHARED_PREFIX_INDEX) != nullptr) ||
+                    (context->GetOptionalInputShape(VALUE_SHARED_PREFIX_INDEX) != nullptr);
+
+    int64_t queryD = 0;
+    int64_t queryRopeD = 0;
+    int64_t valueD = 0;
+    int64_t queryS = 0;
+    if (!GetQkvD(context, queryD, queryRopeD, valueD)) {
+        return false;
+    }
+    if (!GetQS(context, queryS)) {
+        return false;
+    }
+
+    const std::string inputLayoutStr =
+        std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
+    if (IsLegacyTemplatePreferred(queryD, valueD, queryRopeD,
+        queryS, inputLayoutStr, isPrefix, isMha, isPageAttention)) {
+        return false;
+    }
+    if (!isRopeSplit) {
+        if (CheckSpecConditions(context)) {
+            return false;
+        }
+    }
+    if (inputLayoutStr == "NSD") {
+        return false;
+    }
+    return true;
 }
 } // namespace optiling

@@ -42,10 +42,21 @@ constexpr int64_t SCALE_ATTR_INDEX = 3;
 
 constexpr int64_t QUANT_MODE_GROUP_QUANT_BF16 = 0;
 constexpr int64_t QUANT_MODE_GROUP_QUANT_E8M0 = 1;
-constexpr int64_t QUANT_MODE_HIFLOAT = 2;
+// quant_mode=2: rope 段 hifloat8 静态量化(x_scale) + nope 段 per-group FLOAT4_E2M1 动态量化(bf16 scale)
+constexpr int64_t QUANT_MODE_HIF8_FP4 = 2;
 
 constexpr int64_t DEFAULT_QUANT_GROUP_SIZE = 64;
 constexpr int64_t KV_CACHE_ROW_ALIGN = 128;
+// mode2: rope hifloat8 输出字节数(64 个元素 x 1B)
+constexpr int64_t ROPE_HIF8_BYTES = 64;
+// mode2: nope FLOAT4_E2M1 每个 scale 以 bf16(2B) 写出
+constexpr int64_t FP4_SCALE_BYTES = 2;
+// mode2 三套特化 VF: 每 64-元素块在行内 scratch 中占用的 bf16 槽位数 (32B 对齐, 前 4 槽有效 = 4 个 16-lane datablock)
+constexpr int64_t FP4_SCRATCH_SLOTS_PER_CHUNK = 16;
+// mode2 仅支持的三种 per-group 量化粒度
+constexpr int64_t FP4_GROUP_SIZE_16 = 16;
+constexpr int64_t FP4_GROUP_SIZE_32 = 32;
+constexpr int64_t FP4_GROUP_SIZE_64 = 64;
 constexpr int64_t DEFAULT_WORKSPACE_SIZE = 32;
 constexpr int64_t D_LENGTH_FULL_LOAD = 8192;
 
@@ -54,10 +65,15 @@ constexpr int64_t SLICE_SIZE = 64;
 constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
-// 4D paged cache view [blockNum, blockSize, 1, headDim]
+// 4D-only cache contract: cache 逻辑 shape 必须恰为 4D [blockNum, blockSize, 1, headDim]。
+//   - dim0 blockNum: 仅此维支持非连续(分页); dim1 blockSize: 每 block 的 token 数;
+//   - dim2 固定为 1 (每 token 写出一个压缩向量, 该轴不支持为变量);
+//   - dim3 headDim: 每 token 行宽(行步长), 须 >= 算子写出的 kvCacheCol。
 constexpr size_t CACHE_VIEW_DIM_NUM = 4;
 constexpr size_t CACHE_BLOCKNUM_DIM = 0;
 constexpr size_t CACHE_BLOCKSIZE_DIM = 1;
+constexpr size_t CACHE_ONE_DIM = 2;       // 倒数第二维, 必须 == 1
+constexpr int64_t CACHE_ONE_DIM_VALUE = 1;
 // per_block量化,每128个f16需要量化出一个scale, 因此切分尾轴时，以128为factor进行切分
 
 // ---------- TilingData Structure ----------

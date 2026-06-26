@@ -324,8 +324,8 @@ bool GroupedNoQuantMatmulTiling::CalMatMulTiling(const gert::TilingContext *cont
     if (groupNum_ < 1U || groupNum_ > MAX_TENSOR) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context->GetNodeName(), "groupNum", Ops::Transformer::Gmm::FormatString("%u", groupNum_).c_str(),
-            Ops::Transformer::Gmm::FormatString("The value of %s must be within the range [%d, %d]", "groupNum", 1,
-                                                1024)
+            Ops::Transformer::Gmm::FormatString("The value of %s must be within the range [%u, %u]", "groupNum", 1U,
+                                                MAX_TENSOR)
                 .c_str());
         return false;
     }

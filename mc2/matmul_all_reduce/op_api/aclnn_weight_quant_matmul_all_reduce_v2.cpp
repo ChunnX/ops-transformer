@@ -52,27 +52,27 @@ static bool CheckDtypeValid(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* scale, const aclTensor* offset,
     const aclTensor* x3, const aclTensor* output)
 {
-    const auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
-    const auto dtypeSupportList =
-        (npuArch == NpuArch::DAV_2002) ? DTYPE_SUPPORT_LIST_310P : DTYPE_SUPPORT_LIST;
+    const auto curArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
+    const auto supportedDtypeList =
+        (curArch == NpuArch::DAV_2002) ? DTYPE_SUPPORT_LIST_310P : DTYPE_SUPPORT_LIST;
 
-    const std::initializer_list<op::DataType> dtypeSupportListQuantA5 = {
+    const std::initializer_list<op::DataType> quantDtypeListA5 = {
         DataType::DT_INT8, DataType::DT_INT4, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
 
-    const std::initializer_list<op::DataType> dtypeSupportListBiasA5 = {
+    const std::initializer_list<op::DataType> biasDtypeListA5 = {
         DataType::DT_FLOAT16, DataType::DT_BF16};
 
-    const auto x2DtypeSupportList =
-        (npuArch == NpuArch::DAV_3510) ? dtypeSupportListQuantA5 : DTYPE_SUPPORT_LIST_QUANT;
+    const auto x2SupportedDtypeList =
+        (curArch == NpuArch::DAV_3510) ? quantDtypeListA5 : DTYPE_SUPPORT_LIST_QUANT;
 
-    const auto biasDtypeSupportList =
-        (npuArch == NpuArch::DAV_3510) ? dtypeSupportListBiasA5 : dtypeSupportList;
+    const auto biasSupportedDtypeList =
+        (curArch == NpuArch::DAV_3510) ? biasDtypeListA5 : supportedDtypeList;
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, dtypeSupportList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x1, supportedDtypeList, return false);
     // 对于量化来说，x2只为INT8/INT4
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, x2DtypeSupportList, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(scale, dtypeSupportList, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, dtypeSupportList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(x2, x2SupportedDtypeList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(scale, supportedDtypeList, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT(output, supportedDtypeList, return false);
     // 检查x1和scale的数据类型是否相同
     OP_CHECK_DTYPE_NOT_SAME(x1, scale, return false);
     // 检查x1和output的数据类型是否相同
@@ -80,17 +80,17 @@ static bool CheckDtypeValid(
 
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, biasDtypeSupportList, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(bias, biasSupportedDtypeList, return false);
             // 检查x1和bias的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
     }
     if (offset != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(offset, dtypeSupportList, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(offset, supportedDtypeList, return false);
         // 检查scale和offset的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(scale, offset, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, dtypeSupportList, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(x3, supportedDtypeList, return false);
         // 检查x1和x3的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(x3, x1, return false);
     }
@@ -145,24 +145,24 @@ static size_t CeilDiv(size_t x, size_t y)
 static bool IsAntiquantScaleShapeValid(
     const aclTensor* scale, const aclTensor* x1, const aclTensor* output, int64_t antiquantGroupSize)
 {
-    const size_t scaleLen = scale->GetViewShape().GetDimNum();
-    const size_t x1Len = x1->GetViewShape().GetDimNum();
+    const size_t scaleDimNum = scale->GetViewShape().GetDimNum();
+    const size_t x1DimNum = x1->GetViewShape().GetDimNum();
     op::Shape outShape = output->GetViewShape();
     if (antiquantGroupSize == 0) {
-        if ((scaleLen == DIM_LEN_ONE && (scale->GetViewShape().GetDim(0) == NUM_ONE ||
-                                         scale->GetViewShape().GetDim(0) == outShape.GetDim(x1Len - 1))) ||
-            (scaleLen == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == NUM_ONE &&
-             scale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
+        if ((scaleDimNum == DIM_LEN_ONE && (scale->GetViewShape().GetDim(0) == NUM_ONE ||
+                                          scale->GetViewShape().GetDim(0) == outShape.GetDim(x1DimNum - 1))) ||
+            (scaleDimNum == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == NUM_ONE &&
+             scale->GetViewShape().GetDim(1) == outShape.GetDim(x1DimNum - 1))) {
             return true;
         }
         return false;
     }
 
-    int64_t kValue = static_cast<int64_t>(CeilDiv(static_cast<size_t>(x1->GetViewShape().GetDim(x1Len - 1)),
+    int64_t kValue = static_cast<int64_t>(CeilDiv(static_cast<size_t>(x1->GetViewShape().GetDim(x1DimNum - 1)),
         static_cast<size_t>(antiquantGroupSize)));
     if (antiquantGroupSize > 0) {
-        if ((scaleLen == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == kValue &&
-             scale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
+        if ((scaleDimNum == DIM_LEN_TWO && scale->GetViewShape().GetDim(0) == kValue &&
+             scale->GetViewShape().GetDim(1) == outShape.GetDim(x1DimNum - 1))) {
             return true;
         }
         return false;
@@ -174,20 +174,20 @@ static bool CheckShape(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* scale, const aclTensor* offset,
     const aclTensor* x3, const aclTensor* output, int64_t antiquantGroupSize)
 {
-    bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
+    bool isWeightNzFmt = MatmulAllReduceIsWeightNZFormat(x2);
     OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
     OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
-    OP_LOGD("MatmulAllReduce, CheckShape isWeightNZ is %d", isWeightNZ);
-    if (isWeightNZ) {
+    OP_LOGD("MatmulAllReduce, CheckShape isWeightNZ is %d", isWeightNzFmt);
+    if (isWeightNzFmt) {
         return true;
     }
-    uint64_t weightDim = TWO_DIMS;
-    OP_LOGD("MatmulAllReduce, CheckShape weightDim is %lu", weightDim);
+    uint64_t expectedWeightDim = TWO_DIMS;
+    OP_LOGD("MatmulAllReduce, CheckShape weightDim is %lu", expectedWeightDim);
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
-    if (x2->GetViewShape().GetDimNum() != weightDim) {
+    if (x2->GetViewShape().GetDimNum() != expectedWeightDim) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnWeightQuantMatmulAllReduceV2", "x2",
             (std::to_string(x2->GetViewShape().GetDimNum()) + "D").c_str(),
-            ("The shape of x2 must be " + std::to_string(weightDim) + "D.").c_str());
+            ("The shape of x2 must be " + std::to_string(expectedWeightDim) + "D.").c_str());
         return false;
     }
     uint64_t x2Dim0 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ?
@@ -199,8 +199,8 @@ static bool CheckShape(
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
     const size_t x1Len = x1->GetViewShape().GetDimNum();
     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
-    uint64_t x1Dim1 = x1->GetViewShape().GetDim(x1Len - 1);
-    if (x1Dim1 != x2Dim0) {
+    int64_t x1Dim1 = x1->GetViewShape().GetDim(x1Len - 1);
+    if (x1Dim1 < 0 || static_cast<uint64_t>(x1Dim1) != x2Dim0) {
         OP_LOGE(
             ACLNN_ERR_PARAM_INVALID,
             "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
@@ -228,9 +228,9 @@ static bool CheckShape(
                 "The shape of bias must be 1D.");
             return false;
         }
-        op::Shape biasShape;
-        biasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
+        op::Shape expectedBiasShape;
+        expectedBiasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, expectedBiasShape, return false);
     }
 
     // x3 shape [s,m,n]
@@ -273,7 +273,7 @@ static bool CheckShape(
 }
 
 namespace ContiguousCheckImpl {
-static bool IsAffineInconsistent(const aclTensor *affineTensor, bool transposeX2)
+static bool IsAffineInconsistent(const aclTensor *affineTensor, bool isX2Transposed)
 {
     if (affineTensor == nullptr) {
         return false;
@@ -285,23 +285,23 @@ static bool IsAffineInconsistent(const aclTensor *affineTensor, bool transposeX2
     if (affineTensorShape.GetDim(0) == 1 || affineTensorShape.GetDim(1) == 1) {
         return false;
     }
-    return (transposeX2 && IsContiguous(affineTensor)) || (!transposeX2 && !IsContiguous(affineTensor));
+    return (isX2Transposed && IsContiguous(affineTensor)) || (!isX2Transposed && !IsContiguous(affineTensor));
 }
 
 static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const aclTensor *offset)
 {
     // check x2(weight) is transposed, scale and offset should also be transposed
-    const bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
-    const bool isNpuArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
+    const bool isX2Transposed = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
+    const bool isArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
     const bool isASCEND910B = (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B);
-    if ((!isNpuArch3510) && (!isASCEND910B)) {
+    if ((!isArch3510) && (!isASCEND910B)) {
         return true;
     }
-    if (IsAffineInconsistent(scale, transposeX2)) {
+    if (IsAffineInconsistent(scale, isX2Transposed)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When x2 is contiguous or transpose, scale should be consistent with it.");
         return false;
     }
-    if (IsAffineInconsistent(offset, transposeX2)) {
+    if (IsAffineInconsistent(offset, isX2Transposed)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When x2 is contiguous or transpose, offset should be consistent with it.");
         return false;
     }

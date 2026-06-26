@@ -208,9 +208,7 @@ public:
             pipe->InitBuffer(fdOutputBuf, BUFFER_SIZE_BYTE_16K);
 
             pipe->InitBuffer(fdLseMaxUbBuf1, BUFFER_SIZE_BYTE_256B);
-            // pipe->InitBuffer(fdLseSumUbBuf1, BUFFER_SIZE_BYTE_256B);
             pipe->InitBuffer(fdLseMaxUbBuf2, BUFFER_SIZE_BYTE_256B);
-            // pipe->InitBuffer(fdLseSumUbBuf2, BUFFER_SIZE_BYTE_256B);
             // OutQue, SYNC_LSEOUTPUT_BUF_FLAG
             pipe->InitBuffer(fdLseUbBuf, BUFFER_SIZE_BYTE_256B);
 
@@ -676,7 +674,6 @@ public:
 
         uint32_t reduceGlobaLoop = 0;
         uint32_t reduceMLoop = 0;
-
         uint32_t tmpFdS1gOuterMStart = 0;
         uint32_t tmpFdS1gOuterMEnd = fdBalanceMSplitNum - 1;
         taskInfo.bIdx = fd.fdBN2Idx / constInfo.n2Size;

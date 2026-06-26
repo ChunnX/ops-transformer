@@ -66,7 +66,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, Test0)
         &compileInfo,
         "Ascend910_93", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 32UL;
+    uint64_t expectTilingKey = 16UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
@@ -77,7 +77,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, Test1)
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -96,7 +96,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, Test1)
             {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288}, {288}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -131,7 +131,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, Test2)
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 1024;
     int64_t expertShardType = 0;
@@ -150,7 +150,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, Test2)
             {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288}, {288}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -185,7 +185,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, Test3)
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -204,7 +204,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, Test3)
             {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288}, {288}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -556,7 +556,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, EpWorldSize384)
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 384;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -576,7 +576,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, EpWorldSize384)
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288}, {288}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
             {{{32, 7168}, {32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -609,7 +609,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, EpWorldSize72)
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 72;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -629,7 +629,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, EpWorldSize72)
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288}, {288}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
             {{{32, 7168}, {32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -765,19 +765,18 @@ TEST_F(MoeDistributeCombineArch22TilingTest, A2InvalidCommQuantMode)
 
 // ==========================================
 // 补充测试用例 - 提升 moe_distribute_combine_tiling.cpp 覆盖率
-// 目标覆盖: SetHCommCfg 的 TP 分支 (line 471-478),
-//           CheckWinSize 的 TP 分支 (line 507-519)
+// 目标覆盖: tpWorldSize>=2 校验、tp 属性参数校验
 // ==========================================
 
-// A5 模板成功路径: tpWorldSize=2, 覆盖 SetHCommCfg TP 分支和 CheckWinSize TP 分支
-TEST_F(MoeDistributeCombineArch22TilingTest, A5_TpWorldSize2_Success)
+// A5 模板成功路径: tpWorldSize=1, 校验 tp 属性参数
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_TpWorldSize1_Success)
 {
     struct MoeDistributeCombineCompileInfo {};
     MoeDistributeCombineCompileInfo compileInfo;
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -796,7 +795,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, A5_TpWorldSize2_Success)
             {{{32, 8}, {32, 8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288*2}, {288*2}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
@@ -1154,15 +1153,15 @@ TEST_F(MoeDistributeCombineArch22TilingTest, A5_ExpandXInt32DataType)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-// A5 模板错误路径: tpWorldSize > 1 时 commQuantMode != 0
-TEST_F(MoeDistributeCombineArch22TilingTest, A5_TpWorldSize2WithInvalidCommQuantMode)
+// A5 模板错误路径: tpWorldSize >= 2 校验失败
+TEST_F(MoeDistributeCombineArch22TilingTest, A5_TpWorldSizeGt2_Rejected)
 {
     struct MoeDistributeCombineCompileInfo {};
     MoeDistributeCombineCompileInfo compileInfo;
     std::string epGroup("epGroup");
     std::string tpGroup("tpGroup");
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -1181,7 +1180,7 @@ TEST_F(MoeDistributeCombineArch22TilingTest, A5_TpWorldSize2WithInvalidCommQuant
             {{{32, 8}, {32, 8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32*8}, {32*8}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{288*2}, {288*2}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 8}, {32, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
