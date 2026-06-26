@@ -555,7 +555,7 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
     auto qScale = (__ubuf__ SCALE_T *)qScale_.GetPhyAddr();
     auto kScale = (__ubuf__ SCALE_T *)kScale_.GetPhyAddr();
     auto qk = (__ubuf__ QK_T *)qk_.GetPhyAddr();
-    auto out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
+    auto out = (__ubuf__ SCORE_T *)out_.GetPhyAddr();
 
     if (batch == 2) {
         auto weight1 = weight + weightStride;
@@ -563,14 +563,29 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
         auto qk1 = qk + qkStride;
         auto out1 = out + outStride;
 
-        MulWeightAndReduceSum2(out, out1, outStride,
-                               qk, qk1, qkVLStride, qkStride,
-                               weight, weight1, weightStride, weightFloat,
-                               kScale, kScaleStride,
-                               qScale, qScale1, qScaleStride,
-                               gSize);
+        if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+            printf("int8 qkdtype branch, uint32 vec1out!!!!!\n");
+            MulWeightAndReduceSum2(out, out1, outStride,
+                                qk, qk1, qkVLStride, qkStride,
+                                weight, weight1, weightStride, weightFloat,
+                                kScale, kScaleStride,
+                                qScale, qScale1, qScaleStride,
+                                gSize);
+        } else {
+            MulWeightAndReduceSum2(out, out1, outStride,
+                                qk, qk1, qkVLStride, qkStride,
+                                weight, weight1, weightStride, weightFloat,
+                                kScale, kScaleStride,
+                                qScale, qScale1, qScaleStride,
+                                gSize);
+        }
     } else {
-        MulWeightAndReduceSum(out, qk, qkVLStride, weight, kScale, qScale, gSize);
+        if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+            printf("int8 qkdtype branch, uint32 vec1out!!!!!\n");
+            MulWeightAndReduceSum(out, qk, qkVLStride, weight, kScale, qScale, gSize);
+        } else {
+            MulWeightAndReduceSum(out, qk, qkVLStride, weight, kScale, qScale, gSize);
+        }
     }
 }
 

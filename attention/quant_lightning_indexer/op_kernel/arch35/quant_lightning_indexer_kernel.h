@@ -71,6 +71,7 @@ public:
     static constexpr LI_LAYOUT K_LAYOUT_T = QLIT::keyLayout;
     using W_T = typename QLIT::weightType;
     using SCALE_T = typename QLIT::scaleType;
+    using SCORE_T = typename QLIT::scoreType;
 
     QLIMatmul<QLIT> matmulService;
     QLIVector<QLIT> vectorService;
@@ -163,6 +164,7 @@ __aicore__ inline void QLIPreload<QLIT>::InitTilingData(const QLITilingData *__r
     constInfo.keyStride0 = tilingData->keyStride0;
     constInfo.keyDequantScaleStride0 = tilingData->keyDequantScaleStride0;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
+
     if (Q_LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
     }
@@ -417,9 +419,9 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
 
     uint64_t offset = 0;
     //vec 把整个s2的score存储在GM，大小为s1BaseSize * 16K * 4
-    GlobalTensor<uint16_t> scoreGm; //存放vec核写出的score
-    uint64_t singleCoreScoreSize = constInfo.s1BaseSize * QLICommon::Align((uint64_t)constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize)  * sizeof(uint16_t);
-    scoreGm.SetGlobalBuffer((__gm__ uint16_t *)(workspace + aiCoreIdx * singleCoreScoreSize));
+    GlobalTensor<SCORE_T> scoreGm; //存放vec核写出的score
+    uint64_t singleCoreScoreSize = constInfo.s1BaseSize * QLICommon::Align((uint64_t)constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize)  * sizeof(SCORE_T);
+    scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + aiCoreIdx * singleCoreScoreSize));
     offset += GetBlockNum() * singleCoreScoreSize;
 
     if ASCEND_IS_AIV {
@@ -672,7 +674,11 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_
     } else {
         vectorService.ProcessVec1(runInfo);
         if (runInfo.isLastS2InnerLoop) {   //本核s2last
-            vectorService.ProcessTopK(runInfo);   
+            if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+                vectorService.ProcessTopK(runInfo); 
+            } else {
+                vectorService.ProcessUint32TopK(runInfo); 
+            }
         }
     }
 }
