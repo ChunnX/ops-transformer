@@ -54,6 +54,8 @@ constexpr int ATTR_BLOCK_SIZE_INDEX = 2;
 constexpr int ATTR_TOP_K_INDEX = 3;
 constexpr int ATTR_INNER_PRECISE_INDEX = 4;
 
+constexpr uint32_t SOC_VER_950_CODE = 4;
+
 namespace optiling {
 
 static inline uint32_t CeilDiv(uint32_t n1, uint32_t n2)
