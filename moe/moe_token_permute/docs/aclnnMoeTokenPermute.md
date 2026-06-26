@@ -52,10 +52,8 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
     const aclTensor  *indices, 
     int64_t           numOutTokens, 
     bool              paddedMode, 
-    int64_t           quantMode,
     const aclTensor  *permuteTokensOut, 
     const aclTensor  *sortedIndicesOut, 
-    const aclTensor  *expandedScaleOut,
     uint64_t         *workspaceSize, 
     aclOpExecutor   **executor)
 ```
@@ -98,8 +96,8 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>tokens</td>
       <td>输入</td>
       <td>输入token特征。</td>
-      <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li><li>Ascend 950非量化模式额外支持INT8；量化模式仅支持FLOAT16和BFLOAT16。</li></ul></td>
-      <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
+      <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>≥2</td>
       <td>√</td>
@@ -135,21 +133,11 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>-</td>
     </tr>
     <tr>
-      <td>quantMode</td>
-      <td>输入</td>
-      <td>量化模式。</td>
-      <td>Ascend 950支持-1（不量化）、2（MXFP8 E5M2）、3（MXFP8 E4M3FN）和9（MXFP4 E2M1）。其他平台静默忽略该参数。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>permuteTokensOut</td>
       <td>输出</td>
       <td>根据indices进行扩展并排序过的tokens。</td>
-      <td><ul><li>支持空tensor。</li><li>要求是一个维度大于等于2的Tensor，第一维的大小为min(num_tokens * topK, numOutTokens)。</li><li>除第一维外其余维度大小乘积与tokens除第一维外其余维度大小乘积相同。</li><li>quantMode为-1时数据类型同tokens；quantMode为2、3、9时分别为FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。</li></ul></td>
-      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
+      <td><ul><li>支持空tensor。</li><li>要求是一个维度大于等于2的Tensor，第一维的大小为min(num_tokens * topK, numOutTokens)。</li><li>除第一维外其余维度大小乘积与tokens除第一维外其余维度大小乘积相同。</li><li>数据类型同tokens。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>≥2</td>
       <td>×</td>
@@ -162,16 +150,6 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>expandedScaleOut</td>
-      <td>输出</td>
-      <td>量化后的per-token分块scale。</td>
-      <td>Ascend 950量化模式下有效。quantMode为2或3时shape为[M, AlignUp(CeilDiv(H, 32), 2)]；quantMode为9时shape为[M, CeilDiv(H, 64), 2]，其中M为有效输出token数、H为tokens隐藏维大小。非量化和其他平台传入shape为[0]、dtype为FLOAT32的空Tensor。</td>
-      <td>FLOAT8_E8M0、FLOAT32</td>
-      <td>ND</td>
-      <td>1、2或3</td>
       <td>×</td>
     </tr>
     <tr>
@@ -359,26 +337,21 @@ int main() {
     std::vector<int64_t> idxShape = {3, 2};
     std::vector<int64_t> expandedXOutShape = {6, 4};
     std::vector<int64_t> idxOutShape = {6};
-    std::vector<int64_t> expandedScaleOutShape = {0};
     void* xDeviceAddr = nullptr;
     void* indicesDeviceAddr = nullptr;
     void* expandedXOutDeviceAddr = nullptr;
     void* sortedIndicesOutDeviceAddr = nullptr;
-    void* expandedScaleOutDeviceAddr = nullptr;
     aclTensor* x = nullptr;
     aclTensor* indices = nullptr;
     int64_t numTokenOut = 0;
     bool padMode = false;
-    int64_t quantMode = -1;
 
     aclTensor* expandedXOut = nullptr;
     aclTensor* sortedIndicesOut = nullptr;
-    aclTensor* expandedScaleOut = nullptr;
     std::vector<float> xHostData = {0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2, 0.3, 0.3, 0.3, 0.3};
     std::vector<int> indicesHostData = {1, 2, 0, 1, 0, 2};
     std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> sortedIndicesOutHostData = {0, 0, 0, 0, 0, 0};
-    std::vector<float> expandedScaleOutHostData = {};
     // 创建self aclTensor
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -389,15 +362,12 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(sortedIndicesOutHostData, idxOutShape, &sortedIndicesOutDeviceAddr, aclDataType::ACL_INT32, &sortedIndicesOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandedScaleOutHostData, expandedScaleOutShape, &expandedScaleOutDeviceAddr,
-                          aclDataType::ACL_FLOAT, &expandedScaleOut);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
     // 调用aclnnMoeTokenPermute第一段接口
-    ret = aclnnMoeTokenPermuteGetWorkspaceSize(x, indices, numTokenOut, padMode, quantMode, expandedXOut,
-                                               sortedIndicesOut, expandedScaleOut, &workspaceSize, &executor);
+    ret = aclnnMoeTokenPermuteGetWorkspaceSize(x, indices, numTokenOut, padMode, expandedXOut,
+                                               sortedIndicesOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
@@ -433,14 +403,12 @@ int main() {
     aclDestroyTensor(indices);
     aclDestroyTensor(expandedXOut);
     aclDestroyTensor(sortedIndicesOut);
-    aclDestroyTensor(expandedScaleOut);
 
     // 7. 释放device资源，需要根据具体API的接口定义修改
     aclrtFree(xDeviceAddr);
     aclrtFree(indicesDeviceAddr);
     aclrtFree(expandedXOutDeviceAddr);
     aclrtFree(sortedIndicesOutDeviceAddr);
-    aclrtFree(expandedScaleOutDeviceAddr);
     if (workspaceSize > 0) {
       aclrtFree(workspaceAddr);
     }
