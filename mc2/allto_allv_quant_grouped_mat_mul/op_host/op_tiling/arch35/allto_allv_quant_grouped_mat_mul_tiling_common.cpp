@@ -264,7 +264,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
     OP_TILING_CHECK(epWorldSizePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "epWorldSize"), return ge::GRAPH_FAILED);
     int64_t rankDim = *epWorldSizePtr;
-    const size_t maxLength = 6UL;
+    const size_t maxLength = 7UL;
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
