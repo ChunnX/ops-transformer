@@ -96,13 +96,7 @@ bool GroupedQmmTiling::IsMicroScaling() const
     return inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
 }
 
-bool GroupedQmmTiling::IsMxfp4() const
-{
-    return (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
-           (inputParams_.bDtype == ge::DT_FLOAT4_E2M1 || inputParams_.bDtype == ge::DT_FLOAT4_E1M2);
-}
-
-bool GroupedQmmTiling::IsWeightNzSingleMultiSingleCandidate() const
+bool GroupedQmmTiling::IsWeightNzSingleMultiSingleLayout() const
 {
     return inputParams_.groupType == SPLIT_M && inputParams_.isSingleX && !inputParams_.isSingleW &&
            inputParams_.isSingleY && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
@@ -110,7 +104,7 @@ bool GroupedQmmTiling::IsWeightNzSingleMultiSingleCandidate() const
 
 bool GroupedQmmTiling::IsWeightNzSingleMultiSingleScenario() const
 {
-    return IsWeightNzSingleMultiSingleCandidate() && !(IsMxfp4() && inputParams_.hasBias);
+    return IsWeightNzSingleMultiSingleLayout() && !inputParams_.hasBias;
 }
 
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
@@ -124,9 +118,9 @@ uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
 
 bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
 {
-    OP_CHECK_IF(IsWeightNzSingleMultiSingleCandidate() && IsMxfp4() && inputParams_.hasBias,
-                OP_LOGE(inputParams_.opName,
-                        "In weightNz single-multi-single MXFP4 case, bias is not supported."),
+    OP_CHECK_IF(IsWeightNzSingleMultiSingleLayout() && inputParams_.hasBias,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "bias", "nonnull",
+                    "in weightNz single-multi-single case, bias must be nullptr"),
                 return false);
     if (!IsWeightNzSingleMultiSingleScenario()) {
         return true;
@@ -141,11 +135,13 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
                     std::to_string(weightTensorNum) + ", " + std::to_string(inputParams_.groupNum),
                     "in weightNz single-multi-single case, the tensor num of weight must equal group num"),
                 return false);
-    OP_CHECK_IF(scaleTensorNum != weightTensorNum,
-                OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "scale, weight",
-                    std::to_string(scaleTensorNum) + ", " + std::to_string(weightTensorNum),
-                    "in weightNz single-multi-single case, the tensor num of scale must equal weight"),
-                return false);
+    if (scaleTensorNum != 0 && inputParams_.cDtype != ge::DT_INT32) {
+        OP_CHECK_IF(scaleTensorNum != weightTensorNum,
+                    OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "scale, weight",
+                        std::to_string(scaleTensorNum) + ", " + std::to_string(weightTensorNum),
+                        "in weightNz single-multi-single case, the tensor num of scale must equal weight"),
+                    return false);
+    }
     return true;
 }
 
@@ -388,11 +384,13 @@ bool GroupedQmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
-    OP_CHECK_IF(wScaleDimNum != MXFP_TYPE_M_SCALE_DIM_NUM,
+    const size_t expectedWScaleDimNum =
+        IsWeightNzSingleMultiSingleLayout() ? MXFP_TYPE_K_SCALE_DIM_NUM : MXFP_TYPE_M_SCALE_DIM_NUM;
+    OP_CHECK_IF(wScaleDimNum != expectedWScaleDimNum,
                 OP_LOGE(inputParams_.opName,
-                        "When split m, the dim num of scale should be 4 in mx quant mode, but actual \
+                        "When split m, the dim num of scale should be %zu in mx quant mode, but actual \
 is %zu",
-                        wScaleDimNum),
+                        expectedWScaleDimNum, wScaleDimNum),
                 return false);
     OP_CHECK_IF(xScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
                 OP_LOGE(inputParams_.opName,
@@ -400,12 +398,12 @@ is %zu",
 actual is %zu",
                         xScaleDimNum),
                 return false);
-    auto wScaleEDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
     auto wScaleNDim = static_cast<uint64_t>(
-        inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2)); // 2 is index for the third dim
-    auto wScaleKDim =
-        static_cast<uint64_t>(inputParams_.transB ? wScaleShape.GetDim(2) : // 2 is index for the third dim
-                                                    wScaleShape.GetDim(1));
+        IsWeightNzSingleMultiSingleLayout() ? (inputParams_.transB ? wScaleShape.GetDim(0) : wScaleShape.GetDim(1)) :
+                                              (inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2)));
+    auto wScaleKDim = static_cast<uint64_t>(
+        IsWeightNzSingleMultiSingleLayout() ? (inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(0)) :
+                                              (inputParams_.transB ? wScaleShape.GetDim(2) : wScaleShape.GetDim(1)));
     auto xScaleMDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) : xScaleShape.GetDim(0));
     auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
     auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
@@ -413,6 +411,17 @@ actual is %zu",
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
     if (wScaleKDim != 1 && wScaleNDim != 1) {
+        if (IsWeightNzSingleMultiSingleLayout()) {
+            OP_CHECK_IF(
+                wScaleKDim != expectedKDimValue || wScaleNDim != logicalNSize ||
+                    wScaleLastDim != MXFP_MULTI_BASE_SIZE,
+                OP_LOGE_FOR_INVALID_SHAPE(
+                    inputParams_.opType, "scale", ShapeToString(wScaleShape),
+                    inputParams_.transB ? ShapeDimsToString(logicalNSize, expectedKDimValue, MXFP_MULTI_BASE_SIZE)
+                                        : ShapeDimsToString(expectedKDimValue, logicalNSize, MXFP_MULTI_BASE_SIZE)),
+                return false);
+        } else {
+            auto wScaleEDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
             OP_CHECK_IF(
                 wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue ||
                     wScaleNDim != logicalNSize || wScaleLastDim != MXFP_MULTI_BASE_SIZE,
@@ -423,6 +432,7 @@ actual is %zu",
                                     : ShapeDimsToString(inputParams_.groupNum, expectedKDimValue, logicalNSize,
                                                         MXFP_MULTI_BASE_SIZE)),
             return false);
+        }
     }
     OP_CHECK_IF(
         xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue || xScaleLastDim != MXFP_MULTI_BASE_SIZE,
@@ -592,25 +602,46 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t
 {
     auto wDimNum = wShape.GetDimNum();
     const uint64_t logicalNSize = expectedNSize == 0 ? inputParams_.nSize : expectedNSize;
-    OP_CHECK_IF(wDimNum != WEIGHTNZ_DIM_NUM,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight", std::to_string(wDimNum), "5"),
+    constexpr size_t weightNzMultiTensorDimNum = 4;
+    constexpr size_t weightNzMultiTensorLogicalDimNum = 2;
+    if (IsWeightNzSingleMultiSingleLayout() && wDimNum == weightNzMultiTensorLogicalDimNum) {
+        auto weightKDimValue = static_cast<uint64_t>(inputParams_.transB ? wShape.GetDim(1) : wShape.GetDim(0));
+        auto weightNDimValue = static_cast<uint64_t>(inputParams_.transB ? wShape.GetDim(0) : wShape.GetDim(1));
+        OP_CHECK_IF(weightKDimValue != inputParams_.kSize || weightNDimValue != logicalNSize,
+                    OP_LOGE_FOR_INVALID_SHAPE(
+                        inputParams_.opType, "weight", ShapeToString(wShape),
+                        inputParams_.transB ? ShapeDimsToString(logicalNSize, inputParams_.kSize)
+                                            : ShapeDimsToString(inputParams_.kSize, logicalNSize)),
+                    return false);
+        OP_CHECK_IF(1 == inputParams_.kSize || 1 == logicalNSize,
+                    OP_LOGE(context_->GetNodeName(),
+                            "When the weight is in Nz format, the last two logical axes n and k must not be 1 "
+                            "(MXFP4/FLOAT4 weight NZ: nSize>1 and kSize>1), actual nSize=%lu, kSize=%lu.",
+                            logicalNSize, inputParams_.kSize),
+                    return false);
+        return true;
+    }
+    size_t expectedWeightNzDimNum = IsWeightNzSingleMultiSingleLayout() ? weightNzMultiTensorDimNum : WEIGHTNZ_DIM_NUM;
+    OP_CHECK_IF(wDimNum != expectedWeightNzDimNum,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "weight", std::to_string(wDimNum),
+                                             std::to_string(expectedWeightNzDimNum)),
                 return false);
     const bool isWeight4Bit = inputParams_.bDtype == ge::DT_INT4 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
                               inputParams_.bDtype == ge::DT_FLOAT4_E1M2;
     const uint32_t weightNzLastDim = isWeight4Bit ? WEIGHTNZ_64 : WEIGHTNZ_32;
-    OP_CHECK_IF(static_cast<uint64_t>(wShape[WEIGHTNZ_FIFTH_DIM]) != static_cast<uint64_t>(weightNzLastDim),
+    OP_CHECK_IF(static_cast<uint64_t>(wShape[wDimNum - 1]) != static_cast<uint64_t>(weightNzLastDim),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams_.opType, "weight", ShapeToString(wShape),
-                    StrCat("when the format of weight is FRACTAL_NZ, fifth dimension must be ", weightNzLastDim,
+                    StrCat("when the format of weight is FRACTAL_NZ, last dimension must be ", weightNzLastDim,
                            " for ", (isWeight4Bit ? "4-bit" : "8-bit"), " weight")),
                 return false);
-    OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_16,
+    OP_CHECK_IF(wShape[wDimNum - 2] != WEIGHTNZ_16,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams_.opType, "weight", ShapeToString(wShape),
-                    "when the format of weight is FRACTAL_NZ, forth dimension must be 16"),
+                    "when the format of weight is FRACTAL_NZ, second last dimension must be 16"),
                 return false);
-    auto wShapeDimThird = static_cast<uint64_t>(wShape[WEIGHTNZ_THIRD_DIM]);
-    auto wShapeDimSecond = static_cast<uint64_t>(wShape[WEIGHTNZ_SECOND_DIM]);
+    auto wShapeDimThird = static_cast<uint64_t>(wShape[wDimNum - 3]);
+    auto wShapeDimSecond = static_cast<uint64_t>(wShape[wDimNum - 4]);
     if (!inputParams_.transB) {
         OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_16),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
