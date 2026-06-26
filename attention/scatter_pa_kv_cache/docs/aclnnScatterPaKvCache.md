@@ -34,8 +34,6 @@
     (v_head_size * sizeof(dtypeValue)) % 32 == 0
     ```
 
-    其中key和value的type可以相同，也可以不同
-
   - 场景二：
 
     ```
@@ -351,18 +349,17 @@ aclnnStatus aclnnScatterPaKvCache(
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="4">161002</td>
-      <td>参数key、value的数据类型不在支持的范围之内。</td>
-    </tr>
-    <tr>
-      <td>key、keyCacheRef、value、valueCacheRef的数据类型不一致。</td>
+      <td>参数key、value、slotMapping的数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>key的维数不等于3维或4维，value的维数不等于0维、3维或4维。</td>
     </tr>
     <tr>
+      <td>key、keyCacheRef、value、valueCacheRef的数据类型不一致。</td>
+    </tr>
+    <tr>
       <td>slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型不一致。</td>
     </tr>
-
   </tbody>
   </table>
 
