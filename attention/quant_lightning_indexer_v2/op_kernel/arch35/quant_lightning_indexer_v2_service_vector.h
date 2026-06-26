@@ -730,7 +730,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
         } else {
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero, validS2Len);
             if (outputIdxOffset != 0) {
-                topkb16gather::IndicesAddOffset(indiceOutLocal_, outputIdxOffset, constInfo_.sparseCount);
+                topkb16gather::IndicesAddOffset(indicesOutLocal_, outputIdxOffset, constInfo_.sparseCount);
             }
             // 如果需要LD 则将需要保存Value值
             if (info.isNeedLD) {
