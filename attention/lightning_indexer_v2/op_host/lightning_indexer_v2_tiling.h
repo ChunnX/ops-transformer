@@ -100,6 +100,7 @@ TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
+TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexerV2, LIV2TilingData)
@@ -164,6 +165,8 @@ public:
     int64_t cmpRatio = 1;
     uint32_t batchSupperFlag = 0;
     uint32_t returnValue = 0;
+    uint32_t keyStride0 = 0;
+    std::vector<uint32_t> keyStridesVec;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
@@ -213,6 +216,7 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
+    ge::graphStatus CheckKeyContiguous() const;
     void GenerateInfo(LIV2TilingInfo &liInfo);
     ge::graphStatus ParseAndCheck(LIV2TilingInfo &liInfo);
 
@@ -246,6 +250,8 @@ public:
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
     ge::DataType valuesOutType_ = ge::DT_FLOAT16;
+    std::vector<uint32_t> keyStridesVec_;
+    std::vector<uint32_t> keyDequantScaleStridesVec_;
 };
 
 // ---------------算子Tiling类---------------
