@@ -77,7 +77,7 @@ class ElasticBuffer:
 
 **输入参数**：
 - **num_entries** (`int`)：必选参数，Engram storage 的条目数，必须非负。
-- **hidden_size** (`int`)：必选参数，每个条目的隐藏维度，必须 128 数量对齐且非负。
+- **hidden_size** (`int`)：必选参数，每个条目的隐藏维度，必须 128 数量对齐且大于0。
 - **dtype** (`torch.dtype`)：可选参数，数据类型，默认为 `torch.bfloat16`。仅在此处用于按 dtype 计算字节数。
 
 **输出**：
