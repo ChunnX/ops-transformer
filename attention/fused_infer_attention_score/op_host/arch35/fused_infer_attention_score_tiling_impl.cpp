@@ -157,6 +157,84 @@ void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo
     }
 }
 
+void FusedInferAttentionScoreTilingImpl::InitImplParamPrefixFlag(const FiaTilingInfo &fiaInfo,
+                                                                 const gert::Tensor *actSharedPrefixLen,
+                                                                 uint32_t actSharedPrefixLenDims)
+{
+    if (!fiaInfo.sysPrefixFlag) {
+        actualSharedPrefixLenFlag_ = false;
+    } else {
+        if (fiaInfo.antiQuantFlag) {
+            actualSharedPrefixLenFlag_ = !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
+                                     (actSharedPrefixLen->GetData<int64_t>() == nullptr));
+        } else {
+            actualSharedPrefixLenFlag_ = !fiaInfo.isMaxWorkspace &&
+                                         !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
+                                           (actSharedPrefixLen->GetData<int64_t>() == nullptr));
+        }
+    }
+
+    if (fiaInfo.antiQuantFlag && fiaInfo.s1Size == 1 && fiaInfo.qLayout != FiaLayout::TND) {
+        actualSeqLenQFlag_ = false;
+    }
+}
+
+void FusedInferAttentionScoreTilingImpl::InitImplParamSeqLen(const FiaTilingInfo &fiaInfo,
+                                                             const gert::Tensor *actSeqLenQ,
+                                                             const gert::Tensor *actSeqLenKV,
+                                                             uint32_t actSeqLenQDims,
+                                                             uint32_t actSeqLenKVDims, uint32_t bIdx)
+{
+    if (actualSeqLenQFlag_) {
+        int64_t actSeqLenQData = 0;
+        if (actSeqLenQDims == 1) {
+            actSeqLenQData = actSeqLenQ->GetData<int64_t>()[0];
+        } else {
+            if (fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD) {
+                actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
+            } else {
+                if (bIdx == 0) {
+                    actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
+                } else {
+                    actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx] - actSeqLenQ->GetData<int64_t>()[bIdx - 1];
+                }
+            }
+        }
+        if (gsMergeFlag_) {
+            if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.qLayout == FiaLayout::BNSD) {
+                actualSeqLengthsQ_.push_back(fiaInfo.s1Size * fiaInfo.gSize);
+            } else {
+                actualSeqLengthsQ_.push_back(actSeqLenQData * fiaInfo.gSize);
+            }
+        } else {
+            actualSeqLengthsQ_.push_back(actSeqLenQData);
+        }
+    } else {
+        actualSeqLengthsQ_.push_back(gsSize_);
+    }
+
+    if (actualSeqLenKVFlag_) {
+        if (actSeqLenKVDims == 1) {
+            actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[0]);
+        } else {
+            if (fiaInfo.kvLayout != FiaLayout::TND && fiaInfo.kvLayout != FiaLayout::NTD) {
+                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
+            } else {
+                if (bIdx == 0) {
+                    actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
+                } else {
+                    actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx] -
+                                                  actSeqLenKV->GetData<int64_t>()[bIdx - 1]);
+                }
+            }
+        }
+    } else if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        actualSeqLengthsKV_.push_back(fiaInfo.kvListSeqLens[bIdx]);
+    } else {
+        actualSeqLengthsKV_.push_back(fiaInfo.s2Size);
+    }
+}
+
 void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaInfo)
 {
     const gert::Tensor *actSeqLenQ = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
@@ -197,72 +275,10 @@ void FusedInferAttentionScoreTilingImpl::InitImplParam(const FiaTilingInfo &fiaI
     }
     headDimAlign_ = AlignUp(fiaInfo.qkHeadDim, NUM_32);
 
-    if (!fiaInfo.sysPrefixFlag) {
-        actualSharedPrefixLenFlag_ = false;
-    } else {
-        if (fiaInfo.antiQuantFlag) {
-            actualSharedPrefixLenFlag_ = !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
-                                     (actSharedPrefixLen->GetData<int64_t>() == nullptr));
-        } else {
-            actualSharedPrefixLenFlag_ = !fiaInfo.isMaxWorkspace &&
-                                         !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
-                                           (actSharedPrefixLen->GetData<int64_t>() == nullptr));
-        }
-    }
-
-    if (fiaInfo.antiQuantFlag && fiaInfo.s1Size == 1 && fiaInfo.qLayout != FiaLayout::TND) {
-        actualSeqLenQFlag_ = false;
-    }
+    InitImplParamPrefixFlag(fiaInfo, actSharedPrefixLen, actSharedPrefixLenDims);
 
     for (uint32_t bIdx = 0; bIdx < fiaInfo.bSize; bIdx++) {
-        if (actualSeqLenQFlag_) {
-            int64_t actSeqLenQData = 0;
-            if (actSeqLenQDims == 1) {
-                actSeqLenQData = actSeqLenQ->GetData<int64_t>()[0];
-            } else {
-                if (fiaInfo.qLayout != FiaLayout::TND && fiaInfo.qLayout != FiaLayout::NTD) {
-                    actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-                } else {
-                    if (bIdx == 0) {
-                        actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-                    } else {
-                        actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx] - actSeqLenQ->GetData<int64_t>()[bIdx - 1];
-                    }
-                }
-            }
-            if (gsMergeFlag_) {
-                if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && fiaInfo.qLayout == FiaLayout::BNSD) {
-                    actualSeqLengthsQ_.push_back(fiaInfo.s1Size * fiaInfo.gSize);
-                } else {
-                    actualSeqLengthsQ_.push_back(actSeqLenQData * fiaInfo.gSize);
-                }
-            } else {
-                actualSeqLengthsQ_.push_back(actSeqLenQData);
-            }
-        } else {
-            actualSeqLengthsQ_.push_back(gsSize_);
-        }
-
-        if (actualSeqLenKVFlag_) {
-            if (actSeqLenKVDims == 1) {
-                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[0]);
-            } else {
-                if (fiaInfo.kvLayout != FiaLayout::TND && fiaInfo.kvLayout != FiaLayout::NTD) {
-                    actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-                } else {
-                    if (bIdx == 0) {
-                        actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-                    } else {
-                        actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx] -
-                                                      actSeqLenKV->GetData<int64_t>()[bIdx - 1]);
-                    }
-                }
-            }
-        } else if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
-            actualSeqLengthsKV_.push_back(fiaInfo.kvListSeqLens[bIdx]);
-        } else {
-            actualSeqLengthsKV_.push_back(fiaInfo.s2Size);
-        }
+        InitImplParamSeqLen(fiaInfo, actSeqLenQ, actSeqLenKV, actSeqLenQDims, actSeqLenKVDims, bIdx);
     }
 }
 
@@ -1235,79 +1251,92 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
         dVsize = DSIZE_512;
 
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {  // 伪量化场景
-        sInner = sInnerFactorSize_;
-        sOuter = sOuterFactor_;
-        if (sInner == 1024 && sOuter == 16 && dSize <= DSIZE_64 && dVsize <= DSIZE_64) { // 16:s1base 1024:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64;
-        } else if (sInner == 512 && sOuter == 16 && dSize <= DSIZE_64 && dVsize <= DSIZE_64) { // 16:s1base 512:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64;
-        } else if (sInner == 512 && sOuter == 16 && dSize <= DSIZE_128 && dVsize <= DSIZE_128) { // 16:s1base 512:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned512_DAligned128_DVAligned128;
-        } else if (sInner == 256 && sOuter == 16 && dSize <= DSIZE_256 && dVsize <= DSIZE_256) { // 16:s1base 256:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned256_DAligned256_DVAligned256;
-        } else if (sInner == 128 && sOuter == 16 && dSize <= DSIZE_512 && dVsize <= DSIZE_512) { // 16:s1base 128:s2base
-            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned128_DAligned512_DVAligned512;
-        } else if (sInner == 512 && sOuter == 32 && dSize <= 64 &&
-                   dVsize <= 64) {  // 以下为PFA伪量化合轴场景 32:s1base 512:s2base 64:dbase
-            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned64_DVAligned64;
-        } else if (sInner == 512 && sOuter == 32 && dSize <= DSIZE_128 &&
-                   dVsize <= DSIZE_128) {  // 32:s1base 512:s2base 128:dbase
-            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128;
-        } else if (sInner == 256 && sOuter == 32 && dSize <= DSIZE_256 &&
-                   dVsize <= DSIZE_256) {  // 32:s1base 256:s2base 256:dbase
-            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned256_DAligned256_DVAligned256;
-        } else if (sInner == 128 && sOuter == 32 && dSize <= DSIZE_512 &&
-                   dVsize <= DSIZE_512) {  // 32:s1base 128:s2base 512:dbase
-            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned128_DAligned512_DVAligned512;
-        } else {
-        }
+        UpdateTilingKeyAntiQuantConfig(sInner, sOuter, dSize, dVsize);
     } else {  // 非量化+全量化 场景
-        if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-            if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
-                tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128;
-            } else {
-                tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
-            }
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_192 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_128 && dSize == DSIZE_576 && dVsize == DSIZE_512) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64;  // qkvd不等长
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128;  // qkvd不等长
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64;  // qkvd不等长
-        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128;  // qkvd不等长
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
-        } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
-            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
+        UpdateTilingKeyNonQuantConfig(fiaInfo, sOuter, sInner, dSize, dVsize);
+    }
+}
+
+void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyAntiQuantConfig(uint32_t sInner, uint32_t sOuter,
+                                                                        uint32_t dSize, uint32_t dVsize)
+{
+    sInner = sInnerFactorSize_;
+    sOuter = sOuterFactor_;
+    if (sInner == 1024 && sOuter == 16 && dSize <= DSIZE_64 && dVsize <= DSIZE_64) { // 16:s1base 1024:s2base
+        tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64;
+    } else if (sInner == 512 && sOuter == 16 && dSize <= DSIZE_64 && dVsize <= DSIZE_64) { // 16:s1base 512:s2base
+        tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64;
+    } else if (sInner == 512 && sOuter == 16 && dSize <= DSIZE_128 && dVsize <= DSIZE_128) { // 16:s1base 512:s2base
+        tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned512_DAligned128_DVAligned128;
+    } else if (sInner == 256 && sOuter == 16 && dSize <= DSIZE_256 && dVsize <= DSIZE_256) { // 16:s1base 256:s2base
+        tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned256_DAligned256_DVAligned256;
+    } else if (sInner == 128 && sOuter == 16 && dSize <= DSIZE_512 && dVsize <= DSIZE_512) { // 16:s1base 128:s2base
+        tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned128_DAligned512_DVAligned512;
+    } else if (sInner == 512 && sOuter == 32 && dSize <= 64 &&
+                dVsize <= 64) {  // 以下为PFA伪量化合轴场景 32:s1base 512:s2base 64:dbase
+        tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned64_DVAligned64;
+    } else if (sInner == 512 && sOuter == 32 && dSize <= DSIZE_128 &&
+                dVsize <= DSIZE_128) {  // 32:s1base 512:s2base 128:dbase
+        tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128;
+    } else if (sInner == 256 && sOuter == 32 && dSize <= DSIZE_256 &&
+                dVsize <= DSIZE_256) {  // 32:s1base 256:s2base 256:dbase
+        tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned256_DAligned256_DVAligned256;
+    } else if (sInner == 128 && sOuter == 32 && dSize <= DSIZE_512 &&
+                dVsize <= DSIZE_512) {  // 32:s1base 128:s2base 512:dbase
+        tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned128_DAligned512_DVAligned512;
+    } else {
+    }
+}
+
+void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyNonQuantConfig(const FiaTilingInfo &fiaInfo,
+                                                                       uint32_t sOuter, uint32_t sInner,
+                                                                       uint32_t dSize, uint32_t dVsize)
+{
+    if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
+    } else if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
+    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
+    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128;
         } else {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
         }
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_192 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
+    } else if (sOuter == SOUTER_64 && sInner == SINNER_128 && dSize == DSIZE_576 && dVsize == DSIZE_512) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
+    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64;  // qkvd不等长
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128;  // qkvd不等长
+    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64;  // qkvd不等长
+    } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128;  // qkvd不等长
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
+    } else {
     }
 }
 
@@ -1651,16 +1680,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetDequantMMTilingData(const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaTilingInfo &fiaInfo)
+void FusedInferAttentionScoreTilingImpl::SetMaskTilingData(const FiaTilingInfo &fiaInfo)
 {
-    // 处理不能直接从fiaInfo赋值到tiling data
+    // mask 相关tiling data
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
     auto &singleCoreParams = pfaTilingData_.promptAttentionSingleCoreParams;
 
-    /*
-     *  mask,sparse mode 相关tiling data
-     */
     if (fiaInfo.attenMaskFlag) {
         uint64_t maskBatch = 1;
         uint64_t maskDimNum = fiaInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDimNum();
@@ -1684,6 +1710,12 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         baseParams.set_maskQsSize(0);
         baseParams.set_maskKVsSize(0);
     }
+}
+
+void FusedInferAttentionScoreTilingImpl::SetSparseTilingData(const FiaTilingInfo &fiaInfo)
+{
+    // sparse mode 相关tiling data
+    auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
 
     static std::map<uint32_t, uint8_t> sparseToCompressModeMap = {{SPARSE_MODE_NO_MASK, 0},
                                                                   {SPARSE_MODE_ALL_MASK, 0},
@@ -1726,34 +1758,14 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         }
         inputParams.set_sparseType(sparseType);
     }
+}
 
-    /*
-     *  alibi 相关tiling data
-     */
-    int64_t qStartIdx = 0;
-    int64_t kvStartIdx = 0;
-    auto qStartIdxTensor = fiaInfo.opParamInfo.qStartIdx.tensor;
-    auto kvStartIdxTensor = fiaInfo.opParamInfo.kvStartIdx.tensor;
-    ;
-    if (qStartIdxTensor != nullptr && qStartIdxTensor->GetShapeSize() >= 1) {
-        const int64_t *value = qStartIdxTensor->GetData<int64_t>();
-        if (value != nullptr) {
-            qStartIdx = value[0];
-        }
-    }
+void FusedInferAttentionScoreTilingImpl::SetLayoutTilingData(const FiaTilingInfo &fiaInfo)
+{
+    // layout 相关tiling data
+    auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
+    auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
 
-    if (kvStartIdxTensor != nullptr && kvStartIdxTensor->GetShapeSize() >= 1) {
-        const int64_t *value = kvStartIdxTensor->GetData<int64_t>();
-        if (value != nullptr) {
-            kvStartIdx = value[0];
-        }
-    }
-    inputParams.set_qStartIdx(qStartIdx);
-    inputParams.set_kvStartIdx(kvStartIdx);
-
-    /*
-     *  layout 相关tiling data 
-     */
     static std::map<FiaLayout, uint8_t> layoutStrToLayoutTypeMap = {
         {FiaLayout::BSH, 1}, {FiaLayout::TND, 4}, {FiaLayout::BSND, 1}, {FiaLayout::BNSD, 3}, {FiaLayout::NTD, 5},
     };
@@ -1765,6 +1777,24 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         inputParams.set_layoutType(iter->second);
         baseParams.set_layoutType(iter->second);
     }
+
+    const std::map<std::string, uint32_t> transposeLayoutMp = {{"BNSD_BSND", 1}, {"BSND_BNSD", 2}, {"BSH_BNSD", 3},
+                                                               {"BNSD_NBSD", 4}, {"BSND_NBSD", 5}, {"BSH_NBSD", 6},
+                                                               {"NTD_TND", 7},   {"TND_NTD", 8}};
+    string layout(fiaInfo.opParamInfo.layOut);
+    if (transposeLayoutMp.find(layout) != transposeLayoutMp.end()) {
+        inputParams.set_transposeLayout(transposeLayoutMp.at(layout));
+        baseParams.set_transposeLayout(transposeLayoutMp.at(layout));
+    } else {
+        inputParams.set_transposeLayout(0);
+        baseParams.set_transposeLayout(0);
+    }
+}
+
+void FusedInferAttentionScoreTilingImpl::SetPALayoutTilingData(const FiaTilingInfo &fiaInfo)
+{
+    auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
+    auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
 
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         if (fiaInfo.antiQuantFlag) {
@@ -1793,21 +1823,75 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
             }
         }
     }
+}
 
-    const std::map<std::string, uint32_t> transposeLayoutMp = {{"BNSD_BSND", 1}, {"BSND_BNSD", 2}, {"BSH_BNSD", 3},
-                                                               {"BNSD_NBSD", 4}, {"BSND_NBSD", 5}, {"BSH_NBSD", 6},
-                                                               {"NTD_TND", 7},   {"TND_NTD", 8}};
-    string layout(fiaInfo.opParamInfo.layOut);
-    if (transposeLayoutMp.find(layout) != transposeLayoutMp.end()) {
-        inputParams.set_transposeLayout(transposeLayoutMp.at(layout));
-        baseParams.set_transposeLayout(transposeLayoutMp.at(layout));
-    } else {
-        inputParams.set_transposeLayout(0);
-        baseParams.set_transposeLayout(0);
+void FusedInferAttentionScoreTilingImpl::CheckNeedInitFlag(const FiaTilingInfo &fiaInfo)
+{
+    int64_t preTokensPerbatch = 0;
+    int64_t nextTokensPerbatch = 0;
+    for (uint32_t i = 0; i < fiaInfo.bSize && fiaInfo.quantMode != FiaQuantMode::ANTI_QUANT; i++) {
+        if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
+            preTokensPerbatch = SPARSE_MODE_INT_MAX;
+            if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+                nextTokensPerbatch = actualSeqLengthsKV_[i] +
+                                     fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i] / fiaInfo.gSize;
+            } else {
+                nextTokensPerbatch = actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i];
+            }
+        } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
+            preTokensPerbatch = fiaInfo.preToken -
+                                actualSeqLengthsKV_[i] - fiaInfo.systemPrefixLen + actualSeqLengthsQ_[i];
+            nextTokensPerbatch = fiaInfo.nextToken +
+                                 actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i];
+        } else {
+            preTokensPerbatch = fiaInfo.preToken;
+            nextTokensPerbatch = fiaInfo.nextToken;
+        }
+        if ((nextTokensPerbatch < 0) ||
+            (actualSeqLengthsQ_[i] > (actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen + preTokensPerbatch))) {
+            needInit_ = true;
+        }
+        OP_LOGI(fiaInfo.opName, "preTokensPerbatch[%u] is %ld, nextTokensPerbatch[%u] is %ld",
+            i, preTokensPerbatch, i, nextTokensPerbatch);
+        OP_LOGI(fiaInfo.opName,
+            "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %ld, needInit is %u",
+            i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
     }
-    /*
-     *  伪量化 相关tiling data
-     */
+}
+
+ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaTilingInfo &fiaInfo)
+{
+    // 处理不能直接从fiaInfo赋值到tiling data
+    auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
+
+    SetMaskTilingData(fiaInfo);
+    SetSparseTilingData(fiaInfo);
+
+    // alibi 相关tiling data
+    int64_t qStartIdx = 0;
+    int64_t kvStartIdx = 0;
+    auto qStartIdxTensor = fiaInfo.opParamInfo.qStartIdx.tensor;
+    auto kvStartIdxTensor = fiaInfo.opParamInfo.kvStartIdx.tensor;
+    if (qStartIdxTensor != nullptr && qStartIdxTensor->GetShapeSize() >= 1) {
+        const int64_t *value = qStartIdxTensor->GetData<int64_t>();
+        if (value != nullptr) {
+            qStartIdx = value[0];
+        }
+    }
+
+    if (kvStartIdxTensor != nullptr && kvStartIdxTensor->GetShapeSize() >= 1) {
+        const int64_t *value = kvStartIdxTensor->GetData<int64_t>();
+        if (value != nullptr) {
+            kvStartIdx = value[0];
+        }
+    }
+    inputParams.set_qStartIdx(qStartIdx);
+    inputParams.set_kvStartIdx(kvStartIdx);
+
+    SetLayoutTilingData(fiaInfo);
+    SetPALayoutTilingData(fiaInfo);
+
+    // 伪量化 相关tiling data
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
         auto scaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
         uint32_t expectShape = 1;
@@ -1822,34 +1906,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         inputParams.set_antiquantPerTensorFlag(0);
     }
 
-    // needInit
-    int64_t preTokensPerbatch = 0;
-    int64_t nextTokensPerbatch = 0;
-    for (uint32_t i = 0; i < fiaInfo.bSize && fiaInfo.quantMode != FiaQuantMode::ANTI_QUANT; i++) {
-        if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
-            preTokensPerbatch = SPARSE_MODE_INT_MAX;
-            if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
-                nextTokensPerbatch = actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i] / fiaInfo.gSize;
-            } else {
-                nextTokensPerbatch = actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i];
-            }
-        } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
-            preTokensPerbatch = fiaInfo.preToken - actualSeqLengthsKV_[i] - fiaInfo.systemPrefixLen + actualSeqLengthsQ_[i];
-            nextTokensPerbatch = fiaInfo.nextToken + actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i];
-        } else {
-            preTokensPerbatch = fiaInfo.preToken;
-            nextTokensPerbatch = fiaInfo.nextToken;
-        }
-        if ((nextTokensPerbatch < 0) ||
-            (actualSeqLengthsQ_[i] > (actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen + preTokensPerbatch))) {
-            needInit_ = true;
-        }
-        OP_LOGI(fiaInfo.opName, "preTokensPerbatch[%u] is %ld, nextTokensPerbatch[%u] is %ld",
-                i, preTokensPerbatch, i, nextTokensPerbatch);
-        OP_LOGI(fiaInfo.opName,
-                "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %ld, needInit is %u",
-                i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
-    }
+    CheckNeedInitFlag(fiaInfo);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1890,6 +1947,14 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_remain(0);
     inputParams.set_rsv1(0);
     inputParams.set_seed(0);
+    SetFATilingDataInputParams(fiaInfo);
+    SetFATilingDataInitOutput(fiaInfo);
+    return ge::GRAPH_SUCCESS;
+}
+
+void FusedInferAttentionScoreTilingImpl::SetFATilingDataInputParams(const FiaTilingInfo &fiaInfo)
+{
+    auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     inputParams.set_offset(0);
     inputParams.set_keepProbUint8(0);
     inputParams.set_pseType(*fiaInfo.opParamInfo.pseType);
@@ -1936,7 +2001,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_s2SparseValidSize(0);  // 默认值，未使用
     inputParams.set_pseAlibiBaseS1(0);     // 默认值，未使用
     inputParams.set_pseAlibiBaseS2(0);     // 默认值，未使用
+}
 
+void FusedInferAttentionScoreTilingImpl::SetFATilingDataInitOutput(const FiaTilingInfo &fiaInfo)
+{
     auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
     int64_t outSize = fiaInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = fiaInfo.softmaxLseFlag ? fiaInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
@@ -1953,8 +2021,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     initOutputParams.set_totalSoftMaxLseOutputSize(lseSize);
     initOutputParams.set_needInit(fiaInfo.needInit || needInit_);
     initOutputParams.set_isOneN(0);  // 默认值,当前未使用
-
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingContext *context,
@@ -2026,15 +2092,23 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "deqScale2Flag:%d", faRunTilingAdapter_.inputParamsRegbase.get_deqScale2Flag());
     OP_LOGD(fiaInfo.opName, "isActualSeqLengthsNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsNull());
     OP_LOGD(fiaInfo.opName, "isActualSeqLengthsKVNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsKVNull());
-    OP_LOGD(fiaInfo.opName, "actualSeqLengthsSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsSize());
-    OP_LOGD(fiaInfo.opName, "actualSeqLengthsKVSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsKVSize());
+    PrintInputParams(fiaInfo);
+}
+
+void FusedInferAttentionScoreTilingImpl::PrintInputParams(const FiaTilingInfo &fiaInfo)
+{
+    OP_LOGD(fiaInfo.opName, "actualSeqLengthsSize:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsSize());
+    OP_LOGD(fiaInfo.opName, "actualSeqLengthsKVSize:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsKVSize());
     OP_LOGD(fiaInfo.opName, "isKvContinuous:%d", faRunTilingAdapter_.inputParamsRegbase.get_isKvContinuous());
     OP_LOGD(fiaInfo.opName, "fromFused:%d", faRunTilingAdapter_.inputParamsRegbase.get_fromFused());
     OP_LOGD(fiaInfo.opName, "isBSNDOut:%d", faRunTilingAdapter_.inputParamsRegbase.get_isBSNDOut());
     OP_LOGD(fiaInfo.opName, "transposeLayout:%d", faRunTilingAdapter_.inputParamsRegbase.get_transposeLayout());
     OP_LOGD(fiaInfo.opName, "isGqa:%d", faRunTilingAdapter_.inputParamsRegbase.get_isGqa());
     OP_LOGD(fiaInfo.opName, "isSoftMaxLseEnable:%d", faRunTilingAdapter_.inputParamsRegbase.get_isSoftMaxLseEnable());
-    OP_LOGD(fiaInfo.opName, "isActualSharedPrefixLenNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSharedPrefixLenNull());
+    OP_LOGD(fiaInfo.opName, "isActualSharedPrefixLenNull:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_isActualSharedPrefixLenNull());
     OP_LOGD(fiaInfo.opName, "isQHasLeftPadding:%d", faRunTilingAdapter_.inputParamsRegbase.get_isQHasLeftPadding());
     OP_LOGD(fiaInfo.opName, "isKVHasLeftPadding:%d", faRunTilingAdapter_.inputParamsRegbase.get_isKVHasLeftPadding());
     OP_LOGD(fiaInfo.opName, "prefixSeqInnerSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_prefixSeqInnerSize());
@@ -2050,15 +2124,19 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "logSumExpSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_logSumExpSize());
     OP_LOGD(fiaInfo.opName, "isPostQuantPerChnl:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantPerChnl());
     OP_LOGD(fiaInfo.opName, "isPostQuantBF16:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantBF16());
-    OP_LOGD(fiaInfo.opName, "antiquantPerTensorFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerTensorFlag());
-    OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
-    OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
+    OP_LOGD(fiaInfo.opName, "antiquantPerTensorFlag:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerTensorFlag());
+    OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
+    OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
 
     OP_LOGD(fiaInfo.opName, "coreNum:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_coreNum());
     OP_LOGD(fiaInfo.opName, "totalSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_totalSize());
     OP_LOGD(fiaInfo.opName, "s1OuterSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_s1OuterSize());
     OP_LOGD(fiaInfo.opName, "splitFactorSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorSize());
-    OP_LOGD(fiaInfo.opName, "splitFactorTailSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorTailSize());
+    OP_LOGD(fiaInfo.opName, "splitFactorTailSize:%d",
+            faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorTailSize());
     for (uint32_t i = 0; i < 48; i++) { // 48 cores
         OP_LOGD(fiaInfo.opName, "bnStartIdx[%d]:%d", i,
                 faRunTilingAdapter_.multiCoreParamsRegbase.get_bnStartIdxPtr()[i]);
@@ -2067,14 +2145,16 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
         OP_LOGD(fiaInfo.opName, "sparseStartIdx[%d]:%d", i,
                 faRunTilingAdapter_.multiCoreParamsRegbase.get_sparseStartIdxPtr()[i]);
     }
-    OP_LOGD(fiaInfo.opName, "firstFullLoadS1OuterIdx:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_firstFullLoadS1OuterIdx());
+    OP_LOGD(fiaInfo.opName, "firstFullLoadS1OuterIdx:%d",
+            faRunTilingAdapter_.multiCoreParamsRegbase.get_firstFullLoadS1OuterIdx());
     OP_LOGD(fiaInfo.opName, "splitCoreMode:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitCoreMode());
 
     OP_LOGD(fiaInfo.opName, "singleCoreSize:%d", faRunTilingAdapter_.initOutputParams.get_singleCoreSize());
     OP_LOGD(fiaInfo.opName, "needInit:%d", faRunTilingAdapter_.initOutputParams.get_needInit());
     OP_LOGD(fiaInfo.opName, "isOneN:%d", faRunTilingAdapter_.initOutputParams.get_isOneN());
     OP_LOGD(fiaInfo.opName, "totalOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalOutputSize());
-    OP_LOGD(fiaInfo.opName, "totalSoftMaxLseOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalSoftMaxLseOutputSize());
+    OP_LOGD(fiaInfo.opName, "totalSoftMaxLseOutputSize:%d",
+            faRunTilingAdapter_.initOutputParams.get_totalSoftMaxLseOutputSize());
 }
 ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingContext *context,
                                                                const FiaTilingInfo &fiaInfo)
