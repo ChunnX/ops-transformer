@@ -164,7 +164,7 @@ aclnnStatus aclnnGatherPaKvCache(
     <tr>
       <td class="tg-0pky">cacheMode（char*）</td>
       <td class="tg-0pky">输入</td>
-      <td class="tg-0pky">支持["Norm", "PA_NZ"]两种模式，分别表示输入keyCache和keyCache数据格式是ND、FRACTAL_NZ。</td>
+      <td class="tg-0pky">支持["Norm", "PA_NZ"]两种模式，分别表示输入keyCache和valueCache数据格式是ND、FRACTAL_NZ。</td>
       <td class="tg-0pky">-</td>
       <td class="tg-0pky">-</td>
       <td class="tg-0pky">-</td>
