@@ -16,7 +16,11 @@
 #ifndef QUANTIZE_FUNCTIONS_H
 #define QUANTIZE_FUNCTIONS_H
 
-#include "common.h"
+#if __has_include("../moe_distribute_dispatch_v2/op_kernel/common.h")
+#include "../moe_distribute_dispatch_v2/op_kernel/common.h"
+#else
+#include "../../moe_distribute_dispatch_v2/op_kernel/common.h"
+#endif
 
 namespace quant {
 
