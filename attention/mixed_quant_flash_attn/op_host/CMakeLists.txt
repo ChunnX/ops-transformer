@@ -20,7 +20,7 @@ endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(mixed_quant_flash_attn_depends attention/common CACHE INTERNAL "Dependencies for mixed_quant_flash_attn")
+    set(mixed_quant_flash_attn_depends attention/incre_flash_attention attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for mixed_quant_flash_attn")
     add_ops_compile_options(
         OP_NAME MixedQuantFlashAttn
         COMPUTE_UNIT Ascend950PR_9599
