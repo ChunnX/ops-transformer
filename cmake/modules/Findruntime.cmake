@@ -59,6 +59,5 @@ if(runtime_FOUND)
     ${RUNTIME_INC_DIR}
     ${RUNTIME_INC_DIR}/runtime
     ${RUNTIME_INC_DIR}/../profiling
-    ${RUNTIME_INC_DIR}/../
   )
 endif()
