@@ -80,6 +80,11 @@ TILING_DATA_FIELD_DEF(uint32_t, selectedBlockSize);
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio);
 TILING_DATA_FIELD_DEF(int64_t, oriWinLeft);
 TILING_DATA_FIELD_DEF(int64_t, oriWinRight);
+TILING_DATA_FIELD_DEF(uint32_t, deterministic);        // 0=非确定, 1=确定
+TILING_DATA_FIELD_DEF(uint64_t, dsinksDetWsOffset);    // d_sinks 保序 workspace 偏移(B, user相对)
+TILING_DATA_FIELD_DEF(uint64_t, cmpL1DetWsOffset);     // cmp_softmax_l1 保序 workspace 偏移(B, user相对)
+TILING_DATA_FIELD_DEF(uint64_t, dkvDetWsOffset);       // dKV 每核累加 workspace 偏移(B, user相对)
+TILING_DATA_FIELD_DEF(uint64_t, dkvDetStride);         // dKV 每核累加区步长(B) = main + additional
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaGradBasicParamsOp, SparseFlashMlaGradBasicParams)
 

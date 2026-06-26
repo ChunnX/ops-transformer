@@ -20,6 +20,7 @@
 #include "basic_modules/sparse_flash_mla_grad_vec_op.h"
 #include "basic_modules/sparse_flash_mla_grad_common_header.h"
 #include "post.h"
+#include "smlag_deterministic.h"
 
 namespace SMLAG_BASIC {
 
@@ -287,6 +288,19 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         vecOp.CopyOutDsinks();
         SyncAll();
         pipeVec.Destroy();
+
+        // 确定性通路：d_sinks 与 dKV 多核保序归约（替代跨核 atomicAdd）
+        if (tilingData->opInfo.deterministic == 1) {
+            TPipe pipeDet;
+            SMLAG_DET::SmlagDetPost<TILING_CLASS> detPost;
+            detPost.Init(dsinks, workspace, tilingData, &pipeDet);
+            detPost.ReduceDsinks();
+            // dKV：把各核私有累加区合并写回 dkWorkspace（Post 读取位置不变）
+            detPost.ReduceDkv();
+            pipeDet.Destroy();
+            // 保证所有 owner 写回 dkWorkspace 完成后，Post 再读取
+            SyncAll();
+        }
 
         TPipe pipeCast;
         SparseFlashMlaGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0, MODE> opCast;

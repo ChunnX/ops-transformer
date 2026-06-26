@@ -201,6 +201,43 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     workspaceOffsets = workspaceOffsets + dqWorkspaceLen;
     tilingData.postTilingData.set_dkWorkSpaceOffset(workspaceOffsets);
 
+    // ---- 确定性 workspace（追加到末尾，偏移为 user 相对，单位 B）----
+    uint64_t dsinksDetWsOffset = 0;
+    uint64_t cmpL1DetWsOffset = 0;
+    uint64_t dkvDetWsOffset = 0;
+    uint64_t dkvDetStride = 0;
+    if (tilingData.opInfo.get_deterministic() == 1) {
+        int64_t aivNum = currentUseCoreNum * 2;                  // 每个 AIC 配 2 个 AIV
+        int64_t userEnd = static_cast<int64_t>(workspaces[0]) - sysLen;   // user 相对末尾
+        // d_sinks: 每个 aiv 一个 [G] 槽位
+        dsinksDetWsOffset = static_cast<uint64_t>(userEnd);
+        int64_t dsinksDetWsLen = AlignData(aivNum * tilingData.opInfo.get_G() * B32, GM_ALIGN);
+        workspaces[0] += dsinksDetWsLen;
+        userEnd += dsinksDetWsLen;
+        if (tmpData.mode == SMLAG_SCFA_MODE) {
+            // cmp_softmax_l1: 每个 block 一个 [singleN] 槽位（按 aivNum 预留）
+            cmpL1DetWsOffset = static_cast<uint64_t>(userEnd);
+            int64_t cmpL1DetWsLen = AlignData(aivNum * tmpData.singleN * B32, GM_ALIGN);
+            workspaces[0] += cmpL1DetWsLen;
+            userEnd += cmpL1DetWsLen;
+        }
+        // dKV: 每核一份「main(dV/combined) + additional(dK)」全量累加区，避免跨核 atomicAdd
+        //      main 区 = dkWorkspaceLen；additional 区 = 非SCFA: dkWorkspaceLen / SCFA: additionalWorkspaceLen
+        // main 区与 additional 区长度均已按 GM_ALIGN 对齐，步长取其精确和即可（避免归约越界写）
+        int64_t extraLen = (tmpData.mode == SMLAG_SCFA_MODE)
+                               ? tilingData.opInfo.get_additionalWorkspaceLen()
+                               : dkWorkspaceLen;
+        dkvDetStride = static_cast<uint64_t>(dkWorkspaceLen + extraLen);
+        dkvDetWsOffset = static_cast<uint64_t>(userEnd);
+        int64_t dkvDetWsLen = static_cast<int64_t>(dkvDetStride) * currentUseCoreNum;
+        workspaces[0] += dkvDetWsLen;
+        userEnd += dkvDetWsLen;
+    }
+    tilingData.opInfo.set_dsinksDetWsOffset(dsinksDetWsOffset);
+    tilingData.opInfo.set_cmpL1DetWsOffset(cmpL1DetWsOffset);
+    tilingData.opInfo.set_dkvDetWsOffset(dkvDetWsOffset);
+    tilingData.opInfo.set_dkvDetStride(dkvDetStride);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -410,10 +447,10 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     const int64_t *cmpMaskModePtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::CMP_MASK_MODE));
 
     // -------------------------------------
-    if (context_->GetDeterministic() == 1) {
-        OP_LOGE(context_, "SparseFlashMlaGrad not support deterministic yet.");
-        return ge::GRAPH_FAILED;
-    }
+    // 确定性计算：记录开关，具体保序逻辑在 Kernel 内按 deterministic 分支执行。
+    // 当前已实现确定性：d_sinks、cmp_softmax_l1_norm；d_ori_kv/d_cmp_kv 保序为后续阶段。
+    uint32_t deterministic = (context_->GetDeterministic() == 1) ? 1U : 0U;
+    tilingData.opInfo.set_deterministic(deterministic);
 
     if (dimDq != dimOriKv) {
         OP_LOGE(context_, "The headDim of query, ori_kv should be the same. But got dimDq=%ld, dimOriKv=%ld",

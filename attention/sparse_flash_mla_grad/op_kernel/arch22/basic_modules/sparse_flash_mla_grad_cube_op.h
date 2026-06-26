@@ -215,6 +215,12 @@ private:
     int64_t dqAddr;
     int64_t dkAddr;
 
+    // 确定性：dKV 每核累加区（float 偏移/步长）
+    uint32_t deterministic{0};
+    int64_t dkvDetWsAddrF{0};   // dkvDetWsOffset / sizeof(float)
+    int64_t dkvStrideF{0};      // 每核步长(float) = main + additional
+    int64_t dkvMainLenF{0};     // main 区长度(float) = dkWorkspaceLen / sizeof(float)
+
     GM_ADDR workspace;                                          
 };
 
@@ -241,6 +247,11 @@ __aicore__ inline void CubeOp<SMLAGT>::Init(GM_ADDR query, GM_ADDR ori_kv, GM_AD
     oriWinLen = tilingData->opInfo.oriWinLeft + tilingData->opInfo.oriWinRight + 1;
     singleN = tilingData->splitCoreParams.singleN;
     s1BasicSize = tilingData->splitCoreParams.s1BasicSize;
+
+    deterministic = tilingData->opInfo.deterministic;
+    dkvDetWsAddrF = tilingData->opInfo.dkvDetWsOffset / sizeof(float);
+    dkvStrideF = tilingData->opInfo.dkvDetStride / sizeof(float);
+    dkvMainLenF = dkWorkspaceLen / sizeof(float);
 
     if constexpr (IS_BSND == false) {
         dOriKvSize = tilingData->opInfo.S2 * dimN2 * dimDqk;
