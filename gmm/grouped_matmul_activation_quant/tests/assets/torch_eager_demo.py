@@ -61,7 +61,6 @@ except ModuleNotFoundError:
 GE_DTYPE_FLOAT8_E4M3FN = 36
 GE_DTYPE_FLOAT8_E5M2 = 35
 E8M0_ONE_BYTE = 127
-ACL_FORMAT_ND = 2
 ACL_FORMAT_FRACTAL_NZ = 29
 DEFAULT_CASE_CSV = os.path.join(REPO_ROOT, "group_matmul_activation_quant_mxfp8_88.csv")
 
@@ -163,11 +162,19 @@ def load_case_from_csv(csv_path, case_index):
     }
 
 
+def count_cases(csv_path):
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"case csv not found: {csv_path}")
+    with open(csv_path, newline="", encoding="utf-8") as csv_file:
+        return sum(1 for _ in csv.DictReader(csv_file))
+
+
 def make_inputs(case, seed=20260617):
     e, m, k, n = case["e"], case["m"], case["k"], case["n"]
     log(f"prepare inputs from case_index={case['case_index']} {case['case_name']}: "
         f"E={e}, M={m}, K={k}, N={n}, seed={seed}")
     log(f"group_list_type={case['group_list_type']}, group_list={case['group_list'].tolist()}")
+    log("generate numpy inputs")
     rng = np.random.default_rng(seed)
 
     x_f32 = rng.uniform(-0.5, 0.5, size=(m, k)).astype(np.float32)
@@ -176,9 +183,11 @@ def make_inputs(case, seed=20260617):
     else:
         weight_f32 = rng.uniform(-0.25, 0.25, size=(e, k, n)).astype(np.float32)
 
+    log("convert numpy inputs to torch float8 on CPU")
     x_cpu = torch.from_numpy(x_f32).to(dtype_name_to_torch(case["x_dtype_name"]))
     weight_cpu = torch.from_numpy(weight_f32).to(torch.float8_e4m3fn)
 
+    log("prepare golden CPU arrays")
     x_golden = x_cpu.to(torch.float32).numpy()
     weight_golden = weight_cpu.to(torch.float32).numpy()
 
@@ -189,11 +198,11 @@ def make_inputs(case, seed=20260617):
         weight_scale_golden = np.ones((e, ceil_div(k, 64), n, 2), dtype=np.float32)
     group_list_golden = case["group_list"]
 
-    # x: must be ND
+    log("move x to NPU")
     x_npu = x_cpu.npu()
-    x_npu = torch_npu.npu_format_cast(x_npu, ACL_FORMAT_ND)
 
     # weight: must be FRACTAL_NZ
+    log("move weight to NPU")
     weight_npu = weight_cpu.npu()
     log(f"format cast weight to FRACTAL_NZ: before shape={tuple(weight_npu.shape)}, dim={weight_npu.dim()}")
     weight_npu = torch_npu.npu_format_cast(
@@ -205,23 +214,19 @@ def make_inputs(case, seed=20260617):
     if weight_npu.dim() != 3:
         raise RuntimeError(f"weight should keep 3D logical shape after npu_format_cast, but got {weight_npu.dim()}D.")
 
-    # scale and group_list: must be ND
     weight_scale_npu = torch.full(
         tuple(weight_scale_golden.shape),
         E8M0_ONE_BYTE,
         dtype=torch.uint8,
     ).npu()
-    weight_scale_npu = torch_npu.npu_format_cast(weight_scale_npu, ACL_FORMAT_ND)
 
     x_scale_npu = torch.full(
         (m, ceil_div(k, 64), 2),
         E8M0_ONE_BYTE,
         dtype=torch.uint8,
     ).npu()
-    x_scale_npu = torch_npu.npu_format_cast(x_scale_npu, ACL_FORMAT_ND)
 
     group_list_npu = torch.from_numpy(group_list_golden).npu()
-    group_list_npu = torch_npu.npu_format_cast(group_list_npu, ACL_FORMAT_ND)
 
     log(f"x format={get_format(x_npu)}, shape={tuple(x_npu.shape)}")
     log(f"weight format={get_format(weight_npu)}, shape={tuple(weight_npu.shape)}")
@@ -354,11 +359,21 @@ def main():
     parser.add_argument("--rtol", type=float, default=0.0)
     parser.add_argument("--case-csv", default=DEFAULT_CASE_CSV)
     parser.add_argument("--case-index", type=int, default=0)
+    parser.add_argument("--run-all", action="store_true")
     parser.add_argument("--seed", type=int, default=20260617)
     args = parser.parse_args()
 
     try:
-        run(args)
+        if args.run_all:
+            case_count = count_cases(args.case_csv)
+            log(f"run all cases from {args.case_csv}, total={case_count}")
+            for case_index in range(case_count):
+                args.case_index = case_index
+                log(f"========== run case_index={case_index} ==========")
+                run(args)
+            log(f"all {case_count} cases passed.")
+        else:
+            run(args)
     except Exception as err:
         log(f"FAILED: {type(err).__name__}: {err}")
         traceback.print_exc()
