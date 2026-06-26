@@ -187,9 +187,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
             rowIndexType_ = 1;
         }
         OP_CHECK_IF(!(rowIndexDtype == ge::DT_INT64 || rowIndexDtype == ge::DT_INT32),
-                    OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "row_index",
-                                              ge::TypeUtils::DataTypeToSerialString(rowIndexDtype),
-                                              "DT_INT64/DT_INT32"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        inputParams_.opType, "row_index", ge::TypeUtils::DataTypeToSerialString(rowIndexDtype),
+                        "when inputs are DT_INT8, the dtype of row_index must be within the range DT_INT64/DT_INT32"),
                     return false);
     }
 
@@ -463,9 +463,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
 
     if (!IsMicroScaling()) {
         OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opType, "weight",
-                                               ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
-                                               "FRACTAL_NZ"),
+                    OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+                        inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
+                        "in K-C/T-C quant mode, the format of weight must be FRACTAL_NZ"),
                     return false);
     }
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(context_->GetNodeName(), "SetGroupNum failed."), return false);
