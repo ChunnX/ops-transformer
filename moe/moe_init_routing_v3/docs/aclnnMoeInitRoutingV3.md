@@ -590,7 +590,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 - 空tensor处理：
   - 当输入的x首个维度的值为0时，DropPadMode必须为0,进入空tensor模板。expandedXOut、expandedRowIdxOut和expandedScaleOut的返回值为空tensor，expertTokensCountOrCumsumOut返回全0的tensor。
 
-- 不支持输入为inf/-inf/nan
+- 不支持输入为inf/-inf/nan。
 
 ## 调用示例
 
