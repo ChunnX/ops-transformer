@@ -10,7 +10,6 @@
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
-#include "lib/matmul_intf.h"
 #include "sparse_attention_score_tilingkey.h"
 #include "sparse_attention_score_kernel_interface.cpp"
 

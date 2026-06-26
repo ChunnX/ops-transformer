@@ -23,7 +23,8 @@
 #include "../attn_infra/epilogue/block/block_epilogue.hpp"
 #include "../attn_infra/epilogue/dispatch_policy.hpp"
 #include "kernel_operator.h"
-
+#include "lib/matmul_intf.h"
+#include "kernel_tiling/kernel_tiling.h"
 namespace SasaKernelArch22 {
 
 struct SasaKernelParamsArch22 {
