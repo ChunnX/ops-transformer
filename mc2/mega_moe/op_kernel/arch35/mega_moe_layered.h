@@ -1010,8 +1010,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
             int32_t tokenIndex = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOKEN_ID);
             int32_t tokenDumpNum = widthA < 64 ? static_cast<int32_t>(widthA) : 64;
             int32_t scaleDumpNum = widthAScale < 16 ? static_cast<int32_t>(widthAScale) : 16;
-            printf("[MMOE_DBG] before out block %d remoteRank %d token %d topk %d row %d copyIdx %d widthA %d scaleW %d\n",
-                static_cast<int32_t>(blockIdx_), remoteRankIdx, tokenIndex, topkIndex,
+            printf("[MMOE_DBG] before out rank %d block %d remoteRank %d token %d topk %d row %d copyIdx %d widthA %d scaleW %d\n",
+                rankId_, static_cast<int32_t>(blockIdx_), remoteRankIdx, tokenIndex, topkIndex,
                 rowDstOffsetInCore + copyIdx, copyIdx, static_cast<int32_t>(widthA),
                 static_cast<int32_t>(widthAScale));
             printf("[MMOE_DBG] copyTmp token first %d elems\n", tokenDumpNum);
