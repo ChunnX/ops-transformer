@@ -59,7 +59,7 @@ static ge::graphStatus CheckScaleShape(
 }
 
 static ge::graphStatus CheckMatmulKAndScale(const gert::InferShapeContext* context,
-    const gert::Shape* shape_x1, const gert::Shape* shape_x2, MatmulShapeInfo& shape,
+    const gert::Shape* shape_x2, MatmulShapeInfo& shape,
     bool is_trans_b, bool is_arn)
 {
     const auto shapeX2KIndex = is_trans_b ? 1U : 0U;
@@ -124,7 +124,7 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
     shape.m = shape_x1->GetDim(dim_num_x1 - 2U);
     shape.k = shape_x1->GetDim(dim_num_x1 - 1U);
     shape.n = is_trans_b ? shape_x2->GetDim(0U) : shape_x2->GetDim(1U);
-    if (CheckMatmulKAndScale(context, shape_x1, shape_x2, shape, is_trans_b, is_arn) != ge::GRAPH_SUCCESS) {
+    if (CheckMatmulKAndScale(context, shape_x2, shape, is_trans_b, is_arn) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     shape.output_dim = dim_num_x1;
