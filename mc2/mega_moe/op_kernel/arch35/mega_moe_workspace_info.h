@@ -190,7 +190,7 @@ struct WorkspaceInfo {
 
         relayReadScratchPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
-            static_cast<int64_t>(tilingData->aicNum * DISPATCH_BUFFER_NUM * recordBytes),
+            static_cast<int64_t>(tilingData->aicNum * 6 * recordBytes),
             static_cast<int64_t>(ALIGN_512));
         
     }
