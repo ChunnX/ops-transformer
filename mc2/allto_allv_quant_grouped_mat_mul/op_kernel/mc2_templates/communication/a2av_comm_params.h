@@ -80,11 +80,7 @@ __aicore__ inline void CalcA2avCommAfterParams(
 
     uint64_t rankBase = 0UL;
     for (uint64_t r = 0UL; r < rankDim; r++) {
-        uint64_t batchOffset = 0UL;
-        for (uint64_t i = 0UL; i < startExpertIdx; i++) {
-            batchOffset += static_cast<uint64_t>(rawSendCounts[i + r * e]);
-        }
-        params.sendOffset[r] = (rankBase + batchOffset) * axis;
+        params.sendOffset[r] = rankBase * axis;
         for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
             rankBase += static_cast<uint64_t>(rawSendCounts[expertIdx + r * e]);
         }

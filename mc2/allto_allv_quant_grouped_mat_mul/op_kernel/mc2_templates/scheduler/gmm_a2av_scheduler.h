@@ -59,8 +59,6 @@ public:
                     AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9U + curBuf);
                 } else {
                     computeOp_.Process(start, actualExpertNum);
-                    AscendC::CrossCoreSetFlag<0, PIPE_FIX>(8);
-                    AscendC::CrossCoreWaitFlag(8);
                     AscendC::CrossCoreSetFlag<2, PIPE_FIX>(9);
                 }
             }
@@ -86,10 +84,11 @@ public:
 
         if (useDoubleBuffer_) {
             uint32_t totalLoop = (e + expertNum - 1U) / expertNum;
-            uint32_t startAck = (totalLoop >= 2U) ? (totalLoop - 2U) : 0U;
-            for (uint32_t i = startAck; i < totalLoop; i++) {
+            uint32_t remaining = (totalLoop < 2U) ? 0U : (totalLoop - 2U);
+            for (uint32_t i = 0U; i < remaining; i++) {
                 if ASCEND_IS_AIC {
-                    AscendC::CrossCoreWaitFlag(11U + (i % 2U));
+                    uint32_t waitLoop = totalLoop - remaining + i;
+                    AscendC::CrossCoreWaitFlag(11U + (waitLoop % 2U));
                 }
             }
         } else {
