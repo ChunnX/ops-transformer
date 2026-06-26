@@ -43,10 +43,16 @@ __global__ __aicore__ void mega_moe(
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 #ifdef ENABLE_TENSOR_API
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-        using Op = MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DTYPE_WEIGHT2,
-            DispatchQuantOutType, CombineQuantOutType>;
-        if constexpr (!Op::SKIP_PROCESS) {
-            Op op;
+        // 不合规类型组合（框架自动编译，tiling 已拦截）：跳过实例化，避免深层模板报错。
+        //   E2M1 要求 weight 均为 fp4；E5M2 要求 weight 均为 fp8（不支持 fp4）。
+        constexpr bool w1IsFp4 = Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value;
+        constexpr bool w2IsFp4 = Std::IsSame<DTYPE_WEIGHT2, fp4x2_e2m1_t>::value;
+        constexpr bool skip =
+            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && !(w1IsFp4 && w2IsFp4)) ||
+            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && (w1IsFp4 || w2IsFp4));
+        if constexpr (!skip) {
+            MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DTYPE_WEIGHT2,
+                DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
             op.Process();

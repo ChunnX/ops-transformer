@@ -148,16 +148,6 @@ private:
     //       GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
     static constexpr bool ENABLE_A8W4_GMM2 = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value &&
                                             QuantMode != E5M2_QUANT;
-    // 下表为合法组合（✓），其余为不合规（框架自动编译，tiling 已拦截），SKIP_PROCESS 退化为空函数。
-    //   QuantMode=E4M3: weight 可以是 fp4 (a8w4) 或 fp8 (a8w8)
-    //   QuantMode=E2M1: weight 必须是 fp4 (a4w4)
-    //   QuantMode=E5M2: weight 必须是 fp8 (a8w8-e5m2)
-    static constexpr bool WEIGHT1_IS_FP4 = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value;
-    static constexpr bool WEIGHT2_IS_FP4 = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value;
-    static constexpr bool SKIP_PROCESS =
-        (QuantMode == E2M1_QUANT && !(WEIGHT1_IS_FP4 && WEIGHT2_IS_FP4)) ||
-        (QuantMode == E5M2_QUANT && (WEIGHT1_IS_FP4 || WEIGHT2_IS_FP4));
-
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
