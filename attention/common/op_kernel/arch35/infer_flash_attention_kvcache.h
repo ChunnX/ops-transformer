@@ -812,7 +812,8 @@ __aicore__ inline void ComputeOffsetAIV(const RunParamStr<isInfer>& runParam,
                     runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
             } else {
                 runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(
-                    runParam, (sInnerLoopIdx - constInfo.prefixLoopCount) * static_cast<int32_t>(s2TemplateType) + constInfo.actualKVPrefixSize);
+                    runParam, (sInnerLoopIdx - constInfo.prefixLoopCount) *
+                    static_cast<int32_t>(s2TemplateType) + constInfo.actualKVPrefixSize);
             }
         } else {
             runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(
