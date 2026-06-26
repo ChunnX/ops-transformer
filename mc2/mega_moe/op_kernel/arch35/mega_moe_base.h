@@ -27,6 +27,7 @@ struct Mc2MoeContext {
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer[1024] = {};
     uint64_t hcommHandle[1024] = {};   // 支持ROCE或者URMA
+    uint64_t urmacclBuffer_[HCCL_MAX_RANK_SIZE] = {};  // URMA通信buffer
     bool isCrossServer = false;
 };
 

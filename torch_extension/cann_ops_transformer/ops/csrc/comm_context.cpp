@@ -36,6 +36,7 @@ struct CommContext {
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {};   // 支持ROCE或者URMA
+    uint64_t urmacclBuffer_[HCCL_MAX_RANK_SIZE] = {};  // URMA通信buffer
     bool isCrossServer = false;
 };
 
@@ -239,10 +240,9 @@ public:
         }
 
         ASCEND_LOGI("start CheckProtocolSupport, layerNum is %d", layerNum);
-        CheckProtocolSupport(commHandle, layerList, layerNum, CommProtocol::COMM_PROTOCOL_UB_MEM);
+        CheckProtocolSupport(commHandle, layerList, layerNum, protocol);
 
         ASCEND_LOGI("CheckProtocolSupport success!");
-        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
     }
 
     void CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum,
@@ -319,7 +319,7 @@ public:
             bool allSupportUrma = true;
             // 检查本卡与该层所有卡之间是否全部支持URMA协议
             for (uint32_t rankIdx = 0; rankIdx < rankNumInLayer; ++rankIdx) {
-                if (rankIdLists[rankIdx] == srcRankId || urmalayerMap_.find(rankIdLists[rankIdx]) != urmalayerMap_.end()) {
+                if (rankIdLists[rankIdx] == srcRankId || urmaLayerMap_.find(rankIdLists[rankIdx]) != urmaLayerMap_.end()) {
                     continue;
                 }
                 hcclRet = HcclRankGraphGetLinksFunc(commHandle, layerList[layerIndex], srcRankId, rankIdLists[rankIdx],
@@ -334,7 +334,7 @@ public:
                     ASCEND_LOGE("Layer %d does not support URMA with rank %d, break loop", layerList[layerIndex], rankIdLists[rankIdx]);
                     return;
                 }
-                urmalayerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
+                urmaLayerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
             }
             if (allSupportUrma) {
                 rankNumPerUbDomain_ = rankNumInLayer;
