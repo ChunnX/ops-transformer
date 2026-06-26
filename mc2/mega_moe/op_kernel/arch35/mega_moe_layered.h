@@ -977,6 +977,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
     }
+    if (blockIdx_ < 2 && copyNum > 0) {
+        int32_t tripleDumpRows = copyNum < 2 ? copyNum : 2;
+        printf("[MMOE_DBG] triple local block %d remoteRank %d rowDst %d copyStart %d copyNum %d dumpRows %d\n",
+            static_cast<int32_t>(blockIdx_), remoteRankIdx, rowDstOffsetInCore, copyStartIdx, copyNum, tripleDumpRows);
+        PipeBarrier<PIPE_ALL>();
+        DumpTensor(tripleTensor_, 1, tripleDumpRows * INT32_PER_256B);
+    }
 
     // 6-buffer SW 流水 MTE2 + MTE3
     // Phase 2 prime: 发出前 BufferNum 个 token 的 MTE2
@@ -998,10 +1005,33 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         LocalTensor<ActivationType> tokenScalebuf = copyTmpTensors_[outIdx];
         LocalTensor<QuantScaleOutType> bufScale =
             tokenScalebuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
+        if (blockIdx_ < 2 && copyIdx < 2) {
+            int32_t topkIndex = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOPK_INDEX);
+            int32_t tokenIndex = tripleTensor_[copyIdx * INT32_PER_256B].GetValue(TOKEN_ID);
+            int32_t tokenDumpNum = widthA < 64 ? static_cast<int32_t>(widthA) : 64;
+            int32_t scaleDumpNum = widthAScale < 16 ? static_cast<int32_t>(widthAScale) : 16;
+            printf("[MMOE_DBG] before out block %d remoteRank %d token %d topk %d row %d copyIdx %d widthA %d scaleW %d\n",
+                static_cast<int32_t>(blockIdx_), remoteRankIdx, tokenIndex, topkIndex,
+                rowDstOffsetInCore + copyIdx, copyIdx, static_cast<int32_t>(widthA),
+                static_cast<int32_t>(widthAScale));
+            printf("[MMOE_DBG] copyTmp token first %d elems\n", tokenDumpNum);
+            DumpTensor(tokenScalebuf, 1, tokenDumpNum);
+            printf("[MMOE_DBG] copyTmp scale first %d elems\n", scaleDumpNum);
+            DumpTensor(bufScale, 1, scaleDumpNum);
+        }
         DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScalebuf,
             {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
         DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
             {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+        if (blockIdx_ < 2 && copyIdx < 2) {
+            int32_t tokenDumpNum = widthA < 64 ? static_cast<int32_t>(widthA) : 64;
+            PipeBarrier<PIPE_ALL>();
+            DataCopy(copyTmpTensors_[outIdx], tokenRevGlobalTensor[copyIdx * widthA], tokenDumpNum);
+            PipeBarrier<PIPE_ALL>();
+            printf("[MMOE_DBG] dispatchRevData row %d readback first %d elems\n",
+                rowDstOffsetInCore + copyIdx, tokenDumpNum);
+            DumpTensor(copyTmpTensors_[outIdx], 1, tokenDumpNum);
+        }
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
 
         // 发下一个槽的 MTE2 (copyIdx + BufferNum,复用 outIdx 槽)
