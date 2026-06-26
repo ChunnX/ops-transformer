@@ -1406,21 +1406,11 @@ ge::graphStatus CheckFAIAvailability(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, FAInferContext& faInfo, uint32_t aicoreNum)
+static void InitFAIBasicInfo(gert::TilingContext *context, FAInferContext& faInfo)
 {
-    constexpr int64_t KV_ACTUAL_SEQ_LEN_1024 = 1024;
- 	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_16 = 16;
- 	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_0 = 0;
- 	constexpr int32_t EMBEDDING_SIZE_128 = 128;
- 	constexpr int64_t GROUP_SIZE_128 = 128;
-    constexpr int32_t DECODING_PAGE_BLOCK_SIZE_128 = 128;
-
-    auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
     auto tempQ = context->GetInputShape(QUERY_INDEX);
     auto tempK = context->GetInputShape(KEY_INDEX);
     auto tempV = context->GetInputShape(VALUE_INDEX);
-    auto actualQSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
-    auto actualKvSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
     auto blockTable = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
     auto pseShift = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
     auto attrs = context->GetAttrs();
@@ -1460,6 +1450,14 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     faInfo.lseFlag = lseFlag;
     faInfo.learnableSinkFlag = learnableSinkFlag;
     faInfo.innerPrecise = innerPrecise;
+}
+
+static void SetFAIExtraParams(gert::TilingContext *context, FAInferContext& faInfo)
+{
+    auto tempQ = context->GetInputShape(QUERY_INDEX);
+    auto tempK = context->GetInputShape(KEY_INDEX);
+    auto tempV = context->GetInputShape(VALUE_INDEX);
+    auto blockTable = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
     if (faInfo.pagedCacheFlag) {
         constexpr int64_t HEAD_SIZE_ALIGN_16 = 16;
         bool isHeadSizeAligned = (tempQ->GetStorageShape().GetDim(DIM_2) % HEAD_SIZE_ALIGN_16 == 0);
@@ -1473,6 +1471,9 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.embeddingSize = tempQ->GetStorageShape().GetDim(DIM_2);
         faInfo.embeddingSizeV = faInfo.embeddingSize;
     }
+    auto attrs = context->GetAttrs();
+    int32_t sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
+    auto pseShift = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
     auto pseCheck = CheckFAIPseShift(context);
     if (pseShift == nullptr) {
         faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
@@ -1484,61 +1485,92 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.pseQ = pseShift->GetStorageShape().GetDim(DIM_2);
         faInfo.pseKv = pseShift->GetStorageShape().GetDim(DIM_3);
     }
+}
+
+static void SetFAIDecodeFlags(FAInferContext& faInfo, uint32_t aicoreNum, int32_t batch,
+    int64_t maxQSeqlen, int64_t minQSeqlen, int64_t maxKVSeqlen)
+{
+    constexpr int64_t KV_ACTUAL_SEQ_LEN_1024 = 1024;
+    constexpr int64_t QUERY_ACTUAL_SEQ_LEN_16 = 16;
+    constexpr int64_t QUERY_ACTUAL_SEQ_LEN_0 = 0;
+    constexpr int32_t EMBEDDING_SIZE_128 = 128;
+    constexpr int64_t GROUP_SIZE_128 = 128;
+    constexpr int32_t DECODING_PAGE_BLOCK_SIZE_128 = 128;
+    uint32_t numTasks = faInfo.batch * faInfo.kvHeads;
+    bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (maxKVSeqlen >= aicoreNum * 512);
+    bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024);
+    if ((faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) &&
+        !(faInfo.maskType == MaskType::SWA_MASK) &&
+        (!faInfo.learnableSinkFlag) &&
+        !(faInfo.innerPrecise == 1) &&
+        (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) &&
+        (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) &&
+        (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
+        (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
+        (isLongSeq || isShortSeq)) {
+        faInfo.flashDecodeFlag = true; 
+    }
+    if (faInfo.pagedCacheFlag && maxQSeqlen == 1 && minQSeqlen == 1 && faInfo.maskType == MaskType::NO_MASK &&
+        (batch >= aicoreNum) && (faInfo.blockSize == DECODING_PAGE_BLOCK_SIZE_128) &&
+        !faInfo.lseFlag && !faInfo.learnableSinkFlag && (faInfo.innerPrecise == 0) &&
+        ((faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128)) {
+        faInfo.decodingFlag = true;
+    }
+}
+
+static void CalcFAISeqLenStats(FAInferContext& faInfo, int32_t batch,
+    const int64_t *actualSeqQTnd, const int64_t *actualSeqKvTnd,
+    int64_t& maxQSeqlen, int64_t& minQSeqlen, int64_t& maxKVSeqlen)
+{
+    faInfo.qSeqlenList = actualSeqQTnd;
+    faInfo.kvSeqlenList = actualSeqKvTnd;
+    faInfo.isTilingSink = false;
+    maxQSeqlen = 0;
+    minQSeqlen = INT64_MAX;
+    maxKVSeqlen = 0;
+    for (int32_t batchIdx = 0; batchIdx < batch; batchIdx++) {
+        int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
+        int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
+        if (faInfo.layout == "TND") {
+            if (batchIdx > 0) {
+                int64_t prevQSeqlenSum = *(actualSeqQTnd + batchIdx - 1);
+                qSeqlen = qSeqlen - prevQSeqlenSum;
+                if (!faInfo.pagedCacheFlag) {
+                    int64_t prevKvSeqlenSum = *(actualSeqKvTnd + batchIdx - 1);
+                    kvSeqlen = kvSeqlen - prevKvSeqlenSum;
+                }
+            }
+        }
+        if (qSeqlen > maxQSeqlen) {
+            maxQSeqlen = qSeqlen;
+        }
+        if (qSeqlen < minQSeqlen) {
+            minQSeqlen = qSeqlen;
+        }
+        if (kvSeqlen > maxKVSeqlen) {
+            maxKVSeqlen = kvSeqlen;
+        }
+    }
+}
+
+static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, FAInferContext& faInfo, uint32_t aicoreNum)
+{
+    InitFAIBasicInfo(context, faInfo);
+    SetFAIExtraParams(context, faInfo);
+    auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
+    auto actualQSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
+    auto actualKvSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
     faInfo.dataType = static_cast<DataType>(qDataType == ge::DT_BF16);
     int32_t batch = actualQSeq->GetShapeSize();
     faInfo.batch = batch;
     const int64_t *actualSeqQTnd = actualQSeq->GetData<int64_t>();
     const int64_t *actualSeqKvTnd = actualKvSeq->GetData<int64_t>();
     if (actualSeqQTnd != nullptr && actualSeqKvTnd != nullptr) {
-        faInfo.qSeqlenList = actualSeqQTnd;
-        faInfo.kvSeqlenList = actualSeqKvTnd;
-        faInfo.isTilingSink = false;
         int64_t maxQSeqlen = 0;
         int64_t minQSeqlen = INT64_MAX;
         int64_t maxKVSeqlen = 0;
-        for (int32_t batchIdx = 0; batchIdx < batch; batchIdx++) {
-            int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
-            int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
-            if (faInfo.layout == "TND") {
-                if (batchIdx > 0) {
-                    int64_t prevQSeqlenSum = *(actualSeqQTnd + batchIdx - 1);
-                    qSeqlen = qSeqlen - prevQSeqlenSum;
-                    if (!faInfo.pagedCacheFlag) {
-                        int64_t prevKvSeqlenSum = *(actualSeqKvTnd + batchIdx - 1);
-                        kvSeqlen = kvSeqlen - prevKvSeqlenSum;
-                    }
-                }
-            }
-            if (qSeqlen > maxQSeqlen) {
-                maxQSeqlen = qSeqlen;
-            }
-            if (qSeqlen < minQSeqlen) {
-                minQSeqlen = qSeqlen;
-            }
-            if (kvSeqlen > maxKVSeqlen) {
-                maxKVSeqlen = kvSeqlen;
-            }
-        }
-        uint32_t numTasks = faInfo.batch * faInfo.kvHeads;
-        bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (maxKVSeqlen >= aicoreNum * 512);
-        bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024);
-        if ((faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) &&
-            !(faInfo.maskType == MaskType::SWA_MASK) &&
-            (!faInfo.learnableSinkFlag) &&
-            !(faInfo.innerPrecise == 1) &&
-            (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) &&
-            (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) &&
-            (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
-            (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
-            (isLongSeq || isShortSeq)) {
-            faInfo.flashDecodeFlag = true; 
-        }
-        if (faInfo.pagedCacheFlag && maxQSeqlen == 1 && minQSeqlen == 1 && faInfo.maskType == MaskType::NO_MASK &&
-            (batch >= aicoreNum) && (faInfo.blockSize == DECODING_PAGE_BLOCK_SIZE_128) &&
-            !faInfo.lseFlag && !faInfo.learnableSinkFlag && (faInfo.innerPrecise == 0) &&
-            ((faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128)) {
-            faInfo.decodingFlag = true;
-        }
+        CalcFAISeqLenStats(faInfo, batch, actualSeqQTnd, actualSeqKvTnd, maxQSeqlen, minQSeqlen, maxKVSeqlen);
+        SetFAIDecodeFlags(faInfo, aicoreNum, batch, maxQSeqlen, minQSeqlen, maxKVSeqlen);
     } else {
         faInfo.isTilingSink = true;
     }

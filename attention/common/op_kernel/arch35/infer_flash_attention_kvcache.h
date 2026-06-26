@@ -468,13 +468,173 @@ __aicore__ inline void ComputeSouterParam(RunParamStr<isInfer>& runParam, const 
 }
 
 TEMPLATE_INTF
+__aicore__ inline void CalcAICOffset(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
+    int64_t actualSeqLen)
+{
+    if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
+        runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
+            runParam.cubeSOuterOffset * constInfo.dSize; // IFA MLA场景, BSH与BNSD一致
+        runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gDR * actualSeqLen +
+            runParam.cubeSOuterOffset * constInfo.dSizeRope;
+    } else {
+        if (constInfo.isGqa && constInfo.s1Size > 1) { // 合轴：antiquant PFA
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+                runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
+                    runParam.n2oIdx * constInfo.gD;
+            } else {
+                runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
+                    runParam.cubeSOuterOffset * constInfo.dSize;
+            }
+        } else if (constInfo.isGqa) {
+            runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
+                runParam.cubeSOuterOffset * constInfo.dSize;
+            if constexpr (hasRope) {
+                runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gDR * actualSeqLen +
+                    runParam.cubeSOuterOffset * constInfo.dSizeRope;
+            }
+        } else {
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+                runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
+                    runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
+                if constexpr (hasRope) {
+                    runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.cubeSOuterOffset * constInfo.n2GDR +
+                        runParam.n2oIdx * constInfo.gDR + runParam.goIdx * constInfo.dSizeRope;
+                }
+            } else {
+                runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gS1D +
+                    runParam.goIdx * constInfo.s1D + runParam.cubeSOuterOffset * constInfo.dSize;
+                if constexpr (hasRope) {
+                    runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gS1DR +
+                        runParam.goIdx * constInfo.s1DR + runParam.cubeSOuterOffset * constInfo.dSizeRope;
+                }
+            }
+        }
+    }
+}
+
+TEMPLATE_INTF
+__aicore__ inline void CalcMLAOffset(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
+    int64_t actualSeqLen, int64_t seqOffset)
+{
+    int64_t attentionOutSeqOffset = seqOffset * constInfo.n2GDv;
+    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
+        runParam.sOuterOffset * constInfo.dSizeV;
+    runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
+        runParam.cubeSOuterOffset * constInfo.dSize;
+    if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_NBSD)) {
+        attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
+        int64_t curGIdx = runParam.sOuterOffset / constInfo.s1Size;
+        int64_t curS1Idx = runParam.sOuterOffset % constInfo.s1Size;
+        runParam.attentionOutOffset = attentionOutSeqOffset + // b
+            curGIdx * constInfo.t1Size * constInfo.dSizeV + // g
+            curS1Idx * constInfo.dSizeV; // s1
+    } else if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_NBSD) ||
+        constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_NBSD) ||
+        constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::TND_NTD)) {
+        attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
+        int64_t curGIdx = runParam.goIdx;
+        int64_t curS1Idx = runParam.cubeSOuterOffset / (uint32_t)s1TemplateType; // 64
+        if (constInfo.gSize == 128) { // G为128时，基本块位于同一S1行
+            curGIdx = (curS1Idx % 2 == 0) ? curGIdx : (uint32_t)s1TemplateType;
+            curS1Idx /= 2;
+        } else if (constInfo.gSize <= 32) { // G<=32时，每64/G行为一个基本块
+            curS1Idx = runParam.cubeSOuterOffset / constInfo.gSize;
+        }
+        if (constInfo.subBlockIdx == 1) {
+            int64_t firstCurGIdx = curGIdx;
+            curGIdx = (firstCurGIdx + runParam.firstHalfS1RealSize) % constInfo.gSize;
+            curS1Idx += (firstCurGIdx + runParam.firstHalfS1RealSize) / constInfo.gSize;
+        }
+        runParam.attentionOutOffset = attentionOutSeqOffset + // b
+            curGIdx * constInfo.t1Size * constInfo.dSizeV + // g
+            curS1Idx * constInfo.dSizeV; // s1
+    }
+}
+
+TEMPLATE_INTF
+__aicore__ inline void CalcAttentionOutNonMLAOffset(RunParamStr<isInfer>& runParam,
+    const ConstInfo<isInfer, hasRope> &constInfo, int64_t actualSeqLen, int64_t seqOffset)
+{
+    int64_t attentionOutSeqOffset = seqOffset * constInfo.n2GDv;
+    if (constInfo.isGqa && constInfo.s1Size > 1) { // PFA
+        runParam.sOuterOffset += (runParam.nextTokensPerBatch < 0) ? runParam.nextTokensPerBatch : 0;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
+                runParam.sOuterOffset / constInfo.gSize * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv;
+        } else {
+            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
+                runParam.sOuterOffset * constInfo.dSizeV;
+        }
+    } else if (constInfo.isGqa) { // IFA
+            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
+                runParam.sOuterOffset * constInfo.dSizeV;
+    } else {
+        if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
+            constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND) || layout == LayOutTypeEnum::LAYOUT_TND ||
+            (constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSND_BNSD) &&
+            constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSH_BNSD) && layout == LayOutTypeEnum::LAYOUT_BSH)) {
+            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
+                runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
+                runParam.goIdx * constInfo.dSizeV;
+        } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+            attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
+            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.dSizeV + // b
+                runParam.n2oIdx * constInfo.t1Size * constInfo.gDv + // n
+                runParam.goIdx * constInfo.t1Size * constInfo.dSizeV + // g
+                runParam.sOuterOffset * constInfo.dSizeV; // s1
+        } else {
+            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gS1Dv +
+                runParam.goIdx * constInfo.s1Dv + (runParam.sOuterOffset + runParam.queryLeftPaddingSize) *
+                constInfo.dSizeV;
+        }
+    }
+}
+
+TEMPLATE_INTF
+__aicore__ inline void CalcSoftmaxLseNonMLAOffset(RunParamStr<isInfer>& runParam,
+    const ConstInfo<isInfer, hasRope> &constInfo, int64_t actualSeqLen, int64_t seqOffset)
+{
+    int64_t softmaxLseSeqOffset = seqOffset * constInfo.n2G;
+    if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+            int64_t nsOffset = runParam.n2oIdx * constInfo.gS1 + runParam.sOuterOffset;
+            int64_t sOffset = nsOffset / constInfo.gSize;
+            runParam.softmaxLseOffset = softmaxLseSeqOffset + (nsOffset % constInfo.gSize) * constInfo.s1Size + sOffset;
+        } else {
+            runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
+                runParam.sOuterOffset;
+        }
+    } else {
+        if (constInfo.isGqa && constInfo.s1Size > 1) {
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+                runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2G +
+                    runParam.sOuterOffset / constInfo.gSize * constInfo.n2G + runParam.n2oIdx * constInfo.gSize;
+            } else {
+                runParam.softmaxLseOffset = softmaxLseSeqOffset +
+                    runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
+            }
+        } else if (constInfo.isGqa) {
+            runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
+                runParam.sOuterOffset;
+        } else {
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+                runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.sOuterOffset * constInfo.n2G +
+                    runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
+            } else {
+                runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gS1 +
+                    runParam.goIdx * constInfo.s1Size + runParam.sOuterOffset + runParam.queryLeftPaddingSize;
+            }
+        }
+    }
+}
+
+TEMPLATE_INTF
 __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
     int32_t bIdx, __gm__ int64_t *actualSeqQlenAddr, PseInfo& pseInfo)
 {
     if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
         CalPseShiftCoreOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, bIdx, runParam.sOuterOffset, pseInfo);
     }
-
     int64_t actualSeqLen = 0;
     int64_t seqOffset = 0;
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -485,149 +645,14 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
         seqOffset = bIdx * constInfo.s1Size;
     }
     if ASCEND_IS_AIC {
-        if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
-            runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
-                runParam.cubeSOuterOffset * constInfo.dSize; // IFA MLA场景, BSH与BNSD一致
-            runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gDR * actualSeqLen +
-                runParam.cubeSOuterOffset * constInfo.dSizeRope;
-        } else {
-            if (constInfo.isGqa && constInfo.s1Size > 1) { // 合轴：antiquant PFA
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-                    runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
-                        runParam.n2oIdx * constInfo.gD;
-                } else {
-                    runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
-                        runParam.cubeSOuterOffset * constInfo.dSize;
-                }
-            } else if (constInfo.isGqa) {
-                runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
-                    runParam.cubeSOuterOffset * constInfo.dSize;
-                if constexpr (hasRope) {
-                    runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gDR * actualSeqLen +
-                        runParam.cubeSOuterOffset * constInfo.dSizeRope;
-                }
-            } else {
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-                    runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
-                        runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
-                    if constexpr (hasRope) {
-                        runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.cubeSOuterOffset * constInfo.n2GDR +
-                            runParam.n2oIdx * constInfo.gDR + runParam.goIdx * constInfo.dSizeRope;
-                    }
-                } else {
-                    runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gS1D +
-                        runParam.goIdx * constInfo.s1D + runParam.cubeSOuterOffset * constInfo.dSize;
-                    if constexpr (hasRope) {
-                        runParam.qRopeNBGOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gS1DR +
-                            runParam.goIdx * constInfo.s1DR + runParam.cubeSOuterOffset * constInfo.dSizeRope;
-                    }
-                }
-            }
-        }
+        CalcAICOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqLen);
     } else {
-        int64_t attentionOutSeqOffset = seqOffset * constInfo.n2GDv;
         if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
-            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
-                runParam.sOuterOffset * constInfo.dSizeV;
-            runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gD * actualSeqLen +
-                runParam.cubeSOuterOffset * constInfo.dSize;
-            if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_NBSD)) {
-                attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
-                int64_t curGIdx = runParam.sOuterOffset / constInfo.s1Size;
-                int64_t curS1Idx = runParam.sOuterOffset % constInfo.s1Size;
-                runParam.attentionOutOffset = attentionOutSeqOffset + // b
-                    curGIdx * constInfo.t1Size * constInfo.dSizeV + // g
-                    curS1Idx * constInfo.dSizeV; // s1
-            } else if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_NBSD) ||
-                constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_NBSD) ||
-                constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::TND_NTD)) {
-                attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
-                int64_t curGIdx = runParam.goIdx;
-                int64_t curS1Idx = runParam.cubeSOuterOffset / (uint32_t)s1TemplateType; // 64
-                if (constInfo.gSize == 128) { // G为128时，基本块位于同一S1行
-                    curGIdx = (curS1Idx % 2 == 0) ? curGIdx : (uint32_t)s1TemplateType;
-                    curS1Idx /= 2;
-                } else if (constInfo.gSize <= 32) { // G<=32时，每64/G行为一个基本块
-                    curS1Idx = runParam.cubeSOuterOffset / constInfo.gSize;
-                }
-
-                if (constInfo.subBlockIdx == 1) {
-                    int64_t firstCurGIdx = curGIdx;
-                    curGIdx = (firstCurGIdx + runParam.firstHalfS1RealSize) % constInfo.gSize;
-                    curS1Idx += (firstCurGIdx + runParam.firstHalfS1RealSize) / constInfo.gSize;
-                }
-
-                runParam.attentionOutOffset = attentionOutSeqOffset + // b
-                    curGIdx * constInfo.t1Size * constInfo.dSizeV + // g
-                    curS1Idx * constInfo.dSizeV; // s1
-            }
+            CalcMLAOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqLen, seqOffset);
         } else {
-            if (constInfo.isGqa && constInfo.s1Size > 1) { // PFA
-                runParam.sOuterOffset += (runParam.nextTokensPerBatch < 0) ? runParam.nextTokensPerBatch : 0;
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
-                        runParam.sOuterOffset / constInfo.gSize * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv;
-                } else {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
-                        runParam.sOuterOffset * constInfo.dSizeV;
-                }
-            } else if (constInfo.isGqa) { // IFA
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
-                        runParam.sOuterOffset * constInfo.dSizeV;
-            } else {
-                if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
-                    constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND) || layout == LayOutTypeEnum::LAYOUT_TND ||
-                    (constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSND_BNSD) &&
-                    constInfo.transposeLayout != static_cast<uint32_t>(TransposeLayoutEnum::BSH_BNSD) && layout == LayOutTypeEnum::LAYOUT_BSH)) {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
-                        runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
-                        runParam.goIdx * constInfo.dSizeV;
-                } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-                    attentionOutSeqOffset = seqOffset * constInfo.dSizeV;
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.dSizeV + // b
-                        runParam.n2oIdx * constInfo.t1Size * constInfo.gDv + // n
-                        runParam.goIdx * constInfo.t1Size * constInfo.dSizeV + // g
-                        runParam.sOuterOffset * constInfo.dSizeV; // s1
-                } else {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gS1Dv +
-                        runParam.goIdx * constInfo.s1Dv + (runParam.sOuterOffset + runParam.queryLeftPaddingSize) *
-                        constInfo.dSizeV;
-                }
-            }
+            CalcAttentionOutNonMLAOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqLen, seqOffset);
         }
-
-        int64_t softmaxLseSeqOffset = seqOffset * constInfo.n2G;
-        if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) { // IFA MLA
-            if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-                int64_t nsOffset = runParam.n2oIdx * constInfo.gS1 + runParam.sOuterOffset;
-                int64_t sOffset = nsOffset / constInfo.gSize;
-                runParam.softmaxLseOffset = softmaxLseSeqOffset + (nsOffset % constInfo.gSize) * constInfo.s1Size + sOffset;
-            } else {
-                runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
-                    runParam.sOuterOffset;
-            }
-        } else {
-            if (constInfo.isGqa && constInfo.s1Size > 1) {
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-                    runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2G +
-                        runParam.sOuterOffset / constInfo.gSize * constInfo.n2G + runParam.n2oIdx * constInfo.gSize;
-                } else {
-                    runParam.softmaxLseOffset = softmaxLseSeqOffset +
-                        runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
-                }
-            } else if (constInfo.isGqa) {
-                runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
-                    runParam.sOuterOffset;
-            } else {
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
-                    runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.sOuterOffset * constInfo.n2G +
-                        runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
-                } else {
-                    runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gS1 +
-                        runParam.goIdx * constInfo.s1Size + runParam.sOuterOffset + runParam.queryLeftPaddingSize;
-                }
-            }
-        }
+        CalcSoftmaxLseNonMLAOffset<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqLen, seqOffset);
     }
 }
 
