@@ -1,0 +1,51 @@
+GroupedMatmul WeightNz single-multi-single demo build note
+
+Demo:
+gmm/grouped_matmul/examples/arch35/test_aclnn_grouped_matmul_weight_nz_single_multi_single.cpp
+
+Scenario:
+- aclnnGroupedMatmulWeightNz
+- groupType = 0, splitItem = 3
+- x: single tensor, INT8, ND
+- weight: multiple tensors, INT8, FRACTAL_NZ
+- y: single tensor, INT32, ND
+- bias: nullptr
+
+Build opapi:
+cd /home/z00940192/ops-transformer
+source /usr/local/Ascend/cann/set_env.sh
+bash build.sh --opapi --ops=grouped_matmul --soc=ascend950
+
+Build demo:
+cd /home/z00940192/ops-transformer
+source /usr/local/Ascend/cann/set_env.sh
+g++ -std=c++17 -O2 \
+  gmm/grouped_matmul/examples/arch35/test_aclnn_grouped_matmul_weight_nz_single_multi_single.cpp \
+  -I/usr/local/Ascend/cann/include \
+  -I/usr/local/Ascend/cann/x86_64-linux/include \
+  -I/usr/local/Ascend/cann/x86_64-linux/include/aclnn \
+  -I/home/z00940192/ops-transformer/gmm/grouped_matmul/op_api \
+  /home/z00940192/ops-transformer/build/libopapi_transformer.so \
+  /home/z00940192/ops-transformer/build/prepare_build/libop_host_aclnn.so \
+  -L/home/developer/Ascend/cann-9.1.0/lib64 \
+  -L/usr/local/Ascend/cann/x86_64-linux/lib64 \
+  -L/usr/local/Ascend/cann/lib64 \
+  -lascendcl -lacl_op_executor -lacl_op_compiler -lops_base -lnnopbase -lopapi_oam \
+  -Wl,--allow-shlib-undefined \
+  -Wl,-rpath,/home/z00940192/ops-transformer/build \
+  -Wl,-rpath,/home/z00940192/ops-transformer/build/prepare_build \
+  -Wl,-rpath,/home/developer/Ascend/cann-9.1.0/lib64 \
+  -Wl,-rpath,/usr/local/Ascend/cann/x86_64-linux/lib64 \
+  -Wl,-rpath,/usr/local/Ascend/cann/lib64 \
+  -o /tmp/gmm_weight_nz_sms_demo
+
+Run demo:
+cd /home/z00940192/ops-transformer
+source /usr/local/Ascend/cann/set_env.sh
+export LD_LIBRARY_PATH=/home/z00940192/ops-transformer/build:/home/z00940192/ops-transformer/build/prepare_build:/home/developer/Ascend/cann-9.1.0/lib64:/usr/local/Ascend/cann/lib64:/usr/local/Ascend/cann/x86_64-linux/lib64:${LD_LIBRARY_PATH:-}
+export LD_PRELOAD=/home/developer/Ascend/cann-9.1.0/lib64/libopapi_math.so
+/tmp/gmm_weight_nz_sms_demo
+
+Note:
+Do not preload /home/developer/Ascend/cann-9.1.0/lib64/libopapi.so for this debug run, because it also exports
+aclnnGroupedMatmulWeightNzGetWorkspaceSize and can override the newly built libopapi_transformer.so.
