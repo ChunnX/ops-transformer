@@ -434,7 +434,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskCheck()
     // 构造二维全true的mask
     Duplicate<half>(maskCalcTensor, static_cast<half>(1), 
                     Ceil(mask_tokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half));
-    PipeBarrier<PIPE_V>();
     // 拷入topkIds
     DataCopyExtParams topkIdsCntParams = {1U, static_cast<uint32_t>(mask_tokenNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> topkIdsCntCopyPadParams{false, 0U, 0U, 0U};
@@ -443,20 +442,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskCheck()
     // 根据topkIds大于0，得到考虑(-1专家) 后的mask
     uint32_t calcCnt = bsKCastCnt_ / sizeof(int32_t);
     Cast(topkIdsFloatTensor, topkIdsTensor, RoundMode::CAST_NONE, calcCnt);
-    PipeBarrier<PIPE_V>();
     CompareScalar(maskTensor, topkIdsFloatTensor, static_cast<float>(0), AscendC::CMPMODE::GE, calcCnt);
-    PipeBarrier<PIPE_V>();    
     Select(maskCalcSelectedTensor, maskTensor, maskCalcTensor, static_cast<half>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE,
         calcCnt);
-    PipeBarrier<PIPE_V>();
     // 通过GM对齐内轴元素个数
     MaskAlign(maskCalcSelectedTensor);
     // 更新考虑特殊专家后的
-    PipeBarrier<PIPE_V>();
     uint32_t innerAlign = Ceil(topK_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half);
     SumParams axisKSumParams{tPerCore_, innerAlign, topK_};
     Sum(tokenTargetTensor_, maskCalcSelectedTensor, axisKSumParams);
-    PipeBarrier<PIPE_V>();
     SyncFunc<AscendC::HardEvent::V_S>();
 }
 
@@ -514,7 +508,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, axisH_);
-        PipeBarrier<PIPE_V>();
         Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
         if constexpr (HasTopkWeight == 1) {
             GM_ADDR weightAddr = wAddr + hAlignSize_;
@@ -557,8 +550,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
             CompletedtokenNum++;
             tokenStatusTensor.SetValue(tokenIdx - tStart_, 1);
             ProcessTopKToken(tokenIdx);
-            
-            PipeBarrier<PIPE_V>();
             LocalTensor<XType> ubResultBf16 = ubX_;
             Cast(ubResultBf16, ubAccFp32_, RoundMode::CAST_RINT, axisH_);
             SyncFunc<AscendC::HardEvent::V_MTE3>();
