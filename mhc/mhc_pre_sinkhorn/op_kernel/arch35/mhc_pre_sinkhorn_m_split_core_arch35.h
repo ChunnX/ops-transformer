@@ -31,7 +31,7 @@ public:
     }
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcFn, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y, GM_ADDR post,
-                                GM_ADDR combFrag, const MhcPreSinkhornTilingData *tilingDataPtr, TPipe *pipePtr)
+                                GM_ADDR combFrag, const MhcPreSinkhornRegbaseTilingData *tilingDataPtr, TPipe *pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
@@ -369,7 +369,7 @@ public:
 
 private:
     TPipe *pipe;
-    const MhcPreSinkhornTilingData *tilingData;
+    const MhcPreSinkhornRegbaseTilingData *tilingData;
     // (M, K) * (N, K)
 
     GlobalTensor<T> xGm;

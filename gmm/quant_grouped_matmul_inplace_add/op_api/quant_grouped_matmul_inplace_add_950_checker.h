@@ -41,7 +41,7 @@ private:
     std::string perTokenScaleName_ = "scale2";
     std::string groupTensorName_ = "groupList";
     std::string biasName_ = "bias";
-    std::string yName_ = "y";
+    std::string yName_ = "yRef";
 };
 } // namespace QGmmInPlaceAdd
 #endif

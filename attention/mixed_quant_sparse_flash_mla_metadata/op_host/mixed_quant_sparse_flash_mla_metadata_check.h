@@ -307,12 +307,11 @@ int64_t GetQueryBatchSizeMqsmla(const aclTensor *sequsedQOptional, const aclTens
     }
     // 2. sequsedQOptional 没传，判断 Layout
     if (strcmp(layoutQOptional, "TND") == 0) {
-        // 如果是 TND，尝试使用 cuSeqLensQOptional 获取 BatchSize
-        if (IsTensorExistMqsmla(cuSeqlensQOptional)) {
+        if (IsTensorExistMqsmla(cuSeqlensQOptional)) { // 前序校验已保证layout_q = TND时，cu_seqlens_q必须传入，此通路必达
             return cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 如果不是 TND，或者 cuSeqLensQOptional 为空，使用 batchSize
+    // 3. 使用 batchSize
     return batchSize;
 }
 
@@ -325,12 +324,11 @@ int64_t GetOriKvBatchSizeMqsmla(const aclTensor *sequsedOriKvOptional, const acl
     }
     // 2. sequsedOriKvOptional 没传，判断 Layout
     if (strcmp(layoutKvOptional, "TND") == 0) {
-        // 如果是 TND，尝试使用 cuSeqlensOriKvOptional 获取 BatchSize
-        if (IsTensorExistMqsmla(cuSeqlensOriKvOptional)) {
+        if (IsTensorExistMqsmla(cuSeqlensOriKvOptional)) { // 同上，此通路必达
             return cuSeqlensOriKvOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 如果不是 TND，或者 cuSeqlensOriKvOptional 为空，使用 batchSize
+    // 3. 使用 batchSize
     return batchSize;
 }
 

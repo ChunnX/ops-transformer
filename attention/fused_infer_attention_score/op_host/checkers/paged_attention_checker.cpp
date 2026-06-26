@@ -108,10 +108,11 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
         return ge::GRAPH_FAILED);
     if (fiaInfo.npuArch == NpuArch::DAV_3510) {
         if (fiaInfo.isQKVDDifferent) {
-            std::string shapeMsg = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
-                ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape());
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and key", shapeMsg.c_str(),
-                "When page attention is enabled, the headDim of query and key must be the same");
+            std::string shapeMsg = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + ", " +
+                ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape()) + " and " +
+                ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query, key and value", shapeMsg.c_str(),
+                "When page attention is enabled, the headDim of query, key and value must be the same");
             return ge::GRAPH_FAILED;
         }
     }
@@ -265,13 +266,11 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED;
         }
 
-        if (tempBlockSize != fiaInfo.blockSize) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
-                ("When page attention is enabled, blockSize of kvCache must be " +
-                    std::to_string(fiaInfo.blockSize)).c_str());
-            return ge::GRAPH_FAILED;
-        }
-        
+        OP_CHECK_IF(tempBlockSize != fiaInfo.blockSize,
+                    OP_LOGE(fiaInfo.opName, "When page attention enable, blocksize(%u) of kvCache should be %u",
+                            tempBlockSize, fiaInfo.blockSize),
+                    return ge::GRAPH_FAILED);
+
         if (tempD != compareD) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputName.c_str(), shapeStr.c_str(),
                 ("When page attention is enabled, the D axis of " + inputName +
@@ -554,6 +553,16 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                 "In MXFP8 fullquant scenario, when page attention is enabled, block_size must be 512 or 1024");
             return ge::GRAPH_FAILED;
         }
+
+        // fp8 gqa 仅支持blocksize等于128
+        OP_CHECK_IF(
+            fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD &&
+            fiaInfo.blockSize != NUM_128,
+            OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, when page attention enable, "
+                    "blockSize(%d) should be %u.",
+                    fiaInfo.blockSize, NUM_128),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -569,6 +578,11 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
         OP_CHECK_IF(dimNum == 3, OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key", "3D(BnBsH)",
             "In MXFP8 fullquant scenario, when Page Attention is enabled, the layout of key cannot be BnBsH"),
             return ge::GRAPH_FAILED);
+    } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) {
+        OP_CHECK_IF(dimNum != DIM_NUM_4, OP_LOGE(fiaInfo.opName,
+                    "In FP8 GQA fullquant scenario, KV cache layout must be BnNBsD, "
+                    "PA BnBsH and NZ are not supported."),
+                    return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         if (dimNum == 4) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "inputLayout", inputLayout.c_str(),

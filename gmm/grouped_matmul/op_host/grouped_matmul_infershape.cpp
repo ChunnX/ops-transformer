@@ -1307,9 +1307,10 @@ static ge::graphStatus CheckParamDifferentGroupType(gert::InferShapeContext* con
     OP_CHECK_IF(groupTensorOptionalShape != nullptr && (groupTensorOptionalShape->GetDimNum() > validGroupTensorDimNum ||
               groupTensorOptionalShape->GetDim(0) < 1),
               OP_LOGE(context->GetNodeName(),
-                        "When groupList is a tensor, its dim only supports 1 or 2(only when groupListType is 2) and "
-                        "size of elements should be larger than 0, but now are %zu and %ld, respectively.",
-                        groupTensorOptionalShape->GetDimNum(), groupTensorOptionalShape->GetDim(0)),
+                        "If groupList is a tensor, its dim num must be 1, or 2 when groupListType is 2, and the "
+                        "size of the first dimension must be greater than 0. Current values: groupListType=%ld, "
+                        "dim num=%zu, dim0=%ld.",
+                        *groupListTypePtr, groupTensorOptionalShape->GetDimNum(), groupTensorOptionalShape->GetDim(0)),
               return GRAPH_FAILED);
     OP_CHECK_IF(paramsInfo.platform == PlatformID::ASCEND310P && !(groupType == GMM_SPLIT_M && paramsInfo.numX == 1 &&
               paramsInfo.numWeight == 1 && paramsInfo.numY == 1),

@@ -127,8 +127,8 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         BinaryRepeatParams repeatParams{1,
                                         1,
                                         0,
-                                        (uint8_t)(rectangleParams.stride / blockElementNum),
-                                        (uint8_t)(rectangleParams.stride / blockElementNum),
+                                        static_cast<uint8_t>(rectangleParams.stride / blockElementNum),
+                                        static_cast<uint8_t>(rectangleParams.stride / blockElementNum),
                                         1};
 
         // 如果以列为repeat所处理的次数小于行处理次数，则以列方式处理。反之则以行进行repeat处理
@@ -362,7 +362,8 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     PipeBarrier<PIPE_V>();
     Brcb(scaleReciprocalBrcb, scaleReciprocal, CeilDivT(row, 8UL), {1, 8});
     PipeBarrier<PIPE_V>();
-    RowMuls(outputLocal, inputLocal, scaleReciprocalBrcb, Rectangle{(uint32_t)row, (uint32_t)col, (uint32_t)col});
+    RowMuls(outputLocal, inputLocal, scaleReciprocalBrcb,
+            Rectangle{static_cast<uint32_t>(row), static_cast<uint32_t>(col), static_cast<uint32_t>(col)});
     PipeBarrier<PIPE_V>();
 }
 
@@ -492,13 +493,13 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     constexpr uint64_t brcnNum = 8; // brcb一次处理8个数据
     uint64_t computeSize = row * col;
     LocalTensor<float> inputCopy = shareTmpUb.ReinterpretCast<float>();
-    LocalTensor<float> rowMaxBrcb = inputCopy[Align(computeSize, (uint64_t)ALIGN_BLOCK_SIZE)];
+    LocalTensor<float> rowMaxBrcb = inputCopy[Align(computeSize, static_cast<uint64_t>(ALIGN_BLOCK_SIZE))];
     // abs(x)
     Abs(inputCopy, inputLocal, computeSize);
     AscendC::PipeBarrier<PIPE_V>();
     Rectangle rectangleParams{
-        (uint32_t)row, (uint32_t)col,
-        (uint32_t)col // columnStride
+        static_cast<uint32_t>(row), static_cast<uint32_t>(col),
+        static_cast<uint32_t>(col) // columnStride
     };
     // rowMax(abs(x))
     RowMax(inputCopy, inputCopy, rectangleParams);

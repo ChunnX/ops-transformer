@@ -87,6 +87,9 @@ public:
     ge::graphStatus GetShapeAttrsInfoInner();
     ge::graphStatus CalcOpTiling();
     bool GetCacheViewLayout(size_t inputIdx, int64_t &blockSize, int64_t &rowStride, int64_t &blockStride);
+    // 4D-only 契约门禁: 校验 inputIdx 张量逻辑 shape 恰为 4D [blockNum, blockSize, 1, headDim]
+    // (倒数第二维 == 1), 并回传其末维(headDim, 张量自身元素单位)。失败返回 GRAPH_FAILED。
+    ge::graphStatus ValidateCache4D(size_t inputIdx, const char *name, int64_t &lastDim);
 private:
     gert::TilingContext *context_ = nullptr;
     IndexerQuantCacheTilingData tilingData_;

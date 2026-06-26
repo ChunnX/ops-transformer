@@ -171,7 +171,7 @@ __aicore__ inline void LoadDataL1ToL0(const LocalTensor<T> &l0Tensor, const Loca
 
 template <typename T>
 __aicore__ inline void LoadDataL1ToL0B(const LocalTensor<T> &bL0Tensor, const LocalTensor<T> &bL1Tensor,
-                                       const LocalTensor<T> &bscaleL1, const uint32_t kSize, const uint32_t nSize,
+                                       const uint32_t kSize, const uint32_t nSize,
                                        const uint32_t kL1StepSize = 0)
 {
     constexpr uint32_t LOAD_WIDTH = 32;
@@ -198,35 +198,27 @@ template <typename T, typename O, typename S>
 __aicore__ inline void MatmulL0(MMBufParams &bufParam, const LocalTensor<T> &aL1, const LocalTensor<T> &bL1,
                                 const LocalTensor<T> &aL0Tensor, const LocalTensor<T> &bL0Tensor,
                                 const LocalTensor<O> &cL0Tensor, const MmadParams &mmadParams,
-                                const uint32_t kL1StepSize, const uint32_t kL1Size = 0,
-                                const LocalTensor<T> &aScaleL1 = {}, const LocalTensor<T> &bscaleL1 = {})
+                                const uint32_t kL1StepSize, const uint32_t kL1Size = 0)
 {
     WaitFlag<HardEvent::M_MTE1>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));
     LocalTensor<T> aL0 = aL0Tensor[(bufParam.aL0BufIter & 1u) * (L0A_PP_SIZE / sizeof(T))];
-    if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
-    } else {
-        LoadDataL1ToL0<T>(aL0, aL1, mmadParams.m, mmadParams.k);
-    }
+
+    LoadDataL1ToL0<T>(aL0, aL1, mmadParams.m, mmadParams.k);
+
     SetFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));
     WaitFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));
     WaitFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bufParam.bL0BufIter & 1u));
 
     LocalTensor<T> bL0 = bL0Tensor[(bufParam.bL0BufIter & 1u) * (L0B_PP_SIZE / sizeof(T))];
-    if constexpr (std::is_same<T, int8_t>::value || std::is_same<T, HIF8>::value ||
-                  (std::is_same<T, FP8E4M3>::value && std::is_same<S, float>::value)) {
-        LoadDataL1ToL0B(bL0, bL1, bscaleL1, mmadParams.k, mmadParams.n, kL1StepSize);
-    } else if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
-        LoadDataL1ToL0B(bL0, bL1, bscaleL1, mmadParams.k, mmadParams.n, kL1StepSize, kL1Size);
+    if constexpr (std::is_same<T, int8_t>::value) {
+        LoadDataL1ToL0B(bL0, bL1, mmadParams.k, mmadParams.n, kL1StepSize);
     } else {
         LoadDataL1ToL0<T, true>(bL0, bL1, mmadParams.k, mmadParams.n, kL1StepSize);
     }
 
     SetFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bufParam.bL0BufIter & 1u));
     WaitFlag<HardEvent::MTE1_M>(L0B_EVENT0 + (bufParam.bL0BufIter & 1u));
-    if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
-    } else {
-        Mmad(cL0Tensor, aL0, bL0, mmadParams);
-    }
+    Mmad(cL0Tensor, aL0, bL0, mmadParams);
     PipeBarrier<PIPE_M>();
     SetFlag<HardEvent::M_MTE1>(L0B_EVENT0 + (bufParam.bL0BufIter & 1u));
     bufParam.bL0BufIter++;
@@ -364,18 +356,9 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
                                 int64_t &aOffset)
 {
     uint32_t mSize = Align(para.m, BLOCK_CUBE_SIZE);
-    uint64_t weightSizeL1B = L1_B_SIZE / 2 / sizeof(T); // 2表示scale起始地址固定从L1B上ping的64k开始
-    uint64_t scaleASize = mSize * para.kScale;          // BS*224
     uint32_t bOffset = 0;
     uint32_t aOffsetUnit = mSize * para.baseK;
     uint32_t bOffsetUnit = GetC0Num<T>() * para.baseK;
-
-    uint32_t aScaleOffset = kL1 * para.kScale / kL1Loops * BLOCK_CUBE_SIZE;
-    uint32_t bScaleOffset = kL1 * para.kScale / kL1Loops * BLOCK_CUBE_SIZE;
-    uint32_t aScaleOffsetUnit = para.baseK / BYTE_BLOCK * BLOCK_CUBE_SIZE;
-    uint32_t bScaleOffsetUnit = para.baseK / BYTE_BLOCK * BLOCK_CUBE_SIZE;
-    const LocalTensor<T> scaleALocalTensor = localTensors.bL1Tensor[weightSizeL1B];
-    const LocalTensor<T> scaleBLocalTensor = scaleALocalTensor[scaleASize];
 
     for (int64_t kL0Loops = 0; kL0Loops < para.stepK; kL0Loops++) {
         mmadParams.cmatrixInitVal = ((kL1 == 0) && (kL0Loops == 0));
@@ -384,14 +367,9 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
                 (kL1 == kL1Loops - 1) && (kL0Loops == para.stepK - 1) ? UNIT_FLAG_SET : UNIT_FLAG_CHECK;
         }
         MatmulL0<T, O_L0C, S>(bufParam, aL1[aOffset], bL1[bOffset], localTensors.aL0Tensor, localTensors.bL0Tensor, cL0,
-                              mmadParams, para.kL1StepSize, para.k, scaleALocalTensor[aScaleOffset],
-                              scaleBLocalTensor[bScaleOffset]);
+                              mmadParams, para.kL1StepSize, para.k);
         aOffset += aOffsetUnit; // 16(BS)*256=4096
         bOffset += bOffsetUnit; // 32(Get<T>)*256=8192
-        if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
-            aScaleOffset += aScaleOffsetUnit; // 16(BS)*baseK/32=16(BS)*8=128
-            bScaleOffset += bScaleOffsetUnit; // baseK/32*baseN=8*64
-        }
     }
 }
 
@@ -404,15 +382,12 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
  * @param bufParam 管理L1 buffer地址和同步计数的结构体参数
  * @param nL1Offset 本次计算中，L1 buffer内B矩阵在n轴上的偏移
  * @param nL1Size 本次计算中，L1 buffer内B矩阵在n轴上的计算量
- * @param tensorAScaleGm AScale矩阵在GM的位置
- * @param tensorBScaleGm BScale矩阵在GM的位置
  */
-template <typename T, typename O, typename S, bool hasL1ALoaded = false, bool scaleSrcPadFlag = false,
+template <typename T, typename O, typename S, bool hasL1ALoaded = false,
           bool enUnitFlag = false, DataFormat bLoadFormat = DataFormat::NZ>
 __aicore__ inline void
 MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm, const GlobalTensor<T> &tensorBGm,
-             const MMParams &para, MMBufParams &bufParam, const uint32_t nL1Offset, const uint32_t nL1Size,
-             const GlobalTensor<S> &tensorAScaleGm = {}, const GlobalTensor<S> &tensorBScaleGm = {})
+             const MMParams &para, MMBufParams &bufParam, const uint32_t nL1Offset, const uint32_t nL1Size)
 {
     using O_L0C = typename std::conditional<std::is_same<T, int8_t>::value, int32_t, float>::type;
 
@@ -437,10 +412,6 @@ MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
     MmadParams mmadParams = MmadParams(mSize, nL1Size, para.baseK, UNIT_FLAG_DISABLE, false, true);
 
     int64_t aOffset = 0;
-    if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
-        WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
-    }
-
     for (uint32_t kL1 = 0; kL1 < kL1Loops; kL1++) {
         // Load data from global memory to L1 cache
         LoadL1AB<T, hasL1ALoaded, bLoadFormat>(tensorAGm, tensorBGm, kL1, kL1Loops, para, nL1Offset, nL1Size,
@@ -464,9 +435,6 @@ MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
             SetFlag<HardEvent::MTE1_MTE2>(A_EVENT0 + (bufParam.aL1BufIter & 1u));
             bufParam.aL1BufIter++;
         }
-    }
-    if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
-        SetFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
     }
     GetTensorC<T, O, O_L0C, enUnitFlag>(tensorCGm[nL1Offset], cL0, para.m, nL1Size, mSize, para.orgKc, bufParam);
     SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
