@@ -310,7 +310,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     - 2：drop less场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
     - 3：drop pad场景，expandedRowIdx按**行**排列（与[aclnnMoeInitRoutingV2](../../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)输出格式对应）。
 
-8. 输入不支持空Tensor，不支持标量Tensor
+8. 输入不支持空Tensor，不支持标量Tensor。
 
 ## 调用示例
 
