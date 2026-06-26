@@ -145,14 +145,13 @@ struct FloatSortConstCtx {
 
 template <typename FloatT>
 __simd_callee__ inline void InitFloatSortConstCtx(FloatSortConstCtx<FloatT>& ctx, AscendC::MicroAPI::MaskReg& maskAll)
-{ 
-    using Traits = FloatSortTraits<FloatT>; 
+{
+    using Traits = FloatSortTraits<FloatT>;
     AscendC::MicroAPI::Duplicate(ctx.zeros,    Traits::ZERO,      maskAll);
     AscendC::MicroAPI::Duplicate(ctx.allOne,   Traits::ALL_ONE,   maskAll);
     AscendC::MicroAPI::Duplicate(ctx.signMask, Traits::SIGN_MASK, maskAll);
     AscendC::MicroAPI::Duplicate(ctx.nan,      Traits::NAN_MASK,  maskAll);
-} 
-
+}
 
 template <typename FloatT>
 __simd_callee__ inline void FloatToSortableKey(
@@ -160,7 +159,7 @@ __simd_callee__ inline void FloatToSortableKey(
                                             AscendC::MicroAPI::RegTensor<FloatT>& inVal,
                                             FloatSortConstCtx<FloatT>& ctx,
                                             AscendC::MicroAPI::MaskReg& maskAll)
-{ 
+{
     using Traits = FloatSortTraits<FloatT>;
     using UInt   = typename Traits::UInt;
 
@@ -183,9 +182,9 @@ __simd_callee__ inline void FloatToSortableKey(
     // 4. xor mask
     AscendC::MicroAPI::Select(regMask, ctx.allOne, ctx.signMask, regSelectSign);
     AscendC::MicroAPI::Xor(outKey, outKey, regMask, maskAll);
-} 
+}
 
-template <typename FloatT> 
+template <typename FloatT>
 __simd_callee__ inline void FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<
                                                      typename FloatSortTraits<FloatT>::UInt>&outKey0,
                                                  AscendC::MicroAPI::RegTensor<
@@ -194,7 +193,7 @@ __simd_callee__ inline void FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<
                                                  AscendC::MicroAPI::RegTensor<FloatT>& inVal1,
                                                  FloatSortConstCtx<FloatT>& ctx,
                                                  AscendC::MicroAPI::MaskReg& maskAll)
-{ 
+{
     using Traits = FloatSortTraits<FloatT>;
     using UInt   = typename Traits::UInt;
 
@@ -221,7 +220,7 @@ __simd_callee__ inline void FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<
     AscendC::MicroAPI::Compare<UInt, CMPMODE::GT>(regSelectSign[0], regTemp[0], ctx.zeros, maskAll);
     AscendC::MicroAPI::Compare<UInt, CMPMODE::GT>(regSelectSign[1], regTemp[1], ctx.zeros, maskAll);
 
-    // 4. xor mask 
+    // 4. xor mask
     AscendC::MicroAPI::Select(regMask[0], ctx.allOne, ctx.signMask, regSelectSign[0]);
     AscendC::MicroAPI::Select(regMask[1], ctx.allOne, ctx.signMask, regSelectSign[1]);
     AscendC::MicroAPI::Xor(outKey0, outKey0, regMask[0], maskAll);
@@ -230,7 +229,7 @@ __simd_callee__ inline void FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<
 
 template <typename T, size_t N>
 __simd_callee__ inline void DuplicateZero(AscendC::MicroAPI::RegTensor<T> (&regArray)[N],
-                                        AscendC::MicroAPI::MaskReg& mask)
+                                          AscendC::MicroAPI::MaskReg& mask)
 {
     static_assert(N <= 4, "N must be <= 4");
     // 不能用循环, 会导致fatal error: error in backend: Unsupported Inst must be hoisted.
@@ -250,9 +249,9 @@ __simd_callee__ inline void DuplicateZero(AscendC::MicroAPI::RegTensor<T> (&regA
 
 template <typename T, size_t N, bool ApplyRelu = true>
 __simd_callee__ inline void WeightedAccum(AscendC::MicroAPI::RegTensor<T> (&accum)[N],
-                                        AscendC::MicroAPI::RegTensor<T> (&input)[N],
-                                        AscendC::MicroAPI::RegTensor<T>& weight,
-                                        AscendC::MicroAPI::MaskReg& mask)
+                                          AscendC::MicroAPI::RegTensor<T> (&input)[N],
+                                          AscendC::MicroAPI::RegTensor<T>& weight,
+                                          AscendC::MicroAPI::MaskReg& mask)
 {
     static_assert(N <= 2, "N must be <= 2");
     // ---- Relu block ----
@@ -274,13 +273,13 @@ __simd_callee__ inline void WeightedAccum(AscendC::MicroAPI::RegTensor<T> (&accu
 }
 
 __simd_callee__ inline void BroadcastLane(AscendC::MicroAPI::RegTensor<float>& dst,
-                                        AscendC::MicroAPI::RegTensor<float>& src,
-                                        uint16_t laneIdx)
+                                          AscendC::MicroAPI::RegTensor<float>& src,
+                                          uint16_t laneIdx)
 {
     AscendC::MicroAPI::RegTensor<uint32_t> brcGatherIndex;
     AscendC::MicroAPI::Duplicate(brcGatherIndex, laneIdx);
     AscendC::MicroAPI::Gather(dst, src, brcGatherIndex);
-
+}
 
 __simd_callee__ inline void BroadcastLane(AscendC::MicroAPI::RegTensor<float>& dst,
                                           __local_mem__ float* src,
@@ -904,7 +903,6 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor2(
         AscendC::MicroAPI::StoreAlign<uint16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(out1, regOut[1], maskAllB16);
     }
 }
-
 
 template<typename QK_T, typename SCORE_T>
 __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(const LocalTensor<SCORE_T> &out_,
