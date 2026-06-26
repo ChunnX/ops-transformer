@@ -603,6 +603,39 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantShape(siz
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose(size_t idx) const
+{
+    if (IsA16W4()) {
+        auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
+        auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;
+        if (antiquantScaleDimNum <= perchannelDim) {
+            return ACLNN_SUCCESS;
+        }
+        
+        // pergroup不支持antiquant_scale和antiquant_offset转置
+        bool antiquant_scale_trans = IsTransposeLastTwoDims((*gmmParams_.antiquantScaleOptional)[idx]);
+        if (antiquant_scale_trans) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "antiquantScale",
+                "true",
+                "When xDtype-weightDtype is fp16/bf16-int4, The transpose of antiquantScale only support false");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+
+        if (gmmParams_.antiquantOffsetOptional != nullptr) {
+            bool antiquant_offset_trans = IsTransposeLastTwoDims((*gmmParams_.antiquantOffsetOptional)[idx]);
+            if (antiquant_offset_trans) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    GetAclnnName(), "antiquantScale", "true",
+                    "When xDtype-weightDtype is fp16/bf16-int4, The transpose of antiquantOffset only support false");
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+    }
+
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckQuantDtype() const
 {
     // check pertokenScaleDtype for MxA8W4
@@ -1060,7 +1093,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupedMatmulWeigh
 
         CHECK_RET(CheckAntiQuantDtype(wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckAntiQuantShape(wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-
+        CHECK_RET(CheckAntiQuantTranspose(wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_COND(CheckGroupSize(wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckGroupSize failed");
     }
     return ACLNN_SUCCESS;
