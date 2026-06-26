@@ -15,6 +15,7 @@
  *  ND format paths use SIMT kernel (gather_pa_kv_cache_simt.h).
  *  NZ format paths keep VEC_SCOPE kernel (gather_pa_kv_cache_nz.h).
  */
+#include "simt_api/asc_simt.h"
 #include "arch35/gather_pa_kv_cache_nz.h"
 #include "arch35/gather_pa_kv_cache_simt.h"
 
@@ -62,22 +63,10 @@ extern "C" __global__ __aicore__ void gather_pa_kv_cache(GM_ADDR key_cache, GM_A
     }                                                                                                       \
 } while(0)
 
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wconstant-conversion"
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wconstant-conversion"
-#endif
         NZ_BRANCH(TILING_KEY_1011, true,  true)
         NZ_BRANCH(TILING_KEY_1010, true,  false)
         NZ_BRANCH(TILING_KEY_1001, false, true)
         NZ_BRANCH(TILING_KEY_1000, false, false)
-#ifdef __clang__
-#pragma clang diagnostic pop
-#else
-#pragma GCC diagnostic pop
-#endif
 
 #undef NZ_BRANCH
     }
