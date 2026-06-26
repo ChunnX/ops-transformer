@@ -530,11 +530,10 @@ aclnnStatus aclnnGroupedMatmulV5(
 
       | x | weight | bias | scale | offset | antiquantScale | antiquantOffset | perTokenScale | groupList | activationInput | activationQuantScale | activationQuantOffset | out |
       |---------|----------------|--------------|--------|------------|----------------|-----------------|---------------|-----------|-----------------|----------------------|-----------------------|---------|
-      | INT8 | INT8 (ND) | INT32/null | UINT64/INT64 | null | null | null | null | INT64 | null | null | null | INT8 |
-      | INT8 | INT8 (ND/NZ) | INT32/null | UINT64/INT64 | null | null | null | null | INT64 | null | null | null | BFLOAT16/FLOAT16 |
-      | INT8 | INT8 (ND/NZ) | INT32/BFLOAT16/FLOAT/null | BFLOAT16/FLOAT | null | null | null | FLOAT/null | INT64 | null | null | null | BFLOAT16 |
-      | INT8 | INT8 (ND/NZ) | INT32/FLOAT16/FLOAT/null | FLOAT | null | null | null | FLOAT/null | INT64 | null | null | null | FLOAT16 |
-      | INT8 | INT8 (ND/NZ) | INT32/null | null/UINT64/INT64 | null | null | null | null | INT64 | null | null | null | INT32 |
+      | INT8 | INT8 (ND) | INT32/null | UINT64 | null | null | null | null | INT64 | null | null | null | INT8 |
+      | INT8 | INT8 (ND/NZ) | INT32/null | BFLOAT16 | null | null | null | FLOAT/null | INT64 | null | null | null | BFLOAT16 |
+      | INT8 | INT8 (ND/NZ) | INT32/null | FLOAT | null | null | null | FLOAT/null | INT64 | null | null | null | FLOAT16 |
+      | INT8 | INT8 (ND/NZ) | INT32/null | null | null | null | null | null | INT64 | null | null | null | INT32 |
 
     - **约束说明**
 
