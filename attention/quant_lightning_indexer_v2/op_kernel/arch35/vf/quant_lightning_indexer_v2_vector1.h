@@ -23,6 +23,16 @@
 #endif
 
 namespace vector1 {
+template <typename FloatT>
+struct UIntSortConstCtx {
+    using Traits = UIntSortTraits<FloatT>;
+    using UInt   = typename Traits::UInt;
+    AscendC::MicroAPI::RegTensor<UInt> zeros;
+    AscendC::MicroAPI::RegTensor<UInt> allOne;
+    AscendC::MicroAPI::RegTensor<UInt> signMask;
+    AscendC::MicroAPI::RegTensor<UInt> nan;
+};
+
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
                                               const LocalTensor<uint16_t> &in,
                                               const uint32_t topK)
