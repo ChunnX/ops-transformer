@@ -13,8 +13,8 @@
 * \brief engram_fetch 算子 aclnn 接口实现
 */
 
-#include "aclnn/aclnn_base.h"
 #include <algorithm>
+#include "aclnn/aclnn_base.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
@@ -43,9 +43,9 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
-                                               int32_t hiddenSize, int64_t numEntriesPerRank,
-                                               aclTensor *fetched,
-                                               uint64_t *workspaceSize, aclOpExecutor **executor)
+                                             int32_t hiddenSize, int64_t numEntriesPerRank,
+                                             aclTensor *fetched,
+                                             uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(commContext, indices, fetched);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
