@@ -428,6 +428,23 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
+        // if (unlikely(runInfo.isLastS2Loop && !runInfo.isFirstS2Loop)) {
+        //     if (!isSkipMask) {
+        //         FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, hasAtten, s2BaseSize>(
+        //             stage1CastTensor, sumUb, maxUb, mmRes, expUb,
+        //             this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
+        //             ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
+        //             runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
+        //             pScaleValue, negativeFloatScalar, 0.0F, true);
+        //     } else {
+        //         FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, false, s2BaseSize>(
+        //             stage1CastTensor, sumUb, maxUb, mmRes, expUb,
+        //             this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor, kScaleUbTensor,
+        //             ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
+        //             runInfo.actSingleLoopS2Size, static_cast<T>(constInfo.scaleValue), descaleQK,
+        //             pScaleValue, negativeFloatScalar, 0.0F, true);
+        //     }
+        // } else
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (!isSkipMask) {
                 FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, hasAtten, s2BaseSize>(
