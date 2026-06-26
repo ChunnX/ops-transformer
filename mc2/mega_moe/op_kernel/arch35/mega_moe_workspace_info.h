@@ -64,7 +64,6 @@ constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr uint32_t DOUBLE_BUFFER = 2U;
-constexpr uint32_t DISPATCH_BUFFER_NUM = 6U;
 constexpr uint32_t TWO_FLAG = 2U;
 constexpr uint32_t RANK_ID = 0U;
 constexpr uint32_t TOKEN_ID = 1U;
@@ -180,12 +179,6 @@ struct WorkspaceInfo {
         uint32_t serverWorkspaceBytes = ALIGN_32 + tilingData->bs * recordBytes;
         workspaceSize += Ops::Base::CeilAlign(
             static_cast<int64_t>(serverNum * serverWorkspaceBytes), static_cast<int64_t>(ALIGN_512));
-
-        sendDedupMaskPtr = base + workspaceSize;
-        uint32_t dedupBytesPerServer = Ops::Base::CeilAlign(
-            tilingData->bs * static_cast<uint32_t>(SIZE_INT_32), static_cast<uint32_t>(ALIGN_32));
-        workspaceSize += Ops::Base::CeilAlign(
-            static_cast<int64_t>(serverNum * dedupBytesPerServer), static_cast<int64_t>(ALIGN_512));
 
         sendCursorPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
