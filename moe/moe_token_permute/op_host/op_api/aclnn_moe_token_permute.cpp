@@ -127,6 +127,186 @@ static aclnnStatus CheckParamsV2(const aclTensor *tokens, const aclTensor *indic
 
 } // namespace MoeTokenPermuteCheck
 
+namespace {
+
+struct MoeTokenPermuteV3Tensors {
+    aclTensor *fullExpandedX = nullptr;
+    aclTensor *fullExpandedRowIdx = nullptr;
+    aclTensor *expertTokensCount = nullptr;
+    aclTensor *fullExpandedScale = nullptr;
+};
+
+static aclnnStatus PrepareMoeInitRoutingV3Inputs(const aclTensor *tokens, const aclTensor *indices,
+                                                 aclOpExecutor *executor, const aclTensor *&tokensContiguous,
+                                                 const aclTensor *&indicesContiguous)
+{
+    tokensContiguous = l0op::Contiguous(tokens, executor);
+    CHECK_RET(tokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    indicesContiguous = l0op::Contiguous(indices, executor);
+    CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (indicesContiguous->GetDataType() == DataType::DT_INT64) {
+        indicesContiguous = l0op::Cast(indicesContiguous, DataType::DT_INT32, executor);
+        CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (indicesContiguous->GetViewShape().GetDimNum() == 1) {
+        op::Shape indicesShape;
+        indicesShape.AppendDim(indicesContiguous->GetViewShape().GetDim(0));
+        indicesShape.AppendDim(1);
+        indicesContiguous = executor->CreateView(indicesContiguous, indicesShape, 0);
+        CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    return ACLNN_SUCCESS;
+}
+
+static op::Shape GetFullExpandedScaleShape(int64_t quantMode, int64_t fullTokenNum,
+                                           const aclTensor *expandedScaleOut)
+{
+    op::Shape fullExpandedScaleShape;
+    if (quantMode == MoeTokenPermuteCheck::QUANT_MODE_NONE) {
+        fullExpandedScaleShape.AppendDim(fullTokenNum);
+        return fullExpandedScaleShape;
+    }
+
+    fullExpandedScaleShape = expandedScaleOut->GetViewShape();
+    fullExpandedScaleShape.SetDim(0, fullTokenNum);
+    return fullExpandedScaleShape;
+}
+
+static aclnnStatus AllocMoeInitRoutingV3Outputs(int64_t quantMode, const aclTensor *permuteTokensOut,
+                                                const aclTensor *expandedScaleOut, int64_t fullTokenNum,
+                                                aclOpExecutor *executor, MoeTokenPermuteV3Tensors &tensors)
+{
+    op::Shape fullExpandedXShape = permuteTokensOut->GetViewShape();
+    fullExpandedXShape.SetDim(0, fullTokenNum);
+    tensors.fullExpandedX = executor->AllocTensor(
+        fullExpandedXShape, permuteTokensOut->GetDataType(), Format::FORMAT_ND);
+
+    op::Shape fullRowIdxShape;
+    fullRowIdxShape.AppendDim(fullTokenNum);
+    tensors.fullExpandedRowIdx = executor->AllocTensor(fullRowIdxShape, DataType::DT_INT32, Format::FORMAT_ND);
+
+    op::Shape expertTokensShape;
+    expertTokensShape.AppendDim(MoeTokenPermuteCheck::EXPERT_NUM);
+    tensors.expertTokensCount = executor->AllocTensor(expertTokensShape, DataType::DT_INT64, Format::FORMAT_ND);
+
+    op::Shape fullExpandedScaleShape = GetFullExpandedScaleShape(quantMode, fullTokenNum, expandedScaleOut);
+    auto scaleDtype = DataType::DT_FLOAT8_E8M0;
+    if (quantMode == MoeTokenPermuteCheck::QUANT_MODE_NONE) {
+        scaleDtype = DataType::DT_FLOAT;
+    }
+    tensors.fullExpandedScale = executor->AllocTensor(fullExpandedScaleShape, scaleDtype, Format::FORMAT_ND);
+
+    CHECK_RET(tensors.fullExpandedX != nullptr && tensors.fullExpandedRowIdx != nullptr &&
+                  tensors.expertTokensCount != nullptr && tensors.fullExpandedScale != nullptr,
+              ACLNN_ERR_INNER_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CopyMoeInitRoutingV3Outputs(int64_t quantMode, const aclTensor *expandedXOut,
+                                               const aclTensor *expandedRowIdxOut, const aclTensor *expandedScaleOut,
+                                               const aclTensor *permuteTokensOut, const aclTensor *sortedIndicesOut,
+                                               const aclTensor *expandedScaleTarget, aclOpExecutor *executor)
+{
+    auto expandedXView = executor->CreateView(expandedXOut, permuteTokensOut->GetViewShape(), 0);
+    CHECK_RET(expandedXView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto viewCopyExpandedXOutResult = l0op::ViewCopy(expandedXView, permuteTokensOut, executor);
+    CHECK_RET(viewCopyExpandedXOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto expandedRowIdxView = executor->CreateView(expandedRowIdxOut, sortedIndicesOut->GetViewShape(), 0);
+    CHECK_RET(expandedRowIdxView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto viewCopyExpandedRowIdxOutResult = l0op::ViewCopy(expandedRowIdxView, sortedIndicesOut, executor);
+    CHECK_RET(viewCopyExpandedRowIdxOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    if (quantMode != MoeTokenPermuteCheck::QUANT_MODE_NONE) {
+        auto expandedScaleView = executor->CreateView(expandedScaleOut, expandedScaleTarget->GetViewShape(), 0);
+        CHECK_RET(expandedScaleView != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        auto viewCopyExpandedScaleOutResult = l0op::ViewCopy(expandedScaleView, expandedScaleTarget, executor);
+        CHECK_RET(viewCopyExpandedScaleOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus RunMoeInitRoutingV2(const aclTensor *tokens, const aclTensor *indices, int64_t numOutTokens,
+                                       const aclTensor *permuteTokensOut, const aclTensor *sortedIndicesOut,
+                                       const aclTensor *expandedScaleOut, uint64_t *workspaceSize,
+                                       aclOpExecutor **executor)
+{
+    aclnnStatus ret = MoeTokenPermuteCheck::CheckParamsV2(
+        tokens, indices, permuteTokensOut, sortedIndicesOut, expandedScaleOut);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    auto tokensContiguous = l0op::Contiguous(tokens, uniqueExecutor.get());
+    CHECK_RET(tokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto indicesContiguous = l0op::Contiguous(indices, uniqueExecutor.get());
+    CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto result = l0op::MoeInitRoutingV2(tokensContiguous, indicesContiguous, numOutTokens, 0, 0, 0, 0, false,
+                                         permuteTokensOut, sortedIndicesOut, nullptr, nullptr,
+                                         uniqueExecutor.get());
+    auto expandedXOut = std::get<0>(result);
+    auto expandedRowIdxOut = std::get<1>(result);
+    CHECK_RET(expandedXOut != nullptr && expandedRowIdxOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(l0op::ViewCopy(expandedXOut, permuteTokensOut, uniqueExecutor.get()) != nullptr,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(l0op::ViewCopy(expandedRowIdxOut, sortedIndicesOut, uniqueExecutor.get()) != nullptr,
+              ACLNN_ERR_INNER_NULLPTR);
+
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus RunMoeInitRoutingV3(const aclTensor *tokens, const aclTensor *indices, int64_t quantMode,
+                                       const aclTensor *permuteTokensOut, const aclTensor *sortedIndicesOut,
+                                       const aclTensor *expandedScaleOut, uint64_t *workspaceSize,
+                                       aclOpExecutor **executor)
+{
+    aclnnStatus ret = MoeTokenPermuteCheck::CheckParamsRegbase(
+        tokens, indices, quantMode, permuteTokensOut, sortedIndicesOut, expandedScaleOut);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    const aclTensor *tokensContiguous = nullptr;
+    const aclTensor *indicesContiguous = nullptr;
+    ret = PrepareMoeInitRoutingV3Inputs(tokens, indices, uniqueExecutor.get(), tokensContiguous, indicesContiguous);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    int64_t fullTokenNum = indicesContiguous->GetViewShape().GetShapeSize();
+    MoeTokenPermuteV3Tensors tensors;
+    ret = AllocMoeInitRoutingV3Outputs(
+        quantMode, permuteTokensOut, expandedScaleOut, fullTokenNum, uniqueExecutor.get(), tensors);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    const int64_t activeExpertRangeData[] = {0, MoeTokenPermuteCheck::EXPERT_NUM};
+    auto activeExpertRange = uniqueExecutor->AllocIntArray(activeExpertRangeData, 2);
+    CHECK_RET(activeExpertRange != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto result = l0op::MoeInitRoutingV3(
+        tokensContiguous, indicesContiguous, nullptr, nullptr, fullTokenNum, 0, MoeTokenPermuteCheck::EXPERT_NUM, 0,
+        MoeTokenPermuteCheck::EXPERT_TOKENS_NUM_TYPE_COUNT, true, quantMode, activeExpertRange,
+        MoeTokenPermuteCheck::ROW_IDX_TYPE_GATHER, tensors.fullExpandedX, tensors.fullExpandedRowIdx,
+        tensors.expertTokensCount, tensors.fullExpandedScale, uniqueExecutor.get());
+    auto expandedXOut = std::get<0>(result);
+    auto expandedRowIdxOut = std::get<1>(result);
+    auto expandedScaleResult = std::get<3>(result);
+    CHECK_RET(expandedXOut != nullptr && expandedRowIdxOut != nullptr && expandedScaleResult != nullptr,
+              ACLNN_ERR_INNER_NULLPTR);
+
+    ret = CopyMoeInitRoutingV3Outputs(quantMode, expandedXOut, expandedRowIdxOut, expandedScaleResult,
+                                      permuteTokensOut, sortedIndicesOut, expandedScaleOut, uniqueExecutor.get());
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
+}
+
+} // namespace
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -150,126 +330,13 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
 
     bool useMoeInitRoutingV3 = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND950;
     if (!useMoeInitRoutingV3) {
-        aclnnStatus ret = MoeTokenPermuteCheck::CheckParamsV2(
-            tokens, indices, permuteTokensOut, sortedIndicesOut, expandedScaleOut);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-        auto uniqueExecutor = CREATE_EXECUTOR();
-        CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-        auto tokensContiguous = l0op::Contiguous(tokens, uniqueExecutor.get());
-        CHECK_RET(tokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        auto indicesContiguous = l0op::Contiguous(indices, uniqueExecutor.get());
-        CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-        auto result = l0op::MoeInitRoutingV2(tokensContiguous, indicesContiguous, numOutTokens, 0, 0, 0, 0, false,
-                                             permuteTokensOut, sortedIndicesOut, nullptr, nullptr,
-                                             uniqueExecutor.get());
-        auto expandedXOut = std::get<0>(result);
-        auto expandedRowIdxOut = std::get<1>(result);
-        CHECK_RET(expandedXOut != nullptr && expandedRowIdxOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        CHECK_RET(l0op::ViewCopy(expandedXOut, permuteTokensOut, uniqueExecutor.get()) != nullptr,
-                  ACLNN_ERR_INNER_NULLPTR);
-        CHECK_RET(l0op::ViewCopy(expandedRowIdxOut, sortedIndicesOut, uniqueExecutor.get()) != nullptr,
-                  ACLNN_ERR_INNER_NULLPTR);
-
-        *workspaceSize = uniqueExecutor->GetWorkspaceSize();
-        uniqueExecutor.ReleaseTo(executor);
-        return ACLNN_SUCCESS;
+        return RunMoeInitRoutingV2(
+            tokens, indices, numOutTokens, permuteTokensOut, sortedIndicesOut, expandedScaleOut, workspaceSize,
+            executor);
     }
 
-    aclnnStatus ret = MoeTokenPermuteCheck::CheckParamsRegbase(
-        tokens, indices, quantMode, permuteTokensOut, sortedIndicesOut, expandedScaleOut);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-    // 创建OpExecutor
-    auto uniqueExecutor = CREATE_EXECUTOR();
-    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
-    // 固定写法，将输入转换成连续的tensor
-    auto tokensContiguous = l0op::Contiguous(tokens, uniqueExecutor.get());
-    CHECK_RET(tokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto indicesContiguous = l0op::Contiguous(indices, uniqueExecutor.get());
-    CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    if (indicesContiguous->GetDataType() == DataType::DT_INT64) {
-        indicesContiguous = l0op::Cast(indicesContiguous, DataType::DT_INT32, uniqueExecutor.get());
-        CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    if (indicesContiguous->GetViewShape().GetDimNum() == 1) {
-        op::Shape indicesShape;
-        indicesShape.AppendDim(indicesContiguous->GetViewShape().GetDim(0));
-        indicesShape.AppendDim(1);
-        indicesContiguous = uniqueExecutor->CreateView(indicesContiguous, indicesShape, 0);
-        CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    int64_t fullTokenNum = indicesContiguous->GetViewShape().GetShapeSize();
-    op::Shape fullExpandedXShape = permuteTokensOut->GetViewShape();
-    fullExpandedXShape.SetDim(0, fullTokenNum);
-    auto fullExpandedX = uniqueExecutor->AllocTensor(
-        fullExpandedXShape, permuteTokensOut->GetDataType(), Format::FORMAT_ND);
-    op::Shape fullRowIdxShape;
-    fullRowIdxShape.AppendDim(fullTokenNum);
-    auto fullExpandedRowIdx = uniqueExecutor->AllocTensor(
-        fullRowIdxShape, DataType::DT_INT32, Format::FORMAT_ND);
-    op::Shape expertTokensShape;
-    expertTokensShape.AppendDim(MoeTokenPermuteCheck::EXPERT_NUM);
-    auto expertTokensCount = uniqueExecutor->AllocTensor(
-        expertTokensShape, DataType::DT_INT64, Format::FORMAT_ND);
-    op::Shape fullExpandedScaleShape;
-    if (quantMode == MoeTokenPermuteCheck::QUANT_MODE_MXFP8_E5M2 ||
-        quantMode == MoeTokenPermuteCheck::QUANT_MODE_MXFP8_E4M3FN) {
-        fullExpandedScaleShape = expandedScaleOut->GetViewShape();
-        fullExpandedScaleShape.SetDim(0, fullTokenNum);
-    } else if (quantMode == MoeTokenPermuteCheck::QUANT_MODE_MXFP4_E2M1) {
-        fullExpandedScaleShape = expandedScaleOut->GetViewShape();
-        fullExpandedScaleShape.SetDim(0, fullTokenNum);
-    } else {
-        fullExpandedScaleShape.AppendDim(fullTokenNum);
-    }
-    auto fullExpandedScale = uniqueExecutor->AllocTensor(
-        fullExpandedScaleShape,
-        quantMode == MoeTokenPermuteCheck::QUANT_MODE_NONE ? DataType::DT_FLOAT : DataType::DT_FLOAT8_E8M0,
-        Format::FORMAT_ND);
-    CHECK_RET(fullExpandedX != nullptr && fullExpandedRowIdx != nullptr && expertTokensCount != nullptr &&
-                  fullExpandedScale != nullptr,
-              ACLNN_ERR_INNER_NULLPTR);
-
-    const int64_t activeExpertRangeData[] = {0, MoeTokenPermuteCheck::EXPERT_NUM};
-    auto activeExpertRange = uniqueExecutor->AllocIntArray(activeExpertRangeData, 2);
-    CHECK_RET(activeExpertRange != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    auto result = l0op::MoeInitRoutingV3(
-        tokensContiguous, indicesContiguous, nullptr, nullptr, fullTokenNum, 0, MoeTokenPermuteCheck::EXPERT_NUM, 0,
-        MoeTokenPermuteCheck::EXPERT_TOKENS_NUM_TYPE_COUNT, true, quantMode, activeExpertRange,
-        MoeTokenPermuteCheck::ROW_IDX_TYPE_GATHER, fullExpandedX, fullExpandedRowIdx, expertTokensCount,
-        fullExpandedScale, uniqueExecutor.get());
-    auto expandedXOut_ = std::get<0>(result);
-    auto expandedRowIdxOut_ = std::get<1>(result);
-    auto expandedScaleOut_ = std::get<3>(result);
-    bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr) || (expandedScaleOut_ == nullptr);
-    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
-
-    auto expandedXView = uniqueExecutor->CreateView(expandedXOut_, permuteTokensOut->GetViewShape(), 0);
-    CHECK_RET(expandedXView != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto viewCopyExpandedXOutResult = l0op::ViewCopy(expandedXView, permuteTokensOut, uniqueExecutor.get());
-    CHECK_RET(viewCopyExpandedXOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto expandedRowIdxView = uniqueExecutor->CreateView(expandedRowIdxOut_, sortedIndicesOut->GetViewShape(), 0);
-    CHECK_RET(expandedRowIdxView != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto viewCopyExpandedRowIdxOutResult =
-        l0op::ViewCopy(expandedRowIdxView, sortedIndicesOut, uniqueExecutor.get());
-    CHECK_RET(viewCopyExpandedRowIdxOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    if (quantMode != MoeTokenPermuteCheck::QUANT_MODE_NONE) {
-        auto expandedScaleView = uniqueExecutor->CreateView(expandedScaleOut_, expandedScaleOut->GetViewShape(), 0);
-        CHECK_RET(expandedScaleView != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        auto viewCopyExpandedScaleOutResult =
-            l0op::ViewCopy(expandedScaleView, expandedScaleOut, uniqueExecutor.get());
-        CHECK_RET(viewCopyExpandedScaleOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    // 获取计算过程中需要使用的workspace大小
-    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
-    uniqueExecutor.ReleaseTo(executor);
-    return ACLNN_SUCCESS;
+    return RunMoeInitRoutingV3(
+        tokens, indices, quantMode, permuteTokensOut, sortedIndicesOut, expandedScaleOut, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMoeTokenPermute(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
