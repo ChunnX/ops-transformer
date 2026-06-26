@@ -275,11 +275,12 @@ uint64_t FpMatmulAllToAllTilingBase::GetTilingKey() const
         biasDType = DTYPE_BIAS_FP32;
     }
 
-    uint8_t commMode = 0;
+    uint8_t engineType = 0;
     if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA,
-                                                        commMode) != ge::GRAPH_SUCCESS) {
+                                                        engineType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    uint8_t commMode = (engineType == mc2tiling::A5_CCU_SCHED_ENGINE) ? COMMMODE_CCU : COMMMODE_AICPU;
 
     const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, commMode);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,COMMMODE: [%d,%d,%d,%d], TilingKey is [%lu].", NON_QUANT_MODE,
