@@ -53,7 +53,6 @@ constexpr uint32_t ALIGNED_LEN_256 = 256U;
 constexpr uint32_t ALIGNED_LEN_128 = 128U;
 constexpr uint32_t NETWORK_DIRECT = 0U; 
 constexpr uint32_t NETWORK_HYBRID = 1U; 
-constexpr uint32_t MAX_DTYPE_SIZE = 2U;     //  sizeof(bf16)
 constexpr uint32_t META_INFO = 32U;
 constexpr uint32_t TOPK_INFO_SIZE = 4U;   // sizeof(int32_t)=sizeof(float)=4B
 constexpr uint32_t UB_STRIDE = 8U;   // UB_ALIGN/sizeof(int32_t)=8
@@ -154,6 +153,7 @@ private:
     uint32_t epWorldSize_{0};
     uint32_t moeExpertNumPerRank_{0};
     uint32_t axisMaxBS_{0};
+    uint32_t scalesBytes_{0};
     uint32_t perSlotBytes_{0};
     uint32_t moeExpertNum_{0};
     uint32_t numScaleupRanks_{0};
@@ -172,17 +172,14 @@ private:
     uint32_t rankNumPerCore_{0};
     uint32_t perGroupTokenNum_{0};
     uint32_t groupCnt_{0};
-    uint32_t hAlignUbSize_{0};
+    uint32_t hAlignSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
-    uint32_t scalesAlign_{0};
     uint32_t epWorldSizeAlign_{0};
     uint32_t epWorldSizeAlign512_{0};
     uint32_t moeNumPerRankAlign_{0};
     uint32_t moeExpertNumAlign_{0};
     uint32_t moeExpertNumAlign512_{0};
-    uint32_t perSlotBytesAlign_{0};
-    uint32_t counterLenPerRank_{0};
     uint32_t cntPerRankSizeAlign_{0};
     uint32_t cntPerRankSizeAlign512_{0};
     uint32_t counterCnt_{0};
@@ -221,6 +218,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     epWorldSize_ = info.cfg.epWorldSize;
     moeExpertNumPerRank_ = info.cfg.numLocalExperts;
     axisMaxBS_ = info.cfg.numMaxTokensPerRank;
+    scalesBytes_ = info.cfg.scalesBytes;
     perSlotBytes_ = info.cfg.perSlotBytes;
     numScaleupRanks_ = info.numScaleupRanks;
     numScaleoutRanks_ = info.numScaleoutRanks;
@@ -228,8 +226,20 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     numAivStage2_ = info.numAivStage2;
     aivNum_ = info.aivNum;
     hostPinnedCounterAddrGM_ = reinterpret_cast<GM_ADDR>(info.hostPinnedCounterAddr);
-    counterLenPerRank_ = moeExpertNumPerRank_ + COUNTER_STRIDE;
     moeExpertNum_ = moeExpertNumPerRank_ * epWorldSize_;
+
+    hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
+    kAlignSize_ = Ceil(axisK_ * TOPK_INFO_SIZE, UB_ALIGN) * UB_ALIGN;
+    axisKAlign_ = kAlignSize_ / TOPK_INFO_SIZE;
+    metaOffset_ = hAlignSize_;
+    epWorldSizeAlign_ = Ceil(epWorldSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    cntPerRankSizeAlign_ = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t), UB_ALIGN) * UB_ALIGN; // perRank state+count
+    counterCnt_ = epWorldSizeAlign_ / sizeof(int32_t);
+    epWorldSizeAlign512_ = Ceil(epWorldSize_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    cntPerRankSizeAlign512_ = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    moeNumPerRankAlign_ = Ceil(moeExpertNumPerRank_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
+    moeExpertNumAlign_ = Ceil(moeExpertNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    moeExpertNumAlign512_ = Ceil(moeExpertNum_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
     uint32_t numPerCore = (moeExpertNum_ + epWorldSize_) / aivNum_;
     calRankCoreNum_ =  numPerCore > epWorldSize_ ? Ceil(2 * epWorldSize_, numPerCore) : epWorldSize_;
@@ -242,6 +252,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     }
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
         scalesGMTensor_.SetGlobalBuffer((__gm__ ScalesType*)scales);
+        metaOffset_ += Ceil(scalesBytes_, UB_ALIGN) * UB_ALIGN;
     }
     if constexpr (IsCached) {
         cachedSlotIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t*)cachedSlotIdx);
@@ -250,32 +261,14 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     numRecvPerExpertGMTensor_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert);
     dstSlotIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t*)dstBufferSlotIdx);
 
-    hAlignUbSize_ = Ceil(axisH_ * MAX_DTYPE_SIZE, UB_ALIGN) * UB_ALIGN;
-    kAlignSize_ = Ceil(axisK_ * TOPK_INFO_SIZE, UB_ALIGN) * UB_ALIGN;
-    axisKAlign_ = kAlignSize_ / TOPK_INFO_SIZE;
-    epWorldSizeAlign_ = Ceil(epWorldSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    cntPerRankSizeAlign_ = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t), UB_ALIGN) * UB_ALIGN; // perRank state+count
-    counterCnt_ = epWorldSizeAlign_ / sizeof(int32_t);
-    epWorldSizeAlign512_ = Ceil(epWorldSize_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    cntPerRankSizeAlign512_ = Ceil(epWorldSize_ * COUNTER_STRIDE * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    perSlotBytesAlign_ = Ceil(perSlotBytes_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-    moeNumPerRankAlign_ = Ceil(moeExpertNumPerRank_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
-    moeExpertNumAlign_ = Ceil(moeExpertNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    moeExpertNumAlign512_ = Ceil(moeExpertNum_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
-
     tpipe_->InitBuffer(numRecvPerRankBuf_, epWorldSizeAlign_);
     numRecvPerRankTensor_ = numRecvPerRankBuf_.Get<int32_t>();
 
-    if constexpr (Std::IsSame<ScalesType, float>::value) {
-        scalesAlign_ = Ceil(axisH_, ALIGNED_LEN_128);
-    } else if constexpr (Std::IsSame<ScalesType, fp8_e8m0_t>::value) {
-        scalesAlign_ = Ceil(axisH_, UB_ALIGN);
-    }
     xCopyParams_ = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     topkCopyParams_ = {1U, static_cast<uint16_t>(axisK_ * TOPK_INFO_SIZE), 0U, 0U};
-    scalesCopyParams_ = {1U, static_cast<uint16_t>(scalesAlign_ * sizeof(ScalesType)), 0U, 0U};
-    // countCopyParams_ = {1U, static_cast<uint16_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U};
-    countCopyParams_ = {1U, static_cast<uint16_t>(counterLenPerRank_ * sizeof(int32_t)), 0U, 0U};
+    scalesCopyParams_ = {1U, static_cast<uint16_t>(scalesBytes_), 0U, 0U};
+    countCopyParams_ = {1U, static_cast<uint16_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U};
+    // countCopyParams_ = {1U, static_cast<uint16_t>(counterLenPerRank_ * sizeof(int32_t)), 0U, 0U};
     slotCopyParams_ = {1U, static_cast<uint16_t>(perSlotBytes_), 0U, 0U};
     padParams_ = {true, 0, 0, 0};
 
@@ -703,16 +696,15 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
 
     tpipe_->InitBuffer(perSlotQueue_, BUFFER_NUM, perSlotBytes_);
     tpipe_->InitBuffer(dstSlotQueue_, 1, kAlignSize_);
-    uint32_t hAlignBytes = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
 
     for (uint32_t tokenId = startTokenId_; tokenId < endTokenId_; ++tokenId) {
         uint32_t topkOffset = tokenId * axisK_;
         xLocalTensor_ = perSlotQueue_.AllocTensor<XType>();
-        metaLocalTensor_ = xLocalTensor_[hAlignUbSize_ / MAX_DTYPE_SIZE].template ReinterpretCast<int32_t>();
+        metaLocalTensor_ = xLocalTensor_[metaOffset_ / sizeof(XType)].template ReinterpretCast<int32_t>();
         DataCopyPad(xLocalTensor_, xGMTensor_[tokenId * axisH_], xCopyParams_, padParams_);
         if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-            DataCopyPad(xLocalTensor_[hAlignBytes / sizeof(XType)].template ReinterpretCast<ScalesType>(),
-                        scalesGMTensor_[tokenId * scalesAlign_], scalesCopyParams_, padParams_);
+            DataCopyPad(xLocalTensor_[hAlignSize_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
+                        scalesGMTensor_[tokenId * scalesBytes_ / sizeof(ScalesType)], scalesCopyParams_, padParams_);
         }
         DataCopyPad(metaLocalTensor_, topkIdxGMTensor_[topkOffset], topkCopyParams_, padParams_);
         if constexpr (IsTopkWeights) {
@@ -724,7 +716,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
         metaLocalTensor_.SetValue(2 * axisKAlign_ + 1, tokenId);
         perSlotQueue_.EnQue(xLocalTensor_);
         tokenSlotTensor_ = perSlotQueue_.DeQue<XType>();
-        topkIdxTensor_ = tokenSlotTensor_[hAlignUbSize_ / MAX_DTYPE_SIZE].template ReinterpretCast<int32_t>();
+        topkIdxTensor_ = tokenSlotTensor_[metaOffset_ / sizeof(XType)].template ReinterpretCast<int32_t>();
         dstSlotIdxTensor_ = dstSlotQueue_.AllocTensor<int32_t>();
 
         if constexpr (!IsCached) {
@@ -801,11 +793,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessDire
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
-    // if constexpr (NetworkMode == NETWORK_DIRECT) {
-    //     ProcessDirect();
-    // } else {
-    //     ProcessHybrid();
-    // }
     if ASCEND_IS_AIV { // 全aiv处理
         ProcessDirect();
     }

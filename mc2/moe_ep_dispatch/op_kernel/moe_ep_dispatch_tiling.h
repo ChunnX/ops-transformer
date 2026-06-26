@@ -29,6 +29,7 @@ struct MoeEpCommonTilingData {
     uint32_t hidden;
     uint32_t topK;
     uint32_t numMaxTokensPerRank;
+    uint32_t scalesBytes;
     uint32_t perSlotBytes;
     uint32_t expertAlignment;
 };
@@ -38,6 +39,7 @@ struct MoeEpDispatchInfo {
     uint32_t doCpuSync;
     uint32_t isCached;
     uint32_t isTopkWeights;
+    uint32_t isMxQuant;
     uint32_t networkMode;
     uint32_t numScaleupRanks;
     uint32_t numScaleoutRanks;
