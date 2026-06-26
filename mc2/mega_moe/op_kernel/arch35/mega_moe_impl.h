@@ -205,6 +205,12 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
 
+    // subBlock 1 不参与计算，但仍需更新 startBlockIdx 以保持跨 expert 的轮转计数一致。
+    if (GetSubBlockIdx() != 0) {
+        startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+        return;
+    }
+
     // wave-grain dispatch flag: 每 wave (L1_TILE_M_256 行) 一个槽,dispatch 完成的行数累加到该槽。
     // 目标值 = 该 wave 实际行数 = min(L1_TILE_M_256, m - mLoc) (尾 wave 可能 < L1_TILE_M_256)。
     // 仅在 wave 切换时等待;跨 nLoc 不同的同 mLoc tile 复用上次等待结果。
