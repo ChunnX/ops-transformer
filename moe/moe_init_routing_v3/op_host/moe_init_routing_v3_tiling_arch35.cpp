@@ -2118,7 +2118,15 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
     tilingData->lastCoreIndicesLoops = lastCoreIndicesLoops;
     tilingData->lastCorePerLoopIndicesElements = lastCorePerLoopIndicesElements;
     tilingData->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
-    tilingData->xCopyInQueueBufferNum = DOUBLE_BUFFER;
+
+    int64_t rowSize = AlignBytes(perLoopCols, inputXDtypeSize_);
+    int64_t rowIdxQueueSize = AlignBytes(std::max(perCorePerLoopIndicesElements, lastCorePerLoopIndicesElements),
+                                         sizeof(int32_t)) * NUM_TWO;
+    int64_t scaleQueueSize = AlignBytes(1, sizeof(float)) * NUM_TWO;
+    int64_t maxRowsFromUb = (availUbSize_ - rowIdxQueueSize - scaleQueueSize) / (NUM_TWO * rowSize);
+    int64_t maxRowsPerLoop = std::max(perCorePerLoopIndicesElements, lastCorePerLoopIndicesElements) / k_ + 1;
+    int64_t maxRows = std::min(maxRowsFromUb, maxRowsPerLoop);
+    tilingData->xCopyInQueueBufferNum = std::max(maxRows, DOUBLE_BUFFER);
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
