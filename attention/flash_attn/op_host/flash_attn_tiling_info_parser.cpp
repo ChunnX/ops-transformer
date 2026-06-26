@@ -316,7 +316,7 @@ ge::graphStatus FaInfoParser::GetS1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetKvStorageMode()
+void FaInfoParser::GetKvStorageMode()
 {
     bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
                        layoutKV_ == FaLayout::PA_NZ);
@@ -326,7 +326,6 @@ ge::graphStatus FaInfoParser::GetKvStorageMode()
     } else {
         kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     }
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
@@ -362,6 +361,10 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
+    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table","provided",
+            "When layout_kv is PA, block_table must be provided but got nullptr."),
+        return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -575,9 +578,7 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != GetKvStorageMode()) {
-    return ge::GRAPH_FAILED;
-}
+    GetKvStorageMode();
     if (emptyTensorFlag_) {
         return ge::GRAPH_SUCCESS;
     }
