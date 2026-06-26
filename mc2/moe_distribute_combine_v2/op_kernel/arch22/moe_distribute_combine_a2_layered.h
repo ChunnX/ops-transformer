@@ -18,20 +18,17 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "moe_distribute_combine_tiling.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
-#include "../common/mc2_kernel_utils.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_a2_base.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_a2_constant.h"
+#include "../moe_distribute_combine_tiling.h"
+#if __has_include("../../common/moe_distribute_base.h")
+#include "../../common/moe_distribute_base.h"
+#include "../../common/mc2_kernel_utils.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
-#include "../../common/op_kernel/mc2_kernel_utils.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_base.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_adump.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
+#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+#include "../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_a2_adump.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_a2_base.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_a2_constant.h"
 
 namespace MoeDistributeCombineA2Impl {
 

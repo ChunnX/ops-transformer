@@ -26,7 +26,7 @@
 #else
 #include "../../../moe_distribute_combine_setup/op_kernel/moe_distribute_base.h"
 #endif
-#include "moe_distribute_combine_teardown_tiling.h"
+#include "../moe_distribute_combine_teardown_tiling.h"
 
 namespace MoeDistributeCombineTeardownImpl {
 
