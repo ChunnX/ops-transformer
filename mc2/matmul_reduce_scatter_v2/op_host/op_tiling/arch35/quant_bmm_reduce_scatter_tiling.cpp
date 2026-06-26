@@ -20,11 +20,11 @@
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "mc2_comm_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"
+#include "../matmul_reduce_scatter_tiling_base.h"
 
 using namespace Mc2Log;
 using namespace Mc2Tiling;
@@ -72,7 +72,6 @@ constexpr uint32_t OUTPUT_TYPE_FLOAT = 2;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
 constexpr uint32_t GROUPSIZE_INDEX = 7;
 constexpr uint32_t TRANSPOSEB_INDEX = 3;
-constexpr uint32_t COMMMODE_INDEX = 10;
 }  // namespace
 
 bool QuantBmmReduceScatterTiling::IsCapable()
