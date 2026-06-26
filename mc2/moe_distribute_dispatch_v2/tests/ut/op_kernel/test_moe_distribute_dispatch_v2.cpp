@@ -17,7 +17,7 @@
 #include "tikicpulib.h"
 #include "moe_distribute_dispatch_v2_tiling_def.h"
 #include "../../../op_kernel/moe_distribute_dispatch_v2.cpp"
-#include "../../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
+#include "../../../op_kernel/arch22/moe_distribute_dispatch_v2_tiling_key.h"
 
 class MoeDistributeDispatchV2Test : public testing::Test {
 protected:
