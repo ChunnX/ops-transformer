@@ -290,17 +290,17 @@ __aicore__ inline void ComputeGradXFromRms(const LocalTensor<T>& xFp32Local, con
     {
         MicroAPI::RegTensor<T> xFp32Reg;
         MicroAPI::RegTensor<T> ncCountReg;
-        MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(maskCount);;
         MicroAPI::Duplicate(ncCountReg, static_cast<T>(ncCount));
 
         for (uint16_t i = 0; i < repeatTimes; i++) {
+            MicroAPI::MaskReg preg = MicroAPI::UpdateMask<T>(maskCount);
             MicroAPI::AddrReg offset = MicroAPI::CreateAddrReg<T>(i, repeatCount);
             MicroAPI::DataCopy(xFp32Reg, (__local_mem__ T*)xFp32Addr, offset);
             MicroAPI::Muls(xFp32Reg, xFp32Reg, static_cast<T>(-1), preg);
             MicroAPI::Muls(xFp32Reg, xFp32Reg, gradInvRms, preg);
             MicroAPI::Muls(xFp32Reg, xFp32Reg, invRms, preg);
             MicroAPI::Div(xFp32Reg, xFp32Reg, ncCountReg, preg);
-            MicroAPI::DataCopy(xFp32AddrOut, xFp32Reg, preg);
+            MicroAPI::DataCopy(xFp32AddrOut + i * repeatCount, xFp32Reg, preg);
         }
     }
 }
