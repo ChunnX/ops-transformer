@@ -43,11 +43,29 @@ __global__ __aicore__ void mega_moe(
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 #ifdef ENABLE_TENSOR_API
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-    MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
-        DispatchQuantOutType, CombineQuantOutType> op;
-        op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
-                scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
-        op.Process();
+        // 框架为所有 tiling key × dtype 组合自动编译，不合规组合跳过实例化（tiling 已拦截）。
+        //
+        //   合规组合表：
+        //   ┌───────────┬───────────────────┬──────────────────────┐
+        //   │ QuantMode │ Weight1 / Weight2 │ 路径                  │
+        //   ├───────────┼───────────────────┼──────────────────────┤
+        //   │ E4M3      │ fp8 / fp8         │ a8w8                  │
+        //   │ E4M3      │ fp4 / fp4         │ a8w4                  │
+        //   │ E2M1      │ fp4 / fp4         │ a4w4                  │
+        //   │ E5M2      │ fp8 / fp8         │ a8w8-e5m2             │
+        //   └───────────┴───────────────────┴──────────────────────┘
+        constexpr bool w1IsFp4 = Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value;
+        constexpr bool w2IsFp4 = Std::IsSame<DTYPE_WEIGHT2, fp4x2_e2m1_t>::value;
+        constexpr bool unsupported =
+            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && !(w1IsFp4 && w2IsFp4)) ||
+            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && (w1IsFp4 || w2IsFp4));
+        if constexpr (!unsupported) {
+            MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DTYPE_WEIGHT2,
+                DispatchQuantOutType, CombineQuantOutType> op;
+            op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
+                    scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
+            op.Process();
+        }
     }
 #endif
 }

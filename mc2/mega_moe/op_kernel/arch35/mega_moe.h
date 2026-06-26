@@ -34,10 +34,10 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t>;
 
-// 预留：XType OutputType TopkWeightsType Weight1Type
+// 预留：XType OutputType TopkWeightsType Weight1Type Weight2Type
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, \
-                                  typename Weight1Type, int32_t QuantMode, int32_t CombineQuantMode
-#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode
+                                  typename Weight1Type, typename Weight2Type, int32_t QuantMode, int32_t CombineQuantMode
+#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, Weight2Type, QuantMode, CombineQuantMode
 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
@@ -137,8 +137,16 @@ private:
 
     static constexpr uint32_t A_ELEMS_PER_BYTE = Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
     static constexpr uint32_t B_ELEMS_PER_BYTE = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? 2U : 1U;
-    static constexpr bool ENABLE_A8W4 = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
-                                        Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value;
+    static constexpr uint32_t B2_ELEMS_PER_BYTE = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value ? 2U : 1U;
+    // GMM1: 仅真正 a8w4（fp8 act + fp4 w1）时走 A8W4 路径。
+    static constexpr bool ENABLE_A8W4_GMM1 = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
+                                            Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value;
+    // GMM2: 只要 Weight2 是 fp4 就走 A8W4 路径，不检查 QuantOutType。
+    //       E5M2 除外（A8W4 实现仅支持 e4m3 激活）。
+    //       这样在 a4w4 场景（fp4 act + fp4 w1 + fp4 w2）下，
+    //       GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
+    static constexpr bool ENABLE_A8W4_GMM2 = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value &&
+                                            QuantMode != E5M2_QUANT;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
@@ -164,7 +172,17 @@ private:
     LocalTensor<float> fp32ScaleTensor_;
     LocalTensor<bfloat16_t> bf16ScaleTensor_;
 
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t,
+    // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
+    // 同时当 Weight2 非 fp4 但 QuantMode==E2M1 时（generic GMM2 路径），也需 promotion，
+    // 否则会出现 A=QuantOutType(fp4) vs B=Weight2Type(fp8) 的类型不匹配。
+    using SwigluQuantOutType = typename std::conditional<
+        (QuantMode == E2M1_QUANT),
+        fp8_e4m3fn_t, QuantOutType>::type;
+
+    // SwigluQuant 输出的元素字节密度：fp4 时为 2elem/B，fp8 时为 1elem/B。
+    static constexpr uint32_t C_ELEMS_PER_BYTE = Std::IsSame<SwigluQuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
+
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t,
         QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
@@ -418,7 +436,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
 {
     // A8W4 路径下 cumsum 被 SwigluQuant 覆盖，从 GM 恢复
-    if constexpr (ENABLE_A8W4) {
+    if constexpr (ENABLE_A8W4_GMM1) {
         DataCopyPad(cumsumInfoTensor_, cumsumInfoGlobalTensor_,
                 {1U, static_cast<uint32_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), 0U, 0U, 0U},
                 {true, 0U, 0U, 0U});
@@ -587,7 +605,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
     DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
 
-    if constexpr (ENABLE_A8W4) {
+    if constexpr (ENABLE_A8W4_GMM1) {
         if (localExpertId != 0) {
             // A8W4 路径下 cumsum 被 SwigluQuant 覆盖，从 GM 加载前序 expert 的 cumsum
             DataCopyPad(cumsumInfoTensor_, cumsumInfoGlobalTensor_,
@@ -612,7 +630,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopy<int32_t>(expertRevNumsGlobalTensor_[localExpertId * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
         expertTokenCntTensor_, INT32_PER_256B);
-    if constexpr (ENABLE_A8W4) {
+    if constexpr (ENABLE_A8W4_GMM1) {
         // A8W4 路径下 cumsum 被 SwigluQuant 覆盖，更新后写回 GM
         DataCopyPad(cumsumInfoGlobalTensor_, cumsumInfoTensor_,
                     {1U, static_cast<uint32_t>(worldSize_ * (localExpertId + 1) * sizeof(int32_t)), 0U, 0U, 0U});
@@ -731,7 +749,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatc
     uint32_t topkIndexTensorSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // A8W4 路径下 SwigluQuant 覆盖 V1 UB，topkIndexTensor_ 需重新初始化
-    if constexpr (ENABLE_A8W4) {
+    if constexpr (ENABLE_A8W4_GMM1) {
         if (localExpertId != 0) {
             CreateVecIndex(topkIndexTensor_, 0, topkIndexTensorSize / sizeof(int32_t));
             AscendC::PipeBarrier<PIPE_V>();
@@ -812,11 +830,11 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
         Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
-        Get<IDX_C_OFFSET>(state.baseOffset) += m * n / SWIGLU_N_HALF / A_ELEMS_PER_BYTE;
+        Get<IDX_C_OFFSET>(state.baseOffset) += m * n / SWIGLU_N_HALF / C_ELEMS_PER_BYTE;
         Get<IDX_C_SCALE_OFFSET>(state.baseOffset) +=
             m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_FLAG_OFFSET>(state.baseOffset) += 1;
-        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
+        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / B2_ELEMS_PER_BYTE;
         Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) +=
             k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
@@ -871,7 +889,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
 {
     if constexpr (Mode == AddrUpdateMode::kGmm1) {
         // guard 与 WorkspaceInfo 分配条件一致，由 TilingKey 保证同步。
-        if constexpr (ENABLE_A8W4) {
+        if constexpr (ENABLE_A8W4_GMM1) {
             gmmAddrInfo.gmm1OutGlobal =
                 params_.workspaceInfo.gmm1MmadResPtr + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
@@ -892,7 +910,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         }
     } else if constexpr(Mode == AddrUpdateMode::kGmm2) {
         // guard 与 WorkspaceInfo 分配条件一致，由 TilingKey 保证同步。
-        if constexpr (ENABLE_A8W4 || CombineQuantMode != COMBINE_NO_QUANT) {
+        if constexpr (ENABLE_A8W4_GMM2 || CombineQuantMode != COMBINE_NO_QUANT) {
             gmmAddrInfo.gmm2OutGlobal =
                 params_.workspaceInfo.gmm2MmadResPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
@@ -1167,30 +1185,27 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 
 // ===============================================================
 // GroupMatmulWithSwigluQuant：按实现路径分发到 A8W4 或 generic GMM1。
-//                            A8W4 由 ENABLE_A8W4 控制；generic 路径仍只在 subBlockIdx_ == 0 上发起。
+//                            A8W4 由 ENABLE_A8W4_GMM1 控制；generic 路径的 subBlockIdx 判断已下沉到函数内部。
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQuant(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state)
 {
-    if constexpr (ENABLE_A8W4) {
-        // A8W4: fp8 activation × fp4_e2m1 weight (ZN), W4→W8 prologue + MMAD
+    if constexpr (ENABLE_A8W4_GMM1) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
             QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
             epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
     } else {
-        if (subBlockIdx_ == 0) {
-            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-                // A8W8_NZ: fp8 activation × fp8 weight in NZ format
-                MegaMoeImpl::GroupMatmulSwigluQuant<
-                    QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>(
-                    epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
-            } else {
-                // Generic: fp8 activation × fp8 weight in ND format
-                MegaMoeImpl::GroupMatmulSwigluQuant<
-                    QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
-            }
+        if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+            // A8W8_NZ: fp8 activation × fp8 weight in NZ format
+            MegaMoeImpl::GroupMatmulSwigluQuant<
+                QuantOutType, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>(
+                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+        } else {
+            // Generic: fp8 activation × fp8 weight in ND format
+            MegaMoeImpl::GroupMatmulSwigluQuant<
+                QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }
 }
@@ -1204,11 +1219,10 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
 {
-    if constexpr (ENABLE_A8W4) {
-        // A8W4: non-quantized combine only (W4→W8 prologue + MMAD, output to GM, AIV post-process)
+    if constexpr (ENABLE_A8W4_GMM2) {
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             MegaMoeImpl::GroupMatmul2CombineA8W4<
-                QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                SwigluQuantOutType, Weight2Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_);
         }
@@ -1216,19 +1230,37 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-            MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-                QuantScaleOutType, QuantScaleOutType, true>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, SwigluQuantOutType, QuantOutType, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType, true>(
+                    params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
+            } else {
+                MegaMoeImpl::GroupMatmul2<CombineQuantMode, SwigluQuantOutType, QuantOutType, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType, true>(
+                    params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
+
+                if constexpr (g_coreType == AIV) {
+                    ProcessCombine(gmmAddrInfo, state, expertIdx);
+                }
+            }
         } else {
-            MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-                QuantScaleOutType, QuantScaleOutType>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
-        }
-        // Combine-quant AIV post-process (shared by both A8W8_NZ and generic)
-        if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
-            ProcessCombine(gmmAddrInfo, state, expertIdx);
+            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, SwigluQuantOutType, Weight2Type, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType>(
+                    params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
+            } else {
+                MegaMoeImpl::GroupMatmul2<CombineQuantMode, SwigluQuantOutType, Weight2Type, bfloat16_t,
+                    QuantScaleOutType, QuantScaleOutType>(
+                    params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
+
+                if constexpr (g_coreType == AIV) {
+                    ProcessCombine(gmmAddrInfo, state, expertIdx);
+                }
+            }
         }
     }
 }

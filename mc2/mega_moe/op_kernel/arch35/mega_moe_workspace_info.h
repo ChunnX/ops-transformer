@@ -95,6 +95,8 @@ constexpr uint32_t TRIPLE_SIZE = 8U;  // 每个 token 的三元组大小（8 个
 constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
+// a4w4 混合场景：GMM1 走 generic a4w4，GMM2 走 A8W4。GMM2 需要 gmm2MmadResPtr workspace。
+constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
 } // namespace
 
 struct WorkspaceInfo {
@@ -167,8 +169,10 @@ struct WorkspaceInfo {
             gmm1MmadResPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
         }
-        // gmm2MmadRes: GMM2 matmul output (maxOutputSize × h bf16), needed by A8W4 and combine-quant.
+        // gmm2MmadRes: GMM2 matmul output (maxOutputSize × h bf16), needed by A8W4 GMM1 path,
+        // A4W4 hybrid path (GMM2 uses A8W4), and combine-quant.
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->combineQuantMode != COMBINE_NO_QUANT) {
             gmm2MmadResPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
