@@ -257,7 +257,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::I
     int64_t gradXFromHinOffset = gradBiasOffset + (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
     int64_t gradHcBeforeNormOffset = gradXFromHinOffset + batchSize_ * seqLength_ * n_ * c_ * 3 + 3 * WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
     int64_t gradNormOutOffset = gradHcBeforeNormOffset + batchSize_ * seqLength_ * (2 * n_ + n_ * n_) + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
-    int64_t gradXFromMatmulOffset = gradHcBeforeNormOffset + batchSize_ * seqLength_ * (2 * n_ + n_ * n_) + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
+    int64_t gradXFromMatmulOffset = gradNormOutOffset + batchSize_ * seqLength_ * (2 * n_ + n_ * n_) + WS_BUFFER_INTERVAL / FP32_BYTE_SIZE;
 
     xFp32Ws_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace));
     gradAlphaWs_.SetGlobalBuffer(reinterpret_cast<__gm__ U*>(workspace) + gradAlphaOffset);
@@ -1282,9 +1282,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         return;
     mm1_.SetTensorA(gradHcBeforeNormWs_[taskOffset * mm1K_]);
     mm1_.SetTensorB(phiGm_);
-    mm1_.SetHF32(true, 1);
+    mm1_.SetHF32(false, 1);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false> (gradXFromMatmulWs_[taskOffset * (n_ * c_)], 1);
+    mm1_.template IterateAll<false> (gradXFromMatmulWs_[taskOffset * (n_ * c_)], 0);
     mm1_.End();
 }
 
@@ -1299,9 +1299,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         return;
     mm2_.SetTensorA(gradHcBeforeNormWs_[taskOffset * mm2K_], true);
     mm2_.SetTensorB(xFp32Ws_);
-    mm2_.SetHF32(true, 1);
+    mm2_.SetHF32(false, 1);
     mm2_.SetSingleShape(mm2M, mm2N_, mm2K_);
-    mm2_.template IterateAll<false> (gradPhiGm_[taskOffset * (n_ * c_)], 1);
+    mm2_.template IterateAll<false> (gradPhiGm_[taskOffset * (n_ * c_)], 0);
     mm2_.End();
 }
 
