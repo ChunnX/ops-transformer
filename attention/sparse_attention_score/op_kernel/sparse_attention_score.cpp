@@ -61,12 +61,12 @@ extern "C" __global__ __aicore__ void sparse_attention_score(
         TILING_KEY_IS(SASA_BF16_D128_ARCH22_TILING);
 
 #if TILING_KEY_VAR == SASA_FP16_D128_ARCH22_TILING
-        SasaInferIntfRegularArch22<half, half>(
+        SasaInferIntfRegularArch22<half, float>(
             query, key, value, selectIdx, blockTable, selectNumIdx,
             actualSeqLengths, actualSeqLengthsKv,
             attentionOut, softmaxLse, user, tiling);
 #elif TILING_KEY_VAR == SASA_BF16_D128_ARCH22_TILING
-        SasaInferIntfRegularArch22<bfloat16_t, bfloat16_t>(
+        SasaInferIntfRegularArch22<bfloat16_t, float>(
             query, key, value, selectIdx, blockTable, selectNumIdx,
             actualSeqLengths, actualSeqLengthsKv,
             attentionOut, softmaxLse, user, tiling);
