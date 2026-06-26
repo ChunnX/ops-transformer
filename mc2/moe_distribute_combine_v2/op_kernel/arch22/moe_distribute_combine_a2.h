@@ -21,22 +21,12 @@
 #include "adv_api/reduce/sum.h"
 #include "utils/std/algorithm.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_distribute_combine_tiling.h"
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
+#include "../moe_distribute_combine_tiling.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
-#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h")
-#include "../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h"
-#include "../moe_distribute_dispatch_v2/moe_distribute_a2_constant.h"
-#else
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_adump.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
-#endif
+#include "../../common/op_kernel/moe_distribute_a2_adump.h"
+#include "../../common/op_kernel/moe_distribute_a2_constant.h"
 
 namespace MoeDistributeCombineA2Impl {
 // 缓冲区相关常量

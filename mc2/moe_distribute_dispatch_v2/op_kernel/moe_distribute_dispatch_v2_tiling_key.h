@@ -16,6 +16,7 @@
 #ifndef MOE_DISTRIBUTE_DISPATCH_TILING_KEY_H
 #define MOE_DISTRIBUTE_DISPATCH_TILING_KEY_H
 #include "ascendc/host_api/tiling/template_argument.h"
+#include "moe_distribute_dispatch_tiling.h"
 
 namespace Mc2Tiling {
 #define TILINGKEY_TPL_A2 0

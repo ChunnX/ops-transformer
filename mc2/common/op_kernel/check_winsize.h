@@ -22,7 +22,6 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_distribute_dispatch_tiling.h"
 
 __aicore__ inline void CheckWindowSize(
     uint64_t tilingWinSizeBytes, uint64_t realWinSizeBytes, AscendC::TPipe* tpipe_, GM_ADDR exceptionAddr)

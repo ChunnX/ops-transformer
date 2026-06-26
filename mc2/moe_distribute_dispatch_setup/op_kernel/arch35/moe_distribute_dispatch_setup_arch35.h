@@ -20,10 +20,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_setup_tiling.h"
 #include "../moe_distribute_base.h"
-#if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
-#include "../../moe_distribute_dispatch_v2/quantize_functions.h"
+#if __has_include("../../common/op_kernel/quantize_functions.h")
+#include "../../common/op_kernel/quantize_functions.h"
 #else
-#include "../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "../../../../common/op_kernel/quantize_functions.h"
 #endif
 #include "common.h"
 #if __has_include("../../common/op_kernel/mc2_kernel_utils.h")
