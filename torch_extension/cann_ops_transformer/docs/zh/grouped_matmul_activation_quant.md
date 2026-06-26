@@ -59,10 +59,10 @@ grouped_matmul_activation_quant(
 | `round_mode` | 可选属性，当前仅支持`"rint"`。 |
 | `scale_alg` | 可选属性，支持`0`或`1`，默认`0`。 |
 | `dst_type_max` | 可选属性，表示maxType的取值，对应公式中的Amax(DType)，默认`0.0`。支持取值`0.0`和`6.0-12.0`，取值为`0.0`代表Amax(DType)为量化结果数据类型的最大值；取值为`6.0-12.0`代表Amax(DType)为传入值。仅支持在FP4E2M1和blocksize取32时设置该值，当前MXFP8场景使用默认值`0.0`。 |
-| `x_dtype` | 可选dtype wrapper，用于覆盖`x`构造aclTensor时使用的dtype。 |
-| `weight_dtype` | 可选dtype wrapper，用于覆盖`weight`构造aclTensor时使用的dtype。 |
-| `weight_scale_dtype` | 可选dtype wrapper，用于覆盖`weight_scale`构造aclTensor时使用的dtype。 |
-| `x_scale_dtype` | 可选dtype wrapper，用于覆盖`x_scale`构造aclTensor时使用的dtype。 |
+| `x_dtype` | 可选属性，int类型，dtype wrapper，用于覆盖`x`构造aclTensor时使用的dtype，传入torch_npu dtype枚举。 |
+| `weight_dtype` | 可选属性，int类型，dtype wrapper，用于覆盖`weight`构造aclTensor时使用的dtype，传入torch_npu dtype枚举。 |
+| `weight_scale_dtype` | 可选属性，int类型，dtype wrapper，用于覆盖`weight_scale`构造aclTensor时使用的dtype，传入torch_npu dtype枚举。 |
+| `x_scale_dtype` | 可选属性，int类型，dtype wrapper，用于覆盖`x_scale`构造aclTensor时使用的dtype，传入torch_npu dtype枚举。 |
 
 ## 返回值说明
 
