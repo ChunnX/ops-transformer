@@ -10,7 +10,7 @@
 
 -   API功能：
     
-    需与[npu\_low\_latency_dispatch](npu_low_latency_dispatch.md)和[npu\_low\_latency_combine](npu_low_latency_combine.md)配套使用，用于计算dispatch\_v3和combine\_v3算子所需的HCCL通信buffer\_size大小（单位：MB）。该接口为静态方法，可在初始化`MoeDistributeBuffer`前调用。
+    需与[low\_latency_dispatch](low_latency_dispatch.md)和[low\_latency_combine](low_latency_combine.md)配套使用，用于计算dispatch\_v3和combine\_v3算子所需的HCCL通信buffer\_size大小（单位：MB）。该接口为静态方法，可在初始化`MoeDistributeBuffer`前调用。
 -   计算公式：
 
     -   计算token实际长度：
@@ -66,7 +66,7 @@ get_low_latency_ccl_buffer_size(world_size, num_max_dispatch_tokens_per_rank, hi
 
 ## 约束说明<a name="zh-cn_topic_0000002203575834_section12345537164215"></a>
 
--   npu\_low\_latency\_ccl\_buffer\_size、npu\_low\_latency\_dispatch和npu\_low\_latency\_combine必须配套使用。
+-   get\_low\_latency\_ccl\_buffer\_size、low\_latency\_dispatch和low\_latency\_combine必须配套使用。
 -   BS：表示batch sequence size，即本卡最终输出的token数量。取值范围为0<BS≤512，当comm\_alg为"fullmesh\_v2"时，需满足0<BS≤256。
 -   本文公式中的“/”表示整除。
 
