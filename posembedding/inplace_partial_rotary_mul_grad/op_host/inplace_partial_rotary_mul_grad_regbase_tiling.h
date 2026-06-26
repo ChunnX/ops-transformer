@@ -72,6 +72,7 @@ TILING_DATA_FIELD_DEF(int64_t, sliceLength);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(InplacePartialRotaryMulGrad_204, InplacePartialRotaryMulGradRegbaseTilingDataAb)
 
+constexpr uint64_t TILING_KEY_EMPTY = 403;
 constexpr static int64_t WORKSPACE_COUNT = 1;
 constexpr static size_t RESERVED_WORKSPACE = static_cast<size_t>(16 * 1024 * 1024);
 struct InplacePartialRotaryMulGradCompileInfo {};
