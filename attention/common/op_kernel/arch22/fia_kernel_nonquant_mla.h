@@ -725,6 +725,14 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
             offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize, constInfo.headDim, 
                                   actualSeqLengthsGmQ, constInfo.actualLenQDims);
             DealActSeqLenIsZero<GmFormat::BSNGD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+        } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
+            OffsetCalculator<GmFormat::NGTD> offsetCalculator;
+            offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
+            DealActSeqLenIsZero<GmFormat::NGTD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+        } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
+            OffsetCalculator<GmFormat::TNGD> offsetCalculator;
+            offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
+            DealActSeqLenIsZero<GmFormat::TNGD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
             OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
             offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize, constInfo.headDim, 
@@ -735,14 +743,6 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
             offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize, constInfo.headDim, 
                                   actualSeqLengthsGmQ, constInfo.actualLenQDims);
             DealActSeqLenIsZero<GmFormat::NGBSD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
-            OffsetCalculator<GmFormat::TNGD> offsetCalculator;
-            offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
-            DealActSeqLenIsZero<GmFormat::TNGD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
-        } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
-            OffsetCalculator<GmFormat::NGTD> offsetCalculator;
-            offsetCalculator.Init(constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims);
-            DealActSeqLenIsZero<GmFormat::NGTD, OUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         }
     }
 }
@@ -751,9 +751,9 @@ template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename
 __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, FdBlockType>::
     UpdateAxisInfo(uint32_t &bN2Cur, uint32_t &gS1Cur, uint32_t &s2Cur)
 {
-    uint64_t s2LoopTimes = (actSeqLensKv + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
     uint64_t gS1LoopTimes = (gS1Size + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
+    uint64_t s2LoopTimes = (actSeqLensKv + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
 
     // 当前S2未处理完
     if (s2Cur + 1 < s2LoopTimes) {
