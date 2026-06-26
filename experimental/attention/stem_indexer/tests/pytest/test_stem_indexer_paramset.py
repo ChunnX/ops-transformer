@@ -805,11 +805,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_035 decode_prompt_128k_not_divisible
+    # SI_WB_034 decode_prompt_128k_not_divisible
     # 覆盖: decode；num_prompt_tokens非128整数倍；prompt block向上取整
     # 设计: num_prompt_tokens=131071，验证128K附近promptLen向上取整路径。
     {
-        'case_id': 'SI_WB_035',
+        'case_id': 'SI_WB_034',
         'testcase_name': 'decode_prompt_128k_not_divisible',
         'expected_result': 'PASS',
         'batch_size': 1,
@@ -829,11 +829,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_036 dynamic_topk_small_upper_55
+    # SI_WB_035 dynamic_topk_small_upper_55
     # 覆盖: 动态TopK small分支上边界；numPromptK=55
     # 设计: prompt block数刚好小于56，验证kStart=numPromptK的边界。
     {
-        'case_id': 'SI_WB_036',
+        'case_id': 'SI_WB_035',
         'testcase_name': 'dynamic_topk_small_upper_55',
         'expected_result': 'PASS',
         'batch_size': 1,
@@ -853,11 +853,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_037 dynamic_topk_medium_lower_56
+    # SI_WB_036 dynamic_topk_medium_lower_56
     # 覆盖: 动态TopK medium分支下边界；numPromptK=56
     # 设计: prompt block数等于56，验证从small切到medium的分段点。
     {
-        'case_id': 'SI_WB_037',
+        'case_id': 'SI_WB_036',
         'testcase_name': 'dynamic_topk_medium_lower_56',
         'expected_result': 'PASS',
         'batch_size': 1,
@@ -877,11 +877,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_038 dynamic_topk_medium_upper_159
+    # SI_WB_037 dynamic_topk_medium_upper_159
     # 覆盖: 动态TopK medium分支上边界；numPromptK=159；kv为32K token
     # 设计: query长度保持不变，以32K KV覆盖medium分支高位边界。
     {
-        'case_id': 'SI_WB_038',
+        'case_id': 'SI_WB_037',
         'testcase_name': 'dynamic_topk_medium_upper_159',
         'expected_result': 'PASS',
         'batch_size': 1,
@@ -901,11 +901,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_039 dynamic_topk_large_lower_160
+    # SI_WB_038 dynamic_topk_large_lower_160
     # 覆盖: 动态TopK large分支下边界；numPromptK=160；kv为32K token
     # 设计: query长度保持不变，以32K KV覆盖从medium切到large的分段点。
     {
-        'case_id': 'SI_WB_039',
+        'case_id': 'SI_WB_038',
         'testcase_name': 'dynamic_topk_large_lower_160',
         'expected_result': 'PASS',
         'batch_size': 1,
@@ -925,11 +925,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_040 batch12_mixed_prefill_decode
+    # SI_WB_039 batch12_mixed_prefill_decode
     # 覆盖: batch=12；prefill/decode混合；多batch不同q/kv尾块
     # 设计: 同一case内混合短prompt、q尾块、decode和kv尾块，验证batch维读取。
     {
-        'case_id': 'SI_WB_040',
+        'case_id': 'SI_WB_039',
         'testcase_name': 'batch12_mixed_prefill_decode',
         'expected_result': 'PASS',
         'batch_size': 12,
@@ -949,11 +949,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_041 causal_s1_s2_unequal_batch3_g16
+    # SI_WB_040 causal_s1_s2_unequal_batch3_g16
     # 覆盖: causal下S1/S2不相等；kbOffset参与dynamicTopK位置计算
     # 设计: actS1=3、actS2=7，验证s1Pos和可见S2的偏移逻辑。
     {
-        'case_id': 'SI_WB_041',
+        'case_id': 'SI_WB_040',
         'testcase_name': 'causal_s1_s2_unequal_batch3_g16',
         'expected_result': 'PASS',
         'batch_size': 3,
@@ -973,11 +973,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_042 causal_q_tail_s1_s2_batch5
+    # SI_WB_041 causal_q_tail_s1_s2_batch5
     # 覆盖: causal；q尾块；S1/S2偏移；最后S1块可见范围变化
     # 设计: q=385导致actS1=4，kv=1153导致actS2=10，同时覆盖尾块和因果偏移。
     {
-        'case_id': 'SI_WB_042',
+        'case_id': 'SI_WB_041',
         'testcase_name': 'causal_q_tail_s1_s2_batch5',
         'expected_result': 'PASS',
         'batch_size': 5,
@@ -997,11 +997,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_043 gqa_q64_kv2_noncausal_s2_2048_blocks
+    # SI_WB_042 gqa_q64_kv2_noncausal_s2_2048_blocks
     # 覆盖: q_heads=64；kv_heads=2；g=32；non-causal；S2达到2048个block
     # 设计: 组合大G和长S2，验证GQA映射和ProcessTopK多S2合并。
     {
-        'case_id': 'SI_WB_043',
+        'case_id': 'SI_WB_042',
         'testcase_name': 'gqa_q64_kv2_noncausal_s2_2048_blocks',
         'expected_result': 'PASS',
         'batch_size': 1,
@@ -1021,11 +1021,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_044 gqa_q64_kv8_m_tail
+    # SI_WB_043 gqa_q64_kv8_m_tail
     # 覆盖: q_heads=64；kv_heads=8；g=8；M方向尾块
     # 设计: actS1=13时actS1*g=104，覆盖mBase=96后的尾块处理。
     {
-        'case_id': 'SI_WB_044',
+        'case_id': 'SI_WB_043',
         'testcase_name': 'gqa_q64_kv8_m_tail',
         'expected_result': 'PASS',
         'batch_size': 1,
@@ -1045,11 +1045,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_045 short2_total_output_equal_batch4
+    # SI_WB_044 short2_total_output_equal_batch4
     # 覆盖: 短路2边界；curS2Len == initial + dynamicTopK + window
     # 设计: prompt block=135，dynamicTopK=57，totalOutput=65，kv block=65，应直接输出连续索引。
     {
-        'case_id': 'SI_WB_045',
+        'case_id': 'SI_WB_044',
         'testcase_name': 'short2_total_output_equal_batch4',
         'expected_result': 'PASS',
         'batch_size': 4,
@@ -1069,11 +1069,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_046 short2_total_output_plus_one_batch4
+    # SI_WB_045 short2_total_output_plus_one_batch4
     # 覆盖: 短路2临界后一位；进入正常TopK路径
     # 设计: prompt block=135，dynamicTopK=57，totalOutput=65，kv block=66，验证刚越过短路边界的行为。
     {
-        'case_id': 'SI_WB_046',
+        'case_id': 'SI_WB_045',
         'testcase_name': 'short2_total_output_plus_one_batch4',
         'expected_result': 'PASS',
         'batch_size': 4,
@@ -1093,11 +1093,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_047 batch23_noncausal_varlen_q32_kv8
+    # SI_WB_046 batch23_noncausal_varlen_q32_kv8
     # 覆盖: batch=23；non-causal；q/kv多batch变长；较大prompt block；q32/kv8
     # 设计: 用非2次幂batch和递增长度组合，覆盖批量读取、shape最大值推导和non-causal全S2路径。
     {
-        'case_id': 'SI_WB_047',
+        'case_id': 'SI_WB_046',
         'testcase_name': 'batch23_noncausal_varlen_q32_kv8',
         'expected_result': 'PASS',
         'batch_size': 23,
@@ -1117,11 +1117,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_049 batch15_decode_prompt_tail_q64_kv4
+    # SI_WB_047 batch15_decode_prompt_tail_q64_kv4
     # 覆盖: batch=15；decode；q=1；kv/prompt非128整数倍；q64/kv4
     # 设计: 多batch decode同时覆盖prompt向上取整和不同KV尾块。
     {
-        'case_id': 'SI_WB_049',
+        'case_id': 'SI_WB_047',
         'testcase_name': 'batch15_decode_prompt_tail_q64_kv4',
         'expected_result': 'PASS',
         'batch_size': 15,
@@ -1141,12 +1141,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-
-    # SI_WB_050 batch4_dynamic_topk_boundary_mix
+    # SI_WB_048 batch4_dynamic_topk_boundary_mix
     # 覆盖: 单case混合dynamicTopK边界55/56/159/160；batch=4；q64/kv8
     # 设计: 将small/medium/large分段边界放在同一batch，验证每个batch独立读取prompt长度。
     {
-        'case_id': 'SI_WB_050',
+        'case_id': 'SI_WB_048',
         'testcase_name': 'batch4_dynamic_topk_boundary_mix',
         'expected_result': 'PASS',
         'batch_size': 4,
@@ -1166,11 +1165,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_051 batch24_noncausal_q32_kv2_varlen
+    # SI_WB_049 batch24_noncausal_q32_kv2_varlen
     # 覆盖: batch=24；q32/kv2；non-causal；多batch递增长度
     # 设计: 补齐q32/kv2组合覆盖，验证较大batch下shape最大值推导和完整S2可见范围。
     {
-        'case_id': 'SI_WB_051',
+        'case_id': 'SI_WB_049',
         'testcase_name': 'batch24_noncausal_q32_kv2_varlen',
         'expected_result': 'PASS',
         'batch_size': 24,
@@ -1190,11 +1189,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_052 batch25_causal_q32_kv2_tail_mix
+    # SI_WB_050 batch25_causal_q32_kv2_tail_mix
     # 覆盖: batch=25；q32/kv2；causal；q/kv均非128整数倍
     # 设计: 用非整齐batch和尾块长度组合，验证causal下每个batch独立计算可见S2。
     {
-        'case_id': 'SI_WB_052',
+        'case_id': 'SI_WB_050',
         'testcase_name': 'batch25_causal_q32_kv2_tail_mix',
         'expected_result': 'PASS',
         'batch_size': 25,
@@ -1214,11 +1213,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_053 batch27_decode_q32_kv2_prompt_tail
+    # SI_WB_051 batch27_decode_q32_kv2_prompt_tail
     # 覆盖: batch=27；q32/kv2；decode；prompt和kv均带尾块
     # 设计: 多batch decode下验证num_prompt_tokens按batch读取，并覆盖prompt非128整数倍。
     {
-        'case_id': 'SI_WB_053',
+        'case_id': 'SI_WB_051',
         'testcase_name': 'batch27_decode_q32_kv2_prompt_tail',
         'expected_result': 'PASS',
         'batch_size': 27,
@@ -1238,11 +1237,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_054 batch26_noncausal_q32_kv4_varlen
+    # SI_WB_052 batch26_noncausal_q32_kv4_varlen
     # 覆盖: batch=26；q32/kv4；non-causal；q尾块与kv尾块混合
     # 设计: 补齐q32/kv4组合覆盖，验证中等GQA组下的多batch变长路径。
     {
-        'case_id': 'SI_WB_054',
+        'case_id': 'SI_WB_052',
         'testcase_name': 'batch26_noncausal_q32_kv4_varlen',
         'expected_result': 'PASS',
         'batch_size': 26,
@@ -1262,11 +1261,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_055 batch28_causal_q32_kv4_offset_tail
+    # SI_WB_053 batch28_causal_q32_kv4_offset_tail
     # 覆盖: batch=28；q32/kv4；causal；S1/S2不等且均带尾块
     # 设计: 通过非等差块边界长度覆盖causal可见范围偏移和尾块组合。
     {
-        'case_id': 'SI_WB_055',
+        'case_id': 'SI_WB_053',
         'testcase_name': 'batch28_causal_q32_kv4_offset_tail',
         'expected_result': 'PASS',
         'batch_size': 28,
@@ -1286,11 +1285,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_056 batch30_noncausal_q32_kv4_prompt_tail
+    # SI_WB_054 batch30_noncausal_q32_kv4_prompt_tail
     # 覆盖: batch=30；q32/kv4；non-causal；prompt不能整除stem_block_size
     # 设计: 大batch下每个batch的prompt长度不同，验证动态TopK预算读取不同prompt block。
     {
-        'case_id': 'SI_WB_056',
+        'case_id': 'SI_WB_054',
         'testcase_name': 'batch30_noncausal_q32_kv4_prompt_tail',
         'expected_result': 'PASS',
         'batch_size': 30,
@@ -1310,11 +1309,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_058 decode_q64_kv2_1m_tokens
+    # SI_WB_055 decode_q64_kv2_1m_tokens
     # 覆盖: batch=1；q64/kv2；decode；KV长度达到1M token
     # 设计: 大G decode路径下覆盖1M以内超长KV上限，验证prompt预算长度等于kv长度时的metadata和golden对齐。
     {
-        'case_id': 'SI_WB_058',
+        'case_id': 'SI_WB_055',
         'testcase_name': 'decode_q64_kv2_1m_tokens',
         'expected_result': 'PASS',
         'batch_size': 1,
@@ -1334,11 +1333,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_059 batch18_causal_q64_kv2_offset
+    # SI_WB_056 batch18_causal_q64_kv2_offset
     # 覆盖: batch=18；q64/kv2；causal；S1/S2不等
     # 设计: 最大GQA组下拉开q/kv块数，覆盖因果偏移和TPD衰减路径。
     {
-        'case_id': 'SI_WB_059',
+        'case_id': 'SI_WB_056',
         'testcase_name': 'batch18_causal_q64_kv2_offset',
         'expected_result': 'PASS',
         'batch_size': 18,
@@ -1358,11 +1357,11 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-    # SI_WB_060 batch37_noncausal_q64_kv4_small_varlen
+    # SI_WB_057 batch37_noncausal_q64_kv4_small_varlen
     # 覆盖: batch=37；q64/kv4；短query多batch；非2次幂batch
     # 设计: 保持query较短控制输出规模，同时将KV/prompt提升到64K以上覆盖高batch长KV组合。
     {
-        'case_id': 'SI_WB_060',
+        'case_id': 'SI_WB_057',
         'testcase_name': 'batch37_noncausal_q64_kv4_small_varlen',
         'expected_result': 'PASS',
         'batch_size': 37,
@@ -1382,5 +1381,1036 @@ ENABLED_PARAMS = [
         'vbias_dtype': 'FP32',
         'special_setting': '',
     },
-
+    # SI_WB_058 zero_len_mixed_batch4_32k_kv
+    # 覆盖: batch内混合q=0、kv=0、短KV和32K KV；causal=true
+    # 设计: 覆盖SE指定的零长度边界组合，验证metadata、kernel和golden对空batch行的处理。
+    {
+        'case_id': 'SI_WB_058',
+        'testcase_name': 'zero_len_mixed_batch4_32k_kv',
+        'expected_result': 'PASS',
+        'batch_size': 4,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [8192, 0, 32, 8192],
+        'kv_seq_lens': [32768, 32, 0, 192],
+        'num_prompt_tokens': [32768, 32, 32, 8192],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_059 q_zero_mixed_noncausal_batch6
+    # 覆盖: non-causal；batch内部分q_seq_lens为0；KV覆盖32K/64K/128K
+    # 设计: 验证q为空的batch项不会写有效输出，同时其他batch项仍正常执行。
+    {
+        'case_id': 'SI_WB_059',
+        'testcase_name': 'q_zero_mixed_noncausal_batch6',
+        'expected_result': 'PASS',
+        'batch_size': 6,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [0, 128, 256, 0, 384, 512],
+        'kv_seq_lens': [32768, 32768, 65536, 65536, 131072, 131072],
+        'num_prompt_tokens': [32768, 32768, 65536, 65536, 131072, 131072],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_060 kv_zero_mixed_causal_batch5
+    # 覆盖: causal；batch内部分kv_seq_lens为0；混合短KV和长KV
+    # 设计: 验证KV为空时s2Valid为0的路径，以及同一case中非空KV路径不受影响。
+    {
+        'case_id': 'SI_WB_060',
+        'testcase_name': 'kv_zero_mixed_causal_batch5',
+        'expected_result': 'PASS',
+        'batch_size': 5,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [128, 256, 384, 512, 640],
+        'kv_seq_lens': [0, 128, 0, 32768, 65536],
+        'num_prompt_tokens': [128, 128, 128, 32768, 65536],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_061 q_kv_zero_mixed_batch7
+    # 覆盖: causal；同一batch覆盖q=0、kv=0、q/kv同时为0
+    # 设计: 验证零长度组合与GQA q64/kv8、alpha衰减路径组合后的输出清理逻辑。
+    {
+        'case_id': 'SI_WB_061',
+        'testcase_name': 'q_kv_zero_mixed_batch7',
+        'expected_result': 'PASS',
+        'batch_size': 7,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [0, 0, 128, 256, 0, 384, 512],
+        'kv_seq_lens': [0, 32768, 0, 256, 65536, 0, 131072],
+        'num_prompt_tokens': [128, 32768, 128, 256, 65536, 128, 131072],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_062 zero_tail_noncausal_batch9
+    # 覆盖: non-causal；0/1/127/128/129 token边界；q32/kv2
+    # 设计: 覆盖除以stem_block_size前后的极小长度、整块和尾块组合。
+    {
+        'case_id': 'SI_WB_062',
+        'testcase_name': 'zero_tail_noncausal_batch9',
+        'expected_result': 'PASS',
+        'batch_size': 9,
+        'q_heads': 32,
+        'kv_heads': 2,
+        'q_seq_lens': [0, 1, 127, 128, 129, 0, 257, 384, 512],
+        'kv_seq_lens': [1, 0, 127, 128, 129, 256, 0, 384, 512],
+        'num_prompt_tokens': [1, 1, 127, 128, 129, 256, 1, 384, 512],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_063 zero_decode_mix_q64_kv8
+    # 覆盖: decode与q=0混合；q64/kv8；KV覆盖32K/64K
+    # 设计: 验证decode分支和空query batch项共存时的metadata读取与输出写回。
+    {
+        'case_id': 'SI_WB_063',
+        'testcase_name': 'zero_decode_mix_q64_kv8',
+        'expected_result': 'PASS',
+        'batch_size': 4,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [1, 0, 1, 0],
+        'kv_seq_lens': [32768, 32768, 65536, 0],
+        'num_prompt_tokens': [32768, 32768, 65536, 128],
+        'causal': True,
+        'alpha': 0.5,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_064 zero_s2_forced_clip_q32_kv4
+    # 覆盖: causal；极短S2和S2=0；forced index裁剪
+    # 设计: 验证initial/window在短S2和空S2下不会越界写入。
+    {
+        'case_id': 'SI_WB_064',
+        'testcase_name': 'zero_s2_forced_clip_q32_kv4',
+        'expected_result': 'PASS',
+        'batch_size': 6,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [32, 64, 96, 128, 160, 192],
+        'kv_seq_lens': [0, 32, 64, 0, 128, 256],
+        'num_prompt_tokens': [128, 128, 128, 128, 128, 256],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_065 zero_entry_long_neighbor_batch4
+    # 覆盖: causal；q/kv同时为0的batch项与长KV相邻
+    # 设计: 验证连续batch中空项不会污染相邻非空batch输出。
+    {
+        'case_id': 'SI_WB_065',
+        'testcase_name': 'zero_entry_long_neighbor_batch4',
+        'expected_result': 'PASS',
+        'batch_size': 4,
+        'q_heads': 64,
+        'kv_heads': 4,
+        'q_seq_lens': [0, 4096, 0, 8192],
+        'kv_seq_lens': [0, 32768, 65536, 0],
+        'num_prompt_tokens': [128, 32768, 65536, 128],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_066 batch3_causal_q32_kv8_prompt_gt_kv
+    # 覆盖: causal；num_prompt_tokens大于kv_seq_lens；32K/64K/128K KV
+    # 设计: 验证动态TopK预算使用prompt长度而不是KV长度。
+    {
+        'case_id': 'SI_WB_066',
+        'testcase_name': 'batch3_causal_q32_kv8_prompt_gt_kv',
+        'expected_result': 'PASS',
+        'batch_size': 3,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [512, 1024, 1536],
+        'kv_seq_lens': [32768, 65536, 131072],
+        'num_prompt_tokens': [65536, 131072, 262144],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_067 batch11_noncausal_prime_varlen_q32_kv8
+    # 覆盖: batch=11；non-causal；q/kv变长；q32/kv8
+    # 设计: 覆盖非2次幂batch下的短query和32K附近KV泛化路径。
+    {
+        'case_id': 'SI_WB_067',
+        'testcase_name': 'batch11_noncausal_prime_varlen_q32_kv8',
+        'expected_result': 'PASS',
+        'batch_size': 11,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [128, 165, 202, 239, 276, 313, 350, 387, 424, 461, 498],
+        'kv_seq_lens': [32768, 33792, 34816, 35840, 36864, 37888, 38912, 39936, 40960, 41984, 43008],
+        'num_prompt_tokens': [32768, 33792, 34816, 35840, 36864, 37888, 38912, 39936, 40960, 41984, 43008],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_068 batch13_causal_q32_kv4_tail_prompt_gt_kv
+    # 覆盖: batch=13；causal；q32/kv4；KV和prompt尾块
+    # 设计: 验证prompt大于KV且不能整除128时的动态TopK预算。
+    {
+        'case_id': 'SI_WB_068',
+        'testcase_name': 'batch13_causal_q32_kv4_tail_prompt_gt_kv',
+        'expected_result': 'PASS',
+        'batch_size': 13,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [256, 315, 374, 433, 492, 551, 610, 669, 728, 787, 846, 905, 964],
+        'kv_seq_lens': [65536, 67617, 69632, 71713, 73728, 75809, 77824, 79905, 81920, 84001, 86016, 88097, 90112],
+        'num_prompt_tokens': [69632, 71713, 73728, 75809, 77824, 79905, 81920, 84001, 86016, 88097, 90112, 92193, 94208],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_069 batch17_noncausal_q32_kv2_short_q_long_kv
+    # 覆盖: batch=17；q32/kv2；短query长KV；non-causal
+    # 设计: 覆盖gSize=16下多batch短query和长KV组合。
+    {
+        'case_id': 'SI_WB_069',
+        'testcase_name': 'batch17_noncausal_q32_kv2_short_q_long_kv',
+        'expected_result': 'PASS',
+        'batch_size': 17,
+        'q_heads': 32,
+        'kv_heads': 2,
+        'q_seq_lens': [128, 144, 160, 176, 192, 208, 224, 240, 256, 272, 288, 304, 320, 336, 352, 368, 384],
+        'kv_seq_lens': [32768, 41088, 49408, 57728, 66048, 33408, 41728, 50048, 58368, 66688, 34048, 42368, 50688, 59008, 67328, 34688, 43008],
+        'num_prompt_tokens': [32768, 41088, 49408, 57728, 66048, 33408, 41728, 50048, 58368, 66688, 34048, 42368, 50688, 59008, 67328, 34688, 43008],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_070 batch19_causal_q64_kv8_offset_tail
+    # 覆盖: batch=19；q64/kv8；causal offset；KV尾块
+    # 设计: 验证最大q_heads下KV尾块和因果偏移的组合。
+    {
+        'case_id': 'SI_WB_070',
+        'testcase_name': 'batch19_causal_q64_kv8_offset_tail',
+        'expected_result': 'PASS',
+        'batch_size': 19,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [256, 289, 322, 355, 388, 421, 454, 487, 520, 553, 586, 619, 652, 685, 718, 751, 784, 817, 850],
+        'kv_seq_lens': [65537, 66561, 67585, 68609, 69633, 70657, 71681, 72705, 73729, 74753, 75777, 76801, 77825, 78849, 79873, 80897, 81921, 82945, 83969],
+        'num_prompt_tokens': [65665, 66689, 67713, 68737, 69761, 70785, 71809, 72833, 73857, 74881, 75905, 76929, 77953, 78977, 80001, 81025, 82049, 83073, 84097],
+        'causal': True,
+        'alpha': 0.5,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_071 batch23_noncausal_q64_kv4_small_q_64k
+    # 覆盖: batch=23；q64/kv4；短query；64K附近KV
+    # 设计: 覆盖gSize=16下较大batch的non-causal路径。
+    {
+        'case_id': 'SI_WB_071',
+        'testcase_name': 'batch23_noncausal_q64_kv4_small_q_64k',
+        'expected_result': 'PASS',
+        'batch_size': 23,
+        'q_heads': 64,
+        'kv_heads': 4,
+        'q_seq_lens': [128, 192, 256, 320, 384, 448, 128, 192, 256, 320, 384, 448, 128, 192, 256, 320, 384, 448, 128, 192, 256, 320, 384],
+        'kv_seq_lens': [65536, 66048, 66560, 67072, 67584, 68096, 68608, 69120, 69632, 70144, 70656, 71168, 71680, 72192, 72704, 73216, 73728, 74240, 74752, 75264, 75776, 76288, 76800],
+        'num_prompt_tokens': [65536, 66048, 66560, 67072, 67584, 68096, 68608, 69120, 69632, 70144, 70656, 71168, 71680, 72192, 72704, 73216, 73728, 74240, 74752, 75264, 75776, 76288, 76800],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_072 batch29_causal_q64_kv2_decode_mix
+    # 覆盖: batch=29；q64/kv2；decode和prefill混合
+    # 设计: 覆盖gSize=32下decode判断和普通prefill在同一case中的切换。
+    {
+        'case_id': 'SI_WB_072',
+        'testcase_name': 'batch29_causal_q64_kv2_decode_mix',
+        'expected_result': 'PASS',
+        'batch_size': 29,
+        'q_heads': 64,
+        'kv_heads': 2,
+        'q_seq_lens': [1, 192, 256, 1, 384, 128, 1, 256, 320, 1, 128, 192, 1, 320, 384, 1, 192, 256, 1, 384, 128, 1, 256, 320, 1, 128, 192, 1, 320],
+        'kv_seq_lens': [32768, 34816, 36864, 38912, 40960, 43008, 45056, 47104, 49152, 51200, 53248, 55296, 57344, 59392, 61440, 63488, 65536, 67584, 69632, 71680, 73728, 75776, 77824, 79872, 81920, 83968, 86016, 88064, 90112],
+        'num_prompt_tokens': [32768, 34816, 36864, 38912, 40960, 43008, 45056, 47104, 49152, 51200, 53248, 55296, 57344, 59392, 61440, 63488, 65536, 67584, 69632, 71680, 73728, 75776, 77824, 79872, 81920, 83968, 86016, 88064, 90112],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_073 batch31_noncausal_q32_kv8_tail_mix
+    # 覆盖: batch=31；q32/kv8；q/kv/prompt不规则尾块
+    # 设计: 覆盖非规则步长变长输入，避免只测等差整块长度。
+    {
+        'case_id': 'SI_WB_073',
+        'testcase_name': 'batch31_noncausal_q32_kv8_tail_mix',
+        'expected_result': 'PASS',
+        'batch_size': 31,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [64, 81, 98, 115, 132, 149, 166, 183, 200, 217, 234, 251, 268, 285, 302, 319, 336, 353, 370, 387, 404, 421, 438, 455, 472, 489, 506, 523, 540, 557, 574],
+        'kv_seq_lens': [32768, 33545, 34322, 35099, 35876, 36653, 37430, 38207, 38984, 39761, 40538, 41315, 42092, 42869, 43646, 44423, 45200, 45977, 46754, 47531, 48308, 49085, 49862, 50639, 51416, 52193, 52970, 53747, 54524, 55301, 56078],
+        'num_prompt_tokens': [32768, 33673, 34578, 35099, 36004, 36909, 37430, 38335, 39240, 39761, 40666, 41571, 42092, 42997, 43902, 44423, 45328, 46233, 46754, 47659, 48564, 49085, 49990, 50895, 51416, 52321, 53226, 53747, 54652, 55557, 56078],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_074 batch37_causal_q32_kv4_small_q_128k
+    # 覆盖: batch=37；q32/kv4；128K附近KV；causal
+    # 设计: 覆盖高batch、短query、长KV的因果裁剪路径。
+    {
+        'case_id': 'SI_WB_074',
+        'testcase_name': 'batch37_causal_q32_kv4_small_q_128k',
+        'expected_result': 'PASS',
+        'batch_size': 37,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [128, 160, 192, 224, 256, 288, 320, 352, 128, 160, 192, 224, 256, 288, 320, 352, 128, 160, 192, 224, 256, 288, 320, 352, 128, 160, 192, 224, 256, 288, 320, 352, 128, 160, 192, 224, 256],
+        'kv_seq_lens': [131072, 131328, 131584, 131840, 132096, 132352, 132608, 132864, 133120, 133376, 133632, 133888, 134144, 134400, 134656, 134912, 135168, 135424, 135680, 135936, 136192, 136448, 136704, 136960, 137216, 137472, 137728, 137984, 138240, 138496, 138752, 139008, 139264, 139520, 139776, 140032, 140288],
+        'num_prompt_tokens': [131072, 131328, 131584, 131840, 132096, 132352, 132608, 132864, 133120, 133376, 133632, 133888, 134144, 134400, 134656, 134912, 135168, 135424, 135680, 135936, 136192, 136448, 136704, 136960, 137216, 137472, 137728, 137984, 138240, 138496, 138752, 139008, 139264, 139520, 139776, 140032, 140288],
+        'causal': True,
+        'alpha': 0.5,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_075 batch39_noncausal_q64_kv8_small_q_32k
+    # 覆盖: batch=39；q64/kv8；32K附近KV；non-causal
+    # 设计: 覆盖较大batch和最大q_heads组合，同时控制query规模。
+    {
+        'case_id': 'SI_WB_075',
+        'testcase_name': 'batch39_noncausal_q64_kv8_small_q_32k',
+        'expected_result': 'PASS',
+        'batch_size': 39,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [128, 144, 160, 176, 192, 208, 224, 240, 256, 272, 128, 144, 160, 176, 192, 208, 224, 240, 256, 272, 128, 144, 160, 176, 192, 208, 224, 240, 256, 272, 128, 144, 160, 176, 192, 208, 224, 240, 256],
+        'kv_seq_lens': [32768, 32896, 33024, 33152, 33280, 33408, 33536, 33664, 33792, 33920, 34048, 34176, 34304, 34432, 34560, 34688, 34816, 34944, 35072, 35200, 35328, 35456, 35584, 35712, 35840, 35968, 36096, 36224, 36352, 36480, 36608, 36736, 36864, 36992, 37120, 37248, 37376, 37504, 37632],
+        'num_prompt_tokens': [32768, 32896, 33024, 33152, 33280, 33408, 33536, 33664, 33792, 33920, 34048, 34176, 34304, 34432, 34560, 34688, 34816, 34944, 35072, 35200, 35328, 35456, 35584, 35712, 35840, 35968, 36096, 36224, 36352, 36480, 36608, 36736, 36864, 36992, 37120, 37248, 37376, 37504, 37632],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_076 decode_q32_kv8_256k_prompt_512k
+    # 覆盖: decode；KV=256K；prompt=512K
+    # 设计: 验证decode下prompt预算显著大于KV长度的路径。
+    {
+        'case_id': 'SI_WB_076',
+        'testcase_name': 'decode_q32_kv8_256k_prompt_512k',
+        'expected_result': 'PASS',
+        'batch_size': 1,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [1],
+        'kv_seq_lens': [262144],
+        'num_prompt_tokens': [524288],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_077 decode_q64_kv4_512k_prompt_1m
+    # 覆盖: decode；KV=512K；prompt=1M；q64/kv4
+    # 设计: 验证长KV decode和large prompt预算分支。
+    {
+        'case_id': 'SI_WB_077',
+        'testcase_name': 'decode_q64_kv4_512k_prompt_1m',
+        'expected_result': 'PASS',
+        'batch_size': 1,
+        'q_heads': 64,
+        'kv_heads': 4,
+        'q_seq_lens': [1],
+        'kv_seq_lens': [524288],
+        'num_prompt_tokens': [1048576],
+        'causal': True,
+        'alpha': 0.5,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_078 noncausal_q32_kv2_s2_512_blocks
+    # 覆盖: non-causal；S2=512 blocks；q32/kv2
+    # 设计: 覆盖S2分块大于两个baseN的整块路径。
+    {
+        'case_id': 'SI_WB_078',
+        'testcase_name': 'noncausal_q32_kv2_s2_512_blocks',
+        'expected_result': 'PASS',
+        'batch_size': 2,
+        'q_heads': 32,
+        'kv_heads': 2,
+        'q_seq_lens': [1024, 2048],
+        'kv_seq_lens': [65536, 65536],
+        'num_prompt_tokens': [65536, 65536],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_079 causal_q64_kv8_s2_1025_blocks_tail
+    # 覆盖: causal；S2=1025 blocks带尾块；q64/kv8
+    # 设计: 覆盖长S2尾块和因果可见范围组合。
+    {
+        'case_id': 'SI_WB_079',
+        'testcase_name': 'causal_q64_kv8_s2_1025_blocks_tail',
+        'expected_result': 'PASS',
+        'batch_size': 2,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [1024, 2048],
+        'kv_seq_lens': [131073, 131073],
+        'num_prompt_tokens': [131073, 131073],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_080 causal_q32_kv4_q_gt_kv_small
+    # 覆盖: causal；q_seq_lens大于kv_seq_lens；q32/kv4
+    # 设计: 覆盖Q长于KV时早期query不可见、后期query可见的裁剪路径。
+    {
+        'case_id': 'SI_WB_080',
+        'testcase_name': 'causal_q32_kv4_q_gt_kv_small',
+        'expected_result': 'PASS',
+        'batch_size': 3,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [32768, 16384, 8192],
+        'kv_seq_lens': [8192, 4096, 2048],
+        'num_prompt_tokens': [8192, 4096, 2048],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_081 noncausal_q64_kv2_q_gt_kv_tail
+    # 覆盖: non-causal；q大于kv；q/kv均带尾块；q64/kv2
+    # 设计: 验证非因果路径下Q/KV长度大小关系不影响完整KV可见性。
+    {
+        'case_id': 'SI_WB_081',
+        'testcase_name': 'noncausal_q64_kv2_q_gt_kv_tail',
+        'expected_result': 'PASS',
+        'batch_size': 3,
+        'q_heads': 64,
+        'kv_heads': 2,
+        'q_seq_lens': [4097, 8193, 12289],
+        'kv_seq_lens': [2049, 4097, 6145],
+        'num_prompt_tokens': [2049, 4097, 6145],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_082 alpha075_prompt_32k_to_128k_mix
+    # 覆盖: alpha=0.75；prompt覆盖32K到128K
+    # 设计: 覆盖TPD衰减中间值和多个prompt尺度。
+    {
+        'case_id': 'SI_WB_082',
+        'testcase_name': 'alpha075_prompt_32k_to_128k_mix',
+        'expected_result': 'PASS',
+        'batch_size': 4,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [512, 640, 768, 896],
+        'kv_seq_lens': [32768, 65536, 98304, 131072],
+        'num_prompt_tokens': [32768, 65536, 98304, 131072],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_083 alpha05_prompt_gt_kv_noncausal
+    # 覆盖: alpha=0.5；non-causal；prompt大于KV
+    # 设计: 验证非因果路径下动态TopK预算仍按prompt变化。
+    {
+        'case_id': 'SI_WB_083',
+        'testcase_name': 'alpha05_prompt_gt_kv_noncausal',
+        'expected_result': 'PASS',
+        'batch_size': 4,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [512, 640, 768, 896],
+        'kv_seq_lens': [32768, 32768, 32768, 32768],
+        'num_prompt_tokens': [65536, 98304, 131072, 196608],
+        'causal': False,
+        'alpha': 0.5,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_084 dynamic_topk_small_prompt_55_blocks_batch3
+    # 覆盖: prompt=55 blocks；dynamic TopK small分支上边界
+    # 设计: 补充small分支边界在多batch下的覆盖。
+    {
+        'case_id': 'SI_WB_084',
+        'testcase_name': 'dynamic_topk_small_prompt_55_blocks_batch3',
+        'expected_result': 'PASS',
+        'batch_size': 3,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [512, 640, 768],
+        'kv_seq_lens': [7040, 7040, 7040],
+        'num_prompt_tokens': [7040, 7040, 7040],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_085 dynamic_topk_medium_prompt_100_blocks_batch3
+    # 覆盖: prompt约100 blocks；dynamic TopK medium分支
+    # 设计: 覆盖medium分支的普通区间和轻微尾块。
+    {
+        'case_id': 'SI_WB_085',
+        'testcase_name': 'dynamic_topk_medium_prompt_100_blocks_batch3',
+        'expected_result': 'PASS',
+        'batch_size': 3,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [512, 640, 768],
+        'kv_seq_lens': [12800, 12928, 13056],
+        'num_prompt_tokens': [12800, 12928, 13056],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_086 dynamic_topk_large_prompt_200_blocks_batch3
+    # 覆盖: prompt约200 blocks；dynamic TopK large分支
+    # 设计: 覆盖large分支和q64/kv4组合。
+    {
+        'case_id': 'SI_WB_086',
+        'testcase_name': 'dynamic_topk_large_prompt_200_blocks_batch3',
+        'expected_result': 'PASS',
+        'batch_size': 3,
+        'q_heads': 64,
+        'kv_heads': 4,
+        'q_seq_lens': [512, 640, 768],
+        'kv_seq_lens': [25600, 25728, 25856],
+        'num_prompt_tokens': [25600, 25728, 25856],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_087 s2_loop_255_256_257_batch3
+    # 覆盖: S2=255/256/257 blocks；baseN边界
+    # 设计: 验证S2 loop在整块边界前、正好边界、越过边界时的处理。
+    {
+        'case_id': 'SI_WB_087',
+        'testcase_name': 's2_loop_255_256_257_batch3',
+        'expected_result': 'PASS',
+        'batch_size': 3,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [512, 512, 512],
+        'kv_seq_lens': [32640, 32768, 32896],
+        'num_prompt_tokens': [32640, 32768, 32896],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_088 s2_loop_511_512_513_decode_batch3
+    # 覆盖: decode；S2=511/512/513 blocks
+    # 设计: 验证decode场景下多S2 loop边界。
+    {
+        'case_id': 'SI_WB_088',
+        'testcase_name': 's2_loop_511_512_513_decode_batch3',
+        'expected_result': 'PASS',
+        'batch_size': 3,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [1, 1, 1],
+        'kv_seq_lens': [65408, 65536, 65664],
+        'num_prompt_tokens': [65408, 65536, 65664],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_089 m_tail_g8_batch5
+    # 覆盖: gSize=8；M方向尾块；batch=5
+    # 设计: 覆盖GS1维度不能被mBase整除的尾块路径。
+    {
+        'case_id': 'SI_WB_089',
+        'testcase_name': 'm_tail_g8_batch5',
+        'expected_result': 'PASS',
+        'batch_size': 5,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [1536, 1600, 1664, 1728, 1792],
+        'kv_seq_lens': [32768, 33024, 33280, 33536, 33792],
+        'num_prompt_tokens': [32768, 33024, 33280, 33536, 33792],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_090 m_tail_g32_batch5
+    # 覆盖: gSize=32；M方向尾块；batch=5
+    # 设计: 覆盖最大GQA组下的M分块尾块。
+    {
+        'case_id': 'SI_WB_090',
+        'testcase_name': 'm_tail_g32_batch5',
+        'expected_result': 'PASS',
+        'batch_size': 5,
+        'q_heads': 64,
+        'kv_heads': 2,
+        'q_seq_lens': [384, 512, 640, 768, 896],
+        'kv_seq_lens': [32768, 33024, 33280, 33536, 33792],
+        'num_prompt_tokens': [32768, 33024, 33280, 33536, 33792],
+        'causal': True,
+        'alpha': 0.5,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_091 prompt_tail_gt_kv_batch6
+    # 覆盖: prompt比KV多1 token；prompt尾块；batch=6
+    # 设计: 验证prompt ceil到block时的边界偏移。
+    {
+        'case_id': 'SI_WB_091',
+        'testcase_name': 'prompt_tail_gt_kv_batch6',
+        'expected_result': 'PASS',
+        'batch_size': 6,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [128, 192, 256, 320, 384, 448],
+        'kv_seq_lens': [32768, 36864, 40960, 45056, 49152, 53248],
+        'num_prompt_tokens': [32769, 36865, 40961, 45057, 49153, 53249],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_092 kv_tail_1_token_batch7
+    # 覆盖: KV比整块多1 token；batch=7；q64/kv8
+    # 设计: 覆盖KV尾块最小非整块长度。
+    {
+        'case_id': 'SI_WB_092',
+        'testcase_name': 'kv_tail_1_token_batch7',
+        'expected_result': 'PASS',
+        'batch_size': 7,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [256, 320, 384, 448, 512, 576, 640],
+        'kv_seq_lens': [32769, 40961, 49153, 57345, 65537, 73729, 81921],
+        'num_prompt_tokens': [32769, 40961, 49153, 57345, 65537, 73729, 81921],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_093 q_tail_1_token_batch7
+    # 覆盖: Q比整块多1 token；batch=7；q32/kv4
+    # 设计: 覆盖Q尾块最小非整块长度和causal偏移。
+    {
+        'case_id': 'SI_WB_093',
+        'testcase_name': 'q_tail_1_token_batch7',
+        'expected_result': 'PASS',
+        'batch_size': 7,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [129, 257, 385, 513, 641, 769, 897],
+        'kv_seq_lens': [65536, 66560, 67584, 68608, 69632, 70656, 71680],
+        'num_prompt_tokens': [65536, 66560, 67584, 68608, 69632, 70656, 71680],
+        'causal': True,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_094 mixed_decode_prefill_q64_kv8_batch10
+    # 覆盖: decode/prefill交替；batch=10；q64/kv8
+    # 设计: 验证decode判定只依赖当前batch项，不影响同case内其他batch。
+    {
+        'case_id': 'SI_WB_094',
+        'testcase_name': 'mixed_decode_prefill_q64_kv8_batch10',
+        'expected_result': 'PASS',
+        'batch_size': 10,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [1, 128, 1, 256, 1, 384, 1, 512, 1, 640],
+        'kv_seq_lens': [32768, 36864, 40960, 45056, 49152, 53248, 57344, 61440, 65536, 69632],
+        'num_prompt_tokens': [32768, 36864, 40960, 45056, 49152, 53248, 57344, 61440, 65536, 69632],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_095 causal_offset_large_gap_batch6
+    # 覆盖: causal；S2远大于S1；256K级KV
+    # 设计: 覆盖大KV-Q偏移下的可见S2计算。
+    {
+        'case_id': 'SI_WB_095',
+        'testcase_name': 'causal_offset_large_gap_batch6',
+        'expected_result': 'PASS',
+        'batch_size': 6,
+        'q_heads': 32,
+        'kv_heads': 4,
+        'q_seq_lens': [1024, 1152, 1280, 1408, 1536, 1664],
+        'kv_seq_lens': [262144, 263168, 264192, 265216, 266240, 267264],
+        'num_prompt_tokens': [262144, 263168, 264192, 265216, 266240, 267264],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_096 noncausal_large_prompt_1m_qsmall
+    # 覆盖: non-causal；prompt=1M；KV=128K/256K
+    # 设计: 验证large prompt预算上限和非因果完整KV可见路径。
+    {
+        'case_id': 'SI_WB_096',
+        'testcase_name': 'noncausal_large_prompt_1m_qsmall',
+        'expected_result': 'PASS',
+        'batch_size': 2,
+        'q_heads': 64,
+        'kv_heads': 4,
+        'q_seq_lens': [128, 256],
+        'kv_seq_lens': [131072, 262144],
+        'num_prompt_tokens': [1048576, 1048576],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_097 causal_prompt_256k_var_batch8
+    # 覆盖: batch=8；256K级KV；causal；q32/kv8
+    # 设计: 覆盖中等batch下的长KV因果裁剪。
+    {
+        'case_id': 'SI_WB_097',
+        'testcase_name': 'causal_prompt_256k_var_batch8',
+        'expected_result': 'PASS',
+        'batch_size': 8,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [128, 192, 256, 320, 384, 448, 512, 576],
+        'kv_seq_lens': [262144, 262656, 263168, 263680, 264192, 264704, 265216, 265728],
+        'num_prompt_tokens': [262144, 262656, 263168, 263680, 264192, 264704, 265216, 265728],
+        'causal': True,
+        'alpha': 0.5,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_098 noncausal_batch2_q64_kv8_exact_blocks
+    # 覆盖: non-causal；Q/KV均为整块；q64/kv8
+    # 设计: 作为较大整块输入的稳定基线。
+    {
+        'case_id': 'SI_WB_098',
+        'testcase_name': 'noncausal_batch2_q64_kv8_exact_blocks',
+        'expected_result': 'PASS',
+        'batch_size': 2,
+        'q_heads': 64,
+        'kv_heads': 8,
+        'q_seq_lens': [8192, 16384],
+        'kv_seq_lens': [32768, 65536],
+        'num_prompt_tokens': [32768, 65536],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_099 causal_batch2_q64_kv2_tail_blocks
+    # 覆盖: causal；Q/KV均带1 token尾块；q64/kv2
+    # 设计: 覆盖最大gSize下Q/KV尾块叠加。
+    {
+        'case_id': 'SI_WB_099',
+        'testcase_name': 'causal_batch2_q64_kv2_tail_blocks',
+        'expected_result': 'PASS',
+        'batch_size': 2,
+        'q_heads': 64,
+        'kv_heads': 2,
+        'q_seq_lens': [8193, 16385],
+        'kv_seq_lens': [32769, 65537],
+        'num_prompt_tokens': [32769, 65537],
+        'causal': True,
+        'alpha': 0.75,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
+    # SI_WB_100 noncausal_batch15_small_randomish_lengths
+    # 覆盖: batch=15；不规则短query和KV尾块；non-causal
+    # 设计: 补充非规则长度泛化，避免只覆盖整齐等差长度。
+    {
+        'case_id': 'SI_WB_100',
+        'testcase_name': 'noncausal_batch15_small_randomish_lengths',
+        'expected_result': 'PASS',
+        'batch_size': 15,
+        'q_heads': 32,
+        'kv_heads': 8,
+        'q_seq_lens': [96, 169, 242, 315, 388, 461, 534, 607, 680, 753, 826, 899, 972, 1045, 1118],
+        'kv_seq_lens': [32768, 34005, 35242, 36479, 37716, 38953, 40190, 41427, 42664, 43901, 45138, 46375, 47612, 48849, 50086],
+        'num_prompt_tokens': [32768, 34069, 35370, 36671, 37716, 39017, 40318, 41619, 42664, 43965, 45266, 46567, 47612, 48913, 50214],
+        'causal': False,
+        'alpha': 1.0,
+        'stem_block_size': 128,
+        'stem_stride': 16,
+        'initial_blocks': 4,
+        'window_size': 4,
+        'qflat_dtype': 'BF16',
+        'kflat_dtype': 'BF16',
+        'vbias_dtype': 'FP32',
+        'special_setting': '',
+    },
 ]
