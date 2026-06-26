@@ -1068,20 +1068,16 @@ bool GetQkvD(gert::TilingContext *context, int64_t &queryD, int64_t &queryRopeD,
     if (qShape == nullptr) {
         return false;
     }
-
     auto attrs = context->GetAttrs();
     if (attrs == nullptr) {
         return false;
     }
-
     int64_t numHeads = *attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     int32_t layoutGroup = GetLayoutGroup(inputLayoutStr);
-
     if (!GetQueryDByLayoutGroup(layoutGroup, qShape->GetStorageShape(), qRopeShape, numHeads, queryD, queryRopeD)) {
         return false;
     }
-
     return GetValueD(context, valueD);
 }
 
@@ -1408,7 +1404,8 @@ bool RouteToFia(gert::TilingContext *context)
 
     const std::string inputLayoutStr =
         std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    if (IsLegacyTemplatePreferred(queryD, valueD, queryRopeD, queryS, inputLayoutStr, isPrefix, isMha, isPageAttention)) {
+    if (IsLegacyTemplatePreferred(queryD, valueD, queryRopeD,
+        queryS, inputLayoutStr, isPrefix, isMha, isPageAttention)) {
         return false;
     }
     if (!isRopeSplit) {

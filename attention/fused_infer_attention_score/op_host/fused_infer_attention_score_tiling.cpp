@@ -1436,7 +1436,7 @@ static void SetPagedCacheParamsForFAI(gert::TilingContext *context, FAInferConte
 }
 
 static void SetMaskTypeForFAI(gert::TilingContext *context, FAInferContext& faInfo,
-     const gert::StorageShape *pseShift, int32_t sparseMode)
+    const gert::StorageShape *pseShift, int32_t sparseMode)
 {
     auto pseCheck = CheckFAIPseShift(context);
     if (pseShift == nullptr) {

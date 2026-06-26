@@ -418,7 +418,8 @@ namespace optiling{
         return p;
     }
 
-    void FAInferTiling::InitCoreInfoArrays(FAInferTilingData &faTilingData) {
+    void FAInferTiling::InitCoreInfoArrays(FAInferTilingData &faTilingData)
+    {
         for (uint32_t coreIdx = 0; coreIdx < blockNum_; coreIdx++) {
             faTilingData.coreInfo.get_startBIdx()[coreIdx] = 0;
             faTilingData.coreInfo.get_startN1Idx()[coreIdx] = 0;
@@ -432,11 +433,14 @@ namespace optiling{
     }
 
     void FAInferTiling::ConsumeS2BlocksFD(uint32_t groupSize, int64_t &resTaskNum,
-        uint32_t &nowBIdx, uint32_t &nowS1Idx, uint32_t &nowS2Idx) {
+        uint32_t &nowBIdx, uint32_t &nowS1Idx, uint32_t &nowS2Idx)
+    {
         while (nowS2Idx < getBatchParams(nowBIdx, groupSize).curKSBlockNum && resTaskNum > 0) {
             BatchParams p = getBatchParams(nowBIdx, groupSize);
-            uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
-            uint32_t remainingKV = (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile : (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
+            uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile :
+                (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
+            uint32_t remainingKV = (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile :
+                (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
             uint64_t singleS2Task = remainingQ * remainingKV;
             resTaskNum -= singleS2Task;
             nowS2Idx += 1;
@@ -444,15 +448,20 @@ namespace optiling{
     }
 
     void FAInferTiling::ConsumeRemainingBatchesFD(uint32_t groupSize, int64_t &resTaskNum,
-        uint32_t &nowBIdx, uint32_t &nowN1Idx, uint32_t &nowS1Idx, uint32_t &nowS2Idx) {
+        uint32_t &nowBIdx, uint32_t &nowN1Idx, uint32_t &nowS1Idx, uint32_t &nowS2Idx)
+    {
         while (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum > 0) {
             BatchParams p = getBatchParams(nowBIdx, groupSize);
-            uint32_t remainingQ = p.qSeqlen * (faInfo_.numHeads - p.curQNBlockTile * nowN1Idx) - nowS1Idx * p.curQSBlockTile;
+            uint32_t remainingQ = p.qSeqlen * (faInfo_.numHeads - p.curQNBlockTile * nowN1Idx) -
+                nowS1Idx * p.curQSBlockTile;
             uint32_t remainingKV = p.kvSeqlen;
             uint32_t remainingInBatch = remainingQ * remainingKV;
             if (resTaskNum >= static_cast<int64_t>(remainingInBatch)) {
                 resTaskNum -= remainingInBatch;
-                nowBIdx++; nowN1Idx = 0; nowS1Idx = 0; nowS2Idx = 0;
+                nowBIdx++;
+                nowN1Idx = 0;
+                nowS1Idx = 0;
+                nowS2Idx = 0;
             } else {
                 break;
             }
@@ -460,13 +469,16 @@ namespace optiling{
     }
 
     void FAInferTiling::ConsumeRemainingN1GroupsFD(int64_t &resTaskNum, const BatchParams &p,
-        uint32_t &nowN1Idx, uint32_t &nowS1Idx, uint32_t &nowS2Idx) {
+        uint32_t &nowN1Idx, uint32_t &nowS1Idx, uint32_t &nowS2Idx)
+    {
         while (nowN1Idx < p.curQNBlockNum && resTaskNum > 0) {
             uint32_t remainingQ = p.qSeqlen * p.curQNBlockTile - nowS1Idx * p.curQSBlockTile;
             uint32_t remainingInN1 = remainingQ * p.kvSeqlen;
             if (resTaskNum >= static_cast<int64_t>(remainingInN1)) {
                 resTaskNum -= remainingInN1;
-                nowN1Idx++; nowS1Idx = 0; nowS2Idx = 0;
+                nowN1Idx++;
+                nowS1Idx = 0;
+                nowS2Idx = 0;
             } else {
                 break;
             }
@@ -474,13 +486,16 @@ namespace optiling{
     }
 
     void FAInferTiling::ConsumeRemainingS1GroupsFD(int64_t &resTaskNum, const BatchParams &p,
-        uint32_t &nowS1Idx, uint32_t &nowS2Idx) {
+        uint32_t &nowS1Idx, uint32_t &nowS2Idx)
+    {
         while (nowS1Idx < p.curQSBlockNum && resTaskNum > 0) {
-            uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
+            uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ?
+                p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
             uint64_t remainingInS1 = remainingQ * p.kvSeqlen;
             if (resTaskNum >= static_cast<int64_t>(remainingInS1)) {
                 resTaskNum -= remainingInS1;
-                nowS1Idx++; nowS2Idx = 0;
+                nowS1Idx++;
+                nowS2Idx = 0;
             } else {
                 break;
             }
@@ -557,7 +572,8 @@ namespace optiling{
         }
     }
 
-    void FAInferTiling::InitSplitInfoArrays(FAInferTilingData &faTilingData) {
+    void FAInferTiling::InitSplitInfoArrays(FAInferTilingData &faTilingData)
+    {
         for (uint32_t splitIdx = 0; splitIdx < blockNum_ + 1; splitIdx++) {
             faTilingData.splitInfo.get_batchIdx()[splitIdx] = 0;
             faTilingData.splitInfo.get_headStartIdx()[splitIdx] = 0;
@@ -573,7 +589,8 @@ namespace optiling{
     void FAInferTiling::ProcessCoreSplitInfo(FAInferTilingData &faTilingData, uint32_t groupSize,
         uint32_t coreIdx, int32_t &splitIdx, int32_t &prevBIdx,
         int32_t &prevN1Idx, int32_t &prevS1Idx,
-        int64_t &currentLseTaskOffset, int64_t &currentOTaskOffset) {
+        int64_t &currentLseTaskOffset, int64_t &currentOTaskOffset)
+    {
         int32_t startBIdx = faTilingData.coreInfo.get_startBIdx()[coreIdx];
         int32_t startN1Idx = faTilingData.coreInfo.get_startN1Idx()[coreIdx];
         int32_t startS1Idx = faTilingData.coreInfo.get_startS1Idx()[coreIdx];
@@ -593,8 +610,10 @@ namespace optiling{
             int32_t curEndN1 = (BIdx == endBIdx) ? endN1Idx : p.curQNBlockNum - 1;
 
             for (int32_t N1Idx = curStartN1; N1Idx <= curEndN1; N1Idx++) {
-                int32_t curStartS1 = (BIdx == startBIdx && N1Idx == startN1Idx) ? startS1Idx : 0;
-                int32_t curEndS1 = (BIdx == endBIdx && N1Idx == endN1Idx) ? endS1Idx : p.curQSBlockNum - 1;
+                int32_t curStartS1 =
+                    (BIdx == startBIdx && N1Idx == startN1Idx) ? startS1Idx : 0;
+                int32_t curEndS1 = (BIdx == endBIdx && N1Idx == endN1Idx) ?
+                    endS1Idx : p.curQSBlockNum - 1;
 
                 for (int32_t S1Idx = curStartS1; S1Idx <= curEndS1; S1Idx++) {
                     int32_t curStartS2 = (BIdx == startBIdx && N1Idx == startN1Idx && S1Idx == startS1Idx) ? startS2Idx : 0;
@@ -610,7 +629,8 @@ namespace optiling{
                     uint32_t N1IdxPerGroup = N1Idx % p.qNBlockNumPerGroup;
                     uint32_t kvHeadIdx = N1Idx / p.qNBlockNumPerGroup;
                     uint32_t currentHeadStart = kvHeadIdx * groupSize + N1IdxPerGroup * p.curQNBlockTile;
-                    uint32_t currentHeadEnd = std::min(currentHeadStart + p.curQNBlockTile, (kvHeadIdx + 1) * groupSize);
+                    uint32_t currentHeadEnd =
+                        std::min(currentHeadStart + p.curQNBlockTile, (kvHeadIdx + 1) * groupSize);
                     uint32_t currentQStart = S1Idx * p.curQSBlockTile;
                     uint32_t currentQEnd = std::min(currentQStart + p.curQSBlockTile, p.qSeqlen);
                     uint32_t headLen = currentHeadEnd - currentHeadStart;
