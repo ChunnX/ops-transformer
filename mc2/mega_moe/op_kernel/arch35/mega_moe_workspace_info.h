@@ -106,6 +106,7 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR flagSendCntToGmm1Ptr;
     GM_ADDR cumsumInfoPtr;
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
@@ -149,6 +150,12 @@ struct WorkspaceInfo {
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+
+        // SendCntCal(aiv1) -> GMM1 consumer(aic) 的 count-ready 软同步标志位。
+        // 每个 (expert, aicCore) 独占一个 cache line(INT_CACHELINE 个 int32)，
+        // 专家数 > 16 时不再复用单一 CrossCore 硬同步 flag，避免计数器反转。
+        flagSendCntToGmm1Ptr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->expertPerRank * tilingData->aicNum;
 
         // Conditional allocation for A8W4 / combine-quant paths.
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / CombineQuantMode) 一致，
