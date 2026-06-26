@@ -103,10 +103,12 @@ struct WorkspaceInfo {
     GM_ADDR maskSlotPtr;
     GM_ADDR combineSendDataPtr;
     GM_ADDR combineSendNotifyPtr;
+    GM_ADDR dispatchL1RelayDataPtr;       // L1 dispatch: 每个 target server 的中转区基地址
+    GM_ADDR dispatchL1CompleteListPtr;    // L1 dispatch: 计算核完成标志列表
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
-    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1)
     {
         workspaceSize = 0;
         dispatchRevDataPtr = base;
@@ -183,6 +185,40 @@ struct WorkspaceInfo {
         workspaceSize += maxDataSize;
         combineSendNotifyPtr = base + workspaceSize;
 
+        int64_t combineNotifySize = Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) * SIZE_INT_32, static_cast<int64_t>(ALIGN_512));
+        workspaceSize += combineNotifySize;
+        // ==================================================================
+        // L1 Dispatch workspace: 中转区 + 完成列表
+        // ==================================================================
+        // 中转区: 每个 target server 一块, 布局见 mega_moe_dispatch_send.h
+        //   每个 slot 总大小 = tokendata + scaledata + 32B metadata, 再 512B 对齐
+        //   perServer = 32B header + bs * slotSize (512B 对齐)
+        // 按 (epWorldSize - 1) 个 other server 分配 (最坏情况每 rank 一个 server)
+        {
+            uint32_t dataBytes = Ops::Base::CeilAlign(static_cast<uint64_t>(tilingData->h) / elemsPerByte,
+                static_cast<uint64_t>(ALIGN_256));
+            uint32_t scaleBytes = Ops::Base::CeilDiv(static_cast<uint64_t>(tilingData->h),
+                static_cast<uint64_t>(ALIGN_32));
+            uint32_t tokenScaleBytes = Ops::Base::CeilAlign(
+                static_cast<uint64_t>(dataBytes + scaleBytes), static_cast<uint64_t>(ALIGN_32));
+            // slotSize: tokendata + scaledata + 32B, 再 512B 对齐 (须与 kernel 端 l1SlotSize_ 一致)
+            uint64_t slotSize = static_cast<uint64_t>(Ops::Base::CeilAlign(
+                static_cast<int64_t>(tokenScaleBytes) + static_cast<int64_t>(ALIGN_32),
+                static_cast<int64_t>(ALIGN_512)));
+            uint64_t perServerRelay = Ops::Base::CeilAlign(
+                static_cast<int64_t>(32 + tilingData->bs * slotSize),
+                static_cast<int64_t>(ALIGN_512));
+            uint32_t maxOtherServers = (tilingData->epWorldSize > 1) ? (tilingData->epWorldSize - 1) : 0;
+            dispatchL1RelayDataPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(maxOtherServers) * perServerRelay, static_cast<int64_t>(ALIGN_512));
+        }
+
+        // 完成列表: 每 AIV 核每 expert round 一个 int32 标志
+        dispatchL1CompleteListPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->blockAivNum) * tilingData->expertPerRank * SIZE_INT_32,
+            static_cast<int64_t>(ALIGN_512));
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

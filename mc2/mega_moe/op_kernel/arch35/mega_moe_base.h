@@ -47,6 +47,7 @@ struct PeermemInfo {
     GM_ADDR combineSendPtr;
     uint64_t URMACombineWinPtr;
     uint64_t URMAmaskRecvPtr;
+    uint64_t URMADispatchL1RecvPtr;   // L1 dispatch 接收区在 URMA 窗口内的偏移 (相对 rankSyncInWorldPtr)
     Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
     __gm__ Mc2MoeContext* mc2Context;
     __aicore__ inline PeermemInfo() = default;
@@ -55,15 +56,11 @@ struct PeermemInfo {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
-        // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
-        // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 同步算好),
-        // 与 mega_moe.h FirstBuffInit 的 maskSlotSize_ 一致; 接收端直接读 count, 不再 GatherMask 计数。
         int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
         int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
             (int64_t)sizeof(int32_t);
         int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
-        int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;  // mask + 32B count
-        // 整个 mask 区按 512 对齐, 保证后续 quantTokenScalePtr 仍 512 对齐(CopyGMToGMPerToken 用普通 DataCopy 读)。
+        int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;
         offset += Ops::Base::CeilAlign(
             (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
         
@@ -79,6 +76,21 @@ struct PeermemInfo {
         URMAmaskRecvPtr = 0;
         URMACombineWinPtr = Ops::Base::CeilAlign(
             (int64_t)(tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize), (int64_t)ALIGN_512);
+
+        // L1 dispatch 接收区: 紧接 combine 区之后
+        // 每个 source server 一个 section, 每 section = bs * slotSize
+        //   slotSize = tokendata + scaledata + 32B, 再 512B 对齐 (与 kernel 端 l1SlotSize_ 一致)
+        // 共 totalServers 个 section (含本 server, 本 server section 不使用)
+        int64_t slotSize = static_cast<int64_t>(Ops::Base::CeilAlign(
+            static_cast<int64_t>(tokenBytes) + static_cast<int64_t>(ALIGN_32), ALIGN_512));
+        int64_t l1RecvPerServer = Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->bs) * slotSize, ALIGN_512);
+        int64_t totalServers = tilingData->epWorldSize; // 最坏 case: rankSizePerServer=1
+        URMADispatchL1RecvPtr = URMACombineWinPtr +
+            Ops::Base::CeilAlign(
+                (int64_t)(tilingData->bs) * (tokenBytes + sizeof(int32_t)) * tilingData->expertPerRank * tilingData->epWorldSize,
+                (int64_t)ALIGN_512) + // combineSend 区实际大小 (用简化公式)
+            Ops::Base::CeilAlign(totalServers * l1RecvPerServer, ALIGN_512);
     }
 };
 
