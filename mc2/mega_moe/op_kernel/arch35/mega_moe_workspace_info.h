@@ -28,7 +28,7 @@ namespace {
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
-constexpr uint64_t TOKEN_SCALE_SIZE = 8U * 1024U;
+constexpr uint64_t TOKEN_SCALE_SIZE = 9U * 1024U;
 constexpr uint64_t IDX_A_OFFSET = 0UL;
 constexpr uint64_t IDX_B_OFFSET = 1UL;
 constexpr uint64_t IDX_A_SCALE_OFFSET = 2UL;
@@ -62,7 +62,7 @@ constexpr int32_t INT_CACHELINE = 16;
 constexpr int32_t MAX_AICORE_NUM = 36;
 // wave-grain dispatch flag: must match MegaMoeImpl::L1_TILE_M
 constexpr int64_t DISPATCH_WAVE_TILE_M = 256LL;
-// GMM2 tile size for row group calculation
+// GMM2 tile size for token group calculation
 constexpr int64_t L1_TILE_M_128 = 128LL;
 constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
@@ -108,7 +108,7 @@ struct WorkspaceInfo {
     GM_ADDR cumsumInfoPtr;
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
-    GM_ADDR rowGroupCompletePtr;
+    GM_ADDR gmm2CombineSyncCounterPtr;
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -174,16 +174,14 @@ struct WorkspaceInfo {
         }
 
         // Combine-quant-only workspace buffers
-        rowGroupCompletePtr = nullptr;
+        gmm2CombineSyncCounterPtr = nullptr;
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-            rowGroupCompletePtr = base + workspaceSize;
-            int64_t maxTokensPerExpert = static_cast<int64_t>(tilingData->bs) * tilingData->epWorldSize;
-            int64_t maxRowGroupsPerExpert = Ops::Base::CeilDiv(maxTokensPerExpert, DISPATCH_WAVE_TILE_M);
-            int64_t perCoreRowGroupsStride = Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE, ALIGN_128);
-            int64_t maxRowGroupsStride = Ops::Base::CeilAlign(
-                maxRowGroupsPerExpert * perCoreRowGroupsStride, ALIGN_128);
-            workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * maxRowGroupsStride;
+            // Token group completion counters
+            gmm2CombineSyncCounterPtr = base + workspaceSize;
+            // 紧密排布：每个 expert 分配 blockAivNum 个 slot
+            int64_t stridePerExpert = Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
+            workspaceSize += stridePerExpert * tilingData->expertPerRank;
         }
     }
 };

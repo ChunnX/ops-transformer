@@ -51,6 +51,7 @@ namespace {
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
     const static int64_t MAX_EXPERT_PER_RANK = 16LL;
     const static int64_t H_BASE = 1024LL;
+    const static int64_t MAX_H = 8LL * 1024LL;  // 8K
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
@@ -908,9 +909,17 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         return ge::GRAPH_FAILED);
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(xDim1 != 4LL * H_BASE && xDim1 != 5LL * H_BASE && xDim1 != 7LL * H_BASE,
+    // 检查 H 范围 [1K, 8K]
+    OP_TILING_CHECK(xDim1 < H_BASE || xDim1 > MAX_H,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
-            "only support 4k/5k/7k"),
+            (std::string("should in [") + std::to_string(H_BASE) + ", " +
+             std::to_string(MAX_H) + "]").c_str()),
+        return ge::GRAPH_FAILED);
+
+    // 检查 H 是否 1024 的倍数
+    OP_TILING_CHECK(xDim1 % H_BASE != 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
+            (std::string("multiple of ") + std::to_string(H_BASE)).c_str()),
         return ge::GRAPH_FAILED);
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
