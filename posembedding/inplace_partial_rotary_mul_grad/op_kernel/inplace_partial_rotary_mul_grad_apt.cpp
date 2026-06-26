@@ -22,6 +22,7 @@
 #include "arch35/inplace_partial_rotary_mul_grad_bab.h"
 #include "arch35/inplace_partial_rotary_mul_grad_ab.h"
 #include "arch35/inplace_partial_rotary_mul_grad_aba_and_ba.h"
+#include "arch35/inplace_partial_rotary_mul_grad_a_and_b.h"
 
 #define TILING_KEY_ABA 201
 #define TILING_KEY_BA 202
@@ -69,6 +70,18 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul_grad(GM_ADDR dy
         GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradRegbaseTilingDataAb, tilingDataAb, tiling);
         const InplacePartialRotaryMulGradRegbaseTilingDataAb *__restrict tilingData = &tilingDataAb;
         InplacePartialRotaryMulGradAB<DTYPE_DY, DTYPE_COS> op(&pipe, tilingData);
+        op.Init(dy, cos, sin, dx);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_A)) {
+        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradRegbaseTilingData, tilingDataA, tiling);
+        const InplacePartialRotaryMulGradRegbaseTilingData *__restrict tilingData = &tilingDataA;
+        InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, false> op(&pipe, tilingData);
+        op.Init(dy, cos, sin, dx);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_B)) {
+        GET_TILING_DATA_WITH_STRUCT(InplacePartialRotaryMulGradRegbaseTilingData, tilingDataB, tiling);
+        const InplacePartialRotaryMulGradRegbaseTilingData *__restrict tilingData = &tilingDataB;
+        InplacePartialRotaryMulGradAAndB<DTYPE_DY, DTYPE_COS, true> op(&pipe, tilingData);
         op.Init(dy, cos, sin, dx);
         op.Process();
     }
