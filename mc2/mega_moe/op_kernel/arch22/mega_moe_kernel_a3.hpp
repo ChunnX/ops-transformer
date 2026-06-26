@@ -1199,7 +1199,7 @@ private:
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
-                    uint32_t rowSrc = preSumBeforeRank(coreIdx * params.expertPerRank + groupIdx);
+                    uint32_t rowSrc = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
                     GM_ADDR otherRankPtr = shmem(0, dstEpIdx);
                     AscendC::GlobalTensor<ElementABefore> gmRemoteA;
                     gmRemoteA.SetGlobalBuffer(
