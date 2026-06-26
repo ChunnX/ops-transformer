@@ -326,7 +326,7 @@ public:
             return;
         }
 
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
+                RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
         uint32_t bN2Cur = constInfo.bN2Start;
         uint32_t gS1Cur = constInfo.gS1OStart;
         uint32_t s2Cur = constInfo.s2OStart;
@@ -418,6 +418,12 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
+        // S2有效块区间为[curS2Start, curS2End), s2Cur尚未到达有效区间且该行有有效块,
+        // 需快进到curS2Start继续计算, 不能跳行 (BAND等sparse模式curS2Start常>0)
+        if (s2Cur < curS2Start && curS2Start < curS2End) {
+            return TASK_DEAL_MODE::NOT_START;
+        }
+        // 该行无有效块(curS2Start>=curS2End)或s2Cur已越过有效区间, 跳过当前行
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
             return TASK_DEAL_MODE::SKIP_REMAINING_S2;
         }
@@ -681,6 +687,11 @@ public:
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        // 尚未到达有效区间, 快进s2Cur到curS2Start, 不跳行
+        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            s2Cur = curS2Start;
+            return;
+        }
         if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
             // 当前S2未处理完
             if (s2Cur + 1 < s2LoopTimes) {
