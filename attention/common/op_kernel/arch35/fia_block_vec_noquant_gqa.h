@@ -232,19 +232,6 @@ public:
         }
     }
 
-    __aicore__ inline void ClearOutput()
-    {
-        if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
-            InitOutputSingleCore();
-            if (constInfo.isSoftmaxLseEnable) {
-                InitLseOutputSingleCore();
-            }
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            SyncAll();
-        }
-    }
-
     __aicore__ inline bool IsInitAttentionOutGm()
     {
         // TND、NTD场景且不存在无效行,不需要初始化
@@ -262,6 +249,19 @@ public:
             }
         }
         return true;
+    }
+
+    __aicore__ inline void ClearOutput()
+    {
+        if (IsInitAttentionOutGm()) {
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
+            InitOutputSingleCore();
+            if (constInfo.isSoftmaxLseEnable) {
+                InitLseOutputSingleCore();
+            }
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            SyncAll();
+        }
     }
 
     __aicore__ inline void InitOutputSingleCore()
