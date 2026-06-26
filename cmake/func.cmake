@@ -73,6 +73,19 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
     set(_OP_LIST)
     set(_OP_DIR_LIST)
 
+    function(should_add_module MODULE_NAME RESULT)
+        if(DEFINED ASCEND_MODULE_NAME AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "" AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "all" AND NOT "${ASCEND_MODULE_NAME}" STREQUAL "ALL")
+            string(REPLACE "," ";" MODULE_LIST "${ASCEND_MODULE_NAME}")
+            if(${MODULE_NAME} IN_LIST MODULE_LIST)
+                set(${RESULT} TRUE PARENT_SCOPE)
+            else()
+                set(${RESULT} FALSE PARENT_SCOPE)
+            endif()
+        else()
+            set(${RESULT} TRUE PARENT_SCOPE)
+        endif()
+    endfunction()
+
     if(ENABLE_EXPERIMENTAL)
         message(STATUS "Build experimental module")
         file(GLOB OP_HOST_CMAKE_FILES
@@ -90,19 +103,40 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             List(APPEND OP_HOST_CMAKE_FILES ${MC2_OP_HOST_CMAKE_FILES})
         endif()
     else()
-        file(GLOB OP_HOST_CMAKE_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/op_host/CMakeLists.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/CMakeLists.txt"
-        )
+        set(OP_HOST_CMAKE_FILES)
+        should_add_module("gmm" ADD_GMM)
+        if(ADD_GMM)
+            file(GLOB GMM_OP_HOST_CMAKE_FILES
+            "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/op_host/CMakeLists.txt"
+            "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/CMakeLists.txt"
+            )
+            list(APPEND OP_HOST_CMAKE_FILES ${GMM_OP_HOST_CMAKE_FILES})
+        endif()
         if(BUILD_OPEN_PROJECT AND (NOT BUILD_OPS_RTY_KERNEL))
-            file(GLOB CANNDEV_OPS_HOST_CMAKE_FILES
+            file(GLOB POSEMBEDDING_CANNDEV_OPS_HOST_CMAKE_FILES
                 "${CMAKE_CURRENT_SOURCE_DIR}/posembedding/**/op_host/CMakeLists.txt"
-                "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/op_host/CMakeLists.txt"
-                "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/posembedding/**/framework/CMakeLists.txt"
+            )
+            should_add_module("posembedding" ADD_CANNDEV_POSEMBEDDING)
+            if(ADD_CANNDEV_POSEMBEDDING)
+                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${POSEMBEDDING_CANNDEV_OPS_HOST_CMAKE_FILES})
+            endif()
+            file(GLOB MOE_CANNDEV_OPS_HOST_CMAKE_FILES
+                "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/framework/CMakeLists.txt"
+            )
+            should_add_module("moe" ADD_CANNDEV_MOE)
+            if(ADD_CANNDEV_MOE)
+                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MOE_CANNDEV_OPS_HOST_CMAKE_FILES})
+            endif()
+            file(GLOB FFN_CANNDEV_OPS_HOST_CMAKE_FILES
+                "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/framework/CMakeLists.txt"
             )
+            should_add_module("ffn" ADD_CANNDEV_FFN)
+            if(ADD_CANNDEV_FFN)
+                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${FFN_CANNDEV_OPS_HOST_CMAKE_FILES})
+            endif()
             if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
                 ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
                 ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
@@ -112,7 +146,10 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/tools/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/tools/**/framework/CMakeLists.txt"
                 )
-                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MC2_CANNDEV_OPS_HOST_CMAKE_FILES})
+                should_add_module("mc2" ADD_CANNDEV_MC2)
+                if(ADD_CANNDEV_MC2)
+                    List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MC2_CANNDEV_OPS_HOST_CMAKE_FILES})
+                endif()
             endif()
             List(APPEND OP_HOST_CMAKE_FILES ${CANNDEV_OPS_HOST_CMAKE_FILES})
         endif()
