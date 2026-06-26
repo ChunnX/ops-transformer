@@ -35,19 +35,17 @@ struct TempLoopInfo {
     uint32_t bn2IdxInCurCore = 0;
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
-    uint64_t s2BasicSizeTail = 0U; // S2方向循环的尾基本块大小
     uint32_t s2LoopTimes = 0U;     // S2方向循环的总次数，无论TND还是BXXD都是等于实际次数，不用减1
+    uint64_t s2BasicSizeTail = 0U; // S2方向循环的尾基本块大小
     uint64_t curActualSeqLen = 0ULL;
     uint64_t curActualSeqLenOri = 0ULL;
-    bool curActSeqLenIsZero = false;
-    int32_t nextTokensPerBatch = 0;
-
     uint64_t actS1Size = 1ULL;     // TND场景下当前Batch循环处理的S1轴的大小
+    int32_t nextTokensPerBatch = 0;
     uint32_t tndCoreStartKVSplitPos;
-    bool tndIsS2SplitCore;
-
-    uint32_t gS1Idx = 0U;
     uint64_t mBasicSizeTail = 0U;  // gS1方向循环的尾基本块大小
+    uint32_t gS1Idx = 0U;
+    bool curActSeqLenIsZero = false;
+    bool tndIsS2SplitCore;
 };
 
 template <typename SFAT> class SparseFlashAttentionMla {
@@ -339,10 +337,8 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::GetSparseActualSeqLen(uint
     if (constInfo.sparseMode == 3) {
         threshold = static_cast<int64_t>(tempLoopInfo.nextTokensPerBatch) + s1Idx + 1;
     }
-
     tempLoopInfo.curActualSeqLen = (constInfo.sparseBlockCount * constInfo.sparseBlockSize > threshold) ?
-                                           threshold :
-                                           constInfo.sparseBlockCount * constInfo.sparseBlockSize;
+                                    threshold : (constInfo.sparseBlockCount * constInfo.sparseBlockSize);
 }
 
 template <typename SFAT>
@@ -511,8 +507,8 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(__gm__ uint8_t *query
         matmulService.InitParams(constInfo);
         matmulService.InitMm1GlobalTensor(queryGm, qRopeGm, keyGm, kRopeGm, mm1ResGm);
         matmulService.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
-        matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm,
-                                            constInfo.kvCacheBlockSize, constInfo.maxBlockNumPerBatch);
+        matmulService.InitPageAttentionInfo(kvMergeGm_, blockTableGm, topKGm, constInfo.kvCacheBlockSize,
+                                            constInfo.maxBlockNumPerBatch);
     }
     // 要在InitParams之后执行
     if (pipe != nullptr) {
@@ -523,9 +519,9 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(__gm__ uint8_t *query
 template <typename SFAT> __aicore__ inline void SparseFlashAttentionMla<SFAT>::InitCalcParamsEach()
 {
     //计算总的基本块
+    uint32_t actBatchS2 = 1;
     uint32_t totalBaseNum = 0;
 	uint32_t s1GBaseSize = constInfo.gSize;
-	uint32_t actBatchS2 = 1;
 	uint32_t coreNum = GetBlockNum();
     uint32_t currCoreIdx = aiCoreIdx;
     uint32_t actBatchS1 = 1;
@@ -586,10 +582,10 @@ template <typename SFAT> __aicore__ inline void SparseFlashAttentionMla<SFAT>::I
     }
     if (accumBaseNum < targetBaseNum) {
 		// 更新最后一个核的End分核信息
+        constInfo.coreStartKVSplitPos = 0;
 		constInfo.bN2End = lastValidBIdx;
         constInfo.gS1End = lastValidactBatchS1-1;
         constInfo.s2End = 0;
-        constInfo.coreStartKVSplitPos = 0;
         if (aiCoreIdx != 0) {
             GetAxisStartIdx(constInfo.bN2Start, constInfo.gS1Start, 0);
         }
@@ -617,9 +613,9 @@ template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, uint64_t s2Start,
                                                                                  uint32_t s2LoopIdx, RunInfo &info)
 {
-    info.loop = loop;
     info.bIdx = tempLoopInfo.bIdx;
     info.gS1Idx = tempLoopInfo.gS1Idx;
+    info.loop = loop;
     info.s2Idx = s2LoopIdx;
     info.curSInnerLoopTimes = tempLoopInfo.s2LoopTimes;
 
@@ -699,13 +695,13 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, 
                             info.gS1Idx / constInfo.gSize * constInfo.sparseBlockCount;
         }
     }
-    info.topKBaseOffset = topKBaseOffset;
     info.threshold = threshold;
+    info.topKBaseOffset = topKBaseOffset;
     info.tensorAOffset = tensorACoreOffset;
     info.tensorARopeOffset = tensorARopeCoreOffset;
+    info.attenOutOffset = tensorACoreOffset;
     info.tensorBOffset = tensorBCoreOffset;
     info.tensorBRopeOffset = tensorBRopeCoreOffset;
-    info.attenOutOffset = tensorACoreOffset;
 
     uint64_t sInnerOffsetDataSize = info.s2Idx * constInfo.s2BaseSize;
     info.s2BatchOffset = s2BatchBaseOffset + sInnerOffsetDataSize;
