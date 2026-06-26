@@ -917,15 +917,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         }
     } while (true);
     // PRINTF("BEGIN READDATA\n");
-    // hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
-    // hcomm_.Drain(channel);
+    hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
+    hcomm_.Drain(channel);
     // PRINTF("BEGIN READDATA\n");
-    // AscendC::Nop<300000>();
+    AscendC::Nop<300000>();
     // PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
-    scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
+    scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
     PipeBarrier<PIPE_ALL>();
+    DumpTensor(copyTmpTensors_[bufferIdx], 0, 256);
 }
 
 // ============================================================================
