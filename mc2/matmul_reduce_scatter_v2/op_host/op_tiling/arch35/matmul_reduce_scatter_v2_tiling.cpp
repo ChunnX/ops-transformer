@@ -26,11 +26,11 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"
+#include "../matmul_reduce_scatter_tiling_base.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -90,6 +90,9 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
     OP_TILING_CHECK(x2ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
                     "x2Scale", "not nullptr", "If the dtype of x is fp16 or bf16, x2Scale must be nullptr"),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SUPPORT_COMM_MODE_A5.find(commMode) == SUPPORT_COMM_MODE.end(),
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\" or \"ccu\""),
+                    return false);
     return ge::GRAPH_SUCCESS;
 }
 
