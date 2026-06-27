@@ -13,7 +13,7 @@
 
 /*!
  * \file fa_tiling.h
- * \brief GQA non-quant tiling class for flash_attn.
+ * \brief GQA non-quant tiling class for flash_attn_example.
  *        Ported from ops-transformer fa_tiling.h, adapted
  *        for AscendOps paradigm (using ContextParamsForTiling and at::Tensor
  *        instead of CANN gert::TilingContext and FaTilingInfo).

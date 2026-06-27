@@ -1,4 +1,4 @@
-# flash_attn 算子详解文档
+# flash_attn_example 算子详解文档
 
 ## 一、算子设计
 
@@ -6,7 +6,7 @@
 
 本算子基于华为昇腾 NPU 的 AscendC 框架，采用 **Host（CPU）做 Tiling + Device（NPU）跑 Kernel** 的分离式架构，实现标准自注意力计算。接口参数与约束详见 [README.md](./README.md)。
 
-完整调用链路：**Python** `torch.ops.ascend_ops.flash_attn(q,k,v,mask,scale,True)` → **C++ 入口** `FlashAttnNpu()` → **Host Tiling** `FaTiling::DoTiling()` → **TilingData 拷贝到 Device** → **Kernel 调度** `FaKernelInterface → FlashAttentionKernel`。
+完整调用链路：**Python** `torch.ops.ascend_ops.flash_attn_example(q,k,v,mask,scale,True)` → **C++ 入口** `FlashAttnNpu()` → **Host Tiling** `FaTiling::DoTiling()` → **TilingData 拷贝到 Device** → **Kernel 调度** `FaKernelInterface → FlashAttentionKernel`。
 
 ### 1.2 Tiling 基本块
 

@@ -118,7 +118,7 @@ def test_fa_causal(b, n1, n2, sq, skv, d):
     k_npu = k.to("npu")
     v_npu = v.to("npu")
     mask_npu = npu_mask.to("npu")
-    npu_out = ascend_ops.ops.flash_attn(
+    npu_out = ascend_ops.ops.flash_attn_example(
         q_npu, k_npu, v_npu, mask_npu, scale_value, True)
     torch.npu.synchronize()
     npu_out_cpu = npu_out.to("cpu")
