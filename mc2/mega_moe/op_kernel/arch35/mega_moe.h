@@ -287,8 +287,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
         topkIndexTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
-    // Tensor大小：每块大小为 TOKEN_SCALE_SIZE=9KB, 容纳token+scale，一共开设54K。
-    constexpr uint32_t COPY_TMP_BUFFER_SIZE = TOKEN_SCALE_SIZE;
+    // Tensor大小：每块容纳token+scale，动态计算以节省UB空间
+    uint32_t tokenScaleSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
+        static_cast<int64_t>(ALIGN_32));
+    uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
         copyTmpTensors_[index] = LocalTensor<ActivationType>(TPosition::VECCALC,
@@ -1215,20 +1218,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
 {
     if constexpr (ENABLE_A8W4) {
-        // A8W4: non-quantized combine only (W4→W8 prologue + MMAD, output to GM, AIV post-process)
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            MegaMoeImpl::GroupMatmul2CombineA8W4<
-                QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt, gmm2PingPongIdx_);
-        } else {
-            MegaMoeImpl::GroupMatmul2CombineA8W4<
-                QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx, true);
-            if constexpr (g_coreType == AIV) {
-                ProcessCombine(gmmAddrInfo, state, expertIdx);
-            }
+        MegaMoeImpl::GroupMatmul2CombineA8W4<
+            QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+            state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx,
+            CombineQuantMode != COMBINE_NO_QUANT);
+        if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
+            ProcessCombine(gmmAddrInfo, state, expertIdx);
         }
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
