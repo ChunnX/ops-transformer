@@ -1,15 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-#include <initializer_list>
-#include <tuple>
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "aclnn_moe_token_permute.h"
 #include "opdev/make_op_executor.h"
@@ -96,28 +93,34 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
     aclnnStatus ret = MoeTokenPermuteCheck::CheckParamsRegbase(tokens, indices, permuteTokensOut, sortedIndicesOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
+    // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
+    // 固定写法，将输入转换成连续的tensor
     auto tokensContiguous = l0op::Contiguous(tokens, uniqueExecutor.get());
     CHECK_RET(tokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto indicesContiguous = l0op::Contiguous(indices, uniqueExecutor.get());
     CHECK_RET(indicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto result = l0op::MoeInitRoutingV2(tokensContiguous, indicesContiguous, numOutTokens, 0, 0, 0, 0, false,
-                                         permuteTokensOut, sortedIndicesOut, nullptr, nullptr,
-                                         uniqueExecutor.get());
+    // 调用l0接口进行计算
+    auto result = l0op::MoeInitRoutingV2(tokensContiguous, indicesContiguous,
+        numOutTokens, 0, 0, 0, 0, false,
+        permuteTokensOut, sortedIndicesOut,
+        nullptr, nullptr, uniqueExecutor.get());
 
-    auto expandedXOut = std::get<0>(result);
-    auto expandedRowIdxOut = std::get<1>(result);
-    bool hasNullptr = (expandedXOut == nullptr) || (expandedRowIdxOut == nullptr);
+    auto expandedXOut_ = std::get<0>(result);
+    auto expandedRowIdxOut_ = std::get<1>(result);
+    bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
 
-    CHECK_RET(l0op::ViewCopy(expandedXOut, permuteTokensOut, uniqueExecutor.get()) != nullptr,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(l0op::ViewCopy(expandedRowIdxOut, sortedIndicesOut, uniqueExecutor.get()) != nullptr,
-              ACLNN_ERR_INNER_NULLPTR);
+    // copyout结果，如果出参是非连续Tensor，需要把计算完的连续Tensor转非连续
+    auto viewCopyExpandedXOutResult = l0op::ViewCopy(expandedXOut_, permuteTokensOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyExpandedXOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto viewCopyExpandedRowIdxOutResult = l0op::ViewCopy(expandedRowIdxOut_, sortedIndicesOut, uniqueExecutor.get());
+    CHECK_RET(viewCopyExpandedRowIdxOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
+    // 获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;

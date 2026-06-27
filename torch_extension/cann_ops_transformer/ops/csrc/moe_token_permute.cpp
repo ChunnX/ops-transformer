@@ -14,11 +14,6 @@
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
-#if __has_include("aclnnop/aclnn_moe_token_permute.h")
-#include "aclnnop/aclnn_moe_token_permute.h"
-#elif __has_include("aclnn_moe_token_permute.h")
-#include "aclnn_moe_token_permute.h"
-#endif
 #if __has_include("aclnnop/aclnn_moe_token_permute_v2.h")
 #include "aclnnop/aclnn_moe_token_permute_v2.h"
 #elif __has_include("aclnn_moe_token_permute_v2.h")
@@ -158,25 +153,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_moe_token_permute(
     auto expanded_scale_wrapper = MakeTensorWrapper(output.expandedScale);
     FixMxfp4AclDtypes(effective_quant_mode, permuted_tokens_wrapper, expanded_scale_wrapper);
 
-    if (effective_quant_mode == QUANT_MODE_NONE) {
-        ACLNN_CMD(aclnnMoeTokenPermute,
-            tokens,
-            indices,
-            actual_num_out_tokens,
-            padded_mode,
-            permuted_tokens_wrapper,
-            output.sortedIndices);
-    } else {
-        ACLNN_CMD(aclnnMoeTokenPermuteV2,
-            tokens,
-            indices,
-            actual_num_out_tokens,
-            padded_mode,
-            effective_quant_mode,
-            permuted_tokens_wrapper,
-            output.sortedIndices,
-            expanded_scale_wrapper);
-    }
+    ACLNN_CMD(aclnnMoeTokenPermuteV2,
+        tokens,
+        indices,
+        actual_num_out_tokens,
+        padded_mode,
+        effective_quant_mode,
+        permuted_tokens_wrapper,
+        output.sortedIndices,
+        expanded_scale_wrapper);
 
     return std::make_tuple(
         std::move(output.permutedTokens), std::move(output.sortedIndices), std::move(output.expandedScale));
