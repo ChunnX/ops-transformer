@@ -39,19 +39,22 @@ __aicore__ inline void GatherSinCos(LocalTensor<O> &cosLocal, LocalTensor<O> &si
 {
     int64_t offset = col * tokenIndex;
     int64_t curDataSize = col * curVecToken;
-    SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     if constexpr (IsSameType<O, float>::value) {
         auto tmpUbBf16 = shareTmpUb.ReinterpretCast<bfloat16_t>();
         DataCopy(tmpUbBf16, cosGm[offset], curDataSize);
         DataCopy(tmpUbBf16[curDataSize], sinGm[offset], curDataSize);
-        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
         Cast(cosLocal, tmpUbBf16, RoundMode::CAST_NONE, curDataSize);
         Cast(sinLocal, tmpUbBf16[curDataSize], RoundMode::CAST_NONE, curDataSize);
         AscendC::PipeBarrier<PIPE_V>();
     } else {
         DataCopy(cosLocal, cosGm[offset], curDataSize);
         DataCopy(sinLocal, sinGm[offset], curDataSize);
-        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
     }
     uint8_t blockNumPerRow = col / (ALIGN_BLOCK_SIZE / sizeof(O));
     Muls<O>(sinLocal, sinLocal, -1.0f, col >> 1, curVecToken, {1, 1, blockNumPerRow, blockNumPerRow});

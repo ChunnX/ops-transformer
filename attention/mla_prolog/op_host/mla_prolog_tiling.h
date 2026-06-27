@@ -395,7 +395,7 @@ private:
     ge::graphStatus SetAttrInfo();
     QUANT_MODE GetQuantizationMode() const;
     QUANT_MODE GetQuantizationModeV3() const;
-    QUANT_MODE GetQuantizationModeV3A5() const;
+    QUANT_MODE GetQuantizationModeV3Dav() const;
     ge::graphStatus SetShapeInfo();
     ge::graphStatus ProcessBaseInputs();
     ge::graphStatus FillTiling();

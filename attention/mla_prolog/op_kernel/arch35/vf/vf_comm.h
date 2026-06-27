@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file vf_rcomm.h
+ * \file vf_comm.h
  * \brief VF comm
  */
 

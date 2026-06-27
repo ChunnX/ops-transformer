@@ -55,10 +55,12 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
 
     if constexpr (std::is_same<T, float>::value && std::is_same<U, FP8E8M0>::value) {
         DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
-        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
     } else if constexpr (std::is_same<T, float>::value && std::is_same<U, float>::value) {
         DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
-        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
         Rectangle rectangleParams{
             static_cast<uint32_t>(rmsNormParams.row), static_cast<uint32_t>(rmsNormParams.col),
             static_cast<uint32_t>(rmsNormParams.col) // columnStride
@@ -68,7 +70,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
     } else if constexpr (std::is_same<T, int32_t>::value) {
         LocalTensor<T> xInt32Local = shareTmpUb.ReinterpretCast<T>();
         DataCopyPad(xInt32Local, inputGm, copyParams, padParams);
-        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         Rectangle rectangleParams{
             static_cast<uint32_t>(rmsNormParams.row), static_cast<uint32_t>(rmsNormParams.col),
             static_cast<uint32_t>(rmsNormParams.col) // columnStride
@@ -79,12 +82,14 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const Gl
         LocalTensor<T> inputLocal = xFp32Local[rmsNormParams.col].template ReinterpretCast<T>();
         DataCopyPad(inputLocal, inputGm, copyParams, padParams);
 
-        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // Cast input to fp32 [1, col]
         Cast(xFp32Local, inputLocal, RoundMode::CAST_NONE, cnt);
         AscendC::PipeBarrier<PIPE_V>();
     }
-    SetAndWaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
 
     if constexpr (std::is_same<C, O>::value) {
         RmsNormVF<C, GammaType, C, C>(outputLocal, xFp32Local, gammaLocal, rmsNormParams);

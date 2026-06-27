@@ -128,7 +128,7 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3() const
     return QUANT_MODE::ERROR_MODE;
 }
 
-QUANT_MODE MlaPrologTiling::GetQuantizationModeV3A5() const
+QUANT_MODE MlaPrologTiling::GetQuantizationModeV3Dav() const
 {
     const int weightQuantMode = *(context_->weightQuantMode);
     const int kvQuantMode = *(context_->kvQuantMode);
@@ -158,7 +158,7 @@ QUANT_MODE MlaPrologTiling::GetQuantizationMode() const
 {
     if (std::strncmp(context_->opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         if (GetCurNpuArch() == NpuArch::DAV_3510) {
-            return GetQuantizationModeV3A5();
+            return GetQuantizationModeV3Dav();
         } else {
             return GetQuantizationModeV3();
         }

@@ -41,11 +41,11 @@ struct ScatterCacheParams {
           col 待处理的列数，需满足32 bytes对齐
  */
 
-template <typename T, bool isNz>
+template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                              const ScatterCacheParams &scatterCacheParams)
 {
-    if (scatterCacheParams.paTokenIndex < 0 && isNz) {
+    if (scatterCacheParams.paTokenIndex < 0 && IS_NZ) {
         return;
     }
     // blockCount, blockLen, srcStride, dstStride
@@ -53,14 +53,14 @@ __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, con
     DataCopyPad(cacheGm[scatterCacheParams.paTokenIndex * scatterCacheParams.stride], inputLocal, dataCopyParams);
 }
 
-template <typename T, bool isNz>
+template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                     const ScatterCacheParams &scatterCacheParams)
 {
     if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
-    if constexpr (isNz) {
+    if constexpr (IS_NZ) {
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
         int64_t cacheOffset = scatterCacheParams.paTokenIndex / scatterCacheParams.blockSize *
                                   scatterCacheParams.blockSize * scatterCacheParams.stride +
@@ -74,7 +74,7 @@ __aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalT
     }
 }
 
-template <typename T, bool isNz>
+template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                              const ScatterCacheParams &scatterCacheParams, int64_t rowsInCurBatch,
                                              int64_t cacheOffset, int64_t nextBatchOffset)
@@ -84,7 +84,7 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
     }
     int64_t copyCnt = scatterCacheParams.col * rowsInCurBatch;
 
-    if constexpr (isNz) {
+    if constexpr (IS_NZ) {
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
         DataCopyParams copyParams{static_cast<uint16_t>(scatterCacheParams.col / col0), 1, 0,
                                   static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
@@ -103,13 +103,13 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
     }
 }
 
-template <typename T, bool isNz>
+template <typename T, bool IS_NZ>
 __aicore__ inline void MaterializeOffsetsWithHeadSize(int64_t pageTokenOffset, int64_t tokenOffsetInPage,
                                                       int64_t rowsThisStep, bool spill, int64_t nextPageId,
                                                       int64_t headSize, CkvkrParams &ckvkrParams)
 {
     ckvkrParams.rowsInCurBatch = rowsThisStep;
-    if constexpr (!isNz) {
+    if constexpr (!IS_NZ) {
         ckvkrParams.cacheOffset = (tokenOffsetInPage + pageTokenOffset) * headSize;
     } else {
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);

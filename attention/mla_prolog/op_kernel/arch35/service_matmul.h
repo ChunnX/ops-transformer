@@ -890,7 +890,8 @@ __aicore__ inline void MatmulSplitMKOuter(const GlobalTensor<O> &tensorCGm, cons
         WaitFlag<HardEvent::MTE1_MTE2>(A_EVENT0);
         aL1 = localTensors.aL1Tensor;
         CopyNDGmToL1(aL1, tensorAGm[kL1 * para.kL1StepSize], para.m, para.kL1StepSize, para.k);
-        SetAndWaitFlag<HardEvent::MTE2_MTE1>(A_EVENT0);
+        SetFlag<HardEvent::MTE2_MTE1>(A_EVENT0);
+        WaitFlag<HardEvent::MTE2_MTE1>(A_EVENT0);
 
         // A-scale起始偏移: 原MatmulL1公式
         uint32_t kL1ScaleOff = kL1 * para.kScale / kL1Loops * BLOCK_CUBE_SIZE;

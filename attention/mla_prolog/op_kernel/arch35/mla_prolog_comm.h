@@ -41,13 +41,6 @@ __aicore__ inline T Align(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-template <HardEvent pipe>
-__aicore__ inline void SetAndWaitFlag(int8_t eventId)
-{
-    SetFlag<pipe>(eventId);
-    WaitFlag<pipe>(eventId);
-}
-
 enum class CACHE_MODE : uint8_t {
     ND = static_cast<uint8_t>(0), // BSND or TND
     PA_BSND = static_cast<uint8_t>(1),

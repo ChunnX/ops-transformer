@@ -64,7 +64,8 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
     } else {
         DataCopyPad(kLocal, inputGm, copyParams, padParams);
     }
-    SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
         Rectangle rectangleParams{
@@ -137,7 +138,8 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
     } else {
         DataCopyPad(kLocal, inputGm, copyParams, padParams);
     }
-    SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
     // scale参数可以和rope使用的空间复用
     LocalTensor<C> scaleLocal = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt];
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
@@ -145,7 +147,8 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
                                       static_cast<uint32_t>((strideScale - ropeParams.col) * sizeof(C)), 0, 0};
         DataCopyPadExtParams<C> padParams1{false, 0, 0, 0};
         DataCopyPad(scaleLocal, channelDeqScaleGm, copyParams1, padParams1); // 复用内存
-        SetAndWaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
         uint8_t blockNumPerRow = ropeParams.col / (ALIGN_BLOCK_SIZE / sizeof(C));
         // row  col stride

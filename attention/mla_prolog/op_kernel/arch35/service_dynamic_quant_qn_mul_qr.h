@@ -106,9 +106,11 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
             computeSizeRope = subRowRope * colRope;
             outputParamsRope.blockCount = subRowRope;
         }
-        SetAndWaitFlag<HardEvent::MTE3_V>(MUL_QR);
+        SetFlag<HardEvent::MTE3_V>(MUL_QR);
+        WaitFlag<HardEvent::MTE3_V>(MUL_QR);
 
-        SetAndWaitFlag<HardEvent::MTE2_V>(MUL_QR);
+        SetFlag<HardEvent::MTE2_V>(MUL_QR);
+        WaitFlag<HardEvent::MTE2_V>(MUL_QR);
 
         Cast(qrFp32Local, qrInputLocal[inputLocalRopeOffset], RoundMode::CAST_NONE, computeSizeRope);
         AscendC::PipeBarrier<PIPE_V>();
@@ -116,7 +118,8 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
         Cast(outputLocalRope, qrFp32Local, RoundMode::CAST_RINT, computeSizeRope);
         AscendC::PipeBarrier<PIPE_V>();
 
-        SetAndWaitFlag<HardEvent::V_MTE3>(MUL_QR);
+        SetFlag<HardEvent::V_MTE3>(MUL_QR);
+        WaitFlag<HardEvent::V_MTE3>(MUL_QR);
 
         DataCopy(outputGmRope[inputGmRopeOffset], outputLocalRope, outputParamsRope);
         inputLocalRopeOffset += subRowRope * colRope;
@@ -220,14 +223,16 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     DataCopyParams scaleOutCopyParams{(uint16_t)row, (uint16_t)sizeof(C), 0,
                                       (uint16_t)((scaleOutStride - 1) * sizeof(C))};
 
-    SetAndWaitFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
+    SetFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
+    WaitFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
     DataCopyPad(scaleOutputGm, scaleBrcb, scaleOutCopyParams);
 
     // qr rope 后的乘法
     MulQr(outputGmRope, inputGmRope, outputLocalRope, qrInputLocal, qrFp32Local, reciprocalLocal, scaleBrcb, row,
           colRope, subRowRope, qrOutputStrideRope, quantScaleCkvRope, MUL_QR_INPUT_COPY_READY, MUL_QR);
 
-    SetAndWaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
 
 } // namespace MlaProlog
