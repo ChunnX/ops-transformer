@@ -215,8 +215,9 @@ private:
     int32_t GetQueryBatchSize();
     bool ParamsInit();
     bool ParamsCheck();
+    bool CheckTensorData();
     bool BalanceSchedule(SplitResult &splitRes);
-    bool GenMetadata(SplitResult &splitRes);
+    bool GenMetaData(SplitResult &splitRes);
     ValidSocVersion ProcessSocVersion();
 
     uint32_t GetS1SeqSize(uint32_t bIdx);
@@ -251,12 +252,12 @@ private:
     void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
 
     CpuKernelContext* context_ = nullptr;
-    Tensor *cuSeqlensQ_ = nullptr;
-    Tensor *cuSeqlensK_ = nullptr;
-    Tensor *sequsedQ_ = nullptr;
-    Tensor *sequsedK_ = nullptr;
+    Tensor *actSeqLenQ_ = nullptr;
+    Tensor *actSeqLenK_ = nullptr;
+    Tensor *seqUsedQ_ = nullptr;
+    Tensor *seqUsedK_ = nullptr;
     Tensor *cmpResidualK_ = nullptr;
-    Tensor *metadata_ = nullptr;
+    Tensor *metaData_ = nullptr;
 
     std::string socVersion_ = "";
     bool supportFd_ = false;
@@ -292,7 +293,7 @@ private:
         seqUsedQ = 2,
         seqUsedK = 3,
         cmpResidualK = 4,
-        metadata = 0,
+        metaData = 0,
     };
 };
 
@@ -303,18 +304,18 @@ inline uint32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::Compute
         return KERNEL_STATUS_PARAM_INVALID;
     }
     SplitResult splitRes {aicCoreNum_, aivCoreNum_};
-    success = BalanceSchedule(splitRes) && GenMetadata(splitRes);
+    success = BalanceSchedule(splitRes) && GenMetaData(splitRes);
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
 inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::Prepare(CpuKernelContext &ctx)
 {
-    cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
-    cuSeqlensK_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenK));
-    sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
-    sequsedK_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedK));
+    actSeqLenQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
+    actSeqLenK_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenK));
+    seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
+    seqUsedK_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedK));
     cmpResidualK_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualK));
-    metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metadata));
+    metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs = GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
                          GetAttrValue(ctx, "aiv_core_num", aivCoreNum_) &&
@@ -340,104 +341,47 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::Prepare(Cpu
 
 inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsCheck()
 {
-    // 校验输出 metadata 是否为空
-    if (metadata_ == nullptr) {
-        KERNEL_LOG_ERROR("Output metadata is nullptr");
+    return CheckTensorData();
+}
+
+inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CheckTensorData()
+{
+    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr &&
+                                           t->GetTensorShape()->GetDimSize(0) != 0; };
+    if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cu_seqlens_q is nullptr!");
         return false;
-    } else if (metadata_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("Output metadata data is nullptr");
+    }
+    if (isValid(actSeqLenK_) && actSeqLenK_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cu_seqlens_k is nullptr!");
         return false;
     }
-    int32_t batchSize = GetQueryBatchSize();
-    // 校验 cu_seqlens_q 元素
-    if (layoutQ_ == "TND") {
-        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-            const int32_t *cuSeqlensQPtr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
-            for (int i = 0; i < batchSize + 1; i++) {
-                // 校验 cu_seqlens_q 元素非负
-                if (cuSeqlensQPtr[i] < 0) {
-                    KERNEL_LOG_ERROR("The elements in cu_seqlens_q should be >= 0, but got cu_seqlens_q[%d] = %d",
-                        i, cuSeqlensQPtr[i]);
-                    return false;
-                }
-                // 校验 cu_seqlens_q 元素递增
-                if (i > 0 && cuSeqlensQPtr[i - 1] > cuSeqlensQPtr[i]) {
-                    KERNEL_LOG_ERROR("The elements in cu_seqlens_q must be in ascending order, "
-                        "but got cu_seqlens_q[%d] = %d, cu_seqlens_q[%d] = %d",
-                        i - 1, cuSeqlensQPtr[i - 1], i, cuSeqlensQPtr[i]);
-                    return false;
-                }
-            }
-        }
+    if (isValid(seqUsedQ_) && seqUsedQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of seqused_q is nullptr!");
+        return false;
     }
-    // 校验 cu_seqlens_k 元素
-    if (layoutK_ == "TND") {
-        if (cuSeqlensK_ != nullptr && cuSeqlensK_->GetData() != nullptr) {
-            const int32_t *cuSeqlensKPtr = static_cast<const int32_t*>(cuSeqlensK_->GetData());
-            for (int i = 0; i < batchSize + 1; i++) {
-                // 校验 cu_seqlens_k 元素非负
-                if (cuSeqlensKPtr[i] < 0) {
-                    KERNEL_LOG_ERROR("The elements in cu_seqlens_k should be >= 0, but got cu_seqlens_k[%d] = %d",
-                        i, cuSeqlensKPtr[i]);
-                    return false;
-                }
-                // 校验 cu_seqlens_k 元素递增
-                if (i > 0 && cuSeqlensKPtr[i - 1] > cuSeqlensKPtr[i]) {
-                    KERNEL_LOG_ERROR("The elements in cu_seqlens_k must be in ascending order, "
-                        "but got cu_seqlens_k[%d] = %d, cu_seqlens_k[%d] = %d",
-                        i - 1, cuSeqlensKPtr[i - 1], i, cuSeqlensKPtr[i]);
-                    return false;
-                }
-            }
-        }
+    if (isValid(seqUsedK_) && seqUsedK_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of seqused_k is nullptr!");
+        return false;
     }
-    // 校验 seqused_q 元素非负
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        const int32_t *sequsedQPtr = static_cast<const int32_t*>(sequsedQ_->GetData());
-        for (int i = 0; i < batchSize; i++) {
-            if (sequsedQPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d",
-                    i, sequsedQPtr[i]);
-                return false;
-            }
-        }
-    }
-    // 校验 seqused_k 元素非负
-    if (sequsedK_ != nullptr && sequsedK_->GetData() != nullptr) {
-        const int32_t *sequsedKPtr = static_cast<const int32_t*>(sequsedK_->GetData());
-        for (int i = 0; i < batchSize; i++) {
-            if (sequsedKPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in seqused_k should be >= 0, but got seqused_k[%d] = %d",
-                    i, sequsedKPtr[i]);
-                return false;
-            }
-        }
-    }
-    // 校验 cmp_residual_k 元素非负
-    if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
-        const int32_t *cmpResidualKPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
-        for (int i = 0; i < batchSize; i++) {
-            if (cmpResidualKPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be >= 0, but got cmp_residual_k[%d] = %d",
-                    i, cmpResidualKPtr[i]);
-                return false;
-            }
-        }
+    if (isValid(cmpResidualK_) && cmpResidualK_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cmp_residual_k is nullptr!");
+        return false;
     }
     return true;
 }
 
 inline int32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetQueryBatchSize()
 {
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        if (sequsedQ_->GetTensorShape() != nullptr) {
-            return sequsedQ_->GetTensorShape()->GetDimSize(0);
+    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
+        if (seqUsedQ_->GetTensorShape() != nullptr) {
+            return seqUsedQ_->GetTensorShape()->GetDimSize(0);
         }
     }
     if (layoutQ_ == "TND") {
-        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-            if (cuSeqlensQ_->GetTensorShape() != nullptr) {
-                return cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
+        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
+            if (actSeqLenQ_->GetTensorShape() != nullptr) {
+                return actSeqLenQ_->GetTensorShape()->GetDimSize(0) - 1;
             }
         }
     }
@@ -482,13 +426,13 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsInit(
 
 inline uint32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetS1SeqSize(uint32_t bIdx)
 {
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(sequsedQ_->GetData());
+    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedQ_->GetData());
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
     if (layoutQ_ == "TND") {
-        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-            const int32_t *s1Ptr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
+        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
+            const int32_t *s1Ptr = static_cast<const int32_t*>(actSeqLenQ_->GetData());
             return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
         }
     }
@@ -497,13 +441,13 @@ inline uint32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetS1Se
 
 inline uint32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetS2SeqSize(uint32_t bIdx)
 {
-    if (sequsedK_ != nullptr && sequsedK_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(sequsedK_->GetData());
+    if (seqUsedK_ != nullptr && seqUsedK_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedK_->GetData());
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
     if (layoutK_ == "TND") {
-        if (cuSeqlensK_ != nullptr && cuSeqlensK_->GetData() != nullptr) {
-            const int32_t *s2Ptr = static_cast<const int32_t*>(cuSeqlensK_->GetData());
+        if (actSeqLenK_ != nullptr && actSeqLenK_->GetData() != nullptr) {
+            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenK_->GetData());
             return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
         }
     }
@@ -1025,9 +969,9 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::BalanceSche
     return true;
 }
 
-inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GenMetadata(SplitResult &splitRes)
+inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GenMetaData(SplitResult &splitRes)
 {
-    optiling::detail::SlikgMetadata* gradMetadataPtr = (optiling::detail::SlikgMetadata*)metadata_->GetData();
+    optiling::detail::SlikgMetaData* gradMetadataPtr = (optiling::detail::SlikgMetaData*)metaData_->GetData();
     uint32_t formerCoreProcessNum = Arch35CeilDiv(totalNum, aicCoreNum_);
     uint32_t remainCoreProcessNum = formerCoreProcessNum - 1;
     uint32_t remainCoreNum = formerCoreProcessNum * aicCoreNum_ - totalNum;
