@@ -230,8 +230,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     s1gGmOffset + M_BASIC_BLOCK > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK;
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
-                    // 确保上一轮 MTE1 读完 Query/qScale L1 后，再开始新一轮 MTE2 写入
-                    PipeBarrier<PIPE_MTE1>();
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
@@ -266,6 +264,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
                         Fixp(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, s1gL0RealSize, s2L0RealSize, runInfo);
+                        PipeBarrier<PIPE_FIX>(); // 确保 Fixpipe DMA 物理完成后再释放 L0C buffer
                         SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         l0BufIdx_++;
                     }
@@ -314,8 +313,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                                            M_BASIC_BLOCK;
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
-                    // 确保上一轮 MTE1 读完 Query/qScale L1 后，再开始新一轮 MTE2 写入
-                    PipeBarrier<PIPE_MTE1>();
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
@@ -351,6 +348,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                         
                         Fixp(s1gGmOffset + s1gOffset, (s2L1Offset - l1S2Offset),
                                                 s1gL0RealSize, s2L0RealSize, runInfo);
+                        PipeBarrier<PIPE_FIX>(); // 确保 Fixpipe DMA 物理完成后再释放 L0C buffer
                         SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         l0BufIdx_++;
                     }
@@ -368,6 +366,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
         }
     }
 
+    PipeBarrier<PIPE_FIX>(); // 确保所有 Fixpipe DMA 物理完成，再通知 AIV 核读取 resMm1UB_
     CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(QLIV2Common::ConstInfo::CROSS_CV_EVENT
         + runInfo.loop % 2);
 #if CVRATIO > 1

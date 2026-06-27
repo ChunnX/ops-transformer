@@ -394,9 +394,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     }
 
     if (info.isFirstS2InnerLoop) {
-        if constexpr (!IS_MXFP8) {
-            WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
-        }
+        // 等待上一轮 V pipe 读完 weightUB_，再让 MTE2 写入新 weight
+        // MXFP8 路径虽不加载 qScale，但 weight 仍需同步
+        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
         // weightsGm --> weightUB_
         int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
         DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
