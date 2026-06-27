@@ -276,18 +276,42 @@ private:
     int64_t CalcCmpPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
     int64_t CalcCmpNextTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache, bool isCmpKv);
+    int64_t OriCalcCost(uint32_t basicM, uint32_t basicS2);
+    int64_t CmpCalcCost(uint32_t basicM, uint32_t basicS2);
+    void CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t oriS2TailSize,
+        uint32_t cmpS2TailSize);
 
     // cache calculation
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
     void CalcOriBlockRange(const Range<int64_t> &oriS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
     void CalcCmpBlockRange(const Range<int64_t> &cmpS2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
+    void CalcOriS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
+    void CalcCmpS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
+    void GatherOriAndCmpCache(S1GCache &s1GCache);
     void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache,
         S1GCache &s1GCache);
 
     // preprocess
     void CalcSplitInfo(SplitContext &splitContext);
-    void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext);
+    void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo);
     void CalcCostInfo(SplitContext &splitContext);
+
+    // assign
+    void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext);
+    void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext);
+    void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
+    int64_t CalcCurBlockCost(const AssignContext &assignContext);
+    void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
+    void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
+    void AssignBlocksToCore(const SplitContext &splitContext, AssignContext &assignContext, SplitResult &result);
+
+    // FD
+    bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes);
+    void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result);
+
+    // main
+    void SplitFD(SplitResult &splitRes);
+    void CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
 
 private:
     // input
