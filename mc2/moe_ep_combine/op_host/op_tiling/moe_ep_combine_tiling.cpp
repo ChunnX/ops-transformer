@@ -208,6 +208,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     return ge::GRAPH_SUCCESS;
 }
 
+static uint64_t AlignUpWin(const uint64_t data)
+{
+    return (data + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+}
+
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCombineInfo &info,
                                     const char *nodeName)
 {
@@ -219,14 +224,24 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t perWinDataNeed = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
         static_cast<uint64_t>(info.cfg.perSlotBytes);
-    uint64_t perWinStateNeed = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
-        static_cast<uint64_t>(UB_ALIGN);
-    uint64_t winNeedTotal = epWorldSize * (perWinDataNeed, perWinStateNeed);
+
+    uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 
+                                    2 * epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t combineWinStateSize = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
+                                   WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
+    uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    uint64_t dispatchWinDataSize = epWorldSize * static_cast<uint64_t>(*nmtPtr) *
+                                   AlignUpWin(static_cast<uint64_t>(hiddenAlign + topKAlign * 2 + UB_ALIGN));
+
+    uint64_t winNeedTotal = dispatchWinStateSize + combineWinStateSize + dispatchWinDataSize + perWinDataNeed;
     OP_TILING_CHECK(winNeedTotal > maxWindowSize,
         OP_LOGE(nodeName, "HCCL_BUFFSIZE too small, need %luMB, available %luMB.",
             (winNeedTotal / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
         return ge::GRAPH_FAILED);
     info.totalWinSizeEp = maxWindowSize;
+    info.winStateOffset = dispatchWinStateSize;
+    info.winDataOffset = dispatchWinStateSize + combineWinStateSize + dispatchWinDataSize;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -251,8 +266,7 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
         OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
 
     uint32_t hAlign32 = ((info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
-    info.cfg.perSlotBytes = static_cast<uint32_t>(((hAlign32 + kAlign32 * 2 + UB_ALIGN + COMM_ALIGN - 1UL)
+    info.cfg.perSlotBytes = static_cast<uint32_t>(((hAlign32 + UB_ALIGN + COMM_ALIGN - 1UL)
                             / COMM_ALIGN) * COMM_ALIGN);
 
     OP_TILING_CHECK(CheckWinSize(context, info, nodeName) != ge::GRAPH_SUCCESS,
