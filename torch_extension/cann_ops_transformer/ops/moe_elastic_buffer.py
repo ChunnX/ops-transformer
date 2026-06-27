@@ -131,8 +131,7 @@ class MoEElasticBuffer:
             do_cpu_sync = False
             ne, ea, nm = handle.num_experts, handle.expert_alignment, handle.num_max_tokens_per_rank
         else:
-            torch._check(((topk_idx is not None) and (topk_weights is not None)),
-                lambda: (f"topk_idx and topk_weights are required when no-cached."))
+            torch._check((topk_idx is not None), lambda: (f"topk_idx are required when no-cached."))
             do_cpu_sync = True if do_cpu_sync is None else do_cpu_sync
             ne = num_experts if num_experts is not None else self.num_experts
             nm = num_max_tokens_per_rank if num_max_tokens_per_rank is not None else self.num_max_tokens_per_rank

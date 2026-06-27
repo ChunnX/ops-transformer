@@ -141,13 +141,11 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
     return true;
 }
 
-static bool CheckCachedTensorShape(const gert::TilingContext *context, const char *nodeName,
-                                   int64_t topkDim0, int64_t topkDim1)
+static bool CheckOptionalTensorShape(const gert::TilingContext *context, const char *nodeName,
+                                     int64_t topkDim0, int64_t topkDim1)
 {
     const gert::StorageShape *weightsShape = context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX);
     const gert::StorageShape *cachedShape = context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX);
-    OP_TILING_CHECK((weightsShape == nullptr) && (cachedShape == nullptr),
-        OP_LOGE(nodeName, "topkWeights is required when no-cached mode."), return false);
 
     if (weightsShape != nullptr) {
         OP_TILING_CHECK(weightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
@@ -265,8 +263,6 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
         OP_LOGE(nodeName, "topk_idx dtype must be DT_INT32, but got %d.",
             static_cast<int32_t>(topkIdxDesc->GetDataType())), return false);
 
-    OP_TILING_CHECK((topkWeightsDesc == nullptr) && (cachedSlotIdxDesc == nullptr),
-        OP_LOGE(nodeName, "topkWeights is required when no-cached mode."), return false);
     if (topkWeightsDesc != nullptr) {
         OP_TILING_CHECK(topkWeightsDesc->GetDataType() != ge::DT_FLOAT,
             OP_LOGE(nodeName, "topk_weights dtype must be DT_FLOAT, but got %d.",
@@ -364,7 +360,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
 {
     OP_TILING_CHECK(!CheckInputTensorShape(context, nodeName, info),
         OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckCachedTensorShape(context, nodeName, info.cfg.numTokens, info.cfg.topK),
+    OP_TILING_CHECK(!CheckOptionalTensorShape(context, nodeName, info.cfg.numTokens, info.cfg.topK),
         OP_LOGE(nodeName, "Check optional input tensor shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckInputTensorDtype(context, nodeName),
         OP_LOGE(nodeName, "Check input tensor dtype failed."), return ge::GRAPH_FAILED);
