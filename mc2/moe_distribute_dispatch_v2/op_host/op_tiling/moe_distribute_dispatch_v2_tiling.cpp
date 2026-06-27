@@ -337,7 +337,7 @@ static ge::graphStatus CheckQuantModeAndScales(const gert::TilingContext *contex
         return ge::GRAPH_FAILED;
     }
     if (isScales && ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
-        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_CLIP_QUANT)))) {
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CUBLAS)))) {
         std::string reason = "scales must be nullptr when quantMode is MX_QUANT";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
             "provided", reason.c_str());
@@ -1137,7 +1137,7 @@ static ge::graphStatus CheckExpandXAndDynamicScalesTensorShape(const gert::Tilin
             const uint64_t dynamicScalesDim1 =
                 static_cast<uint64_t>(dynamicScalesStorageShape->GetStorageShape().GetDim(1));
             OP_TILING_CHECK(((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
-                (quantMode == static_cast<uint32_t>(QuantModeA5::MX_CLIP_QUANT))) &&
+                (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CUBLAS))) &&
                 (dynamicScalesDim1 != ops::CeilAlign(
                     static_cast<uint64_t>(ops::CeilDiv(h, MX_BLOCK_SIZE)), EVEN_ALIGN)),
                 OP_LOGE(nodeName,
