@@ -82,7 +82,7 @@ MoEElasticBuffer.dispatch(x, topk_idx=None, topk_weights=None, *, handle=None, n
     import torch_npu
     import torch.distributed as dist
     from torch.multiprocessing import Process
-    from npu_ops_transformer.ops.elastic_buffer import MoEElasticBuffer
+    from npu_ops_transformer.ops.moe_elastic_buffer import MoEElasticBuffer
 
     master_ip = '127.0.0.1'
     world_size = 2
