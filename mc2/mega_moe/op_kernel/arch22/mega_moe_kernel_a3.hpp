@@ -1661,10 +1661,45 @@ private:
         CATLASS_DEVICE
         PeermemInfo(const Params &params, const HcclShmem<false> &shmem)
         {
+            // 根据分析报告(mega_moe_cclbuffsize_analysis.md)：
+            // 1. BF16 无 per-token scale，不再预留 1MB perTokenScale 区（原为纯浪费）
+            // 2. BF16 offsetA:offsetD = 1:1（两者均为 M×h×2）
+            // 3. INT8/W4A8 offsetA:offsetD = (h+512):2h 动态切分
+            // 4. 固定段使用 max(实际需要, 下限) 以消除硬编码 1MB/2MB 浪费
+            const int64_t segSize = static_cast<int64_t>(shmem.SegmentSize());
+            const int64_t EP = params.EP;
+            const int64_t E = params.expertPerRank;
+            const int64_t M = params.maxOutputSize;
+            const int64_t h = params.problemShape.k();
+            const int64_t MB = static_cast<int64_t>(MB_SIZE);
+
+            // tokenPerExpert: TPE = EP × CeilAlign(EP × E, 128) × 4B
+            int64_t tpeNeed = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize = (tpeNeed > 2 * MB) ? tpeNeed : 2 * MB;
+
             offsetA = 0;
-            offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
-            offsetD = offsetPeerPerTokenScale + MB_SIZE;
-            offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;
+            offsetPeerTokenPerExpert = segSize - tokenPerExpertSize;
+
+            constexpr bool kRoutingIsQuant =
+                std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
+            if constexpr (kRoutingIsQuant) {
+                // INT8/W4A8: perTokenScale = max(M×4, 1MB)，offsetA:offsetD = (h+512):2h
+                int64_t perTokenScaleNeed = M * 4;
+                int64_t perTokenScaleSize = (perTokenScaleNeed > MB) ? perTokenScaleNeed : MB;
+
+                int64_t remaining = offsetPeerTokenPerExpert - perTokenScaleSize;
+                int64_t ratioA = h + 512;
+                int64_t ratioD = 2 * h;
+                int64_t ratioSum = ratioA + ratioD;
+                int64_t offsetASize = remaining * ratioA / ratioSum;
+
+                offsetPeerPerTokenScale = AlignUp(offsetASize, 512);
+                offsetD = offsetPeerPerTokenScale + perTokenScaleSize;
+            } else {
+                // BF16: 无 perTokenScale，offsetA:offsetD = 1:1
+                offsetPeerPerTokenScale = 0;
+                offsetD = AlignUp(offsetPeerTokenPerExpert / 2, 512);
+            }
         }
     };
 

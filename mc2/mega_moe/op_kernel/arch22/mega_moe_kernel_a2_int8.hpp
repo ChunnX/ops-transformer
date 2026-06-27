@@ -1406,13 +1406,41 @@ private:
         CATLASS_DEVICE
         PeermemInfo(const Params & params, const HcclShmem<true> & shmem)
         {
-            offsetA = 0;    // Occupies one third of BUFFSIZE
-            offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512); // Occupies 1 MB
-            offsetD = offsetPeerPerTokenScale + MB_SIZE;    // Occupies the remaining space
-            offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;     // Occupies the final 2 MB
-            // Flag 区域：每个 sender rank expertPerRank 个 uint32_t slot，区域大小 512 字节对齐
-            offsetFlag = offsetPeerTokenPerExpert - static_cast<int64_t>(
-                AlignUp(static_cast<int64_t>(params.EP * params.expertPerRank * sizeof(uint32_t)), 512));
+            // 根据分析报告(mega_moe_cclbuffsize_analysis.md)：
+            // 1. offsetA:offsetD 按 (h+512):2h 比例动态切分（原 1/3 切分在 h 小时偏紧）
+            // 2. 固定段使用 max(实际需要, 下限) 以消除硬编码 1MB/2MB 浪费
+            const int64_t segSize = static_cast<int64_t>(shmem.SegmentSize());
+            const int64_t EP = params.EP;
+            const int64_t E = params.expertPerRank;
+            const int64_t M = params.maxOutputSize;
+            const int64_t h = params.problemShape.k();
+            const int64_t MB = static_cast<int64_t>(MB_SIZE);
+
+            // tokenPerExpert: TPE = EP × CeilAlign(EP × E, 128) × 4B
+            int64_t tpeNeed = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize = (tpeNeed > 2 * MB) ? tpeNeed : 2 * MB;
+
+            // perTokenScale: M×4B
+            int64_t perTokenScaleNeed = M * 4;
+            int64_t perTokenScaleSize = (perTokenScaleNeed > MB) ? perTokenScaleNeed : MB;
+
+            // Flag: EP×E×4B，512 字节对齐
+            int64_t flagSize = AlignUp(EP * E * static_cast<int64_t>(sizeof(uint32_t)), 512);
+
+            // 从尾部向前布局固定段
+            offsetPeerTokenPerExpert = segSize - tokenPerExpertSize;
+            offsetFlag = offsetPeerTokenPerExpert - flagSize;
+
+            // offsetA:offsetD 按 (h+512):2h 比例动态切分剩余空间
+            int64_t remaining = offsetFlag - perTokenScaleSize;
+            int64_t ratioA = h + 512;
+            int64_t ratioD = 2 * h;
+            int64_t ratioSum = ratioA + ratioD;
+            int64_t offsetASize = remaining * ratioA / ratioSum;
+
+            offsetA = 0;
+            offsetPeerPerTokenScale = AlignUp(offsetASize, 512);
+            offsetD = offsetPeerPerTokenScale + perTokenScaleSize;
         }
     };
 
