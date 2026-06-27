@@ -15,17 +15,15 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*> MoeReRouting(const aclTensor *tokens,
-                                                                                       const aclTensor *expertTokenNumPerRank,
-                                                                                       const aclTensor *perTokenScales,
-                                                                                       const aclTensor *expertTopkWeight,
-                                                                                       int64_t expertTokenNumType,
-                                                                                       int64_t idxType,
-                                                                                       const aclTensor *permuteTokens,
-                                                                                       const aclTensor *permutePerTokenScales,
-                                                                                       const aclTensor *permuteTokenIdx,
-                                                                                       const aclTensor *expertTokenNum,
-                                                                                       const aclTensor *permuteTopkWeight,
-                                                                                       aclOpExecutor *executor);
+std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>
+MoeReRouting(const aclTensor *tokens, const aclTensor *expertTokenNumPerRank,
+             const aclTensor *perTokenScales, const aclTensor *expertTopkWeight,
+             int64_t expertTokenNumType, int64_t idxType,
+             const aclTensor *permuteTokens,
+             const aclTensor *permutePerTokenScales,
+             const aclTensor *permuteTokenIdx,
+             const aclTensor *expertTokenNum,
+             const aclTensor *permuteTopkWeight,
+             aclOpExecutor *executor);
 }  // namespace l0op
 #endif // OP_API_INC_LEVEL0_MOE_RE_ROUTING_H

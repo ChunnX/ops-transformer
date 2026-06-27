@@ -32,8 +32,8 @@ MoeReRouting(const aclTensor *tokens, const aclTensor *expertTokenNumPerRank,
              const aclTensor *permuteTopkWeight, aclOpExecutor *executor)
 {
     L0_DFX(MoeReRouting, tokens, expertTokenNumPerRank, perTokenScales, expertTopkWeight,
-            expertTokenNumType, idxType, permuteTokens, permutePerTokenScales,
-            permuteTokenIdx, expertTokenNum, permuteTopkWeight);
+           expertTokenNumType, idxType, permuteTokens, permutePerTokenScales,
+           permuteTokenIdx, expertTokenNum, permuteTopkWeight);
 
     auto permuteTokensOut = executor->AllocTensor(
         permuteTokens->GetViewShape(), permuteTokens->GetDataType(), Format::FORMAT_ND);

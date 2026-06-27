@@ -1,15 +1,15 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Version 2.0 (the "License").
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from typing import Optional, Tuple
 import torch
 import torch_npu
-from typing import Optional, Tuple
 from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder.builder import OpBuilder
@@ -51,14 +51,16 @@ class _MoeReRoutingOpBuilder(OpBuilder):
             torch._check(tokens.dim() > 1,
                 lambda: f"tokens dim should larger than 1, but got {tokens.dim()}D.{ops_error(ErrCode.VALUE)}")
             torch._check(expert_token_num_per_rank.dim() > 1,
-                lambda: f"expert_token_num_per_rank dim should larger than 1, but got {expert_token_num_per_rank.dim()}D.{ops_error(ErrCode.VALUE)}")
+                lambda: f"expert_token_num_per_rank dim should larger than 1, "
+                        f"but got {expert_token_num_per_rank.dim()}D.{ops_error(ErrCode.VALUE)}")
             torch._check(expert_token_num_type in (0, 1),
                 lambda: f"expert_token_num_type must be 0 or 1, got {expert_token_num_type}.{ops_error(ErrCode.VALUE)}")
             torch._check(idx_type in (0, 1),
                 lambda: f"idx_type must be 0 or 1, got {idx_type}.{ops_error(ErrCode.VALUE)}")
             if tokens_dtype is not None:
                 torch._check(tokens_dtype in _TOKENS_DTYPE_ALLOWLIST,
-                    lambda: f"tokens_dtype only supports hifloat8, float4_e2m1fn_x2, float4_e1m2fn_x2 or None.{ops_error(ErrCode.VALUE)}")
+                    lambda: f"tokens_dtype only supports hifloat8, float4_e2m1fn_x2, "
+                            f"float4_e1m2fn_x2 or None.{ops_error(ErrCode.VALUE)}")
 
             permute_tokens_size = list(tokens.size())
             if per_token_scales is None:
@@ -81,7 +83,8 @@ class _MoeReRoutingOpBuilder(OpBuilder):
                 permute_topk_weight = tokens.new_empty((0,), dtype=torch.float32)
 
             return (torch.empty(permute_tokens_size, dtype=permute_tokens_dtype, device=tokens.device),
-                    torch.empty(permute_per_token_scales_size, dtype=permute_per_token_scales_dtype, device=tokens.device),
+                    torch.empty(permute_per_token_scales_size,
+                                dtype=permute_per_token_scales_dtype, device=tokens.device),
                     torch.empty(permute_token_idx_size, dtype=torch.int32, device=tokens.device),
                     torch.empty(expert_token_num_size, dtype=expert_token_num_per_rank.dtype, device=tokens.device),
                     permute_topk_weight)

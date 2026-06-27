@@ -1,10 +1,10 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Version 2.0 (the "License").
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -111,7 +111,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_re_ro
         expert_token_num = at::empty(expert_token_num_size, expert_token_num_per_rank.options());
 
         if (has_topk_weight) {
-            permute_topk_weight = at::empty(expert_topk_weight_opt.value().sizes(), expert_topk_weight_opt.value().options());
+            permute_topk_weight = at::empty(expert_topk_weight_opt.value().sizes(),
+                                            expert_topk_weight_opt.value().options());
             permute_topk_weight_opt = permute_topk_weight;
         } else {
             permute_topk_weight = at::empty({0}, tokens.options().dtype(at::kFloat));
