@@ -47,12 +47,12 @@ if _TORCHAIR_AVAILABLE:
         layout_out: str = "BSND",
         return_softmax_lse: int = 0,
         deterministic: int = 0):
-        
+
         result = q.new_empty(q.size())
         return result
-        
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_flash_attn.default)
-    def convert_npu_flash_attn(
+
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.flash_attn.default)
+    def convert_flash_attn(
         q: Tensor,
         k: Tensor,
         v: Tensor,
@@ -76,7 +76,6 @@ if _TORCHAIR_AVAILABLE:
         return_softmax_lse: int = 0,
         deterministic: int = 0):
 
-        
         raise AssertionError(f"GE not supported!")
         return FlashAttn(q = q,
                         k = k,
