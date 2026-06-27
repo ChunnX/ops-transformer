@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file l0_sparse_lightning_indexer_kl_loss_grad_metadata.h
- * \brief
+ * \file l0_sparse_lightning_indexer_kl_loss_grad_metadata.h 
+ * \brief 
  */
 #ifndef L0_SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
 #define L0_SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
