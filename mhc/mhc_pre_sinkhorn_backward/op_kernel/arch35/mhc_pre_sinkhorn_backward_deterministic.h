@@ -1191,7 +1191,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 auto bsLen = bsIdx == bsLoopNum - 1 ? bsTailDataLen : bsLoopDataLen_;
                 ComputeFirst(bsIdx, bsLen);
 
-                int64_t gmOffset = blockIdx_ * tilingData_->bsTaskCount + bsIdx * bsLoopDataLen_;;
+                int64_t gmOffset = blockIdx_ * tilingData_->bsTaskCount + bsIdx * bsLoopDataLen_;
                 LocalTensor<float> expGradLocal = gradZBuf_.Get<float>();
                 LocalTensor<float> zReslocal = zBuf_.Get<float>();
                 LocalTensor<float> gradHResLocal = gradHResQue_.AllocTensor<U>();
