@@ -122,9 +122,10 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAAndB::ComputeUbFactor()
         }
         int64_t numOfDAvailable = Ops::Base::FloorDiv(availableForDy, UB_FACTOR * dSizeDy);
         OP_CHECK_IF(numOfDAvailable < 1,
-            OP_LOGE(context_->GetNodeName(), "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld.",
-                    sliceLength_, dSizeDy, dSizeCos),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(),
+                            "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld.", sliceLength_,
+                            dSizeDy, dSizeCos),
+                    return ge::GRAPH_FAILED);
         ubFactorB_ = std::min(blockFactorB_, numOfDAvailable);
     }
     ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);
@@ -194,8 +195,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAAndB::PostTiling()
 
     OP_LOGI(context_->GetNodeName(),
             "InplacePartialRotaryMulGradA&B tiling: B=%ld S=%ld D=%ld N=%ld cosb=%ld layout=%ld "
-            "blockNumB=%ld blockFactorB=%ld blockNumS=1 blockFactorS=1 "
-            "ubFactorS=1 ubFactorB=%ld ubLoopNumN=0 ubFactorN=1 ubTailFactorN=0 "
+            "blockNumB=%ld blockFactorB=%ld blockNumS=0 blockFactorS=0 "
+            "ubFactorS=0 ubFactorB=%ld ubLoopNumN=0 ubFactorN=0 ubTailFactorN=0 "
             "usedCoreNum=%ld rotaryMode=%ld dSplitCoef=%ld "
             "sliceStart=%ld sliceEnd=%ld sliceLength=%ld tilingKey=%lu",
             b_, s_, d_, n_, cosb_, static_cast<int64_t>(layout_), blockNumB_, blockFactorB_, ubFactorB_, usedCoreNum_,
