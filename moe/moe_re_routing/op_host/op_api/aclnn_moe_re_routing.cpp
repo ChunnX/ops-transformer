@@ -29,21 +29,25 @@ extern "C" {
 #endif
 
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOKENS = {DataType::DT_FLOAT16, DataType::DT_BF16,
-                                                                           DataType::DT_INT8};
+    DataType::DT_INT8};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOKENS_REGBASE = {
     DataType::DT_FLOAT16,  DataType::DT_BF16,        DataType::DT_INT8,
     DataType::DT_HIFLOAT8, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN,
     DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_TOKEN_NUM = {DataType::DT_INT32, DataType::DT_INT64};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_TOKEN_NUM = {
+    DataType::DT_INT32, DataType::DT_INT64};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_SCALE = {DataType::DT_FLOAT};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_SCALE_REGBASE = {DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_TOKENS = {DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_SCALE_REGBASE = {
+    DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_TOKENS = {
+    DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_TOKENS_REGBASE = {
     DataType::DT_FLOAT16,       DataType::DT_BF16,        DataType::DT_INT8,
     DataType::DT_HIFLOAT8,      DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN,
     DataType::DT_FLOAT4_E2M1,   DataType::DT_FLOAT4_E1M2};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_SCALE = {DataType::DT_FLOAT};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_SCALE_REGBASE = {DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_SCALE_REGBASE = {
+    DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_IDX = {DataType::DT_INT32};
 
 static inline bool CheckNotNull(const aclTensor *tokens, const aclTensor *expertTokenNumPerRank,
@@ -125,8 +129,8 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnMoeReRouting,
-                    DFX_IN(tokens, expertTokenNumPerRank, perTokenScalesOptional, expertTokenNumType, idxType),
-                    DFX_OUT(permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut, expertTokenNumOut));
+                   DFX_IN(tokens, expertTokenNumPerRank, perTokenScalesOptional, expertTokenNumType, idxType),
+                   DFX_OUT(permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut, expertTokenNumOut));
 
     auto ret = CheckNotNull(tokens, expertTokenNumPerRank, permuteTokensOut, permutePerTokenScalesOut,
                             permuteTokenIdxOut, expertTokenNumOut);
@@ -163,7 +167,8 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingGetWorkspaceSize(
         expertTokenNumType, idxType,
         permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut, expertTokenNumOut, nullptr,
         uniqueExecutor.get());
-    auto [permuteTokensOut_, permutePerTokenScalesOut_, permuteTokenIdxOut_, expertTokenNumOut_, permuteTopkWeightOut_] = routingResult;
+    auto [permuteTokensOut_, permutePerTokenScalesOut_, permuteTokenIdxOut_,
+          expertTokenNumOut_, permuteTopkWeightOut_] = routingResult;
     bool hasNullptr = (permuteTokensOut_ == nullptr) || (permutePerTokenScalesOut_ == nullptr) ||
                       (permuteTokenIdxOut_ == nullptr) || (expertTokenNumOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
@@ -171,7 +176,8 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingGetWorkspaceSize(
 
     auto viewCopyPermuteTokensResult = l0op::ViewCopy(permuteTokensOut_, permuteTokensOut, uniqueExecutor.get());
     CHECK_RET(viewCopyPermuteTokensResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto viewCopyPermutePerTokenScalesResult = l0op::ViewCopy(permutePerTokenScalesOut_, permutePerTokenScalesOut, uniqueExecutor.get());
+    auto viewCopyPermutePerTokenScalesResult =
+        l0op::ViewCopy(permutePerTokenScalesOut_, permutePerTokenScalesOut, uniqueExecutor.get());
     CHECK_RET(viewCopyPermutePerTokenScalesResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto viewCopyPermuteTokenIdxResult = l0op::ViewCopy(permuteTokenIdxOut_, permuteTokenIdxOut, uniqueExecutor.get());
     CHECK_RET(viewCopyPermuteTokenIdxResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
