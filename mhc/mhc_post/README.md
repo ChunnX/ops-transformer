@@ -86,4 +86,4 @@
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_mhc_post](examples/test_aclnn_mhc_post.cpp) | 通过[aclnnMhcPost](docs/aclnnMhcPost.md)接口方式调用MhcPost算子。 |
-| PyTorch API | - | 通过[cann_ops_transformer.mhc_post](../../torch_extension/npu_ops_transformer/doc/mhc_post.md)接口方式调用MhcPost算子。 |
+| PyTorch API | - | 通过[mhc_post](../../torch_extension/cann_ops_transformer/docs/zh/mhc_post.md)接口方式调用MhcPost算子。 |
