@@ -603,6 +603,30 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantShape(siz
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(const aclTensorList *tensorList,
+                                                                             const size_t idx,
+                                                                             const std::string &paramName) const;
+{
+    auto viewShape = (*tensorList)[idx]->GetViewShape();
+    auto viewShapeDimNum = viewShape.GetDimNum();
+    bool dimValueAllOne = true;
+    for (size_t i = 0; i < viewShapeDimNum - 1; i++) {
+        if (viewShape.GetDim(i) != 1) {
+            dimValueAllOne = false;
+            break;
+        }
+    }
+
+    if (dimValueAllOne) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), paramName,
+            "true",
+            "When xDtype-weightDtype is fp16/bf16-int4, The dim value of " + paramName + "not support all be 1");
+        return ACLNN_ERR_PARAM_INVALID;        
+    }
+
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose(size_t idx) const
 {
     if (IsA16W4()) {
@@ -613,6 +637,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose
             return ACLNN_SUCCESS;
         }
         
+        CHECK_RET(CheckDimValueAllOne(gmmParams_.antiquantScaleOptional, idx, "antiquantScale") == ACLNN_SUCCESS,
+                  ACLNN_ERR_PARAM_INVALID);
+
         // pergroup不支持antiquant_scale和antiquant_offset转置
         bool antiquant_scale_trans = IsTransposeLastTwoDims((*gmmParams_.antiquantScaleOptional)[idx]);
         if (antiquant_scale_trans) {
@@ -623,6 +650,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose
         }
 
         if (gmmParams_.antiquantOffsetOptional != nullptr) {
+            CHECK_RET(CheckDimValueAllOne(gmmParams_.antiquantOffsetOptional, idx, "antiquantOffset") == ACLNN_SUCCESS,
+                      ACLNN_ERR_PARAM_INVALID);
             bool antiquant_offset_trans = IsTransposeLastTwoDims((*gmmParams_.antiquantOffsetOptional)[idx]);
             if (antiquant_offset_trans) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(

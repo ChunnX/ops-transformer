@@ -50,6 +50,8 @@ private:
     aclnnStatus CheckAntiQuantTranspose(size_t idx) const;
     aclnnStatus CheckScaleAndPerTokenScaleShape() const;
     aclnnStatus CheckGroupSize(size_t idx) const;
+    aclnnStatus CheckDimValueAllOne(const aclTensorList *tensorList, const size_t idx,
+                                    const std::string &paramName) const;
 
     bool IsA16MxFp4NZ() const;
     bool IsMxA8W4NZ() const;
