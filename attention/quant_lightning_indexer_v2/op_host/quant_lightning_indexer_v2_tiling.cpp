@@ -130,6 +130,8 @@ void QLIV2InfoParser::GetOptionalInputParaInfo()
     opParamInfo_.cmpResidualK.desc = context_->GetOptionalInputDesc(CMP_RESIDUAL_K_INDEX);
     opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
     opParamInfo_.blockTable.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_INDEX);
+    opParamInfo_.outputIdxOffset.tensor = context_->GetOptionalInputTensor(OUTPUT_IDX_OFFSET_INDEX);
+    opParamInfo_.outputIdxOffset.desc = context_->GetOptionalInputDesc(OUTPUT_IDX_OFFSET_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
 }
@@ -153,6 +155,8 @@ void QLIV2InfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attenOut.desc = context_->GetOutputDesc(SPARSE_INDICES_INDEX);
     opParamInfo_.attenOut.shape = context_->GetOutputShape(SPARSE_INDICES_INDEX);
+    opParamInfo_.sparseValues.desc = context_->GetOutputDesc(SPARSE_VALUES_INDEX);
+    opParamInfo_.sparseValues.shape = context_->GetOutputShape(SPARSE_VALUES_INDEX);
 }
 
 ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
@@ -269,9 +273,11 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
             OP_LOGE(opName_, "input attr quant_mode only supported 1 and 4."),
             return ge::GRAPH_FAILED);
     }
-    
-    OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
-               return ge::GRAPH_FAILED);
+
+    if (npuArch_ == NpuArch::DAV_2201) {
+        OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
+                    return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -297,6 +303,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
     inputQueryScaleType_ = opParamInfo_.query_dequant_scale.desc->GetDataType();
     inputKeyScaleType_ = opParamInfo_.key_dequant_scale.desc->GetDataType();
     outputType_ = opParamInfo_.attenOut.desc->GetDataType();
+    valuesOutType_ = opParamInfo_.sparseValues.desc->GetDataType();
 
     OP_CHECK_IF(!(inputQType_ == inputKType_),
                OP_LOGE(opName_, "The data types of the input query and key must be the same."),
@@ -341,6 +348,9 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
                OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
+               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valuesOutType_ != ge::DT_BF16,
+               OP_LOGE(opName_, "The data types of the output sparse_values must be bfloat16."),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -977,12 +987,6 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
 
     QLIV2Info.keyStridesVec = keyStridesVec_;
     QLIV2Info.keyDequantScaleStridesVec = keyDequantScaleStridesVec_;
-    if (opParamInfo_.key.shape != nullptr) {
-        QLIV2Info.keyStorageShape = opParamInfo_.key.shape->GetStorageShape();
-    }
-    if (opParamInfo_.key_dequant_scale.shape != nullptr) {
-        QLIV2Info.keyDequantScaleStorageShape = opParamInfo_.key_dequant_scale.shape->GetStorageShape();
-    }
     if (!keyStridesVec_.empty()) {
         QLIV2Info.keyStride0 = static_cast<uint32_t>(keyStridesVec_[0]);
     } else {
