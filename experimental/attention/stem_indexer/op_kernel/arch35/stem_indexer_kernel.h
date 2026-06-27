@@ -652,11 +652,11 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
     if ASCEND_IS_AIC {
         matmulService.ComputeMm1(runInfo);
     } else {
-        vectorService.ProcessVec1(runInfo);
         if (runInfo.isFirstS2InnerLoop) {
             vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
                                          runInfo.indiceOutOffset);
         }
+        vectorService.ProcessVec1(runInfo);
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
 }
