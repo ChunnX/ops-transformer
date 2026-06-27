@@ -217,6 +217,7 @@ public:
             preOffset_ = offset;
         } else {
             splitValue = static_cast<uint64_t>(groupListGm_.GetValue(groupIdx));
+            preOffset_ += splitValue;
         }
         return splitValue;
     }
@@ -245,6 +246,7 @@ public:
 
     __aicore__ inline void UpdateOffset(uint32_t groupIdx)
     {
+        // baseOffset is 0 when groupIdx = 0
         if (groupIdx == 0) {
             return;
         }
@@ -253,9 +255,9 @@ public:
         uint64_t k = Get<K_VALUE>(problemShape_);
 
         if constexpr (isFp4) {
-            Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
+            Get<IDX_A_OFFSET>(baseOffset_) = ((preOffset_ - m) * k) >> 1;
         } else {
-            Get<IDX_A_OFFSET>(baseOffset_) += m * k;
+            Get<IDX_A_OFFSET>(baseOffset_) = (preOffset_ - m) * k;
         }
 
         if constexpr (formatB == CubeFormat::NZ) {
@@ -268,26 +270,30 @@ public:
             Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
         } else {
             if constexpr (isFp4) {
-                Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
+                Get<IDX_B_OFFSET>(baseOffset_) = ((n * k) * static_cast<int64_t>(groupIdx)) >> 1;
             } else {
-                Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+                Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
             }
         }
 
         auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_X1SCALE_OFFSET>(baseOffset_) += m * scaleK;
-        Get<IDX_X2SCALE_OFFSET>(baseOffset_) += n * scaleK;
+        Get<IDX_X1SCALE_OFFSET>(baseOffset_) = (preOffset_ - m) * scaleK;
+        Get<IDX_X2SCALE_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * n * scaleK;
         Get<IDX_BIAS_OFFSET>(baseOffset_) = n * static_cast<int64_t>(groupIdx);
-        Get<IDX_C_OFFSET>(baseOffset_) += m * n;
-        Get<IDX_C_SCALE_OFFSET>(baseOffset_) += m * CeilDiv(n, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_C_OFFSET>(baseOffset_) = (preOffset_ - m) * n;
+        Get<IDX_C_SCALE_OFFSET>(baseOffset_) =
+            (preOffset_ - m) * CeilDiv(n, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     }
 
     __aicore__ inline bool UpdateGroupParams(const Params &params, uint32_t groupIdx)
     {
-        UpdateOffset(groupIdx);
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, params.gmmParams.groupListType);
         Get<M_VALUE>(problemShape_) = splitValue;
-        return Get<M_VALUE>(problemShape_) != 0;
+        if (Get<M_VALUE>(problemShape_) == 0) {
+            return false;
+        }
+        UpdateOffset(groupIdx);
+        return true;
     }
 
     __aicore__ inline void InitParamsAndTensor(const Params &params)
