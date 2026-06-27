@@ -77,25 +77,3 @@ if _TORCHAIR_AVAILABLE:
         deterministic: int = 0):
 
         raise AssertionError(f"GE not supported!")
-        return FlashAttn(q = q,
-                        k = k,
-                        v = v,
-                        block_table = block_table,
-                        cu_seqlens_q = cu_seqlens_q,
-                        cu_seqlens_kv = cu_seqlens_kv,
-                        seqused_q = seqused_q,
-                        seqused_kv = seqused_kv,
-                        sinks =sinks,
-                        attn_mask = attn_mask,
-                        metadata = metadata,
-                        softmax_scale = softmax_scale,
-                        mask_mode = mask_mode,
-                        win_left = win_left,
-                        win_right = win_right,
-                        max_seqlen_q = max_seqlen_q,
-                        max_seqlen_kv = max_seqlen_kv,
-                        layout_q = layout_q,
-                        layout_kv = layout_kv,
-                        layout_out = layout_out,
-                        return_softmax_lse = return_softmax_lse,
-                        deterministic = deterministic)
