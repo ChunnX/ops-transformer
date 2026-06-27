@@ -50,7 +50,7 @@ public:
         if ASCEND_IS_AIC {
             ComputeTileAic(tile, isLastTile);
         } else {
-            ComputeTileAiv(tile, lastTile);
+            ComputeTileAiv(tile, lastTile, isLastTile);
         }
     }
 
@@ -106,7 +106,7 @@ private:
         ++tileCount_;
     }
 
-    __aicore__ inline void ComputeTileAiv(TileParam &tile, const TileParam &lastTile)
+    __aicore__ inline void ComputeTileAiv(TileParam &tile, const TileParam &lastTile, bool isLastTile)
     {
         const uint32_t aRotL1BufferId =
             static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
@@ -119,6 +119,9 @@ private:
         vec_.WaitMte3ToVQkOutBufferReusable(outputBufferId);
         vec_.ComputeTile(tile, aRotL1Nz, outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS]);
         vec_.SetMte3ToVQkOutBufferReusable(outputBufferId);
+        if (isLastTile && tileCount_ > 0U) {
+            SetAivMte3ToAicFixCConsumed();
+        }
         SetAivMte3ToAicMte1AReady();
         vec_.PostprocessV(tile);
         vec_.SetVToMte2InputBufferReusable();
@@ -131,7 +134,9 @@ private:
                                outputDbPoolUb_[lastOutputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
                                lastOutputBufferId);
             vec_.SetMte3ToVQkOutBufferReusable(lastOutputBufferId);
-            SetAivMte3ToAicFixCConsumed();
+            if (!isLastTile) {
+                SetAivMte3ToAicFixCConsumed();
+            }
         }
         ++tileCount_;
     }
