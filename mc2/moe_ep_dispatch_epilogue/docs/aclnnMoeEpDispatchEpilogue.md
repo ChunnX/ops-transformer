@@ -132,7 +132,7 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>cachedRecvSrcMetadata（aclTensor*）</td>
     <td>输入</td>
     <td>cached模式下复用的接收元数据张量。</td>
-    <td><ul><li>Optional参数，非cached模式下传入空指针。</li><li>cached模式下必选，shape为(A, 3)。</li></ul></td>
+    <td><ul><li>Optional参数，非cached模式下传入空指针。</li><li>cached模式下必选，shape为(A, 4)。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     <td>2</td>
@@ -211,8 +211,8 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <tr>
     <td>recvSrcMetadata（aclTensor*）</td>
     <td>输出</td>
-    <td>整理后的接收元数据，字段为[src_token_idx, src_rank_id, src_topk_idx]。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(A, 3)。</li></ul></td>
+    <td>整理后的接收元数据，字段为[src_token_idx, src_rank_id, src_topk_idx, slot_idx]。</td>
+    <td><ul><li>不支持空Tensor。</li><li>shape为(A, 4)。</li></ul></td>
     <td>INT32</td>
     <td>ND</td>
     <td>2</td>

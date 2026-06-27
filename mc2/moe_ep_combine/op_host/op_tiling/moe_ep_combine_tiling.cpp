@@ -64,7 +64,7 @@ constexpr uint64_t STATE_WIN_SIZE = 16 * 1024UL * 1024UL;  // 1MB, 与 Mc2Kernel
 constexpr int64_t H_MIN = 1;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
-constexpr int64_t META_INNER_DIM = 3;
+constexpr int64_t META_INNER_DIM = 4;
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &info)
 {
