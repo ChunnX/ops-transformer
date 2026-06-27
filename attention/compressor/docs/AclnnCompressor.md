@@ -1,4 +1,4 @@
-# AclnnCompressor
+# aclnnCompressor
 
 ## 产品支持情况
 
@@ -105,20 +105,20 @@ aclnnStatus aclnnCompressor(
 
     | 参数名                      | 输入/输出 | 描述  |  使用说明  | 数据类型       | 数据格式   | 维度（shape） | 非连续Tensor |
     |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|-|-|-|
-    | x | 输入 | 公式中的$X$，表示原始不经压缩的数据。 |  支持B=0,S=0,T=0的空Tensor  | FLOAT16、BFLOAT16 | ND         | BS合轴：[B,S,H]、BS非合轴：[T,H]|×|
-    | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重。  |不支持空Tensor| FLOAT16、BFLOAT16 | ND |[coff* D,H]|×|
-    | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重。 |不支持空Tensor| FLOAT16、BFLOAT16 | ND |[coff* D,H]|×|
+    | x | 输入 | 公式中的$X$，表示原始不经压缩的数据。 |  支持B=0,S=0,T=0的空Tensor。  | FLOAT16、BFLOAT16 | ND         | BS合轴：[B,S,H]、BS非合轴：[T,H]|×|
+    | wkv | 输入 | 公式中的$W^{KV}$，表示kv压缩权重。  |不支持空Tensor。| FLOAT16、BFLOAT16 | ND |[coff* D,H]|×|
+    | wgate | 输入 | 公式中的$W^{Gate}$，表示gate压缩权重。 |不支持空Tensor。| FLOAT16、BFLOAT16 | ND |[coff* D,H]|×|
     | stateCacheRef | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 |不支持空Tensor| FLOAT32     | ND         |[block_num,block_size,2* coff* D]|支持0轴非连续|
-    | ape | 输入 | 公式中的$Ape$，表示positional biases。 | 不支持空Tensor|FLOAT32       | ND         |[cmp_ratio,coff* D]|×|
-    | stateBlockTable | 可选输入 | 表示state\_cache存储使用的block映射表。|当其中元素的值为0时，表示当前位置无需进行更新state\_cache操作；支持S=0,T=0的空Tensor| INT32 | ND         |[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length。当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作|×|
-    | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。  |支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
+    | ape | 输入 | 公式中的$Ape$，表示positional biases。 | 不支持空Tensor。|FLOAT32       | ND         |[cmp_ratio,coff* D]|×|
+    | stateBlockTable | 可选输入 | 表示state\_cache存储使用的block映射表。|当其中元素的值为0时，表示当前位置无需进行更新state\_cache操作；支持S=0,T=0的空Tensor。| INT32 | ND         |cache_mode=1时，shape为[B,ceil(Smax/block_size)]，Smax为每个Batch中最大的Sequence Length，当x的shape为[B,S,H]时，Smax=max(start_pos)+S。当x的shape为[T,H]时，Smax=max(start_pos)+max(cu_seqlens[n+1] - cu_seqlens[n])。cache_mode=2时，shape为[B]。当其中元素的值为0时，表示当前位置无需进行更新state_cache操作|×|
+    | cuSeqlens | 可选输入 | 表示不同Batch中的有效token数。  |支持B=0,S=0,T=0的空Tensor；当x的shape为[B,S,H]时，参数必须为空。| INT32          | ND         |当x的shape为[T,H]时，输入shape为[B+1,]|×|
     | seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。 |如果指定为None时，表示和每个Batch上的Sequence Length长度相同；支持B=0的空Tensor；如果指定为None时，表示和每个Batch上的Sequence Length长度相同。该入参中每个Batch的有效token数要求小于等于对应Sequence Length长度。当x的shape为[B,S,H]时，要求seqused[n] <= S，且不小于0；当x的shape为[T,H]时，要求seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。| INT32          | ND         |[B,]|×|
-    | startPos | 可选输入 | 表示计算起始位置。 |支持B=0,T=0的空Tensor；当输入为None时，表示从0开始进行计算| INT32          | ND         |[B,]|×|
-    | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率。 |取值范围为[2, 4, 8, 16, 32, 64, 128]| INT32          | -         |-|-|
+    | startPos | 可选输入 | 表示计算起始位置。 |支持B=0,T=0的空Tensor；当输入为None时，表示从0开始进行计算。| INT32          | ND         |[B,]|×|
+    | cmpRatio | 输入 | 用于稀疏计算，表示数据压缩率。 |取值范围为[2, 4, 8, 16, 32, 64, 128]。| INT32          | -         |-|-|
     | coff | 可选输入 | 表示是否进行overlap数据重排。 |取值范围为[1, 2]。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。| INT32          | -         |-|-|
-    | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer| INT32          | -         |-|-|
-    | stateCacheStrideDim0 | 可选输入 | 表示state_cache的0轴stride。 |-| FLOAT32     | ND         |-|-|
-    | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor| FLOAT16、BFLOAT16         | ND          |BS合轴：[B,ceil(S/cmp_ratio),D]、BS非合轴：[min(T,T//cmp_ratio+B),D]|×|
+    | cacheMode | 可选输入 | 表示state_cache的存储模式。 |取值范围为[1, 2]；1表示连续buffer，2表示循环buffer。| INT32          | -         |-|-|
+    | stateCacheStrideDim0 | 可选输入 | 表示state_cache的0轴stride。 |-| INT32     | -         |-|-|
+    | cmpKv | 输出 | 表示压缩后的数据。 |支持B=0,S=0,T=0的空Tensor。| FLOAT16、BFLOAT16         | ND          |BS合轴：[B,ceil(S/cmp_ratio),D]、BS非合轴：[min(T,T//cmp_ratio+B),D]|×|
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
  cacheMode不支持输入2，且不支持0轴非连续。
@@ -386,13 +386,13 @@ aclnnStatus aclnnCompressor(
             score_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
-        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        block_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
         if B==0:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
         else:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, block_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
