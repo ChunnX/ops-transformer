@@ -6,7 +6,6 @@
 /*!
  * \file gather_pa_kv_cache_nd.h
  * \brief SIMT kernel for gather_pa_kv_cache ND mode (V35/arch35).
- * Replaces SIMD(DataCopyPad/UB) with SIMT direct-GM grid-stride.
  */
 
 #ifndef GATHER_PA_KV_CACHE_ND_H_
@@ -19,13 +18,12 @@
 namespace GatherPaKvCacheV35 {
 using namespace AscendC;
 
-// Thread count per index type (scatter SIMT pattern: 64bit indices need fewer threads)
 constexpr uint32_t THREADS_FOR_32 = 2048;
 constexpr uint32_t THREADS_FOR_64 = 1024;
 template <typename IDX_T>
 static constexpr uint32_t THREADS = (sizeof(IDX_T) == 4) ? THREADS_FOR_32 : THREADS_FOR_64;
 
-// ===== VF kernel =====
+// ===== VF kernel: flat per-element grid-stride =====
 template <typename T_INDEX, bool IS_CUMSUM, bool HAS_SEQOFFSET>
 __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvNdContigVf(
     int64_t batchStart, int64_t batchEnd, int64_t coreOffset,
@@ -35,8 +33,11 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
     __gm__ T_INDEX *blockTables, __gm__ T_INDEX *seqLens, __gm__ T_INDEX *seqOffset,
     __gm__ uint8_t *keyOut, __gm__ uint8_t *valueOut)
 {
-    uint64_t tid = static_cast<uint64_t>(threadIdx.x);
-    uint64_t tNum = static_cast<uint64_t>(blockDim.x);
+    uint64_t tidL = static_cast<uint64_t>(threadIdx.x);
+    uint64_t tNum  = static_cast<uint64_t>(blockDim.x);
+    uint64_t tk    = static_cast<uint64_t>(tokenSizeK);
+    uint64_t tv    = static_cast<uint64_t>(tokenSizeV);
+    uint64_t bSz   = static_cast<uint64_t>(blockSize);
     int64_t kvGmCoreOffset = coreOffset;
 
     for (int64_t i = batchStart; i < batchEnd; i++) {
@@ -51,65 +52,82 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
         }
 
         if (batchOffset >= numTokens) break;
-
         int64_t accumLen = batchOffset + seqLen;
         if (numTokens > batchOffset && numTokens <= accumLen) {
             seqLen = numTokens - batchOffset;
         }
-
-        if (seqLen <= 0) continue;
+        if (seqLen <= 0) {
+            if (!IS_CUMSUM) kvGmCoreOffset += seqLen;
+            continue;
+        }
 
         int64_t seqOff = 0;
         if (HAS_SEQOFFSET) {
-            seqOff = static_cast<int64_t>(seqOffset[i]) / blockSize;
+            seqOff = static_cast<int64_t>(seqOffset[i]) / bSz;
         }
 
-        int64_t blockCount = (seqLen + blockSize - 1) / blockSize;
+        int64_t outKeyBase = batchOffset * static_cast<int64_t>(tk);
+        int64_t outValBase = batchOffset * static_cast<int64_t>(tv);
+        uint64_t totalKey = static_cast<uint64_t>(seqLen) * tk;
+        uint64_t totalVal = static_cast<uint64_t>(seqLen) * tv;
+        int64_t blkKeyStr = static_cast<int64_t>(bSz) * static_cast<int64_t>(tk);
+        int64_t blkValStr = static_cast<int64_t>(bSz) * static_cast<int64_t>(tv);
 
-        for (int64_t blkIdx = 0; blkIdx < blockCount; blkIdx++) {
-            int64_t tblOffset = blkIdx + seqOff;
+        // Key: for idx = tid; idx < totalKey; idx += tNum:
+        for (uint64_t idx = tidL; idx < totalKey; idx += tNum) {
+            uint64_t j   = idx / tk;
+            uint64_t sub = idx - j * tk;
+            uint64_t blk = j / bSz;
+            uint64_t off = j - blk * bSz;
 
-            bool isFilledWithZero = false;
-            int64_t blockId = 0;
-            if (tblOffset >= 0 && tblOffset < numblkTabCol) {
-                blockId = static_cast<int64_t>(blockTables[i * numblkTabCol + tblOffset]);
-                isFilledWithZero = (blockId < 0 || blockId >= numBlocks);
+            int64_t tableIdx = seqOff + static_cast<int64_t>(blk);
+            int64_t blockIdVal = 0;
+            bool zeroFill = false;
+            if (tableIdx >= 0 && tableIdx < numblkTabCol) {
+                blockIdVal = static_cast<int64_t>(blockTables[i * static_cast<int64_t>(numblkTabCol) + tableIdx]);
+                zeroFill = (blockIdVal < 0 || blockIdVal >= numBlocks);
             } else {
-                isFilledWithZero = true;
+                zeroFill = true;
             }
 
-            int64_t curBlockSize = (blkIdx == blockCount - 1)
-                ? seqLen - (blockCount - 1) * blockSize
-                : blockSize;
-
-            int64_t keyOutBase  = (batchOffset + blkIdx * blockSize) * tokenSizeK;
-            int64_t valOutBase  = (batchOffset + blkIdx * blockSize) * tokenSizeV;
-            int64_t keyCacheOff = blockId * blockSize * tokenSizeK;
-            int64_t valCacheOff = blockId * blockSize * tokenSizeV;
-
-            uint64_t keyBytes = static_cast<uint64_t>(curBlockSize) * static_cast<uint64_t>(tokenSizeK);
-            uint64_t valBytes = static_cast<uint64_t>(curBlockSize) * static_cast<uint64_t>(tokenSizeV);
-
-            if (isFilledWithZero) {
-                for (uint64_t k = tid; k < keyBytes; k += tNum) {
-                    keyOut[keyOutBase + static_cast<int64_t>(k)] = 0;
-                }
-                for (uint64_t v = tid; v < valBytes; v += tNum) {
-                    valueOut[valOutBase + static_cast<int64_t>(v)] = 0;
-                }
+            if (zeroFill) {
+                keyOut[outKeyBase + static_cast<int64_t>(idx)] = 0;
             } else {
-                for (uint64_t k = tid; k < keyBytes; k += tNum) {
-                    keyOut[keyOutBase + static_cast<int64_t>(k)] = keyCache[keyCacheOff + static_cast<int64_t>(k)];
-                }
-                for (uint64_t v = tid; v < valBytes; v += tNum) {
-                    valueOut[valOutBase + static_cast<int64_t>(v)] = valueCache[valCacheOff + static_cast<int64_t>(v)];
-                }
+                int64_t cacheOff = blockIdVal * blkKeyStr +
+                                   static_cast<int64_t>(off) * static_cast<int64_t>(tk) +
+                                   static_cast<int64_t>(sub);
+                keyOut[outKeyBase + static_cast<int64_t>(idx)] = keyCache[cacheOff];
             }
         }
 
-        if (!IS_CUMSUM) {
-            kvGmCoreOffset += seqLen;
+        // Value: for idx = tid; idx < totalVal; idx += tNum:
+        for (uint64_t idx = tidL; idx < totalVal; idx += tNum) {
+            uint64_t j   = idx / tv;
+            uint64_t sub = idx - j * tv;
+            uint64_t blk = j / bSz;
+            uint64_t off = j - blk * bSz;
+
+            int64_t tableIdx = seqOff + static_cast<int64_t>(blk);
+            int64_t blockIdVal = 0;
+            bool zeroFill = false;
+            if (tableIdx >= 0 && tableIdx < numblkTabCol) {
+                blockIdVal = static_cast<int64_t>(blockTables[i * static_cast<int64_t>(numblkTabCol) + tableIdx]);
+                zeroFill = (blockIdVal < 0 || blockIdVal >= numBlocks);
+            } else {
+                zeroFill = true;
+            }
+
+            if (zeroFill) {
+                valueOut[outValBase + static_cast<int64_t>(idx)] = 0;
+            } else {
+                int64_t cacheOff = blockIdVal * blkValStr +
+                                   static_cast<int64_t>(off) * static_cast<int64_t>(tv) +
+                                   static_cast<int64_t>(sub);
+                valueOut[outValBase + static_cast<int64_t>(idx)] = valueCache[cacheOff];
+            }
         }
+
+        if (!IS_CUMSUM) kvGmCoreOffset += seqLen;
     }
 }
 
@@ -148,7 +166,7 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
     numTokens_       = tl_->numTokens;
     batchPerCore_    = tl_->batchPerCore;
     needCoreNum_     = tl_->needCoreNum;
-    hiddenSizeK_     = tl_->hiddenSizeK * sizeof(DTYPE_KEY_CACHE);   // elements -> bytes
+    hiddenSizeK_     = tl_->hiddenSizeK * sizeof(DTYPE_KEY_CACHE);
     hiddenSizeV_     = tl_->hiddenSizeV * sizeof(DTYPE_KEY_CACHE);
 
     keyCacheGm_    = (__gm__ uint8_t *)key_cache;
@@ -165,19 +183,14 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
 {
     int64_t batchStart = static_cast<int64_t>(GetBlockIdx()) * batchPerCore_;
     int64_t batchEnd   = batchStart + batchPerCore_;
-    if (GetBlockIdx() == needCoreNum_ - 1) {
-        batchEnd = batchCount_;
-    }
+    if (GetBlockIdx() == needCoreNum_ - 1) batchEnd = batchCount_;
     if (batchStart >= batchCount_) return;
 
-    // Compute cumulative token offset for the first batch of this core
     T_INDEX coreOffset = 0;
     if constexpr (isC) {
         coreOffset = seqLensGm_[batchStart];
     } else {
-        for (int64_t i = 0; i < batchStart; i++) {
-            coreOffset += seqLensGm_[i];
-        }
+        for (int64_t i = 0; i < batchStart; i++) coreOffset += seqLensGm_[i];
     }
 
     asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREADS<T_INDEX>),
