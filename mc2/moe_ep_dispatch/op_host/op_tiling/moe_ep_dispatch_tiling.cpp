@@ -179,7 +179,7 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
 
     if (scalesShape != nullptr) {
         auto scalesDesc = context->GetOptionalInputDesc(SCALES_INDEX);
-        // check dtype 
+        // check dtype
         ge::DataType scalesDtype = scalesDesc->GetDataType();
         OP_TILING_CHECK(scalesDtype != ge::DT_FLOAT && scalesDtype != ge::DT_FLOAT8_E8M0,
             OP_LOGE(nodeName, "scales dtype must be DT_FLOAT or DT_FLOAT8_E8M0, but got %d.",
@@ -213,7 +213,7 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
 }
 
 static bool CheckOutputTensorShape(const gert::TilingContext *context, const char *nodeName,
-                                 const MoeEpDispatchInfo &info, int64_t topkDim0, int64_t topkDim1)
+                                   const MoeEpDispatchInfo &info, int64_t topkDim0, int64_t topkDim1)
 {
     const gert::StorageShape *recvPerRankShape = context->GetOutputShape(NUM_RECV_PER_RANK_INDEX);
     const gert::StorageShape *recvPerExpertShape = context->GetOutputShape(NUM_RECV_PER_EXPERT_INDEX);

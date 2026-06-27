@@ -16,7 +16,6 @@
 #include "aclnn_util.h"
 
 extern "C" {
-
 /**
  * @brief MoE EP Dispatch Epilogue: compact copy from HCCL Window to caller-preallocated
  *        recv_x (corresponding to DeepEP V2 launch_dispatch_copy_epilogue).
@@ -34,8 +33,8 @@ extern "C" {
  * @param [in] cclBufferSize              HCCL buffer size
  * @param [in] expertAlignment            alignment for expert token count
  * @param [out] recvX                     [A_alloc, hidden] bf16/fp16/fp8_e5m2/fp8_e4m3fn caller preallocated
- * @param [out] recvTopkWeights           [A_alloc] float
  * @param [out] recvSrcMetadata           [A_alloc, 3] int32 handle field: [src_token_idx, src_rank_id, src_topk_idx]
+ * @param [out] recvTopkWeights           OPTIONAL [A_alloc] float; nullptr if not needed
  * @param [out] recvScales               OPTIONAL [A_alloc, num_topk] float/fp8_e8m0; nullptr if not quantized
  * @param [out] workspaceSize
  * @param [out] executor
@@ -54,8 +53,8 @@ ACLNN_API aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
     int64_t cclBufferSize,
     int64_t expertAlignment,
     aclTensor* recvX,
-    aclTensor* recvTopkWeights,
     aclTensor* recvSrcMetadata,
+    aclTensor* recvTopkWeights,
     aclTensor* recvScales,
     uint64_t* workspaceSize,
     aclOpExecutor** executor);

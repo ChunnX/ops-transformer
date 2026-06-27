@@ -60,7 +60,7 @@ import os
 import torch
 import torch_npu
 import torch.distributed as dist
-from npu_ops_transformer.ops.elastic_buffer import MoEElasticBuffer
+from npu_ops_transformer.ops.moe_elastic_buffer import MoEElasticBuffer
 
 world_size = 2
 num_experts = 8

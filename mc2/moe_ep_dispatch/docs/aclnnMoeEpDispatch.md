@@ -130,7 +130,7 @@ aclnnStatus aclnnMoeEpDispatch(
     <td>topkWeights（aclTensor*）</td>
     <td>输入</td>
     <td>表示每个token对应的topK专家权重。</td>
-    <td><ul><li>Optional参数，cached模式下传入空指针。</li><li>非cached模式下必选。</li></ul></td>
+    <td><ul><li>Optional参数，不需要时传入空指针。</li></ul></td>
     <td>FLOAT</td>
     <td>ND</td>
     <td>2</td>
@@ -352,7 +352,7 @@ aclnnStatus aclnnMoeEpDispatch(
 
 - 确定性说明：aclnnMoeEpDispatch默认确定性实现。
 - 该接口必须与aclnnMoeEpCombine和aclnnMoeEpDispatchEpilogue配套使用。
-- cached模式下，topkIdx和topkWeights必须为空指针，cachedHandleDstBufferSlotIdx为必选参数，doCpuSync必须为false；非cached模式下，topkIdx和topkWeights为必选参数，cachedHandleDstBufferSlotIdx必须为空指针。
+- cached模式下，topkIdx和topkWeights必须为空指针，cachedHandleDstBufferSlotIdx为必选参数，doCpuSync必须为false；非cached模式下，topkIdx为必选参数，topkWeights和cachedHandleDstBufferSlotIdx必须为空指针。
 - 调用接口过程中使用的numExperts、numMaxTokensPerRank参数取值所有卡需保持一致，且和aclnnMoeEpCombine对应参数也保持一致。
 - 参数里Shape使用的变量如下：
     - A：表示本卡接收的最大token数量，A = epWorldSize \* numMaxTokensPerRank \* MIN(K, numLocalExperts)。

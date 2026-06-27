@@ -46,8 +46,8 @@ aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
     int64_t           cclBufferSize,
     int64_t           expertAlignment,
     aclTensor*        recvX,
-    aclTensor*        recvTopkWeights,
     aclTensor*        recvSrcMetadata,
+    aclTensor*        recvTopkWeights,
     aclTensor*        recvScales,
     uint64_t*         workspaceSize,
     aclOpExecutor**   executor)
@@ -209,16 +209,6 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>×</td>
     </tr>
     <tr>
-    <td>recvTopkWeights（aclTensor*）</td>
-    <td>输出</td>
-    <td>接收的topk权重，对应公式中recvTopkWeights。</td>
-    <td><ul><li>不支持空Tensor。</li><li>shape为(A)。</li></ul></td>
-    <td>FLOAT</td>
-    <td>ND</td>
-    <td>1</td>
-    <td>×</td>
-    </tr>
-    <tr>
     <td>recvSrcMetadata（aclTensor*）</td>
     <td>输出</td>
     <td>整理后的接收元数据，字段为[src_token_idx, src_rank_id, src_topk_idx]。</td>
@@ -226,6 +216,16 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     <td>INT32</td>
     <td>ND</td>
     <td>2</td>
+    <td>×</td>
+    </tr>
+    <tr>
+    <td>recvTopkWeights（aclTensor*）</td>
+    <td>输出</td>
+    <td>接收的topk权重，对应公式中recvTopkWeights。</td>
+    <td><ul><li>Optional参数，不需要时传入空指针。</li><li>shape为(A)。</li></ul></td>
+    <td>FLOAT</td>
+    <td>ND</td>
+    <td>1</td>
     <td>×</td>
     </tr>
     <tr>
