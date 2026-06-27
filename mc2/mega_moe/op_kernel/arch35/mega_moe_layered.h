@@ -981,6 +981,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         GlobalTensor<ActivationType> relayGlobalTensor;
         relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
         DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
+        DumpTensor(copyTmpTensors_[bufferIdx], rankId_, 32);
         return;
     }
     GM_ADDR scratchAddr = params_.workspaceInfo.relayReadScratchPtr +
