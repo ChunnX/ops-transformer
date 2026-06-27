@@ -23,6 +23,14 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 constexpr int64_t GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM = 1;
 
+__aicore__ inline void CopySmallQuantOutToBatch(LocalTensor<int8_t> &dstLocal, LocalTensor<int8_t> &srcLocal,
+                                                int64_t dstOffset, int64_t copyBytes)
+{
+    for (int64_t i = 0; i < copyBytes; i++) {
+        dstLocal.SetValue(dstOffset + i, srcLocal.GetValue(i));
+    }
+}
+
 template <typename T, typename QuantT = int8_t>
 class MoeGatherOutDynamicQuant {
 public:
@@ -56,6 +64,7 @@ private:
     TQue<QuePosition::VECIN, 1> smoothInQueue_;
     TQue<QuePosition::VECIN, 1> expandRowIdxInQueue_;
     TQue<QuePosition::VECOUT, 1> calcQueue_;
+    TQue<QuePosition::VECOUT, 1> outBatchQueue_;
     TQue<QuePosition::VECOUT, 1> inputXOutQueue_;
     TQue<QuePosition::VECOUT, 1> scaleOutQueue_;
 
@@ -236,6 +245,16 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutXQuantEH(int6
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(perLoopColsAsInt8_), 0, 0, 0};
 
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
+    LocalTensor<int8_t> outBatchLocal;
+    int64_t outBatchRows = 1;
+    int64_t outBatchCount = 0;
+    int64_t outBatchStart = 0;
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        if (colsAsInt8_ < BLOCK_BYTES) {
+            outBatchLocal = outBatchQueue_.AllocTensor<int8_t>();
+            outBatchRows = Max(static_cast<int64_t>(1), AlignBytes(perLoopCols_, sizeof(float)) / colsAsInt8_);
+        }
+    }
     int32_t lastExpertIdx = -1;
     for (int64_t i = 0; i < currentLoopRows_; i++) {
         LocalTensor<T> inLocal = inputXInQueue_.AllocTensor<T>();
@@ -277,12 +296,35 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutXQuantEH(int6
         LocalTensor<float> scaleLocal = scaleOutQueue_.DeQue<float>();
         DataCopyPad(expandedScaleGm_[(rowOffset + i)], scaleLocal, {1, 4, 0, 0, 0});
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
-        DataCopyPad(expandedXGm_[(rowOffset + i) * colsAsInt8_], outLocal, copyOutParams);
+        if constexpr (IsSameType<QuantT, int4b_t>::value) {
+            if (colsAsInt8_ < BLOCK_BYTES) {
+                if (outBatchCount == 0) {
+                    outBatchStart = rowOffset + i;
+                }
+                CopySmallQuantOutToBatch(outBatchLocal, outLocal, outBatchCount * colsAsInt8_, colsAsInt8_);
+                outBatchCount++;
+                if (outBatchCount == outBatchRows || i == currentLoopRows_ - 1) {
+                    DataCopyExtParams copyOutBatchParams{
+                        1, static_cast<uint32_t>(outBatchCount * colsAsInt8_), 0, 0, 0};
+                    DataCopyPad(expandedXGm_[outBatchStart * colsAsInt8_], outBatchLocal, copyOutBatchParams);
+                    outBatchCount = 0;
+                }
+            } else {
+                DataCopyPad(expandedXGm_[(rowOffset + i) * colsAsInt8_], outLocal, copyOutParams);
+            }
+        } else {
+            DataCopyPad(expandedXGm_[(rowOffset + i) * colsAsInt8_], outLocal, copyOutParams);
+        }
 
         inputXOutQueue_.FreeTensor(outLocal);
         scaleOutQueue_.FreeTensor(scaleLocal);
     }
 
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        if (colsAsInt8_ < BLOCK_BYTES) {
+            outBatchQueue_.FreeTensor(outBatchLocal);
+        }
+    }
     smoothInQueue_.FreeTensor(smoothLocal);
     expandRowIdxInQueue_.FreeTensor(indicesLocal);
 }
@@ -626,6 +668,9 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
     pipe_->InitBuffer(smoothInQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM,
                       AlignBytes(perLoopCols_, sizeof(float)));
     pipe_->InitBuffer(calcQueue_, 1, AlignBytes(perLoopCols_, sizeof(float)));
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        pipe_->InitBuffer(outBatchQueue_, 1, AlignBytes(perLoopCols_, sizeof(float)));
+    }
     pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
     pipe_->InitBuffer(scaleOutQueue_, 1, BLOCK_BYTES + BLOCK_BYTES);
 }
