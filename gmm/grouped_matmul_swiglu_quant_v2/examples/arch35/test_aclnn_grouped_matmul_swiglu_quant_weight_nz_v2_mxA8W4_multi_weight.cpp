@@ -214,9 +214,6 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4MultiWeightTest(int32_t deviceI
                                                   aclDataType::ACL_FLOAT4_E2M1, &weight);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightTensorListPtr(weight,
                                                                                                aclDestroyTensorList);
-    for (int64_t i = 0; i < E; i++) {
-        std::unique_ptr<void, aclError (*)(void *)> weightDeviceAddrPtr(weightDeviceAddr[i], aclrtFree);
-    }
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensorListTranspose<uint8_t>(weightScaleHostDataList, weightScaleViewShapes,
@@ -224,9 +221,6 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4MultiWeightTest(int32_t deviceI
                                                 aclDataType::ACL_FLOAT8_E8M0, aclFormat::ACL_FORMAT_ND, &weightScale);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightScaleTensorListPtr(
         weightScale, aclDestroyTensorList);
-    for (int64_t i = 0; i < E; i++) {
-        std::unique_ptr<void, aclError (*)(void *)> weightScaleDeviceAddrPtr(weightScaleDeviceAddr[i], aclrtFree);
-    }
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensor<uint8_t>(xScaleHostData, xScaleShape, &xScaleDeviceAddr, aclDataType::ACL_FLOAT8_E8M0,
@@ -261,7 +255,8 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4MultiWeightTest(int32_t deviceI
         x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList, dequantMode, dequantDtype, quantMode,
         groupListType, tuningConfig, output, outputScale, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize failed. ERROR: %d\n", ret);
+              LOG_PRINT("aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize failed. ERROR: %d\n[ERROR msg]%s\n",
+                        ret, aclGetRecentErrMsg());
               return ret);
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -280,7 +275,7 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4MultiWeightTest(int32_t deviceI
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy outputData from device to host failed. ERROR: %d\n", ret);
               return ret);
-    for (int64_t j = 0; j < size; j++) {
+    for (int64_t j = 0; j < 10 && j < size; j++) {
         LOG_PRINT("result[%ld] is: %d\n", j, outputData[j]);
     }
 
@@ -290,10 +285,19 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4MultiWeightTest(int32_t deviceI
                       size * sizeof(outputScaleData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy outputScaleData from device to host failed. ERROR: %d\n", ret);
               return ret);
-    for (int64_t j = 0; j < size; j++) {
+    for (int64_t j = 0; j < 10 && j < size; j++) {
         LOG_PRINT("result[%ld] is: %d\n", j, outputScaleData[j]);
     }
 
+    // 释放多tensor的device内存（unique_ptr无法管理数组，手动释放）
+    for (int64_t i = 0; i < E; i++) {
+        if (weightDeviceAddr[i] != nullptr) {
+            aclrtFree(weightDeviceAddr[i]);
+        }
+        if (weightScaleDeviceAddr[i] != nullptr) {
+            aclrtFree(weightScaleDeviceAddr[i]);
+        }
+    }
     return ACL_SUCCESS;
 }
 
