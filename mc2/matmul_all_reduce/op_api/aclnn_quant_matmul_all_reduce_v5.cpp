@@ -319,7 +319,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV5GetWorkspaceSize(
         } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else if (strcmp(commMode, COMM_MODE_DEFAULT) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
+            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else {
             OP_LOGE_WITH_INVALID_ATTR("aclnnQuantMatmulAllReduceV5GetWorkspaceSize", "commMode",
                 commMode, "empty string, 'ccu' or 'ai_cpu'");
@@ -346,12 +346,12 @@ aclnnStatus aclnnQuantMatmulAllReduceV5(
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("A5 aclnnQuantMatmulAllReduceV5: NnopbaseHcclServerType, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                OP_LOGD("A5 aclnnQuantMatmulAllReduceV5: NnopbaseHcclServerType, use CCU mode");
+            if (commMode == Mc2Comm::COMM_MODE_CCU) {
+                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            } else {
+                OP_LOGD("A5 aclnnMatmulAllReduceV3: NnopbaseHcclServerType, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
         } else {
             OP_LOGD("A2 aclnnQuantMatmulAllReduceV5: NnopbaseHcclServerType, use AICPU mode");
