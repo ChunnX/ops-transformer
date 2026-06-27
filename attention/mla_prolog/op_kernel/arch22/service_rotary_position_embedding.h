@@ -72,11 +72,7 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
     uint64_t rsvdCnt = 0;
 
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
-        Rectangle rectangleParams{
-            (uint32_t)1,   // row
-            (uint32_t)cnt, // col
-            (uint32_t)cnt  // columnStride
-        };
+        Rectangle rectangleParams{(uint32_t)1,  (uint32_t)cnt, (uint32_t)cnt};  // row, col, columnStride
         if constexpr (std::is_same<T, float>::value) {
             Dequant(kFp32Local, kFp32Local, channelDeqScaleLocal, scale, rectangleParams);
         } else {
