@@ -115,6 +115,7 @@ attention:
     ut_cov_exclude:
       - attention/flash_attention_score
     test:
+      examples: True
       ut: True
     options:
       - flash_attention_score
