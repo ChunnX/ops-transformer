@@ -128,6 +128,15 @@ def build_cases() -> Tuple[Case, ...]:
         ("offset_multi", (7, 13, 5), (4103, 13, 8197), "random", 8, "contiguous", 0),
         ("long5819_dpad", (5819,), (5819,), "random", 512, "d_pad", 8),
     )
+    n64_long_16k_specs = (
+        ("long16384_dpad", (16384,), (16384,), "random", 1024, "d_pad", 8),
+    )
+    n16_long_16k_specs = (
+        ("long16384_dpad", (16384,), (16384,), "random", 1024, "d_pad", 8),
+    )
+    n8_long_16k_specs = (
+        ("long16384_dpad", (16384,), (16384,), "random", 1024, "d_pad", 8),
+    )
 
     cases: List[Case] = []
     seed = 20260623
@@ -181,6 +190,63 @@ def build_cases() -> Tuple[Case, ...]:
                     n_q=64,
                     n_k=8,
                     n_v=8,
+                    input_layout=layout,
+                    slot_pattern=slot_pattern,
+                    seed=seed,
+                    block_num=block_num,
+                    cache_stride=cache_stride,
+                    cache_pad=cache_pad,
+                )
+            )
+            seed += 1
+    for suffix, seq_lens, actual_lens, slot_pattern, block_num, cache_stride, cache_pad in n64_long_16k_specs:
+        for layout in ("NTD", "TND"):
+            cases.append(
+                Case(
+                    name=f"n64_kv8_{suffix}_{layout.lower()}",
+                    batch_seq_lens=seq_lens,
+                    actual_seq_lens=actual_lens,
+                    n_q=64,
+                    n_k=8,
+                    n_v=8,
+                    input_layout=layout,
+                    slot_pattern=slot_pattern,
+                    seed=seed,
+                    block_num=block_num,
+                    cache_stride=cache_stride,
+                    cache_pad=cache_pad,
+                )
+            )
+            seed += 1
+    for suffix, seq_lens, actual_lens, slot_pattern, block_num, cache_stride, cache_pad in n16_long_16k_specs:
+        for layout in ("NTD", "TND"):
+            cases.append(
+                Case(
+                    name=f"n16_kv2_{suffix}_{layout.lower()}",
+                    batch_seq_lens=seq_lens,
+                    actual_seq_lens=actual_lens,
+                    n_q=16,
+                    n_k=2,
+                    n_v=2,
+                    input_layout=layout,
+                    slot_pattern=slot_pattern,
+                    seed=seed,
+                    block_num=block_num,
+                    cache_stride=cache_stride,
+                    cache_pad=cache_pad,
+                )
+            )
+            seed += 1
+    for suffix, seq_lens, actual_lens, slot_pattern, block_num, cache_stride, cache_pad in n8_long_16k_specs:
+        for layout in ("NTD", "TND"):
+            cases.append(
+                Case(
+                    name=f"n8_kv1_{suffix}_{layout.lower()}",
+                    batch_seq_lens=seq_lens,
+                    actual_seq_lens=actual_lens,
+                    n_q=8,
+                    n_k=1,
+                    n_v=1,
                     input_layout=layout,
                     slot_pattern=slot_pattern,
                     seed=seed,

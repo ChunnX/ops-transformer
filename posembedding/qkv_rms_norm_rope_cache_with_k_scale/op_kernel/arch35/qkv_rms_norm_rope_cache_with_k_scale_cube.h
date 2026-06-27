@@ -20,10 +20,10 @@ constexpr uint8_t QKV_RRC_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 
 class QkvRmsNormRopeCacheWithKScaleCube {
 public:
-    __aicore__ inline void Init(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
-                                const GlobalTensors &tensors)
+    __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
     {
-        tilingData_ = tilingData;
+        qHeadNum_ = qHeadNum;
+        kvHeadNum_ = kvHeadNum;
         l0cBufferUseId_ = 0U;
         BindLocalTensors();
         BindGlobalTensors(tensors);
@@ -62,8 +62,8 @@ public:
             static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         LocalTensor<float> qkAfterCubeUb = QkAfterCubeUb(outputBufferId);
         const uint64_t cubeTokenSize = MakeCubeTokenSize(tile);
-        const uint64_t qRows = cubeTokenSize * tilingData_->qHeadNum;
-        const uint64_t kRows = cubeTokenSize * tilingData_->kvHeadNum;
+        const uint64_t qRows = cubeTokenSize * qHeadNum_;
+        const uint64_t kRows = cubeTokenSize * kvHeadNum_;
         const uint64_t qL0cOffset = 0U;
         const uint64_t kL0cOffset = AlignUp(qRows, QKV_RRC_NZ_C0) * QKV_RRC_HEAD_DIM_D128;
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, qL0cOffset, kL0cOffset);
@@ -232,7 +232,7 @@ private:
             return;
         }
 
-        const uint64_t qRowsPerAiv = MakeCubeHalfTokenSize(tile) * tilingData_->qHeadNum;
+        const uint64_t qRowsPerAiv = MakeCubeHalfTokenSize(tile) * qHeadNum_;
         const uint64_t dstBaseRow = isQSegment ? 0U : qRowsPerAiv;
         FixpipeSegmentToAivUb(segmentRows, dstBaseRow, bufferId, l0cBaseOffset, qkAfterCubeUb);
     }
@@ -330,7 +330,8 @@ private:
     }
 
     uint64_t l0cBufferUseId_;
-    const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData_;
+    uint64_t qHeadNum_;
+    uint64_t kvHeadNum_;
     GlobalTensor<bfloat16_t> qRotationGm_;
     GlobalTensor<bfloat16_t> kRotationGm_;
     LocalTensor<bfloat16_t> qRotationL1Nz_;

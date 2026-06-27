@@ -19,13 +19,18 @@ namespace QkvRmsNormRopeCacheWithKScale {
 template <uint32_t INPUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
-    __aicore__ inline void Init(const GlobalTensors &tensors,
-                                const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch,
+                                uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize,
+                                uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
+                                uint64_t kvCacheStrideToken, uint64_t kScaleCacheStrideBlock,
+                                uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon)
     {
         if ASCEND_IS_AIC {
-            InitAic(tensors, tilingData);
+            InitAic(tensors, qHeadNum, kvHeadNum);
         } else {
-            InitAiv(tensors, tilingData, GetSubBlockIdx());
+            InitAiv(tensors, GetSubBlockIdx(), totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize,
+                    kvCacheStrideBlock, kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock,
+                    kScaleCacheStrideHead, kScaleCacheStrideToken, epsilon);
         }
     }
 
@@ -33,6 +38,8 @@ public:
     {
         if ASCEND_IS_AIC {
             PrepareBeforeLoopAic();
+        } else {
+            PrepareBeforeLoopAiv();
         }
     }
 
@@ -55,26 +62,35 @@ public:
     }
 
 private:
-    __aicore__ inline void InitAic(const GlobalTensors &tensors,
-                                   const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    __aicore__ inline void InitAic(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
     {
         tileCount_ = 0U;
         aRotL1BufferUseId_ = 0U;
         aRotL1Pool_ =
             LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
-        cube_.Init(tilingData, tensors);
+        cube_.Init(tensors, qHeadNum, kvHeadNum);
         cube_.InitIntraCoreEvents();
     }
 
-    __aicore__ inline void InitAiv(const GlobalTensors &tensors,
-                                   const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId)
+    __aicore__ inline void InitAiv(const GlobalTensors &tensors, uint32_t aivLocalId, uint64_t totalTokens,
+                                   uint64_t batch, uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim,
+                                   uint64_t blockSize, uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
+                                   uint64_t kvCacheStrideToken, uint64_t kScaleCacheStrideBlock,
+                                   uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon)
     {
         tileCount_ = 0U;
         aRotL1BufferUseId_ = 0U;
         aRotL1Pool_ =
             LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
-        vec_.Init(tilingData, aivLocalId, tensors);
+        vec_.Init(tensors, aivLocalId, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize,
+                  kvCacheStrideBlock, kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock,
+                  kScaleCacheStrideHead, kScaleCacheStrideToken, epsilon);
         vec_.InitIntraCoreEvents();
+    }
+
+    __aicore__ inline void PrepareBeforeLoopAiv()
+    {
+        vec_.PrepareBeforeLoop();
     }
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile)

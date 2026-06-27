@@ -28,7 +28,11 @@ public:
         QkvRmsNormRopeCacheWithKScaleBasicBlock<INPUT_LAYOUT> basicBlock;
         TileParam tileParam[QKV_RRC_DOUBLE_BUFFER_NUM];
         InitTileParamBuffer(tileParam);
-        basicBlock.Init(tensors, tilingData);
+        basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
+                        tilingData->kvHeadNum, tilingData->headDim, tilingData->blockSize, tilingData->kvCacheStrideBlock,
+                        tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
+                        tilingData->kScaleCacheStrideBlock, tilingData->kScaleCacheStrideHead,
+                        tilingData->kScaleCacheStrideToken, tilingData->epsilon);
         basicBlock.PrepareBeforeLoop();
         const uint64_t localTileId = ForEachTile(basicBlock, tilingData, tokenRange, tileParam);
         basicBlock.End(tileParam[GetLastProcessId(localTileId)]);
@@ -52,35 +56,24 @@ private:
 
     __aicore__ inline void ResetTileParam(TileParam &tile) const
     {
-        tile.tileId = 0U;
         tile.tokenOffset = 0U;
         tile.tokenSize = 0U;
-        tile.qkHeadOffset = 0U;
-        tile.qkHeadSize = 0U;
         tile.vHeadOffset = 0U;
         tile.vHeadSize = 0U;
-        tile.rowOffset = 0U;
-        tile.rowSize = 0U;
     }
 
     __aicore__ inline void FillTileParam(TileParam &tile, const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
-                                         uint64_t tileId, uint64_t tokenOffset, uint64_t tokenSize) const
+                                         uint64_t tokenOffset, uint64_t tokenSize) const
     {
         ResetTileParam(tile);
-        tile.tileId = tileId;
         tile.tokenOffset = tokenOffset;
         if (tile.tokenOffset >= tilingData->totalTokens || tokenSize == 0U) {
             return;
         }
 
         tile.tokenSize = MinU64(MinU64(tokenSize, tilingData->tokenTile), tilingData->totalTokens - tile.tokenOffset);
-        tile.qkHeadOffset = 0U;
-        const uint64_t qkHeadTile = tilingData->qHeadNum + tilingData->kvHeadNum;
-        tile.qkHeadSize = qkHeadTile;
         tile.vHeadOffset = 0U;
         tile.vHeadSize = tilingData->kvHeadNum;
-        tile.rowOffset = 0U;
-        tile.rowSize = tile.tokenSize * qkHeadTile;
     }
 
     __aicore__ inline uint64_t ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<INPUT_LAYOUT> &basicBlock,
@@ -97,7 +90,7 @@ private:
 
             const uint32_t processId = GetProcessId(localTileId);
             const uint32_t lastProcessId = GetLastProcessId(localTileId);
-            FillTileParam(tileParam[processId], tilingData, localTileId, tokenOffset, tokenSize);
+            FillTileParam(tileParam[processId], tilingData, tokenOffset, tokenSize);
             basicBlock.ComputeTile(tileParam[processId], tileParam[lastProcessId]);
             tokenOffset += tokenSize;
             ++localTileId;

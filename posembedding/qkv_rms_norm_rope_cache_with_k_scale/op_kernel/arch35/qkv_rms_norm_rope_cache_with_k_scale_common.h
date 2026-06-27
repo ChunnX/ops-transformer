@@ -149,15 +149,10 @@ static_assert(QKV_RRC_UB_USED_BYTES <= 248U * QKV_RRC_KIB,
               "QkvRmsNormRopeCacheWithKScale static UB layout exceeds 248 KiB.");
 
 struct TileParam {
-    uint64_t tileId;
     uint64_t tokenOffset;
     uint64_t tokenSize;
-    uint64_t qkHeadOffset;
-    uint64_t qkHeadSize;
     uint64_t vHeadOffset;
     uint64_t vHeadSize;
-    uint64_t rowOffset;
-    uint64_t rowSize;
     uint64_t cacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
     uint64_t scaleCacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
 };

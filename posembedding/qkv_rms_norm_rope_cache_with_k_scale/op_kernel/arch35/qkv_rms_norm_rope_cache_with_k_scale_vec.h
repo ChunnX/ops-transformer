@@ -19,10 +19,25 @@ namespace QkvRmsNormRopeCacheWithKScale {
 template <uint32_t INPUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleVec {
 public:
-    __aicore__ inline void Init(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId,
-                                const GlobalTensors &tensors)
+    __aicore__ inline void Init(const GlobalTensors &tensors, uint32_t aivLocalId, uint64_t totalTokens,
+                                uint64_t batch, uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim,
+                                uint64_t blockSize, uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
+                                uint64_t kvCacheStrideToken, uint64_t kScaleCacheStrideBlock,
+                                uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon)
     {
-        tilingData_ = tilingData;
+        totalTokens_ = totalTokens;
+        batch_ = batch;
+        qHeadNum_ = qHeadNum;
+        kvHeadNum_ = kvHeadNum;
+        headDim_ = headDim;
+        blockSize_ = blockSize;
+        kvCacheStrideBlock_ = kvCacheStrideBlock;
+        kvCacheStrideHead_ = kvCacheStrideHead;
+        kvCacheStrideToken_ = kvCacheStrideToken;
+        kScaleCacheStrideBlock_ = kScaleCacheStrideBlock;
+        kScaleCacheStrideHead_ = kScaleCacheStrideHead;
+        kScaleCacheStrideToken_ = kScaleCacheStrideToken;
+        epsilon_ = epsilon;
         aivLocalId_ = aivLocalId;
         inputBufferUseId_ = 0U;
         vOutBufferUseId_ = 0U;
@@ -37,6 +52,10 @@ public:
             SetMte3ToVVOutBufferReusable(bufferId);
             SetMte3ToVQkOutBufferReusableByBufferId(bufferId);
         }
+    }
+
+    __aicore__ inline void PrepareBeforeLoop()
+    {
         CopyPersistentInputs();
         BuildRopeNzScatterIndex(qkNzScatterIndexUb_);
     }
@@ -225,11 +244,11 @@ private:
     {
         const LocalTensor<float> gamma = gammaUb_;
         const LocalTensor<float> vScale = vScaleUb_;
-        DataCopyGmToUb2D(gamma, qGammaGm_, {1U, tilingData_->headDim, tilingData_->headDim});
+        DataCopyGmToUb2D(gamma, qGammaGm_, {1U, headDim_, headDim_});
         DataCopyGmToUb2D(gamma[QKV_RRC_GAMMA_UB_ELEMENTS / 2U], kGammaGm_,
-                         {1U, tilingData_->headDim, tilingData_->headDim});
-        if (tilingData_->kvHeadNum > 0U) {
-            DataCopyGmToUb2D(vScale, vScaleGm_, {1U, tilingData_->kvHeadNum, tilingData_->kvHeadNum});
+                         {1U, headDim_, headDim_});
+        if (kvHeadNum_ > 0U) {
+            DataCopyGmToUb2D(vScale, vScaleGm_, {1U, kvHeadNum_, kvHeadNum_});
         }
         SetAndWaitMte2ToVInputReady(0U);
     }
@@ -255,15 +274,15 @@ private:
         const LocalTensor<bfloat16_t> input = inputDbPoolUb_[inputBufferId * QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<int32_t> slotMapping =
             slotMappingDbPoolUb_[inputBufferId * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
-        const uint64_t qkvHeadNum = tilingData_->qHeadNum + tilingData_->kvHeadNum + tilingData_->kvHeadNum;
+        const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
         if constexpr (IS_TND) {
-            DataCopyGmToUb2D(input, qkvGm_[slice.tokenOffset * qkvHeadNum * tilingData_->headDim],
-                             {1U, slice.tokenSize * qkvHeadNum * tilingData_->headDim,
-                              slice.tokenSize * qkvHeadNum * tilingData_->headDim});
+            DataCopyGmToUb2D(input, qkvGm_[slice.tokenOffset * qkvHeadNum * headDim_],
+                             {1U, slice.tokenSize * qkvHeadNum * headDim_,
+                              slice.tokenSize * qkvHeadNum * headDim_});
         } else {
-            DataCopyGmToUb2D(input, qkvGm_[slice.tokenOffset * tilingData_->headDim],
-                             {qkvHeadNum, slice.tokenSize * tilingData_->headDim,
-                              tilingData_->totalTokens * tilingData_->headDim});
+            DataCopyGmToUb2D(input, qkvGm_[slice.tokenOffset * headDim_],
+                             {qkvHeadNum, slice.tokenSize * headDim_,
+                              totalTokens_ * headDim_});
         }
         DataCopyGmToUb2D(slotMapping, slotMappingGm_[slice.tokenOffset], {1U, slice.tokenSize, slice.tokenSize});
         CopyCosSinTile(slice, inputBufferId);
@@ -276,18 +295,18 @@ private:
             slotMappingDbPoolUb_[inputBufferId * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
         for (uint64_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
             const uint64_t slot = static_cast<uint64_t>(slotMapping.GetValue(tokenIdx));
-            const uint64_t blockId = slot / tilingData_->blockSize;
-            const uint64_t blockOffset = slot % tilingData_->blockSize;
+            const uint64_t blockId = slot / blockSize_;
+            const uint64_t blockOffset = slot % blockSize_;
             tile.cacheBaseOffset[tokenIdx] =
-                blockId * tilingData_->kvCacheStrideBlock + blockOffset * tilingData_->kvCacheStrideToken;
+                blockId * kvCacheStrideBlock_ + blockOffset * kvCacheStrideToken_;
             tile.scaleCacheBaseOffset[tokenIdx] =
-                blockId * tilingData_->kScaleCacheStrideBlock + blockOffset * tilingData_->kScaleCacheStrideToken;
+                blockId * kScaleCacheStrideBlock_ + blockOffset * kScaleCacheStrideToken_;
         }
     }
 
     __aicore__ inline uint64_t ResolveTokenPosition(uint64_t tokenOffset)
     {
-        for (uint64_t batchIdx = 0U; batchIdx < tilingData_->batch; ++batchIdx) {
+        for (uint64_t batchIdx = 0U; batchIdx < batch_; ++batchIdx) {
             const uint64_t seqBegin = static_cast<uint64_t>(cuSeqLenGm_.GetValue(batchIdx));
             const uint64_t seqEnd = static_cast<uint64_t>(cuSeqLenGm_.GetValue(batchIdx + 1U));
             if (tokenOffset >= seqBegin && tokenOffset < seqEnd) {
@@ -315,8 +334,8 @@ private:
                 }
                 ++runSize;
             }
-            DataCopyGmToUb2D(cosSin[runStart * tilingData_->headDim], cosSinGm_[runPosition * tilingData_->headDim],
-                             {runSize, tilingData_->headDim, tilingData_->headDim});
+            DataCopyGmToUb2D(cosSin[runStart * headDim_], cosSinGm_[runPosition * headDim_],
+                             {runSize, headDim_, headDim_});
             runStart += runSize;
         }
     }
@@ -332,35 +351,35 @@ private:
                 .template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
         if constexpr (IS_TND) {
-            const uint64_t qkvHeadNum = tilingData_->qHeadNum + tilingData_->kvHeadNum + tilingData_->kvHeadNum;
+            const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
             AscendC::VF_CALL<QkRmsNormRopeD128SegmentTndNzVf>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
                 (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
                 (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize), 0U,
-                static_cast<uint32_t>(tilingData_->qHeadNum), static_cast<uint32_t>(qkvHeadNum),
-                QKV_RRC_HEAD_DIM_D128_RECIP, tilingData_->epsilon);
+                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(qkvHeadNum),
+                QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
             AscendC::VF_CALL<QkRmsNormRopeD128SegmentTndNzVf>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
                 (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
                 (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
                 (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize),
-                static_cast<uint32_t>(tilingData_->qHeadNum), static_cast<uint32_t>(tilingData_->kvHeadNum),
-                static_cast<uint32_t>(qkvHeadNum), QKV_RRC_HEAD_DIM_D128_RECIP, tilingData_->epsilon);
+                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(kvHeadNum_),
+                static_cast<uint32_t>(qkvHeadNum), QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
         } else {
             const uint64_t tokenCapacity = MakeCubeHalfTokenSize(tile);
             AscendC::VF_CALL<QkRmsNormRopeD128SegmentNtdNzVf>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
                 (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
                 (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize), 0U,
-                static_cast<uint32_t>(tilingData_->qHeadNum), static_cast<uint32_t>(tokenCapacity),
-                QKV_RRC_HEAD_DIM_D128_RECIP, tilingData_->epsilon);
+                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(tokenCapacity),
+                QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
             AscendC::VF_CALL<QkRmsNormRopeD128SegmentNtdNzVf>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
                 (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
                 (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
                 (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize),
-                static_cast<uint32_t>(tilingData_->qHeadNum), static_cast<uint32_t>(tilingData_->kvHeadNum),
-                static_cast<uint32_t>(tokenCapacity), QKV_RRC_HEAD_DIM_D128_RECIP, tilingData_->epsilon);
+                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(kvHeadNum_),
+                static_cast<uint32_t>(tokenCapacity), QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
         }
     }
 
@@ -383,16 +402,16 @@ private:
         const uint64_t cubeTokenSize = MakeCubeTokenSize(tile);
         const uint64_t cubeHalfTokenSize = MakeCubeHalfTokenSize(tile);
         const uint64_t aivBlockTokenOffset = aivLocalId_ * cubeHalfTokenSize;
-        const uint64_t qTileRows = cubeTokenSize * tilingData_->qHeadNum;
-        const uint64_t kTileRows = cubeTokenSize * tilingData_->kvHeadNum;
+        const uint64_t qTileRows = cubeTokenSize * qHeadNum_;
+        const uint64_t kTileRows = cubeTokenSize * kvHeadNum_;
         const LocalTensor<bfloat16_t> qRopeNz =
             outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS]
                 .template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
-        CopyRopeSegmentBf16LayoutNzUbToL1Nz(aRotL1, qRopeNz, qTileRows, tilingData_->qHeadNum, cubeHalfTokenSize,
+        CopyRopeSegmentBf16LayoutNzUbToL1Nz(aRotL1, qRopeNz, qTileRows, qHeadNum_, cubeHalfTokenSize,
                                             aivBlockTokenOffset, slice.tokenSize);
         CopyRopeSegmentBf16LayoutNzUbToL1Nz(aRotL1[NzMatrixElements(qTileRows)], kRopeNz, kTileRows,
-                                            tilingData_->kvHeadNum, cubeHalfTokenSize, aivBlockTokenOffset,
+                                            kvHeadNum_, cubeHalfTokenSize, aivBlockTokenOffset,
                                             slice.tokenSize);
     }
 
@@ -437,9 +456,9 @@ private:
         const LocalTensor<bfloat16_t> input = inputDbPoolUb_[inputBufferId * QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<float> vScale = vScaleUb_;
         const LocalTensor<fp8_e4m3fn_t> vOut = vOutDbPoolUb_[vOutBufferId * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS];
-        const uint64_t vHeadOffset = tilingData_->qHeadNum + tilingData_->kvHeadNum;
+        const uint64_t vHeadOffset = qHeadNum_ + kvHeadNum_;
         if constexpr (IS_TND) {
-            const uint64_t qkvHeadNum = tilingData_->qHeadNum + tilingData_->kvHeadNum + tilingData_->kvHeadNum;
+            const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
             AscendC::VF_CALL<VScaleFp8D128TndToNtdVf>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
                 (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize),
@@ -458,11 +477,11 @@ private:
     {
         const LocalTensor<fp8_e4m3fn_t> vOut = vOutDbPoolUb_[vOutBufferId * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS];
         for (uint64_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
-            const uint64_t ubOffset = tokenIdx * tilingData_->headDim;
-            const uint64_t gmOffset = tile.cacheBaseOffset[tokenIdx] + tile.vHeadOffset * tilingData_->kvCacheStrideHead;
+            const uint64_t ubOffset = tokenIdx * headDim_;
+            const uint64_t gmOffset = tile.cacheBaseOffset[tokenIdx] + tile.vHeadOffset * kvCacheStrideHead_;
             DataCopyUbToGm2D(vCacheOutGm_[gmOffset], vOut[ubOffset],
-                             {tile.vHeadSize, tilingData_->headDim, slice.tokenSize * tilingData_->headDim,
-                              tilingData_->kvCacheStrideHead});
+                             {tile.vHeadSize, headDim_, slice.tokenSize * headDim_,
+                              kvCacheStrideHead_});
         }
     }
 
@@ -493,17 +512,17 @@ private:
 
     __aicore__ inline uint64_t KScaleStagingOffset(uint64_t tokenIdx, uint64_t kHeadIdx) const
     {
-        return (tokenIdx * tilingData_->kvHeadNum + kHeadIdx) * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
+        return (tokenIdx * kvHeadNum_ + kHeadIdx) * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
     }
 
     __aicore__ inline uint64_t KScaleStagingBaseOffset(const AivSlice &slice) const
     {
-        return tilingData_->qHeadNum * QScaleNtdHeadStride(slice);
+        return qHeadNum_ * QScaleNtdHeadStride(slice);
     }
 
     __aicore__ inline uint64_t QkLocalKBaseRow(const TileParam &tile) const
     {
-        return MakeCubeHalfTokenSize(tile) * tilingData_->qHeadNum;
+        return MakeCubeHalfTokenSize(tile) * qHeadNum_;
     }
 
     __aicore__ inline LocalTensor<float> QkScaleStagingDbUb(uint32_t vOutBufferId)
@@ -523,14 +542,14 @@ private:
             AscendC::VF_CALL<QDynamicQuantD128TndToTndVf>(
                 (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
                 (__ubuf__ float *)qkScale.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize),
-                static_cast<uint32_t>(tilingData_->qHeadNum));
+                static_cast<uint32_t>(qHeadNum_));
         } else {
-            const uint64_t qkUbStrideN = MakeCubeHalfTokenSize(tile) * tilingData_->headDim;
+            const uint64_t qkUbStrideN = MakeCubeHalfTokenSize(tile) * headDim_;
             AscendC::VF_CALL<QDynamicQuantD128NtdToNtdVf>(
                 (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
                 (__ubuf__ float *)qkScale.GetPhyAddr(), static_cast<uint32_t>(slice.tokenSize),
-                static_cast<uint32_t>(tilingData_->qHeadNum), static_cast<uint32_t>(qkUbStrideN),
-                static_cast<uint32_t>(tilingData_->headDim));
+                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(qkUbStrideN),
+                static_cast<uint32_t>(headDim_));
         }
     }
 
@@ -539,21 +558,21 @@ private:
     {
         const LocalTensor<float> qkAfterCube =
             outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
-        const uint64_t kRowOffset = QkLocalKBaseRow(tile) * tilingData_->headDim;
+        const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId)[KScaleStagingBaseOffset(slice)];
         if constexpr (IS_TND) {
             AscendC::VF_CALL<KDynamicQuantD128TndToTndVf>(
                 (__ubuf__ float *)qkAfterCube[kRowOffset].GetPhyAddr(),
                 (__ubuf__ fp8_e4m3fn_t *)kFp8.GetPhyAddr(), (__ubuf__ float *)qkScale.GetPhyAddr(),
-                static_cast<uint32_t>(slice.tokenSize), static_cast<uint32_t>(tilingData_->kvHeadNum));
+                static_cast<uint32_t>(slice.tokenSize), static_cast<uint32_t>(kvHeadNum_));
         } else {
-            const uint64_t qkUbStrideN = MakeCubeHalfTokenSize(tile) * tilingData_->headDim;
+            const uint64_t qkUbStrideN = MakeCubeHalfTokenSize(tile) * headDim_;
             AscendC::VF_CALL<KDynamicQuantD128NtdToNtdVf>(
                 (__ubuf__ float *)qkAfterCube[kRowOffset].GetPhyAddr(),
                 (__ubuf__ fp8_e4m3fn_t *)kFp8.GetPhyAddr(), (__ubuf__ float *)qkScale.GetPhyAddr(),
-                static_cast<uint32_t>(slice.tokenSize), static_cast<uint32_t>(tilingData_->kvHeadNum),
-                static_cast<uint32_t>(qkUbStrideN), static_cast<uint32_t>(tilingData_->headDim));
+                static_cast<uint32_t>(slice.tokenSize), static_cast<uint32_t>(kvHeadNum_),
+                static_cast<uint32_t>(qkUbStrideN), static_cast<uint32_t>(headDim_));
         }
     }
 
@@ -564,20 +583,20 @@ private:
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId);
         if constexpr (IS_TND) {
-            DataCopyUbToGm2D(qOutGm_[slice.tokenOffset * tilingData_->qHeadNum * tilingData_->headDim], qFp8,
-                             {1U, slice.tokenSize * tilingData_->qHeadNum * tilingData_->headDim,
-                              slice.tokenSize * tilingData_->qHeadNum * tilingData_->headDim,
-                              slice.tokenSize * tilingData_->qHeadNum * tilingData_->headDim});
-            DataCopyUbToGm2D(qScaleGm_[slice.tokenOffset * tilingData_->qHeadNum], qkScale,
-                             {1U, slice.tokenSize * tilingData_->qHeadNum,
-                              slice.tokenSize * tilingData_->qHeadNum, slice.tokenSize * tilingData_->qHeadNum});
+            DataCopyUbToGm2D(qOutGm_[slice.tokenOffset * qHeadNum_ * headDim_], qFp8,
+                             {1U, slice.tokenSize * qHeadNum_ * headDim_,
+                              slice.tokenSize * qHeadNum_ * headDim_,
+                              slice.tokenSize * qHeadNum_ * headDim_});
+            DataCopyUbToGm2D(qScaleGm_[slice.tokenOffset * qHeadNum_], qkScale,
+                             {1U, slice.tokenSize * qHeadNum_,
+                              slice.tokenSize * qHeadNum_, slice.tokenSize * qHeadNum_});
         } else {
-            DataCopyUbToGm2D(qOutGm_[slice.tokenOffset * tilingData_->headDim], qFp8,
-                             {tilingData_->qHeadNum, slice.tokenSize * tilingData_->headDim,
-                              slice.tokenSize * tilingData_->headDim,
-                              tilingData_->totalTokens * tilingData_->headDim});
+            DataCopyUbToGm2D(qOutGm_[slice.tokenOffset * headDim_], qFp8,
+                             {qHeadNum_, slice.tokenSize * headDim_,
+                              slice.tokenSize * headDim_,
+                              totalTokens_ * headDim_});
             DataCopyUbToGm2D(qScaleGm_[slice.tokenOffset], qkScale,
-                             {tilingData_->qHeadNum, slice.tokenSize, slice.tokenSize, tilingData_->totalTokens});
+                             {qHeadNum_, slice.tokenSize, slice.tokenSize, totalTokens_});
         }
     }
 
@@ -586,20 +605,20 @@ private:
     {
         const LocalTensor<float> qkAfterCube =
             outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
-        const uint64_t kRowOffset = QkLocalKBaseRow(tile) * tilingData_->headDim;
+        const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId)[KScaleStagingBaseOffset(slice)];
         for (uint64_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
             const uint64_t kUbOffset =
-                (IS_TND ? tokenIdx * tilingData_->kvHeadNum : tokenIdx) * tilingData_->headDim;
+                (IS_TND ? tokenIdx * kvHeadNum_ : tokenIdx) * headDim_;
             const uint64_t kCacheOffset = tile.cacheBaseOffset[tokenIdx];
             const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
             DataCopyUbToGm2D(kCacheOutGm_[kCacheOffset], kFp8[kUbOffset],
-                             {tilingData_->kvHeadNum, tilingData_->headDim,
-                              (IS_TND ? tilingData_->headDim : slice.tokenSize * tilingData_->headDim),
-                              tilingData_->kvCacheStrideHead});
+                             {kvHeadNum_, headDim_,
+                              (IS_TND ? headDim_ : slice.tokenSize * headDim_),
+                              kvCacheStrideHead_});
             DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], qkScale[KScaleStagingOffset(tokenIdx, 0U)],
-                             {tilingData_->kvHeadNum, 1U, 1U, tilingData_->kScaleCacheStrideHead});
+                             {kvHeadNum_, 1U, 1U, kScaleCacheStrideHead_});
         }
     }
 
@@ -650,7 +669,19 @@ private:
         kScaleCacheOutGm_.SetGlobalBuffer((__gm__ float *)tensors.kScaleCacheOut);
     }
 
-    const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData_;
+    uint64_t totalTokens_;
+    uint64_t batch_;
+    uint64_t qHeadNum_;
+    uint64_t kvHeadNum_;
+    uint64_t headDim_;
+    uint64_t blockSize_;
+    uint64_t kvCacheStrideBlock_;
+    uint64_t kvCacheStrideHead_;
+    uint64_t kvCacheStrideToken_;
+    uint64_t kScaleCacheStrideBlock_;
+    uint64_t kScaleCacheStrideHead_;
+    uint64_t kScaleCacheStrideToken_;
+    float epsilon_;
     uint32_t aivLocalId_;
     uint64_t inputBufferUseId_;
     uint64_t vOutBufferUseId_;
