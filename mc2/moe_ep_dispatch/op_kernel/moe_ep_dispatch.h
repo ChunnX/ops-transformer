@@ -679,7 +679,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
 
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
         uint32_t sendTokenNum = sendNumPerRankTensor.GetValue((dstRankId - startRankId_) * COUNTER_STRIDE + 1);
-        GM_ADDR notifyAddr = GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + cntPerRankSizeAlign512_ + 
+        GM_ADDR notifyAddr = GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + cntPerRankSizeAlign512_ +
                                 moeExpertNumAlign512_;
         if (unlikely(dstRankId == epRankId_)) {
             SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -781,7 +781,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatc
     LocalTensor<uint64_t> sumTensor = recvTempBuf_.Get<uint64_t>();
     LocalTensor<uint64_t> tempTensor = recvTempBuf_.Get<uint64_t>();
 
-    while (sumOfFlag != commpareFlag) {  //状态位check
+    while (sumOfFlag != commpareFlag) {  // 状态位check
         DataCopy(statusLocalTensor, statusGMTensor, recvStatusAlign);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(sumTensor, statusLocalTensor, tempTensor, epWorldSize_);
@@ -793,7 +793,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatc
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessDirect()
 {
-    ResetCounters();    //计数器清0 为了后续发送token计算atomicAdd
+    ResetCounters();    // 计数器清0 为了后续发送token计算atomicAdd
     CalSendCnt();
     SyncAll<true>();
     Communication();
@@ -812,9 +812,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
     if ASCEND_IS_AIV { // 全aiv处理
         ProcessDirect();
     }
-
 }
-
 }  // namespace MoeEpDispatchImpl
 
 #endif  // MOE_EP_DISPATCH_H
