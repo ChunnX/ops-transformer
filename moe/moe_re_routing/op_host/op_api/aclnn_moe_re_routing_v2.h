@@ -23,22 +23,22 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnMoeReRoutingV2GetWorkspaceSize(const aclTensor *tokens,
-                                                           const aclTensor *expertTokenNumPerRank,
-                                                           const aclTensor *perTokenScalesOptional,
-                                                           const aclTensor *expertTopkWeightOptional,
-                                                           int64_t expertTokenNumType,
-                                                           int64_t idxType,
-                                                           const aclTensor *permuteTokensOut,
-                                                           const aclTensor *permutePerTokenScalesOut,
-                                                           const aclTensor *permuteTokenIdxOut,
-                                                           const aclTensor *expertTokenNumOut,
-                                                           const aclTensor *permuteTopkWeightOut,
-                                                           uint64_t *workspaceSize,
-                                                           aclOpExecutor **executor);
+                                                          const aclTensor *expertTokenNumPerRank,
+                                                          const aclTensor *perTokenScalesOptional,
+                                                          const aclTensor *expertTopkWeightOptional,
+                                                          int64_t expertTokenNumType,
+                                                          int64_t idxType,
+                                                          const aclTensor *permuteTokensOut,
+                                                          const aclTensor *permutePerTokenScalesOut,
+                                                          const aclTensor *permuteTokenIdxOut,
+                                                          const aclTensor *expertTokenNumOut,
+                                                          const aclTensor *permuteTopkWeightOut,
+                                                          uint64_t *workspaceSize,
+                                                          aclOpExecutor **executor);
 
 /* @brief aclnnMoeReRoutingV2的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnMoeReRoutingV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                            aclrtStream stream);
+                                          aclrtStream stream);
 
 #ifdef __cplusplus
 }

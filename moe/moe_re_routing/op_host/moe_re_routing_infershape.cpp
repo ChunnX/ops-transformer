@@ -83,13 +83,13 @@ graphStatus InferShape4MoeReRouting(gert::InferShapeContext *context)
 
     const gert::Shape *topkWeightShape = context->GetOptionalInputShape(INPUT_IDX_EXPERT_TOPK_WEIGHT);
     gert::Shape *permuteTopkWeightShape = context->GetOutputShape(OUTPUT_IDX_PERMUTE_TOPK_WEIGHT);
-    OP_CHECK_NULL_WITH_CONTEXT(context, permuteTopkWeightShape);
-    if (topkWeightShape != nullptr) {
-        *permuteTopkWeightShape = *topkWeightShape;
-    } else {
-        permuteTopkWeightShape->SetDimNum(DIM_NUM);
-        permuteTopkWeightShape->SetDim(IDX_ZERO, tokensInputShapeDims);
-        permuteTopkWeightShape->SetDim(IDX_ONE, 1);
+    if (permuteTopkWeightShape != nullptr) {
+        if (topkWeightShape != nullptr) {
+            *permuteTopkWeightShape = *topkWeightShape;
+        } else {
+            permuteTopkWeightShape->SetDimNum(IDX_ONE);
+            permuteTopkWeightShape->SetDim(IDX_ZERO, 0);
+        }
     }
 
     OP_LOGD(context, "End to do InferShape4MoeReRouting.");

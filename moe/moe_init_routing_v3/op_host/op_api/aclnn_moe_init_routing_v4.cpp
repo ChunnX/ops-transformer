@@ -127,7 +127,7 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(
     const aclTensor *expandedScaleOut,
     const aclTensor *expanded_topk_weightOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
-{   
+{
     L2_DFX_PHASE_1(aclnnMoeInitRoutingV4,
                    DFX_IN(x, expertIdx, scaleOptional, offsetOptional, topk_weightOptional,
                           activeNum, expertCapacity, expertNum, dropPadMode,
