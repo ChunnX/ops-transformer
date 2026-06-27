@@ -61,15 +61,6 @@ uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
            prefix + static_cast<uint32_t>(actualSeq2[bIdx] - actualSeq2[bIdx - 1U]);
 }
 
-int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo)
-{
-    auto mode = static_cast<SparseMode>(baseInfo.sparseMode);
-    if (mode == SparseMode::BAND) {
-        return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + baseInfo.preToken;
-    }
-    return baseInfo.preToken;
-}
-
 int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo)
 {
     auto mode = static_cast<SparseMode>(baseInfo.sparseMode);
@@ -88,13 +79,22 @@ int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &ba
     }
 }
 
+int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo)
+{
+    auto mode = static_cast<SparseMode>(baseInfo.sparseMode);
+    if (mode == SparseMode::BAND) {
+        return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + baseInfo.preToken;
+    }
+    return baseInfo.preToken;
+}
+
 int64_t CalcCost(uint32_t basicM, uint32_t basicS2)
 {
     uint32_t alignCoefM = 16U;
     uint32_t alignCoefS2 = 64U;
-    uint32_t alignBasicM = (basicM + alignCoefM - 1U) / alignCoefM;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
-    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) / alignCoefS2;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
+    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
+    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
+    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2); // 6：M轴系数，10：S2轴系数
 }
 
 BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
@@ -169,9 +169,9 @@ Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const BaseInfo &baseInfo, const Spl
 
 void CalcSplitInfo(SplitContext &splitContext)
 {
-    const BaseInfo &baseInfo = splitContext.baseInfo;
     const SplitParam &splitParam = splitContext.splitParam;
-
+    const BaseInfo &baseInfo = splitContext.baseInfo;
+    
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     SplitInfo &splitInfo = splitContext.splitInfo;
     for (uint32_t bIdx = 0; bIdx < baseInfo.bSize; bIdx++) {
@@ -199,8 +199,8 @@ void CalcSplitInfo(SplitContext &splitContext)
 void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache)
 {
     const BaseInfo &baseInfo = splitContext.baseInfo;
-    const SplitParam &splitParam = splitContext.splitParam;
     const SplitInfo &splitInfo = splitContext.splitInfo;
+    const SplitParam &splitParam = splitContext.splitParam;
 
     batchCache.bIdx = bIdx;
     batchCache.s1Size = GetS1SeqSize(bIdx, baseInfo);
@@ -423,9 +423,9 @@ void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContex
 
         // to the end
         if (assignContext.curBN2Idx == baseInfo.bSize * baseInfo.n2Size) {
+            assignContext.isFinished = true;
             assignContext.curS1GIdx = 0U;
             assignContext.curS2Idx = 0U;
-            assignContext.isFinished = true;
             return;
         }
 
