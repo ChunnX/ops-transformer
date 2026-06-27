@@ -25,38 +25,22 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_quant.h"
-#if __has_include("../common/op_kernel/mc2_moe_context.h")
-#include "../common/op_kernel/mc2_moe_context.h"
+#if __has_include("../common/mc2_moe_context.h")
+#include "../common/mc2_moe_context.h"
 #else
 #include "../../common/op_kernel/mc2_moe_context.h"
 #endif
-#if __has_include("../common/op_kernel/moe_distribute_v2_base.h")
-#include "../common/op_kernel/moe_distribute_v2_base.h"
-#else
-#include "../../common/op_kernel/moe_distribute_v2_base.h"
-#endif
-#if __has_include("../common/op_kernel/check_winsize.h")
-#include "../common/op_kernel/check_winsize.h"
-#else
-#include "../../common/op_kernel/check_winsize.h"
-#endif
-#if __has_include( "../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
+#include "moe_distribute_v2_base.h"
+#include "check_winsize.h"
+#if __has_include("../common/moe_distribute_base.h")
+#include "../common/moe_distribute_base.h"
+#include "../common/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
-#if __has_include("../common/op_kernel/hccl_context_holder.h")
-#include "../common/op_kernel/hccl_context_holder.h"
-#else
-#include "../../common/op_kernel/hccl_context_holder.h"
-#endif
-#if __has_include("../common/op_kernel/mc2_moe_context_holder.h")
-#include "../common/op_kernel/mc2_moe_context_holder.h"
-#else
-#include "../../common/op_kernel/mc2_moe_context_holder.h"
-#endif
+#include "hccl_context_holder.h"
+#include "mc2_moe_context_holder.h"
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace Mc2Kernel {
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL; // 384 * 2，0/1标识区偏移
