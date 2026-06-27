@@ -645,9 +645,9 @@ public:
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
         this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-        constexpr uint64_t pScaleDataLen = actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
+        uint64_t pScaleDataLen = actVecMSizeAlign16 * s2BaseSizeCur / MXFP_GROUP_SIZE;
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
-        constexpr uint64_t pScaleSubLoopOffset = pScaleDataLen * 2;
+        uint64_t pScaleSubLoopOffset = pScaleDataLen * 2;
         uint16_t copyCount = actVecMSizeAlign16 / 16;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
