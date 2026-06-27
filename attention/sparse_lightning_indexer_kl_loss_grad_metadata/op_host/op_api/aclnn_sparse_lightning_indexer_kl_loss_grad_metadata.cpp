@@ -64,52 +64,51 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
                                aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
+    const aclTensor *cuSeqLensQContiguous = nullptr;
     if (cuSeqlensQOptional != nullptr) {
-        cuSeqlensQOptionalContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
-        if (cuSeqlensQOptionalContiguous == nullptr) {
+        cuSeqLensQContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
+        if (cuSeqLensQContiguous == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_q contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
-    const aclTensor *cuSeqlensKOptionalContiguous = nullptr;
+    const aclTensor *cuSeqLensKContiguous = nullptr;
     if (cuSeqlensKOptional != nullptr) {
-        cuSeqlensKOptionalContiguous = l0op::Contiguous(cuSeqlensKOptional, uniqueExecutor.get());
-        if (cuSeqlensKOptionalContiguous == nullptr) {
+        cuSeqLensKContiguous = l0op::Contiguous(cuSeqlensKOptional, uniqueExecutor.get());
+        if (cuSeqLensKContiguous == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_k contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
-    const aclTensor *sequsedQOptionalContiguous = nullptr;
+    const aclTensor *seqUsedQContiguous = nullptr;
     if (sequsedQOptional != nullptr) {
-        sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
-        if (sequsedQOptionalContiguous == nullptr) {
+        seqUsedQContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
+        if (seqUsedQContiguous == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_q contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
-    const aclTensor *sequsedKOptionalContiguous = nullptr;
+    const aclTensor *seqUsedKContiguous = nullptr;
     if (sequsedKOptional != nullptr) {
-        sequsedKOptionalContiguous = l0op::Contiguous(sequsedKOptional, uniqueExecutor.get());
-        if (sequsedKOptionalContiguous == nullptr) {
+        seqUsedKContiguous = l0op::Contiguous(sequsedKOptional, uniqueExecutor.get());
+        if (seqUsedKContiguous == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_k contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
-    const aclTensor *cmpResidualLKOptionalContiguous = nullptr;
+    const aclTensor *cmpResidualKContiguous = nullptr;
     if (cmpResidualKOptional != nullptr) {
-        cmpResidualLKOptionalContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
-        if (cmpResidualLKOptionalContiguous == nullptr) {
+        cmpResidualKContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
+        if (cmpResidualKContiguous == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cmp_residual_k contiguous is null");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
 
     auto output = l0op::SparseLightningIndexerKLLossGradMetadata(
-        cuSeqlensQOptionalContiguous, cuSeqlensKOptionalContiguous, sequsedQOptionalContiguous,
-        sequsedKOptionalContiguous, cmpResidualLKOptionalContiguous, batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ,
-        numHeadsK, headDim, topk, layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum,
-        socVersion.c_str(), metadata, uniqueExecutor.get());
+        cuSeqLensQContiguous, cuSeqLensKContiguous, seqUsedQContiguous, seqUsedKContiguous, cmpResidualKContiguous,
+        batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk, layoutQOptional, layoutKOptional, maskMode, cmpRatio,
+        aicCoreNum, metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

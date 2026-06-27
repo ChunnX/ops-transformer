@@ -29,12 +29,12 @@ const aclTensor *SparseLightningIndexerKLLossGradMetadata(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional, int64_t batchSize, int64_t maxSeqlenQ,
     int64_t maxSeqlenK, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk, char *layoutQOptional,
-    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, int64_t aicCoreNum, int64_t aivCoreNum,
-    const char *socVersion,, const aclTensor *metadata, aclOpExecutor *executor)
+    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, int64_t aicCoreNum, const aclTensor *metadata,
+    aclOpExecutor *executor)
 {
     L0_DFX(SparseLightningIndexerKLLossGradMetadata, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional,
            sequsedKOptional, cmpResidualKOptional, batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim,
-           topk, layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion, metadata);
+           topk, layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, metadata);
 
     static internal::AicpuTaskSpace space("SparseLightningIndexerKLLossGradMetadata");
 
@@ -45,7 +45,7 @@ const aclTensor *SparseLightningIndexerKLLossGradMetadata(
         OP_INPUT(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional),
         OP_OUTPUT(metadata),
         OP_ATTR(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk, layoutQOptional,
-                layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion));
+                layoutKOptional, maskMode, cmpRatio, aicCoreNum));
 
     OP_CHECK(ret == ACL_SUCCESS,
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SparseLightningIndexerKLLossGradMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
