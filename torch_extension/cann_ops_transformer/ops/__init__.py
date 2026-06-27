@@ -21,7 +21,6 @@ from .graph_convert.graph_convert_moe_distribute_combine import convert_npu_moe_
 from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
 from .flash_attn import flash_attn, flash_attn_metadata
 from .graph_convert.graph_convert_flash_attn import convert_flash_attn
-from .flash_attn_metadata import npu_flash_attn_metadata
 from .mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla, mixed_quant_sparse_flash_mla_metadata
 from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla import (
     convert_mixed_quant_sparse_flash_mla_metadata
