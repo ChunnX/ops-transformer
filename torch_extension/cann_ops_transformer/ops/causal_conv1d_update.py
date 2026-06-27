@@ -7,6 +7,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ---------------------------------------------------------------------------
+from typing import Optional
+
 import torch
 import torch_npu
 from torch.library import impl
@@ -16,88 +18,72 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class CausalConv1dUpdateOpBuilder(OpBuilder):
     def __init__(self):
-        super(CausalConv1dUpdateOpBuilder, self).__init__("npu_causal_conv1d_update")
+        super(CausalConv1dUpdateOpBuilder, self).__init__("causal_conv1d_update")
 
     def sources(self):
         """Path to C++ source code."""
         return ['ops/csrc/causal_conv1d_update.cpp']
 
     def schema(self) -> str:
-        """PyTorch operator signature."""
+        """PyTorch operator schema."""
         return (
-            "npu_causal_conv1d_update("
+            "causal_conv1d_update("
             "Tensor x, Tensor conv_state, Tensor weight, "
-            "Tensor? bias, "
-            "str? activation, "
-            "Tensor? conv_state_indices, "
-            "Tensor? num_accepted_tokens, "
-            "Tensor? query_start_loc, "
-            "int max_query_len, "
-            "int null_block_id, "
-            "Tensor? block_idx_last_scheduled_token, "
-            "Tensor? initial_state_idx"
+            "Tensor? bias=None, "
+            "str activation=\"silu\", "
+            "Tensor? conv_state_indices=None, "
+            "Tensor? num_accepted_tokens=None, "
+            "Tensor? query_start_loc=None, "
+            "int max_query_len=-1, "
+            "int null_block_id=0, "
+            "Tensor? block_idx_last_scheduled_token=None, "
+            "Tensor? initial_state_idx=None"
             ") -> Tensor"
         )
 
     def register_meta(self):
-        """
-        Registers the Meta implementation (Shape/Dtype inference).
-        Essential for Autograd and FakeTensor support.
-        """
+        """Register Meta implementation for shape/dtype inference."""
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_causal_conv1d_update_meta(
-            x, conv_state, weight,
-            bias=None, activation=None,
-            conv_state_indices=None,
-            num_accepted_tokens=None,
-            query_start_loc=None,
-            max_query_len=-1, null_block_id=0,
-            block_idx_last_scheduled_token=None,
-            initial_state_idx=None,
-        ):
+        def causal_conv1d_update_meta(
+            x: torch.Tensor,
+            conv_state: torch.Tensor,
+            weight: torch.Tensor,
+            bias: Optional[torch.Tensor] = None,
+            activation: str = "silu",
+            conv_state_indices: Optional[torch.Tensor] = None,
+            num_accepted_tokens: Optional[torch.Tensor] = None,
+            query_start_loc: Optional[torch.Tensor] = None,
+            max_query_len: int = -1,
+            null_block_id: int = 0,
+            block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
+            initial_state_idx: Optional[torch.Tensor] = None,
+        ) -> torch.Tensor:
             y = torch.empty_like(x)
             return y
 
 
-# Instantiate the builder
 _causal_conv1d_update_op_builder = CausalConv1dUpdateOpBuilder()
 _op_module = _causal_conv1d_update_op_builder.load()
 
 
 @impl(AS_LIBRARY, _causal_conv1d_update_op_builder.name, "PrivateUse1")
-def npu_causal_conv1d_update(
-    x, conv_state, weight,
-    bias=None, activation=None,
-    conv_state_indices=None,
-    num_accepted_tokens=None,
-    query_start_loc=None,
-    max_query_len=-1, null_block_id=0,
-    block_idx_last_scheduled_token=None,
-    initial_state_idx=None,
-):
-    """
-    Decode / update mode.
-
-    Args:
-        x: input tensor [B, D] or [T, D]
-        conv_state: convolution hidden states [numSlots, kW-1, D] (in/out)
-        weight: convolution weight [kW, D]
-        bias: optional bias [D]
-        activation: "silu" or None
-        conv_state_indices: optional token→conv_state slot mapping
-        num_accepted_tokens: optional accepted token count (speculative decode)
-        query_start_loc: optional query start locations for varlen
-        max_query_len: max query length, -1=unlimited
-        null_block_id: null block id
-        block_idx_last_scheduled_token: optional
-        initial_state_idx: optional index of sequences with initial state
-
-    Returns:
-        y: output and updated hidden states
-    """
-    return _op_module.npu_causal_conv1d_update(
+def _causal_conv1d_update(
+    x: torch.Tensor,
+    conv_state: torch.Tensor,
+    weight: torch.Tensor,
+    bias: Optional[torch.Tensor] = None,
+    activation: str = "silu",
+    conv_state_indices: Optional[torch.Tensor] = None,
+    num_accepted_tokens: Optional[torch.Tensor] = None,
+    query_start_loc: Optional[torch.Tensor] = None,
+    max_query_len: int = -1,
+    null_block_id: int = 0,
+    block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
+    initial_state_idx: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    return _op_module.causal_conv1d_update(
         x, conv_state, weight, bias,
-        activation if activation is not None else "none",
+        activation,
         conv_state_indices,
         num_accepted_tokens,
         query_start_loc,
@@ -107,5 +93,55 @@ def npu_causal_conv1d_update(
     )
 
 
-# Public API — mirrors causal_conv1d_update from vLLM/SGLang
-causal_conv1d_update = npu_causal_conv1d_update
+def causal_conv1d_update(
+    x: torch.Tensor,
+    conv_state: torch.Tensor,
+    weight: torch.Tensor,
+    bias: Optional[torch.Tensor] = None,
+    activation: str = "silu",
+    conv_state_indices: Optional[torch.Tensor] = None,
+    num_accepted_tokens: Optional[torch.Tensor] = None,
+    query_start_loc: Optional[torch.Tensor] = None,
+    max_query_len: int = -1,
+    null_block_id: int = 0,
+    block_idx_last_scheduled_token: Optional[torch.Tensor] = None,
+    initial_state_idx: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """因果一维卷积状态更新（decode / update），封装 aclnnCausalConv1dUpdate。
+
+    沿序列维度使用缓存数据对各序列头部进行 padding，确保输出依赖当前及历史输入；
+    卷积完成后可选施加 SiLU 激活；计算完成后将当前序列部分数据更新到缓存。
+
+    Args:
+        x (Tensor): 输入序列，shape 为 [batch, 1, dim]（固定 batch）或 [cu_seq_len, dim]（变长），
+            dtype 支持 float16/bfloat16。
+        conv_state (Tensor): 卷积状态缓存，shape 为 [num_cache_lines, state_len, dim]，
+            dtype 与 x 一致。计算后原地更新。
+        weight (Tensor): 卷积权重，shape 为 [kW, dim]，其中 kW∈{2, 3, 4}，dtype 与 x 一致。
+        bias (Tensor, optional): 偏置，shape 为 [dim]，dtype 与 x 一致，默认 None 表示不使用。
+        activation (str): 激活函数类型，"silu" 或 "none"，默认 "silu"。
+        conv_state_indices (Tensor, optional): 缓存索引，shape 为 [batch]，int32，
+            默认 None 使用恒等映射。
+        num_accepted_tokens (Tensor, optional): 投机解码中每个 batch 已接受的 token 数，
+            shape 为 [batch]，int32，仅 kW=4 支持，默认 None。
+        query_start_loc (Tensor, optional): 变长序列起始位置索引，shape 为 [batch+1]，int32，默认 None。
+        max_query_len (int): 最大查询长度，-1 表示不限制，默认 -1。
+        null_block_id (int): 无效缓存槽位标记 ID，conv_state_indices[i]==null_block_id 时跳过该序列，默认 0。
+        block_idx_last_scheduled_token (Tensor, optional): 最后调度 token 块索引，shape 为 [batch]，int32，默认 None。
+        initial_state_idx (Tensor, optional): 初始状态索引，shape 为 [batch]，int32，默认 None。
+
+    Returns:
+        Tensor: 卷积输出 y，shape 与 x 一致，dtype 与 x 一致。
+    """
+    return _causal_conv1d_update(
+        x, conv_state, weight,
+        bias=bias,
+        activation=activation,
+        conv_state_indices=conv_state_indices,
+        num_accepted_tokens=num_accepted_tokens,
+        query_start_loc=query_start_loc,
+        max_query_len=max_query_len,
+        null_block_id=null_block_id,
+        block_idx_last_scheduled_token=block_idx_last_scheduled_token,
+        initial_state_idx=initial_state_idx,
+    )
