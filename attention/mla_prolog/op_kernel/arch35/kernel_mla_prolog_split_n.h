@@ -2134,7 +2134,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcQrSplitN(const Dequa
     LocalTensor<float> scale2Local = dequantTool_.deQuantScaleCqLocal_;
     LocalTensor<mmQcQrOutputType> inputLocal = shareTmpUb.ReinterpretCast<mmQcQrOutputType>();
     LocalTensor<float> scaleLocal = inputLocal[count + FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<float>();
-    // outputLocal比scaleLocal占用UB少，且不会同时使用，故可以复用UB内存
     LocalTensor<mmQnInputType> outputLocal = scaleLocal[colQcSingle].template ReinterpretCast<mmQnInputType>();
 
     Rectangle dequantParams{
