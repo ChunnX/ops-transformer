@@ -351,7 +351,7 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::BalanceSche
 inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GenMetadata()
 {
     optiling::detail::SlikgMetadata* gradMetadataPtr =
-        static_cast<optiling::detail::SlikgMetadata*>metadata_->GetData();
+        static_cast<optiling::detail::SlikgMetadata*>(metadata_->GetData());
     uint32_t formerCoreProcessNum = CeilDiv(totalNum, aicCoreNum_);
     uint32_t remainCoreProcessNum = formerCoreProcessNum - 1;
     uint32_t remainCoreNum = formerCoreProcessNum * aicCoreNum_ - totalNum;
