@@ -30,6 +30,7 @@ constexpr uint32_t TILE_BYTES = 32U * 1024U;
 constexpr uint32_t HCOMM_INIT_SIZE = 512U;
 constexpr uint32_t READ_COMMIT_THRESHOLD = 64U;
 constexpr int32_t BITS_PER_BYTE = 8;
+constexpr uint32_t ALIGNED_LEN_256 = 256U;
 
 using namespace AscendC;
 using namespace Mc2Aclnn;
