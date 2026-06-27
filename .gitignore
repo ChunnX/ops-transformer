@@ -34,5 +34,3 @@ output/
 *.pyc
 __pycache__
 MANIFEST.in
-.claude/
-.opencode/
