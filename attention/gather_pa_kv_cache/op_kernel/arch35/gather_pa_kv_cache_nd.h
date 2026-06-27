@@ -28,18 +28,18 @@ static constexpr uint32_t THREADS = (sizeof(IDX_T) == 4) ? THREADS_FOR_32 : THRE
 // ===== VF kernel =====
 template <typename T_INDEX, bool IS_CUMSUM, bool HAS_SEQOFFSET>
 __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvNdContigVf(
-    int64_t batchCount, int64_t numTokens,
-    int32_t blockSize, int32_t numblkTabCol, int32_t tokenSizeK, int32_t tokenSizeV,
-    int32_t numBlocks,
+    int64_t batchStart, int64_t batchEnd, int64_t coreOffset,
+    int64_t numTokens, int32_t blockSize, int32_t numblkTabCol,
+    int32_t tokenSizeK, int32_t tokenSizeV, int32_t numBlocks,
     __gm__ uint8_t *keyCache, __gm__ uint8_t *valueCache,
     __gm__ T_INDEX *blockTables, __gm__ T_INDEX *seqLens, __gm__ T_INDEX *seqOffset,
     __gm__ uint8_t *keyOut, __gm__ uint8_t *valueOut)
 {
     uint64_t tid = static_cast<uint64_t>(threadIdx.x);
     uint64_t tNum = static_cast<uint64_t>(blockDim.x);
-    int64_t kvGmCoreOffset = 0;
+    int64_t kvGmCoreOffset = coreOffset;
 
-    for (int64_t i = 0; i < batchCount; i++) {
+    for (int64_t i = batchStart; i < batchEnd; i++) {
         int64_t seqLen;
         int64_t batchOffset;
         if (IS_CUMSUM) {
@@ -128,6 +128,8 @@ private:
 
     int64_t batchCount_, cacheBlockSize_, blockTableWidth_, numBlocks_, numTokens_;
     uint64_t hiddenSizeK_, hiddenSizeV_;
+    int64_t batchPerCore_;
+    uint32_t needCoreNum_;
 };
 
 template <typename T, typename T_INDEX, bool isC, bool isS>
@@ -140,6 +142,8 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
     blockTableWidth_ = tl_->blockTableWidth;
     numBlocks_       = tl_->numBlocks;
     numTokens_       = tl_->numTokens;
+    batchPerCore_    = tl_->batchPerCore;
+    needCoreNum_     = tl_->needCoreNum;
     hiddenSizeK_     = tl_->hiddenSizeK * sizeof(DTYPE_KEY_CACHE);   // elements -> bytes
     hiddenSizeV_     = tl_->hiddenSizeV * sizeof(DTYPE_KEY_CACHE);
 
@@ -155,8 +159,26 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
 template <typename T, typename T_INDEX, bool isC, bool isS>
 __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
 {
+    int64_t batchStart = static_cast<int64_t>(GetBlockIdx()) * batchPerCore_;
+    int64_t batchEnd   = batchStart + batchPerCore_;
+    if (GetBlockIdx() == needCoreNum_ - 1) {
+        batchEnd = batchCount_;
+    }
+    if (batchStart >= batchCount_) return;
+
+    // Compute cumulative token offset for the first batch of this core
+    T_INDEX coreOffset = 0;
+    if constexpr (isC) {
+        coreOffset = seqLensGm_[batchStart];
+    } else {
+        for (int64_t i = 0; i < batchStart; i++) {
+            coreOffset += seqLensGm_[i];
+        }
+    }
+
     asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREADS<T_INDEX>),
-        batchCount_, numTokens_,
+        batchStart, batchEnd, static_cast<int64_t>(coreOffset),
+        numTokens_,
         static_cast<int32_t>(cacheBlockSize_),
         static_cast<int32_t>(blockTableWidth_),
         static_cast<int32_t>(hiddenSizeK_),
