@@ -526,9 +526,9 @@ def planB_kernel3(
                             T.copy(QueryIndex[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, dq_s:dq_s + BLOCK_K], QI_L1)
                             T.gemm_v0(RGT_L1, QI_L1, DK_L0C, transpose_B=False, init=False)
 
-                        # Write accumulated dKeyIndex partial
-                        T.tile.atomic_add(
-                            dKeyIndexWS[bz, s1_row, k_start:k_end, dq_s:dq_s + BLOCK_K], DK_L0C)
+                        # Write dKeyIndex partial (non-overlapping K-blocks, no atomic needed)
+                        T.copy(DK_L0C,
+                               dKeyIndexWS[bz, s1_row, k_start:k_end, dq_s:dq_s + BLOCK_K])
 
                 T.set_cross_flag("FIX", 1)
 
