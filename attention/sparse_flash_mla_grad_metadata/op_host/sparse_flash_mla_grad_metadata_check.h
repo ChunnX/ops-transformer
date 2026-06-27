@@ -499,7 +499,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
     int64_t queryBatchSize = GetQueryBatchSizeSmlag(sequsedQOptional, cuSeqlensQOptional, layoutQOptional, batchSize);
     if (hasOriKv) {
         int64_t oriKvBatchSize = GetOriKvBatchSizeSmlag(sequsedOriKvOptional, cuSeqlensOriKvOptional, layoutKvOptional,
-                                                        batchSize);
+                                                         batchSize);
         if (queryBatchSize != oriKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, the batch_size obtained from q should be "
                     "the same as that obtained from ori_kv, but got %lld and %lld", queryBatchSize,
@@ -509,7 +509,7 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
     }
     if (hasCmpKv) {
         int64_t cmpKvBatchSize = GetCmpKvBatchSizeSmlag(sequsedCmpKvOptional, cuSeqlensCmpKvOptional, layoutKvOptional,
-                                                        batchSize);
+                                                         batchSize);
         if (queryBatchSize != cmpKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, the batch_size obtained from q should be "
                     "the same as that obtained from cmp_kv, but got %lld and %lld", queryBatchSize,
