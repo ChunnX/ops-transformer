@@ -662,6 +662,71 @@ protected:
     }
 
 public:
+    __aicore__ inline void LoadLseAndPreloadData(uint32_t startRow, uint32_t actualGSplitSize,
+        uint64_t taskOffset, uint32_t reduceMLoop, uint32_t reduceGlobaLoop)
+    {
+        WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
+        CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
+        SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
+        WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
+        if (unlikely(learnableSinkFlag)) {
+            CopySinkIn(reduceMLoop);
+        }
+        for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum; ++preLoadIdx) {
+            LocalTensor<T> mm2Res =
+                ((reduceGlobaLoop + preLoadIdx) & 1) == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
+            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
+            CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
+            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
+        }
+    }
+
+    __aicore__ inline void CopySoftmaxLseOutput(uint32_t actualGSplitSize, uint32_t startRow)
+    {
+        if (constInfo.isSoftmaxLseEnable) {
+            // lse行无效在ComputeScaleValue的VF计算时已经进行了赋值inf处理
+            LocalTensor<T> maxLseUb = fdLseUbBuf.Get<T>();
+            // 判断是否行无效
+            SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
+            WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
+            uint32_t mOffset = taskInfo.gS1Idx + startRow;
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+                uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
+                uint64_t bN2Offset =
+                    prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
+                DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(
+                    softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
+            } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+                uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
+                uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                uint64_t bN2Offset =
+                    prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
+                DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                    actualGSplitSize, constInfo, s1Size);
+            } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
+                uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
+                                     taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
+                uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                uint64_t s1LeftPaddingSize =
+                    constInfo.isQHasLeftPadding ?
+                        (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
+                        0;
+                DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                    actualGSplitSize, constInfo, s1LeftPaddingSize);
+            } else { // BNSD
+                uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
+                                     taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
+                uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                uint64_t s1LeftPaddingSize =
+                    constInfo.isQHasLeftPadding ?
+                        (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
+                        0;
+                DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                    actualGSplitSize, constInfo, qActSeqLens, s1LeftPaddingSize);
+            }
+        }
+    }
+
     __aicore__ inline void FlashDecode(FDparamsX &fd)
     {
         if (!fd.fdCoreEnable) {
@@ -694,63 +759,10 @@ public:
 
             LocalTensor<T> lseExp = fdLseExpBuf.Get<T>();
             LocalTensor<T> reduceOut = fdReduceBuf.Get<T>();
-            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
-            CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
-            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
-            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
-            if (unlikely(learnableSinkFlag)) {
-                CopySinkIn(reduceMLoop);
-            }
-            for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum; ++preLoadIdx) {
-                LocalTensor<T> mm2Res =
-                    ((reduceGlobaLoop + preLoadIdx) & 1) == 0 ? fdMm2ResBuf1.Get<T>() : fdMm2ResBuf2.Get<T>();
-                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
-                CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
-            }
+            LoadLseAndPreloadData(startRow, actualGSplitSize, taskOffset, reduceMLoop, reduceGlobaLoop);
             ComputeScaleValue(lseExp, actualGSplitSize, taskInfo.actualCombineLoopSize, reduceMLoop, startRow);
             CalcPreNextTokens();
-            if (constInfo.isSoftmaxLseEnable) {
-                // lse行无效在ComputeScaleValue的VF计算时已经进行了赋值inf处理
-                LocalTensor<T> maxLseUb = fdLseUbBuf.Get<T>();
-                // 判断是否行无效
-                SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
-                WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
-                uint32_t mOffset = taskInfo.gS1Idx + startRow;
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-                    uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
-                    uint64_t bN2Offset =
-                        prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
-                } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-                    uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
-                    uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                    uint64_t bN2Offset =
-                        prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                        actualGSplitSize, constInfo, s1Size);
-                } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-                    uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                         taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                    uint64_t s1LeftPaddingSize =
-                        constInfo.isQHasLeftPadding ?
-                            (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
-                            0;
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                        actualGSplitSize, constInfo, s1LeftPaddingSize);
-                } else { // BNSD
-                    uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                         taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                    uint64_t s1LeftPaddingSize =
-                        constInfo.isQHasLeftPadding ?
-                            (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
-                            0;
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                        actualGSplitSize, constInfo, qActSeqLens, s1LeftPaddingSize);
-                }
-            }
+            CopySoftmaxLseOutput(actualGSplitSize, startRow);
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
 
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; ++i) {
