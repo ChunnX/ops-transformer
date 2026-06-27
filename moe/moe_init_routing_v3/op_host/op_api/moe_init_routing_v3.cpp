@@ -25,37 +25,66 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(MoeInitRoutingV3);
 
-std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*> MoeInitRoutingV3(const aclTensor *x, const aclTensor *expertIdx, const aclTensor *scale, 
-                                                                            const aclTensor *offset, const aclTensor *topk_weight, int64_t activeNum, int64_t expertCapacity,
-                                                                            int64_t expertNum, int64_t dropPadMode, int64_t expertTokensNumType, 
-                                                                            bool expertTokensNumFlag, int64_t quantMode, const aclIntArray *activeExpertRange,
-                                                                            int64_t rowIdxType, const aclTensor *expandedX, const aclTensor *expandedRowIdx, 
-                                                                            const aclTensor *expertTokensCountOrCumsum,  const aclTensor *expandedScale, const aclTensor *expanded_topk_weight, aclOpExecutor *executor)
+std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>
+MoeInitRoutingV3(const aclTensor *x, const aclTensor *expertIdx,
+                 const aclTensor *scale, const aclTensor *offset,
+                 const aclTensor *topk_weight, int64_t activeNum,
+                 int64_t expertCapacity, int64_t expertNum, int64_t dropPadMode,
+                 int64_t expertTokensNumType, bool expertTokensNumFlag,
+                 int64_t quantMode, const aclIntArray *activeExpertRange,
+                 int64_t rowIdxType, const aclTensor *expandedX,
+                 const aclTensor *expandedRowIdx,
+                 const aclTensor *expertTokensCountOrCumsum,
+                 const aclTensor *expandedScale,
+                 const aclTensor *expanded_topk_weight,
+                 aclOpExecutor *executor)
 {
-    L0_DFX(MoeInitRoutingV3, x, expertIdx, scale, offset, topk_weight, activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
-            quantMode, activeExpertRange, rowIdxType, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, expanded_topk_weight);
-    
-    auto expandedXOut = executor->AllocTensor(expandedX->GetViewShape(), expandedX->GetDataType(), Format::FORMAT_ND); 
-    auto expandedRowIdxOut = executor->AllocTensor(expandedRowIdx->GetViewShape(), expandedRowIdx->GetDataType(), Format::FORMAT_ND);
-    auto expertTokensCountOrCumsumOut = executor->AllocTensor(expertTokensCountOrCumsum->GetViewShape(), expertTokensCountOrCumsum->GetDataType(), Format::FORMAT_ND);
-    auto expandedScaleOut = executor->AllocTensor(expandedScale->GetViewShape(), expandedScale->GetDataType(), Format::FORMAT_ND);
-    if (expandedXOut == nullptr || expandedRowIdxOut == nullptr || expertTokensCountOrCumsumOut == nullptr || expandedScaleOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "alloc expandedXOut or expandedRowIdxOut or expertTokensCountOrCumsumOut or expandedScaleOut tensor failed.");
-        return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(nullptr, nullptr, nullptr, nullptr, nullptr);
+    L0_DFX(MoeInitRoutingV3, x, expertIdx, scale, offset, topk_weight,
+           activeNum, expertCapacity, expertNum, dropPadMode,
+           expertTokensNumType, expertTokensNumFlag, quantMode,
+           activeExpertRange, rowIdxType, expandedX, expandedRowIdx,
+           expertTokensCountOrCumsum, expandedScale, expanded_topk_weight);
+
+    auto expandedXOut = executor->AllocTensor(expandedX->GetViewShape(), expandedX->GetDataType(),
+                                              Format::FORMAT_ND);
+    auto expandedRowIdxOut = executor->AllocTensor(expandedRowIdx->GetViewShape(), expandedRowIdx->GetDataType(),
+                                                   Format::FORMAT_ND);
+    auto expertTokensCountOrCumsumOut = executor->AllocTensor(expertTokensCountOrCumsum->GetViewShape(),
+                                                              expertTokensCountOrCumsum->GetDataType(),
+                                                              Format::FORMAT_ND);
+    auto expandedScaleOut = executor->AllocTensor(expandedScale->GetViewShape(), expandedScale->GetDataType(),
+                                                  Format::FORMAT_ND);
+    if (expandedXOut == nullptr || expandedRowIdxOut == nullptr ||
+        expertTokensCountOrCumsumOut == nullptr || expandedScaleOut == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                "alloc expandedXOut or expandedRowIdxOut or "
+                "expertTokensCountOrCumsumOut or expandedScaleOut tensor failed.");
+        return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
+            nullptr, nullptr, nullptr, nullptr, nullptr);
     }
 
     // Optional输出expanded_topk_weight: 如非空则AllocTensor
     aclTensor* expandedTopkWeightOut = nullptr;
     if (expanded_topk_weight != nullptr) {
-        expandedTopkWeightOut = executor->AllocTensor(expanded_topk_weight->GetViewShape(), expanded_topk_weight->GetDataType(), Format::FORMAT_ND);
+        expandedTopkWeightOut = executor->AllocTensor(expanded_topk_weight->GetViewShape(),
+                                                      expanded_topk_weight->GetDataType(),
+                                                      Format::FORMAT_ND);
         if (expandedTopkWeightOut == nullptr) {
-            return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(nullptr, nullptr, nullptr, nullptr, nullptr);
+            return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
+                nullptr, nullptr, nullptr, nullptr, nullptr);
         }
     }
 
     ADD_TO_LAUNCHER_LIST_AICORE(
-        MoeInitRoutingV3, OP_INPUT(x, expertIdx, scale, offset, topk_weight), OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, expandedTopkWeightOut), OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType));
-    return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, expandedTopkWeightOut);
+        MoeInitRoutingV3,
+        OP_INPUT(x, expertIdx, scale, offset, topk_weight),
+        OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut,
+                  expandedTopkWeightOut),
+        OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
+                quantMode, activeExpertRange, rowIdxType));
+    return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
+        expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut,
+        expandedScaleOut, expandedTopkWeightOut);
 }
 
 }  // namespace l0op
