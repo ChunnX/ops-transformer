@@ -155,7 +155,7 @@ struct WorkspaceInfo {
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
 
         // Conditional allocation for A8W4 / combine-quant paths.
-        // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / CombineQuantMode) 一致，
+        // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
         // 由 TilingKey 保证同步。
         // A8W4-only: cumsum GM backup and GMM1 intermediate result.
         cumsumInfoPtr = nullptr;
