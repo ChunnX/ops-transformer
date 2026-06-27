@@ -131,10 +131,11 @@ template <typename LIT>
 __aicore__ inline void LIGMatmul<LIT>::Init(TPipe *pipeIn)
 {
     pipe = pipeIn;
-
+#if __CCE_AICORE__ == 310
+#else
     AscendC::SetLoadDataPaddingValue<uint64_t>(0);
     AscendC::SetNdParaImpl(0x1);
-    
+#endif
     InitBuffers();
 
     commonFixpipeParamsV220.quantPre = QuantMode_t::NoQuant;
@@ -233,15 +234,27 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube1(GlobalTensor<dataType> leftMatrixG
     // load A matrix from L1 -> L0A
     WaitFlag<HardEvent::MTE2_MTE1>(A_FLAG_SHIFT);
     WaitFlag<HardEvent::M_MTE1>(A_CONFLICT_FLAG_SHIFT);
+#if __CCE_AICORE__ == 310
+    AscendC::LoadData2DParamsV2 loadParamsA1;
+    loadParamsA1.mStartPosition = 0;
+    loadParamsA1.kStartPosition = 0;
+    loadParamsA1.mStep = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+    loadParamsA1.kStep = RoundUp(baseK, C0_SIZE) / C0_SIZE;
+    loadParamsA1.srcStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+    loadParamsA1.dstStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+    loadParamsA1.ifTranspose = false;
+    AscendC::LoadData(leftMatrixL0APingTensor, leftMatrixL1PingTensor, loadParamsA1);
+#else
     commonLoadData2dParamsNoTranspose.repeatTimes = baseK / C0_SIZE;
     commonLoadData2dParamsNoTranspose.srcStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
     for (int32_t i = 0; i < RoundUp(baseM, C0_SIZE) / C0_SIZE; i++) {
         AscendC::LoadData(
-            leftMatrixL0APingTensor[i * C0_SIZE * baseK], 
+            leftMatrixL0APingTensor[i * C0_SIZE * baseK],
             leftMatrixL1PingTensor[i * C0_SIZE * C0_SIZE],
             commonLoadData2dParamsNoTranspose
         );
     }
+#endif
     SetFlag<HardEvent::MTE1_MTE2>(A_FLAG_SHIFT);
     SetFlag<HardEvent::MTE1_M>(A_FLAG_SHIFT);
 
@@ -372,15 +385,27 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube2(GlobalTensor<dataType> leftMatrixG
     // load A matrix from L1 -> L0A
     WaitFlag<HardEvent::MTE2_MTE1>(A_FLAG_SHIFT);
     WaitFlag<HardEvent::M_MTE1>(A_CONFLICT_FLAG_SHIFT);
+#if __CCE_AICORE__ == 310
+    AscendC::LoadData2DParamsV2 loadParamsA2;
+    loadParamsA2.mStartPosition = 0;
+    loadParamsA2.kStartPosition = 0;
+    loadParamsA2.mStep = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+    loadParamsA2.kStep = RoundUp(baseK, C0_SIZE) / C0_SIZE;
+    loadParamsA2.srcStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+    loadParamsA2.dstStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+    loadParamsA2.ifTranspose = false;
+    AscendC::LoadData(leftMatrixL0APingTensor, leftMatrixL1PingTensor, loadParamsA2);
+#else
     commonLoadData2dParamsNoTranspose.repeatTimes = baseK / C0_SIZE;
     commonLoadData2dParamsNoTranspose.srcStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
     for (int32_t i = 0; i < RoundUp(baseM, C0_SIZE) / C0_SIZE; i++) {
         AscendC::LoadData(
-            leftMatrixL0APingTensor[i * C0_SIZE * baseK], 
+            leftMatrixL0APingTensor[i * C0_SIZE * baseK],
             leftMatrixL1PingTensor[i * C0_SIZE * C0_SIZE],
             commonLoadData2dParamsNoTranspose
         );
     }
+#endif
     SetFlag<HardEvent::MTE1_MTE2>(A_FLAG_SHIFT);
     SetFlag<HardEvent::MTE1_M>(A_FLAG_SHIFT);
 
@@ -515,15 +540,27 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube3(GlobalTensor<dataType> leftMatrixG
         // load A matrix from L1 -> L0A
         WaitFlag<HardEvent::MTE2_MTE1>(A_FLAG_SHIFT + leftMatrixPingPong);
         WaitFlag<HardEvent::M_MTE1>(A_CONFLICT_FLAG_SHIFT + leftMatrixPingPong);
+#if __CCE_AICORE__ == 310
+        AscendC::LoadData2DParamsV2 loadParamsA;
+        loadParamsA.mStartPosition = 0;
+        loadParamsA.kStartPosition = 0;
+        loadParamsA.mStep = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+        loadParamsA.kStep = RoundUp(realK, C0_SIZE) / C0_SIZE;
+        loadParamsA.srcStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+        loadParamsA.dstStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
+        loadParamsA.ifTranspose = false;
+        AscendC::LoadData(leftMatrixL0ATensor, leftMatrixL1Tensor, loadParamsA);
+#else
         commonLoadData2dParamsNoTranspose.repeatTimes = RoundUp(realK, C0_SIZE) / C0_SIZE;
         commonLoadData2dParamsNoTranspose.srcStride = RoundUp(baseM, C0_SIZE) / C0_SIZE;
         for (int32_t i = 0; i < RoundUp(baseM, C0_SIZE) / C0_SIZE; i++) {
             AscendC::LoadData(
-                leftMatrixL0ATensor[i * C0_SIZE * RoundUp(realK, C0_SIZE)], 
+                leftMatrixL0ATensor[i * C0_SIZE * RoundUp(realK, C0_SIZE)],
                 leftMatrixL1Tensor[i * C0_SIZE * C0_SIZE],
                 commonLoadData2dParamsNoTranspose
             );
         }
+#endif
         SetFlag<HardEvent::MTE1_MTE2>(A_FLAG_SHIFT + leftMatrixPingPong);
         SetFlag<HardEvent::MTE1_M>(A_FLAG_SHIFT + leftMatrixPingPong);
 
@@ -676,6 +713,29 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube4(GlobalTensor<dataType> leftMatrixG
         // load A matrix from L1 -> L0A
         WaitFlag<HardEvent::MTE2_MTE1>(A_FLAG_SHIFT + leftMatrixPingPong);
         WaitFlag<HardEvent::M_MTE1>(A_CONFLICT_FLAG_SHIFT + leftMatrixPingPong);
+#if __CCE_AICORE__ == 310
+        /*
+         * Load A matrix with transpose: src in L1 is [baseK x realM] = [G x realM],
+         * dst in L0A should be [realM x G] after transpose.
+         * mSizeAlign = Align(G, 16), kSizeAlign = Align(realM, 16)
+         * Reference ZN pattern: kStep = kSizeAlign/16, srcStride = mSizeAlign/16
+         */
+        AscendC::LoadData2DParamsV2 loadParams;
+        loadParams.kStartPosition = 0;
+        loadParams.mStep = 1;
+        loadParams.kStep = LIGCommon::Align(realM, C0_SIZE) / C0_SIZE;
+        loadParams.srcStride = LIGCommon::Align(baseK, C0_SIZE) / C0_SIZE;
+        loadParams.dstStride = 1;
+        loadParams.ifTranspose = true;
+        for (int i = 0; i < LIGCommon::Align(baseK, C0_SIZE) / C0_SIZE; i++) {
+            loadParams.mStartPosition = i;
+            AscendC::LoadData(
+                leftMatrixL0ATensor[i * LIGCommon::Align(realM, C0_SIZE) * C0_SIZE],
+                leftMatrixL1Tensor,
+                loadParams
+            );
+        }
+#else
         commonLoadData2dParamsTranspose.repeatTimes = (LIGCommon::Align(realM, C0_SIZE) / C0_SIZE) * (LIGCommon::Align(baseK, C0_SIZE) / C0_SIZE);
         commonLoadData2dParamsTranspose.srcStride = 1;
         AscendC::LoadData(
@@ -683,6 +743,7 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube4(GlobalTensor<dataType> leftMatrixG
             leftMatrixL1Tensor,
             commonLoadData2dParamsTranspose
         );
+#endif
         SetFlag<HardEvent::MTE1_MTE2>(A_FLAG_SHIFT + leftMatrixPingPong);
         SetFlag<HardEvent::MTE1_M>(A_FLAG_SHIFT + leftMatrixPingPong);
 
