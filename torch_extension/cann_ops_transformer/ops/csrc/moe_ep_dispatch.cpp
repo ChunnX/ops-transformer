@@ -35,8 +35,6 @@ tensor_list npu_moe_ep_dispatch(const at::Tensor &context, const at::Tensor &x, 
 
     bool any_cached = cached_handle_dst_buffer_slot_idx.has_value();
     TORCH_CHECK(!(any_cached && do_cpu_sync), "cached mode is incompatible with do_cpu_sync=True");
-    // TORCH_CHECK(any_cached || (topk_idx.has_value() && topk_weights.has_value()),
-    //             "non-cached path requires topk_idx and topk_weights");
 
     auto x_size = x.sizes();
     int64_t num_tokens = x_size[0];
