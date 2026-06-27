@@ -37,7 +37,7 @@ public:
         const auto& tiling = *this->tilingData_;
         this->rowsPerBlock = tiling.rowsPerBlock;
         const uint64_t seqLen = tiling.seqLength;
-        const uint64_t numHead = (methodMode == NUM_ONE) ? tiling.numHead : NUM_ONE;    // V1 does not support multi-head (N>1)
+        const uint64_t numHead = (methodMode == METHOD_V2) ? tiling.numHead : NUM_ONE;    // V1 does not support multi-head (N>1)
         const uint64_t cacheLen = tiling.cacheLength;
         const uint64_t rmsNormLen = this->RMS_NORM_LENGTH;
         const uint64_t ropeLen = this->ROPE_LENGTH;
@@ -119,9 +119,9 @@ public:
             this->pipe_->InitBuffer(this->inQueueV, 1, this->vElemPerSlice 
                 * sizeof(float));  // vElemPerSlice * 4 / 1024 = vElemPerSlice / 256
             
-            //  shared buffer for Rope MTE2 and VEC computation in fp32
+            //  shared buffer for Rope MTE2 (in kv_type) and VEC computation in fp32
             this->pipe_->InitBuffer(this->CosSin, 1, NUM_TWO * this->ropeElemPerSlice 
-                * (sizeof(float) / sizeof(KV_DTYPE)));    
+                * sizeof(float));   // 2 * (b * D_rope) * 4 / 1024 = (b * D_rope) / 128  
         }
     }
 
@@ -138,7 +138,7 @@ public:
                 ScatterUpdateV(i);
             }
         } else if (methodMode == 1) {
-            for (int64_t n = 0; n < this->tilingData_->numHead; n++) {
+            for (uint64_t n = 0; n < this->tilingData_->numHead; n++) {
                 for (int64_t i = 0; i < this->tilingData_->seqLength; i++) {
                     // Process K
                     LocalTensor<KV_DTYPE> xB16Local = this->inQueueX.template AllocTensor<KV_DTYPE>();
