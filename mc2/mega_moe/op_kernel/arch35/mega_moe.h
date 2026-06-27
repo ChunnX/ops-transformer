@@ -907,7 +907,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         }
     } else if constexpr(Mode == AddrUpdateMode::kGmm2) {
         // guard 与 WorkspaceInfo 分配条件一致，由 TilingKey 保证同步。
-        if constexpr (ENABLE_A4W4 || CombineQuantMode != COMBINE_NO_QUANT) {
+        if constexpr (ENABLE_A8W4 || ENABLE_A4W4 || CombineQuantMode != COMBINE_NO_QUANT) {
             gmmAddrInfo.gmm2OutGlobal =
                 params_.workspaceInfo.gmm2MmadResPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
