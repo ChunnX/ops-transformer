@@ -87,8 +87,8 @@ __aicore__ inline void Process(
     uint64_t elemSizeK = sizeof(DTYPE_KEY);
     uint64_t elemSizeV = sizeof(DTYPE_VALUE);
 
-    PRINTF("[SIMT-ND] core=%d batchCount=%ld blockTableWidth=%ld numTokens=%ld nonContiguousFlag=%u hiddenSizeK=%lu hiddenSizeV=%lu\n",
-           GetBlockIdx(), batchCount, blockTableWidth, numTokens, nonContiguousFlag, hiddenSizeK, hiddenSizeV);
+    PRINTF("[SIMT-ND] core=%d batchCount=%ld blockTableWidth=%ld numTokens=%ld nonContiguousFlag=%u hiddenSizeK=%lu hiddenSizeV=%lu cacheBlockSize=%ld\n",
+           GetBlockIdx(), batchCount, blockTableWidth, numTokens, nonContiguousFlag, hiddenSizeK, hiddenSizeV, cacheBlockSize);
 
     // Non-contiguous: global block round-robin distribution (uses full core count)
     if (nonContiguousFlag != 0) {
@@ -304,6 +304,18 @@ __aicore__ inline void Process(
                     PRINTF(" %ld", static_cast<int64_t>(seqLensGm[k]));
                 }
                 PRINTF("\n");
+                if (hasSeqOffset) {
+                    PRINTF("[SIMT-SEQOFF]");
+                    for (int64_t k = 0; k < batchCount && k < 10; k++) {
+                        PRINTF(" %ld", static_cast<int64_t>(seqOffGm[k]));
+                    }
+                    PRINTF("\n");
+                }
+                PRINTF("[SIMT-BLKTBL]");
+                for (int64_t k = 0; k < 5 && k < blockTableWidth; k++) {
+                    PRINTF(" %ld", static_cast<int64_t>(blockTablesGm[static_cast<uint64_t>(blockTableWidth)*static_cast<uint64_t>(i) + static_cast<uint64_t>(k)]));
+                }
+                PRINTF("\n");
             }
         }
 
@@ -334,8 +346,8 @@ __aicore__ inline void Process(
             uint64_t kCnt = curSize * hiddenSizeK;
             uint64_t vCnt = curSize * hiddenSizeV;
             if (i == batchStart && blkIdx < 2) {
-                PRINTF("[SIMT-BLK] i=%ld blk=%lu blockId=%ld fillZero=%u curSize=%lu keySrcBase=%lu keyOff=%lu kCnt=%lu vCnt=%lu\n",
-                       i, blkIdx, blockId, fillZero, curSize, keySrcBase, keyOff, kCnt, vCnt);
+                PRINTF("[SIMT-BLK] i=%ld blk=%lu tblOff=%lu blockId=%ld fillZero=%u curSize=%lu keySrcBase=%lu keyOff=%lu kCnt=%lu hiddenSizeK=%lu cacheBlockSize=%ld numHeadsK=%lu\n",
+                       i, blkIdx, tblOff, blockId, fillZero, curSize, keySrcBase, keyOff, kCnt, hiddenSizeK, cacheBlockSize, numHeadsK);
             }
             asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), kCnt,
                                                outKeyGm + keyOff,
