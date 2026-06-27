@@ -88,9 +88,9 @@ struct PeermemInfo {
         int64_t totalServers = tilingData->epWorldSize; // 最坏 case: rankSizePerServer=1
         URMADispatchL1RecvPtr = URMACombineWinPtr +
             Ops::Base::CeilAlign(
-                (int64_t)(tilingData->bs) * (tokenBytes + sizeof(int32_t)) * tilingData->expertPerRank * tilingData->epWorldSize,
+                (int64_t)((tilingData->bs * (tokenBytes + sizeof(int32_t)) * tilingData->expertPerRank * tilingData->epWorldSize),
                 (int64_t)ALIGN_512) + // combineSend 区实际大小 (用简化公式)
-            Ops::Base::CeilAlign(totalServers * l1RecvPerServer, ALIGN_512);
+            Ops::Base::CeilAlign(static_cast<int64_t>(totalServers * l1RecvPerServer), static_cast<int64_t>(ALIGN_512));
     }
 };
 
