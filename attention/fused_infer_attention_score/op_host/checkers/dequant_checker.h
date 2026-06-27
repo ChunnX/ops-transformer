@@ -71,24 +71,6 @@ private:
     ge::graphStatus CheckDequantScaleKVMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleQueryMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapePertensor(const FiaTilingInfo &fiaInfo) const;
-    ge::graphStatus CheckDequantScaleShapeMXFP8Query4D(const FiaTilingInfo &fiaInfo,
-        const gert::Shape &queryInputShape, const gert::Shape &dequantScaleQueryShape, int64_t mxfp8BlockSize);
-    ge::graphStatus CheckDequantScaleShapeMXFP8Query5D(const FiaTilingInfo &fiaInfo,
-        const gert::Shape &queryInputShape, const gert::Shape &dequantScaleQueryShape, int64_t mxfp8BlockSize);
-    ge::graphStatus CheckDequantScaleShapeMXFP8Query(const FiaTilingInfo &fiaInfo,
-        const gert::Shape &queryInputShape, const gert::Shape &dequantScaleQueryShape,
-        uint32_t dequantScaleQueryDimNum, int64_t mxfp8BlockSize, bool enableMxfp8Decode);
-    ge::graphStatus CheckDequantScaleShapeMXFP8KVPA(const FiaTilingInfo &fiaInfo,
-        const gert::Shape &keyInputShape, const gert::Shape &valueInputShape,
-        uint32_t keyDimNum, uint32_t valueDimNum, int32_t &dimIndex);
-    ge::graphStatus CheckDequantScaleShapeMXFP8KVNonPA(const FiaTilingInfo &fiaInfo,
-        const gert::Shape &keyInputShape, const gert::Shape &valueInputShape,
-        const gert::Shape &keyAntiquantScaleShape, const gert::Shape &valueAntiquantScaleShape,
-        int64_t mxfp8BlockSize);
-    ge::graphStatus CheckDequantScaleShapeMXFP8KV(const FiaTilingInfo &fiaInfo,
-        const gert::Shape &keyInputShape, const gert::Shape &valueInputShape,
-        const gert::Shape &keyAntiquantScaleShape, const gert::Shape &valueAntiquantScaleShape,
-        uint32_t keyDimNum, uint32_t valueDimNum, int64_t mxfp8BlockSize, int32_t &dimIndex);
     ge::graphStatus CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleNZShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
