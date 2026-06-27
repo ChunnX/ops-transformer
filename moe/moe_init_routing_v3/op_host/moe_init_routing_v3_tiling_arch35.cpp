@@ -2070,13 +2070,17 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
             int64_t inputXInSpace = inputXDtypeSize_ == static_cast<int64_t>(sizeof(float)) ?
                                     AlignBytes(cols_, sizeof(float)) :
                                     BF16_TO_FP32_SIZE_FACTOR * AlignBytes(cols_, inputXDtypeSize_);
+            inputXInSpace *= NUM_TWO;
             int64_t smoothInSpace = AlignBytes(cols_, sizeof(float));
             // INT4 output is cols/2 bytes (2 INT4 values packed per byte).
             int64_t inputXOutSpace = AlignBytes(Ops::Base::CeilDiv(cols_, NUM_TWO), sizeof(int8_t));
             int64_t calcSpace = AlignBytes(cols_, sizeof(float));
-            int64_t outBatchSpace = AlignBytes(cols_, sizeof(float));
+            int64_t outBatchSpace = NUM_TWO * AlignBytes(cols_, sizeof(float));
+            int64_t scaleBatchSpace = NUM_TWO * UB_BLOCK_SIZE;
             int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
-            remainUb -= (inputXInSpace + smoothInSpace + calcSpace + outBatchSpace + inputXOutSpace + scaleOutSpace);
+            remainUb -=
+                (inputXInSpace + smoothInSpace + calcSpace + outBatchSpace + scaleBatchSpace + inputXOutSpace +
+                 scaleOutSpace);
         } else {
             int64_t xAlignedCount = Align(cols_, UB_BLOCK_SIZE);
             int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
