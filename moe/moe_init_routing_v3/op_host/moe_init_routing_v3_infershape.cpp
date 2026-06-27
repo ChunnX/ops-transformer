@@ -866,14 +866,19 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
                           experNum, expertCapacity, cols);
 
     gert::Shape *expandedTopkWeightShape = context->GetOutputShape(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_TOPK_WEIGHT);
-    if (topkWeightShape != nullptr && expandedTopkWeightShape != nullptr) {
-        int64_t topkWeightOutNum = xOutNum;
-        if (dropPadMode == DropPadMode::DROP_PAD) {
-            topkWeightOutNum = experNum * expertCapacity;
+    if (expandedTopkWeightShape != nullptr) {
+        if (topkWeightShape != nullptr) {
+            int64_t topkWeightOutNum = xOutNum;
+            if (dropPadMode == DropPadMode::DROP_PAD) {
+                topkWeightOutNum = experNum * expertCapacity;
+            }
+            expandedTopkWeightShape->SetDimNum(DIM_TWO);
+            expandedTopkWeightShape->SetDim(0U, topkWeightOutNum);
+            expandedTopkWeightShape->SetDim(DIM_ONE, DIM_ONE);
+        } else {
+            expandedTopkWeightShape->SetDimNum(DIM_ONE);
+            expandedTopkWeightShape->SetDim(0U, 0);
         }
-        expandedTopkWeightShape->SetDimNum(DIM_TWO);
-        expandedTopkWeightShape->SetDim(0U, topkWeightOutNum);
-        expandedTopkWeightShape->SetDim(DIM_ONE, DIM_ONE);
     }
 
     ShowOutputShapeInfo(context, expandedXShape, expandedRowIdxShape, expertTokenCumsumOrCountShape,
