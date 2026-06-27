@@ -211,36 +211,30 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
     <td>当配置此输入时的元素要求：<ul><li>必须包含至少两个元素 [blockShapeX, blockShapeY]。</li><li>blockShapeX: Q方向块大小，值必须大于0。</li><li>blockShapeY: KV方向块大小，值必须大于0。</li></ul></td>
     </tr>
     <tr>
-    <td rowspan="2">actualSeqLengthsOptional（aclIntArray*）</td>
-    <td rowspan="2">输入</td>
-    <td rowspan="2">query的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 query token 数量。</td>
+    <td>actualSeqLengthsOptional（aclIntArray*）</td>
+    <td>输入</td>
+    <td>query的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 query token 数量。</td>
     <td> 变长序列场景（当 qInputLayout 为 "TND" 时）：该项输入必须配置。因为 TND 格式为一维连续排布，算子需要依赖该数组来准确切分界定各个序列的真实边界。</td>
-    <td rowspan="2">INT64</td>
-    <td rowspan="2">-</td>
-    <td rowspan="2">1</td>
-    <td rowspan="2">-</td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>1</td>
+    <td>-</td>
     </tr>
     <tr>
-    <td>定长/变长场景（当 qInputLayout 为 "BNSD" 时）：<ul><li>如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；</li><li>如不配置（传 nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。</li></ul></td>
-    </tr>
-    <tr>
-    <td rowspan="2">actualSeqLengthsKvOptional（aclIntArray*）</td>
-    <td rowspan="2">输入</td>
-    <td rowspan="2">key/value的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 key/value token 数量。</td>
+    <td>actualSeqLengthsKvOptional（aclIntArray*）</td>
+    <td>输入</td>
+    <td>key/value的实际序列长度数组。<br>用于描述变长序列场景下（即含有 Padding 填充数据的场景），每个 Batch 中实际有效的 key/value token 数量。</td>
     <td> 变长序列场景（当 kvInputLayout 为 "TND" 时）：该项输入必须配置。因为 TND 格式为一维连续排布，算子需要依赖该数组来准确切分界定各个序列的真实边界。</td>
-    <td rowspan="2">INT64</td>
-    <td rowspan="2">-</td>
-    <td rowspan="2">1</td>
-    <td rowspan="2">-</td>
-    </tr>
-    <tr>
-    <td> 定长/变长场景（当 kvInputLayout 为 "BNSD" 时）：<ul><li>如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；</li><li>如不配置（传 nullptr），算子将默认把 key/value shape 中的 S 维度作为有效长度进行全量处理。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>1</td>
+    <td>-</td>
     </tr>
     <tr>
     <td>qInputLayout（char*）</td>
     <td>输入</td>
     <td>query的数据排布格式。指示输入张量在内存中的具体排布（如连续或合轴排列）。</td>
-    <td>当前仅支持"TND"、"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
+    <td>当前仅支持"TND"、"BNSD"、"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -250,7 +244,7 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
     <td>kvInputLayout（char*）</td>
     <td>输入</td>
     <td>key和value的数据排布格式。指示输入张量在内存中的具体排布。</td>
-    <td>当前仅支持"TND"、"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
+    <td>当前仅支持"TND"、"BNSD"、"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
     <td>-</td>
     <td>-</td>
     <td>-</td>
@@ -371,8 +365,16 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 * softmaxLse的layout需要与query的layout保持一致。如果query的layout为"BSND"时，softmaxLse的layout应传入"BNS1"。
 * HeadDim必须等于128。
 * 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足N1 % N2 == 0。
-- <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>:
-当前只支持MHA，即N1等于N2。
+  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当前只支持MHA，即N1等于N2。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持MQA、MHA、GQA场景。
+* actualSeqLengthsOptional与actualSeqLengthsKvOptional相关约束：
+
+  - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>：当 qInputLayout或kvInputLayout 为 "BNSD" 时，如配置该项，算子会按指定的有效长度处理，忽略 Padding 部分的数据，提升性能；如不配置（传 nullptr），算子将默认把 query shape 中的 S 维度作为有效长度进行全量处理。
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为 非"TND"时，会忽略这两个入参。
+
+
+
 </ul>
 
 ## 调用说明
