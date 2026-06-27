@@ -130,8 +130,8 @@ def npu_get_mega_moe_ccl_buffer_size(
 ) -> int:
     def inline_align(val, align):
         return (val + align - 1) // align * align
-    torch._check(((ep_world_size >= 2) and (ep_world_size <= 768)),
-                     lambda: (f"ep_world_size only support in [2, 768], but got {ep_world_size=}."))
+    torch._check(((ep_world_size >= 2) and (ep_world_size <= 1024)),
+                     lambda: (f"ep_world_size only support in [2, 1024], but got {ep_world_size=}."))
     torch._check(((hidden >= 1024) and (hidden <= 8192)),
                     lambda: (f"hidden only support in [1024, 8192], but got {hidden=}."))
     torch._check(((num_max_tokens_per_rank >= 1) and (num_max_tokens_per_rank <= 512)),
