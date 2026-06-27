@@ -439,7 +439,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     OP_LOGD(context->GetNodeName(), "speUb is %ld, totalUbSize is %ld", speUb, params.totalUbSize);
 
     // 小shape，每核处理一个batch；部分维度旋转不走Small路径
-    if (params.preCoreBatch == 1 && speUb <= params.totalUbSize && params.qDim3 == params.lastDim) {
+    if (params.preCoreBatch == 1 && speUb <= params.totalUbSize) {
         params.tilingKey = static_cast<int64_t>(ApplyRotaryPosEmbTilingKey::TILINGKEY_SMALL);
         params.mulNum = params.qkcNum * params.lastDim;
         params.blockLenQ = params.halfNum / params.oneBlockFp32; // D/2 占用block数，搬运
