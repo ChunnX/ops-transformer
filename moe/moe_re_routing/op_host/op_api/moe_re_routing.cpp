@@ -17,6 +17,7 @@
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_util.h"
 
 using namespace op;
 
@@ -53,21 +54,27 @@ MoeReRouting(const aclTensor *tokens, const aclTensor *expertTokenNumPerRank,
     }
 
     aclTensor* permuteTopkWeightOut = nullptr;
-    if (permuteTopkWeight != nullptr) {
-        permuteTopkWeightOut = executor->AllocTensor(
-            permuteTopkWeight->GetViewShape(), permuteTopkWeight->GetDataType(), Format::FORMAT_ND);
-        if (permuteTopkWeightOut == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "alloc permuteTopkWeightOut tensor failed.");
-            return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
-                nullptr, nullptr, nullptr, nullptr, nullptr);
+    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+        if (permuteTopkWeight != nullptr) {
+            permuteTopkWeightOut = executor->AllocTensor(
+                permuteTopkWeight->GetViewShape(), permuteTopkWeight->GetDataType(), Format::FORMAT_ND);
+            if (permuteTopkWeightOut == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "alloc permuteTopkWeightOut tensor failed.");
+                return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
+                    nullptr, nullptr, nullptr, nullptr, nullptr);
+            }
         }
+        ADD_TO_LAUNCHER_LIST_AICORE(MoeReRouting,
+            OP_INPUT(tokens, expertTokenNumPerRank, perTokenScales, expertTopkWeight),
+            OP_OUTPUT(permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut,
+                      expertTokenNumOut, permuteTopkWeightOut),
+            OP_ATTR(expertTokenNumType, idxType));
+    } else {
+        ADD_TO_LAUNCHER_LIST_AICORE(MoeReRouting,
+            OP_INPUT(tokens, expertTokenNumPerRank, perTokenScales),
+            OP_OUTPUT(permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut, expertTokenNumOut),
+            OP_ATTR(expertTokenNumType, idxType));
     }
-
-    ADD_TO_LAUNCHER_LIST_AICORE(MoeReRouting,
-        OP_INPUT(tokens, expertTokenNumPerRank, perTokenScales, expertTopkWeight),
-        OP_OUTPUT(permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut,
-                  expertTokenNumOut, permuteTopkWeightOut),
-        OP_ATTR(expertTokenNumType, idxType));
     return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
         permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut,
         expertTokenNumOut, permuteTopkWeightOut);

@@ -19,6 +19,7 @@
 #include "opdev/shape_utils.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_util.h"
 
 using namespace op;
 
@@ -63,25 +64,32 @@ MoeInitRoutingV3(const aclTensor *x, const aclTensor *expertIdx,
             nullptr, nullptr, nullptr, nullptr, nullptr);
     }
 
-    // Optional输出expanded_topk_weight: 如非空则AllocTensor
     aclTensor* expandedTopkWeightOut = nullptr;
-    if (expanded_topk_weight != nullptr) {
-        expandedTopkWeightOut = executor->AllocTensor(expanded_topk_weight->GetViewShape(),
-                                                      expanded_topk_weight->GetDataType(),
-                                                      Format::FORMAT_ND);
-        if (expandedTopkWeightOut == nullptr) {
-            return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
-                nullptr, nullptr, nullptr, nullptr, nullptr);
+    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+        if (expanded_topk_weight != nullptr) {
+            expandedTopkWeightOut = executor->AllocTensor(expanded_topk_weight->GetViewShape(),
+                                                          expanded_topk_weight->GetDataType(),
+                                                          Format::FORMAT_ND);
+            if (expandedTopkWeightOut == nullptr) {
+                return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
+                    nullptr, nullptr, nullptr, nullptr, nullptr);
+            }
         }
+        ADD_TO_LAUNCHER_LIST_AICORE(
+            MoeInitRoutingV3,
+            OP_INPUT(x, expertIdx, scale, offset, topk_weight),
+            OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut,
+                      expandedTopkWeightOut),
+            OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
+                    quantMode, activeExpertRange, rowIdxType));
+    } else {
+        ADD_TO_LAUNCHER_LIST_AICORE(
+            MoeInitRoutingV3,
+            OP_INPUT(x, expertIdx, scale, offset),
+            OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut),
+            OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
+                    quantMode, activeExpertRange, rowIdxType));
     }
-
-    ADD_TO_LAUNCHER_LIST_AICORE(
-        MoeInitRoutingV3,
-        OP_INPUT(x, expertIdx, scale, offset, topk_weight),
-        OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut,
-                  expandedTopkWeightOut),
-        OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
-                quantMode, activeExpertRange, rowIdxType));
     return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
         expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut,
         expandedScaleOut, expandedTopkWeightOut);

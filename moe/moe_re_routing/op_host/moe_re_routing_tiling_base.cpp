@@ -46,7 +46,7 @@ static const std::set<ge::DataType> EXPERT_TOKEN_NUM_DTYPE = {ge::DT_INT32, ge::
 static const std::set<ge::DataType> SCALE_DTYPE = {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
 
 static std::tuple<int64_t, int64_t> GetShapeTuple(const gert::TilingContext *context, const int64_t index = 0,
-                                                 const bool isOptional = false)
+    const bool isOptional = false)
 {
     const gert::StorageShape *shapePtr = isOptional ? context->GetOptionalInputShape(index) :
                                                       context->GetInputShape(index);
@@ -61,7 +61,7 @@ static std::tuple<int64_t, int64_t> GetShapeTuple(const gert::TilingContext *con
 }
 
 static std::tuple<int64_t, int64_t, int64_t> GetShapeTupleN(const gert::TilingContext *context, const int64_t index = 0,
-                                                           const bool isOptional = false)
+    const bool isOptional = false)
 {
     const gert::StorageShape *shapePtr = isOptional ? context->GetOptionalInputShape(index) :
                                                       context->GetInputShape(index);
