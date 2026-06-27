@@ -46,12 +46,6 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
     uint64_t tNum = static_cast<uint64_t>(blockDim.x);
     int64_t kvGmCoreOffset = 0;
 
-    if (tid == 0) {
-        AscendC::printf("[SIMT VF ENTER] batchCount=%lld numTokens=%lld bs=%d btW=%d tszK=%d tszV=%d nBlk=%d\n",
-                        (long long)batchCount, (long long)numTokens, (int)blockSize, (int)numblkTabCol,
-                        (int)tokenSizeK, (int)tokenSizeV, (int)numBlocks);
-    }
-
     for (int64_t i = 0; i < batchCount; i++) {
         int64_t seqLen;
         int64_t batchOffset;
@@ -83,11 +77,6 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
             seqOff = static_cast<int64_t>(seqOffset[i]) / blockSize;
         }
 
-        if (tid == 0) {
-            AscendC::printf("[SIMT VF BATCH %lld] seqLen=%lld batchOffset=%lld seqOff=%lld\n",
-                            (long long)i, (long long)seqLen, (long long)batchOffset, (long long)seqOff);
-        }
-
         int64_t blockCount = (seqLen + blockSize - 1) / blockSize;
 
         for (int64_t blkIdx = 0; blkIdx < blockCount; blkIdx++) {
@@ -114,11 +103,6 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
             int64_t valOutBase  = (batchOffset + blkIdx * blockSize) * tokenSizeV;
             int64_t keyCacheOff = blockId * static_cast<int64_t>(blockSize) * tokenSizeK;
             int64_t valCacheOff = blockId * static_cast<int64_t>(blockSize) * tokenSizeV;
-
-            if (tid == 0 && i == 0 && blkIdx == 0) {
-                AscendC::printf("[SIMT VF BLK0] blockId=%lld isFilled=%d keyOutBase=%lld keyCacheOff=%lld\n",
-                                (long long)blockId, (int)isFilledWithZero, (long long)keyOutBase, (long long)keyCacheOff);
-            }
 
             uint64_t keyBytes = static_cast<uint64_t>(curBlockSize) * static_cast<uint64_t>(tokenSizeK);
             uint64_t valBytes = static_cast<uint64_t>(curBlockSize) * static_cast<uint64_t>(tokenSizeV);
