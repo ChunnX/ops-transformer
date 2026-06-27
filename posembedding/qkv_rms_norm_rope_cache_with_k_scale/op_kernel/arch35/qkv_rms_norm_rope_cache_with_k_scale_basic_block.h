@@ -41,6 +41,7 @@ public:
             SetInitialAicMte1ToAivMte3AConsumedCredits();
         } else {
             vec_.PrepareBeforeLoop();
+            SetInitialAivMte3ToAicFixCConsumedCredits();
         }
     }
 
@@ -93,9 +94,7 @@ private:
             static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
-        if (tileCount_ > 0U) {
-            WaitAivMte3ToAicFixCConsumed();
-        }
+        WaitAivMte3ToAicFixCConsumed();
         WaitAivMte3ToAicMte1AReady();
         cube_.ComputeTile(tile, aRotL1Nz, QKV_RRC_OUTPUT_QK_BUFFER_ID);
         SetAicMte1ToAivMte3AConsumed();
@@ -129,10 +128,8 @@ private:
 
     __aicore__ inline void EndAic()
     {
-        if (tileCount_ > 0U) {
-            WaitAivMte3ToAicFixCConsumed();
-            tileCount_ = 0U;
-        }
+        DrainAivMte3ToAicFixCConsumedCredits();
+        tileCount_ = 0U;
         cube_.EndIntraCoreEvents();
     }
 
@@ -157,11 +154,21 @@ private:
         }
     }
 
+    __aicore__ inline void SetInitialAivMte3ToAicFixCConsumedCredits()
+    {
+        SetAivMte3ToAicFixCConsumed();
+    }
+
     __aicore__ inline void DrainAicMte1ToAivMte3AConsumedCredits()
     {
         for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
             WaitAicMte1ToAivMte3AConsumed();
         }
+    }
+
+    __aicore__ inline void DrainAivMte3ToAicFixCConsumedCredits()
+    {
+        WaitAivMte3ToAicFixCConsumed();
     }
 
     __aicore__ inline void SetAivMte3ToAicMte1AReady()
