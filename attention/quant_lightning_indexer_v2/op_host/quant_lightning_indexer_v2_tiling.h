@@ -125,6 +125,7 @@ struct QLIV2ParaInfo {
     TilingOptionalParaInfo sequsedK = {nullptr, nullptr};
     TilingOptionalParaInfo cmpResidualK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    TilingOptionalParaInfo outputIdxOffset = {nullptr, nullptr};
     TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
     TilingRequiredParaInfo sparseValues = {nullptr, nullptr};
