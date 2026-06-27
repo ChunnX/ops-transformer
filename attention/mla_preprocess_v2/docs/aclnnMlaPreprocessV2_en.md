@@ -161,7 +161,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>gamma0</td>
       <td>Input</td>
       <td>The γ parameter in the first RmsNorm calculation.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
       <td>[hiddenSize]</td>
@@ -171,7 +171,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>beta0</td>
       <td>Input</td>
       <td>The β parameter in the first RmsNorm calculation.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
       <td>[hiddenSize]</td>
@@ -181,7 +181,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>quantScale0</td>
       <td>Input</td>
       <td>Quantization scaling parameter in the first RMSNorm formula.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
       <td>[1]</td>
@@ -191,7 +191,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>quantOffset0</td>
       <td>Input</td>
       <td>Quantization offset parameter in the first RMSNorm formula.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>INT8</td>
       <td>ND</td>
       <td>[1]</td>
@@ -231,7 +231,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>gamma1</td>
       <td>Input</td>
       <td>The γ parameter in the second RmsNorm calculation.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
       <td>[1536]</td>
@@ -241,7 +241,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>beta1</td>
       <td>Input</td>
       <td>The β parameter in the second RmsNorm calculation.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
       <td>[1536]</td>
@@ -251,7 +251,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>quantScale1</td>
       <td>Input</td>
       <td>Quantization scaling parameter in the second RMSNorm formula.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
       <td>[1]</td>
@@ -261,7 +261,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>quantOffset1</td>
       <td>Input</td>
       <td>Quantization offset parameter in the second RMSNorm formula.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>INT8</td>
       <td>ND</td>
       <td>[1]</td>
@@ -301,7 +301,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>gamma2</td>
       <td>Input</td>
       <td>The γ parameter involved in RmsNormAndreshapeAndCache calculation.</td>
-      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#Constraints">Constraints</a>).</td>
+      <td>Its data type and the data type of input must meet the type deduction rules (see <a href="../../../docs/en/context/deduction_relationship.md">Deduction Relationship</a> and <a href="#constraints">Constraints</a>).</td>
       <td>FLOAT16, BFLOAT16</td>
       <td>ND</td>
       <td>[512]</td>
