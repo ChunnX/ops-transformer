@@ -56,11 +56,10 @@ public:
     }
 
     __aicore__ inline void ComputeTile(const TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
-                                       uint32_t outputBufferId)
+                                       LocalTensor<float> qkAfterCubeUb)
     {
         const uint32_t l0cBufferId =
             static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        LocalTensor<float> qkAfterCubeUb = QkAfterCubeUb(outputBufferId);
         const uint64_t cubeTokenSize = MakeCubeTokenSize(tile);
         const uint64_t qRows = cubeTokenSize * qHeadNum_;
         const uint64_t kRows = cubeTokenSize * kvHeadNum_;
@@ -226,7 +225,7 @@ private:
 
     __aicore__ inline void FixpipePreprocessedSegmentToAivUb(const TileParam &tile, uint64_t segmentRows,
                                                              bool isQSegment, uint32_t bufferId, uint64_t l0cBaseOffset,
-                                                             LocalTensor<float> &qkAfterCubeUb)
+                                                             LocalTensor<float> qkAfterCubeUb)
     {
         if (segmentRows == 0U) {
             return;
@@ -286,7 +285,7 @@ private:
     }
 
     __aicore__ inline void FixpipeSegmentToAivUb(uint64_t segmentRows, uint64_t dstBaseRow, uint32_t bufferId,
-                                                 uint64_t l0cBaseOffset, LocalTensor<float> &qkAfterCubeUb)
+                                                 uint64_t l0cBaseOffset, LocalTensor<float> qkAfterCubeUb)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = static_cast<uint16_t>(QKV_RRC_HEAD_DIM_D128);
@@ -314,13 +313,6 @@ private:
         l0a_ = LocalTensor<bfloat16_t>(TPosition::A2, 0, AIC_L0A_BUFFER_ELEMENTS);
         l0b_ = LocalTensor<bfloat16_t>(TPosition::B2, 0, AIC_L0B_BUFFER_ELEMENTS);
         l0c_ = LocalTensor<float>(TPosition::CO1, 0, AIC_L0C_BUFFER_ELEMENTS);
-        outputDbPoolUb_ =
-            LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
-    }
-
-    __aicore__ inline LocalTensor<float> QkAfterCubeUb(uint32_t bufferId)
-    {
-        return outputDbPoolUb_[bufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
     }
 
     __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
@@ -339,7 +331,6 @@ private:
     LocalTensor<bfloat16_t> l0a_;
     LocalTensor<bfloat16_t> l0b_;
     LocalTensor<float> l0c_;
-    LocalTensor<float> outputDbPoolUb_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

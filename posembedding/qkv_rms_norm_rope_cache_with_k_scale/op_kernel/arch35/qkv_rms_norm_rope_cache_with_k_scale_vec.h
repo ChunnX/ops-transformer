@@ -70,12 +70,12 @@ public:
     }
 
     __aicore__ inline void ComputeTile(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
-                                       uint32_t outputBufferId)
+                                       LocalTensor<float> qkPreprocessUb)
     {
         const AivSlice slice = MakeAivSlice(tile);
         const uint32_t inputBufferId =
             static_cast<uint32_t>((inputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        PreprocessQkv(tile, slice, inputBufferId, aRotL1Nz, outputBufferId);
+        PreprocessQkv(tile, slice, inputBufferId, aRotL1Nz, qkPreprocessUb);
     }
 
     __aicore__ inline void PostprocessV(const TileParam &tile)
@@ -109,10 +109,11 @@ public:
         SetMte3ToVQkOutBufferReusableByBufferId(bufferId);
     }
 
-    __aicore__ inline void PostprocessQk(const TileParam &tile, uint32_t outputBufferId)
+    __aicore__ inline void PostprocessQk(const TileParam &tile, LocalTensor<float> qkAfterCubeUb,
+                                         uint32_t outputBufferId)
     {
         const AivSlice slice = MakeAivSlice(tile);
-        QuantAndScatterQk(tile, slice, outputBufferId);
+        QuantAndScatterQk(tile, slice, qkAfterCubeUb, outputBufferId);
     }
 
 private:
@@ -254,7 +255,8 @@ private:
     }
 
     __aicore__ inline void PreprocessQkv(TileParam &tile, const AivSlice &slice, uint32_t inputBufferId,
-                                         const LocalTensor<bfloat16_t> &aRotL1Nz, uint32_t outputBufferId)
+                                         const LocalTensor<bfloat16_t> &aRotL1Nz,
+                                         LocalTensor<float> qkPreprocessUb)
     {
         if (slice.tokenSize == 0U) {
             return;
@@ -264,9 +266,9 @@ private:
         SetAndWaitMte2ToSSlotMappingReady();
         BuildCacheOffsetsFromSlotMapping(tile, slice, inputBufferId);
         SetAndWaitMte2ToVInputReady(inputBufferId);
-        BuildRopeBf16NzUb(tile, slice, inputBufferId, outputBufferId);
+        BuildRopeBf16NzUb(tile, slice, inputBufferId, qkPreprocessUb);
         SetAndWaitVToMte3Al1StageReady();
-        CopyRopeBf16NzUbToL1Nz(tile, slice, aRotL1Nz, outputBufferId);
+        CopyRopeBf16NzUbToL1Nz(tile, slice, aRotL1Nz, qkPreprocessUb);
     }
 
     __aicore__ inline void CopyPreprocessInputs(const AivSlice &slice, uint32_t inputBufferId)
@@ -341,14 +343,12 @@ private:
     }
 
     __aicore__ inline void BuildRopeBf16NzUb(const TileParam &tile, const AivSlice &slice, uint32_t inputBufferId,
-                                             uint32_t outputBufferId)
+                                             LocalTensor<float> qkPreprocessUb)
     {
         const LocalTensor<bfloat16_t> input = inputDbPoolUb_[inputBufferId * QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<float> gamma = gammaUb_;
         const LocalTensor<float> cosSin = cosSinDbPoolUb_[inputBufferId * QKV_RRC_COS_SIN_ONE_BUFFER_ELEMENTS];
-        const LocalTensor<bfloat16_t> qRopeNz =
-            outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS]
-                .template ReinterpretCast<bfloat16_t>();
+        const LocalTensor<bfloat16_t> qRopeNz = qkPreprocessUb.template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
         if constexpr (IS_TND) {
             const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
@@ -394,7 +394,8 @@ private:
     }
 
     __aicore__ inline void CopyRopeBf16NzUbToL1Nz(const TileParam &tile, const AivSlice &slice,
-                                                  const LocalTensor<bfloat16_t> &aRotL1, uint32_t outputBufferId)
+                                                  const LocalTensor<bfloat16_t> &aRotL1,
+                                                  LocalTensor<float> qkPreprocessUb)
     {
         if (slice.tokenSize == 0U) {
             return;
@@ -404,9 +405,7 @@ private:
         const uint64_t aivBlockTokenOffset = aivLocalId_ * cubeHalfTokenSize;
         const uint64_t qTileRows = cubeTokenSize * qHeadNum_;
         const uint64_t kTileRows = cubeTokenSize * kvHeadNum_;
-        const LocalTensor<bfloat16_t> qRopeNz =
-            outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS]
-                .template ReinterpretCast<bfloat16_t>();
+        const LocalTensor<bfloat16_t> qRopeNz = qkPreprocessUb.template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
         CopyRopeSegmentBf16LayoutNzUbToL1Nz(aRotL1, qRopeNz, qTileRows, qHeadNum_, cubeHalfTokenSize,
                                             aivBlockTokenOffset, slice.tokenSize);
@@ -485,7 +484,8 @@ private:
         }
     }
 
-    __aicore__ inline void QuantAndScatterQk(const TileParam &tile, const AivSlice &slice, uint32_t outputBufferId)
+    __aicore__ inline void QuantAndScatterQk(const TileParam &tile, const AivSlice &slice,
+                                             LocalTensor<float> qkAfterCube, uint32_t outputBufferId)
     {
         if (slice.tokenSize == 0U) {
             return;
@@ -494,14 +494,14 @@ private:
         const uint32_t vOutBufferId =
             static_cast<uint32_t>((vOutBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         WaitMte3ToVVOutBufferReusable(vOutBufferId);
-        QuantQToFp8(tile, slice, outputBufferId, vOutBufferId);
+        QuantQToFp8(tile, slice, qkAfterCube, vOutBufferId);
         SetVToMte3QkOutReady(outputBufferId);
         WaitVToMte3QkOutReady(outputBufferId);
-        ScatterQOutputs(slice, outputBufferId, vOutBufferId);
-        QuantKToFp8(tile, slice, outputBufferId, vOutBufferId);
+        ScatterQOutputs(slice, qkAfterCube, vOutBufferId);
+        QuantKToFp8(tile, slice, qkAfterCube, vOutBufferId);
         SetVToMte3QkOutReady(outputBufferId);
         WaitVToMte3QkOutReady(outputBufferId);
-        ScatterKOutputs(tile, slice, outputBufferId, vOutBufferId);
+        ScatterKOutputs(tile, slice, qkAfterCube, vOutBufferId);
         SetMte3ToVVOutBufferReusable(vOutBufferId);
     }
 
@@ -531,11 +531,9 @@ private:
             .template ReinterpretCast<float>();
     }
 
-    __aicore__ inline void QuantQToFp8(const TileParam &tile, const AivSlice &slice, uint32_t outputBufferId,
-                                       uint32_t vOutBufferId)
+    __aicore__ inline void QuantQToFp8(const TileParam &tile, const AivSlice &slice,
+                                       LocalTensor<float> qkAfterCube, uint32_t vOutBufferId)
     {
-        const LocalTensor<float> qkAfterCube =
-            outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId);
         if constexpr (IS_TND) {
@@ -553,11 +551,9 @@ private:
         }
     }
 
-    __aicore__ inline void QuantKToFp8(const TileParam &tile, const AivSlice &slice, uint32_t outputBufferId,
-                                       uint32_t vOutBufferId)
+    __aicore__ inline void QuantKToFp8(const TileParam &tile, const AivSlice &slice,
+                                       LocalTensor<float> qkAfterCube, uint32_t vOutBufferId)
     {
-        const LocalTensor<float> qkAfterCube =
-            outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
         const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId)[KScaleStagingBaseOffset(slice)];
@@ -576,10 +572,9 @@ private:
         }
     }
 
-    __aicore__ inline void ScatterQOutputs(const AivSlice &slice, uint32_t outputBufferId, uint32_t vOutBufferId)
+    __aicore__ inline void ScatterQOutputs(const AivSlice &slice, LocalTensor<float> qkAfterCube,
+                                           uint32_t vOutBufferId)
     {
-        const LocalTensor<float> qkAfterCube =
-            outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId);
         if constexpr (IS_TND) {
@@ -600,11 +595,9 @@ private:
         }
     }
 
-    __aicore__ inline void ScatterKOutputs(const TileParam &tile, const AivSlice &slice, uint32_t outputBufferId,
-                                           uint32_t vOutBufferId)
+    __aicore__ inline void ScatterKOutputs(const TileParam &tile, const AivSlice &slice,
+                                           LocalTensor<float> qkAfterCube, uint32_t vOutBufferId)
     {
-        const LocalTensor<float> qkAfterCube =
-            outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
         const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId)[KScaleStagingBaseOffset(slice)];
@@ -626,8 +619,6 @@ private:
     {
         inputDbPoolUb_ =
             LocalTensor<bfloat16_t>(TPosition::LCM, QKV_RRC_INPUT_DB_POOL_OFFSET, QKV_RRC_INPUT_DB_POOL_ELEMENTS);
-        outputDbPoolUb_ =
-            LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
         BindReserveUbTensors();
     }
 
@@ -702,7 +693,6 @@ private:
     GlobalTensor<fp8_e4m3fn_t> vCacheOutGm_;
     GlobalTensor<float> kScaleCacheOutGm_;
     LocalTensor<bfloat16_t> inputDbPoolUb_;
-    LocalTensor<float> outputDbPoolUb_;
     LocalTensor<float> gammaUb_;
     LocalTensor<float> cosSinDbPoolUb_;
     LocalTensor<int32_t> slotMappingDbPoolUb_;
