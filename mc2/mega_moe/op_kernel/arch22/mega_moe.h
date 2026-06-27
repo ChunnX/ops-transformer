@@ -121,7 +121,7 @@ private:
     int32_t n;
     int32_t topK;
     int32_t expertPerRank;
-    int32_t maxOutputSize;
+    uint64_t maxOutputSize;
     int32_t EP;
     int32_t listLen;
     float activationClamp;
@@ -320,7 +320,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                static_cast<uint32_t>(EP),
                                                static_cast<uint32_t>(listLen),
                                                static_cast<uint32_t>(expertPerRank),
-                                               static_cast<uint32_t>(maxOutputSize),
+                                               static_cast<uint64_t>(maxOutputSize),
                                                static_cast<uint32_t>(topK),
                                                initRoutingQuantTilingKey,
                                                epilogueCoreNum,
@@ -358,7 +358,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                static_cast<uint32_t>(EP),
                                                static_cast<uint32_t>(listLen),
                                                static_cast<uint32_t>(expertPerRank),
-                                               static_cast<uint32_t>(maxOutputSize),
+                                               static_cast<uint64_t>(maxOutputSize),
                                                static_cast<uint32_t>(topK),
                                                initRoutingQuantTilingKey,
                                                epilogueCoreNum,
