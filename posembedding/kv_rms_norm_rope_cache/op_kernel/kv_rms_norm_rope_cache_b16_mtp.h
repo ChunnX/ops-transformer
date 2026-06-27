@@ -107,8 +107,7 @@ public:
             * sizeof(float));  // rmsNormElemPerSlice * 4 / 1024 = rmsNormLen / 256
         
         // SafeAlignUp(rowsPerBlock, 8) * 4 / 1024 = SafeAlignUp(rowsPerBlock, 8) / 256
-        this->pipe_->InitBuffer(this->bufferSum, SafeAlignUp(this->rowsPerBlock, NUM_EIGHT) 
-        * sizesof(float));  
+        this->pipe_->InitBuffer(this->bufferSum, SafeAlignUp(this->rowsPerBlock, NUM_EIGHT) * sizeof(float));
 
         this->pipe_->InitBuffer(this->outQueueV, 1, this->vElemPerSlice 
             * sizeof(KV_DTYPE));  // vElemPerSlice * 2 / 1024 = vElemPerSlice / 512
