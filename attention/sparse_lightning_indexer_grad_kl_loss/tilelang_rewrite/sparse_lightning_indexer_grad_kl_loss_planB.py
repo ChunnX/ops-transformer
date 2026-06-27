@@ -472,7 +472,7 @@ def planB_kernel3(
     @T.prim_func
     def main(
         reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),
-        GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
+        GatherKeyIndexT: T.Tensor((B, S1, DQueryIndex, K), input_dtype),
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
     ):
         with T.Kernel(B * s1_tile_num * n_num, is_npu=True) as (cid, vid):
@@ -486,21 +486,20 @@ def planB_kernel3(
             k_start = n_idx * n_block
             k_end = k_start + n_block
 
-            # C: MM6 gemm + atomic_add, Nidx1-tiled to keep L0C small
+            # C: MM6 gemm + atomic_add (matching 0622.py C2 scope pattern)
             with T.Scope("C"):
                 RG_L1 = T.alloc_L1((BLOCK_NIDX1, n_block), input_dtype)
-                GKIT_L1 = T.alloc_L1((n_block, BLOCK_K), input_dtype)
+                GKIT_L1 = T.alloc_L1((BLOCK_K, n_block), input_dtype)
                 DQ_L0C = T.alloc_L0C((BLOCK_NIDX1, BLOCK_K), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for dq_c in T.serial(dq_num):
                         dq_s = dq_c * BLOCK_K
-                        # gather_key_index is (B, S1, K, DQI); copy (K_block, DQI_block)
-                        T.copy(GatherKeyIndex[bz, s1_row, k_start:k_end, dq_s:dq_s + BLOCK_K], GKIT_L1)
+                        T.copy(GatherKeyIndexT[bz, s1_row, dq_s:dq_s + BLOCK_K, k_start:k_end], GKIT_L1)
                         for nidx_c in T.serial(nidx1_num):
                             nidx_s = nidx_c * BLOCK_NIDX1
                             T.copy(reluGradRes[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end], RG_L1)
-                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=False, init=True)
+                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
                             T.tile.atomic_add(
                                 dQueryIndex[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, dq_s:dq_s + BLOCK_K],
                                 DQ_L0C,
@@ -785,15 +784,16 @@ def sparse_lightning_indexer_grad_kl_loss(
         _pt["kernel2"] = time.perf_counter()
 
     # ---- Launch Kernel 3 (MM6: dQueryIndex = reluGrad @ GKI, C→V, atomic_add) ----
+    gather_key_index_t = gather_key_index.transpose(-1, -2).contiguous()
     d_query_index_ws.zero_()
-    ret = func3(relu_grad, gather_key_index, d_query_index_ws)
+    ret = func3(relu_grad, gather_key_index_t, d_query_index_ws)
     if isinstance(ret, tuple):
         ret = ret[0]
     if ret is not None and ret is not d_query_index_ws:
         # out_idx allocated a new tensor; zero and re-run for correct init
         d_query_index_ws = ret
         d_query_index_ws.zero_()
-        ret = func3(relu_grad, gather_key_index, d_query_index_ws)
+        ret = func3(relu_grad, gather_key_index_t, d_query_index_ws)
         if isinstance(ret, tuple):
             ret = ret[0]
         if ret is not None:
