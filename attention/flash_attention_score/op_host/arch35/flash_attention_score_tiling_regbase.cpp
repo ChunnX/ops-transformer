@@ -1035,7 +1035,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "d_scale_v",
                         ("[" + std::to_string(dimValue0) + "," + std::to_string(dimValue1) + "," +
                          std::to_string(dimValue2) + "," + std::to_string(dimValue3) + "]").c_str(),
-                        "The shape of input d_scale_v must be [B, N2, ceil(S2/512), 1]"),
+                        "The shape of input d_scale_v must be [B, N2, ceil(S2/256), 1]"),
                     return false);
     }
 
