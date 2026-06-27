@@ -29,10 +29,12 @@ __simt_vf__ __aicore__ __launch_bounds__(THREAD_NUM)
 inline void GatherContigCopyVf(uint64_t count, __gm__ T *dst, __gm__ T *src, uint32_t fillZero)
 {
     if (static_cast<uint32_t>(blockIdx.x) == 0 && static_cast<uint32_t>(threadIdx.x) == 0) {
-        AscendC::Simt::printf("[SIMT-VF-Contig] count=%llu fillZero=%u\n", count, fillZero);
+        AscendC::Simt::printf("[SIMT-VF-Contig] count=%llu fillZero=%u blkDim=%u gridDim=%u\n",
+            count, fillZero, static_cast<uint32_t>(blockDim.x), static_cast<uint32_t>(gridDim.x));
     }
-    for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * THREAD_NUM + static_cast<uint64_t>(threadIdx.x);
-         idx < count; idx += THREAD_NUM * static_cast<uint64_t>(gridDim.x)) {
+    uint64_t totalThds = static_cast<uint64_t>(blockDim.x) * static_cast<uint64_t>(gridDim.x);
+    for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * static_cast<uint64_t>(blockDim.x) + static_cast<uint64_t>(threadIdx.x);
+         idx < count; idx += totalThds) {
         if (fillZero) {
             dst[idx] = static_cast<T>(0);
         } else {
@@ -349,18 +351,18 @@ __aicore__ inline void Process(
                 PRINTF("[SIMT-BLK] i=%ld blk=%lu tblOff=%lu blockId=%ld fillZero=%u curSize=%lu keySrcBase=%lu keyOff=%lu kCnt=%lu hiddenSizeK=%lu cacheBlockSize=%ld numHeadsK=%lu\n",
                        i, blkIdx, tblOff, blockId, fillZero, curSize, keySrcBase, keyOff, kCnt, hiddenSizeK, cacheBlockSize, numHeadsK);
             }
-            if (fillZero) {
-                for (uint64_t b = 0; b < kCnt; b++) { outKeyGm[keyOff + b] = static_cast<T>(0); }
-            } else {
-                for (uint64_t b = 0; b < kCnt; b++) { outKeyGm[keyOff + b] = keyCacheGm[keySrcBase + b]; }
-            }
+            asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), kCnt,
+                                               outKeyGm + keyOff,
+                                               keyCacheGm + keySrcBase, fillZero);
+            SetFlag<HardEvent::V_S>(0);
+            WaitFlag<HardEvent::V_S>(0);
             keyOff += kCnt;
 
-            if (fillZero) {
-                for (uint64_t b = 0; b < vCnt; b++) { outValueGm[valueOff + b] = static_cast<T>(0); }
-            } else {
-                for (uint64_t b = 0; b < vCnt; b++) { outValueGm[valueOff + b] = valueCacheGm[valueSrcBase + b]; }
-            }
+            asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), vCnt,
+                                               outValueGm + valueOff,
+                                               valueCacheGm + valueSrcBase, fillZero);
+            SetFlag<HardEvent::V_S>(0);
+            WaitFlag<HardEvent::V_S>(0);
             valueOff += vCnt;
         }
     }
