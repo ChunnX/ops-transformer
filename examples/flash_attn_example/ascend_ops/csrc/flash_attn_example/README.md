@@ -1,10 +1,10 @@
 # FA
 
 ## 核心交付件
-1. `csrc/flash_attn/op_host` 算子host实现
-2. `csrc/flash_attn/op_kernel`算子kernel实现
-3. `csrc/flash_attn/torch_interface.cpp`算子pytorch层和C++实现层接口
-4. `csrc/flash_attn/CMakeLists.txt` 算子cmake配置
+1. `csrc/flash_attn_example/op_host` 算子host实现
+2. `csrc/flash_attn_example/op_kernel`算子kernel实现
+3. `csrc/flash_attn_example/torch_interface.cpp`算子pytorch层和C++实现层接口
+4. `csrc/flash_attn_example/CMakeLists.txt` 算子cmake配置
 
 ## 计算公式
 
@@ -135,9 +135,9 @@ $$
 
 ## 代码架构
 算子执行在Device侧（NPU，执行Kernel函数），但是所有的输入都在Host侧（CPU，执行Tiling函数），Device侧无法直接读取Host侧的数据，两者存在数据隔离。在Host侧准备好的数据需要通过TilingData(用户自定义的数据结构)传递给Device侧，Device侧拿到这个数据再去执行算子。因此代码主要分为如下三部分：
- - **csrc/flash_attn/torch_interface.cpp** 里面包含了算子执行的所有流程，上层python入参传递到该文件，经过Tiling函数计算得到TilingData，将TilingData传递给算子的Kernel函数进行执行，最终得到结果。
- - **csrc/flash_attn/op_host** 算子从入参计算得到TilingData的所有文件都在该目录下
- - **csrc/flash_attn/op_kernel**算子的Kernel函数所有文件都在该目录下
+ - **csrc/flash_attn_example/torch_interface.cpp** 里面包含了算子执行的所有流程，上层python入参传递到该文件，经过Tiling函数计算得到TilingData，将TilingData传递给算子的Kernel函数进行执行，最终得到结果。
+ - **csrc/flash_attn_example/op_host** 算子从入参计算得到TilingData的所有文件都在该目录下
+ - **csrc/flash_attn_example/op_kernel**算子的Kernel函数所有文件都在该目录下
 
 ## 内部实现文档
 
