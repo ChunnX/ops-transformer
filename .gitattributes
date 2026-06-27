@@ -1,2 +1,0 @@
-experimental/attention/block_sparse_attention/tests/pytest/res_debug.log filter=lfs diff=lfs merge=lfs -text
-experimental/attention/quant_block_sparse_attention/tests/pytest/res1.log filter=lfs diff=lfs merge=lfs -text
