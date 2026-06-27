@@ -1687,13 +1687,6 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
     GMMAddrInfo &gmmAddrInfo, int32_t localExpertId)
 {
-    if constexpr(g_coreType == AIC) {
-        return;
-    }
-    if (subBlockIdx_ != 1) {
-        return;
-    }
-
     // ---------- Step 0: Server 拓扑 ----------
     uint32_t rankSizePerServer = mc2Context_->rankSizePerServer;
     bool hasMultipleServers = (rankSizePerServer > 0 && rankSizePerServer < worldSize_);
@@ -1723,171 +1716,171 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
     uint32_t slotSize = l1SlotDataBytes_ + static_cast<uint32_t>(ALIGN_32);
 
     // ---------- Step 2: 逐 src rank, 基于 mask 读 token ----------
-    for (uint32_t rankIdx = startRankId; rankIdx < endRankId; rankIdx++) {
-        // GatherMask: 从 mask 提取当前 rank 发给本专家的 valid topkIndex 列表
-        uint64_t sendToCurExpTokenCnt = 0;
-        GatherMask(validTopkIndexTensor_, topkIndexTensor_,
-            gatherMaskInt32Tensor_[rankIdx * (maskSlotSize_ / sizeof(uint32_t))],
-            true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
+    // for (uint32_t rankIdx = startRankId; rankIdx < endRankId; rankIdx++) {
+    //     // GatherMask: 从 mask 提取当前 rank 发给本专家的 valid topkIndex 列表
+    //     uint64_t sendToCurExpTokenCnt = 0;
+    //     GatherMask(validTopkIndexTensor_, topkIndexTensor_,
+    //         gatherMaskInt32Tensor_[rankIdx * (maskSlotSize_ / sizeof(uint32_t))],
+    //         true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
 
-        // 本 rank 数据在本专家接收区的起始行
-        uint32_t rowStartIdxInDst = ((rankIdx == 0 && localExpertId == 0) ? 0 :
-            cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + rankIdx - 1));
-        if (rowStartIdxInDst >= maxOutputSize_ || sendToCurExpTokenCnt == 0) {
-            continue;
-        }
-        uint32_t rowsCopyCnt = sendToCurExpTokenCnt;
-        if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) {
-            rowsCopyCnt = maxOutputSize_ - rowStartIdxInDst;
-        }
-        int32_t rowDstOffsetInCore = static_cast<int32_t>(rowStartIdxInDst);
-        int32_t rowsThisCore = static_cast<int32_t>(rowsCopyCnt);
+    //     // 本 rank 数据在本专家接收区的起始行
+    //     uint32_t rowStartIdxInDst = ((rankIdx == 0 && localExpertId == 0) ? 0 :
+    //         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + rankIdx - 1));
+    //     if (rowStartIdxInDst >= maxOutputSize_ || sendToCurExpTokenCnt == 0) {
+    //         continue;
+    //     }
+    //     uint32_t rowsCopyCnt = sendToCurExpTokenCnt;
+    //     if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) {
+    //         rowsCopyCnt = maxOutputSize_ - rowStartIdxInDst;
+    //     }
+    //     int32_t rowDstOffsetInCore = static_cast<int32_t>(rowStartIdxInDst);
+    //     int32_t rowsThisCore = static_cast<int32_t>(rowsCopyCnt);
 
-        // 申请 tripleTensor_ 用于三元组组装
-        uint32_t tripleTensorAddr = ubBufferUsedAddr_;
-        uint32_t tripleTensorSize = rowsThisCore * ALIGN_32;
-        tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
-            tripleTensorSize / sizeof(int32_t));
-        SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+    //     // 申请 tripleTensor_ 用于三元组组装
+    //     uint32_t tripleTensorAddr = ubBufferUsedAddr_;
+    //     uint32_t tripleTensorSize = rowsThisCore * ALIGN_32;
+    //     tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
+    //         tripleTensorSize / sizeof(int32_t));
+    //     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
-        // 目标地址: dispatchRevDataPtr / dispatchRevScalePtr (给 GMM 用)
-        GlobalTensor<ActivationType> tokenRevGlobalTensor;
-        GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
-        tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
-            params_.workspaceInfo.dispatchRevDataPtr + rowDstOffsetInCore * widthA));
-        scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>(
-            params_.workspaceInfo.dispatchRevScalePtr + rowDstOffsetInCore * widthAScale));
+    //     // 目标地址: dispatchRevDataPtr / dispatchRevScalePtr (给 GMM 用)
+    //     GlobalTensor<ActivationType> tokenRevGlobalTensor;
+    //     GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
+    //     tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
+    //         params_.workspaceInfo.dispatchRevDataPtr + rowDstOffsetInCore * widthA));
+    //     scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>(
+    //         params_.workspaceInfo.dispatchRevScalePtr + rowDstOffsetInCore * widthAScale));
 
-        // 逐 token: 读 flag → ReadNbi/DataCopy 读 data → 拆分写 token+scale → 组装三元组
-        // 统一逻辑: 确定源卡 → 从源卡 URMA 窗口 L1 接收区读
-        //   srcRankId = 本 server 内与 rankIdx 同 localRank 的卡 (本 server 内即 rankIdx 本身, 跨 server 为一级接收卡)
-        //   sourceServerId = rankIdx 所在 server (决定 L1 接收区 section 偏移, 不同 server 偏移不同但卡计算方式一致)
-        //   读 data: srcRankId == rankId_ 用 DataCopy (本卡), 否则用 ReadNbi (跨卡)
-        for (int32_t i = 0; i < rowsThisCore; i++) {
-            int32_t topkIndex = validTopkIndexTensor_.GetValue(i);
-            int32_t tokenIndex = topkIndex / topK_;
-            int32_t topkIdxInToken = topkIndex % topK_;
+    //     // 逐 token: 读 flag → ReadNbi/DataCopy 读 data → 拆分写 token+scale → 组装三元组
+    //     // 统一逻辑: 确定源卡 → 从源卡 URMA 窗口 L1 接收区读
+    //     //   srcRankId = 本 server 内与 rankIdx 同 localRank 的卡 (本 server 内即 rankIdx 本身, 跨 server 为一级接收卡)
+    //     //   sourceServerId = rankIdx 所在 server (决定 L1 接收区 section 偏移, 不同 server 偏移不同但卡计算方式一致)
+    //     //   读 data: srcRankId == rankId_ 用 DataCopy (本卡), 否则用 ReadNbi (跨卡)
+    //     for (int32_t i = 0; i < rowsThisCore; i++) {
+    //         int32_t topkIndex = validTopkIndexTensor_.GetValue(i);
+    //         int32_t tokenIndex = topkIndex / topK_;
+    //         int32_t topkIdxInToken = topkIndex % topK_;
 
-            // 三元组组装 (rank, tokenIndex, topkIndex)
-            tripleTensor_[i * INT32_PER_256B].SetValue(RANK_ID, rankIdx);
-            tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
-            tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIdxInToken);
+    //         // 三元组组装 (rank, tokenIndex, topkIndex)
+    //         tripleTensor_[i * INT32_PER_256B].SetValue(RANK_ID, rankIdx);
+    //         tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
+    //         tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIdxInToken);
 
-            // 统一确定源卡和 sourceServerId (不区分是否跨 server):
-            //   srcRankId = 本 server 内与 rankIdx 同 localRank 的卡
-            //              (本 server 内时即 rankIdx 本身; 跨 server 时为一级通信接收卡)
-            //   sourceServerId = rankIdx 所在 server (决定 L1 接收区内的 section 偏移)
-            uint32_t sourceServerId = hasMultipleServers
-                ? MegaMoeDispatchImpl::GetServerId(rankIdx, rankSizePerServer) : 0;
-            uint32_t srcRankId = hasMultipleServers
-                ? MegaMoeDispatchImpl::GetL1TargetRankId(myServerId,
-                    MegaMoeDispatchImpl::GetLocalRankInServer(rankIdx, rankSizePerServer),
-                    rankSizePerServer)
-                : rankIdx;
+    //         // 统一确定源卡和 sourceServerId (不区分是否跨 server):
+    //         //   srcRankId = 本 server 内与 rankIdx 同 localRank 的卡
+    //         //              (本 server 内时即 rankIdx 本身; 跨 server 时为一级通信接收卡)
+    //         //   sourceServerId = rankIdx 所在 server (决定 L1 接收区内的 section 偏移)
+    //         uint32_t sourceServerId = hasMultipleServers
+    //             ? MegaMoeDispatchImpl::GetServerId(rankIdx, rankSizePerServer) : 0;
+    //         uint32_t srcRankId = hasMultipleServers
+    //             ? MegaMoeDispatchImpl::GetL1TargetRankId(myServerId,
+    //                 MegaMoeDispatchImpl::GetLocalRankInServer(rankIdx, rankSizePerServer),
+    //                 rankSizePerServer)
+    //             : rankIdx;
 
-            // 源卡 URMA 窗口 L1 接收区基址
-            GM_ADDR srcUrmaBase = GetUrmaAddrByRankId(mc2Context_, srcRankId) +
-                params_.peermemInfo.URMADispatchL1RecvPtr;
-            uint64_t recvSectionOffset = MegaMoeDispatchImpl::GetL1RecvSectionOffset(
-                sourceServerId, l1RecvPerServerSize_);
-            uint64_t srcDataOffset = recvSectionOffset +
-                MegaMoeDispatchImpl::GetL1RecvDataOffset(tokenIndex, l1SlotSize_);
-            uint64_t srcNotifyOffset = recvSectionOffset +
-                MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIndex, l1SlotSize_);
+    //         // 源卡 URMA 窗口 L1 接收区基址
+    //         GM_ADDR srcUrmaBase = GetUrmaAddrByRankId(mc2Context_, srcRankId) +
+    //             params_.peermemInfo.URMADispatchL1RecvPtr;
+    //         uint64_t recvSectionOffset = MegaMoeDispatchImpl::GetL1RecvSectionOffset(
+    //             sourceServerId, l1RecvPerServerSize_);
+    //         uint64_t srcDataOffset = recvSectionOffset +
+    //             MegaMoeDispatchImpl::GetL1RecvDataOffset(tokenIndex, l1SlotSize_);
+    //         uint64_t srcNotifyOffset = recvSectionOffset +
+    //             MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIndex, l1SlotSize_);
 
-            // 轮询读 flag, 确认数据就绪
-            // 本卡 (srcRankId == rankId_): notifyAddr 在本卡 URMA 窗口 (本地 GM), 可直接 ReadGmByPassDCache
-            // 跨卡 (srcRankId != rankId_): notifyAddr 在远端卡 URMA 窗口 (远端内存), 必须用 ReadNbi 读到本地 GM 再判断
-            if (srcRankId == rankId_) {
-                __gm__ int32_t* notifyAddr = reinterpret_cast<__gm__ int32_t*>(
-                    srcUrmaBase + srcNotifyOffset);
-                // while (AscendC::ReadGmByPassDCache(notifyAddr) != 1) {
-                //     AscendC::Nop<200>();
-                // }
-            } else {
-                uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, srcRankId, rankId_);
-                // flag 占 4B, 复用 data 中转区地址 (flag 轮询完成后即被 data ReadNbi 覆盖, 不再使用)
-                GM_ADDR gmFlagAddr = params_.workspaceInfo.dispatchRevDataPtr +
-                    static_cast<uint64_t>(maxOutputSize_) * widthA * sizeof(ActivationType) +
-                    static_cast<uint64_t>(i) * l1SlotDataBytes_;
-                __gm__ int32_t* localFlagAddr = reinterpret_cast<__gm__ int32_t*>(gmFlagAddr);
-                // while (true) {
-                //     hcomm_.ReadNbi(channelHandle, gmFlagAddr,
-                //         srcUrmaBase + srcNotifyOffset, sizeof(int32_t));
-                //     hcomm_.Drain(channelHandle);
-                //     PipeBarrier<PIPE_ALL>();
-                //     if (AscendC::ReadGmByPassDCache(localFlagAddr) == 1) {
-                //         break;
-                //     }
-                //     AscendC::Nop<200>();
-                // }
-            }
+    //         // 轮询读 flag, 确认数据就绪
+    //         // 本卡 (srcRankId == rankId_): notifyAddr 在本卡 URMA 窗口 (本地 GM), 可直接 ReadGmByPassDCache
+    //         // 跨卡 (srcRankId != rankId_): notifyAddr 在远端卡 URMA 窗口 (远端内存), 必须用 ReadNbi 读到本地 GM 再判断
+    //         if (srcRankId == rankId_) {
+    //             __gm__ int32_t* notifyAddr = reinterpret_cast<__gm__ int32_t*>(
+    //                 srcUrmaBase + srcNotifyOffset);
+    //             // while (AscendC::ReadGmByPassDCache(notifyAddr) != 1) {
+    //             //     AscendC::Nop<200>();
+    //             // }
+    //         } else {
+    //             uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, srcRankId, rankId_);
+    //             // flag 占 4B, 复用 data 中转区地址 (flag 轮询完成后即被 data ReadNbi 覆盖, 不再使用)
+    //             GM_ADDR gmFlagAddr = params_.workspaceInfo.dispatchRevDataPtr +
+    //                 static_cast<uint64_t>(maxOutputSize_) * widthA * sizeof(ActivationType) +
+    //                 static_cast<uint64_t>(i) * l1SlotDataBytes_;
+    //             __gm__ int32_t* localFlagAddr = reinterpret_cast<__gm__ int32_t*>(gmFlagAddr);
+    //             // while (true) {
+    //             //     hcomm_.ReadNbi(channelHandle, gmFlagAddr,
+    //             //         srcUrmaBase + srcNotifyOffset, sizeof(int32_t));
+    //             //     hcomm_.Drain(channelHandle);
+    //             //     PipeBarrier<PIPE_ALL>();
+    //             //     if (AscendC::ReadGmByPassDCache(localFlagAddr) == 1) {
+    //             //         break;
+    //             //     }
+    //             //     AscendC::Nop<200>();
+    //             // }
+    //         }
 
-            // 读 data: 源卡 L1 接收区 → 本卡 dispatchRevDataPtr/dispatchRevScalePtr
-            // 用 UB 中转 (copyTmpTensors_), 拆分 token 和 scale 后分别写 GM
-            LocalTensor<ActivationType> tmpBuf = copyTmpTensors_[i % DISPATCH_BUFFER_NUM];
-            TEventID bufEvent = static_cast<TEventID>(i % DISPATCH_BUFFER_NUM);
+    //         // 读 data: 源卡 L1 接收区 → 本卡 dispatchRevDataPtr/dispatchRevScalePtr
+    //         // 用 UB 中转 (copyTmpTensors_), 拆分 token 和 scale 后分别写 GM
+    //         LocalTensor<ActivationType> tmpBuf = copyTmpTensors_[i % DISPATCH_BUFFER_NUM];
+    //         TEventID bufEvent = static_cast<TEventID>(i % DISPATCH_BUFFER_NUM);
 
-            if (srcRankId == rankId_) {
-                // 本卡: 直接 DataCopy 从本卡 URMA 窗口读
-                AscendC::GlobalTensor<ActivationType> srcGlobal;
-                srcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
-                    srcUrmaBase + srcDataOffset));
-                AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
-            } else {
-                // 跨卡: 用 ReadNbi 从远端卡 URMA 窗口读
-                // ReadNbi dst 需 GM 地址, 先读到 GM 中转区
-                uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, srcRankId, rankId_);
-                GM_ADDR gmTmpAddr = params_.workspaceInfo.dispatchRevDataPtr +
-                    static_cast<uint64_t>(maxOutputSize_) * widthA * sizeof(ActivationType) +
-                    static_cast<uint64_t>(i) * l1SlotDataBytes_;
-                hcomm_.ReadNbi(channelHandle, gmTmpAddr,
-                    srcUrmaBase + srcDataOffset, l1SlotDataBytes_);
-                // ReadNbi 是异步的, 必须 Drain 等待数据到达 GM 中转区后才能 DataCopy
-                hcomm_.Drain(channelHandle);
-                PipeBarrier<PIPE_ALL>();
-                // 从 GM 中转区 DataCopy 到 UB
-                AscendC::GlobalTensor<ActivationType> srcGlobal;
-                srcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(gmTmpAddr));
-                AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
-            }
+    //         if (srcRankId == rankId_) {
+    //             // 本卡: 直接 DataCopy 从本卡 URMA 窗口读
+    //             AscendC::GlobalTensor<ActivationType> srcGlobal;
+    //             srcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
+    //                 srcUrmaBase + srcDataOffset));
+    //             AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
+    //         } else {
+    //             // 跨卡: 用 ReadNbi 从远端卡 URMA 窗口读
+    //             // ReadNbi dst 需 GM 地址, 先读到 GM 中转区
+    //             uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, srcRankId, rankId_);
+    //             GM_ADDR gmTmpAddr = params_.workspaceInfo.dispatchRevDataPtr +
+    //                 static_cast<uint64_t>(maxOutputSize_) * widthA * sizeof(ActivationType) +
+    //                 static_cast<uint64_t>(i) * l1SlotDataBytes_;
+    //             hcomm_.ReadNbi(channelHandle, gmTmpAddr,
+    //                 srcUrmaBase + srcDataOffset, l1SlotDataBytes_);
+    //             // ReadNbi 是异步的, 必须 Drain 等待数据到达 GM 中转区后才能 DataCopy
+    //             hcomm_.Drain(channelHandle);
+    //             PipeBarrier<PIPE_ALL>();
+    //             // 从 GM 中转区 DataCopy 到 UB
+    //             AscendC::GlobalTensor<ActivationType> srcGlobal;
+    //             srcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(gmTmpAddr));
+    //             AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
+    //         }
 
-            // 等 MTE2 (DataCopy GM→UB) 完成后再拆分写
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(bufEvent);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(bufEvent);
+    //         // 等 MTE2 (DataCopy GM→UB) 完成后再拆分写
+    //         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(bufEvent);
+    //         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(bufEvent);
 
-            // 拆分写 token 和 scale 到 GM (给 GMM 用)
-            LocalTensor<QuantScaleOutType> bufScale =
-                tmpBuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
-            AscendC::DataCopyPad(tokenRevGlobalTensor[i * widthA], tmpBuf,
-                {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
-            AscendC::DataCopyPad(scaleRevGlobalTensor[i * widthAScale], bufScale,
-                {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
-        }
+    //         // 拆分写 token 和 scale 到 GM (给 GMM 用)
+    //         LocalTensor<QuantScaleOutType> bufScale =
+    //             tmpBuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
+    //         AscendC::DataCopyPad(tokenRevGlobalTensor[i * widthA], tmpBuf,
+    //             {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
+    //         AscendC::DataCopyPad(scaleRevGlobalTensor[i * widthAScale], bufScale,
+    //             {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+    //     }
 
-        // Phase 2: 三元组搬出 + flag 位 AtomicAdd (通知 AIC), 复用原逻辑
-        if (rowsThisCore > 0) {
-            SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-            // 三元组搬出
-            SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
-            DataCopy(tripleGloablTensor_[rowDstOffsetInCore * INT32_PER_256B],
-                tripleTensor_, rowsThisCore * INT32_PER_256B);
+    //     // Phase 2: 三元组搬出 + flag 位 AtomicAdd (通知 AIC), 复用原逻辑
+    //     if (rowsThisCore > 0) {
+    //         SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+    //         // 三元组搬出
+    //         SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
+    //         DataCopy(tripleGloablTensor_[rowDstOffsetInCore * INT32_PER_256B],
+    //             tripleTensor_, rowsThisCore * INT32_PER_256B);
 
-            // flag 位 AtomicAdd
-            int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
-            int32_t rowEndLocal = rowStartLocal + rowsThisCore;
-            int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
-            int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
-            __gm__ int32_t* flagBase = gmmAddrInfo.groupFlagList2;
-            for (int32_t w = waveLo; w <= waveHi; ++w) {
-                int32_t waveStartLocal = w * L1_TILE_M_I32;
-                int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
-                int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
-                int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
-                AtomicAdd(flagBase + w, int32_t(hi - lo));
-            }
-        }
-    }
+    //         // flag 位 AtomicAdd
+    //         int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
+    //         int32_t rowEndLocal = rowStartLocal + rowsThisCore;
+    //         int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
+    //         int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
+    //         __gm__ int32_t* flagBase = gmmAddrInfo.groupFlagList2;
+    //         for (int32_t w = waveLo; w <= waveHi; ++w) {
+    //             int32_t waveStartLocal = w * L1_TILE_M_I32;
+    //             int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
+    //             int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
+    //             int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
+    //             AtomicAdd(flagBase + w, int32_t(hi - lo));
+    //         }
+    //     }
+    // }
 }
 
 // ==============================================================================================
