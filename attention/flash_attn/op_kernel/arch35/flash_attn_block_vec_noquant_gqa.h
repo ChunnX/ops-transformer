@@ -855,8 +855,7 @@ public:
                 ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
             } else {
                 // 跨多个G
-                ret = (s1StartTdx < s1FirstValidToken);
-                ret = ret || (s1EndTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+                ret = (s1FirstValidToken > 0) || (s1LastValidToken < (runInfo.actS1Size - 1));
             }
         }
         return ret;

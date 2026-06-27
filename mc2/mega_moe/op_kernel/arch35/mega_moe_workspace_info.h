@@ -28,7 +28,6 @@ namespace {
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
 constexpr uint64_t K_VALUE = 2UL;
-constexpr uint64_t TOKEN_SCALE_SIZE = 9U * 1024U;
 constexpr uint64_t IDX_A_OFFSET = 0UL;
 constexpr uint64_t IDX_B_OFFSET = 1UL;
 constexpr uint64_t IDX_A_SCALE_OFFSET = 2UL;

@@ -611,16 +611,16 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::Init(
                 } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
                     uint32_t d0 = 32 / sizeof(KV_T);
                     uint32_t d1 = qkTensorD / d0;
-                    keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, d1, d0,
-                                                      blockTableGm, constInfo.maxBlockNumPerBatch);
+                    keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, d1,
+                                                      d0, blockTableGm, constInfo.maxBlockNumPerBatch);
                 }
             } else {
                 if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
                     keyGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
                                                       qkTensorD, actualSeqLengthsGm, constInfo.actualLenDims);
                 } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
-                    keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, qkTensorD, actualSeqLengthsGm,
-                                                      constInfo.actualLenDims);
+                    keyGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, qkTensorD,
+                                                      actualSeqLengthsGm, constInfo.actualLenDims);
                 }
             }
         }
@@ -635,16 +635,16 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::Init(
                 } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
                     uint32_t d0 = 32 / sizeof(KV_T);
                     uint32_t d1 = constInfo.headDim / d0;
-                    valueGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, d1, d0,
-                                                        blockTableGm, constInfo.maxBlockNumPerBatch);
+                    valueGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, d1,
+                                                        d0, blockTableGm, constInfo.maxBlockNumPerBatch);
                 }
             } else {
                 if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
                     valueGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.kvSeqSize,
                                                         constInfo.headDim, actualSeqLengthsGm, constInfo.actualLenDims);
                 } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
-                    valueGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.headDim, actualSeqLengthsGm,
-                                                        constInfo.actualLenDims);
+                    valueGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.headDim,
+                                                        actualSeqLengthsGm, constInfo.actualLenDims);
                 }
             }
         }

@@ -500,11 +500,15 @@ struct Gmm2PolicyA8W4 {
 template <typename SwigluQuantOp>
 struct Gmm1ArgsA8W4 {
     SwigluQuantOp& swigluQuantOp;
+    bool enableCombineQuant = false;
+    uint32_t groupIdx = 0;
 };
 
 struct Gmm2ArgsA8W4 {
     uint32_t groupCnt;
     uint16_t& pingpongIdx;
+    bool enableCombineQuant = false;
+    uint32_t groupIdx = 0;
 };
 
 template <typename Policy, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
@@ -623,7 +627,9 @@ template <typename Policy, typename BlockMmad, typename Scheduler, typename Tens
 __aicore__ inline void AicComputeA8W4(
     BlockMmad& blockMmad, Scheduler& scheduler, TensorA& gmA, TensorScaleA& gmScaleA, TensorScaleB& gmScaleB,
     TensorC& l0cOutGm, const GMMAddrInfo& gmmAddrInfo, const Config& config,
-    uint32_t startLoopIdx, uint32_t tileNum)
+    uint32_t startLoopIdx, uint32_t tileNum,
+    uint32_t groupIdx = 0, bool enableCombineQuant = false,
+    __gm__ int32_t* gmm2CombineSyncCounterPtr = nullptr)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -669,6 +675,26 @@ __aicore__ inline void AicComputeA8W4(
             auto tensorBlockGm = l0cOutGm.Slice(
                 Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+            // A8W4 combine-quant: AIC 通知 AIV 本 tile 已完成
+            // gmm2CombineSyncCounter 内存布局 (每个 expert 一段, 每段 blockAivNum 个 slot):
+            //   expert:  [slot_0][slot_1][slot_2]...[slot_n]
+            if (enableCombineQuant) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+                uint32_t blockAivNum = config.blockNum * 2;
+                uint32_t participatingCores = blockAivNum / 2;
+                uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(config.m, L1_TILE_M_256);
+                uint32_t tokenGroupIdx = mLoc / L1_TILE_M_256;
+                uint32_t grpCoreStart = 0, grpCoreSize = 0;
+                ComputeGroupRange(tokenGroupIdx, tokenGroupsThisExpert, participatingCores,
+                    grpCoreStart, grpCoreSize);
+                int64_t baseOffset = static_cast<int64_t>(groupIdx) * blockAivNum * INT_CACHELINE;
+                for (uint32_t i = grpCoreStart; i < grpCoreStart + grpCoreSize; i++) {
+                    uint32_t physicalId = i * 2 + 1;
+                    AscendC::AtomicAdd(gmm2CombineSyncCounterPtr
+                        + baseOffset + physicalId * INT_CACHELINE, int32_t(1));
+                }
+            }
         }
         NotifyVectorToCopyIn();
     }
@@ -798,7 +824,9 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
         typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
         AicComputeA8W4<Policy>(blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB,
-            workSet.l0cOutGm, gmmAddrInfo, config, startLoopIdx, tileNum);
+            workSet.l0cOutGm, gmmAddrInfo, config, startLoopIdx, tileNum,
+            args.groupIdx, args.enableCombineQuant,
+            (__gm__ int32_t*)params.workspaceInfo.gmm2CombineSyncCounterPtr);
     } else {
         if (config.subBlockIdx == 0) {
             BlockPrologue blockPrologue;
@@ -809,9 +837,11 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
                 AivGmm1PostA8W4<ElementC, MakeLayoutC>(
                     args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config, startLoopIdx, tileNum);
             } else {
-                AivGmm2PostA8W4<ElementC, MakeLayoutC>(
-                    workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt, config,
-                    startLoopIdx, tileNum);
+                if (!args.enableCombineQuant) {
+                    AivGmm2PostA8W4<ElementC, MakeLayoutC>(
+                        workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt, config,
+                        startLoopIdx, tileNum);
+                }
             }
         }
     }
@@ -893,10 +923,10 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2CombineA8W4(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupCnt,
-    uint16_t& pingpongIdx)
+    uint16_t& pingpongIdx, uint32_t groupIdx = 0, bool enableCombineQuant = false)
 {
     (void)vecSetSyncCom2;
-    Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx};
+    Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx, enableCombineQuant, groupIdx};
     Detail::GroupMatmulImplA8W4<Detail::Gmm2PolicyA8W4, ElementA, ElementB, ElementC, ElementMxScaleA,
         ElementMxScaleB>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }

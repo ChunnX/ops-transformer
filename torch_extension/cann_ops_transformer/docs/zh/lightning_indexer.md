@@ -1,4 +1,4 @@
-# lightning\_indexer\_metadata / lightning\_indexer
+# lightning\_indexer
 
 ## 产品支持情况
 
@@ -28,6 +28,8 @@
   $$
 
 ## 函数原型
+
+调用lightning_indexer接口之前，先调用前置接口lightning_indexer_metadata，完成lightning_indexer负载均衡的计算。
 
 ### lightning_indexer_metadata
 
@@ -95,6 +97,7 @@ cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_s
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
   - 当layout_k为PA_BBND时，必须传入sequsedKOptional；当layout_k不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
+
 ## 返回值说明
 
 ### lightning_indexer_metadata
@@ -112,21 +115,22 @@ cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_s
 
 ## 约束说明
 
+- 该接口支持训练、推理场景下使用。
+- 该接口支持单算子模式和aclgraph图模式调用。
 - lightning_indexer_metadata接口需与lightning_indexer算子配套使用。
 - B（Batch）表示输入样本批量大小。
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
 - 参数cmp_residual_k需满足cmp_residual_k\[i\] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode参数说明.md)。
-- 参数q的N支持1~64，k的N支持1。
-- headdim支持128。
+- 参数q的N支持1~64，k的N支持1，headdim支持128。
 - pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32B对齐。
 - 参数q、k的数据类型应保持一致。
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
-- topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
-- 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
-- 当layout_k为PA_BBND时，必须传入sequsedKOptional；当layout_k不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
+  - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
+  - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
+  - 当layout_k为PA_BBND时，必须传入sequsedKOptional；当layout_k不为PA_BBND时，不支持sequsedKOptional功能，不建议传入该参数。
 
 ## 确定性计算
 
@@ -134,128 +138,128 @@ cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_s
 
 ## 调用示例
 
-- 单算子模式调用
+- 单算子模式调用：
 
-```python
-import torch
-import torch_npu
-import numpy as np
-from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
+  ```python
+  import torch
+  import torch_npu
+  import numpy as np
+  from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
-B = 2
-S1 = 64
-S2 = 130
-N1 = 16
-N2 = 1
-D = 128
-topk = 32
-cmp_ratio = 4
+  B = 2
+  S1 = 64
+  S2 = 130
+  N1 = 16
+  N2 = 1
+  D = 128
+  topk = 32
+  cmp_ratio = 4
 
-# 计算压缩后S2长度及余数
-S2_compressed = S2 // cmp_ratio
-res_k = S2 % cmp_ratio
+  # 计算压缩后S2长度及余数
+  S2_compressed = S2 // cmp_ratio
+  res_k = S2 % cmp_ratio
 
-# 构造输入
-q = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
-k = torch.randn(B, S2_compressed, N2, D, dtype=torch.float16).npu()
-w = torch.randn(B, S1, N1, dtype=torch.float32).npu()
-cmp_residual_k = torch.tensor([res_k] * B, dtype=torch.int32).npu()
+  # 构造输入
+  q = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
+  k = torch.randn(B, S2_compressed, N2, D, dtype=torch.float16).npu()
+  w = torch.randn(B, S1, N1, dtype=torch.float32).npu()
+  cmp_residual_k = torch.tensor([res_k] * B, dtype=torch.int32).npu()
 
-# 生成metadata
-metadata = lightning_indexer_metadata(
-    num_heads_q=N1,
-    num_heads_k=N2,
-    head_dim=D,
-    topk=topk,
-    cmp_residual_k=cmp_residual_k,
-    batch_size=B,
-    max_seqlen_q=S1,
-    max_seqlen_k=S2_compressed,
-    layout_q="BSND",
-    layout_k="BSND",
-    mask_mode=3,
-    cmp_ratio=cmp_ratio
-)
+  # 生成metadata
+  metadata = lightning_indexer_metadata(
+      num_heads_q=N1,
+      num_heads_k=N2,
+      head_dim=D,
+      topk=topk,
+      cmp_residual_k=cmp_residual_k,
+      batch_size=B,
+      max_seqlen_q=S1,
+      max_seqlen_k=S2_compressed,
+      layout_q="BSND",
+      layout_k="BSND",
+      mask_mode=3,
+      cmp_ratio=cmp_ratio
+  )
 
-# 执行lightning_indexer
-sparse_indices, sparse_values = lightning_indexer(
-    q, k, w, topk,
-    cmp_residual_k=cmp_residual_k,
-    metadata=metadata,
-    max_seqlen_q=-1,
-    layout_q="BSND",
-    layout_k="BSND",
-    mask_mode=3,
-    cmp_ratio=cmp_ratio,
-    return_value=0
-)
-print(f"sparse_indices shape: {sparse_indices.shape}")
-```
+  # 执行lightning_indexer
+  sparse_indices, sparse_values = lightning_indexer(
+      q, k, w, topk,
+      cmp_residual_k=cmp_residual_k,
+      metadata=metadata,
+      max_seqlen_q=-1,
+      layout_q="BSND",
+      layout_k="BSND",
+      mask_mode=3,
+      cmp_ratio=cmp_ratio,
+      return_value=0
+  )
+  print(f"sparse_indices shape: {sparse_indices.shape}")
+  ```
 
-- aclgraph调用
+- aclgraph图模式调用：
 
-```python
-import torch
-import torch_npu
-import numpy as np
-import torchair
-from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
+  ```python
+  import torch
+  import torch_npu
+  import numpy as np
+  import torchair
+  from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
-B = 2
-S1 = 64
-S2 = 130
-N1 = 16
-N2 = 1
-D = 128
-topk = 32
-cmp_ratio = 4
+  B = 2
+  S1 = 64
+  S2 = 130
+  N1 = 16
+  N2 = 1
+  D = 128
+  topk = 32
+  cmp_ratio = 4
 
-S2_compressed = S2 // cmp_ratio
-res_k = S2 % cmp_ratio
+  S2_compressed = S2 // cmp_ratio
+  res_k = S2 % cmp_ratio
 
-q = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
-k = torch.randn(B, S2_compressed, N2, D, dtype=torch.float16).npu()
-w = torch.randn(B, S1, N1, dtype=torch.float32).npu()
-cmp_residual_k = torch.tensor([res_k] * B, dtype=torch.int32).npu()
+  q = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
+  k = torch.randn(B, S2_compressed, N2, D, dtype=torch.float16).npu()
+  w = torch.randn(B, S1, N1, dtype=torch.float32).npu()
+  cmp_residual_k = torch.tensor([res_k] * B, dtype=torch.int32).npu()
 
-class LightningIndexerNetwork(torch.nn.Module):
-    def __init__(self):
-        super(LightningIndexerNetwork, self).__init__()
+  class LightningIndexerNetwork(torch.nn.Module):
+      def __init__(self):
+          super(LightningIndexerNetwork, self).__init__()
 
-    def forward(self, q, k, w, cmp_residual_k):
-        metadata = torch.ops.cann_ops_transformer.lightning_indexer_metadata(
-            num_heads_q=N1,
-            num_heads_k=N2,
-            head_dim=D,
-            topk=topk,
-            cmp_residual_k=cmp_residual_k,
-            batch_size=B,
-            max_seqlen_q=S1,
-            max_seqlen_k=S2_compressed,
-            layout_q="BSND",
-            layout_k="BSND",
-            mask_mode=3,
-            cmp_ratio=cmp_ratio
-        )
-        
-        return torch.ops.cann_ops_transformer.lightning_indexer(
-            q, k, w, topk,
-            cmp_residual_k=cmp_residual_k,
-            metadata=metadata,
-            max_seqlen_q=-1,
-            layout_q="BSND",
-            layout_k="BSND",
-            mask_mode=3,
-            cmp_ratio=cmp_ratio,
-            return_value=1
-        )
+      def forward(self, q, k, w, cmp_residual_k):
+          metadata = torch.ops.cann_ops_transformer.lightning_indexer_metadata(
+              num_heads_q=N1,
+              num_heads_k=N2,
+              head_dim=D,
+              topk=topk,
+              cmp_residual_k=cmp_residual_k,
+              batch_size=B,
+              max_seqlen_q=S1,
+              max_seqlen_k=S2_compressed,
+              layout_q="BSND",
+              layout_k="BSND",
+              mask_mode=3,
+              cmp_ratio=cmp_ratio
+          )
+          
+          return torch.ops.cann_ops_transformer.lightning_indexer(
+              q, k, w, topk,
+              cmp_residual_k=cmp_residual_k,
+              metadata=metadata,
+              max_seqlen_q=-1,
+              layout_q="BSND",
+              layout_k="BSND",
+              mask_mode=3,
+              cmp_ratio=cmp_ratio,
+              return_value=1
+          )
 
-from torchair.configs.compiler_config import CompilerConfig
-config = CompilerConfig()
-config.mode = "reduce-overhead"
-npu_backend = torchair.get_npu_backend(compiler_config=config)
-torch._dynamo.reset()
-npu_mode = torch.compile(LightningIndexerNetwork(), fullgraph=True, backend=npu_backend, dynamic=False)
-sparse_indices, sparse_values = npu_mode(q, k, w, cmp_residual_k)
-print(f"sparse_indices shape: {sparse_indices.shape}")
-```
+  from torchair.configs.compiler_config import CompilerConfig
+  config = CompilerConfig()
+  config.mode = "reduce-overhead"
+  npu_backend = torchair.get_npu_backend(compiler_config=config)
+  torch._dynamo.reset()
+  npu_mode = torch.compile(LightningIndexerNetwork(), fullgraph=True, backend=npu_backend, dynamic=False)
+  sparse_indices, sparse_values = npu_mode(q, k, w, cmp_residual_k)
+  print(f"sparse_indices shape: {sparse_indices.shape}")
+  ```
