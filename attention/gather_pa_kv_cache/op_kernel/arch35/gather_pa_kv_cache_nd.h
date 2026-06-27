@@ -276,9 +276,6 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
         numTokens_,
         keyCacheGm_, valueCacheGm_, blockTablesGm_, seqLensGm_, seqOffsetGm_,
         keyOutGm_, valueOutGm_);
-
-    SetFlag<HardEvent::V_S>(0);
-    WaitFlag<HardEvent::V_S>(0);
 }
 
 } // namespace GatherPaKvCacheV35
