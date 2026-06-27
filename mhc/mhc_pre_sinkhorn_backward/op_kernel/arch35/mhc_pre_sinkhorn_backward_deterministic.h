@@ -524,8 +524,8 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         ComputeGradHpreAndXFromIn(hPreLocal, gradHPreLocal, info);
         LocalTensor<U> xFp32Local = xFp32Que_.DeQue<U>();     //out
         LocalTensor<U> gradXFromHinLocal = gradXFromHinQue_.DeQue<U>();       //out        
-        CopyOut(xFp32Ws_[xStartOft], xFp32Local, bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * uTypeSize_);       //搬运x_f32到workspace
-        CopyOut(gradXFromHinWs_[gradXFromHinStartOft], gradXFromHinLocal, bsLen * n_, cLen, 0, (c_ - cLoopDataLen) * uTypeSize_);       //搬运grad_x_from_hin到workspace
+        CopyOut(xFp32Ws_[xStartOft], xFp32Local, bsLen * n_, cLen, 0, (c_ - cLen) * uTypeSize_);       //搬运x_f32到workspace
+        CopyOut(gradXFromHinWs_[gradXFromHinStartOft], gradXFromHinLocal, bsLen * n_, cLen, 0, (c_ - cLen) * uTypeSize_);       //搬运grad_x_from_hin到workspace
         xFp32Que_.FreeTensor(xFp32Local);
         gradXFromHinQue_.FreeTensor(gradXFromHinLocal);
     }
@@ -1143,7 +1143,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
 
         for (int64_t cLoop = 0; cLoop < cLoopsPerBS_; cLoop++) { // 切k
             auto cCount = cLoop == cLoopsPerBS_ - 1 ? cTailPerBS_ : cCountPerBS_;
-            auto cOffset = curBSNCOffset + cCount * cLoop;
+            auto cOffset = curBSNCOffset + cCountPerBS_ * cLoop;
             LocalTensor<U> xTmpLocal = xQue_.AllocTensor<U>();
             CopyIn(xTmpLocal, xFp32Ws_[cOffset], 1, cCount, 0, 0);
             xQue_.EnQue(xTmpLocal);
@@ -1225,7 +1225,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
                 CopyOutAlphaAndBias(blockIdx_ + 2 * usedAivNum_, blockIdx_ * n_ * n_ + usedAivNum_ * n_ * 2, n_ * n_);
 
                 // 计算gradNormOut from gradZRes
-                int64_t  bsOffset = blockIdx_ * curCoreProcessbsTask_ + bsIdx * bsLoopDataLen_;
+                int64_t  bsOffset = blockIdx_ * tilingData_->bsTaskCount + bsIdx * bsLoopDataLen_;
                 ComputeGradZ<false>(gradNormOutWs_, alphaRes_, bsLen, bsOffset, n_ * n_, 2 * n_);
                 event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
