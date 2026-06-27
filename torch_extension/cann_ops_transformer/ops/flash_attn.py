@@ -25,6 +25,7 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
         return cu_seqlens_q.size(0) - 1
     elif seqused_q is not None:
         return seqused_q.size(0)
+    return 0
 
 
 def _calculate_metadata_size(batch_size, num_heads_kv):
@@ -114,19 +115,19 @@ class FlashAttenOpBuilder(OpBuilder):
             if layout_out == "TND":
                 torch._check(
                     layout_q == "TND",
-                    lambda: "When the layout of output is TND, the layout of query  must be TND, but got " + str(layout_q),
+                    lambda: f"When the layout of output is TND, the layout of query must be TND, but got {layout_q}",
                 )
                 attention_out_size = (t_size, n_size, d_size)
             elif layout_out == "BNSD":
                 torch._check(
                     layout_q == "BNSD",
-                    lambda: "When the layout of output is BNSD, the layout of query  must be BNSD, but got " + str(layout_q),
+                    lambda: f"When the layout of output is BNSD, the layout of query must be BNSD, but got {layout_q}",
                 )
                 attention_out_size = (b_size, n_size, s_size, d_size)
             else:
                 torch._check(
                     layout_q != "TND",
-                    lambda: "When the layout of output is BSND, the layout of query  must be BNSD or BSND, but got " + str(layout_q),
+                    lambda: f"When the layout of output is BSND, the layout of query must be BNSD or BSND, but got {layout_q}",
                 )
                 attention_out_size = (b_size, s_size, n_size, d_size)
 
@@ -139,6 +140,7 @@ class FlashAttenOpBuilder(OpBuilder):
 # Instantiate the builder
 flash_attn_op_builder = FlashAttenOpBuilder()
 op_module = flash_attn_op_builder.load()  # Compiles/loads the .so file
+
 
 @impl(AS_LIBRARY, FA_METADATA_OP_NAME, "PrivateUse1")
 def flash_attn_metadata(
