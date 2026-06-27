@@ -35,6 +35,4 @@ struct MoeEpCombineTilingData {
     MoeEpCombineInfo moeEpCombineInfo;
 };
 
-
-
 #endif  // MOE_EP_COMBINE_TILING_H

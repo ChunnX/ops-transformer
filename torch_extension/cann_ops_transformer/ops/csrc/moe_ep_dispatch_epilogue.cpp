@@ -35,12 +35,10 @@ tensor_list npu_moe_ep_dispatch_epilogue(const at::Tensor &context, const at::Te
     at::Tensor cached_recv_src_metadata_tensor = cached_recv_src_metadata.has_value()
         ? *cached_recv_src_metadata : at::Tensor();
 
-    aclDataType recv_scales_dtype;
+    aclDataType recv_scales_dtype = aclDataType::ACL_FLOAT;
     at::Tensor recv_scales_tensor = recv_scales_opt.has_value() ? *recv_scales_opt : at::Tensor();
-    if (recv_scales_tensor.scalar_type() == at::kByte) {
+    if (recv_scales_opt.has_value() && recv_scales_tensor.scalar_type() == at::kByte) {
         recv_scales_dtype = aclDataType::ACL_FLOAT8_E8M0;
-    } else {
-        recv_scales_dtype = aclDataType::ACL_FLOAT;
     }
     TensorWrapper recv_scales_wrapper = TensorWrapper{recv_scales_tensor, recv_scales_dtype};
 

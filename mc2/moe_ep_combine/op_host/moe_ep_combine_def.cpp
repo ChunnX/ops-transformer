@@ -23,7 +23,7 @@ public:
             .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_idx")
@@ -59,7 +59,7 @@ public:
 
         this->Output("combined_x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND});
         this->Output("combined_topk_weights_optional")
             .ParamType(OPTIONAL)

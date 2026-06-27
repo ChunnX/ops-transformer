@@ -35,7 +35,7 @@ struct CommContext {
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE]; // 支持ROCE或者URMA
+    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE] = {}; // 支持ROCE或者URMA
 };
 
 // ======================== Common Types and Utilities ========================
@@ -179,8 +179,8 @@ private:
 
 class HcclChannelContextBuilder {
 public:
-    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, const std::string &commAlg,
-        at::Tensor &contextTensor)
+    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
+        const std::string &commAlg)
     {
         ASCEND_LOGI("Start to get CommContext Tensor, group: %s", group.c_str());
         InitHcclEngineCtxFunctions();
@@ -376,7 +376,8 @@ public:
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer,
+                                                       &bufSize);
             }
 
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
@@ -482,8 +483,8 @@ public:
 
 class CommContextManager {
 public:
-    CommContextManager(const std::string &group, int64_t worldSize, const std::string &commAlg,
-                       const py::object &backend = py::str("kfc"))
+    CommContextManager(const std::string &group, int64_t worldSize,
+                       const py::object &backend = py::str("kfc"), const std::string &commAlg = "ub-mem")
         : group_(group), worldSize_(worldSize), commAlg_(commAlg),
           backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
 
@@ -529,7 +530,7 @@ private:
             }
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
-                builder.Build(group_, worldSize_, cclBufferSize_, commAlg_, tensor);
+                builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_);
                 return;
             }
             default:
@@ -549,8 +550,9 @@ private:
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<CommContextManager>(m, "CommContextManager")
-        .def(py::init<const std::string &, int64_t, const std::string &, const py::object &>(),
-             py::arg("group"), py::arg("worldSize"), py::arg("commAlg"), py::arg("backend") = std::string("kfc"))
+        .def(py::init<const std::string &, int64_t, const py::object &, const std::string &>(),
+             py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
+            py::arg("commAlg") = std::string("ub-mem"))
         .def("create_context", &CommContextManager::create_context)
         .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
         .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);

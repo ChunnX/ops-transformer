@@ -30,7 +30,6 @@ tensor_list npu_moe_ep_combine(const at::Tensor &context, const at::Tensor &x,
     int64_t num_max_tokens_per_rank, int64_t ccl_buffer_size)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
-    TORCH_CHECK(x.dtype() == at::kBFloat16, "x must be bfloat16");
     TORCH_CHECK(!bias_0.has_value(), "bias not supported in first release");
     TORCH_CHECK(!bias_1.has_value(), "bias not supported in first release");
 
