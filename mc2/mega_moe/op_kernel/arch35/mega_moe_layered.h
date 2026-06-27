@@ -1532,129 +1532,129 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel1(i
         AscendC::DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
 
         // // 逐 token: 检查 topkIds → 确定目标 server → 量化 → 写中转区或二级区域
-        // for (uint32_t tokenIdx = 0; tokenIdx < m_; tokenIdx++) {
-        //     // 分核: 只处理属于本计算核的 token
-        //     if (tokenIdx % numComputeCores != computeCoreLocalIdx) {
-        //         continue;
-        //     }
+        for (uint32_t tokenIdx = 0; tokenIdx < m_; tokenIdx++) {
+            // 分核: 只处理属于本计算核的 token
+            if (tokenIdx % numComputeCores != computeCoreLocalIdx) {
+                continue;
+            }
             
-        //     for (uint32_t topkIdx = 0; topkIdx < topK_; topkIdx++) {
-        //         int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
-        //         uint32_t targetRank = globalExpertId / expertPerRank_;
-        //         uint32_t targetServer = hasMultipleServers
-        //             ? MegaMoeDispatchImpl::GetServerId(targetRank, rankSizePerServer) : 0;
-        //         uint32_t localExpertOnTarget = globalExpertId % expertPerRank_;
+            for (uint32_t topkIdx = 0; topkIdx < topK_; topkIdx++) {
+                int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
+                uint32_t targetRank = globalExpertId / expertPerRank_;
+                uint32_t targetServer = hasMultipleServers
+                    ? MegaMoeDispatchImpl::GetServerId(targetRank, rankSizePerServer) : 0;
+                uint32_t localExpertOnTarget = globalExpertId % expertPerRank_;
 
-        //         // 只处理当前 round 的 expert
-        //         if (localExpertOnTarget != static_cast<uint32_t>(localExpertId)) {
-        //             continue;
-        //         }
+                // 只处理当前 round 的 expert
+                if (localExpertOnTarget != static_cast<uint32_t>(localExpertId)) {
+                    continue;
+                }
 
-        //         // -------- 量化 token --------
-        //         AscendC::GlobalTensor<bfloat16_t> srcGlobal;
-        //         srcGlobal.SetGlobalBuffer((__gm__ bfloat16_t*)(params_.aGmAddr +
-        //             static_cast<uint64_t>(tokenIdx) * k_ * sizeof(bfloat16_t)));
-        //         auto xInTensor = (tokenIdx % DOUBLE_BUFFER == 0) ? xInTensor1_ : xInTensor2_;
-        //         auto xOutTensor = (tokenIdx % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
-        //         auto event = (tokenIdx % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
+                // -------- 量化 token --------
+                AscendC::GlobalTensor<bfloat16_t> srcGlobal;
+                srcGlobal.SetGlobalBuffer((__gm__ bfloat16_t*)(params_.aGmAddr +
+                    static_cast<uint64_t>(tokenIdx) * k_ * sizeof(bfloat16_t)));
+                auto xInTensor = (tokenIdx % DOUBLE_BUFFER == 0) ? xInTensor1_ : xInTensor2_;
+                auto xOutTensor = (tokenIdx % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
+                auto event = (tokenIdx % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
 
-        //         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        //         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        //         AscendC::DataCopyPad(xInTensor, srcGlobal, xCopyInParams, xCopyInPadParams);
-        //         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        //         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+                AscendC::DataCopyPad(xInTensor, srcGlobal, xCopyInParams, xCopyInPadParams);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event);
 
-        //         __ubuf__ bfloat16_t* srcAddr = (__ubuf__ bfloat16_t*)xInTensor.GetPhyAddr();
-        //         __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)mxTempTensor_.GetPhyAddr();
-        //         __ubuf__ uint16_t* halfScaleAddr = (__ubuf__ uint16_t*)mxTempTensor_[
-        //             Ops::Base::CeilAlign(mxQuantScaleNumAlignPerToken_, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr();
-        //         __ubuf__ int8_t* outDataAddr = (__ubuf__ int8_t*)xOutTensor.GetPhyAddr();
-        //         __ubuf__ uint16_t* mxScaleAddr = (__ubuf__ uint16_t*)xOutTensor[mxQuantTokenAlignBytes_].GetPhyAddr();
+                __ubuf__ bfloat16_t* srcAddr = (__ubuf__ bfloat16_t*)xInTensor.GetPhyAddr();
+                __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)mxTempTensor_.GetPhyAddr();
+                __ubuf__ uint16_t* halfScaleAddr = (__ubuf__ uint16_t*)mxTempTensor_[
+                    Ops::Base::CeilAlign(mxQuantScaleNumAlignPerToken_, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr();
+                __ubuf__ int8_t* outDataAddr = (__ubuf__ int8_t*)xOutTensor.GetPhyAddr();
+                __ubuf__ uint16_t* mxScaleAddr = (__ubuf__ uint16_t*)xOutTensor[mxQuantTokenAlignBytes_].GetPhyAddr();
 
-        //         quant::ComputeMaxExp(srcAddr, maxExpAddr, k_);
-        //         quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr,
-        //             mxQuantScaleNumAlignPerToken_);
-        //         if constexpr (QuantMode == E2M1_QUANT) {
-        //             quant::ComputeFp4Data<bfloat16_t, QuantOutType,
-        //                 AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
-        //                 srcAddr, halfScaleAddr, outDataAddr, k_);
-        //         } else {
-        //             quant::ComputeFp8Data<bfloat16_t, QuantOutType,
-        //                 AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
-        //                 srcAddr, halfScaleAddr, outDataAddr, k_);
-        //         }
+                quant::ComputeMaxExp(srcAddr, maxExpAddr, k_);
+                quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr,
+                    mxQuantScaleNumAlignPerToken_);
+                if constexpr (QuantMode == E2M1_QUANT) {
+                    quant::ComputeFp4Data<bfloat16_t, QuantOutType,
+                        AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
+                        srcAddr, halfScaleAddr, outDataAddr, k_);
+                } else {
+                    quant::ComputeFp8Data<bfloat16_t, QuantOutType,
+                        AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
+                        srcAddr, halfScaleAddr, outDataAddr, k_);
+                }
 
-        //         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(event);
-        //         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(event);
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(event);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(event);
 
-        //         if (hasMultipleServers && targetServer != myServerId) {
-        //             // ===== 跨 server: 写入中转区 =====
-        //             uint32_t otherIdx = MegaMoeDispatchImpl::ServerIdToOtherServerIdx(targetServer, myServerId);
+                if (hasMultipleServers && targetServer != myServerId) {
+                    // ===== 跨 server: 写入中转区 =====
+                    uint32_t otherIdx = MegaMoeDispatchImpl::ServerIdToOtherServerIdx(targetServer, myServerId);
 
-        //             // 已发送跳过
-        //             if (sentFlags.GetValue(tokenIdx * numOtherServers + otherIdx) != 0) {
-        //                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        //                 continue;
-        //             }
+                    // 已发送跳过
+                    if (sentFlags.GetValue(tokenIdx * numOtherServers + otherIdx) != 0) {
+                        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+                        continue;
+                    }
 
-        //             // AtomicAdd 获取 slot index
-        //             GM_ADDR relayBase = MegaMoeDispatchImpl::GetRelayAreaBase(
-        //                 params_.workspaceInfo.dispatchL1RelayDataPtr, otherIdx, l1RelayPerServerSize_);
-        //             __gm__ int32_t* countAddr = MegaMoeDispatchImpl::GetRelayCountAddr(relayBase);
-        //             int32_t slotIdx = AscendC::AtomicAdd(countAddr, 1);
-        //             PipeBarrier<PIPE_ALL>();
+                    // AtomicAdd 获取 slot index
+                    GM_ADDR relayBase = MegaMoeDispatchImpl::GetRelayAreaBase(
+                        params_.workspaceInfo.dispatchL1RelayDataPtr, otherIdx, l1RelayPerServerSize_);
+                    __gm__ int32_t* countAddr = MegaMoeDispatchImpl::GetRelayCountAddr(relayBase);
+                    int32_t slotIdx = AscendC::AtomicAdd(countAddr, 1);
+                    PipeBarrier<PIPE_ALL>();
 
-        //             // 写中转区 data
-        //             GM_ADDR slotDataAddr = MegaMoeDispatchImpl::GetRelaySlotDataAddr(
-        //                 relayBase, slotIdx, l1SlotSize_);
-        //             AscendC::GlobalTensor<uint8_t> dstDataGlobal;
-        //             dstDataGlobal.SetGlobalBuffer((__gm__ uint8_t*)(slotDataAddr));
-        //             auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
-        //             AscendC::DataCopyPad(dstDataGlobal, xOutBytesTensor, dataOutParams);
-        //             PipeBarrier<PIPE_ALL>();
+                    // 写中转区 data
+                    GM_ADDR slotDataAddr = MegaMoeDispatchImpl::GetRelaySlotDataAddr(
+                        relayBase, slotIdx, l1SlotSize_);
+                    AscendC::GlobalTensor<uint8_t> dstDataGlobal;
+                    dstDataGlobal.SetGlobalBuffer((__gm__ uint8_t*)(slotDataAddr));
+                    auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
+                    AscendC::DataCopyPad(dstDataGlobal, xOutBytesTensor, dataOutParams);
+                    PipeBarrier<PIPE_ALL>();
 
-        //             // 写中转区 metadata (先写 data 再写 metadata, 保证发送核看到 flag=1 时 data 已就绪)
-        //             metaWriteTensor.SetValue(0, 1);          // flag = ready
-        //             metaWriteTensor.SetValue(1, tokenIdx);    // token_id
-        //             AscendC::GlobalTensor<int32_t> dstMetaGlobal;
-        //             dstMetaGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
-        //                 MegaMoeDispatchImpl::GetRelaySlotMetaAddr(
-        //                     relayBase, slotIdx, l1SlotSize_, l1SlotDataBytes_)));
-        //             AscendC::DataCopy(dstMetaGlobal, metaWriteTensor,
-        //                 MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
-        //             PipeBarrier<PIPE_ALL>();
+                    // 写中转区 metadata (先写 data 再写 metadata, 保证发送核看到 flag=1 时 data 已就绪)
+                    metaWriteTensor.SetValue(0, 1);          // flag = ready
+                    metaWriteTensor.SetValue(1, tokenIdx);    // token_id
+                    AscendC::GlobalTensor<int32_t> dstMetaGlobal;
+                    dstMetaGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+                        MegaMoeDispatchImpl::GetRelaySlotMetaAddr(
+                            relayBase, slotIdx, l1SlotSize_, l1SlotDataBytes_)));
+                    AscendC::DataCopy(dstMetaGlobal, metaWriteTensor,
+                        MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
+                    PipeBarrier<PIPE_ALL>();
 
-        //             // 标记已发送
-        //             sentFlags.SetValue(tokenIdx * numOtherServers + otherIdx, 1);
-        //         } else {
-        //             // ===== 本 server 内: 直接写入本卡 URMA 窗口 L1 接收区 (myServerId section) =====
-        //             // L2 通信时, 本 server 其他卡通过 ReadNbi 从本卡该位置读数据
-        //             GM_ADDR localUrmaBase = GetUrmaAddrByRankId(mc2Context_, rankId_) +
-        //                 params_.peermemInfo.URMADispatchL1RecvPtr;
-        //             uint64_t recvSectionOffset = MegaMoeDispatchImpl::GetL1RecvSectionOffset(
-        //                 myServerId, l1RecvPerServerSize_);
-        //             uint64_t dataOffset = recvSectionOffset +
-        //                 MegaMoeDispatchImpl::GetL1RecvDataOffset(tokenIdx, l1SlotSize_);
-        //             uint64_t notifyOffset = recvSectionOffset +
-        //                 MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIdx, l1SlotSize_);
+                    // 标记已发送
+                    sentFlags.SetValue(tokenIdx * numOtherServers + otherIdx, 1);
+                } else {
+                    // ===== 本 server 内: 直接写入本卡 URMA 窗口 L1 接收区 (myServerId section) =====
+                    // L2 通信时, 本 server 其他卡通过 ReadNbi 从本卡该位置读数据
+                    GM_ADDR localUrmaBase = GetUrmaAddrByRankId(mc2Context_, rankId_) +
+                        params_.peermemInfo.URMADispatchL1RecvPtr;
+                    uint64_t recvSectionOffset = MegaMoeDispatchImpl::GetL1RecvSectionOffset(
+                        myServerId, l1RecvPerServerSize_);
+                    uint64_t dataOffset = recvSectionOffset +
+                        MegaMoeDispatchImpl::GetL1RecvDataOffset(tokenIdx, l1SlotSize_);
+                    uint64_t notifyOffset = recvSectionOffset +
+                        MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIdx, l1SlotSize_);
 
-        //             // 先写 data
-        //             AscendC::GlobalTensor<uint8_t> dstDataGlobal;
-        //             dstDataGlobal.SetGlobalBuffer((__gm__ uint8_t*)(localUrmaBase + dataOffset));
-        //             auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
-        //             AscendC::DataCopyPad(dstDataGlobal, xOutBytesTensor, dataOutParams);
-        //             PipeBarrier<PIPE_ALL>();
+                    // 先写 data
+                    AscendC::GlobalTensor<uint8_t> dstDataGlobal;
+                    dstDataGlobal.SetGlobalBuffer((__gm__ uint8_t*)(localUrmaBase + dataOffset));
+                    auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
+                    AscendC::DataCopyPad(dstDataGlobal, xOutBytesTensor, dataOutParams);
+                    PipeBarrier<PIPE_ALL>();
 
-        //             // 再写 notify flag (int32 = 1), 保证 L2 读 flag=1 时 data 已就绪
-        //             __gm__ int32_t* notifyAddr = reinterpret_cast<__gm__ int32_t*>(
-        //                 localUrmaBase + notifyOffset);
-        //             WriteGmByPassDCache(notifyAddr, 1);
-        //             PipeBarrier<PIPE_ALL>();
-        //         }
+                    // 再写 notify flag (int32 = 1), 保证 L2 读 flag=1 时 data 已就绪
+                    __gm__ int32_t* notifyAddr = reinterpret_cast<__gm__ int32_t*>(
+                        localUrmaBase + notifyOffset);
+                    WriteGmByPassDCache(notifyAddr, 1);
+                    PipeBarrier<PIPE_ALL>();
+                }
 
-        //         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        //     }
-        // }
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+            }
+        }
 
         // // 写完成标志: 本计算核完成当前 expert round
         // __gm__ int32_t* myCompleteAddr = MegaMoeDispatchImpl::GetCompleteListAddr(
