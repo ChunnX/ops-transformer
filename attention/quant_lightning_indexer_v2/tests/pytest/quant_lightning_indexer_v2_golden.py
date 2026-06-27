@@ -805,6 +805,7 @@ def qliv2_output_single(params, is_batch = False):
             seqused_k = ast.literal_eval(seqused_k)
         if output_idx_offset is not None:
             output_idx_offset = ast.literal_eval(output_idx_offset)
+            output_idx_offset = [[random.randint(output_idx_offset[0], output_idx_offset[1]) for _ in range(batch_size * q_seq)] for _ in range(1)]
         if cmp_residual_k is not None:
             cmp_residual_k = ast.literal_eval(cmp_residual_k)
         if query_datarange is not None:
