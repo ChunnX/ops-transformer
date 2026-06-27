@@ -151,7 +151,7 @@ __aicore__ inline GM_ADDR GetRelaySlotMetaAddr(GM_ADDR relayAreaBase, uint32_t s
 __aicore__ inline uint64_t CalcL1RecvPerServer(uint32_t m, uint32_t slotSize)
 {
     uint64_t perServer = static_cast<uint64_t>(m) * slotSize;
-    return Ops::Base::CeilAlign(perServer, static_cast<int64_t>(ALIGN_512));
+    return Ops::Base::CeilAlign(perServer, static_cast<uint64_t>(ALIGN_512));
 }
 
 /// 对端接收区: source server section 基地址 (在 URMA 窗口内)
