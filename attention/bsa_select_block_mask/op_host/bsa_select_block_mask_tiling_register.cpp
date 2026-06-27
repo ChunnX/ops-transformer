@@ -17,7 +17,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/bsa_select_block_mask_tiling_data.h"
 #include "../op_kernel/bsa_select_block_mask_tiling_key.h"
-#include "bsa_select_block_mask_tiling.h"
+#include "bsa_select_block_mask_tiling_base.h"
 
 namespace optiling {
 

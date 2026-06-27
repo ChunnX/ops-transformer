@@ -16,124 +16,117 @@
 
 #include <numeric>
 #include <algorithm>
-#include <sstream>
-#include <exe_graph/runtime/tiling_context.h>
-#include <graph/utils/type_utils.h>
-#include "tiling/platform/platform_ascendc.h"
-#include "err/ops_err.h"
-
-#ifdef ASCENDC_OP_TEST
-#define ASCENDC_EXTERN_C extern "C"
-#else
-#define ASCENDC_EXTERN_C
-#endif
+#include "../op_kernel/bsa_select_block_mask_tiling_key.h"
+#include "../op_kernel/bsa_select_block_mask_tiling_data.h"
+#include "tiling_base_class.h"
 
 using namespace ge;
 using namespace AscendC;
 
 namespace optiling {
 
-static const int64_t MAX_VAR_LEN_SEQ_LEN = 4096L;
-static const int64_t GM_ALIGN = 512;
-static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
+struct BSASelectBlockMaskCompileInfo {
+    int64_t core_num;
+    uint32_t aivNum;
+    uint32_t aicNum;
+    uint64_t ubSize;
+    uint64_t l1Size;
+    uint64_t l0cSize;
+    uint64_t l2CacheSize;
+    platform_ascendc::SocVersion socVersion;
+};
 
-static constexpr uint32_t D_SIZE_128 = 128;
-static constexpr uint32_t BLOCK_SHAPE_ALIGN = 64;
-static constexpr float SPARSITY_MIN = 0.0f;
-static constexpr float SPARSITY_MAX = 1.0f;
-static constexpr uint32_t HEAD_NUM_MIN = 1;
-static constexpr uint32_t HEAD_NUM_MAX = 40;
-static constexpr uint16_t Q_CHUNK_SIZE = 128;
-static constexpr uint16_t K_CHUNK_SIZE = 128;
-static constexpr uint8_t SCHEDULE_MODE_ALL_CORE = 1;
-
-template <typename T>
-static auto BSACeilDivision(T num1, T num2) -> T
-{
-    if (num2 == 0) {
-        return 0;
-    }
-    return (num1 + num2 - 1) / num2;
-}
-
-template <typename T>
-inline auto BSAMax(T a, T b) -> T
-{
-    return (a < b) ? (b) : (a);
-}
-
-class TilingBaseClass {
+class BSASelectBlockMaskTilingBase : public TilingBaseClass {
 public:
-    explicit TilingBaseClass(gert::TilingContext* context) : context_(context)
-    {}
-
-    virtual ~TilingBaseClass() = default;
-
-    ge::graphStatus DoTiling()
+    explicit BSASelectBlockMaskTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
     {
-        auto ret = GetShapeAttrsInfo();
-        if (ret != ge::GRAPH_SUCCESS) {
-            return ret;
-        }
-        ret = GetPlatformInfo();
-        if (ret != ge::GRAPH_SUCCESS) {
-            return ret;
-        }
-        if (!IsCapable()) {
-            return ge::GRAPH_PARAM_INVALID;
-        }
-        ret = DoOpTiling();
-        if (ret != ge::GRAPH_SUCCESS) {
-            return ret;
-        }
-        ret = GetWorkspaceSize();
-        if (ret != ge::GRAPH_SUCCESS) {
-            return ret;
-        }
-        context_->SetTilingKey(GetTilingKey());
-        DumpTilingInfo();
-        return ge::GRAPH_SUCCESS;
+        Reset();
     }
+    ~BSASelectBlockMaskTilingBase() override = default;
 
-    virtual void Reset(gert::TilingContext* context)
+    void Reset(gert::TilingContext *context) override
     {
-        context_ = context;
+        TilingBaseClass::Reset(context);
+        Reset();
     }
 
 protected:
-    virtual bool IsCapable() = 0;
-    virtual ge::graphStatus GetPlatformInfo() = 0;
-    virtual ge::graphStatus GetShapeAttrsInfo() = 0;
-    virtual ge::graphStatus DoOpTiling() = 0;
-    [[nodiscard]] virtual uint64_t GetTilingKey() const = 0;
-    virtual ge::graphStatus GetWorkspaceSize() = 0;
-    virtual void DumpTilingInfo()
-    {
-        int32_t enable = 1;
-        if (enable != 1) {
-            return;
-        }
-        auto buf = (uint32_t*)context_->GetRawTilingData()->GetData();
-        auto bufLen = context_->GetRawTilingData()->GetDataSize();
-        std::ostringstream oss;
-        oss << "Start to dump tiling info. tilingkey:" << context_->GetTilingKey() << ", tiling data size:" << bufLen
-            << ", content:";
-        for (size_t i = 0; i < bufLen / sizeof(uint32_t); i++) {
-            oss << *(buf + i) << ",";
-            if (oss.str().length() > 640) {
-                OP_LOGD(context_, "%s", oss.str().c_str());
-                oss.str("");
-            }
-        }
-        OP_LOGD(context_, "%s", oss.str().c_str());
+    void Reset() {
+        batchSize = 0;
+        numHeads = 0;
+        maxQSeqlen = 0;
+        maxKvSeqlen = 0;
+        dSize = D_SIZE_128;
+        blockShapeX = 128;
+        blockShapeY = 128;
+        xBlocks = 0;
+        yBlocks = 0;
+        scaleValue = 0.08838834764831845f;
+        sparsity = 0.5f;
+        topKValue = 0ULL;
+        sparsityMode = 0;
+        queryLayout = nullptr;
+        kvLayout = nullptr;
+        opName = nullptr;
     }
 
-protected:
-    gert::TilingContext* context_ = nullptr;
-    std::unique_ptr<platform_ascendc::PlatformAscendC> ascendcPlatform_{nullptr};
-    uint32_t blockDim_{0};
-    uint64_t workspaceSize_{0};
-    uint64_t tilingKey_{0};
+    [[nodiscard]] gert::TilingContext *GetContext()
+    {
+        return context_;
+    }
+    bool IsCapable() override
+    {
+        return true;
+    }
+
+    ge::graphStatus GetPlatformInfo() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus DoOpTiling() override;
+    uint64_t GetTilingKey() const override;
+    ge::graphStatus GetWorkspaceSize() override;
+
+    ge::graphStatus CheckContext();
+    bool AnalyzeAttrs();
+    bool AnalyzeDtype();
+    bool AnalyzeLayout();
+    bool CrossShapeVerify();
+    void CalcMultiCoreParams();
+    void CalcOutputParams();
+
+    uint32_t batchSize;
+    uint32_t numHeads;
+    uint32_t maxQSeqlen;
+    uint32_t maxKvSeqlen;
+    uint32_t dSize;
+    uint64_t blockShapeX;
+    uint64_t blockShapeY;
+    uint32_t xBlocks;
+    uint32_t yBlocks;
+    float scaleValue;
+    float sparsity;
+    uint64_t topKValue;
+    uint8_t sparsityMode;
+    uint8_t useActualBlockLenQ;
+    uint8_t useActualBlockLenK;
+
+    const char *opName;
+    const char *queryLayout;
+    const char *kvLayout;
+
+    uint32_t aivNum;
+    uint32_t aicNum;
+    uint64_t ubSize;
+    uint64_t l1Size;
+    uint64_t l0cSize;
+    uint64_t l2CacheSize;
+
+    LayoutType tilingKeyLayoutQ;
+    LayoutType tilingKeyLayoutKV;
+
+    BSASelectBlockMaskTilingData *tilingData = nullptr;
+    BSABaseParams *baseParams_ = nullptr;
+    BSAMultiCoreParams *multiCoreParams_ = nullptr;
+    BSAOutputParams *outputParams_ = nullptr;
 };
 
 } // optiling

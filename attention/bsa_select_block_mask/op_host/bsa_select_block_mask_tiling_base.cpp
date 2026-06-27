@@ -8,10 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file bsa_select_block_mask_tiling.cpp
+ * \file bsa_select_block_mask_tiling_base.cpp
  * \brief
  */
-#include "bsa_select_block_mask_tiling.h"
+#include "bsa_select_block_mask_tiling_base.h"
 #include <tiling/tiling_api.h>
 using namespace ge;
 using namespace AscendC;
