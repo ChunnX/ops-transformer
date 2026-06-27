@@ -47,8 +47,8 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
 
     __VEC_SCOPE__
     {
-        RegTensor<T> vreg1, vreg2, vreg3, maxReg, yReg1;
-        RegTensor<float> scaleReg, fp8MaxReg, yReg2, yReg3;
+        RegTensor<T> vreg0, vreg1, vreg2, vreg3, maxReg0, maxReg1, yReg1;
+        RegTensor<float> scaleReg0, scaleReg1, fp8MaxReg, yReg2, yReg3;
         RegTensor<U> outReg;
 
         MaskReg preg0;
@@ -58,37 +58,65 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
         Duplicate((RegTensor<uint16_t> &)vreg2, FP16_MAX_VALUE_MASK);
         Duplicate(fp8MaxReg, fp8MaxValue);
 
-        for (uint16_t blkIdx = 0; blkIdx < blockNum; blkIdx++) {
-            uint32_t blockOffset = blkIdx * FP8_PERBLOCK_BLOCK_SIZE;
-            uint32_t blockElemNum = (blkIdx == blockNum - 1) ? (totalElemNum - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
-            uint32_t inputNum = blockElemNum;
-            uint32_t outputNum = blockElemNum;
-            uint16_t inputVfLoop = (blockElemNum + vfLen - 1) / vfLen;
-            uint16_t outputVfLoop = (blockElemNum + vfNum - 1) / vfNum;
+        // 每次处理 2 个 block
+        // 注意：如果 blockNum 为奇数，最后一对只处理 1 个 block，避免 scale buffer 越界
+        uint16_t pairNum = (blockNum + 1) / 2;
+        bool lastPairHasOneBlock = (blockNum % 2 == 1);
+        for (uint16_t pairIdx = 0; pairIdx < pairNum; pairIdx++) {
+            uint32_t blockOffset = pairIdx * FP8_PERBLOCK_BLOCK_SIZE * 2;
+            bool currentPairHasOneBlock = (pairIdx == pairNum - 1) && lastPairHasOneBlock;
 
-            Duplicate(maxReg, static_cast<T>(0));
+            // block 0: 加载并计算 max
+            DataCopy(vreg0, xAddr + blockOffset);
+            Duplicate(maxReg0, static_cast<T>(0));
+            And((RegTensor<uint16_t> &)vreg3, (RegTensor<uint16_t> &)vreg0, (RegTensor<uint16_t> &)vreg2, maskAll);
+            Max<T>(maxReg0, maxReg0, vreg3, maskAll);
+            ReduceMax<uint16_t>((RegTensor<uint16_t> &)maxReg0, (RegTensor<uint16_t> &)maxReg0, maskAll);
+            Duplicate(maxReg0, maxReg0, maskAll);
+            Cast<float, T, castTrait0>(scaleReg0, maxReg0, maskAll);
+            Div<float, &mode>(scaleReg0, scaleReg0, fp8MaxReg, maskAll);
+            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + pairIdx * 2, scaleReg0, maskAll);
 
-            for (uint16_t i = 0; i < inputVfLoop; i++) {
-                preg0 = UpdateMask<T>(inputNum);
-                DataCopy(vreg1, xAddr + blockOffset + i * vfLen);
-                And((RegTensor<uint16_t> &)vreg3, (RegTensor<uint16_t> &)vreg1, (RegTensor<uint16_t> &)vreg2, preg0);
-                Max<T, MaskMergeMode::MERGING>(maxReg, maxReg, vreg3, preg0);
+            if (!currentPairHasOneBlock) {
+                // block 1: 加载并计算 max
+                DataCopy(vreg1, xAddr + blockOffset + FP8_PERBLOCK_BLOCK_SIZE);
+                Duplicate(maxReg1, static_cast<T>(0));
+                And((RegTensor<uint16_t> &)vreg3, (RegTensor<uint16_t> &)vreg1, (RegTensor<uint16_t> &)vreg2, maskAll);
+                Max<T>(maxReg1, maxReg1, vreg3, maskAll);
+                ReduceMax<uint16_t>((RegTensor<uint16_t> &)maxReg1, (RegTensor<uint16_t> &)maxReg1, maskAll);
+                Duplicate(maxReg1, maxReg1, maskAll);
+                Cast<float, T, castTrait0>(scaleReg1, maxReg1, maskAll);
+                Div<float, &mode>(scaleReg1, scaleReg1, fp8MaxReg, maskAll);
+                DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + pairIdx * 2 + 1, scaleReg1, maskAll);
             }
 
-            ReduceMax<uint16_t>((RegTensor<uint16_t> &)maxReg, (RegTensor<uint16_t> &)maxReg, maskAll);
-            Duplicate(maxReg, maxReg, maskAll);
+            // 量化 block 0
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset);
+            Cast<float, T, castTrait0>(yReg2, yReg1, maskAll);
+            Div<float, &mode>(yReg3, yReg2, scaleReg0, maskAll);
+            Cast<U, float, castTrait32tofp8>(outReg, yReg3, maskAll);
+            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset, outReg, maskAll);
 
-            Cast<float, T, castTrait0>(scaleReg, maxReg, maskAll);
-            Div<float, &mode>(scaleReg, scaleReg, fp8MaxReg, maskAll);
-            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + blkIdx, scaleReg, maskAll);
+            DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + vfNum);
+            Cast<float, T, castTrait0>(yReg2, yReg1, maskAll);
+            Div<float, &mode>(yReg3, yReg2, scaleReg0, maskAll);
+            Cast<U, float, castTrait32tofp8>(outReg, yReg3, maskAll);
+            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + vfNum, outReg, maskAll);
 
-            for (uint16_t i = 0; i < outputVfLoop; i++) {
-                yMaskReg = UpdateMask<float>(outputNum);
-                DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + i * vfNum);
-                Cast<float, T, castTrait0>(yReg2, yReg1, yMaskReg);
-                Div<float, &mode>(yReg3, yReg2, scaleReg, yMaskReg);
-                Cast<U, float, castTrait32tofp8>(outReg, yReg3, yMaskReg);
-                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + i * vfNum, outReg, yMaskReg);
+            if (!currentPairHasOneBlock) {
+                // 量化 block 1
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + FP8_PERBLOCK_BLOCK_SIZE);
+                Cast<float, T, castTrait0>(yReg2, yReg1, maskAll);
+                Div<float, &mode>(yReg3, yReg2, scaleReg1, maskAll);
+                Cast<U, float, castTrait32tofp8>(outReg, yReg3, maskAll);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + FP8_PERBLOCK_BLOCK_SIZE, outReg, maskAll);
+
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + FP8_PERBLOCK_BLOCK_SIZE + vfNum);
+                Cast<float, T, castTrait0>(yReg2, yReg1, maskAll);
+                Div<float, &mode>(yReg3, yReg2, scaleReg1, maskAll);
+                Cast<U, float, castTrait32tofp8>(outReg, yReg3, maskAll);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + FP8_PERBLOCK_BLOCK_SIZE + vfNum, outReg,
+                                                       maskAll);
             }
         }
     }
@@ -119,10 +147,10 @@ private:
 private:
     TPipe *pipe_;
 
-    TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> inQueue_;
-    TQue<QuePosition::VECOUT, GATHER_OUT_BUFFER_NUM> outQueue_;
-    TQue<QuePosition::VECOUT, GATHER_OUT_BUFFER_NUM> scaleQueue_;
-    TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> sortedRowIdxInQueue_;
+    TQue<QuePosition::VECIN, 1> inQueue_;
+    TQue<QuePosition::VECOUT, 1> outQueue_;
+    TQue<QuePosition::VECOUT, 1> scaleQueue_;
+    TQue<QuePosition::VECIN, 1> sortedRowIdxInQueue_;
 
     GlobalTensor<T> xInGm_;
     GlobalTensor<uint8_t> expandedXOutGm_;
@@ -252,10 +280,10 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::InitBuffer()
     int64_t scaleQueueBuffer = Max(static_cast<int64_t>(AlignBytes(perLoopScaleCols_, sizeof(float))),
                                    static_cast<int64_t>(AscendC::VECTOR_REG_WIDTH));
 
-    pipe_->InitBuffer(inQueue_, GATHER_OUT_BUFFER_NUM, inQueueBuffer);
-    pipe_->InitBuffer(outQueue_, GATHER_OUT_BUFFER_NUM, outQueueBuffer);
-    pipe_->InitBuffer(scaleQueue_, GATHER_OUT_BUFFER_NUM, scaleQueueBuffer);
-    pipe_->InitBuffer(sortedRowIdxInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopRows_, sizeof(int32_t)));
+    pipe_->InitBuffer(inQueue_, 1, inQueueBuffer);
+    pipe_->InitBuffer(outQueue_, 1, outQueueBuffer);
+    pipe_->InitBuffer(scaleQueue_, 1, scaleQueueBuffer);
+    pipe_->InitBuffer(sortedRowIdxInQueue_, 1, AlignBytes(perLoopRows_, sizeof(int32_t)));
 }
 
 template <typename T, typename U>
