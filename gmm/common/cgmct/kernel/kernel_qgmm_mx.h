@@ -104,16 +104,17 @@ public:
         uint8_t dbL0C;
         int8_t groupType;
         uint8_t groupListType;
+        uint8_t singleW;
         __aicore__ GMMTiling()
         {
         }
         __aicore__ GMMTiling(uint32_t groupNum_, uint32_t m_, uint32_t n_, uint32_t k_, uint32_t baseM_,
                              uint32_t baseN_, uint32_t baseK_, uint32_t kAL1_, uint32_t kBL1_, uint32_t scaleKAL1_,
                              uint32_t scaleKBL1_, uint8_t isBias_, uint8_t dbL0C_, int8_t groupType_,
-                             uint8_t groupListType_)
+                             uint8_t groupListType_, uint8_t singleW_ = 1)
             : groupNum(groupNum_), m(m_), n(n_), k(k_), baseM(baseM_), baseN(baseN_), baseK(baseK_), kAL1(kAL1_),
               kBL1(kBL1_), scaleKAL1(scaleKAL1_), scaleKBL1(scaleKBL1_), isBias(isBias_), dbL0C(dbL0C_),
-              groupType(groupType_), groupListType(groupListType_)
+              groupType(groupType_), groupListType(groupListType_), singleW(singleW_)
         {
         }
     };
