@@ -17,6 +17,7 @@ AscendOps 是一个轻量级，高性能的算子开发工程模板，它集成�
 ## 核心组件
 1. `csrc/xxx/xxx_torch.cpp` 算子Kernel实现
 2. `csrc/xxx/CMakeLists.txt` 算子cmake配置
+3. `csrc/npu_ops_def.cpp` 注册算子接口
 
 ## 环境要求
 *   AI处理器：Ascend 950PR/Ascend 950DT
@@ -62,7 +63,7 @@ AscendOps 是一个轻量级，高性能的算子开发工程模板，它集成�
 
    说明：上面示例中的版本号及 `+cpu` 后缀仅作为示例。不同操作系统和架构（尤其是 ARM Linux）对应的 wheel 名称可能没有 `+cpu` 后缀，请以 PyTorch 官方下载页面或 `pip` 实际可用的包名为准。
 
-   下载链接为：[官网地址](https://download.pytorch.org/whl/torch)
+   下载链接为：[官网地址](http://download.pytorch.org/whl/torch)
 
    安装命令如下（将 `<torch_whl>` 替换为实际下载的文件名）：
 
@@ -123,7 +124,7 @@ AscendOps 是一个轻量级，高性能的算子开发工程模板，它集成�
 
 ```bash
 cd ./ascend_ops/csrc/flash_attn/test/
-python3 test_fia_v2.py
+python3 test_fa.py
 ```
 
 最终看到如下输出，即为执行成功：
@@ -135,6 +136,24 @@ compare CPU Result vs NPU Result: True
 ```bash
 msprof --application="python3 test_fia_v2.py"
 ```
+2. 仿真执行
+以FIA算子为例，通过[cannsim工具](https://gitcode.com/cann/ops-nn/blob/master/docs/zh/debug/cann_simulator.md)提供的仿真器来执行算子
+```bash
+cd ./ascend_ops/csrc/flash_attn/test/
+
+# 配置仿真执行环境
+mkdir log log_ca run_log log/ub_log && export  LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/tools/simulator/Ascend950PR_9599/camodel/:${LD_LIBRARY_PATH}
+
+#执行算子
+python3 test_fia_v2.py
+```
+使用cannsim工具生成流水图
+```bash
+#执行完成后，会在当前目录下生成trace_core0.json
+cannsim report -e ./ 
+```
+可以使用chrome://tracing工具打开trace_core0.json来分析算子流水
+
 
 
 ## 进阶参考
