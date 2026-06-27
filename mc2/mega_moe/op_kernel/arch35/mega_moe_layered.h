@@ -1562,7 +1562,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel1(i
                 auto xOutTensor = (tokenIdx % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
                 auto event = (tokenIdx % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
 
-                SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, event>();
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
                 AscendC::DataCopyPad(xInTensor, srcGlobal, xCopyInParams, xCopyInPadParams);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event);
@@ -1837,7 +1838,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
             }
 
             // 等 MTE2 (DataCopy GM→UB) 完成后再拆分写
-            SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, bufEvent>();
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(bufEvent);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(bufEvent);
 
             // 拆分写 token 和 scale 到 GM (给 GMM 用)
             LocalTensor<QuantScaleOutType> bufScale =
