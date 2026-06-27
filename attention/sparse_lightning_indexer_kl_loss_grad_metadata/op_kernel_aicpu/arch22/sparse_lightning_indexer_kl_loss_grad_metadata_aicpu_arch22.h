@@ -234,14 +234,14 @@ inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::GetCmpRe
 }
 
 inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::GetPreCompressS2Len(int64_t bIdx,
-                                                                                             int64_t s2Size) const
+                                                                                            int64_t s2Size) const
 {
     return std::max<int64_t>(0, s2Size * cmpRatio_ + GetCmpResidualKey(bIdx));
 }
 
 inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::GetS2RealSize(int64_t bIdx, int64_t s1Size,
-                                                                                       int64_t s2Size,
-                                                                                       int64_t s1Idx) const
+                                                                                      int64_t s2Size,
+                                                                                      int64_t s1Idx) const
 {
     int64_t s2SparseLen = 0;
     if (sparseMode_ == static_cast<int64_t>(SliSparseMode::NO_MASK)) {
@@ -398,8 +398,7 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::BuildBalanc
                                               prefixLoad.begin() + maxStart + 1, targetPrefixLoad);
         int64_t candidate = std::min<int64_t>(std::distance(prefixLoad.begin(), candidateIter), maxStart);
         if (candidate > lowerFeasibleStart &&
-            AbsDiff(prefixLoad[candidate - 1], targetPrefixLoad) <=
-                AbsDiff(prefixLoad[candidate], targetPrefixLoad)) {
+            AbsDiff(prefixLoad[candidate - 1], targetPrefixLoad) <= AbsDiff(prefixLoad[candidate], targetPrefixLoad)) {
             --candidate;
         }
 
