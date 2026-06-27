@@ -164,7 +164,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Init(GM_ADDR x, GM_ADDR scale, 
 
     batchSize_ = tilingData->gatherOutComputeParamsOp.xBatchSize;
     if (batchSize_ > 1) {
-        pipe_->InitBuffer(multiRowXLocal_, batchSize_ * AlignBytes(perLoopCols_, sizeof(T)));
+        pipe_->InitBuffer(multiRowXLocal_, 1, batchSize_ * AlignBytes(perLoopCols_, sizeof(T)));
     }
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreIndicesElements_,
@@ -279,7 +279,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                         SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
                         if constexpr (IsSameType<T, hifloat8_t>::value) {
                             DataCopyPadExtParams<uint8_t> batchPadParams{false, 0, 0, 0};
-                            DataCopyPad(multiRowXLocal_.ReinterpretCast<uint8_t>(),
+                            DataCopyPad(multiRowXLocal_.template ReinterpretCast<uint8_t>(),
                                         xUint8tGm_[batchStart * cols_ + colsLoopOffset],
                                         batchCopyParams, batchPadParams);
                         } else {

@@ -2196,7 +2196,7 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
 
     int64_t rowBytes = Ops::Base::CeilAlign(perLoopCols * inputXDtypeSize_, UB_BLOCK_SIZE);
     int64_t xQueueSize = DOUBLE_BUFFER * rowBytes;
-    int64_t scaleQueueSize = DOUBLE_BUFFER * Ops::Base::CeilAlign(sizeof(float), UB_BLOCK_SIZE);
+    int64_t scaleQueueSize = DOUBLE_BUFFER * Ops::Base::CeilAlign(static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
     int64_t remainUbForBatch = availUbSize_ - xQueueSize - scaleQueueSize;
     int64_t xBatchSize = (rowBytes > 0) ? (remainUbForBatch / rowBytes) : 1;
     tilingData->xBatchSize = std::max(xBatchSize, static_cast<int64_t>(1));
