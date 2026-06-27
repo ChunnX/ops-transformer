@@ -7,13 +7,9 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPBASE_TAG_ID cd48c600c4b37146f504217eab2bf3956f7fee8b)
+set(OPBASE_TAG_ID 49715024170bce00bd16dc6d6cfcd93357eed974)
 
-if(EXISTS "${PROJECT_SOURCE_DIR}/../../ops-base")
-  get_filename_component(OPBASE_SOURCE_PATH
-                         ${PROJECT_SOURCE_DIR}/../../ops-base REALPATH)
-  message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")
-elseif(EXISTS "${CANN_3RD_LIB_PATH}/opbase")
+if(EXISTS "${CANN_3RD_LIB_PATH}/opbase")
   get_filename_component(OPBASE_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/opbase REALPATH)
   message(STATUS "Find opbase source dir: ${OPBASE_SOURCE_PATH}")
