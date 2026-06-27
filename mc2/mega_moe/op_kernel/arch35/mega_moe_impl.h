@@ -675,6 +675,22 @@ __aicore__ inline void AicComputeA8W4(
             auto tensorBlockGm = l0cOutGm.Slice(
                 Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+            // A8W4 combine-quant: AIC 通知 AIV 本 tile 已完成
+            //
+            // gmm2CombineSyncCounter 内存布局 (每个 expert 一段, 每段 blockAivNum 个 slot):
+            //
+            //   expert 0:  [slot_0][slot_1][slot_2]...[slot_63]   ← 64 slots, 每个 slot = INT_CACHELINE(16) int32
+            //   expert 1:  [slot_0][slot_1][slot_2]...[slot_63]
+            //   ...
+            //
+            // A8W4 下仅 sub=1 的核 (物理 ID: 1,3,5,...,63) 参与 combine,
+            // 逻辑索引 logicalIdx = 0,1,...,31 映射为 physicalId = logicalIdx*2+1:
+            //
+            //   逻辑核:     0    1    2    3   ...  31
+            //   物理核:     1    3    5    7   ...  63
+            //
+            // AIC 用 ComputeGroupRange 按逻辑索引算出 [grpCoreStart, grpCoreSize),
+            // 再映射回物理 ID 写 counter, 保证与 AIV 侧 ProcessCombine 的读取地址一致.
             if (enableCombineQuant) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
