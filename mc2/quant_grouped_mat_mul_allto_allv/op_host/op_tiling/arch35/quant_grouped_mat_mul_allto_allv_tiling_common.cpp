@@ -968,7 +968,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU_SCHED);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
