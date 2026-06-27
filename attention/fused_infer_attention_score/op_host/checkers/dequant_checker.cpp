@@ -2261,6 +2261,21 @@ ge::graphStatus DequantChecker::CheckScaleTypeForAntiquant(const FiaTilingInfo &
                 "valueAntiquant/valueAntiquant is in split mode"),
             return ge::GRAPH_FAILED);
     }
+    if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
+        // per-token-head-PA模式，数据类型固定为FLOAT32
+        OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be FLOAT32 when keyAntiquantMode is per-token-head-PA mode and "
+                "keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be FLOAT32 when valueAntiquantMode is per-token-head-PA mode and "
+                "valueAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
+    }
     if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
         // per-token-PA模式，数据类型固定为FLOAT32
         OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
