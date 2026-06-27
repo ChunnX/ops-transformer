@@ -14,6 +14,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -26,6 +27,8 @@
 #include "gmm_csv_parse_utils.h"
 #include "op_common/op_host/util/math_util.h"
 #include "tiling_case_executor.h"
+#include "platform/platform_infos_def.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 
 #include "../../../op_host/op_tiling/arch35/qkv_rms_norm_rope_cache_with_k_scale_base_tiling.h"
 #include "../../../op_host/op_tiling/arch35/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
@@ -51,6 +54,14 @@ struct TilingRunOptions {
     bool headNumsPresent = false;
     std::vector<int64_t> headNums;
     std::string socVersion = "Ascend950";
+};
+
+struct TensorSpec {
+    gert::StorageShape shape;
+    ge::DataType dtype = ge::DT_FLOAT;
+    ge::Format format = ge::FORMAT_ND;
+    bool isView = false;
+    gert::Stride stride;
 };
 
 bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, uint64_t aicNum = 32);
@@ -202,72 +213,63 @@ optiling::QkvRmsNormRopeCacheWithKScaleCompileInfo BuildCompileInfo(const Tiling
     return compileInfo;
 }
 
-std::vector<gert::TilingContextPara::TensorDescription> BuildTilingInputs(const ContractInput &input)
+TensorSpec MakeTensorSpec(const TensorContractInfo &tensor)
 {
-    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    TensorSpec spec;
+    spec.shape = MakeStorageShape(tensor.shape);
+    spec.dtype = tensor.dtype;
+    spec.format = ge::FORMAT_ND;
+    spec.isView = tensor.stridePresent;
+    spec.stride = tensor.stride;
+    return spec;
+}
+
+TensorSpec MakeEmptyTensorSpec(ge::DataType dtype)
+{
+    TensorSpec spec;
+    spec.shape = gert::StorageShape();
+    spec.dtype = dtype;
+    spec.format = ge::FORMAT_ND;
+    return spec;
+}
+
+std::vector<TensorSpec> BuildTilingInputSpecs(const ContractInput &input)
+{
+    std::vector<TensorSpec> inputs;
     inputs.reserve(13U);
-    inputs.push_back(gert::TilingContextPara::TensorDescription(
-        MakeStorageShape(input.qkv.shape), input.qkv.dtype, ge::FORMAT_ND));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(
-        MakeStorageShape(input.qGamma.shape), input.qGamma.dtype, ge::FORMAT_ND));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(
-        MakeStorageShape(input.kGamma.shape), input.kGamma.dtype, ge::FORMAT_ND));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(
-        MakeStorageShape(input.cosSin.shape), input.cosSin.dtype, ge::FORMAT_ND));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(
-        MakeStorageShape(input.slotMapping.shape), input.slotMapping.dtype, ge::FORMAT_ND));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(MakeStorageShape(input.kCache.shape),
-        input.kCache.dtype, ge::FORMAT_ND, false, nullptr, input.kCache.stridePresent, input.kCache.stride, 0));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(MakeStorageShape(input.vCache.shape),
-        input.vCache.dtype, ge::FORMAT_ND, false, nullptr, input.vCache.stridePresent, input.vCache.stride, 0));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(MakeStorageShape(input.kScaleCache.shape),
-        input.kScaleCache.dtype, ge::FORMAT_ND, false, nullptr, input.kScaleCache.stridePresent,
-        input.kScaleCache.stride, 0));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(
-        MakeStorageShape(input.cuSeqLen.shape), input.cuSeqLen.dtype, ge::FORMAT_ND));
-    inputs.push_back(gert::TilingContextPara::TensorDescription(
-        MakeStorageShape(input.actualSeqLens.shape), input.actualSeqLens.dtype, ge::FORMAT_ND));
-    inputs.push_back(input.qRotation.shapePresent
-                         ? gert::TilingContextPara::TensorDescription(
-                               MakeStorageShape(input.qRotation.shape), input.qRotation.dtype, ge::FORMAT_ND)
-                         : gert::TilingContextPara::TensorDescription(
-                               gert::StorageShape(), ge::DT_UNDEFINED, ge::FORMAT_ND));
-    inputs.push_back(input.kRotation.shapePresent
-                         ? gert::TilingContextPara::TensorDescription(
-                               MakeStorageShape(input.kRotation.shape), input.kRotation.dtype, ge::FORMAT_ND)
-                         : gert::TilingContextPara::TensorDescription(
-                               gert::StorageShape(), ge::DT_UNDEFINED, ge::FORMAT_ND));
-    inputs.push_back(input.vScale.shapePresent
-                         ? gert::TilingContextPara::TensorDescription(
-                               MakeStorageShape(input.vScale.shape), input.vScale.dtype, ge::FORMAT_ND)
-                         : gert::TilingContextPara::TensorDescription(
-                               gert::StorageShape(), ge::DT_UNDEFINED, ge::FORMAT_ND));
+    inputs.push_back(MakeTensorSpec(input.qkv));
+    inputs.push_back(MakeTensorSpec(input.qGamma));
+    inputs.push_back(MakeTensorSpec(input.kGamma));
+    inputs.push_back(MakeTensorSpec(input.cosSin));
+    inputs.push_back(MakeTensorSpec(input.slotMapping));
+    inputs.push_back(MakeTensorSpec(input.kCache));
+    inputs.push_back(MakeTensorSpec(input.vCache));
+    inputs.push_back(MakeTensorSpec(input.kScaleCache));
+    inputs.push_back(MakeTensorSpec(input.cuSeqLen));
+    inputs.push_back(MakeTensorSpec(input.actualSeqLens));
+    inputs.push_back(input.qRotation.shapePresent ? MakeTensorSpec(input.qRotation) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
+    inputs.push_back(input.kRotation.shapePresent ? MakeTensorSpec(input.kRotation) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
+    inputs.push_back(input.vScale.shapePresent ? MakeTensorSpec(input.vScale) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
     return inputs;
 }
 
-std::vector<gert::TilingContextPara::TensorDescription> BuildTilingOutputs(const ContractInput &input)
+std::vector<TensorSpec> BuildTilingOutputSpecs(const ContractInput &input)
 {
     const bool isTnd = input.inputLayout == TEST_LAYOUT_TND;
-    std::vector<gert::TilingContextPara::TensorDescription> outputs;
+    std::vector<TensorSpec> outputs;
     outputs.reserve(5U);
     gert::Shape qOutShape;
     qOutShape.AppendDim(static_cast<int64_t>(isTnd ? input.totalTokens : input.numQHeads));
     qOutShape.AppendDim(static_cast<int64_t>(isTnd ? input.numQHeads : input.totalTokens));
     qOutShape.AppendDim(static_cast<int64_t>(input.headDim));
-    outputs.push_back(gert::TilingContextPara::TensorDescription(
-        MakeStorageShape(qOutShape), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND));
+    outputs.push_back({MakeStorageShape(qOutShape), ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND, false, gert::Stride()});
     gert::Shape scaleShape;
     scaleShape.AppendDim(static_cast<int64_t>(isTnd ? input.totalTokens : input.numQHeads));
     scaleShape.AppendDim(static_cast<int64_t>(isTnd ? input.numQHeads : input.totalTokens));
-    outputs.push_back(
-        gert::TilingContextPara::TensorDescription(MakeStorageShape(scaleShape), ge::DT_FLOAT, ge::FORMAT_ND));
-    outputs.push_back(gert::TilingContextPara::TensorDescription(MakeStorageShape(input.kCache.shape),
-        input.kCache.dtype, ge::FORMAT_ND, false, nullptr, input.kCache.stridePresent, input.kCache.stride, 0));
-    outputs.push_back(gert::TilingContextPara::TensorDescription(MakeStorageShape(input.vCache.shape),
-        input.vCache.dtype, ge::FORMAT_ND, false, nullptr, input.vCache.stridePresent, input.vCache.stride, 0));
-    outputs.push_back(gert::TilingContextPara::TensorDescription(MakeStorageShape(input.kScaleCache.shape),
-        input.kScaleCache.dtype, ge::FORMAT_ND, false, nullptr, input.kScaleCache.stridePresent,
-        input.kScaleCache.stride, 0));
+    outputs.push_back({MakeStorageShape(scaleShape), ge::DT_FLOAT, ge::FORMAT_ND, false, gert::Stride()});
+    outputs.push_back(MakeTensorSpec(input.kCache));
+    outputs.push_back(MakeTensorSpec(input.vCache));
+    outputs.push_back(MakeTensorSpec(input.kScaleCache));
     return outputs;
 }
 
@@ -295,6 +297,161 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(
     return attrs;
 }
 
+std::unique_ptr<gert::Tensor> MakeTensor(const TensorSpec &spec)
+{
+    return std::make_unique<gert::Tensor>(spec.shape, gert::StorageFormat(spec.format, spec.format,
+        gert::ExpandDimsType()), gert::TensorPlacement::kOnHost, spec.dtype, nullptr);
+}
+
+std::unique_ptr<gert::TensorV2> MakeViewTensor(const TensorSpec &spec)
+{
+    return std::make_unique<gert::TensorV2>(spec.shape, gert::StorageFormat(spec.format, spec.format,
+        gert::ExpandDimsType()), gert::TensorPlacement::kOnHost, spec.dtype, nullptr, nullptr, spec.stride, 0);
+}
+
+void BuildTensorLists(const std::vector<TensorSpec> &specs, std::vector<uint32_t> &irInstances,
+    std::vector<gert::Tensor *> &tensors, std::vector<std::unique_ptr<gert::Tensor>> &tensorKeepAlive,
+    std::vector<std::unique_ptr<gert::TensorV2>> &viewTensorKeepAlive)
+{
+    irInstances.reserve(specs.size());
+    tensors.reserve(specs.size());
+    for (const auto &spec : specs) {
+        if (spec.shape.GetStorageShape().GetDimNum() == 0) {
+            irInstances.push_back(0U);
+            continue;
+        }
+        irInstances.push_back(1U);
+        if (spec.isView) {
+            auto tensor = MakeViewTensor(spec);
+            tensors.push_back(reinterpret_cast<gert::Tensor *>(tensor.get()));
+            viewTensorKeepAlive.push_back(std::move(tensor));
+        } else {
+            auto tensor = MakeTensor(spec);
+            tensors.push_back(tensor.get());
+            tensorKeepAlive.push_back(std::move(tensor));
+        }
+    }
+}
+
+void AppendAttrs(gert::TilingContextFaker &contextFaker, const std::vector<gert::TilingContextPara::OpAttr> &attrs)
+{
+    for (const auto &attrInfo : attrs) {
+        switch (attrInfo.attr_.type_) {
+            case Ops::Transformer::AnyValue::ValueType::VT_BOOL:
+                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<bool *>(attrInfo.attr_.valuePtr_.get()));
+                break;
+            case Ops::Transformer::AnyValue::ValueType::VT_INT:
+                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<int64_t *>(attrInfo.attr_.valuePtr_.get()));
+                break;
+            case Ops::Transformer::AnyValue::ValueType::VT_FLOAT:
+                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<float *>(attrInfo.attr_.valuePtr_.get()));
+                break;
+            case Ops::Transformer::AnyValue::ValueType::VT_STRING:
+                contextFaker.Attr(attrInfo.attrName_,
+                    ge::AscendString(reinterpret_cast<std::string *>(attrInfo.attr_.valuePtr_.get())->c_str()));
+                break;
+            case Ops::Transformer::AnyValue::ValueType::VT_LIST_INT:
+                contextFaker.Attr(attrInfo.attrName_,
+                    *reinterpret_cast<std::vector<int64_t> *>(attrInfo.attr_.valuePtr_.get()));
+                break;
+            default:
+                throw std::invalid_argument("unsupported qkv tiling attr type");
+        }
+    }
+}
+
+void InitPlatformInfo(gert::TilingContext *context, const TilingRunOptions &options)
+{
+    const std::string npuArch = options.socVersion == "Ascend950" ? "3510" : "2201";
+    std::map<std::string, std::string> socInfos = {
+        {"ai_core_cnt", std::to_string(options.aicNum)},
+        {"cube_core_cnt", std::to_string(options.aicNum)},
+        {"vector_core_cnt", std::to_string(options.aicNum * QkvTiling::AIV_PER_AIC)},
+        {"core_type_list", "CubeCore,VectorCore"},
+        {"l2_size", "33554432"},
+    };
+    std::map<std::string, std::string> aicoreSpec = {
+        {"ub_size", "262144"},
+        {"l1_size", "524288"},
+        {"l0_a_size", "65536"},
+        {"l0_b_size", "65536"},
+        {"l0_c_size", "131072"},
+        {"bt_size", "0"},
+        {"load3d_constraints", "1"},
+        {"cube_freq", "cube_freq"},
+    };
+    std::map<std::string, std::string> intrinsics = {
+        {"Intrinsic_data_move_l12ub", "float16"},
+        {"Intrinsic_data_move_l0c2ub", "float16"},
+    };
+    std::map<std::string, std::string> versions = {
+        {"NpuArch", npuArch},
+        {"Short_SoC_version", options.socVersion},
+    };
+    context->GetPlatformInfo()->SetPlatformRes("SoCInfo", socInfos);
+    context->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicoreSpec);
+    context->GetPlatformInfo()->SetCoreNumByCoreType("AICore");
+    context->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
+    context->GetPlatformInfo()->SetPlatformRes("version", versions);
+}
+
+bool ExecuteQkvTiling(const ContractInput &input, const TilingRunOptions &options,
+    optiling::QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo, TilingInfo &tilingInfo)
+{
+    gert::TilingContextFaker contextFaker;
+    auto inputSpecs = BuildTilingInputSpecs(input);
+    auto outputSpecs = BuildTilingOutputSpecs(input);
+    std::vector<uint32_t> inputIrInstances;
+    std::vector<uint32_t> outputIrInstances;
+    std::vector<gert::Tensor *> inputTensors;
+    std::vector<gert::Tensor *> outputTensors;
+    std::vector<std::unique_ptr<gert::Tensor>> inputTensorKeepAlive;
+    std::vector<std::unique_ptr<gert::Tensor>> outputTensorKeepAlive;
+    std::vector<std::unique_ptr<gert::TensorV2>> inputViewTensorKeepAlive;
+    std::vector<std::unique_ptr<gert::TensorV2>> outputViewTensorKeepAlive;
+    BuildTensorLists(inputSpecs, inputIrInstances, inputTensors, inputTensorKeepAlive, inputViewTensorKeepAlive);
+    BuildTensorLists(outputSpecs, outputIrInstances, outputTensors, outputTensorKeepAlive, outputViewTensorKeepAlive);
+    contextFaker.IrInstanceNum(inputIrInstances, outputIrInstances)
+        .InputTensors(inputTensors)
+        .OutputTensors(outputTensors);
+    AppendAttrs(contextFaker, BuildTilingAttrs(input, options));
+
+    fe::PlatFormInfos platformInfo;
+    platformInfo.Init();
+    auto tilingData = gert::TilingData::CreateCap(4096);
+    auto workspaceHolder = gert::ContinuousVector::Create<size_t>(4096);
+    auto *workspace = reinterpret_cast<gert::ContinuousVector *>(workspaceHolder.get());
+    auto contextHolder = contextFaker.SetOpType("QkvRmsNormRopeCacheWithKScale")
+                             .CompileInfo(&compileInfo)
+                             .PlatformInfo(reinterpret_cast<char *>(&platformInfo))
+                             .TilingData(tilingData.get())
+                             .Workspace(workspace)
+                             .Build();
+    auto *tilingContext = contextHolder.GetContext();
+    InitPlatformInfo(tilingContext, options);
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto tilingFunc = spaceRegistry->GetOpImpl("QkvRmsNormRopeCacheWithKScale")->tiling;
+    if (tilingFunc(tilingContext) != ge::GRAPH_SUCCESS) {
+        return false;
+    }
+
+    tilingInfo.tilingKey = tilingContext->GetTilingKey();
+    tilingInfo.blockNum = tilingContext->GetBlockDim();
+    size_t workspaceCount = tilingContext->GetWorkspaceNum();
+    if (workspaceCount > 0U) {
+        auto workspaceSizes = tilingContext->GetWorkspaceSizes(workspaceCount);
+        for (size_t i = 0U; i < workspaceCount; ++i) {
+            tilingInfo.workspaceSizes.push_back(workspaceSizes[i]);
+        }
+    }
+    auto rawTilingData = tilingContext->GetRawTilingData();
+    tilingInfo.tilingData = std::make_unique<uint8_t[]>(rawTilingData->GetDataSize());
+    tilingInfo.tilingDataSize = rawTilingData->GetDataSize();
+    std::memcpy(tilingInfo.tilingData.get(), rawTilingData->GetData(), rawTilingData->GetDataSize());
+    return true;
+}
+
 bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, uint64_t aicNum)
 {
     TilingRunOptions options;
@@ -305,10 +462,7 @@ bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, u
 bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, const TilingRunOptions &options)
 {
     auto compileInfo = BuildCompileInfo(options);
-    const gert::TilingContextPara para("QkvRmsNormRopeCacheWithKScale", BuildTilingInputs(input),
-        BuildTilingOutputs(input), BuildTilingAttrs(input, options), &compileInfo, options.socVersion, 64, 262144,
-        4096);
-    return ExecuteTiling(para, tilingInfo);
+    return ExecuteQkvTiling(input, options, compileInfo, tilingInfo);
 }
 
 bool MatchesConcurrentTilingCase(const ConcurrentTilingCase &item, bool success, const TilingInfo &tilingInfo)
