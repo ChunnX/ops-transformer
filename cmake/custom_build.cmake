@@ -302,6 +302,12 @@ else()
     endif()
 endif()
 
+# 编译AICPU算子
+if("${ASCEND_OP_NAME}" STREQUAL "attention_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "ffn_worker_scheduler" OR "${ASCEND_OP_NAME}" STREQUAL "flash_attn_metadata" OR "${ASCEND_OP_NAME}" STREQUAL "quant_flash_attn_metadata")
+     add_subdirectory(examples/add_example)
+     list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${ASCEND_OP_NAME})
+endif()
+
 # 编译examples目录下算子
 foreach(EXAMPLES_OP_NAME ${ASCEND_OP_NAME})
     set(EXAMPLES_DIR "${OPS_TRANSFORMER_DIR}/examples/${EXAMPLES_OP_NAME}")

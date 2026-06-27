@@ -50,5 +50,7 @@ from .compressor import compressor
 from .graph_convert.graph_convert_compressor import convert_compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .graph_convert.graph_convert_inplace_partial_rotary_mul import convert_inplace_partial_rotary_mul
-from .causal_conv1d_fn import causal_conv1d_fn
-from .causal_conv1d_update import causal_conv1d_update
+from .causal_conv1d_fn import npu_causal_conv1d_fn, causal_conv1d_fn
+from .causal_conv1d_update import npu_causal_conv1d_update, causal_conv1d_update
+from .quant_flash_attn import npu_quant_flash_attn
+from .quant_flash_attn_metadata import npu_quant_flash_attn_metadata
