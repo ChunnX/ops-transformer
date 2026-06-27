@@ -121,7 +121,7 @@ __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor, 
 // ---- BatchInterleaveModeGradVF ----
 // Batch version supporting mixed precision (TDY for dy/dx, TCOS for cos/sin).
 // UB layout: in/out are [B][N][S][dAlignDy], cos/sin are [B or 1][S][dAlignCos].
-template <typename TDY, typename TCOS, bool IsBoardCast>
+template <typename TDY, typename TCOS, bool IsBroadCast>
 __aicore__ inline void BatchInterleaveModeGradVF(
     __local_mem__ TDY *in, __local_mem__ TCOS *cos, __local_mem__ TCOS *sin, __local_mem__ TDY *out,
     uint16_t sLength, uint16_t bLength, uint16_t nLength, int64_t dLen, int64_t dAlignDy, int64_t dAlignCos,
@@ -163,7 +163,7 @@ __aicore__ inline void BatchInterleaveModeGradVF(
                     uint32_t part2Cnt = part2Num;
                     currInUb = in + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
                     currOutUb = out + bIdx * bStepUb + nIdx * nStepUb + sIdx * dAlignDy;
-                    if constexpr (IsBoardCast) {
+                    if constexpr (IsBroadCast) {
                         currCosUb = cos + sIdx * dAlignCos;
                         currSinUb = sin + sIdx * dAlignCos;
                     } else {

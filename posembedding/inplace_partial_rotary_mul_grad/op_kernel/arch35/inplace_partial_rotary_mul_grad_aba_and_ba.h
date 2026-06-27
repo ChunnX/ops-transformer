@@ -24,7 +24,7 @@
 namespace InplacePartialRotaryMulGrad {
 using namespace AscendC;
 
-template <typename TDY, typename TCOS, bool IsBBoardcast>
+template <typename TDY, typename TCOS, bool IsBroadCast>
 class InplacePartialRotaryMulGradABAAndBA {
 public:
     __aicore__ inline InplacePartialRotaryMulGradABAAndBA(TPipe *pipe,
@@ -79,8 +79,8 @@ private:
 };
 
 // ---- Init ----
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::Init(
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::Init(
     GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx)
 {
     if (GetBlockIdx() >= tilingData_->usedCoreNum) {
@@ -108,7 +108,7 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
 
     this->pipe_->InitBuffer(this->dyInQue_, 2, ubFactorB_ * ubFactorS_ * ubFactorN_ * dAlignDy_ * sizeof(TDY));
     this->pipe_->InitBuffer(this->dxOutQue_, 2, ubFactorB_ * ubFactorS_ * ubFactorN_ * dAlignDy_ * sizeof(TDY));
-    if constexpr (IsBBoardcast) {
+    if constexpr (IsBroadCast) {
         this->pipe_->InitBuffer(this->cosInQue_, 2, ubFactorS_ * dAlignCos_ * sizeof(TCOS));
         this->pipe_->InitBuffer(this->sinInQue_, 2, ubFactorS_ * dAlignCos_ * sizeof(TCOS));
     } else {
@@ -117,8 +117,8 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
     }
 }
 
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::CopyInCosAndSin(
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::CopyInCosAndSin(
     int64_t sStart, int64_t sLength, int64_t bStart, int64_t bLength)
 {
     LocalTensor<TCOS> cosUb = cosInQue_.AllocTensor<TCOS>();
@@ -145,8 +145,8 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
     sinInQue_.EnQue(sinUb);
 }
 
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::CopyInDy(
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::CopyInDy(
     int64_t sStart, int64_t sLength, int64_t bStart, int64_t bLength,
     int64_t nStart, int64_t nLength, int64_t nTotalSize)
 {
@@ -176,8 +176,8 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
     dyInQue_.EnQue(dyUb);
 }
 
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::CopyOutDx(
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::CopyOutDx(
     int64_t sStart, int64_t sLength, int64_t bStart, int64_t bLength,
     int64_t nStart, int64_t nLength, int64_t nTotalSize)
 {
@@ -205,14 +205,14 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
     dxOutQue_.FreeTensor(dxUb);
 }
 
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::Compute(
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::Compute(
     LocalTensor<TCOS> &cosUb, LocalTensor<TCOS> &sinUb, int64_t sLength, int64_t bLength, int64_t nLength)
 {
     LocalTensor<TDY> inUb = dyInQue_.DeQue<TDY>();
     LocalTensor<TDY> outUb = dxOutQue_.AllocTensor<TDY>();
 
-    BatchInterleaveModeGradVF<TDY, TCOS, IsBBoardcast>(
+    BatchInterleaveModeGradVF<TDY, TCOS, IsBroadCast>(
         (__local_mem__ TDY *)inUb.GetPhyAddr(), (__local_mem__ TCOS *)cosUb.GetPhyAddr(),
         (__local_mem__ TCOS *)sinUb.GetPhyAddr(), (__local_mem__ TDY *)outUb.GetPhyAddr(),
         static_cast<uint16_t>(sLength), static_cast<uint16_t>(bLength), static_cast<uint16_t>(nLength),
@@ -223,8 +223,8 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
 }
 
 // ---- Process ----
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::Process()
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::Process()
 {
     if (GetBlockIdx() >= tilingData_->usedCoreNum) {
         return;
@@ -250,12 +250,12 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
     }
 }
 
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::ProcessInSLoop(
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::ProcessInSLoop(
     int64_t sUbStart, int64_t sUbLength)
 {
     int64_t ubLoopCount = Ops::Base::CeilDiv(bBlockLength_, ubFactorB_);
-    if constexpr (IsBBoardcast) {
+    if constexpr (IsBroadCast) {
         CopyInCosAndSin(sUbStart, sUbLength, 0, 1);
         LocalTensor<TCOS> cosUb = cosInQue_.DeQue<TCOS>();
         LocalTensor<TCOS> sinUb = sinInQue_.DeQue<TCOS>();
@@ -281,8 +281,8 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
     }
 }
 
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::ProcessInSBLoop(
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::ProcessInSBLoop(
     int64_t sUbStart, int64_t sUbLength, int64_t bUbStart, int64_t bUbLength,
     LocalTensor<TCOS> &cosUb, LocalTensor<TCOS> &sinUb)
 {
@@ -294,8 +294,8 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardca
     }
 }
 
-template <typename TDY, typename TCOS, bool IsBBoardcast>
-__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBBoardcast>::ProcessInSBNLoop(
+template <typename TDY, typename TCOS, bool IsBroadCast>
+__aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::ProcessInSBNLoop(
     int64_t sUbStart, int64_t sUbLength, int64_t bUbStart, int64_t bUbLength,
     int64_t nUbStart, int64_t nUbLength, int64_t nTotalSize,
     LocalTensor<TCOS> &cosUb, LocalTensor<TCOS> &sinUb)
