@@ -868,10 +868,13 @@ void FiaTilingNonQuantArch35::FillTiling()
 
 void FiaTilingNonQuantArch35::ComputeTilingData()
 {
-    // 处理不能直接从fiaInfo赋值到tiling data
-    /*
-     *  mask,sparse mode 相关tiling data
-     */
+    SetAttenMaskTilingData();
+    SetStartIdxTilingData();
+    SetPageAttentionLayoutTilingData();
+}
+
+void FiaTilingNonQuantArch35::SetAttenMaskTilingData()
+{
     if (fiaInfo_->attenMaskFlag) {
         uint64_t maskBatch = 1;
         uint64_t maskDimNum = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDimNum();
@@ -890,12 +893,14 @@ void FiaTilingNonQuantArch35::ComputeTilingData()
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = 0;
     }
     tilingData_.baseTiling.fiaAttenMaskParams.sparseMode = fiaInfo_->sparseMode;
+}
 
+void FiaTilingNonQuantArch35::SetStartIdxTilingData()
+{
     int64_t qStartIdx = 0;
     int64_t kvStartIdx = 0;
     auto qStartIdxTensor = fiaInfo_->opParamInfo.qStartIdx.tensor;
     auto kvStartIdxTensor = fiaInfo_->opParamInfo.kvStartIdx.tensor;
-    ;
     if (qStartIdxTensor != nullptr && qStartIdxTensor->GetShapeSize() >= 1) {
         const int64_t *value = qStartIdxTensor->GetData<int64_t>();
         if (value != nullptr) {
@@ -911,7 +916,10 @@ void FiaTilingNonQuantArch35::ComputeTilingData()
     }
     tilingData_.baseTiling.fiaPseParams.qStartIdx = qStartIdx;
     tilingData_.baseTiling.fiaPseParams.kvStartIdx = kvStartIdx;
+}
 
+void FiaTilingNonQuantArch35::SetPageAttentionLayoutTilingData()
+{
     if (fiaInfo_->pageAttentionFlag) {
         uint32_t keyCacheDimNum = fiaInfo_->opParamInfo.key.shape->GetStorageShape().GetDimNum();
         if (keyCacheDimNum == 3) { // 3: BBH
