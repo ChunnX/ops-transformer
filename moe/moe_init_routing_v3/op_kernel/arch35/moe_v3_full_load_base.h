@@ -583,7 +583,10 @@ __aicore__ inline void MoeV3FullLoadBase<T>::TopkWeightScatterOut()
 
     for (int64_t i = startRowIdx; i < endRowIdx; i++) {
         int32_t curExpertId = sortedExpertIdx.GetValue(i);
-        if (curExpertId < expertStart_ || curExpertId >= expertEnd_) {
+        if (curExpertId < expertStart_) {
+            continue;
+        }
+        if (curExpertId >= expertEnd_) {
             break;
         }
         int64_t srcIdx = sortedRowIdx.GetValue(i);
