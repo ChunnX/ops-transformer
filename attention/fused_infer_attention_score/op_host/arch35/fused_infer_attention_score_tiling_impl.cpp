@@ -1944,8 +1944,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_offset(0);
     inputParams.set_keepProbUint8(0);
     inputParams.set_pseType(*fiaInfo.opParamInfo.pseType);
-    inputParams.set_deqScaleFlag(0);
-    inputParams.set_deqScale2Flag(0);
+    inputParams.set_deqScaleFlag(0);   // per-tensor全量化场景才会用到
+    inputParams.set_deqScale2Flag(0);  // per-tensor全量化场景才会用到
     inputParams.set_actualSeqLengthsSize(fiaInfo.actualLenQDims);
     inputParams.set_actualSeqLengthsKVSize(fiaInfo.actualLenKvDims);
     inputParams.set_isKvContinuous(fiaInfo.kvStorageMode != KvStorageMode::TENSOR_LIST);
@@ -1979,14 +1979,14 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     inputParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     inputParams.set_isActualSharedPrefixLenNull(!actualSharedPrefixLenFlag_);
-    inputParams.set_keepProb(0);
-    inputParams.set_bandIndex(0);
-    inputParams.set_attenMaskDataType(1);
-    inputParams.set_alignedS2(0);
-    inputParams.set_s1SparseValidSize(0);
-    inputParams.set_s2SparseValidSize(0);
-    inputParams.set_pseAlibiBaseS1(0);
-    inputParams.set_pseAlibiBaseS2(0);
+    inputParams.set_keepProb(0);           // 默认值, 未使用
+    inputParams.set_bandIndex(0);          // 默认值，未使用
+    inputParams.set_attenMaskDataType(1);  // 默认值，未使用
+    inputParams.set_alignedS2(0);          // 默认值, 未使用
+    inputParams.set_s1SparseValidSize(0);  // 默认值，未使用
+    inputParams.set_s2SparseValidSize(0);  // 默认值，未使用
+    inputParams.set_pseAlibiBaseS1(0);     // 默认值，未使用
+    inputParams.set_pseAlibiBaseS2(0);     // 默认值，未使用
 
     auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
     int64_t outSize = fiaInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
@@ -2003,7 +2003,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     initOutputParams.set_totalOutputSize(outSize);
     initOutputParams.set_totalSoftMaxLseOutputSize(lseSize);
     initOutputParams.set_needInit(fiaInfo.needInit || needInit_);
-    initOutputParams.set_isOneN(0);
+    initOutputParams.set_isOneN(0);  // 默认值,当前未使用
 
     return ge::GRAPH_SUCCESS;
 }
