@@ -38,10 +38,14 @@ public:
     {
         if ASCEND_IS_AIC {
             cube_.PrepareRotationBeforeLoop();
-            SetInitialAicMte1ToAivMte3AConsumedCredits();
+            for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+                SetAicMte1ToAivMte3AConsumed();
+            }
         } else {
             vec_.PrepareBeforeLoop();
-            SetInitialAivMte3ToAicFixCConsumedCredits();
+            for (uint32_t i = 0U; i < QKV_RRC_C_OUTPUT_BUFFER_CREDITS; ++i) {
+                SetAivMte3ToAicFixCConsumed();
+            }
         }
     }
 
@@ -68,7 +72,10 @@ private:
     {
         tileCount_ = 0U;
         outputBufferUseId_ = 0U;
-        BindSharedLocalTensors();
+        aRotL1Pool_ =
+            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
+        outputDbPoolUb_ =
+            LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
         cube_.Init(tensors, qHeadNum, kvHeadNum);
         cube_.InitIntraCoreEvents();
     }
@@ -81,7 +88,10 @@ private:
     {
         tileCount_ = 0U;
         outputBufferUseId_ = 0U;
-        BindSharedLocalTensors();
+        aRotL1Pool_ =
+            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
+        outputDbPoolUb_ =
+            LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
         vec_.Init(tensors, aivLocalId, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize,
                   kvCacheStrideBlock, kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock,
                   kScaleCacheStrideHead, kScaleCacheStrideToken, epsilon);
@@ -143,7 +153,9 @@ private:
 
     __aicore__ inline void EndAic()
     {
-        DrainAivMte3ToAicFixCConsumedCredits();
+        for (uint32_t i = 0U; i < QKV_RRC_C_OUTPUT_BUFFER_CREDITS; ++i) {
+            WaitAivMte3ToAicFixCConsumed();
+        }
         tileCount_ = 0U;
         cube_.EndIntraCoreEvents();
     }
@@ -162,36 +174,10 @@ private:
             SetAivMte3ToAicFixCConsumed();
             tileCount_ = 0U;
         }
-        DrainAicMte1ToAivMte3AConsumedCredits();
-        vec_.EndIntraCoreEvents();
-    }
-
-    __aicore__ inline void SetInitialAicMte1ToAivMte3AConsumedCredits()
-    {
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            SetAicMte1ToAivMte3AConsumed();
-        }
-    }
-
-    __aicore__ inline void SetInitialAivMte3ToAicFixCConsumedCredits()
-    {
-        for (uint32_t i = 0U; i < QKV_RRC_C_OUTPUT_BUFFER_CREDITS; ++i) {
-            SetAivMte3ToAicFixCConsumed();
-        }
-    }
-
-    __aicore__ inline void DrainAicMte1ToAivMte3AConsumedCredits()
-    {
         for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
             WaitAicMte1ToAivMte3AConsumed();
         }
-    }
-
-    __aicore__ inline void DrainAivMte3ToAicFixCConsumedCredits()
-    {
-        for (uint32_t i = 0U; i < QKV_RRC_C_OUTPUT_BUFFER_CREDITS; ++i) {
-            WaitAivMte3ToAicFixCConsumed();
-        }
+        vec_.EndIntraCoreEvents();
     }
 
     __aicore__ inline void SetAivMte3ToAicMte1AReady()
@@ -232,14 +218,6 @@ private:
     __aicore__ inline void WaitAivMte3ToAicFixCConsumed()
     {
         WaitAivToAic<PIPE_FIX>(SYNC_C_CONSUMED);
-    }
-
-    __aicore__ inline void BindSharedLocalTensors()
-    {
-        aRotL1Pool_ =
-            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
-        outputDbPoolUb_ =
-            LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
     }
 
     static constexpr uint32_t QKV_RRC_AIV_OUTPUT_BUFFER_USES_PER_TILE = 2U;
