@@ -162,7 +162,7 @@ __aicore__ inline void BSAVecPoolService<BSAT>::InitBuffers(TBuf<>* uBuf_)
 template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::InitGM(
     GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm, 
+    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
     GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
     GlobalTensor<float> &qCmpOutGm, GlobalTensor<float> &kCmpOutGm)
 {

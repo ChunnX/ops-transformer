@@ -182,7 +182,6 @@ private:
     __aicore__ inline void LoadDataMmB(LocalTensor<IN_T> &bL0Tensor, LocalTensor<IN_T> &bL1Tensor,
                                         uint32_t kSize, uint32_t nSize);
 
-
     /**
      * @brief 执行 L1→L0 加载 + Mmad 矩阵乘加（含硬件同步）
      *

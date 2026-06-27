@@ -209,7 +209,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->tileNumBy2Remain_ = static_cast<uint32_t>(myTileNum % MAX_TILE_NUM_IN_UB_BY2);
     this->tileNumBy3RepeatTimes_ = static_cast<uint32_t>(myTileNum / MAX_TILE_NUM_IN_UB_BY3);
     this->tileNumBy3Remain_ = static_cast<uint32_t>(myTileNum % MAX_TILE_NUM_IN_UB_BY3);
-
 }
 
 template <typename BSAT>
@@ -226,7 +225,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(tempBuf_, cmpMaskSize);
 
     pipe->InitBuffer(globalHistBuf_, numValue_ * sizeof(int32_t));
-    pipe->InitBuffer(maskLocalBuf_, tileLen_ * sizeof(int32_t) + tileLen_ * sizeof(int16_t) + tileLen_ * sizeof(uint8_t));
+    pipe->InitBuffer(maskLocalBuf_, tileLen_ * sizeof(int32_t) + tileLen_ * sizeof(int16_t) +
+                     tileLen_ * sizeof(uint8_t));
 }
 
 template <typename BSAT>
@@ -253,10 +253,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
     uint64_t tileHistOffset = numValue_ * tileTopKOffset;
 
     this->tileTopKGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) + tileTopKOffset * sizeof(int32_t)));
+        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) +
+                           tileTopKOffset * sizeof(int32_t)));
     this->tileHistGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) + totalTileNum_ * sizeof(int32_t) + tileHistOffset * sizeof(int32_t)));
-
+        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) +
+                           totalTileNum_ * sizeof(int32_t) + tileHistOffset * sizeof(int32_t)));
 }
 
 template <typename BSAT>

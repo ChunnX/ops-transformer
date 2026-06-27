@@ -191,7 +191,8 @@ __aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(
-    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
+    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
 {
     softmaxOP.SoftmaxSecondPassAndCast(qChunkStart, qChunkSize, kChunkStart, kChunkSize, batchIdx, headIdx);
 }

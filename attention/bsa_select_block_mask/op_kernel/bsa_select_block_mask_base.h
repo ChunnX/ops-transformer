@@ -163,7 +163,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint32_t expActiveCoreNum = (constInfo.xBlocks < constInfo.coreNum) ? constInfo.xBlocks : constInfo.coreNum;
             uint32_t expExtraCores = constInfo.xBlocks % expActiveCoreNum;
             uint32_t expRowsPerCore = constInfo.xBlocks / expActiveCoreNum + (expExtraCores > 0 ? 1 : 0);
-            uint32_t expActiveYCoreNum = (constInfo.yBlocks < constInfo.coreNum) ? constInfo.yBlocks : constInfo.coreNum;
+            uint32_t expActiveYCoreNum =
+                (constInfo.yBlocks < constInfo.coreNum) ? constInfo.yBlocks : constInfo.coreNum;
             uint32_t expExtraYCores = constInfo.yBlocks % expActiveYCoreNum;
             uint32_t expYBlocksPerCore = constInfo.yBlocks / expActiveYCoreNum + (expExtraYCores > 0 ? 1 : 0);
             uint64_t expQCmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.dSize * sizeof(float);
@@ -176,7 +177,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint64_t expSortLen = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
             uint64_t expTileLen = BSAMin(static_cast<uint64_t>(7168), BSAMax(static_cast<uint64_t>(128), expSortLen));
             uint64_t expTotalTileNum = (expSortLen + expTileLen - 1) / expTileLen;
-            uint64_t expTopkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * constInfo.aivNum + constInfo.aivNum + constInfo.aivNum) * sizeof(int32_t);
+            uint64_t expTopkHeaderSize = static_cast<uint64_t>(
+                RADIX_NUM_BINS * constInfo.aivNum + constInfo.aivNum + constInfo.aivNum) * sizeof(int32_t);
             uint64_t expTopkTileDataSize = expTotalTileNum * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
             uint64_t expTopkWsSize = expTopkHeaderSize + expTopkTileDataSize;
 
@@ -284,7 +286,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             BSA_TILING_VERIFY_PRINTF("maskSize=%lu (exp=%lu) %s\n", outInfo.maskSize, expMaskSize,
                             (outInfo.maskSize == expMaskSize) ? "OK" : "ERR");
             if (outInfo.maskSize != expMaskSize) errCount++;
-            uint64_t expTotalWs = expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + expTopkWsSize + expMaskSize;
+            uint64_t expAttnScoreEnd = expQCmpSize + expKCmpSize + expAttnScoreSize;
+            uint64_t expSoftmaxEnd = expAttnScoreEnd + expSoftmaxTmpSize;
+            uint64_t expTotalWs = expSoftmaxEnd + expTopkWsSize + expMaskSize;
             BSA_TILING_VERIFY_PRINTF("totalWorkspaceSize=%lu (exp=%lu) %s\n", outInfo.totalWorkspaceSize, expTotalWs,
                             (outInfo.totalWorkspaceSize == expTotalWs) ? "OK" : "ERR");
             if (outInfo.totalWorkspaceSize != expTotalWs) errCount++;
@@ -301,17 +305,17 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
                             (constInfo.attnScoreOffset == expQCmpSize + expKCmpSize) ? "OK" : "ERR");
             if (constInfo.attnScoreOffset != expQCmpSize + expKCmpSize) errCount++;
             BSA_TILING_VERIFY_PRINTF("softmaxTmpOffset=%lu (exp=%lu) %s\n", constInfo.softmaxTmpOffset,
-                            expQCmpSize + expKCmpSize + expAttnScoreSize,
-                            (constInfo.softmaxTmpOffset == expQCmpSize + expKCmpSize + expAttnScoreSize) ? "OK" : "ERR");
-            if (constInfo.softmaxTmpOffset != expQCmpSize + expKCmpSize + expAttnScoreSize) errCount++;
+                            expAttnScoreEnd,
+                            (constInfo.softmaxTmpOffset == expAttnScoreEnd) ? "OK" : "ERR");
+            if (constInfo.softmaxTmpOffset != expAttnScoreEnd) errCount++;
             BSA_TILING_VERIFY_PRINTF("topkWorkspaceOffset=%lu (exp=%lu) %s\n", constInfo.topkWorkspaceOffset,
-                            expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize,
-                            (constInfo.topkWorkspaceOffset == expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize) ? "OK" : "ERR");
-            if (constInfo.topkWorkspaceOffset != expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize) errCount++;
+                            expSoftmaxEnd,
+                            (constInfo.topkWorkspaceOffset == expSoftmaxEnd) ? "OK" : "ERR");
+            if (constInfo.topkWorkspaceOffset != expSoftmaxEnd) errCount++;
             BSA_TILING_VERIFY_PRINTF("maskOffset=%lu (exp=%lu) %s\n", constInfo.maskOffset,
-                            expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + outInfo.topkWorkspaceSize,
-                            (constInfo.maskOffset == expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + outInfo.topkWorkspaceSize) ? "OK" : "ERR");
-            if (constInfo.maskOffset != expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + outInfo.topkWorkspaceSize) errCount++;
+                            expSoftmaxEnd + outInfo.topkWorkspaceSize,
+                            (constInfo.maskOffset == expSoftmaxEnd + outInfo.topkWorkspaceSize) ? "OK" : "ERR");
+            if (constInfo.maskOffset != expSoftmaxEnd + outInfo.topkWorkspaceSize) errCount++;
             BSA_TILING_VERIFY_PRINTF("=== Verification: %u errors ===\n", errCount);
         }
     }

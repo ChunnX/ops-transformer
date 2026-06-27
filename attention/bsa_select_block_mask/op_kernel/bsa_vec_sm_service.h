@@ -161,7 +161,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitGM(
 
 __aicore__ inline
 void SubBroadcast(
-    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0, LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
+    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
+    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
 {
     // 默认 col 安装32字节对齐
     // 分核逻辑的关系，矩阵shape不会超过[128, 128 * 5], 若启动俩个vector，shape不会超过[64, 128 * 5]
@@ -192,7 +193,8 @@ void SubBroadcast(
 
 __aicore__ inline
 void DivBroadcast(
-    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0, LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
+    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
+    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
 {
     // 默认 col 安装32字节对齐
     // 分核逻辑的关系，矩阵shape不会超过[128, 128 * 5], 若启动俩个vector，shape不会超过[64, 128 * 5]
@@ -264,7 +266,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     }
 
     // 32字节对齐
-    uint32_t kChunkSizeAlign = (kChunkSize + FLOAT_DATA_BLOCK_NUM - 1 ) / FLOAT_DATA_BLOCK_NUM * FLOAT_DATA_BLOCK_NUM;
+    uint32_t kChunkSizeAlign = (kChunkSize + FLOAT_DATA_BLOCK_NUM - 1) / FLOAT_DATA_BLOCK_NUM * FLOAT_DATA_BLOCK_NUM;
 
     SetFlag<HardEvent::MTE3_MTE2>(eventSft);
     WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
@@ -292,7 +294,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     uint32_t maxShape[] = { actualQExcuteRow, kChunkSize };
     bool isSrcInnerPad = (kChunkSize % FLOAT_DATA_BLOCK_NUM == 0);
 
-    AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(tmpMax, scoreUb, reduceSharedTemp, maxShape, isSrcInnerPad);
+    AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(
+        tmpMax, scoreUb, reduceSharedTemp, maxShape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
 
 
