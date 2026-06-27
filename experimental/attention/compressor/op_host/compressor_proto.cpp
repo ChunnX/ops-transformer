@@ -44,6 +44,7 @@ namespace ops {
     constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 4;
     constexpr uint32_t CACHE_MODE_ATTR_INDEX = 5;
     constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 6;
+    constexpr uint32_t X_CACHE_UPDATE_ATTR_INDEX = 7;
 
     // OUTPUT
     constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;

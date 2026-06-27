@@ -168,11 +168,13 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         }
     }
 
-    if (isExistXCache_ && ASCEND_IS_AIV) {
-        blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
-                        cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
-        blockVec_.InitBuffers(pipe_);
+    if ASCEND_IS_AIV {
+        if (isExistXCache_) {
+            blockVec_.InitParams(constInfo, tools_);
+            blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                            cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+            blockVec_.InitBuffers(pipe_);
+        }
     }
 
     // 所有batch的有效序列都为0时, 直接退出
@@ -211,7 +213,7 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
     constInfo.batchSize = tilingData_->baseParams.batchSize;
-    constInfo.xCacheUpdateBatchSize = tilingData_->baseParams.batchSize;
+    constInfo.xCacheUpdateBatchSize = tilingData_->baseParams.xCacheUpdateBatchSize;
     constInfo.xCacheReadSize = tilingData_->baseParams.xCacheReadSize;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;

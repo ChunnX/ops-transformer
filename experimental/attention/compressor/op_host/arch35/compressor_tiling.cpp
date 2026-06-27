@@ -100,6 +100,7 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     compressorContext.rotaryMode = attrs->GetAttrPointer<int>(ROTARY_MODE_ATTR_INDEX);
     compressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
     compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
+    compressorContext.xCacheUpdate = attrs->GetAttrPointer<bool>(X_CACHE_UPDATE_ATTR_INDEX);
 
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
@@ -161,6 +162,8 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->xCacheSize = context_->xCache.desc == nullptr ? 0 :
         context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    bool xCacheUpdate = context_->xCacheUpdate == nullptr || *context_->xCacheUpdate;
+    baseParams_->xCacheUpdateBatchSize = (context_->xCache.desc != nullptr && xCacheUpdate) ? baseParams_->batchSize : 0;
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",
@@ -714,16 +717,14 @@ ge::graphStatus CompressorTiling::CheckSingleParaXCache() const
 ge::graphStatus CompressorTiling::CheckSingleParaXCacheSlotMapping() const
 {
     if (context_->xCacheSlotMapping.desc == nullptr) {
-        OP_TILING_CHECK(context_->xCache.desc != nullptr,
-                        VECTOR_INNER_ERR_REPORT_TILIING(context_->opName,
-                                                        "x_cache_slot_mapping is required when x_cache is provided"),
-                        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(context_->xCache.desc != nullptr,
+                    OP_LOGE(context_->opName, "x_cache_slot_mapping is required when x_cache is provided"),
+                    return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
-    OP_TILING_CHECK(context_->xCache.desc == nullptr,
-                    VECTOR_INNER_ERR_REPORT_TILIING(context_->opName,
-                                                    "x_cache is required when x_cache_slot_mapping is provided"),
-                    return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->xCache.desc == nullptr,
+                OP_LOGE(context_->opName, "x_cache is required when x_cache_slot_mapping is provided"),
+                return ge::GRAPH_FAILED);
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->xCacheSlotMapping.desc, X_CACHE_SLOT_MAPPING_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->xCacheSlotMapping.shape, X_CACHE_SLOT_MAPPING_NAME)) {
         return ge::GRAPH_FAILED;

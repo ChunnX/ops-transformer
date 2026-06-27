@@ -35,6 +35,7 @@ namespace optiling {
         uint32_t batchSize = 0;             // bastch size（批大小）
         uint32_t seqSize = 0;               // sequence size（kvs大小）  
         uint32_t xCacheReadSize = 0;        // grouped decode x_cache read size
+        uint32_t xCacheUpdateBatchSize = 0; // grouped decode x_cache update batch size
         uint32_t hiddenSize = 0;            // hidden size（隐藏层大小）
         uint32_t tokenSize = 0;             // token size = batchSize * seqSize(token总数：批大小x序列1长度)
         uint32_t headDim = 0;               // head size of kv
