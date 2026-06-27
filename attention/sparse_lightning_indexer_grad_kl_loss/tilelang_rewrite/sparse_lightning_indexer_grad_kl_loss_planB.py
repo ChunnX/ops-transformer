@@ -796,6 +796,13 @@ def sparse_lightning_indexer_grad_kl_loss(
     d_query_index_ws.zero_()
     ret = func3(relu_grad, gather_key_index_t, query_index, relu_grad_t,
                 d_query_index_ws, d_key_index_ws)
+    # Debug: inspect return value
+    if isinstance(ret, tuple):
+        print(f"  [DEBUG func3] returned tuple of {len(ret)} elements:", [type(r) for r in ret])
+    else:
+        print(f"  [DEBUG func3] returned {type(ret)}, shape={ret.shape if hasattr(ret, 'shape') else 'N/A'}, id={id(ret)}")
+    print(f"  [DEBUG func3] d_query_index_ws shape={d_query_index_ws.shape}, id={id(d_query_index_ws)}")
+    print(f"  [DEBUG func3] d_key_index_ws shape={d_key_index_ws.shape}, id={id(d_key_index_ws)}")
     if isinstance(ret, tuple):
         ret = ret[0]
     if ret is not None and ret is not d_query_index_ws:
