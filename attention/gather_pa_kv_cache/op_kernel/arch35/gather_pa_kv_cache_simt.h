@@ -28,6 +28,9 @@ template <typename T>
 __simt_vf__ __aicore__ __launch_bounds__(THREAD_NUM)
 inline void GatherContigCopyVf(uint64_t count, __gm__ T *dst, __gm__ T *src, uint32_t fillZero)
 {
+    if (static_cast<uint32_t>(blockIdx.x) == 0 && static_cast<uint32_t>(threadIdx.x) == 0) {
+        AscendC::Simt::printf("[SIMT-VF-Contig] count=%llu fillZero=%u\n", count, fillZero);
+    }
     for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * THREAD_NUM + static_cast<uint64_t>(threadIdx.x);
          idx < count; idx += THREAD_NUM * static_cast<uint64_t>(gridDim.x)) {
         if (fillZero) {
@@ -90,6 +93,9 @@ __aicore__ inline void Process(
     int64_t numBlocks = tl->numBlocks;
     int64_t numTokens = tl->numTokens;
     uint32_t nonContiguousFlag = tl->nonContiguousFlag;
+
+    PRINTF("[SIMT-ND] core=%d batchCount=%ld blockTableWidth=%ld numTokens=%ld nonContiguousFlag=%u\n",
+           GetBlockIdx(), batchCount, blockTableWidth, numTokens, nonContiguousFlag);
 
     uint64_t hiddenSize = (hiddenSizeK > hiddenSizeV) ? hiddenSizeK : hiddenSizeV;
     // Non-contiguous path uses maxUbHiddenSize from tiling; contiguous path doesn't need it for SIMT
