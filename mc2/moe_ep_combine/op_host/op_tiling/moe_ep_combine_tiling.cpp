@@ -60,7 +60,6 @@ constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t COMM_ALIGN = 512UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL;
-constexpr uint64_t STATE_WIN_SIZE = 16 * 1024UL * 1024UL;  // 1MB, 与 Mc2Kernel::A5_MTE_STATE_WIN_SIZE 一致
 constexpr int64_t H_MIN = 1;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
@@ -74,8 +73,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &in
             info.cfg.topK, info.cfg.numMaxTokensPerRank);
     OP_LOGD(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u", info.cfg.perSlotBytes, info.hasTopkWeights,
             info.aivNum);
-    OP_LOGD(nodeName, "totalWinSizeEp=%lu, localWinSizeEp=%lu, totalUbSize=%lu", info.totalWinSizeEp,
-            info.localWinSizeEp, info.totalUbSize);
+    OP_LOGD(nodeName, "totalWinSizeEp=%lu, localWsSizeDataPerRank=%lu, totalUbSize=%lu", info.totalWinSizeEp,
+            info.localWsSizeDataPerRank, info.totalUbSize);
 }
 
 static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName,
@@ -218,9 +217,11 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
 
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
-    uint64_t perWinNeed = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
+    uint64_t perWinDataNeed = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
         static_cast<uint64_t>(info.cfg.perSlotBytes);
-    uint64_t winNeedTotal = STATE_WIN_SIZE + epWorldSize * perWinNeed;
+    uint64_t perWinStateNeed = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
+        static_cast<uint64_t>(UB_ALIGN);
+    uint64_t winNeedTotal = epWorldSize * (perWinDataNeed, perWinStateNeed);
     OP_TILING_CHECK(winNeedTotal > maxWindowSize,
         OP_LOGE(nodeName, "HCCL_BUFFSIZE too small, need %luMB, available %luMB.",
             (winNeedTotal / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
@@ -259,10 +260,13 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    uint64_t perRankLocalSize = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
+    uint64_t perWinDataNeed = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
         static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(info.cfg.perSlotBytes);
-    uint64_t stashBytes = STATE_WIN_SIZE + static_cast<uint64_t>(info.cfg.epWorldSize) * perRankLocalSize;
-    info.localWinSizeEp = perRankLocalSize;
+    uint64_t perWinStateNeed = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
+        static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(UB_ALIGN);
+    info.localWsSizeDataPerRank = perWinDataNeed;
+    info.localWsSizeStatusPerRank = perWinStateNeed;
+    uint64_t stashBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * (perWinDataNeed + perWinStateNeed);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + stashBytes;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;

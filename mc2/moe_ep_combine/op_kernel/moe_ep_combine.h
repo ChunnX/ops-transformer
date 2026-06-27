@@ -52,7 +52,6 @@ constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr size_t MASK_CALC_NEED_WORKSPACE = 20UL * 1024UL;
-constexpr uint64_t STATE_WIN_SIZE = 16 * 1024UL * 1024UL;
 
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -88,27 +87,26 @@ private:
     }
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
     {
-        return (GM_ADDR)(winRankAddr_[rankId] + offset + winDataSizeOffset_);
+        return (GM_ADDR)(winRankAddr_[rankId] + offset);
     }
-    __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId)
+    __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId, uint64_t offset)
     {
-        // return (GM_ADDR)(winRankAddr_[rankId] + dataState_ * WIN_STATE_OFFSET);
-        return (GM_ADDR)(winRankAddr_[rankId]) + winDataSizeOffset_;
+        return (GM_ADDR)(winRankAddr_[rankId] + offset) ;
     }
 
-    __aicore__ inline GM_ADDR GetLocalWinAddrByRankId(const int32_t rankId, uint64_t offset)
+    __aicore__ inline GM_ADDR GetLocalWorkspaceDataAddr(const int32_t rankId, uint64_t offset)
     {
-        return (GM_ADDR)localUrmaWorkspace_ + offset + localWinSizeEp_ * rankId;
+        return (GM_ADDR)localUrmaWorkspace_ + offset + localWsSizeDataPerRank_ * rankId;
     }
-    __aicore__ inline GM_ADDR GetLocalWindStateAddrByRankId(const int32_t rankId)
+    __aicore__ inline GM_ADDR GetLocalWorkspaceStateAddr(const int32_t rankId)
     {
-        return (GM_ADDR)localUrmaWorkspace_ + localWinSizeEp_ / perSlotBytes_ * UB_ALIGN * rankId;
+        return (GM_ADDR)localUrmaWorkspace_ + localWsSizeStatusPerRank_ * rankId;
     }
+
     TPipe *tpipe_{nullptr};
     const MoeEpCombineInfo *tilingData_{nullptr};
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
 
-    uint64_t winDataSizeOffset_{0}; // 窗口数据区偏移
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
@@ -116,6 +114,10 @@ private:
     uint32_t topK_{0};
     uint32_t axisH_{0};
     uint32_t hAlignSize_{0};          // UB对齐后的hidden size
+    uint32_t workspaceStateSize_{0};  // 发送侧workspace中给所有卡状态区的大小
+    uint64_t CombineStateAddr_{0};    // Win区Combine 状态区的地址
+    uint64_t CombineDataAddr_{0};    // Win区Combine 数据区的地址
+
     uint32_t hWeightAlignSize_{0};    // token+weight对齐后的hidden size
     uint32_t XTypeAlign32Size_{0};
     uint32_t perSlotBytes_{0};
@@ -123,7 +125,8 @@ private:
     uint32_t aivNum_{0};
     uint32_t localmoeNum_{0};
     uint32_t totalWinSizeEp_{0};
-    uint64_t localWinSizeEp_{0};
+    uint64_t localWsSizeDataPerRank_{0};
+    uint64_t localWsSizeStatusPerRank_{0};
 
     uint32_t tStart_{0};
     uint32_t tEnd_{0};
@@ -203,12 +206,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     aivNum_ = tilingData_->aivNum;
     localmoeNum_ = tilingData_->cfg.numLocalExperts;
     totalWinSizeEp_ = tilingData->totalWinSizeEp;
-    localWinSizeEp_ = tilingData->localWinSizeEp;
+    localWsSizeDataPerRank_ = tilingData->localWsSizeDataPerRank;
+    localWsSizeStatusPerRank_ = tilingData->localWsSizeStatusPerRank;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
-    // hWeightAlignSize_ = Ceil(axisH_ * sizeof(XType) + sizeof(float), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hWeightAlignSize_ = hAlignSize_ + UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
-
+    
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
@@ -216,9 +219,16 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (uint32_t i = 0; i < epWorldSize_; ++i) {
-        winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
-        hcommHandle_[i] = mc2Context_->hcommHandle_[i];
+        winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
+        hcommHandle_[i] = mc2Context_->hcommHandle[i];
     }
+
+    workspaceStateSize_ = numTokens_ * topK_ * UB_ALIGN * epWorldSize_;
+    // workspaceStateSize_ = 16 * 1024 * 1024;
+    CombineStateAddr_ = 0;
+    // CombineStateAddr_ = GetWinCombineStateAddrByRankId(mc2Context_);
+    CombineDataAddr_ = workspaceStateSize_;
+    // CombineDataAddr_ = GetWinCombineDataAddrByRankId(mc2Context_);
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGm_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
@@ -343,15 +353,15 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
             // 计算目标窗口地址:
             // 当前rank的workspaceGM地址（src_rank只是为了workspace内的以卡分区）
-            GM_ADDR localRankWorkSpaceAddr = GetLocalWinAddrByRankId(src_rank, STATE_WIN_SIZE) +
+            GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) +
                 (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
-            GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, STATE_WIN_SIZE) +
+            GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) +
                 (src_token_idx * topK_ + src_topK_idx) * perSlotBytes_;
             SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
             PipeBarrier<PIPE_MTE3>();
-            GM_ADDR localRankStateAddr = GetLocalWindStateAddrByRankId(src_rank) +
+            GM_ADDR localRankStateAddr = GetLocalWorkspaceStateAddr(src_rank) +
                 (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
-            GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank) +
+            GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
                 (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
 
             SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
@@ -462,7 +472,7 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
     float minTarget = target - (float)0.5;
     float maxTarget = target + (float)0.5;
     // 计算地址偏移
-    GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_) + tokenIndex * topK_ * stateOffset_;
+    GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, CombineStateAddr_) + tokenIndex * topK_ * stateOffset_;
     GlobalTensor<float> stateGMTensor;
     stateGMTensor.SetGlobalBuffer((__gm__ float*)stateGM);
     float localState = 0;
@@ -492,7 +502,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
     DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         // 读取expert_id
-        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, CombineDataAddr_) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
         GlobalTensor<XType> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(wAddr));
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);

@@ -781,7 +781,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatc
     LocalTensor<uint64_t> statusLocalTensor = recvCntBuf_.Get<uint64_t>();
     LocalTensor<uint64_t> sumTensor = tempBuf_.Get<uint64_t>();
 
-    while (sumOfFlag != commpareFlag) {  //状态位check
+    while (sumOfFlag != commpareFlag) {  // 状态位check
         DataCopyPad(statusLocalTensor, statusGMTensor, statusCopyParams, padParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum<uint64_t, AscendC::Pattern::Reduce::RA, true>(sumTensor, statusLocalTensor, shape, true);

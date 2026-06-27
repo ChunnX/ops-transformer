@@ -212,7 +212,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubStageMetaBytes =
+        Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(ubRecvCntBuf_, ubRecvCntBytes);
     tpipe_->InitBuffer(ubExpertPfxBuf_, ubExpertPfxBytes);
     tpipe_->InitBuffer(ubTokenBuf_, ubTokenBytes);
@@ -282,12 +283,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         CountHits();
         SyncAll<true>();
 
-        uint32_t myTotalHits = 0;
+        uint32_t totalHits = 0;
         for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
-            myTotalHits += static_cast<uint32_t>(ubHitCount_.GetValue(localExpertIdx));
+            totalHits += static_cast<uint32_t>(ubHitCount_.GetValue(localExpertIdx));
         }
 
-        if (myTotalHits != 0) {
+        if (totalHits != 0) {
             CopyFromWindowByExpert();
         }
     } else {
@@ -376,8 +377,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     }
     SyncFunc<AscendC::HardEvent::V_S>();
 
-    // Per-expert outer loop: accumulate weights/metadata into UB staging buffers,
-    // then flush with batched DataCopy per expert — replaces per-element GM SetValue (API-1).
     for (uint32_t targetExpert = 0; targetExpert < numLocalExperts_; ++targetExpert) {
         int64_t expertRowStart = ubRowStart_.GetValue(targetExpert);
         int32_t localWrittenRow = 0;
@@ -474,8 +473,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     }
 }
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
-__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached>::CopyFromWindowByCachedMeta()
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByCachedMeta()
 {
     if (expertSum_ == 0) { return; }
 
