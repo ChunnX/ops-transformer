@@ -211,13 +211,13 @@ struct WorkspaceInfo {
             uint32_t maxOtherServers = (tilingData->epWorldSize > 1) ? (tilingData->epWorldSize - 1) : 0;
             dispatchL1RelayDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(maxOtherServers) * perServerRelay, static_cast<int64_t>(ALIGN_512));
+                static_cast<int64_t>(maxOtherServers * perServerRelay), static_cast<int64_t>(ALIGN_512));
         }
 
         // 完成列表: 每 AIV 核每 expert round 一个 int32 标志
         dispatchL1CompleteListPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
-            static_cast<int64_t>(tilingData->blockAivNum) * tilingData->expertPerRank * SIZE_INT_32,
+            static_cast<int64_t>(tilingData->blockAivNum * tilingData->expertPerRank * SIZE_INT_32),
             static_cast<int64_t>(ALIGN_512));
     }
 };
