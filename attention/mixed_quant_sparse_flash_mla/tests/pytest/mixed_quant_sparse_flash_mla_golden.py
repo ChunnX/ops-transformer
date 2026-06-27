@@ -784,24 +784,18 @@ def gen_ori_kv_quant_2_pa(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_d
                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch, seqused_ori_kv,
                quant_param_range_left, quant_param_range_right, d_combined_quant_2, layout_kv="PA_BBND"):
     # 1. 生成并处理 Nope (448) 和 Rope (64) -> Feature (512)
-    print(" =================== kv_quant_2 ====================")
-    print(f"nope_head_dim == {nope_head_dim}")
     ori_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
         (B, N2, ori_max_s2, nope_head_dim))).to(torch.float8_e4m3fn)
     ori_k_nope_bnsd = ori_k_nope_bnsd_npu.to(q_type)
-    print(f"rope_head_dim == {rope_head_dim}")
     ori_k_rope_bnsd = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
             (B, N2, ori_max_s2, rope_head_dim))).to(q_type)
     # 2. 生成 Scale (7) 和 Padding (1) -> Metadata (8)
-    print(f"quant_scale_head_dim == {quant_scale_head_dim}")
     ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
         (B, N2, ori_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
-    print(f"pad_d == {pad_d}")
     ori_pad_tensor = torch.zeros((B, N2, ori_max_s2, pad_d)).to(torch.float8_e8m0fnu)
     # 3. nope部分*scale，转成fp8，保存为bin文件，再转回bf16
     for d_loop in range(quant_scale_head_dim):
-        print(f"tile_size == {tile_size}")
         for tile_loop in range(tile_size):
             offset = d_loop * tile_size + tile_loop
             ori_k_nope_bnsd[:, :, :, offset:offset+1] = torch.mul(ori_k_nope_bnsd[:, :, :, offset:offset+1], ori_kv_quant_param_tensor[:, :, :, d_loop:d_loop+1])
