@@ -563,11 +563,11 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     }
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    const char* commModePtr = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
+    const char* commModePtr = "ai_cpu";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
@@ -602,14 +602,13 @@ bool IsCommModeValid(const char* commModePtr)
         }
         if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
         if (strcmp(commModePtr, COMM_MODE_CCU) == 0) return true;
-        if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "For A5, commMode only support 'ccu', 'ai_cpu' or '', but it is '%s'.", commModePtr);
+            "For A5, commMode only support 'ccu' or 'ai_cpu', but it is '%s'.", commModePtr);
     } else {
         if (commModePtr == nullptr) return true;
-        if (strcmp(commModePtr, COMM_MODE_DEFAULT) == 0) return true;
+        if (strcmp(commModePtr, COMM_MODE_AICPU) == 0) return true;
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "For A2, commMode only support nullptr or '', but it is '%s'.", commModePtr);
+            "For A2, commMode only support nullptr or 'ai_cpu', but it is '%s'.", commModePtr);
     }
     return false;
 }

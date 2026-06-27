@@ -51,7 +51,6 @@ constexpr size_t DIM_LEN_ONE = 1;
 constexpr size_t DIM_LEN_TWO = 2;
 constexpr char COMM_MODE_AICPU[] = "ai_cpu";
 constexpr char COMM_MODE_CCU[] = "ccu";
-constexpr char COMM_MODE_DEFAULT[] = "";
 
 struct NnopbaseDfxId {
     uint32_t id;
