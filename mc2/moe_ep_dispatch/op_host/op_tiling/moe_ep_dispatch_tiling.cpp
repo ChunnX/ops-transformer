@@ -146,8 +146,6 @@ static bool CheckCachedTensorShape(const gert::TilingContext *context, const cha
 {
     const gert::StorageShape *weightsShape = context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX);
     const gert::StorageShape *cachedShape = context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX);
-    OP_TILING_CHECK((weightsShape == nullptr) && (cachedShape == nullptr),
-        OP_LOGE(nodeName, "topkWeights is required when no-cached mode."), return false);
 
     if (weightsShape != nullptr) {
         OP_TILING_CHECK(weightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
@@ -265,8 +263,6 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
         OP_LOGE(nodeName, "topk_idx dtype must be DT_INT32, but got %d.",
             static_cast<int32_t>(topkIdxDesc->GetDataType())), return false);
 
-    OP_TILING_CHECK((topkWeightsDesc == nullptr) && (cachedSlotIdxDesc == nullptr),
-        OP_LOGE(nodeName, "topkWeights is required when no-cached mode."), return false);
     if (topkWeightsDesc != nullptr) {
         OP_TILING_CHECK(topkWeightsDesc->GetDataType() != ge::DT_FLOAT,
             OP_LOGE(nodeName, "topk_weights dtype must be DT_FLOAT, but got %d.",

@@ -38,7 +38,7 @@ MoEElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor,
 
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 
--   **topk\_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重，用于加权聚合。要求为2维张量，shape为(A, K)，数据类型支持`float32`，数据格式为$ND$，对应[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)的`recv_topk_weights`输出。若不提供，则进行纯累加combine，输出`combined_topk_weights`为None。
+-   **topk\_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重，用于加权聚合。要求为1维张量，shape为(A,)，数据类型支持`float32`，数据格式为$ND$，对应[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)的`recv_topk_weights`输出。若不提供，则进行纯累加combine，输出`combined_topk_weights`为None。
 
 -   **bias** (`Tensor`或`Tuple[Tensor, Tensor]`)：可选参数，当前版本不支持bias，传入None即可。预留支持单个bias张量或bias\_0/bias\_1双张量模式。
 
@@ -55,10 +55,10 @@ MoEElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor,
 -   当前版本不支持bias参数，`bias`必须传入None。
 -   调用接口过程中使用的`ep_world_size`、`num_experts`、`num_max_tokens_per_rank`参数需通过handle传递，与[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)保持一致。
 -   参数里Shape使用的变量如下：
-    -   A：表示本卡接收的最大token数量，A = ep\_world\_size \* num\_max\_tokens\_per\_rank。
-    -   H：表示hidden size隐藏层大小。取值范围\[1024, 8192\]。
+    -   A：表示本卡接收的最大token数量，A = ep\_world\_size \* num\_max\_tokens\_per\_rank \* MIN(K, num\_local\_experts)。
+    -   H：表示hidden size隐藏层大小。取值范围为(0, 8192]。
     -   BS：表示batch sequence size，即本卡的原始token数量。
-    -   K：表示选取topK个专家，取值范围为1 < K ≤ 32。
+    -   K：表示选取topK个专家，取值范围为1 ≤ K ≤ 32。
     -   num\_local\_experts：表示本卡专家数量，num\_local\_experts = num\_experts / ep\_world\_size。
 -   HCCL通信域缓存区大小：
     调用本接口前需检查通信域缓存区大小取值是否合理，单位MB，不配置时默认为200MB。

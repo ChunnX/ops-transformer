@@ -47,8 +47,8 @@ constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 3U;
 constexpr uint32_t CACHED_RECV_SRC_METADATA_INDEX = 4U;
 
 constexpr uint32_t OUT_RECV_X_INDEX = 0U;
-constexpr uint32_t OUT_RECV_TOPK_WEIGHTS_INDEX = 1U;
-constexpr uint32_t OUT_RECV_SRC_METADATA_INDEX = 2U;
+constexpr uint32_t OUT_RECV_SRC_METADATA_INDEX = 1U;
+constexpr uint32_t OUT_RECV_TOPK_WEIGHTS_INDEX = 2U;
 constexpr uint32_t OUT_RECV_SCALES_INDEX = 3U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
@@ -82,7 +82,8 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogu
               info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
     OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
               info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
-    OP_LOGD(nodeName, "aivNum=%u, cached=%u, scalesBytes=%u", info.aivNum, info.cached, info.scalesBytes);
+    OP_LOGD(nodeName, "aivNum=%u, cached=%u, scalesBytes=%u",
+              info.aivNum, info.cached, info.scalesBytes);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,23 +349,23 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
     OP_TILING_CHECK(CheckRecvScalesTensor(context, nodeName, recvXDtype, aAlloc, hidden, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check recvScales tensor failed."), return ge::GRAPH_FAILED);
 
-    // ---- recvTopkWeights [A_alloc] float ----
-    auto recvTopkWeightsShape = context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeightsShape);
-    OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "recvTopkWeights dims must be 1, got %lu.",
-            recvTopkWeightsShape->GetStorageShape().GetDimNum()),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDim(0) != aAlloc,
-        OP_LOGE(nodeName, "recvTopkWeights dim0 must equal recvX dim0=%ld, got %ld.",
-            aAlloc, recvTopkWeightsShape->GetStorageShape().GetDim(0)),
-        return ge::GRAPH_FAILED);
-    auto recvTopkWeightsDesc = context->GetOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeightsDesc);
-    OP_TILING_CHECK(recvTopkWeightsDesc->GetDataType() != ge::DT_FLOAT,
-        OP_LOGE(nodeName, "recvTopkWeights dtype must be float, got %d.",
-            static_cast<int32_t>(recvTopkWeightsDesc->GetDataType())),
-        return ge::GRAPH_FAILED);
+    // ---- recvTopkWeights [A_alloc] float (OPTIONAL) ----
+    auto recvTopkWeightsShape = context->GetOptionalOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX);
+    if (recvTopkWeightsShape != nullptr) {
+        OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+            OP_LOGE(nodeName, "recvTopkWeights dims must be 1, got %lu.",
+                recvTopkWeightsShape->GetStorageShape().GetDimNum()),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDim(0) != aAlloc,
+            OP_LOGE(nodeName, "recvTopkWeights dim0 must equal recvX dim0=%ld, got %ld.",
+                aAlloc, recvTopkWeightsShape->GetStorageShape().GetDim(0)),
+            return ge::GRAPH_FAILED);
+        auto recvTopkWeightsDesc = context->GetOptionalOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX);
+        OP_TILING_CHECK(recvTopkWeightsDesc->GetDataType() != ge::DT_FLOAT,
+            OP_LOGE(nodeName, "recvTopkWeights dtype must be float, got %d.",
+                static_cast<int32_t>(recvTopkWeightsDesc->GetDataType())),
+            return ge::GRAPH_FAILED);
+    }
 
     // ---- recvSrcMetadata [A_alloc, 3] int32 ----
     auto recvSrcMetaShape = context->GetOutputShape(OUT_RECV_SRC_METADATA_INDEX);
@@ -430,6 +431,8 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     bool cached = (context->GetOptionalInputDesc(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
     info.cached = cached ? 1U : 0U;
 
+    bool hasTopkWeights = (context->GetOptionalOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX) != nullptr);
+
     OP_TILING_CHECK(CheckInputDataType(context, nodeName, cached) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input dtype failed."), return ge::GRAPH_FAILED);
 
@@ -483,10 +486,11 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U,
+                                             hasTopkWeights ? 1U : 0U,
                                              info.isMxQuant ? 1U : 0U);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u, isMxQuant=%u",
-        tilingKey, blockDim, aivNum, info.cached, info.isMxQuant);
+    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u, hasTopkWeights=%u, isMxQuant=%u",
+        tilingKey, blockDim, aivNum, info.cached, hasTopkWeights ? 1U : 0U, info.isMxQuant);
 
     PrintTilingDataInfo(nodeName, info);
     return ge::GRAPH_SUCCESS;

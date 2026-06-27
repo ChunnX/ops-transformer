@@ -27,12 +27,12 @@ MoEElasticBuffer.dispatch(x, topk_idx=None, topk_weights=None, *, handle=None, n
 
 ## 参数说明<a name="zh-cn_topic_0000002203575833_section112637109429"></a>
 
--   **x** (`Tensor`)：必选参数，表示计算使用的token数据，需根据`topk_idx`来发送给其他卡。要求为2维张量，shape为(BS, H)，数据类型仅支持`bfloat16`，数据格式为$ND$。
+-   **x** (`Tensor`)：必选参数，表示计算使用的token数据，需根据`topk_idx`来发送给其他卡。要求为2维张量，shape为(BS, H)，数据类型支持`bfloat16`、`float16`、`float8_e5m2`、`float8_e4m3fn`，数据格式为$ND$。
 -   **topk\_idx** (`Tensor`)：可选参数，表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2维张量，shape为(BS, K)，数据类型支持`int32`，数据格式为$ND$。张量里value取值范围为\[0, num\_experts\)。非cached模式下为必选参数，cached模式下必须为None。
--   **topk\_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重。要求为2维张量，shape为(BS, K)，数据类型支持`float32`，数据格式为$ND$。非cached模式下为必选参数，cached模式下必须为None。
+-   **topk\_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重。要求为2维张量，shape为(BS, K)，数据类型支持`float32`，数据格式为$ND$。非cached模式下为可选参数，cached模式下必须为None。
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 -   **handle** (`EPHandle`)：可选参数，表示上一次dispatch返回的handle对象，用于cached模式。传入handle时，`topk_idx`和`topk_weights`必须为None，`do_cpu_sync`必须为False。默认为None，即非cached模式。
--   **num\_experts** (`int`)：可选参数，MoE专家总数量，覆盖初始化时的值。取值范围\[1, 2048\]，且满足num\_experts % ep\_world\_size = 0。默认使用初始化时传入的值。
+-   **num\_experts** (`int`)：可选参数，MoE专家总数量，覆盖初始化时的值。取值范围\[2, 2048\]，且满足num\_experts % ep\_world\_size = 0。默认使用初始化时传入的值。
 -   **num\_max\_tokens\_per\_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限，覆盖初始化时的值。默认使用初始化时传入的值。
 -   **expert\_alignment** (`int`)：可选参数，表示专家对齐数，覆盖初始化时的值。默认使用初始化时传入的值。
 -   **do\_cpu\_sync** (`bool`)：可选参数，表示是否进行CPU同步等待。非cached模式默认为True，cached模式必须为False。
@@ -40,8 +40,8 @@ MoEElasticBuffer.dispatch(x, topk_idx=None, topk_weights=None, *, handle=None, n
 ## 输出说明<a name="zh-cn_topic_0000002203575833_section22231435517"></a>
 
 -   **recv\_x** (`Tensor`)：表示本卡收到的token数据。要求为2维张量，shape为(A, H)，数据类型为`bfloat16`，数据格式为$ND$。经专家网络处理后，作为[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)的`x`输入。
--   **recv\_topk\_idx** (`Tensor`)：表示本卡收到的topk索引。要求为2维张量，shape为(A, K)，数据类型为`int32`，数据格式为$ND$。
--   **recv\_topk\_weights** (`Tensor`)：表示本卡收到的topk权重。要求为2维张量，shape为(A, K)，数据类型为`float32`，数据格式为$ND$，作为[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)的`topk_weights`输入。
+-   **recv\_topk\_idx** (`None`)：当前版本始终为None，预留参数。
+-   **recv\_topk\_weights** (`Tensor | None`)：表示本卡收到的topk权重。仅当输入`topk_weights`不为None时返回，否则为None。要求为1维张量，shape为(A,)，数据类型为`float32`，数据格式为$ND$，作为[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)的`topk_weights`输入。
 -   **handle** (`EPHandle`)：表示dispatch阶段生成的handle对象，包含slot索引、元数据等信息，需传递给[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)使用。handle的属性如下：
     -   **dst\_buffer\_slot\_idx** (`Tensor`)：slot索引，shape为(BS, K)，dtype为`int32`。
     -   **recv\_src\_metadata** (`Tensor`)：接收元数据，shape为(A, 3)，dtype为`int32`。
@@ -57,12 +57,12 @@ MoEElasticBuffer.dispatch(x, topk_idx=None, topk_weights=None, *, handle=None, n
 -   该接口支持推理和训练场景。
 -   `MoEElasticBuffer.dispatch`和[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)必须配套使用。
 -   调用接口过程中使用的`num_experts`、`num_max_tokens_per_rank`参数取值所有卡需保持一致，且和[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)对应参数也保持一致。
--   cached模式下，`topk_idx`和`topk_weights`必须为None，`do_cpu_sync`必须为False；非cached模式下，`topk_idx`和`topk_weights`为必选参数。
+-   cached模式下，`topk_idx`和`topk_weights`必须为None，`do_cpu_sync`必须为False；非cached模式下，`topk_idx`为必选参数，`topk_weights`为可选参数。
 -   参数里Shape使用的变量如下：
-    -   A：表示本卡接收的最大token数量，A = ep\_world\_size \* num\_max\_tokens\_per\_rank。
-    -   H：表示hidden size隐藏层大小。取值为\[1024, 8192\]。
+    -   A：表示本卡接收的最大token数量，A = ep\_world\_size \* num\_max\_tokens\_per\_rank \* MIN(K, num\_local\_experts)。
+    -   H：表示hidden size隐藏层大小。取值范围为(0, 8192]。
     -   BS：表示batch sequence size，即本卡的token数量。
-    -   K：表示选取topK个专家，取值范围为1 < K ≤ 32。
+    -   K：表示选取topK个专家，取值范围为1 ≤ K ≤ 32。
     -   num\_local\_experts：表示本卡专家数量，num\_local\_experts = num\_experts / ep\_world\_size，应满足0 < num\_local\_experts \* ep\_world\_size ≤ 2048。
 -   HCCL通信域缓存区大小：
     调用本接口前需检查HCCL\_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
