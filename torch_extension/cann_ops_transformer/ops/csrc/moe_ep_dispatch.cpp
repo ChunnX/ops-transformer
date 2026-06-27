@@ -53,7 +53,8 @@ tensor_list npu_moe_ep_dispatch(const at::Tensor &context, const at::Tensor &x, 
     dst_slot = at::empty({num_tokens, top_k}, x.options().dtype(at::kInt));
 
     at::Tensor topk_weights_tensor = topk_weights.has_value() ? *topk_weights : at::Tensor();
-    at::Tensor cached_slot_tensor = cached_handle_dst_buffer_slot_idx.has_value() ? *cached_handle_dst_buffer_slot_idx : at::Tensor();
+    at::Tensor cached_slot_tensor =
+        cached_handle_dst_buffer_slot_idx.has_value() ? *cached_handle_dst_buffer_slot_idx : at::Tensor();
 
     aclDataType scales_dtype;
     at::Tensor scales_tensor = scales.has_value() ? *scales : at::Tensor();

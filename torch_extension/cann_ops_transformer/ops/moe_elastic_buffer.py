@@ -8,10 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import os
-import torch
-import torch.distributed as dist
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple
+
+import torch
+import torch.distributed as dist
 from .moe_ep_dispatch import npu_moe_ep_dispatch, npu_moe_ep_dispatch_epilogue
 from .moe_ep_combine import npu_moe_ep_combine
 from .comm_context import CommContextManager
@@ -67,6 +68,45 @@ class MoEElasticBuffer:
         self.num_experts = num_experts
         self.expert_alignment = expert_alignment
         self._host_pinned_counter = None
+
+    @staticmethod
+    def get_moe_ep_ccl_buffer_size(world_size: int, num_max_tokens_per_rank: int, hidden: int,
+                                   num_experts: int, topk: int) -> int:
+        def inline_align(value, base):
+            return (value + base - 1) // base * base
+
+        torch._check(((num_experts >= 1) and (num_experts <= 2048)),       # num_experts当前仅支持[1,2048]
+                     lambda: (f"num_experts only support in [1, 2048], but got {num_experts=}."))
+        torch._check(((topk >= 1) and (topk <= 32)),                # topk当前仅支持[1,32]
+                     lambda: (f"topk only support in [1, 32], but got {topk=}."))
+
+        win_addr_align = 512
+        ub_align = 32
+        max_out_dtype_size = 2  # sizeof(bf16)
+        metadata_dtype_size = 4 # sizeof(int32)/sizeof(float)
+        mb_conversion = 1024 * 1024
+        # 与 kernel 侧 STATE_WIN_SIZE = 1MB 保持一致
+        state_win_size = 16 * 1024 * 1024
+        metadata_bytes = inline_align(topk * metadata_dtype_size, ub_align)
+        per_token_bytes = inline_align(hidden * max_out_dtype_size + metadata_bytes * 2 + ub_align, win_addr_align)
+        # 远端窗口 slot 按 (src_token_idx * topK + src_topK_idx) 索引，
+        # per-peer 数据量 = STATE_WIN_SIZE + topk * nmt * perSlotBytes
+        per_peer_need = state_win_size + world_size * topk * num_max_tokens_per_rank * per_token_bytes
+        minimum_buffer_size = 2 * per_peer_need
+        ## hccl按照2*bufferSize大小开设
+        ccl_buffer_size = inline_align(inline_align(minimum_buffer_size, mb_conversion) // mb_conversion, 2) // 2
+
+        return ccl_buffer_size
+
+    @staticmethod
+    def _unpack_bias(bias):
+        if bias is None:
+            return None, None
+        if isinstance(bias, torch.Tensor):
+            return bias, None
+        if isinstance(bias, tuple) and len(bias) == 2:
+            return bias[0], bias[1]
+        raise TypeError(f"unsupported bias type: {type(bias)}")
 
     def dispatch(
         self,
@@ -171,44 +211,6 @@ class MoEElasticBuffer:
             handle.num_max_tokens_per_rank, self.ccl_buffer_size
         )
         return combined_x, combined_topk_weights
-
-    @staticmethod
-    def get_moe_ep_ccl_buffer_size(world_size: int, num_max_tokens_per_rank: int, hidden: int,
-                                   num_experts: int, topk: int) -> int:
-        def inline_align(value, base):
-            return (value + base - 1) // base * base
-
-        torch._check(((num_experts >= 1) and (num_experts <= 2048)),       # num_experts当前仅支持[1,2048]
-                     lambda: (f"num_experts only support in [1, 2048], but got {num_experts=}."))
-        torch._check(((topk >= 1) and (topk <= 32)),                # topk当前仅支持[1,32]
-                     lambda: (f"topk only support in [1, 32], but got {topk=}."))
-
-        win_addr_align = 512
-        ub_align = 32
-        max_out_dtype_size = 2  # sizeof(bf16)
-        metadata_dtype_size = 4 # sizeof(int32)/sizeof(float)
-        mb_conversion = 1024 * 1024
-        # 与 kernel 侧 STATE_WIN_SIZE = 1MB 保持一致
-        state_win_size = 16 * 1024 * 1024
-        metadata_bytes = inline_align(topk * metadata_dtype_size, ub_align)
-        per_token_bytes = inline_align(hidden * max_out_dtype_size + metadata_bytes * 2 + ub_align, win_addr_align)
-        # 远端窗口 slot 按 (src_token_idx * topK + src_topK_idx) 索引，
-        # per-peer 数据量 = STATE_WIN_SIZE + topk * nmt * perSlotBytes
-        per_peer_need = state_win_size + world_size * topk * num_max_tokens_per_rank * per_token_bytes
-        minimum_buffer_size = 2 * per_peer_need
-        ## hccl按照2*bufferSize大小开设
-        ccl_buffer_size = inline_align(inline_align(minimum_buffer_size, mb_conversion) // mb_conversion, 2) // 2
-
-        return ccl_buffer_size
-
-    def _unpack_bias(self, bias):
-        if bias is None:
-            return None, None
-        if isinstance(bias, torch.Tensor):
-            return bias, None
-        if isinstance(bias, tuple) and len(bias) == 2:
-            return bias[0], bias[1]
-        raise TypeError(f"unsupported bias type: {type(bias)}")
 
     def destroy(self):
         if self._host_pinned_counter is not None:

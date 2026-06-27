@@ -376,7 +376,8 @@ public:
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer,
+                                                       &bufSize);
             }
 
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
@@ -483,7 +484,7 @@ public:
 class CommContextManager {
 public:
     CommContextManager(const std::string &group, int64_t worldSize,
-                       const py::object &backend = py::str("kfc"), const std::string &commAlg = "mte")
+                       const py::object &backend = py::str("kfc"), const std::string &commAlg = "ub-mem")
         : group_(group), worldSize_(worldSize), commAlg_(commAlg),
           backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
 
