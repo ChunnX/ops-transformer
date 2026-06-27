@@ -65,6 +65,7 @@ private:
     int64_t dAlignCos_{0};
     uint32_t dSplitSizeDy_{0};
     uint32_t dSplitSizeCos_{0};
+    uint16_t dSplitCoef_{0};
 };
 
 // ---- Init ----
@@ -78,14 +79,16 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBoardCast>:
     this->blockIdx_ = GetBlockIdx();
     this->D_ = tilingData_->d;
 
-    this->dAlignDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+    this->dSplitCoef_ = static_cast<uint16_t>(tilingData_->dSplitCoef);
+
+    this->dAlignDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_,
                                                      static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
-                      tilingData_->dSplitCoef;
-    this->dAlignCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                      dSplitCoef_;
+    this->dAlignCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_,
                                                       static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
-                       tilingData_->dSplitCoef;
-    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY) / tilingData_->dSplitCoef);
-    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TCOS) / tilingData_->dSplitCoef);
+                       dSplitCoef_;
+    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY) / dSplitCoef_);
+    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TCOS) / dSplitCoef_);
     this->ubFactorB_ = tilingData_->ubFactorB;
 
     this->dyGm_.SetGlobalBuffer((__gm__ TDY *)dy);
@@ -163,7 +166,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBoardCast>:
 
     int64_t cosSinOffset = bStart * tilingData_->sliceLength;
 
-    DataCopyExtParams copyParams = {static_cast<uint16_t>(bLength * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0, 0};
+    DataCopyExtParams copyParams = {static_cast<uint16_t>(bLength * dSplitCoef_), dSplitSizeCos_, 0, 0, 0};
     DataCopyPadExtParams<TCOS> padParams = {false, 0, 0, 0};
 
     DataCopyPad(cosUb, cosGm_[cosSinOffset], copyParams, padParams);
@@ -183,7 +186,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBoardCast>:
     // After MergeDim: tensor is effectively [B, D]
     int64_t dyOffset = bStart * D_ + tilingData_->sliceStart;
 
-    DataCopyExtParams copyParams = {static_cast<uint16_t>(bLength * tilingData_->dSplitCoef), dSplitSizeDy_,
+    DataCopyExtParams copyParams = {static_cast<uint16_t>(bLength * dSplitCoef_), dSplitSizeDy_,
                                      static_cast<uint32_t>((D_ - tilingData_->sliceLength) * sizeof(TDY)), 0, 0};
     DataCopyPadExtParams<TDY> padParams = {false, 0, 0, 0};
 
@@ -200,7 +203,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBoardCast>:
 
     int64_t dxOffset = bStart * D_ + tilingData_->sliceStart;
 
-    DataCopyExtParams copyParams = {static_cast<uint16_t>(bLength * tilingData_->dSplitCoef), dSplitSizeDy_, 0,
+    DataCopyExtParams copyParams = {static_cast<uint16_t>(bLength * dSplitCoef_), dSplitSizeDy_, 0,
                                      static_cast<uint32_t>((D_ - tilingData_->sliceLength) * sizeof(TDY)), 0};
 
     DataCopyPad(dxGm_[dxOffset], dxUb, copyParams);
