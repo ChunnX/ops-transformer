@@ -35,15 +35,18 @@ group_op_dict = {
                    "incre_flash_attention": 5,
                    "prompt_flash_attention": 5,
                    "flash_attention_score": 3,
-                   "flash_attention_score_grad": 3},
+                   "flash_attention_score_grad": 3,
+                   "mega_moe": 10},
     "ascend910_93": {"fused_infer_attention_score": 10,
                      "incre_flash_attention": 5,
                      "prompt_flash_attention": 5,
                      "flash_attention_score": 3,
-                     "flash_attention_score_grad": 3},
+                     "flash_attention_score_grad": 3,
+                     "mega_moe": 10},
     "ascend950": {"fused_infer_attention_score": 20,
                    "flash_attention_score": 5,
-                   "flash_attention_score_grad": 5}
+                   "flash_attention_score_grad": 5,
+                   "mega_moe": 20}
 }
 
 
