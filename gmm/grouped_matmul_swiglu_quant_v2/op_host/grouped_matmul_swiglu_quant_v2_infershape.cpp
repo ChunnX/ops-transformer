@@ -59,36 +59,19 @@ bool  isSupportedInputDtypeForDavid(ge::DataType dtype)
     return DavidSupportedInputDtypes.find(dtype) != DavidSupportedInputDtypes.end();
 }
 
-static ge::graphStatus InferShapeForMxA8W4MultiWeight(
-    gert::InferShapeContext *context, int64_t m,
-    const gert::Shape *weightScaleShape, const gert::RuntimeAttrs *attrs)
+static bool IsMxA8W4MultiWeightScenario(gert::InferShapeContext *context, const gert::Shape *weightScaleShape,
+                                         const gert::RuntimeAttrs *attrs)
 {
-    auto outScaleShape = context->GetOutputShape(1);
-    OP_CHECK_NULL_WITH_CONTEXT(context, outScaleShape);
-    auto wsDimNum = weightScaleShape->GetDimNum();
-    const bool *transposeWeightPtr = attrs->GetBool(WEIGHTSCALE_INDEX);
-    const bool transposeWeight = (transposeWeightPtr != nullptr ? *transposeWeightPtr : false);
-    int64_t nDimIndex = transposeWeight ? 0 : static_cast<int64_t>(wsDimNum - 2);
-    int64_t dimValue = static_cast<int64_t>(weightScaleShape->GetDim(nDimIndex));
-    int64_t nScale = 0;
-    int64_t nOut = 0;
-    if (dimValue == DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE) {
-        nScale = dimValue;
-        nOut = dimValue;
-    } else {
-        nScale = static_cast<int64_t>(Ops::Base::CeilDiv(dimValue, N_SPLIT_RATIO));
-        nOut = static_cast<int64_t>(dimValue / SPLIT_RATIO);
+    const int64_t *quantModePtr = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
+    if (quantModePtr == nullptr || *quantModePtr != static_cast<int64_t>(QUANT_MODE_MX_TYPE)) {
+        return false;
     }
-    outScaleShape->SetDimNum(OUT_DIM_LEN);
-    outScaleShape->SetDim(0, m);
-    outScaleShape->SetDim(1, nScale);
-    outScaleShape->SetDim(2, SPLIT_RATIO);
-    auto outShape = context->GetOutputShape(0);
-    OP_CHECK_NULL_WITH_CONTEXT(context, outShape);
-    outShape->SetDimNum(DIM_LEN);
-    outShape->SetDim(0, m);
-    outShape->SetDim(1, nOut);
-    return GRAPH_SUCCESS;
+    if (weightScaleShape->GetDimNum() != MX_WEIGHTSCALE_MULTI_DIM) {
+        return false;
+    }
+    auto xDtype = context->GetDynamicInputDesc(X_INDEX, 0)->GetDataType();
+    auto weightDtype = context->GetDynamicInputDesc(WEIGHT_INDEX, 0)->GetDataType();
+    return xDtype == ge::DataType::DT_FLOAT8_E4M3FN && weightDtype == ge::DataType::DT_FLOAT4_E2M1;
 }
 
 static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeContext *context)
@@ -101,9 +84,10 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
     int64_t nDimIndex = weightScaleShape->GetDimNum() - 1;
     auto outScaleShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, outScaleShape);
-    if (nDimIndex == OUT_DIM_LEN) {
-        auto attrs = context->GetAttrs();
-        OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    auto attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    bool isMxA8W4MultiWeight = IsMxA8W4MultiWeightScenario(context, weightScaleShape, attrs);
+    if (nDimIndex == OUT_DIM_LEN || isMxA8W4MultiWeight) {
         const bool *transposeWeightPtr = attrs->GetBool(WEIGHTSCALE_INDEX);
         const bool transposeWeight = (transposeWeightPtr != nullptr ? *transposeWeightPtr : false);
         nDimIndex = transposeWeight ? weightScaleShape->GetDimNum() - OUT_DIM_LEN :
@@ -118,20 +102,10 @@ static ge::graphStatus InferShape4GroupedMatmulSwigluQuantV2(gert::InferShapeCon
         outScaleShape->SetDimNum(OUT_DIM_LEN);
         outScaleShape->SetDim(0, m);
         outScaleShape->SetDim(1, n);
-        outScaleShape->SetDim(2, SPLIT_RATIO);
+        outScaleShape->SetDim(2, SPLIT_RATIO); // 设置outScaleShape的第2维度
     } else {
-        auto attrs = context->GetAttrs();
-        OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-        const int64_t *quantModePtr = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
-        const int64_t quantModeVal = (quantModePtr != nullptr ? *quantModePtr : -1);
-        bool isMxA8W4MultiWeight = (quantModeVal == static_cast<int64_t>(QUANT_MODE_MX_TYPE)) &&
-                                   (weightScaleShape->GetDimNum() == MX_WEIGHTSCALE_MULTI_DIM);
-        if (isMxA8W4MultiWeight) {
-            return InferShapeForMxA8W4MultiWeight(context, m, weightScaleShape, attrs);
-        } else {
-            outScaleShape->SetDimNum(1);
-            outScaleShape->SetDim(0, m);
-        }
+        outScaleShape->SetDimNum(1);
+        outScaleShape->SetDim(0, m);
     }
 
     int64_t dimValue = static_cast<int64_t>(weightScaleShape->GetDim(nDimIndex));

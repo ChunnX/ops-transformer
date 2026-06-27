@@ -204,16 +204,7 @@ protected:
     bool IsMultiTensorWeight() const
     {
         auto wDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
-        if (wDimNum == MX_MULTI_WEIGHT_DIM) {
-            return true;
-        }
-        if (gmmDsqParams_.weight->Size() != SINGLE_TENSOR_SIZE) {
-            OP_LOGE_FOR_INVALID_TENSORNUM(apiName_.c_str(), "weight",
-                                          static_cast<int64_t>(gmmDsqParams_.weight->Size()),
-                                          std::to_string(SINGLE_TENSOR_SIZE));
-            return false;
-        }
-        return false;
+        return wDimNum == MX_MULTI_WEIGHT_DIM;
     }
 
     bool IsTransposeForMxShape(const aclTensor *tensor) const
@@ -266,17 +257,12 @@ protected:
             if (viewShape.GetDimNum() < MX_SPLIT_M_MULTI_TENSOR_SCALE_DIM) {
                 continue;
             }
-
-            if (viewShape.GetDimNum() == MX_SPLIT_M_MULTI_TENSOR_SCALE_DIM) {
-                shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - LAST_SECOND_DIM_INDEX));
-                shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - LAST_THIRD_DIM_INDEX));
-                shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - 1));
-            } else {
+            if (viewShape.GetDimNum() > MX_SPLIT_M_MULTI_TENSOR_SCALE_DIM) {
                 shape.AppendDim(viewShape.GetDim(0));
-                shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - LAST_SECOND_DIM_INDEX));
-                shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - LAST_THIRD_DIM_INDEX));
-                shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - 1));
             }
+            shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - LAST_SECOND_DIM_INDEX));
+            shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - LAST_THIRD_DIM_INDEX));
+            shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - 1));
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -302,7 +288,7 @@ protected:
             // viewShapeDimsNum - 1, the dim value of the last dim. viewShapeDimsNum - 2, the dim value of the second
             // last dim.
             shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 1));
-            shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 2)); // 2:the second last dim.
+            shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - LAST_SECOND_DIM_INDEX));
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
@@ -427,8 +413,9 @@ protected:
                 }
             } else {
                 if (!transposeWeight) {
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName_.c_str(), "transposeWeight", "false",
-                                                          "in MxA8W4, the transposition of weight must be true");
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        apiName_.c_str(), "transposeWeight", "false",
+                        "when the x-weight dtype is fp8-fp4, , the transposition of weight must be true");
                     return false;
                 }
             }
@@ -509,14 +496,14 @@ protected:
         auto dimNum = weight->GetViewShape().GetDimNum();
         return gmmDsqParams_.transposeWeight
             ? weight->GetViewShape().GetDim(dimNum - 1)
-            : weight->GetViewShape().GetDim(dimNum - 2);
+            : weight->GetViewShape().GetDim(dimNum - LAST_SECOND_DIM_INDEX);
     }
 
     int64_t GetWeightN(const aclTensor *weight) const
     {
         auto dimNum = weight->GetViewShape().GetDimNum();
         return gmmDsqParams_.transposeWeight
-            ? weight->GetViewShape().GetDim(dimNum - 2)
+            ? weight->GetViewShape().GetDim(dimNum - LAST_SECOND_DIM_INDEX)
             : weight->GetViewShape().GetDim(dimNum - 1);
     }
 
@@ -843,7 +830,7 @@ protected:
     {
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
-        // 多tensor下shape:(n,k), 单tensor下shape:(g, n, k)
+        // 多tensor下shape:(n,k), 单tensor下shape:(e, n, k)
         int64_t n = IsMultiTensorWeight()
             ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0)
             : ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
@@ -853,16 +840,16 @@ protected:
 
         if (k % MXA8W4_K_ALIGN != 0 || k < MXA8W4_K_MIN) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(apiName_.c_str(), "x", ViewShapeToString(gmmDsqParams_.x),
-                                                  "MxA8W4: K(" + std::to_string(k) + ") must align to " +
-                                                      std::to_string(MXA8W4_K_ALIGN) +
+                                                  "when the quantization mode is MxA8W4, K(" + std::to_string(k) +
+                                                      ") must align to " + std::to_string(MXA8W4_K_ALIGN) +
                                                       " and >= " + std::to_string(MXA8W4_K_MIN));
             return false;
         }
         if (n % MXA8W4_N_ALIGN != 0 || n < MXA8W4_N_MIN) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 apiName_.c_str(), "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
-                "MxA8W4: N(" + std::to_string(n) + ") must align to " + std::to_string(MXA8W4_N_ALIGN) +
-                    " and >= " + std::to_string(MXA8W4_N_MIN));
+                "when the quantization mode is MxA8W4, N(" + std::to_string(n) + ") must align to " +
+                    std::to_string(MXA8W4_N_ALIGN) + " and >= " + std::to_string(MXA8W4_N_MIN));
             return false;
         }
 
@@ -949,16 +936,8 @@ protected:
             for (size_t i = 0; i < wSize; i++) {
                 auto weightDimNumber = ((*gmmDsqParams_.weight)[i])->GetViewShape().GetDimNum();
                 auto weightScaleDimNumber = ((*gmmDsqParams_.weightScale)[i])->GetViewShape().GetDimNum();
-                if (weightDimNumber != MX_MULTI_WEIGHT_DIM) {
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        apiName_.c_str(), "weight",
-                        std::to_string(weightDimNumber),
-                        "weight view shape dim num must be " +
-                            std::to_string(MX_MULTI_WEIGHT_DIM) + " in MxA8W4 multi-weight scenario");
-                    return false;
-                }
-                GMM_SWIGLU_CHECK_DIM(weightScaleDimNumber, MX_MULTI_WEIGHT_SCALE_DIM,
-                                     "weightScale", return false);
+                GMM_SWIGLU_CHECK_DIM(weightDimNumber, MX_MULTI_WEIGHT_DIM, "weight", return false);
+                GMM_SWIGLU_CHECK_DIM(weightScaleDimNumber, MX_MULTI_WEIGHT_SCALE_DIM, "weightScale", return false);
             }
         } else {
             GMM_SWIGLU_CHECK_TENSORNUM(wSize, SINGLE_TENSOR_SIZE, "weight", return false);
@@ -1010,7 +989,7 @@ protected:
                                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
         if (gmmDsqParams_.isMxA8W4) {
             auto weightViewDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
-            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - 2);
+            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - LAST_SECOND_DIM_INDEX);
         }
 
         if (kInX != kInWeight) {
