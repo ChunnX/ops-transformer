@@ -1721,7 +1721,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - MxFP8全量化
       - query、key、value的dtype为FLOAT8_E4M3FN
       - attentionOut的dtype支持FLOAT16、BFLOAT16
-      - Q_S、KV_S仅支持64对齐
       - inputLayout仅支持TND
       - 支持PagedAttention场景和非PagedAttention场景，PagedAttention场景仅支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
       - 支持传入独立Rope，若传入Rope，Rope和attentionOut的dtype仅支持BFLOAT16
@@ -1771,7 +1770,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参blockSize需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN时，blockSize需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1时，blockSize需要64对齐
   - 全量化
     - Decode MLA全量化场景下，仅支持blockSize取值128
-    - MxFP8全量化场景下，仅支持blockSize取值512
+    - MxFP8全量化场景下，仅支持blockSize取值512或1024
+    - GQA全量化场景下，仅支持blockSize取值128
 - 存在性约束
   - 公共
     - PagedAttention开启情况下，必须传入actualSeqLengthsKv
