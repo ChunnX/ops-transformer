@@ -563,14 +563,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 {
     uint32_t senderCoreLimit = (serverNum_ < 8U) ? serverNum_ : 8U;
     uint32_t senderCoreNum = (senderCoreLimit < blockNum_) ? senderCoreLimit : blockNum_;
-    bool isSenderCore = blockIdx_ < senderCoreNum;
-    uint32_t computeCoreNum = blockNum_ - senderCoreNum;
-    bool useSenderAsCompute = (computeCoreNum == 0);
-    uint32_t realComputeCoreNum = useSenderAsCompute ? blockNum_ : computeCoreNum;
+    uint32_t senderCoreStart = blockNum_ - senderCoreNum;
+    bool isSenderCore = blockIdx_ >= senderCoreStart;
+    uint32_t realComputeCoreNum = blockNum_ - senderCoreNum;
     int32_t roundTag = localExpertId + 1;
 
-    bool isComputeCore = useSenderAsCompute || (blockIdx_ >= senderCoreNum);
-    uint32_t computeIdx = useSenderAsCompute ? blockIdx_ : (blockIdx_ - senderCoreNum);
+    bool isComputeCore = blockIdx_ < senderCoreStart;
+    uint32_t computeIdx = blockIdx_;
     if (isComputeCore) {
         uint32_t baseTokenNum = m_ / realComputeCoreNum;
         uint32_t tokenRemainder = m_ % realComputeCoreNum;
@@ -607,18 +606,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                 }
                 sendDedupMaskTensor_.SetValue(dedupWordIdx, dedupWord | dedupBit);
 
-                // uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-                // GM_ADDR recordAddr = GetUrmaAddrByRankId(mc2Context_,
-                //     targetServer * rankPerServer_ + rankInServer_) + params_.peermemInfo.relayTokenDataPtr +
-                //     relayOffset;
-                // if (targetServer != serverId_) {
+                uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
+                GM_ADDR recordAddr = GetUrmaAddrByRankId(mc2Context_,
+                    targetServer * rankPerServer_ + rankInServer_) + params_.peermemInfo.relayTokenDataPtr +
+                    relayOffset;
+                if (targetServer != serverId_) {
                     __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                     params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServer));
                     int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
                     uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
                         static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
                     GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
-                // }
+                }
                 QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
             }
         }
@@ -630,7 +629,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
     if (isSenderCore) {
         __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDonePtr);
         __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendCursorPtr);
-        for (uint32_t targetServerForSender = blockIdx_; targetServerForSender < serverNum_;
+        uint32_t senderIdx = blockIdx_ - senderCoreStart;
+        for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
             targetServerForSender += senderCoreNum) {
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                 params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServerForSender));
@@ -684,13 +684,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                             params_.peermemInfo.relayTokenDataPtr + relayOffset;
 
                         if (targetServerForSender == serverId_) {
-                            workspaceSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(recordAddr));
-                            relayDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(dstAddr));
-                            DataCopyPad(copyTmpBytes, workspaceSrcGlobal, recordCopyParams, recordCopyPad);
-                            SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID2>();
-                            DataCopyPad(relayDstGlobal, copyTmpBytes, recordCopyParams);
-                            SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
-                            // continue;
+                            // workspaceSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(recordAddr));
+                            // relayDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(dstAddr));
+                            // DataCopyPad(copyTmpBytes, workspaceSrcGlobal, recordCopyParams, recordCopyPad);
+                            // SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID2>();
+                            // DataCopyPad(relayDstGlobal, copyTmpBytes, recordCopyParams);
+                            // SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
+                            continue;
                         } else {
                             uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
                             ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
