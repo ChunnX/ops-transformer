@@ -67,6 +67,7 @@ private:
     __aicore__ inline void InitAic(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
     {
         tileCount_ = 0U;
+        outputBufferUseId_ = 0U;
         BindSharedLocalTensors();
         cube_.Init(tensors, qHeadNum, kvHeadNum);
         cube_.InitIntraCoreEvents();
@@ -79,6 +80,7 @@ private:
                                    uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon)
     {
         tileCount_ = 0U;
+        outputBufferUseId_ = 0U;
         BindSharedLocalTensors();
         vec_.Init(tensors, aivLocalId, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize,
                   kvCacheStrideBlock, kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock,
@@ -90,8 +92,10 @@ private:
     {
         const uint32_t aRotL1BufferId =
             static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+        // Match the AIV sequence: current tile preprocess use, then previous tile postprocess use.
+        outputBufferUseId_ += QKV_RRC_AIV_OUTPUT_BUFFER_USES_PER_TILE;
         const uint32_t outputBufferId =
-            static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+            static_cast<uint32_t>(outputBufferUseId_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         WaitAivMte3ToAicFixCConsumed();
@@ -107,7 +111,7 @@ private:
         const uint32_t aRotL1BufferId =
             static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const uint32_t outputBufferId =
-            static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+            static_cast<uint32_t>((outputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         WaitAicMte1ToAivMte3AConsumed();
@@ -120,7 +124,7 @@ private:
         vec_.SetVToMte2InputBufferReusable();
         if (tileCount_ > 0U) {
             const uint32_t lastOutputBufferId =
-                static_cast<uint32_t>((tileCount_ - 1U) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+                static_cast<uint32_t>((outputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
             vec_.WaitMte3ToVQkOutBufferReusable(lastOutputBufferId);
             WaitAicFixToAivVCReady();
             vec_.PostprocessQk(lastTile,
@@ -142,8 +146,9 @@ private:
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
         if (tileCount_ > 0U) {
+            ++outputBufferUseId_;
             const uint32_t lastOutputBufferId =
-                static_cast<uint32_t>((tileCount_ - 1U) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+                static_cast<uint32_t>((outputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
             vec_.WaitMte3ToVQkOutBufferReusable(lastOutputBufferId);
             WaitAicFixToAivVCReady();
             vec_.PostprocessQk(lastTile,
@@ -166,7 +171,7 @@ private:
 
     __aicore__ inline void SetInitialAivMte3ToAicFixCConsumedCredits()
     {
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+        for (uint32_t i = 0U; i < QKV_RRC_C_OUTPUT_BUFFER_CREDITS; ++i) {
             SetAivMte3ToAicFixCConsumed();
         }
     }
@@ -180,7 +185,7 @@ private:
 
     __aicore__ inline void DrainAivMte3ToAicFixCConsumedCredits()
     {
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+        for (uint32_t i = 0U; i < QKV_RRC_C_OUTPUT_BUFFER_CREDITS; ++i) {
             WaitAivMte3ToAicFixCConsumed();
         }
     }
@@ -233,7 +238,11 @@ private:
             LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
     }
 
+    static constexpr uint32_t QKV_RRC_AIV_OUTPUT_BUFFER_USES_PER_TILE = 2U;
+    static constexpr uint32_t QKV_RRC_C_OUTPUT_BUFFER_CREDITS = 1U;
+
     uint64_t tileCount_;
+    uint64_t outputBufferUseId_;
     LocalTensor<bfloat16_t> aRotL1Pool_;
     LocalTensor<float> outputDbPoolUb_;
     QkvRmsNormRopeCacheWithKScaleCube cube_;
