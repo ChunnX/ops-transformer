@@ -17,7 +17,7 @@
 #include "platform.h"
 
 // Develope scaffold (Remove in release version)
-#define _KV_RNRC_UNLEASH_D_SIZE 1    
+#define _KV_RNRC_UNLEASH_D_SIZE 1
 
 namespace KvRmsNormRopeCache {
 using namespace AscendC;
@@ -45,8 +45,8 @@ constexpr int64_t  KERNEL_ROPE_LENGTH[METHOD_TYPES] = {64, 64};
 // Deduction Consts
 constexpr int64_t  KERNEL_RMS_NORM_LENGTH[METHOD_TYPES] = {V_CACHE_SIZES[METHOD_V1], K_CACHE_SIZES[METHOD_V2]};
 constexpr int64_t  KERNEL_KV_TOTAL_LENGTH[METHOD_TYPES] = {
-                                                    V_CACHE_SIZES[METHOD_V1] + K_CACHE_SIZES[METHOD_V1],    // KV[V1] = 512 + 64 = 576 
-                                                    V_CACHE_SIZES[METHOD_V2] + K_CACHE_SIZES[METHOD_V2],    // KV[V1] = 128 + 192 = 320 
+                                                    V_CACHE_SIZES[METHOD_V1] + K_CACHE_SIZES[METHOD_V1],    // KV[V1] = 512 + 64 = 576
+                                                    V_CACHE_SIZES[METHOD_V2] + K_CACHE_SIZES[METHOD_V2],    // KV[V1] = 128 + 192 = 320
                                                     };
 
 template <HardEvent event>
@@ -75,7 +75,7 @@ __aicore__ inline int64_t SafeAlignUp(int64_t a, int64_t b)
 
 // Template Branch Levels:
 //  1) K/V TYPE Consistency
-//  2) Quant Mode Availability: Differentiated Quant Implementation according to Tensor Fractal and Quant Inputs.  
+//  2) Quant Mode Availability: Differentiated Quant Implementation according to Tensor Fractal and Quant Inputs.
 
 template <bool isPagedAttention, typename KV_DTYPE, typename K_DTYPE, typename V_DTYPE>
 class KernelKvRmsNormRopeCacheBase{
@@ -85,20 +85,20 @@ public:
     {}
 
     __aicore__ inline int32_t InitSharedData(int32_t methodMode){
-        if(methodMode >= METHOD_TYPES){ 
+        if (methodMode >= METHOD_TYPES) {
             // Throw exception state for INVALID method modes
             return -1;
         }
 
         this->RMS_NORM_LENGTH = KERNEL_RMS_NORM_LENGTH[methodMode];
         this->ROPE_LENGTH = KERNEL_ROPE_LENGTH[methodMode];
-        this->V_LENGTH = V_CACHE_SIZES[methodMode]; 
-        
-        if (methodMode == METHOD_V1){
+        this->V_LENGTH = V_CACHE_SIZES[methodMode];
+
+        if (methodMode == METHOD_V1) {
             // KV Concat in hDimV=512, hDimK=64(Rope).
             this->hDimK = this->ROPE_LENGTH;
             this->hDimV = this->RMS_NORM_LENGTH;
-        } else if (methodMode == METHOD_V2){
+        } else if (methodMode == METHOD_V2) {
             // KV Split in hDimK=192([:64] for Rope), hDimV=128.
             this->hDimK = this->RMS_NORM_LENGTH;
             this->hDimV = this->V_LENGTH;
@@ -107,7 +107,7 @@ public:
     }
 
 protected:
-    // Shared Constants to be removed 
+    // Shared Constants to be removed
     #if _KV_RNRC_UNLEASH_D_SIZE
         // In V1: D = Dv(RMS_NORM_LENGTH) + Dk(ROPE_LENGTH)
         // In V2: Dk(RMS_NORM_LENGTH) = ROPE_LENGTH + REM_K_LENGTH
@@ -144,14 +144,14 @@ protected:
 template <bool isPagedAttention, typename KV_DTYPE, typename K_DTYPE, typename V_DTYPE>
 class KernelKvRmsNormRopeCacheMTP : public KernelKvRmsNormRopeCacheBase<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE> {
     // Only 1 sub class: kv_rms_norm_rope_cache_b16_mtp.h
-    // MTP is a simplified template for ONLY inputs in NORM and with no quant terms. 
+    // MTP is a simplified template for ONLY inputs in NORM and with no quant terms.
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheMTP(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
         : KernelKvRmsNormRopeCacheBase<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>(pipe, tiling)
     {}
-    
+
 protected:
-    TQue<QuePosition::VECOUT, 1> outQueueK, outQueueV;   
+    TQue<QuePosition::VECOUT, 1> outQueueK, outQueueV;
     TBuf<TPosition::VECCALC> bufferXFp32, bufferXSquare, bufferSum;
 };
 
@@ -161,7 +161,7 @@ public:
     __aicore__ inline KernelKvRmsNormRopeCacheMTPQuant(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
         : KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>(pipe, tiling)
     {}
-    
+
 protected:
     TBuf<TPosition::VECCALC> wsBuffer;
     GlobalTensor<KV_DTYPE> kCacheGmNd, vCacheGmNd;
@@ -175,7 +175,7 @@ public:
     __aicore__ inline KernelKvRmsNormRopeCacheCutBS(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
         : KernelKvRmsNormRopeCacheBase<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>(pipe, tiling)
     {}
-    
+
 protected:
     TQue<QuePosition::VECOUT, 1> outQueue;
     TBuf<TPosition::VECCALC> wsBuffer;
