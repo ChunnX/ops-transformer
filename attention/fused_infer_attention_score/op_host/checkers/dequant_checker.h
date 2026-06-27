@@ -131,20 +131,6 @@ private:
 
     // MultiPara
     ge::graphStatus CheckMultiParaForAntiquant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckScaleTypeForAntiquantSameAsQuery(const FiaTilingInfo &fiaInfo,
-        const gert::CompileTimeTensorDesc *keyAntiquantScaleDesc,
-        const gert::CompileTimeTensorDesc *valueAntiquantScaleDesc,
-        const gert::CompileTimeTensorDesc *queryDesc, const std::string &modeStr);
-    ge::graphStatus CheckScaleTypeForAntiquantFloat32(const FiaTilingInfo &fiaInfo,
-        const gert::CompileTimeTensorDesc *keyAntiquantScaleDesc,
-        const gert::CompileTimeTensorDesc *valueAntiquantScaleDesc, const std::string &modeStr);
-    ge::graphStatus CheckScaleTypeForAntiquantMixed(const FiaTilingInfo &fiaInfo,
-        const gert::CompileTimeTensorDesc *keyAntiquantScaleDesc,
-        const gert::CompileTimeTensorDesc *valueAntiquantScaleDesc,
-        const gert::CompileTimeTensorDesc *queryDesc);
-    ge::graphStatus CheckScaleTypeForAntiquantPerTokenGroup(const FiaTilingInfo &fiaInfo,
-        const gert::CompileTimeTensorDesc *keyAntiquantScaleDesc,
-        const gert::CompileTimeTensorDesc *valueAntiquantScaleDesc);
     ge::graphStatus CheckScaleTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckScaleShapeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckOffsetTypeForAntiquant(const FiaTilingInfo &fiaInfo);
