@@ -1186,7 +1186,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
     __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK,
-    float pScale, const T minValue, float keepProb, const float dScale, const uint32_t blockStride, 
+    float pScale, const T minValue, float keepProb, const float dScale, const uint32_t blockStride,
     const uint32_t repeatStride, __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum,
     __ubuf__ float *first_loop_sum, int32_t subLoop)
 {
