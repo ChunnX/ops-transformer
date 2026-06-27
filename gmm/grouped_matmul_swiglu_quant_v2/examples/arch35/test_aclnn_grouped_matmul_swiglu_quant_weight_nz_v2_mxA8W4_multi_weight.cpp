@@ -152,8 +152,8 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4MultiWeightTest(int32_t deviceI
 
     int64_t E = 2;
     int64_t M = 2048;
-    int64_t N = 4096;
-    int64_t K = 4096;
+    int64_t N = 512;
+    int64_t K = 256;
 
     int64_t kScaleBlock = CeilDiv(K, 64);
 
