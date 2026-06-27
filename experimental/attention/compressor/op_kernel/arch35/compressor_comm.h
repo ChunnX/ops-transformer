@@ -183,6 +183,7 @@ struct ConstInfo {
     // shape及参数
     uint32_t batchSize = 0;
     uint32_t xCacheUpdateBatchSize = 0;
+    uint32_t xCacheReadSize = 0;
     uint32_t hSize = 0;
     uint32_t sSize = 0;
     uint32_t headDim = 0;

@@ -24,6 +24,7 @@ namespace Compressor {
 
 struct ToolsParams {
     uint32_t seqSize = 0U;
+    uint32_t xCacheReadSize = 0U;
     uint32_t cmpRatio = 0U;
 };
 
@@ -99,6 +100,9 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqLength(uint32_t bIdx)
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
     } else {
+        if (toolParams_.xCacheReadSize > 0) {
+            return toolParams_.xCacheReadSize;
+        }
         return toolParams_.seqSize;
     }
 }

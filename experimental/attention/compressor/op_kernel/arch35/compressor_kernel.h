@@ -155,6 +155,7 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     isExistXCache_ = (xCache != nullptr);
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
+    tools_.toolParams_.xCacheReadSize = tilingData_->baseParams.xCacheReadSize;
     tools_.toolParams_.cmpRatio = tilingData_->baseParams.cmpRatio;
     tools_.Init(startPos, seqUsed, cuSeqlens);
 
@@ -211,6 +212,7 @@ __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
     constInfo.batchSize = tilingData_->baseParams.batchSize;
     constInfo.xCacheUpdateBatchSize = tilingData_->baseParams.batchSize;
+    constInfo.xCacheReadSize = tilingData_->baseParams.xCacheReadSize;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.kBaseSize = tilingData_->baseParams.hiddenSize;

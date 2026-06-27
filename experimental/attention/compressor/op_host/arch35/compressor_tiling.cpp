@@ -135,11 +135,11 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
 {
     if (context_->x.shape->GetStorageShape().GetDimNum() == COMPRESSOR_DIM_NUM_3) {
         baseParams_->batchSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
-        baseParams_->seqSize = context_->xCache.desc == nullptr ?
-            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) :
-            static_cast<uint32_t>(*context_->cmpRatio);
+        baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+        baseParams_->xCacheReadSize = context_->xCache.desc == nullptr ? 0 : static_cast<uint32_t>(*context_->cmpRatio);
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_2);
-        baseParams_->tokenSize = baseParams_->batchSize * baseParams_->seqSize;
+        uint32_t computeSeqSize = baseParams_->xCacheReadSize == 0 ? baseParams_->seqSize : baseParams_->xCacheReadSize;
+        baseParams_->tokenSize = baseParams_->batchSize * computeSeqSize;
         baseParams_->cgSize = context_->ropeSin.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     } else {
         baseParams_->batchSize = context_->cuSeqlens.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) - 1;
@@ -150,12 +150,13 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
 
     baseParams_->headDim = context_->normWeight.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
-    baseParams_->csSize = baseParams_->seqSize - (baseParams_->seqSize % baseParams_->cmpRatio);
+    uint32_t computeSeqSize = baseParams_->xCacheReadSize == 0 ? baseParams_->seqSize : baseParams_->xCacheReadSize;
+    baseParams_->csSize = computeSeqSize - (computeSeqSize % baseParams_->cmpRatio);
     baseParams_->ropeHeadDim = static_cast<uint32_t>(*context_->ropeHeadDim);
     baseParams_->normEps = static_cast<float>(*context_->normEps);
     baseParams_->reciprocalD = 1.0 / baseParams_->headDim;
     baseParams_->cgSize =
-        (baseParams_->seqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio; // number of token after compress
+        (computeSeqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio; // number of token after compress
     coff = static_cast<uint8_t>(*context_->coff);
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->xCacheSize = context_->xCache.desc == nullptr ? 0 :
