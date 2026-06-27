@@ -28,17 +28,17 @@ template <typename TDY, typename TCOS>
 class InplacePartialRotaryMulGradAB {
 public:
     __aicore__ inline InplacePartialRotaryMulGradAB(TPipe *pipe,
-                                                     const InplacePartialRotaryMulGradRegbaseTilingDataAb *tiling)
+                                                    const InplacePartialRotaryMulGradRegbaseTilingDataAb *tiling)
         : pipe_(pipe), tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR dy, GM_ADDR cos, GM_ADDR sin, GM_ADDR dx);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void ProcessLoop(int64_t dyGmOffset, LocalTensor<TCOS> &cosBuffer, LocalTensor<TCOS> &sinBuffer,
-                                        int64_t ubIdx, int64_t bsCount, int64_t nCount);
+                                       int64_t ubIdx, int64_t bsCount, int64_t nCount);
     __aicore__ inline void Compute(LocalTensor<TCOS> &sinTensor, LocalTensor<TCOS> &cosTensor,
-                                    LocalTensor<TDY> &dyTensor, LocalTensor<TDY> &dxTensor, uint32_t bsCount,
-                                    uint32_t nCount);
+                                   LocalTensor<TDY> &dyTensor, LocalTensor<TDY> &dxTensor, uint32_t bsCount,
+                                   uint32_t nCount);
 
     TPipe *pipe_{nullptr};
     int64_t blockIdx_{0};
@@ -61,6 +61,7 @@ private:
     int64_t nBlockCount_{0};
     int64_t ubFactorBS_{0};
     int64_t ubFactorN_{0};
+    uint16_t dSplitCoef_{0};
 };
 
 template <typename TDY, typename TCOS>
@@ -70,6 +71,7 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Init(GM_ADDR dy
         return;
     }
     this->blockIdx_ = GetBlockIdx();
+    this->dSplitCoef_ = static_cast<uint16_t>(tilingData_->dSplitCoef);
 
     this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
                                                        static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
@@ -116,11 +118,13 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Process()
     for (uint32_t bsLoopIdx = 0; bsLoopIdx < bsLoopCnt; bsLoopIdx++) {
         // dyGmOffset accumulates as we advance through BS groups within this block
         int64_t dyGmOffset = bsLoopIdx * ubFactorBS_ * tilingData_->n * tilingData_->d;
-        uint32_t currBSNum = (bsLoopIdx != bsLoopCnt - 1) ? static_cast<uint32_t>(ubFactorBS_)
-                                                            : static_cast<uint32_t>(bsBlockCount_ - bsLoopIdx * ubFactorBS_);
+        uint32_t currBSNum = (bsLoopIdx != bsLoopCnt - 1) ?
+                                 static_cast<uint32_t>(ubFactorBS_) :
+                                 static_cast<uint32_t>(bsBlockCount_ - bsLoopIdx * ubFactorBS_);
 
         // Load cos/sin for current BS chunk (stored contiguously by sliceLength)
-        DataCopyExtParams cosParams = {static_cast<uint16_t>(currBSNum * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0, 0};
+        DataCopyExtParams cosParams = {static_cast<uint16_t>(currBSNum * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0,
+                                       0};
         DataCopyPadExtParams<TCOS> padParamsCos = {false, 0, 0, 0};
         LocalTensor<TCOS> cosBuffer = cosInQue_.AllocTensor<TCOS>();
         LocalTensor<TCOS> sinBuffer = sinInQue_.AllocTensor<TCOS>();
@@ -144,16 +148,17 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Process()
 }
 
 template <typename TDY, typename TCOS>
-__aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::ProcessLoop(
-    int64_t dyGmOffset, LocalTensor<TCOS> &cosBuffer, LocalTensor<TCOS> &sinBuffer,
-    int64_t ubIdx, int64_t bsCount, int64_t nCount)
+__aicore__ inline void
+InplacePartialRotaryMulGradAB<TDY, TCOS>::ProcessLoop(int64_t dyGmOffset, LocalTensor<TCOS> &cosBuffer,
+                                                      LocalTensor<TCOS> &sinBuffer, int64_t ubIdx, int64_t bsCount,
+                                                      int64_t nCount)
 {
     uint32_t totalRows = static_cast<uint32_t>(bsCount * nCount);
 
     // Read dy: stride over (d - sliceLength) between rows to skip elements outside the slice
     DataCopyExtParams copyInParams = {static_cast<uint16_t>(totalRows * tilingData_->dSplitCoef), dSplitSizeDy_,
-                                       static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY)),
-                                       0, 0};
+                                      static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY)),
+                                      0, 0};
     DataCopyPadExtParams<TDY> padParamsDy = {false, 0, 0, 0};
 
     LocalTensor<TDY> dyBuffer = dyInQue_.AllocTensor<TDY>();
@@ -171,8 +176,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::ProcessLoop(
 
     // Write dx: stride over (d - sliceLength) between rows to skip elements outside the slice
     DataCopyExtParams copyOutParams = {static_cast<uint16_t>(totalRows * tilingData_->dSplitCoef), dSplitSizeDy_, 0,
-                                        static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY)),
-                                        0};
+                                       static_cast<uint32_t>((tilingData_->d - tilingData_->sliceLength) * sizeof(TDY)),
+                                       0};
     DataCopyPad(dxGm_[dyGmRowOffset], dxBuffer, copyOutParams);
     dxOutQue_.FreeTensor(dxBuffer);
 }
@@ -180,11 +185,11 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::ProcessLoop(
 template <typename TDY, typename TCOS>
 __aicore__ inline void
 InplacePartialRotaryMulGradAB<TDY, TCOS>::Compute(LocalTensor<TCOS> &sinTensor, LocalTensor<TCOS> &cosTensor,
-                                                    LocalTensor<TDY> &dyTensor, LocalTensor<TDY> &dxTensor,
-                                                    uint32_t bsCount, uint32_t nCount)
+                                                  LocalTensor<TDY> &dyTensor, LocalTensor<TDY> &dxTensor,
+                                                  uint32_t bsCount, uint32_t nCount)
 {
     InterleaveModeGradVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength,
-                                     static_cast<uint16_t>(bsCount), static_cast<uint16_t>(nCount));
+                                    static_cast<uint16_t>(bsCount), static_cast<uint16_t>(nCount));
 }
 
 } // namespace InplacePartialRotaryMulGrad
