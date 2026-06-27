@@ -1001,8 +1001,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     } while (true);
     // PRINTF("BEGIN READDATA\n");
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
+    PRINTF("ReadNbi Drain1\n");
     hcomm_.Drain(channel);
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
+    PRINTF("ReadNbi Drain2\n");
     hcomm_.Drain(channel);
     // PRINTF("BEGIN READDATA\n");
     // AscendC::Nop<300000>();
