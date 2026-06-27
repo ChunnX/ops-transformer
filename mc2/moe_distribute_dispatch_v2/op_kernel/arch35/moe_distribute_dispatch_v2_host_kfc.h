@@ -31,10 +31,10 @@
 
 #include "moe_distribute_v2_base.h"
 #include "check_winsize.h"
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
+#if __has_include("../../common/moe_distribute_base.h")
+#include "../../common/moe_distribute_base.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/moe_distribute_base.h"
 #endif
 
 namespace MoeDistributeDispatchV2HostKfcImpl {
