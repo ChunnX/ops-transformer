@@ -30,7 +30,7 @@ template <typename T_INDEX, bool IS_CUMSUM, bool HAS_SEQOFFSET>
 __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvNdContigVf(
     int64_t batchStart, int64_t batchEnd, int64_t coreOffset,
     int64_t numTokens, int32_t blockSize, int32_t numblkTabCol,
-    int32_t tokenSizeK, int32_t tokenSizeV, int32_t numBlocks,
+    int32_t tokenSizeK, int32_t tokenSizeV,
     __gm__ uint8_t *keyCache, __gm__ uint8_t *valueCache,
     __gm__ T_INDEX *blockTables, __gm__ T_INDEX *seqLens, __gm__ T_INDEX *seqOffset,
     __gm__ uint8_t *keyOut, __gm__ uint8_t *valueOut)
@@ -69,17 +69,11 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
         for (int64_t blkIdx = 0; blkIdx < blockCount; blkIdx++) {
             int64_t tblOffset = blkIdx + seqOff;
 
-            bool isFilledWithZero = false;
-            int64_t blockId = 0;
-            if (tblOffset < 0 || tblOffset >= numblkTabCol) {
-                isFilledWithZero = true;
-            } else {
-                blockId = static_cast<int64_t>(blockTables[i * numblkTabCol + tblOffset]);
-                if (blockId < 0 || blockId >= numBlocks) {
-                    isFilledWithZero = true;
-                    blockId = 0;
-                }
-            }
+            // blockId directly from blockTables (matches original SIMD continuous path,
+            // which trusts the block table; no isFilledWithZero in the hot loop)
+            int64_t blockId = (tblOffset < 0 || tblOffset >= numblkTabCol)
+                ? 0
+                : static_cast<int64_t>(blockTables[i * numblkTabCol + tblOffset]);
 
             int64_t curBlockSize = (blkIdx == blockCount - 1)
                 ? seqLen - (blockCount - 1) * blockSize
@@ -94,12 +88,10 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
             uint64_t valBytes = static_cast<uint64_t>(curBlockSize) * static_cast<uint64_t>(tokenSizeV);
 
             for (uint64_t k = tid; k < keyBytes; k += tNum) {
-                keyOut[keyOutBase + static_cast<int64_t>(k)] =
-                    isFilledWithZero ? static_cast<uint8_t>(0) : keyCache[keyCacheOff + static_cast<int64_t>(k)];
+                keyOut[keyOutBase + static_cast<int64_t>(k)] = keyCache[keyCacheOff + static_cast<int64_t>(k)];
             }
             for (uint64_t v = tid; v < valBytes; v += tNum) {
-                valueOut[valOutBase + static_cast<int64_t>(v)] =
-                    isFilledWithZero ? static_cast<uint8_t>(0) : valueCache[valCacheOff + static_cast<int64_t>(v)];
+                valueOut[valOutBase + static_cast<int64_t>(v)] = valueCache[valCacheOff + static_cast<int64_t>(v)];
             }
         }
 
@@ -126,7 +118,7 @@ private:
     __gm__ uint8_t *keyCacheGm_, *valueCacheGm_, *keyOutGm_, *valueOutGm_;
     __gm__ T_INDEX *blockTablesGm_, *seqLensGm_, *seqOffsetGm_;
 
-    int64_t batchCount_, cacheBlockSize_, blockTableWidth_, numBlocks_, numTokens_;
+    int64_t batchCount_, cacheBlockSize_, blockTableWidth_, numTokens_;
     uint64_t hiddenSizeK_, hiddenSizeV_;
     int64_t batchPerCore_;
     uint32_t needCoreNum_;
@@ -140,7 +132,6 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
     batchCount_      = tl_->batchCount;
     cacheBlockSize_  = tl_->kvCacheBlockSize;
     blockTableWidth_ = tl_->blockTableWidth;
-    numBlocks_       = tl_->numBlocks;
     numTokens_       = tl_->numTokens;
     batchPerCore_    = tl_->batchPerCore;
     needCoreNum_     = tl_->needCoreNum;
@@ -183,7 +174,6 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
         static_cast<int32_t>(blockTableWidth_),
         static_cast<int32_t>(hiddenSizeK_),
         static_cast<int32_t>(hiddenSizeV_),
-        static_cast<int32_t>(numBlocks_),
         keyCacheGm_, valueCacheGm_, blockTablesGm_, seqLensGm_, seqOffsetGm_,
         keyOutGm_, valueOutGm_);
 }
