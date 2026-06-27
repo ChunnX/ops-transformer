@@ -190,11 +190,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     constexpr float maxInt8 = 127.0;
     // Dynamic Quant 局部变量
-    uint64_t rowStepSize = 16; // 单次处理最大行数
-
-    if (cvRatio == 1) { // cv1:1场景，改为8行进行计算，降低UB使用
-        rowStepSize = 8;
-    }
+    uint64_t rowStepSize = 8 * cvRatio; // 单次处理最大行数, cv1:1场景，改为8行进行计算，降低UB使用
 
     uint64_t subRow = row < rowStepSize ? row : rowStepSize;
     uint32_t computeSize = subRow * col;
