@@ -38,6 +38,8 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
+static constexpr uint32_t RANK_DIM_BOUNDARY = 8;
+
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
@@ -58,7 +60,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else if (strncmp(commModeStr, "", maxLength) == 0) {
-            if (rankSize <= 8) {
+            if (rankSize <= RANK_DIM_BOUNDARY) {
                 commModeEnum = Mc2Comm::COMM_MODE_CCU;
             } else {
                 commModeEnum = Mc2Comm::COMM_MODE_AICPU;
