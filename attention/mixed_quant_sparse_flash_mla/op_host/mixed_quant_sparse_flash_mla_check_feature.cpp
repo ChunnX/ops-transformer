@@ -95,12 +95,11 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantDtype() const
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
-    OP_CHECK_IF(*opParamInfo_.kvQuantMode != 1 && *opParamInfo_.kvQuantMode != 2,
-        OP_LOGE(opName_, "kv_quant_mode_ only support 1 and 2, but got %ld",
-        *opParamInfo_.kvQuantMode),
+    OP_CHECK_IF(*opParamInfo_.quantMode != 1 && *opParamInfo_.quantMode != 2,
+        OP_LOGE(opName_, "kv_quant_mode_ only support 1 and 2, but got %ld", *opParamInfo_.quantMode),
         return ge::GRAPH_FAILED);
 
-    if (*opParamInfo_.kvQuantMode == 1 || *opParamInfo_.kvQuantMode == 2) {
+    if (*opParamInfo_.quantMode == 1 || *opParamInfo_.quantMode == 2) {
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
             OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
             return ge::GRAPH_FAILED);

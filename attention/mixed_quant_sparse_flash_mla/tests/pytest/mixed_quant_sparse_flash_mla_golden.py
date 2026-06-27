@@ -1165,7 +1165,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim * 2
     d_combined_quant_2 = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim
     print(f"d_aligned_32={d_aligned_32}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim}, quant_scale_head_dim={quant_scale_head_dim}")
-    pad_d = pad_d = 1 if quant_mode == 2 else d_aligned_32 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
+    pad_d = 1 if quant_mode == 2 else d_aligned_32 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
     # 根据输入的data range，计算scale范围，生成scale tensor，取倒数保存为bin
     quant_param_range_left = DATA_RANGE_LEFT / FP8_DATA_RANGE_LEFT
