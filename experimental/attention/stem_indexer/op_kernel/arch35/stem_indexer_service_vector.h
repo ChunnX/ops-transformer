@@ -515,9 +515,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
             }
             uint32_t mrgValueOffset = mInnerIdx * (MAX_TOPK_COUNT + trunkLen_);
             uint32_t globalIndexOffset = mInnerIdx * MAX_TOPK_COUNT;
-            if (isLastS2InnerLoop) {
-                WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            }
             
             uint32_t s2BlockValidLenAlign256 = SICommon::Align(s2BlockValidLen, trunkLen_);
 
@@ -600,7 +597,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 DataCopyPad(sparseSeqLenGm[baseLenOffset + gIdx * constInfo_.qSeqSize],
                                     indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
-                SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             }
         }
     }
