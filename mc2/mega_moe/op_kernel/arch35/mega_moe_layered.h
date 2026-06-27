@@ -1810,9 +1810,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
             if (srcRankId == rankId_) {
                 __gm__ int32_t* notifyAddr = reinterpret_cast<__gm__ int32_t*>(
                     srcUrmaBase + srcNotifyOffset);
-                while (AscendC::ReadGmByPassDCache(notifyAddr) != 1) {
-                    AscendC::Nop<200>();
-                }
+                // while (AscendC::ReadGmByPassDCache(notifyAddr) != 1) {
+                //     AscendC::Nop<200>();
+                // }
             } else {
                 uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, srcRankId, rankId_);
                 // flag 占 4B, 复用 data 中转区地址 (flag 轮询完成后即被 data ReadNbi 覆盖, 不再使用)
