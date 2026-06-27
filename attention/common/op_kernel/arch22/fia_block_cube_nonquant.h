@@ -292,7 +292,8 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::Init(
         __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
         __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
         __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse)
+        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut,
+        __gm__ uint8_t *softmaxLse)
 {
     // 先初始化基础参数
     if (constInfo.actualLenQDims != 0) {
@@ -308,7 +309,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::Init(
     }
 
     // 再初始化复杂参数
-    uint32_t qkTensorD = constInfo.ropeSplitMode ? constInfo.headDim : (constInfo.headDim + constInfo.headDimRope);
+    uint32_t qkTensorD = constInfo.ropeSplitMode ? (constInfo.headDim) : (constInfo.headDim + constInfo.headDimRope);
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     InitQBuffer(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize, qkTensorD, actualSeqLengthsGmQ,
                 constInfo.actualLenQDims, queryGmTensor, queryGm);
@@ -749,8 +750,8 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm1SingleMKN(const RunInf
                 }
                 mmadParams.n = nDealSize;
                 mmadParams.k = kActSize;
-                mmadParams.cmatrixInitVal = (k == 0);
                 mmadParams.cmatrixSource = false;
+                mmadParams.cmatrixInitVal = (k == 0);
                 Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
             }
             AscendC::PipeBarrier<PIPE_M>();
@@ -768,8 +769,9 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm1SingleMKN(const RunInf
             fixParams.mSize = mActSize;
             fixParams.nSize = nDealSize;
             fixParams.srcStride = mActSizeAlign;
-            fixParams.dstStride = info.actualSingleProcessSInnerSizeAlign; // mm1ResGm两行之间的间隔
             fixParams.ndNum = 1;
+            fixParams.dstStride = info.actualSingleProcessSInnerSizeAlign; // mm1ResGm两行之间的间隔
+            
             uint64_t mm1ResGmOffset = (info.loop % (constInfo.preLoadNum)) * constInfo.mmResUbSize +
                                       (mStart + m) * info.actualSingleProcessSInnerSizeAlign + // m方向上偏移
                                       nStart; // n方向上偏移nStart个元素
