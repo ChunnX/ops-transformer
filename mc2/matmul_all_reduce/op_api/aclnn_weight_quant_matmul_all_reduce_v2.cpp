@@ -417,7 +417,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize(
         } else if (strcmp(commMode, COMM_MODE_CCU) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else if (strcmp(commMode, COMM_MODE_DEFAULT) == 0) {
-            commModeEnum = Mc2Comm::COMM_MODE_CCU;
+            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else {
             OP_LOGE_WITH_INVALID_ATTR("aclnnWeightQuantMatmulAllReduceV2GetWorkspaceSize", "commMode",
                 commMode, "empty string, 'ccu' or 'ai_cpu'");
