@@ -19,7 +19,7 @@ import pytest
 import random
 import math
 import ast
-import custom_ops as ops
+import cann_ops_transformer
 
 
 def test_qliv2_process(filepath, device_id=0):
@@ -39,40 +39,54 @@ def test_qliv2_process(filepath, device_id=0):
         query = test_data['query'].npu()
         key = test_data['key'].npu()
 
-    
+    max_seqlen_q = params[18]
+    return_value = params[30]
     weights =test_data['weights'].npu()
     query_dequant_scale = test_data['query_dequant_scale'].npu()
     key_dequant_scale = test_data['key_dequant_scale'].npu()
     actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
     actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
+    if test_data['cu_seqlens_query'] is not None:
+        cu_seqlens_query = test_data['cu_seqlens_query'].npu()
+    else:
+        cu_seqlens_query = None
+    if test_data['cu_seqlens_key'] is not None:
+        cu_seqlens_key = test_data['cu_seqlens_key'].npu()
+    else:
+        cu_seqlens_key = None
     block_table = test_data['block_table'].npu()
     metadata = test_data['metadata'].npu()
-    query_quant_mode = test_data['query_quant_mode']
-    key_quant_mode = test_data['key_quant_mode']
+    quant_mode = test_data['quant_mode']
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
     sparse_count = test_data['sparse_count']
     sparse_mode = test_data['sparse_mode']
     cmp_ratio = test_data['cmp_ratio']
+    if test_data['cmp_residual_k_for_npu'] is not None:
+        cmp_residual_k_for_npu = test_data['cmp_residual_k_for_npu'].npu()
+    else:
+        cmp_residual_k_for_npu = None
 
     #调用SFA算子
-    npu_result,_ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights, 
+    npu_result,_ = torch.ops.cann_ops_transformer.quant_lightning_indexer(query, key, weights, 
                                                     query_dequant_scale,
                                                     key_dequant_scale,
-                                                    actual_seq_lengths_query=actual_seq_lengths_query,
-                                                    actual_seq_lengths_key=actual_seq_lengths_key,
+                                                    cu_seqlens_q = cu_seqlens_query,
+                                                    cu_seqlens_k = cu_seqlens_key,
+                                                    seqused_q = actual_seq_lengths_query,
+                                                    seqused_k = actual_seq_lengths_key,
+                                                    cmp_residual_k = cmp_residual_k_for_npu,
+                                                    output_idx_offset = None,
+                                                    max_seqlen_q = max_seqlen_q,
                                                     block_table=block_table,
                                                     metadata = metadata,
-                                                    query_quant_mode=query_quant_mode,
-                                                    key_quant_mode=key_quant_mode,
-                                                    layout_query=layout_query,
-                                                    layout_key=layout_key, 
-                                                    sparse_count=sparse_count,
-                                                    sparse_mode=sparse_mode,
-                                                    pre_tokens = (1<<63)-1,
-                                                    next_tokens = (1<<63)-1,
+                                                    quant_mode = quant_mode,
+                                                    layout_q = layout_query,
+                                                    layout_k = layout_key, 
+                                                    topk = sparse_count,
+                                                    mask_mode = sparse_mode,
                                                     cmp_ratio = cmp_ratio,
-                                                    return_value = False)
+                                                    return_value = return_value)
     
     torch.npu.synchronize()
 
