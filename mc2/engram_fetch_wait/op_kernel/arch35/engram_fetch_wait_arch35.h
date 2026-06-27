@@ -24,7 +24,7 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_wait_tiling_data.h"
-#include "../../engram_fetch/op_kernel/engram_fetch.h"
+#include "../../engram_fetch/engram_fetch.h"
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
 

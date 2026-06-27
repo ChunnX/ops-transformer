@@ -17,11 +17,9 @@
 #ifndef ENGRAM_FETCH_ARCH35_H
 #define ENGRAM_FETCH_ARCH35_H
 
-#if ASC_DEVKIT_MAJOR >= 9
+
 #include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_tiling_data.h"
 #include "../engram_fetch.h"
@@ -55,6 +53,7 @@ private:
     __aicore__ inline void CopyIndicesToUb(uint32_t indicesBatchStart, uint32_t indicesBatchLen);
     __aicore__ inline void ScatterByRank(const LocalTensor<int32_t> &indicesLocal,
                                          const LocalTensor<uint32_t> &rankCounts,
+                                         const LocalTensor<uint32_t> &rankOffsets,
                                          const LocalTensor<uint32_t> &tokenIdxInRank,
                                          uint32_t batchLen);
 
@@ -79,6 +78,7 @@ private:
     TBuf<> indicesBuf_;
     TBuf<> hcommBuf_;
     TBuf<> rankCountsBuf_;
+    TBuf<> rankOffsetsBuf_;
     TBuf<> tokenIdxInRankBuf_;
     TBuf<> commBufferBuf_;
     TBuf<> hcommHandleBuf_;
@@ -94,6 +94,7 @@ __aicore__ inline void EngramFetchArch35::Init(
     indicesGM_ = indices;
     fetchedGM_ = fetched;
     aivId_ = GetBlockIdx();
+    (void)workspaceGM;
 
     ctxPtr_ = (__gm__ EngramCommContext *)commContext;
     rankId_ = ctxPtr_->rankId;
@@ -117,15 +118,18 @@ __aicore__ inline void EngramFetchArch35::Init(
 
     uint32_t countsBufSize = Ceil(numRanks_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(rankCountsBuf_, countsBufSize);
+    uint32_t offsetsBufSize = Ceil(numRanks_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(rankOffsetsBuf_, offsetsBufSize);
     uint32_t commBufferBufSize = Ceil(numRanks_ * sizeof(uint64_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(commBufferBuf_, commBufferBufSize);
     uint32_t hcommHandleBufSize = Ceil(numRanks_ * sizeof(uint64_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(hcommHandleBuf_, hcommHandleBufSize);
 
     constexpr uint64_t ubReserved = 8U * 1024U;
-    uint32_t bytesPerIndice = sizeof(int32_t) + numRanks_ * sizeof(uint32_t);
-    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * 2U + countsBufSize
-                    + commBufferBufSize + hcommHandleBufSize;
+    // ScatterByRank 额外需要 rankIDs + positions + divisor (每元素各 4 字节)，mask 每 8 元素 1 字节近似忽略
+    uint32_t bytesPerIndice = sizeof(int32_t) + sizeof(uint32_t) + sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t);
+    uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * 2U + countsBufSize + offsetsBufSize
+                    + commBufferBufSize + hcommHandleBufSize + UB_ALIGN; // UB_ALIGN 给 maskBuf 对齐开销
     uint64_t availableUb = (ubSize_ > usedUb + ubReserved) ? (ubSize_ - usedUb - ubReserved) : 0U;
     uint32_t maxBatchSize = static_cast<uint32_t>(availableUb / bytesPerIndice);
     uint32_t numTokens = static_cast<uint32_t>(numTokens_);
@@ -136,7 +140,7 @@ __aicore__ inline void EngramFetchArch35::Init(
 
     uint32_t indicesBufSize = Ceil(indicesBatchSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
-    uint32_t tokenIdxInRankBufSize = Ceil(numRanks_ * indicesBatchSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t tokenIdxInRankBufSize = Ceil(indicesBatchSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(tokenIdxInRankBuf_, tokenIdxInRankBufSize);
 }
 
@@ -170,24 +174,60 @@ __aicore__ inline void EngramFetchArch35::CopyIndicesToUb(uint32_t indicesBatchS
 __aicore__ inline void EngramFetchArch35::ScatterByRank(
     const LocalTensor<int32_t> &indicesLocal,
     const LocalTensor<uint32_t> &rankCounts,
+    const LocalTensor<uint32_t> &rankOffsets,
     const LocalTensor<uint32_t> &tokenIdxInRank,
     uint32_t batchLen)
 {
+    // ---------------------------------------------------------
+    // 1. 分配 Buffer (独立 TBuf 避免重叠)
+    // ---------------------------------------------------------
+    uint32_t int32AlignSize = Ceil(batchLen * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t maskAlignSize = Ceil(Ceil(batchLen, BITS_PER_BYTE), UB_ALIGN) * UB_ALIGN;
+
+    TBuf<> rankIDsBuf;
+    TBuf<> positionsBuf;
+    TBuf<> divisorBuf;
+    TBuf<> maskBuf;
+    tpipe_->InitBuffer(rankIDsBuf, int32AlignSize);
+    tpipe_->InitBuffer(positionsBuf, int32AlignSize);
+    tpipe_->InitBuffer(divisorBuf, int32AlignSize);
+    tpipe_->InitBuffer(maskBuf, maskAlignSize);
+
+    LocalTensor<int32_t> rankIDs = rankIDsBuf.Get<int32_t>();
+    LocalTensor<int32_t> positions = positionsBuf.Get<int32_t>();
+    LocalTensor<int32_t> divisor = divisorBuf.Get<int32_t>();
+    LocalTensor<uint8_t> mask = maskBuf.Get<uint8_t>();
+
+    // ---------------------------------------------------------
+    // 2. 生成位置序列 + 除数 tensor + 计算 Rank ID
+    // ---------------------------------------------------------
+    ArithProgression<int32_t>(positions, 0, 1, batchLen);
+    Duplicate<int32_t>(divisor, numEntriesPerRank_, int32AlignSize / sizeof(int32_t));
+    Div(rankIDs, indicesLocal, divisor, batchLen);
+    PipeBarrier<PIPE_V>();
+
+    // ---------------------------------------------------------
+    // 3. 按 Rank 循环: Compare 生成 mask -> GatherMask 收集位置
+    // ---------------------------------------------------------
+    uint32_t runningOffset = 0;
+
     for (uint32_t r = 0; r < numRanks_; r++) {
-        rankCounts(r) = 0;
-    }
-    for (uint32_t i = 0; i < batchLen; i++) {
-        int32_t globalIdx = indicesLocal(i);
-        if (globalIdx < 0) {
-            continue;
-        }
-        uint32_t ownerRank = static_cast<uint32_t>(globalIdx) / static_cast<uint32_t>(numEntriesPerRank_);
-        if (ownerRank >= numRanks_) {
-            continue;
-        }
-        uint32_t pos = ownerRank * indicesBatchSize_ + rankCounts(ownerRank);
-        tokenIdxInRank(pos) = i;
-        rankCounts(ownerRank) += 1;
+        // A. 生成 Mask：筛选出属于当前 Rank r 的 Token
+        CompareScalar(mask, rankIDs, static_cast<int32_t>(r), AscendC::CMPMODE::EQ, batchLen);
+        PipeBarrier<PIPE_V>();
+
+        // B. 从 positions 中抽取符合 mask 的位置，直接填入 dstRegion
+        uint64_t rsvdCnt = 0;
+        LocalTensor<int32_t> dstRegion = tokenIdxInRank[runningOffset].ReinterpretCast<int32_t>();
+        GatherMask(dstRegion, positions, mask.ReinterpretCast<uint32_t>(), true,
+                   batchLen, {1, 1, 0, 0}, rsvdCnt);
+        PipeBarrier<PIPE_V>();
+
+        // C. rsvdCnt 返回实际收集的元素数即 count
+        uint32_t count = static_cast<uint32_t>(rsvdCnt);
+        rankOffsets.SetValue(r, runningOffset);
+        rankCounts.SetValue(r, count);
+        runningOffset += count;
     }
 }
 
@@ -206,6 +246,7 @@ __aicore__ inline void EngramFetchArch35::Process()
         LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
         LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
         LocalTensor<uint32_t> rankCounts = rankCountsBuf_.Get<uint32_t>();
+        LocalTensor<uint32_t> rankOffsets = rankOffsetsBuf_.Get<uint32_t>();
         LocalTensor<uint32_t> tokenIdxInRank = tokenIdxInRankBuf_.Get<uint32_t>();
 
         uint64_t hiddenBytes = static_cast<uint64_t>(hiddenBytes_);
@@ -222,11 +263,11 @@ __aicore__ inline void EngramFetchArch35::Process()
             CopyIndicesToUb(indicesBatchStart, indicesBatchLen);
             SyncFunc<HardEvent::MTE2_S>();
 
-            ScatterByRank(indicesLocal, rankCounts, tokenIdxInRank, indicesBatchLen);
+            ScatterByRank(indicesLocal, rankCounts, rankOffsets, tokenIdxInRank, indicesBatchLen);
 
             for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks) {
                 uint32_t idxStart = ownerRank * numEntriesPerRank;
-                uint32_t rankStart = ownerRank * indicesBatchSize_;
+                uint32_t rankStart = rankOffsets(ownerRank);
                 uint32_t cnt = rankCounts(ownerRank);
 
                 uint32_t channelIdx = ownerRank;
