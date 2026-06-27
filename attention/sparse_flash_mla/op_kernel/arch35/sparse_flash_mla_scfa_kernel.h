@@ -222,6 +222,10 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
     constInfo.returnSoftmaxLse = sparseFlashMLABaseParams.returnSoftmaxLse;
     constInfo.tileSize = 0;
     constInfo.dSizeRope = 64;
+    constInfo.oriKeyStride0 = sparseFlashMLABaseParams.oriKeyStride0;
+    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        constInfo.cmpKeyStride0 = sparseFlashMLACmpParams.cmpKeyStride0;
+    }
     if ASCEND_IS_AIV {
         constInfo.softmaxScale = sparseFlashMLABaseParams.softmaxScale;
     }
