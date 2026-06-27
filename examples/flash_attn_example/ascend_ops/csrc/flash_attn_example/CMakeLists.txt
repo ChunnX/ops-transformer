@@ -6,7 +6,7 @@
 # Please refer to the License for details.
 # ----------------------------------------------------------------------------
 
-message(STATUS "BUILD_TORCH_OPS ON in flash_attn")
+message(STATUS "BUILD_TORCH_OPS ON in flash_attn_example")
 
 set(flash_attn_NPU_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/torch_interface.cpp
