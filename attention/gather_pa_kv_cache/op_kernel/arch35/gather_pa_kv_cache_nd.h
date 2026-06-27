@@ -26,8 +26,16 @@ namespace GatherPaKvCacheV35 {
 using namespace AscendC;
 
 constexpr uint32_t BLOCK_SIZE = 32;
-constexpr uint32_t THREAD_NUM = 2048;
 constexpr uint64_t MAX_BLOCK_CNT = 4095;
+
+// Thread count depends on index type (matching scatter SIMT pattern):
+// 64-bit indices use more registers, need fewer threads to avoid spill.
+constexpr size_t  SIZEOF_32BIT_IDX = 4;
+constexpr size_t  SIZEOF_64BIT_IDX = 8;
+constexpr uint32_t THREADS_FOR_32BIT_IDX = 2048;
+constexpr uint32_t THREADS_FOR_64BIT_IDX = 1024;
+template <typename IDX_T>
+static constexpr uint32_t THREADS = (sizeof(IDX_T) == SIZEOF_32BIT_IDX) ? THREADS_FOR_32BIT_IDX : THREADS_FOR_64BIT_IDX;
 
 // ===== Standalone VF kernel =====
 // Mirrors original SIMD V35 Process logic exactly:
@@ -36,7 +44,7 @@ constexpr uint64_t MAX_BLOCK_CNT = 4095;
 // - isFilledWithZero for out-of-bounds blockId
 
 template <typename T_INDEX, bool IS_CUMSUM, bool HAS_SEQOFFSET>
-__simt_vf__ __aicore__ __launch_bounds__(THREAD_NUM) inline void GatherKvNdContigVf(
+__simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvNdContigVf(
     int32_t batchStart, int32_t batchEnd, int64_t coreOffset,
     int32_t blockSize, int32_t numblkTabCol, int32_t tokenSizeK, int32_t tokenSizeV,
     int32_t numBlocks, int64_t numTokens,
@@ -257,7 +265,7 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
         }
     }
 
-    asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREAD_NUM),
+    asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREADS<T_INDEX>),
         static_cast<int32_t>(batchStart), static_cast<int32_t>(batchEnd),
         static_cast<int64_t>(coreOffset),
         static_cast<int32_t>(cacheBlockSize_),
