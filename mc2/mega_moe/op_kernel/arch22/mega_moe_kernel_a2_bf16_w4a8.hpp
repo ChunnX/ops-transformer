@@ -1541,9 +1541,9 @@ private:
             offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;
             offsetFlag = offsetPeerTokenPerExpert - MB_SIZE;
             offsetPeerPerTokenScale = offsetFlag - MB_SIZE;
-            int64_t sizeCombineOutput = AlignUp(params.maxOutputSize / params.EP *
+            int64_t sizeCombineOutput = AlignUp(static_cast<int64_t>(params.maxOutputSize) / params.EP *
                 params.problemShape.k() * sizeof(ElementD2), ALIGN_512);
-            offsetD = offsetPeerPerTokenScale - sizeCombineOutput;
+            offsetD = max(offsetPeerPerTokenScale - sizeCombineOutput, offsetA);
         }
     };
 
