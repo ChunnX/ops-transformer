@@ -560,7 +560,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
             fiaInfo.blockSize != NUM_128,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
                 std::to_string(fiaInfo.blockSize).c_str(),
-                "In FP8 GQA fullquant scenario, when page attention is enabled, block_size must be 128."),
+                "In FP8 GQA fullquant scenario, when page attention is enabled, block_size must be 128"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -581,7 +581,7 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
         OP_CHECK_IF(dimNum != DIM_NUM_4,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "key", std::to_string(dimNum).c_str(),
                         "In FP8 GQA fullquant scenario, KV cache layout must be BnNBsD, "
-                        "PA BnBsH and NZ are not supported."),
+                        "PA BnBsH and NZ are not supported"),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         if (dimNum == 4) {

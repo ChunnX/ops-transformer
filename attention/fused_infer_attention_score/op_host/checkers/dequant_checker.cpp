@@ -1752,13 +1752,13 @@ ge::graphStatus DequantChecker::CheckInputDTypeFullquant(const FiaTilingInfo &fi
         OP_CHECK_IF(!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query, key/value",
                         qkvDtypes.c_str(),
-                        "In FP8 GQA fullquant scenario, query and key/value datatype should be FLOAT8_E4M3FN."),
+                        "In FP8 GQA fullquant scenario, query and key/value datatype should be FLOAT8_E4M3FN"),
                     return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
                         DataTypeToSerialString(fiaInfo.outputType).c_str(),
-                        "In FP8 GQA fullquant scenario, attention_out datatype should be BF16 or FLOAT16."),
+                        "In FP8 GQA fullquant scenario, attention_out datatype should be BF16 or FLOAT16"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1875,19 +1875,19 @@ ge::graphStatus DequantChecker::CheckInputLayoutFP8GQAFullquant(const FiaTilingI
                 supportedLayoutList.end()),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
                 fiaInfo.opParamInfo.layOut,
-                "In FP8 GQA fullquant scenario, input layout must be NTD_TND."),
+                "In FP8 GQA fullquant scenario, input layout must be NTD_TND"),
             return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::NTD,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
                     LayoutToSerialString(fiaInfo.qLayout),
-                    "In FP8 GQA fullquant scenario, query layout only support NTD."),
+                    "In FP8 GQA fullquant scenario, query layout only support NTD"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.kvLayout != FiaLayout::BnNBsD,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "input_layout",
                     LayoutToSerialString(fiaInfo.kvLayout),
-                    "In FP8 GQA fullquant scenario, key/value layout only support BnNBsD."),
+                    "In FP8 GQA fullquant scenario, key/value layout only support BnNBsD"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -2017,7 +2017,7 @@ ge::graphStatus DequantChecker::CheckDSizeFullquant(const FiaTilingInfo &fiaInfo
             (fiaInfo.qkHeadDim != NUM_128 || fiaInfo.vHeadDim != NUM_128),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "query/key/value",
                 dimValues.c_str(),
-                "In FP8 GQA fullquant scenario, the D axis of query/key and value are only support 128."),
+                "In FP8 GQA fullquant scenario, the D axis of query/key and value are only support 128"),
             return ge::GRAPH_FAILED);
     } else {
         if (fiaInfo.qkHeadDim > D_LIMIT || fiaInfo.qkHeadDim < NUM1) {

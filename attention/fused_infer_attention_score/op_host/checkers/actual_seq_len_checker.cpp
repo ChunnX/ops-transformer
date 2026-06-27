@@ -424,7 +424,7 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureFP8GQAFullquant(const FiaTiling
         OP_CHECK_IF(qSeqLen < minQuerySeqLen || qSeqLen > maxQuerySeqLen,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, qValueStr.c_str(),
                 std::to_string(qSeqLen).c_str(),
-                "In FP8 GQA fullquant scenario, query sequence length should be in range of [1, 65536]."),
+                "In FP8 GQA fullquant scenario, query sequence length should be in range of [1, 65536]"),
             return ge::GRAPH_FAILED);
 
         int64_t kvSeqLen = GetActualSeqLengthsKvData(fiaInfo, bIdx);
@@ -432,7 +432,7 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureFP8GQAFullquant(const FiaTiling
         OP_CHECK_IF(kvSeqLen < 0 || kvSeqLen > maxKVSeqLen,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, kvValueStr.c_str(),
                 std::to_string(kvSeqLen).c_str(),
-                "In FP8 GQA fullquant scenario, kv sequence length should be in range of [0, 262144]."),
+                "In FP8 GQA fullquant scenario, kv sequence length should be in range of [0, 262144]"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
