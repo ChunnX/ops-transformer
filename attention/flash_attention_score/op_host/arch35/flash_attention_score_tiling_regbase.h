@@ -89,7 +89,7 @@ static const int64_t D_SCALE_DIM_NUM_2 = 2L;
 static const int64_t D_SCALE_DIM_NUM_3 = 3L;
 static const int64_t QUANT_BLOCK_SIZE = 128L;
 static const int64_t QUANT_K_BLOCK_SIZE = 256L;
-static const int64_t QUANT_V_BLOCK_SIZE = 512L;
+static const int64_t QUANT_V_BLOCK_SIZE = 256L;
 static const int64_t COMPRESS_ATTEN_MASK_SIZE = 2048 * 2048;
 
 enum class LayoutType : uint8_t {
