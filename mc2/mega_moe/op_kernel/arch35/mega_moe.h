@@ -49,7 +49,6 @@ public:
     using ActivationType = typename std::conditional<
         Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value, uint8_t, QuantOutType>::type;
     using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
-    using Weight2Type = Weight1Type;  // weight1 和 weight2 类型相同，语义别名
     struct ExpertLoopState {
         TupleShape problemShape;
         BlockOffset baseOffset;
@@ -138,13 +137,13 @@ private:
 
     static constexpr uint32_t A_ELEMS_PER_BYTE = Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
     static constexpr uint32_t B_ELEMS_PER_BYTE = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? 2U : 1U;
-    static constexpr uint32_t B2_ELEMS_PER_BYTE = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value ? 2U : 1U;
+    static constexpr uint32_t B_ELEMS_PER_BYTE = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? 2U : 1U;
     // ENABLE_A8W4: A8W8 路径（fp8 act + fp4 w1），GMM1 使用 A8W4 prologue（W4→W8 + MMAD）。
     static constexpr bool ENABLE_A8W4 = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
                                             Std::IsSame<QuantOutType, fp8_e4m3fn_t>::value;
     // ENABLE_A4W4: A4W4 路径（fp4 act + fp4 weight），GMM2 复用 A8W4 prologue。
     //             a4w4 场景下 GMM1 走 generic a4w4、GMM2 走 a8w4，避免两段都用 a4w4 导致精度损失过大。
-    static constexpr bool ENABLE_A4W4 = Std::IsSame<Weight2Type, fp4x2_e2m1_t>::value &&
+    static constexpr bool ENABLE_A4W4 = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value &&
                                             Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
     LocalTensor<int32_t> topkIndexTensor_;
@@ -173,7 +172,7 @@ private:
 
     // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
     // 同时当 Weight2 非 fp4 但 QuantMode==E2M1 时（generic GMM2 路径），也需 promotion，
-    // 否则会出现 A=QuantOutType(fp4) vs B=Weight2Type(fp8) 的类型不匹配。
+    // 否则会出现 A=QuantOutType(fp4) vs B=Weight1Type(fp8) 的类型不匹配。
     using SwigluQuantOutType = typename std::conditional<
         (QuantMode == E2M1_QUANT),
         fp8_e4m3fn_t, QuantOutType>::type;
@@ -833,7 +832,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
         Get<IDX_C_SCALE_OFFSET>(state.baseOffset) +=
             m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_FLAG_OFFSET>(state.baseOffset) += 1;
-        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / B2_ELEMS_PER_BYTE;
+        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
         Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) +=
             k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
@@ -1222,7 +1221,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     if constexpr (ENABLE_A4W4) {
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             MegaMoeImpl::GroupMatmul2CombineA8W4<
-                SwigluQuantOutType, Weight2Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_);
         }
@@ -1247,12 +1246,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
             }
         } else {
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, SwigluQuantOutType, Weight2Type, bfloat16_t,
+                MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, SwigluQuantOutType, Weight1Type, bfloat16_t,
                     QuantScaleOutType, QuantScaleOutType>(
                     params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                     state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
             } else {
-                MegaMoeImpl::GroupMatmul2<CombineQuantMode, SwigluQuantOutType, Weight2Type, bfloat16_t,
+                MegaMoeImpl::GroupMatmul2<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
                     QuantScaleOutType, QuantScaleOutType>(
                     params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                     state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
