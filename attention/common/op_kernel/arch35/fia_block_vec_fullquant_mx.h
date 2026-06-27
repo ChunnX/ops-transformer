@@ -697,7 +697,7 @@ public:
 
         uint32_t vecMSize = USE_DN ? runInfo.actVecMSize : (runInfo.actMSizeAlign32 / 2);
         int64_t vec2CalcSize = vecMSize * dTemplateAlign64;
-        float deSCaleVValue = 1.0f;
+        constexpr float deSCaleVValue = 1.0f;
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
@@ -708,7 +708,7 @@ public:
             LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
             LocalTensor<T> pScaleUb;
 
-            float deSCalePreVValue = 1.0f;
+            constexpr float deSCalePreVValue = 1.0f;
             if (!runInfo.isLastS2Loop) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
