@@ -385,7 +385,7 @@ static ge::graphStatus CheckQuantModeAndScales(const gert::TilingContext *contex
     bool isScales, const uint32_t quantMode)
 {
     if (isScales && ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
-        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_CLIP_QUANT)))) {
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CUBLAS)))) {
         std::string reason = "scales must be nullptr when quantMode is MX_QUANT";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "scales",
             "provided", reason.c_str());
@@ -1119,7 +1119,7 @@ static bool CheckDistinctTensorDataType(const gert::TilingContext *context, cons
         OP_TILING_CHECK(!CheckTensorDataTypeNonQuant(context, nodeName, isScales, config),
             OP_LOGE(nodeName, "CheckTensorDataType for nonquant mode failed."), return false);
     } else if ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
-        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_CLIP_QUANT))) {
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT_CUBLAS))) {
         OP_TILING_CHECK(!CheckTensorDataTypeMxfp8(context, nodeName, config),
             OP_LOGE(nodeName, "CheckTensorDataType for mx quant mode failed."), return false);
     } else {
@@ -1267,10 +1267,10 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::CheckQuantModePtr(
     const int64_t* quantModePtr, const char *nodeName)
 {
     OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
-    (*quantModePtr > static_cast<int64_t>(QuantModeA5::MX_CLIP_QUANT)),
+    (*quantModePtr > static_cast<int64_t>(QuantModeA5::MX_QUANT_CUBLAS)),
     OP_LOGE_FOR_INVALID_VALUE(nodeName, "quantMode", std::to_string(*quantModePtr).c_str(),
         std::string("[") + std::to_string(static_cast<int64_t>(QuantModeA5::NON_QUANT)) + "," +
-        std::to_string(static_cast<int64_t>(QuantModeA5::MX_CLIP_QUANT)) + std::string("]").c_str()), return ge::GRAPH_FAILED);
+        std::to_string(static_cast<int64_t>(QuantModeA5::MX_QUANT_CUBLAS)) + std::string("]").c_str()), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
