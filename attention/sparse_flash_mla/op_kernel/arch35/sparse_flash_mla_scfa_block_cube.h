@@ -431,6 +431,9 @@ __aicore__ inline uint32_t SCFABlockCube<TEMPLATE_ARGS>::CopyInKvSparse(LocalTen
         shape.copyRowNum = 1;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
         LocalTensor<Q_T> l1Tensor = inputRightTensor[startRow * 16];
+        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
+        int64_t stride = paBlockStride / (kvCacheBlockSize * constInfo.n2Size);
+        shape.blockStride0 = stride - constInfo.dSize;
         GmCopyInToL1PA<KV_T>(l1Tensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
         if (token1Idx >= 0) {
             startPos.s2Offset = token1Idx;
@@ -507,6 +510,9 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1CFA(
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
+        int64_t stride = paBlockStride / (kvCacheBlockSize * constInfo.n2Size);
+        shape.blockStride0 = stride - constInfo.dSize;
         GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
     } else {
         int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
@@ -685,6 +691,9 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
             shape.maxblockNumPerBatch = maxBlockNumPerBatch;
             shape.copyRowNum = runInfo.s2RealSize;
             shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+            int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
+            int64_t stride = paBlockStride / (kvCacheBlockSize * constInfo.n2Size);
+            shape.blockStride0 = stride - constInfo.dSize;
             GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
         } else {
             int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
