@@ -285,15 +285,22 @@ def _mask_positions(case, q_idx, positions, q_len, kv_len):
 
 def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len):
     block_count = int(sparse_seq_len[batch_idx, head_idx, qb_idx].item())
-    positions = []
-    for block_idx in sparse_indices[batch_idx, head_idx, qb_idx, :block_count].tolist():
-        if block_idx < 0:
-            continue
-        start = int(block_idx) * case["sparse_kv_block_size"]
-        end = min(start + case["sparse_kv_block_size"], kv_len)
-        if start < kv_len:
-            positions.extend(range(start, end))
-    return positions
+    chunk_positions = []
+    i = 0
+    while i < block_count:
+        pair_positions = []
+        for j in range(2):
+            if i + j < block_count:
+                block_idx = int(sparse_indices[batch_idx, head_idx, qb_idx, i + j].item())
+                if block_idx >= 0:
+                    start = block_idx * case["sparse_kv_block_size"]
+                    end = min(start + case["sparse_kv_block_size"], kv_len)
+                    if start < kv_len:
+                        pair_positions.extend(range(start, end))
+        if pair_positions:
+            chunk_positions.append(pair_positions)
+        i += 2
+    return chunk_positions
 
 
 def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
@@ -320,7 +327,6 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
     softmax_scale = float(case["softmax_scale"])
     p_scale_value = float(p_scale[0].item())
     sparse_q_block_size = case["sparse_q_block_size"]
-    chunk_pos = 2 * case["sparse_kv_block_size"]  # kernel 每次 s2 迭代处理 2 个 kv block
     neg_inf = float("-inf")
 
     if layout_q == "BSND":
@@ -345,10 +351,11 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                 q_end = min(q_start + sparse_q_block_size, q_len)
                 q_indices = list(range(q_start, q_end))
 
-                positions = _positions_from_sparse(
+                chunk_positions = _positions_from_sparse(
                     case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len)
-                if not positions:
+                if not chunk_positions:
                     continue
+                positions = [p for chunk in chunk_positions for p in chunk]
 
                 # gather q 向量（批量），shape (nq, D)
                 if layout_q == "BSND":
@@ -395,8 +402,11 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
-                for c0 in range(0, npos, chunk_pos):
-                    c1 = min(c0 + chunk_pos, npos)
+                offset = 0
+                for chunk_pos_list in chunk_positions:
+                    c0 = offset
+                    c1 = offset + len(chunk_pos_list)
+                    offset = c1
                     s_c = scores[:, c0:c1]
                     vm_c = valid_mask[:, c0:c1]
                     # 每行的局部 max（在该 chunk 内的有效位置上）；行内无有效位置时记为 -inf
