@@ -118,6 +118,7 @@ public:
         this->Attr("layout_kv").AttrType(REQUIRED).String("PA_BNSD");
         this->Attr("layout_q").AttrType(REQUIRED).String("TND");
         this->Attr("layout_sparse_indices").AttrType(REQUIRED).String("B_N_Qb_Kb");
+        this->Attr("layout_out").AttrType(REQUIRED).String("TND");
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);

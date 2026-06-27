@@ -50,6 +50,7 @@ def _normalize_params(params):
     normalized.setdefault("sparse_q_block_size", 128)
     normalized.setdefault("sparse_kv_block_size", 128)
     normalized.setdefault("layout_sparse_indices", "B_N_Qb_Kb")
+    normalized.setdefault("layout_out", "TND")
     normalized.setdefault("quant_mode", 1)
     normalized.setdefault("mask_mode", 3)
     normalized.setdefault("return_softmax_lse", False)
@@ -555,6 +556,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "layout_kv": case["layout_kv"],
             "layout_q": case["layout_q"],
             "layout_sparse_indices": case["layout_sparse_indices"],
+            "layout_out": case["layout_out"],
             "quant_mode": case["quant_mode"],
             "mask_mode": case["mask_mode"],
             "return_softmax_lse": case["return_softmax_lse"],

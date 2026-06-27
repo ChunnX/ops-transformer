@@ -38,6 +38,7 @@ def check_valid_param(params):
     params.setdefault("sparse_kv_block_size", 128)
     params.setdefault("layout_kv", "PA_BNSD")
     params.setdefault("layout_sparse_indices", "B_N_Qb_Kb")
+    params.setdefault("layout_out", "TND")
     params.setdefault("quant_mode", 1)
     params.setdefault("mask_mode", 3)
     params.setdefault("output_dtype", torch.bfloat16)
