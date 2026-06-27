@@ -328,15 +328,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     }
 
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
-    // A8W4 path: combine-quant is not yet supported.
-    if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
-        opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) {
-        OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "combineQuantMode",
-                std::to_string(*combineQuantModePtr).c_str(),
-                "A8W4 path only supports combineQuantMode=no_quant(0) currently."),
-            return ge::GRAPH_FAILED);
-    }
 
     OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT &&
                     *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E5M2 &&
