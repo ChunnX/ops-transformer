@@ -267,11 +267,40 @@ ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     // check atten_mask shape when enable atten_mask_compress
     if (fBaseParams.attenMaskCompressMode == 0) {
-        bool invalid = fBaseParams.attenMaskOptional != EMPTY_TENSOR && fBaseParams.layoutType != INPUT_FORMAT_TND &&
-                       (static_cast<int64_t>(fBaseParams.attenMaskS1Size) *
+        constexpr int64_t BEST_BASIC_BLOCK_NUM = ALIGN64 * ALIGN128;
+        constexpr uint32_t MAX_KV_SEQLEN = 1536;
+        auto bestBasicBlockNum = fBaseParams.s1 >= FP32_BYTES ?
+                                 (BEST_BASIC_BLOCK_NUM / FP32_BYTES * (FP32_BYTES - 1)) : BEST_BASIC_BLOCK_NUM;
+        bool ngs1s2BIsAble = (fBaseParams.n2 * fBaseParams.g *
+                             AlignTo(fBaseParams.s1, static_cast<int64_t>(ConstAxisTemplateNum::NUM16)) *
+                             AlignTo(fBaseParams.s2, static_cast<int64_t>(ConstAxisTemplateNum::NUM16))) <=
+                             bestBasicBlockNum;
+        bool isBCaple = fBaseParams.attenMaskOptional != EMPTY_TENSOR && fBaseParams.layoutType != INPUT_FORMAT_TND &&
+                        fBaseParams.queryType != ge::DT_FLOAT && fBaseParams.d == fBaseParams.d1 &&
+                        fBaseParams.pseType == static_cast<uint32_t>(PseType::PSE_OUTER_ADD_MUL_TYPE) && ngs1s2BIsAble;
+        int64_t dTypeSize = fBaseParams.queryType == ge::DT_BF16 ?
+                            ge::GetSizeByDataType(static_cast<ge::DataType>(fBaseParams.queryType)) << 1 :
+                            ge::GetSizeByDataType(static_cast<ge::DataType>(fBaseParams.queryType));
+        int64_t s2Align = AlignTo(fBaseParams.s2 *
+                                  ge::GetSizeByDataType(static_cast<ge::DataType>(fBaseParams.queryType)),
+                                  static_cast<int64_t>(ConstAxisTemplateNum::NUM32)) /
+                                  ge::GetSizeByDataType(static_cast<ge::DataType>(fBaseParams.queryType));
+        int64_t s2AlignVecSize = AlignTo(s2Align * dTypeSize, static_cast<int64_t>(ConstAxisTemplateNum::NUM32));
+        bool ngs1s2BnIsAble = ((fBaseParams.g * fBaseParams.s1 * s2AlignVecSize) != 0) && (fBaseParams.g == 1) &&
+                              (s2AlignVecSize <= MAX_KV_SEQLEN) &&
+                              ((fBaseParams.g * fBaseParams.s1 * s2AlignVecSize) <= ALIGN64 * ALIGN128 * FP32_BYTES);
+        bool isBNCaple = fBaseParams.attenMaskOptional != EMPTY_TENSOR && fBaseParams.layoutType != INPUT_FORMAT_TND &&
+                         fBaseParams.queryType != ge::DT_FLOAT && fBaseParams.d == fBaseParams.d1 &&
+                         fBaseParams.pseType == static_cast<uint32_t>(PseType::PSE_OUTER_ADD_MUL_TYPE) &&
+                         ngs1s2BnIsAble;
+        bool invalid = (static_cast<int64_t>(fBaseParams.attenMaskS1Size) *
                         static_cast<int64_t>(fBaseParams.attenMaskS2Size) <
                         static_cast<int64_t>(fBaseParams.s1) * static_cast<int64_t>(fBaseParams.s2));
-        if (invalid) {
+        bool attenMaskInvalid = (static_cast<int64_t>(fBaseParams.attenMaskS1Size) !=
+                                static_cast<int64_t>(fBaseParams.s1)) ||
+                                (static_cast<int64_t>(fBaseParams.attenMaskS2Size) !=
+                                static_cast<int64_t>(fBaseParams.s2));
+        if ((isBNCaple || isBCaple) && invalid) {
             std::string shapeSizeMsg = std::to_string(fBaseParams.attenMaskS1Size) + " * " +
                                        std::to_string(fBaseParams.attenMaskS2Size);
             std::string reasonMsg = "When attenMaskOptional is not empty and inputLayout is not TND, "
@@ -279,6 +308,16 @@ ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams)
                                     std::to_string(fBaseParams.s1) + " * " + std::to_string(fBaseParams.s2);
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("FlashAttentionScoreGrad", "attenMaskOptional",
                 shapeSizeMsg.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        } else if (fBaseParams.attenMaskOptional != EMPTY_TENSOR && fBaseParams.layoutType != INPUT_FORMAT_TND &&
+            attenMaskInvalid && (!(isBNCaple || isBCaple))) {
+            std::string shapeMsg = std::to_string(fBaseParams.attenMaskS1Size) + ", " +
+                                       std::to_string(fBaseParams.attenMaskS2Size);
+            std::string reasonMsg = "When attenMaskOptional is not empty tensor and inputLayout is not TND, "
+                                    "the shape of attenMaskOptional must be [" + std::to_string(fBaseParams.s1) + ", " +
+                                    std::to_string(fBaseParams.s2) + "]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("FlashAttentionScoreGrad", "attenMaskOptional", shapeMsg.c_str(),
+                reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
