@@ -311,7 +311,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int32_t *tok
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKeyOffset(int64_t s2Idx, int64_t& realKeyOffset, 
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKeyOffset(int64_t s2Idx, int64_t& realKeyOffset,
     int64_t& realScaleOffset, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (s2Idx < 0) {
@@ -324,7 +324,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKeyOffset(int64_t s2Idx, 
         if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
             realKeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
                 paBlockStride + blkTableOffset * constInfo.dSizeVInput;
-
         } else {
             realKeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * paBlockStride +
                 blkTableOffset * constInfo.n2Size * dCombineBytes +
@@ -413,18 +412,21 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
     s2IdLimit = (runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1) / constInfo.cmpRatio;
     uint32_t dealRow = 0;
     for (uint32_t i = 0; i < 8; i += 2) {
-        int64_t keyOffset0 = -1, scaleOffset0 = -1;
-        int64_t keyOffset1 = -1, scaleOffset1 = -1;
+        int64_t keyOffset0 = -1;
+        int64_t keyOffset1 = -1;
+        int64_t scaleOffset0 = -1;
+        int64_t scaleOffset1 = -1;
         GetKeyOffset(tokenData[i], keyOffset0, scaleOffset0, runInfo, constInfo);
         GetKeyOffset(tokenData[i + 1], keyOffset1, scaleOffset1, runInfo, constInfo);
         if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
             return dealRow;
         }
         uint32_t combineBytes;
-        int64_t keySrcStride, scaleSrcStride;
+        int64_t keySrcStride;
+        int64_t scaleSrcStride;
         if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
             combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
-            keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :	 
+            keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :
                 (keyOffset1 - keyOffset0)) - combineBytes;
         } else {
             keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :
@@ -759,7 +761,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> a
         LocalTensor<float> floatScale = dequantScaleBuff.Get<float>();
         kRopeUb = srcTensor[448].template ReinterpretCast<int8_t>();
         CastScale<Q_T, KV_T>(floatScale, srcTensor, dealRow);
-        AntiquantVFFp8D448_FloatScale<Q_T, KV_T>(kRopeUbNz, antiKvTensorAsB16, srcTensor, floatScale, kRopeUb, dealRow);
+        AntiquantVFFp8D448_FloatScale<Q_T, KV_T>(kRopeUbNz, antiKvTensorAsB16, srcTensor,
+            floatScale, kRopeUb, dealRow);
     }
 }
 
@@ -905,7 +908,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
                 LocalTensor<uint64_t> kvMergTmpUb = kvMergUb.template ReinterpretCast<uint64_t>();
                 for (uint32_t i = 0; i < copyElmenCnt; ++i) {
                     uint64_t scaleData = keyTmpGm.GetValue(scaleOffset / uint64Touint8);
-                    kvMergTmpUb.SetValue((dstOffset * combineDimAlign + dCombineBytes + i * dVTemplateTypeInput) / uint64Touint8, scaleData);
+                    kvMergTmpUb.SetValue((dstOffset * combineDimAlign + dCombineBytes + i * dVTemplateTypeInput) /
+                        uint64Touint8, scaleData);
                 }
                 SetFlag<HardEvent::S_MTE2>(6);
                 WaitFlag<HardEvent::S_MTE2>(6);
