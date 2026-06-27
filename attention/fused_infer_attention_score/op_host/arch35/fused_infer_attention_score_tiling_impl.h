@@ -1,12 +1,12 @@
-﻿/**
-聽* Copyright (c) 2026 Huawei Technologies Co., Ltd.
-聽* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-聽* CANN Open Software License Agreement Version 2.0 (the "License").
-聽* Please refer to the License for details. You may not use this file except in compliance with the License.
-聽* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-聽* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-聽* See LICENSE in the root of the software repository for the full text of the License.
-聽*/
+﻿/**	 
+  * Copyright (c) 2026 Huawei Technologies Co., Ltd.	 
+  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of	 
+  * CANN Open Software License Agreement Version 2.0 (the "License").	 
+  * Please refer to the License for details. You may not use this file except in compliance with the License.	 
+  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,	 
+  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.	 
+  * See LICENSE in the root of the software repository for the full text of the License.	 
+  */
 
 /*!
  * \file fused_infer_attention_score_tiling_impl.h
@@ -18,7 +18,8 @@
 #include "register/tilingdata_base.h"
 #include "../../../common/op_host/fia_tiling_base.h"
 #include "../../../common/op_host/fia_tiling_info.h"
-#include "tiling/tiling_api.h"  //杩欎釜澶存枃浠堕『搴忓繀椤诲湪鎵嬪啓鐨則iling data鍓?#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
+#include "tiling/tiling_api.h"  //这个头文件顺序必须在手写的tiling data前	 
+ #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "../../op_kernel/fused_infer_attention_score_template_tiling_key.h"
 #include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
 
