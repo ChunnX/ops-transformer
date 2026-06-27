@@ -1380,128 +1380,128 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel1(i
     }
 
     if (isSendCore) {
-        // ========== 发送核路径 (最后几个核) ==========
-        // 分配: 每个 发送核 负责一段连续的 otherServer
-        uint32_t serversPerSendCore = numOtherServers / numSendCores;
-        uint32_t sendRemainder = numOtherServers % numSendCores;
-        uint32_t myStartOtherIdx = serversPerSendCore * sendCoreIdx +
-            (sendCoreIdx < sendRemainder ? sendCoreIdx : sendRemainder);
-        uint32_t myNumServers = serversPerSendCore + (sendCoreIdx < sendRemainder ? 1 : 0);
-        if (myNumServers == 0) {
-            // 无分配 server, 直接退出 (完成标志由计算核写)
-            return;
-        }
+        // // ========== 发送核路径 (最后几个核) ==========
+        // // 分配: 每个 发送核 负责一段连续的 otherServer
+        // uint32_t serversPerSendCore = numOtherServers / numSendCores;
+        // uint32_t sendRemainder = numOtherServers % numSendCores;
+        // uint32_t myStartOtherIdx = serversPerSendCore * sendCoreIdx +
+        //     (sendCoreIdx < sendRemainder ? sendCoreIdx : sendRemainder);
+        // uint32_t myNumServers = serversPerSendCore + (sendCoreIdx < sendRemainder ? 1 : 0);
+        // if (myNumServers == 0) {
+        //     // 无分配 server, 直接退出 (完成标志由计算核写)
+        //     return;
+        // }
 
-        // UB 布局: metadata 读缓冲(32B) + 发送计数(每 otherServer 1 int)
-        uint32_t ubOffset = ubBufferUsedAddr_;
-        LocalTensor<int32_t> metaReadTensor = LocalTensor<int32_t>(TPosition::VECCALC, ubOffset,
-            MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
-        ubOffset += MegaMoeDispatchImpl::L1_META_BYTES;
-        uint32_t sentCntSize = Ops::Base::CeilAlign(static_cast<int64_t>(myNumServers * sizeof(int32_t)),
-            static_cast<int64_t>(ALIGN_32));
-        LocalTensor<int32_t> sentCntTensor = LocalTensor<int32_t>(TPosition::VECCALC, ubOffset,
-            sentCntSize / sizeof(int32_t));
-        ubOffset += sentCntSize;
-        Duplicate<int32_t>(sentCntTensor, 0, myNumServers);
-        PipeBarrier<PIPE_ALL>();
+        // // UB 布局: metadata 读缓冲(32B) + 发送计数(每 otherServer 1 int)
+        // uint32_t ubOffset = ubBufferUsedAddr_;
+        // LocalTensor<int32_t> metaReadTensor = LocalTensor<int32_t>(TPosition::VECCALC, ubOffset,
+        //     MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
+        // ubOffset += MegaMoeDispatchImpl::L1_META_BYTES;
+        // uint32_t sentCntSize = Ops::Base::CeilAlign(static_cast<int64_t>(myNumServers * sizeof(int32_t)),
+        //     static_cast<int64_t>(ALIGN_32));
+        // LocalTensor<int32_t> sentCntTensor = LocalTensor<int32_t>(TPosition::VECCALC, ubOffset,
+        //     sentCntSize / sizeof(int32_t));
+        // ubOffset += sentCntSize;
+        // Duplicate<int32_t>(sentCntTensor, 0, myNumServers);
+        // PipeBarrier<PIPE_ALL>();
 
-        // 轮询中转区: 逐 otherServer 检查 count, 发现新数据后读取 metadata flag → WriteWithNotifyNbi
-        // 退出条件: 所有 server 的数据已发完 且 所有计算核已完成 (完成标志由计算核写)
-        AscendC::GlobalTensor<int32_t> gmRelayMeta;
-        uint32_t processedServers = 0;
-        uint32_t serverPollIdx = 0;
+        // // 轮询中转区: 逐 otherServer 检查 count, 发现新数据后读取 metadata flag → WriteWithNotifyNbi
+        // // 退出条件: 所有 server 的数据已发完 且 所有计算核已完成 (完成标志由计算核写)
+        // AscendC::GlobalTensor<int32_t> gmRelayMeta;
+        // uint32_t processedServers = 0;
+        // uint32_t serverPollIdx = 0;
 
-        while (processedServers < myNumServers) {
-            uint32_t otherIdx = myStartOtherIdx + serverPollIdx;
-            uint32_t targetServerId = MegaMoeDispatchImpl::OtherServerIdxToServerId(otherIdx, myServerId);
-            uint32_t targetRankId = MegaMoeDispatchImpl::GetL1TargetRankId(targetServerId, myLocalRank, rankSizePerServer);
+        // while (processedServers < myNumServers) {
+        //     uint32_t otherIdx = myStartOtherIdx + serverPollIdx;
+        //     uint32_t targetServerId = MegaMoeDispatchImpl::OtherServerIdxToServerId(otherIdx, myServerId);
+        //     uint32_t targetRankId = MegaMoeDispatchImpl::GetL1TargetRankId(targetServerId, myLocalRank, rankSizePerServer);
 
-            // 读中转区 count
-            GM_ADDR relayBase = MegaMoeDispatchImpl::GetRelayAreaBase(
-                params_.workspaceInfo.dispatchL1RelayDataPtr, otherIdx, l1RelayPerServerSize_);
-            __gm__ int32_t* countAddr = MegaMoeDispatchImpl::GetRelayCountAddr(relayBase);
-            uint32_t curCnt = AscendC::ReadGmByPassDCache(countAddr);
-            uint32_t localSentCnt = sentCntTensor.GetValue(serverPollIdx);
+        //     // 读中转区 count
+        //     GM_ADDR relayBase = MegaMoeDispatchImpl::GetRelayAreaBase(
+        //         params_.workspaceInfo.dispatchL1RelayDataPtr, otherIdx, l1RelayPerServerSize_);
+        //     __gm__ int32_t* countAddr = MegaMoeDispatchImpl::GetRelayCountAddr(relayBase);
+        //     uint32_t curCnt = AscendC::ReadGmByPassDCache(countAddr);
+        //     uint32_t localSentCnt = sentCntTensor.GetValue(serverPollIdx);
 
-            // 有新数据 → 逐 slot 读取 metadata → 检查 flag → 发送
-            if (curCnt > localSentCnt) {
-                uint32_t needCnt = curCnt - localSentCnt;
-                uint32_t slotIdx = localSentCnt;
-                while (needCnt > 0) {
-                    GM_ADDR slotMetaAddr = MegaMoeDispatchImpl::GetRelaySlotMetaAddr(
-                        relayBase, slotIdx, l1SlotSize_, l1SlotDataBytes_);
-                    gmRelayMeta.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(slotMetaAddr));
-                    AscendC::Nop<800>();  // 等 GM 写入完成
-                    AscendC::DataCopy(metaReadTensor, gmRelayMeta,
-                        MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
-                    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+        //     // 有新数据 → 逐 slot 读取 metadata → 检查 flag → 发送
+        //     if (curCnt > localSentCnt) {
+        //         uint32_t needCnt = curCnt - localSentCnt;
+        //         uint32_t slotIdx = localSentCnt;
+        //         while (needCnt > 0) {
+        //             GM_ADDR slotMetaAddr = MegaMoeDispatchImpl::GetRelaySlotMetaAddr(
+        //                 relayBase, slotIdx, l1SlotSize_, l1SlotDataBytes_);
+        //             gmRelayMeta.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(slotMetaAddr));
+        //             AscendC::Nop<800>();  // 等 GM 写入完成
+        //             AscendC::DataCopy(metaReadTensor, gmRelayMeta,
+        //                 MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
+        //             AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+        //             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
 
-                    if (metaReadTensor.GetValue(0) == 1) {  // flag = ready
-                        uint32_t tokenIdx = metaReadTensor.GetValue(1);
+        //             if (metaReadTensor.GetValue(0) == 1) {  // flag = ready
+        //                 uint32_t tokenIdx = metaReadTensor.GetValue(1);
 
-                        // 计算远端地址: URMA 窗口 + section offset + token slot offset
-                        uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, targetRankId, rankId_);
-                        GM_ADDR remoteBase = GetUrmaAddrByRankId(mc2Context_, targetRankId) +
-                            params_.peermemInfo.URMADispatchL1RecvPtr;
-                        uint64_t recvSectionOffset = MegaMoeDispatchImpl::GetL1RecvSectionOffset(
-                            myServerId, l1RecvPerServerSize_);
-                        uint64_t recvDataOffset = recvSectionOffset +
-                            MegaMoeDispatchImpl::GetL1RecvDataOffset(tokenIdx, l1SlotSize_);
-                        uint64_t recvNotifyOffset = recvSectionOffset +
-                            MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIdx, l1SlotSize_);
-                        GM_ADDR remoteDataAddr = remoteBase + recvDataOffset;
-                        GM_ADDR remoteNotifyAddr = remoteBase + recvNotifyOffset;
+        //                 // 计算远端地址: URMA 窗口 + section offset + token slot offset
+        //                 uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, targetRankId, rankId_);
+        //                 GM_ADDR remoteBase = GetUrmaAddrByRankId(mc2Context_, targetRankId) +
+        //                     params_.peermemInfo.URMADispatchL1RecvPtr;
+        //                 uint64_t recvSectionOffset = MegaMoeDispatchImpl::GetL1RecvSectionOffset(
+        //                     myServerId, l1RecvPerServerSize_);
+        //                 uint64_t recvDataOffset = recvSectionOffset +
+        //                     MegaMoeDispatchImpl::GetL1RecvDataOffset(tokenIdx, l1SlotSize_);
+        //                 uint64_t recvNotifyOffset = recvSectionOffset +
+        //                     MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIdx, l1SlotSize_);
+        //                 GM_ADDR remoteDataAddr = remoteBase + recvDataOffset;
+        //                 GM_ADDR remoteNotifyAddr = remoteBase + recvNotifyOffset;
 
-                        // 本地中转区 data 地址
-                        GM_ADDR localDataAddr = MegaMoeDispatchImpl::GetRelaySlotDataAddr(
-                            relayBase, slotIdx, l1SlotSize_);
+        //                 // 本地中转区 data 地址
+        //                 GM_ADDR localDataAddr = MegaMoeDispatchImpl::GetRelaySlotDataAddr(
+        //                     relayBase, slotIdx, l1SlotSize_);
 
-                        // WriteWithNotifyNbi: 发送 tokendata+scaledata (data 部分),
-                        // 同时把 notify(flag=1) 写到对端整个 slot 的最后 2 个 int (slotSize-8B),
-                        // 二级通信读 slot 末尾 8B 即可判断该 token 就绪
-                        hcomm_.WriteWithNotifyNbi(channelHandle, remoteDataAddr, localDataAddr,
-                            l1SlotDataBytes_, remoteNotifyAddr, 1);
-                        // 标记已处理
-                        metaReadTensor.SetValue(0, 0);
-                        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);
-                        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
-                        AscendC::DataCopy(gmRelayMeta, metaReadTensor,
-                            MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
-                        PipeBarrier<PIPE_ALL>();
+        //                 // WriteWithNotifyNbi: 发送 tokendata+scaledata (data 部分),
+        //                 // 同时把 notify(flag=1) 写到对端整个 slot 的最后 2 个 int (slotSize-8B),
+        //                 // 二级通信读 slot 末尾 8B 即可判断该 token 就绪
+        //                 hcomm_.WriteWithNotifyNbi(channelHandle, remoteDataAddr, localDataAddr,
+        //                     l1SlotDataBytes_, remoteNotifyAddr, 1);
+        //                 // 标记已处理
+        //                 metaReadTensor.SetValue(0, 0);
+        //                 AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);
+        //                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
+        //                 AscendC::DataCopy(gmRelayMeta, metaReadTensor,
+        //                     MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
+        //                 PipeBarrier<PIPE_ALL>();
 
-                        needCnt--;
-                    }
-                    // 修正: 轮询所有槽位, 跳过已处理的(flag=0), 只发送 flag=1 的
-                    slotIdx = (slotIdx + 1 < curCnt) ? slotIdx + 1 : localSentCnt;
-                }
-                sentCntTensor.SetValue(serverPollIdx, curCnt);
-            }
+        //                 needCnt--;
+        //             }
+        //             // 修正: 轮询所有槽位, 跳过已处理的(flag=0), 只发送 flag=1 的
+        //             slotIdx = (slotIdx + 1 < curCnt) ? slotIdx + 1 : localSentCnt;
+        //         }
+        //         sentCntTensor.SetValue(serverPollIdx, curCnt);
+        //     }
 
-            // 判断当前 server 是否已完成: 数据已全部发送 且 计算核已完成
-            // 完成标志只由计算核写, 发送核只读不写
-            // 注意: curCnt 是循环顶部读取的旧值, 计算核完成后 count 可能已继续增长,
-            //       因此必须在确认计算核完成后重新读 count, 否则会漏发最后一批数据
-            if (curCnt == sentCntTensor.GetValue(serverPollIdx)) {
-                bool allComputeDone = true;
-                for (uint32_t coreIdx = 0; coreIdx < numComputeCores; coreIdx++) {
-                    __gm__ int32_t* flagAddr = MegaMoeDispatchImpl::GetCompleteListAddr(
-                        params_.workspaceInfo.dispatchL1CompleteListPtr, coreIdx, expertPerRank_);
-                    if (AscendC::ReadGmByPassDCache(flagAddr + localExpertId) != 1) {
-                        allComputeDone = false;
-                        break;
-                    }
-                }
-                if (allComputeDone) {
-                    // 计算核已全部完成, 重新读取最终 count 确认无遗漏数据未发送
-                    uint32_t finalCnt = AscendC::ReadGmByPassDCache(countAddr);
-                    if (finalCnt == sentCntTensor.GetValue(serverPollIdx)) {
-                        processedServers++;
-                    }
-                }
-            }
-            serverPollIdx = (serverPollIdx + 1) % myNumServers;
-        }
+        //     // 判断当前 server 是否已完成: 数据已全部发送 且 计算核已完成
+        //     // 完成标志只由计算核写, 发送核只读不写
+        //     // 注意: curCnt 是循环顶部读取的旧值, 计算核完成后 count 可能已继续增长,
+        //     //       因此必须在确认计算核完成后重新读 count, 否则会漏发最后一批数据
+        //     if (curCnt == sentCntTensor.GetValue(serverPollIdx)) {
+        //         bool allComputeDone = true;
+        //         for (uint32_t coreIdx = 0; coreIdx < numComputeCores; coreIdx++) {
+        //             __gm__ int32_t* flagAddr = MegaMoeDispatchImpl::GetCompleteListAddr(
+        //                 params_.workspaceInfo.dispatchL1CompleteListPtr, coreIdx, expertPerRank_);
+        //             if (AscendC::ReadGmByPassDCache(flagAddr + localExpertId) != 1) {
+        //                 allComputeDone = false;
+        //                 break;
+        //             }
+        //         }
+        //         if (allComputeDone) {
+        //             // 计算核已全部完成, 重新读取最终 count 确认无遗漏数据未发送
+        //             uint32_t finalCnt = AscendC::ReadGmByPassDCache(countAddr);
+        //             if (finalCnt == sentCntTensor.GetValue(serverPollIdx)) {
+        //                 processedServers++;
+        //             }
+        //         }
+        //     }
+        //     serverPollIdx = (serverPollIdx + 1) % myNumServers;
+        // }
 
     } else {
         // ========== 计算核路径 (前面 numComputeCores 个核) ==========
