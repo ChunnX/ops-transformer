@@ -605,7 +605,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantShape(siz
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(const aclTensorList *tensorList,
                                                                              const size_t idx,
-                                                                             const std::string &paramName) const;
+                                                                             const std::string &paramName) const
 {
     auto viewShape = (*tensorList)[idx]->GetViewShape();
     auto viewShapeDimNum = viewShape.GetDimNum();
