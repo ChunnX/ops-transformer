@@ -586,7 +586,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
     uint32_t batchIdx, uint32_t headIdx,
     uint32_t qChunkStart, uint32_t curQChunkSize)
 {
-    // printf("ProcessMatmulSoftmax\n");
     uint32_t loopChunkSize = CV_EXEC_RATIO * constInfo.kChunkSize;
     uint32_t flagId = 0;
     for (uint32_t kChunkStart = 0; kChunkStart < constInfo.yBlocks;
@@ -603,8 +602,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
 
         if ASCEND_IS_AIV {
             CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
-            // printf("qChunkStart: %d, curQChunkSize:  %d, kChunkStart: %d, curKChunkSize: %d\n",
-            //     qChunkStart, curQChunkSize, kChunkStart, curKChunkSize);
             vectorService.OnlineSoftmaxFirstPassChunk(
                 qChunkStart, curQChunkSize, kChunkStart, curKChunkSize);
         }
@@ -616,7 +613,6 @@ template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessSoftmaxSecondPass(
     uint32_t qChunkStart, uint32_t curQChunkSize, uint32_t batchIdx, uint32_t headIdx)
 {
-    // printf("ProcessSoftmaxSecondPass\n");
     if ASCEND_IS_AIV {
         // 等上个步骤结束
         AscendC::PipeBarrier<PIPE_ALL>();
