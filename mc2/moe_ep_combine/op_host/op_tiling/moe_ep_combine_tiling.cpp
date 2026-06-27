@@ -259,7 +259,7 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    uint64_t perRankLocalSize = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) * 
+    uint64_t perRankLocalSize = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) *
         static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t stashBytes = STATE_WIN_SIZE + static_cast<uint64_t>(info.cfg.epWorldSize) * perRankLocalSize;
     info.localWinSizeEp = perRankLocalSize;

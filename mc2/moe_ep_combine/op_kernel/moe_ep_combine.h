@@ -226,7 +226,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     combinedXGm_.SetGlobalBuffer((__gm__ XType *)combinedX);
 
     // 计算actualA_的大小
-    for(int i = 0; i < localmoeNum_; i++) {
+    for (int i = 0; i < localmoeNum_; i++) {
         if (i % (DCCI_OFFSET / sizeof(int64_t)) == 0) {
             DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
                 numRecvPerExpertGm_[i]);
