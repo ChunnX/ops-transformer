@@ -642,8 +642,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
             DataCopyExtParams recordCopyParams{1U, recordPayloadBytes, 0U, 0U, 0U};
             DataCopyPadExtParams<uint8_t> recordCopyPad{false, 0U, 0U, 0U};
             uint32_t sentMaskWordNum = Ops::Base::CeilDiv(m_, SEND_DEDUP_MASK_BITS_PER_WORD);
-            bool useWindowScan = !useSenderAsCompute &&
-                sentMaskWordNum <= (SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
+            bool useWindowScan = (sentMaskWordNum <= (SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t)));
             int32_t scanCursor = cursor;
             if (useWindowScan) {
                 Duplicate<uint32_t>(sendDedupMaskTensor_, 0, sentMaskWordNum);
@@ -1003,14 +1002,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     hcomm_.Drain(channel);
     // PRINTF("BEGIN READDATA\n");
-    AscendC::Nop<300000>();
+    // AscendC::Nop<300000>();
     // PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
     // AscendC::Nop<300000>();
     // PipeBarrier<PIPE_ALL>();
-    // DumpTensor(copyTmpTensors_[bufferIdx], rankId_, 32);
+    DumpTensor(copyTmpTensors_[bufferIdx], rankId_, 32);
 }
 
 // ============================================================================
