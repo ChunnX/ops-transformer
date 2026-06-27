@@ -152,13 +152,17 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(
     }
 
     auto routingResult =
-        std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *>(nullptr, nullptr, nullptr, nullptr, nullptr);
+        std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *>(
+            nullptr, nullptr, nullptr, nullptr, nullptr);
     // 调用v3版本的l0接口进行计算
     routingResult = l0op::MoeInitRoutingV3(
-        xContiguous, expertIdxContiguous, scaleContiguous, offsetContiguous, nullptr, activeNum, expertCapacity, expertNum,
-        dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRangeOptional, rowIdxType,
-        expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, nullptr, uniqueExecutor.get());
-    auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_, expandedScaleOut_, expandedTopkWeightOut_] = routingResult;
+        xContiguous, expertIdxContiguous, scaleContiguous, offsetContiguous,
+        nullptr, activeNum, expertCapacity, expertNum,
+        dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode,
+        activeExpertRangeOptional, rowIdxType, expandedXOut, expandedRowIdxOut,
+        expertTokensCountOrCumsumOut, expandedScaleOut, nullptr, uniqueExecutor.get());
+    auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_,
+          expandedScaleOut_, expandedTopkWeightOut_] = routingResult;
     bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr) ||
                       (expertTokensCountOrCumsumOut_ == nullptr) || (expandedScaleOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);

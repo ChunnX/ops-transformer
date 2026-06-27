@@ -29,21 +29,25 @@ extern "C" {
 #endif
 
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOKENS = {DataType::DT_FLOAT16, DataType::DT_BF16,
-                                                                           DataType::DT_INT8};
+    DataType::DT_INT8};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOKENS_REGBASE = {
     DataType::DT_FLOAT16,  DataType::DT_BF16,        DataType::DT_INT8,
     DataType::DT_HIFLOAT8, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN,
     DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_TOKEN_NUM = {DataType::DT_INT32, DataType::DT_INT64};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_TOKEN_NUM = {
+    DataType::DT_INT32, DataType::DT_INT64};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_SCALE = {DataType::DT_FLOAT};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_SCALE_REGBASE = {DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_TOKENS = {DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_SCALE_REGBASE = {
+    DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_TOKENS = {
+    DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_TOKENS_REGBASE = {
     DataType::DT_FLOAT16,       DataType::DT_BF16,        DataType::DT_INT8,
     DataType::DT_HIFLOAT8,      DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT8_E4M3FN,
     DataType::DT_FLOAT4_E2M1,   DataType::DT_FLOAT4_E1M2};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_SCALE = {DataType::DT_FLOAT};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_SCALE_REGBASE = {DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_SCALE_REGBASE = {
+    DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_IDX = {DataType::DT_INT32};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOPK_WEIGHT = {DataType::DT_FLOAT};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_PERMUTE_TOPK_WEIGHT_OUT = {DataType::DT_FLOAT};
@@ -139,14 +143,15 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingV2GetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnMoeReRoutingV2,
-                    DFX_IN(tokens, expertTokenNumPerRank, perTokenScalesOptional, expertTopkWeightOptional,
-                           expertTokenNumType, idxType),
-                    DFX_OUT(permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut,
-                            expertTokenNumOut, permuteTopkWeightOut));
+                   DFX_IN(tokens, expertTokenNumPerRank, perTokenScalesOptional, expertTopkWeightOptional,
+                          expertTokenNumType, idxType),
+                   DFX_OUT(permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut,
+                           expertTokenNumOut, permuteTopkWeightOut));
 
     if ((expertTopkWeightOptional != nullptr && permuteTopkWeightOut == nullptr) ||
         (expertTopkWeightOptional == nullptr && permuteTopkWeightOut != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expert_topk_weight and permute_topk_weight must be both present or both absent.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "expert_topk_weight and permute_topk_weight must be both present or both absent.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -168,7 +173,8 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingV2GetWorkspaceSize(
                                   permuteTokenIdxOut, expertTokenNumOut),
                   ACLNN_ERR_PARAM_INVALID);
         if (expertTopkWeightOptional != nullptr || permuteTopkWeightOut != nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expert_topk_weight and permute_topk_weight are not supported on non-regbase platforms.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "expert_topk_weight and permute_topk_weight are not supported on non-regbase platforms.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -195,7 +201,8 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingV2GetWorkspaceSize(
         expertTokenNumType, idxType,
         permuteTokensOut, permutePerTokenScalesOut, permuteTokenIdxOut, expertTokenNumOut, permuteTopkWeightOut,
         uniqueExecutor.get());
-    auto [permuteTokensOut_, permutePerTokenScalesOut_, permuteTokenIdxOut_, expertTokenNumOut_, permuteTopkWeightOut_] = routingResult;
+    auto [permuteTokensOut_, permutePerTokenScalesOut_, permuteTokenIdxOut_,
+          expertTokenNumOut_, permuteTopkWeightOut_] = routingResult;
     bool hasNullptr = (permuteTokensOut_ == nullptr) || (permutePerTokenScalesOut_ == nullptr) ||
                       (permuteTokenIdxOut_ == nullptr) || (expertTokenNumOut_ == nullptr);
     CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
@@ -206,7 +213,8 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingV2GetWorkspaceSize(
 
     auto viewCopyPermuteTokensResult = l0op::ViewCopy(permuteTokensOut_, permuteTokensOut, uniqueExecutor.get());
     CHECK_RET(viewCopyPermuteTokensResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto viewCopyPermutePerTokenScalesResult = l0op::ViewCopy(permutePerTokenScalesOut_, permutePerTokenScalesOut, uniqueExecutor.get());
+    auto viewCopyPermutePerTokenScalesResult =
+        l0op::ViewCopy(permutePerTokenScalesOut_, permutePerTokenScalesOut, uniqueExecutor.get());
     CHECK_RET(viewCopyPermutePerTokenScalesResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto viewCopyPermuteTokenIdxResult = l0op::ViewCopy(permuteTokenIdxOut_, permuteTokenIdxOut, uniqueExecutor.get());
     CHECK_RET(viewCopyPermuteTokenIdxResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -214,7 +222,8 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingV2GetWorkspaceSize(
     CHECK_RET(viewCopyExpertTokenNumResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     if (permuteTopkWeightOut != nullptr && permuteTopkWeightOut_ != nullptr) {
-        auto viewCopyPermuteTopkWeightResult = l0op::ViewCopy(permuteTopkWeightOut_, permuteTopkWeightOut, uniqueExecutor.get());
+        auto viewCopyPermuteTopkWeightResult =
+            l0op::ViewCopy(permuteTopkWeightOut_, permuteTopkWeightOut, uniqueExecutor.get());
         CHECK_RET(viewCopyPermuteTopkWeightResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 

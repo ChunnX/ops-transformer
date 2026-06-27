@@ -22,31 +22,23 @@ extern "C" {
  * @brief aclnnMoeInitRoutingV4的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  */
-ACLNN_API aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(const aclTensor *x, 
-                                                            const aclTensor *expertIdx,
-                                                            const aclTensor *scaleOptional,
-                                                            const aclTensor *offsetOptional, 
-                                                            const aclTensor *topk_weightOptional,
-                                                            int64_t activeNum, 
-                                                            int64_t expertCapacity, 
-                                                            int64_t expertNum, 
-                                                            int64_t dropPadMode, 
-                                                            int64_t expertTokensNumType, 
-                                                            bool expertTokensNumFlag, 
-                                                            int64_t quantMode, 
-                                                            const aclIntArray *activeExpertRangeOptional, 
-                                                            int64_t rowIdxType, 
-                                                            const aclTensor *expandedXOut, 
-                                                            const aclTensor *expandedRowIdxOut, 
-                                                            const aclTensor *expertTokensCountOrCumsumOut, 
-                                                            const aclTensor *expandedScaleOut, 
-                                                            const aclTensor *expanded_topk_weightOut, 
-                                                            uint64_t *workspaceSize, 
-                                                            aclOpExecutor **executor);
+ACLNN_API aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(
+    const aclTensor *x, const aclTensor *expertIdx,
+    const aclTensor *scaleOptional, const aclTensor *offsetOptional,
+    const aclTensor *topk_weightOptional, int64_t activeNum,
+    int64_t expertCapacity, int64_t expertNum, int64_t dropPadMode,
+    int64_t expertTokensNumType, bool expertTokensNumFlag,
+    int64_t quantMode, const aclIntArray *activeExpertRangeOptional,
+    int64_t rowIdxType, const aclTensor *expandedXOut,
+    const aclTensor *expandedRowIdxOut,
+    const aclTensor *expertTokensCountOrCumsumOut,
+    const aclTensor *expandedScaleOut,
+    const aclTensor *expanded_topk_weightOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
                                                             
 /* @brief aclnnMoeInitRoutingV4的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnMoeInitRoutingV4(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                aclrtStream stream);
+                                            aclrtStream stream);
 
 #ifdef __cplusplus
 }
