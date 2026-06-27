@@ -135,9 +135,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
         str_commMode, y, mmYOptional, workspaceSize, executor);
     OP_LOGD("GroupedMatMulAlltoAllv, aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize ret %d.", ret);
     if (*executor != nullptr) {
-        uint8_t commModeType = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ?
-            Mc2Comm::COMM_MODE_CCU :
-            Mc2Comm::COMM_MODE_AICPU;
+        uint8_t commModeType = Mc2Comm::COMM_MODE_AICPU;
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeType));
         NnopbaseSetUserHandle(*executor, args);
     }
