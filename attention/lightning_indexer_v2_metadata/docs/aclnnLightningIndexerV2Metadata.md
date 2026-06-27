@@ -1,12 +1,12 @@
-# aclnnLightingIndexerV2Metadata
+# aclnnLightningIndexerV2Metadata
 
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT |      √     |
-| Atlas A3训练系列产品/Atlas A3推理系列产品     |    x     |
-| Atlas A2训练系列产品/Atlas A2推理系列产品 |    x     |
+| Ascend 950PR/Ascend 950DT |      x      |
+| Atlas A3训练系列产品/Atlas A3推理系列产品     |   √     |
+| Atlas A2训练系列产品/Atlas A2推理系列产品 |     √       |
 | Atlas 200I/500 A2推理产品                      |    x     |
 | Atlas推理系列产品                              |    x     |
 | Atlas训练系列产品                              |    x     |
@@ -21,7 +21,7 @@
     3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
 ## 函数原型
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnLightingIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnLightingIndexerV2Metadata"执行计算
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnLightningIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnLightningIndexerV2Metadata"执行计算
 
 ``` cpp
 aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
@@ -54,7 +54,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     aclrtStream        stream)
 ```
 
-## aclnnLightingIndexerV2MetadataGetWorkspaceSize
+## aclnnLightningIndexerV2MetadataGetWorkspaceSize
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
@@ -276,7 +276,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-## aclnnLightingIndexerV2Metadata
+## aclnnLightningIndexerV2Metadata
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -300,7 +300,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
         <tr>
             <td>workspaceSize</td>
             <td>输入</td>
-            <td>在Device侧申请的workspace大小，由第一段接口aclnnLightingIndexerV2MetadataGetWorkspaceSize获取</td>
+            <td>在Device侧申请的workspace大小，由第一段接口aclnnLightningIndexerV2MetadataGetWorkspaceSize获取</td>
         </tr>
         <tr>
             <td>executor</td>
@@ -320,7 +320,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-  - aclnnLightingIndexerV2Metadata默认确定性实现
+  - aclnnLightningIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
     - 优先获取sequsedQOptional中的Batch信息
