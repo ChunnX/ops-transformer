@@ -396,9 +396,10 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A8W8_NZ;
     } else if (weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
                opQuantMode == DISPATCH_QUANT_OUT_DTYPE_E2M1) {
-        // A4W4 (NZ_C0_32): weight1 和 activation 都是 fp4，GMM1 走 generic，GMM2 走 A8W4。
+        // A4W4: weight1 和 activation 都是 fp4，GMM1 走 generic，GMM2 走 A8W4。
+        // NZ format: weight1 为 FRACTAL_NZ → A4W4_NZ；否则为 A4W4（ND 格式）。
         if (static_cast<ge::Format>(ge::GetPrimaryFormat(
-                weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ_C0_32) {
+                weightOneDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
             tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4_NZ;
         } else {
             tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_A4W4;
