@@ -2000,8 +2000,9 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
             // INT4 output is cols/2 bytes (2 INT4 values packed per byte).
             int64_t inputXOutSpace = AlignBytes(Ops::Base::CeilDiv(cols_, NUM_TWO), sizeof(int8_t));
             int64_t calcSpace = AlignBytes(cols_, sizeof(float));
+            int64_t outBatchSpace = AlignBytes(cols_, sizeof(float));
             int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
-            remainUb -= (inputXInSpace + smoothInSpace + calcSpace + inputXOutSpace + scaleOutSpace);
+            remainUb -= (inputXInSpace + smoothInSpace + calcSpace + outBatchSpace + inputXOutSpace + scaleOutSpace);
         } else {
             int64_t xAlignedCount = Align(cols_, UB_BLOCK_SIZE);
             int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;

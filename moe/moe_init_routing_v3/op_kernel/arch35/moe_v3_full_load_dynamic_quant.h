@@ -25,6 +25,14 @@ using namespace AscendC;
 
 constexpr int64_t FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM = 1;
 
+__aicore__ inline void CopySmallFullLoadQuantOutToBatch(LocalTensor<int8_t> &dstLocal, LocalTensor<int8_t> &srcLocal,
+                                                        int64_t dstOffset, int64_t copyBytes)
+{
+    for (int64_t i = 0; i < copyBytes; i++) {
+        dstLocal.SetValue(dstOffset + i, srcLocal.GetValue(i));
+    }
+}
+
 template <typename T, typename QuantT = int8_t>
 class MoeV3FullLoadDynamicQuant : public MoeV3FullLoadBase<T> {
 public:
@@ -44,6 +52,7 @@ private:
     TQue<QuePosition::VECIN, 1> inputXInQueue_;
     TQue<QuePosition::VECIN, 1> smoothInQueue_;
     TQue<QuePosition::VECOUT, 1> calcQueue_;
+    TQue<QuePosition::VECOUT, 1> outBatchQueue_;
     TQue<QuePosition::VECOUT, 1> inputXOutQueue_;
     TQue<QuePosition::VECOUT, 1> scaleOutQueue_;
 
@@ -100,6 +109,8 @@ MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
     this->pipe_->InitBuffer(smoothInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(this->cols_, sizeof(float)));
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
         this->pipe_->InitBuffer(calcQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(this->cols_, sizeof(float)));
+        this->pipe_->InitBuffer(outBatchQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
+                                AlignBytes(this->cols_, sizeof(float)));
     }
     this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
                             AlignBytes(colsAsInt8_, sizeof(int8_t)));
@@ -225,6 +236,16 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(colsAsInt8_), 0, 0, 0};
 
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
+    LocalTensor<int8_t> outBatchLocal;
+    int64_t outBatchRows = 1;
+    int64_t outBatchCount = 0;
+    int64_t outBatchStart = 0;
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        if (colsAsInt8_ < BLOCK_BYTES) {
+            outBatchLocal = outBatchQueue_.AllocTensor<int8_t>();
+            outBatchRows = Max(static_cast<int64_t>(1), AlignBytes(this->cols_, sizeof(float)) / colsAsInt8_);
+        }
+    }
     int32_t lastExpertIdx = -1;
 
     for (int64_t i = startRowIdx; i < endRowIdx && i < this->activeNum_; i++) {
@@ -268,12 +289,35 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
         LocalTensor<float> scaleLocal = scaleOutQueue_.DeQue<float>();
         DataCopyPad(expandedScaleGm_[i], scaleLocal, {1, 4, 0, 0, 0});
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
-        DataCopyPad(expandedXGm_[i * colsAsInt8_], outLocal, copyOutParams);
+        if constexpr (IsSameType<QuantT, int4b_t>::value) {
+            if (colsAsInt8_ < BLOCK_BYTES) {
+                if (outBatchCount == 0) {
+                    outBatchStart = i;
+                }
+                CopySmallFullLoadQuantOutToBatch(outBatchLocal, outLocal, outBatchCount * colsAsInt8_, colsAsInt8_);
+                outBatchCount++;
+                if (outBatchCount == outBatchRows || i == endRowIdx - 1 || i == this->activeNum_ - 1) {
+                    DataCopyExtParams copyOutBatchParams{
+                        1, static_cast<uint32_t>(outBatchCount * colsAsInt8_), 0, 0, 0};
+                    DataCopyPad(expandedXGm_[outBatchStart * colsAsInt8_], outBatchLocal, copyOutBatchParams);
+                    outBatchCount = 0;
+                }
+            } else {
+                DataCopyPad(expandedXGm_[i * colsAsInt8_], outLocal, copyOutParams);
+            }
+        } else {
+            DataCopyPad(expandedXGm_[i * colsAsInt8_], outLocal, copyOutParams);
+        }
 
         inputXOutQueue_.FreeTensor(outLocal);
         scaleOutQueue_.FreeTensor(scaleLocal);
     }
 
+    if constexpr (IsSameType<QuantT, int4b_t>::value) {
+        if (colsAsInt8_ < BLOCK_BYTES) {
+            outBatchQueue_.FreeTensor(outBatchLocal);
+        }
+    }
     smoothInQueue_.FreeTensor(smoothLocal);
     this->sortedRowIdxQueue_.template EnQue<int32_t>(sortedRowIdx);
     this->sortedExpertIdxQueue_.template EnQue<int32_t>(sortedExpertIdx);
