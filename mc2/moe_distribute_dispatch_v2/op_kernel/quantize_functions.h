@@ -304,7 +304,7 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
         MicroAPI::MaskReg p1;
         MicroAPI::MaskReg p2;
         // MicroAPI::MaskReg maskHalf = MicroAPI::CreateMask<uint16_t>();
-        constexpr uint32_t B16_HALF_MASK_ELEMENT_NUM = 64;
+        uint32_t B16_HALF_MASK_ELEMENT_NUM = 64;
         MicroAPI::MaskReg dataMaskB16Half = MicroAPI::UpdateMask<uint16_t>(B16_HALF_MASK_ELEMENT_NUM);
         MicroAPI::MaskReg maskFloat = MicroAPI::CreateMask<uint32_t>();
 
