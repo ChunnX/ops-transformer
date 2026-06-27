@@ -350,7 +350,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
                OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(valuesOutType_ != ge::DT_BF16,
-               OP_LOGE(opName_, "The data types of the output sparse_values must be float32."),
+               OP_LOGE(opName_, "The data types of the output sparse_values must be bfloat16."),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
