@@ -160,9 +160,9 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
                         DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +         //grad_h_in
                         DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +               //hc_before_norm
                         DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +                         //inv_rms
+                        DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +               //grad_h_res
                         DOUBLE_BUFFER * bsLoopDataLen_ * n_* Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +     //xFP32
                         DOUBLE_BUFFER * bsLoopDataLen_ * n_* Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +     //grad_x_from_in
-                        DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +               //grad_h_res
                         Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + ubBlock_ +                                     //grad_alpha And grad_bias
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                                    //grad_h_pre
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //grad_z
@@ -171,19 +171,10 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
                         Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //z
                         Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf1_
                         Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +                                     //gradCalcBuf2_
+                        5 * Ops::Base::CeilAlign(bsLoopDataLen_ *n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                            //tmpBuf
+                        2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //sumOutBuf
                         skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                //normOutBuf_
-                        6 * 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +
-                        9 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);
-                        // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpDiv3Buf_
-                        // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //tmpMulBuf_
-                        // 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +                 //sumOutBuf_
-                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //normOutBuf_
-                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResBuf_
-                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResMaxBuf_
-                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //zResMaxIdxBuf_
-                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //gradXRowNormedBuf_
-                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +                               //skGradBuf_
-                        // bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);                                //expGradBuf_
+                        4 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);                            //idxBuf~maxBuf
 
         restSize = ubSize_ - occupy;
         if (restSize <= 0 && bsLoopDataLen_ > 1) {
