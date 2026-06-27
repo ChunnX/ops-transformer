@@ -466,7 +466,6 @@ def planB_kernel3(
     n_block = BLOCK_N
     s1_tile_num = _ceil_div(S1, s1_block)
     n_num = K // n_block
-    nidx1_num = Nidx1 // BLOCK_NIDX1
     dq_num = DQueryIndex // BLOCK_K
 
     @T.prim_func
@@ -488,22 +487,20 @@ def planB_kernel3(
 
             # C: MM6 gemm + atomic_add
             with T.Scope("C"):
-                RG_L1 = T.alloc_L1((BLOCK_NIDX1, n_block), input_dtype)
+                RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
                 GKIT_L1 = T.alloc_L1((BLOCK_K, n_block), input_dtype)
-                DQ_L0C = T.alloc_L0C((BLOCK_NIDX1, BLOCK_K), calc_dtype)
+                DQ_L0C = T.alloc_L0C((Nidx1, BLOCK_K), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    for nidx_c in T.serial(nidx1_num):
-                        nidx_s = nidx_c * BLOCK_NIDX1
-                        T.copy(reluGradRes[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end], RG_L1)
-                        for dq_c in T.serial(dq_num):
-                            dq_s = dq_c * BLOCK_K
-                            T.copy(GatherKeyIndexT[bz, s1_row, dq_s:dq_s + BLOCK_K, k_start:k_end], GKIT_L1)
-                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
-                            T.tile.atomic_add(
-                                dQueryIndex[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, dq_s:dq_s + BLOCK_K],
-                                DQ_L0C,
-                            )
+                    for dq_c in T.serial(dq_num):
+                        dq_s = dq_c * BLOCK_K
+                        T.copy(reluGradRes[bz, s1_row, 0:Nidx1, k_start:k_end], RG_L1)
+                        T.copy(GatherKeyIndexT[bz, s1_row, dq_s:dq_s + BLOCK_K, k_start:k_end], GKIT_L1)
+                        T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
+                        T.tile.atomic_add(
+                            dQueryIndex[bz, s1_row, 0:Nidx1, dq_s:dq_s + BLOCK_K],
+                            DQ_L0C,
+                        )
 
                 T.set_cross_flag("FIX", 1)
 
