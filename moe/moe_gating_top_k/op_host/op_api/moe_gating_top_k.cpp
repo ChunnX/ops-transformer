@@ -42,15 +42,14 @@ MoeGatingTopKResult MoeGatingTopK(
     auto out_out_alloc = executor->AllocTensor(out_out->GetViewShape(), out_out->GetDataType(), Format::FORMAT_ND);
 
     MoeGatingTopKResult emptyResult = {nullptr, nullptr, nullptr};
-    if (!y->IsEmpty()) {
-        auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeGatingTopK,
-            OP_INPUT(x, bias, input_ids, tid2eid),
-            OP_OUTPUT(y, expert_idx, out_out_alloc),
-            OP_ATTR(k, k_group, group_count, group_select_mode, renorm, norm_type,
-                   out_flag, routed_scaling_factor, eps));
-        OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return emptyResult,
-                                            "MoeGatingTopK ADD_TO_LAUNCHER_LIST_AICORE failed.");
-    }
+    auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeGatingTopK,
+        OP_INPUT(x, bias, input_ids, tid2eid),
+        OP_OUTPUT(y, expert_idx, out_out_alloc),
+        OP_ATTR(k, k_group, group_count, group_select_mode, renorm, norm_type,
+               out_flag, routed_scaling_factor, eps));
+    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return emptyResult,
+                                        "MoeGatingTopK ADD_TO_LAUNCHER_LIST_AICORE failed.");
+
     MoeGatingTopKResult result = {y, expert_idx, out_out_alloc};
     return result;
 }

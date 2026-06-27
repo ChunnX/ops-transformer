@@ -95,7 +95,6 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKV2GetWorkspaceSize(
     const aclTensor* yOut, const aclTensor* expertIdxOut, const aclTensor* outOut,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeGatingTopKV2,
         DFX_IN(x, biasOptional, inputIdsOptional, tid2eidOptional,
               k, kGroup, groupCount, groupSelectMode, renorm, normType,
