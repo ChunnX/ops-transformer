@@ -313,6 +313,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
             copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
             COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
     }
+    // Tensor用处：Level1DispatchUrma 中按 (targetServer, localTokenIdx) 去重。
+    uint32_t sendDedupMaskTensorAddr = copyTmpBaseAddr + 2U * COPY_TMP_BUFFER_SIZE;
+    sendDedupMaskTensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, sendDedupMaskTensorAddr,
+        SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
+    Duplicate<uint32_t>(sendDedupMaskTensor_, 0, SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的tokenCnt数；
     // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至32字节；
     uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr + 6U * COPY_TMP_BUFFER_SIZE;
@@ -320,13 +325,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
         static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
         expertTokenNumsOutTensorSize / sizeof(int32_t));
-    // Tensor用处：Level1DispatchUrma 中按 (targetServer, localTokenIdx) 去重。
-    uint32_t sendDedupMaskTensorAddr = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
-    sendDedupMaskTensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, sendDedupMaskTensorAddr,
-        SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
-    Duplicate<uint32_t>(sendDedupMaskTensor_, 0, SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
     // 记录当前已被使用的ub地址，用于后续TripleInfoCalAndDispatch函数中分核后神申请tripleTensor_
-    ubBufferUsedAddr_ = sendDedupMaskTensorAddr + SEND_DEDUP_MASK_UB_BYTES;
+    ubBufferUsedAddr_ = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
     CreateVecIndex(topkIndexTensor_, 0, (topkIndexTensorSize / sizeof(int32_t)));
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
