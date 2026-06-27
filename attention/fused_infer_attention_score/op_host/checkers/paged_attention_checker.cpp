@@ -481,9 +481,9 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuant910B(const FiaTilin
             (fiaInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_128 ||
              fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_128 != 0)) {
             OP_LOGE_FOR_INVALID_VALUE(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                        "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) +
-                                            " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) + ", " +
-                                            std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
+                                      "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) +
+                                      " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_128) + ", " +
+                                      std::to_string(BLOCK_SIZE_MAX_FOR_NO_QUANT) + "]");
             return ge::GRAPH_FAILED;
         }
         // GQA D != 64/128, QS = 1 [16, 512]且16对齐
@@ -491,9 +491,9 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeNonQuant910B(const FiaTilin
             (fiaInfo.blockSize > BLOCK_SIZE_MAX || fiaInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16 ||
              fiaInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0)) {
             OP_LOGE_FOR_INVALID_VALUE(fiaInfo.opName, "block_size", std::to_string(fiaInfo.blockSize).c_str(),
-                                        "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
-                                            " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
-                                            std::to_string(BLOCK_SIZE_MAX) + "]");
+                                      "a multiple of " + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) +
+                                      " in range of [" + std::to_string(BLOCK_SIZE_ALIGN_SIZE_16) + ", " +
+                                      std::to_string(BLOCK_SIZE_MAX) + "]");
             return ge::GRAPH_FAILED;
         }
     }
