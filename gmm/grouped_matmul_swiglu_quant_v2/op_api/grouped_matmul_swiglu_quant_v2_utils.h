@@ -524,8 +524,8 @@ protected:
         return true;
     }
 
-
-    bool CheckMXExpectShape(int64_t m, int64_t k, int64_t n, int64_t e) {
+    bool CheckMXExpectShape(int64_t m, int64_t k, int64_t n, int64_t e)
+    {
         // x的shape期望为[M, K]
         op::Shape xExpectShape = {m, k};
         // xScale的shape期望为[M, CeilDiv(K, 64), 2]
@@ -568,9 +568,8 @@ protected:
             return false;
         }
 
-        return true;  
+        return true;
     }
-
 
     bool CheckMXMultiWeightShape()
     {
@@ -602,7 +601,8 @@ protected:
         return CheckMXExpectShape(m, k, n, e);
     }
 
-    bool CheckMxSingleWeightShape() {
+    bool CheckMxSingleWeightShape()
+    {
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0); // 从x的第0维获取m
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1); // 从x的第1维获取k
         // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n

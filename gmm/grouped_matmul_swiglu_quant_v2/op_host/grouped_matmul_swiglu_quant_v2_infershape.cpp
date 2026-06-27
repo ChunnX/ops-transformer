@@ -60,7 +60,7 @@ bool  isSupportedInputDtypeForDavid(ge::DataType dtype)
 }
 
 static bool IsMxA8W4MultiWeightScenario(gert::InferShapeContext *context, const gert::Shape *weightScaleShape,
-                                         const gert::RuntimeAttrs *attrs)
+                                        const gert::RuntimeAttrs *attrs)
 {
     const int64_t *quantModePtr = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
     if (quantModePtr == nullptr || *quantModePtr != static_cast<int64_t>(QUANT_MODE_MX_TYPE)) {
