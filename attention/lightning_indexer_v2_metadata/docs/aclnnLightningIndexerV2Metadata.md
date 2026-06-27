@@ -21,6 +21,7 @@
     3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
 ## 函数原型
+
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnLightningIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnLightningIndexerV2Metadata"执行计算
 
 ``` cpp
@@ -55,6 +56,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 ```
 
 ## aclnnLightningIndexerV2MetadataGetWorkspaceSize
+
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
@@ -277,6 +279,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## aclnnLightningIndexerV2Metadata
+
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -320,29 +323,30 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-  - aclnnLightningIndexerV2Metadata默认确定性实现
 
-  - Batch取值规则
-    - 优先获取sequsedQOptional中的Batch信息
-    - 如果未传入sequsedQOptional，优先获取cuSeqlensQOptional中的Batch信息
-    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
-    - 除上所述，使用batchSize
-  - Sequence Length取值规则
-    - 优先获取sequsedQOptional中的Sequence Length信息
-    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息
-    - 除上所述，使用maxSeqlenQ
-    - Key与Query的获取规则一致
-  - layout约束
-    - 当layoutKOptional为PA_BBND时，layoutQOptional可以任意取值
-    - 除上所述，layoutQOptional必须与layoutKOptional保持一致
-  - BSND场景
-    - 当传入的layoutQOptional为"BSND"时，视为使用BSND场景
-    - 在未传入cuSeqlensQOptional和sequsedQOptional的情况下，必传batchSize、maxSeqlenQ、maxSeqlenK参数
-  - TND场景
-    - 当传入的layoutQOptional为"TND"时，视为使用TND场景
-    - 必传cuSeqlensQOptional、cuSeqlensKOptional参数
+  - aclnnLightningIndexerV2Metadata默认确定性实现。
+  - Batch取值规则：
+    - 优先获取sequsedQOptional中的Batch信息。
+    - 如果未传入sequsedQOptional，优先获取cuSeqlensQOptional中的Batch信息。
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息。
+    - 除上所述，使用batchSize。
+  - Sequence Length取值规则：
+    - 优先获取sequsedQOptional中的Sequence Length信息。
+    - 如果未传入sequsedQOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Sequence Length信息。
+    - 除上所述，使用maxSeqlenQ。
+    - Key与Query的获取规则一致。
+  - layout约束：
+    - 当layoutKOptional为PA_BBND时，layoutQOptional可以任意取值。
+    - 除上所述，layoutQOptional必须与layoutKOptional保持一致。
+  - BSND场景：
+    - 当传入的layoutQOptional为"BSND"时，视为使用BSND场景。
+    - 在未传入cuSeqlensQOptional和sequsedQOptional的情况下，必传batchSize、maxSeqlenQ、maxSeqlenK参数。
+  - TND场景：
+    - 当传入的layoutQOptional为"TND"时，视为使用TND场景。
+    - 必传cuSeqlensQOptional、cuSeqlensKOptional参数。
 
 ## 调用示例
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ``` cpp

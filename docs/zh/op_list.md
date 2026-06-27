@@ -205,7 +205,7 @@
     <td>✗</td>	 
     <td>AI CPU</td>	 
     <td>lightning_indexer_v2算子的前置算子，用于计算lightning_indexer_v2的负载均衡。</td>	 
-  </tr>
+</tr>
   <tr>
     <td>attention</td>
     <td><a href="../../attention/masked_causal_conv1d/README.md">masked_causal_conv1d</a></td>
