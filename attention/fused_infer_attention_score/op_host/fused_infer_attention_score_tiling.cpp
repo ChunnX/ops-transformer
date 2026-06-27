@@ -1612,7 +1612,8 @@ static bool CheckFAIDSizePA5Dim(int64_t tempD, const gert::Shape *tempKShape,
     constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
     bool isFAIDSize = (tempD <= 256U && tempKD <= 256 && tempVD <= 256) &&
             (tempD == tempKD && tempD == tempVD) && (blockSize % BLOCK_SIZE_ALIGN_16 == 0);
-    isFAIDSize = isFAIDSize && !(tempD == 64 || tempD == 128); // D=64 and D=128 are excluded as they use other optimized paths
+    // D=64 and D=128 are excluded as they use other optimized paths
+    isFAIDSize = isFAIDSize && !(tempD == 64 || tempD == 128);
     bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
             (blockSize <= MAX_BLOCK_SIZE);
     return isFAIDSize && blockSizeSupported;
