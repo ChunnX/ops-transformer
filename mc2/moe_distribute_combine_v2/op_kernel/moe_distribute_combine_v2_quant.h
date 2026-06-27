@@ -16,17 +16,17 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_V2_QUANT_H
 #define MOE_DISTRIBUTE_COMBINE_V2_QUANT_H
 
-#if __has_include("../common/op_kernel/check_winsize.h")
-#include "../common/op_kernel/moe_distribute_v2_constant.h"
-#include "../common/op_kernel/moe_distribute_v2_base.h"
+#if __has_include("../common/moe_distribute_v2_constant.h")
+#include "../common/moe_distribute_v2_constant.h"
+#include "../common/moe_distribute_v2_base.h"
 #else
 #include "../../common/op_kernel/moe_distribute_v2_constant.h"
 #include "../../common/op_kernel/moe_distribute_v2_base.h"
 #endif
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-#if __has_include("../common/op_kernel/quantize_functions.h")
-#include "../common/op_kernel/quantize_functions.h"
+#if __has_include("../common/quantize_functions.h")
+#include "../common/quantize_functions.h"
 #else
 #include "../../common/op_kernel/quantize_functions.h"
 #endif

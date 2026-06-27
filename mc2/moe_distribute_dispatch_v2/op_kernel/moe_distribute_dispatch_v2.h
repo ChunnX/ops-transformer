@@ -27,46 +27,27 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
-#if __has_include("../common/op_kernel/moe_distribute_v2_constant.h")
-#include "../common/op_kernel/moe_distribute_v2_constant.h"
+#if __has_include("../common/moe_distribute_v2_constant.h")
+#include "../common/moe_distribute_v2_constant.h"
 #else
 #include "../../common/op_kernel/moe_distribute_v2_constant.h"
 #endif
 #include "moe_distribute_dispatch_v2_quant.h"
-#if __has_include("../common/op_kernel/moe_distribute_elastic.h")
-#include "../common/op_kernel/moe_distribute_elastic.h"
+#if __has_include("../common/moe_distribute_v2_base.h")
+#include "../common/moe_distribute_elastic.h"
+#include "../common/moe_distribute_v2_base.h"
+#include "../common/check_winsize.h"
+#include "../common/mc2_moe_context.h"
+#include "../common/moe_distribute_base.h"
+#include "../common/hccl_context_holder.h"
+#include "../common/mc2_moe_context_holder.h"
 #else
 #include "../../common/op_kernel/moe_distribute_elastic.h"
-#endif
-
-#if __has_include("../common/op_kernel/moe_distribute_v2_base.h")
-#include "../common/op_kernel/moe_distribute_v2_base.h"
-#else
 #include "../../common/op_kernel/moe_distribute_v2_base.h"
-#endif
-#if __has_include("../common/op_kernel/check_winsize.h")
-#include "../common/op_kernel/check_winsize.h"
-#else
 #include "../../common/op_kernel/check_winsize.h"
-#endif
-#if __has_include("../common/op_kernel/mc2_moe_context.h")
-#include "../common/op_kernel/mc2_moe_context.h"
-#else
 #include "../../common/op_kernel/mc2_moe_context.h"
-#endif
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#else
 #include "../../common/op_kernel/moe_distribute_base.h"
-#endif
-#if __has_include("../common/op_kernel/hccl_context_holder.h")
-#include "../common/op_kernel/hccl_context_holder.h"
-#else
 #include "../../common/op_kernel/hccl_context_holder.h"
-#endif
-#if __has_include("../common/op_kernel/mc2_moe_context_holder.h")
-#include "../common/op_kernel/mc2_moe_context_holder.h"
-#else
 #include "../../common/op_kernel/mc2_moe_context_holder.h"
 #endif
 

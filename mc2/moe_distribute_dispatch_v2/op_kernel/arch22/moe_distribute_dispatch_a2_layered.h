@@ -23,13 +23,19 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_tiling.h"
-#include "../../common/op_kernel/moe_distribute_base.h"
-#include "../../common/op_kernel/mc2_kernel_utils.h"
-
-#include "../../common/op_kernel/moe_distribute_a2_base.h"
-#include "../../common/op_kernel/moe_distribute_a2_adump.h"
-#include "../../common/op_kernel/moe_distribute_a2_constant.h"
-
+#if __has_include("../../common/moe_distribute_base.h")
+#include "../../common/moe_distribute_base.h"
+#include "../../common/mc2_kernel_utils.h"
+#include "../../common/moe_distribute_a2_base.h"
+#include "../../common/moe_distribute_a2_adump.h"
+#include "../../common/moe_distribute_a2_constant.h"
+#else
+#include "../../../common/op_kernel/moe_distribute_base.h"
+#include "../../../common/op_kernel/mc2_kernel_utils.h"
+#include "../../../common/op_kernel/moe_distribute_a2_base.h"
+#include "../../../common/op_kernel/moe_distribute_a2_adump.h"
+#include "../../../common/op_kernel/moe_distribute_a2_constant.h"
+#endif
 namespace MoeDistributeDispatchA2Impl {
 #define TemplateMC2TypeA2layeredClass typename XType, typename ExpandXOutType,bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateMC2TypeA2layeredFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
