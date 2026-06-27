@@ -53,8 +53,8 @@ static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_X_OUT_R
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_ROW_IDX_OUT = {DataType::DT_INT32};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPERT_TOKENS_COUNT_OR_CUMSUMOUT = {DataType::DT_INT64};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT = {DataType::DT_FLOAT};
-static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT_REGBASE = {DataType::DT_FLOAT,
-                                                                                               DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_SCALE_OUT_REGBASE = {
+    DataType::DT_FLOAT, DataType::DT_FLOAT8_E8M0};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_TOPK_WEIGHT = {DataType::DT_FLOAT};
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_EXPANDED_TOPK_WEIGHT_OUT = {DataType::DT_FLOAT};
 
@@ -114,33 +114,28 @@ static inline bool CheckDtypeValidRegbase(const aclTensor *x, const aclTensor *e
     return true;
 }
 
-ACLNN_API aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(const aclTensor *x, 
-                                                            const aclTensor *expertIdx,
-                                                            const aclTensor *scaleOptional,
-                                                            const aclTensor *offsetOptional, 
-                                                            const aclTensor *topk_weightOptional,
-                                                            int64_t activeNum, 
-                                                            int64_t expertCapacity, 
-                                                            int64_t expertNum, 
-                                                            int64_t dropPadMode, 
-                                                            int64_t expertTokensNumType, 
-                                                            bool expertTokensNumFlag, 
-                                                            int64_t quantMode, 
-                                                            const aclIntArray *activeExpertRangeOptional, 
-                                                            int64_t rowIdxType, 
-                                                            const aclTensor *expandedXOut, 
-                                                            const aclTensor *expandedRowIdxOut, 
-                                                            const aclTensor *expertTokensCountOrCumsumOut, 
-                                                            const aclTensor *expandedScaleOut, 
-                                                            const aclTensor *expanded_topk_weightOut, 
-                                                            uint64_t *workspaceSize, 
-                                                            aclOpExecutor **executor)                                                                                
+ACLNN_API aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(
+    const aclTensor *x, const aclTensor *expertIdx,
+    const aclTensor *scaleOptional, const aclTensor *offsetOptional,
+    const aclTensor *topk_weightOptional, int64_t activeNum,
+    int64_t expertCapacity, int64_t expertNum, int64_t dropPadMode,
+    int64_t expertTokensNumType, bool expertTokensNumFlag,
+    int64_t quantMode, const aclIntArray *activeExpertRangeOptional,
+    int64_t rowIdxType, const aclTensor *expandedXOut,
+    const aclTensor *expandedRowIdxOut,
+    const aclTensor *expertTokensCountOrCumsumOut,
+    const aclTensor *expandedScaleOut,
+    const aclTensor *expanded_topk_weightOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {   
-    L2_DFX_PHASE_1(aclnnMoeInitRoutingV4, 
-                    DFX_IN(x, expertIdx, scaleOptional, offsetOptional, topk_weightOptional,
-                            activeNum, expertCapacity, expertNum, dropPadMode, 
-                            expertTokensNumType, expertTokensNumFlag, quantMode, activeExpertRangeOptional, rowIdxType), 
-                    DFX_OUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut, expanded_topk_weightOut));
+    L2_DFX_PHASE_1(aclnnMoeInitRoutingV4,
+                   DFX_IN(x, expertIdx, scaleOptional, offsetOptional, topk_weightOptional,
+                          activeNum, expertCapacity, expertNum, dropPadMode,
+                          expertTokensNumType, expertTokensNumFlag, quantMode,
+                          activeExpertRangeOptional, rowIdxType),
+                   DFX_OUT(expandedXOut, expandedRowIdxOut,
+                           expertTokensCountOrCumsumOut, expandedScaleOut,
+                           expanded_topk_weightOut));
 
     // 联动约束校验：topk_weight和expanded_topk_weight必须同时传入或同时不传入
     if ((topk_weightOptional != nullptr && expanded_topk_weightOut == nullptr) ||
@@ -193,14 +188,18 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(const aclTensor *x,
     }
 
     auto routingResult =
-        std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(nullptr, nullptr, nullptr, nullptr, nullptr);
+        std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
+            nullptr, nullptr, nullptr, nullptr, nullptr);
     // 调用v3版本的l0接口进行计算
     routingResult = l0op::MoeInitRoutingV3(
-        xContiguous, expertIdxContiguous, scaleContiguous, offsetContiguous, 
-        topkWeightContiguous, activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
-        quantMode, activeExpertRangeOptional, rowIdxType, expandedXOut, expandedRowIdxOut, 
-        expertTokensCountOrCumsumOut, expandedScaleOut, expanded_topk_weightOut, uniqueExecutor.get());
-    auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_, expandedScaleOut_, expandedTopkWeightOut_] = routingResult;
+        xContiguous, expertIdxContiguous, scaleContiguous, offsetContiguous,
+        topkWeightContiguous, activeNum, expertCapacity, expertNum, dropPadMode,
+        expertTokensNumType, expertTokensNumFlag,
+        quantMode, activeExpertRangeOptional, rowIdxType, expandedXOut,
+        expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut,
+        expanded_topk_weightOut, uniqueExecutor.get());
+    auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_,
+          expandedScaleOut_, expandedTopkWeightOut_] = routingResult;
     bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr) ||
         (expertTokensCountOrCumsumOut_ == nullptr) || (expandedScaleOut_ == nullptr);
 
@@ -226,7 +225,8 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV4GetWorkspaceSize(const aclTensor *x,
 
     // ViewCopy 仅在expanded_topk_weight传入时执行
     if (expanded_topk_weightOut != nullptr && expandedTopkWeightOut_ != nullptr) {
-        auto viewCopyExpandedTopkWeightOutResult = l0op::ViewCopy(expandedTopkWeightOut_, expanded_topk_weightOut, uniqueExecutor.get());
+        auto viewCopyExpandedTopkWeightOutResult =
+            l0op::ViewCopy(expandedTopkWeightOut_, expanded_topk_weightOut, uniqueExecutor.get());
         CHECK_RET(viewCopyExpandedTopkWeightOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
