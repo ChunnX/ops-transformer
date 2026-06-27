@@ -138,6 +138,8 @@ constexpr uint32_t ARRAY_LENGTH = 3;
 constexpr uint32_t DETER_LENGTH = 4;
 constexpr uint32_t NZ_OUT_MIN_S_SIZE = 2048;
 constexpr uint32_t FP16_C0_SIZE = 16;
+constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE = 2048;
+constexpr uint32_t TND_SWIZZLE_MIN_S1_SIZE_1 = 1024;
 
 constexpr uint32_t SFMG_DEFAULT_BURST_NUM = 128;
 constexpr uint32_t SFMG_DOUBLE_BUFFER_NUM = 2;
