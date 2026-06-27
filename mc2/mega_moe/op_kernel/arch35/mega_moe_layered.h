@@ -1958,11 +1958,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
                 DispatchLevel2(gmmAddrInfo, localExpertId); // L2 dispatch: server内 ReadNbi 读数据 + 三元组 + flag
             }
         }
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
-        }
+        // if (subBlockIdx_ == 0) {
+        //     MegaMoeImpl::GroupMatmulSwigluQuant<
+        //         QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+        //         epilogueOp_, params_, gmm1State.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+        // }
     }
     // EndSync(vecSetSyncCom_);
     // if constexpr(g_coreType == AIV) {
