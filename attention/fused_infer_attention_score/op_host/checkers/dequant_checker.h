@@ -71,12 +71,36 @@ private:
     ge::graphStatus CheckDequantScaleKVMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleQueryMLAFullquant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapePertensor(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckDequantScaleShapeMXFP8Query4D(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &queryInputShape, const gert::Shape &dequantScaleQueryShape, int64_t mxfp8BlockSize);
+    ge::graphStatus CheckDequantScaleShapeMXFP8Query5D(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &queryInputShape, const gert::Shape &dequantScaleQueryShape, int64_t mxfp8BlockSize);
+    ge::graphStatus CheckDequantScaleShapeMXFP8Query(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &queryInputShape, const gert::Shape &dequantScaleQueryShape,
+        uint32_t dequantScaleQueryDimNum, int64_t mxfp8BlockSize, bool enableMxfp8Decode);
+    ge::graphStatus CheckDequantScaleShapeMXFP8KVPA(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &keyInputShape, const gert::Shape &valueInputShape,
+        uint32_t keyDimNum, uint32_t valueDimNum, int32_t &dimIndex);
+    ge::graphStatus CheckDequantScaleShapeMXFP8KVNonPA(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &keyInputShape, const gert::Shape &valueInputShape,
+        const gert::Shape &keyAntiquantScaleShape, const gert::Shape &valueAntiquantScaleShape,
+        int64_t mxfp8BlockSize);
+    ge::graphStatus CheckDequantScaleShapeMXFP8KV(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &keyInputShape, const gert::Shape &valueInputShape,
+        const gert::Shape &keyAntiquantScaleShape, const gert::Shape &valueAntiquantScaleShape,
+        uint32_t keyDimNum, uint32_t valueDimNum, int64_t mxfp8BlockSize, int32_t &dimIndex);
     ge::graphStatus CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleNZShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQuantScale1ShapePerblock(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQuantScale1ShapeMXFP8(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckQuantScale1ShapeFP8GQA(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantScaleShapePerblockNTD(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &dequantScaleQueryShape, const gert::Shape &keyAntiquantScaleShape,
+        const gert::Shape &valueAntiquantScaleShape, uint32_t fp8QBlockSize, uint32_t fp8KVBlockSize) const;
+    ge::graphStatus CheckDequantScaleShapePerblockNonNTD(const FiaTilingInfo &fiaInfo,
+        const gert::Shape &dequantScaleQueryShape, const gert::Shape &keyAntiquantScaleShape,
+        const gert::Shape &valueAntiquantScaleShape, uint32_t fp8QBlockSize, uint32_t fp8KVBlockSize) const;
     ge::graphStatus CheckDequantScaleShapePerblock(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckDequantScaleShapeFP8GQA(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleShapeFullquant(const FiaTilingInfo &fiaInfo);
@@ -98,6 +122,22 @@ private:
     // SinglePara
     ge::graphStatus CheckSingleParaForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAntiquantModeForAntiquant(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckInputKVTypeForAntiquantPerChannel(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType, const gert::Tensor *keyAntiquantScaleTensor);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerToken(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTokenPA(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTensorHead(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTokenHead(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTokenHeadPA(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantMixed(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
+    ge::graphStatus CheckInputKVTypeForAntiquantPerTokenGroup(const FiaTilingInfo &fiaInfo,
+        ge::DataType inputKvType);
     ge::graphStatus CheckInputKVTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     
     // Existence
@@ -115,6 +155,20 @@ private:
 
     // MultiPara
     ge::graphStatus CheckMultiParaForAntiquant(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckScaleTypeForAntiquantSameAsQuery(const FiaTilingInfo &fiaInfo,
+        const gert::CompileTimeTensorDesc *keyAntiquantScaleDesc,
+        const gert::CompileTimeTensorDesc *valueAntiquantScaleDesc,
+        const gert::CompileTimeTensorDesc *queryDesc, const std::string &modeStr);
+    ge::graphStatus CheckScaleTypeForAntiquantFloat32(const FiaTilingInfo &fiaInfo,
+        const gert::CompileTimeTensorDesc *keyAntiquantScaleDesc,
+        const gert::CompileTimeTensorDesc *valueAntiquantScaleDesc, const std::string &modeStr);
+    ge::graphStatus CheckScaleTypeForAntiquantMixed(const FiaTilingInfo &fiaInfo,
+        const gert::CompileTimeTensorDesc *keyAntiquantScaleDesc,
+        const gert::CompileTimeTensorDesc *valueAntiquantScaleDesc,
+        const gert::CompileTimeTensorDesc *queryDesc);
+    ge::graphStatus CheckScaleTypeForAntiquantPerTokenGroup(const FiaTilingInfo &fiaInfo,
+        const gert::CompileTimeTensorDesc *keyAntiquantScaleDesc,
+        const gert::CompileTimeTensorDesc *valueAntiquantScaleDesc);
     ge::graphStatus CheckScaleTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckScaleShapeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckOffsetTypeForAntiquant(const FiaTilingInfo &fiaInfo);
