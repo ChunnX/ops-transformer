@@ -17,15 +17,12 @@ if (BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
   file(GLOB_RECURSE JSON_FILE ${CMAKE_CURRENT_SOURCE_DIR}/*.json)
   set_property(GLOBAL APPEND PROPERTY AICPU_JSON_FILES ${JSON_FILE})
 
-  file(GLOB AICPU_DISPATCH_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*_aicpu*.cpp)
-  file(GLOB_RECURSE AICPU_ARCH_SRC ${CMAKE_CURRENT_SOURCE_DIR}/arch*/*_aicpu*.cpp)
-  set(AICPU_SRC ${AICPU_DISPATCH_SRC} ${AICPU_ARCH_SRC})
+  file(GLOB AICPU_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*_aicpu*.cpp)
   message(STATUS "[sparse_lightning_indexer_kl_loss_grad_metadata] Found aicpu sources: ${AICPU_SRC}")
 
   set(OBJ_NAME sparse_lightning_indexer_kl_loss_grad_metadata_cust_obj)
   add_aicpu_cust_kernel_modules(${OBJ_NAME})
   target_sources(${OBJ_NAME} PRIVATE ${AICPU_SRC})
-  target_include_directories(${OBJ_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
