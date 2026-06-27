@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- API功能：MoE的routing计算，根据[torch\_npu.npu\_moe\_gating\_top\_k\_softmax](torch_npu-npu_moe_gating_top_k_softmax.md)的计算结果做routing处理，支持不量化、静态量化和动态量化模式。相较于`npu\_moe\_init\_routing\_v2`，新增可选输入`topk\_weight`和可选输出`expanded\_topk\_weight`，支持对topkWeight按排序后的索引进行重排，使得`expanded\_topk\_weight`与`expanded\_x`一一对应。`topk\_weight`与`expanded\_topk\_weight`必须同时传入或同时不传入。
+- API功能：MoE的routing计算，根据torch_npu-npu_moe_gating_top_k_softmax的计算结果做routing处理，支持不量化、静态量化和动态量化模式。相较于`npu\_moe\_init\_routing\_v2`，新增可选输入`topk\_weight`和可选输出`expanded\_topk\_weight`，支持对topkWeight按排序后的索引进行重排，使得`expanded\_topk\_weight`与`expanded\_x`一一对应。`topk\_weight`与`expanded\_topk\_weight`必须同时传入或同时不传入。
 
 - 计算公式：
 
@@ -151,7 +151,7 @@ def moe_init_routing(
 ## 参数说明
 
 - **x** (`Tensor`)：必选参数，表示MoE的输入即token特征输入，要求为2维张量，shape为(NUM\_ROWS, H)。数据类型支持`float16`、`bfloat16`、`float32`、`int8`，数据格式要求为$ND$。
-- **expert\_idx** (`Tensor`)：必选参数，表示[torch\_npu.npu\_moe\_gating\_top\_k\_softmax](torch_npu-npu_moe_gating_top_k_softmax.md)输出每一行特征对应的K个处理专家，要求是2维张量，shape为(NUM\_ROWS, K)，且专家id不能超过专家数。数据类型支持`int32`，数据格式要求为$ND$。
+- **expert\_idx** (`Tensor`)：必选参数，表示torch_npu-npu_moe_gating_top_k_softmax输出每一行特征对应的K个处理专家，要求是2维张量，shape为(NUM\_ROWS, K)，且专家id不能超过专家数。数据类型支持`int32`，数据格式要求为$ND$。
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
 - **scale** (`Tensor`)：可选参数，默认为None，用于计算量化结果的参数。数据类型支持`float32`，数据格式要求为$ND$。如果不输入表示计算时不使用`scale`，且输出`expanded\_scale`中的值无意义。
     - 非量化场景下，如果输入则要求为1维张量，shape为(NUM\_ROWS,)。
