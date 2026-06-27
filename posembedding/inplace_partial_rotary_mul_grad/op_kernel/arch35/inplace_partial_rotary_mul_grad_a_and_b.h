@@ -222,8 +222,8 @@ __aicore__ inline void InplacePartialRotaryMulGradAAndB<TDY, TCOS, IsBroadCast>:
 
     if constexpr (IsBroadCast) {
         // cos/sin 1 shared row, dy bLength rows: treat B as "N" dimension
-        InterleaveModeGradVF<TDY, TCOS>(sinUb, cosUb, inUb, outUb, tilingData_->sliceLength, static_cast<uint16_t>(1),
-                                        static_cast<uint16_t>(bLength));
+        InterleaveModeGradVF<TDY, TCOS>(sinUb, cosUb, inUb, outUb, tilingData_->sliceLength, dSplitCoef_,
+                                        static_cast<uint16_t>(1), static_cast<uint16_t>(bLength));
     } else {
         // cos/sin bLength rows, dy bLength rows: treat B as "S" dimension
         BatchInterleaveModeGradVF<TDY, TCOS, IsBroadCast>(

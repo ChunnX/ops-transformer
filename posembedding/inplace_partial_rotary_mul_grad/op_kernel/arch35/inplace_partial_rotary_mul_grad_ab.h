@@ -73,14 +73,14 @@ __aicore__ inline void InplacePartialRotaryMulGradAB<TDY, TCOS>::Init(GM_ADDR dy
     this->blockIdx_ = GetBlockIdx();
     this->dSplitCoef_ = static_cast<uint16_t>(tilingData_->dSplitCoef);
 
-    this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+    this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_,
                                                        static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
-                         tilingData_->dSplitCoef;
-    this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                         dSplitCoef_;
+    this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_,
                                                         static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
-                          tilingData_->dSplitCoef;
-    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY));
-    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS));
+                          dSplitCoef_;
+    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY) / dSplitCoef_);
+    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TCOS) / dSplitCoef_);
     this->ubFactorBS_ = tilingData_->ubFactorBS;
     this->ubFactorN_ = tilingData_->ubFactorN;
 
@@ -188,7 +188,7 @@ InplacePartialRotaryMulGradAB<TDY, TCOS>::Compute(LocalTensor<TCOS> &sinTensor, 
                                                   LocalTensor<TDY> &dyTensor, LocalTensor<TDY> &dxTensor,
                                                   uint32_t bsCount, uint32_t nCount)
 {
-    InterleaveModeGradVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength,
+    InterleaveModeGradVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength, dSplitCoef_,
                                     static_cast<uint16_t>(bsCount), static_cast<uint16_t>(nCount));
 }
 
