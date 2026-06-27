@@ -32,7 +32,7 @@ inline constexpr int64_t SLI_NUM_HEADS_Q_LOWER_BOUND_A5 = 1;
 inline constexpr int64_t SLI_NUM_HEADS_Q_UPPER_BOUND_A5 = 128;
 inline constexpr int64_t SLI_TOPK_LOWER_BOUND_A5 = 1;
 inline constexpr int64_t SLI_TOPK_UPPER_BOUND_A5 = 2048;
-inline constexpr int64_t SLIKG_METADATA_SIZE = 64;
+inline constexpr int64_t SLIKG_METADATA_SIZE = 64
 
 inline bool IsTensorExistSli(const aclTensor *tensor)
 {
