@@ -455,6 +455,7 @@ def planB_kernel2(
 # Kernel 3: MM6 — dQueryIndex = reluGrad @ GKI (C→V, K-parallel, atomic_add)
 # ==============================================================================
 @tilelang.jit(
+    out_idx=[-1],
     pass_configs=pass_configs,
 )
 def planB_kernel3(
@@ -465,6 +466,7 @@ def planB_kernel3(
     n_block = BLOCK_N
     s1_tile_num = _ceil_div(S1, s1_block)
     n_num = K // n_block
+    nidx1_num = Nidx1 // BLOCK_NIDX1
     dq_num = DQueryIndex // BLOCK_K
 
     @T.prim_func
@@ -484,22 +486,24 @@ def planB_kernel3(
             k_start = n_idx * n_block
             k_end = k_start + n_block
 
-            # C: MM6 gemm + atomic_add
+            # C: MM6 gemm + atomic_add (Nidx1-tiled to keep L0C small)
             with T.Scope("C"):
-                RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
+                RG_L1 = T.alloc_L1((BLOCK_NIDX1, n_block), input_dtype)
                 GKIT_L1 = T.alloc_L1((BLOCK_K, n_block), input_dtype)
-                DQ_L0C = T.alloc_L0C((Nidx1, BLOCK_K), calc_dtype)
+                DQ_L0C = T.alloc_L0C((BLOCK_NIDX1, BLOCK_K), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for dq_c in T.serial(dq_num):
                         dq_s = dq_c * BLOCK_K
-                        T.copy(reluGradRes[bz, s1_row, 0:Nidx1, k_start:k_end], RG_L1)
                         T.copy(GatherKeyIndexT[bz, s1_row, dq_s:dq_s + BLOCK_K, k_start:k_end], GKIT_L1)
-                        T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
-                        T.tile.atomic_add(
-                            dQueryIndex[bz, s1_row, 0:Nidx1, dq_s:dq_s + BLOCK_K],
-                            DQ_L0C,
-                        )
+                        for nidx_c in T.serial(nidx1_num):
+                            nidx_s = nidx_c * BLOCK_NIDX1
+                            T.copy(reluGradRes[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, k_start:k_end], RG_L1)
+                            T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
+                            T.tile.atomic_add(
+                                dQueryIndex[bz, s1_row, nidx_s:nidx_s + BLOCK_NIDX1, dq_s:dq_s + BLOCK_K],
+                                DQ_L0C,
+                            )
 
                 T.set_cross_flag("FIX", 1)
 
@@ -781,13 +785,28 @@ def sparse_lightning_indexer_grad_kl_loss(
 
     # ---- Launch Kernel 3 (MM6: dQueryIndex = reluGrad @ GKI, C→V, atomic_add) ----
     gather_key_index_t = gather_key_index.transpose(-1, -2).contiguous()
+    # out_idx=[-1] may allocate a new output tensor on first call.
+    # Detect this and warm up if needed, then cache the actual tensor.
     d_query_index_ws.zero_()
-    func3(
-        relu_grad,
-        gather_key_index_t,
-        d_query_index_ws,
-    )
-    # d_query_index_ws is modified in-place by T.tile.atomic_add
+    ret = func3(relu_grad, gather_key_index_t, d_query_index_ws)
+    if isinstance(ret, tuple):
+        ret = ret[0]
+    if ret is not None and ret is not d_query_index_ws:
+        # First call: TileLang allocated a new (uninitialized) output tensor.
+        # Zero it and re-run for correct results.
+        d_query_index_ws = ret
+        d_query_index_ws.zero_()
+        ret = func3(relu_grad, gather_key_index_t, d_query_index_ws)
+        if isinstance(ret, tuple):
+            ret = ret[0]
+        if ret is not None:
+            d_query_index_ws = ret
+    elif ret is not None:
+        d_query_index_ws = ret
+    # Update cache so subsequent calls zero the correct tensor
+    ws_list = list(ws)
+    ws_list[7] = d_query_index_ws
+    _workspace_cache[ws_key] = tuple(ws_list)
     # Debug: Python reference MM6 to compare
     rg_flat = relu_grad.float().reshape(B * S1, Nidx1, K)
     gki_flat = gather_key_index.float().reshape(B * S1, K, DQueryIndex)
