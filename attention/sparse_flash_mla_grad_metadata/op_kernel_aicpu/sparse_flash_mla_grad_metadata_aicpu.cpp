@@ -388,7 +388,10 @@ uint32_t SparseFlashMlaGradMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
         for (uint32_t i = 0; i < bIdx; i++) {
-            bsStride += seqUsedPtr[i];
+            if (i == 0) {
+                continue;
+            }
+            bsStride += seqUsedPtr[i - 1];
         }
         bsStride += s1Idx;
         return bsStride;
@@ -821,8 +824,7 @@ bool SparseFlashMlaGradMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 
 bool SparseFlashMlaGradMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::SmlagMetadata* gradMetadataPtr =
-        static_cast<optiling::detail::SmlagMetadata*>metadata_->GetData();
+    optiling::detail::SmlagMetadata* gradMetadataPtr = (optiling::detail::SmlagMetadata*)metadata_->GetData();
     // Grad Metadata Generate
     uint32_t formerCoreProcessNum = CeilDiv(totalNum_, aicCoreNum_);
     uint32_t remainCoreProcessNum = formerCoreProcessNum - 1;
