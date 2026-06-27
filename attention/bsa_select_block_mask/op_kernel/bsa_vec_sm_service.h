@@ -43,13 +43,12 @@ public:
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize);
 
-    __aicore__ inline void SoftmaxSecondPassAndCast(
-        uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx);
-
-
+    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                    uint32_t kChunkStart, uint32_t kChunkSize,
+                                                    uint32_t batchIdx, uint32_t headIdx);
 
 private:
-    BSAConstInfo constInfo; 
+    BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
     static constexpr int32_t BUFFER = 1;
@@ -59,7 +58,7 @@ private:
     // ---- GM 全局张量引用 ----
     GlobalTensor<half> attnScoreFp16GmTensor;              //< 注意力分数 [xBlocks * yBlocks] (FP32→FP16)
     GlobalTensor<T> scoreFp32GmTensor;                 //< Softmax 临时缓冲 (FP32)
-    GlobalTensor<half> softmaxOutGmTensor; 
+    GlobalTensor<half> softmaxOutGmTensor;
 
     TBuf<> uBuf_; //< 统一 UB 缓冲区 (192KB)
 
@@ -77,12 +76,11 @@ private:
 
     // ---- 硬件同步事件 ----
     event_t eventSft = (event_t)3;
-
 };
 
 template <typename BSAT>
-__aicore__ inline void BSAVecSmService<BSAT>::InitParams(const BSAConstInfo &constInfo,
-                                                          const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
+__aicore__ inline void BSAVecSmService<BSAT>::InitParams(
+    const BSAConstInfo &constInfo, const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
@@ -96,7 +94,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<>* uBuf_)
     // ub 划分
     // 根据UB计算，最多可以5次cube，一次vector计算， 即score ub 占用64 * 128 * 5 * 4 = 160k
     // 1个cube计算128 * 128， 计算5次
-    // 一个vector 计算64 * 128 * 5 
+    // 一个vector 计算64 * 128 * 5
     // max 64 * 4 = 0.25k
     // sum 64 * 4 = 0.25k
     // dif (max - global_max) 64 * 4 = 0.25k

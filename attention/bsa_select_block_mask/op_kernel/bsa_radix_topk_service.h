@@ -8,11 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file bsa_select_block_mask_radix_topk.h
+ * \file bsa_radix_topk_service.h
  * \brief
  */
-#ifndef BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
-#define BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
+#ifndef BSA_RADIX_TOPK_SERVICE_H
+#define BSA_RADIX_TOPK_SERVICE_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -50,7 +50,7 @@ private:
     __aicore__ inline void TwiddleInB16(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen,
                                         int32_t roundId, int32_t tileId);
     __aicore__ inline void DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
-    __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId, 
+    __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId,
                                                 int32_t tileId, uint64_t curTileLen);
     __aicore__ inline void CopyIn(TBuf<TPosition::VECIN>& xBuf, uint64_t dataNum, uint64_t xOffset);
     __aicore__ inline void ClearTileTopKInWs();
@@ -1372,4 +1372,4 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 }
 
 
-#endif // BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
+#endif // BSA_RADIX_TOPK_SERVICE_H

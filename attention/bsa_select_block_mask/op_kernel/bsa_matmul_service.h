@@ -8,11 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file bsa_select_block_mask_service_cube.h
+ * \file bsa_matmul_service.h
  * \brief
  */
-#ifndef BSA_SELECT_BLOCK_MASK_SERVICE_CUBE_H
-#define BSA_SELECT_BLOCK_MASK_SERVICE_CUBE_H
+#ifndef BSA_MATMUL_SERVICE_H
+#define BSA_MATMUL_SERVICE_H
 
 /**
  * @file mask_k_comp_service_cube.h
@@ -153,7 +153,6 @@ private:
      * @param pingpongFlag 乒乓槽位 (0 或 1)
      */
     __aicore__ inline void CopyInKToL1(uint32_t kBlockStart, uint32_t kCubeBlockLen, uint8_t pingpongFlag);
-
 
     /**
      * @brief L1→L0A 二维加载（非转置模式）
@@ -577,4 +576,4 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);
 }
 
-#endif // BSA_SELECT_BLOCK_MASK_SERVICE_CUBE_H
+#endif // BSA_MATMUL_SERVICE_H

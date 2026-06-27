@@ -22,8 +22,8 @@
 #include "bsa_select_block_mask_common.h"
 #include "bsa_select_block_mask_tiling_data.h"
 #include "bsa_vector_service.h"
-#include "bsa_select_block_mask_service_cube.h"
-#include "bsa_select_block_mask_radix_topk.h"
+#include "bsa_matmul_service.h"
+#include "bsa_radix_topk_service.h"
 
 using namespace matmul;
 using AscendC::CacheMode;
@@ -69,7 +69,8 @@ private:
                                            uint32_t tokenStart, uint32_t tokenEnd);
     __aicore__ inline void ProcessMatmulSoftmax(uint32_t batchIdx, uint32_t headIdx,
                                                 uint32_t qChunkStart, uint32_t curQChunkSize);
-    __aicore__ inline void ProcessSoftmaxSecondPass(uint32_t qChunkStart, uint32_t curQChunkSize, uint32_t batchIdx, uint32_t headIdx);
+    __aicore__ inline void ProcessSoftmaxSecondPass(uint32_t qChunkStart, uint32_t curQChunkSize,
+                                                    uint32_t batchIdx, uint32_t headIdx);
 
     TPipe *pipe = nullptr;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData = nullptr;
@@ -102,7 +103,6 @@ private:
     GlobalTensor<int32_t> topkWorkspaceGm;
 
     // Output tensor pointers for the 4 new outputs
-
 };
 
 template <typename BSAT>

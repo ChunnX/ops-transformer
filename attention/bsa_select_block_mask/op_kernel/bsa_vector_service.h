@@ -41,7 +41,8 @@ public:
                                    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
                                    GlobalTensor<int64_t> &actualBlockLenQGm,
                                    GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                   GlobalTensor<T> &qCmpOutGm, GlobalTensor<T> &kCmpOutGm, GlobalTensor<half> &softmaxOutGm);
+                                   GlobalTensor<T> &qCmpOutGm, GlobalTensor<T> &kCmpOutGm,
+                                   GlobalTensor<half> &softmaxOutGm);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -57,7 +58,9 @@ public:
                                                 GlobalTensor<T> &kCmpOutGm);
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                         uint32_t kChunkStart, uint32_t kChunkSize);
-    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx);
+    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                    uint32_t kChunkStart, uint32_t kChunkSize,
+                                                    uint32_t batchIdx, uint32_t headIdx);
 
 private:
     BSAConstInfo constInfo;

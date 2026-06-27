@@ -54,8 +54,6 @@ public:
                                                GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
                                                GlobalTensor<IN_T> &kCmpGm, GlobalTensor<float> &kCmpOutGm);
 
-
-
 private:
     __aicore__ inline void PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset, uint32_t actualLen,
                                                   uint32_t blockSize, GlobalTensor<IN_T> &dstGm, uint64_t dstOffset,
@@ -102,8 +100,8 @@ private:
 
 
 template <typename BSAT>
-__aicore__ inline void BSAVecPoolService<BSAT>::InitParams(const BSAConstInfo &constInfo,
-                                                          const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
+__aicore__ inline void BSAVecPoolService<BSAT>::InitParams(
+    const BSAConstInfo &constInfo, const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
@@ -130,7 +128,7 @@ __aicore__ inline void BSAVecPoolService<BSAT>::InitBuffers(TBuf<>* uBuf_)
         uint32_t poolInputElements = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T);
         poolInputUb[i] = uBuf_->GetWithOffset<IN_T>(poolInputElements, ubOffset);
 
-        // reduceMean temp ub 复用fp16 ub 
+        // reduceMean temp ub 复用fp16 ub
         uint32_t sharedTensorMaxEles = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(uint8_t);
         reduceSharedTemp[i] = uBuf_->GetWithOffset<uint8_t>(sharedTensorMaxEles, 0);
 
