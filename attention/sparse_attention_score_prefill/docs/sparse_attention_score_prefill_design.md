@@ -9,47 +9,44 @@
 1. Phase 1 在 Cube 侧完成 `QK + softmax + PV` 的 partial 计算。
 2. Phase 1 以 `1 logical KV block × 1 KV head` 为 task 粒度。
 3. Q token 通过 host 提供的反向索引 gather，Q 在 GM 中可能非连续，因此 Q 需要逐行搬运到连续的片上临时区后参与 matmul。
-4. Phase 1 将每个 `(qToken, kvHead, slotK)` 的 `partial_O / partial_max / partial_sum` 写入 workspace。
-5. Phase 2 在 Vector 侧读取每个 Q 的 topK partial，执行 online-softmax combine，写最终 `attention_out`。
+4. Phase 1 将每个 `(qToken, kvHead, slotK)` 的 `O_tmp`（按 row 归一化）与 `LSE` 写入 workspace。
+5. Phase 2 在 Vector 侧读取每个 Q 的 topK partial，通过 LSE logsumexp 加权 combine，写最终 `attention_out`。
 6. Phase 1 与 Phase 2 在同一个 kernel 内执行，中间通过 `SyncAll` 做全局同步。
+
+稀疏选择关系由 host 预构建的反向索引张量表达；block 有效长度由 kernel 根据 `actual_seq_lengths_kv` 与 `blockSize` 在片上计算。
 
 ## 2. 输入、输出与辅助张量
 
-### 2.1 主输入
+### 2.1 算子输入
 
 | Tensor | Shape | Type | 说明 |
 | --- | --- | --- | --- |
 | `query` | `[total_q_tokens, num_q_heads, D]` | bf16/fp16 | TND 格式 Q。`qToken` 是跨 batch 展平后的 token 下标。 |
 | `key` | `[num_physical_blocks, blockSize, kvHeads, D]` | bf16/fp16 | Paged K Cache。 |
 | `value` | `[num_physical_blocks, blockSize, kvHeads, D]` | bf16/fp16 | Paged V Cache。 |
-| `select_idx` | `[total_q_tokens, topK]` | int32 | 每个 Q token 选择的 logical KV block，下标为跨 batch 展平后的 logical KV block id。Phase 2 可用它跳过无效 slot。 |
 | `block_table` | `[batch, maxBlocksPerBatch]` | int32 | 每个 batch 内 logical block 到 physical block 的映射。第二维是寻址 stride，必须来自 shape，不能由 `kv_seqlen` 推导。 |
-| `actual_seq_lengths` | `[batch]` | int64 | 每个 batch 的 Q seqlen。 |
-| `actual_seq_lengths_kv` | `[batch]` | int64 | 每个 batch 的 KV seqlen。 |
+| `k2q_row_ptr` | `[kvHeads, totalPackedRows + 1]` | int32 | Dense packed-row CSR 行指针；`totalPackedRows = sum(ceil(kv_seqlen/blockSize))`。 |
+| `k2q_q_indices` | `[kvHeads, totalQTokens * topK]` | int32 | CSR 列数据：global `qToken` id，按 head 分段存储。 |
+| `k2q_slot_indices` | `[kvHeads, totalQTokens * topK]` | int32 | 每条边在 workspace 中的 `slotK`，范围 `[0, topK)`。 |
+| `actual_seq_lengths` | `[batch]` | int32 | 每个 batch 的 Q seqlen。 |
+| `actual_seq_lengths_kv` | `[batch]` | int32 | 每个 batch 的 KV seqlen。 |
 
-### 2.2 Host 侧反向索引输入
+- TODO: 确认actual_seq_lengths是否作为cumsum，以快速通过q indices算出当前所属batch
+### 2.2 反向索引输入约束
 
-这些张量由 host 从 `select_idx` 构建，并作为 GM 输入传入 kernel，不放入 workspace：
+`k2q_row_ptr`、`k2q_q_indices`、`k2q_slot_indices` 由 host 在调用算子前构建（CSR 格式，对齐 CUDA `build_k2q_csr_reference`），并作为 GM 输入传入 kernel，不放入 workspace。
 
-| Tensor | Shape | Type | 说明 |
-| --- | --- | --- | --- |
-| `kv_to_q_select_idx` | `[numKvBlocks, maxQPerBlock]` | int32 | 第 `kvBlockIdx` 个 logical block 对应的 Q token 列表。 |
-| `kv_to_q_select_num` | `[numKvBlocks]` | int32 | 每个 logical KV block 被多少个 Q token 选择。 |
-| `kv_to_q_slot_idx` | `[numKvBlocks, maxQPerBlock]` | int32 | 对应 Q token 中该 KV block 位于 `select_idx[qToken, :]` 的第几个 slot，范围 `[0, topK)`。 |
-| `kv_block_valid_size` | `[numKvBlocks]` | int32 | 每个 logical KV block 的有效 token 数。非尾块通常为 `blockSize`，尾块为剩余长度。 |
+语义约定：
 
-反向索引构建约束：
+1. Host 侧 forward 选块为 `select_idx[kvHeads, totalQTokens, topK]`（可用 global logical id 表达，构建 CSR 时转为 batch-local q2k）与 `select_num_idx[kvHeads, totalQTokens]`。
+2. **`totalPackedRows`** = `sum_b ceil(kv_seqlen[b]/blockSize)`，与 MSA/CUDA `build_k2q_csr` 一致；未选中的块对应 CSR 空行（`row_ptr[r+1]==row_ptr[r]`）。
+3. Phase1 task：`taskIdx = packedRow * kvHeads + kvHeadIdx`，其中 `packedRow` 由 `(batch, local_kv_block)` 按 MSA 规则打包。
+4. stride 分核遍历 `taskIdx`；`packedRow = taskIdx / kvHeads` 变化时在循环内增量步进 MSA coord（见 §2.4），再经 `block_table` 取 physical block。单测 `decode_packed_row` 用搜索式解码校验同一语义。
+5. `csrStart = k2q_row_ptr[kvHeadIdx, packedRow]`，`csrEnd = k2q_row_ptr[kvHeadIdx, packedRow + 1]`，`numQTokens = csrEnd - csrStart`。
+6. `qToken = k2q_q_indices[kvHeadIdx, csrStart + qi]`（global flattened q id），`slotK = k2q_slot_indices[...]`。
+7. `k2qNnzUpperBound = k2q_q_indices.shape[1]`，通常为 `totalQTokens * topK`。
+8. GQA 下不同 `kvHeadIdx` 可有不同 topK 选块。
 
-```text
-for qToken in [0, total_q_tokens):
-  for slotK in [0, topK):
-    kvBlockIdx = select_idx[qToken, slotK]
-    if kvBlockIdx is valid:
-      append qToken to kv_to_q_select_idx[kvBlockIdx]
-      append slotK  to kv_to_q_slot_idx[kvBlockIdx]
-```
-
-`kv_to_q_select_idx[kvBlockIdx, :]` 中的 Q token 必须属于该 logical KV block 所在 batch。kernel 会根据 `q_seqlen` 和 `kv_seqlen` 重新计算 batch offset，但不负责跨 batch 合法性修正。
 
 ### 2.3 输出
 
@@ -71,12 +68,12 @@ for qToken in [0, total_q_tokens):
 | `groupSize` | `numHeads / kvHeads`，GQA 中一个 KV head 对应的 Q head 数。 |
 | `embeddingSize` | head size D。当前主目标为 D=128。 |
 | `blockSize` | KV block token 数，通常为 128。 |
-| `topK` | 每个 Q token 选择的 KV block 数。 |
+| `topK` | 每个 Q token 选择的 KV block 数（attr）。 |
 | `totalQTokens` | 所有 batch 的 Q token 总数，来自 `query.shape[0]`。 |
-| `numKvBlocks` | 所有 batch 的有效 logical KV block 总数，`sum(ceil(kv_seqlen[b] / blockSize))`。 |
+| `totalPackedRows` / `numKvBlocks` | `k2q_row_ptr.shape[1] - 1` = `sum_b ceil(kv_seqlen[b]/blockSize)`。tiling 字段名为 `numKvBlocks`。 |
 | `maxBlocksPerBatch` | `block_table.shape[1]`，用于 `block_table` 行 stride。 |
-| `maxQPerBlock` | host 扫描 `select_idx` 得到的单个 KV block 最大 Q 数。 |
-| `totalTaskNumP1` | Phase 1 task 数，`numKvBlocks * kvHeads`。 |
+| `k2qNnzUpperBound` | `k2q_q_indices.shape[1]`，CSR 数据区每 head 的上界，通常 `totalQTokens * topK`。 |
+| `totalTaskNumP1` | Phase 1 task 数，`totalPackedRows * kvHeads`。 |
 | `totalTaskNumP2` | Phase 2 task 数，`totalQTokens * kvHeads`。 |
 
 ### 3.2 blockDim 策略
@@ -84,7 +81,7 @@ for qToken in [0, total_q_tokens):
 同一个 kernel 内包含 Cube Phase 1 和 Vector Phase 2，因此 `blockDim` 不能只按照 Phase 1 计算。推荐：
 
 ```text
-totalTaskP1 = numKvBlocks * kvHeads
+totalTaskP1 = totalPackedRows * kvHeads
 totalTaskP2 = totalQTokens * kvHeads
 blockDim = min(max(totalTaskP1, totalTaskP2), max(aicNum, aivNum))
 blockDim = max(blockDim, 1)
@@ -111,15 +108,17 @@ workspace 只保存 Phase 1 到 Phase 2 的 partial 数据，不保存反向索�
 ### 4.1 总大小
 
 ```text
-oBytes         = groupSize * D * sizeof(input_dtype)
-oBytesAligned  = AlignUp(oBytes, 4)
-statBytes      = groupSize * sizeof(float) * 2   # max + sum
+oBytes         = groupSize * D * sizeof(float)    # O_tmp 存 fp32（PV 累加精度），与 Q/K/V input dtype 无关
+oBytesAligned  = oBytes                          # 当前 tiling/kernel 无额外 padding；groupSize*D*4 恒为 4 字节对齐
+statBytes      = groupSize * sizeof(float)       # LSE[groupSize]
 partialSize    = oBytesAligned + statBytes
 userWorkspace  = totalQTokens * kvHeads * topK * partialSize
 workspaceSize  = libapiWorkspaceSize + userWorkspace
 ```
 
 kernel 入口使用 `GetUserWorkspace(workspace)` 时，tiling 侧申请的 workspace 必须包含 `libapiWorkspaceSize`。
+
+Phase 1 启动前应将 workspace 中所有 partial 的 `LSE` 预置为 `-inf`（或保证未写入 slot 可被 Phase 2 识别为无效）。
 
 ### 4.2 partial 内部布局
 
@@ -129,25 +128,24 @@ kernel 入口使用 `GetUserWorkspace(workspace)` 时，tiling 侧申请的 work
 partial_base = ((qToken * kvHeads * topK) + (kvHeadIdx * topK) + slotK) * partialSize
 
 partial_base + 0
-  O_tmp[groupSize, D]          # input dtype，存未归一化的 sum(exp(score-rowMax) * V)
+  O_tmp[groupSize, D]          # fp32，存按 row 归一化的 partial output（= sum(exp(S-rowMax)*V) / rowSum）
 
 partial_base + oBytesAligned
-  rowMax[groupSize]            # fp32
-
-partial_base + oBytesAligned + groupSize * sizeof(float)
-  rowSum[groupSize]            # fp32，sum(exp(score-rowMax))
+  LSE[groupSize]               # fp32，LSE[gh] = rowMax[gh] + log(rowSum[gh])
 ```
 
 注意：
 
-1. `O_tmp` 不是归一化后的 partial output，而是未归一化分子。
-2. `rowMax` 和 `rowSum` 是每个 Q head 一份，所以长度为 `groupSize`。
-3. `rowMax/rowSum` 起始地址必须 4 字节对齐。
+1. `O_tmp` 是 row 内 softmax 归一化后的 partial output，不是未归一化分子。
+2. `LSE` 是每个 Q head 一份，长度为 `groupSize`；无效 slot 为 `-inf`。
+3. `LSE` 起始地址必须 4 字节对齐。
 4. Phase 2 读取 topK partial 时，必须使用相同 `partialSize` 和 `oBytesAligned`。
 
-## 5. Batch offset 与 logical block 编号
+## 5. Batch offset、packed row 与有效长度
 
-kernel 只接收 `q_seqlen` 和 `kv_seqlen`，batch offset 在 kernel 内计算：
+### 5.1 Batch offset
+
+kernel 根据 `actual_seq_lengths` 和 `actual_seq_lengths_kv` 在片上计算 batch offset：
 
 ```text
 batchQOffset[0] = 0
@@ -157,29 +155,50 @@ for b in [0, batch):
   batchKvBlockOffset[b + 1] = batchKvBlockOffset[b] + ceil(kv_seqlen[b] / blockSize)
 ```
 
-`kvBlockIdx` 是跨 batch 展平后的 logical block id：
+**Phase1** 不直接使用跨 batch 展平的 `kvBlockIdx`，而是通过 §2.4 的 `(packedRow → batchIdx, localBlockIdx)` 定位 logical KV block：
 
 ```text
-batchIdx       = first b where kvBlockIdx < batchKvBlockOffset[b + 1]
-localBlockIdx  = kvBlockIdx - batchKvBlockOffset[batchIdx]
-physicalBlock  = block_table[batchIdx * maxBlocksPerBatch + localBlockIdx]
+physicalBlock = block_table[batchIdx * maxBlocksPerBatch + localBlockIdx]
 ```
 
-`qToken` 是跨 batch 展平后的 Q token id：
+**Q token** 仍按展平 id 反查所属 batch（与 KV block 的 batch 可不同，causal 用 Q 侧 seqlen）：
 
 ```text
 qBatchIdx = first b where qToken < batchQOffset[b + 1]
 localQIdx = qToken - batchQOffset[qBatchIdx]
 ```
 
+`batchKvBlockOffset` 仍可用于 host 侧将 global logical block id 转为 batch-local id（构建 q2k/k2q CSR 时）。
+
+### 5.2 Block 有效长度
+
+每个 logical KV block 的有效 token 数在 kernel 内根据 `actual_seq_lengths_kv` 计算：
+
+```text
+kvSeqlenBatch = kv_seqlen[batchIdx]
+tailRemain    = kvSeqlenBatch - localBlockIdx * blockSize
+validSize     = min(blockSize, tailRemain)   # tailRemain > 0 时有效
+```
+
+- 非尾块：`validSize = blockSize`
+- 尾块：`validSize = kvSeqlenBatch % blockSize`；若整除则 `validSize = blockSize`
+- `tailRemain <= 0` 的 block 不应出现在有效 `numKvBlocks` 范围内
+
 ## 6. Phase 1：KV-centric partial compute
 
 ### 6.1 Task 映射
 
 ```text
-taskIdx    -> (kvBlockIdx, kvHeadIdx)
-kvBlockIdx = taskIdx / kvHeads
+taskIdx    -> (packedRow, kvHeadIdx)
+packedRow  = taskIdx / kvHeads
 kvHeadIdx  = taskIdx % kvHeads
+(batchIdx, localBlockIdx) from inline MSA coord step when packedRow advances
+```
+
+Phase1 分核：
+
+```text
+for taskIdx = blockIdx; taskIdx < totalTaskNumP1; taskIdx += blockDim
 ```
 
 每个 task 处理：
@@ -193,21 +212,22 @@ kvHeadIdx  = taskIdx % kvHeads
 目标实现应按 tile 化 matmul 实现，而不是逐元素 GM 标量循环：
 
 1. 从 `block_table` 读取 `physicalBlockId`。
-2. 将该 physical block 的 `K[blockSize, D]` 和 `V[blockSize, D]` 搬到 L1/片上缓冲。K/V 对同一 `(kvBlockIdx, kvHeadIdx)` 只加载一次。
-3. 从 `kv_to_q_select_num[kvBlockIdx]` 得到 `numQTokens`。
-4. 按 `qTile` 遍历 Q token 列表。`qTile` 可以先取 1 保证功能正确，后续再扩展为多行 gather。
-5. 对每个 `qTile`：
-   - 根据 `kv_to_q_select_idx` 读取非连续 Q token id。
+2. 根据 §5.2 计算 `validSize`。
+3. 将该 physical block 当前 `kvHeadIdx` 的 `K[validSize, D]`、`V[validSize, D]` 搬到 L1/片上缓冲；每个 `(packedRow, kvHeadIdx)` task 加载一次，matmul 仅用前 `validSize` 行。
+4. 从 CSR 得到 `numQTokens`；`packedRow` 变化时 inline 步进得 `(batchIdx, localBlockIdx)` 后查 `block_table`。
+5. 按 `qi in [0, numQTokens)` 遍历 Q 列表。
+6. 对每个 `qi`：
+   - `qToken = k2q_q_indices[kvHeadIdx, csrStart + qi]`。
    - 对每个 Q token，搬运其 `groupSize` 个 Q head：`query[qToken, kvHeadIdx * groupSize + gh, :]`。
    - Q 在 GM 中可能非连续，必须逐行搬运；搬入后在片上整理成连续矩阵 `Q_tile[M, D]`，其中 `M = qTile * groupSize`。
-6. Cube 执行：
-   - `S = Q_tile[M, D] × K[D, blockSize]`
+7. Cube 执行：
+   - `S = Q_tile[M, D] × K[D, validSize]`
    - `S` 乘 `scaleValue`。
-7. Vector 对 `S` 按 row 应用 causal mask 和有效长度 mask。
-8. Vector 对每 row 计算 `rowMax` 和 `rowSum`。
-9. Vector 得到 softmax 权重 `P = exp(S - rowMax)`。
-10. Cube 或 Vector/Cube 组合执行 `O_tmp = P[M, blockSize] × V[blockSize, D]`。
-11. 将每个 row 对应的 `(O_tmp, rowMax, rowSum)` 写入 workspace。
+8. Vector 对 `S` 按 row 应用 causal mask 和有效长度 mask。
+9. Vector 对每 row 计算 `rowMax`、`rowSum`，并得到 `LSE = rowMax + log(rowSum)`。
+10. Vector 得到 softmax 权重 `P = exp(S - rowMax)`。
+11. Cube 或 Vector/Cube 组合执行 `O_unnorm = P[M, validSize] × V[validSize, D]`。
+12. Vector 将 `O_tmp = O_unnorm / rowSum` 与 `LSE` 写入 workspace。
 
 ### 6.3 GQA 映射
 
@@ -219,20 +239,19 @@ for gh in [0, groupSize):
   query row = query[qToken, qHeadIdx, :]
 ```
 
-同一个 `(kvBlockIdx, kvHeadIdx)` task 内，K/V 只加载一次，`groupSize` 个 Q head 共享该 K/V block。
+同一个 `(packedRow, kvHeadIdx)` task 内，K/V 只加载一次，`groupSize` 个 Q head 共享该 K/V block。
 
 ### 6.4 Causal mask
 
 每个 Q token 的 causal 边界不同，不能只按 block 统一 mask。
 
-对每个 `qToken`：
+对每个 `qToken`（causal 边界由 **Q 所在 batch** 的 seqlen 决定；KV block 位置由 **packedRow 解码得到的 `localBlockIdx`** 决定）：
 
 ```text
 qBatchIdx      = FindBatchForQToken(qToken)
 localQIdx      = qToken - batchQOffset[qBatchIdx]
 qPosition      = kv_seqlen[qBatchIdx] - q_seqlen[qBatchIdx] + localQIdx
-localBlockIdx  = kvBlockIdx - batchKvBlockOffset[qBatchIdx]
-kvStartPos     = localBlockIdx * blockSize
+kvStartPos     = localBlockIdx * blockSize    # localBlockIdx 来自 packedRow 的 MSA coord
 causalValidLen = 0 if qPosition < kvStartPos
                  else min(validSize, qPosition - kvStartPos + 1)
 ```
@@ -245,31 +264,27 @@ for col in [0, blockSize):
     score[row, col] = -inf
 ```
 
-当 `causalValidLen == 0` 时，该 partial 是无效 partial：
+当 `causalValidLen == 0` 时，kernel/golden **跳过写入**该 partial，依赖 workspace 预置 `LSE == -inf`，Phase 2 自动跳过：
 
 ```text
-O_tmp  = 0
-rowMax = -inf
-rowSum = 0
+# 不写入 workspace；slot 保持 LSE == -inf
 ```
-
-Phase 2 读取后应自然跳过该 partial。
 
 ### 6.5 workspace 写出
 
 Phase 1 每个 `(qToken, kvHeadIdx, slotK)` 写一个 partial：
 
 ```text
-slotK = kv_to_q_slot_idx[kvBlockIdx, qi]
+csrStart = k2q_row_ptr[kvHeadIdx, packedRow]
+slotK = k2q_slot_indices[kvHeadIdx, csrStart + qi]
 base  = ((qToken * kvHeads * topK) + (kvHeadIdx * topK) + slotK) * partialSize
 ```
 
 写出顺序：
 
 ```text
-O_tmp[gh, d] -> base + gh * D * sizeof(dtype) + d * sizeof(dtype)
-rowMax[gh]   -> base + oBytesAligned + gh * sizeof(float)
-rowSum[gh]   -> base + oBytesAligned + (groupSize + gh) * sizeof(float)
+O_tmp[gh, d] -> base + gh * D * sizeof(float) + d * sizeof(float)
+LSE[gh]      -> base + oBytesAligned + gh * sizeof(float)
 ```
 
 O 写 workspace 时按 Q 行逐行写，因为 Q token 是 gather 得到的，不能假设连续。
@@ -290,30 +305,43 @@ kvHeadIdx = taskIdx % kvHeads
 attention_out[qToken, kvHeadIdx * groupSize + gh, :]
 ```
 
-### 7.2 Combine 公式
+### 7.2 Combine 公式（kernel 与 golden 共用 LSE logsumexp）
 
-对每个 `gh`：
+对每个 `gh`，在 topK 个有效 partial 上：
 
 ```text
-globalMax = max(rowMax[k] for k in topK valid partials)
-globalSum = sum(exp(rowMax[k] - globalMax) * rowSum[k])
+LSE_global = logsumexp(LSE[k])   # 稳定实现：max(LSE) + log(sum(exp(LSE[k] - max(LSE))))
 
-out[d] = sum(exp(rowMax[k] - globalMax) * O_tmp[k][d]) / globalSum
+weight[k] = exp(LSE[k] - LSE_global)
+
+out[d] = sum(weight[k] * O_tmp[k][d])
 ```
 
-其中 `O_tmp[k]` 是 Phase 1 写入的未归一化分子。
+其中 `O_tmp[k]` 是 Phase 1 写入的 row 归一化 partial，`LSE[k] = rowMax[k] + log(rowSum[k])`。与旧版 online max/sum 公式数学等价：
+
+```text
+out = sum(exp(rowMax-rowMax_g)*rowSum*O_norm) / sum(exp(rowMax-rowMax_g)*rowSum)
+    = sum(exp(LSE-LSE_g)*O_norm)
+```
 
 ### 7.3 无效 slot 处理
 
-若 `select_idx[qToken, slotK] < 0` 或该 partial 的 `rowSum == 0`，Phase 2 必须跳过该 slot。推荐 Phase 2 使用原始 `select_idx` 判断 slot 是否有效：
+Phase 2 通过 workspace 内容判断 slot 是否有效：
 
 ```text
-kvBlockIdx = select_idx[qToken, slotK]
-if kvBlockIdx < 0:
-  continue
+for slotK in [0, topK):
+  base = ((qToken * kvHeads * topK) + (kvHeadIdx * topK) + slotK) * partialSize
+  if LSE[gh] == -inf:    # 无效 slot
+    continue
+  # 参与 combine
 ```
 
-如果上层保证所有 `topK` slot 均有效，可以省略该判断，但该假设必须在算子接口中明确。
+规则：
+
+1. Phase 1 仅对 CSR 中列出的 `(qToken, slotK)` 写入有效 partial。
+2. 未被 Phase 1 写入的 slot 保持 `LSE == -inf`，Phase 2 必须跳过。
+3. causal 全 mask 的 partial 不写入 workspace，slot 保持 `LSE == -inf`，Phase 2 自动跳过。
+4. 若上层保证每个 Q token 恰好有 `topK` 个有效 block 且全部写入，可省略额外判断，但该假设必须在调用侧明确。
 
 ### 7.4 输出写回
 
@@ -323,48 +351,54 @@ outAddr = qToken * numHeads * D + (kvHeadIdx * groupSize + gh) * D + d
 
 Phase 2 必须全在 Vector 侧完成，不再触发 Cube 计算。
 
-## 8. Kernel 实现边界
+## 8. CPU Golden 参考实现
+
+`tests/test_sparse_attention_score_prefill_golden.py` 与 kernel **任务划分、CSR 消费、MSA coord 步进、causal 规则** 对齐，数值路径略有不同：
+
+| 项 | Kernel | CPU Golden |
+| --- | --- | --- |
+| Phase1 分核 | `taskIdx += blockDim` stride | `taskIdx` 顺序 0..totalTaskNumP1-1（等价 coreNum=1） |
+| coord | `Init/AdvancePackedRowCoord` inline | `_init/_advance_packed_row_coord` inline |
+| Phase1 partial 统计 | workspace 写 `O_tmp(fp32, row-normalized)` + `LSE` | 同 kernel |
+| Phase2 combine | LSE logsumexp over topK partials（§7.2） | 同 kernel（§7.2） |
+| QK/SM 中间精度 | QK 输出 fp32 S；SM 在 Vector fp32 | fp32 softmax；P cast bf16 供 PV |
+
+Golden 不模拟 Cube tile 搬运；SM/PV 统计量在 fp32 计算，仅 P 矩阵 cast 为 bf16 以匹配 PV 输入 dtype。
+
+另保留 `cpu_golden_prefill_qcentric_bf16` 作 Q-centric 交叉校验。
+
+## 9. Kernel 实现边界
 
 目标 kernel 不应停留在以下标量参考形态：
 
 1. 不应在 GM 上对每个元素重复读取 K/V 做点积。
 2. 不应对每个 `(qToken, qHead, d, n)` 用标量 C++ 循环模拟 QK 和 PV。
-3. 不应在 Phase 1 对同一 KV block 的 K/V 反复从 GM 读取。
-4. 不应忽略 `select_idx` 中无效 slot 的处理。
+3. 不应在 Phase 1 对同一 `(packedRow, kvHeadIdx)` task 的 K/V 反复从 GM 读取。
+4. Phase 2 必须能跳过无效 partial（`LSE == -inf` 或 causal 全 mask）。
 
-允许的阶段性实现顺序：
+当前 `sparse_attention_score_prefill_kernel_arch35.h` 已具备：
 
-1. **功能优先版本**：`qTile = 1`，但 K/V 必须按 block 搬到片上，Q 逐行 gather，workspace/causal/combine 语义正确。
-2. **性能版本**：`qTile > 1`，将多个 Q token 和 `groupSize` head 拼成 `M = qTile * groupSize`，用 Cube 做批量 QK/PV。
-3. **优化版本**：加入 double buffer、L1/L0 preload、score/softmax UB 复用和 task 负载均衡。
+- Phase1/2 按 `totalTaskNumP1/P2` stride 分核。
+- Phase1 `BlockMmadQK` / `BlockMmadPV` + `LoadKResident` / `LoadVResident` 按 block×head 复用 K/V。
+- MSA packed row coord 在 task 循环内增量步进（无 GM 查表、无 per-task 搜索）。
+- CSR 驱动 Q gather + causal mask + workspace 写出。
 
-## 9. 当前代码与目标实现的差距
+仍待完善（相对性能目标）：
 
-当前 `sparse_attention_score_prefill_kernel_arch35.h` 只能作为 scalar reference，对目标 kernel 来说存在以下差距：
-
-1. Phase 1 没有 `LoadKvBlockToL1` 的真实实现，K/V 没有按 block 复用。
-2. Q 没有 gather 到连续片上矩阵，只是在 GM 中逐元素读取。
-3. QK 没有用 Cube matmul，而是标量循环计算 dot。
-4. PV 没有用 Cube matmul，而是标量循环累加。
-5. 声明了 `LoadKvBlockToL1 / LoadQFromGM / ComputeQK / ComputePV` 等 helper，但没有实现，实际逻辑全部内联在标量循环里。
-6. Phase 2 没有使用 `select_idx` 跳过无效 slot；如果存在 `-1` slot，会读未写 workspace。
-7. 文档原先没有说明 `partial_O` 是未归一化分子，容易导致 CombineScale 实现错误。
-8. 文档原先没有说明 `rowMax/rowSum` 的 byte offset 和 4 字节对齐要求。
-9. 文档原先没有说明 `blockDim` 必须同时覆盖 Phase 1 和 Phase 2。
-10. 文档原先没有说明反向索引是独立 GM 输入，而不是 workspace 的一部分。
+1. Q 仍逐 token gather，尚未 `qTile > 1` 批量拼 Q。
+2. Phase 2 无效 slot 跳过逻辑需与 workspace 清零策略一并验证。
+3. D/blockSize 以外 shape 的 tiling key 扩展。
+4. NPU 测试主要差在 golden 与 kernel 的 P cast 舍入及 Cube QK 累加精度。
 
 ## 10. 后续 kernel 修改建议
 
-建议按以下顺序重构 kernel：
+建议按以下顺序继续演进：
 
-1. 保留当前 scalar reference 作为 golden 对照或 `#ifdef DEBUG_REFERENCE` 路径。
-2. 实现 Phase 1 helper：
-   - `LoadKvBlockToL1(physicalBlockId, kvHeadIdx, validSize)`
-   - `GatherQTileFromGM(kvBlockIdx, kvHeadIdx, qiStart, qTile)`
-   - `ComputeQKTile()`
-   - `ApplyMaskAndSoftmaxTile()`
-   - `ComputePVTile()`
-   - `WritePartialTileToWorkspace()`
-3. Phase 1 先使用 `qTile = 1` 对齐功能，再扩展到 `qTile > 1`。
-4. Phase 2 增加 `select_idx` slot 有效性判断，或在接口中强约束 `topK` 全有效。
-5. 针对 D=128/blockSize=128 固化 tiling key，再扩展其他 D/blockSize。
+1. Phase 1 扩展 `qTile > 1`：批量 gather Q，拼 `M = qTile * groupSize` 做 Cube QK/PV。
+2. 性能：
+ - PRELAUNCH流水
+ - double buffer
+ - L1/L0 preload
+ - score/softmax UB 复用
+ - 空 CSR 行 task 负载均衡
+ - Regbase优化

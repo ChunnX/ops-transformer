@@ -13,8 +13,9 @@
 
 namespace optiling {
 
+// Keep in sync with op_kernel/sparse_attention_score_prefill_tilingkey.h
 constexpr uint64_t SASA_PREFILL_BASE_TILING = 20000;
-constexpr uint64_t SASA_PREFILL_BF16_D128_TILING = SASA_PREFILL_BASE_TILING + 1;
+constexpr uint64_t SASA_PREFILL_BF16_D128_TILING = 20001;
 
 BEGIN_TILING_DATA_DEF(SparseAttentionScorePrefillTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch);
@@ -27,7 +28,7 @@ TILING_DATA_FIELD_DEF(uint32_t, topK);
 TILING_DATA_FIELD_DEF(uint32_t, totalQTokens);
 TILING_DATA_FIELD_DEF(uint32_t, numKvBlocks);
 TILING_DATA_FIELD_DEF(uint32_t, maxBlocksPerBatch);
-TILING_DATA_FIELD_DEF(uint32_t, maxQPerBlock);
+TILING_DATA_FIELD_DEF(uint32_t, k2qNnzUpperBound);
 TILING_DATA_FIELD_DEF(uint32_t, totalTaskNumP1);
 TILING_DATA_FIELD_DEF(uint32_t, totalTaskNumP2);
 TILING_DATA_FIELD_DEF(float, scaleValue);
@@ -79,12 +80,12 @@ private:
     uint32_t totalQTokens_ = 0;
     uint32_t numKvBlocks_ = 0;
     uint32_t maxBlocksPerBatch_ = 0;
-    uint32_t maxQPerBlock_ = 0;
+    uint32_t k2qNnzUpperBound_ = 0;
     float scaleValue_ = 0.0f;
     uint32_t innerPrecise_ = 0;
 
-    const int64_t *qSeqLenList_ = nullptr;
-    const int64_t *kvSeqLenList_ = nullptr;
+    const int32_t *qSeqLenList_ = nullptr;
+    const int32_t *kvSeqLenList_ = nullptr;
 
     uint64_t workSpaceSize_ = 0;
     uint64_t partialSize_ = 0;

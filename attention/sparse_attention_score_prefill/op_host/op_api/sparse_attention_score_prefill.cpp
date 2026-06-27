@@ -17,12 +17,10 @@ const aclTensor *SparseAttentionScorePrefill(
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *value,
-    const aclTensor *selectIdx,
     const aclTensor *blockTable,
-    const aclTensor *kvToQSelectIdx,
-    const aclTensor *kvToQSelectNum,
-    const aclTensor *kvToQSlotIdx,
-    const aclTensor *kvBlockValidSize,
+    const aclTensor *k2qRowPtr,
+    const aclTensor *k2qQIndices,
+    const aclTensor *k2qSlotIndices,
     const aclTensor *actualSeqLengthsOptional,
     const aclTensor *actualSeqLengthsKvOptional,
     int64_t numKeyValueHeads,
@@ -32,8 +30,8 @@ const aclTensor *SparseAttentionScorePrefill(
     int64_t innerPrecise,
     aclOpExecutor *executor)
 {
-    L0_DFX(SparseAttentionScorePrefill, query, key, value, selectIdx, blockTable,
-           kvToQSelectIdx, kvToQSelectNum, kvToQSlotIdx, kvBlockValidSize,
+    L0_DFX(SparseAttentionScorePrefill, query, key, value, blockTable,
+           k2qRowPtr, k2qQIndices, k2qSlotIndices,
            actualSeqLengthsOptional, actualSeqLengthsKvOptional,
            numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise);
 
@@ -42,9 +40,8 @@ const aclTensor *SparseAttentionScorePrefill(
         Format::FORMAT_ND, Format::FORMAT_ND);
 
     auto ret = INFER_SHAPE(SparseAttentionScorePrefill,
-                           OP_INPUT(query, key, value, selectIdx, blockTable,
-                                    kvToQSelectIdx, kvToQSelectNum, kvToQSlotIdx,
-                                    kvBlockValidSize,
+                           OP_INPUT(query, key, value, blockTable,
+                                    k2qRowPtr, k2qQIndices, k2qSlotIndices,
                                     actualSeqLengthsOptional, actualSeqLengthsKvOptional),
                            OP_OUTPUT(attentionOutTensor),
                            OP_ATTR(static_cast<int64_t>(numKeyValueHeads),
@@ -59,9 +56,8 @@ const aclTensor *SparseAttentionScorePrefill(
     }
 
     ADD_TO_LAUNCHER_LIST_AICORE(SparseAttentionScorePrefill,
-                                OP_INPUT(query, key, value, selectIdx, blockTable,
-                                         kvToQSelectIdx, kvToQSelectNum, kvToQSlotIdx,
-                                         kvBlockValidSize,
+                                OP_INPUT(query, key, value, blockTable,
+                                         k2qRowPtr, k2qQIndices, k2qSlotIndices,
                                          actualSeqLengthsOptional, actualSeqLengthsKvOptional),
                                 OP_OUTPUT(attentionOutTensor),
                                 OP_ATTR(static_cast<int64_t>(numKeyValueHeads),

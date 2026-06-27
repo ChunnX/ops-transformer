@@ -22,37 +22,29 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        this->Input("selectIdx")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
         this->Input("blockTable")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-        this->Input("kvToQSelectIdx")
+        this->Input("k2qRowPtr")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-        this->Input("kvToQSelectNum")
+        this->Input("k2qQIndices")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
-        this->Input("kvToQSlotIdx")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        this->Input("kvBlockValidSize")
+        this->Input("k2qSlotIndices")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Input("actualSeqLengths")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Input("actualSeqLengthsKv")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Output("attentionOut")
             .ParamType(REQUIRED)

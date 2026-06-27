@@ -1,25 +1,29 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  *
- * Prefill QK matmul: K block resident in L1, Q tokens loop with ping-pong.
- * Mirrors decode block_mmad_qk_arch35_ABf16_C_to_UB.hpp but with reversed
- * resident/loop roles for KV-centric prefill.
- *
- * Layout: Q [groupSize, D] RowMajor (A), K [D, blockSize] ColumnMajor (B)
- * Output: S [groupSize, blockSize] → UB via FixPipe
+ * Prefill QK matmul (KV-centric). FixPipe / cross-core sync aligned with
+ * block_mmad_qk_arch35_ABf16_C_to_UB.hpp: S is split to two AIV UB buffers.
  */
-#ifndef BLOCK_MMAD_PREFILL_QK_HPP
-#define BLOCK_MMAD_PREFILL_QK_HPP
+#ifndef GEMM_BLOCK_MMAD_QK_PREFILL_ARCH35_HPP
+#define GEMM_BLOCK_MMAD_QK_PREFILL_ARCH35_HPP
 
-#include "kernel_utils.hpp"
+#include "../../../attn_infra/base_defs.hpp"
+#include "../../../attn_infra/arch/resource.hpp"
+#include "../../../attn_infra/arch/cross_core_sync.hpp"
+#include "../../../attn_infra/coord.hpp"
+#include "../../../attn_infra/gemm/dispatch_policy.hpp"
+#include "../../../attn_infra/gemm/tile_common/tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/tile_mmad.hpp"
+#include "../../../attn_infra/layout/layout.hpp"
+#include "../../../tla/layout.hpp"
+#include "../../../tla/tensor.hpp"
 
-namespace SparseAttnPrefill {
-
-using namespace NpuArch;
+namespace NpuArch::Gemm::Block {
 
 template <class ElementQ_, class ElementK_, class ElementS_>
-struct PrefillBlockMmadQK {
-    using ArchTag = Arch::AtlasA5;
+struct BlockMmadQKPrefillArch35 {
+    using DispatchPolicy = MmadAtlasA5PrefillQK;
+    using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementQ = ElementQ_;
     using ElementK = ElementK_;
     using ElementS = ElementS_;
@@ -50,8 +54,8 @@ struct PrefillBlockMmadQK {
     static constexpr uint32_t L0B_BUF_SIZE = ArchTag::L0B_SIZE / L0_STAGES;
     static constexpr uint32_t L0C_HALF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_BUF_SIZE = L0C_HALF_SIZE / L0_STAGES;
-
     static constexpr uint32_t L1_Q_STAGES = 1;
+    static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
 
     AscendC::LocalTensor<ElementK> l1KTensor_;
     AscendC::LocalTensor<ElementQ> l1QTensor_[L1_Q_STAGES];
@@ -66,7 +70,33 @@ struct PrefillBlockMmadQK {
     uint32_t l1KBufBytes_;
 
     __aicore__ inline
-    PrefillBlockMmadQK() {}
+    BlockMmadQKPrefillArch35() {}
+
+    template <uint32_t MODE, pipe_t PIPE>
+    __aicore__ inline
+    void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    {
+        if constexpr (MODE == 4U) {
+            uint16_t flagIdV0 = crossCoreFlag.id;
+            uint16_t flagIdV1 = flagIdV0 + V0_V1_FLAG_ID_OFFSET;
+            Arch::CrossCoreFlag crossCoreFlagV1(flagIdV1);
+            Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
+            Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlagV1);
+        }
+    }
+
+    template <uint32_t MODE, pipe_t PIPE>
+    __aicore__ inline
+    void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    {
+        if constexpr (MODE == 4U) {
+            uint16_t flagIdV0 = crossCoreFlag.id;
+            uint16_t flagIdV1 = flagIdV0 + V0_V1_FLAG_ID_OFFSET;
+            Arch::CrossCoreFlag crossCoreFlagV1(flagIdV1);
+            Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
+            Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlagV1);
+        }
+    }
 
     __aicore__ inline
     void Init(Arch::Resource<ArchTag> &resource, uint32_t blockSize, uint32_t D)
@@ -109,8 +139,9 @@ struct PrefillBlockMmadQK {
 
     template <class TensorQ, class TensorS>
     __aicore__ inline
-    void ComputeQK(TensorQ &gmQTensor, TensorS &ubSTensor,
-                   uint32_t groupSize, uint32_t validSize, uint32_t D)
+    void operator()(TensorQ &gmQTensor, TensorS &ubSTensor,
+                    uint32_t groupSize, uint32_t validSize, uint32_t D,
+                    Arch::CrossCoreFlag &mm1ToSmFlag)
     {
         uint32_t M = groupSize;
         uint32_t N = validSize;
@@ -119,11 +150,11 @@ struct PrefillBlockMmadQK {
         using CopyGmToL1Q = typename TileCopy::template CopyGmToL1A<TensorQ>;
         CopyGmToL1Q copyGmToL1Q;
         using CopyL0CToDst = typename TileCopy::template CopyL0CToDst<TensorS>;
-        CopyL0CToDst copyL0CToUB;
+        CopyL0CToDst copyL0CToDstSub0;
+        CopyL0CToDst copyL0CToDstSub1;
 
         auto l1QLayout = tla::MakeLayout<ElementQ, LayoutTagL1A>(M, K);
         auto l1QTensorTla = tla::MakeTensor(l1QTensor_[0], l1QLayout, Arch::PositionL1{});
-
         auto l1KLayout = tla::MakeLayout<ElementK, LayoutTagL1B>(K, N);
         auto l1KTensorTla = tla::MakeTensor(l1KTensor_, l1KLayout, Arch::PositionL1{});
 
@@ -196,20 +227,30 @@ struct PrefillBlockMmadQK {
                 }
             }
 
+            if (nL0Itr == 0) {
+                WaitCrossCoreSync<4, PIPE_FIX>(mm1ToSmFlag);
+            }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
 
-            uint32_t mAligned = RoundUp(M, 16);
-            uint32_t nAligned = RoundUp(nAct, 16);
+            uint32_t mFixPAligned8 = RoundUp(M, 8U);
+            uint32_t mPerSubCore = mFixPAligned8 / 2U;
+            uint32_t nFixPAligned16 = RoundUp(nAct, 16U);
             auto ubSTile = GetTile(ubSTensor,
-                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mAligned, nAligned));
-            copyL0CToUB(ubSTile, l0CTensorTla);
+                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mPerSubCore, nFixPAligned16));
+            auto l0CTileSub0 = GetTile(l0CTensorTla,
+                tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, nAct));
+            auto l0CTileSub1 = GetTile(l0CTensorTla,
+                tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, nAct));
+            copyL0CToDstSub0(ubSTile, l0CTileSub0, false);
+            copyL0CToDstSub1(ubSTile, l0CTileSub1, true);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
+        SetCrossCoreSync<4, PIPE_FIX>(mm1ToSmFlag);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
     }
 };
 
-}  // namespace SparseAttnPrefill
+}  // namespace NpuArch::Gemm::Block
 
-#endif  // BLOCK_MMAD_PREFILL_QK_HPP
+#endif  // GEMM_BLOCK_MMAD_QK_PREFILL_ARCH35_HPP

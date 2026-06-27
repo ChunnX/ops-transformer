@@ -26,14 +26,12 @@ using namespace std;
 constexpr int QUERY_INDEX = 0;
 constexpr int KEY_INDEX = 1;
 constexpr int VALUE_INDEX = 2;
-constexpr int SELECT_IDX_INDEX = 3;
-constexpr int BLOCK_TABLE_INDEX = 4;
-constexpr int KV_TO_Q_SELECT_IDX_INDEX = 5;
-constexpr int KV_TO_Q_SELECT_NUM_INDEX = 6;
-constexpr int KV_TO_Q_SLOT_IDX_INDEX = 7;
-constexpr int KV_BLOCK_VALID_SIZE_INDEX = 8;
-constexpr int ACTUAL_SEQ_LENGTHS_INDEX = 9;
-constexpr int ACTUAL_SEQ_LENGTHS_KV_INDEX = 10;
+constexpr int BLOCK_TABLE_INDEX = 3;
+constexpr int K2Q_ROW_PTR_INDEX = 4;
+constexpr int K2Q_Q_INDICES_INDEX = 5;
+constexpr int K2Q_SLOT_INDICES_INDEX = 6;
+constexpr int ACTUAL_SEQ_LENGTHS_INDEX = 7;
+constexpr int ACTUAL_SEQ_LENGTHS_KV_INDEX = 8;
 
 constexpr int TND_DIM_T = 0;
 constexpr int TND_DIM_N = 1;
@@ -126,16 +124,19 @@ ge::graphStatus SASAPrefillTiling::ParseSeqlens(gert::TilingContext *context)
     printf("[SASAPrefillTiling] Enter ParseSeqlens\n");
     fflush(stdout);
 
-    // Get numKvBlocks from kvBlockValidSize shape instead of reading seqlens data,
-    // because seqlens tensor data may not be available on host during tiling.
-    auto validSizeShape = context->GetInputShape(KV_BLOCK_VALID_SIZE_INDEX);
-    if (validSizeShape == nullptr) {
-        printf("[SASAPrefillTiling] kvBlockValidSize shape is null!\n");
-        fflush(stdout);
+    auto k2qRowPtrShape = context->GetInputShape(K2Q_ROW_PTR_INDEX);
+    if (k2qRowPtrShape == nullptr) {
+        printf("[SASAPrefillTiling] k2qRowPtr shape is null!\n");
         return ge::GRAPH_FAILED;
     }
-    numKvBlocks_ = static_cast<uint32_t>(validSizeShape->GetStorageShape().GetDim(0));
-    printf("[SASAPrefillTiling] numKvBlocks=%u (from kvBlockValidSize shape)\n", numKvBlocks_);
+    if (k2qRowPtrShape->GetStorageShape().GetDimNum() < 2) {
+        printf("[SASAPrefillTiling] k2qRowPtr must be rank-2 [kvHeads, totalRows + 1]\n");
+        return ge::GRAPH_FAILED;
+    }
+    numKvBlocks_ = static_cast<uint32_t>(k2qRowPtrShape->GetStorageShape().GetDim(1)) - 1;
+    uint32_t rowPtrDim0 = static_cast<uint32_t>(k2qRowPtrShape->GetStorageShape().GetDim(0));
+    printf("[SASAPrefillTiling] totalKvRows=%u k2qRowPtrHeads=%u kvHeads=%u\n",
+           numKvBlocks_, rowPtrDim0, kvHeads_);
     fflush(stdout);
 
     return ge::GRAPH_SUCCESS;
@@ -143,15 +144,15 @@ ge::graphStatus SASAPrefillTiling::ParseSeqlens(gert::TilingContext *context)
 
 ge::graphStatus SASAPrefillTiling::CalculateReverseIndexMeta(gert::TilingContext *context)
 {
-    // Get maxQPerBlock from kvToQSelectIdx shape: [numKvBlocks, maxQPerBlock]
-    auto revIdxShape = context->GetInputShape(KV_TO_Q_SELECT_IDX_INDEX);
-    if (revIdxShape != nullptr && revIdxShape->GetStorageShape().GetDimNum() >= 2) {
-        maxQPerBlock_ = static_cast<uint32_t>(revIdxShape->GetStorageShape().GetDim(1));
+    // k2qQIndices / k2qSlotIndices: [kvHeads, totalQ * topK]
+    auto qIndicesShape = context->GetInputShape(K2Q_Q_INDICES_INDEX);
+    if (qIndicesShape != nullptr && qIndicesShape->GetStorageShape().GetDimNum() >= 2) {
+        k2qNnzUpperBound_ = static_cast<uint32_t>(qIndicesShape->GetStorageShape().GetDim(1));
     } else {
-        maxQPerBlock_ = totalQTokens_;
+        k2qNnzUpperBound_ = totalQTokens_ * topK_;
     }
-    if (maxQPerBlock_ == 0) {
-        maxQPerBlock_ = 1;
+    if (k2qNnzUpperBound_ == 0) {
+        k2qNnzUpperBound_ = 1;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -172,11 +173,8 @@ ge::graphStatus SASAPrefillTiling::CalculateTaskSplit(gert::TilingContext *conte
 ge::graphStatus SASAPrefillTiling::CalculateWorkSpace(gert::TilingContext *context)
 {
     (void)context;
-    uint32_t dtypeSize = (dataType_ == ge::DT_FLOAT8_E4M3FN) ? 1 : 2;
-    // partialSize = Align4(O[groupSize, D]) + max[groupSize] + sum[groupSize].
-    // The float area must be 4-byte aligned because Phase2 reads max/sum as fp32.
-    uint64_t oBytes = static_cast<uint64_t>(groupSize_) * embeddingSize_ * dtypeSize;
-    partialSize_ = AlignUp(oBytes, sizeof(float)) + static_cast<uint64_t>(groupSize_) * sizeof(float) * 2;
+    uint64_t oBytes = static_cast<uint64_t>(groupSize_) * embeddingSize_ * sizeof(float);
+    partialSize_ = oBytes + static_cast<uint64_t>(groupSize_) * sizeof(float);
 
     // User workspace only stores Phase1 partials consumed by Phase2:
     // [totalQTokens, kvHeads, topK, partialSize]. Reverse-index tensors are
@@ -199,7 +197,7 @@ ge::graphStatus SASAPrefillTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_totalQTokens(totalQTokens_);
     tilingData_->set_numKvBlocks(numKvBlocks_);
     tilingData_->set_maxBlocksPerBatch(maxBlocksPerBatch_);
-    tilingData_->set_maxQPerBlock(maxQPerBlock_);
+    tilingData_->set_k2qNnzUpperBound(k2qNnzUpperBound_);
     tilingData_->set_totalTaskNumP1(numKvBlocks_ * kvHeads_);
     tilingData_->set_totalTaskNumP2(totalQTokens_ * kvHeads_);
     tilingData_->set_scaleValue(scaleValue_);

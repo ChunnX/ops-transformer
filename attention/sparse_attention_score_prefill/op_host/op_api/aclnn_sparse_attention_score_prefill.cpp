@@ -25,12 +25,12 @@ namespace {
 static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&key,
                                   const aclTensor *&value,
-                                  const aclTensor *&selectIdx,
                                   const aclTensor *&blockTable,
-                                  const aclTensor *&kvToQSelectIdx,
-                                  const aclTensor *&kvToQSelectNum,
-                                  const aclTensor *&kvToQSlotIdx,
-                                  const aclTensor *&kvBlockValidSize,
+                                  const aclTensor *&k2qRowPtr,
+                                  const aclTensor *&k2qQIndices,
+                                  const aclTensor *&k2qSlotIndices,
+                                  const aclTensor *&actualSeqLengthsOptional,
+                                  const aclTensor *&actualSeqLengthsKvOptional,
                                   aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
@@ -42,23 +42,23 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     value = l0op::Contiguous(value, executor);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    selectIdx = l0op::Contiguous(selectIdx, executor);
-    CHECK_RET(selectIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-
     blockTable = l0op::Contiguous(blockTable, executor);
     CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    kvToQSelectIdx = l0op::Contiguous(kvToQSelectIdx, executor);
-    CHECK_RET(kvToQSelectIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    k2qRowPtr = l0op::Contiguous(k2qRowPtr, executor);
+    CHECK_RET(k2qRowPtr != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    kvToQSelectNum = l0op::Contiguous(kvToQSelectNum, executor);
-    CHECK_RET(kvToQSelectNum != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    k2qQIndices = l0op::Contiguous(k2qQIndices, executor);
+    CHECK_RET(k2qQIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    kvToQSlotIdx = l0op::Contiguous(kvToQSlotIdx, executor);
-    CHECK_RET(kvToQSlotIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    k2qSlotIndices = l0op::Contiguous(k2qSlotIndices, executor);
+    CHECK_RET(k2qSlotIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    kvBlockValidSize = l0op::Contiguous(kvBlockValidSize, executor);
-    CHECK_RET(kvBlockValidSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    actualSeqLengthsOptional = l0op::Contiguous(actualSeqLengthsOptional, executor);
+    CHECK_RET(actualSeqLengthsOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+
+    actualSeqLengthsKvOptional = l0op::Contiguous(actualSeqLengthsKvOptional, executor);
+    CHECK_RET(actualSeqLengthsKvOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
     return ACLNN_SUCCESS;
 }
@@ -69,12 +69,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     const aclTensor *query,
     const aclTensor *key,
     const aclTensor *value,
-    const aclTensor *selectIdx,
     const aclTensor *blockTable,
-    const aclTensor *kvToQSelectIdx,
-    const aclTensor *kvToQSelectNum,
-    const aclTensor *kvToQSlotIdx,
-    const aclTensor *kvBlockValidSize,
+    const aclTensor *k2qRowPtr,
+    const aclTensor *k2qQIndices,
+    const aclTensor *k2qSlotIndices,
     const aclTensor *actualSeqLengthsOptional,
     const aclTensor *actualSeqLengthsKvOptional,
     int64_t numKeyValueHeads,
@@ -89,20 +87,19 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(selectIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(blockTable != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(kvToQSelectIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(kvToQSelectNum != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(kvToQSlotIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(kvBlockValidSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(k2qRowPtr != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(k2qQIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(k2qSlotIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqLengthsOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqLengthsKvOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
     L2_DFX_PHASE_1(aclnnSparseAttentionScorePrefill,
-                   DFX_IN(query, key, value, selectIdx, blockTable,
-                          kvToQSelectIdx, kvToQSelectNum, kvToQSlotIdx,
-                          kvBlockValidSize,
+                   DFX_IN(query, key, value, blockTable,
+                          k2qRowPtr, k2qQIndices, k2qSlotIndices,
                           actualSeqLengthsOptional, actualSeqLengthsKvOptional,
                           numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise),
                    DFX_OUT(attentionOut));
@@ -111,17 +108,17 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
 
-    aclnnStatus ret = MakeContiguous(query, key, value, selectIdx, blockTable,
-                                     kvToQSelectIdx, kvToQSelectNum,
-                                     kvToQSlotIdx, kvBlockValidSize,
+    aclnnStatus ret = MakeContiguous(query, key, value, blockTable,
+                                     k2qRowPtr, k2qQIndices,
+                                     k2qSlotIndices,
+                                     actualSeqLengthsOptional, actualSeqLengthsKvOptional,
                                      executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-
     auto output = l0op::SparseAttentionScorePrefill(
-        query, key, value, selectIdx, blockTable,
-        kvToQSelectIdx, kvToQSelectNum, kvToQSlotIdx, kvBlockValidSize,
+        query, key, value, blockTable,
+        k2qRowPtr, k2qQIndices, k2qSlotIndices,
         actualSeqLengthsOptional, actualSeqLengthsKvOptional,
         numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,
         executorImpl);

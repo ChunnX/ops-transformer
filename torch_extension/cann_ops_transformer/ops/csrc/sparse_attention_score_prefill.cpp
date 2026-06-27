@@ -17,17 +17,24 @@
 #include "aclnn_common.h"
 
 namespace op_api {
+namespace {
+
+void CheckInt32Tensor(const at::Tensor &tensor, const char *name)
+{
+    TORCH_CHECK(tensor.scalar_type() == at::kInt,
+        name, " dtype must be int32, got ", tensor.scalar_type());
+}
+
+} // namespace
 
 at::Tensor npu_sparse_attention_score_prefill(
     const at::Tensor &query,
     const at::Tensor &key,
     const at::Tensor &value,
-    const at::Tensor &select_idx,
     const at::Tensor &block_table,
-    const at::Tensor &kv_to_q_select_idx,
-    const at::Tensor &kv_to_q_select_num,
-    const at::Tensor &kv_to_q_slot_idx,
-    const at::Tensor &kv_block_valid_size,
+    const at::Tensor &k2q_row_ptr,
+    const at::Tensor &k2q_q_indices,
+    const at::Tensor &k2q_slot_indices,
     const at::Tensor &actual_seq_lengths,
     const at::Tensor &actual_seq_lengths_kv,
     int64_t num_key_value_heads,
@@ -36,7 +43,13 @@ at::Tensor npu_sparse_attention_score_prefill(
     int64_t top_k,
     int64_t inner_precise)
 {
-    // Output shape: same as query [total_q_tokens, num_q_heads, D]
+    CheckInt32Tensor(block_table, "block_table");
+    CheckInt32Tensor(k2q_row_ptr, "k2q_row_ptr");
+    CheckInt32Tensor(k2q_q_indices, "k2q_q_indices");
+    CheckInt32Tensor(k2q_slot_indices, "k2q_slot_indices");
+    CheckInt32Tensor(actual_seq_lengths, "actual_seq_lengths");
+    CheckInt32Tensor(actual_seq_lengths_kv, "actual_seq_lengths_kv");
+
     int64_t total_q_tokens = query.size(0);
     int64_t num_q_heads = query.size(1);
     int64_t D = query.size(2);
@@ -45,9 +58,8 @@ at::Tensor npu_sparse_attention_score_prefill(
                                          query.options().dtype(query.dtype()));
 
     ACLNN_CMD(aclnnSparseAttentionScorePrefill,
-              query, key, value, select_idx, block_table,
-              kv_to_q_select_idx, kv_to_q_select_num,
-              kv_to_q_slot_idx, kv_block_valid_size,
+              query, key, value, block_table,
+              k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
               actual_seq_lengths, actual_seq_lengths_kv,
               num_key_value_heads, scale_value, block_size, top_k,
               inner_precise, attention_out);

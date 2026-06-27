@@ -1,5 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #include "kernel_operator.h"
@@ -9,34 +15,40 @@
 
 #if (__CCE_AICORE__ == 310)
 
-using namespace SparseAttnPrefill;
+using namespace NpuArch;
+using namespace SasaPrefillKernelArch35;
 
 template <class InDtype, class SMDtype, class REDtype>
 __global__ __aicore__ void SasaPrefillInferIntf(
     GM_ADDR q, GM_ADDR k, GM_ADDR v,
-    GM_ADDR selectIdx, GM_ADDR blockTable,
-    GM_ADDR kvToQSelectIdx, GM_ADDR kvToQSelectNum,
-    GM_ADDR kvToQSlotIdx, GM_ADDR kvBlockValidSize,
+    GM_ADDR blockTable,
+    GM_ADDR k2qRowPtr, GM_ADDR k2qQIndices,
+    GM_ADDR k2qSlotIndices,
     GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
     GM_ADDR o, GM_ADDR workspace, GM_ADDR tiling)
 {
-    SasaPrefillKernelParams params{
-        q, k, v, selectIdx, blockTable,
-        kvToQSelectIdx, kvToQSelectNum, kvToQSlotIdx, kvBlockValidSize,
-        actualQseqlen, actualKvseqlen,
-        o, workspace, tiling};
+    using KernelBlockMmadQK = Gemm::Block::BlockMmadQKPrefillArch35<InDtype, InDtype, float>;
+    using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxPrefillArch35;
+    using KernelEpilogueSoftmax = Epilogue::Block::BlockEpilogue<
+        DispatchPolicyOnlineSoftmax, InDtype>;
+    using KernelBlockMmadPV = Gemm::Block::BlockMmadPVPrefillArch35<InDtype, InDtype, float>;
+    using DispatchPolicyRescaleO = Epilogue::EpilogueRescaleOPrefillArch35;
+    using KernelEpilogueRescaleO = Epilogue::Block::BlockEpilogue<
+        DispatchPolicyRescaleO, InDtype>;
 
-    using KernelBlockMmadQK = PrefillBlockMmadQK<InDtype, InDtype, float>;
-    using KernelEpilogueSoftmax = BlockSoftmaxPrefill<InDtype>;
-    using KernelBlockMmadPV = PrefillBlockMmadPV<InDtype, InDtype, REDtype>;
-    using KernelEpilogueRescaleO = BlockRescaleOPrefill<InDtype>;
-
-    SasaPrefillKernelArch35<
+    using SasaPrefillKernel = SasaPrefillRegularKernelArch35<
         KernelBlockMmadQK,
         KernelEpilogueSoftmax,
         KernelBlockMmadPV,
-        KernelEpilogueRescaleO> kernel;
-    kernel(params);
+        KernelEpilogueRescaleO>;
+
+    SasaPrefillKernelParamsArch35 params{
+        q, k, v, blockTable,
+        k2qRowPtr, k2qQIndices, k2qSlotIndices,
+        actualQseqlen, actualKvseqlen,
+        o, workspace, tiling};
+    SasaPrefillKernel sasaPrefillKernel;
+    sasaPrefillKernel(params);
 }
 
 #endif
