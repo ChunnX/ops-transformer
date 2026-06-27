@@ -254,7 +254,6 @@ private:
     bool Prepare(CpuKernelContext &ctx);
     bool ParamsCheck();
     int32_t GetSumOfQuerySeq();
-    bool CheckTopkLengthSize();
     int32_t GetQueryBatchSize();
     void CalcOriMaskMode();
     void CalcCmpMaskMode();

@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*! 
+/*!
  * \file l0_sparse_lightning_indexer_kl_loss_grad_metadata.h 
  * \brief 
  */
