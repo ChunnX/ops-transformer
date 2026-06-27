@@ -80,7 +80,7 @@ private:
     int64_t dropPadMode_ = DROP_PAD_MODE;
     int64_t activeNum_ = 0;
     int64_t batchSize_ = 1;
-    LocalTensor<T> multiRowXLocal_;
+    TBuf<TPosition::VECCALC> multiRowXBuf_;
 };
 
 template <typename T>
@@ -164,7 +164,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Init(GM_ADDR x, GM_ADDR scale, 
 
     batchSize_ = tilingData->gatherOutComputeParamsOp.xBatchSize;
     if (batchSize_ > 1) {
-        pipe_->InitBuffer(multiRowXLocal_, 1, batchSize_ * AlignBytes(perLoopCols_, sizeof(T)));
+        pipe_->InitBuffer(multiRowXBuf_, batchSize_ * AlignBytes(perLoopCols_, sizeof(T)));
     }
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreIndicesElements_,
@@ -277,21 +277,23 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                         DataCopyExtParams batchCopyParams{static_cast<uint16_t>(batchRows),
                             static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
                         SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+                        int64_t batchElements = batchRows * perLoopCols_;
                         if constexpr (IsSameType<T, hifloat8_t>::value) {
                             DataCopyPadExtParams<uint8_t> batchPadParams{false, 0, 0, 0};
-                            DataCopyPad(multiRowXLocal_.template ReinterpretCast<uint8_t>(),
+                            DataCopyPad(multiRowXBuf_.Get<T>(batchElements).template ReinterpretCast<uint8_t>(),
                                         xUint8tGm_[batchStart * cols_ + colsLoopOffset],
                                         batchCopyParams, batchPadParams);
                         } else {
                             DataCopyPadExtParams<T> batchPadParams{false, 0, 0, 0};
-                            DataCopyPad(multiRowXLocal_, xGm_[batchStart * cols_ + colsLoopOffset],
+                            DataCopyPad(multiRowXBuf_.Get<T>(batchElements),
+                                        xGm_[batchStart * cols_ + colsLoopOffset],
                                         batchCopyParams, batchPadParams);
                         }
                         SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
                         for (int64_t b = 0; b < batchRows; b++) {
                             int64_t row = batchStart + b;
-                            LocalTensor<T> xLocal = multiRowXLocal_[b * perLoopCols_];
+                            LocalTensor<T> xLocal = multiRowXBuf_.Get<T>(batchElements)[b * perLoopCols_];
 
                             LocalTensor<float> scaleLocal;
                             if (isInputScale_ == 1 && colsLoop == 0) {
