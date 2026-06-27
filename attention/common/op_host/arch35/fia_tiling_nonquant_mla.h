@@ -79,8 +79,14 @@ private:
     ge::graphStatus SetPlatMemoryInfo();
     void SplitPolicy();
     bool CheckS1OutSplit();
+    bool IsQuantStorageMlaExcluded();
+    bool IsFeatureFlagExcluded();
+    bool IsSparseModeExcluded();
     void SplitOutSeq();
     void ComputeTilingData();
+    void SetAttenMaskTilingData();
+    void SetStartIdxTilingData();
+    void SetPageAttentionLayoutTilingData();
     void CalcWorkspaceSize();
     void GenTilingKey();
     void UpdateTilingKeyConfig();

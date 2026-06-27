@@ -98,9 +98,9 @@ std::tuple<at::Tensor, at::Tensor> construct_quant_lightning_indexer_output_tens
     at::Tensor sparse_indices_out = at::empty(output_size, query.options().dtype(at::kInt));
     at::Tensor sparse_values_out;
     if (return_value) {
-        sparse_values_out = at::empty(output_size, at::kBFloat16);
+        sparse_values_out = at::empty(output_size, query.options().dtype(at::kBFloat16));
     } else {
-        sparse_values_out = at::empty({0}, at::kBFloat16);
+        sparse_values_out = at::empty({0}, query.options().dtype(at::kBFloat16));
     }
 
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices_out, sparse_values_out);

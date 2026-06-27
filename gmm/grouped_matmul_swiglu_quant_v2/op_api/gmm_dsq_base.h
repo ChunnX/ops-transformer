@@ -568,12 +568,13 @@ protected:
     bool IsTransposeLastTwoDims(const aclTensor *tensor)
     {
         auto shape = tensor->GetViewShape();
-        int64_t dim1 = shape.GetDimNum() - 1;
-        int64_t dim2 = shape.GetDimNum() - 2;
+        size_t dimNum = shape.GetDimNum();
+        size_t dim1 = dimNum - 1;
+        size_t dim2 = dimNum - 2;
         auto strides = tensor->GetViewStrides();
         if (strides[dim2] == 1 && strides[dim1] == shape.GetDim(dim2)) {
             int64_t tmpNxD = shape.GetDim(dim1) * shape.GetDim(dim2);
-            for (int64_t batchDim = shape.GetDimNum() - 3; batchDim >= 0; batchDim--) {
+            for (int64_t batchDim = static_cast<int64_t>(dimNum) - 3; batchDim >= 0; batchDim--) {
                 if (strides[batchDim] != tmpNxD) {
                     return false;
                 }
@@ -589,14 +590,14 @@ protected:
         OP_LOGD("Unpack %s from int32 to int4 start.", tensorType.c_str());
         auto tensorS4 = const_cast<aclTensor *>(tensorS32);
         op::Shape tensorShape = tensorS4->GetViewShape();
-        auto viewShapeDim = tensorShape.GetDimNum();
+        size_t viewShapeDim = tensorShape.GetDimNum();
         op::Strides newStride = tensorS4->GetViewStrides();
         bool transposeTensor = false;
-        auto changeDimIdx = viewShapeDim - 1;
+        size_t changeDimIdx = viewShapeDim - 1;
         // 轴大于等于2才判断是否转置
-        if (viewShapeDim >= DIM_IDX_2 && IsTransposeLastTwoDims(tensorS4)) {
+        if (viewShapeDim >= static_cast<size_t>(DIM_IDX_2) && IsTransposeLastTwoDims(tensorS4)) {
             transposeTensor = true;
-            changeDimIdx = viewShapeDim - DIM_IDX_2;
+            changeDimIdx = viewShapeDim - static_cast<size_t>(DIM_IDX_2);
         }
         tensorShape[changeDimIdx] = tensorShape.GetDim(changeDimIdx) * INT4_PER_INT32;
         bool isNz = tensorS4->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
@@ -605,16 +606,16 @@ protected:
         if (isNz){
             OP_LOGD("Reset %s storageShape because tensor is NZ format.", tensorType.c_str());
             auto storageShape = tensorS4->GetStorageShape();
-            auto storageShapeDim = storageShape.GetDimNum();
+            size_t storageShapeDim = storageShape.GetDimNum();
             storageShape[storageShapeDim - 1] *= INT4_PER_INT32;
             tensorS4->SetStorageShape(storageShape);
         }
         if (transposeTensor) {
             OP_LOGD("Reset %s stride because tensor is transposed.", tensorType.c_str());
-            auto strideSize = newStride.size();
+            size_t strideSize = newStride.size();
             // 转置场景，B32承载B4时Strides缩小了8倍，需要调整回来
             newStride[strideSize - 1] *= INT4_PER_INT32;
-            for(int64_t batchDim = strideSize - 3; batchDim >= 0; batchDim--) {
+            for (int64_t batchDim = static_cast<int64_t>(strideSize) - 3; batchDim >= 0; batchDim--) {
                 newStride[batchDim] *= INT4_PER_INT32;
             }
             tensorS4->SetViewStrides(newStride);
