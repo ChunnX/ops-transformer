@@ -184,7 +184,7 @@ public:
                 rmsNormLocal = rmsNormBuf.Get<float>();
                 WaitFlag<HardEvent::MTE3_MTE2>(static_cast<event_t>(0));
                 if (GetBlockIdx() % 2 != 0) {
-                    xSplitOffset = (mL1RealSize / 2) * tilingData->hcMult * tilingData->d;
+                    xSplitOffset = CeilDiv(mL1RealSize, 2) * tilingData->hcMult * tilingData->d;
                     // sinkhorn阶段计算时，偶数Vector核多处理一行，x的split offset和matmul阶段不同
                     xOutSplitOffset = CeilDiv(mL1RealSize, 2) * tilingData->hcMult * tilingData->d;
                     ySplitOffset = CeilDiv(mL1RealSize, 2) * tilingData->d;
@@ -230,7 +230,7 @@ public:
                     CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
                 } else {
                     CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
-                    int64_t rowFactor = mL1RealSize / 2;
+                    int64_t rowFactor = CeilDiv(mL1RealSize, 2);
                     int64_t tailRowFactor = mL1RealSize - rowFactor;
                     int64_t curRowFactor = rowFactor;
                     int64_t mL1SizeAlign = CeilAlign(mL1RealSize, AscendC::BLOCK_CUBE);
