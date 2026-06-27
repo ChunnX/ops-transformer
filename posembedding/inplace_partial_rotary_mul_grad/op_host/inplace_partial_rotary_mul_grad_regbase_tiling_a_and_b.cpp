@@ -156,12 +156,12 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAAndB::PostTiling()
     tilingDataAAndB_.set_n(n_);
     tilingDataAAndB_.set_blockNumB(blockNumB_);
     tilingDataAAndB_.set_blockFactorB(blockFactorB_);
-    tilingDataAAndB_.set_blockNumS(1);
-    tilingDataAAndB_.set_blockFactorS(1);
-    tilingDataAAndB_.set_ubFactorS(1);
+    tilingDataAAndB_.set_blockNumS(0);
+    tilingDataAAndB_.set_blockFactorS(0);
+    tilingDataAAndB_.set_ubFactorS(0);
     tilingDataAAndB_.set_ubFactorB(ubFactorB_);
     tilingDataAAndB_.set_ubLoopNumN(0);
-    tilingDataAAndB_.set_ubFactorN(1);
+    tilingDataAAndB_.set_ubFactorN(0);
     tilingDataAAndB_.set_ubTailFactorN(0);
     tilingDataAAndB_.set_usedCoreNum(usedCoreNum_);
     tilingDataAAndB_.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
@@ -194,7 +194,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAAndB::PostTiling()
 
     OP_LOGI(context_->GetNodeName(),
             "InplacePartialRotaryMulGradA&B tiling: B=%ld S=%ld D=%ld N=%ld cosb=%ld layout=%ld "
-            "blockNumB=%ld blockFactorB=%ld ubFactorB=%ld "
+            "blockNumB=%ld blockFactorB=%ld blockNumS=1 blockFactorS=1 "
+            "ubFactorS=1 ubFactorB=%ld ubLoopNumN=0 ubFactorN=1 ubTailFactorN=0 "
             "usedCoreNum=%ld rotaryMode=%ld dSplitCoef=%ld "
             "sliceStart=%ld sliceEnd=%ld sliceLength=%ld tilingKey=%lu",
             b_, s_, d_, n_, cosb_, static_cast<int64_t>(layout_), blockNumB_, blockFactorB_, ubFactorB_, usedCoreNum_,
