@@ -44,7 +44,7 @@ struct MatmulAllReduceHostUtParamBase {
         this->group_size = stoll(ReadMap(csvMap, "group_size"));
         this->y_dtype = Str2DTypeGE(ReadMap(csvMap, "y_dtype"));
         this->comm_quant_mode = stoll(ReadMap(csvMap, "comm_quant_mode"));
-        this->comm_mode = ReadMap(csvMap, "comm_mode", "");
+        this->comm_mode = ReadMap(csvMap, "comm_mode", "ai_cpu");
         this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectResult"));
     }
 };

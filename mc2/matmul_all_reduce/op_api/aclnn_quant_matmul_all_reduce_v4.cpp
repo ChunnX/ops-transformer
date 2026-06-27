@@ -304,7 +304,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
 
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    const char* commModePtr = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
+    const char* commModePtr = "ai_cpu";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, transX2, biasOptional, x3Optional, scale, offset, transX2Scale, x1ScaleOptional, commQuantScale1Optional,
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
@@ -324,7 +324,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);

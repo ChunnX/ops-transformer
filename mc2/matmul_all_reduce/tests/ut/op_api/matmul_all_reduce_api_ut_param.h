@@ -72,9 +72,9 @@ struct MatmulAllReduceApiUtParam {
             "output_shape", "output_dtype", "output_format");
         this->group = ReadMap(csvMap, "group");
         this->reduceOp = ReadMap(csvMap, "reduce_op");
-        this->commMode = ReadMap(csvMap, "comm_mode", "");
+        this->commMode = ReadMap(csvMap, "comm_mode", "ai_cpu");
         if (this->commMode == "_") {
-            this->commMode = "";
+            this->commMode = "ai_cpu";
         }
         this->commTurn = stoll(ReadMap(csvMap, "comm_turn", "0"));
         this->streamMode = stoll(ReadMap(csvMap, "stream_mode", "0"));

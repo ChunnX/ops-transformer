@@ -43,7 +43,7 @@ std::vector<gert::TilingContextPara::OpAttr> MakeDefaultAttrs(
         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
         {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("")}
+        {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
     };
 }
 
