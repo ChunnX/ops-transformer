@@ -611,7 +611,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (strncmp(commModeStr, "", maxLength) == 0) {
-        if (rankDim <= 8) {
+        if (rankDim <= RANK_DIM_BOUNDARY) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
             commMode = Mc2Comm::COMM_MODE_AICPU;

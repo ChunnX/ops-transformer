@@ -93,6 +93,7 @@ constexpr uint64_t L1_ALIGN_SIZE = 32;
 constexpr uint64_t NO_QUANT_MODE = 0;
 constexpr uint64_t PERTENSOR_QUANT_MODE = 1;
 constexpr uint64_t MX_QUANT_MODE = 6;
+constexpr uint32_t RANK_DIM_BOUNDARY = 8;
 
 class AlltoAllvQuantGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
