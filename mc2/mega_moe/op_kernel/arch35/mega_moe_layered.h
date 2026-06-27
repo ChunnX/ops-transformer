@@ -1802,10 +1802,31 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
                 MegaMoeDispatchImpl::GetL1RecvNotifyOffset(tokenIndex, l1SlotSize_);
 
             // 轮询读 flag, 确认数据就绪
-            __gm__ int32_t* notifyAddr = reinterpret_cast<__gm__ int32_t*>(
-                srcUrmaBase + srcNotifyOffset);
-            while (AscendC::ReadGmByPassDCache(notifyAddr) != 1) {
-                AscendC::Nop<200>();
+            // 本卡 (srcRankId == rankId_): notifyAddr 在本卡 URMA 窗口 (本地 GM), 可直接 ReadGmByPassDCache
+            // 跨卡 (srcRankId != rankId_): notifyAddr 在远端卡 URMA 窗口 (远端内存), 必须用 ReadNbi 读到本地 GM 再判断
+            if (srcRankId == rankId_) {
+                __gm__ int32_t* notifyAddr = reinterpret_cast<__gm__ int32_t*>(
+                    srcUrmaBase + srcNotifyOffset);
+                while (AscendC::ReadGmByPassDCache(notifyAddr) != 1) {
+                    AscendC::Nop<200>();
+                }
+            } else {
+                uint64_t channelHandle = GetUrmaCommHandle(mc2Context_, srcRankId, rankId_);
+                // flag 占 4B, 复用 data 中转区地址 (flag 轮询完成后即被 data ReadNbi 覆盖, 不再使用)
+                GM_ADDR gmFlagAddr = params_.workspaceInfo.dispatchRevDataPtr +
+                    static_cast<uint64_t>(maxOutputSize_) * widthA * sizeof(ActivationType) +
+                    static_cast<uint64_t>(i) * l1SlotDataBytes_;
+                __gm__ int32_t* localFlagAddr = reinterpret_cast<__gm__ int32_t*>(gmFlagAddr);
+                while (true) {
+                    hcomm_.ReadNbi(channelHandle, gmFlagAddr,
+                        srcUrmaBase + srcNotifyOffset, sizeof(int32_t));
+                    hcomm_.Drain(channelHandle);
+                    PipeBarrier<PIPE_ALL>();
+                    if (AscendC::ReadGmByPassDCache(localFlagAddr) == 1) {
+                        break;
+                    }
+                    AscendC::Nop<200>();
+                }
             }
 
             // 读 data: 源卡 L1 接收区 → 本卡 dispatchRevDataPtr/dispatchRevScalePtr
