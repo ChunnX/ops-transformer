@@ -109,6 +109,7 @@ const static int64_t DROP_PAD_MODE_DROPLESS = 0LL;
 const static int64_t DROP_PAD_MODE_DROPPAD = 1LL;
 const static int64_t EXPERT_CAPACITY_MIN_VALUE = 0LL;
 const static int64_t MAX_COLS_ONE_LOOP = 16376LL; // DropPad Tiling计算使用的最大列数
+const static int64_t REG_SIZE = 256LL;
 
 const static int64_t TILINGKEY_BASE = 10000000LL;
 const static int64_t FULLLOAD_TILINGKEY_BASE = 200000LL; // 全载模版
@@ -1946,8 +1947,8 @@ int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopFP8Quant(int64_t 
 
     int64_t xInSize = AlignBytes(perLoopCols, inputXDtypeSize_);
     int64_t xOutSize = AlignBytes(perLoopCols, sizeof(uint8_t));
-    int64_t scaleSize =
-        AlignBytes(Ops::Base::CeilDiv(perLoopCols, FP8_PERBLOCK_BLOCK_SIZE * NUM_TWO), sizeof(float)) * NUM_TWO;
+    int64_t scaleSize = std::max(
+        AlignBytes(Ops::Base::CeilDiv(perLoopCols, FP8_PERBLOCK_BLOCK_SIZE), sizeof(float)), REG_SIZE);
     return (availUbSize_ / DOUBLE_BUFFER - (xInSize + xOutSize + scaleSize)) / static_cast<int64_t>(sizeof(int32_t));
 }
 
