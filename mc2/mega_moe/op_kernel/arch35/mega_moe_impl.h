@@ -675,6 +675,9 @@ __aicore__ inline void AicComputeA8W4(
             auto tensorBlockGm = l0cOutGm.Slice(
                 Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+            // A8W4 combine-quant: AIC 通知 AIV 本 tile 已完成
+            // gmm2CombineSyncCounter 内存布局 (每个 expert 一段, 每段 blockAivNum 个 slot):
+            //   expert:  [slot_0][slot_1][slot_2]...[slot_n]
             if (enableCombineQuant) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
@@ -834,9 +837,7 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet& workSet, const Params& param
                 AivGmm1PostA8W4<ElementC, MakeLayoutC>(
                     args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config, startLoopIdx, tileNum);
             } else {
-                if (args.enableCombineQuant) {
-                    // combine quant: sub=1 AIV 不参与 tile 循环，由外部 ProcessCombine 统一处理
-                } else {
+                if (!args.enableCombineQuant) {
                     AivGmm2PostA8W4<ElementC, MakeLayoutC>(
                         workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt, config,
                         startLoopIdx, tileNum);
