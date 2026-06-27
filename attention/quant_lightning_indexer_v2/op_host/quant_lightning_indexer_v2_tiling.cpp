@@ -155,8 +155,8 @@ void QLIV2InfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attenOut.desc = context_->GetOutputDesc(SPARSE_INDICES_INDEX);
     opParamInfo_.attenOut.shape = context_->GetOutputShape(SPARSE_INDICES_INDEX);
-    opParamInfo_.valuesOut.desc = context_->GetOutputDesc(SPARSE_VALUES_INDEX);
-    opParamInfo_.valuesOut.shape = context_->GetOutputShape(SPARSE_VALUES_INDEX);
+    opParamInfo_.sparseValues.desc = context_->GetOutputDesc(SPARSE_VALUES_INDEX);
+    opParamInfo_.sparseValues.shape = context_->GetOutputShape(SPARSE_VALUES_INDEX);
 }
 
 ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
@@ -303,7 +303,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
     inputQueryScaleType_ = opParamInfo_.query_dequant_scale.desc->GetDataType();
     inputKeyScaleType_ = opParamInfo_.key_dequant_scale.desc->GetDataType();
     outputType_ = opParamInfo_.attenOut.desc->GetDataType();
-    valuesOutType_ = opParamInfo_.valuesOut.desc->GetDataType();
+    valuesOutType_ = opParamInfo_.sparseValues.desc->GetDataType();
 
     OP_CHECK_IF(!(inputQType_ == inputKType_),
                OP_LOGE(opName_, "The data types of the input query and key must be the same."),
