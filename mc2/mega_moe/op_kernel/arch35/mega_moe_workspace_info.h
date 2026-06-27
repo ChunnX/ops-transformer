@@ -105,6 +105,7 @@ struct WorkspaceInfo {
     GM_ADDR tripleInfoPtr;
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR flagSendCntToGmm1Ptr;
     GM_ADDR cumsumInfoPtr;
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
@@ -148,6 +149,10 @@ struct WorkspaceInfo {
         int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
             static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+
+        // 每(expert, aiCore)单独占一个cache_line
+        flagSendCntToGmm1Ptr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * INT_CACHELINE * tilingData->expertPerRank * tilingData->aicNum;
 
         // Conditional allocation for A8W4 / combine-quant paths.
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / CombineQuantMode) 一致，
