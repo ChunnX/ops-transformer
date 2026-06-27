@@ -728,7 +728,7 @@ inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::UpdateCurso
         assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
     }
     if (UpdateS1G) {
-        CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
+        CalcS1GCache(assignContext.curS1GIdx, assignContext.batchCache, assignContext.s1GCache);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
@@ -977,11 +977,11 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GenMetaData
     uint32_t remainCoreNum = formerCoreProcessNum * aicCoreNum_ - totalNum;
     uint32_t usedCoreNum = totalNum < aicCoreNum_ ? totalNum : aicCoreNum_;
 
-    gradMetadataPtr->gradMetadata[optiling::TOTAL_NUM] = totalNum;
-    gradMetadataPtr->gradMetadata[optiling::FORMER_CORE_PROCESS_NUM] = formerCoreProcessNum;
-    gradMetadataPtr->gradMetadata[optiling::REMAIN_CORE_PROCESS_NUM] = remainCoreProcessNum;
-    gradMetadataPtr->gradMetadata[optiling::REMAIN_CORE_NUM] = remainCoreNum;
-    gradMetadataPtr->gradMetadata[optiling::USED_CORE_NUM] = usedCoreNum;
+    gradMetadataPtr->gradMetadata[TOTAL_NUM] = totalNum;
+    gradMetadataPtr->gradMetadata[FORMER_CORE_PROCESS_NUM] = formerCoreProcessNum;
+    gradMetadataPtr->gradMetadata[REMAIN_CORE_PROCESS_NUM] = remainCoreProcessNum;
+    gradMetadataPtr->gradMetadata[REMAIN_CORE_NUM] = remainCoreNum;
+    gradMetadataPtr->gradMetadata[USED_CORE_NUM] = usedCoreNum;
     return true;
 }
 
