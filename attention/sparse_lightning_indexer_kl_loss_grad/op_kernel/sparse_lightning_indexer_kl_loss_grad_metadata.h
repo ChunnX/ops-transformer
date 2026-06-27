@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_kl_loss_grad_metadata_arch22.h
+ * \file sparse_lightning_indexer_kl_loss_grad_metadata.h
  * \brief Runtime metadata consumed by sparse_lightning_indexer_kl_loss_grad.
  */
-#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_ARCH22_H
-#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_ARCH22_H
+#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
+#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
 
 #include <cstdint>
 
@@ -51,4 +51,4 @@ __aicore__ inline uint32_t GetSliMetaBS1IndexAttr(uint32_t coreIdx)
 
 } // namespace optiling
 
-#endif // SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_ARCH22_H
+#endif // SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H

@@ -16,6 +16,31 @@
 namespace op_api {
 constexpr int64_t SLI_KL_LOSS_GRAD_METADATA_SIZE = 64;
 
+at::Device get_sparse_lightning_kl_loss_grad_metadata_device(
+    const c10::optional<at::Tensor> &cu_seqlens_q,
+    const c10::optional<at::Tensor> &cu_seqlens_k,
+    const c10::optional<at::Tensor> &seqused_q,
+    const c10::optional<at::Tensor> &seqused_k,
+    const c10::optional<at::Tensor> &cmp_residual_k)
+{
+    if (cu_seqlens_q.has_value() && cu_seqlens_q.value().defined()) {
+        return cu_seqlens_q.value().device();
+    }
+    if (cu_seqlens_k.has_value() && cu_seqlens_k.value().defined()) {
+        return cu_seqlens_k.value().device();
+    }
+    if (seqused_q.has_value() && seqused_q.value().defined()) {
+        return seqused_q.value().device();
+    }
+    if (seqused_k.has_value() && seqused_k.value().defined()) {
+        return seqused_k.value().device();
+    }
+    if (cmp_residual_k.has_value() && cmp_residual_k.value().defined()) {
+        return cmp_residual_k.value().device();
+    }
+    return at::Device(torch_npu::utils::get_npu_device_type());
+}
+
 at::Tensor sparse_lightning_indexer_kl_loss_grad_metadata(
     int64_t num_heads_q,
     int64_t num_heads_k,
@@ -34,33 +59,18 @@ at::Tensor sparse_lightning_indexer_kl_loss_grad_metadata(
     int64_t mask_mode,
     int64_t cmp_ratio)
 {
-    at::Device output_device = at::Device(std::string("npu"));
-    if (cu_seqlens_q.has_value()) {
-        output_device = cu_seqlens_q.value().device();
-    } else if (cu_seqlens_k.has_value()) {
-        output_device = cu_seqlens_k.value().device();
-    } else if (seqused_q.has_value()) {
-        output_device = seqused_q.value().device();
-    } else if (seqused_k.has_value()) {
-        output_device = seqused_k.value().device();
-    } else if (cmp_residual_k.has_value()) {
-        output_device = cmp_residual_k.value().device();
-    }
+    at::Tensor output = at::empty(
+        {SLI_KL_LOSS_GRAD_METADATA_SIZE},
+        at::TensorOptions().dtype(at::kInt).device(get_sparse_lightning_kl_loss_grad_metadata_device(
+            cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k)));
 
-    at::Tensor output = torch::empty({SLI_KL_LOSS_GRAD_METADATA_SIZE},
-        torch::dtype(torch::kInt32).device(output_device));
-    auto cu_seqlens_q_val = get_valid_tensor(cu_seqlens_q, output_device);
-    auto cu_seqlens_k_val = get_valid_tensor(cu_seqlens_k, output_device);
-    auto seqused_q_val = get_valid_tensor(seqused_q, output_device);
-    auto seqused_k_val = get_valid_tensor(seqused_k, output_device);
-    auto cmp_residual_k_val = get_valid_tensor(cmp_residual_k, output_device);
-    
     char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
     char *layout_k_ptr = const_cast<char *>(layout_k.c_str());
 
-    ACLNN_CMD(aclnnSparseLightningIndexerKLLossGradMetadata, cu_seqlens_q_val, cu_seqlens_k_val, seqused_q_val,
-              seqused_k_val, cmp_residual_k_val, batch_size, max_seqlen_q, max_seqlen_k, num_heads_q, num_heads_k,
-              head_dim, topk, layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio, output);
+    ACLNN_CMD(aclnnSparseLightningIndexerKLLossGradMetadata,
+        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
+        batch_size, max_seqlen_q, max_seqlen_k, num_heads_q, num_heads_k, head_dim, topk,
+        layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio, output);
 
     return output;
 }

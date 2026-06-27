@@ -13,8 +13,8 @@ import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-LI_METADATA_SIZE = 1024
-LI_METADATA_OP_NAME = "lightning_indexer_metadata"
+LI_V2_METADATA_SIZE = 1024
+LI_V2_METADATA_OP_NAME = "lightning_indexer_metadata"
 
 
 class LightningIndexerOpBuilder(OpBuilder):
@@ -48,7 +48,7 @@ class LightningIndexerOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        @torch.library.register_fake("cann_ops_transformer::" + LI_METADATA_OP_NAME)
+        @torch.library.register_fake("cann_ops_transformer::" + LI_V2_METADATA_OP_NAME)
         def lightning_indexer_metadata_meta(
             num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, cu_seqlens_q: Optional[torch.Tensor] = None,
             cu_seqlens_k: Optional[torch.Tensor] = None, seqused_q: Optional[torch.Tensor] = None,
@@ -56,7 +56,7 @@ class LightningIndexerOpBuilder(OpBuilder):
             batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None,
             layout_q: Optional[str] = None, layout_k: Optional[str] = None, mask_mode: Optional[int] = None,
             cmp_ratio: Optional[int] = None):
-            return torch.empty((LI_METADATA_SIZE), dtype=torch.int32, device="npu")
+            return torch.empty((LI_V2_METADATA_SIZE), dtype=torch.int32, device="npu")
 
 
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -88,7 +88,7 @@ lightning_indexer_op_builder = LightningIndexerOpBuilder()
 op_module = lightning_indexer_op_builder.load()  # Compiles/loads the .so file
 
 
-@impl(AS_LIBRARY, LI_METADATA_OP_NAME, "PrivateUse1")
+@impl(AS_LIBRARY, LI_V2_METADATA_OP_NAME, "PrivateUse1")
 def lightning_indexer_metadata(
     num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_k: Optional[torch.Tensor] = None, seqused_q: Optional[torch.Tensor] = None,
@@ -113,7 +113,7 @@ def lightning_indexer_metadata(
         batch_size, max_seqlen_q, max_seqlen_k, layout_q, layout_k, mask_mode, cmp_ratio)
 
 
-@torch.library.register_kernel("cann_ops_transformer::" + LI_METADATA_OP_NAME, None)
+@torch.library.register_kernel("cann_ops_transformer::" + LI_V2_METADATA_OP_NAME, None)
 def lightning_indexer_metadata_fallback(
     num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_k: Optional[torch.Tensor] = None, seqused_q: Optional[torch.Tensor] = None,
