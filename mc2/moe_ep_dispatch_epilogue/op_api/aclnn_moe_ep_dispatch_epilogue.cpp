@@ -19,7 +19,6 @@
 using namespace op;
 
 extern "C" {
-
 static aclnnStatus CheckNotNull(const aclTensor* context, const aclTensor* dstBufferSlotIdx,
                                 const aclTensor* numRecvTokensPerRank,
                                 const aclTensor* numRecvTokensPerExpert, aclTensor* recvX,
@@ -99,7 +98,8 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 
 aclnnStatus aclnnMoeEpDispatchEpilogue(
     void* workspace, uint64_t workspaceSize,
-    aclOpExecutor* executor, aclrtStream stream) {
+    aclOpExecutor* executor, aclrtStream stream)
+{
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }

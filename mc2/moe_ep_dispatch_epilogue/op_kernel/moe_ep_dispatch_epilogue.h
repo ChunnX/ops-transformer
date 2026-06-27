@@ -198,7 +198,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     paddedTopkElems_ = axisKAlign_;
     uint32_t maxSlotsPerAiv = Ceil(numMaxTokensPerRank_, aivNum_);
     uint32_t ubMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubTopkIdsBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedTopkElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubTopkIdsBytes = Ceil((uint32_t)(maxSlotsPerAiv * paddedTopkElems_ * sizeof(int32_t)),
+        UB_ALIGN) * UB_ALIGN;
     ubMetaCapElems_ = ubMetaBytes / sizeof(int32_t);
     uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
@@ -206,7 +207,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
     uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     maxSlotsPerAiv_ = maxSlotsPerAiv * epWorldSize_;
     uint32_t ubStageWeightsBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * sizeof(float)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubStageMetaBytes = Ceil((uint32_t)(maxSlotsPerAiv_ * RECV_META_FIELDS * sizeof(int32_t)),
+        UB_ALIGN) * UB_ALIGN;
 
     tpipe_->InitBuffer(ubTokenBuf_, ubTokenBytes);
     tpipe_->InitBuffer(ubHitCountBuf_, ubHitCountBytes);
@@ -231,7 +233,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Init
         tpipe_->InitBuffer(ubScalesBuf_, scalesBytesAlign);
         ubScales_ = ubScalesBuf_.Get<ScalesType>();
         recvScalesGm_.SetGlobalBuffer((__gm__ ScalesType*)recvScales);
-
     }
 
     ubToken_     = ubTokenBuf_.Get<XType>();
@@ -280,7 +281,6 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Proc
     if (myTotalHits != 0) {
         CopyFromWindowByExpert();
     }
-
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached>
@@ -327,8 +327,8 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Coun
         for (uint32_t localExpertId = 0; localExpertId < numLocalExperts_; ++localExpertId) {
             int32_t targetExpertId = static_cast<int32_t>(epRankId_ * numLocalExperts_ + localExpertId);
             SyncFunc<AscendC::HardEvent::S_V>();
-            Duplicate<int32_t>(ubTargetExpertId_, targetExpertId, calCnt);    
-            Sub(ubSubExpertId_, ubTopkIds_, ubTargetExpertId_, calCnt);  
+            Duplicate<int32_t>(ubTargetExpertId_, targetExpertId, calCnt);
+            Sub(ubSubExpertId_, ubTopkIds_, ubTargetExpertId_, calCnt);
             Abs(ubTargetExpertId_, ubSubExpertId_, calCnt);
             Mins(ubSubExpertId_, ubTargetExpertId_, 1, calCnt);
             const uint32_t reduceShape[] = {1U, static_cast<uint32_t>(calCnt)};
@@ -449,12 +449,12 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached>::Copy
             SyncFunc<AscendC::HardEvent::S_MTE3>();
             DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(stageIdx * sizeof(float)), 0U, 0U, 0U};
             DataCopyPad(recvTopkWeightsGm_[expertRowStart], ubStageWeights_, weightOutParams);
-            DataCopyExtParams recvMetaCopyParams{1U, static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)),
-                                            0U, 0U, 0U};
+            DataCopyExtParams recvMetaCopyParams{1U,
+                static_cast<uint32_t>(stageIdx * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
             uint32_t gmOffset = expertRowStart * RECV_META_FIELDS;
             if constexpr (!IsCached) {
                 DataCopyPad(recvSrcMetadataGm_[gmOffset], ubStageMeta_, recvMetaCopyParams);
-            } else {    //cached: 把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
+            } else {    // cached: 把 cachedRecvSrcMetadataGm_ 整段拷贝到 recvSrcMetadataGm_
                 DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
                 DataCopyPad(ubStageMeta_, cachedRecvSrcMetadataGm_[gmOffset], recvMetaCopyParams, padParams);
                 SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
