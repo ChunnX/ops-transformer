@@ -1654,8 +1654,8 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
         commMode = Mc2Comm::COMM_MODE_CCU;
         OP_LOGI(opName_, "The input attr comm_mode is ccu, commMode will be set to CCU.");
     } else if (std::strcmp(commModeStr, "") == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
-        OP_LOGI(opName_, "The input attr comm_mode is empty string, commMode will be set to CCU.");
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+        OP_LOGI(opName_, "The input attr comm_mode is empty string, commMode will be set to AICPU.");
     } else {
         OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commModeStr, "ai_cpu, ccu or empty");
         return ge::GRAPH_FAILED;
@@ -1665,21 +1665,15 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
 uint8_t MatmulAllReduceTilingBase::GetCommMode() const
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return Mc2Comm::COMM_MODE_CCU);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return Mc2Comm::COMM_MODE_AICPU);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return Mc2Comm::COMM_MODE_CCU);
-    if (std::strcmp(commModeStr, "ai_cpu") == 0) {
-        OP_LOGI(opName_, "The input attr comm_mode is ai_cpu, TilingKey Do AICPU");
-        return Mc2Comm::COMM_MODE_AICPU;
-    } else if (std::strcmp(commModeStr, "ccu") == 0) {
-        OP_LOGI(opName_, "The input attr comm_mode is ccu, TilingKey Do CCU");
-        return Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strcmp(commModeStr, "") == 0) {
-        OP_LOGI(opName_, "The input attr comm_mode is empty string, TilingKey Do CCU");
+    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return Mc2Comm::COMM_MODE_AICPU);
+    if (std::strcmp(commModeStr, "ccu") == 0) {
+        OP_LOGI(opName_, "TilingKey Do CCU");
         return Mc2Comm::COMM_MODE_CCU;
     }
-    OP_LOGI(opName_, "Default TilingKey Do CCU");
-    return Mc2Comm::COMM_MODE_CCU;
+    OP_LOGI(opName_, "TilingKey Do AICPU");
+    return Mc2Comm::COMM_MODE_AICPU;
 }
 ge::graphStatus MatmulAllReduceTilingBase::CheckCommModeA2() const
 {
