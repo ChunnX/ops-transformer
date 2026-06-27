@@ -79,18 +79,18 @@ constexpr int64_t SCALES_ALIGN_EVEN = 2;    // fp8 align 2
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info)
 {
     OP_LOGD(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u",
-              info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
+            info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
     OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
-              info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
+            info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
     OP_LOGD(nodeName, "aivNum=%u, cached=%u, scalesBytes=%u",
-              info.aivNum, info.cached, info.scalesBytes);
+            info.aivNum, info.cached, info.scalesBytes);
 }
 
 // ---------------------------------------------------------------------------
 // 属性合法性
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const char *nodeName,
-                                          MoeEpDispatchEpilogueInfo &info)
+                                       MoeEpDispatchEpilogueInfo &info)
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
@@ -314,7 +314,7 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
 }
 
 static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, const char *nodeName,
-                                             MoeEpDispatchEpilogueInfo &info, int64_t topK)
+                                          MoeEpDispatchEpilogueInfo &info, int64_t topK)
 {
     // ---- recvX [A_alloc, hidden] bf16/fp16 ----
     auto recvXShape = context->GetOutputShape(OUT_RECV_X_INDEX);
@@ -394,7 +394,7 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
 // HCCL Window 容量校验
 // ---------------------------------------------------------------------------
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const char *nodeName,
-                                       const MoeEpDispatchEpilogueInfo &info)
+                                    const MoeEpDispatchEpilogueInfo &info)
 {
     auto attrs = context->GetAttrs();
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
@@ -486,8 +486,8 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U,
-                                             hasTopkWeights ? 1U : 0U,
-                                             info.isMxQuant ? 1U : 0U);
+                                            hasTopkWeights ? 1U : 0U,
+                                            info.isMxQuant ? 1U : 0U);
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u, hasTopkWeights=%u, isMxQuant=%u",
         tilingKey, blockDim, aivNum, info.cached, hasTopkWeights ? 1U : 0U, info.isMxQuant);

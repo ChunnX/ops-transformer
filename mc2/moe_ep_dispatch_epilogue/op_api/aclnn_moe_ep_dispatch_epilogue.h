@@ -16,7 +16,6 @@
 #include "aclnn_util.h"
 
 extern "C" {
-
 /**
  * @brief MoE EP Dispatch Epilogue: compact copy from HCCL Window to caller-preallocated
  *        recv_x (corresponding to DeepEP V2 launch_dispatch_copy_epilogue).
