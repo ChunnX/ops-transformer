@@ -493,6 +493,8 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
   - <term>Ascend 950PR/Ascend 950DT</term>：当qInputLayout或kvInputLayout 为 非"TND"时，会忽略这两个入参。
 </ul>
 
+* 不支持确定性计算场景。
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
