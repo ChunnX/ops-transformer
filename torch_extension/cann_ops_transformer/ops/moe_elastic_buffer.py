@@ -57,7 +57,7 @@ class MoEElasticBuffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
         self.ep_world_size = torch.distributed.get_world_size(group)
-        self._ctx_manager = CommContextManager(self.group_name, self.ep_world_size, commAlg="urma", backend="channel")
+        self._ctx_manager = CommContextManager(self.group_name, self.ep_world_size, backend="channel", commAlg="urma")
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
 
