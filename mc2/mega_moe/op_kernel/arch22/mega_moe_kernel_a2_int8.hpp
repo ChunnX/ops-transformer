@@ -1330,6 +1330,7 @@ private:
         blockEpilogue.Finalize();
     }
 
+
 private:
     struct WorkspaceInfo {
         GM_ADDR ptrA;
