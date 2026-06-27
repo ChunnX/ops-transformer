@@ -29,42 +29,33 @@ constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr uint32_t FP32_INF_VALUE = 0x7f800000;
 constexpr uint16_t FP16_MAX_VALUE_MASK = 0x7fff;
 
-template <typename T, typename U>
-__simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr,
-                                  uint32_t totalElemNum, uint16_t blockNum, float fp8MaxValue)
+template <typename T>
+__simd_vf__ inline void ComputeMaxVF(__ubuf__ T *xAddr, __ubuf__ float *maxOutAddr, uint32_t totalElemNum,
+                                     uint16_t blockNum)
 {
     using namespace AscendC::MicroAPI;
 
     uint32_t dtypeSize = sizeof(T);
     uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / dtypeSize;
-    uint16_t vfNum = AscendC::VECTOR_REG_WIDTH / sizeof(float);
 
-    static constexpr DivSpecificMode mode = {MaskMergeMode::ZEROING, false};
     static constexpr CastTrait castTrait0 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
                                              RoundMode::CAST_RINT};
-    static constexpr CastTrait castTrait32tofp8 = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
-                                                   RoundMode::CAST_RINT};
 
     __VEC_SCOPE__
     {
-        RegTensor<T> vreg1, vreg2, vreg3, maxReg, yReg1;
-        RegTensor<float> scaleReg, fp8MaxReg, yReg2, yReg3;
-        RegTensor<U> outReg;
+        RegTensor<T> vreg1, vreg2, vreg3, maxReg;
+        RegTensor<float> maxFp32Reg;
 
         MaskReg preg0;
         MaskReg maskAll = CreateMask<uint16_t, MaskPattern::ALL>();
-        MaskReg yMaskReg;
 
         Duplicate((RegTensor<uint16_t> &)vreg2, FP16_MAX_VALUE_MASK);
-        Duplicate(fp8MaxReg, fp8MaxValue);
 
         for (uint16_t blkIdx = 0; blkIdx < blockNum; blkIdx++) {
             uint32_t blockOffset = blkIdx * FP8_PERBLOCK_BLOCK_SIZE;
             uint32_t blockElemNum = (blkIdx == blockNum - 1) ? (totalElemNum - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
             uint32_t inputNum = blockElemNum;
-            uint32_t outputNum = blockElemNum;
             uint16_t inputVfLoop = (blockElemNum + vfLen - 1) / vfLen;
-            uint16_t outputVfLoop = (blockElemNum + vfNum - 1) / vfNum;
 
             Duplicate(maxReg, static_cast<T>(0));
 
@@ -77,16 +68,74 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
 
             ReduceMax<uint16_t>((RegTensor<uint16_t> &)maxReg, (RegTensor<uint16_t> &)maxReg, maskAll);
             Duplicate(maxReg, maxReg, maskAll);
+            Cast<float, T, castTrait0>(maxFp32Reg, maxReg, maskAll);
+            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(maxOutAddr + blkIdx, maxFp32Reg, maskAll);
+        }
+    }
+}
 
-            Cast<float, T, castTrait0>(scaleReg, maxReg, maskAll);
-            Div<float, &mode>(scaleReg, scaleReg, fp8MaxReg, maskAll);
-            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + blkIdx, scaleReg, maskAll);
+template <typename T>
+__simd_vf__ inline void ComputeScaleVF(__ubuf__ float *maxInAddr, __ubuf__ float *scaleOutAddr,
+                                       __ubuf__ float *invScaleOutAddr, uint16_t blockNum, float fp8MaxValue)
+{
+    using namespace AscendC::MicroAPI;
+
+    static constexpr DivSpecificMode mode = {MaskMergeMode::ZEROING, false};
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> maxReg, scaleReg, invScaleReg, fp8MaxReg;
+
+        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+
+        Duplicate(fp8MaxReg, fp8MaxValue);
+
+        for (uint16_t blkIdx = 0; blkIdx < blockNum; blkIdx++) {
+            DataCopy(maxReg, maxInAddr + blkIdx);
+            Div<float, &mode>(scaleReg, maxReg, fp8MaxReg, maskAll);
+            Div<float, &mode>(invScaleReg, fp8MaxReg, maxReg, maskAll);
+            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleOutAddr + blkIdx, scaleReg, maskAll);
+            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(invScaleOutAddr + blkIdx, invScaleReg, maskAll);
+        }
+    }
+}
+
+template <typename T, typename U>
+__simd_vf__ inline void ComputeQuantVF(__ubuf__ T *xAddr, __ubuf__ float *invScaleAddr, __ubuf__ U *yAddr,
+                                       uint32_t totalElemNum, uint16_t blockNum)
+{
+    using namespace AscendC::MicroAPI;
+
+    uint16_t vfNum = AscendC::VECTOR_REG_WIDTH / sizeof(float);
+
+    static constexpr CastTrait castTrait0 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
+                                             RoundMode::CAST_RINT};
+    static constexpr CastTrait castTrait32tofp8 = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
+                                                   RoundMode::CAST_RINT};
+
+    __VEC_SCOPE__
+    {
+        RegTensor<T> yReg1;
+        RegTensor<float> invScaleReg, yReg2, yReg3;
+        RegTensor<U> outReg;
+
+        MaskReg yMaskReg;
+        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+
+        for (uint16_t blkIdx = 0; blkIdx < blockNum; blkIdx++) {
+            uint32_t blockOffset = blkIdx * FP8_PERBLOCK_BLOCK_SIZE;
+            uint32_t blockElemNum = (blkIdx == blockNum - 1) ? (totalElemNum - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
+            uint32_t outputNum = blockElemNum;
+            uint16_t outputVfLoop = (blockElemNum + vfNum - 1) / vfNum;
+
+            DataCopy(invScaleReg, invScaleAddr + blkIdx);
+            Duplicate(invScaleReg, invScaleReg, maskAll);
 
             for (uint16_t i = 0; i < outputVfLoop; i++) {
                 yMaskReg = UpdateMask<float>(outputNum);
                 DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + i * vfNum);
                 Cast<float, T, castTrait0>(yReg2, yReg1, yMaskReg);
-                Div<float, &mode>(yReg3, yReg2, scaleReg, yMaskReg);
+                Mul<float>(yReg3, yReg2, invScaleReg, yMaskReg);
                 Cast<U, float, castTrait32tofp8>(outReg, yReg3, yMaskReg);
                 DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + i * vfNum, outReg, yMaskReg);
             }
@@ -119,10 +168,12 @@ private:
 private:
     TPipe *pipe_;
 
-    TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> inQueue_;
-    TQue<QuePosition::VECOUT, GATHER_OUT_BUFFER_NUM> outQueue_;
-    TQue<QuePosition::VECOUT, GATHER_OUT_BUFFER_NUM> scaleQueue_;
-    TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> sortedRowIdxInQueue_;
+    TQue<QuePosition::VECIN, 1> inQueue_;
+    TQue<QuePosition::VECOUT, 1> outQueue_;
+    TQue<QuePosition::VECOUT, 1> scaleQueue_;
+    TQue<QuePosition::VECIN, 1> sortedRowIdxInQueue_;
+    TBuf<TPosition::VECCALC> maxBuffer_;
+    TBuf<TPosition::VECCALC> invScaleBuffer_;
 
     GlobalTensor<T> xInGm_;
     GlobalTensor<uint8_t> expandedXOutGm_;
@@ -248,14 +299,15 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::InitBuffer()
 {
     int64_t inQueueBuffer = AlignBytes(perLoopCols_, sizeof(T));
     int64_t outQueueBuffer = AlignBytes(perLoopCols_, sizeof(U));
-    // scale buffer至少分配一个VReg大小，避免Duplicate等向量指令写入时溢出
     int64_t scaleQueueBuffer = Max(static_cast<int64_t>(AlignBytes(perLoopScaleCols_, sizeof(float))),
                                    static_cast<int64_t>(AscendC::VECTOR_REG_WIDTH));
 
-    pipe_->InitBuffer(inQueue_, GATHER_OUT_BUFFER_NUM, inQueueBuffer);
-    pipe_->InitBuffer(outQueue_, GATHER_OUT_BUFFER_NUM, outQueueBuffer);
-    pipe_->InitBuffer(scaleQueue_, GATHER_OUT_BUFFER_NUM, scaleQueueBuffer);
-    pipe_->InitBuffer(sortedRowIdxInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopRows_, sizeof(int32_t)));
+    pipe_->InitBuffer(inQueue_, 1, inQueueBuffer);
+    pipe_->InitBuffer(outQueue_, 1, outQueueBuffer);
+    pipe_->InitBuffer(scaleQueue_, 1, scaleQueueBuffer);
+    pipe_->InitBuffer(sortedRowIdxInQueue_, 1, AlignBytes(perLoopRows_, sizeof(int32_t)));
+    pipe_->InitBuffer(maxBuffer_, scaleQueueBuffer);
+    pipe_->InitBuffer(invScaleBuffer_, scaleQueueBuffer);
 }
 
 template <typename T, typename U>
@@ -334,10 +386,19 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::Compute(int64_t loopC
     LocalTensor<float> scaleLocal = scaleQueue_.AllocTensor<float>();
     __ubuf__ float *scaleAddr = reinterpret_cast<__ubuf__ float *>(scaleLocal.GetPhyAddr());
 
+    LocalTensor<float> maxLocal = maxBuffer_.Get<float>();
+    __ubuf__ float *maxAddr = reinterpret_cast<__ubuf__ float *>(maxLocal.GetPhyAddr());
+    LocalTensor<float> invScaleLocal = invScaleBuffer_.Get<float>();
+    __ubuf__ float *invScaleAddr = reinterpret_cast<__ubuf__ float *>(invScaleLocal.GetPhyAddr());
+
     Duplicate(scaleLocal, 0.0f, Align(loopScaleCols, sizeof(float)));
 
-    VF_CALL<ComputeVF<T, U>>(xAddr, scaleAddr, outAddr, static_cast<uint32_t>(loopCols),
-                             static_cast<uint16_t>(loopValidScaleCols), fp8MaxValue_);
+    VF_CALL<ComputeMaxVF<T>>(xAddr, maxAddr, static_cast<uint32_t>(loopCols),
+                             static_cast<uint16_t>(loopValidScaleCols));
+    VF_CALL<ComputeScaleVF<T>>(maxAddr, scaleAddr, invScaleAddr, static_cast<uint16_t>(loopValidScaleCols),
+                               fp8MaxValue_);
+    VF_CALL<ComputeQuantVF<T, U>>(xAddr, invScaleAddr, outAddr, static_cast<uint32_t>(loopCols),
+                                  static_cast<uint16_t>(loopValidScaleCols));
 
     inQueue_.FreeTensor(xLocal);
     outQueue_.EnQue(outLocal);
