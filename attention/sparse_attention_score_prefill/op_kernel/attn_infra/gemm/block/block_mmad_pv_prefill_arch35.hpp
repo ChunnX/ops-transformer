@@ -1,25 +1,29 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  *
- * Prefill PV matmul: V block resident in L1, P from UB → L1 → L0A.
- * Mirrors decode block_mmad_pv_arch35_ABf16_C_to_UB.hpp but simplified
- * for single-core (no cross-core sync needed).
- *
- * Layout: P [groupSize, validSize] zN (A), V [validSize, D] RowMajor (B)
- * Output: O [groupSize, D] → UB via FixPipe (SPLIT_M mode)
+ * Prefill PV matmul (KV-centric). Cross-core sync / O split aligned with
+ * block_mmad_pv_arch35_ABf16_C_to_UB.hpp.
  */
-#ifndef BLOCK_MMAD_PREFILL_PV_HPP
-#define BLOCK_MMAD_PREFILL_PV_HPP
+#ifndef GEMM_BLOCK_MMAD_PV_PREFILL_ARCH35_HPP
+#define GEMM_BLOCK_MMAD_PV_PREFILL_ARCH35_HPP
 
-#include "kernel_utils.hpp"
+#include "../../../attn_infra/base_defs.hpp"
+#include "../../../attn_infra/arch/resource.hpp"
+#include "../../../attn_infra/arch/cross_core_sync.hpp"
+#include "../../../attn_infra/coord.hpp"
+#include "../../../attn_infra/gemm/dispatch_policy.hpp"
+#include "../../../attn_infra/gemm/tile_common/tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/tile_mmad.hpp"
+#include "../../../attn_infra/layout/layout.hpp"
+#include "../../../tla/layout.hpp"
+#include "../../../tla/tensor.hpp"
 
-namespace SparseAttnPrefill {
-
-using namespace NpuArch;
+namespace NpuArch::Gemm::Block {
 
 template <class ElementP_, class ElementV_, class ElementO_>
-struct PrefillBlockMmadPV {
-    using ArchTag = Arch::AtlasA5;
+struct BlockMmadPVPrefillArch35 {
+    using DispatchPolicy = MmadAtlasA5PrefillPV;
+    using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementP = ElementP_;
     using ElementV = ElementV_;
     using ElementO = ElementO_;
@@ -50,6 +54,7 @@ struct PrefillBlockMmadPV {
     static constexpr uint32_t L0B_BUF_SIZE = ArchTag::L0B_SIZE / L0_STAGES;
     static constexpr uint32_t L0C_HALF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_BUF_SIZE = L0C_HALF_SIZE / L0_STAGES;
+    static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
 
     AscendC::LocalTensor<ElementV> l1VTensor_;
     AscendC::LocalTensor<ElementP> l1PTensor_;
@@ -62,15 +67,39 @@ struct PrefillBlockMmadPV {
     TileMmad tileMmad;
 
     __aicore__ inline
-    PrefillBlockMmadPV() {}
+    BlockMmadPVPrefillArch35() {}
+
+    template <uint32_t MODE, pipe_t PIPE>
+    __aicore__ inline
+    void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    {
+        if constexpr (MODE == 4U) {
+            uint16_t flagIdV0 = crossCoreFlag.id;
+            uint16_t flagIdV1 = flagIdV0 + V0_V1_FLAG_ID_OFFSET;
+            Arch::CrossCoreFlag crossCoreFlagV1(flagIdV1);
+            Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
+            Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlagV1);
+        }
+    }
+
+    template <uint32_t MODE, pipe_t PIPE>
+    __aicore__ inline
+    void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    {
+        if constexpr (MODE == 4U) {
+            uint16_t flagIdV0 = crossCoreFlag.id;
+            uint16_t flagIdV1 = flagIdV0 + V0_V1_FLAG_ID_OFFSET;
+            Arch::CrossCoreFlag crossCoreFlagV1(flagIdV1);
+            Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
+            Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlagV1);
+        }
+    }
 
     __aicore__ inline
     void Init(Arch::Resource<ArchTag> &resource, uint32_t l1StartAddr,
               uint32_t blockSize, uint32_t D, uint32_t groupSize)
     {
         uint32_t vBufBytes = blockSize * D * sizeof(ElementV);
-        uint32_t pBufBytes = groupSize * blockSize * sizeof(ElementP);
-
         l1VTensor_ = resource.l1Buf.template GetBufferByByte<ElementV>(l1StartAddr);
         l1PTensor_ = resource.l1Buf.template GetBufferByByte<ElementP>(l1StartAddr + vBufBytes);
 
@@ -80,6 +109,7 @@ struct PrefillBlockMmadPV {
             l0CTensor_[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(
                 L0C_HALF_SIZE + L0C_BUF_SIZE * i);
         }
+        (void)groupSize;
     }
 
     template <class TensorV>
@@ -104,8 +134,9 @@ struct PrefillBlockMmadPV {
 
     template <class TensorP, class TensorO>
     __aicore__ inline
-    void ComputePV(TensorP &ubPTensor, TensorO &ubOTensor,
-                   uint32_t groupSize, uint32_t validSize, uint32_t D)
+    void operator()(TensorP &ubPTensor, TensorO &ubOTensor,
+                    uint32_t groupSize, uint32_t validSize, uint32_t D,
+                    Arch::CrossCoreFlag &smToMm2Flag, Arch::CrossCoreFlag &mm2ToWsFlag)
     {
         uint32_t M = groupSize;
         uint32_t N = D;
@@ -113,7 +144,8 @@ struct PrefillBlockMmadPV {
 
         static constexpr uint32_t ELE_PER_C0 = 32 / sizeof(ElementP);
 
-        // UB → L1 for P using raw DataCopy with Nd2NzParams
+        WaitCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
+
         uint32_t pRows = M;
         uint32_t pCols = K;
         uint32_t pColsAligned = RoundUp(pCols, ELE_PER_C0);
@@ -129,9 +161,10 @@ struct PrefillBlockMmadPV {
 
         AscendC::DataCopy(l1PTensor_, ubPTensor.data(), pCopyParams);
         AscendC::PipeBarrier<PIPE_ALL>();
+        SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
 
         using CopyL0CToDst = typename TileCopy::template CopyL0CToDst<TensorO>;
-        CopyL0CToDst copyL0CToUB;
+        CopyL0CToDst copyL0CToDst;
 
         auto l1PLayout = tla::MakeLayout<ElementP, LayoutTagL1A>(M, K);
         auto l1PTensorTla = tla::MakeTensor(l1PTensor_, l1PLayout, Arch::PositionL1{});
@@ -145,7 +178,7 @@ struct PrefillBlockMmadPV {
         for (uint32_t nL0Itr = 0; nL0Itr < nL0Num; nL0Itr++) {
             uint32_t nAct = (nL0Itr == nL0Num - 1) ? (N - nL0Itr * L0_TILE_N) : L0_TILE_N;
             uint32_t l0CBufId = nL0Itr % L0_STAGES;
-            uint32_t l0CEventId = l0CBufId;
+            uint32_t l0CEventId = l0CBufId + 2;
 
             auto l0CLayout = tla::MakeLayoutL0C(M, nAct);
             auto l0CTensorTla = tla::MakeTensor(l0CTensor_[l0CBufId], l0CLayout, Arch::PositionL0C{});
@@ -199,20 +232,24 @@ struct PrefillBlockMmadPV {
                 }
             }
 
+            if (nL0Itr == 0) {
+                WaitCrossCoreSync<4, PIPE_FIX>(mm2ToWsFlag);
+            }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
 
-            uint32_t mAligned = RoundUp(M, 16);
-            uint32_t nAligned = RoundUp(nAct, 16);
+            uint32_t mFixPAligned8 = RoundUp(M, 8U);
+            uint32_t nFixPAligned8 = RoundUp(nAct, 8U);
             auto ubOTile = GetTile(ubOTensor,
-                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mAligned, nAligned));
-            copyL0CToUB(ubOTile, l0CTensorTla);
+                tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mFixPAligned8, nFixPAligned8));
+            copyL0CToDst(ubOTile, l0CTensorTla);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
+        SetCrossCoreSync<4, PIPE_FIX>(mm2ToWsFlag);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID3);
     }
 };
 
-}  // namespace SparseAttnPrefill
+}  // namespace NpuArch::Gemm::Block
 
-#endif  // BLOCK_MMAD_PREFILL_PV_HPP
+#endif  // GEMM_BLOCK_MMAD_PV_PREFILL_ARCH35_HPP

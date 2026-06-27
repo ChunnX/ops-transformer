@@ -26,4 +26,7 @@ if (BUILD_OPS_RTY_KERNEL)
     )
 else()
     add_modules_sources(OPTYPE sparse_attention_score_prefill ACLNNTYPE aclnn_exclude)
+    add_ops_compile_options(
+            OP_NAME SparseAttentionScorePrefill
+            OPTIONS -g -O2)
 endif()

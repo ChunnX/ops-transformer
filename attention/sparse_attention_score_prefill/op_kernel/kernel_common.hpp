@@ -20,7 +20,7 @@ struct SparseAttentionScorePrefillTilingData {
     uint32_t totalQTokens;
     uint32_t numKvBlocks;
     uint32_t maxBlocksPerBatch;
-    uint32_t maxQPerBlock;
+    uint32_t k2qNnzUpperBound;
     uint32_t totalTaskNumP1;
     uint32_t totalTaskNumP2;
     float scaleValue;

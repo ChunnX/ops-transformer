@@ -26,9 +26,9 @@ class SparseAttentionScorePrefillOpBuilder(OpBuilder):
         return (
             "npu_sparse_attention_score_prefill("
             "Tensor query, Tensor key, Tensor value, "
-            "Tensor select_idx, Tensor block_table, "
-            "Tensor kv_to_q_select_idx, Tensor kv_to_q_select_num, "
-            "Tensor kv_to_q_slot_idx, Tensor kv_block_valid_size, "
+            "Tensor block_table, "
+            "Tensor k2q_row_ptr, Tensor k2q_q_indices, "
+            "Tensor k2q_slot_indices, "
             "Tensor actual_seq_lengths, Tensor actual_seq_lengths_kv, "
             "int num_key_value_heads, float scale_value, "
             "int block_size, int top_k, int inner_precise=4"
@@ -38,9 +38,8 @@ class SparseAttentionScorePrefillOpBuilder(OpBuilder):
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_sparse_attention_score_prefill_meta(
-            query, key, value, select_idx, block_table,
-            kv_to_q_select_idx, kv_to_q_select_num,
-            kv_to_q_slot_idx, kv_block_valid_size,
+            query, key, value, block_table,
+            k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
             actual_seq_lengths, actual_seq_lengths_kv,
             num_key_value_heads, scale_value,
             block_size, top_k, inner_precise=4
@@ -53,24 +52,21 @@ class SparseAttentionScorePrefillOpBuilder(OpBuilder):
                 dtype=query.dtype, device='meta')
 
 
-# Instantiate and load
 sparse_attn_prefill_builder = SparseAttentionScorePrefillOpBuilder()
 op_module = sparse_attn_prefill_builder.load()
 
 
 @impl(AS_LIBRARY, sparse_attn_prefill_builder.name, "PrivateUse1")
 def npu_sparse_attention_score_prefill(
-    query, key, value, select_idx, block_table,
-    kv_to_q_select_idx, kv_to_q_select_num,
-    kv_to_q_slot_idx, kv_block_valid_size,
+    query, key, value, block_table,
+    k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
     actual_seq_lengths, actual_seq_lengths_kv,
     num_key_value_heads, scale_value,
     block_size, top_k, inner_precise=4
 ):
     return op_module.npu_sparse_attention_score_prefill(
-        query, key, value, select_idx, block_table,
-        kv_to_q_select_idx, kv_to_q_select_num,
-        kv_to_q_slot_idx, kv_block_valid_size,
+        query, key, value, block_table,
+        k2q_row_ptr, k2q_q_indices, k2q_slot_indices,
         actual_seq_lengths, actual_seq_lengths_kv,
         num_key_value_heads, scale_value,
         block_size, top_k, inner_precise)
