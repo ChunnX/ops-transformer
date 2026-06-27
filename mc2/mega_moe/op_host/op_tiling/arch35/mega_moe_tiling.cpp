@@ -47,6 +47,7 @@ namespace {
     const static int64_t TWO_DIMS = 2LL;
     const static int64_t ONE_DIM = 1LL;
     const static int64_t MIN_BS = 1LL;
+    const static int64_t MAX_BS = 512LL;
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
     const static int64_t MAX_EXPERT_PER_RANK = 16LL;
     const static int64_t H_BASE = 1024LL;
@@ -870,9 +871,9 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
 
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(xDim0 < MIN_BS,
+    OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > MAX_BS,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "BS", std::to_string(xDim0).c_str(),
-            (std::string("should in [") + std::to_string(MIN_BS) + "]").c_str()),
+            (std::string("should in [") + std::to_string(MIN_BS) + "," + std::to_string(MAX_BS) + "]").c_str()),
         return ge::GRAPH_FAILED);
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
