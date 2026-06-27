@@ -1229,7 +1229,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
         }
         // A8W4 GMM2 only implements the non-quantized combine path.
     } else {
-        // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
+        // A8W4 / A4W4: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
                 MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, SwigluQuantOutType, QuantOutType, bfloat16_t,
