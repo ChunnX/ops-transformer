@@ -1223,9 +1223,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
             params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
             state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx,
             CombineQuantMode != COMBINE_NO_QUANT);
-        if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
-            ProcessCombine(gmmAddrInfo, state, expertIdx);
-        }
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
@@ -1239,10 +1236,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
                 state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         }
-        // Combine-quant AIV post-process (shared by both A8W8_NZ and generic)
-        if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
-            ProcessCombine(gmmAddrInfo, state, expertIdx);
-        }
+    }
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
+        ProcessCombine(gmmAddrInfo, state, expertIdx);
     }
 }
 
