@@ -26,6 +26,9 @@ using namespace gmm_dsq_base;
 
 namespace {
 constexpr char GMM_SWIGLU_QUANT_V2_OP_NAME[] = "grouped_matmul_swiglu_quant_v2";
+constexpr char ACLNN_GMM_SWIGLU_QUANT_V2_API_NAME[] = "aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize";
+constexpr char ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME[] =
+    "aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize";
 constexpr size_t WEIGHT_VIEW_LAST_SECOND_DIM_INDEX = 1UL;
 constexpr size_t WEIGHT_VIEW_LAST_DIM_INDEX = 2UL;
 } // namespace
@@ -47,7 +50,7 @@ public:
     }
 };
 
-static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char* opName,
+static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char* apiName,
     GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     GmmDsqHandlerFactory factory;
@@ -58,26 +61,27 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
         std::make_unique<gmmSwigluQuantV2::GroupedMatmulSwigluQuantBaseHandler>());
 
     if (auto *handler = factory.getHandler(npuArch)) {
-        handler->Initialize(opName, params, workspaceSize, executor);
+        handler->Initialize(apiName, params, workspaceSize, executor);
         return handler->Process();
     } else {
         std::ostringstream reason;
         reason << "SoC version " << static_cast<int32_t>(npuArch) << " is not supported";
         std::string reasonStr = reason.str();
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], %s.", opName, reasonStr.c_str());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], %s.", GMM_SWIGLU_QUANT_V2_OP_NAME, reasonStr.c_str());
     }
 
     return ACLNN_ERR_PARAM_INVALID;
 }
 
-static aclnnStatus CheckMxfp4WeightNzViewShape(const aclTensor *weight, const op::Shape &viewShape)
+static aclnnStatus CheckMxfp4WeightNzViewShape(const char *apiName, const aclTensor *weight,
+    const op::Shape &viewShape)
 {
     if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1 && weight->GetDataType() != DataType::DT_FLOAT4_E1M2) {
         return ACLNN_SUCCESS;
     }
     if (unlikely(!(viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT))) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            GMM_SWIGLU_QUANT_V2_OP_NAME, "weight viewShape", std::to_string(viewShape.GetDimNum()),
+            apiName, "weight viewShape", std::to_string(viewShape.GetDimNum()),
             "when the dtype of weight is DT_FLOAT4, the dim num of weight viewShape must be 3");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -85,7 +89,7 @@ static aclnnStatus CheckMxfp4WeightNzViewShape(const aclTensor *weight, const op
     int64_t lastDim = viewShape.GetDim(WEIGHT_VIEW_LAST_DIM_INDEX);
     if (unlikely(!(lastSecondDim != 1 && lastDim != 1))) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            GMM_SWIGLU_QUANT_V2_OP_NAME, "weight viewShape", op::ToString(viewShape).GetString(),
+            apiName, "weight viewShape", op::ToString(viewShape).GetString(),
             "when the dtype of weight is DT_FLOAT4, the last two dimensions of weight viewShape can not be 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -125,7 +129,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
 
     // 调用公共接口
     return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
-        GMM_SWIGLU_QUANT_V2_OP_NAME, params, workspaceSize, executor);
+        ACLNN_GMM_SWIGLU_QUANT_V2_API_NAME, params, workspaceSize, executor);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTensor *x,
@@ -159,7 +163,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
                    GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
                    "storage shape dim num must be 5 when weight NZ v2");
-        CHECK_RET(CheckMxfp4WeightNzViewShape(w, viewShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckMxfp4WeightNzViewShape(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, w, viewShape) ==
+                      ACLNN_SUCCESS,
+                  ACLNN_ERR_PARAM_INVALID);
         // weight的StorageFormat无条件视为NZ
         weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
         if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
@@ -208,7 +214,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
 
     // 调用公共接口
     return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
-        GMM_SWIGLU_QUANT_V2_OP_NAME, params, workspaceSize, executor);
+        ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V2_API_NAME, params, workspaceSize, executor);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

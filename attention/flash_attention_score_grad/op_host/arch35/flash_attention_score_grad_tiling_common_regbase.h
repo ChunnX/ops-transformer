@@ -68,9 +68,6 @@ constexpr uint32_t INPUT_DIM_0 = 0;          // BSH  BSND
 constexpr uint32_t INPUT_DIM_1 = 1;
 constexpr uint32_t INPUT_DIM_2 = 2;
 constexpr uint32_t INPUT_DIM_3 = 3;
-constexpr uint32_t QUANT_BLOCK_S1_SIZE = 512;
-constexpr uint32_t QUANT_BLOCK_S2_SIZE = 512;
-constexpr uint32_t DEQUANT_SCALE_SHAPE_DIM = 4;
 
 constexpr uint32_t CORE_INIT_NUM = 40;
 
@@ -134,14 +131,6 @@ constexpr uint32_t NUM_THREE = 3;
 constexpr uint32_t UB_RESERVE_SPACE = 8 * 1024;
 
 constexpr int64_t LARGE_INVALID_NUM = 3072;
-constexpr int64_t HIFP8_ADMIT_SEQ1 = 54000;
-constexpr int64_t HIFP8_ADMIT_SEQ2 = 57600;
-constexpr int64_t HIFP8_ADMIT_SEQ3 = 9360;
-constexpr int64_t HIFP8_ADMIT_SEQ4 = 7200;
-constexpr int64_t HIFP8_ADMIT_N1 = 5;
-constexpr int64_t HIFP8_ADMIT_N2 = 10;
-constexpr int64_t HIFP8_ADMIT_N3 = 40;
-constexpr int64_t HIFP8_ADMIT_N4 = 80;
 
 constexpr uint32_t CORE_LIST_NUM = 36;
 constexpr uint32_t ARRAY_LENGTH = 3;
@@ -567,9 +556,6 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams);
-ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
-ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
-ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase& fBaseParams);
 bool CheckIsLargeInvalidBlk(const FuzzyBaseInfoParamsRegbase& fBaseParams);
 void JudgeIsNeedDeter(FuzzyBaseInfoParamsRegbase& fBaseParams, std::array<int64_t, CORE_LIST_NUM>& dqOffset, std::array<int64_t, CORE_LIST_NUM>& dkDvOffset, std::array<int64_t, CORE_LIST_NUM>& dqOffsetpre,
     std::array<int64_t, CORE_LIST_NUM>& dkDvOffsetpre, int64_t calcNum, bool &noNeedDeter, bool &dqNeedDeterpre, bool &dkDvNeedDeterpre);
