@@ -534,45 +534,6 @@ public:
         softmaxLseQueue.FreeTensor(lseUb);
     }
 
-    // __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
-    //                                                SoftMaxShapeInfo &softmaxShapeInfo)
-    // {
-    //     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    //     SetFlag<HardEvent::V_S>(eventIdVToS);
-    //     WaitFlag<HardEvent::V_S>(eventIdVToS);
-    //     bool isUpdateNeedCheck = false;
-    //     SetMaskCount();
-    //     SetVectorMask<float, MaskMode::COUNTER>(0, softmaxShapeInfo.srcK);
-    //     for (uint32_t i = 0; i < softmaxShapeInfo.srcM; i++) {
-    //         T maxValue = maxUb.GetValue(i);
-    //         uint32_t checkValue = *reinterpret_cast<uint32_t *>(&maxValue);
-    //         if (checkValue == negativeIntScalar) {
-    //             isUpdateNeedCheck = true;
-    //             break;
-    //         }
-    //     }
-    //     SetMaskNorm();
-    //     ResetMask();
-    //     return isUpdateNeedCheck;
-    // }
-
-    // __aicore__ inline void InvalidLineProcess(RunInfoX runInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb)
-    // {
-    //     if (constInfo.softMaxCheckRes) {
-    //         SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(runInfo.actVecMSize), static_cast<uint32_t>(1),
-    //                                           static_cast<uint32_t>(runInfo.actVecMSize), static_cast<uint32_t>(1)};
-    //         bool res = SoftmaxInvalidLineCheck(maxUb, NEGATIVE_MIN_VALUE_FP32, softmaxShapeInfo);
-    //         if (!res) {
-    //             // constInfo.softMaxCheckRes = false;
-    //         } else {
-    //             if (unlikely(runInfo.isLastS2Loop)) {
-    //                 SoftmaxSumUpdate<T>(sumUb, maxUb, runInfo.actVecMSize, this->negativeFloatScalar,
-    //                                     this->positiveFloatScalar);
-    //             }
-    //         }
-    //     }
-    // }
-
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfoX runInfo, uint32_t subLoop)
