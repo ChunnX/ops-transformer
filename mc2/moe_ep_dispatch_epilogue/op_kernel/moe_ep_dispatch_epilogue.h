@@ -171,7 +171,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     epWorldSize_ = tilingData->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
     perSlotBytes_ = tilingData->cfg.perSlotBytes;
-    winDataOffset_ = ilingData->winDataOffset;
+    winDataOffset_ = tilingData->winDataOffset;
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     epRankId_ = mc2Context_->epRankId;

@@ -91,7 +91,7 @@ private:
     }
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(uint32_t rankId, uint64_t offset)
     {
-        return (GM_ADDR)(winRankAddr_[rankId] + offset) ;
+        return (GM_ADDR)(winRankAddr_[rankId] + offset);
     }
 
     __aicore__ inline GM_ADDR GetLocalWorkspaceDataAddr(const int32_t rankId, uint64_t offset)
@@ -127,6 +127,8 @@ private:
     uint32_t totalWinSizeEp_{0};
     uint64_t localWsSizeDataPerRank_{0};
     uint64_t localWsSizeStatusPerRank_{0};
+    uint64_t winStateOffset_{0};
+    uint64_t winDataOffset_{0}; 
 
     uint32_t tStart_{0};
     uint32_t tEnd_{0};
@@ -208,6 +210,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     totalWinSizeEp_ = tilingData->totalWinSizeEp;
     localWsSizeDataPerRank_ = tilingData->localWsSizeDataPerRank;
     localWsSizeStatusPerRank_ = tilingData->localWsSizeStatusPerRank;
+    winStateOffset_ = tilingData->winStateOffset;
+    winDataOffset_ = tilingData->winDataOffset; 
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hWeightAlignSize_ = hAlignSize_ + UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
@@ -225,9 +229,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
 
     workspaceStateSize_ = numTokens_ * topK_ * UB_ALIGN * epWorldSize_;
     // workspaceStateSize_ = 16 * 1024 * 1024;
-    CombineStateAddr_ = 0;
+    CombineStateAddr_ = tilingData->winStateOffset;
     // CombineStateAddr_ = GetWinCombineStateAddrByRankId(mc2Context_);
-    CombineDataAddr_ = workspaceStateSize_;
+    CombineDataAddr_ = tilingData->winDataOffset;
     // CombineDataAddr_ = GetWinCombineDataAddrByRankId(mc2Context_);
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);

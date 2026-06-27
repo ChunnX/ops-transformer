@@ -400,7 +400,7 @@ static uint64_t AlignUpWin(const uint64_t data)
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const char *nodeName,
-                                    const MoeEpDispatchEpilogueInfo &info)
+                                    MoeEpDispatchEpilogueInfo &info)
 {
     auto attrs = context->GetAttrs();
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
