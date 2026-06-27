@@ -158,11 +158,11 @@ int aclnnGroupedMatmulSwigluQuantWeightNzV2MxA8W4MultiWeightTest(int32_t deviceI
     int64_t kScaleBlock = CeilDiv(K, 64);
 
     std::vector<int64_t> xShape = {M, K};
-    std::vector<std::vector<int64_t>> weightViewShapes(E, {N, K});
-    std::vector<std::vector<int64_t>> weightStorageShapes(E, {N / 32, K / 16, 16, 32});
-    std::vector<std::vector<int64_t>> weightTransposeStrides(E, {1, N});
-    std::vector<std::vector<int64_t>> weightScaleViewShapes(E, {N, kScaleBlock, 2});
-    std::vector<std::vector<int64_t>> weightScaleTransposeStrides(E, {2, N * 2, 1});
+    std::vector<std::vector<int64_t>> weightViewShapes(E, {K, N});
+    std::vector<std::vector<int64_t>> weightStorageShapes(E, {K / 32, N / 16, 16, 32});
+    std::vector<std::vector<int64_t>> weightTransposeStrides(E, {1, K});
+    std::vector<std::vector<int64_t>> weightScaleViewShapes(E, {kScaleBlock, N, 2});
+    std::vector<std::vector<int64_t>> weightScaleTransposeStrides(E, {2, kScaleBlock * 2, 1});
     std::vector<int64_t> xScaleShape = {M, CeilDiv(K, 64), 2};
     std::vector<int64_t> groupListShape = {E};
     std::vector<int64_t> outputShape = {M, N / 2};
