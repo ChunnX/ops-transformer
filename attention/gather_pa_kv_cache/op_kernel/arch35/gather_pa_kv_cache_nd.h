@@ -47,10 +47,9 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
     int64_t kvGmCoreOffset = 0;
 
     if (tid == 0) {
-        PRINTF("[SIMT VF ENTER] batchCount=%lld numTokens=%lld bs=%d btW=%d tszK=%d tszV=%d nBlk=%d IS_CUMSUM=%d HAS_SO=%d sizeof(T_INDEX)=%d THREADS=%d\n",
-               (long long)batchCount, (long long)numTokens, (int)blockSize, (int)numblkTabCol,
-               (int)tokenSizeK, (int)tokenSizeV, (int)numBlocks,
-               (int)IS_CUMSUM, (int)HAS_SEQOFFSET, (int)sizeof(T_INDEX), (int)THREADS<T_INDEX>);
+        AscendC::printf("[SIMT VF ENTER] batchCount=%lld numTokens=%lld bs=%d btW=%d tszK=%d tszV=%d nBlk=%d\n",
+                        (long long)batchCount, (long long)numTokens, (int)blockSize, (int)numblkTabCol,
+                        (int)tokenSizeK, (int)tokenSizeV, (int)numBlocks);
     }
 
     for (int64_t i = 0; i < batchCount; i++) {
@@ -85,8 +84,8 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
         }
 
         if (tid == 0) {
-            PRINTF("[SIMT VF BATCH %lld] seqLen=%lld batchOffset=%lld seqOff=%lld\n",
-                   (long long)i, (long long)seqLen, (long long)batchOffset, (long long)seqOff);
+            AscendC::printf("[SIMT VF BATCH %lld] seqLen=%lld batchOffset=%lld seqOff=%lld\n",
+                            (long long)i, (long long)seqLen, (long long)batchOffset, (long long)seqOff);
         }
 
         int64_t blockCount = (seqLen + blockSize - 1) / blockSize;
@@ -117,9 +116,8 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
             int64_t valCacheOff = blockId * static_cast<int64_t>(blockSize) * tokenSizeV;
 
             if (tid == 0 && i == 0 && blkIdx == 0) {
-                PRINTF("[SIMT VF BLK0] blockId=%lld isFilled=%d keyOutBase=%lld keyCacheOff=%lld keyBytes=%llu\n",
-                       (long long)blockId, (int)isFilledWithZero, (long long)keyOutBase, (long long)keyCacheOff,
-                       (unsigned long long)(curBlockSize * tokenSizeK));
+                AscendC::printf("[SIMT VF BLK0] blockId=%lld isFilled=%d keyOutBase=%lld keyCacheOff=%lld\n",
+                                (long long)blockId, (int)isFilledWithZero, (long long)keyOutBase, (long long)keyCacheOff);
             }
 
             uint64_t keyBytes = static_cast<uint64_t>(curBlockSize) * static_cast<uint64_t>(tokenSizeK);
@@ -207,11 +205,10 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
 template <typename T, typename T_INDEX, bool isC, bool isS>
 __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
 {
-    PRINTF("[SIMT AIV ENTER] batchCount=%lld numTokens=%lld bs=%lld btW=%lld tszK=%llu tszV=%llu nBlk=%lld\n",
-           (long long)batchCount_, (long long)numTokens_,
-           (long long)cacheBlockSize_, (long long)blockTableWidth_,
-           (unsigned long long)hiddenSizeK_, (unsigned long long)hiddenSizeV_,
-           (long long)numBlocks_);
+    AscendC::printf("[SIMT AIV ENTER] batchCount=%lld numTokens=%lld bs=%lld btW=%lld tszK=%llu tszV=%llu\n",
+                    (long long)batchCount_, (long long)numTokens_,
+                    (long long)cacheBlockSize_, (long long)blockTableWidth_,
+                    (unsigned long long)hiddenSizeK_, (unsigned long long)hiddenSizeV_);
 
     asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREADS<T_INDEX>),
         batchCount_, numTokens_,
