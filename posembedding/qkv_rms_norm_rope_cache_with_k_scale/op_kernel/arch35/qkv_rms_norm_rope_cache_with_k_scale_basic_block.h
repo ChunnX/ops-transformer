@@ -45,10 +45,10 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeTile(TileParam &tile, const TileParam &lastTile)
+    __aicore__ inline void ComputeTile(TileParam &tile, const TileParam &lastTile, bool isLastTile)
     {
         if ASCEND_IS_AIC {
-            ComputeTileAic(tile);
+            ComputeTileAic(tile, isLastTile);
         } else {
             ComputeTileAiv(tile, lastTile);
         }
@@ -88,12 +88,12 @@ private:
         vec_.InitIntraCoreEvents();
     }
 
-    __aicore__ inline void ComputeTileAic(const TileParam &tile)
+    __aicore__ inline void ComputeTileAic(const TileParam &tile, bool isLastTile)
     {
         const uint32_t aRotL1BufferId =
             static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        // Match the AIV sequence: current tile preprocess use, then previous tile postprocess use.
-        outputBufferUseId_ += QKV_RRC_AIV_OUTPUT_BUFFER_USES_PER_TILE;
+        outputBufferUseId_ +=
+            isLastTile ? 1U : QKV_RRC_AIV_OUTPUT_BUFFER_USES_PER_TILE;
         const uint32_t outputBufferId =
             static_cast<uint32_t>(outputBufferUseId_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
@@ -146,7 +146,6 @@ private:
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
         if (tileCount_ > 0U) {
-            ++outputBufferUseId_;
             const uint32_t lastOutputBufferId =
                 static_cast<uint32_t>((outputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
             vec_.WaitMte3ToVQkOutBufferReusable(lastOutputBufferId);

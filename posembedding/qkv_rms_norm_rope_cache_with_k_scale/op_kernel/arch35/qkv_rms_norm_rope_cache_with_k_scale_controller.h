@@ -91,7 +91,8 @@ private:
             const uint32_t processId = GetProcessId(localTileId);
             const uint32_t lastProcessId = GetLastProcessId(localTileId);
             FillTileParam(tileParam[processId], tilingData, tokenOffset, tokenSize);
-            basicBlock.ComputeTile(tileParam[processId], tileParam[lastProcessId]);
+            basicBlock.ComputeTile(tileParam[processId], tileParam[lastProcessId],
+                                   tokenOffset + tokenSize >= range.end);
             tokenOffset += tokenSize;
             ++localTileId;
         }
