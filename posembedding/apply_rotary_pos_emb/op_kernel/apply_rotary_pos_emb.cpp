@@ -32,7 +32,7 @@ extern "C" __global__ __aicore__ void apply_rotary_pos_emb(
     }
 
     GET_TILING_DATA(tilingData, tiling);
-#if ORIG_DTYPE_QUERY != DT_BF16
+#if ORIG_DTYPE_QUERY == DT_FLOAT
     if (TILING_KEY_IS(1)) {
         ApplyRotaryPosEmb::ARPESmall<DTYPE_QUERY, DTYPE_QUERY> op;
         op.Init(q, k, cos, sin, q_out, k_out, userWS, &tilingData);

@@ -63,6 +63,7 @@ TILING_DATA_FIELD_DEF(int64_t, kcNum);
 TILING_DATA_FIELD_DEF(int64_t, qDim3);
 TILING_DATA_FIELD_DEF(int64_t, kDim3);
 TILING_DATA_FIELD_DEF(int64_t, blockMoveQ);
+TILING_DATA_FIELD_DEF(int64_t, singleN);        // 【泛化需求】max(qcNum, kcNum)
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingData)
