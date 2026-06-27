@@ -1829,38 +1829,30 @@ void FusedInferAttentionScoreTilingImpl::SetPaLayoutTilingData(const FiaTilingIn
     auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
 
     if (fiaInfo.antiQuantFlag) {
-        uint32_t keyCacheDimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-        if (keyCacheDimNum == 3) {
-            inputParams.set_paLayoutType(0);
-            baseParams.set_PAlayoutType(0);
-        } else if (keyCacheDimNum == 4) {
-            inputParams.set_paLayoutType(1);
-            baseParams.set_PAlayoutType(1);
-        } else if (keyCacheDimNum == 5) {
-            inputParams.set_paLayoutType(2);
-            baseParams.set_PAlayoutType(2);
-        }
-    } else {
-        uint32_t keyCacheDimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-        if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
-            inputParams.set_paLayoutType(1);
-            baseParams.set_PAlayoutType(1);
-        } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD) {
-            inputParams.set_paLayoutType(0);
-            baseParams.set_PAlayoutType(0);
-        } else if (fiaInfo.kvLayout == FiaLayout::NZ) {
-            inputParams.set_paLayoutType(2);
-            baseParams.set_PAlayoutType(2);
-        }
+        uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
+        uint8_t paType = (dimNum == 3) ? 0 : (dimNum == 4) ? 1 : (dimNum == 5) ? 2 : 0;
+        inputParams.set_paLayoutType(paType);
+        baseParams.set_PAlayoutType(paType);
+        return;
+    }
+
+    if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
+        inputParams.set_paLayoutType(1);
+        baseParams.set_PAlayoutType(1);
+    } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD) {
+        inputParams.set_paLayoutType(0);
+        baseParams.set_PAlayoutType(0);
+    } else if (fiaInfo.kvLayout == FiaLayout::NZ) {
+        inputParams.set_paLayoutType(2);
+        baseParams.set_PAlayoutType(2);
     }
 }
 
 void FusedInferAttentionScoreTilingImpl::SetTransposeLayout(const FiaTilingInfo &fiaInfo)
 {
     static const std::map<std::string, uint32_t> transposeLayoutMap = {
-        {"BNSD_BSND", 1}, {"BSND_BNSD", 2}, {"BSH_BNSD", 3},
-        {"BNSD_NBSD", 4}, {"BSND_NBSD", 5}, {"BSH_NBSD", 6},
-        {"NTD_TND", 7},   {"TND_NTD", 8},
+        {"BNSD_BSND", 1}, {"BSND_BNSD", 2}, {"BSH_BNSD", 3}, {"BNSD_NBSD", 4},
+        {"BSND_NBSD", 5}, {"BSH_NBSD", 6}, {"NTD_TND", 7},   {"TND_NTD", 8},
     };
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
@@ -1872,52 +1864,53 @@ void FusedInferAttentionScoreTilingImpl::SetTransposeLayout(const FiaTilingInfo 
 void FusedInferAttentionScoreTilingImpl::SetAntiQuantInfo(const FiaTilingInfo &fiaInfo)
 {
     auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
-    if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
-        auto scaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
-        uint32_t expectShape = 1;
-        uint32_t scaleDimNum = scaleTensor->GetStorageShape().GetDimNum();
-        uint32_t scaleShape = scaleTensor->GetStorageShape().GetDim(0);
-        if (scaleDimNum == 1 && scaleShape == expectShape) {
-            inputParams.set_antiquantPerTensorFlag(1);
-        } else {
-            inputParams.set_antiquantPerTensorFlag(0);
-        }
-    } else {
+
+    if (fiaInfo.quantMode != FiaQuantMode::ANTI_QUANT) {
         inputParams.set_antiquantPerTensorFlag(0);
+        return;
     }
+
+    auto scaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
+    uint32_t scaleDimNum = scaleTensor->GetStorageShape().GetDimNum();
+    uint32_t scaleShape = scaleTensor->GetStorageShape().GetDim(0);
+    bool perTensor = (scaleDimNum == 1 && scaleShape == 1);
+    inputParams.set_antiquantPerTensorFlag(perTensor ? 1 : 0);
 }
 
 void FusedInferAttentionScoreTilingImpl::ComputeNeedInit(const FiaTilingInfo &fiaInfo)
 {
-    int64_t preTokensPerbatch = 0;
-    int64_t nextTokensPerbatch = 0;
-    for (uint32_t i = 0; i < fiaInfo.bSize && fiaInfo.quantMode != FiaQuantMode::ANTI_QUANT; i++) {
+    if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
+        int64_t preTokensPerbatch = fiaInfo.preToken;
+        int64_t nextTokensPerbatch = fiaInfo.nextToken;
+
         if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
             preTokensPerbatch = SPARSE_MODE_INT_MAX;
+            nextTokensPerbatch = actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen;
             if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
-                nextTokensPerbatch = actualSeqLengthsKV_[i] +
-                                     fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i] / fiaInfo.gSize;
+                nextTokensPerbatch -= actualSeqLengthsQ_[i] / fiaInfo.gSize;
             } else {
-                nextTokensPerbatch = actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i];
+                nextTokensPerbatch -= actualSeqLengthsQ_[i];
             }
         } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
-            preTokensPerbatch = fiaInfo.preToken -
-                                actualSeqLengthsKV_[i] - fiaInfo.systemPrefixLen + actualSeqLengthsQ_[i];
-            nextTokensPerbatch = fiaInfo.nextToken +
-                                 actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen - actualSeqLengthsQ_[i];
-        } else {
-            preTokensPerbatch = fiaInfo.preToken;
-            nextTokensPerbatch = fiaInfo.nextToken;
+            int64_t kvLen = actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen;
+            preTokensPerbatch = fiaInfo.preToken - kvLen + actualSeqLengthsQ_[i];
+            nextTokensPerbatch = fiaInfo.nextToken + kvLen - actualSeqLengthsQ_[i];
         }
+
         if ((nextTokensPerbatch < 0) ||
             (actualSeqLengthsQ_[i] > (actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen + preTokensPerbatch))) {
             needInit_ = true;
         }
         OP_LOGI(fiaInfo.opName, "preTokensPerbatch[%u] is %ld, nextTokensPerbatch[%u] is %ld",
-            i, preTokensPerbatch, i, nextTokensPerbatch);
+                i, preTokensPerbatch, i, nextTokensPerbatch);
         OP_LOGI(fiaInfo.opName,
-            "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, actualSharedPrefixLen is %ld, needInit is %u",
-            i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
+                "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, "
+                "actualSharedPrefixLen is %ld, needInit is %u.",
+                i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
     }
 }
 
