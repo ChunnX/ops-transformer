@@ -204,8 +204,7 @@ void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
     
     // A2:A3 vec : cube = 2:1
     uint32_t cv_radio = aivNum / aicNum; // cv配比
-    // uint32_t activeYVecCoreNum = std::min(yBlocks, activeCoreNum * cv_radio);
-    uint32_t activeYVecCoreNum = std::min(yBlocks, activeCoreNum * 2);
+    uint32_t activeYVecCoreNum = std::min(yBlocks, activeCoreNum * cv_radio);
     uint32_t baseYRows = yBlocks / activeYVecCoreNum;
     uint32_t extraYCores = yBlocks % activeYVecCoreNum;
     uint32_t yBlocksPerCore = baseYRows + (extraYCores > 0 ? 1 : 0);
