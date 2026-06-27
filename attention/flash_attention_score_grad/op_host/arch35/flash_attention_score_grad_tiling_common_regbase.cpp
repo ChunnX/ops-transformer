@@ -142,6 +142,53 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context)
+{
+    auto softmaxMax = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
+    auto softmaxSum = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SOFTMAX_SUM));
+    OP_CHECK_IF(softmaxMax == nullptr || softmaxSum == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "softmaxMaxOptional or softmaxSumOptional"),
+                return ge::GRAPH_FAILED);
+
+    auto softmaxMaxType = softmaxMax->GetDataType();
+    auto softmaxSumType = softmaxSum->GetDataType();
+
+    bool softmaxTypeCheck = (softmaxMaxType == softmaxSumType) && (softmaxMaxType == ge::DT_FLOAT);
+    std::string dtypeMsg = "{" + ge::TypeUtils::DataTypeToSerialString(softmaxMaxType) + ", " +
+                            ge::TypeUtils::DataTypeToSerialString(softmaxSumType) + "}";
+    OP_CHECK_IF(softmaxTypeCheck != true,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad",
+                    "softmaxMaxOptional, softmaxSumOptional", dtypeMsg.c_str(),
+                    "The dtype of softmaxMaxOptional and softmaxSumOptional must be FLOAT32"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context)
+{
+    auto query = context->GetInputDesc(static_cast<size_t>(InputIndex::QUERY));
+    auto attentionIn = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::ATTENTION_IN));
+    OP_CHECK_IF(query == nullptr || attentionIn == nullptr,
+                OP_LOGE_WITH_INVALID_INPUT("FlashAttentionScoreGrad", "query or attentionInOptional"),
+                return ge::GRAPH_FAILED);
+
+    auto queryType = query->GetDataType();
+    auto attentionInType = attentionIn->GetDataType();
+
+    if (queryType == ge::DT_HIFLOAT8) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    std::string dtypeMsg = "{" + ge::TypeUtils::DataTypeToSerialString(queryType) + ", " +
+                            ge::TypeUtils::DataTypeToSerialString(attentionInType) + "}";
+    OP_CHECK_IF(queryType != attentionInType,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad",
+                    "query, attentionInOptional", dtypeMsg.c_str(),
+                    "The dtype of query and attentionInOptional must be the same"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d)
 {
     auto isShapeInValid = (b == 0 || n1 == 0 || s1 == 0 || d == 0);
@@ -190,6 +237,25 @@ ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int
     }
 
     ret = CheckSoftmaxMaxSumTndShape(context, t1, n1);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ ge::graphStatus CheckDtypeValid(gert::TilingContext *context)
+{
+    if (context == nullptr) {
+        OP_LOGE(context, "context is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+
+    auto ret = CheckSoftmaxDtype(context);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+    ret = CheckAttentionInDtype(context);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -832,16 +898,23 @@ ge::graphStatus ProcessSinkInfo(
     gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     auto sinkShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINK_IDX));
+    auto dsinkShape = context_->GetOutputShape(DSINKOUT_IDX);
     if (sinkShape == nullptr || sinkShape->GetStorageShape().GetDimNum() == 0) {
         OP_LOGD(context_, "ProcessSinkInfo, sinkShape is null : %d", sinkShape == nullptr);
         fBaseParams.sinkOptional = EMPTY_TENSOR;
         return ge::GRAPH_SUCCESS;
     }
-    std::string reasonMsg = "The shape of sink must be [" + std::to_string(fBaseParams.n1) + "]";
+    std::string sinkReasonMsg = "The shape of sinkInOptional must be [" + std::to_string(fBaseParams.n1) + "]";
     OP_CHECK_IF((sinkShape->GetStorageShape().GetDimNum() != 1 ||
         sinkShape->GetStorageShape().GetDim(0) != fBaseParams.n1),
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "sinkInOptional",
-            Ops::Base::ToString(sinkShape->GetStorageShape()).c_str(), reasonMsg.c_str()),
+            Ops::Base::ToString(sinkShape->GetStorageShape()).c_str(), sinkReasonMsg.c_str()),
+        return ge::GRAPH_FAILED);
+    std::string dsinkReasonMsg = "The shape of dsinkOut must be [" + std::to_string(fBaseParams.n1) + "]";
+    OP_CHECK_IF((dsinkShape->GetStorageShape().GetDimNum() != 1 ||
+        dsinkShape->GetStorageShape().GetDim(0) != fBaseParams.n1),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dsinkOut",
+            Ops::Base::ToString(dsinkShape->GetStorageShape()).c_str(), dsinkReasonMsg.c_str()),
         return ge::GRAPH_FAILED);
     auto sinkInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SINK_IDX));
     if (sinkInput != nullptr) {
@@ -955,6 +1028,10 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
         return ge::GRAPH_FAILED;
     }
 
+    if (CheckDtypeValid(context_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     return (strcmp(inputLayout, "TND") == 0) ?
                CheckTndShapeValid(context_, fBaseParams.t1, fBaseParams.n1, fBaseParams.d) :
                CheckShapeValid(context_, fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.d);
@@ -1034,6 +1111,35 @@ ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoPar
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("FlashAttentionScoreGrad", "query",
             ge::TypeUtils::DataTypeToSerialString(queryDType).c_str(), "The dtype of query is invalid");
         return ge::GRAPH_FAILED;
+    }
+    if (fBaseParams.queryType != ge::DT_HIFLOAT8) {
+        auto deqScaleQShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_Q));
+        auto deqScaleKShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_K));
+        auto deqScaleVShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_V));
+        auto deqScaleDyShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::D_SCALE_DY));
+        std::string dScaleShapesMsg = "{";
+        dScaleShapesMsg += deqScaleQShape != nullptr ?
+            Ops::Base::ToString(deqScaleQShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += deqScaleKShape != nullptr ?
+            Ops::Base::ToString(deqScaleKShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += deqScaleVShape != nullptr ?
+            Ops::Base::ToString(deqScaleVShape->GetStorageShape()) + ", " : "nullptr, ";
+        dScaleShapesMsg += deqScaleDyShape != nullptr ?
+            Ops::Base::ToString(deqScaleDyShape->GetStorageShape()) + "}" : "nullptr}";
+        OP_CHECK_IF((deqScaleQShape != nullptr && deqScaleQShape->GetStorageShape().GetDimNum() != 0) ||
+                    (deqScaleKShape != nullptr && deqScaleKShape->GetStorageShape().GetDimNum() != 0) ||
+                    (deqScaleVShape != nullptr && deqScaleVShape->GetStorageShape().GetDimNum() != 0) ||
+                    (deqScaleDyShape != nullptr && deqScaleDyShape->GetStorageShape().GetDimNum() != 0),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad",
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional", dScaleShapesMsg.c_str(),
+                        "When the dType of input is not HIFLOAT8, "
+                        "dScaleQOptional, dScaleKOptional, dScaleVOptional and dScaleDyOptional must be empty tensor"),
+                    return ge::GRAPH_FAILED);
+    }
+    // hifp8 shape whitelist
+    auto quantShapeRet = QuantShapeValidCheck(context_, fBaseParams);
+    if (quantShapeRet != ge::GRAPH_SUCCESS) {
+        return quantShapeRet;
     }
     fBaseParams.outDtype = fBaseParams.inputDtype;
     return ge::GRAPH_SUCCESS;
