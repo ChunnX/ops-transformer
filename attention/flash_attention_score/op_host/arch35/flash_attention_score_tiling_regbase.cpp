@@ -94,10 +94,10 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeDtype()
             calcTypeSize = isHighPercision ? ge::GetSizeByDataType(ge::DT_FLOAT) : ge::GetSizeByDataType(inputDtype);
             break;
         case ge::DT_HIFLOAT8:
-            tilingKeyDType = (DtypeEnum)6; // 6 means DtypeEnum::HIFLOAT8;
-            bmm1OutDtype = matmul_tiling::DataType::DT_FLOAT;
-            calcTypeSize = ge::GetSizeByDataType(ge::DT_FLOAT);
-            break;
+             tilingKeyDType = (DtypeEnum)6; // 6 means DtypeEnum::HIFLOAT8;
+             bmm1OutDtype = matmul_tiling::DataType::DT_FLOAT;
+             calcTypeSize = ge::GetSizeByDataType(ge::DT_FLOAT);
+             break;
         case ge::DT_FLOAT:
             bmmDtype = matmul_tiling::DataType::DT_FLOAT;
             bmm1OutDtype = matmul_tiling::DataType::DT_FLOAT;
