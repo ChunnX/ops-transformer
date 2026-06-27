@@ -19,5 +19,7 @@
 |    接口名   |   说明     | 确定性说明 |
 | ----------- | ------------------- | ------------------- |
 |[flash_attn](../../torch_extension/cann_ops_transformer/doc/npu_flash_attn.md)|完成xx计算。|xx|
+ |[lightning_indexer](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)|基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。|默认支持确定性计算|
+|[lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)|lightning_indexer接口的前置接口，用于计算lightning_indexer的负载均衡。|默认支持确定性计算|
 |[sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|基于共享KV完成SparseFlashMla稀疏注意力计算。|默认支持确定性计算；默认支持batch invariance。|
 |[sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|生成SparseFlashMla主算子使用的任务切分metadata。|默认支持确定性计算；默认支持batch invariance。|
