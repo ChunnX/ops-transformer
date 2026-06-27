@@ -472,7 +472,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     }
 }
 
-template <typename XType, typename ScalesType, uint32_t IsCached>
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached>::CopyFromWindowByCachedMeta()
 {
     if (expertSum_ == 0) { return; }
