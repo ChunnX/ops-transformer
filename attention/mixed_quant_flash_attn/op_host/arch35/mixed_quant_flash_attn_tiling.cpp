@@ -24,7 +24,7 @@
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "../mixed_quant_flash_attn_tiling_utils.h"
-#include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
+#include "../../op_kernel/arch35/mixed_quant_flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
@@ -323,9 +323,9 @@ void MixedQuantFlashAttnTilingImpl::SetFATilingData()
     }
 }
 
-ge::graphStatus MixedQuantFlashAttnTilingImpl::SetTilingData(FlashAttnTilingData &tilingData)
+ge::graphStatus MixedQuantFlashAttnTilingImpl::SetTilingData(MixedQuantFlashAttnTilingData &tilingData)
 {
-    FlashAttnTilingData *tiling = context_->GetTilingData<FlashAttnTilingData>();
+    MixedQuantFlashAttnTilingData *tiling = context_->GetTilingData<MixedQuantFlashAttnTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(faInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
     *tiling = tilingData;
     return ge::GRAPH_SUCCESS;
@@ -333,13 +333,13 @@ ge::graphStatus MixedQuantFlashAttnTilingImpl::SetTilingData(FlashAttnTilingData
 
 void MixedQuantFlashAttnTilingImpl::PrintAllTilingData()
 {
-    FlashAttnNoQuantTilingArch35 &baseTiling = tilingData_.baseTiling;
-    FlashAttnBaseParams &flashAttnBaseParams = baseTiling.flashAttnBaseParams;
-    FlashAttnAttenMaskParams &flashAttnAttenMaskParams = baseTiling.flashAttnAttenMaskParams;
-    FlashAttnPageAttentionParams &flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
-    FlashAttnWorkspaceParams &flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
-    FlashAttnS1OuterSplitCoreParams &flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
-    FlashAttnMetaData &flashAttnMetaData = tilingData_.flashAttnMetaData;
+    MixedQuantFlashAttnTilingArch35 &baseTiling = tilingData_.baseTiling;
+    MixedQuantFlashAttnBaseParams &flashAttnBaseParams = baseTiling.flashAttnBaseParams;
+    MixedQuantFlashAttnAttenMaskParams &flashAttnAttenMaskParams = baseTiling.flashAttnAttenMaskParams;
+    MixedQuantFlashAttnPageAttentionParams &flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
+    MixedQuantFlashAttnWorkspaceParams &flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
+    MixedQuantFlashAttnS1OuterSplitCoreParams &flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
+    MixedQuantFlashAttnMetaData &flashAttnMetaData = tilingData_.flashAttnMetaData;
 
     OP_LOGD(faInfo_->opName, "bSize:%d", flashAttnBaseParams.bSize);
     OP_LOGD(faInfo_->opName, "t1Size:%d", flashAttnBaseParams.t1Size);
@@ -377,7 +377,7 @@ void MixedQuantFlashAttnTilingImpl::PrintAllTilingData()
 
     OP_LOGD(faInfo_->opName, "totalSize:%d", flashAttnS1OuterSplitCoreParams.totalSize);
 
-    for (int aicIdx = 0; aicIdx < FA_AIC_CORE_NUM; ++aicIdx) {
+    for (int aicIdx = 0; aicIdx < MQFA_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(faInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aicIdx, flashAttnMetaData.FAMetadata[aicIdx][0], flashAttnMetaData.FAMetadata[aicIdx][1],
                 flashAttnMetaData.FAMetadata[aicIdx][2], flashAttnMetaData.FAMetadata[aicIdx][3],
@@ -385,7 +385,7 @@ void MixedQuantFlashAttnTilingImpl::PrintAllTilingData()
                 flashAttnMetaData.FAMetadata[aicIdx][6], flashAttnMetaData.FAMetadata[aicIdx][7]);
     }
 
-    for (int aivIdx = 0; aivIdx < FA_AIV_CORE_NUM; ++aivIdx) {
+    for (int aivIdx = 0; aivIdx < MQFA_AIV_CORE_NUM; ++aivIdx) {
         OP_LOGD(faInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aivIdx, flashAttnMetaData.FDMetadata[aivIdx][0], flashAttnMetaData.FDMetadata[aivIdx][1],
                 flashAttnMetaData.FDMetadata[aivIdx][2], flashAttnMetaData.FDMetadata[aivIdx][3],

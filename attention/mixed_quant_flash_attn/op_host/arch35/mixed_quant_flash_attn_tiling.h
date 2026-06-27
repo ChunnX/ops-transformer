@@ -19,13 +19,13 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "../fa_tiling_info.h"
 #include "tiling/tiling_api.h"
-#include "../../op_kernel/arch35/flash_attn_tiling_data.h"
-#include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
+#include "../../op_kernel/arch35/mixed_quant_flash_attn_tiling_data.h"
+#include "../../op_kernel/arch35/mixed_quant_flash_attn_template_tiling_key.h"
 
 namespace optiling {
 namespace mixed_quant_flash_attn {
 
-// 4字段 tiling key
+// 5字段 tiling key
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
     uint64_t kvLayoutType = 0;
@@ -78,9 +78,9 @@ private:
 
     void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
-    ge::graphStatus SetTilingData(FlashAttnTilingData &tilingData);
+    ge::graphStatus SetTilingData(MixedQuantFlashAttnTilingData &tilingData);
 
-    FlashAttnTilingData tilingData_;
+    MixedQuantFlashAttnTilingData tilingData_;
     FaTilingKeyInfo tilingKeyInfo_;
     FaPlatFormInfo platformInfo_;
     uint32_t sOuterFactor_;
