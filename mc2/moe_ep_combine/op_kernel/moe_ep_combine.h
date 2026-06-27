@@ -167,7 +167,7 @@ private:
     TBuf<> stateResetBuf_;
     TBuf<> hcommBuf_;
 
-    TBuf<> compareBuf_; 
+    TBuf<> compareBuf_;
     TBuf<> rowTmpFloatBuf_;
     TBuf<> tokenBuf_;
     TBuf<> tokenTargetTBuf_;
@@ -242,8 +242,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     }
     tpipe_->InitBuffer(xQueue_, 1, XTypeAlign32Size_);
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN);  // 32
-
-
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -381,8 +379,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuffInit()
     bsKFloatAlign = (bsKFloatAlign > activeMaskAlignSize_ ? bsKFloatAlign : activeMaskAlignSize_);
 
     tpipe_->InitBuffer(tokenTargetTBuf_, bsHalfAlign);
-    tpipe_->InitBuffer(compareBuf_, bsKInt32Align);  
-    tpipe_->InitBuffer(rowTmpFloatBuf_, bsKFloatAlign);  
+    tpipe_->InitBuffer(compareBuf_, bsKInt32Align);
+    tpipe_->InitBuffer(rowTmpFloatBuf_, bsKFloatAlign);
     tpipe_->InitBuffer(tokenBuf_, bsKHalfAlign);
 
     if constexpr (HasTopkWeight == 1) {
@@ -432,7 +430,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskCheck()
     maskStrideTensor_ = tokenBuf_.Get<bool>();
     tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
     // 构造二维全true的mask
-    Duplicate<half>(maskCalcTensor, static_cast<half>(1), 
+    Duplicate<half>(maskCalcTensor, static_cast<half>(1),
                     Ceil(mask_tokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half));
     // 拷入topkIds
     DataCopyExtParams topkIdsCntParams = {1U, static_cast<uint32_t>(mask_tokenNum_ * sizeof(int32_t)), 0U, 0U, 0U};
@@ -457,7 +455,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskCheck()
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(uint32_t tokenIndex,
      uint32_t copyCount, uint32_t beginIndex)
-{   
+{
     uint32_t targetCount = copyCount;
     float target = (float)1.0 * targetCount;
     float minTarget = target - (float)0.5;
@@ -515,7 +513,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseReduce()
 {
-
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     tpipe_->InitBuffer(tokenStatusBuf_, Ceil(tPerCore_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
