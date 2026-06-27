@@ -349,18 +349,18 @@ __aicore__ inline void Process(
                 PRINTF("[SIMT-BLK] i=%ld blk=%lu tblOff=%lu blockId=%ld fillZero=%u curSize=%lu keySrcBase=%lu keyOff=%lu kCnt=%lu hiddenSizeK=%lu cacheBlockSize=%ld numHeadsK=%lu\n",
                        i, blkIdx, tblOff, blockId, fillZero, curSize, keySrcBase, keyOff, kCnt, hiddenSizeK, cacheBlockSize, numHeadsK);
             }
-            asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), kCnt,
-                                               outKeyGm + keyOff,
-                                               keyCacheGm + keySrcBase, fillZero);
-            SetFlag<HardEvent::V_S>(0);
-            WaitFlag<HardEvent::V_S>(0);
+            if (fillZero) {
+                for (uint64_t b = 0; b < kCnt; b++) { outKeyGm[keyOff + b] = static_cast<T>(0); }
+            } else {
+                for (uint64_t b = 0; b < kCnt; b++) { outKeyGm[keyOff + b] = keyCacheGm[keySrcBase + b]; }
+            }
             keyOff += kCnt;
 
-            asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), vCnt,
-                                               outValueGm + valueOff,
-                                               valueCacheGm + valueSrcBase, fillZero);
-            SetFlag<HardEvent::V_S>(0);
-            WaitFlag<HardEvent::V_S>(0);
+            if (fillZero) {
+                for (uint64_t b = 0; b < vCnt; b++) { outValueGm[valueOff + b] = static_cast<T>(0); }
+            } else {
+                for (uint64_t b = 0; b < vCnt; b++) { outValueGm[valueOff + b] = valueCacheGm[valueSrcBase + b]; }
+            }
             valueOff += vCnt;
         }
     }
