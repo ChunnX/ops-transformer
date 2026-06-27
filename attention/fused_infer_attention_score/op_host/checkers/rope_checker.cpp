@@ -188,10 +188,10 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
         uint32_t tmpN = static_cast<uint32_t>(shape.GetDim(dimNum - 1) / fiaInfo.qkHeadDim);
         uint32_t ropeN = static_cast<uint32_t>(ropeShape.GetDim(ropeDimNum - 1) / fiaInfo.ropeHeadDim);
         OP_CHECK_IF(tmpN != ropeN,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        fiaInfo.opName, inputRopeName.c_str(), ToStringRaw(ropeShape).c_str(),
-                        ("The N axis of " + inputRopeName + " must be equal to " + inputName).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, inputRopeName.c_str(), ToStringRaw(ropeShape),
+                "The N axis of " + inputRopeName + "(" + std::to_string(ropeN) + ") must be equal to " +
+                    inputName + "(" + std::to_string(tmpN) + ")"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -279,8 +279,9 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
     const gert::Shape keyRopeShape = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape();
     if (fiaInfo.kCache.size() != keyRopeShape.GetDim(DIM_NUM_0)) {
         std::string shapeMsg = ToString(keyRopeShape) + " and " + std::to_string(fiaInfo.kCache.size());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                                               "The axis B of keyRope must be equal to the tensor number of key");
+        std::string reason = "The axis B of keyRope(" + std::to_string(keyRopeShape.GetDim(DIM_NUM_0))  +
+            ") must be equal to the tensor number of key(" + std::to_string(fiaInfo.kCache.size()) + ")";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(), reason);
         return ge::GRAPH_FAILED;
     }
 
@@ -295,14 +296,16 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             if (keyShape.GetDim(DIM_NUM_2) != keyRopeS) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                                                       "The axis S of keyRope must be equal to the axis S of key");
+                std::string reason = "The axis S of keyRope(" + std::to_string(keyRopeS)  + ") must be equal to "
+                    "the axis S of key(" + std::to_string(keyShape.GetDim(DIM_NUM_2)) + ")";
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(), reason);
                 return ge::GRAPH_FAILED;
             }
             if (keyShape.GetDim(DIM_NUM_1) != keyRopeN) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                                                       "The axis N of keyRope must be equal to the axis N of key");
+                std::string reason = "The axis N of keyRope(" + std::to_string(keyRopeN)  + ") must be equal to "
+                    "the axis N of key(" + std::to_string(keyShape.GetDim(DIM_NUM_1)) + ")";
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(), reason);
                 return ge::GRAPH_FAILED;
             }
         }
@@ -313,14 +316,16 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             if (keyShape.GetDim(DIM_NUM_1) != keyRopeS) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                                                       "The axis S of keyRope must be equal to the axis S of key");
+                std::string reason = "The axis S of keyRope(" + std::to_string(keyRopeS) + ") must be equal to "
+                    "the axis S of key(" + std::to_string(keyShape.GetDim(DIM_NUM_1)) + ")";
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(), reason);
                 return ge::GRAPH_FAILED;
             }
             if (keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim != keyRopeN) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                                                       "The axis N of keyRope must be equal to the axis N of key");
+                std::string reason = "The axis N of keyRope(" + std::to_string(keyRopeN) + ") must be equal to "
+                    "the axis N of key(" + std::to_string(keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim) + ")";
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(), reason);
                 return ge::GRAPH_FAILED;
             }
         }
@@ -331,14 +336,16 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             if (keyShape.GetDim(DIM_NUM_1) != keyRopeS) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                                                       "The axis S of keyRope must be equal to the axis S of key");
+                std::string reason = "The axis S of keyRope(" + std::to_string(keyRopeS) + ") must be equal to "
+                    "the axis S of key(" + std::to_string(keyShape.GetDim(DIM_NUM_1)) + ")";
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(), reason);
                 return ge::GRAPH_FAILED;
             }
             if (keyShape.GetDim(DIM_NUM_2) != keyRopeN) {
                 std::string shapeMsg = ToString(keyRopeShape) + " and " + ToString(keyShape);
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                                                       "The axis N of keyRope must be equal to the axis N of key");
+                std::string reason = "The axis N of keyRope(" + std::to_string(keyRopeN) + ") must be equal to "
+                    "the axis N of key(" + std::to_string(keyShape.GetDim(DIM_NUM_2)) + ")";
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "keyRope and key", shapeMsg.c_str(), reason);
                 return ge::GRAPH_FAILED;
             }
         }

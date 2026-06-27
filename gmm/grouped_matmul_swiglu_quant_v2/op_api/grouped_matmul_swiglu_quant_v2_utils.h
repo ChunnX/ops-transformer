@@ -21,27 +21,29 @@ namespace gmmSwigluQuantV2 {
 
 using namespace gmm_dsq;
 
-inline std::string ShapeToStringWithoutBracket(const op::Shape &shape)
+inline std::string ShapeToString(const op::Shape &shape)
 {
     std::ostringstream oss;
+    oss << "[";
     for (size_t i = 0; i < shape.GetDimNum(); ++i) {
         if (i != 0) {
             oss << ", ";
         }
         oss << shape.GetDim(i);
     }
+    oss << "]";
     return oss.str();
 }
 
 inline std::string ViewShapeToString(const aclTensor *tensor)
 {
-    return ShapeToStringWithoutBracket(tensor->GetViewShape());
+    return ShapeToString(tensor->GetViewShape());
 }
 
 #define GMM_SWIGLU_CHECK_SHAPE(tensor, paramName, expectedShape, retExpr)                              \
     do {                                                                                               \
         if ((tensor)->GetViewShape() != (expectedShape)) {                                             \
-            OP_LOGE_FOR_INVALID_SHAPE(GMM_SWIGLU_ACLNN_OP_NAME, paramName,                            \
+            OP_LOGE_FOR_INVALID_SHAPE(apiName_.c_str(), paramName,                                      \
                                       op::ToString((tensor)->GetViewShape()).GetString(),              \
                                       op::ToString(expectedShape).GetString());                        \
             retExpr;                                                                                  \
@@ -51,7 +53,7 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
 #define GMM_SWIGLU_CHECK_DTYPE(tensor, paramName, supportList, retExpr)                                \
     do {                                                                                               \
         if (!CheckType((tensor)->GetDataType(), supportList)) {                                        \
-            OP_LOGE_FOR_INVALID_DTYPE(GMM_SWIGLU_ACLNN_OP_NAME, paramName,                            \
+            OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), paramName,                                      \
                                       op::ToString((tensor)->GetDataType()).GetString(),               \
                                       op::ToString(supportList).GetString());                          \
             retExpr;                                                                                  \
@@ -61,7 +63,7 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
 #define GMM_SWIGLU_CHECK_DIM(actualDim, expectedDim, paramName, retExpr)                               \
     do {                                                                                               \
         if ((actualDim) != (expectedDim)) {                                                            \
-            OP_LOGE_FOR_INVALID_SHAPEDIM(GMM_SWIGLU_ACLNN_OP_NAME, paramName,                         \
+            OP_LOGE_FOR_INVALID_SHAPEDIM(apiName_.c_str(), paramName,                                   \
                                          std::to_string(actualDim), std::to_string(expectedDim));      \
             retExpr;                                                                                  \
         }                                                                                              \
@@ -70,7 +72,7 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
 #define GMM_SWIGLU_CHECK_TENSORNUM(actualNum, expectedNum, paramName, retExpr)                         \
     do {                                                                                               \
         if ((actualNum) != (expectedNum)) {                                                            \
-            OP_LOGE_FOR_INVALID_TENSORNUM(GMM_SWIGLU_ACLNN_OP_NAME, paramName, actualNum,              \
+            OP_LOGE_FOR_INVALID_TENSORNUM(apiName_.c_str(), paramName, actualNum,                        \
                                           std::to_string(expectedNum));                                \
             retExpr;                                                                                  \
         }                                                                                              \
@@ -79,7 +81,7 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
 #define GMM_SWIGLU_CHECK_FORMAT(tensor, paramName, correctFormat, retExpr)                             \
     do {                                                                                               \
         if (op::IsPrivateFormat((tensor)->GetStorageFormat())) {                                       \
-            OP_LOGE_FOR_INVALID_FORMAT(GMM_SWIGLU_ACLNN_OP_NAME, paramName,                           \
+            OP_LOGE_FOR_INVALID_FORMAT(apiName_.c_str(), paramName,                                     \
                                        op::ToString((tensor)->GetStorageFormat()).GetString(),         \
                                        correctFormat);                                                 \
             retExpr;                                                                                  \
@@ -119,8 +121,6 @@ constexpr int64_t MXA8W4_K_MIN = 32LL;
 constexpr int64_t MXA8W4_N_ALIGN = 128LL;
 constexpr int64_t MXA8W4_N_MIN = 128LL;
 constexpr int64_t MXA8W4_SCALE_BLOCK = 128LL;
-constexpr const char *GMM_SWIGLU_ACLNN_OP_NAME = "aclnnGroupedMatmulSwigluQuantV2";
-
 const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
 const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
 const std::initializer_list<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
@@ -291,46 +291,49 @@ protected:
             gmmDsqParams_.tuningConfig = nullptr;
         }
         if (gmmDsqParams_.weightAssistMatrix != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "weightAssistMatrix", "nonnull", "nullptr");
+            OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "weightAssistMatrix", "nonnull", "nullptr");
             return false;
         }
         if (gmmDsqParams_.bias != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "bias", "nonnull", "nullptr");
+            OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "bias", "nonnull", "nullptr");
             return false;
         }
         if (gmmDsqParams_.smoothScale != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "smoothScale", "nonnull", "nullptr");
+            OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "smoothScale", "nonnull", "nullptr");
             return false;
         }
         if (gmmDsqParams_.tuningConfig != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "tuningConfig", "nonnull", "nullptr");
+            OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "tuningConfig", "nonnull", "nullptr");
             return false;
         }
         if ((gmmDsqParams_.dequantMode != QUNAT_MODE_MX && gmmDsqParams_.dequantMode != QUNAT_MODE_PERTOKEN) ||
             (gmmDsqParams_.quantMode != QUNAT_MODE_MX && gmmDsqParams_.quantMode != QUNAT_MODE_PERTOKEN) ||
             (gmmDsqParams_.dequantMode != gmmDsqParams_.quantMode)) {
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "dequantMode and quantMode",
+                apiName_.c_str(), "dequantMode and quantMode",
                 "dequantMode=" + std::to_string(gmmDsqParams_.dequantMode) +
                     ", quantMode=" + std::to_string(gmmDsqParams_.quantMode),
-                "the values of dequantMode and quantMode must be 0 (pertoken) or 2 (mx), and they must be equal");
+                "when the format of weight is ND, the values of dequantMode and quantMode must be 0 (pertoken) or "
+                "2 (mx), and they must be equal; when the format of weight is NZ, the values of dequantMode and "
+                "quantMode must be 2 (mx), and they must be equal");
             return false;
         }
         ge::DataType dequantDtype = static_cast<ge::DataType>(gmmDsqParams_.dequantDtype);
         if (gmmDsqParams_.quantMode == QUNAT_MODE_MX && dequantDtype != ge::DT_FLOAT) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "dequantDtype",
-                                      std::to_string(gmmDsqParams_.dequantDtype), "0");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName_.c_str(), "dequantDtype",
+                                                  std::to_string(gmmDsqParams_.dequantDtype),
+                                                  "when the quant mode is mx, dequantDtype must be 0");
             return false;
         }
         if (gmmDsqParams_.quantMode == QUNAT_MODE_PERTOKEN && dequantDtype != ge::DT_FLOAT &&
             dequantDtype != ge::DT_BF16 && dequantDtype != ge::DT_FLOAT16) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "dequantDtype",
+            OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "dequantDtype",
                                       std::to_string(gmmDsqParams_.dequantDtype), "{0, 1, 27}");
             return false;
         }
 
         if (gmmDsqParams_.isMxA8W4 && gmmDsqParams_.dequantMode != QUNAT_MODE_MX) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "dequantMode",
+            OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "dequantMode",
                                       std::to_string(gmmDsqParams_.dequantMode), std::to_string(QUNAT_MODE_MX));
             return false;
         }
@@ -345,7 +348,7 @@ protected:
         bool transposeXScale = IsTransposeForMxShape(gmmDsqParams_.xScale);
         if (gmmDsqParams_.isMxA8W4) {
             if (!transposeWeight) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "transposeWeight", "false",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName_.c_str(), "transposeWeight", "false",
                                                       "in MxA8W4, the transposition of weight must be true");
                 return false;
             }
@@ -354,7 +357,7 @@ protected:
 
         if (transposeWeightScale != transposeWeight) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "weightScale and weight",
+                apiName_.c_str(), "weightScale and weight",
                 "weightScale=" + ViewShapeToString((*gmmDsqParams_.weightScale)[0]) +
                     ", weight=" + ViewShapeToString((*gmmDsqParams_.weight)[0]),
                 "the transposition of weightScale must be equal to the transposition of weight");
@@ -383,7 +386,7 @@ protected:
         }
         if (transposeX || transposeXScale) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x and xScale",
+                apiName_.c_str(), "x and xScale",
                 "x=" + ViewShapeToString(gmmDsqParams_.x) + ", xScale=" + ViewShapeToString(gmmDsqParams_.xScale),
                 "the transposition of x and xScale must be false");
             return false;
@@ -413,7 +416,7 @@ protected:
             return true;
         }
         if (transposeX) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "x",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(apiName_.c_str(), "x",
                                                   ViewShapeToString(gmmDsqParams_.x),
                                                   "the transposition of x must be false");
             return false;
@@ -472,7 +475,7 @@ protected:
             std::ostringstream constraint;
             constraint << "N must be even when " << scenario;
             std::string constraintStr = constraint.str();
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(apiName_.c_str(), "weight",
                                                   ViewShapeToString((*gmmDsqParams_.weight)[0]),
                                                   "axis N of weight must be an even number");
             return false;
@@ -484,7 +487,7 @@ protected:
             reason << "groupList length should be equal to expert num " << e << " when " << scenario
                    << ", but actual is " << groupListLen;
             std::string reasonStr = reason.str();
-            OP_LOGE_FOR_INVALID_LISTSIZE(GMM_SWIGLU_ACLNN_OP_NAME, "groupList", std::to_string(groupListLen),
+            OP_LOGE_FOR_INVALID_LISTSIZE(apiName_.c_str(), "groupList", std::to_string(groupListLen),
                                          std::to_string(e));
             return false;
         }
@@ -544,7 +547,7 @@ protected:
         GMM_SWIGLU_CHECK_DTYPE(outputScale, "outputScale", QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
         DataType outputDtype = gmmDsqParams_.output->GetDataType();
         if (outputDtype != DataType::DT_FLOAT8_E4M3FN && outputDtype != DataType::DT_FLOAT8_E5M2) {
-            OP_LOGE_FOR_INVALID_DTYPE(GMM_SWIGLU_ACLNN_OP_NAME, "output",
+            OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "output",
                                       op::ToString(outputDtype).GetString(),
                                       "{FLOAT8_E4M3FN, FLOAT8_E5M2}");
             return false;
@@ -588,7 +591,7 @@ protected:
 
         DataType outputDtype = output->GetDataType();
         if (outputDtype != DataType::DT_FLOAT8_E4M3FN) {
-            OP_LOGE_FOR_INVALID_DTYPE(GMM_SWIGLU_ACLNN_OP_NAME, "output", op::ToString(outputDtype).GetString(),
+            OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "output", op::ToString(outputDtype).GetString(),
                                       "{FLOAT8_E4M3FN}");
             return false;
         }
@@ -641,8 +644,8 @@ protected:
         if (kValue == MXFP4_K_CONSTRAINT) {
             std::string gotStr = BuildLogValue("K", kValue);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
-                "when the dtypes of x and weight inputs are DT_FLOAT4_E2M1, axis K of x must be greater than 2");
+                apiName_.c_str(), "x", ViewShapeToString(gmmDsqParams_.x),
+                "when the dtypes of x and weight inputs are DT_FLOAT4, axis K of x must be greater than 2");
             return false;
         }
 
@@ -653,8 +656,8 @@ protected:
         if (kModValue != 0) {
             std::string gotStr = BuildLogValue("K", kValue);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
-                "when the dtypes of x and weight inputs are DT_FLOAT4_E2M1, axis K of x must be an even number");
+                apiName_.c_str(), "x", ViewShapeToString(gmmDsqParams_.x),
+                "when the dtypes of x and weight inputs are DT_FLOAT4, axis K of x must be an even number");
             return false;
         }
 
@@ -664,7 +667,7 @@ protected:
             if (!(nValue >= MXFP4_N_CONSTRAINT && nModValue == 0)) {
                 std::string gotStr = BuildLogValue("N", nValue);
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    GMM_SWIGLU_ACLNN_OP_NAME, "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
+                    apiName_.c_str(), "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
                     "when the output dtype is DT_FLOAT4_E2M1, axis N of weight must be an even number and "
                     "greater than or equal to 4");
                 return false;
@@ -682,7 +685,7 @@ protected:
         int64_t e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
 
         if (k % MXA8W4_K_ALIGN != 0 || k < MXA8W4_K_MIN) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(apiName_.c_str(), "x", ViewShapeToString(gmmDsqParams_.x),
                                                   "MxA8W4: K(" + std::to_string(k) + ") must align to " +
                                                       std::to_string(MXA8W4_K_ALIGN) +
                                                       " and >= " + std::to_string(MXA8W4_K_MIN));
@@ -690,7 +693,7 @@ protected:
         }
         if (n % MXA8W4_N_ALIGN != 0 || n < MXA8W4_N_MIN) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
+                apiName_.c_str(), "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
                 "MxA8W4: N(" + std::to_string(n) + ") must align to " + std::to_string(MXA8W4_N_ALIGN) +
                     " and >= " + std::to_string(MXA8W4_N_MIN));
             return false;
@@ -710,7 +713,7 @@ protected:
             constraint << "K must be positive when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
             std::string constraintStr = constraint.str();
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
+                apiName_.c_str(), "x", ViewShapeToString(gmmDsqParams_.x),
                 "when the value of M is not 0 [M=" + std::to_string(xMDim) +
                     "], axis K of x must be a positive number");
             return false;
@@ -724,7 +727,7 @@ protected:
             constraint << "K must be positive when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
             std::string constraintStr = constraint.str();
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+                apiName_.c_str(), "weight",
                 ViewShapeToString((*gmmDsqParams_.weight)[0]),
                 "when the value of N is not 0 [N=" + std::to_string(weightNDim) +
                     "], axis K of weight must be a positive number");
@@ -747,7 +750,7 @@ protected:
         } else if (gmmDsqParams_.quantMode == QUNAT_MODE_PERTOKEN) {
             return CheckInputOutDimsForPertoken();
         } else {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "quantMode",
+            OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "quantMode",
                                       std::to_string(gmmDsqParams_.quantMode), "{0, 2}");
             return false;
         }
@@ -802,7 +805,7 @@ protected:
             constraint << "length must be less than or equal to 1024 when "
                        << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
             std::string constraintStr = constraint.str();
-            OP_LOGE_FOR_INVALID_LISTSIZE(GMM_SWIGLU_ACLNN_OP_NAME, "groupList", std::to_string(groupListLen),
+            OP_LOGE_FOR_INVALID_LISTSIZE(apiName_.c_str(), "groupList", std::to_string(groupListLen),
                                          "less than or equal to 1024");
             return false;
         }
@@ -817,7 +820,7 @@ protected:
                    << ", but actual K dims are " << kInX << " and " << kInWeight;
             std::string reasonStr = reason.str();
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x and weight",
+                apiName_.c_str(), "x and weight",
                 "x=" + ViewShapeToString(gmmDsqParams_.x) + ", weight=" + ViewShapeToString((*gmmDsqParams_.weight)[0]),
                 "axis K of x must be equal to axis K of weight");
             return false;
@@ -827,7 +830,7 @@ protected:
         } else if (gmmDsqParams_.quantMode == QUNAT_MODE_PERTOKEN) {
             return CheckInputOutShapeForPertoken();
         } else {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "quantMode",
+            OP_LOGE_FOR_INVALID_VALUE(apiName_.c_str(), "quantMode",
                                       std::to_string(gmmDsqParams_.quantMode), "{0, 2}");
             return false;
         }
@@ -851,7 +854,9 @@ protected:
         }
         DataType xDtype = gmmDsqParams_.x->GetDataType();
         DataType weightDtype = ((*gmmDsqParams_.weight)[0])->GetDataType();
-        if (xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
+        bool isMxfp4 = (xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E1M2) &&
+                       (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2);
+        if (isMxfp4) {
             return checkMxfp4InputShape();
         }
 
@@ -905,7 +910,7 @@ protected:
             std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), xDtype) ==
             XW_DTYPE_SUPPORT_LIST_PERTOKEN.end();
         if (xDtypeNotSupported && xDtypeNotSupportedMxfp4 && xDtypeNotSupportedPertoken) {
-            OP_LOGE_FOR_INVALID_DTYPE(GMM_SWIGLU_ACLNN_OP_NAME, "x", op::ToString(xDtype).GetString(),
+            OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "x", op::ToString(xDtype).GetString(),
                                       "{INT8, FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, FLOAT4_E2M1}");
             return false;
         }
@@ -919,7 +924,7 @@ protected:
             std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), weightDtype) ==
             XW_DTYPE_SUPPORT_LIST_PERTOKEN.end();
         if (weightDtypeNotSupported && weightDtypeNotSupportedMxfp4 && weightDtypeNotSupportedPertoken) {
-            OP_LOGE_FOR_INVALID_DTYPE(GMM_SWIGLU_ACLNN_OP_NAME, "weight", op::ToString(weightDtype).GetString(),
+            OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "weight", op::ToString(weightDtype).GetString(),
                                       "{INT8, FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, FLOAT4_E2M1}");
             return false;
         }
@@ -941,7 +946,7 @@ protected:
             return CheckPertokenDtypeValid(x, xScale, groupList, output, outputScale);
         } else {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x and weight",
+                apiName_.c_str(), "x and weight",
                 "x=" + std::string(op::ToString(xDtype).GetString()) +
                     ", weight=" + op::ToString(weightDtype).GetString(),
                 "the dtypes of x and weight must be within the range quantMode 0: both INT8, both "
@@ -961,7 +966,7 @@ protected:
             if (gmmDsqParams_.isMxA8W4) {
                 if (weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
                     weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
-                    OP_LOGE_FOR_INVALID_FORMAT(GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+                    OP_LOGE_FOR_INVALID_FORMAT(apiName_.c_str(), "weight",
                                                op::ToString(weight->GetStorageFormat()).GetString(),
                                                "{FORMAT_FRACTAL_NZ, FORMAT_FRACTAL_NZ_C0_32}");
                     return false;
