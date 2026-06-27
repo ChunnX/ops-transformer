@@ -164,3 +164,4 @@
 | 调用方式  | 样例代码                                                                          | 说明                                                                          |
 | --------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | aclnn接口 | -| 通过[aclnnCompressor](./docs/aclnnCompressor.md)调用Compressor算子。 |
+| PyTorch API | [compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md) | 通过`cann_ops_transformer.compressor`调用Compressor算子 |
