@@ -233,11 +233,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
-                    // 确保上一次 gS1 迭代的 MTE1 LoadData（从 Query L1 读到 L0）已全部完成，
-                    // 否则 MTE2 的 QueryNd2Nz 会覆写 MTE1 正在读取的 L1 buffer。
-                    // double buffer 下，reload 的 slot 可能在上上次 reload 后被 MTE1 读取，
-                    // 而该 MTE1 读取的 SetFlag(MTE1_MTE2) 释放的是另一个 slot，无法保护本 slot。
-                    PipeBarrier<PIPE_MTE1>();
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
                     // MXFP8: 加载 qScale 到 L1（与 Query 数据一起）
                     if constexpr (IS_MXFP8) {
@@ -320,7 +315,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
-                    PipeBarrier<PIPE_MTE1>();
                     QueryNd2Nz(s1gL1SizeAlign2G, s1gGmOffset, runInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
@@ -370,9 +364,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
         }
     }
 
-    // 确保所有 Fixpipe DMA 物理完成，再通知 AIV 核读取 resMm1UB_
-    // 否则 CrossCoreSetFlag 发出后 V 侧开始读 UB，但 Fixpipe DMA 可能仍在飞行中
-    PipeBarrier<PIPE_FIX>();
     CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(QLIV2Common::ConstInfo::CROSS_CV_EVENT
         + runInfo.loop % 2);
 #if CVRATIO > 1

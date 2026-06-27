@@ -267,9 +267,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::AllocEventID()
     }
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
-    // MXFP8 路径虽不加载 qScale，但 weight 仍需 V_MTE2 同步
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 1);
+    if constexpr (!IS_MXFP8) {
+        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
+        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 1);
+    }
 
     SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -285,9 +286,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::FreeEventID()
     }
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
-    // MXFP8 路径虽不加载 qScale，但 weight 仍需 V_MTE2 同步
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 1);
+    if constexpr (!IS_MXFP8) {
+        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
+        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 1);
+    }
 
     WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -392,9 +394,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     }
 
     if (info.isFirstS2InnerLoop) {
-        // 等待上一轮 V pipe 读完 weightUB_，再让 MTE2 写入新 weight
-        // MXFP8 路径虽不加载 qScale，但 weight 仍需同步
-        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
+        if constexpr (!IS_MXFP8) {
+            WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
+        }
         // weightsGm --> weightUB_
         int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
         DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
@@ -465,12 +467,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         //                                     qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
         //                                     gSize_, curAivS1ProcNum);
     }
-    // 通知 MTE2：V pipe 已读完 weightUB_，可以写入新 weight
-    // MXFP8 路径虽不加载 qScale，但 weight 仍需同步
-    if (info.isFirstS2InnerLoop) {
-        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
-    }
     if constexpr (!IS_MXFP8) {
+        if (info.isFirstS2InnerLoop) {
+            SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
+        }
         if ((info.s2Idx - info.s2Start) % 16 == 0) {
             SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
         }
