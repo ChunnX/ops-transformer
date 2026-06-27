@@ -224,7 +224,6 @@ cann_ops_transformer.ops.flash_attn(
 |                      |  max_seqlen_kv  | ATTR(OPTIONAL) |  int  |
 | Paged Attention参数组 |      block_table      | INPUT(OPTIONAL) |   Tensor   |
 |  Sinks参数组  |     sinks     | INPUT(OPTIONAL) |   Tensor   |
-| Metadata参数组 |    metadata    | INPUT(OPTIONAL) |   Tensor   |
 |   SoftmaxLSE参数组   |    return_softmax_lse    | ATTR(OPTIONAL) |    int    |
 |                      |      softmax_lse      |     OUTPUT     |   Tensor   |
 
