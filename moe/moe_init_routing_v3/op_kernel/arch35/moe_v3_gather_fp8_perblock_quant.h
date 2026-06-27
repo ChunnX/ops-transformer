@@ -27,7 +27,6 @@ constexpr int64_t FP8_PERBLOCK_BLOCK_SIZE = 128;
 constexpr float FP8_E4M3_MAX_VALUE = 448.0f;
 constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr uint32_t FP32_INF_VALUE = 0x7f800000;
-constexpr uint16_t FP16_MAX_VALUE_MASK = 0x7fff;
 
 template <typename T, typename U>
 __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr,
@@ -35,60 +34,72 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
 {
     using namespace AscendC::MicroAPI;
 
-    uint32_t dtypeSize = sizeof(T);
-    uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / dtypeSize;
-    uint16_t vfNum = AscendC::VECTOR_REG_WIDTH / sizeof(float);
+    const uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / sizeof(float);
 
     static constexpr DivSpecificMode mode = {MaskMergeMode::ZEROING, false};
-    static constexpr CastTrait castTrait0 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
-                                             RoundMode::CAST_RINT};
+    static constexpr CastTrait castTraitB16ToB32 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
+                                                    RoundMode::CAST_RINT};
     static constexpr CastTrait castTrait32tofp8 = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
                                                    RoundMode::CAST_RINT};
 
     __VEC_SCOPE__
     {
-        RegTensor<T> vreg1, vreg2, vreg3, maxReg, yReg1;
-        RegTensor<float> scaleReg, fp8MaxReg, yReg2, yReg3;
-        RegTensor<U> outReg;
+        RegTensor<float> xLeftReg, xRightReg;
+        RegTensor<float> absLeftReg, absRightReg;
+        RegTensor<float> maxReg, maxRightReg;
+        RegTensor<float> scaleReg, fp8MaxReg;
+        RegTensor<float> quantLeftReg, quantRightReg;
+        RegTensor<T> tmpLeftReg, tmpRightReg;
+        RegTensor<U> outLeftReg, outRightReg;
 
-        MaskReg preg0;
-        MaskReg maskAll = CreateMask<uint16_t, MaskPattern::ALL>();
-        MaskReg yMaskReg;
+        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+        MaskReg maskScalar = CreateMask<float, MaskPattern::VL1>();
+        MaskReg maskLoop;
+        MaskReg maskRight;
 
-        Duplicate((RegTensor<uint16_t> &)vreg2, FP16_MAX_VALUE_MASK);
         Duplicate(fp8MaxReg, fp8MaxValue);
 
         for (uint16_t blkIdx = 0; blkIdx < blockNum; blkIdx++) {
             uint32_t blockOffset = blkIdx * FP8_PERBLOCK_BLOCK_SIZE;
             uint32_t blockElemNum = (blkIdx == blockNum - 1) ? (totalElemNum - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
-            uint32_t inputNum = blockElemNum;
-            uint32_t outputNum = blockElemNum;
-            uint16_t inputVfLoop = (blockElemNum + vfLen - 1) / vfLen;
-            uint16_t outputVfLoop = (blockElemNum + vfNum - 1) / vfNum;
 
-            Duplicate(maxReg, static_cast<T>(0));
+            Duplicate(maxReg, 0.0f, maskAll);
 
-            for (uint16_t i = 0; i < inputVfLoop; i++) {
-                preg0 = UpdateMask<T>(inputNum);
-                DataCopy(vreg1, xAddr + blockOffset + i * vfLen);
-                And((RegTensor<uint16_t> &)vreg3, (RegTensor<uint16_t> &)vreg1, (RegTensor<uint16_t> &)vreg2, preg0);
-                Max<T, MaskMergeMode::MERGING>(maxReg, maxReg, vreg3, preg0);
+            if (blockElemNum > vfLen) {
+                uint32_t rightElemNum = blockElemNum - vfLen;
+                maskRight = UpdateMask<float>(rightElemNum);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(tmpLeftReg, xAddr + blockOffset);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(tmpRightReg, xAddr + blockOffset + vfLen);
+                Cast<float, T, castTraitB16ToB32>(xLeftReg, tmpLeftReg, maskAll);
+                Cast<float, T, castTraitB16ToB32>(xRightReg, tmpRightReg, maskRight);
+                Abs(absLeftReg, xLeftReg, maskAll);
+                Abs(absRightReg, xRightReg, maskRight);
+                ReduceMax(maxReg, absLeftReg, maskAll);
+                ReduceMax(maxRightReg, absRightReg, maskRight);
+                Max(maxReg, maxReg, maxRightReg, maskScalar);
+            } else if (blockElemNum > 0) {
+                maskLoop = UpdateMask<float>(blockElemNum);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(tmpLeftReg, xAddr + blockOffset);
+                Cast<float, T, castTraitB16ToB32>(xLeftReg, tmpLeftReg, maskLoop);
+                Abs(absLeftReg, xLeftReg, maskLoop);
+                ReduceMax(maxReg, absLeftReg, maskLoop);
             }
-
-            ReduceMax<uint16_t>((RegTensor<uint16_t> &)maxReg, (RegTensor<uint16_t> &)maxReg, maskAll);
             Duplicate(maxReg, maxReg, maskAll);
 
-            Cast<float, T, castTrait0>(scaleReg, maxReg, maskAll);
-            Div<float, &mode>(scaleReg, scaleReg, fp8MaxReg, maskAll);
+            Div<float, &mode>(scaleReg, maxReg, fp8MaxReg, maskAll);
             DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + blkIdx, scaleReg, maskAll);
 
-            for (uint16_t i = 0; i < outputVfLoop; i++) {
-                yMaskReg = UpdateMask<float>(outputNum);
-                DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + i * vfNum);
-                Cast<float, T, castTrait0>(yReg2, yReg1, yMaskReg);
-                Div<float, &mode>(yReg3, yReg2, scaleReg, yMaskReg);
-                Cast<U, float, castTrait32tofp8>(outReg, yReg3, yMaskReg);
-                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + i * vfNum, outReg, yMaskReg);
+            if (blockElemNum > vfLen) {
+                Div<float, &mode>(quantLeftReg, xLeftReg, scaleReg, maskAll);
+                Div<float, &mode>(quantRightReg, xRightReg, scaleReg, maskRight);
+                Cast<U, float, castTrait32tofp8>(outLeftReg, quantLeftReg, maskAll);
+                Cast<U, float, castTrait32tofp8>(outRightReg, quantRightReg, maskRight);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset, outLeftReg, maskAll);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + vfLen, outRightReg, maskRight);
+            } else if (blockElemNum > 0) {
+                Div<float, &mode>(quantLeftReg, xLeftReg, scaleReg, maskLoop);
+                Cast<U, float, castTrait32tofp8>(outLeftReg, quantLeftReg, maskLoop);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset, outLeftReg, maskLoop);
             }
         }
     }
