@@ -56,12 +56,10 @@ tensor_list npu_moe_ep_dispatch(const at::Tensor &context, const at::Tensor &x, 
     at::Tensor cached_slot_tensor =
         cached_handle_dst_buffer_slot_idx.has_value() ? *cached_handle_dst_buffer_slot_idx : at::Tensor();
 
-    aclDataType scales_dtype;
+    aclDataType scales_dtype = aclDataType::ACL_FLOAT;
     at::Tensor scales_tensor = scales.has_value() ? *scales : at::Tensor();
-    if (scales_tensor.scalar_type() == at::kByte) {
+    if (scales.has_value() && scales_tensor.scalar_type() == at::kByte) {
         scales_dtype = aclDataType::ACL_FLOAT8_E8M0;
-    } else {
-        scales_dtype = aclDataType::ACL_FLOAT;
     }
     TensorWrapper scales_wrapper = TensorWrapper{scales_tensor, scales_dtype};
 
