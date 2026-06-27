@@ -29,18 +29,6 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
     def __init__(self):
         super(_MoeInitRoutingOpBuilder, self).__init__("moe_init_routing")
 
-    def sources(self):
-        return ['ops/csrc/moe_init_routing.cpp']
-
-    def schema(self) -> str:
-        return "moe_init_routing(Tensor x, Tensor expert_idx, " \
-            "*, Tensor? scale=None, Tensor? offset=None, Tensor? topk_weight=None, " \
-            "int active_num=-1, int expert_capacity=-1, int expert_num=-1, " \
-            "int drop_pad_mode=0, int expert_tokens_num_type=0, bool expert_tokens_num_flag=False, " \
-            "int quant_mode=-1, int[]? active_expert_range=None, int row_idx_type=0, " \
-            "int? x_dtype=None) " \
-            "-> (Tensor, Tensor, Tensor, Tensor, Tensor)"
-
     @staticmethod
     def _validate_scale_params(x, scale, offset, quant_mode, expert_range_length,
                                is_fp8_or_fp4_dtype, is_float4_case):
@@ -176,6 +164,18 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
             expanded_scale_dim_list = []
 
         return expanded_x_dim_list, expanded_scale_dim_list
+
+    def sources(self):
+        return ['ops/csrc/moe_init_routing.cpp']
+
+    def schema(self) -> str:
+        return "moe_init_routing(Tensor x, Tensor expert_idx, " \
+            "*, Tensor? scale=None, Tensor? offset=None, Tensor? topk_weight=None, " \
+            "int active_num=-1, int expert_capacity=-1, int expert_num=-1, " \
+            "int drop_pad_mode=0, int expert_tokens_num_type=0, bool expert_tokens_num_flag=False, " \
+            "int quant_mode=-1, int[]? active_expert_range=None, int row_idx_type=0, " \
+            "int? x_dtype=None) " \
+            "-> (Tensor, Tensor, Tensor, Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")

@@ -233,7 +233,7 @@ ACLNN_API aclnnStatus aclnnMoeReRoutingV2GetWorkspaceSize(
 }
 
 ACLNN_API aclnnStatus aclnnMoeReRoutingV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                            aclrtStream stream)
+                                          aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMoeReRoutingV2);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
