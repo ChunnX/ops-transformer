@@ -233,24 +233,11 @@ __aicore__ inline void ExpertTokensCount::CopyOut()
 {
     LocalTensor<int32_t> expertCountOutLocal = expertCountOutToTempQueue_.DeQue<int32_t>();
 
-    int64_t writeRange = actualExpertNum_;
-    int64_t localOffset = 0;
-    if (curCoreElements_ > 0) {
-        int32_t firstId = sortedExpertIdxGm_.GetValue(0);
-        int32_t lastId = sortedExpertIdxGm_.GetValue(curCoreElements_ - 1);
-        firstId = Max(static_cast<int64_t>(firstId), expertStart_);
-        lastId = Min(static_cast<int64_t>(lastId), expertEnd_ - 1);
-        if (firstId <= lastId) {
-            writeRange = static_cast<int64_t>(lastId - firstId + 1);
-            localOffset = static_cast<int64_t>(firstId - expertStart_);
-        }
-    }
-
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(writeRange * sizeof(int32_t)),
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>((actualExpertNum_) * sizeof(int32_t)),
                                  0, 0, 0};
     SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
     SetAtomicAdd<int32_t>();
-    DataCopyPad(expertCountTempGm_[localOffset], expertCountOutLocal[localOffset], copyParams);
+    DataCopyPad(expertCountTempGm_, expertCountOutLocal, copyParams);
     SetAtomicNone();
     SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 
