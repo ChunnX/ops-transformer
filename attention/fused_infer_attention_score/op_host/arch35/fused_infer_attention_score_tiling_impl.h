@@ -66,18 +66,26 @@ protected:
     ge::graphStatus SetPlatMemoryInfo(const gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetEmptyTensor(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SplitPolicy(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
+    void ApplySinnerSouterOverrides(const FiaTilingInfo &fiaInfo);
+    void ApplySplitStrategy(const FiaTilingInfo &fiaInfo);
+    void ApplyRowInvalidCheck(const FiaTilingInfo &fiaInfo);
     bool CheckS1OutSplit(const FiaTilingInfo &fiaInfo);
     int64_t CalcRequiredL2Size(const FiaTilingInfo &fiaInfo);
     void SplitOutSeq(const FiaTilingInfo &fiaInfo);
     ge::graphStatus ComputeTilingData(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus SetMaskTilingData(const FiaTilingInfo &fiaInfo);
+    uint8_t ComputeSparseType(const FiaTilingInfo &fiaInfo) const;
+    void SetAlibiStartIdx(const FiaTilingInfo &fiaInfo);
+    void SetLayoutType(const FiaTilingInfo &fiaInfo);
+    void SetPaLayoutTilingData(const FiaTilingInfo &fiaInfo);
+    void SetTransposeLayout(const FiaTilingInfo &fiaInfo);
+    void SetAntiQuantInfo(const FiaTilingInfo &fiaInfo);
+    void ComputeNeedInit(const FiaTilingInfo &fiaInfo);
     ge::graphStatus GenTilingKey(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetBlockDim(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus GetWorkspace(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetTilingData(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyConfig(const FiaTilingInfo &fiaInfo);
-    void UpdateTilingKeyAntiQuantConfig(uint32_t sInner, uint32_t sOuter, uint32_t dSize, uint32_t dVsize);
-    void UpdateTilingKeyNonQuantConfig(const FiaTilingInfo &fiaInfo, uint32_t sOuter, uint32_t sInner,
-                                       uint32_t dSize, uint32_t dVsize);
     void UpdateTilingKeyLayout(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyPseMode(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyQuantMode(const FiaTilingInfo &fiaInfo);
@@ -90,10 +98,10 @@ protected:
     bool EnableMTE2BmmPipe(const FiaTilingInfo &fiaInfo, matmul_tiling::MatmulApiTiling &bmm,
                            TCubeTiling &bmmTilingData);
     ge::graphStatus SetFATilingData(const FiaTilingInfo &fiaInfo);
-    void SetFATilingDataInputParams(const FiaTilingInfo &fiaInfo);
-    void SetFATilingDataInitOutput(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus AdjustSinnerAndSouter(gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
+    bool CheckPfaMergeLayout(const FiaTilingInfo &fiaInfo) const;
+    bool CheckSmallHeadOptimization(const FiaTilingInfo &fiaInfo) const;
     void GetPreNextTokensLeftUp(const FiaTilingInfo &fiaInfo, int64_t actualSeqLength, int64_t actualSeqLengthKV,
                                 int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp) const;
     void FixParamWithRowInvalid(const FiaTilingInfo &fiaInfo, int64_t &actualSeqLength, int64_t actualSeqLengthKV,
@@ -107,13 +115,16 @@ protected:
                            uint32_t sInnerSize, double coreWeightTarget, uint32_t &curCore);
     void SplitNBSeq(const FiaTilingInfo &fiaInfo);
     void InitImplParam(const FiaTilingInfo &fiaInfo);
-    void InitImplParamPrefixFlag(const FiaTilingInfo &fiaInfo, const gert::Tensor *actSharedPrefixLen,
-                                 uint32_t actSharedPrefixLenDims);
-    void InitImplParamSeqLen(const FiaTilingInfo &fiaInfo, const gert::Tensor *actSeqLenQ,
-                             const gert::Tensor *actSeqLenKV, uint32_t actSeqLenQDims, uint32_t actSeqLenKVDims,
-                             uint32_t bIdx);
+    void InitTilingFlags(const FiaTilingInfo &fiaInfo, const gert::Tensor *actSeqLenQ, uint32_t qDims,
+                         const gert::Tensor *actSeqLenKV, uint32_t kvDims,
+                         const gert::Tensor *actSharedPrefixLen, uint32_t prefixDims);
+    void ComputeLoopParams(const FiaTilingInfo &fiaInfo);
+    void ParseActualSeqLengths(const FiaTilingInfo &fiaInfo);
     void SetIsIFA(const FiaTilingInfo &fiaInfo);
     void SetGSMerge(const FiaTilingInfo &fiaInfo);
+    bool CheckPFAMergeSupport(const FiaTilingInfo &fiaInfo) const;
+    bool CheckActualSeqLenAligned(const FiaTilingInfo &fiaInfo) const;
+    bool CheckAntiQuantGSMerge(const FiaTilingInfo &fiaInfo, bool actualSeqLenUnequal) const;
     bool CheckEnableDN(const FiaTilingInfo &fiaInfo) const;
     bool CheckQKVActualSeqLengthsRight(const FiaTilingInfo &fiaInfo);
     bool CheckFlashDecode(const FiaTilingInfo &fiaInfo);
@@ -140,12 +151,6 @@ protected:
     ge::graphStatus SetDequantMMTilingData(const gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
     bool CheckTransposeLayout(const FiaTilingInfo &fiaInfo) const;
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
-    void PrintInputParams(const FiaTilingInfo &fiaInfo);
-    void SetMaskTilingData(const FiaTilingInfo &fiaInfo);
-    void SetSparseTilingData(const FiaTilingInfo &fiaInfo);
-    void SetLayoutTilingData(const FiaTilingInfo &fiaInfo);
-    void SetPALayoutTilingData(const FiaTilingInfo &fiaInfo);
-    void CheckNeedInitFlag(const FiaTilingInfo &fiaInfo);
 
     PromptFlashAttentionTilingDataV2 pfaTilingData_;
     IncreFlashAttentionTilingDataRegbase ifaTilingData_;
