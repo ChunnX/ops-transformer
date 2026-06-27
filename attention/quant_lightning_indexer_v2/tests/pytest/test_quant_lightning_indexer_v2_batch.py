@@ -81,6 +81,7 @@ def qliv2(testcase_files):   # 初始化参数和tensor
         "q_scale_datarange":params[26],
         "k_scale_datarange":params[27],
         "cmp_ratio":params[28],
+        "output_idx_offset": params[29],
         "result":result,
         "fulfill_percent":fulfill_percent
     }
