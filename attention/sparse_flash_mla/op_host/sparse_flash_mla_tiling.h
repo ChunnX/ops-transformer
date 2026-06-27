@@ -167,6 +167,7 @@ TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsOriKV)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsCmpKV)
 TILING_DATA_FIELD_DEF(uint32_t, cmpResidualKVSize)
 TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
+TILING_DATA_FIELD_DEF(uint32_t, oriKeyStride0)      // A5
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaSwaParamsOp, SparseFlashMlaSwaParams)
 
@@ -178,6 +179,7 @@ TILING_DATA_FIELD_DEF(uint64_t, cmpMaskMode)
 TILING_DATA_FIELD_DEF(int64_t, cmpKvStride0)          // A2/A3
 TILING_DATA_FIELD_DEF(uint32_t, cmpSparseBlockCount)  // A5
 TILING_DATA_FIELD_DEF(uint32_t, cmpKvSeqSize)           // A5
+TILING_DATA_FIELD_DEF(uint32_t, cmpKeyStride0)          // A5
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaCmpParamsOp, SparseFlashMlaCmpParams)
 
@@ -255,6 +257,9 @@ public:
     uint32_t actualLenDimsOriKV = 0;
     uint32_t actualLenDimsCmpKV = 0;
     uint32_t cmpResidualKVSize = 0;
+
+    uint32_t oriKeyStride0 = 0; // A5
+    uint32_t cmpKeyStride0 = 0; // A5
 
     float softmaxScale = 0;
     int64_t cmpRatio = 1;
@@ -491,6 +496,7 @@ public:
     uint64_t GetOptionalInputStride0(uint32_t inputIndex) const;
     void GenerateInfo(SMLATilingInfo &smlaInfo);
     ge::graphStatus Parse(SMLATilingInfo &smlaInfo);
+    ge::graphStatus CheckContiguous() const; // A5
 
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
@@ -532,6 +538,9 @@ public:
     uint32_t actualLenDimsOriKV_ = 0;
     uint32_t actualLenDimsCmpKV_ = 0;
     uint32_t cmpResidualKVSize_ = 0;
+
+    std::vector<uint32_t> oriKeyStridesVec_; // A5
+    std::vector<uint32_t> cmpKeyStridesVec_; // A5
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;

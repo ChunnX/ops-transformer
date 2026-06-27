@@ -974,6 +974,24 @@ def gen_data(params, template_mode=None):
 
     sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
 
+    # kv_cache 0轴非连续
+    properties = torch.npu.get_device_properties()
+    if "Ascend950" in properties.name and layout_kv == "PA_BBND":
+        key_stride = 10  # 0轴非连续增加stride
+        bytes_per_token = D + key_stride # 整个非连续的长度
+        blockFusion1 = torch.zeros((block_num1, block_size1 * N2 * bytes_per_token), dtype=ori_kv_type)
+        ori_key_flat = ori_k_in_pa_shape.view(block_num1, block_size1 * N2 * D)
+        blockFusion1[:, :block_size1 * N2 * D] = ori_key_flat
+        blockFusion1 = blockFusion1.npu()
+        ori_k_in_pa_shape = blockFusion1[:, :block_size1 * N2 * D].view(block_num1, block_size1, N2, D)
+
+        if template_idx != 0:
+            blockFusion2 = torch.zeros((block_num2, block_size2 * N2 * bytes_per_token), dtype=cmp_kv_type)
+            cmp_key_flat = cmp_k_in_pa_shape.view(block_num2, block_size2 * N2 * D)
+            blockFusion2[:, :block_size2 * N2 * D] = cmp_key_flat
+            blockFusion2 = blockFusion2.npu()
+            cmp_k_in_pa_shape = blockFusion2[:, :block_size2 * N2 * D].view(block_num2, block_size2, N2, D)
+
     test_sas = GeneralizedSFA(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K,
                               block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, softmax_scale,
                               cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, ori_topk_length, cmp_topk_length)
