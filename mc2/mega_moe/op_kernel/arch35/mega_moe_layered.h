@@ -1760,9 +1760,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
 
         // 逐 token: 读 flag → ReadNbi/DataCopy 读 data → 拆分写 token+scale → 组装三元组
         // 统一逻辑: 确定源卡 → 从源卡 URMA 窗口 L1 接收区读
-        //   sourceServerId == myServerId: 源卡 = rankIdx (发送方本身, 本 server 内通信)
-        //   sourceServerId != myServerId: 源卡 = 本 server 内同 localRank 的卡 (一级通信接收卡)
-        //   单 server: 源卡 = rankIdx
+        //   srcRankId = 本 server 内与 rankIdx 同 localRank 的卡 (本 server 内即 rankIdx 本身, 跨 server 为一级接收卡)
+        //   sourceServerId = rankIdx 所在 server (决定 L1 接收区 section 偏移, 不同 server 偏移不同但卡计算方式一致)
+        //   读 data: srcRankId == rankId_ 用 DataCopy (本卡), 否则用 ReadNbi (跨卡)
         for (int32_t i = 0; i < rowsThisCore; i++) {
             int32_t topkIndex = validTopkIndexTensor_.GetValue(i);
             int32_t tokenIndex = topkIndex / topK_;
@@ -1773,26 +1773,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
             tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
             tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIdxInToken);
 
-            // 确定源卡和 sourceServerId
-            uint32_t sourceServerId;
-            uint32_t srcRankId;
-            if (hasMultipleServers) {
-                sourceServerId = MegaMoeDispatchImpl::GetServerId(rankIdx, rankSizePerServer);
-                if (sourceServerId == myServerId) {
-                    // 本 server 内通信: 源卡 = 发送方本身
-                    srcRankId = rankIdx;
-                } else {
-                    // 跨 server: 源卡 = 本 server 内同 localRank 的卡 (一级通信接收卡)
-                    uint32_t myLocalRank = MegaMoeDispatchImpl::GetLocalRankInServer(
-                        rankId_, rankSizePerServer);
-                    srcRankId = MegaMoeDispatchImpl::GetL1TargetRankId(
-                        myServerId, myLocalRank, rankSizePerServer);
-                }
-            } else {
-                // 单 server: 源卡 = 发送方本身
-                sourceServerId = 0;
-                srcRankId = rankIdx;
-            }
+            // 统一确定源卡和 sourceServerId (不区分是否跨 server):
+            //   srcRankId = 本 server 内与 rankIdx 同 localRank 的卡
+            //              (本 server 内时即 rankIdx 本身; 跨 server 时为一级通信接收卡)
+            //   sourceServerId = rankIdx 所在 server (决定 L1 接收区内的 section 偏移)
+            uint32_t sourceServerId = hasMultipleServers
+                ? MegaMoeDispatchImpl::GetServerId(rankIdx, rankSizePerServer) : 0;
+            uint32_t srcRankId = hasMultipleServers
+                ? MegaMoeDispatchImpl::GetL1TargetRankId(myServerId,
+                    MegaMoeDispatchImpl::GetLocalRankInServer(rankIdx, rankSizePerServer),
+                    rankSizePerServer)
+                : rankIdx;
 
             // 源卡 URMA 窗口 L1 接收区基址
             GM_ADDR srcUrmaBase = GetUrmaAddrByRankId(mc2Context_, srcRankId) +
