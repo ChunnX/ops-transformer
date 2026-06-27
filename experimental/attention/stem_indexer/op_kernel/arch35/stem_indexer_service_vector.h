@@ -421,16 +421,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     // S2 基本块信息
     uint32_t s2BlockStart = info.s2Idx * s2BaseSize_;
 
-    AscendC::DataCopyExtParams copyInParams;
-    copyInParams.blockCount = 1;
-    copyInParams.srcStride = 0;
-    copyInParams.dstStride = 0;
-    copyInParams.rsv = 0;
-    // indice输出搬运参数
-    AscendC::DataCopyParams copyOutParams;
-    copyOutParams.blockCount = 1;
-    copyOutParams.srcStride = 0;
-    copyOutParams.dstStride = 0;
     // indiceLen搬出参数
     AscendC::DataCopyParams indiceLenCopyParams;
     
@@ -567,39 +557,29 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                 nowCurAivGS1Idx = curAivGS1Idx + mInnerIdx;
                 globalGIdx = nowCurAivGS1Idx / info.actS1Size;
                 globalS1Idx = nowCurAivGS1Idx % info.actS1Size; 
-                baseOutOffset = info.indiceOutOffset + ((int64_t)globalGIdx * constInfo_.qSeqSize + globalS1Idx) * constInfo_.kSeqSize;
+                baseLenOffset = info.indiceLenOffset + (int64_t)globalGIdx * constInfo_.qSeqSize + globalS1Idx;
+                int64_t baseOutOffset = info.indiceOutOffset +
+                                         ((int64_t)globalGIdx * constInfo_.qSeqSize + globalS1Idx) *
+                                             constInfo_.kSeqSize;
                 // 等待前面的copy结束
                 PipeBarrier<PIPE_V>();
-                if (initialBlocks_ > 0) {
-                    CreateVecIndex(mrgValueLocal_[mrgValueOffset].ReinterpretCast<int32_t>(),
-                                             (int32_t)zero, initialBlocks_);
-                    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                    copyOutParams.blockLen = (uint16_t)((uint32_t)initialBlocks_ * sizeof(int32_t));
-                    DataCopyPad(sparseIndicesGm[baseOutOffset],
-                                         mrgValueLocal_[mrgValueOffset].ReinterpretCast<int32_t>(), copyOutParams);
-                }
-                copyOutParams.blockLen = (uint16_t)((uint32_t)topkSelectNum * sizeof(int32_t));
-                DataCopyPad(sparseIndicesGm[baseOutOffset + initialBlocks_],
-                                     globalIndexLocal_[globalIndexOffset].ReinterpretCast<int32_t>(), copyOutParams);
-                
-                if (windowSize_ > 0) {
-                    // 把之前在s2Len尾部减去的windowsSize拼回来
-                    int32_t windowBase = curS1RealS2Len - windowSize_;
-                    CreateVecIndex(mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256].ReinterpretCast<int32_t>(),
-                                             (int32_t)windowBase, windowSize_);
-                    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                    copyOutParams.blockLen = (uint16_t)((uint32_t)windowSize_ * sizeof(int32_t));
-                    DataCopyPad(sparseIndicesGm[baseOutOffset + initialBlocks_ + topkSelectNum],
-                                         mrgValueLocal_[mrgValueOffset + topkSelectNumAlign256].ReinterpretCast<int32_t>(), copyOutParams);
-                }
-                // 正常topk的indiceLen搬出
+                uint32_t packedCopyLen = Min(MAX_TOPK_COUNT + trunkLen_, static_cast<uint32_t>(constInfo_.kSeqSize));
+                uint32_t windowBase = curS1RealS2Len - windowSize_;
+                vector1::PackSparseIndicesVF(mrgValueLocal_[mrgValueOffset], globalIndexLocal_[globalIndexOffset],
+                                             packedCopyLen, initialBlocks_, topkSelectNum, windowSize_, windowBase);
+                // 正常 topK 行的 indices 和 indiceLen 搬出。
                 Duplicate(indiceLenLocal_, totalOutput, 1);
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                DataCopyPad(sparseSeqLenGm[baseLenOffset + gIdx * constInfo_.qSeqSize],
-                                    indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
+                AscendC::DataCopyParams packedCopyParams;
+                packedCopyParams.blockCount = 1;
+                packedCopyParams.blockLen = static_cast<uint16_t>(packedCopyLen * sizeof(int32_t));
+                packedCopyParams.srcStride = 0;
+                packedCopyParams.dstStride = 0;
+                DataCopyPad(sparseIndicesGm[baseOutOffset],
+                            mrgValueLocal_[mrgValueOffset].ReinterpretCast<int32_t>(), packedCopyParams);
+                DataCopyPad(sparseSeqLenGm[baseLenOffset],
+                            indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCopyParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             }
         }
