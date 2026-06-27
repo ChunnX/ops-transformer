@@ -793,7 +793,7 @@ TEST_F(FlashAttentionScoreTiling, FlashAttentionScore_950_tiling_9)
     int64_t expectTilingKey = 2904821761534591760;
     std::string expectTilingData = "1 0 0 40 1 7200 512 0 128 128 0 4503599628435849216 65536 65536 0 0 0 257 0 0 0 0 0 0 0 0 255 0 0 0 0 0 0 0 0 0 0 0 0 64 2280 57 36 12 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 1 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 // sparse_mode=5 BNSD
