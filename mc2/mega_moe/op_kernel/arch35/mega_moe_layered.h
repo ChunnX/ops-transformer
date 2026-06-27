@@ -293,18 +293,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
         topkIndexTensorSize / sizeof(int32_t));
     // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
-    // Tensor大小：每块大小为 TOKEN_SCALE_SIZE=8KB, 容纳token+scale，一共开设48K。
-    constexpr uint32_t COPY_TMP_BUFFER_SIZE = TOKEN_SCALE_SIZE;
+    // Tensor大小：每块大小为 l1SlotDataBytes_(token+scale, 32B 对齐), 须 >= 单个 slot data 大小避免越界。
+    uint32_t copyTmpBufferSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(l1SlotDataBytes_), static_cast<int64_t>(ALIGN_32)));
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
         copyTmpTensors_[index] = LocalTensor<ActivationType>(TPosition::VECCALC,
-            copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
-            COPY_TMP_BUFFER_SIZE / sizeof(ActivationType));
+            copyTmpBaseAddr + static_cast<uint32_t>(index) * copyTmpBufferSize,
+            copyTmpBufferSize / sizeof(ActivationType));
     }
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的tokenCnt数；
     // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至32字节；
     uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr +
-        static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
+        static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * copyTmpBufferSize;
     uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
@@ -1826,7 +1827,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
                 AscendC::GlobalTensor<ActivationType> srcGlobal;
                 srcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
                     srcUrmaBase + srcDataOffset));
-                // AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
+                AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
             } else {
                 // 跨卡: 用 ReadNbi 从远端卡 URMA 窗口读
                 // ReadNbi dst 需 GM 地址, 先读到 GM 中转区
@@ -1842,7 +1843,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
                 // 从 GM 中转区 DataCopy 到 UB
                 AscendC::GlobalTensor<ActivationType> srcGlobal;
                 srcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(gmTmpAddr));
-                // AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
+                AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
             }
 
             // 等 MTE2 (DataCopy GM→UB) 完成后再拆分写
