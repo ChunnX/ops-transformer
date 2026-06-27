@@ -133,7 +133,7 @@ inline void InterleaveGradRefSBND(const std::vector<float> &dy, const std::vecto
 inline void InterleaveGradRefBNSD(const std::vector<float> &dy, const std::vector<float> &cos,
                                    const std::vector<float> &sin, std::vector<float> &dx,
                                    int64_t b, int64_t n, int64_t s, int64_t d,
-                                   int64_t sliceStart, int64_t sliceEnd, bool isBBoardcast)
+                                   int64_t sliceStart, int64_t sliceEnd, bool isBroadCast)
 {
     int64_t cosD = sliceEnd - sliceStart;
     for (int64_t bi = 0; bi < b; bi++) {
@@ -141,7 +141,7 @@ inline void InterleaveGradRefBNSD(const std::vector<float> &dy, const std::vecto
             for (int64_t si = 0; si < s; si++) {
                 int64_t groupOffset = (bi * n * s + ni * s + si) * d;
                 int64_t cosBase;
-                if (isBBoardcast) {
+                if (isBroadCast) {
                     cosBase = si * cosD;  // cos broadcast on B
                 } else {
                     cosBase = bi * s * cosD + si * cosD;
@@ -166,13 +166,13 @@ inline void InterleaveGradRefBNSD(const std::vector<float> &dy, const std::vecto
 inline void InterleaveGradRefAB(const std::vector<float> &dy, const std::vector<float> &cos,
                                  const std::vector<float> &sin, std::vector<float> &dx,
                                  int64_t b, int64_t n, int64_t s, int64_t d,
-                                 int64_t sliceStart, int64_t sliceEnd, bool isBBoardcast)
+                                 int64_t sliceStart, int64_t sliceEnd, bool isBroadCast)
 {
     int64_t cosD = sliceEnd - sliceStart;
     int64_t total = b * n * s;
     for (int64_t bi = 0; bi < total; bi++) {
         int64_t groupOffset = bi * d;
-        int64_t cosBase = isBBoardcast ? 0 : bi * cosD;
+        int64_t cosBase = isBroadCast ? 0 : bi * cosD;
         for (int64_t di = 0; di < d; di++) {
             dx[groupOffset + di] = dy[groupOffset + di];
         }

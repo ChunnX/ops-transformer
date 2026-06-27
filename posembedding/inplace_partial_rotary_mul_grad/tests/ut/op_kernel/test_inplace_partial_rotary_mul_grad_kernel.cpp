@@ -116,7 +116,7 @@ protected:
     void RunABAorBA(const vector<int64_t>& dyShape, const vector<int64_t>& cosShape,
                     const vector<float>& dyData, const vector<float>& cosData,
                     const vector<float>& sinData, const vector<float>& refDx,
-                    int64_t sliceStart, int64_t sliceEnd, uint64_t tilingKey, bool isBBoardcast)
+                    int64_t sliceStart, int64_t sliceEnd, uint64_t tilingKey, bool isBroadCast)
     {
         int64_t B = dyShape[0], N = dyShape[1], S = dyShape[2], D = dyShape[3];
         int64_t cosD = sliceEnd - sliceStart;
@@ -146,7 +146,7 @@ protected:
 
         vector<float> result(dyBytes / sizeof(float));
         AscendC::GmMemcpy((uint8_t*)result.data(), dxGm, dyBytes);
-        Verify(result, refDx, isBBoardcast ? "BA" : "ABA");
+        Verify(result, refDx, isBroadCast ? "BA" : "ABA");
         FreeAll(dyGm, cosGm, sinGm, dxGm, dcosGm, dsinGm, workspace, tilingGm);
     }
 
