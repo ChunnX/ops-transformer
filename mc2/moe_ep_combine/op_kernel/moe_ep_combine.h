@@ -496,15 +496,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
         GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, STATE_WIN_SIZE) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
         GlobalTensor<XType> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(wAddr));
-        bool maskExpertFlag = maskGenerateTensor_.GetValue((tokenIndex - tStart_) * topK_ + topkId);
-        if (!maskExpertFlag) {
-            if constexpr (HasTopkWeight == 1) {
-                ubWeighted_.SetValue(0, float(-1));
-                SyncFunc<AscendC::HardEvent::S_MTE3>();
-                DataCopyPad(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId], ubWeighted_, weightCopyParams);
-            }
-            continue;
-        }
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, axisH_);
@@ -542,8 +533,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
             if (tokenStatusTensor(tokenIdx - tStart_) == 1) {
                 continue;
             }
-            int32_t tokenTarget = static_cast<int32_t>(tokenTargetTensor_.GetValue(tokenIdx - tStart_));
-            copyCount = tokenTarget * FLOAT_PER_UB_ALIGN;
             if (!WaitDispatch(tokenIdx, copyCount, tStart_)) {
                 continue;
             }
@@ -564,7 +553,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     SendPhaseExpertToToken();
     PipeBarrier<PIPE_ALL>();  // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
-    MaskCheck();
     RecvPhaseReduce();
 }
 
