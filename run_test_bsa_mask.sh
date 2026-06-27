@@ -1,1 +1,0 @@
-bash build.sh --run_example bsa_select_block_mask eager cust
