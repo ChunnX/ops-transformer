@@ -10,24 +10,16 @@
 
 /*!
  * \file dispatch.h
- * \brief Arch dispatch for sparse_lightning_indexer_kl_loss_grad_metadata AICPU kernel
+ * \brief Runtime dispatch for sparse_lightning_indexer_kl_loss_grad_metadata AICPU kernel
  */
 #ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_DISPATCH_H
 #define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_DISPATCH_H
 
 #include "sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.h"
-
-#if defined(SLI_AICPU_ARCH22)
 #include "arch22/sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch22.h"
-#endif
-
-#if defined(SLI_AICPU_ARCH35)
 #include "arch35/sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch35.h"
-#endif
 
 namespace aicpu {
-
-#if defined(SLI_AICPU_ARCH22) && defined(SLI_AICPU_ARCH35)
 
 class SparseLightningIndexerKLLossGradMetadataCpuKernel : public CpuKernel {
 public:
@@ -49,18 +41,6 @@ public:
         return kernel.Compute(ctx);
     }
 };
-
-#elif defined(SLI_AICPU_ARCH22)
-
-using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch22;
-
-#elif defined(SLI_AICPU_ARCH35)
-
-using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch35;
-
-#else
-#error "No SLI_AICPU_ARCH* defined. Check ARCH_DIRECTORY in CMake configuration."
-#endif
 
 } // namespace aicpu
 
