@@ -41,6 +41,8 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& kvMm1ResGm, const GlobalTensor<MM1_OUT_T>& scoreMm1ResGm);
@@ -70,6 +72,7 @@ private:
 
     // GM
     GlobalTensor<X_T> xGm_;
+    GlobalTensor<X_T> xCacheGm_;
     GlobalTensor<X_T> wkvGm_;
     GlobalTensor<X_T> wgateGm_;
     GlobalTensor<MM1_OUT_T>kvMm1ResGm;
@@ -77,7 +80,9 @@ private:
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> startPosGm_;
+    GlobalTensor<int32_t> xCacheSlotMappingGm_;
     bool isExistSeqUsed = false;
+    bool isExistXCache_ = false;
 
     // =================================L1 Buffer=================================
     static constexpr uint32_t L1_X_SIZE = 128 * 1024;
@@ -142,9 +147,16 @@ template <typename COMP> __aicore__ inline void CompressorBlockCube<COMP>::Init(
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut)
 {
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
+    isExistXCache_ = (xCache != nullptr);
+    if (isExistXCache_) {
+        xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
+        xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);
+    }
     wkvGm_.SetGlobalBuffer((__gm__ X_T *)wKv);
     wgateGm_.SetGlobalBuffer((__gm__ X_T *)wGate);
     startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
@@ -230,13 +242,27 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
     uint32_t copySeqCnt = info.dealSeqCnt; // 此基本块处理的长度
 
     uint32_t xL1Offset = 0 * (32 / sizeof(X_T));
-    uint64_t sIdx = tStart;    // 起始s在整个T的起始点
-    uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
     uint32_t nValue = copySeqCnt;
     uint32_t dValue = kBase;  // 拷贝的列数kBase
     uint32_t srcDValue = constInfo_.hSize;
     uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
-    CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
+    if (isExistXCache_) {
+        uint64_t cacheStart = (startPosGm_.GetValue(info.bStart) + info.sStart) % constInfo_.xCacheSize;
+        uint32_t firstCopySeqCnt = min(copySeqCnt, constInfo_.xCacheSize - static_cast<uint32_t>(cacheStart));
+        uint64_t firstGmOffset = (info.bStart * constInfo_.xCacheSize + cacheStart) * constInfo_.hSize + hIdx;
+        CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xCacheGm_[firstGmOffset], firstCopySeqCnt, dValue, srcDValue,
+                               dstNzC0Stride);
+        if (firstCopySeqCnt < copySeqCnt) {
+            uint64_t secondGmOffset = info.bStart * constInfo_.xCacheSize * constInfo_.hSize + hIdx;
+            uint32_t secondL1Offset = xL1Offset + firstCopySeqCnt * (32 / sizeof(X_T));
+            CopySingleMatrixNDToNZ(xL1Tensor[secondL1Offset], xCacheGm_[secondGmOffset],
+                                   copySeqCnt - firstCopySeqCnt, dValue, srcDValue, dstNzC0Stride);
+        }
+    } else {
+        uint64_t sIdx = tStart;    // 起始s在整个T的起始点
+        uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
+        CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
+    }
 }
 
 template <typename COMP>

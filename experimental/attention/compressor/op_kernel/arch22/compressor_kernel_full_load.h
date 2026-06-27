@@ -38,6 +38,7 @@ public:
                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *normWeight,
                                 __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
                                 __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
+                                __gm__ uint8_t *xCache, __gm__ uint8_t *xCacheSlotMapping,
                                 __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
 
@@ -115,6 +116,7 @@ CompressorKernelFullLoad<COMP>::Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __g
                                      __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *normWeight,
                                      __gm__ uint8_t *ropeSin, __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
                                      __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
+                                     __gm__ uint8_t *xCache, __gm__ uint8_t *xCacheSlotMapping,
                                      __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *workspace)
 {
     if ASCEND_IS_AIV {

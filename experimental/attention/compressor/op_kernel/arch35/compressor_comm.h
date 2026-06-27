@@ -182,6 +182,7 @@ struct ConstInfo {
 
     // shape及参数
     uint32_t batchSize = 0;
+    uint32_t xCacheUpdateBatchSize = 0;
     uint32_t hSize = 0;
     uint32_t sSize = 0;
     uint32_t headDim = 0;
@@ -190,6 +191,7 @@ struct ConstInfo {
     float normEps = 1e-6;
     float reciprocalD = 0;
     uint64_t stateCacheStrideDim0 = 0;
+    uint32_t xCacheSize = 0;
 
     uint32_t curGroupIdx = 0;
     uint32_t tailGroupIdx = 0;

@@ -45,6 +45,8 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut,
         __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
@@ -68,6 +70,8 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut,
         __gm__ uint8_t *workspace)
 {

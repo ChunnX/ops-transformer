@@ -46,6 +46,7 @@ namespace optiling {
         uint32_t usedCoreNum = 0;           // 使用核数
         uint32_t nSize = 0;                 // 控制v2积攒的轮数
         uint64_t stateCacheStrideDim0 = 0;  // stateCache第0维的stride
+        uint32_t xCacheSize = 0;            // grouped decode x_cache ring size
         uint32_t kBaseNum = 0;
         uint32_t kBaseSize = 0;
         uint32_t coreGroupNum = 0;

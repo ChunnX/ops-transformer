@@ -46,6 +46,8 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut,
         __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
@@ -122,6 +124,7 @@ private:
     uint32_t dealKSize_ = 0;
     uint32_t hStart_ = 0;
     bool isFirstUpdateCurGroup = true;
+    bool isExistXCache_ = false;
 };
 
 template <typename COMP>
@@ -138,6 +141,8 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut,
         __gm__ uint8_t *workspace)
 {
@@ -147,6 +152,7 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         constInfo.aiCoreIdx = GetBlockIdx();
     }
     InitTilingData();
+    isExistXCache_ = (xCache != nullptr);
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
     tools_.toolParams_.cmpRatio = tilingData_->baseParams.cmpRatio;
@@ -159,6 +165,13 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         if (bSeqUsed > 0) {
             break;
         }
+    }
+
+    if (isExistXCache_ && ASCEND_IS_AIV) {
+        blockVec_.InitParams(constInfo, tools_);
+        blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                        cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+        blockVec_.InitBuffers(pipe_);
     }
 
     // 所有batch的有效序列都为0时, 直接退出
@@ -178,15 +191,17 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     // 4. 初始化block层
     if ASCEND_IS_AIC {
         blockCube_.InitParams(constInfo, tools_);
-        blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, 
-            stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
+        blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos,
+            stateBlockTable, cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
         blockCube_.InitBuffers(pipe_);
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
-        blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable, 
-                        cuSeqlens, seqUsed, startPos, cmpKvOut);
-        blockVec_.InitBuffers(pipe_);
+        if (!isExistXCache_) {
+            blockVec_.InitParams(constInfo, tools_);
+            blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                            cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+            blockVec_.InitBuffers(pipe_);
+        }
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
     }
 }
@@ -195,6 +210,7 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
     constInfo.batchSize = tilingData_->baseParams.batchSize;
+    constInfo.xCacheUpdateBatchSize = tilingData_->baseParams.batchSize;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.kBaseSize = tilingData_->baseParams.hiddenSize;
@@ -205,6 +221,7 @@ __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.ropeHeadDim = tilingData_->baseParams.ropeHeadDim;
     constInfo.normEps = tilingData_->baseParams.normEps;
     constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
+    constInfo.xCacheSize = tilingData_->baseParams.xCacheSize;
     constInfo.reciprocalD = tilingData_->baseParams.reciprocalD;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
     
@@ -590,6 +607,12 @@ __aicore__ inline void CompressorKernel<COMP>::UpdateVec2Info(
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::Process()
 {
+    if (isExistXCache_) {
+        if ASCEND_IS_AIV {
+            blockVec_.UpdateXCache();
+        }
+        SyncAll();
+    }
     // 所有batch的有效序列都为0时, 直接退出
     if (constInfo.batchSize == 0) {
         return;

@@ -33,6 +33,8 @@ namespace ops {
     constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 9;
     constexpr uint32_t SEQ_USED_INPUT_INDEX = 10;
     constexpr uint32_t START_POS_INPUT_INDEX = 11;
+    constexpr uint32_t X_CACHE_INPUT_INDEX = 12;
+    constexpr uint32_t X_CACHE_SLOT_MAPPING_INPUT_INDEX = 13;
 
     // ATTR
     constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 0;

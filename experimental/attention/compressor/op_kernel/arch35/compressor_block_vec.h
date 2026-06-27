@@ -60,6 +60,8 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut);
     // =================================资源管理=================================
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -67,6 +69,7 @@ public:
     __aicore__ inline void FreeEventID();
     // =================================执行计算=================================
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
+    __aicore__ inline void UpdateXCache();
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm,
                                                 GlobalTensor<T> vec1ResGm, GlobalTensor<T> vec2InputGm);
@@ -197,12 +200,16 @@ private:
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> stateBlockTableGm_;
+    GlobalTensor<int32_t> xCacheSlotMappingGm_;
     GlobalTensor<T> stateCacheGm_;
+    GlobalTensor<X_T> xGm_;
+    GlobalTensor<X_T> xCacheGm_;
     GlobalTensor<T> apeGm_;
     GlobalTensor<T> normWeightGm_;
     GlobalTensor<T> ropeSinGm_;
     GlobalTensor<T> ropeCosGm_;
     GlobalTensor<X_T> cmpKvOutGm_;
+    bool isExistXCache_ = false;
 
     // ================================Local Buffer区====================================
     // TBuf<TPosition::VECIN> mm1ResUb;
@@ -239,8 +246,15 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
                                                          __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin,
                                                          __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
                                                          __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-                                                         __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+                                                         __gm__ uint8_t *startPos, __gm__ uint8_t *xCache,
+                                                         __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut)
 {
+    xGm_.SetGlobalBuffer((__gm__ X_T *)x);
+    isExistXCache_ = (xCache != nullptr);
+    if (isExistXCache_) {
+        xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
+        xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);
+    }
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
@@ -258,6 +272,30 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
     }
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
+    }
+}
+
+template <typename COMP>
+__aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
+{
+    if (!isExistXCache_) {
+        return;
+    }
+    constexpr uint32_t COPY_BASE = BUFFER_SIZE_BYTE_32K / sizeof(X_T);
+    uint32_t hBlockNum = CeilDivT(constInfo_.hSize, COPY_BASE);
+    uint32_t totalTaskNum = constInfo_.xCacheUpdateBatchSize * hBlockNum;
+    for (uint32_t taskIdx = constInfo_.aiCoreIdx; taskIdx < totalTaskNum; taskIdx += constInfo_.usedCoreNum) {
+        uint32_t bIdx = taskIdx / hBlockNum;
+        uint32_t hBlockIdx = taskIdx % hBlockNum;
+        uint32_t hStart = hBlockIdx * COPY_BASE;
+        uint32_t hDealSize = min(COPY_BASE, constInfo_.hSize - hStart);
+        uint32_t slot = xCacheSlotMappingGm_.GetValue(bIdx);
+        LocalTensor<X_T> inputUb = inputQue1.AllocTensor<X_T>();
+        DataCopy(inputUb, xGm_[bIdx * constInfo_.hSize + hStart], hDealSize);
+        inputQue1.EnQue(inputUb);
+        inputQue1.DeQue<X_T>();
+        DataCopy(xCacheGm_[static_cast<uint64_t>(slot) * constInfo_.hSize + hStart], inputUb, hDealSize);
+        inputQue1.FreeTensor(inputUb);
     }
 }
 

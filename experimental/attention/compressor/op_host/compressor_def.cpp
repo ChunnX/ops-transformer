@@ -82,6 +82,16 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("x_cache")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("x_cache_slot_mapping")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("cmp_kv")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
