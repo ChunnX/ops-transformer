@@ -152,10 +152,10 @@ __aicore__ inline void FlashAttentionScoreKernelInferMxFullquant<CubeBlockType, 
             runParams.boIdx = bnIdx / (this->constInfo.n2Size * this->constInfo.headNumRatio);
             runParams.n2oIdx = (bnIdx / this->constInfo.headNumRatio) % this->constInfo.n2Size;
         }
-        ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParams, this->constInfo, this->attenMaskInfo,
-            this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
-        ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParams, this->constInfo, lastBN,
-                                                                      nextGs1Idx);
+        ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParams,
+            this->constInfo, this->attenMaskInfo, this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
+        ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParams,
+            this->constInfo, lastBN, nextGs1Idx);
         if constexpr (isFd) {
             if (this->constInfo.sInnerLoopSize * (this->aicIdx % this->constInfo.splitKVNum) >
                 runParams.actualS2Size) {
@@ -196,8 +196,10 @@ __aicore__ inline void FlashAttentionScoreKernelInferMxFullquant<CubeBlockType, 
                 this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParams);
                 bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(
                     runParams, this->constInfo, gS1Index, this->actualSeqQlenAddr, this->pseInfo);
-                bool s2NoNeedCalc =
-                    ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParams, this->constInfo);
+                bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS,
+                                                      BaseClass::useDn,
+                                                      BaseClass::enableKVPrefix>(
+                    runParams, this->constInfo);
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
