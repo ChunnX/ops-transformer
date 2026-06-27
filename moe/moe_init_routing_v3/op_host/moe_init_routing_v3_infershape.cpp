@@ -69,7 +69,9 @@ enum QuantMode : int8_t {
     MXQUANT_FP4_E2M1 = 9,
     FP8_PERBLOCK_E5M2 = 11,
     FP8_PERBLOCK_E4M3FN = 12,
-    INT4_DYNAMIC_QUANT = 13
+    INT4_DYNAMIC_QUANT = 13,
+    MXFP8_ROUNDSCALE_AMAX_E5M2 = 16,
+    MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17
 };
 
 const std::set<int64_t> validQuantModes = {
@@ -84,7 +86,9 @@ const std::set<int64_t> validQuantModes = {
     QuantMode::MXQUANT_FP4_E2M1,
     QuantMode::FP8_PERBLOCK_E5M2,
     QuantMode::FP8_PERBLOCK_E4M3FN,
-    QuantMode::INT4_DYNAMIC_QUANT
+    QuantMode::INT4_DYNAMIC_QUANT,
+    QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2,
+    QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN
 };
 
 enum ExpertTokenNumType : int8_t {
@@ -475,6 +479,8 @@ static ge::graphStatus CheckInputScaleShape(const gert::InferShapeContext *conte
     OP_CHECK_IF((nullptr == scaleShape &&
                  (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
                   QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
+                  QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 == quantMode ||
+                  QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN == quantMode ||
                   QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode ||
                    QuantMode::MXQUANT_FP4_E2M1 == quantMode ||
                    QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode ||
@@ -768,7 +774,9 @@ static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::S
         } else {
             expandedScaleShape->SetDim(0U, experNum * expertCapacity);
         }
-    } else if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN) {
+    } else if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN ||
+               quantMode == QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+               quantMode == QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN) {
         expandedScaleShape->SetDimNum(DIM_TWO);
         expandedScaleShape->SetDim(0U, outNum);
         int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE :
@@ -866,6 +874,8 @@ static ge::graphStatus ValidateInputDtype(const gert::InferDataTypeContext *cont
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode
+        || QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 == quantMode
+        || QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN == quantMode
         || QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode
         || QuantMode::HIF8_PERTENSOR == quantMode || QuantMode::MXQUANT_FP4_E2M1 == quantMode ||
         QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
@@ -903,6 +913,12 @@ static ge::DataType DetermineOutputDtypes(const gert::InferDataTypeContext *cont
         expandedXDtype = ge::DT_FLOAT8_E5M2;
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
     } else if (QuantMode::MXQUANT_FP8_E4M3FN == quantMode) {
+        expandedXDtype = ge::DT_FLOAT8_E4M3FN;
+        expandedScaleDtype = ge::DT_FLOAT8_E8M0;
+    } else if (QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 == quantMode) {
+        expandedXDtype = ge::DT_FLOAT8_E5M2;
+        expandedScaleDtype = ge::DT_FLOAT8_E8M0;
+    } else if (QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN == quantMode) {
         expandedXDtype = ge::DT_FLOAT8_E4M3FN;
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
     } else if (QuantMode::HIF8_CAST == quantMode) {
@@ -960,7 +976,9 @@ static void SetExpandedScaleShapeRanges(gert::InferShapeRangeContext *context, i
         size_t dimNum = DIM_ONE;
         if (quantMode == QuantMode::MXQUANT_FP4_E2M1) {
             dimNum = DIM_THREE;
-        } else if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN) {
+        } else if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN ||
+                   quantMode == QuantMode::MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+                   quantMode == QuantMode::MXFP8_ROUNDSCALE_AMAX_E4M3FN) {
             dimNum = DIM_TWO;
         } else if (quantMode == QuantMode::NON_QUANT) {
             auto scale = context->GetInputShapeRange(MOE_INIT_ROUTING_V3_INPUT_SCALE);
