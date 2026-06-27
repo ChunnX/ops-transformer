@@ -776,6 +776,10 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t idx) const
 {
+    if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ() || IsA16W4())) {
+        return ACLNN_SUCCESS;
+    }
+
     if (IsA16W4()) {
         if (gmmParams_.antiquantScaleOptional == nullptr) {
             return ACLNN_SUCCESS;
@@ -806,13 +810,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
         if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
                 std::to_string(groupSize),
-                "The value of groupSize must be 32/64/128/256 on Ascend 950PR");
+                "The value of groupSize must be 32/64/128/256 on arch3510");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        return ACLNN_SUCCESS;
-    }
-
-    if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ())) {
         return ACLNN_SUCCESS;
     }
 
