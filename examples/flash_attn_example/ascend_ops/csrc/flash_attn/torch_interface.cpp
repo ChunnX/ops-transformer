@@ -10,7 +10,7 @@
 
 /*!
  * \file torch_interface.cpp
- * \brief Complete PyTorch entry for flash_attn.
+ * \brief Complete PyTorch entry for flash_attn_example.
  *        The host call chain (validation -> tiling -> tiling copy -> kernel
  *        launch -> sync) is fully implemented; the tiling strategy and the
  *        kernel computation it drives are skeletons (see op_host / op_kernel).
@@ -263,12 +263,12 @@ at::Tensor FlashAttnNpu(const at::Tensor &q,             // 查询张量 [B, S, 
 
 TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
 {
-    m.impl("flash_attn", FlashAttnNpu);
+    m.impl("flash_attn_example", FlashAttnNpu);
 }
 
 TORCH_LIBRARY(ascend_ops, m)
 {
-    m.def(R"(flash_attn(Tensor q,
+    m.def(R"(flash_attn_example(Tensor q,
              Tensor k,
              Tensor v,
              Tensor attnMask,
