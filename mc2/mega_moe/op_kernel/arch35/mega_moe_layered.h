@@ -157,7 +157,6 @@ private:
     LocalTensor<int32_t> cumsumInfoTensor_;
     LocalTensor<ActivationType> copyTmpTensors_[DISPATCH_BUFFER_NUM];
     LocalTensor<uint32_t> sendDedupMaskTensor_;
-    LocalTensor<int32_t> sendCursorTensor_;
     LocalTensor<int32_t> tripleTensor_;
     LocalTensor<bfloat16_t> xInTensor1_;
     LocalTensor<bfloat16_t> xInTensor2_;
@@ -319,13 +318,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     sendDedupMaskTensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, sendDedupMaskTensorAddr,
         SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
     Duplicate<uint32_t>(sendDedupMaskTensor_, 0, SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t));
-    // Tensor用处：Level1DispatchUrma 中记录每个 target server 的发送 cursor，跨 localExpertId 轮次保留。
-    uint32_t sendCursorTensorAddr = sendDedupMaskTensorAddr + SEND_DEDUP_MASK_UB_BYTES;
-    uint32_t sendCursorTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(serverNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    sendCursorTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendCursorTensorAddr,
-        sendCursorTensorSize / sizeof(int32_t));
-    Duplicate<int32_t>(sendCursorTensor_, 0, sendCursorTensorSize / sizeof(int32_t));
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的tokenCnt数；
     // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至32字节；
     uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr + 6U * COPY_TMP_BUFFER_SIZE;
@@ -473,6 +465,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatc
         __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
             params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(serverIdx));
         WriteGmByPassDCache(countPtr, int32_t(0));
+    }
+    __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendCursorPtr);
+    for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
+        WriteGmByPassDCache(cursorPtr + serverIdx, int32_t(0));
     }
     __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDonePtr);
     for (uint32_t idx = aivCoreIdx_; idx < blockNum_; idx += blockAivNum_) {
@@ -628,15 +624,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
 
     if (isSenderCore) {
         __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDonePtr);
+        __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendCursorPtr);
         uint32_t senderIdx = blockIdx_ - senderCoreStart;
         for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
             targetServerForSender += senderCoreNum) {
             if (targetServerForSender == serverId_) {
-                continue;
+                    continue;
             }
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                 params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServerForSender));
-            int32_t cursor = sendCursorTensor_.GetValue(targetServerForSender);
+            int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
             GlobalTensor<uint8_t> workspaceSrcGlobal;
             GlobalTensor<uint8_t> relayDstGlobal;
             LocalTensor<uint8_t> copyTmpBytes = copyTmpTensors_[0].template ReinterpretCast<uint8_t>();
@@ -702,7 +699,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     ++cursor;
                 }
                 if (cursor != oldCursor) {
-                    sendCursorTensor_.SetValue(targetServerForSender, cursor);
+                    WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
                 }
                 // TODO:优化
                 bool allComputeDone = true;
