@@ -17,7 +17,7 @@
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
 #include "aclnn_kernels/common/op_error_check.h"
-#include "aclnn_util.h"
+#include "aclnn_kernels/aclnn_platform.h"
 
 using namespace op;
 
