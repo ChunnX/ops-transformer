@@ -491,6 +491,8 @@ function(add_ops_src_copy)
         "inplace_matmul_all_reduce_add_rms_norm;"
         "quant_all_reduce;"
         "quant_reduce_scatter;"
+        "engram_fetch;"
+        "engram_fetch_wait;"
         "allto_all_matmul;"
         "matmul_allto_all;"
         "attention_to_ffn;"
