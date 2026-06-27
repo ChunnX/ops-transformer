@@ -86,11 +86,12 @@ struct PeermemInfo {
         int64_t l1RecvPerServer = Ops::Base::CeilAlign(
             static_cast<int64_t>(tilingData->bs) * slotSize, ALIGN_512);
         int64_t totalServers = tilingData->epWorldSize; // 最坏 case: rankSizePerServer=1
+        // combineSend 区: 每 token 一条目, 共 bs*topK 条目, 每条目 = tokenBytes (含 data+scale, 已 32B 对齐)。
+        // tokenBytes 内已含 scale (CeilDiv(h,32) 字节), 不需额外 +4B。实际存储按 (tokenIdx*topK+topkIdx)*quantRowSize 紧密排列。
         URMADispatchL1RecvPtr = URMACombineWinPtr +
             Ops::Base::CeilAlign(
-                (int64_t)(tilingData->bs * (tokenBytes + sizeof(int32_t)) * tilingData->expertPerRank * tilingData->epWorldSize),
-                (int64_t)ALIGN_512) + // combineSend 区实际大小 (用简化公式)
-            Ops::Base::CeilAlign(totalServers * l1RecvPerServer, ALIGN_512);
+                (int64_t)(tilingData->bs * tokenBytes * tilingData->topK),
+                (int64_t)ALIGN_512); // combineSend 区实际大小; L1 接收区紧随其后
     }
 };
 
