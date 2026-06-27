@@ -82,6 +82,7 @@ struct BSAConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 64 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_120K = 120 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_192K = 192 * 1024;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_24K = 24 * 1024;
 
     uint32_t aicIdx;
     uint32_t aivIdx;

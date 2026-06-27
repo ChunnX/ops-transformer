@@ -23,34 +23,20 @@ public:
     __aicore__ inline void InitParams(const BSAConstInfo &constInfo,
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TBuf<>* uBuf_);
-    // __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-    //                                GlobalTensor<T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
-    //                                GlobalTensor<uint8_t> &maskTmpGm,
-    //                                GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-    //                                GlobalTensor<int64_t> &actualBlockLenQGm,
-    //                                GlobalTensor<int64_t> &actualBlockLenKVGm,
-    //                                GlobalTensor<OUT_T> &maskOutGm);
+
     __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
                                   GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
                                   GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
                                   GlobalTensor<float> &qCmpOutGm, GlobalTensor<float> &kCmpOutGm);
 
-    // /// @brief 分配硬件同步事件 (MTE2→V, V→MTE3, MTE3→V)
     __aicore__ inline void AllocEventID();
 
-    // /// @brief 等待并释放所有硬件同步事件
     __aicore__ inline void FreeEventID();
 
     __aicore__ inline void PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
                                                GlobalTensor<IN_T> &queryGm, GlobalTensor<int64_t> &actualBlockLenQGm,
                                                GlobalTensor<IN_T> &qCmpGm, GlobalTensor<float> &qCmpOutGm);
 
-    // __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
-    //                                             GlobalTensor<IN_T> &keyGm,
-    //                                             GlobalTensor<int64_t> &actualBlockLenKVGm,
-    //                                             GlobalTensor<float> &kCmpGm);
-
-    // 调试，正式版本删除
     __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
                                                GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
                                                GlobalTensor<IN_T> &kCmpGm, GlobalTensor<float> &kCmpOutGm);
@@ -58,14 +44,10 @@ public:
 
 
 private:
-    // __aicore__ inline void PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset,
-    //                                                uint32_t actualLen, uint32_t blockSize,
-    //                                                GlobalTensor<float> &dstGm, uint64_t dstOffset);
-
     __aicore__ inline void PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset, uint32_t actualLen,
                                                   uint32_t blockSize, GlobalTensor<IN_T> &dstGm, uint64_t dstOffset,
                                                   GlobalTensor<float> &outDstGm, uint64_t outDstOffset);
-    // using PoolImplFunc = void(*)(GlobalTensor<T>& dst, const GlobalTensor<T>& srcA, const GlobalTensor<T>& srcB);
+
     __aicore__ inline void PoolingLen0Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<IN_T> &dstGm,
                                            GlobalTensor<float> &outDstGm, uint64_t srcOffset, uint64_t dstOffset,
                                            uint64_t outDstOffset);
@@ -78,11 +60,9 @@ private:
                                              GlobalTensor<float> &outDstGm, uint64_t srcOffset, uint64_t dstOffset,
                                              uint64_t outDstOffset, uint32_t actualLen);
 
-    // ---- 配置参数 ----
-    BSAConstInfo constInfo;                                     ///< 运行时常量缓存
-    const optiling::BSASelectBlockMaskTilingData *__restrict tilingData; ///< Host 端 Tiling 数据
+    BSAConstInfo constInfo;
+    const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
-    // ---- GM 全局张量引用 ----
     GlobalTensor<IN_T> qCmpWrkTensor; ///< Query 压缩矩阵 [xBlocks, dSize]
     GlobalTensor<IN_T> kCmpWrkTensor; ///< Key 压缩矩阵 [yBlocks, dSize]
 
@@ -94,8 +74,6 @@ private:
     GlobalTensor<int64_t> actualBlockLenQGmTensor;  ///< Q 实际 Block 长度 (可为 NULL)
     GlobalTensor<int64_t> actualBlockLenKVGmTensor; ///< KV 实际 Block 长度 (可为 NULL)
 
-    // TBuf<> uBuf_; ///< 统一 UB 缓冲区 (192KB)
-
     constexpr static int32_t BUFFER = 1;   // 开启double buffer
     LocalTensor<IN_T> poolInputUb[BUFFER]; ///< 池化输入双缓冲 [2][blockShapeX * dSize] (FP16/BF16)
     LocalTensor<T> poolInFp32Ub[BUFFER];   ///< Cast后的FP32数据 [blockShapeX * dSize] (FP32)
@@ -104,19 +82,6 @@ private:
     LocalTensor<IN_T> poolOutCast;
     LocalTensor<T> poolOutTemp; // 临时存储out
     LocalTensor<uint8_t> reduceSharedTemp[BUFFER];
-
-    // ---- 硬件同步事件 ----
-    // event_t eventIdMte2ToV;
-    // event_t eventIdVToMte3;
-    // event_t eventIdMte3ToMte2;
-    // event_t eventIdVToMte2;
-    // event_t eventIdMte3ToV;
-
-    // event_t eventIdMte2ToVPing;
-    // event_t eventIdMte2ToVPong;
-
-    // event_t eventIdVToMte3Ping;
-    // event_t eventIdVToMte3Pong;
 
     event_t eventPing;
     event_t eventPong;
@@ -136,8 +101,6 @@ template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::InitBuffers(TBuf<>* uBuf_)
 {
     // 初始化统一 UB 缓冲区（192KB）
-    // pipe->InitBuffer(uBuf_, BSAConstInfo::BUFFER_SIZE_BYTE_192K);
-
     uint32_t ubOffset = 0;
 
     // 池化步骤内存分配
@@ -206,86 +169,18 @@ __aicore__ inline void BSAVecPoolService<BSAT>::InitGM(
 template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::AllocEventID()
 {
-
-    // eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
-    // eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
-    // eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
-    // eventIdVToMte2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
-    // eventIdMte3ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
-
-    // eventIdMte2ToVPing = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
-    // eventIdMte2ToVPong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
-
-    // eventIdVToMte3Ping = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
-    // eventIdVToMte3Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
-
-
-    // 设置事件初始就绪标志
-    // SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
-    // SetFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
-    // SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-    // SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
-    // SetFlag<HardEvent::V_MTE2>(eventIdVToMte2);
-
-    // SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVPing);
-    // SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVPong);
-    // SetFlag<HardEvent::V_MTE3>(eventIdVToMte3Ping);
-    // SetFlag<HardEvent::V_MTE3>(eventIdVToMte3Pong);
-
     eventPing = (event_t)0;
     eventPong = (event_t)1;
 }
 
-/**
- * @brief 释放硬件同步事件 ID——等待所有流水线操作完成并回收事件资源
- * @details 先通过 WaitFlag 等待三个硬件事件完成（确保流水线中的数据传输和计算全部结束），
- *          再通过 ReleaseEventID 回收事件 ID 资源。释放顺序与分配顺序一致。
- * @tparam BSAT 算子模板类型
- */
+
 template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::FreeEventID()
 {
-    // 等待所有事件完成
-    // WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
-    // WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-    // WaitFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
-    // WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2);
-    // WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
-
-    // WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVPing);
-    // WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVPong);
-
-    // // SetFlag<HardEvent::V_MTE3>(eventIdVToMte3Ping);
-    // // SetFlag<HardEvent::V_MTE3>(eventIdVToMte3Pong);
-
-    // // 释放事件 ID
-    // GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdMte2ToV);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMte3);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(eventIdMte3ToV);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(eventIdVToMte2);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdMte2ToVPing);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdMte2ToVPong);
+    return;
 }
 
 
-/**
- * @brief 对单个 Query Block 执行均值池化（Mean Pooling）
- * @details 将 query 张量中指定 batch/head/block 的 token 序列按 D 维度做均值池化，
- *          压缩为 1 个 D 维向量写入 qCmpGm。计算流程：
- *          1. 根据 layout（BNSD/TND）计算 srcOffset：batchIdx × strideB + headIdx × strideH + qBlockIdx × blockShapeX
- *          2. 计算 actualLen：支持变长序列，使用 actualBlockLenQGm 或 blockShapeX，
- *             末尾不完整块取 min(actualLen, maxQSeqlen - qBlockIdx * blockShapeX)
- *          3. 计算 dstOffset：qBlockIdx × dSize
- *          4. 调用 PoolingSingleBlockImpl 执行实际池化操作
- * @tparam BSAT 算子模板类型
- * @param batchIdx 批次索引
- * @param headIdx 注意力头索引
- * @param qBlockIdx Query 分块索引
- * @param queryGm Query 原始张量（GM）
- * @param actualBlockLenQGm Q 序列实际块长度（GM），支持变长
- * @param qCmpGm Q 池化压缩输出（GM），每个 block 压缩为 D 维向量
- */
 template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
@@ -306,7 +201,6 @@ BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx
         srcOffset = batchIdx * perBatchBytes + headIdx * perHeadBytes + qBlockIdx * blockShapeX * dSize * sizeof(IN_T);
         srcOffset = srcOffset / sizeof(IN_T);
     } else {
-        // TODO: TND 格式位移计算错误？？
         uint64_t perSeqHeadBytes = static_cast<uint64_t>(numHeads) * dSize * sizeof(IN_T);
         uint64_t perBatchBytes = static_cast<uint64_t>(maxQSeqlen) * perSeqHeadBytes;
         srcOffset =
@@ -336,8 +230,6 @@ BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx
     uint64_t wrkDstOffset = qBlockIdx * dSize;
 
     // 4. 调用底层池化实现
-    // PoolingSingleBlockImpl(keyGm, srcOffset, actualLen,
-    //                        static_cast<uint32_t>(blockShapeX), qCmpGm, wrkDstOffset);
     PoolingSingleBlockImpl(queryGm, srcOffset, actualLen, static_cast<uint32_t>(blockShapeX), qCmpGm, wrkDstOffset,
                            qCmpOutGm, qOutDstOffset);
 }
@@ -382,7 +274,6 @@ BSAVecPoolService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx
     }
 
     // 考虑末端实际不足blockShapeY场景，即seqlen无法整除blocksize场景
-    // todo 实际是否需要考虑到TND格式，每个batch不一样的seqlen?
     uint32_t tokenStart = kBlockIdx * static_cast<uint32_t>(blockShapeY);
     uint32_t remaining = (maxKvSeqlen > tokenStart) ? (maxKvSeqlen - tokenStart) : 0;
     actualLen = BSAMin(actualLen, remaining);
@@ -394,27 +285,10 @@ BSAVecPoolService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx
     uint64_t wrkDstOffset = kBlockIdx * dSize;
 
     // 4. 调用底层池化实现
-    // PoolingSingleBlockImpl(keyGm, srcOffset, actualLen,
-    //                        static_cast<uint32_t>(blockShapeY), kCmpGm, wrkDstOffset);
     PoolingSingleBlockImpl(keyGm, srcOffset, actualLen, static_cast<uint32_t>(blockShapeY), kCmpGm, wrkDstOffset,
                            kCmpOutGm, kOutDstOffset);
 }
 
-/**
- * @brief 单个 Block 均值池化的底层实现——GM→UB 搬入、求和、归一化、UB→GM 写出
- * @details 对一个 token 序列块执行 Mean Pooling（沿 token 维度求和后除以 actualLen）：
- *          - 若 actualLen == 0：通过 Duplicate 将 poolOutputUb_ 填充为 0，写出全零向量
- *          - 否则：DataCopyPad(GM→UB) → Cast(IN_T→FP32) → ReduceSum → Divs(/actualLen) →
- *            Cast(FP32→IN_T) → DataCopyPad(UB→GM)
- *          全程在 UB 上操作，避免多次 GM 访问。
- * @tparam BSAT 算子模板类型
- * @param srcGm 源 GM 张量（query 或 key）
- * @param srcOffset 源数据在 GM 中的字节偏移
- * @param actualLen 实际 token 数量（支持变长，可能 < blockSize）
- * @param blockSize 标称 block 大小（blockShapeX 或 blockShapeY）
- * @param dstGm 目标 GM 张量（qCmpGm 或 kCmpGm）
- * @param dstOffset 目标数据在 GM 中的字节偏移
- */
 template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset, uint32_t actualLen,
@@ -422,6 +296,8 @@ BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint6
                                                GlobalTensor<float> &outDstGm, uint64_t outDstOffset)
 {
     uint32_t dSize = constInfo.dSize;
+    // 等上个步骤结束，防止内存踩踏
+    AscendC::PipeBarrier<PIPE_ALL>();
     if (actualLen == 0) {
         PoolingLen0Impl(srcGm, dstGm, outDstGm, srcOffset, dstOffset, outDstOffset);
         return;
@@ -440,20 +316,16 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen0Impl(GlobalTensor<IN_
                                                                uint64_t dstOffset, uint64_t outDstOffset)
 {
     uint32_t dSize = constInfo.dSize;
-    // actualLen == 0: 输出 D 维 FP32 全零向量
-
-    // SetFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
-    // WaitFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
 
     event_t eventId = eventPing;
     SetFlag<HardEvent::MTE3_V>(eventPing);
     WaitFlag<HardEvent::MTE3_V>(eventPing);
+    SetFlag<HardEvent::MTE3_V>(eventPong);
+    WaitFlag<HardEvent::MTE3_V>(eventPong);
 
     Duplicate(poolOutCast, (IN_T)0.0f, dSize);
     AscendC::PipeBarrier<PIPE_V>();
     Duplicate(poolOut,  0.0f, dSize);
-    // SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-    // WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
 
     SetFlag<HardEvent::V_MTE3>(eventPing);
     WaitFlag<HardEvent::V_MTE3>(eventPing);
@@ -463,9 +335,6 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen0Impl(GlobalTensor<IN_
     copyOutParams.blockCount = 1;
     copyOutParams.srcStride = 0;
     copyOutParams.dstStride = 0;
-
-    // Cast(poolOutCast, poolOut, RoundMode::CAST_NONE, dSize);
-    // AscendC::PipeBarrier<PIPE_V>();
 
     DataCopyExtParams copyOutCastParams;
     copyOutCastParams.blockLen = dSize * sizeof(IN_T);
@@ -486,10 +355,11 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<I
     uint32_t dSize = constInfo.dSize;
 
     uint32_t bufferId = 0;
-    event_t eventId = bufferId == 0 ?  eventPing : eventPong;
 
-    SetFlag<HardEvent::MTE3_MTE2>(eventId);
-    WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+    SetFlag<HardEvent::MTE3_MTE2>(eventPing);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventPing);
+    SetFlag<HardEvent::MTE3_MTE2>(eventPong);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventPong);
 
     // Step 1: DataCopyPad GM→UB，搬入 actualLen × D 个 IN_T 元素到 poolInputUb[bufferId]
     DataCopyExtParams copyInParams;
@@ -500,8 +370,8 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<I
     DataCopyPadExtParams<IN_T> padInParams = {false, 0, 0, 0};
     DataCopyPad(poolInputUb[bufferId], srcGm[srcOffset], copyInParams, padInParams);
 
-    SetFlag<HardEvent::MTE2_V>(eventId);
-    WaitFlag<HardEvent::MTE2_V>(eventId);
+    SetFlag<HardEvent::MTE2_V>(eventPing);
+    WaitFlag<HardEvent::MTE2_V>(eventPing);
 
     // Step 2: Cast 全部 [actualLen, D] IN_T → FP32 到 poolInFp32Ub
     Cast(poolInFp32Ub[bufferId], poolInputUb[bufferId], RoundMode::CAST_NONE, actualLen * dSize);
@@ -521,8 +391,8 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<I
     Cast(poolOutCast, poolOut, RoundMode::CAST_NONE, dSize);
     AscendC::PipeBarrier<PIPE_V>();
 
-    SetFlag<HardEvent::V_MTE3>(eventId);
-    WaitFlag<HardEvent::V_MTE3>(eventId);
+    SetFlag<HardEvent::V_MTE3>(eventPing);
+    WaitFlag<HardEvent::V_MTE3>(eventPing);
 
     // step5 : copy to gm
     DataCopyExtParams copyOutCastParams;
@@ -553,23 +423,20 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
 
     DataCopyExtParams copyInParams;
 
-    // poolOutTemp layout: 9 rows of dSize elements each
-    // Rows 0-7: store per-chunk ReduceSum results (raw sums, NOT means)
-    // Row 8 (offset 8*dSize): store intermediate ReduceSum merge result
-    // Using ReduceSum throughout eliminates mean-of-means bug and Add precision loss
-
     uint32_t loopNum = 0;
     uint32_t finalOutLocation = 0;
     bool isFirstMerge = true;
     uint32_t bufferId = 0;
     event_t eventId;
-    // Clear poolOutTemp rows 0-7 to prevent stale data from contaminating merge ReduceSum (Bug3 fix)
-    Duplicate(poolOutTemp[0], static_cast<T>(0), 8 * dSize);
-    AscendC::PipeBarrier<PIPE_V>();
 
     SetFlag<HardEvent::V_MTE2>(eventPing);
     SetFlag<HardEvent::V_MTE2>(eventPong);
 
+    SetFlag<HardEvent::MTE3_MTE2>(eventPing);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventPing);
+    SetFlag<HardEvent::MTE3_MTE2>(eventPong);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventPong);
+    
     for (uint32_t loopIdx = 0; loopIdx < loops; loopIdx++) {
         loopNum++;
 
@@ -598,12 +465,12 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
 
         // Step 3: ReduceSum per chunk (raw sum, NOT mean)
         uint32_t shape[] = {excuteLen, dSize};
-        bool isSrcInnerPad = true; // dSize=128 always 32B aligned (inner axis), not dependent on reduce dim
+        bool isSrcInnerPad = true;
 
         // Determine output row offset in poolOutTemp (same logic as original)
-        uint32_t outTempOffset = ((loopNum - 1) % 8 + 1) * dSize;
+        uint32_t outTempOffset = ((loopNum - 1) % FLOAT_DATA_BLOCK_NUM + 1) * dSize;
         if (finalOutLocation == 0 && isFirstMerge) {
-            outTempOffset = ((loopNum - 1) % 8) * dSize;
+            outTempOffset = ((loopNum - 1) % FLOAT_DATA_BLOCK_NUM) * dSize;
         }
 
         // ReduceSum (NOT ReduceMean) - accumulate raw sum for this chunk
@@ -612,15 +479,15 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
         AscendC::PipeBarrier<PIPE_V>();
 
         // Intermediate merge: ReduceSum over stored rows when poolOutTemp is full
-        if ((isFirstMerge && loopNum == 8) || (!isFirstMerge && (loopNum % 7 == 0))) {
+        if ((isFirstMerge && loopNum == FLOAT_DATA_BLOCK_NUM) || (!isFirstMerge && (loopNum % (FLOAT_DATA_BLOCK_NUM - 1) == 0))) {
             if (isFirstMerge) {
                 isFirstMerge = false;
             }
-            uint32_t mergeOutOffset = finalOutLocation == 0 ? 8 * dSize : 0;
+            uint32_t mergeOutOffset = finalOutLocation == 0 ? FLOAT_DATA_BLOCK_NUM * dSize : 0;
             uint32_t mergeInOffset = finalOutLocation == 0 ? 0 : 1 * dSize;
 
-            uint32_t mergeShape[] = {8, dSize};
-            bool mergeIsSrcInnerPad = true; // dSize=128 always aligned (Bug#3 fix)
+            uint32_t mergeShape[] = {FLOAT_DATA_BLOCK_NUM, dSize};
+            bool mergeIsSrcInnerPad = true;
 
             // ReduceSum for merge (accumulate raw sums, NOT mean-of-means)
             AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, true>(
@@ -640,7 +507,7 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
 
     // Final merge: ReduceSum over remaining rows in poolOutTemp
     if (loopNum != 0) {
-        uint32_t mergeOutOffset = finalOutLocation == 0 ? 8 * dSize : 0;
+        uint32_t mergeOutOffset = finalOutLocation == 0 ? FLOAT_DATA_BLOCK_NUM * dSize : 0;
         uint32_t mergeInOffset = finalOutLocation == 0 ? 0 : 1 * dSize;
 
         uint32_t rDim = loopNum;
@@ -656,14 +523,14 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
     }
 
     // Get the final accumulated sum from poolOutTemp
-    uint32_t finalOffset = finalOutLocation == 0 ? 8 * dSize : 0;
+    uint32_t finalOffset = finalOutLocation == 0 ? FLOAT_DATA_BLOCK_NUM * dSize : 0;
     auto sumTensor = poolOutTemp[finalOffset];
 
     // Step 4: Divide accumulated sum by actualLen (hardware Cast avoids prohibited int->float C++ cast)
     LocalTensor<int32_t> lenInt32Ub = reduceSharedTemp[0].ReinterpretCast<int32_t>();
     Duplicate(lenInt32Ub, static_cast<int32_t>(actualLen), static_cast<int32_t>(dSize));
     AscendC::PipeBarrier<PIPE_V>();
-    LocalTensor<T> lenFloatUb = reduceSharedTemp[0].ReinterpretCast<T>()[dSize]; // use offset within reduceSharedTemp[0] (Bug1 fix: reduceSharedTemp[1] was OOB)
+    LocalTensor<T> lenFloatUb = reduceSharedTemp[0].ReinterpretCast<T>()[dSize];
     Cast(lenFloatUb, lenInt32Ub, RoundMode::CAST_NONE, dSize);
     AscendC::PipeBarrier<PIPE_V>();
     Div(poolOut, sumTensor, lenFloatUb, static_cast<int32_t>(dSize));

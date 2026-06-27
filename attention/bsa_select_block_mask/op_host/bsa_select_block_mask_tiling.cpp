@@ -202,7 +202,9 @@ void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
     // yBlocks 分核（用于 Key 池化阶段）
     // uint32_t activeYVecCoreNum = std::min(yBlocks, coreNum);
     
-    // vec : cube = 2:1
+    // A2:A3 vec : cube = 2:1
+    uint32_t cv_radio = aivNum / aicNum; // cv配比
+    // uint32_t activeYVecCoreNum = std::min(yBlocks, activeCoreNum * cv_radio);
     uint32_t activeYVecCoreNum = std::min(yBlocks, activeCoreNum * 2);
     uint32_t baseYRows = yBlocks / activeYVecCoreNum;
     uint32_t extraYCores = yBlocks % activeYVecCoreNum;
@@ -223,7 +225,8 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     uint64_t qCmpSize = static_cast<uint64_t>(xBlocks) * dSize * (sizeof(float) / 2);
     uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * (sizeof(float) / 2);
     uint64_t attnScoreFp16Size = static_cast<uint64_t>(xBlocks) * yBlocks * (sizeof(float) / 2);  // FP16: 2 bytes per element
-    uint64_t scoreFp32Size = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
+    // uint64_t scoreFp32Size = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
+    uint64_t scoreFp32Size = Q_CHUNK_SIZE * aicNum * yBlocks * sizeof(float);
 
     uint64_t sortLen = static_cast<uint64_t>(xBlocks) * yBlocks;
     uint64_t tileLen = std::min(static_cast<uint64_t>(7168), std::max(static_cast<uint64_t>(128), sortLen));

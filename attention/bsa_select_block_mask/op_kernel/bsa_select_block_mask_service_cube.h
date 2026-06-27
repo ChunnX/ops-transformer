@@ -46,20 +46,12 @@
 
 template <typename BSAT> class BSAMatmulService {
 public:
-    // ========== 类型别名 ==========
     using T = float;                        ///< 中间计算类型 (float)，统一 FP32
     using IN_T = typename BSAT::inputT;       ///< Cube A/B 输入类型
     using MM_OUT_T = T;                     ///< Matmul 输出类型 = float
 
-    /// @brief 默认构造函数
     __aicore__ inline BSAMatmulService() {};
 
-    // ========== 公共接口 ==========
-
-    /**
-     * @brief 从常量缓存初始化运行时参数
-     * @param constInfo 运行时常量缓存（dSize 等维度信息）
-     */
     __aicore__ inline void InitParams(const BSAConstInfo &constInfo);
 
     /**
@@ -107,7 +99,6 @@ public:
                                                uint32_t kChunkStart, uint32_t kChunkSize,
                                                uint32_t batch, uint32_t head);
 
-    /// @brief 释放硬件同步事件
     __aicore__ inline void FreeEventID();
 
 private:
@@ -150,7 +141,6 @@ private:
      */
     __aicore__ inline void CopyInKToL1(uint32_t kBlockStart, uint32_t kCubeBlockLen, uint8_t pingpongFlag);
 
-    // ========== L1→L0 加载函数 ==========
 
     /**
      * @brief L1→L0A 二维加载（非转置模式）
@@ -180,7 +170,6 @@ private:
     __aicore__ inline void LoadDataMmB(LocalTensor<IN_T> &bL0Tensor, LocalTensor<IN_T> &bL1Tensor,
                                         uint32_t kSize, uint32_t nSize);
 
-    // ========== 核心计算函数 ==========
 
     /**
      * @brief 执行 L1→L0 加载 + Mmad 矩阵乘加（含硬件同步）
@@ -217,16 +206,12 @@ private:
     __aicore__ inline void FixCopyOut(GlobalTensor<MM_OUT_T> &resGm, uint32_t mSize, uint32_t nSize,
                                        uint32_t dstStride, uint8_t l0PingPongFlag, GlobalTensor<T> &outFp32Gm);
 
-    // ========== 常量定义 ==========
-
     /// L0A Ping-Pong 缓冲区大小: 32KB
     static constexpr uint32_t L0A_PP_SIZE = (32 * 1024);
     /// L0B Ping-Pong 缓冲区大小: 32KB
     static constexpr uint32_t L0B_PP_SIZE = (32 * 1024);
     /// L0C Ping-Pong 缓冲区大小: 64KB (Cube 输出需要更大空间)
     static constexpr uint32_t L0C_PP_SIZE = (64 * 1024);
-
-    // ========== EventID 常量 ==========
 
     /// MTE1↔MTE2: Q L1 缓冲区就绪事件
     static constexpr uint32_t SYNC_MTE21_FLAG_Q = EVENT_ID0;
@@ -237,9 +222,7 @@ private:
     /// FIX↔M: L0C 释放事件 [2] (Ping-Pong)
     static constexpr uint32_t SYNC_MMFIX_FLAG[2] = {EVENT_ID5, EVENT_ID6};
 
-    // ========== 成员变量 ==========
-
-    BSAConstInfo constInfo{};  ///< 运行时常量缓存 (dSize, yBlocks 等)
+    BSAConstInfo constInfo{};
 
     // ---- GM 全局张量引用 ----
     GlobalTensor<IN_T> qCmpGmLocal;        ///< Query 压缩矩阵 [xBlocks, dSize] (float)
@@ -263,9 +246,6 @@ private:
     LocalTensor<IN_T> bL0TensorPingPong[2];    ///< L0B LocalTensor [2] (双缓冲)
     LocalTensor<MM_OUT_T> cL0TensorPingPong[2];///< L0C LocalTensor [2] (双缓冲)
 };
-
-
-// ==================== BSAMatmulService 成员函数实现 ====================
 
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::InitParams(const BSAConstInfo &constInfo)
@@ -350,9 +330,6 @@ __aicore__ inline void BSAMatmulService<BSAT>::FreeEventID()
     WaitFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[1]);
 }
 
-
-// ==================== 通用 GM→L1 搬运 ====================
-
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::CopyGmToL1(LocalTensor<IN_T> &l1Tensor,
                                                            GlobalTensor<IN_T> &gmSrcTensor,
@@ -378,16 +355,8 @@ __aicore__ inline void BSAMatmulService<BSAT>::CopyGmToL1(LocalTensor<IN_T> &l1T
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::CopyInQToL1(uint32_t qChunkStart, uint32_t qChunkSize)
 {
-    // qCmp 完整 shape: [xBlocks, dSize]
-    // 搬运 qCmp[qChunkStart : qChunkStart+qChunkSize, :]
-    // GM 行 stride = xBlocks * dSize（跨 batch/head 后的全量行宽，此处 xBlocks 为全 Q 维度）
     uint32_t qGmOffset = qChunkStart * constInfo.dSize;
     auto qSrcGm = qCmpGmLocal[qGmOffset];
-    // GM stride: qCmp 是 workspace 内连续存放的 [xBlocks, dSize]，stride = dSize * xBlocks
-    // 但实际上 qCmp 是 [xBlocks, dSize]，调用方传入的 qCmpGm 是全量；stride = xBlocks * dSize
-    // 注意：此处的 stride 应为 qCmp 在 GM 中的行 stride
-    // 由于 qCmp 按 xBlocks*dSize 连续存放，行 stride = dSize
-    // 但跨 batch/head 时需要更大的 stride。当前设计：单 batch/head 内 qCmp 行 stride = dSize
     CopyGmToL1(l1QTensor, qSrcGm, qChunkSize, constInfo.dSize, constInfo.dSize);
 }
 
@@ -446,9 +415,6 @@ __aicore__ inline void BSAMatmulService<BSAT>::LoadDataMmB(LocalTensor<IN_T> &bL
 
     LoadData(bL0Tensor, bL1Tensor, loadData2DParams);
 }
-
-
-// ==================== Mmad 矩阵乘 ====================
 
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::MmadInner(uint32_t mSize, uint32_t nSize, uint32_t kSize,
@@ -537,23 +503,8 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
      *   M = qChunkSize  (≤ CUBE_BASE_BLOCK = 128)
      *   K = dSize = 128 (固定)
      *   N = kChunkSize  (≤ 128 * 5 = 640)
-     *
-     * N 方向按 CUBE_BASE_BLOCK=128 分块，流水设计:
-     *
-     *   时间轴 →
-     *   MTE2: |==K0搬入==|        |==K1搬入==|        |==K2搬入==|
-     *                   ↘              ↗       ↘
-     *   MTE1:           |加载Q+K→L0A/B|       |加载Q+K→L0A/B|
-     *                            ↘                  ↘
-     *   M:                        |==Mmad C0==|      |==Mmad C1==|
-     *                                     ↘                  ↘
-     *   FIX:                              |==Fixpipe C0→GM==| |==Fixpipe C1→GM==|
-     *
-     * Q 在循环前一次加载到 L1，所有 K Block 复用。
-     * L0A/L0B/L0C 统一 Ping-Pong 旗标（无 K 方向累加循环）。
      */
 
-    // ---- 配置 ----
     uint32_t dSize = constInfo.dSize;
     uint32_t yBlocks = constInfo.yBlocks;
     uint32_t xBlocks = constInfo.xBlocks;
@@ -605,7 +556,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
 
         FixCopyOut(dstScoreGm, singleM, curN, dstStride, l0PingPongFlag, ScoreOutGm);
 
-        // ---- 2e: 翻转乒乓旗标 ----
+        // ---- 2e: 翻转pingpong ----
         l0PingPongFlag = (l0PingPongFlag + 1) & 1;
     }
 
