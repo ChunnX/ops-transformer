@@ -27,25 +27,15 @@
 
 namespace aicpu {
 
-template <typename T>
-inline T CeilDiv(T num, T rnd)
-{
-    if (rnd == 0) {
-        return 0;
-    }
-    return (num + rnd - 1) / rnd;
-}
+enum class SliSparseMode : int32_t {
+    NO_MASK = 0,
+    RIGHT_DOWN_CAUSAL = 3,
+};
 
-inline bool IsTensorValid(Tensor *tensor)
-{
-    return tensor != nullptr && tensor->GetData() != nullptr && tensor->GetTensorShape() != nullptr;
-}
-
-inline int64_t AbsDiff(int64_t lhs, int64_t rhs)
-{
-    return lhs > rhs ? lhs - rhs : rhs - lhs;
-}
-
+enum class SliLayout {
+    BSND = 0,
+    TND = 1,
+};
 } // namespace aicpu
 
 #endif // SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_H

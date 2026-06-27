@@ -28,16 +28,26 @@
 using namespace optiling;
 
 namespace aicpu {
+namespace {
+template <typename T>
+inline T CeilDiv(T x, T y)
+{
+    if (y == 0) {
+        return 0;
+    }
+    return (x + y - 1) / y;
+}
 
-enum class SliSparseMode : int32_t {
-    NO_MASK = 0,
-    RIGHT_DOWN_CAUSAL = 3,
-};
+inline bool IsTensorValid(Tensor *tensor)
+{
+    return tensor != nullptr && tensor->GetData() != nullptr && tensor->GetTensorShape() != nullptr;
+}
 
-enum class SliLayout {
-    BSND = 0,
-    TND = 1,
-};
+inline int64_t AbsDiff(int64_t lhs, int64_t rhs)
+{
+    return lhs > rhs ? lhs - rhs : rhs - lhs;
+}
+} // namespace
 
 class SparseLightningIndexerKLLossGradMetadataCpuKernelArch22 : public CpuKernel {
 public:
