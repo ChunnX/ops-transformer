@@ -94,9 +94,6 @@ __aicore__ inline void Process(
     int64_t numTokens = tl->numTokens;
     uint32_t nonContiguousFlag = tl->nonContiguousFlag;
 
-    PRINTF("[SIMT-ND] core=%d batchCount=%ld blockTableWidth=%ld numTokens=%ld nonContiguousFlag=%u\n",
-           GetBlockIdx(), batchCount, blockTableWidth, numTokens, nonContiguousFlag);
-
     uint64_t hiddenSize = (hiddenSizeK > hiddenSizeV) ? hiddenSizeK : hiddenSizeV;
     // Non-contiguous path uses maxUbHiddenSize from tiling; contiguous path doesn't need it for SIMT
     uint64_t maxUb = tl->maxUbHiddenSize;
@@ -114,6 +111,9 @@ __aicore__ inline void Process(
     uint64_t numHeadsV = tl->numHeadsV;
     uint64_t elemSizeK = sizeof(DTYPE_KEY);
     uint64_t elemSizeV = sizeof(DTYPE_VALUE);
+
+    PRINTF("[SIMT-ND] core=%d batchCount=%ld blockTableWidth=%ld numTokens=%ld nonContiguousFlag=%u hiddenSizeK=%lu hiddenSizeV=%lu\n",
+           GetBlockIdx(), batchCount, blockTableWidth, numTokens, nonContiguousFlag, hiddenSizeK, hiddenSizeV);
 
     // Non-contiguous: global block round-robin distribution (uses full core count)
     if (nonContiguousFlag != 0) {
