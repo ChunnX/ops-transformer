@@ -10,30 +10,12 @@
 
 /*!
  * \file sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.cpp
- * \brief Registration entry for AICPU kernel with compile-time arch selection
+ * \brief Registration entry for AICPU kernel with runtime arch dispatch
  */
 
-#include "sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.h"
-
-#if defined(SLI_AICPU_ARCH22)
-#include "arch22/sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch22.h"
-#endif
-
-#if defined(SLI_AICPU_ARCH35)
-#include "arch35/sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch35.h"
-#endif
+#include "dispatch.h"
 
 namespace aicpu {
-
-#if defined(SLI_AICPU_ARCH22)
-using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch22;
-#elif defined(SLI_AICPU_ARCH35)
-using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch35;
-#else
-#error "No SLI_AICPU_ARCH* defined. Check ARCH_DIRECTORY in CMake configuration."
-#endif
-
 static const char *kernelType = "SparseLightningIndexerKLLossGradMetadata";
 REGISTER_CPU_KERNEL(kernelType, SparseLightningIndexerKLLossGradMetadataCpuKernel);
-
 } // namespace aicpu
