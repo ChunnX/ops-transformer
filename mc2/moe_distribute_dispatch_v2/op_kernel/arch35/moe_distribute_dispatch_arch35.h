@@ -17,8 +17,13 @@
 #define MOE_DISTRIBUTE_DISPATCH_A5_H
 
 #include "lib/hccl/hccl.h"
-#include "../../common/op_kernel/common.h"
-#include "../../common/op_kernel/quantize_functions.h"
+#if __has_include("../../common/common.h")
+#include "../../common/common.h"
+#include "../../common/quantize_functions.h"
+#else
+#include "../../../common/op_kernel/common.h"
+#include "../../../common/op_kernel/quantize_functions.h"
+#endif
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
@@ -26,8 +31,8 @@
 #endif
 #include "adv_api/reduce/sum.h"
 #include "../moe_distribute_dispatch_v2_tiling.h"
-#if __has_include("../../common/op_kernel/mc2_kernel_utils.h")
-#include "../../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../../common/mc2_kernel_utils.h")
+#include "../../common/mc2_kernel_utils.h"
 #else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
