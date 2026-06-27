@@ -23,20 +23,20 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnMoeReRoutingGetWorkspaceSize(const aclTensor *tokens,
-                                                         const aclTensor *expertTokenNumPerRank,
-                                                         const aclTensor *perTokenScalesOptional,
-                                                         int64_t expertTokenNumType,
-                                                         int64_t idxType,
-                                                         const aclTensor *permuteTokensOut,
-                                                         const aclTensor *permutePerTokenScalesOut,
-                                                         const aclTensor *permuteTokenIdxOut,
-                                                         const aclTensor *expertTokenNumOut,
-                                                         uint64_t *workspaceSize,
-                                                         aclOpExecutor **executor);
+                                                        const aclTensor *expertTokenNumPerRank,
+                                                        const aclTensor *perTokenScalesOptional,
+                                                        int64_t expertTokenNumType,
+                                                        int64_t idxType,
+                                                        const aclTensor *permuteTokensOut,
+                                                        const aclTensor *permutePerTokenScalesOut,
+                                                        const aclTensor *permuteTokenIdxOut,
+                                                        const aclTensor *expertTokenNumOut,
+                                                        uint64_t *workspaceSize,
+                                                        aclOpExecutor **executor);
 
 /* @brief aclnnMoeReRouting的第二段接口，用于执行计算。 */
 ACLNN_API aclnnStatus aclnnMoeReRouting(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                          aclrtStream stream);
+                                        aclrtStream stream);
 
 #ifdef __cplusplus
 }

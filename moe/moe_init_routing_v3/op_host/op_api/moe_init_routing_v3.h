@@ -27,6 +27,6 @@ MoeInitRoutingV3(const aclTensor *x, const aclTensor *expertIdx,
                  const aclTensor *expertTokensCountOrCumsum,
                  const aclTensor *expandedScale,
                  const aclTensor *expanded_topk_weight,
-                 aclOpExecutor *executor); 
+                 aclOpExecutor *executor);
 }  // namespace l0op
 #endif // OP_API_INC_LEVEL0_MOE_INIT_ROUTING_V3_H
