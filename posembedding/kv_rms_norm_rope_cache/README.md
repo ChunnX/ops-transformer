@@ -20,7 +20,7 @@
   | 场景类型 | kv分量来源 | 说明 | 支持产品 |
     | :------: | :------: | :------ | :------: |
     |V1|rms_size=Dv=512<br>rope_size=Dk=64<br>vOptional=None|kv合轴模式：对输入张量kv的尾轴，拆分出左半边用于rms_norm计算，右半边用于rope计算，再将计算结果分别scatter到两块cache中。<li>与DeepSeekV3网络结构强相关，仅支持N=1的场景。<li>rms_norm计算所需数据Dv和rope计算所需数据Dk由输入kv的D切分而来，Dk、Dv大小需满足Dk+Dv=Dkv。|<term>Ascend 950PR/Ascend 950DT</term><br><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term><br><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term><br><term>Kirin X90 处理器系列产品</term><br><term>Kirin 9030 处理器系列产品</term>|
-    |V2|Dv=128<br>rms_size=Dk=Dkv=192<br>rope_size=64<br>vOptional的shape为[Bkv, Nkv, Skv, Dv]|kv分离模式：对输入张量kv进行rms_norm计算，之后对尾轴前64维进行rope计算并覆盖写回对应元素，最终结果scatter写入到k_cache中；对输入张量vOptional进行中间处理，最终结果scatter写入到ckv_cache中。<li>支持N=1/2/4/8<li>此场景下k与v尾轴分离，kv仅存储k分量尾轴，vOptional则存储v分量尾轴。因而|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term><br><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|
+    |V2|Dv=128<br>rms_size=Dk=Dkv=192<br>rope_size=64<br>vOptional的shape为[Bkv, Nkv, Skv, Dv]|kv分离模式：对输入张量kv进行rms_norm计算，之后对尾轴前64维进行rope计算并覆盖写回对应元素，最终结果scatter写入到k_cache中；对输入张量vOptional进行中间处理，最终结果scatter写入到ckv_cache中。<li>支持N=1/2/4/8<li>此场景下k与v尾轴分离，kv仅存储k分量尾轴，vOptional则存储v分量尾轴。|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term><br><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|
 
 - 计算公式：
   
@@ -122,11 +122,11 @@
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1920px"><colgroup>
-  <col style="width: 72px">
-  <col style="width: 112px">
+  <col style="width: 84px">
+  <col style="width: 128px">
   <col style="width: 448px">
   <col style="width: 288px">
-  <col style="width: 48px">
+  <col style="width: 72px">
   </colgroup>
   <thead>
     <tr>
@@ -189,28 +189,28 @@
     <tr>
       <td>k_rope_scale</td>
       <td>可选属性</td>
-      <td>当kCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时需要此输入参数。</td>
+      <td>当kCacheRef数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时，需要此输入参数。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>c_kv_scale</td>
       <td>可选属性</td>
-      <td>当ckv_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时需要此输入参数。</td>
+      <td>当ckv_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN时，需要此输入参数。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>k_rope_offset</td>
       <td>可选属性</td>
-      <td>当k_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN且对应的k_rope_scale输入存在并量化场景为非对称量化时，需要此参数输入。</td>
+      <td>当k_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN，且对应的k_rope_scale输入存在并量化场景为非对称量化时，需要此参数输入。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>c_kv_offset</td>
       <td>可选属性</td>
-      <td>当ckv_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN且对应的c_kv_scale输入存在并量化场景为非对称量化时，需要此参数输入。</td>
+      <td>当ckv_cache数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN，且对应的c_kv_scale输入存在并量化场景为非对称量化时，需要此参数输入。</td>
       <td>FLOAT32</td>
       <td>ND</td>
     </tr>
@@ -279,8 +279,8 @@ cache类型支持:
       | cache_type | offset==None | offset!=None |
       | :-------------------------: | :-----------: | :----------------------------------------------: |
       | scale==None | 与kv保持一致 | 非法输入，拦截 |
-      | scale!=None | INT8 | INT8 |
-      * 量化模式时，k_cache 和 ckv_cache 的 dtype 应为 int8。
+      | scale!=None | INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN | INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN |
+      * 量化模式时，k_cache 和 ckv_cache 的 dtype 应为相应产品上支持的 数据类型。
       * 非量化模式时，量化参数(k_rope_scale, k_rope_offset, c_kv_scale, c_kv_offset)必须设为 None，且 k_cache 和 ckv_cache 的 dtype 必须与kv保持一致。
 
     * 输入分量关于量化因子scale与量化偏移scale的对应关系如下：
@@ -308,50 +308,50 @@ cache类型支持:
       <tbody>
       <tr>
           <td rowspan="5">无量化模式<li>scale输入：k_rope_scale==None && c_kv_scale==None<li>offset输入：k_rope_offset==None && c_kv_offset==None</td>
-          <td rowspan="1">Norm（0）</td>
+          <td rowspan="1">Norm</td>
           <td rowspan="5">V1和V2都支持。</td>
       </tr>
       <tr>
-          <td>PA/PA_BNSD（1）</td>
+          <td>PA/PA_BNSD</td>
       </tr>
       <tr>
-          <td>PA_NZ（2）</td>
+          <td>PA_NZ</td>
       </tr>
       <tr>
-          <td>PA_BLK_BNSD（3）</td>
+          <td>PA_BLK_BNSD</td>
       </tr>
       <tr>
-          <td>PA_BLK_NZ（4）</td>
+          <td>PA_BLK_NZ</td>
       </tr>
       <tr>
           <td rowspan="5">静态量化模式<li>scale输入：k_rope_scale和c_kv_scale至少一个非空。<li>offset输入：仅限对应scale为非空时，offset输入合法。相应offset如果为空，则为<b>静态对称量化</b>；相应offset如果非空，则为<b>静态非对称量化</b>。</td>
-          <td rowspan="1">Norm（0）</td>
+          <td rowspan="1">Norm</td>
           <td rowspan="1"><li>V1不支持。<li>仅限V2支持：<b>静态对称量化</b>和<b>静态非对称量化</b>，支持K和V独立选择不同量化模式。</td>
       </tr>
       <tr>
-          <td>PA/PA_BNSD（1）</td>
+          <td>PA/PA_BNSD</td>
           <td rowspan="4"><li>V1仅支持<b>静态对称量化</b>，即使传入合法的offset，输入仍按相应的静态对称量化处理。<li>V2支持：<b>静态对称量化</b>和<b>静态非对称量化</b>。<li>V1和V2都支持：K和V独立选择不同量化模式。</td>
       </tr>
       <tr>
-          <td>PA_NZ（2）</td>
+          <td>PA_NZ</td>
       </tr>
       <tr>
-          <td>PA_BLK_BNSD（3）</td>
+          <td>PA_BLK_BNSD</td>
       </tr>
       <tr>
-          <td>PA_BLK_NZ（4）</td>
+          <td>PA_BLK_NZ</td>
       </tr>
       </tbody>
     </table>
   
   * cache与index相关约束：
-    | cachemode<br>(括号内为枚举值) | k_cache 形状 | ckv_cache 形状 | index 形状 | 说明 | 
+    | cachemode| k_cache 形状 | ckv_cache 形状 | index 形状 | 说明 | 
     | :------: | :------: | :------: | :------: | :------ |
-    |Norm（0）|[Bkv, N, Scache, Dk]|[Bkv, N, Scache, Dv]|[Bkv, Skv]|KV-Cache 更新模式，index 表示每个 Batch 下的偏移。<br>要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。<br>$Scache \ge Skv$|
-    |PA/PA_BNSD（1）|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × Skv]|PagedAttention 模式，index 表示每个 token 的偏移。<br>要求index的value值范围为[-1,block_num * block_size)。value数值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
-    |PA_NZ（2）|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × Skv]|Cache 数据格式为 FRACTAL_NZ 的 PagedAttention 模式，index表示每个 token 的偏移。<br>要求index的value值范围为[-1,block_num * block_size)。value数值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
-    |PA_BLK_BNSD（3）|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × ceil(Skv / block_size)]|特殊 PagedAttention 模式，index 表示每个 block 的起始偏移（不与 token逐一对应）。<br>要求index的value的数值范围为[-1,block_num * block_size)。value/block_size的值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
-    |PA_BLK_NZ（4）|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × ceil(Skv / block_size)]|Cache 数据格式为 FRACTAL_NZ 的特殊的 PagedAttention 模式，index 表示每个 block 的起始偏移。<br>要求index的value的数值范围为[-1,block_num * block_size)。value/block_size的值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
+    |Norm|[Bkv, N, Scache, Dk]|[Bkv, N, Scache, Dv]|[Bkv, Skv]|KV-Cache 更新模式，index 表示每个 Batch 下的偏移。<br>要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。<br>$Scache \ge Skv$|
+    |PA/PA_BNSD|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × Skv]|PagedAttention 模式，index 表示每个 token 的偏移。<br>要求index的value值范围为[-1,block_num * block_size)。value数值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
+    |PA_NZ|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × Skv]|Cache 数据格式为 FRACTAL_NZ 的 PagedAttention 模式，index表示每个 token 的偏移。<br>要求index的value值范围为[-1,block_num * block_size)。value数值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
+    |PA_BLK_BNSD|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × ceil(Skv / block_size)]|特殊 PagedAttention 模式，index 表示每个 block 的起始偏移（不与 token逐一对应）。<br>要求index的value的数值范围为[-1,block_num * block_size)。value/block_size的值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
+    |PA_BLK_NZ|[block_num, block_size, N, Dk]|[block_num, block_size, N, Dv]|[Bkv × ceil(Skv / block_size)]|Cache 数据格式为 FRACTAL_NZ 的特殊的 PagedAttention 模式，index 表示每个 block 的起始偏移。<br>要求index的value的数值范围为[-1,block_num * block_size)。value/block_size的值不能重复。<br>$block\_size>1,\\ block\_num \ge Floor(Skv / block\_size) * Bkv$|
 
     * Scache为输入cache的sequence length，大小由用户输入场景决定，无明确限制。
     * 当cacheModeOptional为Norm时，shape为2维[Bkv,Skv]，要求index的value值范围为[-1,Scache)。不同的Bkv下，value数值可以重复。
@@ -365,7 +365,8 @@ cache类型支持:
     * 在cacheModeOptional为PA, PA_BNSD, PA_NZ, PA_BLK_BNSD, PA_BLK_NZ模式时有效。
     * 在cacheModeOptional为Norm时，仅在V2场景中使能量化模式时有效。
   * vOptional：
-    * 该参数仅在类型二中作为必须入参，在其他类型中会作为无效参数被忽略。
+    * 该参数仅限<b>Atlas A3 训练系列产品/Atlas A3 推理系列产品 以及 Atlas A2 训练系列产品/Atlas A2 推理系列产品</b>。
+    * 该参数仅在<b>kv分离场景(V2)</b>中作为必须入参，在其他类型中会作为无效参数被忽略。
     * 当vOptional存在时，它的类型必须与kv一致，`[B, N, S]`维度也必须与kv一致。
 
 ## 调用说明
