@@ -92,8 +92,8 @@ int64_t GetKeyBatchSizeSli(int64_t batchSize, const aclTensor *cuSeqlensKOptiona
 }
 
 aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, int64_t numHeadsQ,
-    int64_t numHeadsK, int64_t headDim, int64_t topk, const char *layoutQOptional, const char *layoutKOptional,
-    int64_t maskMode, int64_t cmpRatio, uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
+    int64_t numHeadsK, int64_t topk, const char *layoutQOptional, const char *layoutKOptional, int64_t maskMode,
+    int64_t cmpRatio, uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
 {
     // num_heads_q 校验
     CHECK_COND(numHeadsQ >= SLI_NUM_HEADS_Q_LOWER_BOUND_A5 && numHeadsQ <= SLI_NUM_HEADS_Q_UPPER_BOUND_A5,
@@ -102,9 +102,6 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
     // num_heads_k 校验
     CHECK_COND(numHeadsK == 1, ACLNN_ERR_PARAM_INVALID,
         "num_heads_kv should only be 1, but got %lld", numHeadsK);
-    // head_dim 校验
-    CHECK_COND(headDim == 128, ACLNN_ERR_PARAM_INVALID,
-        "head_dim should only be 128, but got %lld", headDim);
     // topk 校验
     CHECK_COND(topk >= SLI_TOPK_LOWER_BOUND_A5 && topk <= SLI_TOPK_UPPER_BOUND_A5, ACLNN_ERR_PARAM_INVALID,
         "topk should be [%lld, %lld], but got %lld", SLI_TOPK_LOWER_BOUND_A5, SLI_TOPK_UPPER_BOUND_A5, topk);
@@ -141,7 +138,8 @@ aclnnStatus CheckSingleParamSli(int64_t batchSize, int64_t maxSeqlenQ, int64_t m
 }
 
 aclnnStatus CheckExistenceSli(int64_t maskMode, int64_t cmpRatio, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKOptional, const aclTensor *cmpResidualKOptional, const char *layoutQOptional,
+    const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKOptional,
+    const aclTensor *cmpResidualKOptional, int64_t maxSeqlenQ, int64_t maxSeqlenK, const char *layoutQOptional,
     const char *layoutKOptional, const aclTensor *metadata)
 {
     // cu_seqlens_q 存在性校验
@@ -251,12 +249,12 @@ aclnnStatus ParamsCheckSliA5(
     char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, const aclTensor *metadata, uint32_t aicCoreNum,
     uint32_t aivCoreNum, const std::string &socVersion)
 {
-    auto ret = CheckSingleParamSli(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk,
-        layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion);
+    auto ret = CheckSingleParamSli(batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, topk, layoutQOptional,
+        layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckExistenceSli(maskMode, cmpRatio, cuSeqlensQOptional, cuSeqlensKOptional, cmpResidualKOptional,
-        layoutQOptional, layoutKOptional, metadata);
+    ret = CheckExistenceSli(maskMode, cmpRatio, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional,
+        sequsedKOptional, cmpResidualKOptional, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckConsistencySli(batchSize, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional,
@@ -273,16 +271,16 @@ aclnnStatus ParamsCheckSli(
     char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, const aclTensor *metadata, uint32_t aicCoreNum,
     uint32_t aivCoreNum, const std::string &socVersion)
 {
-    // A2/A3 校验
-    const std::string ascend950 = "Ascend950";
-    if (socVersion.find(ascend950) == std::string::npos) {
-        CHECK_RET(metadata != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-        return ACLNN_SUCCESS;
-    }
     // A5 校验
-    return ParamsCheckSliA5(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
-        cmpResidualKOptional, batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk,
-        layoutQOptional, layoutKOptional, maskMode, cmpRatio, metadata, aicCoreNum, aivCoreNum, socVersion);
+    const std::string ascend950 = "Ascend950";
+    if (socVersion.find(ascend950) != std::string::npos) {
+        return ParamsCheckSliA5(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
+            cmpResidualKOptional, batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim, topk,
+            layoutQOptional, layoutKOptional, maskMode, cmpRatio, metadata, aicCoreNum, aivCoreNum, socVersion);
+    }
+    // A2/A3 校验
+    CHECK_RET(metadata != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    return ACLNN_SUCCESS;
 }
 
 }
