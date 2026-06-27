@@ -1,12 +1,12 @@
-﻿/**	 
-  * Copyright (c) 2026 Huawei Technologies Co., Ltd.	 
-  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of	 
-  * CANN Open Software License Agreement Version 2.0 (the "License").	 
-  * Please refer to the License for details. You may not use this file except in compliance with the License.	 
-  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,	 
-  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.	 
-  * See LICENSE in the root of the software repository for the full text of the License.	 
-  */
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tiling_impl.cpp
@@ -1819,6 +1819,75 @@ void FusedInferAttentionScoreTilingImpl::SetPaLayoutTilingData(const FiaTilingIn
     } else if (fiaInfo.kvLayout == FiaLayout::NZ) {
         inputParams.set_paLayoutType(2);
         baseParams.set_PAlayoutType(2);
+    }
+}
+
+void FusedInferAttentionScoreTilingImpl::SetTransposeLayout(const FiaTilingInfo &fiaInfo)
+{
+    static const std::map<std::string, uint32_t> transposeLayoutMap = {
+        {"BNSD_BSND", 1}, {"BSND_BNSD", 2}, {"BSH_BNSD", 3}, {"BNSD_NBSD", 4},
+        {"BSND_NBSD", 5}, {"BSH_NBSD", 6}, {"NTD_TND", 7},   {"TND_NTD", 8},
+    };
+    auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
+    auto &baseParams = pfaTilingData_.promptAttentionBaseParams;
+    uint32_t transposeType = GetMapValueOrDefault(transposeLayoutMap, std::string(fiaInfo.opParamInfo.layOut));
+    inputParams.set_transposeLayout(transposeType);
+    baseParams.set_transposeLayout(transposeType);
+}
+
+void FusedInferAttentionScoreTilingImpl::SetAntiQuantInfo(const FiaTilingInfo &fiaInfo)
+{
+    auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
+
+    if (fiaInfo.quantMode != FiaQuantMode::ANTI_QUANT) {
+        inputParams.set_antiquantPerTensorFlag(0);
+        return;
+    }
+
+    auto scaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
+    uint32_t scaleDimNum = scaleTensor->GetStorageShape().GetDimNum();
+    uint32_t scaleShape = scaleTensor->GetStorageShape().GetDim(0);
+    bool perTensor = (scaleDimNum == 1 && scaleShape == 1);
+    inputParams.set_antiquantPerTensorFlag(perTensor ? 1 : 0);
+}
+
+void FusedInferAttentionScoreTilingImpl::ComputeNeedInit(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
+        int64_t preTokensPerbatch = fiaInfo.preToken;
+        int64_t nextTokensPerbatch = fiaInfo.nextToken;
+
+        if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
+            preTokensPerbatch = SPARSE_MODE_INT_MAX;
+            nextTokensPerbatch = actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen;
+            if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+                nextTokensPerbatch -= actualSeqLengthsQ_[i] / fiaInfo.gSize;
+            } else {
+                nextTokensPerbatch -= actualSeqLengthsQ_[i];
+            }
+        } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
+            int64_t kvLen = actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen;
+            preTokensPerbatch = fiaInfo.preToken - kvLen + actualSeqLengthsQ_[i];
+            nextTokensPerbatch = fiaInfo.nextToken + kvLen - actualSeqLengthsQ_[i];
+        }
+
+        if ((nextTokensPerbatch < 0) ||
+            (actualSeqLengthsQ_[i] > (actualSeqLengthsKV_[i] + fiaInfo.systemPrefixLen + preTokensPerbatch))) {
+            needInit_ = true;
+        }
+        OP_LOGI(fiaInfo.opName, "preTokensPerbatch[%u] is %ld, nextTokensPerbatch[%u] is %ld",
+                i, preTokensPerbatch, i, nextTokensPerbatch);
+        OP_LOGI(fiaInfo.opName,
+                "actualSeqLengths[%u] is %ld, actualSeqLengthsKV[%u] is %ld, "
+                "actualSharedPrefixLen is %ld, needInit is %u.",
+                i, actualSeqLengthsQ_[i], i, actualSeqLengthsKV_[i], fiaInfo.systemPrefixLen, needInit_);
+    }
+}
+
     }
 }
 
