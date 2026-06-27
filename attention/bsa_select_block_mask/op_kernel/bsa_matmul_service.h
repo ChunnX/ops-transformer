@@ -471,7 +471,8 @@ __aicore__ inline void BSAMatmulService<BSAT>::MmadInner(uint32_t mSize, uint32_
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T> &resGm,
                                                             uint32_t mSize, uint32_t nSize,
-                                                            uint32_t dstStride, uint8_t l0PingPongFlag,  GlobalTensor<T> &outFp32Gm)
+                                                            uint32_t dstStride, uint8_t l0PingPongFlag,
+                                                            GlobalTensor<T> &outFp32Gm)
 {
     uint8_t flagVal = l0PingPongFlag & 1;
 
@@ -554,7 +555,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
         WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_K[l0PingPongFlag & 1]);
 
         // ---- 2b: Mmad (含 L1→L0 加载) ----
-        MmadInner(singleM, curN, singleK, true /*isL0CInit*/, l0PingPongFlag);
+        MmadInner(singleM, curN, singleK, true /* isL0CInit */, l0PingPongFlag);
 
         // ---- 2c: 释放 K L1，通知 MTE2 可搬运下一轮 ----
         SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_K[l0PingPongFlag & 1]);

@@ -342,7 +342,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::PipeBarrier<PIPE_V>();
 
     uint32_t sumShape[] = { actualQExcuteRow, kChunkSize};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
+    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
+        tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Add(globalSum, tmpSum, globalSum, actualQExcuteRow);
@@ -360,7 +361,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
 
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
-    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
+    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
 {
     uint32_t actualQRowStart = 0, actualQExcuteRow = 0;
     if (vecSubBlockIdx == 0) {
@@ -377,9 +379,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     }
 
     // 32字节对齐 (FP32)
-    uint32_t kChunkSizeAlign32 = (kChunkSize + FLOAT_DATA_BLOCK_NUM - 1 ) / FLOAT_DATA_BLOCK_NUM * FLOAT_DATA_BLOCK_NUM;
+    uint32_t kChunkSizeAlign32 = (kChunkSize + FLOAT_DATA_BLOCK_NUM - 1) / FLOAT_DATA_BLOCK_NUM * FLOAT_DATA_BLOCK_NUM;
     // 32字节对齐 (FP16)
-    uint32_t kChunkSizeAlign16 = (kChunkSize + FP16_DATA_BLOCK_NUM - 1 ) / FP16_DATA_BLOCK_NUM * FP16_DATA_BLOCK_NUM;
+    uint32_t kChunkSizeAlign16 = (kChunkSize + FP16_DATA_BLOCK_NUM - 1) / FP16_DATA_BLOCK_NUM * FP16_DATA_BLOCK_NUM;
     uint32_t kChunkSizeAlign = kChunkSizeAlign16;
 
     SetFlag<HardEvent::MTE3_MTE2>(eventSft);

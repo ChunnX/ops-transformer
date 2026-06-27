@@ -533,14 +533,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
         int32_t involvedMaskTemp = static_cast<int32_t>(
             involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_)));
 
-
-
         uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int32_t)));
         Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
                                    AscendC::CMPMODE::EQ, curTileLenAlign);
         PipeBarrier<PIPE_V>();
-
-
 
         uint64_t rsvdCnt = 0;
         GatherMask(tempHalf, tempHalf, cmpMaskTensor.ReinterpretCast<uint16_t>(),
@@ -1029,8 +1025,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::HandleLastRoundBoundary(
     ComputeCumSumPrev(resTensor, cumSumValuePrev);
     int32_t remainCoreBoundaryNum = static_cast<int32_t>(remainK_) - cumSumValuePrev;
 
-
-
     if (remainCoreBoundaryNum > 0) {
         LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
         LocalTensor<int32_t> tileHistBoundary = tileTopK[MAX_TILE_NUM_IN_UB_BY3];
@@ -1161,7 +1155,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskGT(
              ++idx) {
             float value = static_cast<float>(xLocal.GetValue(idx));
             float boundary = static_cast<float>(boundaryHalf);
-            bool selected = (constInfo.sparsityMode == BSASparseMode::BottomK) ? (value < boundary) : (value > boundary);
+            bool selected = (constInfo.sparsityMode == BSASparseMode::BottomK)
+                                ? (value < boundary) : (value > boundary);
             if (selected) {
                 maskLocal.SetValue(idx, writeValue);
                 ++writeCnt;
@@ -1302,7 +1297,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, uint32_t headIdx)
 {
-
     LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
     uint64_t outputOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) * sortLen_;
 
@@ -1361,7 +1355,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, ui
 
             if (curTileK > 0) {
                 SubTopKAndWriteMaskEQ(xLocal, boundaryHalf, curTileLen, outputGmOffset, curTileK);
-
             }
 
             if (i < dataNum - 1) {

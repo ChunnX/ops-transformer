@@ -626,9 +626,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessSoftmaxSecondPass(
             uint32_t kChunkEnd = BSAMin(kChunkStart + loopChunkSize, constInfo.yBlocks);
             uint32_t curKChunkSize = kChunkEnd - kChunkStart; // 实际执行k的blocks, 即k_comp的行数
 
-            // printf("qChunkStart: %d, curQChunkSize:  %d, kChunkStart: %d, curKChunkSize: %d, batchIdx: %d, headIdx:  %d\n",
-            //         qChunkStart, curQChunkSize, kChunkStart, curKChunkSize, batchIdx, headIdx);
-            vectorService.SoftmaxSecondPassAndCast(qChunkStart, curQChunkSize, kChunkStart, curKChunkSize, batchIdx, headIdx);
+            vectorService.SoftmaxSecondPassAndCast(qChunkStart, curQChunkSize, kChunkStart,
+                                                   curKChunkSize, batchIdx, headIdx);
         }
     }
 }
