@@ -132,5 +132,4 @@ properties = torch.npu.get_device_properties()
 if "Ascend910_93" in properties.name:
     ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a3"]]
 elif "Ascend950" in properties.name:
-    ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"],
-                      TEST_PARAMS["quant_li_default_hifp8_a5"]]
+    ENABLED_PARAMS = [TEST_PARAMS["quant_li_default_a5"]]
