@@ -793,17 +793,15 @@ def sparse_lightning_indexer_grad_kl_loss(
     )
     if isinstance(d_query_index_ws, tuple):
         d_query_index_ws = d_query_index_ws[0]
-    # Debug: check if Kernel3 produced valid output
+    # Debug: Python reference MM6 to compare
+    rg_flat = relu_grad.float().reshape(B * S1, Nidx1, K)
+    gki_flat = gather_key_index.float().reshape(B * S1, K, DQueryIndex)
+    dq_ref = torch.bmm(rg_flat, gki_flat).reshape(B, S1, Nidx1, DQueryIndex)
+    dq_diff = (d_query_index_ws - dq_ref).abs()
     dq_has_inf = torch.isinf(d_query_index_ws).any().item()
     dq_has_nan = torch.isnan(d_query_index_ws).any().item()
-    dq_min = d_query_index_ws.min().item()
-    dq_max = d_query_index_ws.max().item()
-    rg_inf = torch.isinf(relu_grad).any().item()
-    rg_nan = torch.isnan(relu_grad).any().item()
-    gki_inf = torch.isinf(gather_key_index_t).any().item()
-    gki_nan = torch.isnan(gather_key_index_t).any().item()
-    print(f"  [DEBUG] relu_grad: inf={rg_inf} nan={rg_nan} | GKIT: inf={gki_inf} nan={gki_nan}")
-    print(f"  [DEBUG] Kernel3 output: inf={dq_has_inf} nan={dq_has_nan} min={dq_min:.4e} max={dq_max:.4e} shape={d_query_index_ws.shape}")
+    print(f"  [DEBUG] Kernel3 vs Python bmm: max_diff={dq_diff.max().item():.4e} mean_diff={dq_diff.mean().item():.4e}")
+    print(f"  [DEBUG] Kernel3: inf={dq_has_inf} nan={dq_has_nan} min={d_query_index_ws.min().item():.4e} max={d_query_index_ws.max().item():.4e}")
 
     if profile:
         torch.npu.synchronize()
