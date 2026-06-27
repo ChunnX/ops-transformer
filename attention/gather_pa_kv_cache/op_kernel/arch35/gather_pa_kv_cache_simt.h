@@ -254,10 +254,13 @@ __aicore__ inline void Process(
     if constexpr (isSeqLensCumsum) {
         coreOff = static_cast<int64_t>(seqLensGm[batchStart]);
     } else {
-        for (int64_t i = 0; i < batchStart; i++) {
-            coreOff += static_cast<int64_t>(seqLensGm[i]);
+        for (int64_t j = 0; j < batchStart; j++) {
+            coreOff += static_cast<int64_t>(seqLensGm[j]);
         }
     }
+
+    PRINTF("[SIMT-CONTIG] core=%d batchStart=%ld batchEnd=%ld coreOff=%ld needCoreNum=%u batchPerCore=%u\n",
+           GetBlockIdx(), batchStart, batchEnd, coreOff, needCoreNum, batchPerCore);
 
     for (int64_t i = batchStart; i < batchEnd; i++) {
         int64_t seqLen;
@@ -292,6 +295,18 @@ __aicore__ inline void Process(
         uint64_t keyOff = static_cast<uint64_t>(batchOffset) * hiddenSizeK;
         uint64_t valueOff = static_cast<uint64_t>(batchOffset) * hiddenSizeV;
 
+        if (i - batchStart < 3) {
+            PRINTF("[SIMT-BATCH] i=%ld seqLen=%ld batchOffset=%ld _seqLen=%lu blkCnt=%lu seqOff=%lu hasSeqOff=%d\n",
+                   i, seqLen, batchOffset, _seqLen, blkCnt, seqOff, hasSeqOffset ? 1 : 0);
+            if (i == batchStart) {
+                PRINTF("[SIMT-SEQLENS]");
+                for (int64_t k = 0; k < batchCount && k < 10; k++) {
+                    PRINTF(" %ld", static_cast<int64_t>(seqLensGm[k]));
+                }
+                PRINTF("\n");
+            }
+        }
+
         for (uint64_t blkIdx = 0; blkIdx < blkCnt; blkIdx++) {
             uint64_t tblOff = blkIdx + seqOff;
             uint32_t fillZero = 0;
@@ -317,6 +332,11 @@ __aicore__ inline void Process(
             uint64_t valueSrcBase = static_cast<uint64_t>(blockId) * static_cast<uint64_t>(cacheBlockSize) * hiddenSizeV;
 
             uint64_t kCnt = curSize * hiddenSizeK;
+            uint64_t vCnt = curSize * hiddenSizeV;
+            if (i == batchStart && blkIdx < 2) {
+                PRINTF("[SIMT-BLK] i=%ld blk=%lu blockId=%ld fillZero=%u curSize=%lu keySrcBase=%lu keyOff=%lu kCnt=%lu vCnt=%lu\n",
+                       i, blkIdx, blockId, fillZero, curSize, keySrcBase, keyOff, kCnt, vCnt);
+            }
             asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), kCnt,
                                                outKeyGm + keyOff,
                                                keyCacheGm + keySrcBase, fillZero);
@@ -324,7 +344,6 @@ __aicore__ inline void Process(
             WaitFlag<HardEvent::V_S>(0);
             keyOff += kCnt;
 
-            uint64_t vCnt = curSize * hiddenSizeV;
             asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), vCnt,
                                                outValueGm + valueOff,
                                                valueCacheGm + valueSrcBase, fillZero);
