@@ -83,7 +83,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogu
     OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
             info.cfg.hidden, info.cfg.topK, info.cfg.numTokens, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
     OP_LOGD(nodeName, "aivNum=%u, cached=%u, scalesBytes=%u",
-            info.aivNum, info.cached, info.scalesBytes);
+            info.aivNum, info.cached, info.cfg.scalesBytes);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +308,7 @@ static ge::graphStatus CheckRecvScalesTensor(const gert::TilingContext *context,
         return ge::GRAPH_FAILED);
 
     uint32_t scalesSize = (scalesDtype == ge::DT_FLOAT) ? sizeof(float) : FP8_DTYPE_SIZE;
-    info.scalesBytes = static_cast<uint32_t>(expectedDim1 * scalesSize);
+    info.cfg.scalesBytes = static_cast<uint32_t>(expectedDim1 * scalesSize);
     info.isMxQuant = (scalesDtype == ge::DT_FLOAT8_E8M0) ? 1U : 0U;
     return ge::GRAPH_SUCCESS;
 }

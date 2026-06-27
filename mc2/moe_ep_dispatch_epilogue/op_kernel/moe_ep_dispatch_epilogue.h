@@ -228,7 +228,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTo
     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
         scalesOffset_ =  Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
-        scalesBytes_ = tilingData->scalesBytes;
+        scalesBytes_ = tilingData->cfg.scalesBytes;
         scalesElems_ = (scalesBytes_ == 0U) ? 0U : (scalesBytes_ / sizeof(ScalesType));
         uint32_t scalesBytesAlign = Ceil(scalesBytes_, UB_ALIGN) * UB_ALIGN;
         metaOffset_ += scalesBytesAlign;
