@@ -21,3 +21,4 @@
 |[flash_attn](../../torch_extension/cann_ops_transformer/doc/npu_flash_attn.md)|完成xx计算。|xx|
 |[sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|基于共享KV完成SparseFlashMla稀疏注意力计算。|默认支持确定性计算；默认支持batch invariance。|
 |[sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|生成SparseFlashMla主算子使用的任务切分metadata。|默认支持确定性计算；默认支持batch invariance。|
+|[sparse_flash_mla_grad](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_grad.md)|训练场景下计算SparseFlashMla注意力反向输出，即[sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)的反向计算。|默认不支持确定性计算|
