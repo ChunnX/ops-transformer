@@ -33,7 +33,7 @@ extern "C" {
  * @param [in] cclBufferSize              HCCL buffer size
  * @param [in] expertAlignment            alignment for expert token count
  * @param [out] recvX                     [A_alloc, hidden] bf16/fp16/fp8_e5m2/fp8_e4m3fn caller preallocated
- * @param [out] recvSrcMetadata           [A_alloc, 3] int32 handle field: [src_token_idx, src_rank_id, src_topk_idx]
+ * @param [out] recvSrcMetadata           [A_alloc, 4] int32 handle field: [src_token_idx, src_rank_id, src_topk_idx]
  * @param [out] recvTopkWeights           OPTIONAL [A_alloc] float; nullptr if not needed
  * @param [out] recvScales               OPTIONAL [A_alloc, num_topk] float/fp8_e8m0; nullptr if not quantized
  * @param [out] workspaceSize

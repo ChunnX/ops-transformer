@@ -60,7 +60,7 @@ constexpr uint32_t ATTR_EXPERT_ALIGNMENT_INDEX = 5;
 
 constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
-constexpr int64_t META_INNER_DIM = 3;            // recvSrcMetadata dim(1) = 3
+constexpr int64_t META_INNER_DIM = 4;            // recvSrcMetadata dim(1) = 4
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr int64_t MAX_EP_WORLD_SIZE = 128;
@@ -219,7 +219,7 @@ static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context,
         OP_LOGE(nodeName, "dstBufferSlotIdx dim1(topK) must be in (0, %ld], got %ld.", K_MAX, topK),
         return ge::GRAPH_FAILED);
 
-    // ---- cachedRecvSrcMetadata [*, 3] int32 (OPTIONAL，cached 路径才校验) ----
+    // ---- cachedRecvSrcMetadata [*, 4] int32 (OPTIONAL，cached 路径才校验) ----
     if (cached) {
         const gert::StorageShape *recvSrcMetaShape = context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaShape);
@@ -368,7 +368,7 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
             return ge::GRAPH_FAILED);
     }
 
-    // ---- recvSrcMetadata [A_alloc, 3] int32 ----
+    // ---- recvSrcMetadata [A_alloc, 4] int32 ----
     auto recvSrcMetaShape = context->GetOutputShape(OUT_RECV_SRC_METADATA_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaShape);
     OP_TILING_CHECK(recvSrcMetaShape->GetStorageShape().GetDimNum() != TWO_DIMS,
