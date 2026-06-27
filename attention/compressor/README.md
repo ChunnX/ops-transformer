@@ -80,12 +80,13 @@
 | state_cache | 输入 | 公式中的$\left[kv\_state, score\_state\right]$, 表示kv\_state和score\_state的历史数据。 | FLOAT32     | ND         |
 | ape | 输入 | 公式中的$Ape$，表示positional biases。 | FLOAT32       | ND         |-         |
 | cmp\_ratio | 属性 | 用于稀疏计算，表示数据压缩率。 | INT32          | -         |
-| state\_block\_table | 可选输入 | 表示state\_cache存储使用的block映射表。 | INT32 | ND         |
+| state\_block\_table | 可选输入 | 表示state\_cache存储使用的block映射表。<br>当其中元素的值为0时，表示当前位置无需进行更新state_cache操作。 | INT32 | ND         |
 | cu\_seqlens | 可选输入 | 表示不同Batch中的有效token数。  | INT32          | ND         |
-| seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。 | INT32          | ND         |
+| seqused | 可选输入 | 表示不同Batch中实际参与压缩的token数。<br>如果指定为None时，表示和每个Batch上的Sequence Length长度相同。 | INT32          | ND         |
 | start\_pos | 可选输入 | 表示计算起始位置。 | INT32          | ND         |
-| coff | 可选属性 | 表示是否进行overlap数据重排。  | INT32          | -         |
-| cache\_mode | 可选属性 | 表示state_cache的存储模式。 | INT32          | -         |
+| coff | 可选属性 | 表示是否进行overlap数据重排。 <br>coff=1：无需进行overlap数据重排，coff=2：需要进行overlap数据重排。<br>默认值为1。 | INT32          | -         |
+| cache\_mode | 可选属性 | 表示state_cache的存储模式。<br>cache\_mode=1：连续buffer，cache\_mode=2：循环buffer。<br>默认值1。 | INT32          | -         |
+| state_cache_stride_dim0 | 可选属性 | 表示state_cache的0轴stride。默认值为0。 | INT32     | -         |
 | cmp\_kv | 输出 | 表示压缩后的数据。 | FLOAT16、BFLOAT16         | ND          |
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：

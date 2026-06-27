@@ -168,41 +168,40 @@ aclnnStatus aclnnCompressor(
 ## aclnnCompressor
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-    <col style="width: 168px">
-    <col style="width: 128px">
-    <col style="width: 854px">
-    </colgroup>
-      <thead>
-        <tr>
-          <th>参数名</th>
-          <th>参数类型</th>
-          <th>含义</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>workspace</td>
-          <td>void*</td>
-          <td>在Device侧申请的workspace内存地址。</td>
-        </tr>
-        <tr>
-          <td>workspaceSize</td>
-          <td>uint64_t</td>
-          <td>在Device侧申请的workspace大小，由第一段接口aclnnCompressorGetWorkspaceSize获取。</td>
-        </tr>
-        <tr>
-          <td>executor</td>
-          <td>aclOpExecutor*</td>
-          <td>op执行器，包含了算子计算流程。</td>
-        </tr>
-        <tr>
-          <td>stream</td>
-          <td>aclrtStream</td>
-          <td>指定执行任务的Stream。</td>
-        </tr>
-      </tbody>
-    </table>
+  <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
+  <col style="width: 153px">
+  <col style="width: 121px">
+  <col style="width: 880px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnCompressorGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
 - **返回值**
 
@@ -216,19 +215,19 @@ aclnnStatus aclnnCompressor(
 - 输入shape限制：
     - wkv支持输入shape[coff* D,H]
     - wgate支持输入shape[coff* D,H]
-    - state\_cache支持输入shape[block_num,block_size,2* coff* D]，要求block_num>0，cache_mode=2时，需要满足block_size >= coff * cmp_ratio + S - 1。
+    - stateCache支持输入shape[block_num,block_size,2* coff* D]，要求blockNum>0，cacheMode=2时，需要满足blockSize >= coff * cmp_ratio + S - 1。
     - ape支持输入shape[cmp_ratio,coff* D]
-    - start\_pos支持输入shape[B,]
+    - startPos支持输入shape[B,]
     - 若x的维度采用BS合轴，即x的输入shape为[T,H]
-        - cu\_seqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
+        - cuSeqlens输入shape必须为[B+1,]。该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值，且第一位必须位0。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即seqused[n] <= cu\_seqlens[n+1] - cu\_seqlens[n]，且不小于0。
-        - cache_mode=1时，state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。cache_mode=2时，state\_block\_table支持输入shape[B]。
-        - cmp\_kv，输出shape为[min(T,T//cmp_ratio+B),D]：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。
+        - cacheMode=1时，state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+max(cu\_seqlens[n+1] - cu\_seqlens[n])。cacheMode=2时，state\_block\_table支持输入shape[B]。
+        - cmpKv，输出shape为[min(T,T//cmp_ratio+B),D]：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。
     - 若x的维度不采用BS合轴，即x的输入shape为[B,S,H]
-        - cu\_seqlens，参数必须为空。
+        - cuSeqlens，参数必须为空。
         - seqused，支持输入shape[B,]，要求每个Batch的有效token数要求小于等于对应Sequence Length长度，即要求seqused[n] <= S，且不小于0。
-        - cache_mode=1时，state\_block\_table支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。cache_mode=2时，state\_block\_table支持输入shape[B]。
-        - cmp\_kv，输出shape为[B,ceil(S/cmp_ratio),D]：(<batch0>compressed_tokens+pad0) + (<batch1>compressed_tokens+pad1) + ...  + (<batchN>compressed_tokens+padN)。
+        - cacheMode=1时，stateBlockTable支持输入shape[B,ceil(Smax/block_size)]。Smax为每个Batch中最大的Sequence Length，即Smax=max(start\_pos)+S。cacheMode=2时，stateBlockTable支持输入shape[B]。
+        - cmpKv，输出shape为[B,ceil(S/cmp_ratio),D]：(<batch0>compressed_tokens+pad0) + (<batch1>compressed_tokens+pad1) + ...  + (<batchN>compressed_tokens+padN)。
 - 输入值域限制：
   - 该接口支持B、S泛化，且存在如下场景限制：
       - 只支持B、S为0
@@ -267,12 +266,12 @@ aclnnStatus aclnnCompressor(
       </tbody>
       </table>
       </div>
-- 该接口支持B、S、T取0，即shape与B、S、T值相关的入参允许传入空tensor，其余入参不支持传入空tensor。该场景下state_cache不做更新，输出cmp_kv为空tensor。
+- 该接口支持B、S、T取0，即shape与B、S、T值相关的入参允许传入空tensor，其余入参不支持传入空tensor。该场景下stateCache不做更新，输出cmpKv为空tensor。
 - 输入属性限制：
   - 支持D为128/512。
   - 支持H为1K~10K，512对齐。
-  - 支持block_size为1~1024。
-  - 支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
+  - 支持blockSize为1~1024。
+  - 支持cmpRatio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
       - C4A: D=512, coff=2, cmp_ratio=4；
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。
