@@ -238,8 +238,8 @@ ge::graphStatus MoeReRoutingTilingBase::CheckOutputShape() const
                 return ge::GRAPH_FAILED);
     if (hasTopkWeight_) {
         const gert::StorageShape *outTopkWeightShapePtr = context_->GetOutputShape(OUT_PERMUTE_TOPK_WEIGHT_INDEX);
-        OP_CHECK_IF(outTopkWeightShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "outTopkWeightShapePtr is nullptr."),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(outTopkWeightShapePtr == nullptr, OP_LOGE(context_->GetNodeName(),
+                    "outTopkWeightShapePtr is nullptr."), return ge::GRAPH_FAILED);
         OP_CHECK_IF(outTopkWeightShapePtr->GetStorageShape() !=
                         context_->GetOptionalInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX)->GetStorageShape(),
                     OP_LOGE(context_->GetNodeName(), "expert_topk_weight shape must same with permute_topk_weight."),

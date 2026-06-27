@@ -689,7 +689,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetInputTensorsInfo()
     MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(offsetShape_, offsetDtype_, isInputOffset_, INPUT_OFFSET_INDEX));
     tilingDataPtr_->isInputOffset = isInputOffset_;
     // 可选输入topk_weight
-    MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(topkWeightShape_, topkWeightDtype_, isInputTopkWeight_, INPUT_TOPK_WEIGHT_INDEX));
+    MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(topkWeightShape_, topkWeightDtype_, isInputTopkWeight_,
+                                                  INPUT_TOPK_WEIGHT_INDEX));
     tilingDataPtr_->isInputTopkWeight = isInputTopkWeight_;
     OP_LOGD(context_, "Got optional input topk_weight: isInputTopkWeight = %ld.", isInputTopkWeight_);
 
@@ -715,7 +716,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetOutputTensorsInfo()
     } else {
         isOutputExpandedTopkWeight_ = 0;
     }
-    OP_LOGD(context_, "Got optional output expanded_topk_weight: isOutputExpandedTopkWeight = %ld.", isOutputExpandedTopkWeight_);
+    OP_LOGD(context_, "Got optional output expanded_topk_weight: isOutputExpandedTopkWeight = %ld.",
+            isOutputExpandedTopkWeight_);
 
     return ge::GRAPH_SUCCESS;
 }

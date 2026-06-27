@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Version 2.0 (the "License").
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -61,11 +61,13 @@ if _TORCHAIR_AVAILABLE:
                       expert_token_num_type: int, idx_type: int,
                       dependencies=[], node_name=None):
         """REG_OP(MoeReRouting)\n
-        .INPUT(tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
+        .INPUT(tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
+                                   DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
         .INPUT(expert_token_num_per_rank, TensorType({DT_INT32, DT_INT64}))\n
         .OPTIONAL_INPUT(per_token_scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
         .OPTIONAL_INPUT(expert_topk_weight, TensorType({DT_FLOAT}))\n
-        .OUTPUT(permute_tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
+        .OUTPUT(permute_tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
+                                            DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
         .OUTPUT(permute_per_token_scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
         .OUTPUT(permute_token_idx, TensorType({DT_INT32}))\n
         .OUTPUT(expert_token_num, TensorType({DT_INT32, DT_INT64}))\n
@@ -100,13 +102,15 @@ if _TORCHAIR_AVAILABLE:
             outputs=outputs,
             dependencies=dependencies,
             ir=IrDef("MoeReRouting") \
-            .input("tokens", "DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
+            .input("tokens", "DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
+                   "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .input("expert_token_num_per_rank", "DT_INT32, DT_INT64") \
             .optional_input("per_token_scales", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .optional_input("expert_topk_weight", "DT_FLOAT") \
             .attr("expert_token_num_type", attr.Int(1)) \
             .attr("idx_type", attr.Int(0)) \
-            .output("permute_tokens", "DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
+            .output("permute_tokens", "DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
+                    "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .output("permute_per_token_scales", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .output("permute_token_idx", "DT_INT32") \
             .output("expert_token_num", "DT_INT32, DT_INT64") \
