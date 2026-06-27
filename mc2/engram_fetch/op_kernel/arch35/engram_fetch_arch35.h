@@ -82,6 +82,10 @@ private:
     TBuf<> tokenIdxInRankBuf_;
     TBuf<> commBufferBuf_;
     TBuf<> hcommHandleBuf_;
+    TBuf<> rankIDsBuf_;
+    TBuf<> positionsBuf_;
+    TBuf<> divisorBuf_;
+    TBuf<> maskBuf_;
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
@@ -126,10 +130,10 @@ __aicore__ inline void EngramFetchArch35::Init(
     tpipe_->InitBuffer(hcommHandleBuf_, hcommHandleBufSize);
 
     constexpr uint64_t ubReserved = 8U * 1024U;
-    // ScatterByRank 额外需要 rankIDs + positions + divisor (每元素各 4 字节)，mask 每 8 元素 1 字节近似忽略
-    uint32_t bytesPerIndice = sizeof(int32_t) + sizeof(uint32_t) + sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t);
+    // ScatterByRank 需要: indices + tokenIdxInRank + rankIDs + positions + divisor (各4字节) + mask(每元素1字节近似)
+    uint32_t bytesPerIndice = sizeof(int32_t) + sizeof(uint32_t) + sizeof(int32_t) * 3U + 1U;
     uint64_t usedUb = HCOMM_INIT_SIZE + TILE_BYTES * 2U + countsBufSize + offsetsBufSize
-                    + commBufferBufSize + hcommHandleBufSize + UB_ALIGN; // UB_ALIGN 给 maskBuf 对齐开销
+                    + commBufferBufSize + hcommHandleBufSize;
     uint64_t availableUb = (ubSize_ > usedUb + ubReserved) ? (ubSize_ - usedUb - ubReserved) : 0U;
     uint32_t maxBatchSize = static_cast<uint32_t>(availableUb / bytesPerIndice);
     uint32_t numTokens = static_cast<uint32_t>(numTokens_);
@@ -142,6 +146,14 @@ __aicore__ inline void EngramFetchArch35::Init(
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
     uint32_t tokenIdxInRankBufSize = Ceil(indicesBatchSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(tokenIdxInRankBuf_, tokenIdxInRankBufSize);
+
+    uint32_t compareCntMax = Ceil(indicesBatchSize_ * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
+    uint32_t int32BufSize = compareCntMax * sizeof(int32_t);
+    tpipe_->InitBuffer(rankIDsBuf_, int32BufSize);
+    tpipe_->InitBuffer(positionsBuf_, int32BufSize);
+    tpipe_->InitBuffer(divisorBuf_, int32BufSize);
+    uint32_t maskBufSize = Ceil(Ceil(compareCntMax, BITS_PER_BYTE), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(maskBuf_, maskBufSize);
 }
 
 __aicore__ inline void EngramFetchArch35::CopyContextToUb()
@@ -178,57 +190,56 @@ __aicore__ inline void EngramFetchArch35::ScatterByRank(
     const LocalTensor<uint32_t> &tokenIdxInRank,
     uint32_t batchLen)
 {
-    // ---------------------------------------------------------
-    // 1. 分配 Buffer (独立 TBuf 避免重叠)
-    // ---------------------------------------------------------
-    uint32_t int32AlignSize = Ceil(batchLen * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t maskAlignSize = Ceil(Ceil(batchLen, BITS_PER_BYTE), UB_ALIGN) * UB_ALIGN;
+    uint32_t compareCntMax = Ceil(batchLen * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
 
-    TBuf<> rankIDsBuf;
-    TBuf<> positionsBuf;
-    TBuf<> divisorBuf;
-    TBuf<> maskBuf;
-    tpipe_->InitBuffer(rankIDsBuf, int32AlignSize);
-    tpipe_->InitBuffer(positionsBuf, int32AlignSize);
-    tpipe_->InitBuffer(divisorBuf, int32AlignSize);
-    tpipe_->InitBuffer(maskBuf, maskAlignSize);
+    LocalTensor<int32_t> rankIDs = rankIDsBuf_.Get<int32_t>();
+    LocalTensor<int32_t> positions = positionsBuf_.Get<int32_t>();
+    LocalTensor<int32_t> divisor = divisorBuf_.Get<int32_t>();
+    LocalTensor<uint8_t> mask = maskBuf_.Get<uint8_t>();
 
-    LocalTensor<int32_t> rankIDs = rankIDsBuf.Get<int32_t>();
-    LocalTensor<int32_t> positions = positionsBuf.Get<int32_t>();
-    LocalTensor<int32_t> divisor = divisorBuf.Get<int32_t>();
-    LocalTensor<uint8_t> mask = maskBuf.Get<uint8_t>();
-
-    // ---------------------------------------------------------
-    // 2. 生成位置序列 + 除数 tensor + 计算 Rank ID
-    // ---------------------------------------------------------
+    // 生成位置序列 + 除数 tensor
     ArithProgression<int32_t>(positions, 0, 1, batchLen);
-    Duplicate<int32_t>(divisor, numEntriesPerRank_, int32AlignSize / sizeof(int32_t));
-    Div(rankIDs, indicesLocal, divisor, batchLen);
+    Duplicate<int32_t>(divisor, numEntriesPerRank_, compareCntMax);
+
+    // 初始化 rankIDs 为 numRanks_ (超出合法 rank 范围)，防止尾部垃圾数据误命中 CompareScalar
+    Duplicate<int32_t>(rankIDs, static_cast<int32_t>(numRanks_), compareCntMax);
     PipeBarrier<PIPE_V>();
 
-    // ---------------------------------------------------------
-    // 3. 按 Rank 循环: Compare 生成 mask -> GatherMask 收集位置
-    // ---------------------------------------------------------
-    uint32_t runningOffset = 0;
+    // 覆盖前 batchLen 个元素为实际计算结果
+    Div(rankIDs, indicesLocal, divisor, batchLen);
+    PipeBarrier<PIPE_V>();
+    SyncFunc<HardEvent::V_S>();
 
+    uint32_t runningOffset = 0;
     for (uint32_t r = 0; r < numRanks_; r++) {
-        // A. 生成 Mask：筛选出属于当前 Rank r 的 Token
-        CompareScalar(mask, rankIDs, static_cast<int32_t>(r), AscendC::CMPMODE::EQ, batchLen);
+        // 标量统计属于当前 Rank r 的元素数
+        uint32_t count = 0;
+        for (uint32_t i = 0; i < batchLen; i++) {
+            if (rankIDs.GetValue(i) == static_cast<int32_t>(r)) {
+                count++;
+            }
+        }
+
+        rankOffsets.SetValue(r, runningOffset);
+        rankCounts.SetValue(r, count);
+
+        if (count == 0) {
+            continue;
+        }
+
+        CompareScalar(mask, rankIDs, static_cast<int32_t>(r), AscendC::CMPMODE::EQ, compareCntMax);
         PipeBarrier<PIPE_V>();
 
-        // B. 从 positions 中抽取符合 mask 的位置，直接填入 dstRegion
-        uint64_t rsvdCnt = 0;
         LocalTensor<int32_t> dstRegion = tokenIdxInRank[runningOffset].ReinterpretCast<int32_t>();
+        uint64_t rsvdCnt = static_cast<uint64_t>(count);
         GatherMask(dstRegion, positions, mask.ReinterpretCast<uint32_t>(), true,
                    batchLen, {1, 1, 0, 0}, rsvdCnt);
         PipeBarrier<PIPE_V>();
 
-        // C. rsvdCnt 返回实际收集的元素数即 count
-        uint32_t count = static_cast<uint32_t>(rsvdCnt);
-        rankOffsets.SetValue(r, runningOffset);
-        rankCounts.SetValue(r, count);
         runningOffset += count;
     }
+
+    SyncFunc<HardEvent::V_S>();
 }
 
 __aicore__ inline void EngramFetchArch35::Process()
