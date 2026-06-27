@@ -18,6 +18,7 @@ constexpr uint64_t TILING_KEY_A = 205;
 constexpr uint64_t TILING_KEY_B = 206;
 constexpr uint64_t INPLACE_PARTIAL_ROTARY_MUL_GRAD_A_AND_B_TILING_PRIORITY = 40000;
 constexpr int64_t UB_FACTOR = 4;
+constexpr int64_t UB_COS_SIN_FACTOR = 2;
 
 class InplacePartialRotaryMulGradRegbaseTilingAAndB : public InplacePartialRotaryMulGradRegbaseTiling {
 public:
@@ -111,10 +112,20 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAAndB::ComputeUbFactor()
         // ubFactorB <= baseBlockInUb / (1 + effectiveCosOverhead)
         ubFactorB_ = std::min(blockFactorB_, Ops::Base::FloorDiv(baseBlockInUb, 1 + effectiveCosOverhead));
     } else {
-        // B: cos broadcast → UB = 4*ubFactorB*dSizeDy + 4*dSizeCos
-        //   = 4*dSizeDy*(ubFactorB + effectiveCosOverhead)
-        // ubFactorB <= baseBlockInUb - effectiveCosOverhead
-        ubFactorB_ = std::min(blockFactorB_, baseBlockInUb - effectiveCosOverhead);
+        // B: cos broadcast → UB = 4*ubFactorB*dSizeDy + 2*dSizeCos
+        //   dy+dx: 2 × double-buffer = 4*ubFactorB*dSizeDy
+        //   cos+sin: 2 × single-buffer = 2*dSizeCos
+        int64_t availableForDy = static_cast<int64_t>(aicoreParams_.ubSize) - UB_COS_SIN_FACTOR * dSizeCos;
+        if (availableForDy <= 0) {
+            OP_LOGE(context_->GetNodeName(), "ubSize can't fit cos/sin, dSizeCos=%ld.", dSizeCos);
+            return ge::GRAPH_FAILED;
+        }
+        int64_t numOfDAvailable = Ops::Base::FloorDiv(availableForDy, UB_FACTOR * dSizeDy);
+        OP_CHECK_IF(numOfDAvailable < 1,
+            OP_LOGE(context_->GetNodeName(), "ubSize can't load slice, sliceLength=%ld, dSizeDy=%ld, dSizeCos=%ld.",
+                    sliceLength_, dSizeDy, dSizeCos),
+            return ge::GRAPH_FAILED);
+        ubFactorB_ = std::min(blockFactorB_, numOfDAvailable);
     }
     ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);
     if (ubFactorB_ <= 0) {
@@ -127,7 +138,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAAndB::ComputeUbFactor()
     if (layout_ == InplacePartialRotaryMulGradLayout::NO_BROADCAST) {
         cosBytes = UB_FACTOR * ubFactorB_ * dSizeCos;
     } else {
-        cosBytes = UB_FACTOR * dSizeCos;
+        cosBytes = UB_COS_SIN_FACTOR * dSizeCos;
     }
     if (dyBytes + cosBytes > static_cast<int64_t>(aicoreParams_.ubSize)) {
         OP_LOGE(context_->GetNodeName(), "UB overflow: need %ld > %ld.", dyBytes + cosBytes, aicoreParams_.ubSize);
