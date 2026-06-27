@@ -242,7 +242,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     moeExpertNumAlign512_ = Ceil(moeExpertNum_ * sizeof(int32_t), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
 
     uint32_t numPerCore = (moeExpertNum_ + epWorldSize_) / aivNum_;
-    calRankCoreNum_ =  numPerCore > epWorldSize_ ? Ceil(2 * epWorldSize_, numPerCore) : epWorldSize_;
+    calRankCoreNum_ =  numPerCore > epWorldSize_ ? Ceil(2 * epWorldSize_, numPerCore) : epWorldSize_; // 核配比
     calExpertCoreNum_ = aivNum_ - calRankCoreNum_;
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -268,7 +268,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     topkCopyParams_ = {1U, static_cast<uint16_t>(axisK_ * TOPK_INFO_SIZE), 0U, 0U};
     scalesCopyParams_ = {1U, static_cast<uint16_t>(scalesBytes_), 0U, 0U};
     countCopyParams_ = {1U, static_cast<uint16_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U};
-    // countCopyParams_ = {1U, static_cast<uint16_t>(counterLenPerRank_ * sizeof(int32_t)), 0U, 0U};
     slotCopyParams_ = {1U, static_cast<uint16_t>(perSlotBytes_), 0U, 0U};
     padParams_ = {true, 0, 0, 0};
 
@@ -318,7 +317,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ResetCounte
     Duplicate<int32_t>(counterLocalTensor, 0, counterCnt_);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(scaleupCounterGMTensor_, counterLocalTensor, counterCnt_);
-    // DataCopyPad(recvCounterGMTensor_, counterLocalTensor, clearCopyParams);    // window buffer
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -682,7 +680,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         hcomm_.WriteWithNotifyNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr,
                                   slotWorkspaceAddr_ + srcWorkspaceOffset, sendDataSize,
                                   notifyAddr + epRankId_ * sizeof(uint64_t), static_cast<uint64_t>(1));
-        hcomm_.Drain(GetCommHandle(mc2Context_, epRankId_, dstRankId));
     }
 }
 
@@ -727,6 +724,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
             DataCopyPad(dstSlotIdxTensor_, cachedSlotIdxGMTensor_[topkOffset], topkCopyParams_, padParams_);
             dstSlotQueue_.EnQue(dstSlotIdxTensor_);
             dstSlotIdxTensor_ = dstSlotQueue_.DeQue<int32_t>();
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
             for (uint32_t k = 0; k < axisK_; k++) {
                 int32_t slot = dstSlotIdxTensor_.GetValue(k);
                 if (slot == -1) {
