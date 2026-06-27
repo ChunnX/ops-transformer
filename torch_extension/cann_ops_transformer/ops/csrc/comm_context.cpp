@@ -483,7 +483,7 @@ public:
 class CommContextManager {
 public:
     CommContextManager(const std::string &group, int64_t worldSize,
-                       const py::object &backend = py::str("kfc"), const std::string &commAlg = "mte")
+                       const py::object &backend = py::str("kfc"), const std::string &commAlg = "ub-mem")
         : group_(group), worldSize_(worldSize), commAlg_(commAlg),
           backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
 
