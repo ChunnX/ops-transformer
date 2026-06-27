@@ -237,7 +237,7 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
 
-    const int64_t *kvQuantMode = nullptr;
+    const int64_t *quantMode = nullptr;
     const int64_t *tileSize = nullptr;
     const int64_t *ropeHeadDim = nullptr;
     const float *softmaxScale = nullptr;
@@ -275,7 +275,7 @@ public:
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
 
-    int64_t kvQuantMode = 0;
+    int64_t quantMode = 0;
     int64_t tileSize = 0;
     int64_t ropeHeadDim = 0;
     uint32_t dSize = 0;

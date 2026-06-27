@@ -96,7 +96,7 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantDtype() const
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
     OP_CHECK_IF(*opParamInfo_.quantMode != 1 && *opParamInfo_.quantMode != 2,
-        OP_LOGE(opName_, "kv_quant_mode_ only support 1 and 2, but got %ld", *opParamInfo_.quantMode),
+        OP_LOGE(opName_, "quant_mode only support 1 and 2, but got %ld", *opParamInfo_.quantMode),
         return ge::GRAPH_FAILED);
 
     if (*opParamInfo_.quantMode == 1 || *opParamInfo_.quantMode == 2) {
