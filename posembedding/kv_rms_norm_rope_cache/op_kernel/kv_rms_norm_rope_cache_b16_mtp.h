@@ -20,7 +20,7 @@ namespace KvRmsNormRopeCache {
 using namespace AscendC;
 
 template <bool isPagedAttention, typename KV_DTYPE>
-class KernelKvRmsNormRopeCacheB16MTP : public KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, KV_DTYPE, KV_DTYPE> 
+class KernelKvRmsNormRopeCacheB16MTP : public KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, KV_DTYPE, KV_DTYPE>
 {
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheB16MTP(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
@@ -37,7 +37,10 @@ public:
         const auto& tiling = *this->tilingData_;
         this->rowsPerBlock = tiling.rowsPerBlock;
         const uint64_t seqLen = tiling.seqLength;
-        const uint64_t numHead = (methodMode == NUM_ONE) ? tiling.numHead : NUM_ONE;    // V1 does not support multi-head (N>1)
+
+        // V1 does not support multi-head (N>1)
+        const uint64_t numHead = (methodMode == METHOD_V2) ? tiling.numHead : NUM_ONE;
+
         const uint64_t cacheLen = tiling.cacheLength;
         const uint64_t rmsNormLen = this->RMS_NORM_LENGTH;
         const uint64_t ropeLen = this->ROPE_LENGTH;
@@ -63,11 +66,11 @@ public:
         uint64_t kvOffset = 0;
         uint64_t kCacheOffset = cacheElemHeadOffset * this->hDimK;
         uint64_t vCacheOffset = cacheElemHeadOffset * this->hDimV;
-        
+
         // init global memory
-        if (methodMode == METHOD_V1){
+        if (methodMode == METHOD_V1) {
             // KV concat
-            kvOffset = bnsOffset * (this->hDimK + this->hDimV); 
+            kvOffset = bnsOffset * (this->hDimK + this->hDimV);
 
             this->kvGm.SetGlobalBuffer((__gm__ KV_DTYPE*)kv + kvOffset);
         } else if(methodMode == METHOD_V2) {
@@ -77,7 +80,7 @@ public:
 
             this->kvGm.SetGlobalBuffer((__gm__ KV_DTYPE*)kv + kvOffset);
             this->vGm.SetGlobalBuffer((__gm__ KV_DTYPE*)v + vOffset);
-        } 
+        }
 
         // Paged Attention
         if constexpr (isPagedAttention) {
@@ -92,36 +95,36 @@ public:
         }
 
         // Init pipes
-        this->rmsNormElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * rmsNormLen); 
-        this->ropeElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * ropeLen); 
+        this->rmsNormElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * rmsNormLen);
+        this->ropeElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * ropeLen);
         this->vElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->hDimV);
         this->kElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->hDimK);
-        
-        this->pipe_->InitBuffer(this->inQueueX, 1, this->rmsNormElemPerSlice 
+
+        this->pipe_->InitBuffer(this->inQueueX, 1, this->rmsNormElemPerSlice
             * sizeof(float));  // MTE2 for x: rmsNormElemPerSlice * 4 / 1024 = rmsNormElemPerSlice / 256
-        this->pipe_->InitBuffer(this->inQueueGamma, 1, rmsNormLen 
+        this->pipe_->InitBuffer(this->inQueueGamma, 1, rmsNormLen
             * sizeof(KV_DTYPE));  // rmsNormLen * 2 / 1024 = rmsNormLen / 512
-        this->pipe_->InitBuffer(this->bufferXFp32, this->rmsNormElemPerSlice 
+        this->pipe_->InitBuffer(this->bufferXFp32, this->rmsNormElemPerSlice
             * sizeof(float));  // rmsNormElemPerSlice * 4 / 1024 = rmsNormLen / 256
-        this->pipe_->InitBuffer(this->bufferXSquare, this->rmsNormElemPerSlice 
+        this->pipe_->InitBuffer(this->bufferXSquare, this->rmsNormElemPerSlice
             * sizeof(float));  // rmsNormElemPerSlice * 4 / 1024 = rmsNormLen / 256
-        
+
         // SafeAlignUp(rowsPerBlock, 8) * 4 / 1024 = SafeAlignUp(rowsPerBlock, 8) / 256
         this->pipe_->InitBuffer(this->bufferSum, SafeAlignUp(this->rowsPerBlock, NUM_EIGHT) * sizeof(float));
 
-        this->pipe_->InitBuffer(this->outQueueV, 1, this->vElemPerSlice 
+        this->pipe_->InitBuffer(this->outQueueV, 1, this->vElemPerSlice
             * sizeof(KV_DTYPE));  // vElemPerSlice * 2 / 1024 = vElemPerSlice / 512
-        this->pipe_->InitBuffer(this->outQueueK, 1, this->kElemPerSlice 
+        this->pipe_->InitBuffer(this->outQueueK, 1, this->kElemPerSlice
             * sizeof(KV_DTYPE));  // kElemPerSlice * 2 / 1024 = kElemPerSlice / 512
 
         if (methodMode == METHOD_V2) {
             // init additional pipes for V2
-            this->pipe_->InitBuffer(this->inQueueV, 1, this->vElemPerSlice 
+            this->pipe_->InitBuffer(this->inQueueV, 1, this->vElemPerSlice
                 * sizeof(float));  // vElemPerSlice * 4 / 1024 = vElemPerSlice / 256
-            
-            //  shared buffer for Rope MTE2 and VEC computation in fp32
-            this->pipe_->InitBuffer(this->CosSin, 1, NUM_TWO * this->ropeElemPerSlice 
-                * (sizeof(float) / sizeof(KV_DTYPE)));    
+
+            //  shared buffer for Rope MTE2 (in kv_type) and VEC computation in fp32
+            this->pipe_->InitBuffer(this->CosSin, 1, NUM_TWO * this->ropeElemPerSlice
+                * sizeof(float));   // 2 * (b * D_rope) * 4 / 1024 = (b * D_rope) / 128
         }
     }
 
@@ -138,14 +141,14 @@ public:
                 ScatterUpdateV(i);
             }
         } else if (methodMode == 1) {
-            for (int64_t n = 0; n < this->tilingData_->numHead; n++) {
+            for (uint64_t n = 0; n < this->tilingData_->numHead; n++) {
                 for (int64_t i = 0; i < this->tilingData_->seqLength; i++) {
                     // Process K
                     LocalTensor<KV_DTYPE> xB16Local = this->inQueueX.template AllocTensor<KV_DTYPE>();
                     DataCopyExtParams copyXParams{
                     static_cast<uint16_t>(this->rowsPerBlock), static_cast<uint32_t>(this->RMS_NORM_LENGTH * sizeof(KV_DTYPE)),
                     static_cast<uint32_t>(
-                        ((this->tilingData_->seqLength - 1) * this->RMS_NORM_LENGTH + 
+                        ((this->tilingData_->seqLength - 1) * this->RMS_NORM_LENGTH +
                         (this->tilingData_->numHead - 1) * this->tilingData_->seqLength * this->RMS_NORM_LENGTH) * sizeof(KV_DTYPE)),
                     0, 0};
                     DataCopyPadExtParams<KV_DTYPE> padXParams{false, 0, 0, 0};
@@ -176,7 +179,7 @@ public:
                     // load cosLocal, sinLocal [this->rowsPerBlock, this->ROPE_LENGTH]
                     LocalTensor<KV_DTYPE> xLocal = this->inQueueX.template DeQue<KV_DTYPE>();
                     DataCopyExtParams copyCosSinParams{
-                        static_cast<uint16_t>(this->rowsPerBlock), 
+                        static_cast<uint16_t>(this->rowsPerBlock),
                         static_cast<uint32_t>(this->ROPE_LENGTH * sizeof(KV_DTYPE)),
                         static_cast<uint32_t>((this->tilingData_->numHead - 1) * this->ROPE_LENGTH * sizeof(KV_DTYPE)), 0, 0};
                     DataCopyPad(cosLocalB16, this->cosGm[n * this->ROPE_LENGTH], copyCosSinParams, {false, 0, 0, 0});
@@ -194,11 +197,11 @@ public:
                     LocalTensor<KV_DTYPE> outLocalK = this->outQueueK.template AllocTensor<KV_DTYPE>();
                     DataCopy(outLocalK, xLocal, this->rmsNormElemPerSlice);
                     this->inQueueX.FreeTensor(xLocal);
-                    
+
                     ScatterUpdate<KV_DTYPE>(n, i, this->kCacheGm, outLocalK, this->RMS_NORM_LENGTH);
                     this->outQueueK.FreeTensor(outLocalK);
                     PipeBarrier<PIPE_V>();
-                    
+
                     // Process V
                     LocalTensor<KV_DTYPE> yLocal = this->inQueueV.template AllocTensor<KV_DTYPE>();
                     DataCopyExtParams copyYParams{
@@ -223,7 +226,7 @@ public:
             }
         } else {
             //exception
-        }        
+        }
     }
 
     __aicore__ inline void RopeK(int64_t seqId)
@@ -325,7 +328,7 @@ public:
         LocalTensor<KV_DTYPE> buf_ = imagLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF * NUM_TWO];
         // Split the tail block of bufferXSquare[b*192] as rope result buffer in [b*64], this ONLY works under V2 scenario.
         LocalTensor<KV_DTYPE> outLocal = buf_[this->rowsPerBlock * this->ROPE_LENGTH * NUM_TWO];
-       
+
         LocalTensor<float> realLocalFp32 = realLocal.template ReinterpretCast<float>();
         LocalTensor<float> imagLocalFp32 = imagLocal.template ReinterpretCast<float>();
         LocalTensor<float> cosLocalFp32 = cosLocal.template ReinterpretCast<float>();
@@ -335,10 +338,10 @@ public:
 
         uint64_t rsvdCnt = 0;
         GatherMask(
-            realLocalFp32, xFp32Local, 1, true, this->ROPE_LENGTH, {1, static_cast<uint16_t>(this->rowsPerBlock), 2 * NUM_TWELVE, 0}, 
+            realLocalFp32, xFp32Local, 1, true, this->ROPE_LENGTH, {1, static_cast<uint16_t>(this->rowsPerBlock), 2 * NUM_TWELVE, 0},
             rsvdCnt); // Pick even (x1)
         GatherMask(
-            imagLocalFp32, xFp32Local, NUM_TWO, true, this->ROPE_LENGTH, {1, static_cast<uint16_t>(this->rowsPerBlock), 2 * NUM_TWELVE, 0}, 
+            imagLocalFp32, xFp32Local, NUM_TWO, true, this->ROPE_LENGTH, {1, static_cast<uint16_t>(this->rowsPerBlock), 2 * NUM_TWELVE, 0},
             rsvdCnt); // Pick Odd (x2)
         PipeBarrier<PIPE_V>();
 
