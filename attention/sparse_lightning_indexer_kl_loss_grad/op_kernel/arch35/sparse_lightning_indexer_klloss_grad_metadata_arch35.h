@@ -19,7 +19,10 @@
 #include <cstdint>
 
 namespace optiling {
-constexpr uint32_t SLIKG_METADATA_SIZE = 64;
+
+inline constexpr uint32_t AIC_CORE_NUM = 36;
+inline constexpr uint32_t AIV_CORE_NUM = 72;
+constexpr uint32_t SLIKG_METADATA_SIZE = 1024;
 using SLIKG_METADATA_T = int32_t;
 
 constexpr uint32_t GRAD_METADATA_SIZE = 5;

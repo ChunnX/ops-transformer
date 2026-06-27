@@ -8,18 +8,36 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file l0_sparse_lightning_indexer_kl_loss_grad_metadata.h
+ * \brief
+ */
 #ifndef L0_SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
 #define L0_SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
 
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor *SparseLightningIndexerKLLossGradMetadata(
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional, int64_t batchSize, int64_t maxSeqlenQ,
-    int64_t maxSeqlenK, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk, char *layoutQOptional,
-    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, int64_t aicCoreNum, const aclTensor *metadata,
-    aclOpExecutor *executor);
+const aclTensor* SparseLightningIndexerKLLossGradMetadata(
+    const aclTensor* cuSeqLensQOptional,
+    const aclTensor* cuSeqLensKOptional,
+    const aclTensor* seqUsedQOptional,
+    const aclTensor* seqUsedKOptional,
+    const aclTensor* cmpResidualKOptional,
+    int64_t batchSize,
+    int64_t maxSeqLenQ,
+    int64_t maxSeqLenK,
+    int64_t numHeadsQ,
+    int64_t numHeadsK,
+    int64_t headDim,
+    int64_t topk,
+    char *layoutQ,
+    char *layoutK,
+    int64_t maskMode,
+    int64_t cmpRatio,
+    int64_t aicCoreNum,
+    const aclTensor* metadata,
+    aclOpExecutor* executor);
 } // namespace l0op
 
-#endif
+#endif // L0_SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
