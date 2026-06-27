@@ -994,7 +994,7 @@ public:
         mm2A.WaitCrossCore();
 
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize; // pScale在L1的偏移量
-        if (unlikely(runInfo.isFirstS2Loop && runInfo.actSingleLoopS2Size > s2SplitSize)) {
+        if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             constexpr uint32_t sizeOfInt16 = 2;
             LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16 +
                 mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
