@@ -52,9 +52,10 @@ constexpr uint32_t BSA_PA_BLOCK_STRIDE_ATTR_INDEX = 5U;
 constexpr uint32_t BSA_LAYOUT_KV_ATTR_INDEX = 6U;
 constexpr uint32_t BSA_LAYOUT_Q_ATTR_INDEX = 7U;
 constexpr uint32_t BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 8U;
-constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 9U;
-constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 10U;
-constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 11U;
+constexpr uint32_t BSA_LAYOUT_OUT_ATTR_INDEX = 9U;
+constexpr uint32_t BSA_QUANT_MODE_ATTR_INDEX = 10U;
+constexpr uint32_t BSA_MASK_MODE_ATTR_INDEX = 11U;
+constexpr uint32_t BSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 12U;
 
 struct BSARequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc = nullptr;

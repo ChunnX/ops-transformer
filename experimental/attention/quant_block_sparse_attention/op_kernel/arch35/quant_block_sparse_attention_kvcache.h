@@ -270,19 +270,19 @@ __aicore__ inline void SwapSparseBlockSlots(RunInfo &runInfo)
     SwapValues(runInfo.sparseBlk1PartialMask, runInfo.sparseBlk2PartialMask);
 }
 
-__aicore__ inline void IdxSortByPhyBlkNumIdx(RunInfo &runInfo)
+__aicore__ inline void IdxSortBySparseIdx(RunInfo &runInfo)
 {
     if (runInfo.sparseBlkIdx1 == -1 && runInfo.sparseBlkIdx2 == -1) {
         return;
     }
-    if (runInfo.phyBlkNumIdx1 == -1) {
+    if (runInfo.sparseBlkIdx1 == -1) {
         SwapSparseBlockSlots(runInfo);
         return;
     }
-    if (runInfo.phyBlkNumIdx2 == -1) {
+    if (runInfo.sparseBlkIdx2 == -1) {
         return;
     }
-    if (runInfo.phyBlkNumIdx1 > runInfo.phyBlkNumIdx2) {
+    if (runInfo.sparseBlkIdx1 > runInfo.sparseBlkIdx2) {
         SwapSparseBlockSlots(runInfo);
     }
 }

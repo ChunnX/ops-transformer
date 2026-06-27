@@ -50,6 +50,7 @@ def _normalize_params(params):
     normalized.setdefault("sparse_q_block_size", 128)
     normalized.setdefault("sparse_kv_block_size", 128)
     normalized.setdefault("layout_sparse_indices", "B_N_Qb_Kb")
+    normalized.setdefault("layout_out", "TND")
     normalized.setdefault("quant_mode", 1)
     normalized.setdefault("mask_mode", 3)
     normalized.setdefault("return_softmax_lse", False)
@@ -76,11 +77,12 @@ def _normalize_params(params):
 
 def _make_lengths(batch, max_len, mode, rng):
     if mode == "full":
-        return [max_len] * batch
+        return [max_len] * batch, max_len
     if mode != "random":
         raise ValueError(f"unsupported actlen_mode: {mode}")
     low = max(1, max_len // 2)
-    return [rng.randint(low, max_len) for _ in range(batch)]
+    res_lens = [rng.randint(low, max_len) for _ in range(batch)]
+    return res_lens, max(res_lens)
 
 
 def _prefix(lengths):
@@ -163,8 +165,9 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     n2 = case["N2"]
     group = n1 // n2
     qb_max = math.ceil(case["S1"] / case["sparse_q_block_size"])
+    kv_max = math.ceil(case["S2"] / case["sparse_kv_block_size"])
     sparse_count = case["sparse_count"]
-    sparse_indices = torch.full((batch, n1, qb_max, sparse_count), fill_value=-1, dtype=torch.int32)
+    sparse_indices = torch.full((batch, n1, qb_max, kv_max), fill_value=-1, dtype=torch.int32)
     sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
 
     for batch_idx in range(batch):
@@ -283,15 +286,22 @@ def _mask_positions(case, q_idx, positions, q_len, kv_len):
 
 def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len):
     block_count = int(sparse_seq_len[batch_idx, head_idx, qb_idx].item())
-    positions = []
-    for block_idx in sparse_indices[batch_idx, head_idx, qb_idx, :block_count].tolist():
-        if block_idx < 0:
-            continue
-        start = int(block_idx) * case["sparse_kv_block_size"]
-        end = min(start + case["sparse_kv_block_size"], kv_len)
-        if start < kv_len:
-            positions.extend(range(start, end))
-    return positions
+    chunk_positions = []
+    i = 0
+    while i < block_count:
+        pair_positions = []
+        for j in range(2):
+            if i + j < block_count:
+                block_idx = int(sparse_indices[batch_idx, head_idx, qb_idx, i + j].item())
+                if block_idx >= 0:
+                    start = block_idx * case["sparse_kv_block_size"]
+                    end = min(start + case["sparse_kv_block_size"], kv_len)
+                    if start < kv_len:
+                        pair_positions.extend(range(start, end))
+        if pair_positions:
+            chunk_positions.append(pair_positions)
+        i += 2
+    return chunk_positions
 
 
 def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
@@ -318,7 +328,6 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
     softmax_scale = float(case["softmax_scale"])
     p_scale_value = float(p_scale[0].item())
     sparse_q_block_size = case["sparse_q_block_size"]
-    chunk_pos = 2 * case["sparse_kv_block_size"]  # kernel 每次 s2 迭代处理 2 个 kv block
     neg_inf = float("-inf")
 
     if layout_q == "BSND":
@@ -343,10 +352,11 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                 q_end = min(q_start + sparse_q_block_size, q_len)
                 q_indices = list(range(q_start, q_end))
 
-                positions = _positions_from_sparse(
+                chunk_positions = _positions_from_sparse(
                     case, sparse_indices, sparse_seq_len, batch_idx, head_idx, qb_idx, kv_len)
-                if not positions:
+                if not chunk_positions:
                     continue
+                positions = [p for chunk in chunk_positions for p in chunk]
 
                 # gather q 向量（批量），shape (nq, D)
                 if layout_q == "BSND":
@@ -393,8 +403,11 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
-                for c0 in range(0, npos, chunk_pos):
-                    c1 = min(c0 + chunk_pos, npos)
+                offset = 0
+                for chunk_pos_list in chunk_positions:
+                    c0 = offset
+                    c1 = offset + len(chunk_pos_list)
+                    offset = c1
                     s_c = scores[:, c0:c1]
                     vm_c = valid_mask[:, c0:c1]
                     # 每行的局部 max（在该 chunk 内的有效位置上）；行内无有效位置时记为 -inf
@@ -460,8 +473,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     sparse_q_block_size = case["sparse_q_block_size"]
     sparse_kv_block_size = case["sparse_kv_block_size"]
 
-    q_lengths = _make_lengths(batch, s1, case["actlen_mode"], rng)
-    kv_lengths = _make_lengths(batch, s2, case["actlen_mode"], rng)
+    q_lengths, q_max_len = _make_lengths(batch, s1, case["actlen_mode"], rng)
+    kv_lengths, kv_max_len = _make_lengths(batch, s2, case["actlen_mode"], rng)
+    s1, case["S1"] = q_max_len, q_max_len
+    s2, case["S2"] = kv_max_len, kv_max_len
     if case["S1EQS2"]:
         kv_lengths = [min(length, s2) for length in q_lengths]
 
@@ -555,6 +570,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "layout_kv": case["layout_kv"],
             "layout_q": case["layout_q"],
             "layout_sparse_indices": case["layout_sparse_indices"],
+            "layout_out": case["layout_out"],
             "quant_mode": case["quant_mode"],
             "mask_mode": case["mask_mode"],
             "return_softmax_lse": case["return_softmax_lse"],

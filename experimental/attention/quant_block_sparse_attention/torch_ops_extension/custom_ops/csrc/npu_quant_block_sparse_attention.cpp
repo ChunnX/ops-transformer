@@ -68,7 +68,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
     int64_t pa_block_stride,
-    c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
+    c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out,
     int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
@@ -112,9 +112,11 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
     std::string layout_kv_str = std::string(layout_kv);
     std::string layout_q_str = std::string(layout_q);
     std::string layout_sparse_indices_str = std::string(layout_sparse_indices);
+    std::string layout_out_str = std::string(layout_out);
     char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
     char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
     char *layout_sparse_indices_ptr = const_cast<char *>(layout_sparse_indices_str.c_str());
+    char *layout_out_ptr = const_cast<char *>(layout_out_str.c_str());
 
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
     EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttention,
@@ -122,7 +124,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
         cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
         sparse_indices, sparse_seq_len, block_table, atten_mask, metadata,
         max_seqlen_q, max_seqlen_kv, softmax_scale, sparse_q_block_size, sparse_kv_block_size, paBlockStride,
-        layout_kv_ptr, layout_q_ptr, layout_sparse_indices_ptr, quant_mode, mask_mode, return_softmax_lse,
+        layout_kv_ptr, layout_q_ptr, layout_sparse_indices_ptr, layout_out_ptr, quant_mode, mask_mode, return_softmax_lse,
         attention_out, softmax_lse);
 
     return std::tuple<at::Tensor, at::Tensor>(attention_out, softmax_lse);
@@ -139,7 +141,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_meta(
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
     int64_t pa_block_stride,
-    c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
+    c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out,
     int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
     return construct_bsa_output_tensors(query, value, return_softmax_lse);
