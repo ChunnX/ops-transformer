@@ -350,7 +350,7 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
         OP_LOGE(nodeName, "Check recvScales tensor failed."), return ge::GRAPH_FAILED);
 
     // ---- recvTopkWeights [A_alloc] float (OPTIONAL) ----
-    auto recvTopkWeightsShape = context->GetOptionalOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX);
+    auto recvTopkWeightsShape = context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX);
     if (recvTopkWeightsShape != nullptr) {
         OP_TILING_CHECK(recvTopkWeightsShape->GetStorageShape().GetDimNum() != ONE_DIM,
             OP_LOGE(nodeName, "recvTopkWeights dims must be 1, got %lu.",
@@ -360,7 +360,8 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
             OP_LOGE(nodeName, "recvTopkWeights dim0 must equal recvX dim0=%ld, got %ld.",
                 aAlloc, recvTopkWeightsShape->GetStorageShape().GetDim(0)),
             return ge::GRAPH_FAILED);
-        auto recvTopkWeightsDesc = context->GetOptionalOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX);
+        auto recvTopkWeightsDesc = context->GetOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context, recvTopkWeightsDesc);
         OP_TILING_CHECK(recvTopkWeightsDesc->GetDataType() != ge::DT_FLOAT,
             OP_LOGE(nodeName, "recvTopkWeights dtype must be float, got %d.",
                 static_cast<int32_t>(recvTopkWeightsDesc->GetDataType())),
@@ -431,7 +432,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     bool cached = (context->GetOptionalInputDesc(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
     info.cached = cached ? 1U : 0U;
 
-    bool hasTopkWeights = (context->GetOptionalOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX) != nullptr);
+    bool hasTopkWeights = (context->GetOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX) != nullptr);
 
     OP_TILING_CHECK(CheckInputDataType(context, nodeName, cached) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input dtype failed."), return ge::GRAPH_FAILED);
