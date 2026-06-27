@@ -37,9 +37,10 @@ public:
     __aicore__ inline void PrepareBeforeLoop()
     {
         if ASCEND_IS_AIC {
-            PrepareBeforeLoopAic();
+            cube_.PrepareRotationBeforeLoop();
+            SetInitialAicMte1ToAivMte3AConsumedCredits();
         } else {
-            PrepareBeforeLoopAiv();
+            vec_.PrepareBeforeLoop();
         }
     }
 
@@ -65,7 +66,6 @@ private:
     __aicore__ inline void InitAic(const GlobalTensors &tensors, uint64_t qHeadNum, uint64_t kvHeadNum)
     {
         tileCount_ = 0U;
-        aRotL1BufferUseId_ = 0U;
         aRotL1Pool_ =
             LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
         cube_.Init(tensors, qHeadNum, kvHeadNum);
@@ -79,7 +79,6 @@ private:
                                    uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon)
     {
         tileCount_ = 0U;
-        aRotL1BufferUseId_ = 0U;
         aRotL1Pool_ =
             LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
         vec_.Init(tensors, aivLocalId, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize,
@@ -88,16 +87,10 @@ private:
         vec_.InitIntraCoreEvents();
     }
 
-    __aicore__ inline void PrepareBeforeLoopAiv()
-    {
-        vec_.PrepareBeforeLoop();
-    }
-
     __aicore__ inline void ComputeTileAic(const TileParam &tile)
     {
-        const uint64_t aRotL1BufferUseId = ReserveARotL1BufferUseId();
         const uint32_t aRotL1BufferId =
-            static_cast<uint32_t>(aRotL1BufferUseId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+            static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         if (tileCount_ > 0U) {
@@ -110,17 +103,10 @@ private:
         ++tileCount_;
     }
 
-    __aicore__ inline void PrepareBeforeLoopAic()
-    {
-        cube_.PrepareRotationBeforeLoop();
-        SetInitialAicMte1ToAivMte3AConsumedCredits();
-    }
-
     __aicore__ inline void ComputeTileAiv(TileParam &tile, const TileParam &lastTile)
     {
-        const uint64_t aRotL1BufferUseId = ReserveARotL1BufferUseId();
         const uint32_t aRotL1BufferId =
-            static_cast<uint32_t>(aRotL1BufferUseId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
+            static_cast<uint32_t>(tileCount_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         const LocalTensor<bfloat16_t> aRotL1Nz =
             aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         WaitAicMte1ToAivMte3AConsumed();
@@ -162,11 +148,6 @@ private:
         }
         DrainAicMte1ToAivMte3AConsumedCredits();
         vec_.EndIntraCoreEvents();
-    }
-
-    __aicore__ inline uint64_t ReserveARotL1BufferUseId()
-    {
-        return aRotL1BufferUseId_++;
     }
 
     __aicore__ inline void SetInitialAicMte1ToAivMte3AConsumedCredits()
@@ -224,7 +205,6 @@ private:
     }
 
     uint64_t tileCount_;
-    uint64_t aRotL1BufferUseId_;
     LocalTensor<bfloat16_t> aRotL1Pool_;
     QkvRmsNormRopeCacheWithKScaleCube cube_;
     QkvRmsNormRopeCacheWithKScaleVec<INPUT_LAYOUT> vec_;
