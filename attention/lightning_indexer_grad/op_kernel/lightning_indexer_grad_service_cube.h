@@ -714,17 +714,23 @@ __aicore__ inline void LIGMatmul<LIGT>::Cube4(GlobalTensor<dataType> leftMatrixG
         WaitFlag<HardEvent::MTE2_MTE1>(A_FLAG_SHIFT + leftMatrixPingPong);
         WaitFlag<HardEvent::M_MTE1>(A_CONFLICT_FLAG_SHIFT + leftMatrixPingPong);
 #if __CCE_AICORE__ == 310
+        /*
+         * Load A matrix with transpose: src in L1 is [baseK x realM] = [G x realM],
+         * dst in L0A should be [realM x G] after transpose.
+         * mSizeAlign = Align(G, 16), kSizeAlign = Align(realM, 16)
+         * Reference ZN pattern: kStep = kSizeAlign/16, srcStride = mSizeAlign/16
+         */
         AscendC::LoadData2DParamsV2 loadParams;
         loadParams.kStartPosition = 0;
         loadParams.mStep = 1;
-        loadParams.kStep = LIGCommon::Align(baseK, C0_SIZE) / C0_SIZE;
-        loadParams.srcStride = LIGCommon::Align(realM, C0_SIZE) / C0_SIZE;
+        loadParams.kStep = LIGCommon::Align(realM, C0_SIZE) / C0_SIZE;
+        loadParams.srcStride = LIGCommon::Align(baseK, C0_SIZE) / C0_SIZE;
         loadParams.dstStride = 1;
         loadParams.ifTranspose = true;
-        for (int i = 0; i < LIGCommon::Align(realM, C0_SIZE) / C0_SIZE; i++) {
+        for (int i = 0; i < LIGCommon::Align(baseK, C0_SIZE) / C0_SIZE; i++) {
             loadParams.mStartPosition = i;
             AscendC::LoadData(
-                leftMatrixL0ATensor[i * LIGCommon::Align(baseK, C0_SIZE) * C0_SIZE],
+                leftMatrixL0ATensor[i * LIGCommon::Align(realM, C0_SIZE) * C0_SIZE],
                 leftMatrixL1Tensor,
                 loadParams
             );
