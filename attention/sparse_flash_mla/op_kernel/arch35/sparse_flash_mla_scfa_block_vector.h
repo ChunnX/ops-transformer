@@ -697,6 +697,24 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstIn
                 this->attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
         }
     }
+
+    if (constInfo.returnSoftmaxLse) {
+        uint64_t totalReturnSoftmaxSize = 0;
+        if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
+            totalReturnSoftmaxSize = constInfo.bSize *  constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
+        } else if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+            totalReturnSoftmaxSize = constInfo.n2Size * constInfo.s1Size * constInfo.gSize; // (N2,T1,G)
+        }
+        if (coreNum != 0 && totalReturnSoftmaxSize > 0) {
+            uint64_t singleCoreSoftmaxSize = (totalReturnSoftmaxSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
+            uint64_t tailSoftmaxSize = totalReturnSoftmaxSize - constInfo.aivIdx * singleCoreSoftmaxSize;
+            uint64_t singleInitSoftmaxSize = tailSoftmaxSize < singleCoreSoftmaxSize ?
+                                             tailSoftmaxSize : singleCoreSoftmaxSize;
+            if (constInfo.aivIdx * singleCoreSoftmaxSize < totalReturnSoftmaxSize && singleInitSoftmaxSize > 0) {
+                matmul::InitOutput<float>(this->softmaxLseGm[constInfo.aivIdx * singleCoreSoftmaxSize], singleInitSoftmaxSize, 0);
+            }
+        }
+    }
     SyncAll();
 }
 

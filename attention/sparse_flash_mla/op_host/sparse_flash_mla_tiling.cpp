@@ -582,34 +582,33 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
     bool oriKeyNonContiguous = false;
     bool cmpKeyNonContiguous = false;
     size_t checkStartIdx = (kvLayout_ == SMLALayout::PA_BBND) ? 1 : 0;
-    std::vector<uint32_t> expectedStrides;
     if (opParamInfo_.oriKv.tensor != nullptr && !oriKeyStridesVec_.empty()) {
+        std::vector<uint32_t> oriExpectedStrides;
         if (kvLayout_ == SMLALayout::BSND || kvLayout_ == SMLALayout::PA_BBND) {
-            expectedStrides = {oriKvShape_.GetDim(1) * oriKvShape_.GetDim(2) * oriKvShape_.GetDim(3),
+            oriExpectedStrides = {oriKvShape_.GetDim(1) * oriKvShape_.GetDim(2) * oriKvShape_.GetDim(3),
                                oriKvShape_.GetDim(2) * oriKvShape_.GetDim(3), oriKvShape_.GetDim(3), 1};
         } else if (kvLayout_ == SMLALayout::TND) {
-            expectedStrides = {oriKvShape_.GetDim(1) * oriKvShape_.GetDim(2), oriKvShape_.GetDim(2), 1};
+            oriExpectedStrides = {oriKvShape_.GetDim(1) * oriKvShape_.GetDim(2), oriKvShape_.GetDim(2), 1};
         }
-        for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            if (i < oriKeyStridesVec_.size() && oriKeyStridesVec_[i] != expectedStrides[i]) {
-                oriKeyNonContiguous = true;
-                break;
-            }
-        }
+        OP_CHECK_IF(oriKeyStridesVec_.size() != oriExpectedStrides.size(),
+            OP_LOGE(opName_, "oriKey strideVec size[%zu] not match kvLayout expect len[%zu].",
+                oriKeyStridesVec_.size(), oriExpectedStrides.size()),
+                return ge::GRAPH_FAILED);
+        oriKeyNonContiguous = oriKeyStridesVec_[checkStartIdx] != oriExpectedStrides[checkStartIdx];
     }
     if (opParamInfo_.cmpKv.tensor != nullptr && !cmpKeyStridesVec_.empty()) {
+        std::vector<uint32_t> cmpExpectedStrides;
         if (kvLayout_ == SMLALayout::BSND || kvLayout_ == SMLALayout::PA_BBND) {
-            expectedStrides = {cmpKvShape_.GetDim(1) * cmpKvShape_.GetDim(2) * cmpKvShape_.GetDim(3),
+            cmpExpectedStrides = {cmpKvShape_.GetDim(1) * cmpKvShape_.GetDim(2) * cmpKvShape_.GetDim(3),
                                cmpKvShape_.GetDim(2) * cmpKvShape_.GetDim(3), cmpKvShape_.GetDim(3), 1};
         } else if (kvLayout_ == SMLALayout::TND) {
-            expectedStrides = {cmpKvShape_.GetDim(1) * cmpKvShape_.GetDim(2), cmpKvShape_.GetDim(2), 1};
+            cmpExpectedStrides = {cmpKvShape_.GetDim(1) * cmpKvShape_.GetDim(2), cmpKvShape_.GetDim(2), 1};
         }
-        for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            if (i < cmpKeyStridesVec_.size() && cmpKeyStridesVec_[i] != expectedStrides[i]) {
-                cmpKeyNonContiguous = true;
-                break;
-            }
-        }
+        OP_CHECK_IF(cmpKeyStridesVec_.size() != cmpExpectedStrides.size(),
+            OP_LOGE(opName_, "cmpKey strideVec size[%zu] not match kvLayout expect len[%zu].",
+                cmpKeyStridesVec_.size(), cmpExpectedStrides.size()),
+                return ge::GRAPH_FAILED);
+        cmpKeyNonContiguous = cmpKeyStridesVec_[checkStartIdx] != cmpExpectedStrides[checkStartIdx];
     }
     
     OP_CHECK_IF(oriKeyNonContiguous,
