@@ -678,7 +678,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
 
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
         uint32_t sendTokenNum = sendNumPerRankTensor.GetValue((dstRankId - startRankId_) * COUNTER_STRIDE + 1);
-        GM_ADDR notifyAddr = GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + cntPerRankSizeAlign512_ + 
+        GM_ADDR notifyAddr = GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + cntPerRankSizeAlign512_ +
                                 moeExpertNumAlign512_ + epRankId_ * WIN_ADDR_ALIGN;
         if (unlikely(dstRankId == epRankId_)) {
             SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -779,7 +779,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatc
     LocalTensor<uint64_t> statusLocalTensor = recvCntBuf_.Get<uint64_t>();
     LocalTensor<uint64_t> sumTensor = tempBuf_.Get<uint64_t>();
 
-    while (sumOfFlag != commpareFlag) {  //状态位check
+    while (sumOfFlag != commpareFlag) {  // 状态位check
         DataCopyPad(statusLocalTensor, statusGMTensor, statusCopyParams, padParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum<uint64_t, AscendC::Pattern::Reduce::RA, true>(sumTensor, statusLocalTensor, shape, true);
