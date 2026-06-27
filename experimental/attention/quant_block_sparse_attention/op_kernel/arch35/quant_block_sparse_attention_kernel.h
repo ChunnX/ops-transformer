@@ -433,7 +433,7 @@ __aicore__ inline void QuantBlockSparseAttentionKernel<CubeBlockType, VecBlockTy
             blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx1);
         runInfo.phyBlkNumIdx2 = runInfo.sparseBlkIdx2 == -1 ? -1 :
             blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx2);
-        IdxSortByPhyBlkNumIdx(runInfo);
+        IdxSortBySparseIdx(runInfo);
     }
 }
 

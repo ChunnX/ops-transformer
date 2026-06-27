@@ -76,11 +76,12 @@ def _normalize_params(params):
 
 def _make_lengths(batch, max_len, mode, rng):
     if mode == "full":
-        return [max_len] * batch
+        return [max_len] * batch, max_len
     if mode != "random":
         raise ValueError(f"unsupported actlen_mode: {mode}")
     low = max(1, max_len // 2)
-    return [rng.randint(low, max_len) for _ in range(batch)]
+    res_lens = [rng.randint(low, max_len) for _ in range(batch)]
+    return res_lens, max(res_lens)
 
 
 def _prefix(lengths):
@@ -163,8 +164,9 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     n2 = case["N2"]
     group = n1 // n2
     qb_max = math.ceil(case["S1"] / case["sparse_q_block_size"])
+    kv_max = math.ceil(case["S2"] / case["sparse_kv_block_size"])
     sparse_count = case["sparse_count"]
-    sparse_indices = torch.full((batch, n1, qb_max, sparse_count), fill_value=-1, dtype=torch.int32)
+    sparse_indices = torch.full((batch, n1, qb_max, kv_max), fill_value=-1, dtype=torch.int32)
     sparse_seq_len = torch.zeros((batch, n1, qb_max), dtype=torch.int32)
 
     for batch_idx in range(batch):
@@ -460,8 +462,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     sparse_q_block_size = case["sparse_q_block_size"]
     sparse_kv_block_size = case["sparse_kv_block_size"]
 
-    q_lengths = _make_lengths(batch, s1, case["actlen_mode"], rng)
-    kv_lengths = _make_lengths(batch, s2, case["actlen_mode"], rng)
+    q_lengths, q_max_len = _make_lengths(batch, s1, case["actlen_mode"], rng)
+    kv_lengths, kv_max_len = _make_lengths(batch, s2, case["actlen_mode"], rng)
+    s1, case["S1"] = q_max_len, q_max_len
+    s2, case["S2"] = kv_max_len, kv_max_len
     if case["S1EQS2"]:
         kv_lengths = [min(length, s2) for length in q_lengths]
 
