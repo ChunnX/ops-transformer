@@ -91,6 +91,32 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 } // namespace
 
+float fp16_to_float(uint16_t h) {
+    uint32_t sign = ((h >> 15) & 1);
+    uint32_t exponent = ((h >> 10) & 0x1F);
+    uint32_t mantissa = (h & 0x3FF);
+    
+    uint32_t f32;
+    if (exponent == 0x1F) {
+        exponent = 0xFF;
+        mantissa = (mantissa ? 0x7FFFFF : 0);
+    } else if (exponent == 0) {
+        if (mantissa != 0) {
+            exponent = 0x71;
+            do {
+                mantissa <<= 1;
+                exponent--;
+            } while (!(mantissa & 0x400));
+            mantissa &= 0x3FF;
+        }
+    } else {
+        exponent += (127 - 15);
+    }
+    
+    f32 = (sign << 31) | (exponent << 23) | (mantissa << 13);
+    return *((float*)&f32);
+}
+
 int main()
 {
     int32_t deviceId = 0;
@@ -104,7 +130,7 @@ int main()
     std::vector<int64_t> queryShape = {1, 2, 2, 16};
     std::vector<int64_t> keyShape = {1, 2, 2, 16};
     std::vector<int64_t> valueShape = {1, 2, 2, 16};
-    std::vector<int64_t> pseShape = {2};
+    std::vector<int64_t> pseShape = {1, 2, 2, 2};
     std::vector<int64_t> attenShape = {1, 1, 2, 2};
     std::vector<int64_t> outShape = {1, 2, 2, 16};
     int64_t queryShapeSize = GetShapeSize(queryShape);
@@ -113,13 +139,13 @@ int main()
     int64_t pseShapeSize = GetShapeSize(pseShape);
     int64_t attenShapeSize = GetShapeSize(attenShape);
     int64_t outShapeSize = GetShapeSize(outShape);
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
-    std::vector<float> pseHostData(pseShapeSize, 1);
-    std::vector<float> attenHostData(attenShapeSize, 1);
-    std::vector<float> outHostData(outShapeSize, 1);
-    std::vector<float> resultData(outShapeSize, 0);
+    std::vector<uint16_t> queryHostData(queryShapeSize, 0x3C00); // fp16 1.0
+    std::vector<uint16_t> keyHostData(keyShapeSize, 0x3C00);
+    std::vector<uint16_t> valueHostData(valueShapeSize, 0x3C00);
+    std::vector<uint16_t> pseHostData(pseShapeSize, 0x3C00); // fp16 1.0
+    std::vector<uint8_t> attenHostData(attenShapeSize, 0); // bool 0 = attend (all positions valid)
+    std::vector<uint16_t> outHostData(outShapeSize, 0);
+    std::vector<uint16_t> resultData(outShapeSize, 0x3C00);
 
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
@@ -145,7 +171,7 @@ int main()
     aclTensor *tensorsOfValue[1] = {nullptr};
     int64_t numHeads = 2;
     int64_t numKeyValueHeads = numHeads;
-    double scaleValue = 1 / sqrt(2);
+    double scaleValue = 1 / sqrt(16);
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
     string sLayerOut = "BNSD";
@@ -158,7 +184,7 @@ int main()
     bool softmaxLseFlag = false;
     int keyAntiquantMode = 0;
     int valueAntiquantMode = 0;
-    int64_t pseType = 2;
+    int64_t pseType = 0;
     std::vector<int64_t> actualSeqlenVector = {2};
 
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
@@ -180,7 +206,7 @@ int main()
     }
     tensorsOfValue[0] = valueTensor;
     tensorValueList = aclCreateTensorList(tensorsOfValue, kvTensorNum);
-    ret = CreateAclTensor(pseHostData, pseShape, &pseDeviceAddr, aclDataType::ACL_FLOAT, &pseTensor);
+    ret = CreateAclTensor(pseHostData, pseShape, &pseDeviceAddr, aclDataType::ACL_FLOAT16, &pseTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("CreateAclTensor pse failed. ERROR: %d\n", ret);
         goto RELEASE;
@@ -235,7 +261,8 @@ int main()
         goto RELEASE;
     }
     for (int64_t i = 0; i < outShapeSize; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+        float float_value = fp16_to_float(resultData[i]);
+        LOG_PRINT("result[%ld] is: %f\n", i, float_value);
     }
 
 RELEASE:
