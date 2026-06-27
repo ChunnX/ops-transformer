@@ -587,10 +587,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
         for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
             for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
                 int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
-                // 不能这么写，因为可能发给不同的server
-                // if ((globalExpertId % static_cast<int32_t>(expertPerRank_)) < localExpertId) {
-                //     break;
-                // }
                 if ((globalExpertId % static_cast<int32_t>(expertPerRank_)) != localExpertId) {
                     continue;
                 }
@@ -616,7 +612,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
                     uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
                         static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
-                    GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
+                    recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
                 }
                 QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
             }
@@ -632,6 +628,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
         uint32_t senderIdx = blockIdx_ - senderCoreStart;
         for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
             targetServerForSender += senderCoreNum) {
+            if (targetServerForSender == serverId_) {
+                    continue;
+            }
             __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
                 params_.workspaceInfo.sendWorkspacePtr + SendWorkspaceServerOffset(targetServerForSender));
             int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
@@ -642,113 +641,66 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
             DataCopyExtParams recordCopyParams{1U, recordPayloadBytes, 0U, 0U, 0U};
             DataCopyPadExtParams<uint8_t> recordCopyPad{false, 0U, 0U, 0U};
             uint32_t sentMaskWordNum = Ops::Base::CeilDiv(m_, SEND_DEDUP_MASK_BITS_PER_WORD);
-            bool useWindowScan = (sentMaskWordNum <= (SEND_DEDUP_MASK_UB_BYTES / sizeof(uint32_t)));
+            Duplicate<uint32_t>(sendDedupMaskTensor_, 0, sentMaskWordNum);
+            PipeBarrier<PIPE_ALL>();
             int32_t scanCursor = cursor;
-            if (useWindowScan) {
-                Duplicate<uint32_t>(sendDedupMaskTensor_, 0, sentMaskWordNum);
-                PipeBarrier<PIPE_ALL>();
-            }
 
             while (true) {
                 int32_t endCount = ReadGmByPassDCache(countPtr);
-                if (useWindowScan) {
-                    if (scanCursor < cursor || scanCursor >= endCount) {
-                        scanCursor = cursor;
-                    }
-                    int32_t scanEnd = scanCursor + static_cast<int32_t>(SEND_SCAN_WINDOW);
-                    if (scanEnd > endCount) {
-                        scanEnd = endCount;
-                    }
-                    for (int32_t slot = scanCursor; slot < scanEnd; ++slot) {
-                        uint32_t sentWordIdx = static_cast<uint32_t>(slot) / SEND_DEDUP_MASK_BITS_PER_WORD;
-                        uint32_t sentBit = 1U << (static_cast<uint32_t>(slot) &
-                            (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
-                        uint32_t sentWord = sendDedupMaskTensor_.GetValue(sentWordIdx);
-                        if ((sentWord & sentBit) != 0U) {
-                            continue;
-                        }
-
-                        uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
-                            static_cast<uint64_t>(slot) * sendWorkspaceRecordBytes_;
-                        GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
-                        __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
-                            recordAddr + mxQuantTokenScaleAlignBytes_);
-                        if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(1)) {
-                            continue;
-                        }
-                        int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
-                        uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-                        GM_ADDR dstAddr = GetUrmaAddrByRankId(mc2Context_,
-                            targetServerForSender * rankPerServer_ + rankInServer_) +
-                            params_.peermemInfo.relayTokenDataPtr + relayOffset;
-
-                        if (targetServerForSender == serverId_) {
-                            // workspaceSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(recordAddr));
-                            // relayDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(dstAddr));
-                            // DataCopyPad(copyTmpBytes, workspaceSrcGlobal, recordCopyParams, recordCopyPad);
-                            // SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID2>();
-                            // DataCopyPad(relayDstGlobal, copyTmpBytes, recordCopyParams);
-                            // SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
-                            continue;
-                        } else {
-                            uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
-                            ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
-                            hcomm_.WriteNbi<true>(channel, dstAddr, recordAddr, recordPayloadBytes);
-                            hcomm_.Drain(channel);
-                        }
-                        sendDedupMaskTensor_.SetValue(sentWordIdx, sentWord | sentBit);
-                    }
-                    scanCursor = scanEnd;
-                    if (scanCursor >= endCount) {
-                        scanCursor = cursor;
-                    }
-
-                    int32_t oldCursor = cursor;
-                    while (cursor < endCount) {
-                        uint32_t sentWordIdx = static_cast<uint32_t>(cursor) / SEND_DEDUP_MASK_BITS_PER_WORD;
-                        uint32_t sentBit = 1U << (static_cast<uint32_t>(cursor) &
-                            (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
-                        if ((sendDedupMaskTensor_.GetValue(sentWordIdx) & sentBit) == 0U) {
-                            break;
-                        }
-                        ++cursor;
-                    }
-                    if (cursor != oldCursor) {
-                        WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
-                    }
-                } else {
-                    while (cursor < endCount) {
-                        uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
-                            static_cast<uint64_t>(cursor) * sendWorkspaceRecordBytes_;
-                        GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
-                        __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
-                            recordAddr + mxQuantTokenScaleAlignBytes_);
-                        GmSignalWaitBarrier(srcMetaPtr + 1, int32_t(1));
-                        int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
-                        uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-                        GM_ADDR dstAddr = GetUrmaAddrByRankId(mc2Context_,
-                            targetServerForSender * rankPerServer_ + rankInServer_) +
-                            params_.peermemInfo.relayTokenDataPtr + relayOffset;
-
-                        if (targetServerForSender == serverId_) {
-                            // workspaceSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(recordAddr));
-                            // relayDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(dstAddr));
-                            // DataCopyPad(copyTmpBytes, workspaceSrcGlobal, recordCopyParams, recordCopyPad);
-                            // SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID2>();
-                            // DataCopyPad(relayDstGlobal, copyTmpBytes, recordCopyParams);
-                            // SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
-                            continue;
-                        } else {
-                            uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
-                            ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
-                            hcomm_.WriteNbi<true>(channel, dstAddr, recordAddr, recordPayloadBytes);
-                            hcomm_.Drain(channel);
-                        }
-                        ++cursor;
-                        WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
-                    }
+                if (scanCursor < cursor || scanCursor >= endCount) {
+                    scanCursor = cursor;
                 }
-                
+                int32_t scanEnd = scanCursor + static_cast<int32_t>(SEND_SCAN_WINDOW);
+                if (scanEnd > endCount) {
+                    scanEnd = endCount;
+                }
+                for (int32_t slot = scanCursor; slot < scanEnd; ++slot) {
+                    uint32_t sentWordIdx = static_cast<uint32_t>(slot) / SEND_DEDUP_MASK_BITS_PER_WORD;
+                    uint32_t sentBit = 1U << (static_cast<uint32_t>(slot) &
+                        (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
+                    uint32_t sentWord = sendDedupMaskTensor_.GetValue(sentWordIdx);
+                    if ((sentWord & sentBit) != 0U) {
+                        continue;
+                    }
+
+                    uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
+                        static_cast<uint64_t>(slot) * sendWorkspaceRecordBytes_;
+                    GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
+                    __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
+                        recordAddr + mxQuantTokenScaleAlignBytes_);
+                    if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(1)) {
+                        continue;
+                    }
+                    int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
+                    uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
+                    GM_ADDR dstAddr = GetUrmaAddrByRankId(mc2Context_,
+                        targetServerForSender * rankPerServer_ + rankInServer_) +
+                        params_.peermemInfo.relayTokenDataPtr + relayOffset;
+
+                    uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
+                    ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
+                    hcomm_.WriteNbi<true>(channel, dstAddr, recordAddr, recordPayloadBytes);
+                    hcomm_.Drain(channel);
+                    sendDedupMaskTensor_.SetValue(sentWordIdx, sentWord | sentBit);
+                }
+                scanCursor = scanEnd;
+                if (scanCursor >= endCount) {
+                    scanCursor = cursor;
+                }
+
+                int32_t oldCursor = cursor;
+                while (cursor < endCount) {
+                    uint32_t sentWordIdx = static_cast<uint32_t>(cursor) / SEND_DEDUP_MASK_BITS_PER_WORD;
+                    uint32_t sentBit = 1U << (static_cast<uint32_t>(cursor) &
+                        (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
+                    if ((sendDedupMaskTensor_.GetValue(sentWordIdx) & sentBit) == 0U) {
+                        break;
+                    }
+                    ++cursor;
+                }
+                if (cursor != oldCursor) {
+                    WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
+                }
                 // TODO:优化
                 bool allComputeDone = true;
                 for (uint32_t idx = 0; idx < realComputeCoreNum; ++idx) {
