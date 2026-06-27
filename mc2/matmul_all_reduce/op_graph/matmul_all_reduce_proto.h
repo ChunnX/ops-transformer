@@ -55,7 +55,7 @@ namespace ge {
 * @li y_dtype: An int. The y_dtype only support 0(float32)/1(float16)/27(bfloat16) in current version.
       Default: 28(ge::DataType::DT_UNDEFINED).
 * @li comm_quant_mode: An int. Number of low-bits communicate mode. Static quant: 0. Dynamic quant: 1. Default: 0.
-* @li comm_mode: A string. Communication mode. Default: "ccu". The comm_mode only supports "default", "ccu" or
+* @li comm_mode: A string. Communication mode. Default: "ai_cpu". The comm_mode only supports "ccu" or
 *  "aicpu" in current version. \n
 
 * @par Outputs:
@@ -137,7 +137,7 @@ REG_OP(MatmulAllReduce)
     .ATTR(group_size, Int, 0)
     .ATTR(y_dtype, Int, DT_UNDEFINED)
     .ATTR(comm_quant_mode, Int, 0)
-    .ATTR(comm_mode, String, "")
+    .ATTR(comm_mode, String, "ai_cpu")
     .OP_END_FACTORY_REG(MatmulAllReduce)
 
 } // namespace ge

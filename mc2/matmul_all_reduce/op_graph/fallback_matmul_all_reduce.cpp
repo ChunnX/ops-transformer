@@ -139,7 +139,6 @@ static inline ge::graphStatus GetCommParaBase(const gert::OpExecuteContext* host
     para.comm_turn = (comm_turn_ptr != nullptr ? *comm_turn_ptr : 0);
 
     para.comm_mode = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
-    para.comm_mode = (para.comm_mode == nullptr ? "" : para.comm_mode);
 
     return ge::SUCCESS;
 }
@@ -209,9 +208,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 
     bool isCommMode = false;
     if (comm_para.comm_mode != nullptr) {
-        isCommMode =
-            std::strcmp(comm_para.comm_mode, "ccu") == 0 ||
-            std::strcmp(comm_para.comm_mode, "ai_cpu") == 0;
+        isCommMode = true;
     }
 
     switch (quant_para.type) {
