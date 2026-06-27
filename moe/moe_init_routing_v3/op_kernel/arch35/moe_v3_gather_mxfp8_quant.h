@@ -37,7 +37,8 @@ private:
     __aicore__ inline void CopyExpandedXandMXQuant(int64_t progress);
     __aicore__ inline void CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols);
     __aicore__ inline void Compute(uint32_t xElemNum, uint32_t scaleElemNum, uint32_t validScaleElemNum);
-    __aicore__ inline void CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols, int64_t loopScaleCols);
+    __aicore__ inline void CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols, int64_t loopScaleCols,
+                                   int64_t loopValidScaleCols);
 
 private:
     TPipe *pipe_;
@@ -424,7 +425,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, ClampAmax>::CopyExpandedXand
             uint32_t loopValidScaleCols = (j == colLoops_ - 1) ? lastLoopValidScaleCols_ : perLoopScaleCols_;
             CopyIn(srcIdx / k_, j, loopCols);
             Compute(loopCols, loopScaleCols, loopValidScaleCols);
-            CopyOut(dstIdx, j, loopCols, loopScaleCols);
+            CopyOut(dstIdx, j, loopCols, loopScaleCols, loopValidScaleCols);
         }
     }
 }
@@ -477,7 +478,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, ClampAmax>::Compute(uint32_t
 
 template <typename T, typename U, bool ClampAmax>
 __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, ClampAmax>::CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols,
-                                                             int64_t loopScaleCols)
+                                                             int64_t loopScaleCols, int64_t loopValidScaleCols)
 {
     LocalTensor<uint8_t> mxScaleLocal = mxScaleOutQueue_.DeQue<uint8_t>();
     LocalTensor<uint8_t> outLocal = xQuantOutQueue_.DeQue<uint8_t>();
@@ -485,9 +486,16 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, ClampAmax>::CopyOut(int64_t 
     DataCopyExtParams copyOutParams = {1, static_cast<uint32_t>(loopCols * sizeof(uint8_t)), 0, 0, 0};
     DataCopyPad<uint8_t>(expandedXOutGm_[dstIdx * cols_ + colIdx * perLoopCols_], outLocal, copyOutParams);
 
-    DataCopyExtParams copyScaleParams = {1, static_cast<uint32_t>(loopScaleCols * sizeof(uint8_t)), 0, 0, 0};
+    DataCopyExtParams copyScaleParams = {1, static_cast<uint32_t>(loopValidScaleCols * sizeof(uint8_t)), 0, 0, 0};
     DataCopyPad<uint8_t>(expandedScaleOutGm_[dstIdx * scaleCols_ + colIdx * perLoopScaleCols_], mxScaleLocal,
                          copyScaleParams);
+    if (loopScaleCols > loopValidScaleCols) {
+        auto paddingOffset = dstIdx * scaleCols_ + colIdx * perLoopScaleCols_ + loopValidScaleCols;
+        GlobalTensor<uint8_t> zeroScaleGm;
+        zeroScaleGm.SetGlobalBuffer((__gm__ uint8_t *)expandedScaleOutGm_.GetPhyAddr() + paddingOffset,
+                                    loopScaleCols - loopValidScaleCols);
+        InitGlobalMemory(zeroScaleGm, loopScaleCols - loopValidScaleCols, static_cast<uint8_t>(0));
+    }
 
     xQuantOutQueue_.FreeTensor(outLocal);
     mxScaleOutQueue_.FreeTensor(mxScaleLocal);
