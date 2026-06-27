@@ -49,7 +49,7 @@ constexpr int64_t ROTARY_MODE_DEEPSEEK_INTERLEAVE = 3;
 template <typename TDY, typename TCOS>
 __aicore__ inline void InterleaveModeGradVF(const LocalTensor<TCOS> &sinTensor, const LocalTensor<TCOS> &cosTensor,
                                             const LocalTensor<TDY> &inTensor, const LocalTensor<TDY> &outTensor,
-                                            uint16_t dLen, uint16_t currSNum, uint16_t currNNum)
+                                            uint16_t dLen, uint16_t dSplitCoef_, uint16_t currSNum, uint16_t currNNum)
 {
     __local_mem__ TCOS *sinUb = (__local_mem__ TCOS *)sinTensor.GetPhyAddr();
     __local_mem__ TCOS *cosUb = (__local_mem__ TCOS *)cosTensor.GetPhyAddr();

@@ -91,14 +91,14 @@ __aicore__ inline void InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCas
     this->dSplitCoef_ = static_cast<uint16_t>(tilingData_->dSplitCoef);
     this->D_ = tilingData_->d;
 
-    this->dAlignDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+    this->dAlignDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_,
                                                     static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
-                      tilingData_->dSplitCoef;
-    this->dAlignCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                      dSplitCoef_;
+    this->dAlignCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_,
                                                      static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
-                       tilingData_->dSplitCoef;
-    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY));
-    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS));
+                       dSplitCoef_;
+    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY) / dSplitCoef_);
+    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TCOS) / dSplitCoef_);
     this->ubFactorB_ = tilingData_->ubFactorB;
     this->ubFactorS_ = tilingData_->ubFactorS;
     this->ubFactorN_ = tilingData_->ubFactorN;
@@ -136,7 +136,7 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::CopyInCosAndSin(int
     loopParams.loop1DstStride = ubFactorS_ * dAlignCos_ * sizeof(TCOS);
     SetLoopModePara(loopParams, DataCopyMVType::OUT_TO_UB);
 
-    DataCopyExtParams copyParams = {static_cast<uint16_t>(sLength * tilingData_->dSplitCoef), dSplitSizeCos_, 0, 0, 0};
+    DataCopyExtParams copyParams = {static_cast<uint16_t>(sLength * dSplitCoef_), dSplitSizeCos_, 0, 0, 0};
     DataCopyPadExtParams<TCOS> padParams = {false, 0, 0, 0};
 
     int64_t cosSinOffset = bStart * tilingData_->s * tilingData_->sliceLength + sStart * tilingData_->sliceLength;
@@ -166,7 +166,7 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::CopyInDy(int64_t sS
     loopParams.loop1DstStride = ubFactorS_ * dAlignDy_ * sizeof(TDY);
     SetLoopModePara(loopParams, DataCopyMVType::OUT_TO_UB);
 
-    DataCopyExtParams copyParams = {static_cast<uint16_t>(sLength * tilingData_->dSplitCoef), dSplitSizeDy_,
+    DataCopyExtParams copyParams = {static_cast<uint16_t>(sLength * dSplitCoef_), dSplitSizeDy_,
                                     static_cast<uint32_t>((D_ - tilingData_->sliceLength) * sizeof(TDY)), 0, 0};
     DataCopyPadExtParams<TDY> padParams = {false, 0, 0, 0};
 
@@ -195,7 +195,7 @@ InplacePartialRotaryMulGradABAAndBA<TDY, TCOS, IsBroadCast>::CopyOutDx(int64_t s
     loopParams.loop1SrcStride = ubFactorS_ * dAlignDy_ * sizeof(TDY);
     SetLoopModePara(loopParams, DataCopyMVType::UB_TO_OUT);
 
-    DataCopyExtParams copyParams = {static_cast<uint16_t>(sLength * tilingData_->dSplitCoef), dSplitSizeDy_, 0,
+    DataCopyExtParams copyParams = {static_cast<uint16_t>(sLength * dSplitCoef_), dSplitSizeDy_, 0,
                                     static_cast<uint32_t>((D_ - tilingData_->sliceLength) * sizeof(TDY)), 0};
 
     int64_t dxOffset = bStart * nTotalSize * tilingData_->s * D_ + nStart * tilingData_->s * D_ + sStart * D_ +

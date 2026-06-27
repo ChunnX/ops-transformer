@@ -75,14 +75,14 @@ __aicore__ inline void InplacePartialRotaryMulGradBAB<TDY, TCOS>::Init(GM_ADDR d
     }
     this->blockIdx_ = GetBlockIdx();
     this->dSplitCoef_ = static_cast<uint16_t>(tilingData_->dSplitCoef);
-    this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+    this->dAlignLenDy_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_,
                                                        static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TDY))) *
-                         tilingData_->dSplitCoef;
-    this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / tilingData_->dSplitCoef,
+                         dSplitCoef_;
+    this->dAlignLenCos_ = Ops::Base::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_,
                                                         static_cast<int64_t>(BLOCK_TYPE_SIZE / sizeof(TCOS))) *
-                          tilingData_->dSplitCoef;
-    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TDY));
-    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength / tilingData_->dSplitCoef * sizeof(TCOS));
+                          dSplitCoef_;
+    this->dSplitSizeDy_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TDY) / dSplitCoef_);
+    this->dSplitSizeCos_ = static_cast<uint32_t>(tilingData_->sliceLength * sizeof(TCOS) / dSplitCoef_);
     this->ubFactorN_ = tilingData_->ubFactorN;
     this->ubFactorS_ = tilingData_->ubFactorS;
     this->dyGm_.SetGlobalBuffer((__gm__ TDY *)dy);
@@ -188,7 +188,7 @@ InplacePartialRotaryMulGradBAB<TDY, TCOS>::Compute(LocalTensor<TCOS> &sinTensor,
                                                    LocalTensor<TDY> &dyTensor, LocalTensor<TDY> &dxTensor,
                                                    const uint32_t currSNum, const uint32_t currNNum)
 {
-    InterleaveModeGradVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength,
+    InterleaveModeGradVF<TDY, TCOS>(sinTensor, cosTensor, dyTensor, dxTensor, tilingData_->sliceLength, dSplitCoef_,
                                     static_cast<uint16_t>(currSNum), static_cast<uint16_t>(currNNum));
 }
 
