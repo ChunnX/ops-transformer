@@ -44,6 +44,12 @@ namespace {
         }                                                                                                                          \
     } while (0)
 
+#define OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE_FAGV4(tensor1, tensor2) \
+    if (tensor1 != nullptr && tensor2 != nullptr) { \
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(tensor1, tensor2->GetViewShape(), \
+            return ACLNN_ERR_PARAM_INVALID); \
+}
+
 typedef struct FagInShapeInfoS {
     int64_t n1Dim;
     int64_t n2Dim;
@@ -3081,7 +3087,12 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
             "The value of headNum must be greater than 0");
         return ACLNN_ERR_PARAM_INVALID;
     }
- 
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE_FAGV4(dqOut, query);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE_FAGV4(dkOut, keyIn);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE_FAGV4(dvOut, value);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE_FAGV4(dqRopeOut, queryRopeOptional);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE_FAGV4(dkRopeOut, keyRopeOptional);
+    OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE_FAGV4(dsinkOut, sinkInOptional);
     // calculate fag
     auto ret = FlashAttentionScoreGradV4GetWorkspace(
         query, keyIn, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
