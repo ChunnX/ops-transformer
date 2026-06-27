@@ -147,12 +147,13 @@ class GeneralizedLIV2:
                                                                                         :curr_actualSeq_q,
                                                                                         :curr_actualSeq_k] = self.cal_atten_per_batch_fp16(b_idx)
                 y[b_idx: (b_idx + 1), :, curr_actualSeq_q:, :actual_selected_count] = -1
-                if self.layout_query == "TND":
-                    offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
-                else:
-                    offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
-                offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
-                y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
+                if output_idx_offset is not None:
+                    if self.layout_query == "TND":
+                        offset = output_idx_offset.flatten()[prefix : prefix + curr_actualSeq_q].reshape(1, -1, 1)
+                    else:
+                        offset = output_idx_offset.flatten()[b_idx * qs : b_idx * qs + curr_actualSeq_q].reshape(1, -1, 1)
+                    offset_mask = (y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] != -1)
+                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] += offset * offset_mask
                 y_value_np[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count] = -np.sort(-y_value.numpy())[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count]
             else:
                 pass
@@ -435,7 +436,8 @@ class GeneralizedLIV2:
             next_tokens = S2 - S1
             next_tokens_list.append(next_tokens)
             act_k = actualSeqLengthsK[i]
-            atten_masks = self.create_mask(m_shape, act_k, S1, cmpResidualK[i])
+            residual = cmpResidualK[i] if cmpResidualK is not None else 0
+            atten_masks = self.create_mask(m_shape, act_k, S1, residual)
             re_mask_batch.append(np.array(atten_masks, dtype=np.bool_))
         re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
         cpu_mask = torch.from_numpy(re_mask_np)
@@ -481,7 +483,7 @@ class GeneralizedLIV2:
                 actual_seq_lengths_query = seqused_q
                 self.has_seqused_q = True
             else:
-                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(torch.int32)
             actualSeqLengths_q = actual_seq_lengths_query
 
         if layout_key == "TND":
@@ -498,7 +500,7 @@ class GeneralizedLIV2:
                 actual_seq_lengths_key = seqused_k
                 self.has_seqused_k = True
             else:
-                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(torch.int32)
             actualSeqLengths_k = actual_seq_lengths_key
             k_shape = self.k_shape
 
@@ -510,7 +512,8 @@ class GeneralizedLIV2:
         query = query.cpu()
         key = key.cpu()
         weights = weights.cpu()
-        output_idx_offset = output_idx_offset.cpu()
+        if output_idx_offset is not None:
+            output_idx_offset = output_idx_offset.cpu()
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
         if self.layout_query == "TND":

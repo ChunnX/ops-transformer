@@ -57,7 +57,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             'seqused_q', 'seqused_k', 'cmp_residual_k', 'max_seqlen_q', 'quant_mode',
             'layout_query', 'layout_key', 'sparse_count', 'sparse_mode', 'query_datarange',
             'key_datarange', 'weights_datarange', 'q_scale_datarange',
-            'k_scale_datarange', 'cmp_ratio', 'return_value'
+            'k_scale_datarange', 'cmp_ratio', 'return_value', 'output_idx_offset'
         ]
 
         # 检查是否缺少必要列
@@ -100,7 +100,8 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['q_scale_datarange'],
                 row['k_scale_datarange'],
                 row['cmp_ratio'],
-                row['return_value']
+                row['return_value'],
+                row['output_idx_offset']
             ))
 
         return test_cases
