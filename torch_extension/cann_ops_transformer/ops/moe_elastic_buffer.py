@@ -91,7 +91,7 @@ class MoEElasticBuffer:
         per_token_bytes = inline_align(hidden * max_out_dtype_size + metadata_bytes * 2 + ub_align, win_addr_align)
         # 远端窗口 slot 按 (src_token_idx * topK + src_topK_idx) 索引，
         # per-peer 数据量 = STATE_WIN_SIZE + topk * nmt * perSlotBytes
-        per_peer_need = state_win_size + world_size * topk * num_max_tokens_per_rank * per_token_bytes
+        per_peer_need = world_size * topk * num_max_tokens_per_rank * per_token_bytes + world_size * topk * num_max_tokens_per_rank * ub_align 
         minimum_buffer_size = 2 * per_peer_need
          ## hccl按照2*bufferSize大小开设
         ccl_buffer_size = inline_align(inline_align(minimum_buffer_size, mb_conversion) // mb_conversion, 2) // 2
