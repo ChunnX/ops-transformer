@@ -23,9 +23,20 @@ struct Mc2MoeContext {
     uint32_t epRankId;
     uint32_t rankSizePerServer;
     uint64_t kfcContextAddr; // host kfc方案中，需要传递通信API所需的地址
-    uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
-    uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
+    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE];
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE];
 };
+
+
+__aicore__ inline GM_ADDR GetWinCombineDataAddrByRankId(__gm__ Mc2MoeContext *ctx)
+{
+    return (GM_ADDR)ctx->epHcclBuffer[0];
+}
+
+__aicore__ inline GM_ADDR GetWinCombineStateAddrByRankId(__gm__ Mc2MoeContext *ctx)
+{
+    return (GM_ADDR)ctx->epHcclBuffer[0];
+}
 
 
 #endif // MOE_EP_COMBINE_BASE_H
