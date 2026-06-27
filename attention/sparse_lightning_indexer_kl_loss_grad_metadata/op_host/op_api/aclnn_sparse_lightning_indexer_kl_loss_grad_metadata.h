@@ -15,24 +15,39 @@
 #ifndef ACLNN_SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
 #define ACLNN_SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_H
 
-#include <string>
 #include "aclnn/aclnn_base.h"
+#include "opdev/op_executor.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-__attribute__((visibility("default")))
 aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional, int64_t batchSize, int64_t maxSeqlenQ,
-    int64_t maxSeqlenK, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk, char *layoutQOptional,
-    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, const aclTensor *metadata, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor* cuSeqLensQOptional,
+    const aclTensor* cuSeqLensKOptional,
+    const aclTensor* seqUsedQOptional,
+    const aclTensor* seqUsedKOptional,
+    const aclTensor* cmpResidualKOptional,
+    int64_t batchSize,
+    int64_t maxSeqLenQ,
+    int64_t maxSeqLenK,
+    int64_t numHeadsQ,
+    int64_t numHeadsK,
+    int64_t headDim,
+    int64_t topk,
+    char *layoutQ,
+    char *layoutK,
+    int64_t maskMode,
+    int64_t cmpRatio,
+    const aclTensor* metadata,
+    uint64_t* workspaceSize,
+    aclOpExecutor** executor);
 
-__attribute__((visibility("default")))
-aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(void *workspace, uint64_t workspaceSize,
-    aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus
+aclnnSparseLightningIndexerKLLossGradMetadata(void *workspace,
+                                              uint64_t workspaceSize,
+                                              aclOpExecutor *executor,
+                                              aclrtStream stream);
 
 #ifdef __cplusplus
 }

@@ -69,7 +69,7 @@ class SparseLightningIndexerKLLossGradOpBuilder(OpBuilder):
             mask_mode=None,
             cmp_ratio=None,
         ):
-            return torch.empty((SLI_KL_LOSS_GRAD_METADATA_SIZE,), dtype=torch.int32, device="npu")
+            return torch.empty((SLI_KL_LOSS_GRAD_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
         @impl(AS_LIBRARY, self.name, "Meta")
         def sparse_lightning_indexer_kl_loss_grad_meta(
