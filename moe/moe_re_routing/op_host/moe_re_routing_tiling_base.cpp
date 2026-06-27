@@ -312,7 +312,7 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    "MoeReRouting", "context", "nullptr", "Context should not be null."),
+                    context_->GetNodeName(), "context", "nullptr", "Context should not be null."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(

@@ -1181,7 +1181,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::ValidateExpandedXDtype()
     if (IsInt4DynamicQuantCase()) {
         if (expandedXDtype_ != ge::DataType::DT_INT4) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                context_->GetNodeName(), "expanded_x", Ops::Base::ToString(expandedXDtype_).c_str(),
+                context_->GetNodeName(), "expanded_x_dtype", Ops::Base::ToString(expandedXDtype_).c_str(),
                 "For INT4 dynamic quantization, expanded_x dtype should be DT_INT4.");
             return ge::GRAPH_FAILED;
         }
