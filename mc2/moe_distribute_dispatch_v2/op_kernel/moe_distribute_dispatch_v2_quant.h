@@ -275,7 +275,8 @@ public:
 
         quant::ComputeMaxExpcuBLAS(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
         // 计算scales并填充
-        quant::ComputeScalecuBLAS<ExpandXOutType, XInType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+        quant::ComputeScalecuBLAS<ExpandXOutType, XInType>(maxExpAddr,
+            mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
         if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
             Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
             // 计算量化后的expandx并填充

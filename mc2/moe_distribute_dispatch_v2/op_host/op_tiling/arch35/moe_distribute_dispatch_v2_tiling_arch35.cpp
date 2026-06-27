@@ -1270,7 +1270,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::CheckQuantModePtr(
     (*quantModePtr > static_cast<int64_t>(QuantModeA5::MX_QUANT_CUBLAS)),
     OP_LOGE_FOR_INVALID_VALUE(nodeName, "quantMode", std::to_string(*quantModePtr).c_str(),
         std::string("[") + std::to_string(static_cast<int64_t>(QuantModeA5::NON_QUANT)) + "," +
-        std::to_string(static_cast<int64_t>(QuantModeA5::MX_QUANT_CUBLAS)) + std::string("]").c_str()), return ge::GRAPH_FAILED);
+        std::to_string(static_cast<int64_t>(QuantModeA5::MX_QUANT_CUBLAS)) + std::string("]").c_str()),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

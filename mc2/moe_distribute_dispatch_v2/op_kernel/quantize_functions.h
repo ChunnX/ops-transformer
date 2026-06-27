@@ -312,8 +312,9 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
             MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
             MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         for (uint16_t i = 0; i < loopNumScale; i++) {
+            // 单搬 64 个数
             MicroAPI::LoadAlign<uint16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                max16, maxExpAddr, vlForHalfNumber);// 单搬 64 个数
+                max16, maxExpAddr, vlForHalfNumber);
 
             MicroAPI::Cast<float, U, castTraitHalf2Float>(
                 (MicroAPI::RegTensor<float>&)max32, (MicroAPI::RegTensor<U>&)max16, maskFloat);
