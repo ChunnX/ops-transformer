@@ -79,6 +79,37 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
     return true;
 }
 
+static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *output,
+    const aclTensor *bias, const aclTensor *gatherOut)
+{
+    if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x1",
+            op::ToString(x1->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "x2",
+            op::ToString(x2->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (output->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "output",
+            op::ToString(output->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (bias != nullptr && bias->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "bias",
+            op::ToString(bias->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    if (gatherOut != nullptr && gatherOut->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("aclnnAllGatherMatmulV2", "gatherOut",
+            op::ToString(gatherOut->GetStorageFormat()).GetString(), "Only ND format is supported");
+        return false;
+    }
+    return true;
+}
+
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT16, op::DataType::DT_BF16,
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8 };
@@ -239,13 +270,15 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
 
 // 分别对输入类型为fp8/hif8和fp16/bf16数据类型进行分别校验
 static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, int64_t streamMode,
-    const aclTensor *output)
+    const aclTensor *output, const aclTensor *gatherOut)
 {
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(CheckDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
 
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
+
+    CHECK_RET(CheckFormat(x1, x2, output, bias, gatherOut), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
 }
@@ -479,7 +512,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     aclOpExecutor **executor)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
-    auto retParam = CheckParams(x1, x2, bias, streamMode, output);
+    auto retParam = CheckParams(x1, x2, bias, streamMode, output, gatherOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
     if (checkX1InputEmptyTensor(x1, x2)) {
