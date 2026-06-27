@@ -231,8 +231,76 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
 }
 
 
+ge::graphStatus AllGatherMatmulTilingV2::CheckInputFormat()
+{
+    std::string invalidParamNames;
+    std::string invalidFormats;
+
+    auto x1Desc = context_->GetInputDesc(INPUT_X1);
+    ge::Format x1Format = static_cast<ge::Format>(ge::GetPrimaryFormat(x1Desc->GetStorageFormat()));
+    if (x1Format != ge::FORMAT_ND) {
+        invalidParamNames += "x1";
+        invalidFormats += TypeUtils::FormatToSerialString(x1Format);
+    }
+
+    auto x2Desc = context_->GetInputDesc(INPUT_X2);
+    ge::Format x2Format = static_cast<ge::Format>(ge::GetPrimaryFormat(x2Desc->GetStorageFormat()));
+    if (x2Format != ge::FORMAT_ND) {
+        if (!invalidParamNames.empty()) { invalidParamNames += ", "; invalidFormats += ", "; }
+        invalidParamNames += "x2";
+        invalidFormats += TypeUtils::FormatToSerialString(x2Format);
+    }
+
+    auto yDesc = context_->GetOutputDesc(OUTPUT_Y);
+    ge::Format yFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat()));
+    if (yFormat != ge::FORMAT_ND) {
+        if (!invalidParamNames.empty()) { invalidParamNames += ", "; invalidFormats += ", "; }
+        invalidParamNames += "y";
+        invalidFormats += TypeUtils::FormatToSerialString(yFormat);
+    }
+
+    auto biasShape = context_->GetOptionalInputShape(BIAS);
+    if (biasShape != nullptr) {
+        auto biasDesc = context_->GetOptionalInputDesc(BIAS);
+        if (biasDesc != nullptr) {
+            ge::Format biasFormat = static_cast<ge::Format>(
+                ge::GetPrimaryFormat(biasDesc->GetStorageFormat()));
+            if (biasFormat != ge::FORMAT_ND) {
+                if (!invalidParamNames.empty()) { invalidParamNames += ", "; invalidFormats += ", "; }
+                invalidParamNames += "bias";
+                invalidFormats += TypeUtils::FormatToSerialString(biasFormat);
+            }
+        }
+    }
+
+    auto gatherOutShape = context_->GetOutputShape(GATHER_OUT);
+    if (gatherOutShape != nullptr) {
+        auto gatherOutDesc = context_->GetOutputDesc(GATHER_OUT);
+        if (gatherOutDesc != nullptr) {
+            ge::Format gatherOutFormat = static_cast<ge::Format>(
+                ge::GetPrimaryFormat(gatherOutDesc->GetStorageFormat()));
+            if (gatherOutFormat != ge::FORMAT_ND) {
+                if (!invalidParamNames.empty()) { invalidParamNames += ", "; invalidFormats += ", "; }
+                invalidParamNames += "gatherOut";
+                invalidFormats += TypeUtils::FormatToSerialString(gatherOutFormat);
+            }
+        }
+    }
+
+    OP_TILING_CHECK(!invalidParamNames.empty(),
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_,
+            invalidParamNames.c_str(),
+            invalidFormats.c_str(),
+            "Only ND format is supported"),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 {
+    MC2_CHECK_LOG_RET(opName_, CheckInputFormat());
+
     auto x1ScaleShape = context_->GetOptionalInputShape(SCALE_INV1);
     OP_TILING_CHECK(x1ScaleShape != nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Scale", "not nullptr",
