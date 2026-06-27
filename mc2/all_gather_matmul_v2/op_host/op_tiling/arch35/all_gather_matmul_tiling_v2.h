@@ -71,6 +71,7 @@ protected:
     ge::graphStatus SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg);
     ge::graphStatus SetRawTilingData();
     ge::graphStatus CheckInput() override;
+    ge::graphStatus CheckInputFormat();
 
 private:
     Mc2Tiling::AllGatherMatmulTilingDataV2 allGatherMatmulTilingDataV2Self_;
