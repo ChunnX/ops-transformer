@@ -1843,7 +1843,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
                 // 从 GM 中转区 DataCopy 到 UB
                 AscendC::GlobalTensor<ActivationType> srcGlobal;
                 srcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(gmTmpAddr));
-                AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
+                //AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
             }
 
             // 等 MTE2 (DataCopy GM→UB) 完成后再拆分写
