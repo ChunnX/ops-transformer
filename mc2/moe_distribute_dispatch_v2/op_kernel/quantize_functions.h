@@ -39,11 +39,11 @@ constexpr uint16_t SPECIAL_VALUE_E1M2 = 0x007f;
 constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr float FP8_E4M3_MAX_VALUE = 448.0f;
-constexpr uint32_t FP8_E5M2_MAX = 0x37924925; // 1/57344的float32表示 57334是E5M2所能表示的最大值
+constexpr uint32_t FP8_E5M2_MAX = 0x37924925; // 1/57344的float32表示 57344是E5M2所能表示的最大值
 constexpr uint32_t FP8_E4M3_MAX = 0x3b124925; // 1/448的float32表示 448是E4M3所能表示的最大值
 constexpr uint32_t NUMBER_ZERO = 0x00000000;
-constexpr uint32_t NUMBER_TWO_FIVE_FOUR = 0x000000fe;
-constexpr uint32_t NUMBER_HALF = 0x00400000;
+constexpr uint32_t FP32_BIASED_EXP_MAX_NORMAL = 0x000000fe;
+constexpr uint32_t FP32_MANTISSA_HALF = 0x00400000;
 constexpr float HIFP8_MAX_VALUE = 32768.0f;
 constexpr float INT8_MAX_VALUE = 127.0f;
 constexpr uint16_t INVALID_FLOAT16 = 0x7c00;
@@ -304,8 +304,8 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
         MicroAPI::MaskReg p1;
         MicroAPI::MaskReg p2;
         // MicroAPI::MaskReg maskHalf = MicroAPI::CreateMask<uint16_t>();
-        uint32_t SixtyFour = 64;
-        MicroAPI::MaskReg dataMaskB16Half = MicroAPI::UpdateMask<uint16_t>(SixtyFour);
+        constexpr uint32_t B16_HALF_MASK_ELEMENT_NUM = 64;
+        MicroAPI::MaskReg dataMaskB16Half = MicroAPI::UpdateMask<uint16_t>(B16_HALF_MASK_ELEMENT_NUM);
         MicroAPI::MaskReg maskFloat = MicroAPI::CreateMask<uint32_t>();
 
         static constexpr MicroAPI::CastTrait castTraitHalf2Float = {
@@ -335,13 +335,13 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
             MicroAPI::And(man32, max32, manMaskFP32, maskFloat);
 
             MicroAPI::CompareScalar<uint32_t, CMPMODE::GT>(p0, exp32, NUMBER_ZERO, maskFloat);
-            MicroAPI::CompareScalar<uint32_t, CMPMODE::LT>(p1, exp32, NUMBER_TWO_FIVE_FOUR, maskFloat);
+            MicroAPI::CompareScalar<uint32_t, CMPMODE::LT>(p1, exp32, FP32_BIASED_EXP_MAX_NORMAL, maskFloat);
             MicroAPI::CompareScalar<uint32_t, CMPMODE::GT>(p2, man32, NUMBER_ZERO, maskFloat);
             MicroAPI::MaskAnd(p0, p0, p1, maskFloat);
             MicroAPI::MaskAnd(p0, p0, p2, maskFloat);
 
             MicroAPI::CompareScalar<uint32_t, CMPMODE::EQ>(p1, exp32, NUMBER_ZERO, maskFloat);
-            MicroAPI::CompareScalar<uint32_t, CMPMODE::GT>(p2, man32, NUMBER_HALF, maskFloat);
+            MicroAPI::CompareScalar<uint32_t, CMPMODE::GT>(p2, man32, FP32_MANTISSA_HALF, maskFloat);
             MicroAPI::MaskAnd(p1, p1, p2, maskFloat);
             MicroAPI::MaskOr(p0, p0, p1, maskFloat);
 
