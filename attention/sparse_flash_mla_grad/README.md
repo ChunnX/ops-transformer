@@ -330,24 +330,7 @@
 
 ## 调用示例
 
-<table class="tg"><thead>
-  <tr>
-    <th class="tg-0pky">调用方式</th>
-    <th class="tg-0pky">样例代码</th>
-    <th class="tg-0pky">说明</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td class="tg-9wq8" rowspan="6">aclnn接口</td>
-    <td class="tg-0pky">
-    <a href="./examples/test_aclnn_sparse_flash_mla_grad.cpp">test_aclnn_sparse_flash_mla_grad
-    </a>
-    </td>
-    <td class="tg-lboi" rowspan="6">
-    通过
-    <a href="./docs/aclnnSparseFlashMlaGrad.md">aclnnSparseFlashMlaGrad
-    </a>
-    接口方式调用算子
-    </td>
-  </tr>
-</tbody></table>
+| 调用方式  | 样例代码                                                                       | 说明                                                                        |
+| --------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| aclnn API | [test_aclnn_sparse_flash_mla_grad](./examples/test_aclnn_sparse_flash_mla_grad.cpp)   | 通过[aclnnSparseFlashMlaGrad](./docs/aclnnSparseFlashMlaGrad.md)调用SparseFlashMlaGrad算子。 |
+| PyTorch API | - | 通过[sparse_flash_mla_grad](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla_grad.md)接口调用SparseFlashMlaGrad算子。 |
