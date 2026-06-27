@@ -48,7 +48,7 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
     __VEC_SCOPE__
     {
         RegTensor<T> vreg1, vreg2, vreg3, maxReg, yReg1;
-        RegTensor<float> scaleReg, fp8MaxReg, yReg2, yReg3;
+        RegTensor<float> scaleReg, invScaleReg, fp8MaxReg, yReg2, yReg3;
         RegTensor<U> outReg;
 
         MaskReg preg0;
@@ -79,6 +79,7 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
             Duplicate(maxReg, maxReg, maskAll);
 
             Cast<float, T, castTrait0>(scaleReg, maxReg, maskAll);
+            Div<float, &mode>(invScaleReg, fp8MaxReg, scaleReg, maskAll);
             Div<float, &mode>(scaleReg, scaleReg, fp8MaxReg, maskAll);
             DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + blkIdx, scaleReg, maskAll);
 
@@ -86,7 +87,7 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
                 yMaskReg = UpdateMask<float>(outputNum);
                 DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + i * vfNum);
                 Cast<float, T, castTrait0>(yReg2, yReg1, yMaskReg);
-                Div<float, &mode>(yReg3, yReg2, scaleReg, yMaskReg);
+                Mul<float>(yReg3, yReg2, invScaleReg, yMaskReg);
                 Cast<U, float, castTrait32tofp8>(outReg, yReg3, yMaskReg);
                 DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + i * vfNum, outReg, yMaskReg);
             }
