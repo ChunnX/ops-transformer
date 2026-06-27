@@ -65,8 +65,8 @@ __simd_vf__ void DequantVFImpl(__ubuf__ O *yAddr, __ubuf__ T *xAddr, __ubuf__ C 
                 AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
                     yAddr + colOffset + rowOffset, vregInputFp32, fullMask);
             } else {
-                AscendC::MicroAPI::Cast<O, C, castTraitB322B16>(vregOutput, vregInputFp32, fullMaskCast);
-                AscendC::MicroAPI::DataCopy<O, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                AscendC::MicroAPI::Cast<O, C, castTraitB322B16>(vregOutput, vregInputFp32, fullMask);
+                AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
                     yAddr + colOffset + rowOffset, vregOutput, fullMaskCast);
             }
             rowOffset += stride;
@@ -97,10 +97,9 @@ __simd_vf__ void DequantVFImpl(__ubuf__ O *yAddr, __ubuf__ T *xAddr, __ubuf__ C 
                 AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
                     yAddr + dLoops * floatRepSize + rowOffset, vregInputFp32, tailMask);
             } else {
-                AscendC::MicroAPI::MaskReg tailMaskCast = AscendC::MicroAPI::UpdateMask<O>(dTail);
-                AscendC::MicroAPI::Cast<O, C, castTraitB322B16>(vregOutput, vregInputFp32, tailMaskCast);
-                AscendC::MicroAPI::DataCopy<O, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    yAddr + dLoops * floatRepSize + rowOffset, vregOutput, tailMaskCast);
+                AscendC::MicroAPI::Cast<O, C, castTraitB322B16>(vregOutput, vregInputFp32, tailMask);
+                AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                    yAddr + dLoops * floatRepSize + rowOffset, vregOutput, tailMask);
             }
             rowOffset += stride;
             scaleOffset += fp32BlockElementNum;
