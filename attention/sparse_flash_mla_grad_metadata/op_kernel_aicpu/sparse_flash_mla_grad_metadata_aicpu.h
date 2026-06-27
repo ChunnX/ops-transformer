@@ -19,8 +19,6 @@
 #include <array>
 #include <string>
 #include <vector>
-#include <cstdio>
-#include <cmath>
 #include "log.h"
 #include "status.h"
 #include "cpu_context.h"
@@ -82,12 +80,6 @@ template<typename T>
 inline bool IsWithinTolerance(T limit, T tolerance, T value)
 {
     return limit + tolerance >= value;
-}
-
-template <typename T>
-inline T CeilDiv(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
 
 // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
@@ -252,13 +244,11 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
-    bool ParamsCheck();
-    int32_t GetSumOfQuerySeq();
-    bool CheckTopkLengthSize();
     int32_t GetQueryBatchSize();
     void CalcOriMaskMode();
     void CalcCmpMaskMode();
     ValidSocVersion ProcessSocVersion();
+    bool ParamsCheck();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetadata(SplitResult &splitRes);
@@ -267,10 +257,8 @@ private:
     uint32_t GetOriS2SeqSize(uint32_t bIdx);
     uint32_t GetCmpS2SeqSize(uint32_t bIdx);
     uint64_t GetRevertS2Size(uint32_t bIdx);
-    uint32_t GetS1Idx(uint32_t s1Size, uint32_t s1GIdx);
-    uint32_t GetBsStride(uint32_t bIdx, uint32_t s1Idx);
-    uint32_t GetOriTopkLength(uint32_t bsStride);
-    uint32_t GetCmpTopkLength(uint32_t bsStride);
+    uint32_t GetOriTopkLength();
+    uint32_t GetCmpTopkLength();
     int64_t CalcOriPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcOriNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcCmpPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
@@ -364,12 +352,10 @@ private:
     uint32_t oriAttentionMode_ = HAS_MASK;
     uint32_t cmpAttentionMode_ = HAS_MASK;
     BlockCost<int64_t> typeCost_ = {};
+    bool isSplitG_ = false;
     bool isSparseOriKv_ = false;
     bool isSparseCmpKv_ = false;
-    uint32_t totalNum_ = 0;
-    uint32_t maxOriKvSize_ = 0;
-    uint32_t maxCmpKvSize_ = 0;
-
+    
 private:
     enum class ParamId : uint32_t {
     // input
