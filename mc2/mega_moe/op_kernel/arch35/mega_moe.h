@@ -1228,37 +1228,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                    QuantScaleOutType, QuantScaleOutType, true>(
-                    params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
-            } else {
-                MegaMoeImpl::GroupMatmul2<CombineQuantMode, SwigluQuantOutType, QuantOutType, bfloat16_t,
-                    QuantScaleOutType, QuantScaleOutType, true>(
-                    params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
-
-                if constexpr (g_coreType == AIV) {
-                    ProcessCombine(gmmAddrInfo, state, expertIdx);
-                }
-            }
+            MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
+                QuantScaleOutType, QuantScaleOutType, true>(
+                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         } else {
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                MegaMoeImpl::GroupMatmul2<COMBINE_NO_QUANT, SwigluQuantOutType, Weight1Type, bfloat16_t,
-                    QuantScaleOutType, QuantScaleOutType>(
-                    params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
-            } else {
-                MegaMoeImpl::GroupMatmul2<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t,
-                    QuantScaleOutType, QuantScaleOutType>(
-                    params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                    state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
-
-                if constexpr (g_coreType == AIV) {
-                    ProcessCombine(gmmAddrInfo, state, expertIdx);
-                }
-            }
+            MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
+                QuantScaleOutType, QuantScaleOutType>(
+                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
+        }
+        // Combine-quant AIV post-process (shared by both A8W8_NZ and generic)
+        if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
+            ProcessCombine(gmmAddrInfo, state, expertIdx);
         }
     }
 }
