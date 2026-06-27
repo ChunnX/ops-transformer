@@ -1820,16 +1820,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
                     static_cast<uint64_t>(maxOutputSize_) * widthA * sizeof(ActivationType) +
                     static_cast<uint64_t>(i) * l1SlotDataBytes_;
                 __gm__ int32_t* localFlagAddr = reinterpret_cast<__gm__ int32_t*>(gmFlagAddr);
-                while (true) {
-                    hcomm_.ReadNbi(channelHandle, gmFlagAddr,
-                        srcUrmaBase + srcNotifyOffset, sizeof(int32_t));
-                    hcomm_.Drain(channelHandle);
-                    PipeBarrier<PIPE_ALL>();
-                    if (AscendC::ReadGmByPassDCache(localFlagAddr) == 1) {
-                        break;
-                    }
-                    AscendC::Nop<200>();
-                }
+                // while (true) {
+                //     hcomm_.ReadNbi(channelHandle, gmFlagAddr,
+                //         srcUrmaBase + srcNotifyOffset, sizeof(int32_t));
+                //     hcomm_.Drain(channelHandle);
+                //     PipeBarrier<PIPE_ALL>();
+                //     if (AscendC::ReadGmByPassDCache(localFlagAddr) == 1) {
+                //         break;
+                //     }
+                //     AscendC::Nop<200>();
+                // }
             }
 
             // 读 data: 源卡 L1 接收区 → 本卡 dispatchRevDataPtr/dispatchRevScalePtr
