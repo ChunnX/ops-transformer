@@ -1827,7 +1827,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel2(
                 AscendC::GlobalTensor<ActivationType> srcGlobal;
                 srcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
                     srcUrmaBase + srcDataOffset));
-                //AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
+                AscendC::DataCopy(tmpBuf, srcGlobal, l1SlotDataBytes_ / sizeof(ActivationType));
             } else {
                 // 跨卡: 用 ReadNbi 从远端卡 URMA 窗口读
                 // ReadNbi dst 需 GM 地址, 先读到 GM 中转区
