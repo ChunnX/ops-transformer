@@ -48,12 +48,6 @@ __simt_vf__ __aicore__ __launch_bounds__(THREAD_NUM) inline void GatherKvNdConti
     uint64_t tNum = static_cast<uint64_t>(blockDim.x);
     int32_t curTok = tokenStart;
 
-    if (tid == 0) {
-        PRINTF("[SIMT GatherKvNdContigVf] batch[%d,%d) tokStart=%d bs=%d hK=%d hV=%d cumsum=%d so=%d\n",
-               batchStart, batchEnd, tokenStart, blockSize, tokenSizeK, tokenSizeV,
-               (int)IS_CUMSUM, (int)HAS_SEQOFFSET);
-    }
-
     for (int32_t b = batchStart; b < batchEnd; b++) {
         int32_t numToken;
         if (IS_CUMSUM) {
