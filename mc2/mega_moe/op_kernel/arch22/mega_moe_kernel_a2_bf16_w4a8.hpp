@@ -1141,10 +1141,6 @@ private:
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, params.EP);
         }
 
-        int32_t prevSum = 0;
-        if (coreIdx < params.EP) {
-            prevSum = preSumBeforeRankForDispatch(coreIdx * params.expertPerRank);
-        }
         AscendC::SyncAll<true>();
 
         AscendC::GlobalTensor<int32_t> ExpertTokenNums;
@@ -1157,7 +1153,7 @@ private:
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
         syncgmm1Idx++;
 
-        uint32_t prevGroupSum1 = 0;
+        uint32_t prevGroupSum1Arr[MAX_RANK_SIZE] = {0};
         uint32_t dequantSum1 = 0;
         uint32_t dequantSum2 = 0;
         uint32_t prevGroupSum2 = 0;
@@ -1174,7 +1170,8 @@ private:
             for (int32_t dstEpIdx = static_cast<int32_t>(coreIdx);
                  dstEpIdx < static_cast<int32_t>(params.EP);
                  dstEpIdx += static_cast<int32_t>(coreNum)) {
-                uint32_t rowStart = prevGroupSum1 +
+                uint32_t arrIdx = static_cast<uint32_t>(dstEpIdx) / coreNum;
+                uint32_t rowStart = prevGroupSum1Arr[arrIdx] +
                     ((RuntimeRank(params) == 0) ? 0u
                         : static_cast<uint32_t>(cumsumMM(
                             tokenPerExpertLayout(RuntimeRank(params) - 1, dstEpIdx, groupIdx))));
@@ -1185,8 +1182,7 @@ private:
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
-                    uint32_t rowSrc = prevSum;
-                    prevSum += rows;
+                    uint32_t rowSrc = preSumBeforeRankForDispatch(dstEpIdx * params.expertPerRank + groupIdx);
                     AscendC::GlobalTensor<ElementABefore> gmSrcA;
                     gmSrcA.SetGlobalBuffer(reinterpret_cast<__gm__ ElementABefore *>(
                         shmem.windowsOutAddr() + peermemInfo.offsetA));
@@ -1201,6 +1197,7 @@ private:
                         dstEpIdx, groupIdx, static_cast<int32_t>(rowStart), params,
                         static_cast<uint64_t>(rowStart * params.problemShape.k()));
                 }
+                prevGroupSum1Arr[arrIdx] += currentMSend;
             }
 
             AscendC::SyncAll<true>();
@@ -1227,7 +1224,6 @@ private:
             }
             AscendC::SyncAll<true>();
 
-            prevGroupSum1 += currentMSend;
             prevGroupSum2 += currentMRecv;
 
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
