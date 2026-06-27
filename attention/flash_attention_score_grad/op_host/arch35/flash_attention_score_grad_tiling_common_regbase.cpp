@@ -415,7 +415,7 @@ void JudgeIsNeedDeter(FuzzyBaseInfoParamsRegbase& fBaseParams, std::array<int64_
         } else {
             fBaseParams.dkDvIsNeedDeter[index] &= ~(1ULL << bitPosition);
         }
-    } else {
+    } else { 
         OP_LOGI("JudgeIsNeedDeter", "calcNum = %ld out of bounds", calcNum);
     }
 }
