@@ -525,7 +525,7 @@ __simd_vf__ void CastScaleImpl(__ubuf__ float* ubDstAddr, __ubuf__ int8_t* ubSrc
         MicroAPI::Cast<float, bfloat16_t, castTraitFp8_1>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
 
         MicroAPI::StoreAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ubDstAddrTmp, vScalefp32Res0, 64, bf16TypeMaskAll);
+            ubDstAddrTmp, vScalefp32Res0, 64, fp32MaskAll);
     }
 }
 
