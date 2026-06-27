@@ -428,11 +428,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, c
                         "when inputs and output are FLOAT4, n value must be even and greater or equal to 4"),
                     return false);
     }
-    // MX量化场景下，N为128对齐
-    OP_CHECK_IF(inputParams_.nSize % GmmConstant::BASIC_BLOCK_SIZE_128 != 0,
+    // MX量化场景下，N为2对齐
+    OP_CHECK_IF(inputParams_.nSize % 2 != 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams_.opType, "weight", ShapeToString(wShape),
-                    "n axis element number of weight must be an integer multiple of 128"),
+                    "n axis element number of weight must be an integer multiple of 2"),
                 return false);
     return true;
 }
