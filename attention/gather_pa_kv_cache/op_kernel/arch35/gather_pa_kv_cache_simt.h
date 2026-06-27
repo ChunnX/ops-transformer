@@ -41,31 +41,6 @@ inline void GatherContigCopyVf(uint64_t count, __gm__ T *dst, __gm__ T *src, uin
     }
 }
 
-// ==================== VF-B: Strided copy (slot-batched) ====================
-// numSlots: number of tokens in this block
-// unitSize: bytes per token (hiddenSize or headBytes)
-// srcGap: bytes from end of one slot's data to start of next slot's data in src
-// dstGap: bytes from end of one slot's data to start of next slot's data in dst
-// Total elements count = numSlots * unitSize, each thread picks one byte.
-// Thread sees its linear byte index, decomposes to (slot, byteInSlot), applies strides.
-
-template <typename T>
-__simt_vf__ __aicore__ __launch_bounds__(THREAD_NUM)
-inline void GatherStridedCopyVf(uint64_t totalCount, __gm__ T *dst, __gm__ T *src,
-                                uint64_t unitSize, uint64_t srcStride, uint64_t dstStride, uint32_t fillZero)
-{
-    for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * THREAD_NUM + static_cast<uint64_t>(threadIdx.x);
-         idx < totalCount; idx += THREAD_NUM * static_cast<uint64_t>(gridDim.x)) {
-        uint64_t slot = idx / unitSize;
-        uint64_t off = idx - slot * unitSize;
-        if (fillZero) {
-            dst[slot * dstStride + off] = static_cast<T>(0);
-        } else {
-            dst[slot * dstStride + off] = src[slot * srcStride + off];
-        }
-    }
-}
-
 // ==================== Process ====================
 
 template <typename T, typename T_INDEX, bool isSeqLensCumsum, bool hasSeqOffset>
@@ -197,29 +172,30 @@ __aicore__ inline void Process(
                                                        outKeyGm + keyBaseOff,
                                                        keyCacheGm + keySrcBase, fillZero);
                 } else {
-                    uint64_t dstSlotStride = isKOutNC ? static_cast<uint64_t>(keyOutStride0) * elemSizeK : hiddenSizeK;
-                    uint64_t srcSlotStride = static_cast<uint64_t>(kCacheStride1) * elemSizeK;
-                    uint64_t srcHeadStride = static_cast<uint64_t>(kCacheStride2) * elemSizeK;
-                    uint64_t dstHeadStride = static_cast<uint64_t>(keyOutStride1) * elemSizeK;
-                    bool isOutHeadNC = (nonContiguousFlag >> 8) & 1;
-                    bool needHeadLoop = isKHeadNC || isOutHeadNC;
-                    uint64_t hBytes = (numHeadsK > 0) ? (hiddenSizeK / numHeadsK) : hiddenSizeK;
+                    uint64_t kDstSlotStride = isKOutNC ? static_cast<uint64_t>(keyOutStride0) * elemSizeK : hiddenSizeK;
+                    uint64_t kSrcSlotStride = static_cast<uint64_t>(kCacheStride1) * elemSizeK;
+                    uint64_t kSrcHeadStride = static_cast<uint64_t>(kCacheStride2) * elemSizeK;
+                    uint64_t kDstHeadStride = static_cast<uint64_t>(keyOutStride1) * elemSizeK;
+                    bool isKOutHeadNC = (nonContiguousFlag >> 8) & 1;
+                    bool needHeadLoop = isKHeadNC || isKOutHeadNC;
+                    uint64_t kHBytes = (numHeadsK > 0) ? (hiddenSizeK / numHeadsK) : hiddenSizeK;
 
-                    if (!needHeadLoop) {
-                        uint64_t totalCnt = curSize * hBytes * numHeadsK;
-                        asc_vf_call<GatherStridedCopyVf<T>>(dim3(THREAD_NUM), totalCnt,
-                                                            outKeyGm + keyBaseOff,
-                                                            keyCacheGm + keySrcBase,
-                                                            hBytes * numHeadsK, srcSlotStride, dstSlotStride, fillZero);
-                    } else {
-                        for (uint64_t h = 0; h < numHeadsK; h++) {
-                            uint64_t totalCnt = curSize * hBytes;
-                            asc_vf_call<GatherStridedCopyVf<T>>(dim3(THREAD_NUM), totalCnt,
-                                                                outKeyGm + keyBaseOff + h * dstHeadStride,
-                                                                keyCacheGm + keySrcBase + h * srcHeadStride,
-                                                                hBytes, srcSlotStride, dstSlotStride, fillZero);
-                            SetFlag<HardEvent::V_S>(0);
-                            WaitFlag<HardEvent::V_S>(0);
+                    for (uint64_t t = 0; t < curSize; t++) {
+                        uint64_t tokenDstOff = keyBaseOff + t * kDstSlotStride;
+                        uint64_t tokenSrcOff = keySrcBase + t * kSrcSlotStride;
+                        if (!needHeadLoop) {
+                            asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), hiddenSizeK,
+                                                               outKeyGm + tokenDstOff,
+                                                               keyCacheGm + tokenSrcOff, fillZero);
+                        } else {
+                            for (uint64_t h = 0; h < numHeadsK; h++) {
+                                asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), kHBytes,
+                                                                   outKeyGm + tokenDstOff + h * kDstHeadStride,
+                                                                   keyCacheGm + tokenSrcOff + h * kSrcHeadStride,
+                                                                   fillZero);
+                                SetFlag<HardEvent::V_S>(0);
+                                WaitFlag<HardEvent::V_S>(0);
+                            }
                         }
                     }
                 }
@@ -232,29 +208,30 @@ __aicore__ inline void Process(
                                                        outValueGm + valueBaseOff,
                                                        valueCacheGm + valueSrcBase, fillZero);
                 } else {
-                    uint64_t dstSlotStride = isVOutNC ? static_cast<uint64_t>(valueOutStride0) * elemSizeV : hiddenSizeV;
-                    uint64_t srcSlotStride = static_cast<uint64_t>(vCacheStride1) * elemSizeV;
-                    uint64_t srcHeadStride = static_cast<uint64_t>(vCacheStride2) * elemSizeV;
-                    uint64_t dstHeadStride = static_cast<uint64_t>(valueOutStride1) * elemSizeV;
-                    bool isOutHeadNC = (nonContiguousFlag >> 9) & 1;
-                    bool needHeadLoop = isVHeadNC || isOutHeadNC;
-                    uint64_t hBytes = (numHeadsV > 0) ? (hiddenSizeV / numHeadsV) : hiddenSizeV;
+                    uint64_t vDstSlotStride = isVOutNC ? static_cast<uint64_t>(valueOutStride0) * elemSizeV : hiddenSizeV;
+                    uint64_t vSrcSlotStride = static_cast<uint64_t>(vCacheStride1) * elemSizeV;
+                    uint64_t vSrcHeadStride = static_cast<uint64_t>(vCacheStride2) * elemSizeV;
+                    uint64_t vDstHeadStride = static_cast<uint64_t>(valueOutStride1) * elemSizeV;
+                    bool isVOutHeadNC = (nonContiguousFlag >> 9) & 1;
+                    bool needHeadLoop = isVHeadNC || isVOutHeadNC;
+                    uint64_t vHBytes = (numHeadsV > 0) ? (hiddenSizeV / numHeadsV) : hiddenSizeV;
 
-                    if (!needHeadLoop) {
-                        uint64_t totalCnt = curSize * hBytes * numHeadsV;
-                        asc_vf_call<GatherStridedCopyVf<T>>(dim3(THREAD_NUM), totalCnt,
-                                                            outValueGm + valueBaseOff,
-                                                            valueCacheGm + valueSrcBase,
-                                                            hBytes * numHeadsV, srcSlotStride, dstSlotStride, fillZero);
-                    } else {
-                        for (uint64_t h = 0; h < numHeadsV; h++) {
-                            uint64_t totalCnt = curSize * hBytes;
-                            asc_vf_call<GatherStridedCopyVf<T>>(dim3(THREAD_NUM), totalCnt,
-                                                                outValueGm + valueBaseOff + h * dstHeadStride,
-                                                                valueCacheGm + valueSrcBase + h * srcHeadStride,
-                                                                hBytes, srcSlotStride, dstSlotStride, fillZero);
-                            SetFlag<HardEvent::V_S>(0);
-                            WaitFlag<HardEvent::V_S>(0);
+                    for (uint64_t t = 0; t < curSize; t++) {
+                        uint64_t tokenDstOff = valueBaseOff + t * vDstSlotStride;
+                        uint64_t tokenSrcOff = valueSrcBase + t * vSrcSlotStride;
+                        if (!needHeadLoop) {
+                            asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), hiddenSizeV,
+                                                               outValueGm + tokenDstOff,
+                                                               valueCacheGm + tokenSrcOff, fillZero);
+                        } else {
+                            for (uint64_t h = 0; h < numHeadsV; h++) {
+                                asc_vf_call<GatherContigCopyVf<T>>(dim3(THREAD_NUM), vHBytes,
+                                                                   outValueGm + tokenDstOff + h * vDstHeadStride,
+                                                                   valueCacheGm + tokenSrcOff + h * vSrcHeadStride,
+                                                                   fillZero);
+                                SetFlag<HardEvent::V_S>(0);
+                                WaitFlag<HardEvent::V_S>(0);
+                            }
                         }
                     }
                 }
