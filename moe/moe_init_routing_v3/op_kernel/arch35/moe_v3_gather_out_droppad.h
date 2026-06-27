@@ -250,7 +250,6 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
             }
             int64_t curExpertLoopOffset = indicesLoop * curCorePerLoopIndicesElements_;
             int64_t globalReadOffset = globalOffsetBase + curExpertLoopOffset;
-            SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
             CopyExpertIn(globalReadOffset, curLoopElements);
 
             LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
@@ -265,7 +264,6 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                 int64_t endRow = (globalSortIdx + curLoopElements - 1) / k_;
 
                 for (int64_t row = startRow; row <= endRow; row++) {
-                    SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
                     CopyXIn(row * cols_ + colsLoopOffset, row, curLoopCols);
                     LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
 
