@@ -44,10 +44,9 @@ constexpr int64_t  V_CACHE_SIZES[METHOD_TYPES] = {512, 128};
 constexpr int64_t  KERNEL_ROPE_LENGTH[METHOD_TYPES] = {64, 64};
 // Deduction Consts
 constexpr int64_t  KERNEL_RMS_NORM_LENGTH[METHOD_TYPES] = {V_CACHE_SIZES[METHOD_V1], K_CACHE_SIZES[METHOD_V2]};
-constexpr int64_t  KERNEL_KV_TOTAL_LENGTH[METHOD_TYPES] = {
-                                                    V_CACHE_SIZES[METHOD_V1] + K_CACHE_SIZES[METHOD_V1],    // KV[V1] = 512 + 64 = 576
-                                                    V_CACHE_SIZES[METHOD_V2] + K_CACHE_SIZES[METHOD_V2],    // KV[V1] = 128 + 192 = 320
-                                                    };
+constexpr int64_t  KERNEL_KV_TOTAL_LENGTH[METHOD_TYPES] = {V_CACHE_SIZES[METHOD_V1] + K_CACHE_SIZES[METHOD_V1],  // KV[V1] = 512 + 64 = 576
+V_CACHE_SIZES[METHOD_V2] + K_CACHE_SIZES[METHOD_V2],  // KV[V1] = 128 + 192 = 320
+};
 
 template <HardEvent event>
 __aicore__ inline void SetWaitFlag(HardEvent evt)
