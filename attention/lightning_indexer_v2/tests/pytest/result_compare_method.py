@@ -263,28 +263,28 @@ def check_result(expect, result, topk_value, params):
     elif isinstance(cu_seqlens_q, list):
         cu_seqlens_q = cu_seqlens_q
     elif cu_seqlens_q is not None:
-        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+        cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
     
     if isinstance(cu_seqlens_k, int):
         cu_seqlens_k = [cu_seqlens_k]
     elif isinstance(cu_seqlens_k, list):
         cu_seqlens_k = cu_seqlens_k
     elif cu_seqlens_k is not None:
-        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
+        cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
 
     if isinstance(seqused_q, int):
         seqused_q = [seqused_q]
     elif isinstance(seqused_q, list):
         seqused_q = seqused_q
     elif seqused_q is not None:
-        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+        seqused_q = ast.literal_eval(seqused_q)
     
     if isinstance(seqused_k, int):
         seqused_k = [seqused_k]
     elif isinstance(seqused_k, list):
         seqused_k = seqused_k
     elif seqused_k is not None:
-        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
+        seqused_k = ast.literal_eval(seqused_k)
 
     npu_pass = True
     max_error = 0
@@ -410,28 +410,28 @@ def check_result_return_value(expect, result, params):
     elif isinstance(cu_seqlens_q, list):
         cu_seqlens_q = cu_seqlens_q
     elif cu_seqlens_q is not None:
-        cu_seqlens_q = [int(x.strip()) for x in cu_seqlens_q.split(',')]
+        cu_seqlens_q = ast.literal_eval(cu_seqlens_q)
     
     if isinstance(cu_seqlens_k, int):
         cu_seqlens_k = [cu_seqlens_k]
     elif isinstance(cu_seqlens_k, list):
         cu_seqlens_k = cu_seqlens_k
     elif cu_seqlens_k is not None:
-        cu_seqlens_k = [int(x.strip()) for x in cu_seqlens_k.split(',')]
+        cu_seqlens_k = ast.literal_eval(cu_seqlens_k)
 
     if isinstance(seqused_q, int):
         seqused_q = [seqused_q]
     elif isinstance(seqused_q, list):
         seqused_q = seqused_q
     elif seqused_q is not None:
-        seqused_q = [int(x.strip()) for x in seqused_q.split(',')]
+        seqused_q = ast.literal_eval(seqused_q)
     
     if isinstance(seqused_k, int):
         seqused_k = [seqused_k]
     elif isinstance(seqused_k, list):
         seqused_k = seqused_k
     elif seqused_k is not None:
-        seqused_k = [int(x.strip()) for x in seqused_k.split(',')]
+        seqused_k = ast.literal_eval(seqused_k)
 
     if layout_query == 'TND':
         if len(cu_seqlens_q) == batch_size + 1:
