@@ -744,7 +744,8 @@ __aicore__ inline void AntiquantVFFp8D448_FloatScale(LocalTensor<Q_T>& kRopeUbNz
     __ubuf__ Q_T* ubKRopeNzAddr = (__ubuf__ Q_T*)(kRopeUbNz.GetPhyAddr());
     __ubuf__ float* ubScaleAddr = (__ubuf__ float*)(scaleUb.GetPhyAddr());
 
-    AntiquantVFImplFp8D448_FloatScale<Q_T, KV_T>(ubKRopeNzAddr, ubSrcAddr, ubDstAddr, ubScaleAddr, ubKRopeAddr, dealRowCount);
+    AntiquantVFImplFp8D448_FloatScale<Q_T, KV_T>(ubKRopeNzAddr, ubSrcAddr, ubDstAddr, ubScaleAddr,
+        ubKRopeAddr, dealRowCount);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -897,8 +898,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
                 intriParams.blockCount = copyElmenCnt; // base s2 size
                 DataCopyPad(kvMergUb[dstOffset * combineDimAlign], keyGm[srcOffset], intriParams, padParams);
             } else {
-                uint64_t keyOffset = idInBlockTable * paBlockStride + remainElmenCnt * constInfo.n2Size * dCombineBytes +
-                        (uint64_t)(runInfo.n2oIdx * dCombineBytes); // BlockNum, BlockSize, N, D
+                uint64_t keyOffset = idInBlockTable * paBlockStride + remainElmenCnt * constInfo.n2Size *
+                    dCombineBytes + (uint64_t)(runInfo.n2oIdx * dCombineBytes); // BlockNum, BlockSize, N, D
                 uint64_t scaleOffset = idInBlockTable * paBlockStride + blockSize * constInfo.n2Size * dCombineBytes +
                     remainElmenCnt * scaleBytes;
                 intriParams.blockCount = copyElmenCnt; // base s2 size
