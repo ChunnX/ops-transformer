@@ -1251,7 +1251,7 @@ private:
             static_cast<int32_t>(n2),
             static_cast<int32_t>(L1TileShape::N),
             shmem,
-            static_cast<int32_t>(peermemInfo.offsetD),
+            peermemInfo.offsetD,
             tokenPerExpertLayout
         };
 
@@ -1338,7 +1338,7 @@ private:
             resource.ubBuf.template GetBufferByByte<uint32_t>(128 * 1024 + UB_ALIGN);
         AscendC::GlobalTensor<ElementD2> gmLocalWindowsOut;
         gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2*>(
-            shmem.windowsOutAddr() + peermemInfo.offsetD));
+            shmem.windowsOutAddr()));
 #endif
         int64_t gmGroupOffsetC = 0;
         uint32_t aivCoreNum = coreNum;
@@ -1538,10 +1538,12 @@ private:
         PeermemInfo(const Params &params, const HcclShmem<true> &shmem)
         {
             offsetA = 0;
-            offsetPeerPerTokenScale = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
-            offsetD = offsetPeerPerTokenScale + MB_SIZE;
             offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;
             offsetFlag = offsetPeerTokenPerExpert - MB_SIZE;
+            offsetPeerPerTokenScale = offsetFlag - MB_SIZE;
+            int64_t sizeCombineOutput = AlignUp(params.maxOutputSize / params.EP *
+                params.problemShape.k() * sizeof(ElementD2), ALIGN_512);
+            offsetD = offsetPeerPerTokenScale - sizeCombineOutput;
         }
     };
 
