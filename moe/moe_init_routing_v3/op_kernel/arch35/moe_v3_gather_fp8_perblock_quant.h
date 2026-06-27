@@ -44,37 +44,55 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
                                              RoundMode::CAST_RINT};
     static constexpr CastTrait castTrait32tofp8 = {RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING,
                                                    RoundMode::CAST_RINT};
+    static constexpr CastTrait traitB16ToB32Layout0 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
+                                                       RoundMode::UNKNOWN};
+    static constexpr CastTrait traitB16ToB32Layout1 = {RegLayout::ONE, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
+                                                       RoundMode::UNKNOWN};
 
     __VEC_SCOPE__
     {
-        RegTensor<T> vreg1, vreg2, vreg3, maxReg, yReg1;
-        RegTensor<float> scaleReg, fp8MaxReg, yReg2, yReg3;
-        RegTensor<U> outReg;
+        RegTensor<T> x0, x1, vreg2, maxReg0, maxReg1, maxReg;
+        RegTensor<float> scaleReg, fp8MaxReg;
+        RegTensor<float> yReg0L0, yReg0L1, yReg1L0, yReg1L1, yReg0, yReg1;
+        RegTensor<U> outReg0, outReg1;
+        RegTensor<uint16_t> exp0, exp1, expMax;
 
-        MaskReg preg0;
+        MaskReg preg0, preg1;
         MaskReg maskAll = CreateMask<uint16_t, MaskPattern::ALL>();
-        MaskReg yMaskReg;
+        MaskReg maskAllB32 = CreateMask<float, MaskPattern::ALL>();
+        MaskReg yMaskReg0, yMaskReg1;
 
         Duplicate((RegTensor<uint16_t> &)vreg2, FP16_MAX_VALUE_MASK);
         Duplicate(fp8MaxReg, fp8MaxValue);
+
+        uint16_t vfLen2 = vfLen * 2;
+        uint16_t vfNum2 = vfNum * 2;
 
         for (uint16_t blkIdx = 0; blkIdx < blockNum; blkIdx++) {
             uint32_t blockOffset = blkIdx * FP8_PERBLOCK_BLOCK_SIZE;
             uint32_t blockElemNum = (blkIdx == blockNum - 1) ? (totalElemNum - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
             uint32_t inputNum = blockElemNum;
             uint32_t outputNum = blockElemNum;
-            uint16_t inputVfLoop = (blockElemNum + vfLen - 1) / vfLen;
-            uint16_t outputVfLoop = (blockElemNum + vfNum - 1) / vfNum;
+            uint16_t inputVfLoop = (blockElemNum + vfLen2 - 1) / vfLen2;
+            uint16_t outputVfLoop = (blockElemNum + vfNum2 - 1) / vfNum2;
 
-            Duplicate(maxReg, static_cast<T>(0));
+            Duplicate(maxReg0, static_cast<T>(0));
+            Duplicate(maxReg1, static_cast<T>(0));
 
+            // 1. 双搬求 max
             for (uint16_t i = 0; i < inputVfLoop; i++) {
                 preg0 = UpdateMask<T>(inputNum);
-                DataCopy(vreg1, xAddr + blockOffset + i * vfLen);
-                And((RegTensor<uint16_t> &)vreg3, (RegTensor<uint16_t> &)vreg1, (RegTensor<uint16_t> &)vreg2, preg0);
-                Max<T, MaskMergeMode::MERGING>(maxReg, maxReg, vreg3, preg0);
-            }
+                preg1 = UpdateMask<T>(inputNum);
+                MaskDeInterleave<T>(preg0, preg1, preg0, preg1);
 
+                DataCopy<T, LoadDist::DIST_DINTLV_B16>(x0, x1, xAddr + blockOffset + i * vfLen2);
+                And(exp0, (RegTensor<uint16_t> &)x0, (RegTensor<uint16_t> &)vreg2, preg0);
+                And(exp1, (RegTensor<uint16_t> &)x1, (RegTensor<uint16_t> &)vreg2, preg1);
+                Max<T, MaskMergeMode::MERGING>(maxReg0, maxReg0, (RegTensor<T> &)exp0, preg0);
+                Max<T, MaskMergeMode::MERGING>(maxReg1, maxReg1, (RegTensor<T> &)exp1, preg1);
+            }
+            // 合并 x0/x1 的 max，再做全局 ReduceMax
+            Max(maxReg, maxReg0, maxReg1, maskAll);
             ReduceMax<uint16_t>((RegTensor<uint16_t> &)maxReg, (RegTensor<uint16_t> &)maxReg, maskAll);
             Duplicate(maxReg, maxReg, maskAll);
 
@@ -82,13 +100,35 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
             Div<float, &mode>(scaleReg, scaleReg, fp8MaxReg, maskAll);
             DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + blkIdx, scaleReg, maskAll);
 
+            // 2. 双搬量化
             for (uint16_t i = 0; i < outputVfLoop; i++) {
-                yMaskReg = UpdateMask<float>(outputNum);
-                DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + i * vfNum);
-                Cast<float, T, castTrait0>(yReg2, yReg1, yMaskReg);
-                Div<float, &mode>(yReg3, yReg2, scaleReg, yMaskReg);
-                Cast<U, float, castTrait32tofp8>(outReg, yReg3, yMaskReg);
-                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + i * vfNum, outReg, yMaskReg);
+                yMaskReg0 = UpdateMask<float>(outputNum);
+                yMaskReg1 = UpdateMask<float>(outputNum);
+                MaskDeInterleave<float>(yMaskReg0, yMaskReg1, yMaskReg0, yMaskReg1);
+
+                DataCopy<T, LoadDist::DIST_DINTLV_B16>(x0, x1, xAddr + blockOffset + i * vfNum2);
+
+                // x0: B16 -> FP32 奇/偶位，Div 后 Interleave 恢复 x0 内部顺序
+                Cast<float, T, traitB16ToB32Layout0>(yReg0L0, x0, maskAll);
+                Cast<float, T, traitB16ToB32Layout1>(yReg0L1, x0, maskAll);
+                Div<float, &mode>(yReg0L0, yReg0L0, scaleReg, maskAllB32);
+                Div<float, &mode>(yReg0L1, yReg0L1, scaleReg, maskAllB32);
+                Interleave(yReg0L0, yReg0L1, yReg0L0, yReg0L1);
+
+                // x1: B16 -> FP32 奇/偶位，Div 后 Interleave 恢复 x1 内部顺序
+                Cast<float, T, traitB16ToB32Layout0>(yReg1L0, x1, maskAll);
+                Cast<float, T, traitB16ToB32Layout1>(yReg1L1, x1, maskAll);
+                Div<float, &mode>(yReg1L0, yReg1L0, scaleReg, maskAllB32);
+                Div<float, &mode>(yReg1L1, yReg1L1, scaleReg, maskAllB32);
+                Interleave(yReg1L0, yReg1L1, yReg1L0, yReg1L1);
+
+                // x0/x1 交织恢复原始连续顺序
+                Interleave(yReg0, yReg1, yReg0L0, yReg1L0);
+
+                Cast<U, float, castTrait32tofp8>(outReg0, yReg0, yMaskReg0);
+                Cast<U, float, castTrait32tofp8>(outReg1, yReg1, yMaskReg1);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + i * vfNum2, outReg0, yMaskReg0);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + i * vfNum2 + vfNum, outReg1, yMaskReg1);
             }
         }
     }
