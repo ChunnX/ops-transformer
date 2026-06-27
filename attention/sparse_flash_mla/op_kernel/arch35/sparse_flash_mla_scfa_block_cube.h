@@ -416,7 +416,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline uint32_t SCFABlockCube<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<Q_T> inputRightTensor,
     int64_t startRow, int64_t token0Idx, int64_t token1Idx, const RunInfo &runInfo, const ConstInfo &constInfo)
 {
-    if constexpr (IS_PA) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
@@ -496,7 +496,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1CFA(
     // 加载当前轮的右矩阵到L1
     inputRightBuf.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
     LocalTensor<KV_T> inputRightTensor = inputRightBuf.GetTensor<KV_T>();
-    if constexpr (IS_PA) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
@@ -677,7 +677,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
     if (runInfo.s2LoopCount < runInfo.oriKvLoopEndIdx) { // orikv阶段不需要取topk, 核内同步
         WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
         LocalTensor<KV_T> inputRightTensor = inputRightBuf.GetTensor<KV_T>();
-        if constexpr (IS_PA) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             Position startPos;
             startPos.bIdx = runInfo.boIdx;
             startPos.n2Idx = runInfo.n2oIdx;
