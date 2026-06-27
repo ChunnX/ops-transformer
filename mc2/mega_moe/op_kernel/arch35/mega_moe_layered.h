@@ -1334,8 +1334,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
 // DispatchLevel1：跨 server 一级 URMA 通信
 // ----------------------------------------------------------------------------------------------------
 //   核心分工 (发送核用最后几个核, 计算核用前面的核):
-//     - 发送核 (aivCoreIdx >= blockAivNum_ - numSendCores): 轮询中转区, WriteWithNotifyNbi 发到对端接收区
-//     - 计算核 (aivCoreIdx < blockAivNum_ - numSendCores): 量化 token → 写入中转区/二级区域 → 写完成标志
+//     - 发送核 (aivCoreIdx >= blockNum_ - numSendCores): 轮询中转区, WriteWithNotifyNbi 发到对端接收区
+//     - 计算核 (aivCoreIdx < blockNum_ - numSendCores): 量化 token → 写入中转区/二级区域 → 写完成标志
 //
 //   通信模式: 同层跨 server 直连 (server0 卡0 ↔ server1 卡0)
 //   每轮按 localExpertId 遍历, 已发送的 token 跳过
@@ -1363,13 +1363,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel1(i
         ? MegaMoeDispatchImpl::GetLocalRankInServer(rankId_, rankSizePerServer) : 0;
 
     // ---------- Step 1: 核角色分配 ----------
-    // 发送核用最后 numSendCores 个核, 计算核用前面 blockAivNum_ - numSendCores 个核
+    // 发送核用最后 numSendCores 个核, 计算核用前面 blockNum_ - numSendCores 个核
     uint32_t numSendCores = 0;
     if (hasMultipleServers) {
         numSendCores = (numOtherServers < MegaMoeDispatchImpl::MAX_L1_SEND_CORES)
             ? numOtherServers : MegaMoeDispatchImpl::MAX_L1_SEND_CORES;
     }
-    uint32_t numComputeCores = blockAivNum_ - numSendCores;
+    uint32_t numComputeCores = blockNum_ - numSendCores;
     bool isSendCore = (aivCoreIdx_ >= numComputeCores);
     uint32_t sendCoreIdx = aivCoreIdx_ - numComputeCores;  // 发送核在发送核组内的索引 (0-based)
     uint32_t computeCoreLocalIdx = aivCoreIdx_;              // 计算核在计算核组内的索引 (0-based)
@@ -1662,7 +1662,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel1(i
 
         // 写完成标志: 本计算核完成当前 expert round
         __gm__ int32_t* myCompleteAddr = MegaMoeDispatchImpl::GetCompleteListAddr(
-            params_.workspaceInfo.dispatchL1CompleteListPtr, aivCoreIdx_, expertPerRank_);
+            params_.workspaceInfo.dispatchL1CompleteListPtr, blockIdx_, expertPerRank_);
         WriteGmByPassDCache(myCompleteAddr + localExpertId, 1);
     }
 }
