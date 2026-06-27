@@ -394,6 +394,11 @@ static ge::graphStatus CheckOutputTensors(const gert::TilingContext *context, co
 // ---------------------------------------------------------------------------
 // HCCL Window 容量校验
 // ---------------------------------------------------------------------------
+static uint64_t AlignUpWin(const uint64_t data)
+{
+    return (data + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+}
+
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const char *nodeName,
                                     const MoeEpDispatchEpilogueInfo &info)
 {
@@ -402,14 +407,27 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."),
         return ge::GRAPH_FAILED);
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
-    uint64_t winNeed = static_cast<uint64_t>(info.cfg.epWorldSize)
-                       * static_cast<uint64_t>(info.cfg.numMaxTokensPerRank)
-                       * static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
+    uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
+    uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
+    uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
+
+    uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 
+                                    2 * epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t dispatchWinDataSize = epWorldSize * nmt * perSlotBytes;
+    uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
+    uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
+    uint64_t winNeed = dispatchWinDataSize + combineWinDataSize + totalStateWinSizeEp;
     OP_TILING_CHECK(winNeed > maxWindowSize,
         OP_LOGE(nodeName,
             "HCCL Window not enough: need %lu (ep=%u, nmt=%u, perSlotBytes=%u), but cclBufferSize=%lu.",
             winNeed, info.cfg.epWorldSize, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes, maxWindowSize),
         return ge::GRAPH_FAILED);
+
+    info.winDataOffset = totalStateWinSizeEp;
     return ge::GRAPH_SUCCESS;
 }
 
