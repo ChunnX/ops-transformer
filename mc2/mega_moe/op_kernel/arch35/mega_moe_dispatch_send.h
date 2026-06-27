@@ -96,8 +96,8 @@ __aicore__ inline uint32_t ServerIdToOtherServerIdx(uint32_t serverId, uint32_t 
 /// 计算单个 server 中转区大小 (含 header + m 个 slot, 512B 对齐)
 __aicore__ inline uint64_t CalcRelayAreaPerServer(uint32_t m, uint32_t slotSize)
 {
-    uint64_t perServer = L1_RELAY_HEADER_BYTES + static_cast<uint64_t>(m) * slotSize;
-    return Ops::Base::CeilAlign(perServer, static_cast<int64_t>(ALIGN_512));
+    int64_t perServer = L1_RELAY_HEADER_BYTES + static_cast<uint64_t>(m) * slotSize;
+    return static_cast<uint64_t>(Ops::Base::CeilAlign(perServer, static_cast<int64_t>(ALIGN_512)));
 }
 
 /// 获取第 otherServerIdx 个中转区的基地址

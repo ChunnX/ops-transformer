@@ -1345,7 +1345,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
 //   对端接收区 layout: sparse by tokenIdx, 整个 slot 的最后 2 个 int (slotSize-8B) 为 WriteWithNotifyNbi notify
 // =====================================================================================================
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMoeTypeFunc>::DispatchLevel1(int32_t localExpertId)
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel1(int32_t localExpertId)
 {
     if constexpr(g_coreType == AIC) {
         return;
