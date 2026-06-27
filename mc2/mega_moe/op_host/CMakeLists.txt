@@ -8,6 +8,25 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+# 获取 CANN 环境 toolkit 版本信息
+execute_process(
+    COMMAND ${HI_PYTHON} ${CMAKE_SOURCE_DIR}/cmake/scripts/check_version_compatible.py
+        --cann_path ${ASCEND_CANN_PACKAGE_PATH}
+        --cann_package_name toolkit
+        get_package_version
+    OUTPUT_VARIABLE ASC_DEVKIT_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT ASC_DEVKIT_VERSION OR NOT ASC_DEVKIT_VERSION VERSION_GREATER_EQUAL "9.1.0")
+    if(ASC_DEVKIT_VERSION)
+        message(STATUS "[MegaMoe] toolkit ${ASC_DEVKIT_VERSION} is too old, skip compiling (require >= 9.1.0)")
+    else()
+        message(STATUS "[MegaMoe] toolkit version not found, skip compiling (require >= 9.1.0)")
+    endif()
+    return()
+endif()
+
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         mega_moe_def.cpp
