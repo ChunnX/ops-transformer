@@ -1243,11 +1243,17 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         int32_t taskOffset = blockIdx_ * taskNumPerCore;
         taskNumPerCore = min(taskNumPerCore, static_cast<int32_t>(totalSize - blockIdx_ * taskNumPerCore));
         ComputeGradXMatmul(taskOffset, taskNumPerCore);
-        totalSize = n_ + n_ + n_ * n_;
-        taskNumPerCore = Ops::Base::CeilDiv(totalSize, static_cast<int32_t>(aicNum_));
-        taskOffset = blockIdx_ * taskNumPerCore;
-        taskNumPerCore = min(taskNumPerCore, static_cast<int32_t>(totalSize - blockIdx_ * taskNumPerCore));
-        ComputeGradPhiMatmul(taskOffset, taskNumPerCore);
+
+        int32_t totalN = n_ * c_;
+        int32_t taskNCount = Ops::Base::CeilDiv(totalN, static_cast<int32_t>(aicNum_));
+        taskNCount = min(taskNCount, static_cast<int32_t>(16));
+        int32_t taskLoops = Ops::Base::CeilDiv(totalN, taskNCount);
+        int32_t taskNTailCount = totalN - (taskLoops - 1) * taskNCount;
+        for (int32_t taskLoop = blockIdx_; taskLoop < taskLoops; taskLoop += aicNum_) {
+            int32_t taskOft = taskLoop * taskNCount;
+            int32_t taskCount = taskLoop == (taskLoops - 1) ? taskNTailCount : taskNCount;
+            ComputeGradPhiMatmul(taskOft, taskCount);
+        }
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x6);
     }
 }
@@ -1278,11 +1284,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 {
     if (mm2M <= 0)
         return;
-    mm2_.SetTensorA(gradHcBeforeNormWs_[taskOffset], true);
-    mm2_.SetTensorB(xFp32Ws_);
+    mm2_.SetTensorA(gradHcBeforeNormWs_, true);
+    mm2_.SetTensorB(xFp32Ws_[taskOffset]);
     mm2_.SetHF32(false, 1);
-    mm2_.SetSingleShape(mm2M, mm2N_, mm2K_);
-    mm2_.template IterateAll<false> (gradPhiGm_[taskOffset * (n_ * c_)], 0);
+    mm2_.SetSingleShape(mm2M_, mm2M, mm2K_);
+    mm2_.template IterateAll<false> (gradPhiGm_[taskOffset], 0);
     mm2_.End();
 }
 
