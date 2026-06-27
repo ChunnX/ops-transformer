@@ -10,199 +10,44 @@
 
 /*!
  * \file sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch35.h
- * \brief AICPU kernel implementation for A5 (arch35)
+ * \brief AICPU kernel implementation for A5 (arch35) - placeholder with A3 implementation
  */
 #ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_ARCH35_H
 #define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_ARCH35_H
 
 #include "../sparse_lightning_indexer_kl_loss_grad_metadata_aicpu.h"
 #include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstdio>
-#include <string>
+#include <iterator>
+#include <numeric>
 #include <vector>
 #include "log.h"
 #include "status.h"
 #include "cust_op/cust_cpu_utils.h"
-#include "../../../sparse_lightning_indexer_kl_loss_grad/op_kernel/arch35/sparse_lightning_indexer_klloss_grad_metadata_arch35.h"
+#include "../../../sparse_lightning_indexer_kl_loss_grad/op_kernel/sparse_lightning_indexer_kl_loss_grad_metadata.h"
+
+using namespace optiling;
 
 namespace aicpu {
-
-constexpr int64_t FA_TOLERANCE_RATIO = 2;
-
-enum BlockType : uint32_t {
-    NORMAL_BLOCK = 0,
-    TAIL_BLOCK,
-    BLOCK_MAX_TYPE
-};
-
-enum class Arch35SparseMode : uint8_t {
-    DEFAULT_MASK = 0,
-    ALL_MASK,
-    LEFT_UP_CAUSAL,
-    RIGHT_DOWN_CAUSAL,
-    BAND,
-    SPARSE_BUTT,
-};
-
-enum class ValidSocVersion {
-    ASCEND910B = 0,
-    ASCEND950,
-    RESERVED_VERSION = 99999
-};
-
-template<class T>
-using Range = std::pair<T, T>;
-
-template<class T>
-using BlockCost = std::array<std::array<T, static_cast<size_t>(BLOCK_MAX_TYPE)>, static_cast<size_t>(BLOCK_MAX_TYPE)>;
-
-template<typename T>
-inline T Clip(T value, T minValue, T maxValue)
-{
-    if (value < minValue) {
-        return minValue;
-    }
-    if (value > maxValue) {
-        return maxValue;
-    }
-    return value;
-}
-
-template<typename T>
-inline bool IsWithinTolerance(T limit, T tolerance, T value)
-{
-    return limit + tolerance >= value;
-}
-
+namespace {
 template <typename T>
-inline T Arch35CeilDiv(T num, T rnd)
+inline T CeilDiv(T x, T y)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
+    if (y == 0) {
+        return 0;
+    }
+    return (x + y - 1) / y;
 }
 
-struct FlashDecodeResult {
-    uint32_t fdUsedVecNum { 0U };
-    std::vector<uint32_t> fdBN2Idx {};
-    std::vector<uint32_t> fdMIdx {};
-    std::vector<uint32_t> fdWorkspaceIdx {};
-    std::vector<uint32_t> fdS2SplitNum {};
-    std::vector<uint32_t> fdMSize {};
-    std::vector<uint32_t> fdIdx {};
-    std::vector<uint32_t> fdMStart {};
-    std::vector<uint32_t> fdMNum {};
+inline bool IsTensorValid(Tensor *tensor)
+{
+    return tensor != nullptr && tensor->GetData() != nullptr && tensor->GetTensorShape() != nullptr;
+}
 
-    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum) :
-        fdBN2Idx(aicNum),
-        fdMIdx(aicNum),
-        fdWorkspaceIdx(aicNum),
-        fdS2SplitNum(aicNum),
-        fdMSize(aicNum),
-        fdIdx(aivNum),
-        fdMStart(aivNum),
-        fdMNum(aivNum) {}
-};
-
-struct SplitResult {
-    uint32_t usedCoreNum { 0U };
-    std::vector<uint32_t> bN2End {};
-    std::vector<uint32_t> gS1End {};
-    std::vector<uint32_t> s2End {};
-    std::vector<uint32_t> firstFdDataWorkspaceIdx {};
-    int64_t maxCost { 0 };
-    uint32_t numOfFdHead { 0U };
-    uint32_t maxS2SplitNum { 0U };
-    FlashDecodeResult fdRes { 0U, 0U };
-
-    SplitResult(uint32_t aicNum, uint32_t aivNum) :
-        bN2End(aicNum),
-        gS1End(aicNum),
-        s2End(aicNum),
-        firstFdDataWorkspaceIdx(aicNum),
-        fdRes(aicNum, aivNum) {};
-};
-
-struct SplitInfo {
-    std::vector<uint32_t> s1GBaseNum {};
-    std::vector<uint32_t> s2BaseNum {};
-    std::vector<uint32_t> s1GTailSize {};
-    std::vector<uint32_t> s2TailSize {};
-    bool isKvSeqAllZero { true };
-
-    explicit SplitInfo(uint32_t batchSize) :
-        s1GBaseNum(batchSize),
-        s2BaseNum(batchSize),
-        s1GTailSize(batchSize),
-        s2TailSize(batchSize) {}
-};
-
-struct CostInfo {
-    std::vector<int64_t> bN2CostOfEachBatch {};
-    std::vector<uint32_t> bN2BlockOfEachBatch {};
-    std::vector<int64_t> bN2LastBlockCostOfEachBatch {};
-    uint32_t totalBlockNum { 0U };
-    int64_t totalCost { 0 };
-    uint64_t maxS1GCost { 0 };
-
-    explicit CostInfo(uint32_t batchSize) :
-        bN2CostOfEachBatch(batchSize),
-        bN2BlockOfEachBatch(batchSize),
-        bN2LastBlockCostOfEachBatch(batchSize) {}
-};
-
-struct SplitContext {
-    SplitInfo splitInfo { 0U };
-    CostInfo costInfo { 0U };
-
-    explicit SplitContext(uint32_t batchSize) :
-        splitInfo(batchSize),
-        costInfo(batchSize) {}
-};
-
-struct BatchCache {
-    uint32_t bIdx { 0U };
-    uint32_t s1Size { 0U };
-    uint32_t s2Size { 0U };
-    int64_t preTokenLeftUp { 0 };
-    int64_t nextTokenLeftUp { 0 };
-    BlockCost<int64_t> typeCost {};
-};
-
-struct S1GCache {
-    uint32_t bIdx { 0U };
-    uint32_t s1GIdx { 0U };
-    uint32_t s2Start { 0U };
-    uint32_t s2End { 0U };
-    int64_t s1GCost { 0 };
-    int64_t s1GLastBlockCost { 0 };
-    uint32_t s1GBlock { 0U };
-    int64_t s1GNormalBlockCost { 0 };
-};
-
-struct CoreCache {
-    int64_t costLimit { 0 };
-    int64_t cost { 0 };
-    uint32_t block { 0U };
-};
-
-struct AssignContext {
-    uint32_t curBIdx { 0U };
-    uint32_t curBN2Idx { 0U };
-    uint32_t curS1GIdx { 0U };
-    uint32_t curS2Idx { 0U };
-    uint32_t curCoreIdx { 0U };
-    int64_t unassignedCost { 0 };
-    uint32_t curKvSplitPart { 1U };
-    uint32_t preFdDataNum { 0U };
-
-    int64_t bN2Cost { 0 };
-    uint32_t bN2Block { 0U };
-    bool isFinished { false };
-    BatchCache batchCache {};
-    S1GCache s1GCache {};
-    CoreCache coreCache {};
-};
+inline int64_t AbsDiff(int64_t lhs, int64_t rhs)
+{
+    return lhs > rhs ? lhs - rhs : rhs - lhs;
+}
+} // namespace
 
 class SparseLightningIndexerKLLossGradMetadataCpuKernelArch35 : public CpuKernel {
 public:
@@ -212,776 +57,411 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
-    int32_t GetQueryBatchSize();
-    bool ParamsInit();
     bool ParamsCheck();
-    bool CheckTensorData();
-    bool BalanceSchedule(SplitResult &splitRes);
-    bool GenMetaData(SplitResult &splitRes);
-    ValidSocVersion ProcessSocVersion();
+    int64_t GetActualSeqLen(Tensor *tensor, int64_t bIdx) const;
+    int64_t CalcTotalSize() const;
+    int64_t GetCmpResidualKey(int64_t bIdx) const;
+    int64_t GetPreCompressS2Len(int64_t bIdx, int64_t s2Size) const;
+    int64_t GetS2RealSize(int64_t bIdx, int64_t s1Size, int64_t s2Size, int64_t s1Idx) const;
+    int64_t GetS1Load(int64_t s2RealSize) const;
+    bool BuildSparseValidArray(std::vector<int64_t> &sparseValidArray);
+    bool CanSplitWithMaxLoad(const std::vector<int64_t> &sparseValidArray, int64_t start, int64_t partNum,
+                             int64_t maxLoad) const;
+    int64_t FindMinMaxLoad(const std::vector<int64_t> &sparseValidArray, int64_t start, int64_t partNum) const;
+    bool BuildBalancedSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
+                                     std::vector<int64_t> &sparseStartIdx) const;
+    bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray);
+    bool BuildMetadata();
 
-    uint32_t GetS1SeqSize(uint32_t bIdx);
-    uint32_t GetS2SeqSize(uint32_t bIdx);
-    int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
-    int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
-    Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache);
-    int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
-    BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
-        uint32_t s2TailSize);
+    Tensor *cuSeqLensQuery_ = nullptr;
+    Tensor *cuSeqLensKey_ = nullptr;
+    Tensor *seqUsedQuery_ = nullptr;
+    Tensor *seqUsedKey_ = nullptr;
+    Tensor *cmpResidualKey_ = nullptr;
+    Tensor *metadata_ = nullptr;
 
-    void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
-    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache,
-        S1GCache &s1GCache);
-
-    void CalcSplitInfo(SplitContext &splitContext);
-    void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo);
-    void CalcCostInfo(SplitContext &splitContext);
-
-    void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext);
-    void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext);
-    void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
-    void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
-    void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
-    void AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext,
-        AssignContext &assignContext, SplitResult &result);
-
-    bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes);
-    void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result);
-
-    void SplitFD(SplitResult &splitRes);
-    void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
-
-    CpuKernelContext* context_ = nullptr;
-    Tensor *actSeqLenQ_ = nullptr;
-    Tensor *actSeqLenK_ = nullptr;
-    Tensor *seqUsedQ_ = nullptr;
-    Tensor *seqUsedK_ = nullptr;
-    Tensor *cmpResidualK_ = nullptr;
-    Tensor *metaData_ = nullptr;
-
-    std::string socVersion_ = "";
-    bool supportFd_ = false;
-    int32_t cmpRatio_ = 4;
-    uint32_t aicCoreNum_ = 24U;
-    uint32_t aivCoreNum_ = 48U;
-    int32_t batchSize_ = 0;
-    int32_t maxSeqlenQ_ = 0;
-    int32_t maxSeqlenK_ = 0;
-    int32_t numHeadsQ_ = 0;
-    int32_t numHeadsK_ = 0;
-    int32_t headDim_ = 0;
-    int32_t queryQuantMode_ = 0;
-    int32_t keyQuantMode_ = 0;
-    int32_t topk_ = 0;
-    std::string layoutQ_ = "BSND";
+    int64_t bSize_ = 0;
+    int64_t s1Size_ = 0;
+    int64_t s2Size_ = 0;
+    int64_t kSize_ = 0;
+    int64_t numHeadsQ_ = 0;
+    int64_t numHeadsK_ = 0;
+    int64_t headDim_ = 0;
+    int64_t sparseMode_ = 0;
+    int64_t cmpRatio_ = 1;
+    int64_t aicCoreNum_ = 25;
+    std::string layout_ = "BSND";
     std::string layoutK_ = "BSND";
-    int32_t maskMode_ = 0;
-    uint32_t attentionMode_ = 0;
-    ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910B;
+    SliLayout layoutType_ = SliLayout::BSND;
 
-    int64_t  preToken_ = INT64_MAX;
-    int64_t  nextToken_ = INT64_MAX;
-    uint32_t groupSize_ = 0;
-    uint32_t mBaseSize_ = 256;
-    uint32_t s2BaseSize_ = 0;
-    bool isS1G_ = true;
-    uint32_t totalNum = 0;
-
-    enum class ParamId : uint32_t {
-        actSeqLenQ = 0,
-        actSeqLenK = 1,
-        seqUsedQ = 2,
-        seqUsedK = 3,
-        cmpResidualK = 4,
-        metaData = 0,
-    };
+    int64_t coreNum_ = 0;
+    int64_t totalSize_ = 0;
+    int64_t splitFactorSize_ = 0;
+    std::vector<int64_t> bS1Index_;
 };
 
 inline uint32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::Compute(CpuKernelContext &ctx)
 {
-    bool success = Prepare(ctx);
-    if (!success) {
+    if (!Prepare(ctx)) {
         return KERNEL_STATUS_PARAM_INVALID;
     }
-    SplitResult splitRes {aicCoreNum_, aivCoreNum_};
-    success = BalanceSchedule(splitRes) && GenMetaData(splitRes);
-    return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
+    return BuildMetadata() ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
 inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::Prepare(CpuKernelContext &ctx)
 {
-    actSeqLenQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
-    actSeqLenK_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenK));
-    seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
-    seqUsedK_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedK));
-    cmpResidualK_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualK));
-    metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
+    cuSeqLensQuery_ = ctx.Input(0);
+    cuSeqLensKey_ = ctx.Input(1);
+    seqUsedQuery_ = ctx.Input(2);
+    seqUsedKey_ = ctx.Input(3);
+    cmpResidualKey_ = ctx.Input(4);
+    metadata_ = ctx.Output(0);
 
-    bool requiredAttrs = GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_) &&
-                         GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
+    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
                          GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
                          GetAttrValue(ctx, "head_dim", headDim_);
     if (!requiredAttrs) {
         return false;
     }
 
-    GetAttrValueOpt(ctx, "batch_size", batchSize_);
-    GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
-    GetAttrValueOpt(ctx, "max_seqlen_k", maxSeqlenK_);
-    GetAttrValueOpt(ctx, "topk", topk_);
-    GetAttrValueOpt(ctx, "layout_q", layoutQ_);
+    GetAttrValueOpt(ctx, "batch_size", bSize_);
+    GetAttrValueOpt(ctx, "max_seqlen_q", s1Size_);
+    GetAttrValueOpt(ctx, "max_seqlen_k", s2Size_);
+    GetAttrValueOpt(ctx, "topk", kSize_);
+    GetAttrValueOpt(ctx, "layout_q", layout_);
     GetAttrValueOpt(ctx, "layout_k", layoutK_);
-    GetAttrValueOpt(ctx, "mask_mode", maskMode_);
+    GetAttrValueOpt(ctx, "mask_mode", sparseMode_);
     GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
+    GetAttrValueOpt(ctx, "aic_core_num", aicCoreNum_);
 
-    return (ParamsCheck() && ParamsInit());
+    if (layout_ == "BSND") {
+        layoutType_ = SliLayout::BSND;
+    } else if (layout_ == "TND") {
+        layoutType_ = SliLayout::TND;
+    } else {
+        KERNEL_LOG_ERROR("layout_q must be BSND or TND, but got %s", layout_.c_str());
+        return false;
+    }
+
+    if (bSize_ <= 0) {
+        if (IsTensorValid(seqUsedQuery_)) {
+            bSize_ = seqUsedQuery_->GetTensorShape()->GetDimSize(0);
+        } else if (layoutType_ == SliLayout::TND && IsTensorValid(cuSeqLensQuery_)) {
+            bSize_ = cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) - 1;
+        }
+    }
+
+    return ParamsCheck();
 }
 
 inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsCheck()
 {
-    return CheckTensorData();
-}
+    KERNEL_CHECK_NULLPTR(metadata_, false, "metadata output is null");
+    KERNEL_CHECK_NULLPTR(metadata_->GetData(), false, "metadata data is null");
+    KERNEL_CHECK_NULLPTR(metadata_->GetTensorShape(), false, "metadata shape is null");
 
-inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CheckTensorData()
-{
-    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr &&
-                                           t->GetTensorShape()->GetDimSize(0) != 0; };
-    if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cu_seqlens_q is nullptr!");
+    if (aicCoreNum_ <= 0) {
+        KERNEL_LOG_ERROR("aic_core_num must be positive, but got %ld", aicCoreNum_);
         return false;
     }
-    if (isValid(actSeqLenK_) && actSeqLenK_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cu_seqlens_k is nullptr!");
+    if (numHeadsQ_ <= 0 || numHeadsK_ <= 0 || headDim_ <= 0) {
+        KERNEL_LOG_ERROR("num_heads_q/num_heads_k/head_dim must be positive, but got nq=%ld nk=%ld d=%ld",
+                         numHeadsQ_, numHeadsK_, headDim_);
         return false;
     }
-    if (isValid(seqUsedQ_) && seqUsedQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of seqused_q is nullptr!");
+    if (bSize_ <= 0 || kSize_ <= 0) {
+        KERNEL_LOG_ERROR("batch_size/topk must be positive, but got batch_size=%ld topk=%ld", bSize_, kSize_);
         return false;
     }
-    if (isValid(seqUsedK_) && seqUsedK_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of seqused_k is nullptr!");
+    if (layoutType_ == SliLayout::BSND && (s1Size_ <= 0 || s2Size_ <= 0)) {
+        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be positive for BSND, but got q=%ld k=%ld",
+                         s1Size_, s2Size_);
         return false;
     }
-    if (isValid(cmpResidualK_) && cmpResidualK_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cmp_residual_k is nullptr!");
+    if (s1Size_ < 0 || s2Size_ < 0) {
+        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be non-negative, but got q=%ld k=%ld",
+                         s1Size_, s2Size_);
+        return false;
+    }
+    if (numHeadsQ_ % numHeadsK_ != 0) {
+        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld",
+                         numHeadsQ_, numHeadsK_);
+        return false;
+    }
+    if (sparseMode_ != static_cast<int64_t>(SliSparseMode::NO_MASK) &&
+        sparseMode_ != static_cast<int64_t>(SliSparseMode::RIGHT_DOWN_CAUSAL)) {
+        KERNEL_LOG_ERROR("mask_mode only supports 0 or 3, but got %ld", sparseMode_);
+        return false;
+    }
+    if (cmpRatio_ < 1 || cmpRatio_ > 128) {
+        KERNEL_LOG_ERROR("cmp_ratio must be in [1, 128], but got %ld", cmpRatio_);
+        return false;
+    }
+    if (layoutType_ == SliLayout::TND && (!IsTensorValid(cuSeqLensQuery_) || !IsTensorValid(cuSeqLensKey_))) {
+        KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k must be provided for TND metadata.");
+        return false;
+    }
+    if (layoutType_ == SliLayout::TND &&
+        (cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) < bSize_ + 1 ||
+         cuSeqLensKey_->GetTensorShape()->GetDimSize(0) < bSize_ + 1)) {
+        KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k length must be at least batch_size + 1.");
+        return false;
+    }
+    if (IsTensorValid(cmpResidualKey_) && cmpResidualKey_->GetTensorShape()->GetDimSize(0) < bSize_) {
+        KERNEL_LOG_ERROR("cmp_residual_k length must be at least batch_size, but got %ld and batch_size=%ld.",
+                         cmpResidualKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
     return true;
 }
 
-inline int32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetQueryBatchSize()
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetActualSeqLen(Tensor *tensor,
+                                                                                        int64_t bIdx) const
 {
-    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
-        if (seqUsedQ_->GetTensorShape() != nullptr) {
-            return seqUsedQ_->GetTensorShape()->GetDimSize(0);
-        }
+    if (!IsTensorValid(tensor)) {
+        return 0;
     }
-    if (layoutQ_ == "TND") {
-        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
-            if (actSeqLenQ_->GetTensorShape() != nullptr) {
-                return actSeqLenQ_->GetTensorShape()->GetDimSize(0) - 1;
+    auto *data = reinterpret_cast<const int32_t *>(tensor->GetData());
+    return static_cast<int64_t>(data[bIdx + 1]) - static_cast<int64_t>(data[bIdx]);
+}
+
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcTotalSize() const
+{
+    if (layoutType_ == SliLayout::TND) {
+        auto *data = reinterpret_cast<const int32_t *>(cuSeqLensQuery_->GetData());
+        return data[bSize_];
+    }
+    return bSize_ * s1Size_;
+}
+
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetCmpResidualKey(int64_t bIdx) const
+{
+    if (!IsTensorValid(cmpResidualKey_)) {
+        return 0;
+    }
+    auto *data = reinterpret_cast<const int32_t *>(cmpResidualKey_->GetData());
+    return static_cast<int64_t>(data[bIdx]);
+}
+
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetPreCompressS2Len(int64_t bIdx,
+                                                                                             int64_t s2Size) const
+{
+    return std::max<int64_t>(0, s2Size * cmpRatio_ + GetCmpResidualKey(bIdx));
+}
+
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetS2RealSize(int64_t bIdx, int64_t s1Size,
+                                                                                       int64_t s2Size,
+                                                                                       int64_t s1Idx) const
+{
+    int64_t s2SparseLen = 0;
+    if (sparseMode_ == static_cast<int64_t>(SliSparseMode::NO_MASK)) {
+        s2SparseLen = s2Size;
+    } else if (sparseMode_ == static_cast<int64_t>(SliSparseMode::RIGHT_DOWN_CAUSAL)) {
+        s2SparseLen = (GetPreCompressS2Len(bIdx, s2Size) - s1Size + s1Idx + 1) / cmpRatio_;
+    }
+    return std::max<int64_t>(0, std::min(s2SparseLen, kSize_));
+}
+
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetS1Load(int64_t s2RealSize) const
+{
+    if (s2RealSize <= 0) {
+        return 0;
+    }
+    int64_t fixedS1Load = std::min<int64_t>(256, std::min<int64_t>(kSize_, std::max<int64_t>(64, kSize_ / 4)));
+    return s2RealSize + fixedS1Load;
+}
+
+inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::BuildSparseValidArray(
+    std::vector<int64_t> &sparseValidArray)
+{
+    if (sparseValidArray.empty()) {
+        KERNEL_LOG_ERROR("Sparse valid array size should be larger than 0.");
+        return false;
+    }
+    if (layoutType_ == SliLayout::TND) {
+        int64_t accumS1 = 0;
+        for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
+            int64_t actualS1 = GetActualSeqLen(cuSeqLensQuery_, bIdx);
+            int64_t actualS2 = GetActualSeqLen(cuSeqLensKey_, bIdx);
+            for (int64_t s1Idx = 0; s1Idx < actualS1 && accumS1 < static_cast<int64_t>(sparseValidArray.size());
+                 ++s1Idx, ++accumS1) {
+                sparseValidArray[accumS1] = GetS1Load(GetS2RealSize(bIdx, actualS1, actualS2, s1Idx));
+            }
+        }
+    } else {
+        int64_t accum = 0;
+        for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
+            for (int64_t s1Idx = 0; s1Idx < s1Size_; ++s1Idx, ++accum) {
+                sparseValidArray[accum] = GetS1Load(GetS2RealSize(bIdx, s1Size_, s2Size_, s1Idx));
             }
         }
     }
-    return batchSize_;
-}
-
-inline ValidSocVersion SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ProcessSocVersion()
-{
-    const std::string ascend950 = "Ascend950";
-    if (socVersion_.find(ascend950) != std::string::npos) {
-        return ValidSocVersion::ASCEND950;
-    } else {
-        return ValidSocVersion::ASCEND910B;
-    }
-
-    return ValidSocVersion::RESERVED_VERSION;
-}
-
-inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ParamsInit()
-{
-    batchSize_ = GetQueryBatchSize();
-    auto mode = static_cast<Arch35SparseMode>(maskMode_);
-    if (mode == Arch35SparseMode::RIGHT_DOWN_CAUSAL) {
-        attentionMode_ = 1;
-        preToken_ = INT64_MAX;
-    } else if (mode == Arch35SparseMode::DEFAULT_MASK) {
-        attentionMode_ = 0;
-    } else if (mode == Arch35SparseMode::BAND) {
-        attentionMode_ = 1;
-    }
-    groupSize_ = numHeadsQ_ / numHeadsK_;
-    validSocVersion_ = ProcessSocVersion();
-    if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
-        s2BaseSize_ = 2048U;
-    } else if (validSocVersion_ == ValidSocVersion::ASCEND950) {
-        s2BaseSize_ = 128U;
-    } else {
-        s2BaseSize_ = 128U;
-    }
     return true;
 }
 
-inline uint32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetS1SeqSize(uint32_t bIdx)
+inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CanSplitWithMaxLoad(
+    const std::vector<int64_t> &sparseValidArray, int64_t start, int64_t partNum, int64_t maxLoad) const
 {
-    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedQ_->GetData());
-        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
+    if (partNum == 0) {
+        return start == totalSize_;
     }
-    if (layoutQ_ == "TND") {
-        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
-            const int32_t *s1Ptr = static_cast<const int32_t*>(actSeqLenQ_->GetData());
-            return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
+    if (partNum < 0 || start < 0 || start > totalSize_ || totalSize_ - start < partNum) {
+        return false;
+    }
+
+    int64_t usedPartNum = 1;
+    int64_t curLoad = 0;
+    for (int64_t idx = start; idx < totalSize_; ++idx) {
+        int64_t load = sparseValidArray[idx];
+        if (load > maxLoad) {
+            return false;
         }
-    }
-    return static_cast<uint32_t>(maxSeqlenQ_);
-}
-
-inline uint32_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GetS2SeqSize(uint32_t bIdx)
-{
-    if (seqUsedK_ != nullptr && seqUsedK_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedK_->GetData());
-        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
-    }
-    if (layoutK_ == "TND") {
-        if (actSeqLenK_ != nullptr && actSeqLenK_->GetData() != nullptr) {
-            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenK_->GetData());
-            return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
-        }
-    }
-    return static_cast<uint32_t>(maxSeqlenK_);
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcSplitInfo(SplitContext &splitContext)
-{
-    SplitInfo &splitInfo = splitContext.splitInfo;
-    for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
-        uint32_t s1Size = GetS1SeqSize(bIdx);
-        uint32_t cmpS2Size = GetS2SeqSize(bIdx);
-        totalNum += s1Size;
-        splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
-        splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
-        splitInfo.s2BaseNum[bIdx] = (cmpS2Size + s2BaseSize_ - 1U) / s2BaseSize_;
-        splitInfo.s2TailSize[bIdx] = cmpS2Size % s2BaseSize_;
-        if (splitInfo.s1GBaseNum[bIdx] != 0U && splitInfo.s2BaseNum[bIdx] != 0U) {
-            splitInfo.isKvSeqAllZero = false;
-        }
-    }
-    return;
-}
-
-inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcPreTokenLeftUp(
-    uint32_t s1Size, uint32_t s2Size)
-{
-    auto mode = static_cast<Arch35SparseMode>(maskMode_);
-    if (mode == Arch35SparseMode::BAND) {
-        return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + preToken_;
-    }
-    return preToken_;
-}
-
-inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcNextTokenLeftUp(
-    uint32_t s1Size, uint32_t s2Size)
-{
-    auto mode = static_cast<Arch35SparseMode>(maskMode_);
-    switch (mode) {
-        case Arch35SparseMode::DEFAULT_MASK:
-        case Arch35SparseMode::ALL_MASK:
-        case Arch35SparseMode::LEFT_UP_CAUSAL:
-            return nextToken_;
-        case Arch35SparseMode::RIGHT_DOWN_CAUSAL:
-            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
-        case Arch35SparseMode::BAND:
-            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + nextToken_;
-        default:
-            return nextToken_;
-    }
-}
-
-inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcCost(
-    uint32_t basicM, uint32_t basicS2)
-{
-    uint32_t alignBasicM = basicM / groupSize_;
-    uint32_t alignBasicS2 = 1;
-    if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
-        if (basicS2 <= 1024) {
-            alignBasicS2 = (1536 + basicS2) / 2;
+        if (curLoad + load > maxLoad) {
+            ++usedPartNum;
+            curLoad = load;
+            if (usedPartNum > partNum) {
+                return false;
+            }
         } else {
-            alignBasicS2 = (2560 + basicS2) / 2;
+            curLoad += load;
         }
-        return static_cast<int64_t>(alignBasicM * alignBasicS2);
-    } else {
-        uint32_t alignCoefM = 16U;
-        uint32_t alignCoefS2 = 64U;
-        alignBasicM = (basicM + alignCoefM - 1U) >> 4U;
-        alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;
-        return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);
     }
+    return usedPartNum <= partNum;
 }
 
-inline BlockCost<int64_t> SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcCostTable(uint32_t s1NormalSize,
-    uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize)
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::FindMinMaxLoad(
+    const std::vector<int64_t> &sparseValidArray, int64_t start, int64_t partNum) const
 {
-    BlockCost<int64_t> typeCost {};
-    typeCost[NORMAL_BLOCK][NORMAL_BLOCK] = CalcCost(s1NormalSize, s2NormalSize);
-    typeCost[TAIL_BLOCK][NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : CalcCost(s1GTailSize, s2NormalSize);
-    typeCost[NORMAL_BLOCK][TAIL_BLOCK] = (s2TailSize == 0U) ? 0U : CalcCost(s1NormalSize, s2TailSize);
-    typeCost[TAIL_BLOCK][TAIL_BLOCK] = (s1GTailSize == 0U || s2TailSize == 0U) ? 0U : CalcCost(s1GTailSize, s2TailSize);
-    return typeCost;
-}
-
-inline Range<int64_t> SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcS2TokenRange(
-        uint32_t s1GIdx, const BatchCache &batchCache)
-{
-    if (!attentionMode_) {
-        return std::make_pair(0, static_cast<int64_t>(batchCache.s2Size));
-    }
-    int64_t s1GFirstToken = static_cast<int64_t>(s1GIdx) * static_cast<int64_t>(mBaseSize_);
-    int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(mBaseSize_),
-        static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(groupSize_)) - 1;
-    int64_t s1FirstToken = 0;
-    int64_t s1LastToken = 0;
-    if (isS1G_) {
-        s1FirstToken = s1GFirstToken / static_cast<int64_t>(groupSize_);
-        s1LastToken = s1GLastToken / static_cast<int64_t>(groupSize_);
-    } else {
-        if (s1GFirstToken / batchCache.s1Size == s1GLastToken / batchCache.s1Size) {
-            s1FirstToken = s1GFirstToken % static_cast<int64_t>(batchCache.s1Size);
-            s1LastToken = s1GLastToken % static_cast<int64_t>(batchCache.s1Size);
+    int64_t totalLoad = std::accumulate(sparseValidArray.begin() + start, sparseValidArray.end(), 0LL);
+    int64_t minMaxLoad = std::max(*std::max_element(sparseValidArray.begin() + start, sparseValidArray.end()),
+                                  CeilDiv(totalLoad, partNum));
+    int64_t maxLoad = totalLoad;
+    while (minMaxLoad < maxLoad) {
+        int64_t midLoad = minMaxLoad + (maxLoad - minMaxLoad) / 2;
+        if (CanSplitWithMaxLoad(sparseValidArray, start, partNum, midLoad)) {
+            maxLoad = midLoad;
         } else {
-            s1FirstToken = 0;
-            s1LastToken = batchCache.s1Size;
+            minMaxLoad = midLoad + 1;
         }
     }
-
-    int64_t s2FirstToken = s1FirstToken - batchCache.preTokenLeftUp;
-    int64_t s2LastToken = s1LastToken + batchCache.nextTokenLeftUp;
-
-    return std::make_pair(s2FirstToken, s2LastToken);
+    return minMaxLoad;
 }
 
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcBatchCache(
-    uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache)
+inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::BuildBalancedSparseStartIdx(
+    const std::vector<int64_t> &sparseValidArray, std::vector<int64_t> &sparseStartIdx) const
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-
-    batchCache.bIdx = bIdx;
-    batchCache.s1Size = GetS1SeqSize(bIdx);
-    batchCache.s2Size = GetS2SeqSize(bIdx);
-    batchCache.preTokenLeftUp = CalcPreTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
-    batchCache.nextTokenLeftUp = CalcNextTokenLeftUp(batchCache.s1Size, batchCache.s2Size);
-    batchCache.typeCost = CalcCostTable(mBaseSize_, s2BaseSize_, splitInfo.s1GTailSize[bIdx],
-        splitInfo.s2TailSize[bIdx]);
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcS1GCache(uint32_t s1GIdx,
-    const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
-{
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-
-    s1GCache.bIdx = batchCache.bIdx;
-    s1GCache.s1GIdx = s1GIdx;
-
-    if (splitInfo.s1GBaseNum[batchCache.bIdx] == 0 || splitInfo.s2BaseNum[batchCache.bIdx] == 0) {
-        s1GCache.s1GBlock = 0;
-        s1GCache.s1GCost = 0;
-        s1GCache.s1GLastBlockCost = 0;
-        s1GCache.s1GNormalBlockCost = 0;
-        return;
+    sparseStartIdx.assign(SLI_METADATA_MAX_CORE_NUM, totalSize_);
+    int64_t activeStart = 0;
+    while (activeStart < totalSize_ && sparseValidArray[activeStart] <= 0) {
+        ++activeStart;
+    }
+    if (activeStart >= totalSize_) {
+        return true;
     }
 
-    auto s2TokenRange = CalcS2TokenRange(s1GIdx, batchCache);
-    int64_t s2FirstToken = s2TokenRange.first;
-    int64_t s2LastToken = s2TokenRange.second;
-    s2FirstToken = Clip(s2FirstToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
-    s2LastToken = Clip(s2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
-
-    uint32_t s2CmpLength = (s2LastToken - s2FirstToken + 1) / cmpRatio_;
-    if (s2CmpLength == 0) {
-        s1GCache.s2Start = 0U;
-        s1GCache.s2End = 0U;
-    } else {
-        s1GCache.s2Start = 0U;
-        s1GCache.s2End = (s2CmpLength + s2BaseSize_ - 1) / s2BaseSize_;
+    int64_t activeCoreNum = std::min(coreNum_, totalSize_ - activeStart);
+    sparseStartIdx[0] = activeStart;
+    if (activeCoreNum == 1) {
+        return true;
     }
 
-    if (s1GCache.s2Start >= s1GCache.s2End) {
-        s1GCache.s1GBlock = 0;
-        s1GCache.s1GCost = 0;
-        s1GCache.s1GLastBlockCost = 0;
-        s1GCache.s1GNormalBlockCost = 0;
-        return;
+    std::vector<int64_t> prefixLoad(totalSize_ + 1, 0);
+    for (int64_t idx = 0; idx < totalSize_; ++idx) {
+        prefixLoad[idx + 1] = prefixLoad[idx] + sparseValidArray[idx];
     }
 
-    uint32_t s2TailSize = s2CmpLength % s2BaseSize_;
+    int64_t maxLoad = FindMinMaxLoad(sparseValidArray, activeStart, activeCoreNum);
+    int64_t prevStart = activeStart;
+    for (int64_t coreIdx = 1; coreIdx < activeCoreNum; ++coreIdx) {
+        int64_t remainingPartNum = activeCoreNum - coreIdx;
+        int64_t minStart = prevStart + 1;
+        int64_t maxStart = totalSize_ - remainingPartNum;
 
-    s1GCache.s1GBlock = s1GCache.s2End - s1GCache.s2Start;
-    uint32_t curTailS2Num = s2TailSize != 0 ? 1U : 0U;
-    uint32_t curNormalS2Num = s1GCache.s1GBlock - curTailS2Num;
-
-    BlockCost<int64_t> typeCost = CalcCostTable(mBaseSize_, s2BaseSize_,
-                                                splitInfo.s1GTailSize[batchCache.bIdx], s2TailSize);
-
-    if (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U) &&
-               splitInfo.s1GTailSize[batchCache.bIdx] != 0U) {
-        s1GCache.s1GCost = typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
-                           typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
-        s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? typeCost[TAIL_BLOCK][TAIL_BLOCK] :
-                                    typeCost[TAIL_BLOCK][NORMAL_BLOCK];
-        s1GCache.s1GNormalBlockCost = typeCost[TAIL_BLOCK][NORMAL_BLOCK];
-    } else {
-        s1GCache.s1GCost = typeCost[NORMAL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
-                           typeCost[NORMAL_BLOCK][TAIL_BLOCK] * curTailS2Num;
-        s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? typeCost[NORMAL_BLOCK][TAIL_BLOCK] :
-                                    typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
-        s1GCache.s1GNormalBlockCost = typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
-    }
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcBatchCost(
-    uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
-{
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-
-    costInfo.bN2CostOfEachBatch[bIdx] = 0;
-    costInfo.bN2BlockOfEachBatch[bIdx] = 0U;
-    costInfo.bN2LastBlockCostOfEachBatch[bIdx] = 0U;
-
-    if (GetS1SeqSize(bIdx) == 0U || GetS2SeqSize(bIdx) == 0U) {
-        return;
-    }
-
-    BatchCache bCache;
-    S1GCache s1GCache;
-    CalcBatchCache(bIdx, splitContext, bCache);
-    for (uint32_t s1GIdx = 0; s1GIdx < splitInfo.s1GBaseNum[bIdx]; s1GIdx++) {
-        CalcS1GCache(s1GIdx, splitContext, bCache, s1GCache);
-        costInfo.bN2CostOfEachBatch[bIdx] += s1GCache.s1GCost;
-        costInfo.bN2BlockOfEachBatch[bIdx] += s1GCache.s1GBlock;
-        if (s1GCache.s1GCost > costInfo.maxS1GCost) {
-            costInfo.maxS1GCost = s1GCache.s1GCost;
+        auto maxLoadIter = std::upper_bound(prefixLoad.begin() + minStart, prefixLoad.begin() + maxStart + 1,
+                                            prefixLoad[prevStart] + maxLoad);
+        maxStart = std::min<int64_t>(maxStart, std::distance(prefixLoad.begin(), maxLoadIter) - 1);
+        if (maxStart < minStart) {
+            KERNEL_LOG_ERROR("Failed to build balanced metadata, invalid range [%ld, %ld].", minStart, maxStart);
+            return false;
         }
 
-        if (s1GCache.s1GBlock > 0) {
-            costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
+        int64_t left = minStart;
+        int64_t right = maxStart;
+        while (left < right) {
+            int64_t mid = left + (right - left) / 2;
+            if (CanSplitWithMaxLoad(sparseValidArray, mid, remainingPartNum, maxLoad)) {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
         }
-    }
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcCostInfo(SplitContext &splitContext)
-{
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-    CostInfo &costInfo = splitContext.costInfo;
-
-    if (splitInfo.isKvSeqAllZero) {
-        costInfo.totalCost = 0;
-        costInfo.totalBlockNum = 0U;
-        return;
-    }
-
-    for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
-        CalcBatchCost(bIdx, splitContext, costInfo);
-        costInfo.totalCost += costInfo.bN2CostOfEachBatch[bIdx] * numHeadsK_;
-        costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * numHeadsK_;
-    }
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::UpdateCursor(const SplitContext &splitContext,
-    AssignContext &assignContext)
-{
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-    const CostInfo &costInfo = splitContext.costInfo;
-
-    bool UpdateS1G = false;
-    bool UpdateBatch = false;
-
-    if (assignContext.curS2Idx >= assignContext.s1GCache.s2End) {
-        assignContext.curS2Idx = 0U;
-        assignContext.curS1GIdx++;
-        UpdateS1G = true;
-    }
-
-    if (assignContext.curS1GIdx >= splitInfo.s1GBaseNum[assignContext.curBIdx]) {
-        assignContext.curS1GIdx = 0U;
-        assignContext.curBN2Idx++;
-    }
-
-    if (assignContext.curBN2Idx == batchSize_ * numHeadsK_) {
-        assignContext.curS1GIdx = 0U;
-        assignContext.curS2Idx = 0U;
-        assignContext.isFinished = true;
-        return;
-    }
-
-    if (assignContext.curBN2Idx / numHeadsK_ != assignContext.curBIdx) {
-        assignContext.curBIdx = assignContext.curBN2Idx / numHeadsK_;
-        assignContext.curS1GIdx = 0U;
-        UpdateBatch = true;
-        UpdateS1G = true;
-    }
-
-    if (UpdateBatch) {
-        CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
-        assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
-        assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
-    }
-    if (UpdateS1G) {
-        CalcS1GCache(assignContext.curS1GIdx, assignContext.batchCache, assignContext.s1GCache);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    }
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::AssignByBatch(const SplitContext &splitContext,
-    AssignContext &assignContext)
-{
-    if (assignContext.isFinished) {
-        return;
-    }
-    const CostInfo &costInfo = splitContext.costInfo;
-    while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
-        costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + assignContext.bN2Cost)) {
-        assignContext.coreCache.cost += assignContext.bN2Cost;
-        assignContext.coreCache.block += assignContext.bN2Block;
-        assignContext.curBN2Idx++;
-
-        if (assignContext.curBN2Idx == batchSize_ * numHeadsK_) {
-            assignContext.curS1GIdx = 0U;
-            assignContext.curS2Idx = 0U;
-            assignContext.isFinished = true;
-            return;
+        int64_t lowerFeasibleStart = left;
+        if (!CanSplitWithMaxLoad(sparseValidArray, lowerFeasibleStart, remainingPartNum, maxLoad)) {
+            KERNEL_LOG_ERROR("Failed to build balanced metadata, suffix cannot be split.");
+            return false;
         }
 
-        if (assignContext.curBN2Idx / numHeadsK_ != assignContext.curBIdx) {
-            assignContext.curBIdx = assignContext.curBN2Idx / numHeadsK_;
-            CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
+        int64_t remainingLoad = prefixLoad[totalSize_] - prefixLoad[prevStart];
+        int64_t targetLoad = CeilDiv(remainingLoad, remainingPartNum + 1);
+        int64_t targetPrefixLoad = prefixLoad[prevStart] + targetLoad;
+        auto candidateIter = std::lower_bound(prefixLoad.begin() + lowerFeasibleStart,
+                                              prefixLoad.begin() + maxStart + 1, targetPrefixLoad);
+        int64_t candidate = std::min<int64_t>(std::distance(prefixLoad.begin(), candidateIter), maxStart);
+        if (candidate > lowerFeasibleStart &&
+            AbsDiff(prefixLoad[candidate - 1], targetPrefixLoad) <=
+                AbsDiff(prefixLoad[candidate], targetPrefixLoad)) {
+            --candidate;
         }
 
-        assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
-        assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
-        assignContext.curS1GIdx = 0U;
-        CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    }
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::AssignByRow(const SplitContext &splitContext,
-    AssignContext &assignContext)
-{
-    if (assignContext.isFinished) {
-        return;
-    }
-
-    while (IsWithinTolerance(assignContext.coreCache.costLimit,
-        assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
-        assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
-        assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
-
-        assignContext.bN2Cost = assignContext.bN2Cost > assignContext.s1GCache.s1GCost ?
-                                assignContext.bN2Cost - assignContext.s1GCache.s1GCost : 0;
-        assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
-                                 assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
-        do {
-            assignContext.curS1GIdx++;
-            CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        } while (assignContext.s1GCache.s1GBlock == 0);
-        assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    }
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::AssignByBlock(const SplitContext &splitContext,
-    AssignContext &assignContext)
-{
-    if (assignContext.isFinished) {
-        return;
-    }
-
-    int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
-    if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
-        curCost = assignContext.s1GCache.s1GLastBlockCost;
-    }
-
-    while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
-            assignContext.coreCache.cost + curCost)) {
-        assignContext.coreCache.cost += curCost;
-        assignContext.coreCache.block++;
-        assignContext.curS2Idx++;
-        assignContext.bN2Cost = assignContext.bN2Cost - curCost;
-        assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
-        assignContext.bN2Block--;
-        assignContext.s1GCache.s1GBlock--;
-    }
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::ForceAssign(const SplitContext &splitContext,
-    AssignContext &assignContext)
-{
-    if (assignContext.isFinished) {
-        return;
-    }
-
-    int64_t curCost = assignContext.s1GCache.s1GNormalBlockCost;
-    if (assignContext.curS2Idx == (assignContext.s1GCache.s2End - 1U)) {
-        curCost = assignContext.s1GCache.s1GLastBlockCost;
-    }
-
-    assignContext.coreCache.cost += curCost;
-    assignContext.coreCache.block++;
-    assignContext.curS2Idx++;
-    assignContext.bN2Cost = assignContext.bN2Cost - curCost;
-    assignContext.bN2Block--;
-    assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
-    assignContext.s1GCache.s1GBlock--;
-    UpdateCursor(splitContext, assignContext);
-}
-
-inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::IsNeedRecordFDInfo(
-    const AssignContext &assignContext, const SplitResult &splitRes)
-{
-    if (assignContext.curCoreIdx == 0U) {
-        return false;
-    }
-    if (assignContext.curKvSplitPart <= 1U) {
-        return false;
-    }
-    if (assignContext.curBN2Idx == splitRes.bN2End[assignContext.curCoreIdx - 1U] &&
-        assignContext.curS1GIdx == splitRes.gS1End[assignContext.curCoreIdx - 1U]) {
-        return false;
+        sparseStartIdx[coreIdx] = candidate;
+        prevStart = candidate;
     }
     return true;
 }
 
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::RecordFDInfo(const SplitContext &splitContext,
-    const AssignContext &assignContext, SplitResult &result)
+inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::SetSparseStartIdx(
+    const std::vector<int64_t> &sparseValidArray)
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-    uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / numHeadsK_;
-    uint32_t splitS1GIdx = result.gS1End[assignContext.curCoreIdx - 1U];
-    uint32_t s1Size = GetS1SeqSize(splitBIdx);
-
-    uint32_t curFdS1gSize = (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
-                            (s1Size * groupSize_ - splitS1GIdx * mBaseSize_) : mBaseSize_;
-    result.maxS2SplitNum = std::max(result.maxS2SplitNum, assignContext.curKvSplitPart);
-    result.fdRes.fdBN2Idx[result.numOfFdHead] = result.bN2End[assignContext.curCoreIdx - 1U];
-    result.fdRes.fdMIdx[result.numOfFdHead] = result.gS1End[assignContext.curCoreIdx - 1U];
-    result.fdRes.fdWorkspaceIdx[result.numOfFdHead] = assignContext.preFdDataNum;
-    result.fdRes.fdS2SplitNum[result.numOfFdHead] = assignContext.curKvSplitPart;
-    result.fdRes.fdMSize[result.numOfFdHead] = curFdS1gSize / groupSize_;
-    result.numOfFdHead++;
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::AssignBlockToCore(uint32_t coreNum,
-    const SplitContext &splitContext, AssignContext &assignContext, SplitResult &result)
-{
-    const CostInfo &costInfo = splitContext.costInfo;
-    result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] = assignContext.preFdDataNum + assignContext.curKvSplitPart - 1U;
-    assignContext.coreCache = {};
-    assignContext.coreCache.costLimit = assignContext.unassignedCost / (coreNum - assignContext.curCoreIdx);
-    if (!supportFd_) {
-        assignContext.coreCache.costLimit = costInfo.maxS1GCost > assignContext.coreCache.costLimit ?
-            costInfo.maxS1GCost : assignContext.coreCache.costLimit;
+    if (!BuildBalancedSparseStartIdx(sparseValidArray, bS1Index_)) {
+        return false;
     }
-    AssignByBatch(splitContext, assignContext);
-    AssignByRow(splitContext, assignContext);
-    if (supportFd_) {
-        AssignByBlock(splitContext, assignContext);
-        if (assignContext.coreCache.block == 0) {
-            ForceAssign(splitContext, assignContext);
+
+    for (int64_t idx = 1; idx < static_cast<int64_t>(SLI_METADATA_MAX_CORE_NUM); ++idx) {
+        if (bS1Index_[idx] == 0) {
+            bS1Index_[idx] = totalSize_;
         }
     }
-    result.bN2End[assignContext.curCoreIdx] = assignContext.curBN2Idx;
-    result.gS1End[assignContext.curCoreIdx] = assignContext.curS1GIdx;
-    result.s2End[assignContext.curCoreIdx] = assignContext.curS2Idx;
-    result.maxCost = std::max(result.maxCost, assignContext.coreCache.cost);
-    assignContext.unassignedCost -= assignContext.coreCache.cost;
-    if (supportFd_ && IsNeedRecordFDInfo(assignContext, result)) {
-        RecordFDInfo(splitContext, assignContext, result);
-        assignContext.preFdDataNum += assignContext.curKvSplitPart;
-        assignContext.curKvSplitPart = 1U;
-    }
-    if (supportFd_ && assignContext.curS2Idx > assignContext.s1GCache.s2Start &&
-        assignContext.curS2Idx <= assignContext.s1GCache.s2End) {
-        assignContext.curKvSplitPart++;
-    }
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::CalcSplitPlan(uint32_t coreNum,
-    int64_t costLimit, const SplitContext &splitContext, SplitResult &result)
-{
-    const CostInfo &costInfo = splitContext.costInfo;
-    if (coreNum == 0U) {
-        return;
-    }
-    result.maxCost = 0U;
-    result.usedCoreNum = 0U;
-    AssignContext assignContext {};
-    assignContext.curBIdx = 0U;
-    assignContext.curS1GIdx = 0U;
-    assignContext.unassignedCost = costInfo.totalCost;
-    assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
-    assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
-    CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
-    CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-    assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-    for (uint32_t i = 0; i < coreNum; ++i) {
-        if (result.maxCost > costLimit) {
-            return;
-        }
-        if (assignContext.isFinished || assignContext.unassignedCost <= 0) {
-            break;
-        }
-        assignContext.curCoreIdx = i;
-        AssignBlockToCore(coreNum, splitContext, assignContext, result);
-    }
-    result.usedCoreNum = assignContext.curCoreIdx + 1;
-}
-
-inline void SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::SplitFD(SplitResult &splitRes)
-{
-    uint64_t totalFDLoad = 0;
-    for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
-        totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
-    }
-    uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_;
-    uint32_t curCoreIndex = 0;
-    for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
-        uint32_t curFDVectorNum = splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i] / averageLoad;
-        uint32_t curAveMSize = (splitRes.fdRes.fdMSize[i] + curFDVectorNum - 1U) / curFDVectorNum;
-        curFDVectorNum = (splitRes.fdRes.fdMSize[i] + curAveMSize - 1U) / curAveMSize;
-        for (uint32_t vid = 0; vid < curFDVectorNum; vid++) {
-            splitRes.fdRes.fdIdx[curCoreIndex] = i;
-            splitRes.fdRes.fdMStart[curCoreIndex] = vid * curAveMSize;
-            splitRes.fdRes.fdMNum[curCoreIndex] =
-                (vid < curFDVectorNum - 1) ? curAveMSize : (splitRes.fdRes.fdMSize[i] - vid * curAveMSize);
-            curCoreIndex++;
-        }
-    }
-    splitRes.fdRes.fdUsedVecNum = curCoreIndex;
-}
-
-inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::BalanceSchedule(SplitResult &splitRes)
-{
-    SplitContext splitContext(batchSize_);
-    CalcSplitInfo(splitContext);
     return true;
 }
 
-inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::GenMetaData(SplitResult &splitRes)
+inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch35::BuildMetadata()
 {
-    optiling::detail::SlikgMetaData* gradMetadataPtr = (optiling::detail::SlikgMetaData*)metaData_->GetData();
-    uint32_t formerCoreProcessNum = Arch35CeilDiv(totalNum, aicCoreNum_);
-    uint32_t remainCoreProcessNum = formerCoreProcessNum - 1;
-    uint32_t remainCoreNum = formerCoreProcessNum * aicCoreNum_ - totalNum;
-    uint32_t usedCoreNum = totalNum < aicCoreNum_ ? totalNum : aicCoreNum_;
+    totalSize_ = CalcTotalSize();
+    if (totalSize_ <= 0) {
+        KERNEL_LOG_ERROR("totalSize should be larger than 0, but got %ld", totalSize_);
+        return false;
+    }
 
-    gradMetadataPtr->gradMetadata[TOTAL_NUM] = totalNum;
-    gradMetadataPtr->gradMetadata[FORMER_CORE_PROCESS_NUM] = formerCoreProcessNum;
-    gradMetadataPtr->gradMetadata[REMAIN_CORE_PROCESS_NUM] = remainCoreProcessNum;
-    gradMetadataPtr->gradMetadata[REMAIN_CORE_NUM] = remainCoreNum;
-    gradMetadataPtr->gradMetadata[USED_CORE_NUM] = usedCoreNum;
+    coreNum_ = std::min<int64_t>(std::min(totalSize_, aicCoreNum_), SLI_METADATA_MAX_CORE_NUM);
+    splitFactorSize_ = CeilDiv(totalSize_, coreNum_);
+
+    std::vector<int64_t> sparseValidArray(totalSize_, 0);
+    if (!BuildSparseValidArray(sparseValidArray) || !SetSparseStartIdx(sparseValidArray)) {
+        return false;
+    }
+
+    auto *metadataData = reinterpret_cast<SLI_METADATA_T *>(metadata_->GetData());
+    std::fill_n(metadataData, SLI_METADATA_SIZE, static_cast<SLI_METADATA_T>(0));
+    auto *metadata = reinterpret_cast<detail::SliGradKLLossMetaData *>(metadataData);
+    metadata->coreNum = static_cast<int32_t>(coreNum_);
+    metadata->totalSize = static_cast<int32_t>(totalSize_);
+    metadata->splitFactorSize = static_cast<int32_t>(splitFactorSize_);
+    for (uint32_t i = 0; i < SLI_METADATA_HEADER_SIZE - 3; ++i) {
+        metadata->reserved[i] = 0;
+    }
+    for (uint32_t i = 0; i < SLI_METADATA_MAX_CORE_NUM; ++i) {
+        metadata->bS1Index[i] = static_cast<int32_t>(bS1Index_[i]);
+    }
     return true;
 }
 
