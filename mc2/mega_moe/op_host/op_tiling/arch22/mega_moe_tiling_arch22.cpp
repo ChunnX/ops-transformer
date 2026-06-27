@@ -398,7 +398,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     info.moeExpertNum = static_cast<uint32_t>(*moeExpertNumPtr);
     info.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
     info.cclBufferSize = static_cast<uint32_t>(*cclBufferSizePtr);
-    info.maxRecvTokenNum = static_cast<uint32_t>(*maxRecvTokenNumPtr);
+    info.maxRecvTokenNum = static_cast<uint64_t>(*maxRecvTokenNumPtr);
     info.dispatchQuantMode = static_cast<uint32_t>(*dispatchQuantModePtr);
     info.dispatchQuantOutDtype = static_cast<uint32_t>(*dispatchQuantOutDtypePtr);
     info.combineQuantMode = static_cast<uint32_t>(*combineQuantModePtr);
