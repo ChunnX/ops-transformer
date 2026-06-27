@@ -19,7 +19,6 @@
 #include <string>
 #include <type_traits>
 #include <vector>
-#include "log.h"
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
