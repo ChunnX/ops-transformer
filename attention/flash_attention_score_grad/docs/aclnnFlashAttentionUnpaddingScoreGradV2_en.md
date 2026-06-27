@@ -13,14 +13,14 @@
 
 ## Description
 
-- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV2`](./aclnnFlashAttentionVarLenScoreV2.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad.md) API, this API has a `psetype` parameter.
+- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV2`](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV2_en.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad_en.md) API, this API has a `psetype` parameter.
 
-  - When `psetype` is set to 1, the implementation is the same as that of [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad.md).
+  - When `psetype` is set to 1, the implementation is the same as that of [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad_en.md).
   - When `psetype` is set to other values, multiplication is required before addition.
 
 - Formula:
 
-  The forward propagation formula for attention is as follows: (same as that of [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad.md) when `psetype` is set to 1)
+  The forward propagation formula for attention is as follows: (same as that of [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad_en.md) when `psetype` is set to 1)
 
   $$
   Y=Dropout(Softmax(Mask(\frac{QK^T}{\sqrt{d}}+pse),atten\_mask),keep\_prob)V

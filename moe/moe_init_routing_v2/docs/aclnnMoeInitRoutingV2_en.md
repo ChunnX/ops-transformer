@@ -12,7 +12,7 @@
 
 ## Function
 
-- **Description**: This operator corresponds to the **routing computation** in the MoE model. It uses the computation result of the [aclnnMoeGatingTopKSoftmax](./aclnnMoeGatingTopKSoftmax.md) operator as the input and outputs the routing matrix, `expandedXOut`, and other results for subsequent computation. This API has the following function changes based on [aclnnMoeInitRouting](./aclnnMoeInitRouting.md). Select a proper API based on your actual requirements.
+- **Description**: This operator corresponds to the **routing computation** in the MoE model. It uses the computation result of the [aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md) operator as the input and outputs the routing matrix, `expandedXOut`, and other results for subsequent computation. This API has the following function changes based on [aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting_en.md). Select a proper API based on your actual requirements.
 
     - Added the drop mode. In this mode, the output is based on the number of tokens processed by each expert and equal to the value of·`expertCapacity`. If the output exceeds the value, exceeded tokens are dropped. If the output falls short of the value, 0s are padded.
     - Added the optional output `expertTokensCountOrCumsumOut` in dropless mode. The output is based on the number of cumulative tokens (Cumsum) to be processed by each expert or the number of tokens (Count) to be processed by each expert.

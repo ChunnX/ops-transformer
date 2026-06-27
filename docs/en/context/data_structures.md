@@ -8,7 +8,7 @@ Note that the basic data structures can be created by using the common APIs such
 
   A framework-defined structure used to manage and store tensor data (such as vectors and matrices). You can create this object by using the **aclCreateTensor** API.
 
-  ```
+  ```text
   typedef struct aclTensor aclTensor
   ```
 
@@ -16,7 +16,7 @@ Note that the basic data structures can be created by using the common APIs such
 
   A framework-defined structure used to manage and store scalar data (a single value). You can create this object by using the **aclCreateScalar** API.
 
-  ```
+  ```text
   typedef struct aclScalar aclScalar
   ```
 
@@ -24,7 +24,7 @@ Note that the basic data structures can be created by using the common APIs such
 
   A framework-defined structure used to manage and store an array of integer data. You can create this object by using the **aclCreateIntArray** API.
 
-  ```
+  ```text
   typedef struct aclIntArray aclIntArray
   ```
 
@@ -32,7 +32,7 @@ Note that the basic data structures can be created by using the common APIs such
 
   A framework-defined structure used to manage and store an array of float32 data. You can create this object by using the **aclCreateFloatArray** API.
 
-  ```
+  ```text
   typedef struct aclFloatArray aclFloatArray
   ```
 
@@ -40,7 +40,7 @@ Note that the basic data structures can be created by using the common APIs such
 
   A framework-defined structure used to manage and store an array of Boolean data. You can create this object by using the **aclCreateBoolArray** API.
     
-  ```
+  ```text
   typedef struct aclBoolArray aclBoolArray
   ```
     
@@ -48,7 +48,7 @@ Note that the basic data structures can be created by using the common APIs such
 
   A framework-defined structure used to manage and store an array of multiple tensors. You can create this object by using the **aclCreateTensorList** API.
     
-  ```
+  ```text
   typedef struct aclTensorList aclTensorList
   ```
     
@@ -56,7 +56,7 @@ Note that the basic data structures can be created by using the common APIs such
 
   A framework-defined structure used to manage and store an array of scalar data. You can create this object by using the **aclCreateScalarList** API.
 
-  ```
+  ```text
   typedef struct aclScalarList aclScalarList
   ```
 
@@ -66,7 +66,7 @@ Note that the basic data structures can be created by using the common APIs such
 
   Generally, when the first-phase API **aclxxXxxGetWorkspaceSize** is called, the framework automatically creates an **aclOpExecutor** object. When the second-phase API **aclxxXxx** is called, the object is automatically released.
 
-  ```
+  ```text
   typedef struct aclOpExecutor aclOpExecutor
   ```
 
@@ -74,6 +74,6 @@ Note that the basic data structures can be created by using the common APIs such
 
   A framework-defined stream processing data structure, which is used to manage and maintain the execution sequence of asynchronous operations.
     
-  ```
+  ```text
   typedef void *aclrtStream
   ```

@@ -12,6 +12,7 @@ First, **aclxxXxxGetWorkspaceSize** is called to compute the required workspace 
 **aclxx** indicates the operator API prefix, for example, aclnn, while **Xxx** indicates the operator type, for example, Add.
 
 > Note:
+>
 >- The workspace refers to the temporary memory required by the APIs to complete computation on the AI processor, in addition to the input and output memories.
 >- The second-phase API **aclxxXxx(...)** cannot be called repeatedly. For example, the following API call will throw an exception:
     ```Cpp     

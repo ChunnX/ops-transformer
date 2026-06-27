@@ -448,7 +448,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
     | pseType     | Description                             |      Remarks  |
     | ----------- | --------------------------------- | ----------|
     | 0           | A value is externally passed to `pse`, and multiplication is required before addition.             | - |
-    | 1           | A value is externally passed to `pse`, and addition is required before multiplication.             | The implementation is the same as that of [`FlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad.md).|
+    | 1           | A value is externally passed to `pse`, and addition is required before multiplication.             | The implementation is the same as that of [`FlashAttentionUnpaddingScoreGrad`](../../flash_attention_score_grad/docs/aclnnFlashAttentionUnpaddingScoreGrad_en.md).|
     | 2           | A value is internally passed to `pse`, and multiplication is required before addition.             | - |
     | 3           | A value is internally passed to `pse`, and multiplication and addition are required before square root operation.        | - |
 

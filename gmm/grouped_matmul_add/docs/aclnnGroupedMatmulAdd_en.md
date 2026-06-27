@@ -165,7 +165,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
 
 - **Return**
 
-    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
     The first-phase API implements input parameter validation. The following errors may be thrown:
     <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
@@ -240,7 +240,7 @@ aclnnStatus aclnnGroupedMatmulAdd(
 
 - **Return**
 
-    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
 ## Constraints
 

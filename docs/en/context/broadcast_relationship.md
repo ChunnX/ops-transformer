@@ -24,7 +24,8 @@ Generally, you need to understand the following broadcasting rules during comput
 - Rule 3: If any dimension of two arrays is not equal and neither is equal to one, an error is reported.
 
 Based on the preceding rules, the broadcasting process first expands dimensions according to Rule 1 and then stretches the shape according to Rule 2. The following is an example:
-```
+
+```text
 Assume that a.shape = (2, 2, 3). The values are as follows:
 [[[1 2 3],[4 5 6]],
  [[1 2 3],[4 5 6]]]

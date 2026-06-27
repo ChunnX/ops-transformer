@@ -393,7 +393,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - `groupType` supports only M-axis grouping (`0`). The value of `actType` can only be `0`. `tuningConfigOptional` is not supported.
   - **Return**
 
-    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
     The first-phase API implements input parameter validation. The following errors may be thrown:
 
@@ -456,7 +456,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
   - **Return**
 
-    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
 ## Constraints
 

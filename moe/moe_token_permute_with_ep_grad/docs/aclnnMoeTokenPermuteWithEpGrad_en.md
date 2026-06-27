@@ -277,7 +277,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
 
 - The value of `top_k` is less than or equal to `512`.
 - `paddedMode` cannot be set to `True`.
-- When `rangeOptional` is left empty, `permutedProbsOutputGradOptional` and `probsGradOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermuteGrad](./aclnnMoeTokenPermuteGrad.md).
+- When `rangeOptional` is left empty, `permutedProbsOutputGradOptional` and `probsGradOut` are ignored, and the execution logic is rolled back to [aclnnMoeTokenPermuteGrad](../../moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad_en.md).
 
 ## Example
 

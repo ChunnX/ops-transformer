@@ -12,7 +12,7 @@
 
 ## Function
 
-- Description: Fuses `GroupedMatmul`, `dquant`, `swiglu`, and `quant`. For details, see the formulas. This API is the weightNZ specialization version of [aclnnGroupedMatmulSwigluQuant](../ops-transformer/aclnnGroupedMatmulSwigluQuant.md).
+- Description: Fuses `GroupedMatmul`, `dquant`, `swiglu`, and `quant`. For details, see the formulas. This API is the weightNZ specialization version of [aclnnGroupedMatmulSwigluQuant](./aclnnGroupedMatmulSwigluQuant_en.md).
 - Formulas:
   - Quantization scenario (A8W8):
     - **Definition**
@@ -173,7 +173,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) cal
   - executor (aclOpExecutor**, computation output): operator executor, containing the operator computation process.
 - **Return**
   
-  `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+  `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
   
   ```text
   The first-phase API implements input parameter validation. The following errors may be thrown:
@@ -196,7 +196,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) cal
     - stream (aclrtStream, input parameter): stream for executing the task.
 - **Return**
 
-    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
 ## Constraints
 

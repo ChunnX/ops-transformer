@@ -234,7 +234,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
 
 -**Returns:**
 
-    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
     The first-phase API implements input parameter verification. The following errors may be thrown.
 
@@ -309,7 +309,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
     
 - **Returns:**
 
-    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    `aclnnStatus` status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
 ## Constraints
 

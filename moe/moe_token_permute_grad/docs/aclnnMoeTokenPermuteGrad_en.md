@@ -12,7 +12,7 @@
 
 ## Function
 
-- **Description**: Performs the backpropagation of [aclnnMoeTokenPermute](./aclnnMoeTokenPermute.md).
+- **Description**: Performs the backpropagation of [aclnnMoeTokenPermute](../../moe_token_permute/docs/aclnnMoeTokenPermute_en.md).
 - **Formula**:
 
   $$

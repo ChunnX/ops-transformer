@@ -448,7 +448,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 - **Returns**
 
-    `aclnnStatus`: status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    `aclnnStatus`: status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
     The first-phase API implements input parameter verification. The following errors may be thrown.
 
@@ -528,7 +528,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
 - **Returns**
 
-    aclnnStatus status code. For details, see [aclnn Return Codes](../../../docs/en/context/clnn_return_codes.md).
+    aclnnStatus status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
 ## Constraints
 
@@ -592,7 +592,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         
         2. Copy the project to the two servers and configure the **rank_table_m2.json** file based on the device IP address. Ensure that the **rank_table_m2.json** files on the two servers are the same.
         
-        3. Install the CANN package and compile and run it based on [Operator Invocation](../../../docs/invocation/quick_op_invocation.md).
+        3. Install the CANN package and compile and run it based on [Operator Invocation](../../../docs/zh/invocation/quick_op_invocation.md).
 
     - About rankTable:
     

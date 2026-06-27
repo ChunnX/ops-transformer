@@ -13,9 +13,9 @@
 
 ## Description
 
-- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionScoreV3`](./aclnnFlashAttentionScoreV3.md). Compared with the [`aclnnFlashAttentionScoreGradV2`](./aclnnFlashAttentionScoreGradV2.md) API, this API has a `sinkInOptional` parameter and `dsinkOut` output.
+- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionScoreV3`](../../flash_attention_score/docs/aclnnFlashAttentionScoreV3_en.md). Compared with the [`aclnnFlashAttentionScoreGradV2`](./aclnnFlashAttentionScoreGradV2_en.md) API, this API has a `sinkInOptional` parameter and `dsinkOut` output.
 
-    - When `psetype` is set to 1, the implementation is the same as that of [`aclnnFlashAttentionScoreGrad`](./aclnnFlashAttentionScoreGrad.md).
+    - When `psetype` is set to 1, the implementation is the same as that of [`aclnnFlashAttentionScoreGrad`](./aclnnFlashAttentionScoreGrad_en.md).
     - When `psetype` is set to other values, multiplication is required before addition.
 
 $$

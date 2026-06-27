@@ -299,10 +299,10 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
 6. If `biasOptional` exists, `expertIdxOptional` must also exist.
 
 7. The values and meanings of `dropPadMode` are as follows:
-     - 0: In the dropless scenario, `expandedRowIdx` is arranged by column (corresponding to the output format of [aclnnMoeInitRouting](./aclnnMoeInitRouting.md)).
-     - 1: In the drop and pad scenario, `expandedRowIdx` is arranged by column (corresponding to the output format of [aclnnMoeInitRouting](./aclnnMoeInitRouting.md)).
-     - 2: In the dropless scenario, `expandedRowIdx` is arranged by row (corresponding to the output format of [aclnnMoeInitRoutingV2](./aclnnMoeInitRoutingV2.md)).
-     - 3: In the drop and pad scenario, `expandedRowIdx` is arranged by row (corresponding to the output format of [aclnnMoeInitRoutingV2](./aclnnMoeInitRoutingV2.md)).
+     - 0: In the dropless scenario, `expandedRowIdx` is arranged by column (corresponding to the output format of [aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting_en.md)).
+     - 1: In the drop and pad scenario, `expandedRowIdx` is arranged by column (corresponding to the output format of [aclnnMoeInitRouting](../../moe_init_routing/docs/aclnnMoeInitRouting_en.md)).
+     - 2: In the dropless scenario, `expandedRowIdx` is arranged by row (corresponding to the output format of [aclnnMoeInitRoutingV2](../../moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV2_en.md)).
+     - 3: In the drop and pad scenario, `expandedRowIdx` is arranged by row (corresponding to the output format of [aclnnMoeInitRoutingV2](../../moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV2_en.md)).
 
 ## Example
 

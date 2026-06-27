@@ -23,7 +23,7 @@
 
 - **Computing flowchart**
 
-![MlaPreprocess](../figures/MlaPreprocess_Calculation_Process.png)
+![MlaPreprocess](../../../docs/zh/figures/MlaProlog计算流程.png)
 
 - **Formula**:
 
@@ -62,6 +62,7 @@
     $$
 
 ## Prototype
+
 Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. First, `aclnnMlaPreprocessV2GetWorkspaceSize` is called to obtain the input parameters and compute the required workspace size based on the process. Then, `aclnnMlaPreprocessV2` is called to perform computation.
 
 ```cpp
@@ -735,6 +736,7 @@ aclnnStatus aclnnMlaPreprocessV2(
     - When the data type of `wdqkv` and `wuq` is bfloat16, the input must also be bfloat16. In addition, `hiddenSize` can only be 6144, and `cacheMode` can only be 0 or 1.
 
 ## Example
+
 The following example is for reference only. For details, see [Compilation and Running Sample](../../../docs/en/context/compilation_running_sample.md).
 
 ```Cpp

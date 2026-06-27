@@ -13,7 +13,7 @@
 
 ## Description
 
-- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV3`](./aclnnFlashAttentionVarLenScoreV3.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGradV2`](./aclnnFlashAttentionUnpaddingScoreGradV2.md) API, this API has the `queryRope`, `keyRope`, `dqRope`, and `dkRope` parameters.
+- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV3`](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV3_en.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGradV2`](./aclnnFlashAttentionUnpaddingScoreGradV2_en.md) API, this API has the `queryRope`, `keyRope`, `dqRope`, and `dkRope` parameters.
 
 - Formula:
 

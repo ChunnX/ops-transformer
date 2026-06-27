@@ -13,7 +13,7 @@
 
 ## Description
 
-- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV4`](./aclnnFlashAttentionVarLenScoreV4.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad.md) API, this API has the `softmaxInLayout` parameter added.
+- **API function**: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScoreV4`](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV4_en.md). Compared with the [`aclnnFlashAttentionUnpaddingScoreGrad`](./aclnnFlashAttentionUnpaddingScoreGrad_en.md) API, this API has the `softmaxInLayout` parameter added.
   - When the shape and actual data layout of the input `softmaxSumOut` and `softmaxMaxOut` are TND, `softmaxInLayout` must be set to `same_as_input`.
   - When the shape of the input `softmaxSumOut` and `softmaxMaxOut` is TND but the actual data layout is NTD, `softmaxInLayout` must be set to `""`.
   - In the original `FlashAttentionVarLenScore` API, the output format of `softmaxSumOut` and `softmaxMaxOut` is NTD. The `FlashAttentionVarLenScoreV4` API allows the input of the string parameter `softmaxOutLayout` to control whether to output `softmaxSumOut` and `softmaxMaxOut` with both shape and data layout in TND format.

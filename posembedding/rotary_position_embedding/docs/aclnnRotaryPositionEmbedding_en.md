@@ -105,7 +105,7 @@
 
 ## Prototype
 
-Each operator has [two-phase API](../common/two_phase_api.md) calls. You must first call `aclnnRotaryPositionEmbeddingGetWorkspaceSize` to obtain the input parameters and calculate the required workspace size according to the process, and then call `aclnnRotaryPositionEmbedding` to perform the computation.
+Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) calls. You must first call `aclnnRotaryPositionEmbeddingGetWorkspaceSize` to obtain the input parameters and calculate the required workspace size according to the process, and then call `aclnnRotaryPositionEmbedding` to perform the computation.
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGetWorkspaceSize(
@@ -230,7 +230,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
     - <term>Atlas A3 training products/Atlas A3 inference products</term>, <term>Atlas A2 training products/Atlas A2 inference products</term>: 0=half, 1=interleave.
 - **Returns:**
 
-  `aclnnStatus`: status code. For details, see [aclnn Return Codes](../common/aclnn_return_codes.md).
+  `aclnnStatus`: status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
   The first-phase API implements input parameter verification. The following errors may be thrown.
 
@@ -309,7 +309,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
 
 - **Returns:**
 
-  `aclnnStatus`: status code. For details, see [aclnn Return Codes](../common/aclnn_return_codes.md).
+  `aclnnStatus`: status code. For details, see [aclnn Return Codes](../../../docs/en/context/aclnn_return_codes.md).
 
 ## Constraints
 
@@ -339,7 +339,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
 
 ## Examples
 
-The following example is for reference only. For details, see [Compilation and Running Sample](../common/compilation_running_sample.md).
+The following example is for reference only. For details, see [Compilation and Running Sample](../../../docs/en/context/compilation_running_sample.md).
 
 ```Cpp
 #include "acl/acl.h"

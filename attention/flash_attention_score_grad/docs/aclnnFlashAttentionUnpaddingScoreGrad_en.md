@@ -1,6 +1,5 @@
 # aclnnFlashAttentionUnpaddingScoreGrad
 
-
 ## Supported Products
 
 |Product     | Supported|
@@ -12,10 +11,9 @@
 |<term>Atlas inference products</term>|      ×     |
 |<term>Atlas training products</term>|      ×     |
 
-
 ## Description
 
-- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScore`](./aclnnFlashAttentionVarLenScore.md).
+- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionVarLenScore`](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScore_en.md).
 - Formula:
 
     The forward propagation formula for attention is as follows:
@@ -51,8 +49,6 @@
     $$
     dK=\frac{((dS)^T*Q)}{\sqrt{d}}
     $$
-
-
 
 ## Prototype
 
@@ -98,7 +94,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGrad(
   aclOpExecutor*    executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionUnpaddingScoreGradGetWorkspaceSize
 
@@ -528,7 +523,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGrad(
 - The `actualSeqQLenOptional` input supports the S length of 0 in a batch. In this case, the `pseShiftOptional` input is not supported. The length of `actualSeqQLenOptional` ranges from 1 to 2K. When `prefixOptional` is present, its maximum length is 1K.
 - Constraints on the `softmaxMax` and `softmaxSum` parameters: The input format is fixed at \[B, N, S, 8\], except TND format, which is \[T, N, 8\]. Note: T = B x S.
 - The value of `headNum` must be the same as the value of **N** in `query`.
-
 
 ## Example
 

@@ -14,7 +14,7 @@
 
 ## Function
 
-- Description: Perform the backward pass of the single-path rotary position encoding [aclnnRotaryPositionEmbedding](./aclnnRotaryPositionEmbedding.md).
+- Description: Perform the backward pass of the single-path rotary position encoding [aclnnRotaryPositionEmbedding](../../../posembedding/rotary_position_embedding/docs/aclnnRotaryPositionEmbedding_en.md).
 - Formula:
   
     In the forward pass of rotary position encoding, the axis list for broadcasting is `dims`, and the computation formula can be expressed as follows:

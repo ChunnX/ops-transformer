@@ -144,7 +144,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
         <td>rangeOptional</td>
         <td>Input</td>
         <td>Valid range of EP slicing.</td>
-        <td>The size is 2. If this parameter is left empty, <code>numTopk</code> is ignored, and the execution logic is rolled back to <a href="../ops-transformer/aclnnMoeTokenUnpermute.md">aclnnMoeTokenUnpermute</a>.</td>
+        <td>The size is 2. If this parameter is left empty, <code>numTopk</code> is ignored, and the execution logic is rolled back to <a href="../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute_en.md">aclnnMoeTokenUnpermute</a>.</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>

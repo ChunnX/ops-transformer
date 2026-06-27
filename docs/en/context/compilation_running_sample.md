@@ -32,13 +32,13 @@ Assume that the development environment and operating environment are deployed o
       attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
       $$
 
-  You can obtain the sample code from the [aclnnFlashAttentionScore](../ops-transformer/aclnnFlashAttentionScore.md) document and name the code file **test\_flash_attention_score.cpp**.
+  You can obtain the sample code from the [aclnnFlashAttentionScore](../../../attention/flash_attention_score/docs/aclnnFlashAttentionScore.md) document and name the code file **test\_flash_attention_score.cpp**.
 
 - **CMakeLists file**
 
     The following is an example of the CMake file, which should be modified as required.
 
-    ```
+    ```text
     # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
     
     # CMake lowest version requirement
@@ -93,7 +93,7 @@ Assume that the development environment and operating environment are deployed o
 
     Operators with integrated and parallel collective communication and MatMul computation are collectively referred to as merged compute and communication operators (abbreviated as MC2 operators), including AllGatherMatmul, AlltoAllAllGatherBatchMatMul, BatchMatMulReduceScatterAlltoAll, MatmulAllReduce, MatmulAllReduceAddRmsNorm, and MatmulReduceScatter. When these operator APIs are called, multi-threading and Huawei Collective Communication Library (HCCL) are generally involved. Therefore, the following content needs to be imported to the CMake file to ensure successful compilation:
   
-  ```
+  ```text
   # Set the link library file paths.
   find_package(Threads REQUIRED)
   target_link_libraries(opapi_test PRIVATE
@@ -119,7 +119,7 @@ Assume that the development environment and operating environment are deployed o
 
      After installing the CANN software, log in to the environment as the CANN running user and run the following command to make the environment variables take effect:
 
-        ```
+        ```text
         source ${INSTALL_DIR}/set_env.sh
         ```
 
@@ -128,13 +128,13 @@ Assume that the development environment and operating environment are deployed o
    3. Compile and run the script.
       - Go to the directory where **CMakeLists.txt** is stored and run the following command to create the **build** folder to store the generated compilation file.
           
-          ```
+          ```text
           mkdir -p build 
           ```
         
       - Go to the **build** directory, run the **cmake** command to compile the code, and then run the **make** command to generate an executable file.
           
-          ```
+          ```text
           cd build
           cmake ../ -DCMAKE_CXX_COMPILER=g++ -DCMAKE_SKIP_RPATH=TRUE
           make
@@ -144,14 +144,14 @@ Assume that the development environment and operating environment are deployed o
           
       - Go to the **bin** folder and run the executable file **opapi\_test**.
         
-        ```
+        ```text
         cd bin
         ./opapi_test
         ```
         
         The following uses the running result of the FlashAttentionScore operator as an example:
 
-        ```
+        ```text
         mean result[0] is: 256.000000
         mean result[1] is: 256.000000
         mean result[2] is: 256.000000

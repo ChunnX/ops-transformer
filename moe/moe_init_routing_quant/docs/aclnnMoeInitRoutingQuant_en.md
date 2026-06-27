@@ -12,7 +12,7 @@
 
 ## Function
 
-- **Description**: Performs routing on the computation result of [aclnnMoeGatingTopKSoftmax](./aclnnMoeGatingTopKSoftmax.md), and then quantizes the result.
+- **Description**: Performs routing on the computation result of [aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md), and then quantizes the result.
 - **Formula**:
 
 $$
@@ -39,7 +39,7 @@ Each operator has [two-phase API](../../../docs/en/context/two_phase_api.md) cal
 - **Parameters:**
     - `x` (aclTensor\*, computation input): input of MoE, that is, token feature input. The input must be a 2D tensor with shape `(NUM_ROWS, H)`. The data type can be FLOAT16, BFLOAT16, or FLOAT32. The [data format](../../../docs/en/context/data_formats.md) must be ND. [Non-contiguous tensors](../../../docs/en/context/non_contiguous_tensors.md) are supported.
     - `rowIdx` (aclTensor\*, computation input): original row position corresponding to each position. The shape must be the same as that of `expertIdx`. The value starts from 0 and increases along dimension 1. The data type can be INT32. The [data format](../../../docs/en/context/data_formats.md) must be ND. [Non-contiguous tensors](../../../docs/en/context/non_contiguous_tensors.md) are supported.
-    - `expertIdx` (aclTensor\*, computation input): `k` experts corresponding to features in each row of the output of [aclnnMoeGatingTopKSoftmax](aclnnMoeGatingTopKSoftmax.md). This tensor must be 2D with shape \(NUM\_ROWS, K\). The data type can be INT32. The [data format](../../../docs/en/context/data_formats.md) must be ND. [Non-contiguous tensors](../../../docs/en/context/non_contiguous_tensors.md) are supported.
+    - `expertIdx` (aclTensor\*, computation input): `k` experts corresponding to features in each row of the output of [aclnnMoeGatingTopKSoftmax](../../moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax_en.md). This tensor must be 2D with shape \(NUM\_ROWS, K\). The data type can be INT32. The [data format](../../../docs/en/context/data_formats.md) must be ND. [Non-contiguous tensors](../../../docs/en/context/non_contiguous_tensors.md) are supported.
     - `activeNum` (int64\_t, computation input): maximum number of rows to be processed, which is greater than or equal to 0. Only this many rows in `expandedXOut` are valid.
     - `scale` (double, computation input): required for quantization computation. The typical value is $S=\frac{R_{\max }-R_{\min }}{Q_{\max }-Q_{\min }}$, where $R_{max}$ indicates the maximum floating-point number, $R_{min}$ indicates the minimum floating-point number, $Q_{max}$ indicates the maximum fixed-point number, and $Q_{min}$ indicates the minimum fixed-point number.
     - `offset` (double, computation input): required for quantization computation.

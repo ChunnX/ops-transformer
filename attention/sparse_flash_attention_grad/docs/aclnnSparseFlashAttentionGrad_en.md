@@ -338,7 +338,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>Sparse mode.</td>
         <td>
               <ul>
-                <li>Represents the sparse mode. For detailed explanations of different sparse modes, please refer to <a href="#constraint-description">Constraint Description</a>.</li>
+                <li>Represents the sparse mode. For detailed explanations of different sparse modes, please refer to <a href="#constraints">Constraint Description</a>.</li>
                 <li>Only modes 0 and 3 are supported.</li>
               </ul>
         </td>

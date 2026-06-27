@@ -9,7 +9,7 @@
 
 The full project directory structure is as follows:
 
-```
+```tree
 ├── cmake                                               # Project build directory
 │   ├── aclnn_ops_math.h.in                             # aclnn summary header file template
 │   └── ...

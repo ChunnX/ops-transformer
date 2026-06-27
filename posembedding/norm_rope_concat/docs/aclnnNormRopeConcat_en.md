@@ -55,6 +55,7 @@
 
     3. Concat is performed in the sequence dimension. The concatenation order is specified by `concatOrder`. When `concatOrder=0`, $hiddenState_q$ is before $hiddenState_{eq}$. When `concatOrder=1`, $hiddenState_q$ is after $hiddenState_{eq}$.
     4. RoPE has three modes (specified by `ropeType`):`NONE(0)`, `INTERLEAVE(1)`, and `HALF(2)`. When `ropeType=NONE`, the output is directly generated without transformation. In other cases, see the following:
+    
         ```python
           def image_rotary_emb(hidden_states, rope_sin, rope_cos, mode=1):
               out = torch.empty_like(hidden_states)

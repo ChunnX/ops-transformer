@@ -13,7 +13,7 @@
 
 ## Description
 
-- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionScore`](./aclnnFlashAttentionScore.md).
+- API function: Computes the attention backpropagation output in training scenarios, which is the backpropagation of [`aclnnFlashAttentionScore`](../../flash_attention_score/docs/aclnnFlashAttentionScore_en.md).
 - Formula:
 
     The forward propagation formula for attention is as follows:
