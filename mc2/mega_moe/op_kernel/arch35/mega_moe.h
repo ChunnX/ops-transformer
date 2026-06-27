@@ -1217,7 +1217,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
 {
-    if constexpr (ENABLE_A4W4) {
+    if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
             MegaMoeImpl::GroupMatmul2CombineA8W4<
                 SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
