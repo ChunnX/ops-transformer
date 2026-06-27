@@ -599,7 +599,8 @@ public:
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         // no valid token
-        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv)
+            || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
             curS2End = 0U;
             return;
