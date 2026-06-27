@@ -419,9 +419,54 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       * 量化场景支持的情况1：kCacheRef的数据类型为FLOAT16或BFLOAT16，ckvCacheRef的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
       * 量化场景支持的情况2：ckvCacheRef的数据类型为FLOAT16或BFLOAT16，kCacheRef的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
       * 量化场景支持的情况3：kCacheRef与ckvCacheRef的数据类型一致，为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
-      * 量化输出的数据类型支持:
-        - Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
-        - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 以及 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持FLOAT16、BFLOAT16、INT8。
+  * cache的数据类型支持:
+      <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+      <col style="width: 108px">
+      <col style="width: 384px">
+      <col style="width: 384px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>量化模式</th>
+          <th>产品</th>
+          <th>支持类型</th>
+        </tr></thead>
+      <tbody>
+        <tr>
+          <td rowspan="4">非量化模式</td>
+          <td>Ascend 950PR/Ascend 950DT</td>
+          <td rowspan="3">必须与kv保持一致：BFLOAT16、FLOAT16。</td>
+        </tr>
+        <tr>
+          <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
+        </tr>
+        <tr>
+          <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
+        </tr>
+        <tr>
+          <td>Kirin X90/Kirin 9030 处理器系列产品</td>
+          <td>必须与kv保持一致：FLOAT16。</td>
+        </tr>
+        <tr>
+          <td rowspan="4">量化模式</td>
+          <td>Ascend 950PR/Ascend 950DT</td>
+          <td>INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN</td>
+        </tr>
+        <tr>
+          <td>Atlas A3 训练系列产品/Atlas A3 推理系列产品</td>
+          <td rowspan="3">INT8</td>
+        </tr>
+        <tr>
+          <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品</td>
+        </tr>
+        <tr>
+          <td>Kirin X90/Kirin 9030 处理器系列产品</td>
+        </tr>
+      </tbody>
+      </table>
+
+      - Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN。
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 以及 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持FLOAT16、BFLOAT16、INT8。
 
 ## 调用示例
 
