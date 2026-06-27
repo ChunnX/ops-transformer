@@ -184,16 +184,16 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
     seqOffsetGm_   = (__gm__ T_INDEX *)seq_offset;
     keyOutGm_      = (__gm__ uint8_t *)key_out;
     valueOutGm_    = (__gm__ uint8_t *)value_out;
+
+    // hiddenSizeK/V are in elements, convert to bytes for byte-level GM access
+    uint64_t dkSize = static_cast<uint64_t>(sizeof(DTYPE_KEY_CACHE));
+    hiddenSizeK_ *= dkSize;
+    hiddenSizeV_ *= dkSize;
 }
 
 template <typename T, typename T_INDEX, bool isC, bool isS>
 __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
 {
-    AscendC::printf("[SIMT AIV ENTER] batchCount=%lld numTokens=%lld bs=%lld btW=%lld tszK=%llu tszV=%llu\n",
-                    (long long)batchCount_, (long long)numTokens_,
-                    (long long)cacheBlockSize_, (long long)blockTableWidth_,
-                    (unsigned long long)hiddenSizeK_, (unsigned long long)hiddenSizeV_);
-
     asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREADS<T_INDEX>),
         batchCount_, numTokens_,
         static_cast<int32_t>(cacheBlockSize_),
