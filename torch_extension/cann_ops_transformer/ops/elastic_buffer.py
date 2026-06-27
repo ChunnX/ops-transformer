@@ -189,7 +189,7 @@ class MoEElasticBuffer:
         metadata_dtype_size = 4 # sizeof(int32)/sizeof(float)
         mb_conversion = 1024 * 1024
         # 与 kernel 侧 STATE_WIN_SIZE = 1MB 保持一致
-        state_win_size = 1024 * 1024
+        state_win_size = 16 * 1024 * 1024
         metadata_bytes = inline_align(topk * metadata_dtype_size, ub_align)
         per_token_bytes = inline_align(hidden * max_out_dtype_size + metadata_bytes * 2 + ub_align, win_addr_align)
         # 远端窗口 slot 按 (src_token_idx * topK + src_topK_idx) 索引，
