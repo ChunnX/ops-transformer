@@ -31,17 +31,13 @@ constexpr uint16_t FP16_MAX_VALUE_MASK = 0x7fff;
 
 template <typename T, typename U>
 __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr,
-                                  uint32_t blockElemNum, float fp8MaxValue)
+                                  uint32_t totalElemNum, uint16_t blockNum, float fp8MaxValue)
 {
     using namespace AscendC::MicroAPI;
 
     uint32_t dtypeSize = sizeof(T);
     uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / dtypeSize;
     uint16_t vfNum = AscendC::VECTOR_REG_WIDTH / sizeof(float);
-    uint16_t inputVfLoop = (blockElemNum + vfLen - 1) / vfLen;
-    uint16_t outputVfLoop = (blockElemNum + vfNum - 1) / vfNum;
-    uint32_t inputNum = blockElemNum;
-    uint32_t outputNum = blockElemNum;
 
     static constexpr DivSpecificMode mode = {MaskMergeMode::ZEROING, false};
     static constexpr CastTrait castTrait0 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
@@ -60,30 +56,38 @@ __simd_vf__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, 
         MaskReg yMaskReg;
 
         Duplicate((RegTensor<uint16_t> &)vreg2, FP16_MAX_VALUE_MASK);
-        Duplicate(maxReg, static_cast<T>(0));
         Duplicate(fp8MaxReg, fp8MaxValue);
 
-        for (uint16_t i = 0; i < inputVfLoop; i++) {
-            preg0 = UpdateMask<T>(inputNum);
-            DataCopy(vreg1, xAddr + i * vfLen);
-            And((RegTensor<uint16_t> &)vreg3, (RegTensor<uint16_t> &)vreg1, (RegTensor<uint16_t> &)vreg2, preg0);
-            Max<T, MaskMergeMode::MERGING>(maxReg, maxReg, vreg3, preg0);
-        }
+        for (uint16_t blkIdx = 0; blkIdx < blockNum; blkIdx++) {
+            uint32_t blockOffset = blkIdx * FP8_PERBLOCK_BLOCK_SIZE;
+            uint32_t blockElemNum = (blkIdx == blockNum - 1) ? (totalElemNum - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
+            uint16_t inputVfLoop = (blockElemNum + vfLen - 1) / vfLen;
+            uint16_t outputVfLoop = (blockElemNum + vfNum - 1) / vfNum;
 
-        ReduceMax<uint16_t>((RegTensor<uint16_t> &)maxReg, (RegTensor<uint16_t> &)maxReg, maskAll);
-        Duplicate(maxReg, maxReg, maskAll);
+            Duplicate(maxReg, static_cast<T>(0));
 
-        Cast<float, T, castTrait0>(scaleReg, maxReg, maskAll);
-        Div<float, &mode>(scaleReg, scaleReg, fp8MaxReg, maskAll);
-        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr, scaleReg, maskAll);
+            for (uint16_t i = 0; i < inputVfLoop; i++) {
+                preg0 = UpdateMask<T>(blockElemNum);
+                DataCopy(vreg1, xAddr + blockOffset + i * vfLen);
+                And((RegTensor<uint16_t> &)vreg3, (RegTensor<uint16_t> &)vreg1, (RegTensor<uint16_t> &)vreg2, preg0);
+                Max<T, MaskMergeMode::MERGING>(maxReg, maxReg, vreg3, preg0);
+            }
 
-        for (uint16_t i = 0; i < outputVfLoop; i++) {
-            yMaskReg = UpdateMask<float>(outputNum);
-            DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + i * vfNum);
-            Cast<float, T, castTrait0>(yReg2, yReg1, yMaskReg);
-            Div<float, &mode>(yReg3, yReg2, scaleReg, yMaskReg);
-            Cast<U, float, castTrait32tofp8>(outReg, yReg3, yMaskReg);
-            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + i * vfNum, outReg, yMaskReg);
+            ReduceMax<uint16_t>((RegTensor<uint16_t> &)maxReg, (RegTensor<uint16_t> &)maxReg, maskAll);
+            Duplicate(maxReg, maxReg, maskAll);
+
+            Cast<float, T, castTrait0>(scaleReg, maxReg, maskAll);
+            Div<float, &mode>(scaleReg, scaleReg, fp8MaxReg, maskAll);
+            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + blkIdx, scaleReg, maskAll);
+
+            for (uint16_t i = 0; i < outputVfLoop; i++) {
+                yMaskReg = UpdateMask<float>(blockElemNum);
+                DataCopy<T, LoadDist::DIST_UNPACK_B16>(yReg1, xAddr + blockOffset + i * vfNum);
+                Cast<float, T, castTrait0>(yReg2, yReg1, yMaskReg);
+                Div<float, &mode>(yReg3, yReg2, scaleReg, yMaskReg);
+                Cast<U, float, castTrait32tofp8>(outReg, yReg3, yMaskReg);
+                DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + blockOffset + i * vfNum, outReg, yMaskReg);
+            }
         }
     }
 }
@@ -330,14 +334,8 @@ __aicore__ inline void MoeGatherOutFP8PerBlockQuant<T, U>::Compute(int64_t loopC
 
     Duplicate(scaleLocal, 0.0f, Align(loopScaleCols, sizeof(float)));
 
-    for (int64_t blockIdx = 0; blockIdx < loopValidScaleCols; blockIdx++) {
-        int64_t blockOffset = blockIdx * FP8_PERBLOCK_BLOCK_SIZE;
-        int64_t blockElemNum =
-            (blockIdx == loopValidScaleCols - 1) ? (loopCols - blockOffset) : FP8_PERBLOCK_BLOCK_SIZE;
-
-        VF_CALL<ComputeVF<T, U>>(xAddr + blockOffset, scaleAddr + blockIdx, outAddr + blockOffset,
-                                 static_cast<uint32_t>(blockElemNum), fp8MaxValue_);
-    }
+    VF_CALL<ComputeVF<T, U>>(xAddr, scaleAddr, outAddr, static_cast<uint32_t>(loopCols),
+                             static_cast<uint16_t>(loopValidScaleCols), fp8MaxValue_);
 
     inQueue_.FreeTensor(xLocal);
     outQueue_.EnQue(outLocal);
