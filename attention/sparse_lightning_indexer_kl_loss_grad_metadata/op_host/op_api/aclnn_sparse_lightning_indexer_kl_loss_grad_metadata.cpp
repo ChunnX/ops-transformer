@@ -59,9 +59,9 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
     const std::string socVersion = npuInfo.GetSocLongVersion();
 
     auto ret = ParamsCheckSli(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
-                              cmpResidualKOptional, batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim,
-                              topk, layoutQOptional, layoutKOptional, maskMode, cmpRatio, metadata, aicCoreNum,
-                              aivCoreNum, socVersion);
+                               cmpResidualKOptional, batchSize, maxSeqlenQ, maxSeqlenK, numHeadsQ, numHeadsK, headDim,
+                               topk, layoutQOptional, layoutKOptional, maskMode, cmpRatio, metadata, aicCoreNum,
+                               aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
