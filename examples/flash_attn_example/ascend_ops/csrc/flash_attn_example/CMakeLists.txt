@@ -6,22 +6,22 @@
 # Please refer to the License for details.
 # ----------------------------------------------------------------------------
 
-message(STATUS "BUILD_TORCH_OPS ON in flash_attn")
+message(STATUS "BUILD_TORCH_OPS ON in flash_attn_example")
 
-set(flash_attn_NPU_SOURCES
+set(flash_attn_example_NPU_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/torch_interface.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/op_host/fa_tiling.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/op_host/split_core.cpp
 )
 
 set_source_files_properties(
-    ${flash_attn_NPU_SOURCES} PROPERTIES
+    ${flash_attn_example_NPU_SOURCES} PROPERTIES
     LANGUAGE CXX
     COMPILE_FLAGS "--npu-arch=dav-3510 -xasc "
 )
 
-add_library(flash_attn_objects OBJECT ${flash_attn_NPU_SOURCES})
+add_library(flash_attn_example_objects OBJECT ${flash_attn_example_NPU_SOURCES})
 
-target_compile_options(flash_attn_objects PRIVATE ${COMMON_COMPILE_OPTIONS})
-target_include_directories(flash_attn_objects PRIVATE ${COMMON_INCLUDE_DIRS})
+target_compile_options(flash_attn_example_objects PRIVATE ${COMMON_COMPILE_OPTIONS})
+target_include_directories(flash_attn_example_objects PRIVATE ${COMMON_INCLUDE_DIRS})
 return()
