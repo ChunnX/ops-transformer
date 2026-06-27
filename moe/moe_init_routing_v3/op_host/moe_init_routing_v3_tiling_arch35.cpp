@@ -2081,7 +2081,7 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
     int64_t rowMultiple = NUM_TWO;
     int64_t scaleCopyInQueueSize = UB_BLOCK_SIZE * NUM_TWO;
 
-    int64_t xCopyInQueueSize = AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple;
+    int64_t xCopyInQueueSize = Align(perLoopCols, inputXDtypeSize_) * colMultiple;
     int64_t remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
     int64_t maxAlignedBytes = remainUbForIndices / rowMultiple;
     int64_t perLoopMaxIndicesElements = maxAlignedBytes / sizeof(int32_t);
@@ -2089,7 +2089,7 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
 
     while (perLoopMaxIndicesElements <= 0) {
         perLoopCols = Ops::Base::CeilDiv(perLoopCols, NUM_TWO);
-        xCopyInQueueSize = AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple;
+        xCopyInQueueSize = Align(perLoopCols, inputXDtypeSize_) * colMultiple;
         remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
         maxAlignedBytes = remainUbForIndices / rowMultiple;
         perLoopMaxIndicesElements = maxAlignedBytes / sizeof(int32_t);

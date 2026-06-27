@@ -36,6 +36,7 @@ private:
     __aicore__ inline void SyncAll();
     __aicore__ inline void AssistInit();
     __aicore__ inline void ZeroOutRange(int64_t startIndex, int64_t rowCount);
+    __aicore__ inline void ZeroOutAllOutput();
     __aicore__ inline void InitBasicParams(const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
 
 private:
@@ -68,6 +69,7 @@ private:
     int64_t colLoops_;
     int64_t isInputScale_;
     int64_t quantMode_;
+    int64_t zeroAllOutput_ = 0;
 
     int64_t tokenCount_ = 0;
     int32_t lastExpertId_ = -1;
@@ -118,6 +120,18 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutRange(int64_t startIn
 }
 
 template <typename T>
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutAllOutput()
+{
+    int64_t perCoreRows = Ceil(this->expertNum_ * this->expertCapacity_, this->srcToDstTilingData_->needCoreNum);
+    int64_t startRow = this->blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, this->expertNum_ * this->expertCapacity_);
+    if (startRow >= endRow) {
+        return;
+    }
+    ZeroOutRange(startRow, endRow - startRow);
+}
+
+template <typename T>
 __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyIn(int64_t progress)
 {
     LocalTensor<int32_t> inLocal = copyInQueue_.AllocTensor<int32_t>();
@@ -156,7 +170,9 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
         if (this->lastExpertId_ < expertIdx) {
             int64_t zeroStart = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
             int64_t zeroEnd = expertIdx * this->expertCapacity_;
-            ZeroOutRange(zeroStart, zeroEnd - zeroStart);
+            if (this->zeroAllOutput_ == 0) {
+                ZeroOutRange(zeroStart, zeroEnd - zeroStart);
+            }
             this->lastExpertId_ = expertIdx;
             this->tokenCount_ = 0;
         }
@@ -186,6 +202,9 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOutRemain()
     }
     if (this->tokenCount_ > this->expertCapacity_) {
         this->tokenCount_ = this->expertCapacity_;
+    }
+    if (this->zeroAllOutput_ != 0) {
+        return;
     }
     int64_t zeroStart = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
     int64_t zeroEnd = this->expertNum_ * this->expertCapacity_;
@@ -218,6 +237,7 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::InitBasicParams(const MoeIni
     this->cols_ = tilingData->cols;
     this->quantMode_ = tilingData->quantMode;
     this->isInputScale_ = tilingData->isInputScale;
+    this->zeroAllOutput_ = (this->totalLength_ * 4 < this->expertNum_ * this->expertCapacity_) ? 1 : 0;
 
     if (this->blockIdx_ == this->srcToDstTilingData_->needCoreNum - 1) {
         this->coreRows_ = this->srcToDstTilingData_->lastCoreRows;
@@ -280,6 +300,10 @@ template <typename T>
 __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Process()
 {
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
+        if (this->zeroAllOutput_ != 0) {
+            ZeroOutAllOutput();
+            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+        }
         AssistInit();
         currentLoopRows_ = perLoopRows_;
         for (int64_t loop = 0; loop < this->rowLoops_; loop++) {
