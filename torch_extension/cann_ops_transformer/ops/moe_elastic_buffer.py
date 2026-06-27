@@ -84,16 +84,26 @@ class MoEElasticBuffer:
         ub_align = 32
         max_out_dtype_size = 2  # sizeof(bf16)
         metadata_dtype_size = 4 # sizeof(int32)/sizeof(float)
-        mb_conversion = 1024 * 1024	 
-        # 与 kernel 侧 STATE_WIN_SIZE = 1MB 保持一致	 
-        state_win_size = 16 * 1024 * 1024
-        metadata_bytes = inline_align(topk * metadata_dtype_size, ub_align)	 
-        per_token_bytes = inline_align(hidden * max_out_dtype_size + metadata_bytes * 2 + ub_align, win_addr_align)
-        # 远端窗口 slot 按 (src_token_idx * topK + src_topK_idx) 索引，
-        # per-peer 数据量 = STATE_WIN_SIZE + topk * nmt * perSlotBytes
-        per_peer_need = state_win_size + world_size * topk * num_max_tokens_pr_rank * per_token_bytes
-        minimum_buffer_size = 2 * per_peer_need
-         ## hccl按照2*bufferSize大小开设
+        state_dtype_size = 4  # sizeof(int32)
+        mb_conversion = 1024 * 1024
+        local_exerts_num = num_experts // world_size
+
+        # state
+        dispatch_count_size = world_size * inline_align(local_exerts_num * state_dtype_size, win_addr_align)
+        dispatch_notify_size = world_size * win_addr_align
+        combine_state_size = num_max_tokens_per_rank * topk * win_addr_align + world_size * win_addr_align
+        state_buffer_size = dispatch_count_size + dispatch_notify_size * 2 + combine_state_size
+
+        # data
+        metadata_bytes = inline_align(topk * metadata_dtype_size, ub_align)
+        hidden_align = inline_align(hidden * max_out_dtype_size, ub_align)
+        dispatch_per_slot_bytes = inline_align(hidden_align + metadata_bytes * 2 + ub_align, win_addr_align)
+        combine_per_slot_bytes = inline_align(hidden_align + ub_align, win_addr_align)
+        dispatch_buffer_size = world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
+        combine_buffer_size = num_max_tokens_per_rank * combine_per_slot_bytes * topk
+
+        ## bufferSize总共所需大小
+        minimum_buffer_size = state_buffer_size + dispatch_buffer_size + combine_buffer_size
         ccl_buffer_size = inline_align(inline_align(minimum_buffer_size, mb_conversion) // mb_conversion, 2) // 2
 
         return ccl_buffer_size

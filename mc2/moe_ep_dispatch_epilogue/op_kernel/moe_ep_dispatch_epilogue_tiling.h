@@ -21,6 +21,7 @@ struct MoeEpDispatchEpilogueInfo {
     MoeEpCommonTilingData cfg;
     uint32_t aivNum             = 0;
     uint64_t totalUbSize        = 0;
+    uint64_t winDataOffset      = 0;    // Win Data Offset
     uint32_t cached             = 0;   // 0 = non-cached path, 1 = cached path
     uint32_t isMxQuant         = 0;   // 0 = float scales, 1 = fp8_e8m0 scales (MX quant)
 };

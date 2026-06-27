@@ -371,7 +371,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
     bool isXFp8 = (xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN);
     OP_TILING_CHECK(!CheckInputTensorScales(context, nodeName, info, isXFp8),
         OP_LOGE(nodeName, "Check scales input failed."), return ge::GRAPH_FAILED);
-    
+
     uint32_t xDtypeSize = isXFp8 ? FP8_DTYPE_SIZE : MAX_OUT_DTYPE_SIZE;
     uint32_t hAlign32 = ((info.cfg.hidden * xDtypeSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
@@ -479,22 +479,25 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     return ge::GRAPH_SUCCESS;
 }
 
+static uint64_t AlignUpWin(const uint64_t data)
+{
+    return (data + WIN_ADDR_ALIGN - 1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+}
+
 static uint64_t CalcDispatchWorkspace(const MoeEpDispatchInfo &info)
 {
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
     uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
-    uint64_t counterBytes = (epWorldSize * sizeof(int32_t) + WIN_ADDR_ALIGN -1) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
-    uint64_t sendCntPerRankBytes = (2 * epWorldSize * sizeof(int32_t) + WIN_ADDR_ALIGN -1) / WIN_ADDR_ALIGN *
-                                   WIN_ADDR_ALIGN;
-    uint64_t sendCntPerExpertBytes = (moeExpertNumPerRank * epWorldSize * sizeof(int32_t) + WIN_ADDR_ALIGN -1) /
-                                      WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+    uint64_t counterBytes = AlignUpWin(epWorldSize * sizeof(int32_t));
+    uint64_t sendCntPerRankBytes = AlignUpWin(2 * epWorldSize * sizeof(int32_t));
+    uint64_t sendCntPerExpertBytes = AlignUpWin(moeExpertNumPerRank * epWorldSize * sizeof(int32_t));
 
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
     uint64_t globalABytes = UB_ALIGN;
     uint64_t stashBytes = epWorldSize * nmt * perSlotBytes;
-    return SYSTEM_NEED_WORKSPACE + counterBytes + globalABytes + stashBytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + globalABytes + stashBytes;
 }
 
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDispatchInfo &info,
@@ -506,13 +509,25 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
     uint64_t perSlotBytes = static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
+    uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
 
-    uint64_t winNeed = epWorldSize * nmt * perSlotBytes;
+    uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 
+                                    2 * epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t dispatchWinDataSize = epWorldSize * nmt * perSlotBytes;
+    uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+    uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
+
+    uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
+    uint64_t winNeed = dispatchWinDataSize + combineWinDataSize + totalStateWinSizeEp;
     OP_TILING_CHECK(winNeed > maxWindowSize,
         OP_LOGE(nodeName, "HCCL_BUFFSIZE is too SMALL, need %luMB, available %luMB.",
             (winNeed / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
         return ge::GRAPH_FAILED);
     info.totalWinSizeEp = maxWindowSize;
+    info.winStateOffset = 0UL;
+    info.winDataOffset = totalStateWinSizeEp;
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSize);
     return ge::GRAPH_SUCCESS;
 }

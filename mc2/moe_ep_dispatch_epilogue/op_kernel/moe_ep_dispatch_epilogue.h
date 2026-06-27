@@ -131,6 +131,7 @@ private:
     uint32_t epWorldSize_{0};
     uint32_t numMaxTokensPerRank_{0};
     uint32_t perSlotBytes_{0};
+    uint64_t winDataOffset_{0};
 };
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -170,10 +171,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     epWorldSize_ = tilingData->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData->cfg.numMaxTokensPerRank;
     perSlotBytes_ = tilingData->cfg.perSlotBytes;
+    winDataOffset_ = ilingData->winDataOffset;
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     epRankId_ = mc2Context_->epRankId;
-    localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_);
+    localWinAddr_ = GetDispatchWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
     metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
 
     numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank);

@@ -164,7 +164,6 @@ private:
     uint32_t aivNum_{0};
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
-    uint32_t dataState_{0};
     uint32_t startTokenId_{0};
     uint32_t endTokenId_{0};
     uint32_t sendTokenNum_{0};
@@ -189,6 +188,8 @@ private:
     uint32_t calRankCoreNum_{0};
     uint32_t calExpertCoreNum_{0};
     int64_t actualACnt_{0};
+    uint64_t winStateOffset_{0};
+    uint64_t winDataOffset_{0};
 
     DataCopyParams xCopyParams_;
     DataCopyParams topkCopyParams_;
@@ -226,6 +227,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     numAivStage1_ = info.numAivStage1;
     numAivStage2_ = info.numAivStage2;
     aivNum_ = info.aivNum;
+    winStateOffset_ = info.winStateOffset;
+    winDataOffset_ = info.winDataOffset;
     hostPinnedCounterAddrGM_ = reinterpret_cast<GM_ADDR>(info.hostPinnedCounterAddr);
     moeExpertNum_ = moeExpertNumPerRank_ * epWorldSize_;
 
@@ -274,12 +277,11 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     slotCopyParams_ = {1U, static_cast<uint16_t>(perSlotBytes_), 0U, 0U};
     padParams_ = {true, 0, 0, 0};
 
-    dataState_ = 0;
     scaleupCounterAddr_ = workspaceGM;
     sendCntWorkspaceAddr_ = scaleupCounterAddr_ + epWorldSizeAlign512_;
     slotWorkspaceAddr_ = sendCntWorkspaceAddr_ + cntPerRankSizeAlign512_ + moeExpertNumAlign512_;
-    localStateWinAddr_ = GetStateAddrByRankId(mc2Context_, epRankId_, dataState_);
-    localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_);
+    localStateWinAddr_ = GetDispatchStateAddrByRankId(mc2Context_, epRankId_);
+    localWinAddr_ = GetDispatchWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
     scaleupCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t*)scaleupCounterAddr_);
     recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t*)localStateWinAddr_);
     slotGMTensor_.SetGlobalBuffer((__gm__ XType*)slotWorkspaceAddr_);
@@ -491,7 +493,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
         uint64_t notifyVal = sendCntPerRankInt64.GetValue(dstRankId - startRankId_);
         // 计算目标窗口地址:
-        GM_ADDR remoteStateAddr = GetStateAddrByRankId(mc2Context_, dstRankId, dataState_);
+        GM_ADDR remoteStateAddr = GetDispatchStateAddrByRankId(mc2Context_, dstRankId);
         GM_ADDR notifyAddr = remoteStateAddr + epRankId_ * sizeof(uint64_t);
         GM_ADDR remoteCountAddr = remoteStateAddr + cntPerRankSizeAlign512_
             + epRankId_ * moeExpertNumPerRank_ * sizeof(int32_t);
@@ -678,8 +680,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
 
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
         uint32_t sendTokenNum = sendNumPerRankTensor.GetValue((dstRankId - startRankId_) * COUNTER_STRIDE + 1);
-        GM_ADDR notifyAddr = GetStateAddrByRankId(mc2Context_, dstRankId, dataState_) + cntPerRankSizeAlign512_ + 
-                                moeExpertNumAlign512_ + epRankId_ * WIN_ADDR_ALIGN;
+        GM_ADDR notifyAddr = GetDispatchStateAddrByRankId(mc2Context_, dstRankId) + cntPerRankSizeAlign512_ + 
+                             moeExpertNumAlign512_ + epRankId_ * WIN_ADDR_ALIGN;
         if (unlikely(dstRankId == epRankId_)) {
             SyncFunc<AscendC::HardEvent::MTE3_S>();
             GlobalTensor<uint64_t> statusGMTensor;
@@ -692,7 +694,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         uint64_t sendDataSize = sendTokenNum > 0 ? perSlotBytes_ * sendTokenNum : UB_ALIGN;
         uint32_t srcWorkspaceOffset = dstRankId * axisMaxBS_ * perSlotBytes_;
         uint32_t dstRankWinOffset = epRankId_ * axisMaxBS_ * perSlotBytes_;    // 计算目标窗口地址偏移
-        GM_ADDR remoteWinAddr = GetWinAddrByRankId(mc2Context_, dstRankId) + dstRankWinOffset;
+        GM_ADDR remoteWinAddr = GetDispatchWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset;
         hcomm_.WriteWithNotifyNbi(GetCommHandle(mc2Context_, epRankId_, dstRankId), remoteWinAddr,
                                   slotWorkspaceAddr_ + srcWorkspaceOffset, sendDataSize,
                                   notifyAddr, static_cast<uint64_t>(1));

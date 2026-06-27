@@ -19,8 +19,6 @@
 using namespace AscendC;
 
 constexpr uint64_t HCCL_MAX_RANK_SIZE = 1024;
-constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL;
-constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL;
 
 struct Mc2MoeContext {
     uint32_t epRankId;
@@ -30,19 +28,14 @@ struct Mc2MoeContext {
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE]; // 支持ROCE或者URMA
 };
 
-// __aicore__ inline uint32_t AlignUp(uint32_t x, uint32_t align)
-// {
-//     return (x + align - 1) & ~(align - 1);
-// }
-
-__aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2MoeContext *ctx, uint32_t rankId)
+__aicore__ inline GM_ADDR GetDispatchStateAddrByRankId(__gm__ Mc2MoeContext *ctx, uint32_t rankId)
 {
-    return (GM_ADDR)ctx->epHcclBuffer[rankId] + A5_MTE_STATE_WIN_SIZE;
+    return (GM_ADDR)ctx->epHcclBuffer[rankId];
 }
 
-__aicore__ inline GM_ADDR GetStateAddrByRankId(__gm__ Mc2MoeContext *ctx, uint32_t rankId, uint32_t dataState)
+__aicore__ inline GM_ADDR GetDispatchWinAddrByRankId(__gm__ Mc2MoeContext *ctx, uint32_t rankId, uint64_t winOffset)
 {
-    return (GM_ADDR)ctx->epHcclBuffer[rankId] + dataState * WIN_STATE_OFFSET;
+    return (GM_ADDR)ctx->epHcclBuffer[rankId] + winOffset;
 }
 
 __aicore__ inline uint64_t GetCommHandle(__gm__ Mc2MoeContext *ctx, uint32_t localRankId, uint32_t rankId)
