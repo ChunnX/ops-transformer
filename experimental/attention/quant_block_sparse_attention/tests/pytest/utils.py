@@ -61,6 +61,7 @@ def _row_from_dict(params, result, fulfill_percent):
         "sparse_count",
         "softmax_scale",
         "layout_sparse_indices",
+        "layout_out",
         "quant_mode",
         "mask_mode",
         "return_softmax_lse",

@@ -179,6 +179,7 @@ def _call_npu_quant_block_sparse_attention(test_data, device_id):
         layout_kv=inputs["layout_kv"],
         layout_q=inputs["layout_q"],
         layout_sparse_indices=inputs["layout_sparse_indices"],
+        layout_out=inputs["layout_out"],
         quant_mode=inputs["quant_mode"],
         mask_mode=inputs["mask_mode"],
         return_softmax_lse=inputs["return_softmax_lse"],
@@ -205,7 +206,8 @@ class _QuantBlockSparseAttentionGraph(torch.nn.Module):
             max_seqlen_q=self.inputs["max_seqlen_q"], max_seqlen_kv=self.inputs["max_seqlen_kv"],
             pa_block_stride=self.inputs.get("pa_block_stride", self.inputs.get("kv_cache_meta", {}).get("pa_block_stride", 0)),
             layout_kv=self.inputs["layout_kv"], layout_q=self.inputs["layout_q"],
-            layout_sparse_indices=self.inputs["layout_sparse_indices"], quant_mode=self.inputs["quant_mode"],
+            layout_sparse_indices=self.inputs["layout_sparse_indices"],
+ 	        layout_out=self.inputs["layout_out"], quant_mode=self.inputs["quant_mode"],
             mask_mode=self.inputs["mask_mode"], return_softmax_lse=self.inputs["return_softmax_lse"])
 
 

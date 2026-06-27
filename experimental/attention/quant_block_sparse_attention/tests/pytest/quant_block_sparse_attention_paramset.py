@@ -24,6 +24,7 @@ COMMON = {
     "sparse_kv_block_size": [128],
     "softmax_scale": [0.088388],
     "layout_sparse_indices": ["B_N_Qb_Kb"],
+    "layout_out": ["TND"],
     "quant_mode": [1],
     "mask_mode": [3],
     "pa_block_padding_bytes": [0],

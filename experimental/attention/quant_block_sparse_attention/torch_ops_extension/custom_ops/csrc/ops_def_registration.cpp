@@ -25,6 +25,7 @@ TORCH_LIBRARY(custom, m) {
           "Tensor? block_table=None, Tensor? metadata=None, "
           "int max_seqlen_q=0, int max_seqlen_kv=0, int pa_block_stride=0, "
           "str layout_kv='PA_BNSD', str layout_q='TND', str layout_sparse_indices='B_N_Qb_Kb', "
+          "str layout_out='TND', "
           "int quant_mode=1, int mask_mode=3, bool return_softmax_lse=False) -> (Tensor, Tensor)");
     m.def("npu_quant_block_sparse_attention_metadata(Tensor sparse_seq_len, int num_heads_q, int num_heads_kv, "
           "int head_dim, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
