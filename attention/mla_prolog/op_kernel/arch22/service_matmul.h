@@ -395,8 +395,7 @@ __aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const Glob
     mmLocalTensors<T, O_L0C> localTensors;
     localTensors.Init(bufParam);
 
-    LocalTensor<T> aL1;
-    LocalTensor<T> bL1;
+    LocalTensor<T> aL1, bL1;
 
     if constexpr (hasL1ALoaded) {
         aL1 = localTensors.aL1Tensor[(bufParam.aL1BufIter & 1u) * L1_A_SIZE / sizeof(T)];
