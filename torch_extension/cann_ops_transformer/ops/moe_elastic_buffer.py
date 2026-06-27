@@ -111,14 +111,14 @@ class MoEElasticBuffer:
     def dispatch(
         self,
         x: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        *,
         topk_idx: Optional[torch.Tensor] = None,
         topk_weights: Optional[torch.Tensor] = None,
-        *,
         handle: Optional[EPHandle] = None,
-        num_experts: Optional[int] = None,
-        num_max_tokens_per_rank: Optional[int] = None,
-        expert_alignment: Optional[int] = None,
-        do_cpu_sync: Optional[bool] = None,
+        num_experts: Optional[int] = 0,
+        num_max_tokens_per_rank: Optional[int] = 0,
+        expert_alignment: Optional[int] = 1,
+        do_cpu_sync: Optional[bool] = True,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                Optional[torch.Tensor], Optional[torch.Tensor], EPHandle]:
         x, scales = x if isinstance(x, tuple) else (x, None)
@@ -131,8 +131,7 @@ class MoEElasticBuffer:
             do_cpu_sync = False
             ne, ea, nm = handle.num_experts, handle.expert_alignment, handle.num_max_tokens_per_rank
         else:
-            torch._check((topk_idx is not None),
-                lambda: (f"topk_idx is required when no-cached."))
+            torch._check((topk_idx is not None), lambda: (f"topk_idx are required when no-cached."))
             do_cpu_sync = True if do_cpu_sync is None else do_cpu_sync
             ne = num_experts if num_experts is not None else self.num_experts
             nm = num_max_tokens_per_rank if num_max_tokens_per_rank is not None else self.num_max_tokens_per_rank
