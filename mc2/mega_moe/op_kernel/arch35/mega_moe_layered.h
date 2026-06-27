@@ -1347,10 +1347,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel1(int32_t localExpertId)
 {
-    if constexpr(g_coreType == AIC) {
-        return;
-    }
-
     // ---------- Step 0: Server 拓扑 ----------
     uint32_t rankSizePerServer = mc2Context_->rankSizePerServer;
     bool hasMultipleServers = (rankSizePerServer > 0 && rankSizePerServer < worldSize_);
@@ -1509,31 +1505,31 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchLevel1(i
         // 复用 SendAndQuantBuffInit 中已有的 xInTensor1_/xOutTensor1_/mxTempTensor_
 
         // UB: metadata 写缓冲 + sent 跟踪 (跨 server)
-        // uint32_t ubOffset = ubBufferUsedAddr_;
-        // LocalTensor<int32_t> metaWriteTensor = LocalTensor<int32_t>(TPosition::VECCALC, ubOffset,
-        //     MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
-        // ubOffset += MegaMoeDispatchImpl::L1_META_BYTES;
-        // uint32_t sentFlagsSize = hasMultipleServers
-        //     ? Ops::Base::CeilAlign(static_cast<int64_t>(m_ * numOtherServers), static_cast<int64_t>(ALIGN_32))
-        //     : ALIGN_32;  // 单 server 时无跨 server 发送, 但仍分配最小空间避免 UB 溢出
-        // LocalTensor<uint8_t> sentFlags = LocalTensor<uint8_t>(TPosition::VECCALC, ubOffset,
-        //     sentFlagsSize / sizeof(uint8_t));
-        // ubOffset += sentFlagsSize;
+        uint32_t ubOffset = ubBufferUsedAddr_;
+        LocalTensor<int32_t> metaWriteTensor = LocalTensor<int32_t>(TPosition::VECCALC, ubOffset,
+            MegaMoeDispatchImpl::L1_META_BYTES / sizeof(int32_t));
+        ubOffset += MegaMoeDispatchImpl::L1_META_BYTES;
+        uint32_t sentFlagsSize = hasMultipleServers
+            ? Ops::Base::CeilAlign(static_cast<int64_t>(m_ * numOtherServers), static_cast<int64_t>(ALIGN_32))
+            : ALIGN_32;  // 单 server 时无跨 server 发送, 但仍分配最小空间避免 UB 溢出
+        LocalTensor<uint8_t> sentFlags = LocalTensor<uint8_t>(TPosition::VECCALC, ubOffset,
+            sentFlagsSize / sizeof(uint8_t));
+        ubOffset += sentFlagsSize;
 
-        // // 首轮初始化 sentFlags 为 0 (后续 round 保持)
-        // if (localExpertId == 0) {
-        //     Duplicate<uint8_t>(sentFlags, 0, sentFlagsSize / sizeof(uint8_t));
-        //     PipeBarrier<PIPE_ALL>();
-        // }
+        // 首轮初始化 sentFlags 为 0 (后续 round 保持)
+        if (localExpertId == 0) {
+            Duplicate<uint8_t>(sentFlags, 0, sentFlagsSize / sizeof(uint8_t));
+            PipeBarrier<PIPE_ALL>();
+        }
 
-        // // 读本卡 topkIds (从 GM)
-        // AscendC::GlobalTensor<int32_t> topkIdsGlobal;
-        // topkIdsGlobal.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
+        // 读本卡 topkIds (从 GM)
+        AscendC::GlobalTensor<int32_t> topkIdsGlobal;
+        topkIdsGlobal.SetGlobalBuffer((__gm__ int32_t*)params_.expertIdxGmAddr);
 
-        // // 量化输出写 GM 的 DataCopyExtParams
-        // AscendC::DataCopyExtParams dataOutParams{1, static_cast<uint32_t>(l1SlotDataBytes_), 0U, 0U, 0U};
-        // AscendC::DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(k_ * sizeof(bfloat16_t)), 0U, 0U};
-        // AscendC::DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
+        // 量化输出写 GM 的 DataCopyExtParams
+        AscendC::DataCopyExtParams dataOutParams{1, static_cast<uint32_t>(l1SlotDataBytes_), 0U, 0U, 0U};
+        AscendC::DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(k_ * sizeof(bfloat16_t)), 0U, 0U};
+        AscendC::DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
 
         // // 逐 token: 检查 topkIds → 确定目标 server → 量化 → 写中转区或二级区域
         // for (uint32_t tokenIdx = 0; tokenIdx < m_; tokenIdx++) {
