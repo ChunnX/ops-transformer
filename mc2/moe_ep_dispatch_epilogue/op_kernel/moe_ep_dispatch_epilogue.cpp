@@ -33,7 +33,7 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
 
     using ScalesType = typename std::conditional<IsMxQuant, fp8_e8m0_t, float>::type;
 
-    KernelDispatchEpilogue<DTYPE_RECV_X, ScalesType, IsCached, HasTopkWeights> op;
+    MoeEpDispatchEpilogue<DTYPE_RECV_X, ScalesType, IsCached, HasTopkWeights> op;
     op.Init(context, dstBufferSlotIdx,
             numRecvPerRank, numRecvPerExpert, cachedRecvSrcMetadata,
             recvX,

@@ -40,9 +40,9 @@ static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 static constexpr uint32_t RECV_META_FIELDS = 3;
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
-class KernelDispatchEpilogue {
+class MoeEpDispatchEpilogue {
 public:
-    __aicore__ inline KernelDispatchEpilogue() {};
+    __aicore__ inline MoeEpDispatchEpilogue() {};
     __aicore__ inline void Init(
         GM_ADDR context,
         GM_ADDR dstBufferSlotIdx,
@@ -133,7 +133,7 @@ private:
 };
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::SplitToCore(
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId, uint32_t &sendNum)
 {
     sendNum = curSendCnt / curUseAivNum;
@@ -150,7 +150,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTo
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Init(
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Init(
     GM_ADDR context,
     GM_ADDR dstBufferSlotIdx,
     GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR cachedRecvSrcMetadata,
@@ -269,7 +269,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTo
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
     ComputePrefixSums();
     CountHits();
@@ -286,7 +286,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTo
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::ComputePrefixSums()
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::ComputePrefixSums()
 {
     int64_t cumulativeRowOffset = 0;
     for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -298,7 +298,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTo
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CountHits()
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CountHits()
 {
     Duplicate(ubHitCount_, (int32_t)0, numLocalExperts_);
 
@@ -350,7 +350,7 @@ __aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTo
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
-__aicore__ inline void KernelDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
+__aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::CopyFromWindowByExpert()
 {
     DataCopyExtParams hitCountFullCopyParams{1U,
         static_cast<uint32_t>(aivNum_ * hitCountStride_ * sizeof(int32_t)), 0U, 0U, 0U};
