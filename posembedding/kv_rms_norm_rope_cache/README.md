@@ -364,9 +364,11 @@ cache类型支持:
     * 在cacheModeOptional为PA, PA_BNSD, PA_NZ, PA_BLK_BNSD, PA_BLK_NZ模式时有效。
     * 在cacheModeOptional为Norm时，仅在V2场景中使能量化模式时有效。
   * vOptional：
+    * 该参数仅限aclnnKvRmsNormRopeCacheV2接口，aclnnKvRmsNormRopeCache接口不支持该参数！
     * 该参数仅限<b>Atlas A3 训练系列产品/Atlas A3 推理系列产品 以及 Atlas A2 训练系列产品/Atlas A2 推理系列产品</b>。
-    * 该参数仅在<b>kv分离场景(V2)</b>中作为必须入参，在其他类型中会作为无效参数被忽略。
-    * 当vOptional存在时，它的类型必须与kv一致，`[B, N, S]`维度也必须与kv一致。
+      * 该参数仅在<b>kv分离场景(V2)</b>中作为必须入参，在其他类型中会作为无效参数被忽略。
+      * 当vOptional存在时，它的类型必须与kv一致，`[B, N, S]`维度也必须与kv一致。
+    * Ascend 950PR/Ascend 950DT产品不会拦截该参数，但实际功能不支持，也不会处理该参数。
 
 ## 调用说明
 
