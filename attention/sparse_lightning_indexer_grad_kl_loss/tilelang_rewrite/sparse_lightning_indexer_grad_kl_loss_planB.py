@@ -455,7 +455,6 @@ def planB_kernel2(
 # Kernel 3: MM6 — dQueryIndex = reluGrad @ GKI (C→V, K-parallel, atomic_add)
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-1],
     pass_configs=pass_configs,
 )
 def planB_kernel3(
@@ -783,13 +782,12 @@ def sparse_lightning_indexer_grad_kl_loss(
     # ---- Launch Kernel 3 (MM6: dQueryIndex = reluGrad @ GKI, C→V, atomic_add) ----
     gather_key_index_t = gather_key_index.transpose(-1, -2).contiguous()
     d_query_index_ws.zero_()
-    d_query_index_ws = func3(
+    func3(
         relu_grad,
         gather_key_index_t,
         d_query_index_ws,
     )
-    if isinstance(d_query_index_ws, tuple):
-        d_query_index_ws = d_query_index_ws[0]
+    # d_query_index_ws is modified in-place by T.tile.atomic_add
     # Debug: Python reference MM6 to compare
     rg_flat = relu_grad.float().reshape(B * S1, Nidx1, K)
     gki_flat = gather_key_index.float().reshape(B * S1, K, DQueryIndex)
