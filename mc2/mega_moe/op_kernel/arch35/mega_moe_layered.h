@@ -610,7 +610,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     continue;
                 }
                 sendDedupMaskTensor_.SetValue(dedupWordIdx, dedupWord | dedupBit);
-
+                PipeBarrier<PIPE_ALL>();
                 uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
                 GM_ADDR recordAddr = GetUrmaAddrByRankId(mc2Context_,
                     targetServer * rankPerServer_ + rankInServer_) + params_.peermemInfo.relayTokenDataPtr +
@@ -623,7 +623,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                         static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
                     recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
                 }
+                PipeBarrier<PIPE_ALL>();
                 QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
+                PipeBarrier<PIPE_ALL>();
             }
         }
         // PipeBarrier<PIPE_ALL>();
@@ -658,6 +660,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                 if (scanEnd > endCount) {
                     scanEnd = endCount;
                 }
+                PipeBarrier<PIPE_ALL>();
                 for (int32_t slot = scanCursor; slot < scanEnd; ++slot) {
                     uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
                         static_cast<uint64_t>(slot) * sendWorkspaceRecordBytes_;
@@ -679,11 +682,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                         dstAddr + recordDataBytes, static_cast<uint64_t>(1));
                     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
                 }
+                PipeBarrier<PIPE_ALL>();
                 scanCursor = scanEnd;
                 if (scanCursor >= endCount) {
                     scanCursor = cursor;
                 }
-
+                PipeBarrier<PIPE_ALL>();
                 int32_t oldCursor = cursor;
                 while (cursor < endCount) {
                     uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
@@ -699,6 +703,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                 if (cursor != oldCursor) {
                     WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
                 }
+                PipeBarrier<PIPE_ALL>();
                 // TODO:优化
                 bool allComputeDone = true;
                 for (uint32_t idx = 0; idx < realComputeCoreNum; ++idx) {
@@ -707,6 +712,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                         break;
                     }
                 }
+                PipeBarrier<PIPE_ALL>();
                 if (allComputeDone && cursor == ReadGmByPassDCache(countPtr)) {
                     break;
                 }

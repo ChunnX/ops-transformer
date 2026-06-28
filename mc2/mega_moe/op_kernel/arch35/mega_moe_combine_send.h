@@ -214,7 +214,6 @@ __aicore__ inline void CombineRowGroup(
         // V: quantize
         QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
-        PipeBarrier<PIPE_ALL>();
         
         // MTE3: send to GM
         LocalTensor<Fp8Type> ubQuantDataFp8 = ubQuantData.template ReinterpretCast<Fp8Type>();
