@@ -511,13 +511,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     uint32_t startOffset = copyTmpBaseAddr_ + TOKEN_SCALE_SIZE * 3;
     uint32_t xOutAddr = startOffset + xInBytes;
     uint32_t mxTempAddr = xOutAddr + recordPayloadBytes;
-
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<bfloat16_t> xInTensor(TPosition::VECCALC, startOffset, xInBytes / sizeof(bfloat16_t));
     LocalTensor<ActivationType> xOutTensor(TPosition::VECCALC, xOutAddr,
         recordPayloadBytes / sizeof(ActivationType));
     LocalTensor<uint16_t> mxTempTensor(TPosition::VECCALC, mxTempAddr, (2 * 1024) / sizeof(uint16_t));
     LocalTensor<uint8_t> xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
-
+    PipeBarrier<PIPE_ALL>();
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(
         params_.aGmAddr + static_cast<uint64_t>(tokenIdx) * k_ * sizeof(bfloat16_t)));
@@ -529,7 +529,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
     DataCopyPad(xInTensor, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-
+    PipeBarrier<PIPE_ALL>();
     __ubuf__ bfloat16_t* srcAddr = reinterpret_cast<__ubuf__ bfloat16_t*>(xInTensor.GetPhyAddr());
     __ubuf__ uint16_t* maxExpAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempTensor.GetPhyAddr());
     __ubuf__ uint16_t* halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempTensor[Ops::Base::CeilAlign(
@@ -551,6 +551,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     LocalTensor<int32_t> metaTensor = xOutBytesTensor[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<int32_t>();
     metaTensor.SetValue(0, static_cast<int32_t>(tokenIdx));
     metaTensor.SetValue(1, int32_t(1));
+    PipeBarrier<PIPE_ALL>();
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID1>();
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(workspaceDstGlobal, xOutBytesTensor,
@@ -928,6 +929,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     if (relayRank == rankId_) {
         __gm__ int32_t* readyFlag = reinterpret_cast<__gm__ int32_t*>(remoteRecordAddr + flagOffset);
         GmSignalWaitBarrier(readyFlag, int32_t(1));
+        PipeBarrier<PIPE_ALL>();
         GlobalTensor<ActivationType> relayGlobalTensor;
         relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
         DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
@@ -1000,7 +1002,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         tripleTensor_[i * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         tripleTensor_[i * INT32_PER_256B].SetValue(TOPK_INDEX, topkIndex % topK_);
     }
-    PipeBarrier<PIPE_ALL>();
     // 6-buffer SW 流水 MTE2 + MTE3
     // Phase 2 prime: 发出前 BufferNum 个 token 的 MTE2
     int32_t primeCount = (copyNum < BufferNum) ? copyNum : BufferNum;
@@ -1012,7 +1013,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         ReadRelayTokenToCopyTmp(relayRank, remoteCopyOffset, primeIdx, copyInNum);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     }
-    PipeBarrier<PIPE_ALL>();
     // Phase 2 steady: MTE3[copyIdx] + issueMTE2[copyIdx + BufferNum]
     for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
         int32_t outIdx = copyIdx % BufferNum;
@@ -1027,7 +1027,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTok
         DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], bufScale,
             {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
-        PipeBarrier<PIPE_ALL>();
         // 发下一个槽的 MTE2 (copyIdx + BufferNum,复用 outIdx 槽)
         int32_t nextIdx = copyIdx + BufferNum;
         if (nextIdx < copyNum) {
