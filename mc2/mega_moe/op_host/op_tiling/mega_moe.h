@@ -54,7 +54,7 @@ struct MegaMoeConfig {
     uint32_t attrTransposeWeight1Index = 12U;
     uint32_t attrTransposeWeight2Index = 13U;
     uint32_t attrWeight1InterleaveIndex = 14U;
-    bool isMc2Context = false;
+    uint32_t attrIsCrossServerIndex = 15U;
 };
 using namespace Ops::Transformer::OpTiling;
 
