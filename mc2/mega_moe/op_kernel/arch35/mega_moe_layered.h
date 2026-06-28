@@ -553,8 +553,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
         WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
     }
     for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
+        if (curRankId == rankId_) {
+            continue;
+        }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
-        PRINTF("SendMaskCal Drain\n");
+        PRINTF("SendMaskCal Drain\n");  
     }
 }
 
@@ -1047,6 +1050,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBy
     // 当 group 完成时, 批量处理该 rank 在该 group 内的所有 token
     uint32_t rankIndex = 0;
     uint32_t totalProcessed = 0;
+    uint32_t batchBaseOffset = static_cast<uint32_t>(offset);
     while (totalProcessed < totalTokensToProcess) {
         // 跳过已处理完毕 (processedCnt >= tokenCnt) 的 rank
         while (rankInfoTensor.GetValue(2 * processRankNum + rankIndex) >=
@@ -1079,7 +1083,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBy
             if (batchCount > remainingTokens) {
                 batchCount = remainingTokens;
             }
-
+            offset = batchBaseOffset;
             // 加载该 batch 的 triple info 到 VECIN (从 rankInfoTensor 末尾之后开始, 避免覆盖)
             LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * TRIPLE_SIZE);
             offset += batchCount * TRIPLE_SIZE * sizeof(int32_t);
@@ -1322,16 +1326,21 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
     __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
         48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
-    for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
-        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
-        WriteGmByPassDCache(syncRemoteAddr, count);
-        auto syncCheck = syncRank + i * 16;
+    WriteGmByPassDCache(syncCount, count);
+    PipeBarrier<PIPE_ALL>();
+    for (uint32_t rankIndex = aivCoreIdx_; rankIndex < worldSize_; rankIndex += blockAivNum_) {
+        if (rankIndex == rankId_) {
+            continue;
+        }
+        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[rankIndex]) + rankId_ * 16;
+        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), syncRemoteAddr, syncCount, static_cast<int64_t>(sizeof(int32_t)));
+        auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
     }
-    WriteGmByPassDCache(syncCount, count);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 }
+
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
