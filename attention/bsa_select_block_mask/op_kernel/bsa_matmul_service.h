@@ -60,7 +60,7 @@
 template <typename BSAT> class BSAMatmulService {
 public:
     using T = float;                        ///< 中间计算类型 (float)，统一 FP32
-    using IN_T = typename BSAT::inputT;       ///< Cube A/B 输入类型
+    using IN_T = half;       ///< Cube A/B 输入类型
     using MM_OUT_T = T;                     ///< Matmul 输出类型 = float
 
     __aicore__ inline BSAMatmulService() {};

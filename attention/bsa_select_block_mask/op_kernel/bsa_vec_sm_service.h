@@ -27,7 +27,7 @@ class BSAVecSmService {
 public:
     using T = float;                      //< 中间计算类型 (float, FP32)
     using IN_T = typename BSAT::inputT;   //< 输入数据类型 (FP16/BF16)
-    using OUT_T = typename BSAT::outputT; //< 输出数据类型 (INT8)
+    using OUT_T = half; //< 输出数据类型 (INT8)
 
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;   // BNSD or TND
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV; // BNSD or TND
@@ -38,7 +38,7 @@ public:
     __aicore__ inline void InitBuffers(TBuf<>* uBuf_);
 
     __aicore__ inline void InitGM(
-        GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<half> &attnScoreFp16Gm, GlobalTensor<half> &softmaxOutGm);
+        GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm, GlobalTensor<OUT_T> &softmaxOutGm);
 
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize);
@@ -56,9 +56,9 @@ private:
     // static constexpr uint32_t CV_EXEC_RATIO = 1; // cube执行次数与vec执行次数的比例
 
     // ---- GM 全局张量引用 ----
-    GlobalTensor<half> attnScoreFp16GmTensor;              //< 注意力分数 [xBlocks * yBlocks] (FP32→FP16)
+    GlobalTensor<OUT_T> attnScoreFp16GmTensor;              //< 注意力分数 [xBlocks * yBlocks] (FP32→FP16)
     GlobalTensor<T> scoreFp32GmTensor;                 //< Softmax 临时缓冲 (FP32)
-    GlobalTensor<half> softmaxOutGmTensor;
+    GlobalTensor<OUT_T> softmaxOutGmTensor;
 
     TBuf<> uBuf_; //< 统一 UB 缓冲区 (192KB)
 
@@ -72,7 +72,7 @@ private:
     LocalTensor<T> diffMax;
 
     LocalTensor<T> scoreUb;             // out shape [x, y] < [64, 128 * 5]
-    LocalTensor<half> scoreFp16Ub;      // 上一轮矩阵乘结果 input [x, y] < [64, 128 * 5]
+    LocalTensor<OUT_T> scoreFp16Ub;      // 上一轮矩阵乘结果 input [x, y] < [64, 128 * 5]
 
     // ---- 硬件同步事件 ----
     event_t eventSft = (event_t)3;
@@ -138,7 +138,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<>* uBuf_)
 
     uint32_t scoreElements = (Q_CHUNK_SIZE / 2)  * K_CHUNK_SIZE * CV_EXEC_RATIO;
     scoreUb = uBuf_->GetWithOffset<T>(scoreElements, ubOffset);
-    scoreFp16Ub = uBuf_->GetWithOffset<half>(scoreElements, ubOffset); // 复用fp32空间
+    scoreFp16Ub = uBuf_->GetWithOffset<OUT_T>(scoreElements, ubOffset); // 复用fp32空间
 
     ubOffset += scoreElements * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
@@ -152,7 +152,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<>* uBuf_)
 
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::InitGM(
-    GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<half> &attnScoreFp16Gm, GlobalTensor<half> &softmaxOutGm)
+    GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm, GlobalTensor<OUT_T> &softmaxOutGm)
 {
     this->attnScoreFp16GmTensor = attnScoreFp16Gm;
     this->scoreFp32GmTensor = ScoreFp32Gm;
@@ -443,9 +443,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     DataCopyPad(attnScoreFp16GmTensor[sftOutQRowOffset * constInfo.yBlocks + kChunkStart],
         scoreFp16Ub,
         {static_cast<uint16_t>(actualQExcuteRow),
-            static_cast<uint32_t>(kChunkSize * sizeof(half)),
+            static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)),
             0,
-            static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(half)),
+            static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(OUT_T)),
             0});
 
     uint32_t yBlocks = constInfo.yBlocks;
@@ -457,8 +457,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
 
     uint32_t sftOutELeOffset = batchIdx * perBatch + headIdx * perHead;
     DataCopyPad(softmaxOutGmTensor[sftOutQRowOffset * constInfo.yBlocks + kChunkStart + sftOutELeOffset], scoreFp16Ub,
-                {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(half)), 0,
-                 static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(half)), 0});
+                {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)), 0,
+                 static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(OUT_T)), 0});
 }
 
 #endif // BSA_VEC_SM_SERVICE_H

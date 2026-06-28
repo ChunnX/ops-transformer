@@ -42,7 +42,8 @@ public:
     using IN_T = typename BSAT::inputT;
     using OUT_T = typename BSAT::outputT;
     using MM_OUT_T = T;
-
+    using POOL_OUT_T = half;
+ 	using SFTMAX_OUT_T = half;
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
 
@@ -94,10 +95,10 @@ private:
     // 调试用
     GlobalTensor<T> qCmpOutGm, kCmpOutGm;
     GlobalTensor<T> socreFp32OutGm;
-    GlobalTensor<half> softmaxOutGm;
+    GlobalTensor<SFTMAX_OUT_T> softmaxOutGm;
 
-    GlobalTensor<IN_T> qCmpGm, kCmpGm;
-    GlobalTensor<half> attnScoreFp16Gm;
+    GlobalTensor<POOL_OUT_T> qCmpGm, kCmpGm;
+    GlobalTensor<SFTMAX_OUT_T> attnScoreFp16Gm;
     GlobalTensor<T> scoreFp32Gm;
     GlobalTensor<uint8_t> maskTmpGm;
     GlobalTensor<int32_t> topkWorkspaceGm;
@@ -326,12 +327,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_
 {
     auto &outInfo = tilingData->outputParams;
 
-    qCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.qCmpOffset),
-                           outInfo.qCmpSize / sizeof(IN_T));
-    kCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.kCmpOffset),
-                           outInfo.kCmpSize / sizeof(IN_T));
-    attnScoreFp16Gm.SetGlobalBuffer((__gm__ half *)(workspace + constInfo.attnScoreOffset),
-                                 outInfo.attnScoreSize / sizeof(half));
+    qCmpGm.SetGlobalBuffer((__gm__ POOL_OUT_T *)(workspace + constInfo.qCmpOffset),
+                           outInfo.qCmpSize / sizeof(POOL_OUT_T));
+    kCmpGm.SetGlobalBuffer((__gm__ POOL_OUT_T *)(workspace + constInfo.kCmpOffset),
+                           outInfo.kCmpSize / sizeof(POOL_OUT_T));
+    attnScoreFp16Gm.SetGlobalBuffer((__gm__ SFTMAX_OUT_T *)(workspace + constInfo.attnScoreOffset),
+                                 outInfo.attnScoreSize / sizeof(SFTMAX_OUT_T));
     scoreFp32Gm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.softmaxTmpOffset),
                                  outInfo.softmaxTmpSize / sizeof(T));
     topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + constInfo.topkWorkspaceOffset),
@@ -440,7 +441,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
     auto &outInfo = tilingData->outputParams;
     qCmpOutGm.SetGlobalBuffer((__gm__ T *)qCompOut);
     kCmpOutGm.SetGlobalBuffer((__gm__ T *)kCompOut);
-    softmaxOutGm.SetGlobalBuffer((__gm__ half *)softmaxOut);
+    softmaxOutGm.SetGlobalBuffer((__gm__ SFTMAX_OUT_T *)softmaxOut);
     socreFp32OutGm.SetGlobalBuffer((__gm__ T *)scoreOutPtr);
 
     InitWorkspace(workspace);

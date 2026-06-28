@@ -28,6 +28,8 @@ public:
     using T = float;
     using IN_T = typename BSAT::inputT;
     using OUT_T = typename BSAT::outputT;
+    using POOL_OUT_T = half;
+ 	using SFTMAX_OUT_T = half;
 
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
@@ -36,7 +38,7 @@ public:
     __aicore__ inline void InitParams(const BSAConstInfo &constInfo,
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
+    __aicore__ inline void InitGM(GlobalTensor<POOL_OUT_T> &qCmpGm, GlobalTensor<POOL_OUT_T> &kCmpGm,
                                    GlobalTensor<half> &attnScorFp16eGm, GlobalTensor<T> &ScoreFp32Gm,
                                    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
                                    GlobalTensor<int64_t> &actualBlockLenQGm,
@@ -49,12 +51,12 @@ public:
     __aicore__ inline void PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
                                                 GlobalTensor<IN_T> &queryGm,
                                                 GlobalTensor<int64_t> &actualBlockLenQGm,
-                                                GlobalTensor<IN_T> &qCmpGm,
+                                                GlobalTensor<POOL_OUT_T> &qCmpGm,
                                                 GlobalTensor<T> &qCmpOutGm);
     __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
                                                 GlobalTensor<IN_T> &keyGm,
                                                 GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                                GlobalTensor<IN_T> &kCmpGm,
+                                                GlobalTensor<POOL_OUT_T> &kCmpGm,
                                                 GlobalTensor<T> &kCmpOutGm);
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                         uint32_t kChunkStart, uint32_t kChunkSize);
@@ -66,26 +68,7 @@ private:
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
-    GlobalTensor<IN_T> qCmpGmLocal, kCmpGmLocal;
-    GlobalTensor<IN_T> attnScoreGmLocal;
-    GlobalTensor<T> softmaxTmpGmLocal;
-    GlobalTensor<IN_T> queryGmLocal, keyGmLocal;
-    GlobalTensor<int64_t> actualBlockLenQGmLocal, actualBlockLenKVGmLocal;
-
     TBuf<> uBuf_;
-
-    LocalTensor<IN_T> poolInputUb_;
-    LocalTensor<T> poolAccumUb_;
-    LocalTensor<IN_T> poolOutputUb_;
-    LocalTensor<T> scoreUb_;
-    LocalTensor<T> softmaxTmpUb_;
-    LocalTensor<T> castOutputUb_;
-    LocalTensor<T> mScalarUb_;
-    LocalTensor<T> lScalarUb_;
-
-    event_t eventIdMte2ToV;
-    event_t eventIdVToMte3;
-    event_t eventIdMte3ToV;
 
     // vector op
     BSAVecPoolService<BSAT> poolOP;
@@ -96,8 +79,6 @@ template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::InitParams(const BSAConstInfo &constInfo,
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
 {
-    // this->constInfo = constInfo;
-    // this->tilingData = tilingData;
     poolOP.InitParams(constInfo, tilingData);
     softmaxOP.InitParams(constInfo, tilingData);
 }
@@ -112,36 +93,19 @@ __aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::InitGM(
-    GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
+    GlobalTensor<POOL_OUT_T> &qCmpGm, GlobalTensor<POOL_OUT_T> &kCmpGm,
     GlobalTensor<half> &attnScorFp16eGm, GlobalTensor<T> &ScoreFp32Gm,
     GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
     GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
     GlobalTensor<T> &qCmpOutGm, GlobalTensor<T> &kCmpOutGm, GlobalTensor<half> &softmaxOutGm)
 {
-    // this->qCmpGmLocal = qCmpGm;
-    // this->kCmpGmLocal = kCmpGm;
-    // this->attnScoreGmLocal = softmaxOutGm;
-    // this->queryGmLocal = queryGm;
-    // this->keyGmLocal = keyGm;
-    // this->actualBlockLenQGmLocal = actualBlockLenQGm;
-    // this->actualBlockLenKVGmLocal = actualBlockLenKVGm;
-
     poolOP.InitGM(qCmpGm, kCmpGm, queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm, qCmpOutGm, kCmpOutGm);
-    // FIX: softmaxOP.InitGM expects GlobalTensor<T> (FP32) for attnScorFp16eGm parameter
-    // Pass ScoreFp32Gm (FP32 workspace) instead of attnScorFp16eGm (IN_T)
     softmaxOP.InitGM(ScoreFp32Gm, attnScorFp16eGm, softmaxOutGm);
 }
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::AllocEventID()
 {
-    // eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
-    // eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
-    // eventIdMte3ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
-    // SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
-    // SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-    // SetFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
-
     poolOP.AllocEventID();
 }
 
@@ -149,12 +113,6 @@ template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::FreeEventID()
 {
     poolOP.FreeEventID();
-    // WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
-    // WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
-    // WaitFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdMte2ToV);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMte3);
-    // GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(eventIdMte3ToV);
 }
 
 template <typename BSAT>
@@ -162,7 +120,7 @@ __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleQBlock(
     uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
     GlobalTensor<IN_T> &queryGm,
     GlobalTensor<int64_t> &actualBlockLenQGm,
-    GlobalTensor<IN_T> &qCmpGm,
+    GlobalTensor<POOL_OUT_T> &qCmpGm,
     GlobalTensor<T> &qCmpOutGm)
 {
     // TODO: 单个query block的均值池化
@@ -174,7 +132,7 @@ __aicore__ inline void BSAVectorService<BSAT>::PoolingSingleKBlock(
     uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
     GlobalTensor<IN_T> &keyGm,
     GlobalTensor<int64_t> &actualBlockLenKVGm,
-    GlobalTensor<IN_T> &kCmpGm,
+    GlobalTensor<POOL_OUT_T> &kCmpGm,
     GlobalTensor<T> &kCmpOutGm)
 {
     // TODO: 单个key block的均值池化（同PoolingSingleQBlock逻辑）
