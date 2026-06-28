@@ -343,21 +343,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         return ge::GRAPH_FAILED);
     }
 
-    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
-    int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
-    ge::DataType refWeightDataType = GetDataTypeByOpQuantMode(opQuantMode);
-    OP_TILING_CHECK(refWeightDataType == ge::DT_UNDEFINED,
-        OP_LOGE(nodeName,
-            "unsupported dispatchQuantMode(%ld), leading out data type to being DT_UNDEFINED.", dispatchQuantMode),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((refWeightDataType != weightOneDesc->GetDataType()) &&
-                    (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
-            Ops::Base::ToString(weightOneDesc->GetDataType()).c_str(),
-            (std::string("The dtype of weightOne must be ") + Ops::Base::ToString(refWeightDataType).c_str() +
-             " or DT_FLOAT4_E2M1.").c_str()),
-        return ge::GRAPH_FAILED);
-
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     OP_TILING_CHECK(*combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_NO_QUANT &&
                     *combineQuantModePtr != COMBINE_QUANT_OUT_TYPE_E5M2 &&
@@ -732,6 +717,7 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, MegaMo
 static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
     MegaMoeConfig &config, const char *nodeName)
 {
+    auto attrs = context->GetAttrs();
     auto contextDesc = context->GetInputDesc(config.contextIndex);
     auto xDesc = context->GetInputDesc(config.xIndex);
     auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
@@ -741,6 +727,7 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
     auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
     auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
     auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
+    bool is_cross_server = attrs->GetAttrPointer<bool>((config.attrIsCrossServerIndex));
 
     auto yDesc = context->GetOutputDesc(config.yIndex);
     auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
@@ -766,24 +753,41 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "topkWeights",
             Ops::Base::ToString(topkWeightsDesc->GetDataType()).c_str(),
             "The dtype of topkWeights must be DT_FLOAT or DT_BF16."), return ge::GRAPH_FAILED);
+    if (is_cross_server) {
+        OP_TILING_CHECK((
+            (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
+            (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
+                Ops::Base::ToString(weightOneDesc->GetDataType()).c_str(),
+                "The dtype of weightOne must be within the range DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
+            return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((
-        (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
-        (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
-        (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
-            Ops::Base::ToString(weightOneDesc->GetDataType()).c_str(),
-            "The dtype of weightOne must be within the range DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
-        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((
+            (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
+            (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightTwo",
+                Ops::Base::ToString(weightTwoDesc->GetDataType()).c_str(),
+                "The dtype of weightTwo must be within the range DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK((
+            (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
+            (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
+            (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
+                Ops::Base::ToString(weightOneDesc->GetDataType()).c_str(),
+                "The dtype of weightOne must be within the range DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
+            return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((
-        (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
-        (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
-        (weightTwoDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightTwo",
-            Ops::Base::ToString(weightTwoDesc->GetDataType()).c_str(),
-            "The dtype of weightTwo must be within the range DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
-        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((
+            (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
+            (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
+            (weightTwoDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightTwo",
+                Ops::Base::ToString(weightTwoDesc->GetDataType()).c_str(),
+                "The dtype of weightTwo must be within the range DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
+            return ge::GRAPH_FAILED);
+    }
 
     OP_TILING_CHECK(weightOneDesc->GetDataType() != weightTwoDesc->GetDataType(),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(nodeName, "weightOne, weightTwo",
