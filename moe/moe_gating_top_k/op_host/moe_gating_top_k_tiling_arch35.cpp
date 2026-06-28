@@ -693,7 +693,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::PostTiling()
     context_->GetRawTilingData()->SetDataSize(moeGatingTopKTilingData_.GetDataSize());
     OP_LOGD(context_,
             "tilingdata rowCount is: %ld, perCoreRowCount is: %ld, lastCoreRowCount is: %ld, expertCount is: %ld, ",
-            tilingData_->rowCount, tilingData_->perCoreRowCount, tilingData_->lastCoreRowCount, tilingData_->expertCount
+            moeGatingTopKTilingData_->rowCount, moeGatingTopKTilingData_->perCoreRowCount, moeGatingTopKTilingData_->lastCoreRowCount, moeGatingTopKTilingData_->expertCount
             );
     return ge::GRAPH_SUCCESS;
 }
