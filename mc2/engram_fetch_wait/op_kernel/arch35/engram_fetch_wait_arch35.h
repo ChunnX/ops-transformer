@@ -24,14 +24,17 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "../engram_fetch_wait_tiling_data.h"
+#if __has_include("../../engram_fetch/engram_fetch.h")
 #include "../../engram_fetch/engram_fetch.h"
+#else
+#include "../../engram_fetch/op_kernel/engram_fetch.h"
+#endif
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
 
 namespace Mc2Kernel {
 
 using namespace AscendC;
-using namespace Mc2Aclnn;
 
 class EngramFetchWaitArch35 {
 public:
@@ -42,6 +45,8 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void CopyContextToUb();
+
     TPipe *tpipe_{nullptr};
     __gm__ EngramCommContext *ctxPtr_{nullptr};
 
@@ -50,6 +55,7 @@ private:
     uint32_t numRanks_{0};
 
     TBuf<> hcommBuf_;
+    TBuf<> hcommHandleBuf_;
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
@@ -66,17 +72,33 @@ __aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR 
     tpipe_->InitBuffer(hcommBuf_, Mc2Kernel::HCOMM_INIT_SIZE);
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, Mc2Kernel::HCOMM_INIT_SIZE);
+
+    uint32_t hcommHandleBufSize = Ceil(numRanks_ * sizeof(uint64_t), Mc2Kernel::UB_ALIGN) * Mc2Kernel::UB_ALIGN;
+    tpipe_->InitBuffer(hcommHandleBuf_, hcommHandleBufSize);
+}
+
+__aicore__ inline void EngramFetchWaitArch35::CopyContextToUb()
+{
+    LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
+    GlobalTensor<uint64_t> hcommHandleGm;
+    hcommHandleGm.SetGlobalBuffer((__gm__ uint64_t *)&ctxPtr_->hcommHandle_[0]);
+    DataCopyExtParams cpHandle{1U, numRanks_ * static_cast<uint32_t>(sizeof(uint64_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<uint64_t> padHandle{false, 0, 0, 0};
+    DataCopyPad(hcommHandleLocal, hcommHandleGm, cpHandle, padHandle);
 }
 
 __aicore__ inline void EngramFetchWaitArch35::Process()
 {
     if ASCEND_IS_AIV {
+        CopyContextToUb();
+        LocalTensor<uint64_t> hcommHandleLocal = hcommHandleBuf_.Get<uint64_t>();
+
         uint32_t totalBlocks = GetBlockNum();
         for (uint32_t channelIdx = aivId_; channelIdx < numRanks_; channelIdx += totalBlocks) {
             if (channelIdx == rankId_) {
                 continue;
             }
-            hcomm_.Drain(ctxPtr_->hcommHandle_[channelIdx]);
+            hcomm_.Drain(hcommHandleLocal(channelIdx));
         }
     }
 }
