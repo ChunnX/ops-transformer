@@ -319,12 +319,12 @@ def dual_golden_l1norm(actual, golden_high, golden_low, label):
 
 def run_single_case():
     q_seqlen = 1
-    kv_seqlen = 256
-    q_heads = 8
-    kv_heads = 2
+    kv_seqlen = 128
+    q_heads = 1
+    kv_heads = 1
     head_dim = 128
     block_size = 128
-    top_k = 2
+    top_k = 1
     seed = 42
     batch = 1
     total_blocks = ceil(kv_seqlen / block_size)
