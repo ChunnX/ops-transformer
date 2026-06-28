@@ -1293,7 +1293,7 @@ def _generate_stress_cases(num_cases=1000):
         total_blocks = ceil(kv_seqlen / 128)
         max_top_k = min(total_blocks, 8)
         if max_top_k < 2:
-            top_k = 2
+            continue
         else:
             top_k = rng.randint(2, max_top_k) #修改，暂时不支持等于1
         seed = rng.randint(1, 99999)
@@ -1356,7 +1356,7 @@ def _generate_long_seq_cases(num_cases=200):
         total_blocks = ceil(kv_seqlen / 128)
         max_top_k = min(total_blocks, 16)
         if max_top_k < 2:
-            top_k = 2
+            continue
         else:
             top_k = rng.randint(2, max_top_k) #修改，暂时不支持等于1
         seed = rng.randint(1, 99999)
