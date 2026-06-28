@@ -447,10 +447,10 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     OP_TILING_CHECK(CheckAttrParams(context, nodeName, info) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check attr params failed."), return ge::GRAPH_FAILED);
 
-    bool cached = (context->GetOptionalInputDesc(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
+    bool cached = (context->GetInputShape(CACHED_RECV_SRC_METADATA_INDEX) != nullptr);
     info.cached = cached ? 1U : 0U;
 
-    bool hasTopkWeights = (context->GetOutputDesc(OUT_RECV_TOPK_WEIGHTS_INDEX) != nullptr);
+    bool hasTopkWeights = (context->GetOutputShape(OUT_RECV_TOPK_WEIGHTS_INDEX) != nullptr);
 
     OP_TILING_CHECK(CheckInputDataType(context, nodeName, cached) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input dtype failed."), return ge::GRAPH_FAILED);

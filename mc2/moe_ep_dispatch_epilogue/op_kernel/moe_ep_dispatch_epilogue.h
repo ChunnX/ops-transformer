@@ -358,6 +358,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyExtParams hitCountCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(hitCountGm_[(int64_t)aivId_ * hitCountStride_], ubHitCount_, hitCountCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -438,8 +439,10 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                         DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_], ubScales_, scalesCopyParams);
                     }
 
-                    float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
-                    ubStageWeights_.SetValue(stageIdx, weights);
+                    if constexpr (HasTopkWeights) {
+                        float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
+                        ubStageWeights_.SetValue(stageIdx, weights);
+                    }
                     if constexpr (!IsCached) {
                         ubStageMeta_.SetValue(stageIdx * RECV_META_FIELDS + 0,
                             ubMeta_.GetValue(metaBase + 2 * axisKAlign_));
@@ -498,10 +501,6 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 cachedRecvSrcMetadataGm_[(int64_t)startId * RECV_META_FIELDS], metaInParams, metaPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-    DataCopyExtParams slotMetaParams{1U, metaBytes_, 0U, 0U, 0U};
-    DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-    DataCopyPadParams tokenPadParams{false, 0, 0, 0};
-
     for (uint32_t i = 0; i < cnt; ++i) {
         uint32_t metaBase = i * RECV_META_FIELDS;
         int32_t srcRankId   = ubStageMeta_.GetValue(metaBase + 0);
@@ -514,6 +513,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
         GlobalTensor<XType> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType*>(slotAddr), axisH_);
+        DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+        DataCopyPadParams tokenPadParams{false, 0, 0, 0};
         DataCopyPad(ubToken_, srcTokenTensor, tokenCopyParams, tokenPadParams);
 
         if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -526,16 +527,17 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             DataCopyPad(ubScales_, srcScalesTensor, scalesCopyParams, scalesPadParams);
         }
 
-        GlobalTensor<int32_t> srcMetaGm;
-        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset_));
-        DataCopyPad(ubMeta_, srcMetaGm, slotMetaParams, metaPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        if constexpr (HasTopkWeights) {
+            GlobalTensor<int32_t> srcMetaGm;
+            srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset_));
+            DataCopyExtParams slotMetaParams{1U, metaBytes_, 0U, 0U, 0U};
+            DataCopyPad(ubMeta_, srcMetaGm, slotMetaParams, metaPadParams);
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
+            float weight = ubMeta_.ReinterpretCast<float>().GetValue(axisKAlign_ + srcTopkIdx);
+            ubStageWeights_.SetValue(i, weight);
+        }
+
         SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-
-        float weight = ubMeta_.ReinterpretCast<float>().GetValue(axisKAlign_ + srcTopkIdx);
-        ubStageWeights_.SetValue(i, weight);
-
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
         uint32_t globalRow = startId + i;
         DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], ubToken_, tokenCopyParams);
         if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
@@ -546,10 +548,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     }
 
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(cnt * sizeof(float)), 0U, 0U, 0U};
-    DataCopyPad(recvTopkWeightsGm_[startId], ubStageWeights_, weightOutParams);
-
+    if constexpr (HasTopkWeights) {
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(cnt * sizeof(float)), 0U, 0U, 0U};
+        DataCopyPad(recvTopkWeightsGm_[startId], ubStageWeights_, weightOutParams);
+    }
+    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     DataCopyExtParams metaOutParams{1U, static_cast<uint32_t>(cnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(recvSrcMetadataGm_[(int64_t)startId * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
 }
