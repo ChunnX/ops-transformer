@@ -68,15 +68,19 @@ MoeInitRoutingV3(const aclTensor *x, const aclTensor *expertIdx,
     const aclTensor* topkWeightInput = nullptr;
     if (Ops::Transformer::AclnnUtil::IsRegbase()) {
         topkWeightInput = topk_weight;
-        if (expanded_topk_weight != nullptr) {
-            expandedTopkWeightOut = executor->AllocTensor(expanded_topk_weight->GetViewShape(),
-                                                          expanded_topk_weight->GetDataType(),
-                                                          Format::FORMAT_ND);
-            if (expandedTopkWeightOut == nullptr) {
-                return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
-                    nullptr, nullptr, nullptr, nullptr, nullptr);
-            }
+    }
+    if (expanded_topk_weight != nullptr) {
+        expandedTopkWeightOut = executor->AllocTensor(expanded_topk_weight->GetViewShape(),
+                                                      expanded_topk_weight->GetDataType(),
+                                                      Format::FORMAT_ND);
+        if (expandedTopkWeightOut == nullptr) {
+            return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
+                nullptr, nullptr, nullptr, nullptr, nullptr);
         }
+    } else {
+        op::Shape zeroShape;
+        zeroShape.AppendDim(0);
+        expandedTopkWeightOut = executor->AllocTensor(zeroShape, ge::DT_FLOAT, Format::FORMAT_ND);
     }
     ADD_TO_LAUNCHER_LIST_AICORE(
         MoeInitRoutingV3,
