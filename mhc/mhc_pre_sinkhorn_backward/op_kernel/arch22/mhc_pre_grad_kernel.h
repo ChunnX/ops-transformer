@@ -17,6 +17,8 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "mhc_pre_sinkhorn_backward_key_arch22.h"
+#include "mhc_pre_sinkhorn_backward_data_arch22.h"
 
 using namespace AscendC;
 
@@ -74,7 +76,7 @@ public:
                                 GM_ADDR grad_comb, GM_ADDR hc_scale, GM_ADDR hc_base, GM_ADDR h_hat2, GM_ADDR rsqrt,
                                 GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR grad_x, GM_ADDR grad_hc_fn,
                                 GM_ADDR grad_hc_scale, GM_ADDR grad_hc_base, GM_ADDR workspace,
-                                const MhcPreSinkhornBackwardTilingData *tilingData, TPipe *pipe)
+                                const MhcPreSinkhornBackwardArch22TilingData *tilingData, TPipe *pipe)
     {
         pipe_ = pipe;
         blkIdx_ = GetBlockIdx();
@@ -148,7 +150,7 @@ protected:
     GlobalTensor<T> gradXCubeGlobal_;
 
 private:
-    __aicore__ inline void InitTiling(const MhcPreSinkhornBackwardTilingData *tilingData)
+    __aicore__ inline void InitTiling(const MhcPreSinkhornBackwardArch22TilingData *tilingData)
     {
         batchSize_ = tilingData->batchSize;
         seqLength_ = tilingData->seqLength;
