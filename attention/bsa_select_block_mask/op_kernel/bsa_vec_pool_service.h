@@ -522,23 +522,35 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
 
     // Final merge: ReduceSum over remaining rows in poolOutTemp
     if (loopNum != 0) {
-        uint32_t mergeOutOffset = finalOutLocation == 0 ? FLOAT_DATA_BLOCK_NUM * dSize : 0;
-        uint32_t mergeInOffset = finalOutLocation == 0 ? 0 : 1 * dSize;
-
-        uint32_t rDim = loopNum;
-        uint32_t finalShape[] = {rDim, dSize};
-        bool finalIsSrcInnerPad = true; // dSize=128 always 32B aligned (inner axis)
-
-        AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, true>(
-            poolOutTemp[mergeOutOffset], poolOutTemp[mergeInOffset],
-            reduceSharedTemp[bufferId], finalShape, finalIsSrcInnerPad);
-        AscendC::PipeBarrier<PIPE_V>();
-
-        finalOutLocation = 1 - finalOutLocation;
-    }
+        if (!isFirstMerge && finalOutLocation == 1) {
+            // Step 1: ReduceSum new chunks into row 0
+            uint32_t chunkShape[] = {loopNum, dSize};
+            AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, true>(
+                poolOutTemp[0], poolOutTemp[dSize],
+                reduceSharedTemp[bufferId], chunkShape, true);
+            AscendC::PipeBarrier<PIPE_V>();
+            // Step 2: Add accumulated sum (row 8) to chunk sum (row 0)
+            Add(poolOutTemp[0], poolOutTemp[0], poolOutTemp[FLOAT_DATA_BLOCK_NUM * dSize], static_cast<int32_t>(dSize));
+            AscendC::PipeBarrier<PIPE_V>();
+            finalOutLocation = 0; // result in row 0
+        } else {
+            // - isFirstMerge: chunks in rows 0..loopNum-1, rDim=loopNum
+            // - !isFirstMerge && finalOutLocation==0: accumulated sum in row 0 + chunks in rows 1..loopNum, rDim=loopNum+1
+            uint32_t mergeOutOffset = FLOAT_DATA_BLOCK_NUM * dSize; // write to row 8
+            uint32_t mergeInOffset = 0;
+            uint32_t rDim = isFirstMerge ? loopNum : (loopNum + 1);
+            uint32_t finalShape[] = {rDim, dSize};
+            AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, true>(
+                poolOutTemp[mergeOutOffset], poolOutTemp[mergeInOffset],
+                reduceSharedTemp[bufferId], finalShape, true);
+            AscendC::PipeBarrier<PIPE_V>();
+            finalOutLocation = 1; // result in row 8
+        }
+ 	}
 
     // Get the final accumulated sum from poolOutTemp
-    uint32_t finalOffset = finalOutLocation == 0 ? FLOAT_DATA_BLOCK_NUM * dSize : 0;
+    // row 0 if finalOutLocation==0, row 8 if finalOutLocation==1
+ 	uint32_t finalOffset = finalOutLocation == 0 ? 0 : FLOAT_DATA_BLOCK_NUM * dSize;
     auto sumTensor = poolOutTemp[finalOffset];
 
     // Step 4: Divide accumulated sum by actualLen (hardware Cast avoids prohibited int->float C++ cast)
