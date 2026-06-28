@@ -3,15 +3,16 @@ import importlib.util
 import math
 from math import ceil
 from pathlib import Path
-
+import sys
+sys.stderr.write("=== STEP 1: before import torch ===\n")
 import torch
+sys.stderr.write("=== STEP 2: after import torch ===\n")
 import torch_npu
-
+sys.stderr.write("=== STEP 4: after importlib imports ===\n")
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _TORCH_EXT = _REPO_ROOT / "torch_extension"
-import sys
 sys.path.insert(0, str(_TORCH_EXT))
-
+sys.stderr.write("=== STEP 5: before _register ===\n")
 
 def _register_sparse_attention_score_op():
     spec = importlib.util.spec_from_file_location(
