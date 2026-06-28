@@ -1,5 +1,18 @@
-#ifndef BSA_SELECT_BLOCK_MASK_SOFTMAX_H
-#define BSA_SELECT_BLOCK_MASK_SOFTMAX_H
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/*!
+ * \file bsa_vec_sm_service.h
+ * \brief
+ */
+#ifndef BSA_VEC_SM_SERVICE_H
+#define BSA_VEC_SM_SERVICE_H
 
 
 #include "kernel_operator.h"
@@ -30,13 +43,12 @@ public:
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize);
 
-    __aicore__ inline void SoftmaxSecondPassAndCast(
-        uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx);
-
-
+    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                    uint32_t kChunkStart, uint32_t kChunkSize,
+                                                    uint32_t batchIdx, uint32_t headIdx);
 
 private:
-    BSAConstInfo constInfo; 
+    BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
     static constexpr int32_t BUFFER = 1;
@@ -46,7 +58,7 @@ private:
     // ---- GM 全局张量引用 ----
     GlobalTensor<half> attnScoreFp16GmTensor;              //< 注意力分数 [xBlocks * yBlocks] (FP32→FP16)
     GlobalTensor<T> scoreFp32GmTensor;                 //< Softmax 临时缓冲 (FP32)
-    GlobalTensor<half> softmaxOutGmTensor; 
+    GlobalTensor<half> softmaxOutGmTensor;
 
     TBuf<> uBuf_; //< 统一 UB 缓冲区 (192KB)
 
@@ -64,12 +76,11 @@ private:
 
     // ---- 硬件同步事件 ----
     event_t eventSft = (event_t)3;
-
 };
 
 template <typename BSAT>
-__aicore__ inline void BSAVecSmService<BSAT>::InitParams(const BSAConstInfo &constInfo,
-                                                          const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
+__aicore__ inline void BSAVecSmService<BSAT>::InitParams(
+    const BSAConstInfo &constInfo, const optiling::BSASelectBlockMaskTilingData *__restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
@@ -83,7 +94,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<>* uBuf_)
     // ub 划分
     // 根据UB计算，最多可以5次cube，一次vector计算， 即score ub 占用64 * 128 * 5 * 4 = 160k
     // 1个cube计算128 * 128， 计算5次
-    // 一个vector 计算64 * 128 * 5 
+    // 一个vector 计算64 * 128 * 5
     // max 64 * 4 = 0.25k
     // sum 64 * 4 = 0.25k
     // dif (max - global_max) 64 * 4 = 0.25k
@@ -150,7 +161,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitGM(
 
 __aicore__ inline
 void SubBroadcast(
-    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0, LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
+    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
+    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
 {
     // 默认 col 安装32字节对齐
     // 分核逻辑的关系，矩阵shape不会超过[128, 128 * 5], 若启动俩个vector，shape不会超过[64, 128 * 5]
@@ -181,7 +193,8 @@ void SubBroadcast(
 
 __aicore__ inline
 void DivBroadcast(
-    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0, LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
+    LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
+    LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
 {
     // 默认 col 安装32字节对齐
     // 分核逻辑的关系，矩阵shape不会超过[128, 128 * 5], 若启动俩个vector，shape不会超过[64, 128 * 5]
@@ -253,7 +266,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     }
 
     // 32字节对齐
-    uint32_t kChunkSizeAlign = (kChunkSize + FLOAT_DATA_BLOCK_NUM - 1 ) / FLOAT_DATA_BLOCK_NUM * FLOAT_DATA_BLOCK_NUM;
+    uint32_t kChunkSizeAlign = (kChunkSize + FLOAT_DATA_BLOCK_NUM - 1) / FLOAT_DATA_BLOCK_NUM * FLOAT_DATA_BLOCK_NUM;
 
     SetFlag<HardEvent::MTE3_MTE2>(eventSft);
     WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
@@ -281,7 +294,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     uint32_t maxShape[] = { actualQExcuteRow, kChunkSize };
     bool isSrcInnerPad = (kChunkSize % FLOAT_DATA_BLOCK_NUM == 0);
 
-    AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(tmpMax, scoreUb, reduceSharedTemp, maxShape, isSrcInnerPad);
+    AscendC::ReduceMax<T, AscendC::Pattern::Reduce::AR, false>(
+        tmpMax, scoreUb, reduceSharedTemp, maxShape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
 
 
@@ -328,7 +342,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::PipeBarrier<PIPE_V>();
 
     uint32_t sumShape[] = { actualQExcuteRow, kChunkSize};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
+    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
+        tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
 
     AscendC::Add(globalSum, tmpSum, globalSum, actualQExcuteRow);
@@ -346,7 +361,8 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
 
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
-    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
+    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
 {
     uint32_t actualQRowStart = 0, actualQExcuteRow = 0;
     if (vecSubBlockIdx == 0) {
@@ -363,9 +379,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     }
 
     // 32字节对齐 (FP32)
-    uint32_t kChunkSizeAlign32 = (kChunkSize + FLOAT_DATA_BLOCK_NUM - 1 ) / FLOAT_DATA_BLOCK_NUM * FLOAT_DATA_BLOCK_NUM;
+    uint32_t kChunkSizeAlign32 = (kChunkSize + FLOAT_DATA_BLOCK_NUM - 1) / FLOAT_DATA_BLOCK_NUM * FLOAT_DATA_BLOCK_NUM;
     // 32字节对齐 (FP16)
-    uint32_t kChunkSizeAlign16 = (kChunkSize + FP16_DATA_BLOCK_NUM - 1 ) / FP16_DATA_BLOCK_NUM * FP16_DATA_BLOCK_NUM;
+    uint32_t kChunkSizeAlign16 = (kChunkSize + FP16_DATA_BLOCK_NUM - 1) / FP16_DATA_BLOCK_NUM * FP16_DATA_BLOCK_NUM;
     uint32_t kChunkSizeAlign = kChunkSizeAlign16;
 
     SetFlag<HardEvent::MTE3_MTE2>(eventSft);
@@ -442,4 +458,4 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
             0});
 }
 
-#endif // BSA_SELECT_BLOCK_MASK_SOFTMAX_H
+#endif // BSA_VEC_SM_SERVICE_H

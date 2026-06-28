@@ -1,3 +1,16 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/*!
+ * \file bsa_select_block_mask_base.h
+ * \brief
+ */
 #ifndef BSA_SELECT_BLOCK_MASK_BASE_H
 #define BSA_SELECT_BLOCK_MASK_BASE_H
 
@@ -8,9 +21,9 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "bsa_select_block_mask_common.h"
 #include "bsa_select_block_mask_tiling_data.h"
-#include "bsa_select_block_mask_vector.h"
-#include "bsa_select_block_mask_service_cube.h"
-#include "bsa_select_block_mask_radix_topk.h"
+#include "bsa_vector_service.h"
+#include "bsa_matmul_service.h"
+#include "bsa_radix_topk_service.h"
 
 using namespace matmul;
 using AscendC::CacheMode;
@@ -56,7 +69,8 @@ private:
                                            uint32_t tokenStart, uint32_t tokenEnd);
     __aicore__ inline void ProcessMatmulSoftmax(uint32_t batchIdx, uint32_t headIdx,
                                                 uint32_t qChunkStart, uint32_t curQChunkSize);
-    __aicore__ inline void ProcessSoftmaxSecondPass(uint32_t qChunkStart, uint32_t curQChunkSize, uint32_t batchIdx, uint32_t headIdx);
+    __aicore__ inline void ProcessSoftmaxSecondPass(uint32_t qChunkStart, uint32_t curQChunkSize,
+                                                    uint32_t batchIdx, uint32_t headIdx);
 
     TPipe *pipe = nullptr;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData = nullptr;
@@ -89,7 +103,6 @@ private:
     GlobalTensor<int32_t> topkWorkspaceGm;
 
     // Output tensor pointers for the 4 new outputs
-
 };
 
 template <typename BSAT>
@@ -150,7 +163,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint32_t expActiveCoreNum = (constInfo.xBlocks < constInfo.coreNum) ? constInfo.xBlocks : constInfo.coreNum;
             uint32_t expExtraCores = constInfo.xBlocks % expActiveCoreNum;
             uint32_t expRowsPerCore = constInfo.xBlocks / expActiveCoreNum + (expExtraCores > 0 ? 1 : 0);
-            uint32_t expActiveYCoreNum = (constInfo.yBlocks < constInfo.coreNum) ? constInfo.yBlocks : constInfo.coreNum;
+            uint32_t expActiveYCoreNum =
+                (constInfo.yBlocks < constInfo.coreNum) ? constInfo.yBlocks : constInfo.coreNum;
             uint32_t expExtraYCores = constInfo.yBlocks % expActiveYCoreNum;
             uint32_t expYBlocksPerCore = constInfo.yBlocks / expActiveYCoreNum + (expExtraYCores > 0 ? 1 : 0);
             uint64_t expQCmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.dSize * sizeof(float);
@@ -163,7 +177,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint64_t expSortLen = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
             uint64_t expTileLen = BSAMin(static_cast<uint64_t>(7168), BSAMax(static_cast<uint64_t>(128), expSortLen));
             uint64_t expTotalTileNum = (expSortLen + expTileLen - 1) / expTileLen;
-            uint64_t expTopkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * constInfo.aivNum + constInfo.aivNum + constInfo.aivNum) * sizeof(int32_t);
+            uint64_t expTopkHeaderSize = static_cast<uint64_t>(
+                RADIX_NUM_BINS * constInfo.aivNum + constInfo.aivNum + constInfo.aivNum) * sizeof(int32_t);
             uint64_t expTopkTileDataSize = expTotalTileNum * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
             uint64_t expTopkWsSize = expTopkHeaderSize + expTopkTileDataSize;
 
@@ -271,7 +286,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             BSA_TILING_VERIFY_PRINTF("maskSize=%lu (exp=%lu) %s\n", outInfo.maskSize, expMaskSize,
                             (outInfo.maskSize == expMaskSize) ? "OK" : "ERR");
             if (outInfo.maskSize != expMaskSize) errCount++;
-            uint64_t expTotalWs = expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + expTopkWsSize + expMaskSize;
+            uint64_t expAttnScoreEnd = expQCmpSize + expKCmpSize + expAttnScoreSize;
+            uint64_t expSoftmaxEnd = expAttnScoreEnd + expSoftmaxTmpSize;
+            uint64_t expTotalWs = expSoftmaxEnd + expTopkWsSize + expMaskSize;
             BSA_TILING_VERIFY_PRINTF("totalWorkspaceSize=%lu (exp=%lu) %s\n", outInfo.totalWorkspaceSize, expTotalWs,
                             (outInfo.totalWorkspaceSize == expTotalWs) ? "OK" : "ERR");
             if (outInfo.totalWorkspaceSize != expTotalWs) errCount++;
@@ -288,17 +305,17 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
                             (constInfo.attnScoreOffset == expQCmpSize + expKCmpSize) ? "OK" : "ERR");
             if (constInfo.attnScoreOffset != expQCmpSize + expKCmpSize) errCount++;
             BSA_TILING_VERIFY_PRINTF("softmaxTmpOffset=%lu (exp=%lu) %s\n", constInfo.softmaxTmpOffset,
-                            expQCmpSize + expKCmpSize + expAttnScoreSize,
-                            (constInfo.softmaxTmpOffset == expQCmpSize + expKCmpSize + expAttnScoreSize) ? "OK" : "ERR");
-            if (constInfo.softmaxTmpOffset != expQCmpSize + expKCmpSize + expAttnScoreSize) errCount++;
+                            expAttnScoreEnd,
+                            (constInfo.softmaxTmpOffset == expAttnScoreEnd) ? "OK" : "ERR");
+            if (constInfo.softmaxTmpOffset != expAttnScoreEnd) errCount++;
             BSA_TILING_VERIFY_PRINTF("topkWorkspaceOffset=%lu (exp=%lu) %s\n", constInfo.topkWorkspaceOffset,
-                            expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize,
-                            (constInfo.topkWorkspaceOffset == expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize) ? "OK" : "ERR");
-            if (constInfo.topkWorkspaceOffset != expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize) errCount++;
+                            expSoftmaxEnd,
+                            (constInfo.topkWorkspaceOffset == expSoftmaxEnd) ? "OK" : "ERR");
+            if (constInfo.topkWorkspaceOffset != expSoftmaxEnd) errCount++;
             BSA_TILING_VERIFY_PRINTF("maskOffset=%lu (exp=%lu) %s\n", constInfo.maskOffset,
-                            expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + outInfo.topkWorkspaceSize,
-                            (constInfo.maskOffset == expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + outInfo.topkWorkspaceSize) ? "OK" : "ERR");
-            if (constInfo.maskOffset != expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + outInfo.topkWorkspaceSize) errCount++;
+                            expSoftmaxEnd + outInfo.topkWorkspaceSize,
+                            (constInfo.maskOffset == expSoftmaxEnd + outInfo.topkWorkspaceSize) ? "OK" : "ERR");
+            if (constInfo.maskOffset != expSoftmaxEnd + outInfo.topkWorkspaceSize) errCount++;
             BSA_TILING_VERIFY_PRINTF("=== Verification: %u errors ===\n", errCount);
         }
     }
@@ -569,7 +586,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
     uint32_t batchIdx, uint32_t headIdx,
     uint32_t qChunkStart, uint32_t curQChunkSize)
 {
-    // printf("ProcessMatmulSoftmax\n");
     uint32_t loopChunkSize = CV_EXEC_RATIO * constInfo.kChunkSize;
     uint32_t flagId = 0;
     for (uint32_t kChunkStart = 0; kChunkStart < constInfo.yBlocks;
@@ -586,8 +602,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(
 
         if ASCEND_IS_AIV {
             CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[flagId % SYNC_C1_TO_V1_FLAG_NUMS]);
-            // printf("qChunkStart: %d, curQChunkSize:  %d, kChunkStart: %d, curKChunkSize: %d\n",
-            //     qChunkStart, curQChunkSize, kChunkStart, curKChunkSize);
             vectorService.OnlineSoftmaxFirstPassChunk(
                 qChunkStart, curQChunkSize, kChunkStart, curKChunkSize);
         }
@@ -599,7 +613,6 @@ template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessSoftmaxSecondPass(
     uint32_t qChunkStart, uint32_t curQChunkSize, uint32_t batchIdx, uint32_t headIdx)
 {
-    // printf("ProcessSoftmaxSecondPass\n");
     if ASCEND_IS_AIV {
         // 等上个步骤结束
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -609,9 +622,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessSoftmaxSecondPass(
             uint32_t kChunkEnd = BSAMin(kChunkStart + loopChunkSize, constInfo.yBlocks);
             uint32_t curKChunkSize = kChunkEnd - kChunkStart; // 实际执行k的blocks, 即k_comp的行数
 
-            // printf("qChunkStart: %d, curQChunkSize:  %d, kChunkStart: %d, curKChunkSize: %d, batchIdx: %d, headIdx:  %d\n",
-            //         qChunkStart, curQChunkSize, kChunkStart, curKChunkSize, batchIdx, headIdx);
-            vectorService.SoftmaxSecondPassAndCast(qChunkStart, curQChunkSize, kChunkStart, curKChunkSize, batchIdx, headIdx);
+            vectorService.SoftmaxSecondPassAndCast(qChunkStart, curQChunkSize, kChunkStart,
+                                                   curKChunkSize, batchIdx, headIdx);
         }
     }
 }

@@ -1,5 +1,18 @@
-#ifndef BSA_SELECT_BLOCK_MASK_SERVICE_CUBE_H
-#define BSA_SELECT_BLOCK_MASK_SERVICE_CUBE_H
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/*!
+ * \file bsa_matmul_service.h
+ * \brief
+ */
+#ifndef BSA_MATMUL_SERVICE_H
+#define BSA_MATMUL_SERVICE_H
 
 /**
  * @file mask_k_comp_service_cube.h
@@ -141,7 +154,6 @@ private:
      */
     __aicore__ inline void CopyInKToL1(uint32_t kBlockStart, uint32_t kCubeBlockLen, uint8_t pingpongFlag);
 
-
     /**
      * @brief L1→L0A 二维加载（非转置模式）
      *
@@ -169,7 +181,6 @@ private:
      */
     __aicore__ inline void LoadDataMmB(LocalTensor<IN_T> &bL0Tensor, LocalTensor<IN_T> &bL1Tensor,
                                         uint32_t kSize, uint32_t nSize);
-
 
     /**
      * @brief 执行 L1→L0 加载 + Mmad 矩阵乘加（含硬件同步）
@@ -460,7 +471,8 @@ __aicore__ inline void BSAMatmulService<BSAT>::MmadInner(uint32_t mSize, uint32_
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T> &resGm,
                                                             uint32_t mSize, uint32_t nSize,
-                                                            uint32_t dstStride, uint8_t l0PingPongFlag,  GlobalTensor<T> &outFp32Gm)
+                                                            uint32_t dstStride, uint8_t l0PingPongFlag,
+                                                            GlobalTensor<T> &outFp32Gm)
 {
     uint8_t flagVal = l0PingPongFlag & 1;
 
@@ -543,7 +555,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
         WaitFlag<AscendC::HardEvent::MTE2_MTE1>(SYNC_MTE21_FLAG_K[l0PingPongFlag & 1]);
 
         // ---- 2b: Mmad (含 L1→L0 加载) ----
-        MmadInner(singleM, curN, singleK, true /*isL0CInit*/, l0PingPongFlag);
+        MmadInner(singleM, curN, singleK, true /* isL0CInit */, l0PingPongFlag);
 
         // ---- 2c: 释放 K L1，通知 MTE2 可搬运下一轮 ----
         SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_K[l0PingPongFlag & 1]);
@@ -564,4 +576,4 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
     SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);
 }
 
-#endif // BSA_SELECT_BLOCK_MASK_SERVICE_CUBE_H
+#endif // BSA_MATMUL_SERVICE_H

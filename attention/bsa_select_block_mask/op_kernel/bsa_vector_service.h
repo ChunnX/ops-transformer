@@ -1,13 +1,26 @@
-#ifndef BSA_SELECT_BLOCK_MASK_VECTOR_H
-#define BSA_SELECT_BLOCK_MASK_VECTOR_H
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/*!
+ * \file bsa_vector_service.h
+ * \brief
+ */
+#ifndef BSA_VECTOR_SERVICE_H
+#define BSA_VECTOR_SERVICE_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "bsa_select_block_mask_common.h"
 #include "bsa_select_block_mask_tiling_data.h"
-#include "bsa_select_block_mask_pool.h"
-#include "bsa_select_block_mask_softmax.h"
+#include "bsa_vec_pool_service.h"
+#include "bsa_vec_sm_service.h"
 
 template <typename BSAT>
 class BSAVectorService {
@@ -28,7 +41,8 @@ public:
                                    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
                                    GlobalTensor<int64_t> &actualBlockLenQGm,
                                    GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                   GlobalTensor<T> &qCmpOutGm, GlobalTensor<T> &kCmpOutGm, GlobalTensor<half> &softmaxOutGm);
+                                   GlobalTensor<T> &qCmpOutGm, GlobalTensor<T> &kCmpOutGm,
+                                   GlobalTensor<half> &softmaxOutGm);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -44,7 +58,9 @@ public:
                                                 GlobalTensor<T> &kCmpOutGm);
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                         uint32_t kChunkStart, uint32_t kChunkSize);
-    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx);
+    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                    uint32_t kChunkStart, uint32_t kChunkSize,
+                                                    uint32_t batchIdx, uint32_t headIdx);
 
 private:
     BSAConstInfo constInfo;
@@ -175,9 +191,10 @@ __aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(
 
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(
-    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart, uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
+    uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
+    uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx)
 {
     softmaxOP.SoftmaxSecondPassAndCast(qChunkStart, qChunkSize, kChunkStart, kChunkSize, batchIdx, headIdx);
 }
 
-#endif // BSA_SELECT_BLOCK_MASK_VECTOR_H
+#endif // BSA_VECTOR_SERVICE_H
