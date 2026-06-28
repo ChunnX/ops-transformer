@@ -1292,7 +1292,7 @@ def _generate_stress_cases(num_cases=1000):
         from math import ceil
         total_blocks = ceil(kv_seqlen / 128)
         max_top_k = min(total_blocks, 8)
-        top_k = rng.randint(2, max_top_k) #修改，暂时不支持等于1
+        top_k = rng.randrange(2, max_top_k + 1) #修改，暂时不支持等于1
         seed = rng.randint(1, 99999)
         cases.append((q_seqlen, kv_seqlen, q_heads, kv_heads, top_k, seed))
     return cases
@@ -1352,7 +1352,7 @@ def _generate_long_seq_cases(num_cases=200):
         from math import ceil
         total_blocks = ceil(kv_seqlen / 128)
         max_top_k = min(total_blocks, 16)
-        top_k = rng.randint(2, max_top_k) #修改，暂时不支持等于1
+        top_k = rng.randrange(2, max_top_k + 1) #修改，暂时不支持等于1
         seed = rng.randint(1, 99999)
         cases.append((q_seqlen, kv_seqlen, q_heads, kv_heads, top_k, seed))
     return cases
