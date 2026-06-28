@@ -909,7 +909,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
                 GlobalTensor<uint64_t> keyTmpGm = keyGm.template ReinterpretCast<uint64_t>();
                 LocalTensor<uint64_t> kvMergTmpUb = kvMergUb.template ReinterpretCast<uint64_t>();
                 for (uint32_t i = 0; i < copyElmenCnt; ++i) {
-                    uint64_t scaleData = keyTmpGm.GetValue(scaleOffset + i * scaleBytes / uint64Touint8);
+                    uint64_t scaleData = keyTmpGm.GetValue((scaleOffset + i * scaleBytes) / uint64Touint8);
                     kvMergTmpUb.SetValue((dstOffset * combineDimAlign + dCombineBytes + i * combineDimAlign * sizeof(KV_T)) / uint64Touint8, scaleData);
                 }
                 SetFlag<HardEvent::S_MTE2>(6);
