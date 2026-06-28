@@ -1517,14 +1517,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
+                PipeBarrier<PIPE_ALL>();
                 Level1DispatchUrma(localExpertId); // 一级通信：本轮 localExpertId 的 token 写入各 server relay 区
                 SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
             }
         }
+        PipeBarrier<PIPE_ALL>();
         if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
+        PipeBarrier<PIPE_ALL>();
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
                 TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
