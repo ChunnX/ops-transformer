@@ -430,7 +430,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::Compute(gert::TilingContext *context, A
     params.cosCoreOffset = params.preCoreBatch * params.coscdNum;
     // ub size
     // 【泛化需求】qInQueue一次仅放Q或K，故按singleN * lastDim分配
-    params.qPart1Ub = params.singleN * params.lastDim * params.castDtypeSize; // 搬运 singleN * D * castDtypeSize
+    params.qPart1Ub = params.singleN * params.lastDim * params.dtypeSize; // 搬运 singleN * D * dtypeSize
     params.cosPart1Ub = params.coscNum * params.lastDim * params.dtypeSize; // 搬运 1 * D * dtypeSize
     params.q2q1Part1Ub = params.singleN * params.lastDim * params.castDtypeSize; // 计算 singleN * D * castDtypeSize
     params.sin1UbSize = params.coscNum * params.lastDim * params.castDtypeSize; // 计算 1 * D * castDtypeSize，为BF16 cast使用
