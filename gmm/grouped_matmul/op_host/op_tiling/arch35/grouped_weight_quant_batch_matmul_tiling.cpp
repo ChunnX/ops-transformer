@@ -524,6 +524,11 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckWeightSingleXMultiWeightSingleY(
     uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
     int64_t xKDimValue = transA_ ? xShape.GetDim(0) : xShape.GetDim(xDimNum - 1);
 
+    auto yShapePtr = context->GetOutputShape(0);
+    OP_CHECK_IF(yShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "yShapePtr is nullptr."), return false);
+    const gert::Shape &yShape = yShapePtr->GetOriginShape();
+    int64_t yNDimValue = yShape.GetDim(static_cast<uint32_t>(yShape.GetDimNum()) - 1);
+
     uint32_t targetWeightDim = weightNzFlag_ ? 4 : 2; // NZ (n1, k1, k0, n0) 4维 ND (k, n) 2维
     for (size_t i = 0; i < numWeight_; ++i) {
         OP_CHECK_IF(!CheckNotNullPtr(context, WEIGHT_IDX, i),
@@ -533,16 +538,25 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckWeightSingleXMultiWeightSingleY(
         auto wShape = context->GetDynamicInputShape(WEIGHT_IDX, i)->GetStorageShape();
         uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
         int64_t weightKDimValue = transB_ ? wShape.GetDim(wDimNum - 1) : wShape.GetDim(wDimNum - 2);
+        int64_t weightNDimValue = transB_ ? wShape.GetDim(wDimNum - 2) : wShape.GetDim(wDimNum - 1);
         if (weightNzFlag_) {
             // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
             weightKDimValue = transB_ ? wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1)
                                       : wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2);
+            weightNDimValue = transB_ ? wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2)
+                                      : wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1);
         }
         OP_CHECK_IF(xKDimValue != weightKDimValue,
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(OP_NAME,
                 "x[0], weight[" + std::to_string(i) + "]",
                 Ops::Base::ToString(xShape) + ", " + Ops::Base::ToString(wShape),
                 "KDim of weight[" + std::to_string(i) + "] must be equal to KDim of x[0]"),
+            return false);
+        OP_CHECK_IF(yNDimValue != weightNDimValue,
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(OP_NAME,
+                "y, weight[" + std::to_string(i) + "]",
+                Ops::Base::ToString(yShape) + ", " + Ops::Base::ToString(wShape),
+                "NDim of weight[" + std::to_string(i) + "] must be equal to NDim of y"),
             return false);
         OP_CHECK_IF(!CheckTensorDtypeSingleXMultiWeightSingleY(context, WEIGHT_IDX, i, weightDtype_, "weight"),
                     OP_LOGE(context->GetNodeName(), "Check Tensor weight Dtype failed"), return false);
