@@ -205,7 +205,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::CopyInBias()
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     for (int i=0; i<10; i++) {
-        PRINTF("===CopyInBias bias[%d]: %f ==\n", i, xInLocalTensor.GetValue(i));
+        PRINTF("===CopyInBias bias[%d]: %f ==\n", i, biasTensor.GetValue(i));
     }
 }
 
