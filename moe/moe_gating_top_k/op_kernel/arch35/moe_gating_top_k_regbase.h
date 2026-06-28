@@ -1380,7 +1380,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::CopyOut(int64_t row)
     DataCopyPad(expertIdxGm_[row * k_], expertIdxTensor, dataCopyParams);
 
     PipeBarrier<PIPE_ALL>();
-    for (int i=0; i<k; i++) {
+    for (int i=0; i<k_; i++) {
         PRINTF("=========CopyOut: y[%d] = %f ===============\n", i, yOutTensor.GetValue(i));
     }
 
