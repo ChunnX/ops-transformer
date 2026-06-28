@@ -397,7 +397,7 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
         scaleParams.blockLen = scaleBytes;
         scaleParams.srcStride = 0;
         scaleParams.dstStride = 0;
-        scalePadParams.isPad = False;
+        scalePadParams.isPad = false;
         scalePadParams.leftPadding = 0;
         scalePadParams.rightPadding = 0;
         scalePadParams.paddingValue = 0;
@@ -481,7 +481,7 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
                 scaleParams.blockLen = scaleBytes;
                 scaleParams.srcStride = 0;
                 scaleParams.dstStride = 0;
-                scalePadParams.isPad = False;
+                scalePadParams.isPad = false;
                 scalePadParams.leftPadding = 0;
                 scalePadParams.rightPadding = 0;
                 scalePadParams.paddingValue = 0;
