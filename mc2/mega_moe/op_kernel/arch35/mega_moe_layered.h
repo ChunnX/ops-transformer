@@ -511,13 +511,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     uint32_t startOffset = copyTmpBaseAddr_ + TOKEN_SCALE_SIZE * 3;
     uint32_t xOutAddr = startOffset + xInBytes;
     uint32_t mxTempAddr = xOutAddr + recordPayloadBytes;
-    PipeBarrier<PIPE_ALL>();
+
     LocalTensor<bfloat16_t> xInTensor(TPosition::VECCALC, startOffset, xInBytes / sizeof(bfloat16_t));
     LocalTensor<ActivationType> xOutTensor(TPosition::VECCALC, xOutAddr,
         recordPayloadBytes / sizeof(ActivationType));
     LocalTensor<uint16_t> mxTempTensor(TPosition::VECCALC, mxTempAddr, (2 * 1024) / sizeof(uint16_t));
     LocalTensor<uint8_t> xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
-    PipeBarrier<PIPE_ALL>();
+
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(
         params_.aGmAddr + static_cast<uint64_t>(tokenIdx) * k_ * sizeof(bfloat16_t)));
@@ -529,7 +529,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
     DataCopyPad(xInTensor, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-    PipeBarrier<PIPE_ALL>();
+
     __ubuf__ bfloat16_t* srcAddr = reinterpret_cast<__ubuf__ bfloat16_t*>(xInTensor.GetPhyAddr());
     __ubuf__ uint16_t* maxExpAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempTensor.GetPhyAddr());
     __ubuf__ uint16_t* halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempTensor[Ops::Base::CeilAlign(
@@ -551,7 +551,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
     LocalTensor<int32_t> metaTensor = xOutBytesTensor[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<int32_t>();
     metaTensor.SetValue(0, static_cast<int32_t>(tokenIdx));
     metaTensor.SetValue(1, int32_t(1));
-    PipeBarrier<PIPE_ALL>();
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID1>();
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(workspaceDstGlobal, xOutBytesTensor,
