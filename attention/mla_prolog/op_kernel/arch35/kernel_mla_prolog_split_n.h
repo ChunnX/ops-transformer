@@ -1614,7 +1614,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
 }
 
 template <typename MLAPT>
-__aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTensor<kvCacheType> &outputLocal,
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndQuantizeCkv(LocalTensor<kvCacheType> &outputLocal,
                                                                        LocalTensor<uint8_t> &rmsNormShareTmpUb,
                                                                        LocalTensor<float> &dequantScaleXLocal,
                                                                        RmsNormParam rmsNormParams,
