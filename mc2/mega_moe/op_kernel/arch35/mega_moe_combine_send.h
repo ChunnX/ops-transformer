@@ -176,7 +176,7 @@ __aicore__ inline void CombineTokensWithUrmaSend(
         }
         uint32_t cnt = 0;
         for (uint32_t expertIdx = 0; expertIdx < expertPerRank; expertIdx++) {
-            maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context, rankId) + params_.peermemInfo.URMAmaskRecvPtr + 
+            maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context, rankId) + params.peermemInfo.URMAmaskRecvPtr + 
                 static_cast<uint64_t>(expertIdx) * worldSize * maskSlotSize +
                 static_cast<uint64_t>(index) * maskSlotSize));
             AscendC::DataCopy(slotCopyTensor, maskSrcGlobal, slotCopyStride);
