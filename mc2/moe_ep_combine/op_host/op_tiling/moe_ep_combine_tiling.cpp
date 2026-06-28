@@ -228,8 +228,10 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
 
     uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 
                                     2 * epWorldSize * COMM_ALIGN;
-    uint64_t combineWinStateSize = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
-                                   COMM_ALIGN + epWorldSize * COMM_ALIGN;
+    uint64_t combineSyncNotifySize = epWorldSize * COMM_ALIGN;
+    uint64_t combineStateSize = static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(*nmtPtr) *
+                                COMM_ALIGN;
+    uint64_t combineWinStateSize = combineSyncNotifySize + combineStateSize;
     uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint64_t dispatchWinDataSize = epWorldSize * static_cast<uint64_t>(*nmtPtr) *
@@ -241,7 +243,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
             (winNeedTotal / MB_SIZE) + 1UL, maxWindowSize / MB_SIZE),
         return ge::GRAPH_FAILED);
     info.totalWinSizeEp = maxWindowSize;
-    info.winStateOffset = dispatchWinStateSize;
+    info.winSyncNotifyOffset = dispatchWinStateSize;
+    info.winStateOffset = dispatchWinStateSize + combineSyncNotifySize;
     info.winDataOffset = dispatchWinStateSize + combineWinStateSize + dispatchWinDataSize;
 
     return ge::GRAPH_SUCCESS;
@@ -281,8 +284,9 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
         static_cast<uint64_t>(info.cfg.topK) * static_cast<uint64_t>(UB_ALIGN);
     info.localWsSizeDataPerRank = perWinDataNeed;
     info.localWsSizeStatusPerRank = perWinStateNeed;
+    info.syncNotifyStashBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * COMM_ALIGN;
     uint64_t stashBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * (perWinDataNeed + perWinStateNeed);
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + stashBytes;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + info.syncNotifyStashBytes + stashBytes;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);

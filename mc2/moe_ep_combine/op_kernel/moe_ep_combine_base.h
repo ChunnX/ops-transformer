@@ -18,6 +18,7 @@
 #include <cstdint>
 
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
+constexpr uint64_t COMBINE_WIN_ADDR_ALIGN = 512UL;
 
 struct Mc2MoeContext {
     uint32_t epRankId;
@@ -28,14 +29,22 @@ struct Mc2MoeContext {
 };
 
 
-__aicore__ inline GM_ADDR GetWinCombineDataAddrByRankId(__gm__ Mc2MoeContext *ctx)
+__aicore__ inline GM_ADDR GetCombineWinAddrByRankId(__gm__ Mc2MoeContext *ctx, uint32_t rankId, uint64_t offset)
 {
-    return (GM_ADDR)ctx->epHcclBuffer[0];
+    return (GM_ADDR)ctx->epHcclBuffer[rankId] + offset;
 }
 
-__aicore__ inline GM_ADDR GetWinCombineStateAddrByRankId(__gm__ Mc2MoeContext *ctx)
+__aicore__ inline GM_ADDR GetCombineSyncNotifyAddr(__gm__ Mc2MoeContext *ctx, uint32_t rankId,
+    uint64_t syncNotifyOffset, uint32_t senderRank)
 {
-    return (GM_ADDR)ctx->epHcclBuffer[0];
+    return (GM_ADDR)ctx->epHcclBuffer[rankId] + syncNotifyOffset +
+           static_cast<uint64_t>(senderRank) * COMBINE_WIN_ADDR_ALIGN;
+}
+
+__aicore__ inline uint64_t GetCommHandle(__gm__ Mc2MoeContext *ctx, uint32_t localRankId, uint32_t rankId)
+{
+    uint32_t index = rankId > localRankId ? rankId - 1 : rankId;
+    return ctx->hcommHandle[index];
 }
 
 

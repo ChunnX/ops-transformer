@@ -28,10 +28,12 @@ struct MoeEpCombineInfo {
     uint32_t aivNum             = 0;
     uint64_t totalWinSizeEp     = 0;
     uint64_t totalUbSize        = 0;
+    uint64_t syncNotifyStashBytes = 0;  // workspace 中 SyncNotify 暂存区大小 (E * 512)
     uint64_t localWsSizeDataPerRank     = 0;  // per-rank local workspace stride (compact, not CCL window size)
     uint64_t localWsSizeStatusPerRank   = 0;
-    uint64_t winStateOffset     = 0;    // Win State Offset
-    uint64_t winDataOffset      = 0;    // Win Data Offset
+    uint64_t winSyncNotifyOffset        = 0;  // Combine Sync Notify Offset
+    uint64_t winStateOffset             = 0;  // Combine Slot State Offset
+    uint64_t winDataOffset              = 0;  // Combine Payload Data Offset
 };
 
 struct MoeEpCombineTilingData {
