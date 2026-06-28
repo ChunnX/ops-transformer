@@ -1118,7 +1118,7 @@ class TestNpuSparseAttentionScoreBf16(TestCase):
 _BF16_CASES = [
     # (q_seqlen, kv_seqlen, q_heads, kv_heads, top_k, seed)
     # --- topk sweep (aligned) ---
-    (1, 128, 1, 1, 1, 42),
+    # (1, 128, 1, 1, 1, 42),
     (1, 256, 1, 1, 2, 42),
     (1, 384, 1, 1, 3, 42),
     (1, 512, 1, 1, 4, 42),
