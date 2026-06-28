@@ -82,6 +82,28 @@ vector<gert::TilingContextPara::OpAttr> GetGroupedWeightQuantPergroupAttrs(bool 
     };
 }
 
+optiling::GMMCompileInfo MakeAscend950CompileInfo()
+{
+    return {
+        32,                                                   // aicNum
+        64,                                                   // aivNum
+        262144,                                               // ubSize
+        524288,                                               // l1Size
+        134217728,                                            // l2Size
+        262144,                                               // l0CSize
+        65536,                                                // l0ASize
+        65536,                                                // l0BSize
+        platform_ascendc::SocVersion::ASCEND950,              // socVersion
+        NpuArch::DAV_3510,
+    };
+}
+
+gert::TilingContextPara::TensorDescription MakeTensorDesc(const vector<int64_t> &dims, ge::DataType dtype,
+                                                          ge::Format format = ge::FORMAT_ND)
+{
+    return {ops::ut::MakeGertStorageShape(dims, dims), dtype, format};
+}
+
 class GroupedWeightQuantPergroupArch35TilingTestParam {
 public:
     void Prepare(optiling::GMMCompileInfo &compileInfo) const
@@ -331,6 +353,279 @@ protected:
 TEST_P(TestGroupedWeightQuantPergroupArch35Tiling, generalTest)
 {
     GetParam().Test();
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiDifferentNkWritesEachMknToTilingData)
+{
+    auto compileInfo = MakeAscend950CompileInfo();
+    vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+        MakeTensorDesc({128, 512}, ge::DT_FLOAT16),  // x0
+        MakeTensorDesc({64, 1024}, ge::DT_FLOAT16),  // x1
+        MakeTensorDesc({512, 256}, ge::DT_INT4),     // weight0
+        MakeTensorDesc({1024, 384}, ge::DT_INT4),    // weight1
+        MakeTensorDesc({256}, ge::DT_FLOAT16),       // bias0
+        MakeTensorDesc({384}, ge::DT_FLOAT16),       // bias1
+        MakeTensorDesc({4, 256}, ge::DT_FLOAT16),    // antiquantScale0, groupSize=512/4=128
+        MakeTensorDesc({8, 384}, ge::DT_FLOAT16),    // antiquantScale1, groupSize=1024/8=128
+        MakeTensorDesc({4, 256}, ge::DT_FLOAT16),    // antiquantOffset0
+        MakeTensorDesc({8, 384}, ge::DT_FLOAT16),    // antiquantOffset1
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({128, 256}, ge::DT_FLOAT16),
+        MakeTensorDesc({64, 384}, ge::DT_FLOAT16),
+    };
+    vector<uint32_t> inputInstanceNum = {2, 2, 2, 0, 0, 2, 2, 0, 0};
+    vector<uint32_t> outputInstanceNum = {2};
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", inputDescs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMWeightQuantTilingData));
+    const auto *tilingData =
+        reinterpret_cast<const GroupedMatmulTilingData::GMMWeightQuantTilingData *>(tilingInfo.tilingData.get());
+
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupNum, 2U);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupSize, 128U);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.kSize, 1024U);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.nSize, 384U);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.singleX, 0U);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.singleWeight, 0U);
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.singleY, 0U);
+    EXPECT_EQ(tilingData->gmmArray.mList[0], 128);
+    EXPECT_EQ(tilingData->gmmArray.kList[0], 512);
+    EXPECT_EQ(tilingData->gmmArray.nList[0], 256);
+    EXPECT_EQ(tilingData->gmmArray.mList[1], 64);
+    EXPECT_EQ(tilingData->gmmArray.kList[1], 1024);
+    EXPECT_EQ(tilingData->gmmArray.nList[1], 384);
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiRejectsFirstOffsetShapeMismatch)
+{
+    auto compileInfo = MakeAscend950CompileInfo();
+    vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+        MakeTensorDesc({128, 512}, ge::DT_FLOAT16),  // x0
+        MakeTensorDesc({64, 1024}, ge::DT_FLOAT16),  // x1
+        MakeTensorDesc({512, 256}, ge::DT_INT4),     // weight0
+        MakeTensorDesc({1024, 384}, ge::DT_INT4),    // weight1
+        MakeTensorDesc({4, 256}, ge::DT_FLOAT16),    // antiquantScale0
+        MakeTensorDesc({8, 384}, ge::DT_FLOAT16),    // antiquantScale1
+        MakeTensorDesc({5, 256}, ge::DT_FLOAT16),    // antiquantOffset0, wrong G
+        MakeTensorDesc({8, 384}, ge::DT_FLOAT16),    // antiquantOffset1
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({128, 256}, ge::DT_FLOAT16),
+        MakeTensorDesc({64, 384}, ge::DT_FLOAT16),
+    };
+    vector<uint32_t> inputInstanceNum = {2, 2, 0, 0, 0, 2, 2, 0, 0};
+    vector<uint32_t> outputInstanceNum = {2};
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", inputDescs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiKEqualsGroupSizeStillUsesPergroup)
+{
+    auto compileInfo = MakeAscend950CompileInfo();
+    vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+        MakeTensorDesc({128, 128}, ge::DT_FLOAT16),  // x0
+        MakeTensorDesc({64, 128}, ge::DT_FLOAT16),   // x1
+        MakeTensorDesc({128, 256}, ge::DT_INT4),     // weight0
+        MakeTensorDesc({128, 384}, ge::DT_INT4),     // weight1
+        MakeTensorDesc({1, 256}, ge::DT_FLOAT16),    // antiquantScale0, groupSize=128/1=128
+        MakeTensorDesc({1, 384}, ge::DT_FLOAT16),    // antiquantScale1, groupSize=128/1=128
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({128, 256}, ge::DT_FLOAT16),
+        MakeTensorDesc({64, 384}, ge::DT_FLOAT16),
+    };
+    vector<uint32_t> inputInstanceNum = {2, 2, 0, 0, 0, 2, 0, 0, 0};
+    vector<uint32_t> outputInstanceNum = {2};
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", inputDescs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMWeightQuantTilingData));
+    const auto *tilingData =
+        reinterpret_cast<const GroupedMatmulTilingData::GMMWeightQuantTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupSize, 128U);
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiRejectsPerChannelThenPerGroupScale)
+{
+    auto compileInfo = MakeAscend950CompileInfo();
+    vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+        MakeTensorDesc({128, 128}, ge::DT_FLOAT16),  // x0
+        MakeTensorDesc({64, 128}, ge::DT_FLOAT16),   // x1
+        MakeTensorDesc({128, 256}, ge::DT_INT4),     // weight0
+        MakeTensorDesc({128, 384}, ge::DT_INT4),     // weight1
+        MakeTensorDesc({256}, ge::DT_FLOAT16),       // antiquantScale0 perchannel
+        MakeTensorDesc({1, 384}, ge::DT_FLOAT16),    // antiquantScale1 pergroup
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({128, 256}, ge::DT_FLOAT16),
+        MakeTensorDesc({64, 384}, ge::DT_FLOAT16),
+    };
+    vector<uint32_t> inputInstanceNum = {2, 2, 0, 0, 0, 2, 0, 0, 0};
+    vector<uint32_t> outputInstanceNum = {2};
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", inputDescs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiRejectsPerGroupThenPerChannelScale)
+{
+    auto compileInfo = MakeAscend950CompileInfo();
+    vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+        MakeTensorDesc({128, 128}, ge::DT_FLOAT16),  // x0
+        MakeTensorDesc({64, 128}, ge::DT_FLOAT16),   // x1
+        MakeTensorDesc({128, 256}, ge::DT_INT4),     // weight0
+        MakeTensorDesc({128, 384}, ge::DT_INT4),     // weight1
+        MakeTensorDesc({1, 256}, ge::DT_FLOAT16),    // antiquantScale0 pergroup
+        MakeTensorDesc({384}, ge::DT_FLOAT16),       // antiquantScale1 perchannel
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({128, 256}, ge::DT_FLOAT16),
+        MakeTensorDesc({64, 384}, ge::DT_FLOAT16),
+    };
+    vector<uint32_t> inputInstanceNum = {2, 2, 0, 0, 0, 2, 0, 0, 0};
+    vector<uint32_t> outputInstanceNum = {2};
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", inputDescs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiPerChannelSucceedsWithGroupSizeZero)
+{
+    // 1D antiquantScale [N_i] -> perchannel mode in multi-multi-multi A16W4ND.
+    // Verifies the new CheckMultiA16W4PerChannelShape path succeeds and groupSize stays 0.
+    auto compileInfo = MakeAscend950CompileInfo();
+    vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+        MakeTensorDesc({128, 256}, ge::DT_FLOAT16),  // x0
+        MakeTensorDesc({64, 512}, ge::DT_FLOAT16),   // x1
+        MakeTensorDesc({256, 128}, ge::DT_INT4),     // weight0 [K,N]
+        MakeTensorDesc({512, 256}, ge::DT_INT4),     // weight1 [K,N]
+        MakeTensorDesc({128}, ge::DT_FLOAT16),       // antiquantScale0 [N] perchannel
+        MakeTensorDesc({256}, ge::DT_FLOAT16),       // antiquantScale1 [N] perchannel
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({128, 128}, ge::DT_FLOAT16),
+        MakeTensorDesc({64, 256}, ge::DT_FLOAT16),
+    };
+    vector<uint32_t> inputInstanceNum = {2, 2, 0, 0, 0, 2, 0, 0, 0};
+    vector<uint32_t> outputInstanceNum = {2};
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", inputDescs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMWeightQuantTilingData));
+    const auto *tilingData =
+        reinterpret_cast<const GroupedMatmulTilingData::GMMWeightQuantTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupSize, 0U);
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiRejectsInconsistentGroupSize)
+{
+    // tensor0: K=256, G=2 -> groupSize=128; tensor1: K=512, G=8 -> groupSize=64.
+    // The two tensors derive different groupSize values and must be rejected.
+    auto compileInfo = MakeAscend950CompileInfo();
+    vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+        MakeTensorDesc({128, 256}, ge::DT_FLOAT16),  // x0
+        MakeTensorDesc({64, 512}, ge::DT_FLOAT16),   // x1
+        MakeTensorDesc({256, 128}, ge::DT_INT4),     // weight0 [K,N]
+        MakeTensorDesc({512, 256}, ge::DT_INT4),     // weight1 [K,N]
+        MakeTensorDesc({2, 128}, ge::DT_FLOAT16),    // antiquantScale0, groupSize=256/2=128
+        MakeTensorDesc({8, 256}, ge::DT_FLOAT16),    // antiquantScale1, groupSize=512/8=64
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({128, 128}, ge::DT_FLOAT16),
+        MakeTensorDesc({64, 256}, ge::DT_FLOAT16),
+    };
+    vector<uint32_t> inputInstanceNum = {2, 2, 0, 0, 0, 2, 0, 0, 0};
+    vector<uint32_t> outputInstanceNum = {2};
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", inputDescs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiKEqualsGroupSizePergroupKeyDiffersFromPerChannel)
+{
+    // Regression for the K==groupSize ambiguity bug: with identical M/N/K shapes,
+    // a 2D antiquantScale [1, N] (pergroup, G=1, K==gs) must produce a different
+    // tilingKey from a 1D antiquantScale [N] (perchannel). Before the fix, the
+    // K==gs pergroup case was misclassified as perchannel (groupSize stayed 0),
+    // producing the same PER_CHANNEL tilingKey for both.
+    auto compileInfo = MakeAscend950CompileInfo();
+
+    // Common tensor shapes for both modes.
+    vector<gert::TilingContextPara::TensorDescription> commonInputPrefix = {
+        MakeTensorDesc({128, 128}, ge::DT_FLOAT16),  // x0
+        MakeTensorDesc({64, 128}, ge::DT_FLOAT16),   // x1
+        MakeTensorDesc({128, 256}, ge::DT_INT4),     // weight0 [K,N]
+        MakeTensorDesc({128, 384}, ge::DT_INT4),     // weight1 [K,N]
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({128, 256}, ge::DT_FLOAT16),
+        MakeTensorDesc({64, 384}, ge::DT_FLOAT16),
+    };
+    vector<uint32_t> inputInstanceNum = {2, 2, 0, 0, 0, 2, 0, 0, 0};
+    vector<uint32_t> outputInstanceNum = {2};
+
+    // Pergroup: 2D scale [1, N], K=128, G=1, groupSize=128/1=128.
+    vector<gert::TilingContextPara::TensorDescription> pergroupInputs(commonInputPrefix);
+    pergroupInputs.push_back(MakeTensorDesc({1, 256}, ge::DT_FLOAT16));  // antiquantScale0
+    pergroupInputs.push_back(MakeTensorDesc({1, 384}, ge::DT_FLOAT16));  // antiquantScale1
+    gert::TilingContextPara pergroupCtx(
+        "GroupedMatmul", pergroupInputs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+    TilingInfo pergroupInfo;
+    ASSERT_TRUE(ExecuteTiling(pergroupCtx, pergroupInfo));
+    ASSERT_EQ(pergroupInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMWeightQuantTilingData));
+    const auto *pergroupData =
+        reinterpret_cast<const GroupedMatmulTilingData::GMMWeightQuantTilingData *>(pergroupInfo.tilingData.get());
+    ASSERT_EQ(pergroupData->gmmWeightQuantParam.groupSize, 128U);
+
+    // Perchannel: 1D scale [N], same M/N/K.
+    vector<gert::TilingContextPara::TensorDescription> perchannelInputs(commonInputPrefix);
+    perchannelInputs.push_back(MakeTensorDesc({256}, ge::DT_FLOAT16));  // antiquantScale0
+    perchannelInputs.push_back(MakeTensorDesc({384}, ge::DT_FLOAT16));  // antiquantScale1
+    gert::TilingContextPara perchannelCtx(
+        "GroupedMatmul", perchannelInputs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, -1), inputInstanceNum, outputInstanceNum,
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+    TilingInfo perchannelInfo;
+    ASSERT_TRUE(ExecuteTiling(perchannelCtx, perchannelInfo));
+    const auto *perchannelData =
+        reinterpret_cast<const GroupedMatmulTilingData::GMMWeightQuantTilingData *>(perchannelInfo.tilingData.get());
+    ASSERT_EQ(perchannelData->gmmWeightQuantParam.groupSize, 0U);
+
+    // The core assertion: pergroup tilingKey must differ from perchannel tilingKey.
+    EXPECT_NE(pergroupInfo.tilingKey, perchannelInfo.tilingKey);
 }
 
 INSTANTIATE_TEST_SUITE_P(GROUPED_WQ_PERGROUP_950, TestGroupedWeightQuantPergroupArch35Tiling,

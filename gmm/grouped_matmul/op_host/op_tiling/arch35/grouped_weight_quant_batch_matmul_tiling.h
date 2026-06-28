@@ -268,6 +268,9 @@ protected:
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;
     void GetNumOfInputs(const gert::TilingContext *context);
     bool SetAntiquantGroupSize(const gert::TilingContext *context);
+    bool DeriveGroupSizeSingle(const gert::TilingContext *context);
+    bool DeriveGroupSizeMulti(const gert::TilingContext *context);
+    bool CheckMultiA16W4PerChannelShape(const gert::TilingContext *context) const;
     bool CheckGroupSize() const;
     bool GetC0Size(const gert::TilingContext *context, ge::DataType dtype, uint64_t &c0Size) const;
     void CalcFullNumBlocksResplitTiling(uint64_t c0Size);

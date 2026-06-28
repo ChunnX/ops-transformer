@@ -1167,53 +1167,186 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupSize() const
 
 bool GroupedWeightQuantBatchMatmulTiling::SetAntiquantGroupSize(const gert::TilingContext *context)
 {
+    groupSize_ = 0;
     auto antiquantScale = context->GetDynamicInputTensor(ANTIQUANT_SCALE_IDX, 0);
     OP_CHECK_IF(antiquantScale == nullptr, OP_LOGE(context->GetNodeName(), "antiquantScale is nullptr."), return false);
-    auto antiquantScaleShape = antiquantScale->GetStorageShape();
-    int64_t antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-    // 3含义：单场景antiquantScale维度在切M时是(g, N, K)或(g, K, N)
-    if (antiquantScaleDimNum == 3) {
-        int64_t groupNum;
-        if (IsA16W4ND()) {
-            // A16W4 pergroup: scale is always [E, G, N], G is always at dim 1
-            groupNum = antiquantScaleShape.GetDim(1);
-        } else {
-            // 2含义：(g, K, N)格式K轴索引
-            groupNum = transB_ ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 1)
-                               : antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
-        }
-        OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScaleShape",
-                Ops::Base::ToString(antiquantScaleShape),
-                "The groupNum[" + std::to_string(groupNum) + "] of antiquantScaleShape must be "
-                "greater than 0 and divisible by kSize[" + std::to_string(kSize_) + "]"),
-            return false);
-        // GMM伪量化场景支持K=groupSize
-        groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
-    } else if (antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM) {
-        // antiquantScaleShape: (g,n,k/64,2) (g,k/64,n,2)
-        int64_t groupNum = transB_ ?
-                               antiquantScaleShape.GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_GROUP_FACTOR :
-                               antiquantScaleShape.GetDim(antiquantScaleDimNum - ANTEPENULTIMATE_DIM) * MX_GROUP_FACTOR;
-        OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScaleShape",
-                Ops::Base::ToString(antiquantScaleShape),
-                "The groupNum[" + std::to_string(groupNum) + "] of antiquantScaleShape must be "
-                "greater than 0 and divisible by kSize[" + std::to_string(kSize_) + "]"),
-            return false);
-        // GMM伪量化场景支持K=groupSize
-        groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
-    } else if (antiquantScaleDimNum == 2 && IsA16W4ND() && !isSingleX_) {
-        // 多多多 pergroup: antiquantScale shape = (G_i, N_i), G_i = K_i / groupSize
-        uint64_t scaleDim0 = static_cast<uint64_t>(antiquantScaleShape.GetDim(0));
-        uint64_t k0 = static_cast<uint64_t>(kList_[0]);
-        if (scaleDim0 > 1 && k0 % scaleDim0 == 0) {
-            groupSize_ = k0 / scaleDim0;
-        }
+
+    if (IsA16W4ND() && !isSingleX_) {
+        OP_CHECK_IF(!DeriveGroupSizeMulti(context),
+                    OP_LOGE(context->GetNodeName(), "DeriveGroupSizeMulti failed."), return false);
+    } else {
+        OP_CHECK_IF(!DeriveGroupSizeSingle(context),
+                    OP_LOGE(context->GetNodeName(), "DeriveGroupSizeSingle failed."), return false);
     }
 
     OP_CHECK_IF(!CheckGroupSize(), OP_LOGE(context->GetNodeName(), "CheckGroupSize failed."), return false);
+    return true;
+}
 
+bool GroupedWeightQuantBatchMatmulTiling::DeriveGroupSizeSingle(const gert::TilingContext *context)
+{
+    auto antiquantScale = context->GetDynamicInputTensor(ANTIQUANT_SCALE_IDX, 0);
+    auto antiquantScaleShape = antiquantScale->GetStorageShape();
+    int64_t antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
+
+    int64_t groupNum = 0;
+    if (antiquantScaleDimNum == 3) {
+        if (IsA16W4ND()) {
+            // A16W4 pergroup: scale is [E, G, N], G is always at dim 1
+            groupNum = antiquantScaleShape.GetDim(1);
+        } else {
+            // (g, K, N) format: K axis index depends on transB
+            groupNum = transB_ ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 1)
+                               : antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
+        }
+    } else if (antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM) {
+        // antiquantScaleShape: (g,n,k/64,2) or (g,k/64,n,2)
+        groupNum = transB_
+                       ? antiquantScaleShape.GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_GROUP_FACTOR
+                       : antiquantScaleShape.GetDim(antiquantScaleDimNum - ANTEPENULTIMATE_DIM) * MX_GROUP_FACTOR;
+    } else {
+        return true;
+    }
+
+    OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScaleShape",
+            Ops::Base::ToString(antiquantScaleShape),
+            "The groupNum[" + std::to_string(groupNum) + "] of antiquantScaleShape must be "
+            "greater than 0 and divisible by kSize[" + std::to_string(kSize_) + "]"),
+        return false);
+    groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
+    return true;
+}
+
+bool GroupedWeightQuantBatchMatmulTiling::DeriveGroupSizeMulti(const gert::TilingContext *context)
+{
+    // Multi-multi-multi A16W4 ND uses the first antiquantScale tensor rank to decide the quant mode.
+    // Per-channel: antiquantScale[i] is [N_i], groupSize stays 0.
+    // Per-group: antiquantScale[i] is [G_i, N_i], groupSize is derived from tensor 0 and all tensors must match.
+    auto scaleShapePtr0 = context->GetDynamicInputShape(ANTIQUANT_SCALE_IDX, 0);
+    OP_CHECK_IF(scaleShapePtr0 == nullptr,
+        OP_LOGE(context->GetNodeName(), "antiquantScale[0] shape is nullptr."), return false);
+    auto scaleShape0 = scaleShapePtr0->GetStorageShape();
+    int64_t scaleDimNum0 = scaleShape0.GetDimNum();
+    OP_CHECK_IF(scaleDimNum0 != 1 && scaleDimNum0 != 2,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "antiquantScale[0]",
+            std::to_string(scaleDimNum0),
+            "In multi-multi-multi A16W4ND, the dimension of antiquantScale[0] "
+            "must be 1 (perchannel) or 2 (pergroup)"),
+        return false);
+
+    if (scaleDimNum0 == 1) {
+        OP_CHECK_IF(!CheckMultiA16W4PerChannelShape(context),
+                    OP_LOGE(context->GetNodeName(), "CheckMultiA16W4PerChannelShape failed."), return false);
+        groupSize_ = 0;
+        return true;
+    }
+
+    int64_t scaleGroupNum0 = scaleShape0.GetDim(0);
+    int64_t k0 = static_cast<int64_t>(kList_[0]);
+
+    OP_CHECK_IF(scaleGroupNum0 <= 0 || k0 <= 0 || k0 % scaleGroupNum0 != 0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScale[0]",
+            Ops::Base::ToString(scaleShape0),
+            "The groupNum[" + std::to_string(scaleGroupNum0) + "] of antiquantScale[0] must be "
+            "greater than 0 and kSize[" + std::to_string(k0) + "] must be divisible by it"),
+        return false);
+    groupSize_ = static_cast<uint32_t>(k0 / scaleGroupNum0);
+
+    for (uint16_t i = 0; i < groupNum_; i++) {
+        auto scaleShapePtrI = context->GetDynamicInputShape(ANTIQUANT_SCALE_IDX, i);
+        OP_CHECK_IF(scaleShapePtrI == nullptr,
+            OP_LOGE(context->GetNodeName(), "antiquantScale[%u] shape is nullptr.", i), return false);
+        auto scaleShapeI = scaleShapePtrI->GetStorageShape();
+        OP_CHECK_IF(scaleShapeI.GetDimNum() != scaleDimNum0,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "antiquantScale[" + std::to_string(i) + "]",
+                std::to_string(scaleShapeI.GetDimNum()),
+                "The quantization mode of all antiquantScale tensors must be the same as antiquantScale[0]. "
+                "Expected dimension " + std::to_string(scaleDimNum0)),
+            return false);
+        int64_t scaleGroupNumI = scaleShapeI.GetDim(0);
+        int64_t scaleNDimI = scaleShapeI.GetDim(1);
+        int64_t kI = static_cast<int64_t>(kList_[i]);
+        int64_t nI = static_cast<int64_t>(nList_[i]);
+        OP_CHECK_IF(scaleGroupNumI <= 0 || kI <= 0 || kI % scaleGroupNumI != 0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScale[" + std::to_string(i) + "]",
+                Ops::Base::ToString(scaleShapeI),
+                "The groupNum[" + std::to_string(scaleGroupNumI) + "] of antiquantScale[" +
+                std::to_string(i) + "] must be greater than 0 and kSize[" + std::to_string(kI) +
+                "] of tensor[" + std::to_string(i) + "] must be divisible by it"),
+            return false);
+
+        uint32_t groupSizeI = static_cast<uint32_t>(kI / scaleGroupNumI);
+        OP_CHECK_IF(groupSizeI != groupSize_,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "antiquantScale[" + std::to_string(i) + "]",
+                std::to_string(groupSizeI),
+                "The groupSize[" + std::to_string(groupSizeI) + "] derived from antiquantScale[" +
+                std::to_string(i) + "] must be equal to groupSize[" + std::to_string(groupSize_) +
+                "] derived from antiquantScale[0]"),
+            return false);
+        OP_CHECK_IF(scaleNDimI != nI,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScale[" + std::to_string(i) + "]",
+                Ops::Base::ToString(scaleShapeI),
+                "The N dimension[" + std::to_string(scaleNDimI) + "] of antiquantScale[" + std::to_string(i) +
+                "] must be equal to nSize[" + std::to_string(nI) + "] of weight[" + std::to_string(i) + "]"),
+            return false);
+
+        if (hasAntiquantOffset_) {
+            auto offsetShapePtrI = context->GetDynamicInputShape(ANTIQUANT_OFFSET_IDX, i);
+            OP_CHECK_IF(offsetShapePtrI == nullptr,
+                OP_LOGE(context->GetNodeName(), "antiquantOffset[%u] shape is nullptr.", i), return false);
+            auto offsetShapeI = offsetShapePtrI->GetStorageShape();
+            OP_CHECK_IF(offsetShapeI.GetDimNum() != scaleShapeI.GetDimNum() ||
+                        offsetShapeI.GetDim(0) != scaleShapeI.GetDim(0) ||
+                        offsetShapeI.GetDim(1) != scaleShapeI.GetDim(1),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(OP_NAME,
+                    "antiquantOffset[" + std::to_string(i) + "], antiquantScale[" + std::to_string(i) + "]",
+                    Ops::Base::ToString(offsetShapeI) + ", " + Ops::Base::ToString(scaleShapeI),
+                    "The shape of antiquantOffset[" + std::to_string(i) +
+                    "] must be equal to the shape of antiquantScale[" + std::to_string(i) + "]"),
+                return false);
+        }
+    }
+    return true;
+}
+
+bool GroupedWeightQuantBatchMatmulTiling::CheckMultiA16W4PerChannelShape(const gert::TilingContext *context) const
+{
+    for (uint16_t i = 0; i < groupNum_; i++) {
+        auto scaleShapePtr = context->GetDynamicInputShape(ANTIQUANT_SCALE_IDX, i);
+        OP_CHECK_IF(scaleShapePtr == nullptr,
+            OP_LOGE(context->GetNodeName(), "antiquantScale[%u] shape is nullptr.", i), return false);
+        auto scaleShape = scaleShapePtr->GetStorageShape();
+        OP_CHECK_IF(scaleShape.GetDimNum() != 1,
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(OP_NAME, "antiquantScale[" + std::to_string(i) + "]",
+                std::to_string(scaleShape.GetDimNum()),
+                "The quantization mode of all antiquantScale tensors must be the same as antiquantScale[0]. "
+                "Expected dimension 1 for perchannel"),
+            return false);
+        int64_t nI = static_cast<int64_t>(nList_[i]);
+        OP_CHECK_IF(scaleShape.GetDim(0) != nI,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "antiquantScale[" + std::to_string(i) + "]",
+                Ops::Base::ToString(scaleShape),
+                "The N dimension[" + std::to_string(scaleShape.GetDim(0)) + "] of antiquantScale[" +
+                std::to_string(i) + "] must be equal to nSize[" + std::to_string(nI) +
+                "] of weight[" + std::to_string(i) + "]"),
+            return false);
+
+        if (hasAntiquantOffset_) {
+            auto offsetShapePtr = context->GetDynamicInputShape(ANTIQUANT_OFFSET_IDX, i);
+            OP_CHECK_IF(offsetShapePtr == nullptr,
+                OP_LOGE(context->GetNodeName(), "antiquantOffset[%u] shape is nullptr.", i), return false);
+            auto offsetShape = offsetShapePtr->GetStorageShape();
+            OP_CHECK_IF(offsetShape.GetDimNum() != scaleShape.GetDimNum() ||
+                        offsetShape.GetDim(0) != scaleShape.GetDim(0),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(OP_NAME,
+                    "antiquantOffset[" + std::to_string(i) + "], antiquantScale[" + std::to_string(i) + "]",
+                    Ops::Base::ToString(offsetShape) + ", " + Ops::Base::ToString(scaleShape),
+                    "The shape of antiquantOffset[" + std::to_string(i) +
+                    "] must be equal to the shape of antiquantScale[" + std::to_string(i) + "]"),
+                return false);
+        }
+    }
     return true;
 }
 

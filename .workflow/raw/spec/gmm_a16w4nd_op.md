@@ -34,7 +34,7 @@
 | 参数名 | ParamType | 必选/可选 | dtype | format | shape | 说明 |
 | ------ | --------- | --------- | ----- | ------ | ----- | ---- |
 | x | DYNAMIC | 必选 | FLOAT16/BFLOAT16 | ND | 多多多(groupType=-1): 2维, $(m_i, k_i)$</br>单单单(groupType=0): 2维, $(M, K)$ | 左矩阵（激活），固定不转置 |
-| weight | DYNAMIC | 必选 | INT4 | ND | 多多多(groupType=-1): 2维, $(n_i, k_i)$ 或 $(k_i, n_i)$（转置）</br>单单单(groupType=0): 3维, $(E, N, K)$ 或 $(E, K, N)$（转置） | 右矩阵（权重），支持转置和非转置 |
+| weight | DYNAMIC | 必选 | INT4 | ND | 多多多(groupType=-1): 2维, $(n_i, k_i)$ （转置）或 $(k_i, n_i)$（非转置）</br>单单单(groupType=0): 3维, $(E, N, K)$（转置） 或 $(E, K, N)$（非转置） | 右矩阵（权重），支持转置和非转置 |
 | biasOptional | DYNAMIC | 可选 | FLOAT16/BFLOAT16/null | ND | 多多多(groupType=-1): 1维, $(n_i)$</br>单单单(groupType=0): 2维, $(E, N)$ | 偏置。bias 类型与 x 保持一致  |
 | antiquantScaleOptional | DYNAMIC | 必选 | FLOAT16/BFLOAT16 | ND | 多多多（groupType=-1），shape为$[G_i, N_i]$，其中 $G_i = k_i / gs$<br>单单单（groupType=0），shape为$[E, G, N]$，其中 $G = K / gs$ [^1] | 伪量化缩放因子（pergroup），dtype 与 x 一致 |
 | antiquantOffsetOptional | DYNAMIC | 可选 | FLOAT16/BFLOAT16/null | ND | 多多多（groupType=-1），shape为$[G_i, N_i]$，其中 $G_i = k_i / gs$<br>单单单（groupType=0），shape为$[E, G, N]$，其中 $G = K / gs$ [^1] | 伪量化偏移量（pergroup），dtype 与 x 一致。对称量化时为 null |
