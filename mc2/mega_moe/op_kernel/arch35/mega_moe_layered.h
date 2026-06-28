@@ -1319,6 +1319,22 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSize()
 {
+    // if constexpr(g_coreType == AIC) {
+    //     return;
+    // }
+    // __gm__ int32_t* syncRank = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr);
+    // __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
+    //     48 * 1024 + aivCoreIdx_ * 64);
+    // int count = ReadGmByPassDCache(syncCount) + 1;
+    // for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
+    //     __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
+    //     WriteGmByPassDCache(syncRemoteAddr, count);
+    //     auto syncCheck = syncRank + i * 16;
+    //     GmSignalWaitBarrier(syncCheck, count);
+    // }
+    // WriteGmByPassDCache(syncCount, count);
+    // PipeBarrier<PIPE_ALL>();
+    // SyncAll<true>();
     if constexpr(g_coreType == AIC) {
         return;
     }
