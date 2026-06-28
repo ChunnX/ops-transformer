@@ -108,7 +108,7 @@ MoEElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor,
         topk_weights = torch.rand(num_tokens, top_k, dtype=torch.float32, device=f"npu:{rank}")
 
         # dispatch阶段
-        recv_x, recv_topk_idx, recv_topk_weights, handle = buf.dispatch(x, topk_idx, topk_weights)
+        recv_x, recv_topk_idx, recv_topk_weights, handle = buf.dispatch(x, topk_idx=topk_idx, topk_weights=topk_weights)
 
         torch.npu.synchronize()
 
