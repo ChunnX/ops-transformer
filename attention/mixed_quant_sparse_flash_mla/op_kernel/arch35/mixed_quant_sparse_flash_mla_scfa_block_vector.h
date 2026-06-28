@@ -473,8 +473,6 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
             padParams.paddingValue = 0;
             DataCopyPad(kvInUb[startRow * combineDimAlign], keyGm[keyOffset], intriParams, padParams);
             if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::NONCONTIGUOUS) {
-                uint64_t scaleOffsetMax = scaleOffset0 > scaleOffset1 ? scaleOffset0 : scaleOffset1;
-                uint64_t scaleOffsetMin = scaleOffset0 < scaleOffset1 ? scaleOffset0 : scaleOffset1;
                 DataCopyExtParams scaleParams;
                 DataCopyPadExtParams<KV_T> scalePadParams;
                 scaleParams.blockCount = 1;
@@ -486,10 +484,14 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
                 scalePadParams.rightPadding = 0;
                 scalePadParams.paddingValue = 0;
 
-                DataCopyPad(kvInUb[startRow * combineDimAlign + dCombineBytes], keyGm[scaleOffsetMin],
-                    scaleParams, scalePadParams);
-                DataCopyPad(kvInUb[(startRow + 1) *  combineDimAlign + dCombineBytes], keyGm[scaleOffsetMax],
-                    scaleParams, scalePadParams);
+                if (scaleOffset0 >= 0) {
+                    DataCopyPad(kvInUb[startRow * combineDimAlign + dCombineBytes], keyGm[scaleOffset0],
+                        scaleParams, scalePadParams);
+                }
+                if (scaleOffset1) {
+                    DataCopyPad(kvInUb[(startRow + 1) *  combineDimAlign + dCombineBytes], keyGm[scaleOffset1],
+                        scaleParams, scalePadParams);
+                }
             }
         }
         dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
