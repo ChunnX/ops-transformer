@@ -375,9 +375,6 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
         // 当前仅支持COMBINE模式
         uint32_t combineDim = dVTemplateTypeInput / sizeof(KV_T);
         uint32_t combineDimAlign = CeilAlign(dVTemplateTypeInput, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
-        if (keyOffset < 0) {
-            return;
-        }
         DataCopyExtParams intriParams;
         intriParams.blockLen = dCombineBytes;
         intriParams.blockCount = 1;
@@ -401,9 +398,10 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
         scalePadParams.leftPadding = 0;
         scalePadParams.rightPadding = 0;
         scalePadParams.paddingValue = 0;
-
-        DataCopyPad(kvInUb[startRow * combineDimAlign + dCombineBytes], keyGm[scaleOffset],
-            scaleParams, scalePadParams);
+        if (scaleOffset >= 0) {
+            DataCopyPad(kvInUb[startRow * combineDimAlign + dCombineBytes], keyGm[scaleOffset],
+                scaleParams, scalePadParams);
+        }
     }
 }
 
