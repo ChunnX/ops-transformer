@@ -1436,6 +1436,12 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::Init(GM_ADDR x, GM_ADDR 
     eps_ = tilingData_->eps;
     hashFlag_ = tilingData_->hashFlag == 1;
 
+    PRINTF("MoeGatingTopKRegbase data: curCoreRowCount_ %d, expertCount_ %d, k %d, kGroup %d, groupCount %d, "
+           "perGroupExpertCount_ %d, perGroupExpertCountAlign_ %d, expertCountAlign_ %d, routedScalingFactor_ %f, "
+           "groupSelectMode_ %d, eps %f, hashFlag_ %d\n", curCoreRowCount_, expertCount_, k_, kGroup_, groupCount_,
+           perGroupExpertCount_, perGroupExpertCountAlign_, expertCountAlign_, routedScalingFactor_,
+           groupSelectMode_, eps_, hashFlag_);
+
     xGm_.SetGlobalBuffer((__gm__ T *)x + tilingData_->perCoreRowCount * expertCount_ * blockIdx_, expertCount_);
     if (bias != nullptr) {
         hasBias_ = true;
