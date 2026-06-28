@@ -77,7 +77,7 @@ constexpr uint32_t DOUBLE_BUFFER = 2; // 双Buffer
 constexpr uint32_t M_BASE_SIZE = 512; // m轴基本块大小
 constexpr uint32_t S2_BASE_SIZE = 512; // S2轴基本块大小
 constexpr uint32_t S1_BASE_SIZE = 8; // S1轴基本块大小
-constexpr uint32_t MAX_KEY_SEQ_LENGTH = 128 * 1024;
+constexpr uint32_t MAX_KEY_SEQ_LENGTH = 1024 * 1024;
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(DenseLISoftmaxLseTilingData)
