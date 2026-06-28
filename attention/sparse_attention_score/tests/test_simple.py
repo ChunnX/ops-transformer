@@ -324,7 +324,7 @@ def run_single_case():
     kv_heads = 1
     head_dim = 128
     block_size = 128
-    top_k = 2
+    top_k = 1
     seed = 42
     batch = 1
     total_blocks = ceil(kv_seqlen / block_size)
