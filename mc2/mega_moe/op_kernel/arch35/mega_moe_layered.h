@@ -537,12 +537,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
             if (curRankId == rankId_) {
                 dstGlobalTensor.SetGlobalBuffer(
-                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + URMAmaskRecvPtr + dstOffset));
+                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + params_.peermemInfo.URMAmaskRecvPtr + dstOffset));
             }
             DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
             PipeBarrier<PIPE_ALL>();
             if (curRankId != rankId_) {
-                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + URMAmaskRecvPtr + dstOffset;
+                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + params_.peermemInfo.URMAmaskRecvPtr + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
             }
