@@ -20,13 +20,14 @@
 #include "mega_moe_tiling.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
+#include "adv_api/hcomm/hcomm.h"
 
 struct Mc2MoeContext {
     uint32_t epRankId = 0;
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
-    uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
-    ChannelHandle hcommHandle_[HCCL_MAX_RANK_SIZE] = {};   //ROCE或者URMA通信所需句柄
+    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
+    ChannelHandle hcommHandle[HCCL_MAX_RANK_SIZE] = {};   //ROCE或者URMA通信所需句柄
 };
 
 struct GMMAddrInfo {
