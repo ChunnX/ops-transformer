@@ -582,7 +582,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
 
     // Phase 1: 从本卡 win 读本 localExpert 的全部 worldSize_ 个 [mask|count] 槽位
     GlobalTensor<uint8_t> maskSrcGlobal;
-    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) + params_.peermemInfo.URMAmaskRecvPtr
+    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) + params_.peermemInfo.URMAmaskRecvPtr + 
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
     DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();   // count 读取(标量)就绪
