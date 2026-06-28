@@ -302,6 +302,7 @@ private:
     bool isSingleX_ = true;
     bool isSingleWeight_ = true;
     bool isSingleY_ = true;
+    bool isSingleMultiSingle_ = false;
     bool hasBias_ = false;
     bool weightNzFlag_ = false;
     bool hasAntiquantOffset_ = false;

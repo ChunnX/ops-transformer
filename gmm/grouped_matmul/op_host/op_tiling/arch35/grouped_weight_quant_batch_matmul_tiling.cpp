@@ -73,7 +73,7 @@ bool GroupedWeightQuantBatchMatmulTiling:: SetShapeList(const gert::TilingContex
     } else if (!isSingleX_ && !isSingleWeight_ && !isSingleY_) {
         OP_CHECK_IF(!SetShapeListMultiXMultiWeightMultiY(context),
                     OP_LOGE(context->GetNodeName(), "Unable to get MMM shape list"), return false);
-    } else if (IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_) {
+    } else if (isSingleMultiSingle_) {
         OP_CHECK_IF(!SetShapeListSplitMSingleXMultiWeightSingleY(context),
                     OP_LOGE(context->GetNodeName(), "Unable to get MxA8W4 SMS shape list"), return false);
     } else {
@@ -96,7 +96,6 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
         OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "x",
             std::to_string(numX_), "In multi-multi-multi scenario, listsize of x must <= 128"),
         return false);
-    const bool isSingleMultiSingle = IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_;
     if (groupType_ == static_cast<int64_t>(GroupType::NO_SPLIT)) {
         OP_CHECK_IF(numX_ != numWeight_,
                     OP_LOGE_FOR_INVALID_LISTSIZE(
@@ -104,7 +103,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
                         std::to_string(numX_) + ", " + std::to_string(numWeight_),
                         "When groupType is -1 (no split), the sizes of x and weight must be all the same"),
                     return false);
-    } else if (isSingleMultiSingle) {
+    } else if (isSingleMultiSingle_) {
         OP_CHECK_IF(numX_ != 1 || numWeight_ < 1,
                     OP_LOGE_FOR_INVALID_LISTSIZE(
                         OP_NAME, "x, weight", std::to_string(numX_) + ", " + std::to_string(numWeight_),
@@ -125,7 +124,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize() const
                 return false);
     if (hasAntiquantOffset_) {
         OP_CHECK_IF(
-            isSingleMultiSingle,
+            isSingleMultiSingle_,
             OP_LOGE_FOR_INVALID_LISTSIZE(OP_NAME, "antiquantOffsetOptional",
                                          std::to_string(numAntiquantOffset_),
                                          "In MxA8W4 single-multi-single mode, antiquantOffsetOptional must be empty"),
@@ -519,12 +518,32 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEveryTensor(const gert::TilingCon
 bool GroupedWeightQuantBatchMatmulTiling::CheckWeightSingleXMultiWeightSingleY(
     const gert::TilingContext *context) const
 {
+    auto xShapePtr = context->GetDynamicInputShape(X_IDX, 0);
+    OP_CHECK_IF(xShapePtr == nullptr, OP_LOGE(context->GetNodeName(), "xShapePtr is nullptr."), return false);
+    auto xShape = xShapePtr->GetStorageShape();
+    uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
+    int64_t xKDimValue = transA_ ? xShape.GetDim(0) : xShape.GetDim(xDimNum - 1);
+
     uint32_t targetWeightDim = weightNzFlag_ ? 4 : 2; // NZ (n1, k1, k0, n0) 4维 ND (k, n) 2维
     for (size_t i = 0; i < numWeight_; ++i) {
         OP_CHECK_IF(!CheckNotNullPtr(context, WEIGHT_IDX, i),
                     OP_LOGE(context->GetNodeName(), "weight's tensor or Desc is nullptr."), return false);
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, WEIGHT_IDX, i, targetWeightDim, "weight"),
                     OP_LOGE(context->GetNodeName(), "Invalid weight dimension."), return false);
+        auto wShape = context->GetDynamicInputShape(WEIGHT_IDX, i)->GetStorageShape();
+        uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
+        int64_t weightKDimValue = transB_ ? wShape.GetDim(wDimNum - 1) : wShape.GetDim(wDimNum - 2);
+        if (weightNzFlag_) {
+            // 非转置NZ排布(N1, K1, K0, N0), 转置NZ排布(K1, N1, N0, K0)
+            weightKDimValue = transB_ ? wShape.GetDim(wDimNum - 4) * wShape.GetDim(wDimNum - 1)
+                                      : wShape.GetDim(wDimNum - 3) * wShape.GetDim(wDimNum - 2);
+        }
+        OP_CHECK_IF(xKDimValue != weightKDimValue,
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(OP_NAME,
+                "x[0], weight[" + std::to_string(i) + "]",
+                Ops::Base::ToString(xShape) + ", " + Ops::Base::ToString(wShape),
+                "KDim of weight[" + std::to_string(i) + "] must be equal to KDim of x[0]"),
+            return false);
         OP_CHECK_IF(!CheckTensorDtypeSingleXMultiWeightSingleY(context, WEIGHT_IDX, i, weightDtype_, "weight"),
                     OP_LOGE(context->GetNodeName(), "Check Tensor weight Dtype failed"), return false);
         OP_CHECK_IF(!CheckWeightInnerAxisEven(context, i),
@@ -616,7 +635,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingConte
         int32_t groupListSize = static_cast<int32_t>(groupListPtr->GetOriginShape().GetDim(0));
 
         int32_t groupNum = static_cast<int32_t>(numWeight_);
-        if (!(IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_)) {
+        if (!isSingleMultiSingle_) {
             auto wTensor = context->GetDynamicInputTensor(WEIGHT_IDX, 0);
             OP_CHECK_IF(wTensor == nullptr, OP_LOGE(context->GetNodeName(), "wTensor is nullptr."), return false);
             gert::Shape wShape = wTensor->GetStorageShape();
@@ -664,6 +683,7 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
     GetNumOfInputs(context);
     // 获取weight format和各参数类型
     OP_CHECK_IF(!AnalyzeInput(context), OP_LOGE(context->GetNodeName(), "Invalid Input param"), return false);
+    isSingleMultiSingle_ = IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_;
 
     // 参数校验
     OP_CHECK_IF(!CheckCoreNum(context), OP_LOGE(context->GetNodeName(), "Invalid core number ratio"), return false);
@@ -680,8 +700,7 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
                 return false);
     OP_CHECK_IF(!CheckBiasDtype(), OP_LOGE(context->GetNodeName(), "CheckBiasDtype failed."), return false);
     OP_CHECK_IF(!CheckGroupList(context), OP_LOGE(context->GetNodeName(), "CheckGroupList failed."), return false);
-    const bool isSingleMultiSingle = IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_;
-    if (isSingleMultiSingle) {
+    if (isSingleMultiSingle_) {
         OP_CHECK_IF(!CheckEveryTensorSingleXMultiWeightSingleY(context),
                     OP_LOGE(context->GetNodeName(), "CheckEveryTensorSingleXMultiWeightSingleY failed."), return false);
     } else {
@@ -912,7 +931,7 @@ void GroupedWeightQuantBatchMatmulTiling::SetTilingKey(gert::TilingContext *cont
     } else if (xDType_ == ge::DT_FLOAT8_E4M3FN && weightDtype_ == ge::DT_FLOAT4_E2M1 &&
                antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
         tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4);
-        tilingKeyConfig_.isSingleMultiSingle = isSingleX_ && !isSingleWeight_ && isSingleY_;
+        tilingKeyConfig_.isSingleMultiSingle = isSingleMultiSingle_;
     }
     tilingKeyConfig_.apiConstexpr = 0U;
     context->SetTilingKey(tilingKeyConfig_.GenTilingKey());
@@ -1114,7 +1133,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTransposeStatus() const
 
 bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensor(const gert::TilingContext *context) const
 {
-    if (IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_) {
+    if (isSingleMultiSingle_) {
         return CheckEmptyTensorSingleXMultiWeightSingleY(context);
     }
     return CheckEmptyTensorDefault(context);
@@ -1391,8 +1410,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetAntiquantGroupSize(const gert::Tili
     OP_CHECK_IF(antiquantScale == nullptr, OP_LOGE(context->GetNodeName(), "antiquantScale is nullptr."), return false);
     auto antiquantScaleShape = antiquantScale->GetStorageShape();
     int64_t antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-    const bool isSingleMultiSingle = IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_;
-    if (isSingleMultiSingle && antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM - 1) {
+    if (isSingleMultiSingle_ && antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM - 1) {
         // antiquantScaleShape: (n,k/64,2), compared with (g,n,k/64,2) missing g axis
         int64_t groupNum = antiquantScaleShape.GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_GROUP_FACTOR;
         OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
