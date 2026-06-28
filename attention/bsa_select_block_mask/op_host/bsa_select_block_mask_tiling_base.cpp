@@ -238,7 +238,6 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * (sizeof(float) / 2);
     // FP16: 2 bytes per element
     uint64_t attnScoreFp16Size = static_cast<uint64_t>(xBlocks) * yBlocks * (sizeof(float) / 2);
-    // uint64_t scoreFp32Size = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
     uint64_t scoreFp32Size = Q_CHUNK_SIZE * aicNum * yBlocks * sizeof(float);
 
     uint64_t sortLen = static_cast<uint64_t>(xBlocks) * yBlocks;

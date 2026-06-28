@@ -85,7 +85,7 @@ private:
     GlobalTensor<int64_t> actualBlockLenQGmTensor;  ///< Q 实际 Block 长度 (可为 NULL)
     GlobalTensor<int64_t> actualBlockLenKVGmTensor; ///< KV 实际 Block 长度 (可为 NULL)
 
-    constexpr static int32_t BUFFER = 1;   // 开启double buffer
+    constexpr static int32_t BUFFER = 2;   // 开启double buffer
     LocalTensor<IN_T> poolInputUb[BUFFER]; ///< 池化输入双缓冲 [2][blockShapeX * dSize] (FP16/BF16)
     LocalTensor<T> poolInFp32Ub[BUFFER];   ///< Cast后的FP32数据 [blockShapeX * dSize] (FP32)
 
@@ -324,8 +324,7 @@ BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint6
 template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen0Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<IN_T> &dstGm,
                                                                  GlobalTensor<float> &outDstGm, uint64_t srcOffset,
-                                                                 uint64_t dstOffset, uint64_t outDstOffset,
-                                                                 uint32_t actualLen)
+                                                                 uint64_t dstOffset, uint64_t outDstOffset)
 {
     uint32_t dSize = constInfo.dSize;
 

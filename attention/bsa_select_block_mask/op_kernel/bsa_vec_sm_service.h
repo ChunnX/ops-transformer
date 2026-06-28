@@ -254,9 +254,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     uint32_t actualQRowStart = 0, actualQExcuteRow = 0;
     if (vecSubBlockIdx == 0) {
         actualQExcuteRow = qChunkSize / 2 + qChunkSize % 2;
-        actualQRowStart = qChunkStart;
+        actualQRowStart = constInfo.aicIdx * Q_CHUNK_SIZE;
     } else {
-        actualQRowStart = qChunkStart + qChunkSize / 2 + qChunkSize % 2;
+        actualQRowStart = constInfo.aicIdx * Q_CHUNK_SIZE + qChunkSize / 2 + qChunkSize % 2;
         actualQExcuteRow = qChunkSize / 2;
     }
 
@@ -367,9 +367,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     uint32_t actualQRowStart = 0, actualQExcuteRow = 0;
     if (vecSubBlockIdx == 0) {
         actualQExcuteRow = qChunkSize / 2 + qChunkSize % 2;
-        actualQRowStart = qChunkStart;
+        actualQRowStart = constInfo.aicIdx * Q_CHUNK_SIZE;
     } else {
-        actualQRowStart = qChunkStart + qChunkSize / 2 + qChunkSize % 2;
+        actualQRowStart = constInfo.aicIdx * Q_CHUNK_SIZE + qChunkSize / 2 + qChunkSize % 2;
         actualQExcuteRow = qChunkSize / 2;
     }
 
@@ -433,7 +433,14 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     SetFlag<HardEvent::V_MTE3>(eventSft);
     WaitFlag<HardEvent::V_MTE3>(eventSft);
 
-    DataCopyPad(attnScoreFp16GmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart],
+    uint32_t sftOutQRowOffset = 0;
+    if (vecSubBlockIdx == 0) {
+        sftOutQRowOffset = qChunkStart;
+    } else {
+        sftOutQRowOffset = qChunkStart + qChunkSize / 2 + qChunkSize % 2;
+    }
+
+    DataCopyPad(attnScoreFp16GmTensor[sftOutQRowOffset * constInfo.yBlocks + kChunkStart],
         scoreFp16Ub,
         {static_cast<uint16_t>(actualQExcuteRow),
             static_cast<uint32_t>(kChunkSize * sizeof(half)),
@@ -449,13 +456,9 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
     uint64_t perBatch = perHead * numHeads;
 
     uint32_t sftOutELeOffset = batchIdx * perBatch + headIdx * perHead;
-    DataCopyPad(softmaxOutGmTensor[actualQRowStart * constInfo.yBlocks + kChunkStart + sftOutELeOffset],
-        scoreFp16Ub,
-        {static_cast<uint16_t>(actualQExcuteRow),
-            static_cast<uint32_t>(kChunkSize * sizeof(half)),
-            0,
-            static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(half)),
-            0});
+    DataCopyPad(softmaxOutGmTensor[sftOutQRowOffset * constInfo.yBlocks + kChunkStart + sftOutELeOffset], scoreFp16Ub,
+                {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(half)), 0,
+                 static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(half)), 0});
 }
 
 #endif // BSA_VEC_SM_SERVICE_H

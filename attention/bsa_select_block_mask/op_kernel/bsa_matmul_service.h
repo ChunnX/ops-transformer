@@ -562,9 +562,10 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
 
         // ---- 2d: Fixpipe 写回 attnScoreGm ----
         // GM 偏移: attnScore[qChunkStart, kBlockStart]
-        uint32_t scoreGmOffset = qChunkStart * dstStride + kBlockStart;
+        uint32_t ScoreOutGmOffset = qChunkStart * dstStride + kBlockStart;
+        uint32_t scoreGmOffset = kBlockStart + constInfo.aicIdx * dstStride * Q_CHUNK_SIZE;
         auto dstScoreGm = scoreGmLocal[scoreGmOffset];
-        auto ScoreOutGm = scoreFp32OutGm[scoreGmOffset + scoreFP32ELeOffset];
+        auto ScoreOutGm = scoreFp32OutGm[ScoreOutGmOffset + scoreFP32ELeOffset];
 
         FixCopyOut(dstScoreGm, singleM, curN, dstStride, l0PingPongFlag, ScoreOutGm);
 
