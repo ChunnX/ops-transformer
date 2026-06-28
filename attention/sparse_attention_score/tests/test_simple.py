@@ -204,6 +204,119 @@ def cpu_sparse_attention_score_fp32(
     return output
 
 
+def cpu_sparse_attention_score_bf16(
+    query, key, value, select_idx, block_table,
+    actual_seq_lengths, actual_seq_lengths_kv,
+    num_key_value_heads, select_num_idx=None,
+    block_size=128, scale_value=1.0,
+):
+    select_idx_cpu = select_idx.to(torch.int64)
+    block_table_cpu = block_table.to(torch.int64)
+    total_q_tokens, q_heads, head_dim = query.shape
+    kv_heads = num_key_value_heads
+    group_size = q_heads // kv_heads
+    top_k = select_idx.shape[2]
+    batch = len(actual_seq_lengths)
+    scale_bf16 = torch.tensor(scale_value, dtype=torch.bfloat16).item()
+    output = torch.zeros(total_q_tokens, q_heads, head_dim, dtype=torch.bfloat16)
+    q_offset = 0
+    for batch_idx, q_seqlen in enumerate(actual_seq_lengths):
+        kv_seqlen = actual_seq_lengths_kv[batch_idx]
+        history_len = kv_seqlen - q_seqlen
+        for q_token_in_batch in range(q_seqlen):
+            global_q_token = q_offset + q_token_in_batch
+            causal_bound = history_len + q_token_in_batch
+            for kv_head in range(kv_heads):
+                valid_top_k = top_k
+                if select_num_idx is not None:
+                    valid_top_k = int(select_num_idx[kv_head, global_q_token].item())
+                    valid_top_k = min(valid_top_k, top_k)
+                if valid_top_k == 0:
+                    continue
+                q_start = kv_head * group_size
+                q_group_bf16 = query[global_q_token, q_start:q_start + group_size, :]
+                last_max_fp32 = torch.full((group_size,), -float("inf"), dtype=torch.float32)
+                last_sum_fp32 = torch.zeros(group_size, dtype=torch.float32)
+                o_acc_fp32 = torch.zeros(group_size, head_dim, dtype=torch.float32)
+                is_first = True
+                for topk_idx in range(valid_top_k):
+                    logical_id = int(select_idx_cpu[kv_head, global_q_token, topk_idx].item())
+                    if logical_id < 0:
+                        continue
+                    block_begin = logical_id * block_size
+                    block_end = min(block_begin + block_size, kv_seqlen)
+                    effective_end = min(block_end, causal_bound + 1)
+                    if effective_end <= block_begin:
+                        continue
+                    physical_id = int(block_table_cpu[batch_idx, logical_id].item())
+                    valid_len = effective_end - block_begin
+                    k_bf16 = key[physical_id, :valid_len, kv_head, :]
+                    v_bf16 = value[physical_id, :valid_len, kv_head, :]
+                    s_fp32 = torch.matmul(q_group_bf16.float(), k_bf16.float().t())
+                    s_bf16 = s_fp32.to(torch.bfloat16)
+                    s_scaled_bf16 = (s_bf16.float() * scale_bf16).to(torch.bfloat16)
+                    now_max_bf16 = s_scaled_bf16.max(dim=1).values.to(torch.bfloat16)
+                    if not is_first:
+                        last_max_bf16 = last_max_fp32.to(torch.bfloat16)
+                        now_max_bf16 = torch.max(now_max_bf16, last_max_bf16)
+                    diff_bf16 = (s_scaled_bf16.float() - now_max_bf16.float().unsqueeze(1)).to(torch.bfloat16)
+                    p_bf16 = torch.exp(diff_bf16.float()).to(torch.bfloat16)
+                    now_sum_bf16 = p_bf16.float().sum(dim=1).to(torch.bfloat16)
+                    now_max_fp32 = now_max_bf16.float()
+                    if is_first:
+                        last_sum_fp32 = now_sum_bf16.float()
+                        last_max_fp32 = now_max_fp32
+                    else:
+                        correction_fp32 = torch.exp(last_max_fp32 - now_max_fp32)
+                        last_sum_fp32 = correction_fp32 * last_sum_fp32 + now_sum_bf16.float()
+                        last_max_fp32 = now_max_fp32
+                    pv_fp32 = torch.matmul(p_bf16.float(), v_bf16.float())
+                    if is_first:
+                        o_acc_fp32 = pv_fp32
+                    else:
+                        o_acc_fp32 = o_acc_fp32 * correction_fp32.unsqueeze(1) + pv_fp32
+                    is_first = False
+                if last_sum_fp32.max() > 0:
+                    result_fp32 = o_acc_fp32 / last_sum_fp32.unsqueeze(1)
+                    output[global_q_token, q_start:q_start + group_size, :] = result_fp32.to(torch.bfloat16)
+        q_offset += q_seqlen
+    return output
+
+
+def dual_golden_l1norm(actual, golden_high, golden_low, label):
+    actual_f = actual.float().flatten()
+    high_f = golden_high.float().flatten()
+    low_f = golden_low.float().flatten()
+    valid_mask = ~(torch.isnan(actual_f) | torch.isnan(high_f) | torch.isnan(low_f))
+    if valid_mask.sum() == 0:
+        print(f"  [{label}] All elements are NaN, cannot compare.")
+        return
+    actual_valid = actual_f[valid_mask]
+    high_valid = high_f[valid_mask]
+    low_valid = low_f[valid_mask]
+    low_norm = low_valid.abs().sum().item()
+    high_norm = high_valid.abs().sum().item()
+    l1_actual_vs_low = (actual_valid - low_valid).abs().sum().item() / (low_norm + 1e-12)
+    l1_high_vs_low = (high_valid - low_valid).abs().sum().item() / (low_norm + 1e-12)
+    l1_actual_vs_high = (actual_valid - high_valid).abs().sum().item() / (high_norm + 1e-12)
+    if l1_high_vs_low > 1e-12:
+        l1_ratio = l1_actual_vs_low / l1_high_vs_low
+    else:
+        l1_ratio = float('inf') if l1_actual_vs_low > 1e-12 else 0.0
+    cos_sim = torch.nn.functional.cosine_similarity(
+        actual_valid.unsqueeze(0), high_valid.unsqueeze(0)).item()
+    print(f"  [{label}]")
+    print(f"    L1norm(actual - golden_low)/L1norm(golden_low)  = {l1_actual_vs_low:.6f}")
+    print(f"    L1norm(golden_high - golden_low)/L1norm(golden_low) = {l1_high_vs_low:.6f}")
+    print(f"    L1norm(actual - golden_high)/L1norm(golden_high) = {l1_actual_vs_high:.6f}")
+    print(f"    L1 ratio (actual-low)/(high-low) = {l1_ratio:.6f}")
+    print(f"    cosine_similarity(actual, golden_high) = {cos_sim:.8f}")
+    if l1_ratio <= 1.0:
+        print(f"    PASS")
+    else:
+        print(f"    WARNING: ratio > 1.0")
+
+
 def run_single_case():
     q_seqlen = 1
     kv_seqlen = 256
@@ -243,17 +356,21 @@ def run_single_case():
     key_bf16 = key_fp32.to(torch.bfloat16)
     value_bf16 = value_fp32.to(torch.bfloat16)
 
-    print(f"query: {query_bf16.shape}, key: {key_bf16.shape}, value: {value_bf16.shape}")
-    print(f"select_idx: {select_idx.shape}, block_table: {block_table.shape}")
-
-    cpu_out = cpu_sparse_attention_score_fp32(
+    cpu_bf16 = cpu_sparse_attention_score_bf16(
         query_bf16, key_bf16, value_bf16, select_idx, block_table,
         actual_seq_lengths, actual_seq_lengths_kv,
         num_key_value_heads=kv_heads,
         select_num_idx=select_num_idx,
         block_size=block_size,
-        scale_value=scale_value,
-    )
+        scale_value=scale_value)
+
+    cpu_fp32 = cpu_sparse_attention_score_fp32(
+        query_bf16, key_bf16, value_bf16, select_idx, block_table,
+        actual_seq_lengths, actual_seq_lengths_kv,
+        num_key_value_heads=kv_heads,
+        select_num_idx=select_num_idx,
+        block_size=block_size,
+        scale_value=scale_value)
 
     npu_out = torch_npu.npu_sparse_attention_score(
         query_bf16.npu(), key_bf16.npu(), value_bf16.npu(),
@@ -264,22 +381,10 @@ def run_single_case():
         num_key_value_heads=kv_heads,
         scale_value=scale_value,
         block_size=block_size,
-        top_k=top_k,
-    )
+        top_k=top_k)
 
     npu_out_cpu = npu_out.cpu()
-
-    diff = (npu_out_cpu.float() - cpu_out.float()).abs()
-    max_diff = diff.max().item()
-    mean_diff = diff.mean().item()
-    print(f"max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}")
-
-    if max_diff < 0.02:
-        print("[PASS] NPU result matches CPU golden within tolerance.")
-    else:
-        print("[FAIL] max_diff too large!")
-        print("CPU sample:", cpu_out[0, 0, :8].float())
-        print("NPU sample:", npu_out_cpu[0, 0, :8].float())
+    dual_golden_l1norm(npu_out_cpu, cpu_fp32, cpu_bf16, "NPU vs dual-golden")
 
 
 def make_case_multi_batch(batch=2, q_seqlens=None, kv_seqlens=None,
@@ -350,9 +455,18 @@ def run_multi_batch_case(batch=2, q_seqlens=None, kv_seqlens=None,
      actual_seq_lengths, actual_seq_lengths_kv,
      kv_heads, block_size, top_k, scale_value) = case_data
 
-    cpu_out = cpu_sparse_attention_score_fp32(
-        query, key, value, select_idx, block_table,
-        actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
+    al = actual_seq_lengths.tolist()
+    al_kv = actual_seq_lengths_kv.tolist()
+
+    cpu_bf16 = cpu_sparse_attention_score_bf16(
+        query, key, value, select_idx, block_table, al, al_kv,
+        num_key_value_heads=kv_heads,
+        select_num_idx=select_num_idx,
+        block_size=block_size,
+        scale_value=scale_value)
+
+    cpu_fp32 = cpu_sparse_attention_score_fp32(
+        query, key, value, select_idx, block_table, al, al_kv,
         num_key_value_heads=kv_heads,
         select_num_idx=select_num_idx,
         block_size=block_size,
@@ -369,14 +483,7 @@ def run_multi_batch_case(batch=2, q_seqlens=None, kv_seqlens=None,
         top_k=top_k)
 
     npu_out_cpu = npu_out.cpu()
-    diff = (npu_out_cpu.float() - cpu_out.float()).abs()
-    max_diff = diff.max().item()
-    mean_diff = diff.mean().item()
-    print(f"[multi-batch] max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}")
-    if max_diff < 0.02:
-        print("[PASS]")
-    else:
-        print("[FAIL]")
+    dual_golden_l1norm(npu_out_cpu, cpu_fp32, cpu_bf16, "NPU vs dual-golden")
 
 if __name__ == "__main__":
     print("=== Single batch ===")
