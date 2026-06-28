@@ -401,6 +401,63 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if (coreLen != 0) {
         DataCopyPad(groupFlagListGm_[coreOffset], resetTensor_, rankSyncCopyParams);
     }
+
+    // 仅清零 combineSendNotifyPtr 的 worldSize 个 per-rank 计数器, 以及每个 token 槽位
+    // triple(32B) 中的 flag(offset 7)。转发者(CombineTokensWithUrmaSend) 轮询 notify 计数与
+    // flag==1 判断数据就绪, 残留旧值会让转发者扫描到陈旧槽位, 发送垃圾数据造成精度全错。
+    // 槽位布局与 CombineTokensWithUrma 一致: slotStride = maxDataLengthPerBlock + ALIGN_32,
+    // triple(32B) 位于 slotBase + maxDataLengthPerBlock。flag 在 triple byte 偏移 28(非 32B 对齐),
+    // 无法单独按 32B 对齐写出; triple 整体 32B 对齐且生产者置 flag=1 前会重写整个 triple,
+    // 故清整个 32B triple 即覆盖 flag, 同时满足 UB->GM 拷贝 GM 起始地址 32B 对齐的要求。
+    // if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+    //     // 1) 清零 combineSendNotifyPtr 的 worldSize 个计数器。
+    //     //    该区域位于 workspaceSize 末尾(workspaceSize 未计入其大小), 不可越界, 用标量写精确清零。
+    //     int32_t notifyCoreLen, notifyCoreOffset;
+    //     TilingByCore(static_cast<int32_t>(worldSize_), notifyCoreLen, notifyCoreOffset, 1);
+    //     if (notifyCoreLen > 0) {
+    //         GlobalTensor<int32_t> combineSendNotifyGm;
+    //         combineSendNotifyGm.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.combineSendNotifyPtr);
+    //         for (int32_t i = 0; i < notifyCoreLen; i++) {
+    //             combineSendNotifyGm[notifyCoreOffset + i].SetValue(0, 0);
+    //         }
+    //     }
+
+    //     // 2) 清零每个 token 槽位的 triple(32B)。槽位总数由区域大小与 slotStride 推得, 与分配一致。
+    //     int32_t maxDataLengthPerBlock = static_cast<int32_t>(Ops::Base::CeilAlign(
+    //         static_cast<int64_t>(L1_TILE_N) * static_cast<int64_t>(sizeof(bfloat16_t)), ALIGN_32));
+    //     int32_t slotStrideBytes = maxDataLengthPerBlock + static_cast<int32_t>(ALIGN_32);
+    //     int64_t totalDataBytes = static_cast<int64_t>(params_.workspaceInfo.combineSendNotifyPtr -
+    //         params_.workspaceInfo.combineSendDataPtr);
+    //     int32_t totalSlots = static_cast<int32_t>(totalDataBytes / slotStrideBytes);
+    //     int32_t slotCoreLen, slotCoreOffset;
+    //     TilingByCore(totalSlots, slotCoreLen, slotCoreOffset, 1);
+    //     if (slotCoreLen > 0) {
+    //         GlobalTensor<int32_t> combineSendDataGm;
+    //         combineSendDataGm.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.combineSendDataPtr);
+    //         int32_t tripleOffsetInt32Base = maxDataLengthPerBlock / static_cast<int32_t>(sizeof(int32_t));
+    //         int32_t slotStrideInt32 = slotStrideBytes / static_cast<int32_t>(sizeof(int32_t));
+    //         // 相邻 triple 间隔(32B 单位): (slotStride - tripleSize) / 32
+    //         uint16_t dstStride = static_cast<uint16_t>((slotStrideBytes - static_cast<int32_t>(ALIGN_32)) /
+    //             static_cast<int32_t>(ALIGN_32));
+    //         // resetTensor_ 容量有限, 每个 32B triple 对应 8 个 int32, 按其容量分批(stride 拷贝批量清零)
+    //         uint32_t resetTensorBlocks = resetTensor_.GetSize() /
+    //             (static_cast<uint32_t>(ALIGN_32) / static_cast<uint32_t>(sizeof(int32_t)));
+    //         SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
+    //         for (int32_t s = 0; s < slotCoreLen; ) {
+    //             int32_t batch = slotCoreLen - s;
+    //             if (batch > 4095) { batch = 4095; }
+    //             if (static_cast<uint32_t>(batch) > resetTensorBlocks) { batch = static_cast<int32_t>(resetTensorBlocks); }
+    //             if (batch <= 0) { break; }
+    //             int32_t slotIdx = slotCoreOffset + s;
+    //             int32_t tripleOffsetInt32 = slotIdx * slotStrideInt32 + tripleOffsetInt32Base;
+    //             // blockLen=32B(triple 大小), dstStride 为相邻 triple 间隔(32B 单位), 仅清 triple 不动 data
+    //             DataCopyExtParams tripleClearParams{static_cast<uint16_t>(batch),
+    //                 static_cast<uint32_t>(ALIGN_32), 0U, dstStride, 0U};
+    //             DataCopyPad(combineSendDataGm[tripleOffsetInt32], resetTensor_, tripleClearParams);
+    //             s += batch;
+    //         }
+    //     }
+    // }
 }
 
 // ==================================================
@@ -480,14 +537,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
             if (curRankId == rankId_) {
                 dstGlobalTensor.SetGlobalBuffer(
-                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + params_.peermemInfo.URMAmaskRecvPtr + dstOffset));
+                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset));
             }
             DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
             PipeBarrier<PIPE_ALL>();
             if (curRankId != rankId_) {
-                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + params_.peermemInfo.URMAmaskRecvPtr + dstOffset;
+                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr, localGmAddr, maskSlotSize_);
+                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
@@ -500,7 +557,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
-        PRINTF("SendMaskCal Drain\n");  
+        PRINTF("SendMaskCal Drain\n");
     }
 }
 
@@ -582,7 +639,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
 
     // Phase 1: 从本卡 win 读本 localExpert 的全部 worldSize_ 个 [mask|count] 槽位
     GlobalTensor<uint8_t> maskSrcGlobal;
-    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) + params_.peermemInfo.URMAmaskRecvPtr + 
+    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) +
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
     DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();   // count 读取(标量)就绪
@@ -1265,26 +1322,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
     if constexpr(g_coreType == AIC) {
         return;
     }
-    __gm__ int32_t* syncRank = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_));
-    __gm__ int32_t* syncCount = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) +
+    __gm__ int32_t* syncRank = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr);
+    __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
         48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
-    PipeBarrier<PIPE_ALL>();
-    WriteGmByPassDCache(syncCount, count);
-    PipeBarrier<PIPE_ALL>();
-    for (int rankIndex = aivCoreIdx_; rankIndex < worldSize_; rankIndex += blockAivNum_) {
-        if (rankIndex == rankId_) {
-            continue;
-        }
-        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankIndex)) + rankId_ * 16;
-        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr, (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
-        auto syncCheck = syncRank + rankIndex * 16;
+    for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
+        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
+        WriteGmByPassDCache(syncRemoteAddr, count);
+        auto syncCheck = syncRank + i * 16;
         GmSignalWaitBarrier(syncCheck, count);
     }
+    WriteGmByPassDCache(syncCount, count);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 }
-
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
