@@ -54,26 +54,6 @@ constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3U;
 constexpr uint32_t FD_M_START_INDEX = 4U;
 constexpr uint32_t FD_M_NUM_INDEX = 5U;
 
-#ifdef __CCE_AICORE__
-
-/**
- * @brief 获取属性的绝对索引
- * @param coreIdx 核索引
- * @param metaIdx 元数据索引
- * @param isAIV 是否为AIV数据，默认为false
- * @return 返回属性的绝对索引
- */
-__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t idx, uint32_t coreIdx,
-                                           uint32_t metaIdx, uint32_t num, bool isAIV = false)
-{
-    if (isAIV) {
-        return num * AIC_CORE_NUM * FA_METADATA_SIZE + FD_METADATA_SIZE * coreIdx + metaIdx + 16U;
-    } else {
-        return FA_METADATA_SIZE * coreIdx + metaIdx + 16U;
-    }
-}
-#endif
-
 namespace detail {
 struct FaMetaData {
     uint32_t sectionNum;
