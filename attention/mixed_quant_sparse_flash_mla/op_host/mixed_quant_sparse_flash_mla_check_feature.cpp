@@ -103,10 +103,6 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
             OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
             return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_FLOAT8_E4M3FN, // 前面已校验dtype在fp8 e4m3和hif8之间
-            OP_LOGE(opName_, "oriKv dtype only support DT_HIFLOAT8, but got DT_FLOAT8_E4M3FN"),
-            return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(*opParamInfo_.ropeHeadDim != 64, // 64:当前不泛化
