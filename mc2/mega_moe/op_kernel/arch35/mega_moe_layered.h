@@ -942,32 +942,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
     do {
         hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
-        PRINTF("ReadNbi Drain0\n");
-        hcomm_.Drain(channel);
-        PipeBarrier<PIPE_ALL>();
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
         if (readyValue == 1) {
             WriteGmByPassDCache(localReadyFlag, int32_t(0));
-            PipeBarrier<PIPE_ALL>();
             break;
         }
     } while (true);
-    // PRINTF("BEGIN READDATA\n");
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
-    PRINTF("ReadNbi Drain1\n");
     hcomm_.Drain(channel);
-    hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
-    PRINTF("ReadNbi Drain2\n");
-    hcomm_.Drain(channel);
-    // PRINTF("BEGIN READDATA\n");
-    // AscendC::Nop<300000>();
-    PipeBarrier<PIPE_ALL>();
+    AscendC::Nop<300000>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
-    // AscendC::Nop<300000>();
     PipeBarrier<PIPE_ALL>();
-    // DumpTensor(copyTmpTensors_[bufferIdx], rankId_, 32);
 }
 
 // ============================================================================
