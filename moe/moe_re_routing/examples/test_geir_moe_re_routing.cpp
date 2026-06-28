@@ -26,7 +26,7 @@
 #include "ge_ir_build.h"
 
 #include "nn_other.h"
-#include "fusion_ops.h"
+#include "../op_graph/moe_re_routing_proto.h"
 
 #define FAILED -1
 #define SUCCESS 0
