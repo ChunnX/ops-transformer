@@ -554,7 +554,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     }
     for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
-        PRINTF("SendMaskCal Drain ")
+        PRINTF("SendMaskCal Drain\n");
     }
 }
 
