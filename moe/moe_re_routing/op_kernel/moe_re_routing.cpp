@@ -24,8 +24,9 @@
 #define MOE_RE_ROUTING_TOKENS_BF16_EXPERTS_INT64_SCALES_FLOAT32 100210UL
 
 extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR expertTokensNumPerRank,
-    GM_ADDR perTokenScales, GM_ADDR permuteTokens, GM_ADDR permutePerTokenScales, GM_ADDR permuteTokenIdx,
-    GM_ADDR expertTokenNum, GM_ADDR workspace, GM_ADDR tiling)
+    GM_ADDR perTokenScales, GM_ADDR expertTopkWeight,
+    GM_ADDR permuteTokens, GM_ADDR permutePerTokenScales, GM_ADDR permuteTokenIdx,
+    GM_ADDR expertTokenNum, GM_ADDR permuteTopkWeight, GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
