@@ -43,7 +43,10 @@ public:
         __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
         OOMInit(context);
 #if defined(__DAV_C310__)
-        addrs_->cGM = addrs_->workspaceGM + paramInTiling_->nd2NzWorkLen + paramInTiling_->biasLen;
+        // addrs_->cGM = addrs_->workspaceGM + paramInTiling_->nd2NzWorkLen + paramInTiling_->biasLen;
+        AscendC::printf("************* matmul to outputGM.\n");
+        addrs_->cGM = addrs_->outputGM;
+        addrs_->outputGM = addrs_->workspaceGM + paramInTiling_->nd2NzWorkLen + paramInTiling_->biasLen;
 #else
         if (msgInTiling_->useBufferType == MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_WINDOW_IN &&
             context->config.determinism != 1) {

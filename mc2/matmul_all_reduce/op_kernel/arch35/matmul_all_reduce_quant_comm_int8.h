@@ -123,6 +123,10 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
     allGatherInGM_ = reduceScatterInGM_ + tilingData_->param.commInt8WorkSpace;   // allGather输入
     allGatherOutGM_ = allGatherInGM_ + tilingData_->param.commInt8WorkSpace;      // allGather输出
     reduceScatterOutGM_ = allGatherOutGM_ + tilingData_->param.commInt8WorkSpace; // reduceScatter输出
+
+    AscendC::printf("********* matmul to cGM \n");
+    workspaceGM_ = cGM;
+    cGM_ = workspaceGM;
 }
 
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
