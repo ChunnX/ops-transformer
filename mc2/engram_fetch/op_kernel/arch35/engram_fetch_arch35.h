@@ -197,45 +197,31 @@ __aicore__ inline void EngramFetchArch35::ScatterByRank(
     LocalTensor<int32_t> divisor = divisorBuf_.Get<int32_t>();
     LocalTensor<uint8_t> mask = maskBuf_.Get<uint8_t>();
 
-    // 生成位置序列 + 除数 tensor
     ArithProgression<int32_t>(positions, 0, 1, batchLen);
     Duplicate<int32_t>(divisor, numEntriesPerRank_, compareCntMax);
 
-    // 初始化 rankIDs 为 numRanks_ (超出合法 rank 范围)，防止尾部垃圾数据误命中 CompareScalar
     Duplicate<int32_t>(rankIDs, static_cast<int32_t>(numRanks_), compareCntMax);
     PipeBarrier<PIPE_V>();
 
-    // 覆盖前 batchLen 个元素为实际计算结果
-    Div(rankIDs, indicesLocal, divisor, batchLen);
+    Div<int32_t>(rankIDs, indicesLocal, divisor, batchLen);
     PipeBarrier<PIPE_V>();
     SyncFunc<HardEvent::V_S>();
 
     uint32_t runningOffset = 0;
-    for (uint32_t r = 0; r < numRanks_; r++) {
-        // 标量统计属于当前 Rank r 的元素数
-        uint32_t count = 0;
-        for (uint32_t i = 0; i < batchLen; i++) {
-            if (rankIDs.GetValue(i) == static_cast<int32_t>(r)) {
-                count++;
-            }
-        }
-
-        rankOffsets.SetValue(r, runningOffset);
-        rankCounts.SetValue(r, count);
-
-        if (count == 0) {
-            continue;
-        }
-
-        CompareScalar(mask, rankIDs, static_cast<int32_t>(r), AscendC::CMPMODE::EQ, compareCntMax);
+    uint32_t totalBlocks = GetBlockNum();
+    for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks) {
+        CompareScalar(mask, rankIDs, static_cast<int32_t>(ownerRank), AscendC::CMPMODE::EQ, compareCntMax);
         PipeBarrier<PIPE_V>();
 
         LocalTensor<int32_t> dstRegion = tokenIdxInRank[runningOffset].ReinterpretCast<int32_t>();
-        uint64_t rsvdCnt = static_cast<uint64_t>(count);
+        uint64_t rsvdCnt = 0;
         GatherMask(dstRegion, positions, mask.ReinterpretCast<uint32_t>(), true,
                    batchLen, {1, 1, 0, 0}, rsvdCnt);
         PipeBarrier<PIPE_V>();
 
+        uint32_t count = static_cast<uint32_t>(rsvdCnt);
+        rankOffsets.SetValue(ownerRank, runningOffset);
+        rankCounts.SetValue(ownerRank, count);
         runningOffset += count;
     }
 
