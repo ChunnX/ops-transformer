@@ -302,13 +302,46 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
-    OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
+
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
+    ge::DataType refWeightDataType = GetDataTypeByOpQuantMode(opQuantMode);
+    OP_TILING_CHECK(refWeightDataType == ge::DT_UNDEFINED,
+        OP_LOGE(nodeName,
+            "unsupported dispatchQuantMode(%ld), leading out data type to being DT_UNDEFINED.", dispatchQuantMode),
+        return ge::GRAPH_FAILED);
+
+    bool is_cross_server = attrs->GetAttrPointer<bool>((config.attrIsCrossServerIndex));
+    if (is_cross_server) {
+        OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
+                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatchQuantOutDtype",
+            std::to_string(dispatchQuantOutDtype).c_str(),
+            "only support fp8_e5m2 and fp8_e4m3fn"),
+        return ge::GRAPH_FAILED);
+
+        OP_TILING_CHECK((refWeightDataType != weightOneDesc->GetDataType()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
+            Ops::Base::ToString(weightOneDesc->GetDataType()).c_str(),
+            (std::string("The dtype of weightOne must be ") + Ops::Base::ToString(refWeightDataType).c_str()),
+        return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
                     dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                     dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatchQuantOutDtype",
             std::to_string(dispatchQuantOutDtype).c_str(),
             "only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1"),
         return ge::GRAPH_FAILED);
+
+        OP_TILING_CHECK((refWeightDataType != weightOneDesc->GetDataType()) &&
+                    (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
+            Ops::Base::ToString(weightOneDesc->GetDataType()).c_str(),
+            (std::string("The dtype of weightOne must be ") + Ops::Base::ToString(refWeightDataType).c_str() +
+             " or DT_FLOAT4_E2M1.").c_str()),
+        return ge::GRAPH_FAILED);
+    }
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
