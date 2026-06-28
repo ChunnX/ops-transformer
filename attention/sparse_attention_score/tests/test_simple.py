@@ -3,16 +3,15 @@ import importlib.util
 import math
 from math import ceil
 from pathlib import Path
-import sys
-sys.stderr.write("=== STEP 1: before import torch ===\n")
+
 import torch
-sys.stderr.write("=== STEP 2: after import torch ===\n")
 import torch_npu
-sys.stderr.write("=== STEP 4: after importlib imports ===\n")
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _TORCH_EXT = _REPO_ROOT / "torch_extension"
+import sys
 sys.path.insert(0, str(_TORCH_EXT))
-sys.stderr.write("=== STEP 5: before _register ===\n")
+
 
 def _register_sparse_attention_score_op():
     spec = importlib.util.spec_from_file_location(
@@ -283,5 +282,114 @@ def run_single_case():
         print("NPU sample:", npu_out_cpu[0, 0, :8].float())
 
 
+def make_case_multi_batch(batch=2, q_seqlens=None, kv_seqlens=None,
+                          q_heads=8, kv_heads=2, head_dim=128, block_size=128,
+                          top_k=4, seed=42):
+    if q_seqlens is None:
+        q_seqlens = [1] * batch
+    if kv_seqlens is None:
+        kv_seqlens = [256] * batch
+    assert len(q_seqlens) == batch and len(kv_seqlens) == batch
+    group_size = q_heads // kv_heads
+    max_kv_seqlen = max(kv_seqlens)
+    max_blocks_per_batch = ceil(max_kv_seqlen / block_size)
+    total_q_tokens = sum(q_seqlens)
+    total_physical_blocks = max_blocks_per_batch * batch
+    torch.manual_seed(seed)
+    query_fp32 = torch.rand(total_q_tokens, q_heads, head_dim, dtype=torch.float32) * 2 - 1
+    key_fp32 = torch.rand(
+        total_physical_blocks, block_size, kv_heads, head_dim, dtype=torch.float32) * 2 - 1
+    value_fp32 = torch.rand(
+        total_physical_blocks, block_size, kv_heads, head_dim, dtype=torch.float32) * 2 - 1
+    block_table = generate_block_table(batch, max_blocks_per_batch)
+    select_idx = torch.full((kv_heads, total_q_tokens, top_k), -1, dtype=torch.int32)
+    select_num_idx = torch.zeros((kv_heads, total_q_tokens), dtype=torch.int32)
+    q_offset = 0
+    for b in range(batch):
+        q_seqlen_b = q_seqlens[b]
+        kv_seqlen_b = kv_seqlens[b]
+        total_blocks_b = ceil(kv_seqlen_b / block_size)
+        key_logical_b = torch.zeros(
+            total_blocks_b * block_size, kv_heads, head_dim, dtype=torch.float32)
+        for logical_id in range(total_blocks_b):
+            physical_id = int(block_table[b, logical_id].item())
+            key_logical_b[logical_id * block_size:(logical_id + 1) * block_size] = key_fp32[physical_id]
+        key_flat_b = key_logical_b[:kv_seqlen_b, :, :]
+        q_for_batch = query_fp32[q_offset:q_offset + q_seqlen_b, :, :]
+        batch_select_idx, batch_select_num = generate_block_index_with_causal(
+            q_for_batch, key_flat_b, q_seqlen_b, kv_seqlen_b,
+            kv_heads, group_size, block_size, top_k)
+        select_idx[:, q_offset:q_offset + q_seqlen_b, :] = batch_select_idx
+        select_num_idx[:, q_offset:q_offset + q_seqlen_b] = batch_select_num
+        q_offset += q_seqlen_b
+    scale_value = 1.0 / math.sqrt(head_dim)
+    actual_seq_lengths_t = torch.tensor(q_seqlens, dtype=torch.int32)
+    actual_seq_lengths_kv_t = torch.tensor(kv_seqlens, dtype=torch.int32)
+    return (
+        query_fp32.to(torch.bfloat16),
+        key_fp32.to(torch.bfloat16),
+        value_fp32.to(torch.bfloat16),
+        select_idx,
+        block_table,
+        select_num_idx,
+        actual_seq_lengths_t,
+        actual_seq_lengths_kv_t,
+        kv_heads,
+        block_size,
+        top_k,
+        scale_value,
+    )
+
+def run_multi_batch_case(batch=2, q_seqlens=None, kv_seqlens=None,
+                         q_heads=8, kv_heads=2, top_k=4, seed=42, head_dim=128, block_size=128):
+    case_data = make_case_multi_batch(
+        batch=batch, q_seqlens=q_seqlens, kv_seqlens=kv_seqlens,
+        q_heads=q_heads, kv_heads=kv_heads, head_dim=head_dim,
+        block_size=block_size, top_k=top_k, seed=seed)
+    (query, key, value, select_idx, block_table, select_num_idx,
+     actual_seq_lengths, actual_seq_lengths_kv,
+     kv_heads, block_size, top_k, scale_value) = case_data
+
+    cpu_out = cpu_sparse_attention_score_fp32(
+        query, key, value, select_idx, block_table,
+        actual_seq_lengths.tolist(), actual_seq_lengths_kv.tolist(),
+        num_key_value_heads=kv_heads,
+        select_num_idx=select_num_idx,
+        block_size=block_size,
+        scale_value=scale_value)
+
+    npu_out = torch_npu.npu_sparse_attention_score(
+        query.npu(), key.npu(), value.npu(), select_idx.npu(), block_table.npu(),
+        select_num_idx=select_num_idx.npu(),
+        actual_seq_lengths=actual_seq_lengths.npu(),
+        actual_seq_lengths_kv=actual_seq_lengths_kv.npu(),
+        num_key_value_heads=kv_heads,
+        scale_value=scale_value,
+        block_size=block_size,
+        top_k=top_k)
+
+    npu_out_cpu = npu_out.cpu()
+    diff = (npu_out_cpu.float() - cpu_out.float()).abs()
+    max_diff = diff.max().item()
+    mean_diff = diff.mean().item()
+    print(f"[multi-batch] max_diff={max_diff:.6f}, mean_diff={mean_diff:.6f}")
+    if max_diff < 0.02:
+        print("[PASS]")
+    else:
+        print("[FAIL]")
+
 if __name__ == "__main__":
+    print("=== Single batch ===")
     run_single_case()
+    print()
+    print("=== Multi batch 2batch same seqlen ===")
+    run_multi_batch_case(batch=2, q_seqlens=[1, 1], kv_seqlens=[256, 256],
+                         q_heads=8, kv_heads=2, top_k=2, seed=42)
+    print()
+    print("=== Multi batch 2batch diff kvseqlen ===")
+    run_multi_batch_case(batch=2, q_seqlens=[1, 1], kv_seqlens=[256, 512],
+                         q_heads=8, kv_heads=2, top_k=2, seed=42)
+    print()
+    print("=== Multi batch 4batch mixed ===")
+    run_multi_batch_case(batch=4, q_seqlens=[1, 2, 4, 1], kv_seqlens=[300, 500, 1000, 700],
+                         q_heads=8, kv_heads=2, top_k=4, seed=7)
