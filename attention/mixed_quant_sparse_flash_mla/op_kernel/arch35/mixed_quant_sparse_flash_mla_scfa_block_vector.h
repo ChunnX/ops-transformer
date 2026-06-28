@@ -537,7 +537,7 @@ template <typename Q_T, typename KV_T>
 __aicore__ inline void CastScale(LocalTensor<float>& outputUb,  LocalTensor<KV_T>& inputUb, uint32_t dealRowCount)
 {
     __ubuf__ float* ubDstAddr = (__ubuf__ float*)(outputUb.GetPhyAddr());
-    __ubuf__ int8_t* ubScaleAddr = (__ubuf__ int8_t*)(inputUb[dCombineBytes].GetPhyAddr());
+    __ubuf__ int8_t* ubScaleAddr = (__ubuf__ int8_t*)(inputUb[448 + 64 * 2].GetPhyAddr());
     CastScaleImpl<Q_T, KV_T>(ubDstAddr, ubScaleAddr, dealRowCount);
 }
 
