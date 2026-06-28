@@ -1,4 +1,4 @@
-# cann_ops_transformer.mhc_pre_sinkhorn
+# mhc_pre_sinkhorn
 
 ## 产品支持情况
 
@@ -13,7 +13,7 @@
 
 - 接口功能：
 
-    基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。
+  基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。
 
 - 计算公式：
 
@@ -64,7 +64,7 @@
 
 ## 函数原型
 
-```
+```python
 cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, outFlag) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
@@ -93,32 +93,32 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>x</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>mHC层的输入数据。对应公式中x。</td>
-        <td>BFLOAT16</td>
+        <td>MHC层的输入数据。对应公式中x。</td>
+        <td>bfloat16</td>
         <td>(B, S, N, C)</td>
     </tr>
     <tr>
         <td>phi</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>mHC的参数矩阵。对应公式中ψ<sup>pre</sup>、ψ<sup>post</sup>、ψ<sup>res</sup>。使用时对N轴进行拆分，分别是(N, N*C), (N, N*C), (N*N, N*C)。</td>
-        <td>FLOAT32</td>
+        <td>MHC的参数矩阵。对应公式中ψ<sup>pre</sup>、ψ<sup>post</sup>、ψ<sup>res</sup>。使用时对N轴进行拆分，分别是(N, N*C), (N, N*C), (N*N, N*C)。</td>
+        <td>float32</td>
         <td>(N*N+2*N, N*C)</td>
     </tr>
     <tr>
         <td>alpha</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>mHC的缩放参数，包含3个元素分别对应H_pre、H_post、H_res的缩放系数。对应公式中α<sup>pre</sup>、α<sup>post</sup>、α<sup>res</sup>。</td>
-        <td>FLOAT32</td>
+        <td>MHC的缩放参数，包含3个元素分别对应H<sup>pre</sup>、H<sup>post</sup>、H<sup>res</sup>的缩放系数。对应公式中α<sup>pre</sup>、α<sup>post</sup>、α<sup>res</sup>。</td>
+        <td>float32</td>
         <td>(3)</td>
     </tr>
     <tr>
         <td>bias</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>mHC的bias参数，包含2N+N²个元素。对应公式中β<sup>pre</sup>、β<sup>post</sup>、β<sup>res</sup>，分别对应N, N, N*N。</td>
-        <td>FLOAT32</td>
+        <td>MHC的bias参数，包含2N+N²个元素。对应公式中β<sup>pre</sup>、β<sup>post</sup>、β<sup>res</sup>，分别对应N, N, N*N。</td>
+        <td>float32</td>
         <td>(2N+N²)</td>
     </tr>
     <tr>
@@ -126,7 +126,7 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>int</td>
         <td>必选</td>
         <td>残差流数量，HC维度大小。</td>
-        <td>INT</td>
+        <td>-</td>
         <td>-</td>
     </tr>
     <tr>
@@ -134,15 +134,15 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>int</td>
         <td>必选</td>
         <td>Sinkhorn算法迭代次数。</td>
-        <td>INT</td>
+        <td>-</td>
         <td>-</td>
     </tr>
     <tr>
         <td>hcEps</td>
         <td>float</td>
         <td>可选</td>
-        <td>$H_{pre}$的sigmoid后的eps参数。对应公式中ε<sub>hc</sub>。默认值1e-6。</td>
-        <td>FLOAT</td>
+        <td>H<sup>pre</sup>的sigmoid后的eps参数。对应公式中ε<sub>hc</sub>。默认值1e-6。</td>
+        <td>-</td>
         <td>-</td>
     </tr>
     <tr>
@@ -150,9 +150,10 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>float</td>
         <td>可选</td>
         <td>RmsNorm的防除零参数。对应公式中ε<sub>norm</sub>。默认值1e-6。</td>
-        <td>FLOAT</td>
+        <td>-</td>
         <td>-</td>
     </tr>
+    </tbody>
     </table>
 
 ## 输出说明
@@ -181,23 +182,23 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>Tensor</td>
         <td>必选</td>
         <td>输出的h_in，作为Attention/MLP层的输入。对应公式中h<sub>in</sub>。</td>
-        <td>BFLOAT16</td>
+        <td>bfloat16</td>
         <td>(B, S, C)</td>
     </tr>
     <tr>
         <td>hPost</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>输出的mHC的h_post变换矩阵。对应公式中H<sup>post</sup>。</td>
-        <td>FLOAT32</td>
+        <td>输出的MHC的h_post变换矩阵。对应公式中H<sup>post</sup>。</td>
+        <td>float32</td>
         <td>(B, S, N)</td>
     </tr>
     <tr>
         <td>hRes</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>输出的mHC的h_res变换矩阵（Sinkhorn归一化后的双随机矩阵）。对应公式中H<sup>res</sup>。</td>
-        <td>FLOAT32</td>
+        <td>输出的MHC的h_res变换矩阵（Sinkhorn归一化后的双随机矩阵）。对应公式中H<sup>res</sup>。</td>
+        <td>float32</td>
         <td>(B, S, N*N)</td>
     </tr>
 </tbody>
@@ -216,10 +217,10 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
   | C        | [1280, 1920, 2560] | 目前只支持这三个数                     |
 
 - 参数约束：
-    - x不支持空Tensor。
-    - phi不支持空Tensor。
-    - alpha不支持空Tensor。
-    - bias不支持空Tensor。
+  - x不支持空Tensor。
+  - phi不支持空Tensor。
+  - alpha不支持空Tensor。
+  - bias不支持空Tensor。
 
 ## 确定性计算
 
@@ -227,29 +228,30 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
 
 ## 调用说明
 
-- 单算子模式调用
-```python
-import torch
-import torch_npu
-from cann_ops_transformer.ops import mhc_pre_sinkhorn
+- 单算子模式调用：
 
-B = 1
-S = 1024
-N = 4
-C = 1280
+  ```python
+  import torch
+  import torch_npu
+  from cann_ops_transformer.ops import mhc_pre_sinkhorn
 
-x = torch.randn(B, S, N, C, dtype=torch.bfloat16).npu()
-phi = torch.randn(N * N + 2 * N, N * C, dtype=torch.float32).npu()
-alpha = torch.randn(3, dtype=torch.float32).npu()
-bias = torch.randn(N * N + 2 * N, dtype=torch.float32).npu()
+  B = 1
+  S = 1024
+  N = 4
+  C = 1280
 
-hcMult = 4
-numIters = 20
-hcEps = 1e-6
-normEps = 1e-6
-outFlag = True  # 需要反向时设置为True
+  x = torch.randn(B, S, N, C, dtype=torch.bfloat16).npu()
+  phi = torch.randn(N * N + 2 * N, N * C, dtype=torch.float32).npu()
+  alpha = torch.randn(3, dtype=torch.float32).npu()
+  bias = torch.randn(N * N + 2 * N, dtype=torch.float32).npu()
 
-hin, hPost, hRes = mhc_pre_sinkhorn(
+  hcMult = 4
+  numIters = 20
+  hcEps = 1e-6
+  normEps = 1e-6
+  outFlag = True  # 需要反向时设置为True
+
+  hin, hPost, hRes = mhc_pre_sinkhorn(
     x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, outFlag
-)
-```
+  )
+  ```

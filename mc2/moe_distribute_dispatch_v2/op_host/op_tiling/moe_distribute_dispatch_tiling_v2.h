@@ -90,7 +90,7 @@ public:
         const bool isScales, const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
         const bool isPerformance, DispatchV2Config &config) = 0;
     virtual uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode,
-        const uint32_t tpWorldSize, const bool isSetFullMeshV2, bool isLayered) = 0;
+        const bool isSetFullMeshV2, bool isLayered) = 0;
     virtual ge::graphStatus CheckQuantModeMatchScales(gert::TilingContext *context, const char *nodeName, bool isScales,
         uint32_t quantMode, DispatchV2Config &config) = 0;
     virtual ge::graphStatus CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName) = 0;

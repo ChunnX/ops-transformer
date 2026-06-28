@@ -202,6 +202,9 @@ transformer-pfa_unevolved@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch35/
                 - ops/ops-transformer/attention/prompt_flash_attention/README.md
                 - ops/ops-transformer/attention/prompt_flash_attention/CMakeLists.txt
+                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_split_Bbn2s2_Us2.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload_dd.h
+                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload.h
             opensource_style: null 
             kernel_style: null 
         unrelease:
@@ -216,14 +219,18 @@ transformer-vf@ops-transformer:
     src:  
         release:
             huawei_style:  
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_128_common_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_aligned128_no_update_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_aligned128_update_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned128_no_update_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned128_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_common_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_no_update_sfa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned64_update_sfa.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned1024_common.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned1024_no_update.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned1024_update.h
+                - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned512_common.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned512_no_update.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_basic_block_unaligned512_update.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/vf_flash_decode.h
@@ -254,7 +261,6 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/mla_prolog_v2/op_kernel/
                 - ops/ops-transformer/attention/mla_prolog_v2/op_graph/
                 - ops/ops-transformer/attention/mla_prolog/op_host/
-                - ops/ops-transformer/attention/mla_prolog/op_api/
                 - ops/ops-transformer/attention/mla_prolog/CMakeLists.txt
                 - ops/ops-transformer/attention/mla_prolog/op_kernel/
                 - ops/ops-transformer/attention/mla_prolog/op_graph/
@@ -263,7 +269,6 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/common/op_host/split_core_v2.cpp
                 - ops/ops-transformer/attention/common/op_host/split_core_v2.h
                 - ops/ops-transformer/attention/common/op_kernel/aicpu_common.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_api/
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch22
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/op_api
@@ -280,9 +285,6 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/fused_infer_attention_score_v3.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/CMakeLists.txt
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_split_Bbn2s2_Us2.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload_dd.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch22/incre_flash_attention_preload.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_cube.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_block_vec.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h

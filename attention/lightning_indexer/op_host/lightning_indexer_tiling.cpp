@@ -149,10 +149,9 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
-        OP_LOGE(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    if ((npuArch_ != NpuArch::DAV_2201) &&
+        (npuArch_ != NpuArch::DAV_3510)) {
+        OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
@@ -296,7 +295,7 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
             LIDataTypeToSerialString(inputQType_) + " and " + LIDataTypeToSerialString(inputKType_),
             "The dtype of query and key must be float16 or bfloat16"),
         return ge::GRAPH_FAILED);
-    if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
+    if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF((inputQType_ != weightsType_),
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key, and weights",
                 LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_) +
@@ -554,8 +553,11 @@ static ge::graphStatus LiGetHeadDim(const TilingRequiredParaInfo &liQuery, DataL
             return ge::GRAPH_FAILED;
     }
     liHeadDim = liQuery.shape->GetStorageShape().GetDim(liDIndex);
-    OP_CHECK_IF(liHeadDim != HEAD_DIM_LIMIT, OP_LOGE(liOpName, "input query's last dim head_dim only support 128."),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(liHeadDim != HEAD_DIM_LIMIT,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(liOpName, "query",
+            Ops::Base::ToString(liQuery.shape->GetStorageShape()).c_str(),
+            "input query's last dim head_dim only support 128"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

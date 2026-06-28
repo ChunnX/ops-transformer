@@ -1,4 +1,4 @@
-# cann_ops_transformer.mhc_post
+# mhc_post
 
 ## 产品支持情况
 
@@ -17,7 +17,7 @@
 
 - 计算公式：
 
-    MHC Post算子的核心计算公式为：
+  - MHC Post算子的核心计算公式为：
 
     $$x_{l+1} = (H_{l}^{res})^{T} \cdot x_{l} + h_{l}^{out} \cdot H_{t}^{post}$$
 
@@ -35,30 +35,31 @@
 
       即$H_{t}^{post}[i]$为标量，对$h_{l}^{out}$整行做标量乘法后加到第$i$行输出。
 
-    综合完整计算过程为：
+  - 综合完整计算过程为：
 
     $$x_{l+1}[i, :] = H_{t}^{post}[i] \cdot h_{l}^{out}[:] + \sum_{j=0}^{n-1} H_{l}^{res}[j, i] \cdot x_{l}[j, :]$$
 
     其中，$x_{l}$表示参数`x`，$H_{l}^{res}$表示参数`h_res`，$h_{l}^{out}$表示参数`h_out`，$H_{t}^{post}$表示参数`h_post`，$x_{l+1}$表示输出`y`。
 
-**说明**
-- 输入支持两种维度格式：BSND（4维）和TND（3维）。其中B（Batch）表示批量大小，S（Seq-Length）表示序列长度，T表示所有Batch序列长度的累加和（$T = B \times S$），n表示头数（head数量），D表示每个头的隐藏维度大小（headdim）。
+  >**说明：**
+  >
+  > 输入支持两种维度格式：BSND（4维）和TND（3维）。其中B（Batch）表示批量大小，S（Seq-Length）表示序列长度，T表示所有Batch序列长度的累加和（$T = B \times S$），n表示头数（head数量），D表示每个头的隐藏维度大小（headdim）。
 
 ## 函数原型
 
-```
+```python
 cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 ```
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 132px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-<col style="width: 319px">
+<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
+<col style="width: 120px">
+<col style="width: 120px">
+<col style="width: 100px">
+<col style="width: 300px">
+<col style="width: 120px">
+<col style="width: 200px">
 </colgroup>
 <thead>
 <tr>
@@ -75,8 +76,8 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>x</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>当前层的输入token特征，对应公式中的x<sub>l</sub></td>
-        <td>BFLOAT16、FLOAT16</td>
+        <td>当前层的输入token特征，对应公式中的x<sub>l</sub>。</td>
+        <td>bfloat16、float16</td>
         <td>
             <ul>
                 <li>(B, S, n, D)</li>
@@ -88,8 +89,8 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_res</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>残差连接矩阵，对应公式中的H<sub>l</sub><sup>res</sup></td>
-        <td>FLOAT32</td>
+        <td>残差连接矩阵，对应公式中的H<sub>l</sub><sup>res</sup>。</td>
+        <td>float32</td>
         <td>
             <ul>
                 <li>(B, S, n, n)</li>
@@ -101,8 +102,8 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_out</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>上一层的输出状态，对应公式中的H<sub>l</sub><sup>out</sup></td>
-        <td>BFLOAT16、FLOAT16</td>
+        <td>上一层的输出状态，对应公式中的H<sub>l</sub><sup>out</sup>。</td>
+        <td>bfloat16、float16</td>
         <td>
             <ul>
                 <li>(B, S, D)</li>
@@ -114,8 +115,8 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>h_post</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>后处理权重矩阵，对应公式中的H<sub>t</sub><sup>post</sup></td>
-        <td>FLOAT32</td>
+        <td>后处理权重矩阵，对应公式中的H<sub>t</sub><sup>post</sup>。</td>
+        <td>float32</td>
         <td>
             <ul>
                 <li>(B, S, n)</li>
@@ -128,13 +129,13 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 
 ## 返回值说明
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 132px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-<col style="width: 319px">
+<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
+<col style="width: 120px">
+<col style="width: 120px">
+<col style="width: 100px">
+<col style="width: 300px">
+<col style="width: 120px">
+<col style="width: 200px">
 </colgroup>
 <thead>
 <tr>
@@ -151,8 +152,8 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
         <td>y</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>MHC Post计算输出，对应公式中的x<sub>l+1</sub>，数据类型与输入`x`保持一致，shape与输入`x`保持一致</td>
-        <td>BFLOAT16、FLOAT16</td>
+        <td>MHC Post计算输出，对应公式中的x<sub>l+1</sub>，数据类型与输入`x`保持一致，shape与输入`x`保持一致。</td>
+        <td>bfloat16、float16</td>
         <td>
             <ul>
                 <li>(B, S, n, D)</li>
@@ -168,21 +169,21 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 - 该接口支持训练、推理场景下使用。
 - 该接口支持单算子模式调用。
 - 数据类型约束：
-    - `x`和`h_out`的数据类型必须相同。
-    - 输出`y`的数据类型与`x`保持一致。
+  - `x`和`h_out`的数据类型必须相同。
+  - 输出`y`的数据类型与`x`保持一致。
 
 - 维度约束：
-    - `h_res`的维度需与`x`维度格式匹配：4维时为(B, S, n, n)，3维时为(T, n, n)。
+  - `h_res`的维度需与`x`维度格式匹配：4维时为(B, S, n, n)，3维时为(T, n, n)。
 
 - Shape一致性约束：
-    - 4维（BSND）格式下：
-        - `h_res`的(B, S)维度需与`x`的(B, S)维度一致，`h_res`的后两维为(n, n)，其中n与`x`的第3维一致。
-        - `h_out`的(B, S)维度需与`x`的(B, S)维度一致，`h_out`的D维度需与`x`的D维度一致。
-        - `h_post`的(B, S)维度需与`x`的(B, S)维度一致，`h_post`的n维度需与`x`的n维度一致。
-    - 3维（TND）格式下：
-        - `h_res`的T维度需与`x`的T维度一致，后两维为(n, n)。
-        - `h_out`的T维度需与`x`的T维度一致，D维度需与`x`的D维度一致。
-        - `h_post`的T维度需与`x`的T维度一致，n维度需与`x`的n维度一致。
+  - 4维（BSND）格式下：
+    - `h_res`的(B, S)维度需与`x`的(B, S)维度一致，`h_res`的后两维为(n, n)，其中n与`x`的第3维一致。
+    - `h_out`的(B, S)维度需与`x`的(B, S)维度一致，`h_out`的D维度需与`x`的D维度一致。
+    - `h_post`的(B, S)维度需与`x`的(B, S)维度一致，`h_post`的n维度需与`x`的n维度一致。
+  - 3维（TND）格式下：
+    - `h_res`的T维度需与`x`的T维度一致，后两维为(n, n)。
+    - `h_out`的T维度需与`x`的T维度一致，D维度需与`x`的D维度一致。
+    - `h_post`的T维度需与`x`的T维度一致，n维度需与`x`的n维度一致。
 
 - 所有输入Tensor的shape各维度值必须为正数（大于0）。
 
@@ -192,23 +193,23 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 
 ## 调用说明
 
-- 单算子模式调用
+- 单算子模式调用：
 
-    ```python
-    import torch
-    import torch_npu
-    from cann_ops_transformer.ops import mhc_post
+  ```python
+  import torch
+  import torch_npu
+  from cann_ops_transformer.ops import mhc_post
 
-    B = 2
-    S = 8
-    n = 4
-    D = 128
+  B = 2
+  S = 8
+  n = 4
+  D = 128
 
-    x = torch.randn(B, S, n, D, dtype=torch.bfloat16).npu()
-    h_res = torch.randn(B, S, n, n, dtype=torch.float32).npu()
-    h_out = torch.randn(B, S, D, dtype=torch.bfloat16).npu()
-    h_post = torch.randn(B, S, n, dtype=torch.float32).npu()
+  x = torch.randn(B, S, n, D, dtype=torch.bfloat16).npu()
+  h_res = torch.randn(B, S, n, n, dtype=torch.float32).npu()
+  h_out = torch.randn(B, S, D, dtype=torch.bfloat16).npu()
+  h_post = torch.randn(B, S, n, dtype=torch.float32).npu()
 
-    y = mhc_post(x, h_res, h_out, h_post)
-    print(f"output shape: {y.shape}")
-    ```
+  y = mhc_post(x, h_res, h_out, h_post)
+  print(f"output shape: {y.shape}")
+  ```

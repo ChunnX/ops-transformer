@@ -1431,7 +1431,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormCq(int64_t tokenIndex,
         RmsNormParam rmsNormParams = {
             baseParams_->reciprocalCq,      // reciprocal
             baseParams_->epsilonCq,         // epsilon
-            (uint32_t)vectorRow_,           // row
+            static_cast<uint32_t>(vectorRow_),           // row
             baseParams_->headSizeCq,        // col
             baseParams_->qcQrScale,         // scale
             baseParams_->isQcQrScaleEnable, // isScaleEnable
@@ -1595,7 +1595,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
     RmsNormParam rmsNormParams = {
         baseParams_->reciprocalCkv,   // reciprocal
         baseParams_->epsilonCkv,      // epsilon
-        (uint32_t)vectorRow_,         // row
+        static_cast<uint32_t>(vectorRow_),         // row
         baseParams_->headSizeCkv,     // col
         baseParams_->kcScale,         // scale
         baseParams_->isKcScaleEnable, // isScaleEnable
@@ -1662,17 +1662,17 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndQuantizeCkv(LocalTe
     } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
                             std::is_same<mmCkvKrOutputType, float>::value) {
         Rectangle rectangleParams{
-            (uint32_t)vectorRow_,               // row
-            (uint32_t)baseParams_->headSizeCkv, // col
-            (uint32_t)baseParams_->headSizeCkv  // columnStride
+            static_cast<uint32_t>(vectorRow_),               // row
+            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
+            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
         QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
     } else {
         Rectangle rectangleParams{
-            (uint32_t)vectorRow_,               // row
-            (uint32_t)baseParams_->headSizeCkv, // col
-            (uint32_t)baseParams_->headSizeCkv  // columnStride
+            static_cast<uint32_t>(vectorRow_),               // row
+            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
+            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
         QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
@@ -1710,9 +1710,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndQuantizeCkvMxfp8(
         AscendC::PipeBarrier<PIPE_V>();
     } else if constexpr (std::is_same<mmCkvKrOutputType, float>::value) {
         Rectangle rectangleParams{
-            (uint32_t)vectorRow_,               // row
-            (uint32_t)baseParams_->headSizeCkv, // col
-            (uint32_t)baseParams_->headSizeCkv  // columnStride
+            static_cast<uint32_t>(vectorRow_),               // row
+            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
+            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
         QuantPerTensorToFP8e4m3(outputLocal, inputLocal, quantScaleCkvLocal_, rectangleParams);
         AscendC::PipeBarrier<PIPE_V>();
@@ -1788,9 +1788,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(LocalTensor<
         sinLocal = sinLocal_[baseParams_->dimHeadRope * ropeAndScatterKrParams.curVecTokenIdx];
     }
     Rectangle ropeParams{
-        (uint32_t)vectorRow_,               // row
-        (uint32_t)baseParams_->dimHeadRope, // col
-        (uint32_t)stride                    // stride
+        static_cast<uint32_t>(vectorRow_),               // row
+        static_cast<uint32_t>(baseParams_->dimHeadRope), // col
+        static_cast<uint32_t>(stride)                    // stride
     };
     if constexpr ((std::is_same<mmCkvKrOutputType, int32_t>::value ||
                    (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) &&
@@ -1960,9 +1960,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
     }
 
     Rectangle ropeParams{
-        (uint32_t)baseParams_->numHeadSize, // row
-        (uint32_t)baseParams_->dimHeadRope, // col
-        (uint32_t)stride                    // stride
+        static_cast<uint32_t>(baseParams_->numHeadSize), // row
+        static_cast<uint32_t>(baseParams_->dimHeadRope), // col
+        static_cast<uint32_t>(stride)                    // stride
     };
 
     for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVecToken; curVecTokenIdx++) {
@@ -2023,9 +2023,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitNGroupCase(int64_t
     LocalTensor<uint8_t> ropeShareTmpUb = outputLocal[baseParams_->headSizeQr].template ReinterpretCast<uint8_t>();
 
     Rectangle ropeParams{
-        (uint32_t)col,   // row
-        (uint32_t)col,   // col
-        (uint32_t)stride // stride
+        static_cast<uint32_t>(col),   // row
+        static_cast<uint32_t>(col),   // col
+        static_cast<uint32_t>(stride) // stride
     };
 
     for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVectorBlockNum_; curVecTokenIdx++) {
@@ -2070,7 +2070,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQrSplitN(const RopeQrSpli
     Rectangle ropeParams{
         ropeCnt,                                // row
         colQr,                                  // col
-        (uint32_t)ropeQrSplitNParams.ropeStride // stride
+        static_cast<uint32_t>(ropeQrSplitNParams.ropeStride) // stride
     };
 
     GlobalTensor<mmQcQrOutputType> inputGmRope = mmQcQrResGm_[ropeQrSplitNParams.ropeQrOffset];
@@ -2360,9 +2360,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcSplitNGroupCase(int6
     uint32_t dstStride = baseParams_->headSizeQc - curCol;
     LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
     Rectangle rectangleParams{
-        (uint32_t)mmQcQrParam_.m,         // row
-        (uint32_t)curCol,                 // col
-        (uint32_t)baseParams_->headSizeQc // columnStride
+        static_cast<uint32_t>(mmQcQrParam_.m),         // row
+        static_cast<uint32_t>(curCol),                 // col
+        static_cast<uint32_t>(baseParams_->headSizeQc) // columnStride
     };
     DequantSplitNQc(mmQcQrResDequantGm_[mmQnPreDequantResOffset], mmQcQrResGm_[mmQnPreDequantOffset],
                     deqScaleQcQrW_[qcQrScaleOffset], dequantTool_.deQuantScaleCqLocal_, shareTmpUb, rectangleParams,

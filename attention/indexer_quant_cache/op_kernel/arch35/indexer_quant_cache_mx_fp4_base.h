@@ -47,13 +47,9 @@ constexpr uint16_t FP4_E2M1_BF16_MAX_EXP = 0x0100;
 constexpr uint16_t SPECIAL_VALUE_E2M1 = 0x00ff;
 constexpr uint16_t SPECIAL_VALUE_E1M2 = 0x007f;
 constexpr uint16_t NEW_MANTISSA_MAXFP4 = 0x0008;
-// e8m0 的特殊值（与 moe 参考保持一致），CANN 头未提供，故在此定义
 constexpr uint16_t FP8_E8M0_NAN_VAL_MAXFP4 = 0x00ff;
 constexpr uint16_t FP8_E8M0_SPECIAL_MIN_MAXFP4 = 0x0040;
 
-// e8m0 scale 每行在 UB 中的元素跨度(e8m0=1B/元素，故元素数==字节数)。DIST_PACK_B16 存储要求目的地址按
-// VL/2=64B 对齐，多行场景下每行起始偏移必须 64B 对齐，否则 r>=1 行漏写。vf 写入(scaleRowBytes)、
-// InitBuffer、CopyOut 三处必须使用本对齐，保持一致。
 __aicore__ inline uint32_t ScaleRowAlignMxFp4(uint32_t scaleCol)
 {
     return ((scaleCol + 63U) / 64U) * 64U;
@@ -157,12 +153,6 @@ __simd_vf__ inline void vfComputeMaxExpMXFP4(__ubuf__ T* srcAddr, __ubuf__ uint1
     return;
 }
 
-// 由每块最大指数计算 e8m0 scale(写到 mxScaleLocalAddr) 与量化用的 halfScale(写到 halfScaleLocalAddr)
-// validScaleInUB: 实际有效的 scale 列数(scaleCol)，用于所有计算/读取/halfScale 存储；
-// packScaleInUB:  向上对齐(偶数)后的列数，仅用于 DIST_PACK_B16 的存储 mask —— PACK_B16 按“成对”
-//   方式把 b16 低字节打包成连续字节，存储 mask 必须覆盖偶数个 lane，否则在有效 lane 数为奇数/过少
-//   (如 scaleCol<=2)时会漏写正确值(写成 0)。参考 swiglu_group_quant 的 maskLoop/maskValid 双 mask 用法。
-//   多写出的补位字节落在每行 32B scratch 内，CopyOut 只拷贝有效 scaleCol 字节，故无副作用。
 template <typename T, typename U>
 __simd_vf__ inline void vfComputeScaleMXFP4(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint16_t* mxScaleLocalAddr,
     __ubuf__ uint16_t* halfScaleLocalAddr, uint32_t validScaleInUB, uint32_t packScaleInUB, uint16_t loopNumScale,
@@ -291,43 +281,27 @@ __simd_vf__ inline void vfComputeDataMXFP4(__ubuf__ T* srcAddr, __ubuf__ uint16_
     }
 }
 
-// 对 curRowNum 行、每行 curColNum(=d) 个元素做 MX-FP4 量化。
-// yLocal: 打包后的 fp4 cache(int8 字节寻址), scaleLocal: e8m0 scale, xLocal: 输入(half/bf16)。
-// TCache 仅用于按 cache 输出 dtype(float4_e2m1x2_t / float4_e1m2x2_t)在编译期选择 fp4 子格式
-// (E2M1 / E1M2)；cache 存储统一按字节(int8)寻址，避开 float4_*x2_t 的 sizeof()==2 导致的偏移翻倍。
 template <typename TCache, typename TScale, typename TX>
 __aicore__ inline void VFProcessDynamicMxFp4Quant(
     const LocalTensor<int8_t>& yLocal, const LocalTensor<TScale>& scaleLocal, const LocalTensor<TX>& xLocal,
     const LocalTensor<uint16_t>& maxExpLocal, const LocalTensor<uint16_t>& halfScaleLocal,
     const uint16_t curRowNum, const uint32_t curColNum)
 {
-    // fp4 子格式：E1M2 时 cache dtype 为 float4_e1m2x2_t，否则 E2M1。f4Emax 随之不同。
     constexpr bool isE1M2 = AscendC::IsSameType<TCache, float4_e1m2x2_t>::value;
 
-    constexpr uint32_t vRegSize = VL_FP32 * static_cast<uint32_t>(sizeof(float));  // 256B
+    constexpr uint32_t vRegSize = VL_FP32 * static_cast<uint32_t>(sizeof(float));
     constexpr uint32_t ubBlockSize = 32U;
-    const uint32_t vlForB16 = vRegSize / static_cast<uint32_t>(sizeof(TX));          // b16:128
-    const uint32_t numUbBlocksPerVReg = vRegSize / ubBlockSize;                      // 8
+    const uint32_t vlForB16 = vRegSize / static_cast<uint32_t>(sizeof(TX));
+    const uint32_t numUbBlocksPerVReg = vRegSize / ubBlockSize;
 
     const uint32_t scaleCol = (curColNum + MX_BLOCK_SIZE_MXFP4 - 1) / MX_BLOCK_SIZE_MXFP4;
-    // 各 per-row 输出 buffer 的对齐跨度（maxExp / halfScale 为行内瞬态, 跨行复用同一块scratch）
     const uint32_t xRowAlign = RoundUp<TX>(curColNum);
-    const uint32_t cacheRowAlign = RoundUp<int8_t>((curColNum + 1) / 2);   // fp4 打包后字节数(按字节对齐)
-
-    // DIST_PACK_B16 按成对(2个b16低字节->2连续字节)打包，存储 mask 覆盖的 lane 数须为偶数(与 swiglu
-    // 的 maskLoop 取值一致)；scaleCol 为奇数时若 mask 只覆盖单 lane 会漏写最后半对，故向上对齐到偶数。
-    // 补位 lane 的值经压缩后写入每行 64B scratch 的尾部，CopyOut 只拷贝有效 scaleCol 字节，无副作用。
-    // 配合 64B 对齐的每行跨度(scaleRowBytes)与 64B 对齐的 buffer 基址(scale Que 最先 InitBuffer)，
-    // 共同满足 PACK_B16 的 64B 对齐写入要求。
+    const uint32_t cacheRowAlign = RoundUp<int8_t>((curColNum + 1) / 2);
     const uint32_t scaleColPack = (scaleCol + 1U) & ~1U;
 
     uint16_t loopNumX = static_cast<uint16_t>((curColNum + vlForB16 * DIGIT_TWO_MAXFP4 - 1) /
                                               (vlForB16 * DIGIT_TWO_MAXFP4));
     uint16_t loopNumScale = static_cast<uint16_t>((scaleColPack + vlForB16 - 1) / vlForB16);
-
-    // scale 输出为 e8m0(1B/元素)。DIST_PACK_B16 存储要求目的地址按 VL/2=64B 对齐，否则在 r>=1 的非
-    // 64B 对齐偏移上会漏写(写成 0)。因此每行 scale 在 UB 中按 64B 对齐步进；CopyOut/InitBuffer 必须用
-    // 相同的 64B 行跨度(见 {single,multi}_row_mx_fp4.h 的 SCALE_ROW_ALIGN_MXFP4)。
     const uint32_t scaleRowBytes = ((scaleCol * static_cast<uint32_t>(sizeof(TScale)) + 63U) / 64U) * 64U;
 
     auto xAddr = reinterpret_cast<__ubuf__ TX*>(xLocal.GetPhyAddr());

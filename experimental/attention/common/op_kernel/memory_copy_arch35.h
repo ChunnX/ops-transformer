@@ -178,12 +178,15 @@ __aicore__ inline constexpr GmFormat GetOutGmFormat()
     }
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <LayOutTypeEnum LAYOUT, bool isNoGS1 = false>
 __aicore__ inline constexpr UbFormat GetOutUbFormat()
 {
     static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
                       (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
                   "Get OutAttention UB GmFormat fail, LAYOUT is incorrect");
+    if constexpr (isNoGS1) {
+        return UbFormat::NO_S1G;
+    }
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
         return UbFormat::S1G;
     } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {

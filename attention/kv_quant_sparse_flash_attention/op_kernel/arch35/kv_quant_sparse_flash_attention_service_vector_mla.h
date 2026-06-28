@@ -91,6 +91,9 @@ public:
         ConstInfo &constInfo);
 
 private:
+    __aicore__ inline void ProcessVec1SoftmaxDispatchQSFA(LocalTensor<Q_T> &stage1CastTensor,
+        LocalTensor<T> &mmRes, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb,
+        LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo);
@@ -112,7 +115,8 @@ private:
         ConstInfo &constInfo);
     __aicore__ inline void CopyOutMrgeResult(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         int64_t mte2Size, int64_t mte3Size, int64_t s2keyOffset, int64_t mergeMte3Idx, const RunInfo &runInfo);
-    __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset);
+    __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow,
+        int64_t keyOffset, uint32_t combineBytes);
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = Q_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
     using VEC2_RES_T = T;
     template <typename VEC2_RES_T>
@@ -124,6 +128,7 @@ private:
         int64_t qsfaVec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
+    __aicore__ inline void ComputeNeedInitQSFA(CVSharedParams &sharedParams) const;
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
 
     TPipe *tPipe;
@@ -208,7 +213,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline int64_t QSFAVectorService<TEMPLATE_AR
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void
-QSFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset)
+QSFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow,
+    int64_t keyOffset, uint32_t combineBytes)
 {
     if (keyOffset < 0) {
         return;
@@ -220,7 +226,6 @@ QSFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64
     intriParams.srcStride = 0;
     DataCopyPadExtParams<KV_T> padParams;
     // 当前仅支持COMBINE模式
-    uint32_t combineBytes = 672;
     intriParams.blockLen = combineBytes;
     uint32_t combineDim = combineBytes / sizeof(KV_T);
     uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
@@ -239,13 +244,13 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
     if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
         return 0;
     }
-    uint32_t combineBytes = constInfo.dSizeVInput;
-    int64_t keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :
-        (keyOffset1 - keyOffset0)) - combineBytes;
+    uint32_t combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
+    int64_t keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) * sizeof(KV_T):
+        (keyOffset1 - keyOffset0)) * sizeof(KV_T) - combineBytes;
     if (keySrcStride >= INT32_MAX || keySrcStride < 0 || constInfo.sparseBlockSize > 1) {
         // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
-        CopyInSingleKv(kvInUb, startRow, keyOffset0);
-        CopyInSingleKv(kvInUb, startRow + 1, keyOffset1);
+        CopyInSingleKv(kvInUb, startRow, keyOffset0, combineBytes);
+        CopyInSingleKv(kvInUb, startRow + 1, keyOffset1, combineBytes);
     } else {
         DataCopyExtParams intriParams;
         intriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
@@ -559,35 +564,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
 
-    if (runInfo.s2LoopCount == 0) {
-        if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
-                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        }
-    } else {
-        if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
-                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if (runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
-                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
-            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        }
-    }
+    ProcessVec1SoftmaxDispatchQSFA(stage1CastTensor, mmRes, sumUb, maxUb, apiTmpBuffer, runInfo, constInfo);
+
     bmm1ResBuf.SetCrossCore();
     // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
@@ -608,6 +586,43 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
     outputBuf.SetCrossCore();
     if (runInfo.s2LoopCount != 0) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, qsfaExpUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispatchQSFA(
+    LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes, LocalTensor<float> &sumUb,
+    LocalTensor<float> &maxUb, LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo,
+    ConstInfo &constInfo)
+{
+    if (runInfo.s2LoopCount == 0) {
+        if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
+            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
+                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        } else if (runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
+            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
+                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        } else if (runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
+            ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        }
+    } else {
+        if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
+            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        } else if (runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
+            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_0_AND_LTE_64_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        } else if (runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
+            ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::GT_64_AND_LTE_128_SFA>(
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize,
+                runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+        }
     }
 }
 
@@ -798,34 +813,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
     sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
 
-    sharedParams.needInit = 0;
-    for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
-        int64_t s2Size;
-        if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
-            s2Size = bIdx == 0 ? actualSeqLengthsKVGm.GetValue(bIdx) : actualSeqLengthsKVGm.GetValue(bIdx) - actualSeqLengthsKVGm.GetValue(bIdx - 1);
-        } else {
-            if (sharedParams.isActualSeqLengthsKVNull) {
-                s2Size = sharedParams.s2Size;
-            } else {
-                s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
-            }
-        }
-        
-        int64_t s1Size;
-        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-            s1Size = bIdx == 0 ? cuSeqlensQGm.GetValue(bIdx) : cuSeqlensQGm.GetValue(bIdx) - cuSeqlensQGm.GetValue(bIdx - 1);
-        } else {
-            if (sharedParams.isActualSeqLengthsNull) {
-                s1Size = sharedParams.s1Size;
-            } else {
-                s1Size = cuSeqlensQGm.GetValue(bIdx);
-            }
-        }
-        if (s1Size > s2Size || (LAYOUT_T == QSFA_LAYOUT::BSND && s1Size < sharedParams.s1Size)) {
-            sharedParams.needInit = 1;
-            break;
-        }
-    }
+    ComputeNeedInitQSFA(sharedParams);
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
@@ -838,6 +826,41 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
             }
 
             CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
+        }
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ComputeNeedInitQSFA(
+    CVSharedParams &sharedParams) const
+{
+    sharedParams.needInit = 0;
+    for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
+        int64_t s2Size;
+        if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
+            s2Size = (bIdx == 0) ? actualSeqLengthsKVGm.GetValue(bIdx) : \
+                (actualSeqLengthsKVGm.GetValue(bIdx) - actualSeqLengthsKVGm.GetValue(bIdx - 1));
+        } else {
+            if (sharedParams.isActualSeqLengthsKVNull) {
+                s2Size = sharedParams.s2Size;
+            } else {
+                s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+            }
+        }
+        
+        int64_t s1Size;
+        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+            s1Size = (bIdx == 0) ? cuSeqlensQGm.GetValue(bIdx) : \
+                (cuSeqlensQGm.GetValue(bIdx) - cuSeqlensQGm.GetValue(bIdx - 1));
+        } else {
+            if (sharedParams.isActualSeqLengthsNull) {
+                s1Size = sharedParams.s1Size;
+            } else {
+                s1Size = cuSeqlensQGm.GetValue(bIdx);
+            }
+        }
+        if (s1Size > s2Size || (LAYOUT_T == QSFA_LAYOUT::BSND && s1Size < sharedParams.s1Size)) {
+            sharedParams.needInit = 1;
+            break;
         }
     }
 }

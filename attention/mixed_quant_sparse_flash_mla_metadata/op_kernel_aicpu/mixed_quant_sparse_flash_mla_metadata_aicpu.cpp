@@ -380,9 +380,9 @@ uint64_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetRevertS2Size(uint32_t bId
     uint32_t cmpS2Size = GetCmpS2SeqSize(bIdx);
     if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
         const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
-        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_ + residualPtr[bIdx];
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_) + residualPtr[bIdx];
     } else {
-        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_;
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_);
     }
 }
 

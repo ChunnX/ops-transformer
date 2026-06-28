@@ -34,8 +34,6 @@ flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     if constexpr (inOutLayoutType == InOutLayoutType_TND && KvLayoutType == KvLayoutType_NO_PA) {
         dc_preload(reinterpret_cast<__gm__ uint64_t*>(cuSeqLensQ), 0);
         dc_preload(reinterpret_cast<__gm__ uint64_t*>(cuSeqLensKv), 0);
-        dc_preload(reinterpret_cast<__gm__ uint64_t*>(sequsedQ), 0);
-        dc_preload(reinterpret_cast<__gm__ uint64_t*>(sequsedKv), 0);
     }
     // dtype 分发 → flash_attn_kernel_run (类型推导 + kernel实例化执行)
 #if (ORIG_DTYPE_Q == DT_BF16)

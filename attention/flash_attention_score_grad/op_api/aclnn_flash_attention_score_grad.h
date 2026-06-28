@@ -242,44 +242,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                     const aclrtStream stream);                                
 
-
-/**
- * @brief aclnnQuantFlashAttentionScoreGrad的第一段接口，根据具体的计算流程，计算workspace大小
- */
-aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
-    const aclTensor   *query,
-    const aclTensor   *keyIn,
-    const aclTensor   *value,
-    const aclTensor   *dy,
-    const aclTensor   *attenMaskOptional,
-    const aclTensor   *softmaxMax,
-    const aclTensor   *softmaxSum,
-    const aclTensor   *attentionIn,
-    const aclTensor   *dScaleQ,
-    const aclTensor   *dScaleK,
-    const aclTensor   *dScaleV,
-    const aclTensor   *dScaleDy,
-    const aclTensor   *dsScale,
-    const aclTensor   *pScale,
-    double             scaleValue,
-    int64_t            preTokens,
-    int64_t            nextTokens,
-    int64_t            headNum,
-    char              *inputLayout,
-    int64_t            sparseMode,
-    int64_t            outDtype,
-    aclTensor         *dqOut,
-    aclTensor         *dkOut,
-    aclTensor         *dvOut,
-    uint64_t          *workspaceSize,
-    aclOpExecutor    **executor);
- 
-/**
- * @brief aclnnQuantFlashAttentionScoreGrad的第二段接口，用于执行计算
- */
-aclnnStatus aclnnQuantFlashAttentionScoreGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                              aclrtStream stream);
-
 __attribute__((visibility("default"))) aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
     const aclTensor *query,
     const aclTensor *queryRope,

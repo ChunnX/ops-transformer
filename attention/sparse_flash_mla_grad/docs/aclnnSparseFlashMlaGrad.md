@@ -4,7 +4,7 @@
 
 | 产品                                              | 是否支持 |
 |:------------------------------------------------| :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>          |    ×     |
+| <term>Ascend 950PR/Ascend 950DT</term>          |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>    |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>    |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>             |    ×     |
@@ -313,7 +313,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中query实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -326,7 +326,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中oriKvOptional实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -339,7 +339,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中cmpKvOptional实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -365,7 +365,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示每行query对应的oriKvOptional实际可选的topk长度。</td>
             <td>
-            该参数暂不支持。
+            oriMaskMode=0且oriSparseIndicesOptional不为空时需要传，且必须为准确值。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -378,7 +378,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示每行query对应的cmpKvOptional实际可选的topk长度。</td>
             <td>
-            该参数暂不支持。
+            cmpMaskMode=0且cmpSparseIndicesOptional不为空时需要传，且必须为准确值。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -405,7 +405,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示tiling下沉的aicpu算子输出结果。</td>
             <td>
-            目前暂不支持tiling下沉，故设置此参数无效。
+            -
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -418,7 +418,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>缩放系数。</td>
             <td>
-            建议值：公式中d开根号的倒数。</li>
+            建议值：公式中d开根号的倒数。
             </td>
             <td>FLOAT32</td>
             <td>N/A</td>
@@ -444,7 +444,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
-                <li>仅支持模式4。</li>
               </ul>
         </td>
         <td>INT64</td>
@@ -459,7 +458,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
-                <li>仅支持模式3。</li>
               </ul>
         </td>
         <td>INT64</td>
@@ -576,7 +574,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输出</td>
             <td>表示query与oriKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
             <td>
-            该参数暂不支持。
+            若存在oriSparseIndicesOptional，则该输出不为空；其他场景下该参数输出为空。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -589,7 +587,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输出</td>
             <td>表示query与cmpKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
             <td>
-            在SCFA场景下，该输出不为空；其他场景下该参数输出为空。
+            若存在cmpSparseIndicesOptional，则该输出不为空；其他场景下该参数输出为空。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -683,8 +681,9 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 ## 约束说明
 
 - 确定性计算：
-  
-  - aclnnSparseFlashMlaGrad默认非确定性实现，暂不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnSparseFlashMlaGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+
+    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseFlashMlaGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
@@ -706,20 +705,21 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>0</td>
             <td>不做mask操作</td>
-            <td>当前不支持</td>
+            <td>支持</td>
         </tr>
         <tr>
             <td>3</td>
             <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</td>
-            <td>当前cmp部分支持</td>
+            <td>支持</td>
         </tr>
         <tr>
             <td>4</td>
             <td>band模式的mask，滑窗范围由oriWinLeft、oriWinRight控制，参数起点为右下角。</td>
-            <td>当前ori部分支持</td>
+            <td>ori支持</td>
         </tr>
         </tbody>
     </table>
+
 - 规格约束
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
@@ -767,9 +767,18 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         </tbody>
     </table>
 
+  - 参数cmpMaskMode的支持情况:
+
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：cmpMaskMode支持3。
+    - <term>Ascend 950PR/Ascend 950DT</term>：cmpMaskMode支持0、3。
+
+  - 参数oriMaskMode的支持情况:
+
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：oriMaskMode支持4。
+    - <term>Ascend 950PR/Ascend 950DT</term>：oriMaskMode支持0、3、4。
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
 #include <iostream>

@@ -129,6 +129,27 @@
       <td>ND</td>
     </tr>
     <tr>
+      <td>softmaxMaxOptional</td>
+      <td>可选输入</td>
+      <td>注意力正向计算的中间输出。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>softmaxSumOptional</td>
+      <td>可选输入</td>
+      <td>注意力正向计算的中间输出。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>attentionInOptional</td>
+      <td>可选输入</td>
+      <td>注意力正向计算的最终输出。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>ND</td>
+    </tr>
+    <tr>
       <td>scaleValue</td>
       <td>可选属性</td>
       <td>
