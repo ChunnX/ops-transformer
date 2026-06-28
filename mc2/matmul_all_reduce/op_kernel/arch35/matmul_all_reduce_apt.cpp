@@ -116,9 +116,11 @@ __global__ __aicore__ void quant_matmul_all_reduce(GM_ADDR aGM, GM_ADDR bGM, GM_
 #undef DTYPE_BIAS
 #define DTYPE_BIAS int32_t
     if constexpr (!SCENARIO_MXFP8 && COMMDTPYE == COMMDTPYE_DEFAULT && KERNEL_TYPE == NO_VEC_EPILOGUE_WITH_MMAPI) {
+        AscendC::printf("********** is INVOKE_MC2_QUANT_910_OP_IMPL line 119\n");
         INVOKE_MC2_QUANT_910_OP_IMPL(AscendC::MatMulASWKernel, Mc2CoreType::ON_CUBE_AND_VECTOR,
             APT_A2A_RS_AG, APT_COMM_MODE, DTYPE_Y, false, TPL_TRANS_B);
     } else if constexpr (COMMDTPYE == COMMDTPYE_INT8 && KERNEL_TYPE == NO_VEC_EPILOGUE_WITH_MMAPI) {
+        AscendC::printf("********** is INVOKE_MC2_QUANT_COMM_INT8_910_OP_IMPL line 123\n");
         INVOKE_MC2_QUANT_COMM_INT8_910_OP_IMPL(AscendC::MatMulASWKernel, Mc2CoreType::ON_CUBE_AND_VECTOR,
             APT_COMM_MODE, DTYPE_Y, false, TPL_TRANS_B);
     }
@@ -253,6 +255,7 @@ __global__ __aicore__ void matmul_all_reduce(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR b
                                              GM_ADDR cGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5); // 按当前最大的结构体申请内存
+    AscendC::printf("********** is matmul_all_reduce\n");
     if (workspaceGM == nullptr) {
         return;
     }
@@ -265,12 +268,15 @@ __global__ __aicore__ void matmul_all_reduce(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR b
     TPipe tPipe;
 
     if constexpr (APT_MM_TYPE == MMTYPE_FP_NULL_TENSOR || APT_MM_TYPE == MMTYPE_WEIQUANT_NULL_TENSOR) {
+        AscendC::printf("********** is INVOKE_MC2_EMPTY_TENSOR_OP_IMPL\n");
         INVOKE_MC2_EMPTY_TENSOR_OP_IMPL(APT_COMM_MODE);
     } else if constexpr (APT_MM_TYPE == MMTYPE_FP_MM) {
+        AscendC::printf("********** is fp_matmul_all_reduce\n");
         fp_matmul_all_reduce<APT_PARAMS_FP_MM, APT_A2A_RS_AG, APT_COMM_MODE>(
             aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM, commQuantScale1GM,
             commQuantScale2GM, cGM, workspaceGM, tilingGM, tPipe, userWS);
     } else if constexpr (APT_MM_TYPE == MMTYPE_QUANT_MM) {
+        AscendC::printf("********** is quant_matmul_all_reduce\n");
         quant_matmul_all_reduce<APT_PARAMS_COMM, APT_PARAMS_QUANT_MM, APT_A2A_RS_AG, APT_COMM_MODE>(
             aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM, commQuantScale1GM,
             commQuantScale2GM, cGM, workspaceGM, tilingGM, tPipe, userWS);
