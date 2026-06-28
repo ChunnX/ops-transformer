@@ -39,6 +39,9 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const
 {
+    OP_CHECK_IF(opParamInfo_.quantMode == nullptr,
+        OP_LOGE(opName_, "quantMode attr is nullptr."),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
