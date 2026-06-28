@@ -1338,17 +1338,22 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
     if constexpr(g_coreType == AIC) {
         return;
     }
-    __gm__ int32_t* syncRank = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr);
-    __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
+    __gm__ int32_t* syncRank = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_));
+    __gm__ int32_t* syncCount = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) +
         48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
-    for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
-        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
-        WriteGmByPassDCache(syncRemoteAddr, count);
-        auto syncCheck = syncRank + i * 16;
+    PipeBarrier<PIPE_ALL>();
+    WriteGmByPassDCache(syncCount, count);
+    PipeBarrier<PIPE_ALL>();
+    for (int rankIndex = aivCoreIdx_; rankIndex < worldSize_; rankIndex += blockAivNum_) {
+        if (rankIndex == rankId_) {
+            continue;
+        }
+        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankIndex)) + rankId_ * 16;
+        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr, (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
+        auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
     }
-    WriteGmByPassDCache(syncCount, count);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 }
