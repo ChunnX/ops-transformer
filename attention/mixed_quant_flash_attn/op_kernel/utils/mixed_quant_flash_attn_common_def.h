@@ -36,6 +36,45 @@
 #define AntiquantMode_PER_TOKEN_PAGE_ATTENTION 4
 #define AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION 5
 
+enum class inferFaLayOutTypeEnum {
+    LAYOUT_BSND = 0,
+    LAYOUT_BNSD = 1,
+    LAYOUT_TND = 2
+};
+
+enum class inferS1TemplateType {
+    Aligned64 = 64,
+    Aligned128 = 128,
+    NotAligned,
+};
+
+enum class inferS2TemplateType {
+    Aligned128 = 128,
+    Aligned256 = 256,
+    NotAligned,
+};
+
+enum class inferDTemplateType {
+    Aligned128 = 128,
+    NotAligned,
+};
+
+struct MixedQuantConfigParams {
+    inferS1TemplateType s1;
+    inferS2TemplateType s2;
+    inferDTemplateType d;
+};
+
+static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[3][2] = {
+    {inferFaLayOutTypeEnum::LAYOUT_BSND, inferFaLayOutTypeEnum::LAYOUT_BSND},
+    {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BNSD},
+    {inferFaLayOutTypeEnum::LAYOUT_TND, inferFaLayOutTypeEnum::LAYOUT_TND},
+};
+
+static constexpr MixedQuantConfigParams MixedQuantConfigValue[] = {
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128},
+};
+
 static constexpr float FLOAT_ZERO = 0;
 static constexpr float FLOAT_MAX = 3.402823466e+38F;
 static constexpr float FLOAT_INF = 3e+99;
