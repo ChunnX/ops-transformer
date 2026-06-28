@@ -537,12 +537,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
             if (curRankId == rankId_) {
                 dstGlobalTensor.SetGlobalBuffer(
-                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset));
+                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + params_.peermemInfo.URMAmaskRecvPtr + dstOffset));
             }
             DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
             PipeBarrier<PIPE_ALL>();
             if (curRankId != rankId_) {
-                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset;
+                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + params_.peermemInfo.URMAmaskRecvPtr + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
             }
@@ -639,7 +639,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
 
     // Phase 1: 从本卡 win 读本 localExpert 的全部 worldSize_ 个 [mask|count] 槽位
     GlobalTensor<uint8_t> maskSrcGlobal;
-    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) +
+    maskSrcGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) + params_.peermemInfo.URMAmaskRecvPtr + 
         static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
     DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();   // count 读取(标量)就绪
@@ -1008,7 +1008,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineBy
 
     // Phase 1: 从本地 URMA mask slot 读取每个源 rank 的 token count, 计算每 rank 的行范围
     // token 按源 rank 紧密排布, 利用 mask slot 中的 count 可精确计算每 rank 的起止行
-    __gm__ uint8_t* maskSlotBase = (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) +
+    __gm__ uint8_t* maskSlotBase = (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) + params_.peermemInfo.URMAmaskRecvPtr + 
         static_cast<uint64_t>(expertIdx) * worldSize_ * maskSlotSize_);
 
     // 计算 rank 0..startRankId-1 的 cumsum (作为本核处理范围之前的行偏移)
