@@ -1368,6 +1368,8 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::CopyOut(int64_t row)
     dataCopyParams.blockLen = k_ * sizeof(int32_t);
     DataCopyPad(expertIdxGm_[row * k_], expertIdxTensor, dataCopyParams);
 
+    PRINTF("=========CopyOut: y[0] = %f ===============\n", yOutTensor.GetValue(0));
+
     expertIdxOutQueue_.FreeTensor(expertIdxTensor);
     yOutQueue_.FreeTensor(yOutTensor);
 }
