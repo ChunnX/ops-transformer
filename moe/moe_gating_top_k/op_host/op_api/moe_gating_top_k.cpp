@@ -37,9 +37,35 @@ MoeGatingTopKResult MoeGatingTopK(
            group_select_mode, renorm, norm_type, out_flag, routed_scaling_factor, eps,
            y_out, expert_idx_out, out_out);
 
+    OP_LOGI("MoeGatingTopK", "[L0 Input] x dtype=%d, shapeSize=%ld, addr=%p",
+            (int)x->GetDataType(), x->GetViewShape().GetShapeSize(), x->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[L0 Input] y_out dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)y_out->GetDataType(), y_out->GetViewShape().GetShapeSize(),
+            y_out->GetViewShape().GetDim(0), y_out->GetViewShape().GetDimNum() > 1 ? y_out->GetViewShape().GetDim(1) : -1,
+            y_out->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[L0 Input] expert_idx_out dtype=%d, shapeSize=%ld, addr=%p",
+            (int)expert_idx_out->GetDataType(), expert_idx_out->GetViewShape().GetShapeSize(),
+            expert_idx_out->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[L0 Input] out_out dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)out_out->GetDataType(), out_out->GetViewShape().GetShapeSize(),
+            out_out->GetViewShape().GetDim(0), out_out->GetViewShape().GetDimNum() > 1 ? out_out->GetViewShape().GetDim(1) : -1,
+            out_out->GetTensorAddr());
+
     auto y = executor->AllocTensor(y_out->GetViewShape(), y_out->GetDataType(), Format::FORMAT_ND);
     auto expert_idx = executor->AllocTensor(expert_idx_out->GetViewShape(), expert_idx_out->GetDataType(), Format::FORMAT_ND);
     auto out_out_alloc = executor->AllocTensor(out_out->GetViewShape(), out_out->GetDataType(), Format::FORMAT_ND);
+
+    OP_LOGI("MoeGatingTopK", "[L0 AllocTensor] y dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)y->GetDataType(), y->GetViewShape().GetShapeSize(),
+            y->GetViewShape().GetDim(0), y->GetViewShape().GetDimNum() > 1 ? y->GetViewShape().GetDim(1) : -1,
+            y->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[L0 AllocTensor] expert_idx dtype=%d, shapeSize=%ld, addr=%p",
+            (int)expert_idx->GetDataType(), expert_idx->GetViewShape().GetShapeSize(),
+            expert_idx->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[L0 AllocTensor] out_out_alloc dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)out_out_alloc->GetDataType(), out_out_alloc->GetViewShape().GetShapeSize(),
+            out_out_alloc->GetViewShape().GetDim(0), out_out_alloc->GetViewShape().GetDimNum() > 1 ? out_out_alloc->GetViewShape().GetDim(1) : -1,
+            out_out_alloc->GetTensorAddr());
 
     MoeGatingTopKResult emptyResult = {nullptr, nullptr, nullptr};
     if (!y->IsEmpty()) {

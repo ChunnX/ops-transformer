@@ -223,10 +223,18 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::CopyInX(int64_t row)
             DataCopyPad(xInLocalTensor[expertCountAlign_].ReinterpretCast<T>(), xGm_[row * expertCount_],
                         dataCopyParams, dataCopyPadParams);
         }
+        PipeBarrier<PIPE_ALL>();
+        for (int i=0; i<10; i++) {
+            PRINTF("===CopyInX x[%d]: %f ==\n", i, xInLocalTensor.GetValue(0));
+        }
         xInQueue_.EnQue(xInLocalTensor);
     } else {
         LocalTensor<T> xInLocalTensor = xInQueue_.AllocTensor<T>();
         DataCopyPad(xInLocalTensor, xGm_[row * expertCount_], dataCopyParams, dataCopyPadParams);
+        PipeBarrier<PIPE_ALL>();
+        for (int i=0; i<10; i++) {
+            PRINTF("===CopyInX x[%d]: %f ==\n", i, xInLocalTensor.GetValue(0));
+        }
         xInQueue_.EnQue(xInLocalTensor);
     }
 }
@@ -1368,7 +1376,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::CopyOut(int64_t row)
     dataCopyParams.blockLen = k_ * sizeof(int32_t);
     DataCopyPad(expertIdxGm_[row * k_], expertIdxTensor, dataCopyParams);
 
-    PRINTF("=========CopyOut: y[0] = %f ===============\n", yOutTensor.GetValue(0));
+    for (int i=0; i<k; i++) {
+        PRINTF("=========CopyOut: y[%d] = %f ===============\n", i, yOutTensor.GetValue(0));
+    }
 
     expertIdxOutQueue_.FreeTensor(expertIdxTensor);
     yOutQueue_.FreeTensor(yOutTensor);

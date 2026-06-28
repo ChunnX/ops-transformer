@@ -97,6 +97,32 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
     aclnnStatus ret = MoeGatingTopKCheck::CheckParams(x, biasOptional, yOut, expertIdxOut, outOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
+    OP_LOGI("MoeGatingTopK", "[Before Kernel] k=%ld, kGroup=%ld, groupCount=%ld, groupSelectMode=%ld, "
+            "renorm=%ld, normType=%ld, outFlag=%d, routedScalingFactor=%f, eps=%f",
+            k, kGroup, groupCount, groupSelectMode, renorm, normType, outFlag, routedScalingFactor, eps);
+
+    OP_LOGI("MoeGatingTopK", "[Before Kernel] x dtype=%d, shapeSize=%ld, stride0=%ld, stride1=%ld, addr=%p",
+            (int)x->GetDataType(), x->GetViewShape().GetShapeSize(),
+            x->GetViewShape().GetDim(0), x->GetViewShape().GetDimNum() > 1 ? x->GetViewShape().GetDim(1) : -1,
+            x->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[Before Kernel] yOut dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)yOut->GetDataType(), yOut->GetViewShape().GetShapeSize(),
+            yOut->GetViewShape().GetDim(0), yOut->GetViewShape().GetDimNum() > 1 ? yOut->GetViewShape().GetDim(1) : -1,
+            yOut->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[Before Kernel] expertIdxOut dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)expertIdxOut->GetDataType(), expertIdxOut->GetViewShape().GetShapeSize(),
+            expertIdxOut->GetViewShape().GetDim(0), expertIdxOut->GetViewShape().GetDimNum() > 1 ? expertIdxOut->GetViewShape().GetDim(1) : -1,
+            expertIdxOut->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[Before Kernel] outOut dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)outOut->GetDataType(), outOut->GetViewShape().GetShapeSize(),
+            outOut->GetViewShape().GetDim(0), outOut->GetViewShape().GetDimNum() > 1 ? outOut->GetViewShape().GetDim(1) : -1,
+            outOut->GetTensorAddr());
+    if (biasOptional != nullptr) {
+        OP_LOGI("MoeGatingTopK", "[Before Kernel] bias dtype=%d, shapeSize=%ld, addr=%p",
+                (int)biasOptional->GetDataType(), biasOptional->GetViewShape().GetShapeSize(),
+                biasOptional->GetTensorAddr());
+    }
+
     auto xContiguous = l0op::Contiguous(x, uniqueExecutor.get());
     CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
@@ -105,6 +131,11 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
         biasContiguous = l0op::Contiguous(biasOptional, uniqueExecutor.get());
         CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
+
+    OP_LOGI("MoeGatingTopK", "[Before Kernel] xContiguous dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)xContiguous->GetDataType(), xContiguous->GetViewShape().GetShapeSize(),
+            xContiguous->GetViewShape().GetDim(0), xContiguous->GetViewShape().GetDimNum() > 1 ? xContiguous->GetViewShape().GetDim(1) : -1,
+            xContiguous->GetTensorAddr());
 
     auto result = l0op::MoeGatingTopK(xContiguous, biasContiguous, nullptr, nullptr,
                                       k, kGroup, groupCount, groupSelectMode,
@@ -115,12 +146,34 @@ ACLNN_API aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
     CHECK_RET(result.expertIdx != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(result.outOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
+    OP_LOGI("MoeGatingTopK", "[After Kernel] result.y dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)result.y->GetDataType(), result.y->GetViewShape().GetShapeSize(),
+            result.y->GetViewShape().GetDim(0), result.y->GetViewShape().GetDimNum() > 1 ? result.y->GetViewShape().GetDim(1) : -1,
+            result.y->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[After Kernel] result.expertIdx dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)result.expertIdx->GetDataType(), result.expertIdx->GetViewShape().GetShapeSize(),
+            result.expertIdx->GetViewShape().GetDim(0), result.expertIdx->GetViewShape().GetDimNum() > 1 ? result.expertIdx->GetViewShape().GetDim(1) : -1,
+            result.expertIdx->GetTensorAddr());
+    OP_LOGI("MoeGatingTopK", "[After Kernel] result.outOut dtype=%d, shapeSize=%ld, dim0=%ld, dim1=%ld, addr=%p",
+            (int)result.outOut->GetDataType(), result.outOut->GetViewShape().GetShapeSize(),
+            result.outOut->GetViewShape().GetDim(0), result.outOut->GetViewShape().GetDimNum() > 1 ? result.outOut->GetViewShape().GetDim(1) : -1,
+            result.outOut->GetTensorAddr());
+
+    OP_LOGI("MoeGatingTopK", "[ViewCopy] result.y -> yOut: src dtype=%d dst dtype=%d, src addr=%p dst addr=%p",
+            (int)result.y->GetDataType(), (int)yOut->GetDataType(),
+            result.y->GetTensorAddr(), yOut->GetTensorAddr());
     auto viewCopyYOutResult = l0op::ViewCopy(result.y, yOut, uniqueExecutor.get());
     CHECK_RET(viewCopyYOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
+    OP_LOGI("MoeGatingTopK", "[ViewCopy] result.expertIdx -> expertIdxOut: src dtype=%d dst dtype=%d, src addr=%p dst addr=%p",
+            (int)result.expertIdx->GetDataType(), (int)expertIdxOut->GetDataType(),
+            result.expertIdx->GetTensorAddr(), expertIdxOut->GetTensorAddr());
     auto viewCopyExpertIdxResult = l0op::ViewCopy(result.expertIdx, expertIdxOut, uniqueExecutor.get());
     CHECK_RET(viewCopyExpertIdxResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
+    OP_LOGI("MoeGatingTopK", "[ViewCopy] result.outOut -> outOut: src dtype=%d dst dtype=%d, src addr=%p dst addr=%p",
+            (int)result.outOut->GetDataType(), (int)outOut->GetDataType(),
+            result.outOut->GetTensorAddr(), outOut->GetTensorAddr());
     auto viewCopyOutOutResult = l0op::ViewCopy(result.outOut, outOut, uniqueExecutor.get());
     CHECK_RET(viewCopyOutOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
