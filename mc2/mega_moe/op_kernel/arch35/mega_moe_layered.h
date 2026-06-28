@@ -1359,7 +1359,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
     }
-    // CrossRankSyncInWorldSize();  // 全卡同步
+    CrossRankSyncInWorldSize();  // 全卡同步
 
     // // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     // DispatchBuffInit();
