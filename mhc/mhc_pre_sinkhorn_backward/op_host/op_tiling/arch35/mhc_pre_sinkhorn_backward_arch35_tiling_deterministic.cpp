@@ -149,7 +149,11 @@ void MhcPreSinkhornBackwardArch35DeterminiticTiling::DoUbTiling()
     usedAivNum_ = Ops::Base::CeilDiv(totalBs, bsTaskCount_);
     tailBsTaskCount_ = totalBs - bsTaskCount_ * (usedAivNum_ - 1);
     cLoopDataLen_ = c_;
-    bsLoopDataLen_ = bsTaskCount_;
+    // NOTE: gradZ 在 UB 中按 bs 行紧凑排布(stride = count, pre/post count=n=4 < 单寄存器 16 fp32 lane)。
+    // ComputeGradNormOutOrGradHcBeforeNorm 以整寄存器 mask 做原地非对齐写, 当 bsLoopDataLen>1 时会把同
+    // 寄存器内相邻 bs 行的数据一起写坏(仅 bsLoop=0 正确)。强制 bsLoopDataLen=1, 使每次只处理 1 个 bs,
+    // 偏移恒为 0(对齐), 越界写落在未使用区间, 保证 gradHcBeforeNorm/gradNormOut 正确(进而 gradX/gradPhi 正确)。
+    bsLoopDataLen_ = 1;
     ubBlock_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
     ubSize_ = ubSize_ - UB_RESERVE_SIZE;
     auto restSize = static_cast<int64_t>(-1);

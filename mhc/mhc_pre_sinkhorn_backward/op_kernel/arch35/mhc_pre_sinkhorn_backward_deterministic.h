@@ -54,6 +54,7 @@ private:
     __aicore__ inline void ComputeFirst(uint64_t bsIdx, uint64_t bsLen);
     __aicore__ inline void CopyInHpreAndGradHPost(const GlobalTensor<U>& gmTensor, uint64_t bsLen);
     __aicore__ inline void CopyInXandGradHin(uint64_t xGmOffset, uint64_t gradHinGmOffset, uint64_t bsLen, uint64_t cLen);
+    template<bool ISFIRST>
     __aicore__ inline void ComputeGradHpreAndXFromIn(LocalTensor<U>& hPreLocal, LocalTensor<U>& gradHPreLocal, const Process1Info& info);
     __aicore__ inline void ComputeSigmoidGrad(uint64_t bsLen, uint64_t colLen, uint8_t num);
     __aicore__ inline void ComputeGradAlphaAndBias(uint64_t bsLen, uint64_t colLen);
@@ -399,11 +400,17 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     LocalTensor<U> gradBiasSumLocal = gradBiasQue_.DeQue<U>();
     LocalTensor<U> gradAlphaSumLocal = gradAlphaSumQue_.DeQue<U>();
     CopyOut(gradAlphaGm_[gmAlphaOft], gradAlphaSumLocal, 1, 1, 0, 0);
-    SetAtomicAdd<U>();
-    for (int i = 0; i < usedAivNum_; i++) {
-        CopyOut(gradBiasGm_[gmBiasOft], gradBiasSumLocal[i * biasAlignFp32], 1, biasLen, 0, 0);
+    // 确定性：原实现对 gradBiasGm_ 同一地址做 usedAivNum 次浮点 atomic-add，
+    // 这些 add 在 atomic 单元的应用顺序不固定 -> 浮点重结合 -> grad_bias 每次结果有 ~1e-6 抖动
+    // (虽在精度阈值内但非比特一致)。改为在 UB 内按固定顺序累加各核分片，再单次非 atomic 写出，
+    // 保证 grad_bias 比特确定。
+    for (int i = 1; i < usedAivNum_; i++) {
+        Add(gradBiasSumLocal, gradBiasSumLocal, gradBiasSumLocal[i * biasAlignFp32], biasLen);
     }
-    SetAtomicNone();
+    event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIdVToMte3);
+    WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3);
+    CopyOut(gradBiasGm_[gmBiasOft], gradBiasSumLocal, 1, biasLen, 0, 0);
     gradBiasQue_.FreeTensor(gradBiasSumLocal);
     gradAlphaSumQue_.FreeTensor(gradAlphaSumLocal);
 }
@@ -468,7 +475,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
     SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
     WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-    CopyOut(gradZOut[bsOffset * k_ + offset], gradZLocal, bsLen, count, 0, k_);
+    CopyOut(gradZOut[bsOffset * k_ + offset], gradZLocal, bsLen, count, 0, (k_ - count) * uTypeSize_);
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
@@ -508,7 +515,13 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         uint64_t gradHinStartOft = gradHinOffset + cIdx * cLoopDataLen;
         uint64_t gradXFromHinStartOft = gradXFromHinOffset + cIdx * cLoopDataLen;
         CopyInXandGradHin(xStartOft, gradHinStartOft, bsLen, cLen);
-        ComputeGradHpreAndXFromIn(hPreLocal, gradHPreLocal, info);
+        // 首个 c 分块(cIdx==0)无历史累加值，直接写寄存器累加结果，避免对 grad_h_pre 做任何 scalar 读，
+        // 彻底消除 scalar/vector 交叉的偶发同步 race；仅 c 需多次分块(cLoopNum>1)时才读历史值再累加。
+        if (cIdx == 0) {
+            ComputeGradHpreAndXFromIn<true>(hPreLocal, gradHPreLocal, info);
+        } else {
+            ComputeGradHpreAndXFromIn<false>(hPreLocal, gradHPreLocal, info);
+        }
         LocalTensor<U> xFp32Local = xFp32Que_.DeQue<U>();     //out
         LocalTensor<U> gradXFromHinLocal = gradXFromHinQue_.DeQue<U>();       //out        
         CopyOut(xFp32Ws_[xStartOft], xFp32Local, bsLen * n_, cLen, 0, (c_ - cLen) * uTypeSize_);       //搬运x_f32到workspace
@@ -528,6 +541,11 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     ComputeGradZ<true>(gradHcBeforeNormWs_, alphaPre_, bsLen, bsOffset, n_, 0);
+    // 根因(确定性)：gradHcBeforeNorm(pre) 的 CopyOut(MTE3) 仍在读 gradZBuf_，
+    // 必须等其完成后，下一分支(post)的 ComputeSigmoidGrad 才能向 gradZBuf_ 写入(VEC)，
+    // 否则 MTE3 读 与 VEC 写 形成 WAR race，偶发污染 gradHcBeforeNorm(pre) -> grad_phi(pre 行) 非确定。
+    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
 
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_, hcBeforeNormOffset + n_, alphaPost_, n_);
     CopyInHpreAndGradHPost(gradHPostGm_[gradHPostOffset], bsLen);
@@ -538,6 +556,9 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
     SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
     ComputeGradZ<true>(gradHcBeforeNormWs_, alphaPost_, bsLen, bsOffset, n_, n_);
+    // 同上：gradHcBeforeNorm(post) CopyOut(MTE3) 完成后，res 分支才能复用/覆写 gradZBuf_。
+    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
 
     ComputeZAndNormOutForward(invRmsLocal, bsLen, n_ * n_, hcBeforeNormOffset + 2 * n_, alphaRes_, 2 * n_);
     invRmsQue_.FreeTensor(invRmsLocal);
@@ -608,6 +629,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 }
 
 template<typename X_T, typename GRADHIN_T, typename U>
+template<bool ISFIRST>
 __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGradHpreAndXFromIn(LocalTensor<U>& hPreLocal,
     LocalTensor<U>& gradHPreLocal, const Process1Info& info)
 {
@@ -625,6 +647,15 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 
     uint32_t vfLen = info.vRegSize / uTypeSize_;
     uint16_t loopCnt = (info.cLen + vfLen - 1) / vfLen;
+    // 说明：grad_h_pre[i,k] = sum_c (x[i,k,c] * grad_h_in[i,c])，需在 c 方向(分块 j)累加。
+    // 旧实现把累加值放在 UB(gradHPreBuf)，每个 c 分块都做「向量 Store + scalar 读改写」，
+    // 这种 scalar/vector 交叉的原地累加在多核上偶发同步不稳(约 3/20 次)，导致 pre 分支
+    // grad_h_pre 非确定 -> grad_z_pre/gradHcBeforeNorm/grad_phi(pre 行) 非确定。
+    // 修复：以 k 为外层、c 分块 j 为内层，c 方向累加全部常驻寄存器 accReg(无任何 UB 读改写)。
+    // ISFIRST(首个 c 分块，cLoopNum==1 时恒为 true)：无历史值，直接 Store accReg，
+    //   该路径完全不出现「scalar 读 vector 写过的 UB」，从根上消除 race。
+    // !ISFIRST(仅大 C 需多次 c 分块时)：跨 __VEC_SCOPE__ 读一次历史累加值再叠加，
+    //   该读发生在不同 c-loop 调用之间(中间隔着 EnQue/DeQue/CopyOut 流水同步)，非紧致 RMW。
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::RegTensor<X_T> xReg;
@@ -633,37 +664,45 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
         AscendC::MicroAPI::RegTensor<U> gradHInCastReg;
         AscendC::MicroAPI::RegTensor<U> gradHPreReg;
         AscendC::MicroAPI::RegTensor<U> gradXFromHinReg;
-        AscendC::MicroAPI::RegTensor<U> gradHPreRegSumReg;
+        AscendC::MicroAPI::RegTensor<U> accReg;
         AscendC::MicroAPI::MaskReg valueMaskReg;
         AscendC::MicroAPI::MaskReg OneMaskReg = AscendC::MicroAPI::CreateMask<U, AscendC::MicroAPI::MaskPattern::VL1>();
 
         for (uint16_t i = 0; i < static_cast<uint16_t>(info.bsLen); i++) {
             auto gradHPreStart = gradHPreAddr + i * n_;
-            uint32_t maskLen = static_cast<uint32_t>(info.cLen);
-            for (uint16_t j = 0; j < loopCnt; j++) {
-                auto gradHInStart = gradHInAddr + i * info.cLenGRADHINTAlign + j * vfLen;
-                valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
-                AscendC::MicroAPI::DataCopy<GRADHIN_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHInReg, gradHInStart);
-                AscendC::MicroAPI::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHInCastReg, gradHInReg, valueMaskReg);
-                for (uint16_t k = 0; k < static_cast<uint16_t>(info.n); k++) {
+            for (uint16_t k = 0; k < static_cast<uint16_t>(info.n); k++) {
+                U hPre = *(hPreAddr + i * info.n + k);
+                U gradHPrePrev = U(0);
+                if constexpr (!ISFIRST) {
+                    // 仅多 c 分块路径：跨 c-loop 读取历史累加值(中间已有流水同步，非紧致 RMW)
                     AscendC::MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::SCALAR_LOAD>();
-                    U hPre = *(hPreAddr + i * info.n + k);
-                    U gradHPre = *(gradHPreStart + k);
+                    gradHPrePrev = *(gradHPreStart + k);
+                }
+                AscendC::MicroAPI::Duplicate(accReg, U(0), OneMaskReg);
+                uint32_t maskLen = static_cast<uint32_t>(info.cLen);
+                for (uint16_t j = 0; j < loopCnt; j++) {
+                    valueMaskReg = AscendC::MicroAPI::UpdateMask<U>(maskLen);
+                    auto gradHInStart = gradHInAddr + i * info.cLenGRADHINTAlign + j * vfLen;
                     auto xCastStart = xCastAddr + (i * n_ + k) * info.cLenUAlign + j * vfLen;
                     auto xAddrStart = xAddr + (i * n_ + k) * info.cLenXTAlign + j * vfLen;
                     auto gradXFromHinStart = gradXFromHinAddr + (i * n_ + k) * info.cLenUAlign + j * vfLen;
 
+                    AscendC::MicroAPI::DataCopy<GRADHIN_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(gradHInReg, gradHInStart);
+                    AscendC::MicroAPI::Cast<U, GRADHIN_T, castTrait16ToFloat>(gradHInCastReg, gradHInReg, valueMaskReg);
                     AscendC::MicroAPI::DataCopy<X_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xReg, xAddrStart);
                     AscendC::MicroAPI::Cast<U, X_T, castTrait16ToFloat>(xCastReg, xReg, valueMaskReg);
                     AscendC::MicroAPI::Muls(gradXFromHinReg, gradHInCastReg, hPre, valueMaskReg);          //grad_h_in_f32 * h_pre
                     AscendC::MicroAPI::Mul(gradHPreReg, xCastReg, gradHInCastReg, valueMaskReg);        //x_f32 * grad_h_in_f32
                     AscendC::MicroAPI::Reduce<MicroAPI::ReduceType::SUM, U, U>(gradHPreReg, gradHPreReg, valueMaskReg); //reduce_sum
-                    AscendC::MicroAPI::Adds(gradHPreRegSumReg, gradHPreReg, gradHPre, OneMaskReg);      //将原值进行累加
+                    AscendC::MicroAPI::Add(accReg, accReg, gradHPreReg, OneMaskReg);      //寄存器内累加(无 UB RMW)
 
                     AscendC::MicroAPI::DataCopy(gradXFromHinStart, gradXFromHinReg, valueMaskReg);
                     AscendC::MicroAPI::DataCopy(xCastStart, xCastReg, valueMaskReg);
-                    AscendC::MicroAPI::Store(gradHPreStart + k, gradHPreRegSumReg, 1);
                 }
+                if constexpr (!ISFIRST) {
+                    AscendC::MicroAPI::Adds(accReg, accReg, gradHPrePrev, OneMaskReg);   //叠加历史累加值
+                }
+                AscendC::MicroAPI::Store(gradHPreStart + k, accReg, 1);
             }
         }
     }
