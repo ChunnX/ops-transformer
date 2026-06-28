@@ -227,7 +227,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
         hcommHandle_[i] = mc2Context_->hcommHandle[i];
     }
 
-    workspaceStateSize_ = numTokens_ * topK_ * UB_ALIGN * epWorldSize_;
+    workspaceStateSize_ = numMaxTokensPerRank_ * topK_ * UB_ALIGN * epWorldSize_;
     // workspaceStateSize_ = 16 * 1024 * 1024;
     CombineStateAddr_ = tilingData->winStateOffset;
     // CombineStateAddr_ = GetWinCombineStateAddrByRankId(mc2Context_);
