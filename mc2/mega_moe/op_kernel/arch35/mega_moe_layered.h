@@ -504,8 +504,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
 
     // Phase 2: 逐个全局专家算 [mask|count] 推送 (ping-pong 双 buffer 软流水)
     // buffer内前 maskAlignSize_ 存mask, 末 32B 存 count
-    constexpr TEventID kBufEvents[DOUBLE_BUFFER] = {EVENT_ID0, EVENT_ID1};
-    for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
+    constexpr TEventID kBufEvents[1] = {EVENT_ID0, EVENT_ID1};
+    for (int32_t index = 0; index < static_cast<int32_t>(1); ++index) {
         SetFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
     }
     int32_t totalExperts = static_cast<int32_t>(worldSize_);
@@ -516,8 +516,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
         for(uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex, ++iter) {
             int32_t curExpertId = curRankId * expertPerRank_ + expertIdIndex;
-            TEventID eventId = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-            LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
+            TEventID eventId = kBufEvents[iter % static_cast<int32_t>(1)];
+            LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(1)];
             LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
             LocalTensor<int32_t> maskBufI32 = maskBuf.template ReinterpretCast<int32_t>();
             WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);  // 等本 buffer 上一轮 MTE3 推送完成
@@ -552,7 +552,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
             }
         }
     }
-    for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
+    for (int32_t index = 0; index < static_cast<int32_t>(1); ++index) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
     }
 }
