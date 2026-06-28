@@ -203,7 +203,7 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     std::vector<int64_t> scales_out_shape = {A};
     std::vector<int64_t> idx_out_shape = {A};
     std::vector<int64_t> num_out_shape = {E};
-    
+    std::vector<int64_t> topk_weight_out_shape = {0};
 
     // 添加输入（顺序严格匹配 proto.h）
     ADD_INPUT(1, tokens, DT_FLOAT16, tokens_shape);
@@ -215,6 +215,7 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     ADD_OUTPUT(2, permute_per_token_scales, DT_FLOAT, scales_out_shape);
     ADD_OUTPUT(3, permute_token_idx, inDtype, idx_out_shape);
     ADD_OUTPUT(4, expert_token_num, inDtype, num_out_shape);
+    ADD_OUTPUT(5, permute_topk_weight, DT_FLOAT, topk_weight_out_shape);
 
     outputs.push_back(moe_re_routing_op);
     // 添加完毕
