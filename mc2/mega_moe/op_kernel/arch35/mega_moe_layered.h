@@ -25,7 +25,6 @@
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
 #include "moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
-// #include "adv_api/hccl/hccl.h"
 #include "adv_api/hcomm/hcomm.h"
 
 using namespace AscendC;
@@ -541,19 +540,21 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                     (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset));
             }
             DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
-            SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
-            PipeBarrier<PIPE_ALL>(); //todo:后续优化
+            PipeBarrier<PIPE_ALL>();
             if (curRankId != rankId_) {
                 GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                // GM_ADDR remoteNotifyAddr = ;//todo
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
-                hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_)); // todo:后续优化
             }
+            SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
     }
     for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
+    }
+    for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
+        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
+        PRINTF("SendMaskCal Drain ")
     }
 }
 
