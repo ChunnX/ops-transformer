@@ -363,25 +363,6 @@ __aicore__ inline void QuantPerTensor(const LocalTensor<O> &outLocal, const Loca
 }
 
 /**
- * @brief QuantPerTensorToFP8e4m3 同时对row行进行FP32到fp8_e4m3的per-tensor量化操作。一行内共用同一个量化系数。
-          outLocal[i , j] = inputLocal[i , j] * quantScaleLocal[i]
- * @param outLocal 输出tensor [row , col]
- * @param inputLocal 输入tensor [row , col]
- * @param quantScaleLocal quant系数 [1 , Hckv]
- * @param rectangleParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
- */
-__aicore__ inline void QuantPerTensorToFP8e4m3(const LocalTensor<FP8E4M3> &outLocal,
-                                               const LocalTensor<float> &inputLocal,
-                                               const LocalTensor<float> &quantScaleLocal,
-                                               const Rectangle &rectangleParams)
-{
-    QuantPerTensorVF(outLocal, inputLocal, quantScaleLocal, rectangleParams.row, rectangleParams.col);
-}
-
-/**
  * @brief QuantPerTile 对输入tensor进行per-tile量化操作，FP32->fp8 e4m3/hifloat8，每个tile出一个量化系数。
             量化流程：先对输入的每行的每个tile做动态量化，最后转换为fp8/hif8.
  * @param outLocal 输出tensor [row * col]，量化后的fp8/hif8数据，后续跟随scale数据
