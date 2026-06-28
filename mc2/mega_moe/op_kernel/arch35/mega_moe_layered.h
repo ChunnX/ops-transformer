@@ -1351,7 +1351,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
     WriteGmByPassDCache(syncCount, count);
     PipeBarrier<PIPE_ALL>();
     for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
-        if (rankIndex == rankId_) {
+        if (i == rankId_) {
             continue;
         }
         __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
