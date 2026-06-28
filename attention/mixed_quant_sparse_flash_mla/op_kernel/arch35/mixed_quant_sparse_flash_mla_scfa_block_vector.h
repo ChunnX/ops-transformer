@@ -488,7 +488,7 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
                     DataCopyPad(kvInUb[startRow * combineDimAlign + dCombineBytes], keyGm[scaleOffset0],
                         scaleParams, scalePadParams);
                 }
-                if (scaleOffset1) {
+                if (scaleOffset1 >= 0) {
                     DataCopyPad(kvInUb[(startRow + 1) *  combineDimAlign + dCombineBytes], keyGm[scaleOffset1],
                         scaleParams, scalePadParams);
                 }
