@@ -22,7 +22,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002203575833_section45077510411"></a>
 
 ```
-MoEElasticBuffer.dispatch(x, topk_idx=None, topk_weights=None, *, handle=None, num_experts=None, num_max_tokens_per_rank=None, expert_alignment=None, do_cpu_sync=None) -> (Tensor, Tensor, Tensor, EPHandle)
+MoEElasticBuffer.dispatch(x, *, topk_idx=None, topk_weights=None, handle=None, num_experts=None, num_max_tokens_per_rank=None, expert_alignment=None, do_cpu_sync=None) -> (Tensor, Tensor, Tensor, EPHandle)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002203575833_section112637109429"></a>
@@ -111,7 +111,7 @@ MoEElasticBuffer.dispatch(x, topk_idx=None, topk_weights=None, *, handle=None, n
         topk_idx = torch.randint(0, num_experts, (num_tokens, top_k), dtype=torch.int32, device=f"npu:{rank}")
         topk_weights = torch.rand(num_tokens, top_k, dtype=torch.float32, device=f"npu:{rank}")
 
-        recv_x, recv_topk_idx, recv_topk_weights, handle = buf.dispatch(x, topk_idx, topk_weights)
+        recv_x, recv_topk_idx, recv_topk_weights, handle = buf.dispatch(x, topk_idx=topk_idx, topk_weights=topk_weights)
 
         torch.npu.synchronize()
         print(f"[rank {rank}] recv_x shape={recv_x.shape}")
