@@ -625,7 +625,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                 QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
             }
         }
-        // PipeBarrier<PIPE_ALL>();
         __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendDonePtr);
         WriteGmByPassDCache(donePtr + computeIdx, roundTag);
     }
@@ -1064,15 +1063,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
             if (dstRankIdx >= worldSize_) {
                 continue;
             }
-            PipeBarrier<PIPE_ALL>();
             uint64_t sendToCurExpTokenCnt = 0;
             GatherMask(validTopkIndexTensor_, topkIndexTensor_,
                 gatherMaskInt32Tensor_[dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))],
                 true, sendTotalNum_, {1, 1, 0, 0}, sendToCurExpTokenCnt);
-            PipeBarrier<PIPE_ALL>();
             uint32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
-            PipeBarrier<PIPE_ALL>();
             if (rowStartIdxInDst < maxOutputSize_) {
                 int32_t rowsCopyCnt = sendToCurExpTokenCnt;
                 if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) {
@@ -1084,7 +1080,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     if (rowsNumInCore > MAX_TRIPLE_ROWS_PER_CHUNK) {
                         rowsNumInCore = MAX_TRIPLE_ROWS_PER_CHUNK;
                     }
-                    PipeBarrier<PIPE_ALL>();
                     int32_t rowDstOffsetInCore = rowStartIdxInDst + rowSrcIdxInCore;
                     uint32_t tripleTensorAddr = ubBufferUsedAddr_;
                     uint32_t tripleTensorSize = rowsNumInCore * ALIGN_32;
@@ -1092,7 +1087,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                         tripleTensorSize / sizeof(int32_t));
                     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
                     CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, rowSrcIdxInCore, rowsNumInCore);
-                    PipeBarrier<PIPE_ALL>();
                 // Phase 2: flag位AtomicAdd，确认当前token需要atomic的槽位
                     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
                     // rowDstOffsetInCore 是跨expert累加的全局偏移(含前置 expert 的行数)，需要减掉前置专家行数;
@@ -1108,7 +1102,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                         int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
                         AtomicAdd(flagBase + w, int32_t(hi - lo));
                     }
-                    PipeBarrier<PIPE_ALL>();
                 }
             }
         }
@@ -1508,23 +1501,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
-                PipeBarrier<PIPE_ALL>();
                 Level1DispatchUrma(localExpertId); // 一级通信：本轮 localExpertId 的 token 写入各 server relay 区
                 SendCntCal(localExpertId); // 计算当前localExpertId接受到的token值
             }
         }
-        PipeBarrier<PIPE_ALL>();
         if (!UpdateGroupParams<AddrUpdateMode::kGmm1>(gmm1State, localExpertId)) {  // 更新偏移
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::kGmm1>(gmmAddrInfo, gmm1State); // 更新地址
-        PipeBarrier<PIPE_ALL>();
         if constexpr(g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
                 TripleInfoCalAndDispatch(gmmAddrInfo, localExpertId); // 三元组组装以及token dispatch
             }
         }
-        PipeBarrier<PIPE_ALL>();
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
