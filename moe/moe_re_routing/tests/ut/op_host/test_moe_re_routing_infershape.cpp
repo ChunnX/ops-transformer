@@ -42,12 +42,13 @@ TEST_F(MoeReRouting, moe_re_routing_infer_shape_00)
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
                                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {
                                                         {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                         {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                       });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{256, 7168}, {256}, {256}, {16}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{256, 7168}, {256}, {256}, {16}, {0}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -64,12 +65,13 @@ TEST_F(MoeReRouting, MoeReRouting_infershape_scale)
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
                                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {
                                                         {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                         {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                       });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{36, 385}, {36, 3}, {36}, {12}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{36, 385}, {36, 3}, {36}, {12}, {0}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -86,12 +88,13 @@ TEST_F(MoeReRouting, MoeReRouting_infershape_dynamic)
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
                                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {
                                                         {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                         {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                       });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{-1, -1}, {-1, -1}, {-1}, {-1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{-1, -1}, {-1, -1}, {-1}, {-1}, {0}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -109,12 +112,13 @@ TEST_F(MoeReRouting, MoeReRouting_infershape_unkownshape)
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
                                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
                                                       {
                                                         {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                         {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                       });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{-2}, {-2}, {-2}, {-2}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{-2}, {-2}, {-2}, {-2}, {0}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 

@@ -35,6 +35,7 @@
 #include "arch35/moe_v3_full_load_static_quant.h"
 #include "arch35/moe_v3_row_idx_gather_droppad.h"
 #include "arch35/moe_v3_gather_out_droppad.h"
+#include "arch35/moe_v3_topk_weight_out.h"
 
 /*
  * 非量化
@@ -154,9 +155,11 @@
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
 extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset,
-                                                          GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-                                                          GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
-                                                          GM_ADDR workspace, GM_ADDR tiling)
+                                                           GM_ADDR topkWeight,
+                                                           GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+                                                           GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
+                                                           GM_ADDR expandedTopkWeight,
+                                                           GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;
@@ -247,7 +250,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             TPipe fullLoadPipe;
             MoeV3FullLoadUnquantized<DTYPE_X> fullLoadOp;
             fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                            userWS, t, &fullLoadPipe);
+                            topkWeight, expandedTopkWeight, userWS, t, &fullLoadPipe);
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
         }
@@ -263,6 +266,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                 MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
                 fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
                                 expertTokensCountOrCumsum, expandedScale,
+                                topkWeight, expandedTopkWeight,
                                 userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
@@ -274,6 +278,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                 MoeV3FullLoadDynamicQuant<DTYPE_X, int4b_t> fullLoadOp;
                 fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx,
                                 expertTokensCountOrCumsum, expandedScale,
+                                topkWeight, expandedTopkWeight,
                                 userWS, t, &fullLoadPipe);
                 fullLoadOp.Process();
                 fullLoadPipe.Destroy();
@@ -290,7 +295,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             TPipe fullLoadPipe;
             MoeV3FullLoadStaticQuant<DTYPE_X> fullLoadOp;
             fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-                            userWS, offset, t, &fullLoadPipe);
+                            topkWeight, expandedTopkWeight, userWS, offset, t, &fullLoadPipe);
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
         }
@@ -416,7 +421,17 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         }
     }
 
-    // 4.直接搬运或是搬运的过程中对x进行量化
+    // 4.TopkWeightOut（仅非FullLoad路径）
+    if (t->isInputTopkWeight == 1) {
+        TPipe topkWeightPipe;
+        MoeV3TopkWeightOut topkWeightOp;
+        topkWeightOp.Init(topkWeight, expandedRowIdx, expandedTopkWeight,
+                          userWS, t, &topkWeightPipe);
+        topkWeightOp.Process();
+        topkWeightPipe.Destroy();
+    }
+
+    // 5.直接搬运或是搬运的过程中对x进行量化
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
@@ -442,7 +457,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             gatherOp.Process();
             gatherPipe.Destroy();
         }
-    // 4.直接搬运或是搬运的过程中对x进行量化
+    // 5.直接搬运或是搬运的过程中对x进行量化
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
         if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
