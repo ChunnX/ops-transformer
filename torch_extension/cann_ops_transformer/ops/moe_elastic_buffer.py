@@ -125,10 +125,10 @@ class MoEElasticBuffer:
         topk_idx: Optional[torch.Tensor] = None,
         topk_weights: Optional[torch.Tensor] = None,
         handle: Optional[EPHandle] = None,
-        num_experts: Optional[int] = 0,
-        num_max_tokens_per_rank: Optional[int] = 0,
-        expert_alignment: Optional[int] = 1,
-        do_cpu_sync: Optional[bool] = True,
+        num_experts: Optional[int] = None,
+        num_max_tokens_per_rank: Optional[int] = None,
+        expert_alignment: Optional[int] = None,
+        do_cpu_sync: Optional[bool] = None,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                Optional[torch.Tensor], Optional[torch.Tensor], EPHandle]:
         x, scales = x if isinstance(x, tuple) else (x, None)

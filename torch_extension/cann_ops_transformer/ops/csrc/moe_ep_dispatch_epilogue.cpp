@@ -19,7 +19,7 @@
 namespace op_api {
 
 using npu_utils = at_npu::native::NpuUtils;
-using tensor_list = std::tuple<at::Tensor, c10::optional<at::Tensor>, at::Tensor, c10::optional<at::Tensor>>;
+using tensor_list = std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>>;
 const int DIM_TWO = 2;
 
 tensor_list npu_moe_ep_dispatch_epilogue(const at::Tensor &context, const at::Tensor &dst_buffer_slot_idx,
@@ -27,8 +27,8 @@ tensor_list npu_moe_ep_dispatch_epilogue(const at::Tensor &context, const at::Te
     const c10::optional<at::Tensor> &cached_recv_src_metadata,
     int64_t ep_world_size, int64_t ep_rank_id,
     int64_t num_experts, int64_t num_max_tokens_per_rank, int64_t ccl_buffer_size, int64_t expert_alignment,
-    at::Tensor &recv_x, const c10::optional<at::Tensor> &recv_topk_weights_opt,
-    at::Tensor &recv_src_metadata, const c10::optional<at::Tensor> &recv_scales_opt)
+    at::Tensor &recv_x, at::Tensor &recv_src_metadata,
+    const c10::optional<at::Tensor> &recv_topk_weights_opt, const c10::optional<at::Tensor> &recv_scales_opt)
 {
     TORCH_CHECK(dst_buffer_slot_idx.dim() == DIM_TWO, "dst_buffer_slot_idx must be 2D");
 
@@ -59,7 +59,7 @@ tensor_list npu_moe_ep_dispatch_epilogue(const at::Tensor &context, const at::Te
     if (recv_scales_opt.has_value()) {
         recv_scales_output = *recv_scales_opt;
     }
-    return std::make_tuple(recv_x, recv_topk_weights_output, recv_src_metadata, recv_scales_output);
+    return std::make_tuple(recv_x, recv_src_metadata, recv_topk_weights_output, recv_scales_output);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
