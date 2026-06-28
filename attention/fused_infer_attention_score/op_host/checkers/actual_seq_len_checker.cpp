@@ -404,6 +404,28 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fia
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus ActualSeqLenChecker::CheckFeatureFP8GQAFullquant(const FiaTilingInfo &fiaInfo) 
+{ 
+    if (fiaInfo.fullQuantMode != FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD) { 
+        return ge::GRAPH_SUCCESS; 
+    } 
+    if (fiaInfo.isMaxWorkspace) { 
+        return ge::GRAPH_SUCCESS; 
+    } 
+
+    uint32_t batchSize = fiaInfo.bSize; 
+    for (uint32_t bIdx = 0; bIdx < batchSize; bIdx++) { 
+        int64_t qSeqLen = GetActualSeqLengthsQData(fiaInfo, bIdx); 
+        std::string qValueStr = "query sequence length(" + std::to_string(qSeqLen) + ")"; 
+        OP_CHECK_IF(qSeqLen == 0, 
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, qValueStr.c_str(), 
+                std::to_string(qSeqLen).c_str(), 
+                "In FP8 GQA fullquant scenario, query sequence length should be greater than 0"), 
+            return ge::GRAPH_FAILED); 
+    } 
+    return ge::GRAPH_SUCCESS; 
+}
+
 // general
 int64_t ActualSeqLenChecker::GetActualSeqLengthsQData(const FiaTilingInfo &fiaInfo, uint32_t bIdx)
 {
@@ -494,7 +516,8 @@ ge::graphStatus ActualSeqLenChecker::CheckCrossFeature(const FiaTilingInfo &fiaI
     }
 
     if (enableFullQuant_) {
-        if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)) {
+        if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)||	 
+            ge::GRAPH_SUCCESS != CheckFeatureFP8GQAFullquant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }
