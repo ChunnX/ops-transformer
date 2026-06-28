@@ -504,7 +504,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
 
     // Phase 2: 逐个全局专家算 [mask|count] 推送 (ping-pong 双 buffer 软流水)
     // buffer内前 maskAlignSize_ 存mask, 末 32B 存 count
-    constexpr TEventID kBufEvents[1] = {EVENT_ID0, EVENT_ID1};
+    constexpr TEventID kBufEvents[1] = {EVENT_ID0};
     for (int32_t index = 0; index < static_cast<int32_t>(1); ++index) {
         SetFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
     }
