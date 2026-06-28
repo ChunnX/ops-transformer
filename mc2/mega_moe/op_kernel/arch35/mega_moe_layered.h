@@ -537,12 +537,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
             if (curRankId == rankId_) {
                 dstGlobalTensor.SetGlobalBuffer(
-                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset));
+                    (__gm__ uint8_t*)(GetUrmaAddrByRankId(mc2Context_, curRankId) + URMAmaskRecvPtr + dstOffset));
             }
             DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
             PipeBarrier<PIPE_ALL>();
             if (curRankId != rankId_) {
-                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + dstOffset;
+                GM_ADDR remoteDataAddr = GetUrmaAddrByRankId(mc2Context_, curRankId) + URMAmaskRecvPtr + dstOffset;
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
             }
@@ -1322,8 +1322,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
     if constexpr(g_coreType == AIC) {
         return;
     }
-    __gm__ int32_t* syncRank = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr);
-    __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.rankSyncInWorldPtr +
+    __gm__ int32_t* syncRank = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_));
+    __gm__ int32_t* syncCount = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankId_) +
         48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
     PipeBarrier<PIPE_ALL>();
@@ -1333,10 +1333,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
         if (rankIndex == rankId_) {
             continue;
         }
-        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[rankIndex]) + rankId_ * 16;
-        GM_ADDR remoteAddr = winRankAddr_[rankIndex] + rankId_ * 64;
-        GM_ADDR localAddr = params_.peermemInfo.rankSyncInWorldPtr + 48 * 1024 + aivCoreIdx_ * 64;
-        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), remoteAddr, localAddr, static_cast<int64_t>(sizeof(int32_t)));
+        __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(GetUrmaAddrByRankId(mc2Context_, rankIndex)) + rankId_ * 16;
+        hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_), (GM_ADDR)syncRemoteAddr, (GM_ADDR)syncCount, static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
     }

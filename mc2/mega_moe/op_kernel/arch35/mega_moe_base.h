@@ -76,8 +76,8 @@ struct PeermemInfo {
         offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         combineSendPtr = base + offset;
 
-        URMAmaskRecvPtr = 0;
-        URMACombineWinPtr = Ops::Base::CeilAlign(
+        URMAmaskRecvPtr = PEERMEM_DATA_OFFSET;
+        URMACombineWinPtr = PEERMEM_DATA_OFFSET + Ops::Base::CeilAlign(
             (int64_t)(tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize), (int64_t)ALIGN_512);
     }
 };
