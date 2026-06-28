@@ -55,7 +55,7 @@ namespace {
     const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
-    const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
+    const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -324,7 +324,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     bool is_cross_server = attrs->GetAttrPointer<bool>((config.attrIsCrossServerIndex));
     if (is_cross_server) {
         OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
-                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN))
+                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)),
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatchQuantOutDtype",
             std::to_string(dispatchQuantOutDtype).c_str(),
             "only support fp8_e5m2 and fp8_e4m3fn"),
@@ -333,7 +333,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         OP_TILING_CHECK((refWeightDataType != weightOneDesc->GetDataType()),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "weightOne",
             Ops::Base::ToString(weightOneDesc->GetDataType()).c_str(),
-            (std::string("The dtype of weightOne must be ") + Ops::Base::ToString(refWeightDataType).c_str()),
+            (std::string("The dtype of weightOne must be ") + Ops::Base::ToString(refWeightDataType).c_str())),
         return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
