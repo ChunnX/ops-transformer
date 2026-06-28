@@ -22,6 +22,19 @@ public:
     {
         this->Input("commContext").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
+        this->Input("fetched")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BOOL, ge::DT_INT8, ge::DT_INT16,
+                       ge::DT_INT32, ge::DT_INT64, ge::DT_UINT8, ge::DT_UINT16, ge::DT_UINT32, ge::DT_UINT64})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+
+        this->Output("fetched")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BOOL, ge::DT_INT8, ge::DT_INT16,
+                       ge::DT_INT32, ge::DT_INT64, ge::DT_UINT8, ge::DT_UINT16, ge::DT_UINT32, ge::DT_UINT64})
+            .FormatList({ge::FORMAT_ND});
+
         OpAICoreConfig aicore_config_950;
         aicore_config_950.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
