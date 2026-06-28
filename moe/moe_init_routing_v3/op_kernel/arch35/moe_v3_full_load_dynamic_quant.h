@@ -45,11 +45,15 @@ public:
 private:
     template <bool IS_INPUT_SCALE>
     __aicore__ inline void Compute(LocalTensor<float> &smoothLocal);
+    template <bool IS_INPUT_SCALE>
+    __aicore__ inline void ComputeInt4ToBatch(LocalTensor<float> &smoothLocal, LocalTensor<int8_t> &outBatchLocal,
+                                              int64_t outOffset, LocalTensor<float> &scaleBatchLocal,
+                                              int64_t scaleOffset);
     __aicore__ inline void ScatterOutXDynamicQuant();
     __aicore__ inline void GatherOutXDynamicQuant();
 
 private:
-    TQue<QuePosition::VECIN, 2> inputXInQueue_;
+    TQue<QuePosition::VECIN, 3> inputXInQueue_;
     TQue<QuePosition::VECIN, 1> smoothInQueue_;
     TQue<QuePosition::VECOUT, 1> calcQueue_;
     TQue<QuePosition::VECOUT, 2> outBatchQueue_;
@@ -102,14 +106,16 @@ MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
 
     if constexpr (IsSameType<T, float>::value) {
         if constexpr (IsSameType<QuantT, int4b_t>::value) {
-            this->pipe_->InitBuffer(inputXInQueue_, 2, AlignBytes(this->cols_, sizeof(float)));
+            this->pipe_->InitBuffer(inputXInQueue_, colsAsInt8_ < BLOCK_BYTES ? 3 : 2,
+                                    AlignBytes(this->cols_, sizeof(float)));
         } else {
             this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
                                     AlignBytes(this->cols_, sizeof(float)));
         }
     } else {
         if constexpr (IsSameType<QuantT, int4b_t>::value) {
-            this->pipe_->InitBuffer(inputXInQueue_, 2, 2 * AlignBytes(this->cols_, sizeof(T)));
+            this->pipe_->InitBuffer(inputXInQueue_, colsAsInt8_ < BLOCK_BYTES ? 3 : 2,
+                                    2 * AlignBytes(this->cols_, sizeof(T)));
         } else {
             this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
                                     2 * AlignBytes(this->cols_, sizeof(T)));
@@ -233,6 +239,88 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Compute(LocalTensor
 }
 
 template <typename T, typename QuantT>
+template <bool IS_INPUT_SCALE>
+__aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ComputeInt4ToBatch(
+    LocalTensor<float> &smoothLocal, LocalTensor<int8_t> &outBatchLocal, int64_t outOffset,
+    LocalTensor<float> &scaleBatchLocal, int64_t scaleOffset)
+{
+    LocalTensor<float> inLocal = inputXInQueue_.DeQue<float>();
+    LocalTensor<float> quantTempLocal = calcQueue_.AllocTensor<float>();
+
+    __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
+    __local_mem__ float *scaleUbAddr = (__local_mem__ float *)scaleBatchLocal.GetPhyAddr() + scaleOffset;
+    __local_mem__ float *quantTempUbAddr = (__local_mem__ float *)quantTempLocal.GetPhyAddr();
+    __local_mem__ T *inUbAddrCastT;
+    if constexpr (!IsSameType<T, float>::value) {
+        inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + colsAlign_;
+    }
+    __local_mem__ float *smoothUbAddr;
+    if constexpr (IS_INPUT_SCALE) {
+        smoothUbAddr = (__local_mem__ float *)smoothLocal.GetPhyAddr();
+    }
+
+    uint16_t repeatTimes = Ceil(this->cols_, FLOAT_REG_TENSOR_LENGTH);
+    uint32_t maskLength = static_cast<uint32_t>(this->cols_);
+    uint32_t sreg;
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg;
+        MicroAPI::Duplicate(scaleValueReg, 0.0f);
+
+        MicroAPI::MaskReg maskRegInLoop;
+        MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg maskRegVL1 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+
+        sreg = maskLength;
+        for (uint16_t i = 0; i < repeatTimes; i++) {
+            maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
+            if constexpr (!IsSameType<T, float>::value) {
+                ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegInLoop, i * FLOAT_REG_TENSOR_LENGTH);
+            } else {
+                MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            }
+            if constexpr (IS_INPUT_SCALE) {
+                MicroAPI::DataCopy(smoothReg, smoothUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+                MicroAPI::Mul(inReg, inReg, smoothReg, maskRegInLoop);
+            }
+            if constexpr (!IsSameType<T, float>::value || IS_INPUT_SCALE) {
+                MicroAPI::DataCopy(inUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegInLoop);
+            }
+            MicroAPI::Abs(inReg, inReg, maskRegInLoop);
+            MicroAPI::Max(scaleValueReg, scaleValueReg, inReg, maskRegAll);
+        }
+        MicroAPI::ReduceMax(scaleValueReg, scaleValueReg, maskRegAll);
+        MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
+        MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
+        MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL1);
+
+        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+
+        sreg = maskLength;
+        for (uint16_t i = 0; i < repeatTimes; i++) {
+            maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
+            MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+            MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
+            MicroAPI::DataCopy(quantTempUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegInLoop);
+        }
+    }
+
+    auto outBatchInt4 = outBatchLocal.template ReinterpretCast<int4b_t>();
+    LocalTensor<int32_t> tempInt32 = quantTempLocal.template ReinterpretCast<int32_t>();
+    LocalTensor<half> tempHalf = quantTempLocal.template ReinterpretCast<half>();
+
+    PipeBarrier<PIPE_V>();
+    Cast(tempInt32, quantTempLocal, RoundMode::CAST_RINT, this->cols_);
+    PipeBarrier<PIPE_V>();
+    SetDeqScale(static_cast<half>(1.0));
+    PipeBarrier<PIPE_V>();
+    Cast(tempHalf, tempInt32, RoundMode::CAST_ROUND, this->cols_);
+    PipeBarrier<PIPE_V>();
+    Cast(outBatchInt4[outOffset * 2], tempHalf, RoundMode::CAST_TRUNC, this->cols_);
+    calcQueue_.FreeTensor(quantTempLocal);
+}
+
+template <typename T, typename QuantT>
 __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQuant()
 {
     LocalTensor<int32_t> sortedRowIdx = this->sortedRowIdxQueue_.template DeQue<int32_t>();
@@ -249,7 +337,25 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
         if (colsAsInt8_ < BLOCK_BYTES && startRowIdx < endRowIdx && startRowIdx < this->activeNum_) {
             LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
+            LocalTensor<int8_t> outBatchLocal0 = outBatchQueue_.AllocTensor<int8_t>();
+            LocalTensor<int8_t> outBatchLocal1 = outBatchQueue_.AllocTensor<int8_t>();
+            LocalTensor<float> scaleBatchLocal0 = scaleBatchQueue_.AllocTensor<float>();
+            LocalTensor<float> scaleBatchLocal1 = scaleBatchQueue_.AllocTensor<float>();
+            LocalTensor<int8_t> outBatchLocal = outBatchLocal0;
+            LocalTensor<float> scaleBatchLocal = scaleBatchLocal0;
             int64_t rowEnd = Min(endRowIdx, this->activeNum_);
+            int64_t outBatchRows = Max(static_cast<int64_t>(1), AlignBytes(this->cols_, sizeof(float)) / colsAsInt8_);
+            int64_t outBatchCount = 0;
+            int64_t outBatchStart = 0;
+            int64_t outBatchBufIdx = 0;
+            bool outBatchPending0 = false;
+            bool outBatchPending1 = false;
+            int64_t scaleBatchRows = BLOCK_BYTES / static_cast<int64_t>(sizeof(float));
+            int64_t scaleBatchCount = 0;
+            int64_t scaleBatchStart = 0;
+            int64_t scaleBatchBufIdx = 0;
+            bool scaleBatchPending0 = false;
+            bool scaleBatchPending1 = false;
 
             if (this->isInputScale_) {
                 DataCopyPad(smoothLocal, quantSmoothGm_[0], smoothParams, {false, 0, 0, 0});
@@ -283,19 +389,6 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
             }
 
             for (int64_t i = startRowIdx; i < rowEnd; i++) {
-                if (this->isInputScale_) {
-                    Compute<true>(smoothLocal);
-                } else {
-                    Compute<false>(smoothLocal);
-                }
-                inputXInQueue_.FreeTensor(inLocal);
-
-                LocalTensor<float> scaleLocal = scaleOutQueue_.DeQue<float>();
-                DataCopyPad(expandedScaleGm_[i], scaleLocal, {1, 4, 0, 0, 0});
-
-                LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
-                DataCopyPad(expandedXGm_[i * colsAsInt8_], outLocal, copyOutParams);
-
                 LocalTensor<T> prefetchInLocal;
                 bool hasPrefetch = i + 2 < rowEnd;
                 if (hasPrefetch) {
@@ -311,8 +404,76 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
                     inputXInQueue_.EnQue<T>(prefetchInLocal);
                 }
 
-                inputXOutQueue_.FreeTensor(outLocal);
-                scaleOutQueue_.FreeTensor(scaleLocal);
+                if (scaleBatchCount == 0) {
+                    if (scaleBatchBufIdx == 0 && scaleBatchPending0) {
+                        scaleBatchQueue_.FreeTensor(scaleBatchLocal0);
+                        scaleBatchLocal0 = scaleBatchQueue_.AllocTensor<float>();
+                        scaleBatchPending0 = false;
+                    } else if (scaleBatchBufIdx == 1 && scaleBatchPending1) {
+                        scaleBatchQueue_.FreeTensor(scaleBatchLocal1);
+                        scaleBatchLocal1 = scaleBatchQueue_.AllocTensor<float>();
+                        scaleBatchPending1 = false;
+                    }
+                    scaleBatchStart = i;
+                    scaleBatchLocal = (scaleBatchBufIdx == 0) ? scaleBatchLocal0 : scaleBatchLocal1;
+                }
+                if (outBatchCount == 0) {
+                    if (outBatchBufIdx == 0 && outBatchPending0) {
+                        outBatchQueue_.FreeTensor(outBatchLocal0);
+                        outBatchLocal0 = outBatchQueue_.AllocTensor<int8_t>();
+                        outBatchPending0 = false;
+                    } else if (outBatchBufIdx == 1 && outBatchPending1) {
+                        outBatchQueue_.FreeTensor(outBatchLocal1);
+                        outBatchLocal1 = outBatchQueue_.AllocTensor<int8_t>();
+                        outBatchPending1 = false;
+                    }
+                    outBatchStart = i;
+                    outBatchLocal = (outBatchBufIdx == 0) ? outBatchLocal0 : outBatchLocal1;
+                }
+
+                if (this->isInputScale_) {
+                    ComputeInt4ToBatch<true>(smoothLocal, outBatchLocal, outBatchCount * colsAsInt8_,
+                                             scaleBatchLocal, scaleBatchCount);
+                } else {
+                    ComputeInt4ToBatch<false>(smoothLocal, outBatchLocal, outBatchCount * colsAsInt8_,
+                                              scaleBatchLocal, scaleBatchCount);
+                }
+                inputXInQueue_.FreeTensor(inLocal);
+                scaleBatchCount++;
+                outBatchCount++;
+
+                bool needFlushScale = scaleBatchCount == scaleBatchRows || i == rowEnd - 1;
+                bool needFlushOut = outBatchCount == outBatchRows || i == rowEnd - 1;
+                if (needFlushScale || needFlushOut) {
+                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                }
+                if (needFlushScale) {
+                    DataCopyExtParams copyScaleBatchParams{
+                        1, static_cast<uint32_t>(scaleBatchCount * sizeof(float)), 0, 0, 0};
+                    DataCopyPad(expandedScaleGm_[scaleBatchStart], scaleBatchLocal, copyScaleBatchParams);
+                    if (scaleBatchBufIdx == 0) {
+                        scaleBatchPending0 = true;
+                        scaleBatchBufIdx = 1;
+                    } else {
+                        scaleBatchPending1 = true;
+                        scaleBatchBufIdx = 0;
+                    }
+                    scaleBatchCount = 0;
+                }
+                if (needFlushOut) {
+                    DataCopyExtParams copyOutBatchParams{
+                        1, static_cast<uint32_t>(outBatchCount * colsAsInt8_), 0, 0, 0};
+                    DataCopyPad(expandedXGm_[outBatchStart * colsAsInt8_], outBatchLocal, copyOutBatchParams);
+                    if (outBatchBufIdx == 0) {
+                        outBatchPending0 = true;
+                        outBatchBufIdx = 1;
+                    } else {
+                        outBatchPending1 = true;
+                        outBatchBufIdx = 0;
+                    }
+                    outBatchCount = 0;
+                }
+
                 if (hasNext) {
                     inLocal = nextInLocal;
                 }
@@ -322,6 +483,10 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
                 hasNext = hasPrefetch;
             }
 
+            outBatchQueue_.FreeTensor(outBatchLocal0);
+            outBatchQueue_.FreeTensor(outBatchLocal1);
+            scaleBatchQueue_.FreeTensor(scaleBatchLocal0);
+            scaleBatchQueue_.FreeTensor(scaleBatchLocal1);
             smoothInQueue_.FreeTensor(smoothLocal);
             this->sortedRowIdxQueue_.template EnQue<int32_t>(sortedRowIdx);
             this->sortedExpertIdxQueue_.template EnQue<int32_t>(sortedExpertIdx);
