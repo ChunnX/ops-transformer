@@ -535,7 +535,6 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
             finalOutLocation = 0; // result in row 0
         } else {
             // - isFirstMerge: chunks in rows 0..loopNum-1, rDim=loopNum
-            // - !isFirstMerge && finalOutLocation==0: accumulated sum in row 0 + chunks in rows 1..loopNum, rDim=loopNum+1
             uint32_t mergeOutOffset = FLOAT_DATA_BLOCK_NUM * dSize; // write to row 8
             uint32_t mergeInOffset = 0;
             uint32_t rDim = isFirstMerge ? loopNum : (loopNum + 1);
@@ -546,11 +545,11 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
             AscendC::PipeBarrier<PIPE_V>();
             finalOutLocation = 1; // result in row 8
         }
- 	}
+    }
 
     // Get the final accumulated sum from poolOutTemp
     // row 0 if finalOutLocation==0, row 8 if finalOutLocation==1
- 	uint32_t finalOffset = finalOutLocation == 0 ? 0 : FLOAT_DATA_BLOCK_NUM * dSize;
+    uint32_t finalOffset = finalOutLocation == 0 ? 0 : FLOAT_DATA_BLOCK_NUM * dSize;
     auto sumTensor = poolOutTemp[finalOffset];
 
     // Step 4: Divide accumulated sum by actualLen (hardware Cast avoids prohibited int->float C++ cast)

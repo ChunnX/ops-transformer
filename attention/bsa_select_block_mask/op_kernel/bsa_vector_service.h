@@ -29,7 +29,7 @@ public:
     using IN_T = typename BSAT::inputT;
     using OUT_T = typename BSAT::outputT;
     using POOL_OUT_T = half;
- 	using SFTMAX_OUT_T = half;
+    using SFTMAX_OUT_T = half;
 
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;

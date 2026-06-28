@@ -30,12 +30,6 @@ using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
-#ifndef BSA_TILING_VERIFY_PRINT
-#define BSA_TILING_VERIFY_PRINT 0
-#endif
-
-#define BSA_TILING_VERIFY_PRINTF(...) do {} while (0)
-
 template <typename BSAT> class BSASelectBlockMaskBase {
 public:
     using T = float;
@@ -43,7 +37,7 @@ public:
     using OUT_T = typename BSAT::outputT;
     using MM_OUT_T = T;
     using POOL_OUT_T = half;
- 	using SFTMAX_OUT_T = half;
+    using SFTMAX_OUT_T = half;
     static constexpr BSALayout LAYOUT_Q = BSAT::layoutQ;
     static constexpr BSALayout LAYOUT_KV = BSAT::layoutKV;
 
@@ -152,174 +146,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.softmaxTmpOffset = constInfo.attnScoreOffset + outInfo.attnScoreSize;
     constInfo.topkWorkspaceOffset = constInfo.softmaxTmpOffset + outInfo.softmaxTmpSize;
     constInfo.maskOffset = constInfo.topkWorkspaceOffset + outInfo.topkWorkspaceSize;
-
-    if ASCEND_IS_AIV {
-        if (BSA_TILING_VERIFY_PRINT && GetBlockIdx() == 0) {
-            uint32_t errCount = 0;
-            auto &baseInfo = tilingData->baseParams;
-            auto &outInfo = tilingData->outputParams;
-
-            uint32_t expXBlocks = (constInfo.maxQSeqlen + constInfo.blockShapeX - 1) / constInfo.blockShapeX;
-            uint32_t expYBlocks = (constInfo.maxKvSeqlen + constInfo.blockShapeY - 1) / constInfo.blockShapeY;
-            uint32_t expActiveCoreNum = (constInfo.xBlocks < constInfo.coreNum) ? constInfo.xBlocks : constInfo.coreNum;
-            uint32_t expExtraCores = constInfo.xBlocks % expActiveCoreNum;
-            uint32_t expRowsPerCore = constInfo.xBlocks / expActiveCoreNum + (expExtraCores > 0 ? 1 : 0);
-            uint32_t expActiveYCoreNum =
-                (constInfo.yBlocks < constInfo.coreNum) ? constInfo.yBlocks : constInfo.coreNum;
-            uint32_t expExtraYCores = constInfo.yBlocks % expActiveYCoreNum;
-            uint32_t expYBlocksPerCore = constInfo.yBlocks / expActiveYCoreNum + (expExtraYCores > 0 ? 1 : 0);
-            uint64_t expQCmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.dSize * sizeof(float);
-            uint64_t expKCmpSize = static_cast<uint64_t>(constInfo.yBlocks) * constInfo.dSize * sizeof(float);
-            uint64_t expAttnScoreSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(half);
-            BSA_TILING_VERIFY_PRINTF("DEBUG: xBlocks=%u, yBlocks=%u, sizeof(IN_T)=%lu, expAttnScoreSize=%lu\n",
-                            constInfo.xBlocks, constInfo.yBlocks, sizeof(IN_T), expAttnScoreSize);
-            uint64_t expSoftmaxTmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
-            uint64_t expMaskSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(uint8_t);
-            uint64_t expSortLen = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
-            uint64_t expTileLen = BSAMin(static_cast<uint64_t>(7168), BSAMax(static_cast<uint64_t>(128), expSortLen));
-            uint64_t expTotalTileNum = (expSortLen + expTileLen - 1) / expTileLen;
-            uint64_t expTopkHeaderSize = static_cast<uint64_t>(
-                RADIX_NUM_BINS * constInfo.aivNum + constInfo.aivNum + constInfo.aivNum) * sizeof(int32_t);
-            uint64_t expTopkTileDataSize = expTotalTileNum * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
-            uint64_t expTopkWsSize = expTopkHeaderSize + expTopkTileDataSize;
-
-            BSA_TILING_VERIFY_PRINTF("=== Kernel Tiling Verification (core 0) ===\n");
-            BSA_TILING_VERIFY_PRINTF("[baseParams]\n");
-            BSA_TILING_VERIFY_PRINTF("batchSize=%u (exp=1) %s\n", constInfo.batchSize,
-                            (constInfo.batchSize == 1) ? "OK" : "ERR");
-            if (constInfo.batchSize != 1) errCount++;
-            BSA_TILING_VERIFY_PRINTF("numHeads=%u (nonzero=%s)\n", constInfo.numHeads,
-                            (constInfo.numHeads > 0) ? "OK" : "ERR");
-            if (constInfo.numHeads == 0) errCount++;
-            BSA_TILING_VERIFY_PRINTF("maxQSeqlen=%u (exp=4096) %s\n", constInfo.maxQSeqlen,
-                            (constInfo.maxQSeqlen == 4096) ? "OK" : "ERR");
-            if (constInfo.maxQSeqlen != 4096) errCount++;
-            BSA_TILING_VERIFY_PRINTF("maxKvSeqlen=%u (exp=4096) %s\n", constInfo.maxKvSeqlen,
-                            (constInfo.maxKvSeqlen == 4096) ? "OK" : "ERR");
-            if (constInfo.maxKvSeqlen != 4096) errCount++;
-            BSA_TILING_VERIFY_PRINTF("dSize=%u (exp=128) %s\n", constInfo.dSize,
-                            (constInfo.dSize == 128) ? "OK" : "ERR");
-            if (constInfo.dSize != 128) errCount++;
-            BSA_TILING_VERIFY_PRINTF("blockShapeX=%lu (exp=128) %s\n", constInfo.blockShapeX,
-                            (constInfo.blockShapeX == 128) ? "OK" : "ERR");
-            if (constInfo.blockShapeX != 128) errCount++;
-            BSA_TILING_VERIFY_PRINTF("blockShapeY=%lu (exp=128) %s\n", constInfo.blockShapeY,
-                            (constInfo.blockShapeY == 128) ? "OK" : "ERR");
-            if (constInfo.blockShapeY != 128) errCount++;
-            BSA_TILING_VERIFY_PRINTF("xBlocks=%u (exp=%u) %s\n", constInfo.xBlocks, expXBlocks,
-                            (constInfo.xBlocks == expXBlocks) ? "OK" : "ERR");
-            if (constInfo.xBlocks != expXBlocks) errCount++;
-            BSA_TILING_VERIFY_PRINTF("yBlocks=%u (exp=%u) %s\n", constInfo.yBlocks, expYBlocks,
-                            (constInfo.yBlocks == expYBlocks) ? "OK" : "ERR");
-            if (constInfo.yBlocks != expYBlocks) errCount++;
-            BSA_TILING_VERIFY_PRINTF("scaleValue=%f\n", constInfo.scaleValue);
-            BSA_TILING_VERIFY_PRINTF("sparsity=%f\n", constInfo.sparsity);
-            BSA_TILING_VERIFY_PRINTF("topKValue=%lu (nonzero=%s)\n", constInfo.topKValue,
-                            (constInfo.topKValue > 0) ? "OK" : "ERR");
-            if (constInfo.topKValue == 0) errCount++;
-            BSA_TILING_VERIFY_PRINTF("sparsityMode=%u (exp=0) %s\n",
-                            static_cast<uint32_t>(constInfo.sparsityMode),
-                            (static_cast<uint32_t>(constInfo.sparsityMode) == 0) ? "OK" : "ERR");
-            if (static_cast<uint32_t>(constInfo.sparsityMode) != 0) errCount++;
-            BSA_TILING_VERIFY_PRINTF("queryLayout=%u (exp=1=BNSD) %s\n",
-                            static_cast<uint32_t>(baseInfo.queryLayout),
-                            (static_cast<uint32_t>(baseInfo.queryLayout) == 1) ? "OK" : "ERR");
-            if (static_cast<uint32_t>(baseInfo.queryLayout) != 1) errCount++;
-            BSA_TILING_VERIFY_PRINTF("kvLayout=%u (exp=1=BNSD) %s\n",
-                            static_cast<uint32_t>(baseInfo.kvLayout),
-                            (static_cast<uint32_t>(baseInfo.kvLayout) == 1) ? "OK" : "ERR");
-            if (static_cast<uint32_t>(baseInfo.kvLayout) != 1) errCount++;
-            BSA_TILING_VERIFY_PRINTF("useActualBlockLenQ=%u (exp=0) %s\n",
-                            static_cast<uint32_t>(baseInfo.useActualBlockLenQ),
-                            (static_cast<uint32_t>(baseInfo.useActualBlockLenQ) == 0) ? "OK" : "ERR");
-            if (static_cast<uint32_t>(baseInfo.useActualBlockLenQ) != 0) errCount++;
-            BSA_TILING_VERIFY_PRINTF("useActualBlockLenK=%u (exp=0) %s\n",
-                            static_cast<uint32_t>(baseInfo.useActualBlockLenK),
-                            (static_cast<uint32_t>(baseInfo.useActualBlockLenK) == 0) ? "OK" : "ERR");
-            if (static_cast<uint32_t>(baseInfo.useActualBlockLenK) != 0) errCount++;
-            BSA_TILING_VERIFY_PRINTF("qChunkSize=%u (exp=128) %s\n", constInfo.qChunkSize,
-                            (constInfo.qChunkSize == 128) ? "OK" : "ERR");
-            if (constInfo.qChunkSize != 128) errCount++;
-            BSA_TILING_VERIFY_PRINTF("kChunkSize=%u (exp=128) %s\n", constInfo.kChunkSize,
-                            (constInfo.kChunkSize == 128) ? "OK" : "ERR");
-            if (constInfo.kChunkSize != 128) errCount++;
-
-            BSA_TILING_VERIFY_PRINTF("[multiCoreParams]\n");
-            BSA_TILING_VERIFY_PRINTF("coreNum=%u (exp=20) %s\n", constInfo.coreNum,
-                            (constInfo.coreNum == 20) ? "OK" : "ERR");
-            if (constInfo.coreNum != 20) errCount++;
-            BSA_TILING_VERIFY_PRINTF("activeCoreNum=%u (exp=%u) %s\n",
-                            constInfo.activeCoreNum, expActiveCoreNum,
-                            (constInfo.activeCoreNum == expActiveCoreNum) ? "OK" : "ERR");
-            if (constInfo.activeCoreNum != expActiveCoreNum) errCount++;
-            BSA_TILING_VERIFY_PRINTF("rowsPerCore=%u (exp=%u) %s\n", constInfo.rowsPerCore, expRowsPerCore,
-                            (constInfo.rowsPerCore == expRowsPerCore) ? "OK" : "ERR");
-            if (constInfo.rowsPerCore != expRowsPerCore) errCount++;
-            BSA_TILING_VERIFY_PRINTF("extraCores=%u (exp=%u) %s\n", constInfo.extraCores, expExtraCores,
-                            (constInfo.extraCores == expExtraCores) ? "OK" : "ERR");
-            if (constInfo.extraCores != expExtraCores) errCount++;
-            BSA_TILING_VERIFY_PRINTF("totalRows=%u (exp=%u) %s\n", constInfo.totalRows, constInfo.xBlocks,
-                            (constInfo.totalRows == constInfo.xBlocks) ? "OK" : "ERR");
-            if (constInfo.totalRows != constInfo.xBlocks) errCount++;
-            BSA_TILING_VERIFY_PRINTF("yBlocksPerCore=%u (exp=%u) %s\n", constInfo.yBlocksPerCore, expYBlocksPerCore,
-                            (constInfo.yBlocksPerCore == expYBlocksPerCore) ? "OK" : "ERR");
-            if (constInfo.yBlocksPerCore != expYBlocksPerCore) errCount++;
-            BSA_TILING_VERIFY_PRINTF("extraYCores=%u (exp=%u) %s\n", constInfo.extraYCores, expExtraYCores,
-                            (constInfo.extraYCores == expExtraYCores) ? "OK" : "ERR");
-            if (constInfo.extraYCores != expExtraYCores) errCount++;
-
-            BSA_TILING_VERIFY_PRINTF("[outputParams]\n");
-            BSA_TILING_VERIFY_PRINTF("qCmpSize=%lu (exp=%lu) %s\n", outInfo.qCmpSize, expQCmpSize,
-                            (outInfo.qCmpSize == expQCmpSize) ? "OK" : "ERR");
-            if (outInfo.qCmpSize != expQCmpSize) errCount++;
-            BSA_TILING_VERIFY_PRINTF("kCmpSize=%lu (exp=%lu) %s\n", outInfo.kCmpSize, expKCmpSize,
-                            (outInfo.kCmpSize == expKCmpSize) ? "OK" : "ERR");
-            if (outInfo.kCmpSize != expKCmpSize) errCount++;
-            BSA_TILING_VERIFY_PRINTF("attnScoreSize=%lu (exp=%lu) %s\n", outInfo.attnScoreSize, expAttnScoreSize,
-                            (outInfo.attnScoreSize == expAttnScoreSize) ? "OK" : "ERR");
-            if (outInfo.attnScoreSize != expAttnScoreSize) errCount++;
-            BSA_TILING_VERIFY_PRINTF("softmaxTmpSize=%lu (exp=%lu) %s\n", outInfo.softmaxTmpSize, expSoftmaxTmpSize,
-                            (outInfo.softmaxTmpSize == expSoftmaxTmpSize) ? "OK" : "ERR");
-            if (outInfo.softmaxTmpSize != expSoftmaxTmpSize) errCount++;
-            BSA_TILING_VERIFY_PRINTF("topkWorkspaceSize=%lu (exp=%lu) %s\n", outInfo.topkWorkspaceSize, expTopkWsSize,
-                            (outInfo.topkWorkspaceSize == expTopkWsSize) ? "OK" : "ERR");
-            if (outInfo.topkWorkspaceSize != expTopkWsSize) errCount++;
-            BSA_TILING_VERIFY_PRINTF("maskSize=%lu (exp=%lu) %s\n", outInfo.maskSize, expMaskSize,
-                            (outInfo.maskSize == expMaskSize) ? "OK" : "ERR");
-            if (outInfo.maskSize != expMaskSize) errCount++;
-            uint64_t expAttnScoreEnd = expQCmpSize + expKCmpSize + expAttnScoreSize;
-            uint64_t expSoftmaxEnd = expAttnScoreEnd + expSoftmaxTmpSize;
-            uint64_t expTotalWs = expSoftmaxEnd + expTopkWsSize + expMaskSize;
-            BSA_TILING_VERIFY_PRINTF("totalWorkspaceSize=%lu (exp=%lu) %s\n", outInfo.totalWorkspaceSize, expTotalWs,
-                            (outInfo.totalWorkspaceSize == expTotalWs) ? "OK" : "ERR");
-            if (outInfo.totalWorkspaceSize != expTotalWs) errCount++;
-
-            BSA_TILING_VERIFY_PRINTF("[workspace offsets]\n");
-            BSA_TILING_VERIFY_PRINTF("qCmpOffset=%lu (exp=0) %s\n", constInfo.qCmpOffset,
-                            (constInfo.qCmpOffset == 0) ? "OK" : "ERR");
-            if (constInfo.qCmpOffset != 0) errCount++;
-            BSA_TILING_VERIFY_PRINTF("kCmpOffset=%lu (exp=%lu) %s\n", constInfo.kCmpOffset, expQCmpSize,
-                            (constInfo.kCmpOffset == expQCmpSize) ? "OK" : "ERR");
-            if (constInfo.kCmpOffset != expQCmpSize) errCount++;
-            BSA_TILING_VERIFY_PRINTF("attnScoreOffset=%lu (exp=%lu) %s\n", constInfo.attnScoreOffset,
-                            expQCmpSize + expKCmpSize,
-                            (constInfo.attnScoreOffset == expQCmpSize + expKCmpSize) ? "OK" : "ERR");
-            if (constInfo.attnScoreOffset != expQCmpSize + expKCmpSize) errCount++;
-            BSA_TILING_VERIFY_PRINTF("softmaxTmpOffset=%lu (exp=%lu) %s\n", constInfo.softmaxTmpOffset,
-                            expAttnScoreEnd,
-                            (constInfo.softmaxTmpOffset == expAttnScoreEnd) ? "OK" : "ERR");
-            if (constInfo.softmaxTmpOffset != expAttnScoreEnd) errCount++;
-            BSA_TILING_VERIFY_PRINTF("topkWorkspaceOffset=%lu (exp=%lu) %s\n", constInfo.topkWorkspaceOffset,
-                            expSoftmaxEnd,
-                            (constInfo.topkWorkspaceOffset == expSoftmaxEnd) ? "OK" : "ERR");
-            if (constInfo.topkWorkspaceOffset != expSoftmaxEnd) errCount++;
-            BSA_TILING_VERIFY_PRINTF("maskOffset=%lu (exp=%lu) %s\n", constInfo.maskOffset,
-                            expSoftmaxEnd + outInfo.topkWorkspaceSize,
-                            (constInfo.maskOffset == expSoftmaxEnd + outInfo.topkWorkspaceSize) ? "OK" : "ERR");
-            if (constInfo.maskOffset != expSoftmaxEnd + outInfo.topkWorkspaceSize) errCount++;
-            BSA_TILING_VERIFY_PRINTF("=== Verification: %u errors ===\n", errCount);
-        }
-    }
 }
 
 template <typename BSAT>
