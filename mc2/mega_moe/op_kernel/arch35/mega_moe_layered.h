@@ -508,7 +508,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
 {
     uint32_t xInBytes = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
     uint32_t recordPayloadBytes = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
-    uint32_t startOffset = copyTmpBaseAddr_ + TOKEN_SCALE_SIZE * 3;
+    uint32_t startOffset = copyTmpBaseAddr_;
     uint32_t xOutAddr = startOffset + xInBytes;
     uint32_t mxTempAddr = xOutAddr + recordPayloadBytes;
 
@@ -643,7 +643,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
             int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
             GlobalTensor<uint8_t> workspaceSrcGlobal;
             GlobalTensor<uint8_t> relayDstGlobal;
-            LocalTensor<uint8_t> copyTmpBytes = copyTmpTensors_[0].template ReinterpretCast<uint8_t>();
             uint32_t recordDataBytes = mxQuantTokenScaleAlignBytes_;
             int32_t scanCursor = cursor;
 
