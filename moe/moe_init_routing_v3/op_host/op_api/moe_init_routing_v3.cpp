@@ -65,7 +65,9 @@ MoeInitRoutingV3(const aclTensor *x, const aclTensor *expertIdx,
     }
 
     aclTensor* expandedTopkWeightOut = nullptr;
+    const aclTensor* topkWeightInput = nullptr;
     if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+        topkWeightInput = topk_weight;
         if (expanded_topk_weight != nullptr) {
             expandedTopkWeightOut = executor->AllocTensor(expanded_topk_weight->GetViewShape(),
                                                           expanded_topk_weight->GetDataType(),
@@ -75,21 +77,14 @@ MoeInitRoutingV3(const aclTensor *x, const aclTensor *expertIdx,
                     nullptr, nullptr, nullptr, nullptr, nullptr);
             }
         }
-        ADD_TO_LAUNCHER_LIST_AICORE(
-            MoeInitRoutingV3,
-            OP_INPUT(x, expertIdx, scale, offset, topk_weight),
-            OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut,
-                      expandedTopkWeightOut),
-            OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
-                    quantMode, activeExpertRange, rowIdxType));
-    } else {
-        ADD_TO_LAUNCHER_LIST_AICORE(
-            MoeInitRoutingV3,
-            OP_INPUT(x, expertIdx, scale, offset),
-            OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut),
-            OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
-                    quantMode, activeExpertRange, rowIdxType));
     }
+    ADD_TO_LAUNCHER_LIST_AICORE(
+        MoeInitRoutingV3,
+        OP_INPUT(x, expertIdx, scale, offset, topkWeightInput),
+        OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut,
+                  expandedTopkWeightOut),
+        OP_ATTR(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,
+                quantMode, activeExpertRange, rowIdxType));
     return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
         expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut,
         expandedScaleOut, expandedTopkWeightOut);
