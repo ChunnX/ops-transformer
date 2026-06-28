@@ -45,7 +45,7 @@ public:
     using LayoutLse = layout::RowMajor;
     using LayoutUpdate = layout::RowMajor;
 
-    static constexpr uint32_t PRE_LAUNCH = 1;
+    static constexpr uint32_t PRE_LAUNCH = 2;
     static constexpr uint32_t MAX_CROSS_CORE_BUF_STAGES = PRE_LAUNCH + 1;
     static constexpr uint64_t WORKSPACE_BLOCK_SIZE_DB = 131072;
     static constexpr uint32_t QK_READY_ID = 1;
@@ -233,90 +233,104 @@ public:
             LayoutLse gmLseLayout(qSeqlen, qHeads_);
 #endif
 
-for (uint32_t kvBlockIdx = 0; kvBlockIdx < kvSLoopNum; kvBlockIdx++) {
-                uint32_t kvSTileSizeAct = validTileSize[kvBlockIdx];
-                int32_t physicalBlockId = validPhysicalIds[kvBlockIdx];
-                int64_t gmOffsetK = static_cast<int64_t>(physicalBlockId) * strideKVBlock +
-                                    static_cast<int64_t>(kvHeadIdx) * embed_;
-                int64_t gmOffsetV = gmOffsetK;
+            for (uint32_t kvBlockIdx = 0; kvBlockIdx < kvSLoopNum + PRE_LAUNCH; kvBlockIdx++) {
+                // === Stage 1+2: QK Matmul & Online Softmax ===
+                if (kvBlockIdx < kvSLoopNum) {
+                    uint32_t kvSTileSizeAct = validTileSize[kvBlockIdx];
+                    int32_t physicalBlockId = validPhysicalIds[kvBlockIdx];
+                    int64_t gmOffsetK = static_cast<int64_t>(physicalBlockId) * strideKVBlock +
+                                        static_cast<int64_t>(kvHeadIdx) * embed_;
 
-                uint32_t stageId = kvBlockIdx % MAX_CROSS_CORE_BUF_STAGES;
-                uint64_t gmOffsetS = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
-                    static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
-                uint64_t gmOffsetP = gmOffsetS;
-                uint64_t gmOffsetOTmp = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
-                    static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
+                    uint32_t stageId = kvBlockIdx % MAX_CROSS_CORE_BUF_STAGES;
+                    uint64_t gmOffsetS = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
+                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
 
 #ifdef __DAV_C220_CUBE__
-                // Stage 1: QK Matmul
-                LayoutK gmKLayout(strideKVRow, blockSize_);
-                LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
-                GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
+                    // Stage 1: QK Matmul
+                    LayoutK gmKLayout(strideKVRow, blockSize_);
+                    LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
 
-                blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS],
-                    gBlockTable[blockTOffset], gIdentityIdx,
-                    gmQLayout, gmKLayout, ubSLayout,
-                    actualBlockShapeQK,
-                    0, 0, blockSize_, strideKVRow,
-                    blockSize_, 1, 1, kvSTileSizeAct);
+                    blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS],
+                        gBlockTable[blockTOffset], gIdentityIdx,
+                        gmQLayout, gmKLayout, ubSLayout,
+                        actualBlockShapeQK,
+                        0, 0, blockSize_, strideKVRow,
+                        blockSize_, 1, 1, kvSTileSizeAct);
 
-                NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady_);
+                    NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady_);
 #endif
 
 #ifdef __DAV_C220_VEC__
-                // Stage 2: Online Softmax
-                LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
-                LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
-                GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
+                    // Stage 2: Online Softmax
+                    uint64_t gmOffsetP = gmOffsetS;
+                    LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
 
-                NpuArch::Arch::CrossCoreWaitFlag(qkReady_);
+                    NpuArch::Arch::CrossCoreWaitFlag(qkReady_);
 
-                epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS],
-                    ubPLayout, ubSLayout,
-                    actualBlockShapeQK,
-                    (kvBlockIdx == 0), 0, 1, groupSize,
-                    stageId, softmaxReady_);
+                    epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS],
+                        ubPLayout, ubSLayout,
+                        actualBlockShapeQK,
+                        (kvBlockIdx == 0), 0, 1, groupSize,
+                        stageId, softmaxReady_);
 #endif
+                }
+
+                // === Stage 3+4: PV Matmul & RescaleO ===
+                if (kvBlockIdx >= PRE_LAUNCH) {
+                    uint32_t kvBlockIdxDe = kvBlockIdx - PRE_LAUNCH;
+                    uint32_t kvSTileSizeAct = validTileSize[kvBlockIdxDe];
+                    int32_t physicalBlockIdV = validPhysicalIds[kvBlockIdxDe];
+                    int64_t gmOffsetV = static_cast<int64_t>(physicalBlockIdV) * strideKVBlock +
+                                        static_cast<int64_t>(kvHeadIdx) * embed_;
+
+                    uint32_t stageId = kvBlockIdxDe % MAX_CROSS_CORE_BUF_STAGES;
+                    uint64_t gmOffsetP = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
+                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
+                    uint64_t gmOffsetOTmp = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
+                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
 
 #ifdef __DAV_C220_CUBE__
-                // Stage 3: PV Matmul
-                LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
-                LayoutV gmVLayout(blockSize_, strideKVRow);
-                LayoutOTmp ubOTmpLayout(rowNumRound, embedRound);
-                GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
+                    // Stage 3: PV Matmul
+                    LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    LayoutV gmVLayout(blockSize_, strideKVRow);
+                    LayoutOTmp ubOTmpLayout(rowNumRound, embedRound);
+                    GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
 
-                NpuArch::Arch::CrossCoreWaitFlag(softmaxReady_);
+                    blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp],
+                        gBlockTable[blockTOffset], gIdentityIdx,
+                        ubPLayout, gmVLayout, ubOTmpLayout,
+                        actualBlockShapePV,
+                        0, 0, blockSize_,
+                        kvSTileSizeAct, strideKVRow, 1,
+                        softmaxReady_, blockSize_, 1, 1);
 
-                blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp],
-                    gBlockTable[blockTOffset], gIdentityIdx,
-                    ubPLayout, gmVLayout, ubOTmpLayout,
-                    actualBlockShapePV,
-                    0, 0, blockSize_,
-                    kvSTileSizeAct, strideKVRow, 1,
-                    softmaxReady_, blockSize_, 1, 1);
-
-                NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady_);
+                    NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady_);
 #endif
 
 #ifdef __DAV_C220_VEC__
-                // Stage 4: RescaleO
-                uint64_t gmOffsetUpdate = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB;
-                LayoutOTmp ubOTmpLayout(rowNumRound, embedRound);
-                LayoutUpdate ubUpdateLayout(rowNumRound, embedRound);
-                GemmCoord actualBlockShapePV{rowNum, embed_, validTileSize[kvBlockIdx]};
+                    // Stage 4: RescaleO
+                    uint64_t gmOffsetUpdate = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB;
+                    LayoutOTmp ubOTmpLayout(rowNumRound, embedRound);
+                    LayoutUpdate ubUpdateLayout(rowNumRound, embedRound);
+                    GemmCoord actualBlockShapePV{rowNum, embed_, validTileSize[kvBlockIdxDe]};
 
-                NpuArch::Arch::CrossCoreWaitFlag(pvReady_);
+                    NpuArch::Arch::CrossCoreWaitFlag(pvReady_);
 
-                epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate],
-                    gLse[static_cast<int64_t>(qToken) * qHeads_ + qHeadStart],
-                    gmOLayout, ubOTmpLayout, ubUpdateLayout, gmLseLayout,
-                    actualBlockShapePV,
-                    1, groupSize,
-                    (kvBlockIdx == 0), (kvBlockIdx == kvSLoopNum - 1),
-                    stageId);
+                    epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate],
+                        gLse[static_cast<int64_t>(qToken) * qHeads_ + qHeadStart],
+                        gmOLayout, ubOTmpLayout, ubUpdateLayout, gmLseLayout,
+                        actualBlockShapePV,
+                        1, groupSize,
+                        (kvBlockIdxDe == 0), (kvBlockIdxDe == kvSLoopNum - 1),
+                        stageId);
 #endif
+                }
             }
         }
+
 #ifdef __DAV_C220_CUBE__
         // Wait for all Cube core events
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
