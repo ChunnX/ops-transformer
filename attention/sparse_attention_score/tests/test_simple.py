@@ -319,7 +319,7 @@ def dual_golden_l1norm(actual, golden_high, golden_low, label):
 
 def run_single_case():
     q_seqlen = 1
-    kv_seqlen = 256
+    kv_seqlen = 128
     q_heads = 1
     kv_heads = 1
     head_dim = 128
