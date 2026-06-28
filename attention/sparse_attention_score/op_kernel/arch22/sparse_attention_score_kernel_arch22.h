@@ -45,7 +45,7 @@ public:
     using LayoutLse = layout::RowMajor;
     using LayoutUpdate = layout::RowMajor;
 
-    static constexpr uint32_t PRE_LAUNCH = 2;
+    static constexpr uint32_t PRE_LAUNCH = 1;
     static constexpr uint32_t MAX_CROSS_CORE_BUF_STAGES = PRE_LAUNCH + 1;
     static constexpr uint64_t WORKSPACE_BLOCK_SIZE_DB = 131072;
     static constexpr uint32_t QK_READY_ID = 1;
