@@ -20,9 +20,9 @@ extern "C" {
 
 ACLNN_API aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma, const aclTensor *cosSin,
-    const aclTensor *slotMapping, aclTensor *kCache, aclTensor *vCache, aclTensor *kScaleCache,
-    const aclTensor *cuSeqLen, const aclTensor *actualSeqLens, const aclTensor *optionalRotation,
-    const aclTensor *optionalVScale, const aclIntArray *headNums, const char *qkvLayout, float epsilon,
+    const aclTensor *slotMapping, aclTensor *kCacheRef, aclTensor *vCacheRef, aclTensor *kScaleCacheRef,
+    const aclTensor *cuSeqLen, const aclTensor *actualSeqLens, const aclTensor *rotationOptional,
+    const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *qkvLayout, float epsilon,
     aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
