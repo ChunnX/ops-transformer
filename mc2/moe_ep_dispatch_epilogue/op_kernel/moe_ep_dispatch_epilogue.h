@@ -22,11 +22,11 @@
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
 #include "../common/op_kernel/mc2_kernel_utils.h"
-#include "../moe_ep_dispatch/moe_ep_dispatch_base.h"
+#include "../common/op_kernel/mc2_moe_context.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#include "../../moe_ep_dispatch/op_kernel/moe_ep_dispatch_base.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 #endif
 
 #include "moe_ep_dispatch_epilogue_tiling.h"
@@ -61,9 +61,13 @@ private:
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId,
                                        uint32_t &endId, uint32_t &sendNum);
+    __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::Mc2MoeContext *ctx, uint32_t rankId, uint64_t offset)
+    {
+        return (GM_ADDR)ctx->epHcclBuffer_[rankId] + offset;
+    }
 
     TPipe* tpipe_{nullptr};
-    __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    __gm__ Mc2Aclnn::Mc2MoeContext* mc2Context_{nullptr};
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
     GlobalTensor<int32_t> numRecvPerRankGm_;
@@ -173,9 +177,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     perSlotBytes_ = tilingData->cfg.perSlotBytes;
     winDataOffset_ = tilingData->winDataOffset;
 
-    mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
+    mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext*>(context);
     epRankId_ = mc2Context_->epRankId;
-    localWinAddr_ = GetDispatchWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
+    localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
     metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
 
     numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank);
