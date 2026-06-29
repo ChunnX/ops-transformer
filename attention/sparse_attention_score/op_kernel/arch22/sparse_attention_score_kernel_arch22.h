@@ -236,45 +236,45 @@ public:
             for (uint32_t kvBlockIdx = 0; kvBlockIdx < kvSLoopNum + PRE_LAUNCH; kvBlockIdx++) {
                 // === Stage 1+2: QK Matmul & Online Softmax ===
                 if (kvBlockIdx < kvSLoopNum) {
-                    // uint32_t kvSTileSizeAct = validTileSize[kvBlockIdx];
-                    // int32_t physicalBlockId = validPhysicalIds[kvBlockIdx];
-                    // int64_t gmOffsetK = static_cast<int64_t>(physicalBlockId) * strideKVBlock +
-                    //                     static_cast<int64_t>(kvHeadIdx) * embed_;
+                    uint32_t kvSTileSizeAct = validTileSize[kvBlockIdx];
+                    int32_t physicalBlockId = validPhysicalIds[kvBlockIdx];
+                    int64_t gmOffsetK = static_cast<int64_t>(physicalBlockId) * strideKVBlock +
+                                        static_cast<int64_t>(kvHeadIdx) * embed_;
 
-                    // uint32_t stageId = kvBlockIdx % MAX_CROSS_CORE_BUF_STAGES;
-                    // uint64_t gmOffsetS = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
-                    //     static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
+                    uint32_t stageId = kvBlockIdx % MAX_CROSS_CORE_BUF_STAGES;
+                    uint64_t gmOffsetS = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
+                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
 
 #ifdef __DAV_C220_CUBE__
-                    // Stage 1: QK Matmul
-                    // LayoutK gmKLayout(strideKVRow, blockSize_);
-                    // LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
-                    // GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
+                    Stage 1: QK Matmul
+                    LayoutK gmKLayout(strideKVRow, blockSize_);
+                    LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
 
-                    // blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS],
-                    //     gBlockTable[blockTOffset], gIdentityIdx,
-                    //     gmQLayout, gmKLayout, ubSLayout,
-                    //     actualBlockShapeQK,
-                    //     0, 0, blockSize_, strideKVRow,
-                    //     blockSize_, 1, 1, kvSTileSizeAct);
+                    blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS],
+                        gBlockTable[blockTOffset], gIdentityIdx,
+                        gmQLayout, gmKLayout, ubSLayout,
+                        actualBlockShapeQK,
+                        0, 0, blockSize_, strideKVRow,
+                        blockSize_, 1, 1, kvSTileSizeAct);
 
                     NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady_);
 #endif
 
 #ifdef __DAV_C220_VEC__
-                    // Stage 2: Online Softmax
-                    // uint64_t gmOffsetP = gmOffsetS;
-                    // LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
-                    // LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
-                    // GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
+                    Stage 2: Online Softmax
+                    uint64_t gmOffsetP = gmOffsetS;
+                    LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
 
                     NpuArch::Arch::CrossCoreWaitFlag(qkReady_);
 
-                    // epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS],
-                    //     ubPLayout, ubSLayout,
-                    //     actualBlockShapeQK,
-                    //     (kvBlockIdx == 0), 0, 1, groupSize,
-                    //     stageId, softmaxReady_);
+                    epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS],
+                        ubPLayout, ubSLayout,
+                        actualBlockShapeQK,
+                        (kvBlockIdx == 0), 0, 1, groupSize,
+                        stageId, softmaxReady_);
 #endif
                 }
 
