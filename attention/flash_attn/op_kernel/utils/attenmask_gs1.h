@@ -382,10 +382,10 @@ template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
                                             bool isPre, uint32_t mte2ToVEventId)
 {
-    if (info.layout == LAYOUT_Q::GS) {
+    if (info.maskFormat == MaskFormat::GS) {
         AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre,
                                                                          mte2ToVEventId);
-    } else if (info.layout == LAYOUT_Q::SG) {
+    } else if (info.maskFormat == MaskFormat::SG) {
         AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre,
                                                                            mte2ToVEventId);
     }
@@ -395,10 +395,10 @@ template <typename T, MaskFormat maskFormat, bool isReconstructTemp, uint32_t s2
 __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
                                            bool isPre, uint32_t mte2ToVEventId)
 {
-    if constexpr (layoutQ == LAYOUT_Q::GS) {
+    if constexpr (maskFormat == MaskFormat::GS) {
         AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre,
                                                                            mte2ToVEventId);
-    } else if constexpr (layoutQ == LAYOUT_Q::SG) {
+    } else if constexpr (maskFormat == MaskFormat::SG) {
         AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre,
                                                                            mte2ToVEventId);
     }
