@@ -1219,11 +1219,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
     const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
 {
     if constexpr (ENABLE_A8W4) {
-        MegaMoeImpl::GroupMatmul2CombineA8W4<
+        MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode,
             QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
             params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-            state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx,
-            CombineQuantMode != COMBINE_NO_QUANT);
+            state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
