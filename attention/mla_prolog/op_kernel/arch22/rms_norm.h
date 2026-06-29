@@ -70,6 +70,7 @@ __aicore__ inline void RmsNorm(const LocalTensor<float> &outLocal, const LocalTe
     AscendC::PipeBarrier<PIPE_V>();
 
     // Calc: xSquare[1, 8] = brc(xSum[1,1])
+    BrcbRepeatParams repeatParams = {1, 1};
     BrcbRepeatParams repeatParams = {
         1, // dstBlkStride
         1  // dstRepStride

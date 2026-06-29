@@ -410,44 +410,6 @@ __aicore__ inline void QuantPerTensor(const LocalTensor<O> &outLocal, const Loca
     CastFP32ToINT8(outLocal, inputLocal, shareTmpUb, rectangleParams.row * rectangleParams.col);
 }
 
-/**
- * @brief QuantPerTensorToFP8e4m3 同时对row行进行FP32到fp8_e4m3的per-tensor量化操作。一行内共用同一个量化系数。
-          outLocal[i , j] = inputLocal[i , j] * quantScaleLocal[i]
- * @param outLocal 输出tensor [row , col]
- * @param inputLocal 输入tensor [row , col]
- * @param quantScaleLocal quant系数 [1 , Hckv]
- * @param rectangleParams 描述待处理数据的排布，包括
-          row 行数
-          col 列数
-          stride 一行的真实长度
- */
-__aicore__ inline void QuantPerTensorToFP8e4m3(const LocalTensor<FP8E4M3> &outLocal,
-                                               const LocalTensor<float> &inputLocal,
-                                               const LocalTensor<float> &quantScaleLocal,
-                                               const Rectangle &rectangleParams)
-{
-}
-
-/**
- * @brief QuantPerTile 对输入tensor进行per-tile量化操作，FP32->fp8 e4m3/hifloat8，每个tile出一个量化系数。
-            量化流程：先对输入的每行的每个tile做动态量化，最后转换为fp8/hif8.
- * @param outLocal 输出tensor [row * col]，量化后的fp8/hif8数据，后续跟随scale数据
- * @param inputLocal 输入tensor [row * col]
- * @param shareTmpUb 临时buffer，内部需要空间为：
- *          [Align(row * tileNum, 8) + row * tileNum * 8 + 其他中间计算所需空间] * sizeof(float)
- * @param perTileQuantParams 描述pertile量化的参数，包括
- *          tileSize 每个tile的大小
- *          tileNum 每行的tile数量
- *          alpha clip的alpha系数
- *          row 待处理的行数
- *          col 待处理的列数 （col = tileSize * tileNum）
- */
-template <typename O>
-__aicore__ inline void QuantPerTile8Bit(const LocalTensor<O> &outLocal, const LocalTensor<float> &inputLocal,
-                                        const PerTileQuantParams &perTileQuantParams)
-{
-}
-
 __aicore__ inline void QuantPerTile(const LocalTensor<int8_t> &outLocal, const LocalTensor<float> &inputLocal,
                                     const LocalTensor<uint8_t> &shareTmpUb,
                                     const PerTileQuantParams &perTileQuantParams)
