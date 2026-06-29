@@ -3096,13 +3096,12 @@ __aicore__ inline void BroadcastMaxSum(const LocalTensor<T>& outTensor, const Lo
 }
 
 // =============================================================================
-// 静态 Tensor 编程适配重载：vselrIndexesBuf 由 TBuf<>* 改为 LocalTensor<uint8_t>*
-//   - 仅 flash_attn 算子使用（其完成了静态 Tensor 适配，废弃 TBuf<>）
-//   - 通过 C++ 函数重载与原 TBuf<>* 版本并存，对其它算子完全透明
+// 静态 Tensor 编程适配：vselrIndexesBuf 由 TBuf<>* 改为 LocalTensor<uint8_t>*
+//   - 仅 flash_attn 算子使用（函数名带 Static 后缀，避免与原 TBuf<>* 重载歧义）
 // =============================================================================
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
     bool hasSink = false>
-__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+__aicore__ inline void ProcessVec1VfDnStatic(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
                                        const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
                                        const LocalTensor<T>& expMaxTensor, LocalTensor<uint8_t> *vselrIndexesBuf,
                                        const LocalTensor<uint8_t>& maskTensor, const uint32_t m, const uint32_t n,
@@ -3133,7 +3132,7 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const L
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
     bool hasSink = false, bool hasInvalidLine = false>
-__aicore__ inline void ProcessVec1VfDnCausal(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+__aicore__ inline void ProcessVec1VfDnCausalStatic(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
                                        const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
                                        const LocalTensor<T>& expMaxTensor, LocalTensor<uint8_t> *vselrIndexesBuf,
                                        const LocalTensor<uint8_t>& maskTensor,

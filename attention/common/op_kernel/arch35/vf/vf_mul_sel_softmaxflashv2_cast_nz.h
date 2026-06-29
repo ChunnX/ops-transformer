@@ -615,15 +615,14 @@ __aicore__ inline void SoftmaxSumUpdate(const LocalTensor<T>& sumTensor, const L
 }
 
 // =============================================================================
-// 静态 Tensor 编程适配重载：vselrIndexesBuf 由 TBuf<>* 改为 LocalTensor<uint8_t>*
-//   - 仅 flash_attn 算子使用（其完成了静态 Tensor 适配，废弃 TBuf<>）
-//   - 通过 C++ 函数重载，与原 TBuf<>* 版本并存，对其它算子完全透明
+// 静态 Tensor 编程适配：vselrIndexesBuf 由 TBuf<>* 改为 LocalTensor<uint8_t>*
+//   - 仅 flash_attn 算子使用（函数名带 Static 后缀，避免与原 TBuf<>* 重载歧义）
 //   - 底层实现接受 LocalTensor<uint8_t>，无须修改，仅复用
 // =============================================================================
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
     OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
     bool hasDrop = 0, bool isMlaSgd = false, bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
-__aicore__ inline void ProcessVec1NoUpdate(
+__aicore__ inline void ProcessVec1NoUpdateStatic(
     const LocalTensor<T2>& dstTensor, LocalTensor<uint8_t> *vselrIndexesBuf, const LocalTensor<T>& expSumTensor,
     const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor,
     const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
@@ -712,7 +711,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
     OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
     bool hasDrop = 0, bool isMlaSgd = false, bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
-__aicore__ inline void ProcessVec1Update(
+__aicore__ inline void ProcessVec1UpdateStatic(
     const LocalTensor<T2>& dstTensor, LocalTensor<uint8_t> *vselrIndexesBuf, const LocalTensor<T>& expSumTensor,
     const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor,
     const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
@@ -800,7 +799,7 @@ template <typename T, typename T2, typename pseShiftType, bool isUpdate = false,
           uint32_t s2BaseSize = 128, OriginNRange oriNRange = GT_64_AND_LTE_128, bool hasAtten = 0,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
-__aicore__ inline void ProcessVec1Vf(const LocalTensor<T2>& dstTensor, LocalTensor<uint8_t> *vselrIndexesBuf,
+__aicore__ inline void ProcessVec1VfStatic(const LocalTensor<T2>& dstTensor, LocalTensor<uint8_t> *vselrIndexesBuf,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor,
     const LocalTensor<uint8_t>& maskTensor, const LocalTensor<pseShiftType>& pseTensor,
@@ -811,14 +810,14 @@ __aicore__ inline void ProcessVec1Vf(const LocalTensor<T2>& dstTensor, LocalTens
     const float pScale = 1.0f, float sinkValue = 0.0f)
 {
     if constexpr (!isUpdate) {
-        ProcessVec1NoUpdate<T, T2, pseShiftType, s1BaseSize, s2BaseSize, oriNRange, hasAtten, pseMode,
+        ProcessVec1NoUpdateStatic<T, T2, pseShiftType, s1BaseSize, s2BaseSize, oriNRange, hasAtten, pseMode,
             hasDrop, isMlaSgd, isMlaFullQuant, useNz, hasSink>(
             dstTensor, vselrIndexesBuf, expSumTensor, maxTensor, srcTensor, expMaxTensor,
             inExpSumTensor, inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer,
             m, originN, pseStride, slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb,
             deSCaleKValue, pScale, sinkValue);
     } else {
-        ProcessVec1Update<T, T2, pseShiftType, s1BaseSize, s2BaseSize, oriNRange, hasAtten, pseMode,
+        ProcessVec1UpdateStatic<T, T2, pseShiftType, s1BaseSize, s2BaseSize, oriNRange, hasAtten, pseMode,
             hasDrop, isMlaSgd, isMlaFullQuant, useNz, hasSink>(
             dstTensor, vselrIndexesBuf, expSumTensor, maxTensor, srcTensor, expMaxTensor,
             inExpSumTensor, inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, pScaleTensor,
