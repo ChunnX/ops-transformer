@@ -118,6 +118,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     char *activation_ptr = const_cast<char *>(activation_str.c_str());
 
     float activation_clamp_value = activation_clamp.value_or(std::numeric_limits<float>::max());
+    bool is_cross_server_value = is_cross_server.value_or(false);
 
     int64_t dispatch_quant_result_type = dispatch_quant_out_dtype.has_value()
          ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype.value()))
@@ -137,7 +138,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
         weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, bias1_wrapper, bias2_wrapper,
         x_active_mask, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
         dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode,
-        comm_alg_ptr, num_max_tokens_per_rank, activation_ptr, activation_clamp_value,is_cross_server,
+        comm_alg_ptr, num_max_tokens_per_rank, activation_ptr, activation_clamp_value, is_cross_server_value,
         y, expert_token_nums);
 
     return std::tie(y, expert_token_nums);
