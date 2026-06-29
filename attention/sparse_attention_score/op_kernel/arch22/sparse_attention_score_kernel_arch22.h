@@ -246,7 +246,7 @@ public:
                         static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
 
 #ifdef __DAV_C220_CUBE__
-                    Stage 1: QK Matmul
+                    // Stage 1: QK Matmul
                     LayoutK gmKLayout(strideKVRow, blockSize_);
                     LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
@@ -262,7 +262,7 @@ public:
 #endif
 
 #ifdef __DAV_C220_VEC__
-                    Stage 2: Online Softmax
+                    // Stage 2: Online Softmax
                     uint64_t gmOffsetP = gmOffsetS;
                     LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
                     LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
