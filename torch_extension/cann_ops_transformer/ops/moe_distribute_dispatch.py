@@ -208,10 +208,14 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
                 expand_x_shape = tuple([max(a, a * tp_world_size), h // 2])
             expand_x = x.new_empty(expand_x_shape, dtype=out_dtype)
             dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(x, scales, scales_dtype, quant_mode)
+<<<<<<< HEAD
             if is_ascend950():
                 dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, max(a, a * tp_world_size), h)
                 dynamic_scales = x.new_empty(dynamic_scales_shape, dtype=dynamic_scales_dtype)
             elif tp_world_size == 0:
+=======
+            if tp_world_size == 0:
+>>>>>>> 4019f9922... Support optional topk weights for MTE low latency
                 dynamic_scales = x.new_empty((a), dtype=dynamic_scales_dtype)
             elif tp_world_size == 1:
                 dynamic_scales_shape = get_dispatch_dynamic_shape(scales, quant_mode, a, h)
