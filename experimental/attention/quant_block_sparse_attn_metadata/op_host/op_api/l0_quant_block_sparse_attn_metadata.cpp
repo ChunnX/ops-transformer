@@ -35,9 +35,9 @@ const aclTensor *QuantBlockSparseAttnMetadata(
     int64_t aicCoreNum, int64_t aivCoreNum, const aclTensor *metadata, aclOpExecutor *executor)
 {
     L0_DFX(QuantBlockSparseAttnMetadata, sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional,
-            sequsedQOptional, sequsedKvOptional, batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ,
-            sparseBlockSizeK, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
-            layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metadata);
+           sequsedQOptional, sequsedKvOptional, batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ,
+           sparseBlockSizeK, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
+           layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metadata);
 
     static internal::AicpuTaskSpace space("QuantBlockSparseAttnMetadata");
 
