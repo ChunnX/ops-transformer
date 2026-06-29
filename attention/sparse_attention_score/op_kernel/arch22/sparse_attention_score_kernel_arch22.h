@@ -280,17 +280,17 @@ public:
 
                 // === Stage 3+4: PV Matmul & RescaleO ===
                 if (kvBlockIdx >= PRE_LAUNCH) {
-                    // uint32_t kvBlockIdxDe = kvBlockIdx - PRE_LAUNCH;
-                    // uint32_t kvSTileSizeAct = validTileSize[kvBlockIdxDe];
-                    // int32_t physicalBlockIdV = validPhysicalIds[kvBlockIdxDe];
-                    // int64_t gmOffsetV = static_cast<int64_t>(physicalBlockIdV) * strideKVBlock +
-                    //                     static_cast<int64_t>(kvHeadIdx) * embed_;
+                    uint32_t kvBlockIdxDe = kvBlockIdx - PRE_LAUNCH;
+                    uint32_t kvSTileSizeAct = validTileSize[kvBlockIdxDe];
+                    int32_t physicalBlockIdV = validPhysicalIds[kvBlockIdxDe];
+                    int64_t gmOffsetV = static_cast<int64_t>(physicalBlockIdV) * strideKVBlock +
+                                        static_cast<int64_t>(kvHeadIdx) * embed_;
 
-                    // uint32_t stageId = kvBlockIdxDe % MAX_CROSS_CORE_BUF_STAGES;
-                    // uint64_t gmOffsetP = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
-                    //     static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
-                    // uint64_t gmOffsetOTmp = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
-                    //     static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
+                    uint32_t stageId = kvBlockIdxDe % MAX_CROSS_CORE_BUF_STAGES;
+                    uint64_t gmOffsetP = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
+                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
+                    uint64_t gmOffsetOTmp = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB * MAX_CROSS_CORE_BUF_STAGES +
+                        static_cast<uint64_t>(stageId) * WORKSPACE_BLOCK_SIZE_DB;
 
 #ifdef __DAV_C220_CUBE__
                     // Stage 3: PV Matmul
