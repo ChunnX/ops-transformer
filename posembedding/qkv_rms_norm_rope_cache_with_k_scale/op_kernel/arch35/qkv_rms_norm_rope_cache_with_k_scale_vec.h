@@ -399,19 +399,10 @@ private:
                                        LocalTensor<float> qkAfterCube, LocalTensor<float> qScale)
     {
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
-        if constexpr (IS_TND) {
-            AscendC::VF_CALL<QDynamicQuantD128TndToTndVf>(
-                (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
-                (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-                static_cast<uint32_t>(qHeadNum_));
-        } else {
-            const uint64_t qkUbStrideN = tile.cubeHalfTokenSize * headDim_;
-            AscendC::VF_CALL<QDynamicQuantD128NtdToNtdVf>(
-                (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
-                (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(qkUbStrideN),
-                static_cast<uint32_t>(headDim_));
-        }
+        AscendC::VF_CALL<QDynamicQuantD128VfImpl<IS_TND>>(
+            (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
+            (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
+            static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(tile.cubeHalfTokenSize));
     }
 
     __aicore__ inline void QuantKToFp8(const TileParam &tile,
@@ -419,19 +410,10 @@ private:
     {
         const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
-        if constexpr (IS_TND) {
-            AscendC::VF_CALL<KDynamicQuantD128TndToTndVf>(
-                (__ubuf__ float *)qkAfterCube[kRowOffset].GetPhyAddr(),
-                (__ubuf__ fp8_e4m3fn_t *)kFp8.GetPhyAddr(), (__ubuf__ float *)kScale.GetPhyAddr(),
-                static_cast<uint32_t>(tile.aivTokenSize), static_cast<uint32_t>(kvHeadNum_));
-        } else {
-            const uint64_t qkUbStrideN = tile.cubeHalfTokenSize * headDim_;
-            AscendC::VF_CALL<KDynamicQuantD128NtdToNtdVf>(
-                (__ubuf__ float *)qkAfterCube[kRowOffset].GetPhyAddr(),
-                (__ubuf__ fp8_e4m3fn_t *)kFp8.GetPhyAddr(), (__ubuf__ float *)kScale.GetPhyAddr(),
-                static_cast<uint32_t>(tile.aivTokenSize), static_cast<uint32_t>(kvHeadNum_),
-                static_cast<uint32_t>(qkUbStrideN), static_cast<uint32_t>(headDim_));
-        }
+        AscendC::VF_CALL<KDynamicQuantD128VfImpl<IS_TND>>(
+            (__ubuf__ float *)qkAfterCube[kRowOffset].GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)kFp8.GetPhyAddr(),
+            (__ubuf__ float *)kScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
+            static_cast<uint32_t>(kvHeadNum_), static_cast<uint32_t>(tile.cubeHalfTokenSize));
     }
 
     __aicore__ inline void ScatterQOutputs(const TileParam &tile, LocalTensor<float> qkAfterCube,
