@@ -126,9 +126,8 @@ private:
             aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         WaitAicMte1ToAivMte3AConsumed();
         vec_.WaitVToMte2InputBufferReusable();
-        vec_.ComputeTileWithQkOutputBuffer(
-            tile, aRotL1Nz, outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
-            outputBufferId);
+        vec_.ComputeTile(tile, aRotL1Nz, outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
+                         outputBufferId);
         if (isLastTile && tileCount_ > 0U) {
             SetAivMte3ToAicFixCConsumed();
         }
@@ -139,7 +138,7 @@ private:
             const uint32_t lastOutputBufferId =
                 static_cast<uint32_t>((outputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
             WaitAicFixToAivVCReady();
-            vec_.PostprocessQkWithOutputBuffer(
+            vec_.PostprocessQk(
                 lastTile, outputDbPoolUb_[lastOutputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
                 lastOutputBufferId);
             if (!isLastTile) {
@@ -164,7 +163,7 @@ private:
             const uint32_t lastOutputBufferId =
                 static_cast<uint32_t>((outputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
             WaitAicFixToAivVCReady();
-            vec_.PostprocessQkWithOutputBuffer(
+            vec_.PostprocessQk(
                 lastTile, outputDbPoolUb_[lastOutputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
                 lastOutputBufferId);
             SetAivMte3ToAicFixCConsumed();
