@@ -16,7 +16,6 @@
 #define MOE_EP_COMBINE_H
 
 #include "kernel_operator.h"
-#include "kernel_operator_data_copy_intf.h"
 #include "moe_ep_combine_tiling_key.h"
 
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
@@ -336,6 +335,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(
     if (dstRankId != rankId_) {
         hcomm_.Drain(GetCommHandle(dstRankId));
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
+        hcomm_.Drain(GetCommHandle(dstRankId));
     }
 }
 

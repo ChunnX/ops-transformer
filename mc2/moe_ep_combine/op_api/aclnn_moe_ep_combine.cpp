@@ -7,7 +7,6 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "aclnn_moe_ep_combine.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -17,7 +16,11 @@
 
 using namespace op;
 
+#ifdef __cplusplus
 extern "C" {
+#endif
+
+
 static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
                                 const aclTensor *recvSrcMetadata, const aclTensor *numRecvTokensPerExpert,
                                 aclTensor *combinedX)
@@ -85,6 +88,7 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_MTE = 0,
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 1
 };
+
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 aclnnStatus aclnnMoeEpCombine(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
@@ -95,4 +99,6 @@ aclnnStatus aclnnMoeEpCombine(void *workspace, uint64_t workspaceSize, aclOpExec
     return aclnnInnerMoeEpCombine(workspace, workspaceSize, executor, stream);
 }
 
-} // extern "C"
+#ifdef __cplusplus
+}
+#endif  // extern "C"
