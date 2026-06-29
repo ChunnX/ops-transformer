@@ -153,7 +153,7 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
         if ASCEND_IS_AIC {
             cubeCompute_.Init(L1_SIZE_BYTE, weightL1Space, aPrefetchSize, matmulTiling, tPipe, biasL1DbOffset_);
         } else {
-            vectorCompute_.Init(tPipe, hasBias_);
+            vectorCompute_.Init(tPipe, hasBias_, antiQuantGroupSize);
         }
     }
 }
