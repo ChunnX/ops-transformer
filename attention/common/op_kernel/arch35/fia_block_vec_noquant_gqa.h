@@ -1308,7 +1308,6 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         // 对整个batch的结果置0
         if constexpr (POST_QUANT) { // out int8
-                                    // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
         } else {
             if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
                 OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
