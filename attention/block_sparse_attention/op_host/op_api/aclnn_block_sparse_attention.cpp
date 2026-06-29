@@ -80,10 +80,22 @@ static aclnnStatus CheckNDFormat(const aclTensor *query,
     auto queryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(query->GetStorageFormat()));
     auto keyFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(key->GetStorageFormat()));
     auto valueFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(value->GetStorageFormat()));
-    auto blockSparseMaskFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(blockSparseMaskOptional->GetStorageFormat()));
-    auto attenMaskFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attenMaskOptional->GetStorageFormat()));
-    auto blockTableFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(blockTableOptional->GetStorageFormat()));
-    auto attentionOutFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attentionOut->GetStorageFormat()));
+    auto blockSparseMaskFormat = ge::FORMAT_ND;
+    if (blockSparseMaskOptional != nullptr) {
+        blockSparseMaskFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(blockSparseMaskOptional->GetStorageFormat()));
+    }
+    auto attenMaskFormat = ge::FORMAT_ND;
+    if (attenMaskOptional != nullptr) {
+        attenMaskFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attenMaskOptional->GetStorageFormat()));
+    }
+    auto blockTableFormat = ge::FORMAT_ND;
+    if (blockTableOptional != nullptr) {
+        blockTableFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(blockTableOptional->GetStorageFormat()));
+    }
+    auto attentionOutFormat = ge::FORMAT_ND;
+    if (attentionOut != nullptr) {
+        attentionOutFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(attentionOut->GetStorageFormat()));
+    }
     if (!IsSupportedFormat(queryFormat) || !IsSupportedFormat(keyFormat) || !IsSupportedFormat(valueFormat) ||
         !IsSupportedFormat(blockSparseMaskFormat) || !IsSupportedFormat(attenMaskFormat) ||
         !IsSupportedFormat(blockTableFormat) || !IsSupportedFormat(attentionOutFormat)) {
