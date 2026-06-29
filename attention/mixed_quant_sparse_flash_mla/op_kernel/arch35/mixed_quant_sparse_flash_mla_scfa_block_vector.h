@@ -860,7 +860,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
     uint32_t combineDim;
     uint32_t combineDimAlign;
     if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
-        combineBytes = constInfo.dSizeVInput;
+        combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
         combineDim = combineBytes / sizeof(KV_T);
         combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
     } else {
