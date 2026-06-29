@@ -734,7 +734,7 @@ public:
         MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                     (uint32_t)(constInfo.dSize), false, true);
 
-        MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<KV_T>(), 
+        MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(mm1A.GetTensor<KV_T>(),
             mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
 
         if (unlikely(runInfo.isLastS2Loop)) {
@@ -877,7 +877,8 @@ public:
             mm2ResL0C.Set<HardEvent::M_FIX>();
             mm2ResL0C.Wait<HardEvent::M_FIX>();
 
-            FixpipeMm2PartialN(outputBuf.template GetTensor<T>()[nIdx * baseNSize], mm2ResL0C.GetTensor<T>(), realN, runInfo);
+            FixpipeMm2PartialN(outputBuf.template GetTensor<T>()[nIdx * baseNSize],
+                               mm2ResL0C.GetTensor<T>(), realN, runInfo);
             mm2ResL0C.Set<HardEvent::FIX_M>();
         }
         outputBuf.SetCrossCore();
