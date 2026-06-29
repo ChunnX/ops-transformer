@@ -43,9 +43,6 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
 class FiaBlockVecFlashDecode {
 public:
     // =================================类型定义区=================================
-    // 中间计算数据类型为float，高精度模式
-    // using T = float;
-    // using OUTPUT_T = OUTPUT_T;
     using SINK_T = INPUT_T;
 
 private:
