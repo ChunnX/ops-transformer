@@ -319,15 +319,13 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
         }
     } else {
         // BSND: cu_seqlens_k 不传, seqused_k 可选
-        if (npuArch_ == NpuArch::DAV_3510) {
-            OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor != nullptr,
-                    OP_LOGE(opName_, "when layout_key is BSND, input cu_seqlens_k must not be provided"),
-                    return ge::GRAPH_FAILED);
-            if (opParamInfo_.sequsedK.tensor != nullptr) {
-                OP_CHECK_IF(opParamInfo_.sequsedK.desc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(opName_, "input seqused_k data type only support int32"),
-                    return ge::GRAPH_FAILED);
-            }
+        OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor != nullptr,
+                OP_LOGE(opName_, "when layout_key is BSND, input cu_seqlens_k must not be provided"),
+                return ge::GRAPH_FAILED);
+        if (opParamInfo_.sequsedK.tensor != nullptr) {
+            OP_CHECK_IF(opParamInfo_.sequsedK.desc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName_, "input seqused_k data type only support int32"),
+                return ge::GRAPH_FAILED);
         }
     }
     // =============== cmpResidualK 校验 ===============
