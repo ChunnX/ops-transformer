@@ -356,18 +356,15 @@ public:
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }
 
-    __aicore__ inline void CrossCoreBufferUnInit()
+    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        if ASCEND_IS_AIC {
-            bmm1Buffers.Get().WaitCrossCore();
-            bmm1Buffers.Get().WaitCrossCore();
-        }
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIC {
-                bmm2Buffers.Get().WaitCrossCore();
-                bmm2Buffers.Get().WaitCrossCore();
-            }
-        }
+        // AICPU metadata format: 16 fields per AIC core, 0-indexed (no leading CORE_ENABLE).
+        // Kernel field constants ( FLASH_ATTN_BN2_START_INDEX=1, etc.) are 1-based, so subtract 1.
+        return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+    }
+    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -391,7 +388,7 @@ public:
         }
     }
 
-    __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0);
@@ -405,10 +402,6 @@ public:
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
             }
         }
-    }
-    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
-    {
-        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
