@@ -144,6 +144,11 @@ static_assert(QKV_RRC_UB_USED_BYTES <= 248U * QKV_RRC_KIB,
 struct TileParam {
     uint64_t tokenOffset;
     uint64_t tokenSize;
+    uint64_t cubeTokenSize;
+    uint64_t cubeHalfTokenSize;
+    uint64_t aivTokenOffset;
+    uint64_t aivTokenSize;
+    uint64_t aivBlockTokenOffset;
     uint64_t vHeadOffset;
     uint64_t vHeadSize;
     uint64_t cacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
@@ -229,16 +234,6 @@ __aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount)
 __aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount, uint64_t colCount)
 {
     return CeilDiv(colCount, QKV_RRC_NZ_C0) * NzRowAligned(rowCount) * QKV_RRC_NZ_C0;
-}
-
-__aicore__ inline uint64_t MakeCubeTokenSize(const TileParam &tile)
-{
-    return AlignUp(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC);
-}
-
-__aicore__ inline uint64_t MakeCubeHalfTokenSize(const TileParam &tile)
-{
-    return MakeCubeTokenSize(tile) / QKV_RRC_MIX_AIV_PER_AIC;
 }
 
 template <typename T>

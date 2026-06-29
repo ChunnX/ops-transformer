@@ -60,9 +60,8 @@ public:
     {
         const uint32_t l0cBufferId =
             static_cast<uint32_t>((l0cBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        const uint64_t cubeTokenSize = MakeCubeTokenSize(tile);
-        const uint64_t qRows = cubeTokenSize * qHeadNum_;
-        const uint64_t kRows = cubeTokenSize * kvHeadNum_;
+        const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
+        const uint64_t kRows = tile.cubeTokenSize * kvHeadNum_;
         const uint64_t qL0cOffset = 0U;
         const uint64_t kL0cOffset = AlignUp(qRows, QKV_RRC_NZ_C0) * QKV_RRC_HEAD_DIM_D128;
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, qL0cOffset, kL0cOffset);
@@ -190,7 +189,7 @@ private:
             return;
         }
 
-        const uint64_t qRowsPerAiv = MakeCubeHalfTokenSize(tile) * qHeadNum_;
+        const uint64_t qRowsPerAiv = tile.cubeHalfTokenSize * qHeadNum_;
         const uint64_t dstBaseRow = isQSegment ? 0U : qRowsPerAiv;
         FixpipeSegmentToAivUb(segmentRows, dstBaseRow, bufferId, l0cBaseOffset, qkAfterCubeUb);
     }

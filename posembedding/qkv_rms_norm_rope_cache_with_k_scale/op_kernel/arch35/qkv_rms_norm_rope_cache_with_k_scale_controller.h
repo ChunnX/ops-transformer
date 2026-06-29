@@ -58,6 +58,11 @@ private:
     {
         tile.tokenOffset = 0U;
         tile.tokenSize = 0U;
+        tile.cubeTokenSize = 0U;
+        tile.cubeHalfTokenSize = 0U;
+        tile.aivTokenOffset = 0U;
+        tile.aivTokenSize = 0U;
+        tile.aivBlockTokenOffset = 0U;
         tile.vHeadOffset = 0U;
         tile.vHeadSize = 0U;
     }
@@ -72,8 +77,23 @@ private:
         }
 
         tile.tokenSize = MinU64(MinU64(tokenSize, tilingData->tokenTile), tilingData->totalTokens - tile.tokenOffset);
+        tile.cubeTokenSize = AlignUp(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC);
+        tile.cubeHalfTokenSize = tile.cubeTokenSize / QKV_RRC_MIX_AIV_PER_AIC;
         tile.vHeadOffset = 0U;
         tile.vHeadSize = tilingData->kvHeadNum;
+        if ASCEND_IS_AIC {
+            return;
+        }
+
+        FillAivTileParam(tile, GetSubBlockIdx());
+    }
+
+    __aicore__ inline void FillAivTileParam(TileParam &tile, uint32_t aivLocalId) const
+    {
+        tile.aivBlockTokenOffset = aivLocalId * tile.cubeHalfTokenSize;
+        tile.aivTokenOffset = tile.tokenOffset + tile.aivBlockTokenOffset;
+        tile.aivTokenSize =
+            aivLocalId == 0U ? tile.cubeHalfTokenSize : tile.tokenSize - tile.cubeHalfTokenSize;
     }
 
     __aicore__ inline uint64_t ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<INPUT_LAYOUT> &basicBlock,

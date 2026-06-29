@@ -28,9 +28,9 @@ public:
         if ASCEND_IS_AIC {
             InitAic(tensors, qHeadNum, kvHeadNum);
         } else {
-            InitAiv(tensors, GetSubBlockIdx(), totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize,
-                    kvCacheStrideBlock, kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock,
-                    kScaleCacheStrideHead, kScaleCacheStrideToken, epsilon);
+            InitAiv(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, kvCacheStrideBlock,
+                    kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock, kScaleCacheStrideHead,
+                    kScaleCacheStrideToken, epsilon);
         }
     }
 
@@ -80,9 +80,9 @@ private:
         cube_.InitIntraCoreEvents();
     }
 
-    __aicore__ inline void InitAiv(const GlobalTensors &tensors, uint32_t aivLocalId, uint64_t totalTokens,
-                                   uint64_t batch, uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim,
-                                   uint64_t blockSize, uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
+    __aicore__ inline void InitAiv(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch,
+                                   uint64_t qHeadNum, uint64_t kvHeadNum, uint64_t headDim, uint64_t blockSize,
+                                   uint64_t kvCacheStrideBlock, uint64_t kvCacheStrideHead,
                                    uint64_t kvCacheStrideToken, uint64_t kScaleCacheStrideBlock,
                                    uint64_t kScaleCacheStrideHead, uint64_t kScaleCacheStrideToken, float epsilon)
     {
@@ -92,9 +92,9 @@ private:
             LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
         outputDbPoolUb_ =
             LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
-        vec_.Init(tensors, aivLocalId, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize,
-                  kvCacheStrideBlock, kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock,
-                  kScaleCacheStrideHead, kScaleCacheStrideToken, epsilon);
+        vec_.Init(tensors, totalTokens, batch, qHeadNum, kvHeadNum, headDim, blockSize, kvCacheStrideBlock,
+                  kvCacheStrideHead, kvCacheStrideToken, kScaleCacheStrideBlock, kScaleCacheStrideHead,
+                  kScaleCacheStrideToken, epsilon);
         vec_.InitIntraCoreEvents();
     }
 
