@@ -32,7 +32,7 @@ test_flash_attn.py  (入口)
 | `backends/base.py` | Backend抽象基类(`is_available`, `compute`, `device`) |
 | `backends/cpu.py` | CPU Golden —调用`backends/cpu_impl.tforward`做参考计算 |
 | `backends/gpu.py` | GPU —封装`flash_attn`库 |
-| `backends/npu.py` | NPU —调用`npu_flash_attn_metadata` + `npu_flash_attn`，含`print_metadata` |
+| `backends/npu.py` | NPU —调用`flash_attn_metadata` + `flash_attn`，含`print_metadata` |
 | `data.py` | `InputSpec`声明式张量生成 + `build_flash_attn_params`参数组构造 |
 | `case_loader.py` | 用例加载(`load_case_modules`)、参数规范化(`normalize_params`)、ID解析(`resolve_case_ids`) |
 | `orchestrator.py` | 编排器—串联数据生成 → 后端计算 → 精度对比 |
@@ -49,7 +49,7 @@ pytests/
 │   │   ├── base.py                 # Backend抽象基类
 │   │   ├── cpu.py                  # CPU Golden (调用tforward)
 │   │   ├── gpu.py                  # GPU (flash_attn库)
-│   │   └── npu.py                  # NPU (npu_flash_attn + print_metadata)
+│   │   └── npu.py                  # NPU (flash_attn + print_metadata)
 │   ├── data.py                     # InputSpec张量生成 + build_flash_attn_params
 │   ├── case_loader.py              # 用例加载 + 参数规范化
 │   ├── orchestrator.py             # 执行编排
@@ -99,7 +99,7 @@ pytests/
 | 依赖 | 说明 |
 |------|------|
 | `torch_npu` | PyTorch NPU扩展 |
-| `cann_ops_transformer` | 提供`npu_flash_attn`和`npu_flash_attn_metadata` |
+| `cann_ops_transformer` | 提供`flash_attn`和`flash_attn_metadata` |
 
 ### GPU模式(可选)
 
@@ -370,9 +370,9 @@ flash_attn_inputs = (
 
 `build_flash_attn_params()`返回`(meta_kwargs, kernel_kwargs, out_layout)`：
 
-- **meta_kwargs** → 传给`npu_flash_attn_metadata()`
+- **meta_kwargs** → 传给`flash_attn_metadata()`
   - `cu_seqlens_q/kv`, `seqused_q/kv`, `max_seqlen_q/kv`, `num_heads_q/kv`, `head_dim`, `batch_size`, `mask_mode`, `layout_*`
-- **kernel_kwargs** → 传给`npu_flash_attn()`
+- **kernel_kwargs** → 传给`flash_attn()`
   - `softmax_scale`, `cu_seqlens_q/kv`, `seqused_q/kv`, `max_seqlen_q/kv` (TND时传实际值，否则 -1), `mask_mode`, `layout_*`
 
 ### 7.5 精度对比
@@ -456,7 +456,7 @@ python test_flash_attn.py --case_id TND_05 --meta_only  # 先检查metadata
 
 不同后端对`block_size`有不同约束，请查阅对应后端的官方文档确认具体限制：
 - GPU端参考`flash_attn`库文档
-- NPU端参考`npu_flash_attn`算子文档
+- NPU端参考`flash_attn`算子文档
 
 ### Q5: 如何查看某个case的实际参数
 
