@@ -556,7 +556,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
                     LoadAlign(vreg_pse_f16_src2, pseUb + floatRepSize * 2 + i * pseStride);
                     Interleave(vreg_pse1_f16, vreg_pse2_f16, vreg_pse_f16_src1, vreg_pse_f16_src1);
                     Interleave(vreg_pse3_f16, vreg_pse4_f16, vreg_pse_f16_src2, vreg_pse_f16_src2);
-                    Cast<T, pseShiftType, castTraitZero>(vreg_pse1, vreg_pse1_f16, preg_all_b16); // Cast bfloat16 to target type T
+                    // Cast bfloat16 to target type T
+                    Cast<T, pseShiftType, castTraitZero>(vreg_pse1, vreg_pse1_f16, preg_all_b16);
                     Cast<T, pseShiftType, castTraitZero>(vreg_pse2, vreg_pse2_f16, preg_all_b16);
                     Cast<T, pseShiftType, castTraitZero>(vreg_pse3, vreg_pse3_f16, preg_all_b16);
                     Cast<T, pseShiftType, castTraitZero>(vreg_pse4, vreg_pse4_f16, preg_all_b16);
@@ -667,26 +668,22 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
                                                                                           preg_all);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum3,
                                                                      ureg_exp_sum, 1);
-        // dropmask compute
+        // compute dropmask
         if constexpr (hasDrop == 1) {
             LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_US>(
                 preg1, (__ubuf__ uint32_t *&)dropMaskUb1, s2BaseSize >> 3);
-            // preg1: 0011223344556677 preg2: 0000000000000000
+            // preg1: 0011223344556677 preg2: 0000000000000000 preg3: 0000110022003300 preg4: 4400550066007700
             MaskInterleave<half>(preg3, preg4, preg1, preg2);
-            // preg3: 0000110022003300 preg4: 4400550066007700
-            MaskDeInterleave<T>(preg5, preg6, preg3, preg4);
             // preg5(even-4bit): 0000220044006600 preg6(odd-4bit): 1100330055007700
+            MaskDeInterleave<T>(preg5, preg6, preg3, preg4);
             Select(vreg_sel_drop, vreg_exp_even1, vreg_zero, preg5);
             Muls(vreg_exp_even1, vreg_sel_drop, divValue, preg_all);
             Select(vreg_sel_drop2, vreg_exp_odd1, vreg_zero, preg6);
             Muls(vreg_exp_odd1, vreg_sel_drop2, divValue, preg_all);
             LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_US>(
                 preg1, (__ubuf__ uint32_t *&)dropMaskUb2, s2BaseSize >> 3);
-            // preg1: 0011223344556677 preg2: 0000000000000000
             MaskInterleave<half>(preg3, preg4, preg1, preg2);
-            // preg3: 0000110022003300 preg4: 4400550066007700
             MaskDeInterleave<T>(preg5, preg6, preg3, preg4);
-            // preg5(even-4bit): 0000220044006600 preg6(odd-4bit): 1100330055007700
             Select(vreg_sel_drop, vreg_exp_even2, vreg_zero, preg5);
             Muls(vreg_exp_even2, vreg_sel_drop, divValue, preg_all);
             Select(vreg_sel_drop2, vreg_exp_odd2, vreg_zero, preg6);
@@ -694,6 +691,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
         }
 
         if constexpr (IsSameType<T2, bfloat16_t>::value) {
+            // Cast to BF16
             Cast<T2, T, castTraitZero>(vreg_exp_even1_bf16, vreg_exp_even1, preg_all);
             Cast<T2, T, castTraitOne>(vreg_exp_odd1_bf16, vreg_exp_odd1, preg_all);
             Cast<T2, T, castTraitZero>(vreg_exp_even2_bf16, vreg_exp_even2, preg_all);
