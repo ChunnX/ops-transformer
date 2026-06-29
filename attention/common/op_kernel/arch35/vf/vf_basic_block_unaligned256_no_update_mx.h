@@ -242,7 +242,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
                                                               vreg_sel4_new, preg_tail_n2);
             Max(vreg_max_tmp1, vreg_sel1, vreg_sel2, preg_all);
             Max(vreg_max_tmp2, vreg_sel3_new, vreg_sel4_new, preg_all);
-            Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all);
+            Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all); // max
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max,
                                                                                               vreg_max_tmp3, preg_all);
         } else {
@@ -259,10 +259,11 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
 
             Max(vreg_max_tmp1, vreg_input_x1, vreg_input_x2, preg_all);
             Max(vreg_max_tmp2, vreg_input_x3_new, vreg_input_x4_new, preg_all);
-            Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all);
+            Max(vreg_max_tmp3, vreg_max_tmp1, vreg_max_tmp2, preg_all); // max
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max,
                                                                                               vreg_max_tmp3, preg_all);
         }
+        // sink
         if constexpr (hasSink) {
             Max(vreg_input_max, vreg_input_max, vreg_sink_input, preg_all);
         }
