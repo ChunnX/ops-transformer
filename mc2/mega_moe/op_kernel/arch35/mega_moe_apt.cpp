@@ -37,16 +37,13 @@ __global__ __aicore__ void mega_moe(
     GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1, GM_ADDR bias2, GM_ADDR xActiveMask,
     GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    printf("start mega_moe\n");
     InitSocState();
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 #ifdef ENABLE_TENSOR_API
     if (CommModeType == TILINGKEY_TPL_MTE) {
-        printf("CommModeType == TILINGKEY_TPL_MTE\n");
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-            printf("DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP\n");
         MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
             DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
