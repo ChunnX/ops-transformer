@@ -410,7 +410,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输入</td>
         <td>表示中间GroupedMatmul的结果数据类型。</td>
         <td><ul>
-          <li>暂不支持，默认行为28。</li>
           <li>0表示FLOAT。</li>
           <li>1表示FLOAT16。</li>
           <li>27表示BFLOAT16。</li>
@@ -426,7 +425,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输入</td>
         <td>表示量化计算类型，用于确定swiglu结果的量化模式。</td>
         <td><ul>
-          <li>暂不支持，默认行为0。</li>
           <li>0表示per-token。</li>
           <li>2表示MX量化。</li>
         </ul></td>
