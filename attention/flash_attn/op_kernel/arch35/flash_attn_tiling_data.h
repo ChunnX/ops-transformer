@@ -18,8 +18,6 @@
 
 
 namespace optiling {
-
-// #if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
 constexpr uint32_t FA_AIC_CORE_NUM = 36;
 constexpr uint32_t FA_AIV_CORE_NUM = 72;
 
