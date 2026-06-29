@@ -80,7 +80,7 @@ public:
 
     __aicore__ inline void operator()(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
                                       LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen,
-                                      uint32_t loopIdx, uint32_t s2LoopNum, bool returnValueFlag)
+                                      uint32_t loopIdx, uint32_t s2LoopNum)
     {
         if (s2LoopNum == 1) {
             topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal,
@@ -101,13 +101,10 @@ public:
                                               histogramsLocal, idx0Local, idx1Local, idx2Local,
                                               idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                uint32_t loopBasicIdx = topK < trunkLen ?
-                         (loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256)) :
-                         ((loopIdx - 1) * trunkLen);
                 topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
                                                 tmpIndexLocal, hisIndexLocal[loopIdx % 2],
                                                 topK,
-                                                loopBasicIdx,
+                                                loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256),
                                                 s2SeqLen);
                 if (loopIdx == s2LoopNum - 1) {
                     PipeBarrier<PIPE_V>();

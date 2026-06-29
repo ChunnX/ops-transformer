@@ -674,11 +674,7 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_
     } else {
         vectorService.ProcessVec1(runInfo);
         if (runInfo.isLastS2InnerLoop) {   //本核s2last
-            if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
-                vectorService.ProcessTopK(runInfo); 
-            } else {
-                vectorService.ProcessUint32TopK(runInfo); 
-            }
+            vectorService.ProcessTopK(runInfo);
         }
     }
 }
