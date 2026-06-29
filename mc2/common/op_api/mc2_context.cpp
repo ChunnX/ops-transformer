@@ -332,6 +332,8 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
         return ret;
     }
 
+    mc2ContextStruct->hcclBufferSize_ = hcclBuffSize_;
+
     hcclRet = HcclEngineCtxCopy(hcclHandle, engine, mc2ContextTag.c_str(), mc2ContextStruct, ctxSize,
                                 KOPY_DEFAULT_CTX_OFFSET);
     if (hcclRet != HCCL_SUCCESS) {

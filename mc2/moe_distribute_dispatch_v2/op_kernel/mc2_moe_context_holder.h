@@ -22,6 +22,7 @@
 #endif
 
 #include "moe_distribute_v2_constant.h"
+#include "check_winsize.h"
 #include "../common/op_kernel/mc2_moe_context.h"
 
 namespace Mc2Kernel {
@@ -32,17 +33,18 @@ class Mc2MoeContextHolder {
 public:
     __aicore__ inline Mc2MoeContextHolder() {};
 
-    // mc2 ctx 路径无需 winsize 校验，Check 仅作为接口对齐的 no-op。
     // Mc2MoeContext 不携带 epWorldSize，由调用方从 tilingData 传入并暂存。
-    __aicore__ inline void InitAndCheck(GM_ADDR ctxPtr, uint32_t epWorldSize, uint64_t /* totalWinSize */,
-                                        TPipe * /* pipe */, GM_ADDR /* exceptionAddr */)
+    __aicore__ inline void InitAndCheck(GM_ADDR ctxPtr, uint32_t epWorldSize, uint64_t totalWinSize,
+                                        TPipe *pipe, GM_ADDR exceptionAddr)
     {
         mc2Context_ = (__gm__ Mc2Aclnn::Mc2MoeContext *)ctxPtr;
         epWorldSize_ = epWorldSize;
+        Check(totalWinSize, pipe, exceptionAddr);
     }
 
-    __aicore__ inline void Check(uint64_t /* totalWinSize */, TPipe * /* pipe */, GM_ADDR /* exceptionAddr */)
+    __aicore__ inline void Check(uint64_t totalWinSize, TPipe *pipe, GM_ADDR exceptionAddr)
     {
+        CheckWindowSize(totalWinSize, mc2Context_->hcclBufferSize_, pipe, exceptionAddr);
     }
 
     __aicore__ inline GM_ADDR GetStatusDataSpaceGm()
