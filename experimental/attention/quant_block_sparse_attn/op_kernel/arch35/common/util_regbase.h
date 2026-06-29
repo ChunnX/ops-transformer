@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -122,7 +122,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t softmaxLseOffset; // souter层确定
 };
 
-// clang-format off
+
 #define COMMON_RUN_INFO \
     int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
@@ -170,7 +170,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     uint8_t multiCoreIdxMod2 = 0; \
     uint8_t multiCoreIdxMod3 = 0; \
     int64_t sOuterOffset;
-// clang-format on
+
 
 struct RunInfo {
     COMMON_RUN_INFO;

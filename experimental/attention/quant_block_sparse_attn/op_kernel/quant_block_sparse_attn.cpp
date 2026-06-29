@@ -26,7 +26,7 @@ using namespace AscendC;
 //   - 实例化 QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>
 //   - GET_TILING_DATA -> InitBaseAPI -> Process()
 // __VA_ARGS__ 为 block 模板参数（严格对齐 CUBE_BLOCK_TRAITS 字段顺序，共 17 个）。
-// clang-format off
+
 #define BSA_OP_IMPL(...) \
     do { \
         using CubeBlockType = \
@@ -51,7 +51,7 @@ using namespace AscendC;
                        tilingData, &tPipe); \
         op.Process(); \
     } while (0)
-// clang-format on
+
 
 template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE, bool RETURN_SOFTMAX_LSE>
 __global__ __aicore__ void quant_block_sparse_attn(
