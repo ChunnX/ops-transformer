@@ -160,29 +160,23 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
         MicroAPI::RegTensor<T> vreg_exp_res_2;
 
         constexpr uint32_t halfOneRep = halfRepSize;
+        uint32_t n1 = originN;
+        uint32_t n2 = (originN > halfOneRep) ? (originN - halfOneRep) : 0;
+        MicroAPI::MaskReg preg_tail1_inv = MicroAPI::UpdateMask<T>(n1);
+        MicroAPI::Not(preg_tail1_inv, preg_tail1_inv, preg_all_b16);
+        MicroAPI::MaskReg preg_tail2_inv = MicroAPI::UpdateMask<T>(n2);
+        MicroAPI::Not(preg_tail2_inv, preg_tail2_inv, preg_all_b16);
         for (uint16_t i = 0; i < rows; ++i) {
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vreg_input_x_2, srcUb + i * sInner + halfRepSize);
                 MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_1, vreg_input_x_1, scale, preg_all_b16);
                 MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_2, vreg_input_x_2, scale, preg_all_b16);
-                if constexpr (sInner > halfOneRep) {
-                    uint32_t n1 = originN;
-                    uint32_t n2 = (originN > halfOneRep) ? (originN - halfOneRep) : 0;
-                    MicroAPI::MaskReg preg_n1_inv = MicroAPI::UpdateMask<T>(n1);
-                    MicroAPI::Not(preg_n1_inv, preg_n1_inv, preg_all_b16);
-                    MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_input_x_1, minValue, preg_n1_inv);
-                    if (n2 > 0) {
-                        MicroAPI::MaskReg preg_n2_inv = MicroAPI::UpdateMask<T>(n2);
-                        MicroAPI::Not(preg_n2_inv, preg_n2_inv, preg_all_b16);
-                        MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_input_x_2, minValue, preg_n2_inv);
-                    } else {
-                        MicroAPI::Duplicate<T>(vreg_input_x_2, minValue, preg_all_b16);
-                    }
-                }
-                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_all_b16);  
-                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner + halfRepSize, vreg_input_x_2, preg_all_b16);
+                MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_input_x_1, minValue, preg_tail1_inv);
+                MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_input_x_2, minValue, preg_tail2_inv);
                 MicroAPI::Max(vreg_input_max_tmp, vreg_input_x_1, vreg_input_x_2, preg_all_b16);
                 MicroAPI::ReduceMax<T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_max_tmp, preg_all_b16);
+                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_all_b16);
+                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner + halfRepSize, vreg_input_x_2, preg_all_b16);
                 MicroAPI::DataCopyUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(maxUb, vreg_input_max, ureg_max, 1);
         }
         MicroAPI::DataCopyUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(maxUb, ureg_max, 0);
@@ -197,20 +191,8 @@ __aicore__ inline void SoftmaxFlashV510NoUpdateImpl256(
                         MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_res_1, vreg_input_x_1, vreg_max_brc, preg_all_b16);
                 MicroAPI::FusedExpSub<T, T, MicroAPI::RegLayout::ONE,
                         MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_res_2, vreg_input_x_2, vreg_max_brc, preg_all_b16);
-                if constexpr (sInner > halfOneRep) {
-                    uint32_t n1 = originN;
-                    uint32_t n2 = (originN > halfOneRep) ? (originN - halfOneRep) : 0;
-                    MicroAPI::MaskReg preg_n1_inv = MicroAPI::UpdateMask<T>(n1);
-                    MicroAPI::Not(preg_n1_inv, preg_n1_inv, preg_all_b16);
-                    MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_exp_res_1, static_cast<T>(0), preg_n1_inv);
-                    if (n2 > 0) {
-                        MicroAPI::MaskReg preg_n2_inv = MicroAPI::UpdateMask<T>(n2);
-                        MicroAPI::Not(preg_n2_inv, preg_n2_inv, preg_all_b16);
-                        MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_exp_res_2, static_cast<T>(0), preg_n2_inv);
-                    } else {
-                        MicroAPI::Duplicate<T>(vreg_exp_res_2, static_cast<T>(0), preg_all_b16);
-                    }
-                }
+                MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_exp_res_1, static_cast<T>(0), preg_tail1_inv);
+                MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_exp_res_2, static_cast<T>(0), preg_tail2_inv);
                 static constexpr MicroAPI::CastTrait castTrait = {MicroAPI::RegLayout::ZERO,
                 MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
                 static constexpr MicroAPI::CastTrait castTrait0 = {MicroAPI::RegLayout::ZERO,
@@ -496,29 +478,23 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(const LocalTensor<T2>& dstT
 
         // x_max = max(src, axis=-1, keepdims=True); x_max = Max(x_max, inMax)
         constexpr uint32_t halfOneRep = halfRepSize;
+        uint32_t n1 = originN;
+        uint32_t n2 = (originN > halfOneRep) ? (originN - halfOneRep) : 0;
+        MicroAPI::MaskReg preg_tail1_inv = MicroAPI::UpdateMask<T>(n1);
+        MicroAPI::Not(preg_tail1_inv, preg_tail1_inv, preg_all_b16);
+        MicroAPI::MaskReg preg_tail2_inv = MicroAPI::UpdateMask<T>(n2);
+        MicroAPI::Not(preg_tail2_inv, preg_tail2_inv, preg_all_b16);
         for (uint16_t i = 0; i < rows; ++i) {
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vreg_input_x_1, srcUb + i * sInner);
                 MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_NORM>(vreg_input_x_2, srcUb + i * sInner + halfRepSize);
                 MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_1, vreg_input_x_1, scale, preg_all_b16);
                 MicroAPI::Muls<T, T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_x_2, vreg_input_x_2, scale, preg_all_b16);
-                if constexpr (sInner > halfOneRep) {
-                    uint32_t n1 = originN;
-                    uint32_t n2 = (originN > halfOneRep) ? (originN - halfOneRep) : 0;
-                    MicroAPI::MaskReg preg_n1_inv = MicroAPI::UpdateMask<T>(n1);
-                    MicroAPI::Not(preg_n1_inv, preg_n1_inv, preg_all_b16);
-                    MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_input_x_1, minValue, preg_n1_inv);
-                    if (n2 > 0) {
-                        MicroAPI::MaskReg preg_n2_inv = MicroAPI::UpdateMask<T>(n2);
-                        MicroAPI::Not(preg_n2_inv, preg_n2_inv, preg_all_b16);
-                        MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_input_x_2, minValue, preg_n2_inv);
-                    } else {
-                        MicroAPI::Duplicate<T>(vreg_input_x_2, minValue, preg_all_b16);
-                    }
-                }
-                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_all_b16);
-                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner + halfRepSize, vreg_input_x_2, preg_all_b16);
+                MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_input_x_1, minValue, preg_tail1_inv);
+                MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_input_x_2, minValue, preg_tail2_inv);
                 MicroAPI::Max(vreg_input_max_tmp, vreg_input_x_1, vreg_input_x_2, preg_all_b16);
                 MicroAPI::ReduceMax<T, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_input_max_tmp, preg_all_b16);
+                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner, vreg_input_x_1, preg_all_b16);
+                MicroAPI::DataCopy<T, MicroAPI::StoreDist::DIST_NORM_B16>(srcUb + i * sInner + halfRepSize, vreg_input_x_2, preg_all_b16);
                 MicroAPI::DataCopyUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(tmpMaxUb, vreg_input_max, ureg_max, 1);
         }
         MicroAPI::DataCopyUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(tmpMaxUb, ureg_max, 0);
@@ -551,20 +527,8 @@ __aicore__ inline void SoftmaxFlashV510UpdateImpl256(const LocalTensor<T2>& dstT
                         MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_res_1, vreg_input_x_1, vreg_max, preg_all_b16);
                 MicroAPI::FusedExpSub<T, T, MicroAPI::RegLayout::ONE,
                         MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_res_2, vreg_input_x_2, vreg_max, preg_all_b16);
-                if constexpr (sInner > halfOneRep) {
-                    uint32_t n1 = originN;
-                    uint32_t n2 = (originN > halfOneRep) ? (originN - halfOneRep) : 0;
-                    MicroAPI::MaskReg preg_n1_inv = MicroAPI::UpdateMask<T>(n1);
-                    MicroAPI::Not(preg_n1_inv, preg_n1_inv, preg_all_b16);
-                    MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_exp_res_1, static_cast<T>(0), preg_n1_inv);
-                    if (n2 > 0) {
-                        MicroAPI::MaskReg preg_n2_inv = MicroAPI::UpdateMask<T>(n2);
-                        MicroAPI::Not(preg_n2_inv, preg_n2_inv, preg_all_b16);
-                        MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_exp_res_2, static_cast<T>(0), preg_n2_inv);
-                    } else {
-                        MicroAPI::Duplicate<T>(vreg_exp_res_2, static_cast<T>(0), preg_all_b16);
-                    }
-                }
+                MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_exp_res_1, static_cast<T>(0), preg_tail1_inv);
+                MicroAPI::Duplicate<T, MicroAPI::MaskMergeMode::MERGING>(vreg_exp_res_2, static_cast<T>(0), preg_tail2_inv);
 
                 MicroAPI::DataCopy<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                         MicroAPI::PostLiteral::POST_MODE_UPDATE>((__ubuf__ T2 *&)expUb1, vreg_exp_res_1, blockStride,
