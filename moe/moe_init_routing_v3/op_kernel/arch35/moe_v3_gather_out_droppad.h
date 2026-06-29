@@ -108,7 +108,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::InitBaseData(GM_ADDR workspace,
     actualExpertNum_ = tilingData->actualExpertNum;
     outputRows_ = tilingData->expertNum * tilingData->expertCapacity;
 
-    // Tiling keeps the n*k split because outputRows > n*k falls back to the original expandedRowIdx scan path.
+    // Tiling split matches Process(): compact scans outputRows, fallback scans the n*k expandedRowIdx space.
     needCoreNum_ = tilingData->gatherOutComputeParamsOp.needCoreNum;
     perCoreIndicesElements_ = tilingData->gatherOutComputeParamsOp.perCoreIndicesElements;
     lastCoreIndicesElements_ = tilingData->gatherOutComputeParamsOp.lastCoreIndicesElements;
