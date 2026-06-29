@@ -243,5 +243,5 @@ def mega_moe(
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
- 	    topo_type=sym_buffer.topo_type
+        topo_type=sym_buffer.topo_type
     )
