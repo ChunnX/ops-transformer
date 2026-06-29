@@ -24,9 +24,9 @@ extern "C" {
 #endif
 
 static aclnnStatus CheckSingleParamQbsa(int64_t batchSize, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-                                         int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode,
-                                         int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                         const char *layoutSparseIndices)
+                                        int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode,
+                                        int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                        const char *layoutSparseIndices)
 {
     if (batchSize < 0) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "batchSize must be >= 0, but got %ld", batchSize);
@@ -48,12 +48,12 @@ static aclnnStatus CheckSingleParamQbsa(int64_t batchSize, int64_t numHeadsQ, in
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maskMode only supports 0, 3, but got %ld", maskMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (maxSeqlenQ <= 0) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenQ must be > 0, but got %ld", maxSeqlenQ);
+    if (maxSeqlenQ <= -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenQ must be > -1, but got %ld", maxSeqlenQ);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (maxSeqlenKv <= 0) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenKv must be > 0, but got %ld", maxSeqlenKv);
+    if (maxSeqlenKv <= -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenKv must be > -1, but got %ld", maxSeqlenKv);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (sparseBlockSizeQ != 128) {
@@ -77,10 +77,10 @@ static aclnnStatus CheckSingleParamQbsa(int64_t batchSize, int64_t numHeadsQ, in
 }
 
 static aclnnStatus CheckExistenceQbsa(const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional,
-                                       const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
-                                       const aclTensor *sequsedKvOptional, int64_t batchSize,
-                                       uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
-                                       const aclTensor *metadata)
+                                      const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+                                      const aclTensor *sequsedKvOptional, int64_t batchSize,
+                                      uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
+                                      const aclTensor *metadata)
 {
     if (sparseSeqLen == nullptr) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sparseSeqLen is nullptr");
@@ -138,13 +138,13 @@ static aclnnStatus CheckConsistencyQbsa(int64_t numHeadsQ, int64_t numHeadsKv)
 }
 
 static aclnnStatus ParamsCheck(const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional,
-                                const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
-                                const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
-                                int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ,
-                                int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode, int64_t maxSeqlenQ,
-                                int64_t maxSeqlenKv, const char *layoutQOptional, const char *layoutKvOptional,
-                                const char *layoutSparseIndicesOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                                const char *socVersion, const aclTensor *metadata)
+                               const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+                               const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
+                               int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ,
+                               int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode, int64_t maxSeqlenQ,
+                               int64_t maxSeqlenKv, const char *layoutQOptional, const char *layoutKvOptional,
+                               const char *layoutSparseIndicesOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
+                               const char *socVersion, const aclTensor *metadata)
 {
     aclnnStatus ret = CheckSingleParamQbsa(batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ,
                                            sparseBlockSizeK, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv,
