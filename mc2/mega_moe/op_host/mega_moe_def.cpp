@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -26,7 +26,8 @@ public:
         .AutoContiguous();
     this->Input("x")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16})
+        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
+                        ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("topk_ids")
@@ -36,26 +37,30 @@ public:
         .AutoContiguous();
     this->Input("topk_weights")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataTypeList({ge::DT_FLOAT, ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight1")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_FLOAT8_E4M3FN})
-        .Format({ge::FORMAT_ND});
+        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
+                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
+                    ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
     this->Input("weight2")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_FLOAT8_E4M3FN})
-        .Format({ge::FORMAT_ND});
+        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
+                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
+                    ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
     this->Input("weight_scales1")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND})
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight_scales2")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND})
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("bias1")
         .ParamType(DYNAMIC)
@@ -74,13 +79,13 @@ public:
         .AutoContiguous();
     this->Input("scales")
         .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT8_E8M0})
+        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
 
     this->Output("y")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16})
+        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
         .FormatList({ge::FORMAT_ND});
     this->Output("expert_token_nums")
         .ParamType(REQUIRED)
@@ -126,7 +131,12 @@ public:
         .AutoContiguous();
     aicore_config_arch22.Input("x")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16})
+        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     aicore_config_arch22.Input("topk_ids")
@@ -136,18 +146,43 @@ public:
         .AutoContiguous();
     aicore_config_arch22.Input("topk_weights")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_FLOAT})
+        .DataType({ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,
+                   ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,
+                   ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,
+                   ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,
+                   ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT,
+                   ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     aicore_config_arch22.Input("weight1")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16})
-        .Format({ge::FORMAT_ND})
+        .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_INT4,
+                   ge::DT_INT32, ge::DT_INT32, ge::DT_INT32,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_INT8, ge::DT_INT8, ge::DT_INT8,
+                   ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+        .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
         .IgnoreContiguous();
     aicore_config_arch22.Input("weight2")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16})
-        .Format({ge::FORMAT_ND})
+        .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_INT4,
+                   ge::DT_INT32, ge::DT_INT32, ge::DT_INT32,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_INT8, ge::DT_INT8, ge::DT_INT8,
+                   ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+        .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
         .IgnoreContiguous();
     aicore_config_arch22.Input("weight_scales1")
         .ParamType(DYNAMIC)
@@ -182,7 +217,12 @@ public:
 
     aicore_config_arch22.Output("y")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16})
+        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16})
         .FormatList({ge::FORMAT_ND});
     aicore_config_arch22.Output("expert_token_nums")
         .ParamType(REQUIRED)
