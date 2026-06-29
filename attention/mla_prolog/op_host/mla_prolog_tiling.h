@@ -108,50 +108,45 @@ constexpr uint32_t MLA_PROLOG_DIM_NUM_4 = 4;
 constexpr uint32_t HEAD_SIZE1 = 7168;
 constexpr uint32_t HEAD_SIZE2 = 7680;
 
-constexpr char CACHE_MODE_BSND[] {"BSND"};
-constexpr char CACHE_MODE_TND[] {"TND"};
-constexpr char CACHE_MODE_PA_BSND[] {"PA_BSND"};
-constexpr char CACHE_MODE_PA_NZ[] {"PA_NZ"};
-constexpr char CACHE_MODE_PA_BLK_BSND[] {"PA_BLK_BSND"};
-constexpr char CACHE_MODE_PA_BLK_NZ[] {"PA_BLK_NZ"};
+constexpr char CACHE_MODE_BSND[]{"BSND"};
+constexpr char CACHE_MODE_TND[]{"TND"};
+constexpr char CACHE_MODE_PA_BSND[]{"PA_BSND"};
+constexpr char CACHE_MODE_PA_NZ[]{"PA_NZ"};
+constexpr char CACHE_MODE_PA_BLK_BSND[]{"PA_BLK_BSND"};
+constexpr char CACHE_MODE_PA_BLK_NZ[]{"PA_BLK_NZ"};
 
-constexpr char V1_OP_NAME[] {"MlaProlog"};
-constexpr char V2_OP_NAME[] {"MlaPrologV2"};
-constexpr char V3_OP_NAME[] {"MlaPrologV3"};
+constexpr char V1_OP_NAME[]{"MlaProlog"};
+constexpr char V2_OP_NAME[]{"MlaPrologV2"};
+constexpr char V3_OP_NAME[]{"MlaPrologV3"};
 
 
-constexpr uint32_t CACHE_MODE_LEN = std::max({sizeof(CACHE_MODE_BSND), 
-                                              sizeof(CACHE_MODE_TND), 
-                                              sizeof(CACHE_MODE_PA_BSND),
-                                              sizeof(CACHE_MODE_PA_NZ),
-                                              sizeof(CACHE_MODE_PA_BLK_BSND),
-                                              sizeof(CACHE_MODE_PA_BLK_NZ)});
+constexpr uint32_t CACHE_MODE_LEN =
+    std::max({sizeof(CACHE_MODE_BSND), sizeof(CACHE_MODE_TND), sizeof(CACHE_MODE_PA_BSND), sizeof(CACHE_MODE_PA_NZ),
+              sizeof(CACHE_MODE_PA_BLK_BSND), sizeof(CACHE_MODE_PA_BLK_NZ)});
 
-constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
-                                            sizeof(V2_OP_NAME), 
-                                            sizeof(V3_OP_NAME)});
+constexpr uint32_t OP_NAME_LEN = std::max({sizeof(V1_OP_NAME), sizeof(V2_OP_NAME), sizeof(V3_OP_NAME)});
 
 struct MlaPrologBaseShapeInfo {
-    uint32_t bSize = 0;         // B
-    uint32_t s1Size = 0;        // S1
-    uint32_t tSize = 0;         // T
-    uint32_t s2Size = 0;        // S2
-    uint32_t heSize = 0;        // He
-    uint32_t hcqSize = 0;       // Hcq
-    uint32_t hckvSize = 0;      // Hckv
-    uint32_t headSizeQc = 0;    // N * D
-    uint32_t headSizeQr = 0;    // N * Dr
-    uint32_t headSizeUqQr = 0;  // N * (D + Dr)
-    uint32_t nSize = 0;         // N
-    uint32_t nkvSize = 0;       // Nkv
-    uint32_t dSize = 0;         // D
+    uint32_t bSize = 0;        // B
+    uint32_t s1Size = 0;       // S1
+    uint32_t tSize = 0;        // T
+    uint32_t s2Size = 0;       // S2
+    uint32_t heSize = 0;       // He
+    uint32_t hcqSize = 0;      // Hcq
+    uint32_t hckvSize = 0;     // Hckv
+    uint32_t headSizeQc = 0;   // N * D
+    uint32_t headSizeQr = 0;   // N * Dr
+    uint32_t headSizeUqQr = 0; // N * (D + Dr)
+    uint32_t nSize = 0;        // N
+    uint32_t nkvSize = 0;      // Nkv
+    uint32_t dSize = 0;        // D
     uint32_t blockNum = 0;
     uint32_t blockSize = 0;
-    uint32_t drSize = 0;        // Dr
-    uint32_t dtileSize = 0;     // Dtile
+    uint32_t drSize = 0;    // Dr
+    uint32_t dtileSize = 0; // Dtile
 };
 
-enum class CACHE_MODE:uint8_t {
+enum class CACHE_MODE : uint8_t {
     BSND = 0,
     PA_BSND = 1,
     PA_NZ = 2,
@@ -160,18 +155,28 @@ enum class CACHE_MODE:uint8_t {
     TND = 5
 };
 
-enum class EMPTY_TENSOR_MODE:uint8_t {
+// cacheMode 字符串 → CACHE_MODE 枚举 hash 查找表
+// CheckCacheMode 已保证执行到此处的 cacheMode 必为 6 个合法串之一
+inline const std::unordered_map<std::string, CACHE_MODE> CACHE_MODE_HASH_TABLE = {
+    {CACHE_MODE_BSND, CACHE_MODE::BSND},
+    {CACHE_MODE_TND, CACHE_MODE::TND},
+    {CACHE_MODE_PA_BSND, CACHE_MODE::PA_BSND},
+    {CACHE_MODE_PA_NZ, CACHE_MODE::PA_NZ},
+    {CACHE_MODE_PA_BLK_BSND, CACHE_MODE::PA_BLK_BSND},
+    {CACHE_MODE_PA_BLK_NZ, CACHE_MODE::PA_BLK_NZ}};
+
+enum class EMPTY_TENSOR_MODE : uint8_t {
     NON_EMPTY = 0,
     EMPTY_CACHE = 1,
     EMPTY_QUERY = 2
 };
 
-enum class ACTUAL_SEQ_MODE:uint8_t {
+enum class ACTUAL_SEQ_MODE : uint8_t {
     DISABLED = 0,
     EN_Q_LEN = 1,
 };
 
-enum class QUANT_MODE:int8_t {
+enum class QUANT_MODE : int8_t {
     ERROR_MODE = -1,
     NO_QUANT = 0,
     PARTIAL_QUANT_KV_NO_QUANT = 1,
@@ -191,7 +196,7 @@ enum class QUANT_MODE:int8_t {
     HIF8_FULL_QUANT_KV_QUANT_PER_TILE = 15
 };
 
-enum class WEIGHT_QUANT_MODE:uint8_t {
+enum class WEIGHT_QUANT_MODE : uint8_t {
     NO_QUANT = 0,
     PARTIAL_QUANT = 1,
     FULL_QUANT = 2,
@@ -200,24 +205,84 @@ enum class WEIGHT_QUANT_MODE:uint8_t {
     HIF8_FULL_QUANT = 5
 };
 
-enum class KV_QUANT_MODE:uint8_t {
+enum class KV_QUANT_MODE : uint8_t {
     NO_QUANT = 0,
     PER_TENSOR = 1,
     PER_CHANNEL = 2,
     PER_TILE = 3
 };
 
-enum class QUERY_QUANT_MODE:uint8_t {
+// weightQuantMode(0-5) × kvQuantMode(0-3) → QUANT_MODE 双重哈希查找表
+// 外层 Key 是 weightQuantMode，内层 Key 是 kvQuantMode，Value 是 QUANT_MODE
+// 只存放合法组合，查不到即非法（含越界与组合非法）
+inline const std::unordered_map<int, std::unordered_map<int, QUANT_MODE>> QUANT_MODE_HASH_TABLE = {
+    // wq=0 NO_QUANT: 合法 kv 仅 {0}
+    {0, {{0, QUANT_MODE::NO_QUANT}}},
+    // wq=1 PARTIAL: 合法 kv 为 {0, 2, 3}
+    {1,
+     {{0, QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT},
+      {2, QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL},
+      {3, QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE}}},
+    // wq=2 FULL: 合法 kv 为 {0, 1, 3}
+    {2,
+     {{0, QUANT_MODE::FULL_QUANT_KV_NO_QUANT},
+      {1, QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR},
+      {3, QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE}}},
+    // wq=3 MXFP8: 合法 kv 为 {0, 1, 3}
+    {3,
+     {{0, QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT},
+      {1, QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR},
+      {3, QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE}}},
+    // wq=4 FP8: 合法 kv 为 {0, 1, 3}
+    {4,
+     {{0, QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT},
+      {1, QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR},
+      {3, QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE}}},
+    // wq=5 HIF8: 合法 kv 为 {0, 1, 3}
+    {5,
+     {{0, QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT},
+      {1, QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR},
+      {3, QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE}}}};
+
+// 各 weightQuantMode 下合法 kvQuantMode 集合说明（用于错误日志 reason 文本，与原实现逐字一致）
+inline const std::unordered_map<int, const char *> VALID_KV_REASON_TABLE = {
+    {0, "When weightQuantMode==0, must be {0}"},       {1, "When weightQuantMode==1, must be {0, 2, 3}"},
+    {2, "When weightQuantMode==2, must be {0, 1, 3}"}, {3, "When weightQuantMode==3, must be {0, 1, 3}"},
+    {4, "When weightQuantMode==4, must be {0, 1, 3}"}, {5, "When weightQuantMode==5, must be {0, 1, 3}"}};
+
+// QUANT_MODE → (weightQuantMode, kvQuantMode) 反向映射表
+// 用于从 quantMode_ 反推 wq/kvq，V1/V2（按 dtype 推断 quantMode_）与 V3（正向查表得 quantMode_）通用
+// 每个 QUANT_MODE 唯一对应一组 (wq, kvq)，与正向表 QUANT_MODE_HASH_TABLE 互逆
+inline const std::unordered_map<QUANT_MODE, std::pair<WEIGHT_QUANT_MODE, KV_QUANT_MODE>> QUANT_MODE_REVERSE_TABLE = {
+    {QUANT_MODE::NO_QUANT, {WEIGHT_QUANT_MODE::NO_QUANT, KV_QUANT_MODE::NO_QUANT}},
+    {QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT, {WEIGHT_QUANT_MODE::PARTIAL_QUANT, KV_QUANT_MODE::NO_QUANT}},
+    {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL, {WEIGHT_QUANT_MODE::PARTIAL_QUANT, KV_QUANT_MODE::PER_CHANNEL}},
+    {QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE, {WEIGHT_QUANT_MODE::PARTIAL_QUANT, KV_QUANT_MODE::PER_TILE}},
+    {QUANT_MODE::FULL_QUANT_KV_NO_QUANT, {WEIGHT_QUANT_MODE::FULL_QUANT, KV_QUANT_MODE::NO_QUANT}},
+    {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR, {WEIGHT_QUANT_MODE::FULL_QUANT, KV_QUANT_MODE::PER_TENSOR}},
+    {QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE, {WEIGHT_QUANT_MODE::FULL_QUANT, KV_QUANT_MODE::PER_TILE}},
+    {QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT, {WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT, KV_QUANT_MODE::NO_QUANT}},
+    {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR,
+     {WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT, KV_QUANT_MODE::PER_TENSOR}},
+    {QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE, {WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT, KV_QUANT_MODE::PER_TILE}},
+    {QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT, {WEIGHT_QUANT_MODE::FP8_FULL_QUANT, KV_QUANT_MODE::NO_QUANT}},
+    {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR, {WEIGHT_QUANT_MODE::FP8_FULL_QUANT, KV_QUANT_MODE::PER_TENSOR}},
+    {QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE, {WEIGHT_QUANT_MODE::FP8_FULL_QUANT, KV_QUANT_MODE::PER_TILE}},
+    {QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT, {WEIGHT_QUANT_MODE::HIF8_FULL_QUANT, KV_QUANT_MODE::NO_QUANT}},
+    {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR, {WEIGHT_QUANT_MODE::HIF8_FULL_QUANT, KV_QUANT_MODE::PER_TENSOR}},
+    {QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE, {WEIGHT_QUANT_MODE::HIF8_FULL_QUANT, KV_QUANT_MODE::PER_TILE}}};
+
+enum class QUERY_QUANT_MODE : uint8_t {
     NO_QUANT = 0,
     PER_TOKEN_HEAD = 1
 };
 
-enum class CKVKR_REPO_MODE:uint8_t {
+enum class CKVKR_REPO_MODE : uint8_t {
     DIVIDE = 0,
     COMBINE = 1
 };
 
-enum class QUANT_SCALE_REPO_MODE:uint8_t {
+enum class QUANT_SCALE_REPO_MODE : uint8_t {
     DIVIDE = 0,
     COMBINE = 1
 };
@@ -230,6 +295,8 @@ struct MlaPrologScenarioInfo {
     CACHE_MODE cacheMode_;
     EMPTY_TENSOR_MODE emptyTensorMode_;
     ACTUAL_SEQ_MODE actualSeqMode_;
+    WEIGHT_QUANT_MODE weightQuantMode_;
+    KV_QUANT_MODE kvQuantMode_;
 };
 
 struct MlaPrologCompileInfo {
@@ -241,11 +308,9 @@ struct BaseParaInfo {
     const gert::StorageShape *shape;
 };
 
-struct RequiredParaInfo : BaseParaInfo {
-};
+struct RequiredParaInfo : BaseParaInfo {};
 
-struct OptionalParaInfo : BaseParaInfo {
-};
+struct OptionalParaInfo : BaseParaInfo {};
 
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t NUM_BYTES_BF16 = 2;
@@ -330,7 +395,7 @@ private:
     ge::graphStatus SetAttrInfo();
     QUANT_MODE GetQuantizationMode() const;
     QUANT_MODE GetQuantizationModeV3() const;
-    QUANT_MODE GetQuantizationModeV3Mxfp8() const;
+    QUANT_MODE GetQuantizationModeV3Dav() const;
     ge::graphStatus SetShapeInfo();
     ge::graphStatus ProcessBaseInputs();
     ge::graphStatus FillTiling();
@@ -382,7 +447,7 @@ private:
 
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
-    bool enableGroupComputeOpt_ = false;    // 低延时场景算例分组标记
+    bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;
@@ -400,6 +465,6 @@ private:
 
 ge::graphStatus TilingPrepareForMlaProlog(gert::TilingParseContext *context);
 MLA_EXTERN_C ge::graphStatus TilingMlaProlog(gert::TilingContext *context);
-} // optiling
+} // namespace optiling
 
 #endif // MLA_PROLOG_TILING_H
