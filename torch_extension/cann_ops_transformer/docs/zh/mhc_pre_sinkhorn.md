@@ -2,7 +2,7 @@
 
 ## 产品支持情况
 
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -214,7 +214,7 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
   | :------- | :----------------- | :------------------------------------- |
   | numIters | 20                 | 迭代次数超出该范围会返回参数无效错误。 |
   | N        | 4                  | 目前只支持4。                          |
-  | C        | [1280, 1920, 2560] | 目前只支持这三个数                     |
+  | C        | A2/A3：128对齐，[1, 100000]；A5：4096、7168 | 尾轴C的取值与芯片版本相关：<term>Atlas A2/A3</term>需满足128对齐且取值范围为[1, 100000]；<term>Ascend 950PR/Ascend 950DT</term>仅支持4096、7168。 |
 
 - 参数约束：
   - x不支持空Tensor。
