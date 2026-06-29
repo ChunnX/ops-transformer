@@ -228,8 +228,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     serverId_ = rankId_ / rankPerServer_;
     rankInServer_ = rankId_ % rankPerServer_;
 
-    params_.hcomm = &hcomm_;
-    params_.mc2Context = mc2Context_;
     //todo:-------------------------------------------
 
     for (int i = 0; i < worldSize_; i++) {
@@ -291,7 +289,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
         return;
     }
     
-    LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512);
+    LocalTensor<uint8_t> hcommTensor_=LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
     hcomm_.Init(hcommTensor_, ALIGN_512);
     // Tensor用处：SendCntCal 函数中记录本卡各专家收到的token总数；
     // Tensor大小：仅记录count值，且各专家之间复用，申请大小为32字节；
@@ -577,7 +575,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
             if (curRankId != rankId_) {
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                //hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
+                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }

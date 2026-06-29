@@ -26,8 +26,8 @@ struct Mc2MoeContext {
     uint32_t epRankId = 0;
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
-    ChannelHandle hcommHandle[HCCL_MAX_RANK_SIZE] = {};   //ROCE或者URMA通信所需句柄
+    uint64_t epHcclBuffer[1024] = {};
+    ChannelHandle hcommHandle[1024] = {};   //ROCE或者URMA通信所需句柄
 };
 
 struct GMMAddrInfo {
