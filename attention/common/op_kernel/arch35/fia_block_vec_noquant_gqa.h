@@ -232,6 +232,19 @@ public:
         }
     }
 
+    __aicore__ inline void ClearOutput()
+    {
+        if (IsInitAttentionOutGm()) {
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
+            InitOutputSingleCore();
+            if (constInfo.isSoftmaxLseEnable) {
+                InitLseOutputSingleCore();
+            }
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            SyncAll();
+        }
+    }
+
     __aicore__ inline bool IsInitAttentionOutGm()
     {
         // TND、NTD场景且不存在无效行,不需要初始化
@@ -249,19 +262,6 @@ public:
             }
         }
         return true;
-    }
-
-    __aicore__ inline void ClearOutput()
-    {
-        if (IsInitAttentionOutGm()) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
-            InitOutputSingleCore();
-            if (constInfo.isSoftmaxLseEnable) {
-                InitLseOutputSingleCore();
-            }
-            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            SyncAll();
-        }
     }
 
     __aicore__ inline void InitOutputSingleCore()
@@ -882,7 +882,8 @@ public:
                 ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
             } else {
                 // 跨多个G
-                ret = (s1FirstValidToken > 0) || (s1LastValidToken < (runInfo.actS1Size - 1));
+                ret = (s1StartTdx < s1FirstValidToken);
+                ret = ret || (s1EndTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
             }
         }
         return ret;

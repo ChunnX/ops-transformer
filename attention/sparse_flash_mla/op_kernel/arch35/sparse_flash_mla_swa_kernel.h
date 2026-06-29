@@ -227,14 +227,13 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Par
     constInfo.sparseBlockSize = 1;
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
     constInfo.actualSeqLenKVSize = constInfo.bSize;
-    constInfo.oriKeyStride0 = sparseFlashMLABaseParams.oriKeyStride0;
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         this->constInfo.isActualLenDimsOriKVNull = 0U;
     } else {
         this->constInfo.isActualLenDimsOriKVNull = (seqUsedOriKV == nullptr);
     }
 
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+    if constexpr (IS_PA) {
         constInfo.oriBlockSize = sparseFlashMLABaseParams.oriBlockSize;
         constInfo.cmpBlockSize = sparseFlashMLABaseParams.cmpBlockSize;
         constInfo.oriMaxBlockNumPerBatch = sparseFlashMLABaseParams.oriMaxBlockNumPerBatch;

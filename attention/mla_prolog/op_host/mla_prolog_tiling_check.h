@@ -176,13 +176,6 @@ private:
     void FillOptionalOutputParamShapeWithDimsV2();
  	void FillOptionalOutputParamShapeWithDimsV3();
     void FillScenarioParamInfo();
-    void FillQueryNormScaleShape();
-    void FillQueryNormDtypes();
-    void FillTokenAndQueryShapes();
-    void FillWeightAndNormShapes();
-    void FillCacheShapes();
-    void CheckRepoMode(bool isPertile, ge::graphStatus &isCorrect);
-    void CheckQueryQuantMode(bool isPertensor, ge::graphStatus &isCorrect);
     void FillNonQuantParamInfo();
     void FillPartialQuantParamInfo();
     void FillPartialKVQuantParamInfo();

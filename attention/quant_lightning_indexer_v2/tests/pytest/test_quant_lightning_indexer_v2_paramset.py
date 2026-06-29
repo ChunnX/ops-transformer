@@ -52,8 +52,7 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0,255]],
         "k_scale_datarange":[[0,65504]],
         "cmp_ratio":[1], #1/2/4/8/16/32/64/128
-        "return_value":[0],
-        "output_idx_offset": [None]
+        "return_value":[0]
     },
 
     # Ascend950 hifp8 场景: BSND query + PA_BBND key
@@ -88,8 +87,7 @@ TEST_PARAMS = {
         "q_scale_datarange":[[0,255]],
         "k_scale_datarange":[[0,65504]],
         "cmp_ratio":[4], #1/2/4/8/16/32/64/128
-        "return_value":[0],
-        "output_idx_offset": [None]
+        "return_value":[0]
     },
 
     # Ascend910_93 场景: TND query + PA_BBND key
@@ -124,8 +122,7 @@ TEST_PARAMS = {
         "k_scale_datarange":[[0,65504]],
         "cmp_ratio":[4], #1/2/4/8/16/32/64/128
         "max_seqlen_q": [-1],
-        "return_value": [0],
-        "output_idx_offset": [None]
+        "return_value": [0]
     }
 
 }

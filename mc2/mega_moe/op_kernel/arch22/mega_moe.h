@@ -121,7 +121,7 @@ private:
     int32_t n;
     int32_t topK;
     int32_t expertPerRank;
-    uint64_t maxOutputSize;
+    int32_t maxOutputSize;
     int32_t EP;
     int32_t listLen;
     float activationClamp;
@@ -302,13 +302,13 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
         epilogueCoreNum = static_cast<uint32_t>(aivNum);
         epilogueGranularity = 0U;
     } else if constexpr (isInt8) {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum); // INT8：所有 AIV 参与
+        epilogueCoreNum = static_cast<uint32_t>(aivNum);
         epilogueGranularity = (expertPerRank > 4) ? static_cast<uint32_t>(expertPerRank - 3) :
-                              (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 1) :
-                                                    1u;
+                              (expertPerRank > 0) ? static_cast<uint32_t>(expertPerRank - 1) :
+                                                    0U;
     } else {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum); // BF16/FP16：所有 AIV 参与
-        epilogueGranularity = (expertPerRank > 2) ? static_cast<uint32_t>(expertPerRank - 2) : 1u;
+        epilogueCoreNum = static_cast<uint32_t>(aivNum);
+        epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 2) : 0U;
     }
 
     constexpr bool kRoutingIsQuant =
@@ -320,7 +320,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                static_cast<uint32_t>(EP),
                                                static_cast<uint32_t>(listLen),
                                                static_cast<uint32_t>(expertPerRank),
-                                               static_cast<uint64_t>(maxOutputSize),
+                                               static_cast<uint32_t>(maxOutputSize),
                                                static_cast<uint32_t>(topK),
                                                initRoutingQuantTilingKey,
                                                epilogueCoreNum,
@@ -358,7 +358,7 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                static_cast<uint32_t>(EP),
                                                static_cast<uint32_t>(listLen),
                                                static_cast<uint32_t>(expertPerRank),
-                                               static_cast<uint64_t>(maxOutputSize),
+                                               static_cast<uint32_t>(maxOutputSize),
                                                static_cast<uint32_t>(topK),
                                                initRoutingQuantTilingKey,
                                                epilogueCoreNum,

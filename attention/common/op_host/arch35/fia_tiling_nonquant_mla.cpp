@@ -278,29 +278,28 @@ bool FiaTilingNonQuantMlaArch35::CheckQKVActualSeqLengthsRight()
     return true;
 }
 
-bool FiaTilingNonQuantMlaArch35::IsQuantStorageMlaExcluded()
-{
-    return fiaInfo_->antiQuantFlag || fiaInfo_->quantFlag || fiaInfo_->isOutQuantEnable ||
-           fiaInfo_->quantMode == FiaQuantMode::FULL_QUANT ||
-           fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST ||
-           fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512;
-}
-
-bool FiaTilingNonQuantMlaArch35::IsFeatureFlagExcluded()
-{
-    return fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag || dnFlag_ ||
-           fiaInfo_->learnableSinkFlag || fiaInfo_->enableAlibiPse || gsMergeFlag_ || pfaMergeFlag_;
-}
-
-bool FiaTilingNonQuantMlaArch35::IsSparseModeExcluded()
-{
-    return fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
-           (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag);
-}
-
 bool FiaTilingNonQuantMlaArch35::CheckS1OutSplit()
 {
-    if (IsQuantStorageMlaExcluded() || IsFeatureFlagExcluded() || IsSparseModeExcluded()) {
+    if (fiaInfo_->antiQuantFlag || fiaInfo_->quantFlag || fiaInfo_->isOutQuantEnable ||
+        fiaInfo_->quantMode == FiaQuantMode::FULL_QUANT) {
+        return false;
+    }
+
+    if (fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag || dnFlag_ ||
+        fiaInfo_->learnableSinkFlag || fiaInfo_->enableAlibiPse || gsMergeFlag_ || pfaMergeFlag_) {
+        return false;
+    }
+
+    if (fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
+        (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
+        return false;
+    }
+
+    if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return false;
+    }
+
+    if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512) {
         return false;
     }
 
@@ -394,13 +393,11 @@ void FiaTilingNonQuantMlaArch35::SplitPolicy()
 
 void FiaTilingNonQuantMlaArch35::ComputeTilingData()
 {
-    SetAttenMaskTilingData();
-    SetStartIdxTilingData();
-    SetPageAttentionLayoutTilingData();
-}
+    // 处理不能直接从fiaInfo赋值到tiling data
 
-void FiaTilingNonQuantMlaArch35::SetAttenMaskTilingData()
-{
+    /*
+     *  mask,sparse mode 相关tiling data
+     */
     if (fiaInfo_->attenMaskFlag) {
         uint64_t maskBatch = 1;
         uint64_t maskDimNum = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDimNum();
@@ -419,10 +416,10 @@ void FiaTilingNonQuantMlaArch35::SetAttenMaskTilingData()
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = 0;
     }
     tilingData_.baseTiling.fiaAttenMaskParams.sparseMode = fiaInfo_->sparseMode;
-}
 
-void FiaTilingNonQuantMlaArch35::SetStartIdxTilingData()
-{
+    /*
+     *  alibi 相关tiling data
+     */
     int64_t qStartIdx = 0;
     int64_t kvStartIdx = 0;
     auto qStartIdxTensor = fiaInfo_->opParamInfo.qStartIdx.tensor;
@@ -442,10 +439,7 @@ void FiaTilingNonQuantMlaArch35::SetStartIdxTilingData()
     }
     tilingData_.baseTiling.fiaPseParams.qStartIdx = qStartIdx;
     tilingData_.baseTiling.fiaPseParams.kvStartIdx = kvStartIdx;
-}
 
-void FiaTilingNonQuantMlaArch35::SetPageAttentionLayoutTilingData()
-{
     if (fiaInfo_->kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         uint32_t keyCacheDimNum = fiaInfo_->opParamInfo.key.shape->GetStorageShape().GetDimNum();
         if (keyCacheDimNum == 3) { // 3: BBH

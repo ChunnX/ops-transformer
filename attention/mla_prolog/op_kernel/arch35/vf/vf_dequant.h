@@ -16,7 +16,6 @@
 #ifndef VF_DEQUANT_H
 #define VF_DEQUANT_H
 #include "kernel_tensor.h"
-#include "vf_comm.h"
 
 namespace MlaProlog {
 
@@ -33,12 +32,10 @@ __simd_vf__ void DequantVFImpl(__ubuf__ O *yAddr, __ubuf__ T *xAddr, __ubuf__ C 
     AscendC::MicroAPI::RegTensor<T> vregInput;
     AscendC::MicroAPI::RegTensor<C> vregScalePerChannel;
     AscendC::MicroAPI::RegTensor<C> vregScalePerToken;
-    AscendC::MicroAPI::RegTensor<C> vregInputFp32; // cast成C之后的vregInput
-    AscendC::MicroAPI::RegTensor<O> vregOutput;
-    AscendC::MicroAPI::MaskReg fullMask = AscendC::MicroAPI::CreateMask<C, AscendC::MicroAPI::MaskPattern::ALL>();
-    AscendC::MicroAPI::MaskReg fullMaskCast = AscendC::MicroAPI::CreateMask<O, AscendC::MicroAPI::MaskPattern::ALL>();
+    AscendC::MicroAPI::RegTensor<float> vregInputFp32; // cast成float之后的vregInput
+    AscendC::MicroAPI::MaskReg fullMask = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
     AscendC::MicroAPI::MaskReg tailMask;
-    tailMask = AscendC::MicroAPI::UpdateMask<C>(dTail);
+    tailMask = AscendC::MicroAPI::UpdateMask<float>(dTail);
 
     uint32_t colOffset = 0;
     uint32_t rowOffset = 0;
@@ -61,14 +58,8 @@ __simd_vf__ void DequantVFImpl(__ubuf__ O *yAddr, __ubuf__ T *xAddr, __ubuf__ C 
             }
             AscendC::MicroAPI::Mul(vregInputFp32, vregInputFp32, vregScalePerChannel, fullMask);
             AscendC::MicroAPI::Mul(vregInputFp32, vregInputFp32, vregScalePerToken, fullMask);
-            if constexpr (std::is_same<O, C>::value) {
-                AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
-                    yAddr + colOffset + rowOffset, vregInputFp32, fullMask);
-            } else {
-                AscendC::MicroAPI::Cast<O, C, castTraitB322B16>(vregOutput, vregInputFp32, fullMask);
-                AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    yAddr + colOffset + rowOffset, vregOutput, fullMaskCast);
-            }
+            AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(yAddr + colOffset + rowOffset,
+                                                                                          vregInputFp32, fullMask);
             rowOffset += stride;
             scaleOffset += fp32BlockElementNum;
         }
@@ -93,14 +84,8 @@ __simd_vf__ void DequantVFImpl(__ubuf__ O *yAddr, __ubuf__ T *xAddr, __ubuf__ C 
             }
             AscendC::MicroAPI::Mul(vregInputFp32, vregInputFp32, vregScalePerChannel, tailMask);
             AscendC::MicroAPI::Mul(vregInputFp32, vregInputFp32, vregScalePerToken, tailMask);
-            if constexpr (std::is_same<O, C>::value) {
-                AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
-                    yAddr + dLoops * floatRepSize + rowOffset, vregInputFp32, tailMask);
-            } else {
-                AscendC::MicroAPI::Cast<O, C, castTraitB322B16>(vregOutput, vregInputFp32, tailMask);
-                AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    yAddr + dLoops * floatRepSize + rowOffset, vregOutput, tailMask);
-            }
+            AscendC::MicroAPI::StoreAlign<O, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
+                yAddr + dLoops * floatRepSize + rowOffset, vregInputFp32, tailMask);
             rowOffset += stride;
             scaleOffset += fp32BlockElementNum;
         }

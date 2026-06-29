@@ -44,7 +44,8 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
 
     LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
     LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
-    LocalTensor<O> outputLocal = scaleLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    LocalTensor<C> computeLocal = scaleLocal[count + 16].template ReinterpretCast<C>();  // count * sizeof(C)
+    LocalTensor<O> outputLocal = computeLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
     DataCopyParams copyParams{
         static_cast<uint16_t>(dequantRowColStrideParams.row),
@@ -68,7 +69,10 @@ DequantPerTokenQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputG
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
-        Dequant<T, O>(outputLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        AscendC::PipeBarrier<PIPE_V>();
+        // cast
+        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -147,7 +151,8 @@ DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
     int64_t count = dequantRowColStrideParams.col * 1;
     LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                         // count * sizeof(T)
     LocalTensor<C> scaleLocal = inputLocal[count + 16].template ReinterpretCast<C>();    // count * sizeof(C)
-    LocalTensor<O> outputLocal = scaleLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
+    LocalTensor<C> computeLocal = scaleLocal[count + 16].template ReinterpretCast<C>();  // count * sizeof(C)
+    LocalTensor<O> outputLocal = computeLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
 
     DataCopyParams inputCopyParams{
         static_cast<uint16_t>(1), static_cast<uint16_t>(count * sizeof(T) / 32U),
@@ -173,7 +178,10 @@ DequantSplitNQc(const GlobalTensor<O> &outputGm, const GlobalTensor<T> &inputGm,
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
         // compute
-        Dequant<T, O>(outputLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        Dequant(computeLocal, inputLocal, scaleLocal, deQuantScaleQcQrLocal, rectangleParams);
+        AscendC::PipeBarrier<PIPE_V>();
+        // cast
+        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, count);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
         // copy out
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);

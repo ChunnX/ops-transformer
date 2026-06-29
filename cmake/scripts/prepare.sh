@@ -122,10 +122,6 @@ while [[ $# -gt 0 ]]; do
         CANN_3RD_LIB_PATH="$(realpath $2)"
         shift 2
         ;;
-    --module)
-        ASCEND_MODULE_NAME="$2"
-        shift 2
-        ;;
     *)
         break
         ;;
@@ -183,8 +179,7 @@ function build() {
         -DENABLE_TILING_SINK=${ENABLE_TILING_SINK} \
         -DENABLE_AICPU=${ENABLE_AICPU} \
         -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}  \
-        -DENABLE_OOM=${ENABLE_OOM} \
-        -DASCEND_MODULE_NAME=${ASCEND_MODULE_NAME}
+        -DENABLE_OOM=${ENABLE_OOM}
         
     make ${JOB_NUM} prepare_build
 }

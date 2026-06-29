@@ -35,8 +35,6 @@ public:
     ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo) override;
 
 private:
-    ge::graphStatus CheckShapeConsistency(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKVStorageConsistency(const FiaTilingInfo &fiaInfo);
     // 公共校验函数
     ge::graphStatus CheckInputFormat(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckParaExistenceImpl(const FiaTilingInfo &fiaInfo);
@@ -71,7 +69,6 @@ private:
     ge::graphStatus CheckDimNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckHeadNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInputLayout(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus ValidateNoRopeLayoutDim(const FiaTilingInfo &fiaInfo, const std::string &inputLayout);
     ge::graphStatus CheckInnerPrecise(const FiaTilingInfo &fiaInfo);
     bool CheckTNDLayoutCrossover(const FiaTilingInfo &fiaInfo);
     bool CheckNTDLayoutCrossover(const FiaTilingInfo &fiaInfo);

@@ -230,10 +230,6 @@ public:
     ge::graphStatus CheckRotaryModeShapeRelation(const int64_t d);
     ge::graphStatus CheckShapeAllPositive(const int64_t idx) const;
     ge::graphStatus CheckShapeAllPositive() const;
-    bool IsNoOp() const
-    {
-        return isNoOp_;
-    }
     std::string rotaryModeStr_;
 
     ge::graphStatus GetPlatformInfo();
@@ -280,11 +276,11 @@ public:
         if (ret != ge::GRAPH_SUCCESS) {
             return ret;
         }
-        // No-op: empty slice or empty cos/sin D, nothing to compute
-        if (IsNoOp()) {
+        // No-op: empty slice, nothing to compute
+        if (sliceLength_ == 0) {
             InplacePartialRopeRegbaseTilingData noopTiling;
             noopTiling.set_sliceStart(sliceStart_);
-            noopTiling.set_sliceEnd(sliceStart_);
+            noopTiling.set_sliceEnd(sliceEnd_);
             noopTiling.set_sliceLength(0);
             noopTiling.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
             noopTiling.set_D(d_);
@@ -350,7 +346,6 @@ protected:
     int64_t sliceLength_{0};
     int64_t cosd_{0};
     int64_t sind_{0};
-    bool isNoOp_{false};
 };
 
 class InplacePartialRopeRegBaseTilingClassAAndB : public InplacePartialRopeRegBaseTilingClass {

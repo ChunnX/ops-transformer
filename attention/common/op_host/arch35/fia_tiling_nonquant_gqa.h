@@ -78,9 +78,6 @@ private:
     bool CheckS1OutSplit();
     void SplitOutSeq();
     void ComputeTilingData();
-    void SetAttenMaskTilingData();
-    void SetStartIdxTilingData();
-    void SetPageAttentionLayoutTilingData();
     void GenTilingKey();
     void CalcWorkspaceSize();
     void UpdateTilingKeyConfig();
