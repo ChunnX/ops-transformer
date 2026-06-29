@@ -155,11 +155,6 @@ int64_t CeilDiv(int64_t value, int64_t factor)
     return (value + factor - 1) / factor;
 }
 
-struct WeightLayout {
-    bool transpose;
-    int64_t n;
-};
-
 bool IsNonTransWeightLayout(const at::Tensor &weightTensor, const at::Tensor &weightScaleTensor, int64_t e, int64_t k,
     int64_t n)
 {
@@ -184,17 +179,20 @@ bool IsTransWeightLayout(const at::Tensor &weightTensor, const at::Tensor &weigh
         weightScaleTensor.size(DIM_3) == 2;
 }
 
-WeightLayout InferWeightLayout(const at::Tensor &weightTensor, const at::Tensor &weightScaleTensor, int64_t e,
-    int64_t k)
+int64_t InferLogicalN(const at::Tensor &weightTensor, const at::Tensor &weightScaleTensor, int64_t e, int64_t k)
 {
     int64_t nonTransN = weightScaleTensor.size(DIM_2);
     if (IsNonTransWeightLayout(weightTensor, weightScaleTensor, e, k, nonTransN)) {
-        return {false, nonTransN};
+        std::printf("[GMMAQ torch] infer logical N by non-transposed view: n=%ld.\n", nonTransN);
+        std::fflush(stdout);
+        return nonTransN;
     }
 
     int64_t transN = weightScaleTensor.size(DIM_1);
     if (IsTransWeightLayout(weightTensor, weightScaleTensor, e, k, transN)) {
-        return {true, transN};
+        std::printf("[GMMAQ torch] infer logical N by transposed view: n=%ld.\n", transN);
+        std::fflush(stdout);
+        return transN;
     }
 
     TORCH_CHECK(false,
@@ -203,7 +201,7 @@ WeightLayout InferWeightLayout(const at::Tensor &weightTensor, const at::Tensor 
         "weight_scale (E, ceil(K / 64), N, 2); "
         "transposed logical weight (E, N, K), "
         "weight_scale (E, N, ceil(K / 64), 2).");
-    return {false, 0};
+    return 0;
 }
 
 void CheckTensorList(const std::vector<at::Tensor> &tensorList, const char *name)
@@ -213,22 +211,11 @@ void CheckTensorList(const std::vector<at::Tensor> &tensorList, const char *name
     TORCH_CHECK(tensorList[0].defined(), name, "[0] must be a defined tensor.");
 }
 
-std::vector<int64_t> GetExpectedWeightStorageShape(const WeightLayout &weightLayout, int64_t e, int64_t k)
-{
-    if (weightLayout.transpose) {
-        return {e, CeilDiv(k, 32), CeilDiv(weightLayout.n, 16), 16, 32};
-    }
-    return {e, CeilDiv(weightLayout.n, 32), CeilDiv(k, 16), 16, 32};
-}
-
-at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, const WeightLayout &weightLayout,
-    int64_t e, int64_t k, c10::SmallVector<at::Tensor, 1> &weightVec)
+at::TensorList PrepareWeightList(const std::vector<at::Tensor> &weight, c10::SmallVector<at::Tensor, 1> &weightVec)
 {
     at::Tensor weightForNz = weight[DIM_0];
-    auto expectedStorageShape = GetExpectedWeightStorageShape(weightLayout, e, k);
     auto storageSizes = at_npu::native::get_npu_storage_sizes(weightForNz);
-    std::printf("[GMMAQ torch] weight storage sizes: actual=%s, expected=%s.\n",
-        ShapeToString(storageSizes).c_str(), ShapeToString(expectedStorageShape).c_str());
+    std::printf("[GMMAQ torch] weight storage sizes: actual=%s.\n", ShapeToString(storageSizes).c_str());
     std::fflush(stdout);
     weightVec.clear();
     weightVec.emplace_back(weightForNz);
@@ -274,8 +261,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     int64_t m = x.size(DIM_0);
     int64_t k = x.size(DIM_1);
     int64_t e = groupList.size(DIM_0);
-    WeightLayout weightLayout = InferWeightLayout(weightTensor, weightScaleTensor, e, k);
-    int64_t n = weightLayout.n;
+    int64_t n = InferLogicalN(weightTensor, weightScaleTensor, e, k);
 
     aclDataType xAclDtype = GetTensorAclDataType(xDtype, x);
     aclDataType weightAclDtype = GetTensorAclDataType(weightDtype, weightTensor);
@@ -301,7 +287,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     }
 
     c10::SmallVector<at::Tensor, 1> weightVec;
-    at::TensorList weightRef = PrepareWeightList(weight, weightLayout, e, k, weightVec);
+    at::TensorList weightRef = PrepareWeightList(weight, weightVec);
     at::TensorList weightScaleRef = weightScale;
     const std::vector<at::Tensor> emptyBias;
     const std::vector<at::Tensor> &bias = biasOptional.has_value() ? biasOptional.value() : emptyBias;
@@ -324,7 +310,7 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
 
     ACLNN_CMD(aclnnGroupedMatmulActivationQuantWeightNz,
         xWrapper, groupList, weightWrapper, weightScaleWrapper, biasRef, xScaleWrapper,
-        activationTypePtr, weightLayout.transpose, groupListType, tuningConfigRef, quantModePtr, yDtypeValue,
+        activationTypePtr, groupListType, tuningConfigRef, quantModePtr, yDtypeValue,
         roundModePtr, scaleAlg, dstTypeMax, yWrapper, yScaleWrapper);
     return std::tie(y, yScale);
 }
