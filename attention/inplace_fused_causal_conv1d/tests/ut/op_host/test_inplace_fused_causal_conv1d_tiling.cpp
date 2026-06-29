@@ -15,8 +15,8 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../../fused_causal_conv1d/op_host/fused_causal_conv1d_cut_bh_tiling_arch35.h"
-#include "../../../../fused_causal_conv1d/op_host/fused_causal_conv1d_cut_bsh_tiling_arch35.h"
+#include "../../../../cloud_causal_conv1d_fn/op_host/cloud_causal_conv1d_fn_cut_bh_tiling_arch35.h"
+#include "../../../../cloud_causal_conv1d_fn/op_host/cloud_causal_conv1d_fn_cut_bsh_tiling_arch35.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -50,17 +50,17 @@ static std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(
 // BH Tiling Tests (max_query_len <= 8, 3D/2D short-seq)
 // ============================================================
 
-class InplaceFusedCausalConv1dCutBHTiling : public testing::Test {
+class InplaceCloudCausalConv1dFnCutBHTiling : public testing::Test {
 protected:
-    static void SetUpTestCase()  { std::cout << "InplaceFusedCausalConv1dCutBHTiling SetUp"  << std::endl; }
-    static void TearDownTestCase() { std::cout << "InplaceFusedCausalConv1dCutBHTiling TearDown" << std::endl; }
+    static void SetUpTestCase()  { std::cout << "InplaceCloudCausalConv1dFnCutBHTiling SetUp"  << std::endl; }
+    static void TearDownTestCase() { std::cout << "InplaceCloudCausalConv1dFnCutBHTiling TearDown" << std::endl; }
 };
 
 // ---- 3D Input, BF16, decode baseline ----
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_3d_bf16_b4_s1_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_3d_bf16_b4_s1_d512)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 1, 0, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -86,9 +86,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_3d_bf16_b4_s1_d512)
         "16 4 4 4 0 128 128 4 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 4 1 0 512 3 2 512 1024 512 -1 0 1 0 0 128 0 1 1 0 0 0 1 128 128 ", {});
 }
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_3d_bf16_b1_s4_d1024)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_3d_bf16_b1_s4_d1024)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 4, 0, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -116,9 +116,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_3d_bf16_b1_s4_d1024)
 
 // ---- 2D Input, FP16, non-APC + non-MTP ----
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_fp16_b1_s4_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_2d_fp16_b1_s4_d512)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 4, 0, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -144,9 +144,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_fp16_b1_s4_d512)
         "4 4 1 4 0 128 128 1 0 1 1 1 1 1 1 128 128 1 1 1 1 128 128 1 4 4 512 3 5 512 2560 512 -1 1 0 0 0 128 0 1 1 0 0 0 1 128 128 ", {});
 }
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_fp16_b32_s128_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_2d_fp16_b32_s128_d512)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 4, 0, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -174,9 +174,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_fp16_b32_s128_d512)
 
 // ---- BH 2D: with MTP ----
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_hasNAT_fp16_b4_s16_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_2d_hasNAT_fp16_b4_s16_d512)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 4, 0, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -204,9 +204,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_hasNAT_fp16_b4_s16_d512)
 
 // ---- BH 2D: with APC ----
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_apc_fp16_b8_s32_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_2d_apc_fp16_b8_s32_d512)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 4, 0, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -234,9 +234,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_apc_fp16_b8_s32_d512)
 
 // ---- BH 2D: APC + MTP ----
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_apc_hasNAT_fp16_b6_s48_d768)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_2d_apc_hasNAT_fp16_b6_s48_d768)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 8, 0, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -264,9 +264,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_apc_hasNAT_fp16_b6_s48_d768)
 
 // ---- BH 2D: inplace ----
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_inplace_fp16_b4_s16_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_2d_inplace_fp16_b4_s16_d512)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 4, 0, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -294,9 +294,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_inplace_fp16_b4_s16_d512)
 
 // ---- BH 2D: conv_mode=1 + numComputed ----
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_conv1_fp16_b4_s16_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_2d_conv1_fp16_b4_s16_d512)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 4, 0, 128, 1);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -324,9 +324,9 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_conv1_fp16_b4_s16_d512)
 
 // ---- BH 2D: residual_connection ----
 
-TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_residual_fp16_b4_s16_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBHTiling, bh_2d_residual_fp16_b4_s16_d512)
 {
-    optiling::FusedCausalConv1dCutBHCompileInfo c = {64, 261888};
+    optiling::CloudCausalConv1dFnCutBHCompileInfo c = {64, 261888};
     auto a = MakeAttrs(0, -1, 0, 4, 1, 128, 0);
     gert::TilingContextPara p("InplaceFusedCausalConv1d",
         {
@@ -356,17 +356,17 @@ TEST_F(InplaceFusedCausalConv1dCutBHTiling, bh_2d_residual_fp16_b4_s16_d512)
 // BSH Tiling Tests (max_query_len > 8, 2D input long-seq)
 // ============================================================
 
-class InplaceFusedCausalConv1dCutBSHTiling : public testing::Test {
+class InplaceCloudCausalConv1dFnCutBSHTiling : public testing::Test {
 protected:
-    static void SetUpTestCase()  { std::cout << "InplaceFusedCausalConv1dCutBSHTiling SetUp"  << std::endl; }
-    static void TearDownTestCase() { std::cout << "InplaceFusedCausalConv1dCutBSHTiling TearDown" << std::endl; }
+    static void SetUpTestCase()  { std::cout << "InplaceCloudCausalConv1dFnCutBSHTiling SetUp"  << std::endl; }
+    static void TearDownTestCase() { std::cout << "InplaceCloudCausalConv1dFnCutBSHTiling TearDown" << std::endl; }
 };
 
 struct BshCompileInfo {};
 
 // ---- BSH: non-APC, non-MTP baseline ----
 
-TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_fp16_b2_s256_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBSHTiling, bsh_noNAT_noapc_fp16_b2_s256_d512)
 {
     BshCompileInfo ci;
     auto a = MakeAttrs(0, -1, 0, 256, 0, 128, 0);
@@ -394,7 +394,7 @@ TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_fp16_b2_s256_d512)
         "1 1 18 18 128 128 1 1 17 17 128 128 4 0 128 128 16 14 18 17 64 3 256 512 2 -1 2 512 1024 512 0 0 128 0 0 1 0 0 1 0 1 128 128 ", {17039360});
 }
 
-TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_fp16_b1_s64_d256)
+TEST_F(InplaceCloudCausalConv1dFnCutBSHTiling, bsh_noNAT_noapc_fp16_b1_s64_d256)
 {
     BshCompileInfo ci;
     auto a = MakeAttrs(0, -1, 0, 64, 0, 128, 0);
@@ -424,7 +424,7 @@ TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_fp16_b1_s64_d256)
 
 // ---- BSH: APC ----
 
-TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_apc_fp16_b12_s200_d1024)
+TEST_F(InplaceCloudCausalConv1dFnCutBSHTiling, bsh_noNAT_apc_fp16_b12_s200_d1024)
 {
     BshCompileInfo ci;
     auto a = MakeAttrs(0, -1, 0, 200, 0, 128, 0);
@@ -455,7 +455,7 @@ TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_apc_fp16_b12_s200_d1024)
 
 // ---- BSH: APC + MTP (key debug case: b58_s243_d2592, conv_mode=1) ----
 
-TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_hasNAT_apc_conv1_fp16_b58_s243_d2592)
+TEST_F(InplaceCloudCausalConv1dFnCutBSHTiling, bsh_hasNAT_apc_conv1_fp16_b58_s243_d2592)
 {
     BshCompileInfo ci;
     auto a = MakeAttrs(0, -1, 0, 15, 0, 86, 1);
@@ -486,7 +486,7 @@ TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_hasNAT_apc_conv1_fp16_b58_s243_
 
 // ---- BSH: conv_mode=1 + numComputed (Plan A debug case: b58_s504_d3296) ----
 
-TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_conv1_fp16_b58_s504_d3296)
+TEST_F(InplaceCloudCausalConv1dFnCutBSHTiling, bsh_noNAT_noapc_conv1_fp16_b58_s504_d3296)
 {
     BshCompileInfo ci;
     auto a = MakeAttrs(0, -1, 0, 27, 0, 234, 1);
@@ -517,7 +517,7 @@ TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_conv1_fp16_b58_s504
 
 // ---- BSH: inplace ----
 
-TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_inplace_fp16_b12_s300_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBSHTiling, bsh_noNAT_noapc_inplace_fp16_b12_s300_d512)
 {
     BshCompileInfo ci;
     auto a = MakeAttrs(0, -1, 0, 300, 0, 128, 0);
@@ -547,7 +547,7 @@ TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_inplace_fp16_b12_s3
 
 // ---- BSH: residual_connection ----
 
-TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_residual_fp16_b4_s128_d1024)
+TEST_F(InplaceCloudCausalConv1dFnCutBSHTiling, bsh_noNAT_noapc_residual_fp16_b4_s128_d1024)
 {
     BshCompileInfo ci;
     auto a = MakeAttrs(0, -1, 0, 128, 1, 128, 0);
@@ -577,7 +577,7 @@ TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_residual_fp16_b4_s1
 
 // ---- BSH: BF16 ----
 
-TEST_F(InplaceFusedCausalConv1dCutBSHTiling, bsh_noNAT_noapc_bf16_b4_s128_d512)
+TEST_F(InplaceCloudCausalConv1dFnCutBSHTiling, bsh_noNAT_noapc_bf16_b4_s128_d512)
 {
     BshCompileInfo ci;
     auto a = MakeAttrs(0, -1, 0, 128, 0, 128, 0);
