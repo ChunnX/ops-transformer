@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_flash_mla_scfa_block_cube.h
+ * \file sparse_flash_mla_csa_block_cube.h
  * \brief use 7 buffer for matmul l1, better pipeline
  */
-#ifndef SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
-#define SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
+#ifndef SPARSE_FLASH_MLA_CSA_BLOCK_CUBE_H
+#define SPARSE_FLASH_MLA_CSA_BLOCK_CUBE_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -852,4 +852,4 @@ __aicore__ inline void SMLACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, con
     qpL1BufIter += mL1Loops;
 }
 } // namespace SMLAKernel
-#endif // SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
+#endif // SPARSE_FLASH_MLA_CSA_BLOCK_CUBE_H

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file sparse_flash_mla_scfa_block_vector.h
+ * \file sparse_flash_mla_csa_block_vector.h
  * \brief
  */
-#ifndef SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H
-#define SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H
+#ifndef SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
+#define SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -1135,4 +1135,4 @@ __aicore__ inline void SMLAVectorBlock<SMLAT>::RowMuls(LocalTensor<T> dstUb, Loc
     }
 }
 } // namespace SMLAKernel
-#endif // SPARSE_FLASH_MLA_SCFA_BLOCK_VECTOR_H
+#endif // SPARSE_FLASH_MLA_CSA_BLOCK_VECTOR_H
