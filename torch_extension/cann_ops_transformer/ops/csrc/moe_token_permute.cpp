@@ -83,7 +83,7 @@ int64_t ResolveQuantMode(const at::Tensor &tokens, int64_t quantMode)
     TORCH_CHECK(effectiveQuantMode == QUANT_MODE_NONE || IsMxQuantMode(effectiveQuantMode),
         "quant_mode only supports -1, 2, 3 or 9 on Ascend 950.");
     TORCH_CHECK(!tokens.requires_grad() || effectiveQuantMode == QUANT_MODE_NONE,
-        "npu_moe_token_permute does not support autograd when quant_mode is 2, 3 or 9.");
+        "moe_token_permute does not support autograd when quant_mode is 2, 3 or 9.");
     return effectiveQuantMode;
 }
 
@@ -138,7 +138,7 @@ void FixMxfp4AclDtypes(int64_t quantMode, TensorWrapper &permutedTokensWrapper,
 }  // namespace
 
 namespace op_api {
-std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_moe_token_permute(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> moe_token_permute(
     const at::Tensor &tokens,
     const at::Tensor &indices,
     c10::optional<int64_t> num_out_tokens,
@@ -169,6 +169,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_moe_token_permute(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_moe_token_permute", &npu_moe_token_permute, "npu_moe_token_permute");
+    m.def("moe_token_permute", &moe_token_permute, "moe_token_permute");
 }
 }  // namespace op_api

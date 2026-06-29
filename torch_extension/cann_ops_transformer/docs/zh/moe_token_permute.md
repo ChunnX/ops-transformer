@@ -1,4 +1,4 @@
-# npu_moe_token_permute
+# moe_token_permute
 
 ## 产品支持情况
 
@@ -11,14 +11,14 @@
 
 ## 功能说明
 
-`npu_moe_token_permute`是基于`torch_npu`的`cann_ops_transformer`扩展接口。该接口根据`indices`将输入`tokens`扩展，并按照专家索引排序，返回排序后的token及其与原始token的映射关系。
+`moe_token_permute`是基于`torch_npu`的`cann_ops_transformer`扩展接口。该接口根据`indices`将输入`tokens`扩展，并按照专家索引排序，返回排序后的token及其与原始token的映射关系。
 
 在Ascend 950平台上，接口还支持在permute过程中将输出量化为MXFP8或MXFP4，并返回对应的per-token分块scale。非Ascend 950平台忽略量化模式，按非量化路径执行。
 
 ## 函数原型
 
 ```python
-cann_ops_transformer.ops.npu_moe_token_permute(
+cann_ops_transformer.ops.moe_token_permute(
     tokens,
     indices,
     num_out_tokens=None,
@@ -108,7 +108,7 @@ AlignUp(a, b)  = CeilDiv(a, b) * b
 ```python
 import torch
 import torch_npu
-from cann_ops_transformer.ops import npu_moe_token_permute
+from cann_ops_transformer.ops import moe_token_permute
 
 tokens = torch.randn(4, 128, dtype=torch.float16, device="npu")
 indices = torch.tensor(
@@ -117,7 +117,7 @@ indices = torch.tensor(
     device="npu",
 )
 
-permuted_tokens, sorted_indices, expanded_scale = npu_moe_token_permute(
+permuted_tokens, sorted_indices, expanded_scale = moe_token_permute(
     tokens,
     indices,
     num_out_tokens=6,
@@ -131,7 +131,7 @@ print(expanded_scale.shape)   # torch.Size([0])
 ### Ascend 950 MXFP8调用
 
 ```python
-permuted_tokens, sorted_indices, expanded_scale = npu_moe_token_permute(
+permuted_tokens, sorted_indices, expanded_scale = moe_token_permute(
     tokens,
     indices,
     quant_mode=2,

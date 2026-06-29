@@ -49,7 +49,7 @@ def _ceil_div(value: int, divisor: int) -> int:
 
 class MoeTokenPermuteOpBuilder(OpBuilder):
     def __init__(self):
-        super(MoeTokenPermuteOpBuilder, self).__init__("npu_moe_token_permute")
+        super(MoeTokenPermuteOpBuilder, self).__init__("moe_token_permute")
 
     def sources(self):
         return ['ops/csrc/moe_token_permute.cpp']
@@ -68,12 +68,12 @@ class MoeTokenPermuteOpBuilder(OpBuilder):
         return paths
 
     def schema(self) -> str:
-        return "npu_moe_token_permute(Tensor tokens, Tensor indices, " \
+        return "moe_token_permute(Tensor tokens, Tensor indices, " \
             "int? num_out_tokens=None, bool padded_mode=False, int quant_mode=-1) -> (Tensor, Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_token_permute_meta(tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1):
+        def moe_token_permute_meta(tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1):
             torch._check(
                 tokens.dim() == 2,
                 lambda: f"tokens must be a 2D tensor, but got {tokens.dim()} dimensions."
@@ -125,18 +125,18 @@ op_module = moe_token_permute_op_builder.load()
 
 
 @impl(AS_LIBRARY, moe_token_permute_op_builder.name, "PrivateUse1")
-def _npu_moe_token_permute(tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1):
-    return op_module.npu_moe_token_permute(tokens, indices, num_out_tokens, padded_mode, quant_mode)
+def _moe_token_permute(tokens, indices, num_out_tokens=None, padded_mode=False, quant_mode=-1):
+    return op_module.moe_token_permute(tokens, indices, num_out_tokens, padded_mode, quant_mode)
 
 
-def npu_moe_token_permute(
+def moe_token_permute(
     tokens: torch.Tensor,
     indices: torch.Tensor,
     num_out_tokens: Optional[int] = None,
     padded_mode: bool = False,
     quant_mode: int = _QUANT_MODE_NONE,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    return torch.ops.cann_ops_transformer.npu_moe_token_permute(
+    return torch.ops.cann_ops_transformer.moe_token_permute(
         tokens,
         indices,
         num_out_tokens,
