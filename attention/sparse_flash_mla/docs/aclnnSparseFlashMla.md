@@ -175,7 +175,7 @@ aclnnStatus aclnnSparseFlashMla(
           <li>layoutKv为BSND时：(B, S2, N2, D)</li>
           <li>layoutKv为TND时：(T2, N2, D)</li>
         </ul>
-        N2仅支持1，D仅支持512。
+        N2仅支持1，D仅支持512，由nope(448)和rope(64)拼接而成。
       </td>
       <td>√</td>
     </tr>
@@ -192,7 +192,7 @@ aclnnStatus aclnnSparseFlashMla(
           <li>layoutKv为BSND时：(B, S3, N2, D)</li>
           <li>layoutKv为TND时：(T3, N2, D)</li>
         </ul>
-        N2仅支持1，D仅支持512。
+        N2仅支持1，D仅支持512，由nope(448)和rope(64)拼接而成。
       </td>
       <td>√</td>
     </tr>
