@@ -268,7 +268,7 @@ public:
                     LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
 
-                    NpuArch::Arch::CrossCoreWaitFlag(qkReady_);
+                    // NpuArch::Arch::CrossCoreWaitFlag(qkReady_);
 
                     epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS],
                         ubPLayout, ubSLayout,
@@ -317,7 +317,7 @@ public:
                     LayoutUpdate ubUpdateLayout(rowNumRound, embedRound);
                     GemmCoord actualBlockShapePV{rowNum, embed_, validTileSize[kvBlockIdxDe]};
 
-                    // NpuArch::Arch::CrossCoreWaitFlag(pvReady_);
+                    NpuArch::Arch::CrossCoreWaitFlag(pvReady_);
 
                     epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate],
                         gLse[static_cast<int64_t>(qToken) * qHeads_ + qHeadStart],
