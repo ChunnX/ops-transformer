@@ -31,7 +31,7 @@ class MhcPostFunction(torch.autograd.Function):
         return grad_x, grad_h_res, grad_h_out, grad_h_post
 
 
-class MhcPostOpBuilder(OpBuilder):
+class MhcPostOpBuilder(OpBuilder): 
     def __init__(self):
         super(MhcPostOpBuilder, self).__init__("mhc_post")
 
