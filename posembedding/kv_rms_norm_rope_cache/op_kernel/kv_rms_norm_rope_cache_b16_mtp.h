@@ -20,11 +20,11 @@ namespace KvRmsNormRopeCache {
 using namespace AscendC;
 
 template <bool isPagedAttention, typename KV_DTYPE>
-class KernelKvRmsNormRopeCacheB16MTP :
+class KvRmsNormRopeCacheB16MTP :
 public KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, KV_DTYPE, KV_DTYPE>
 {
 public:
-    __aicore__ inline KernelKvRmsNormRopeCacheB16MTP(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
+    __aicore__ inline KvRmsNormRopeCacheB16MTP(TPipe* pipe, const KvRmsNormRopeCacheTilingData* tiling)
         : KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, KV_DTYPE, KV_DTYPE> (pipe, tiling)
     {}
 
