@@ -68,7 +68,7 @@ private:
     __aicore__ inline void ProcessGradXFromRms(uint64_t bsIdx, uint64_t bsLen);
     __aicore__ inline void ComputeFinal(void);
     __aicore__ inline void ComputeGradXMatmul(const int32_t taskOffset, const int32_t mm1M);
-    __aicore__ inline void ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2M);
+    __aicore__ inline void ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2N);
     __aicore__ inline void SinkhornGradSimdVf(const LocalTensor<float>& skGradLocal, uint64_t bsIdx, uint64_t bsLen);
     __aicore__ inline void ExpGradSimdVf(LocalTensor<float> skGrad, LocalTensor<float> expGrad, LocalTensor<float> zResLocal, uint64_t bsIdx, uint64_t bsLen);
     template<bool INVRMS_MODE>
@@ -1280,14 +1280,14 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::C
 // mm2N_ = n_ * c_;
 
 template<typename X_T, typename GRADHIN_T, typename U>
-__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2M)
+__aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::ComputeGradPhiMatmul(const int32_t taskOffset, const int32_t mm2N)
 {
-    if (mm2M <= 0)
+    if (mm2N <= 0)
         return;
     mm2_.SetTensorA(gradHcBeforeNormWs_, true);
     mm2_.SetTensorB(xFp32Ws_[taskOffset]);
     mm2_.SetHF32(false, 1);
-    mm2_.SetSingleShape(mm2M_, mm2M, mm2K_);
+    mm2_.SetSingleShape(mm2M_, mm2N, mm2K_);
     mm2_.template IterateAll<false> (gradPhiGm_[taskOffset], 0);
     mm2_.End();
 }
