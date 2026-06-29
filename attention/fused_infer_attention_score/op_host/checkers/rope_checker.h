@@ -43,6 +43,9 @@ private:
         const gert::Shape shape, const gert::Shape ropeShape, const std::string &inputName) const;
     ge::graphStatus CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo,
         const gert::Shape &keyShape, const gert::Shape &keyRopeShape) const;
+    void GetPAKeyRopeShapeDims(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape,
+        const gert::Shape &keyRopeShape, uint32_t &keyBlockNum, uint32_t &keyRopeBlockNum,
+        uint32_t &keyBlockSize, uint32_t &keyRopeBlockSize, uint32_t &keyN, uint32_t &keyRopeN) const;
     ge::graphStatus CheckTensorlistKeyAndKeyRopeShapeConsistency(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckRopeExistence(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureDecodeMLA(const FiaTilingInfo &fiaInfo) const;

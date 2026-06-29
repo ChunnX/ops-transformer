@@ -753,6 +753,27 @@ void FusedInferAttentionScoreTilingImpl::SplitOutSeq(const FiaTilingInfo &fiaInf
     faRunTilingAdapter_.multiCoreParamsRegbase.set_totalSize(totalSize);
 }
 
+uint32_t FusedInferAttentionScoreTilingImpl::ComputeSingleBatchSplitParams(
+    const FiaTilingInfo &fiaInfo, uint32_t bIdx, uint32_t sOuterSize, uint32_t sInnerSize,
+    int64_t &totalBlockNumsOneHead, uint32_t &multiSmaxsInnerLoopTimes)
+{
+    int64_t actualSeqLengthsTmp = actualSeqLengthsQ_[bIdx];
+    int64_t preTokensLeftUp = 0;
+    int64_t nextTokensLeftUp = 0;
+    GetPreNextTokensLeftUp(fiaInfo, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx] + fiaInfo.systemPrefixLen,
+                           preTokensLeftUp, nextTokensLeftUp);
+    FixParamWithRowInvalid(fiaInfo, actualSeqLengthsTmp, actualSeqLengthsKV_[bIdx] + fiaInfo.systemPrefixLen,
+                            preTokensLeftUp, nextTokensLeftUp);
+
+    uint32_t sInnerLoopTime = (actualSeqLengthsKV_[bIdx] + sInnerSize - 1) / sInnerSize +
+                              (fiaInfo.systemPrefixLen + sInnerSize - 1) / sInnerSize;
+    multiSmaxsInnerLoopTimes = std::max(multiSmaxsInnerLoopTimes, sInnerLoopTime);
+
+    totalBlockNumsOneHead += GetCalcBlockNumsOneHead(fiaInfo, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx],
+                                                      sOuterSize, sInnerSize);
+    return sInnerLoopTime;
+}
+
 void FusedInferAttentionScoreTilingImpl::SplitNBSeq(const FiaTilingInfo &fiaInfo)
 {
     uint32_t curCoreNum = platformInfo_.aicNum;
@@ -762,21 +783,8 @@ void FusedInferAttentionScoreTilingImpl::SplitNBSeq(const FiaTilingInfo &fiaInfo
     uint32_t multiSmaxsInnerLoopTimes = 0U;
     std::vector<uint32_t> sInnerLoopTimes(fiaInfo.bSize);
     for (uint32_t bIdx = 0; bIdx < fiaInfo.bSize; bIdx++) {
-        int64_t actualSeqLengthsTmp = actualSeqLengthsQ_[bIdx];  // 用于存放减去行无效后，真实的actseqlen
-        int64_t preTokensLeftUp = 0;
-        int64_t nextTokensLeftUp = 0;
-        GetPreNextTokensLeftUp(fiaInfo, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx] + fiaInfo.systemPrefixLen,
-                               preTokensLeftUp, nextTokensLeftUp);
-        FixParamWithRowInvalid(fiaInfo, actualSeqLengthsTmp, actualSeqLengthsKV_[bIdx] + fiaInfo.systemPrefixLen,
-                               preTokensLeftUp, nextTokensLeftUp);
-
-        // sinner方向块数，prefix和origin是分开切的。
-        sInnerLoopTimes[bIdx] = (actualSeqLengthsKV_[bIdx] + sInnerSize - 1) / sInnerSize +
-                                (fiaInfo.systemPrefixLen + sInnerSize - 1) / sInnerSize;
-        multiSmaxsInnerLoopTimes = std::max(multiSmaxsInnerLoopTimes, sInnerLoopTimes[bIdx]);
-
-        totalBlockNumsOneHead += GetCalcBlockNumsOneHead(fiaInfo, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx],
-                                                         sOuterSize, sInnerSize);
+        sInnerLoopTimes[bIdx] = ComputeSingleBatchSplitParams(fiaInfo, bIdx, sOuterSize, sInnerSize,
+                                                               totalBlockNumsOneHead, multiSmaxsInnerLoopTimes);
     }
     pfaTilingData_.promptAttentionSingleCoreParams.set_multiSmaxsInnerLoopTimes(multiSmaxsInnerLoopTimes);
 
@@ -1284,23 +1292,10 @@ struct TilingConfigRule {
     bool requireRopeSplit = false;
 };
 
-void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingInfo &fiaInfo)
+static void MatchAndSetTilingConfig(bool isAntiQuant, uint32_t sOuter, uint32_t sInner,
+                                     uint32_t dSize, uint32_t dVsize, RopeMode ropeMode,
+                                     FiaTilingKeyInfo &tilingKeyInfo)
 {
-    uint32_t dSize = fiaInfo.qkHeadDim;
-    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
-        dSize += fiaInfo.ropeHeadDim;
-    }
-    dSize = SnapDimToBucket(dSize);
-    uint32_t dVsize = SnapDimToBucket(fiaInfo.vHeadDim);
-
-    uint32_t sOuter = sOuterFactor_ * 2;
-    uint32_t sInner = sInnerFactor_;
-    bool isAntiQuant = (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT);
-    if (isAntiQuant) {
-        sInner = sInnerFactorSize_;
-        sOuter = sOuterFactor_;
-    }
-
     static const std::vector<TilingConfigRule> configRules = {
         {true, 16, 1024, DSIZE_64, DSIZE_64, Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64},
         {true, 16, 512, DSIZE_64, DSIZE_64, Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64},
@@ -1339,10 +1334,30 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
         if (rule.isAntiQuant != isAntiQuant) continue;
         if (rule.sOuter != sOuter || rule.sInner != sInner) continue;
         if (rule.dSize != dSize || rule.dVsize != dVsize) continue;
-        if (rule.requireRopeSplit && fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) continue;
-        tilingKeyInfo_.config = rule.config;
+        if (rule.requireRopeSplit && ropeMode != RopeMode::ROPE_SPLIT) continue;
+        tilingKeyInfo.config = rule.config;
         return;
     }
+}
+
+void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingInfo &fiaInfo)
+{
+    uint32_t dSize = fiaInfo.qkHeadDim;
+    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+        dSize += fiaInfo.ropeHeadDim;
+    }
+    dSize = SnapDimToBucket(dSize);
+    uint32_t dVsize = SnapDimToBucket(fiaInfo.vHeadDim);
+
+    uint32_t sOuter = sOuterFactor_ * 2;
+    uint32_t sInner = sInnerFactor_;
+    bool isAntiQuant = (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT);
+    if (isAntiQuant) {
+        sInner = sInnerFactorSize_;
+        sOuter = sOuterFactor_;
+    }
+
+    MatchAndSetTilingConfig(isAntiQuant, sOuter, sInner, dSize, dVsize, fiaInfo.ropeMode, tilingKeyInfo_);
 }
 
 void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyLayout(const FiaTilingInfo &fiaInfo)
@@ -1631,6 +1646,50 @@ bool FusedInferAttentionScoreTilingImpl::EnableMTE2BmmPipe(const FiaTilingInfo &
     return res;
 }
 
+ge::graphStatus FusedInferAttentionScoreTilingImpl::SetBmm1TilingData(
+    const FiaTilingInfo &fiaInfo, matmul_tiling::MatmulApiTiling &bmm1,
+    uint32_t singleM, uint32_t baseN,
+    matmul_tiling::DataType qType, matmul_tiling::DataType kvType)
+{
+    bmm1.SetShape(singleM, sInnerFactor_, fiaInfo.qkHeadDim);
+    bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, kvType, false);
+    bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, kvType, true);
+    bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, qType, false);
+    bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, qType, true);
+    bmm1.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND_ALIGN, matmul_tiling::DataType::DT_FLOAT);
+    bmm1.SetOrgShape(singleM, sInnerFactor_, fiaInfo.qkHeadDim, headDimAlign_);
+    bmm1.SetBias(false);
+
+    uint32_t bmm1BaseN = std::min(AlignUp(sInnerFactor_, NUM_16), baseN);
+    uint32_t bmm1MaxBaseM =
+        AlignUp(static_cast<uint32_t>(platformInfo_.l0cSize / sizeof(float) / bmm1BaseN) - NUM_16, NUM_16);
+
+    OP_CHECK_IF((bmm1.SetFixSplit(std::min(AlignUp(singleM, NUM_16), bmm1MaxBaseM), AlignUp(bmm1BaseN, NUM_16)) == -1),
+                OP_LOGE(fiaInfo.opName, "Bmm1 SetFixSplit fail."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((bmm1.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN) == -1),
+                OP_LOGE(fiaInfo.opName, "Bmm1 SetTraverse fail."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((bmm1.GetTiling(ifaTilingData_.bmm1TilingData) == -1), OP_LOGE(fiaInfo.opName, "Bmm1 get tiling fail."),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus FusedInferAttentionScoreTilingImpl::SetBmm2TilingData(
+    const FiaTilingInfo &fiaInfo, matmul_tiling::MatmulApiTiling &bmm2,
+    uint32_t singleM, matmul_tiling::DataType qType)
+{
+    bmm2.SetShape(singleM, fiaInfo.qkHeadDim, sInnerFactor_);
+    bmm2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, qType, false);
+    bmm2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, qType, false);
+    bmm2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND_ALIGN, matmul_tiling::DataType::DT_FLOAT);
+    bmm2.SetOrgShape(singleM, headDimAlign_, sInnerSizeAlign_, sInnerFactor_);
+    bmm2.SetBias(false);
+    OP_CHECK_IF((bmm2.SetFixSplit(std::min(AlignUp(singleM, NUM_16), NUM_128)) == -1),
+                OP_LOGE(fiaInfo.opName, "Bmm2 SetFixSplit fail."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((bmm2.GetTiling(ifaTilingData_.bmm2TilingData) == -1), OP_LOGE(fiaInfo.opName, "Bmm2 get tiling fail."),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FusedInferAttentionScoreTilingImpl::SetDequantMMTilingData(const gert::TilingContext *context,
                                                                            const FiaTilingInfo &fiaInfo)
 {
@@ -1649,39 +1708,12 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetDequantMMTilingData(const
     } else {
         singleM = fiaInfo.gSize;
     }
-    bmm1.SetShape(singleM, sInnerFactor_, fiaInfo.qkHeadDim);
-    bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, kvType, false);
-    bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, kvType, true);
-    bmm1.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, qType, false);
-    bmm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, qType, true);
-    bmm1.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND_ALIGN, matmul_tiling::DataType::DT_FLOAT);
-    bmm1.SetOrgShape(singleM, sInnerFactor_, fiaInfo.qkHeadDim, headDimAlign_);
-    bmm1.SetBias(false);
-
-    uint32_t bmm1BaseN = std::min(AlignUp(sInnerFactor_, NUM_16), baseN);
-    // 向下对齐保证M*N不超过L0C，且由于bmm1BaseN有最大限制，L0C_SIZE / sizeof(float) / bmm1BaseN不会小于16
-    uint32_t bmm1MaxBaseM =
-        AlignUp(static_cast<uint32_t>(platformInfo_.l0cSize / sizeof(float) / bmm1BaseN) - NUM_16, NUM_16);
-
-    OP_CHECK_IF((bmm1.SetFixSplit(std::min(AlignUp(singleM, NUM_16), bmm1MaxBaseM), AlignUp(bmm1BaseN, NUM_16)) == -1),
-                OP_LOGE(fiaInfo.opName, "Bmm1 SetFixSplit fail."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((bmm1.SetTraverse(matmul_tiling::MatrixTraverse::FIRSTN) == -1),
-                OP_LOGE(fiaInfo.opName, "Bmm1 SetTraverse fail."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((bmm1.GetTiling(ifaTilingData_.bmm1TilingData) == -1), OP_LOGE(fiaInfo.opName, "Bmm1 get tiling fail."),
-                return ge::GRAPH_FAILED);
-
-    bmm2.SetShape(singleM, fiaInfo.qkHeadDim, sInnerFactor_);
-    bmm2.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, qType, false);
-    bmm2.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, qType, false);
-    bmm2.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND_ALIGN, matmul_tiling::DataType::DT_FLOAT);
-    bmm2.SetOrgShape(singleM, headDimAlign_, sInnerSizeAlign_, sInnerFactor_);
-    // 存在输入query是BNSD格式，但使能PA，需要按BSH SetOrgShape
-    bmm2.SetBias(false);
-    OP_CHECK_IF((bmm2.SetFixSplit(std::min(AlignUp(singleM, NUM_16), NUM_128)) == -1),
-                OP_LOGE(fiaInfo.opName, "Bmm2 SetFixSplit fail."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((bmm2.GetTiling(ifaTilingData_.bmm2TilingData) == -1), OP_LOGE(fiaInfo.opName, "Bmm2 get tiling fail."),
-                return ge::GRAPH_FAILED);
-
+    if (SetBmm1TilingData(fiaInfo, bmm1, singleM, baseN, qType, kvType) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (SetBmm2TilingData(fiaInfo, bmm2, singleM, qType) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

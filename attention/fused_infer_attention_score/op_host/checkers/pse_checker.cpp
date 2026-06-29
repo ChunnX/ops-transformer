@@ -98,73 +98,81 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckPseShiftShapeAlibi(const FiaTilingInfo &fiaInfo)
 {
-    // 校验pseShift的shape
     auto &pseShiftTensor = fiaInfo.opParamInfo.pseShift.tensor;
-    if (pseShiftTensor == nullptr) {
-        // 若pseShiftTensor不存在，则放弃后续校验
-        return ge::GRAPH_SUCCESS;
-    }
     auto pseShiftShape = pseShiftTensor->GetStorageShape();
-    if (fiaInfo.enableAlibiPse) {
-        // pseType为2或3时，使能alibi，pseShist的shape应为(N)
-        uint32_t numHeads = *fiaInfo.opParamInfo.numHeads;
-        gert::Shape expectedShapeN = gert::Shape({numHeads});
-        if (pseShiftShape != expectedShapeN) {
-            std::string reason = "The shape of pse_shift must be [N](["+ std::to_string(numHeads) +
-                "]) when pse_type is 2 or 3";
+    uint32_t numHeads = *fiaInfo.opParamInfo.numHeads;
+    gert::Shape expectedShapeN = gert::Shape({numHeads});
+    if (pseShiftShape != expectedShapeN) {
+        std::string reason = "The shape of pse_shift must be [N](["+ std::to_string(numHeads) +
+            "]) when pse_type is 2 or 3";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToStringRaw(pseShiftShape).c_str(),
+                                              reason.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus PSEChecker::CheckPseShiftShapeNonAlibi(const FiaTilingInfo &fiaInfo)
+{
+    auto &pseShiftTensor = fiaInfo.opParamInfo.pseShift.tensor;
+    auto pseShiftShape = pseShiftTensor->GetStorageShape();
+    uint32_t batchSize = fiaInfo.bSize;
+    uint32_t n1Size = fiaInfo.n1Size;
+    uint32_t s1Size = fiaInfo.s1Size;
+    int64_t s2Size = fiaInfo.s2Size;
+    uint32_t pseShiftDimNum = pseShiftShape.GetDimNum();
+    if (pseShiftDimNum != DIM_NUM_4) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "pse_shift",
+            std::to_string(pseShiftDimNum).c_str(), "The shape dim of pse_shift must be 4 when pse_type is 0");
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t pseShiftBatch = pseShiftShape.GetDim(DIM_NUM_0);
+    uint32_t pseShiftN = pseShiftShape.GetDim(DIM_NUM_1);
+    uint32_t pseShiftS1 = pseShiftShape.GetDim(DIM_NUM_2);
+    uint32_t pseShiftS2 = pseShiftShape.GetDim(DIM_NUM_3);
+    uint32_t actualSharedPrefixLen = 0;
+    if (fiaInfo.opParamInfo.actualSharedPrefixLen.tensor != nullptr &&
+        fiaInfo.opParamInfo.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0) {
+        if (fiaInfo.opParamInfo.actualSharedPrefixLen.tensor->GetData<int64_t>() != nullptr) {
+            actualSharedPrefixLen = fiaInfo.opParamInfo.actualSharedPrefixLen.tensor->GetData<int64_t>()[0];
+        }
+    }
+    if (pseShiftS1 > 1) {
+        if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
+            (pseShiftS1 < s1Size) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
+            std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
+                std::to_string(n1Size) + ", >=" + std::to_string(s1Size) + ", >=" +
+                std::to_string(s2Size + actualSharedPrefixLen) + "]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToStringRaw(pseShiftShape).c_str(),
                                                   reason.c_str());
             return ge::GRAPH_FAILED;
         }
     } else {
-        uint32_t batchSize = fiaInfo.bSize;
-        uint32_t n1Size = fiaInfo.n1Size;
-        uint32_t s1Size = fiaInfo.s1Size;
-        int64_t s2Size = fiaInfo.s2Size;
-        // pseShift的维度必须为4
-        uint32_t pseShiftDimNum = pseShiftShape.GetDimNum();
-        if (pseShiftDimNum != DIM_NUM_4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "pse_shift",
-                std::to_string(pseShiftDimNum).c_str(), "The shape dim of pse_shift must be 4 when pse_type is 0");
+        if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
+            (pseShiftS1 != 1) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
+            std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
+                std::to_string(n1Size) + ", 1, >=" + std::to_string(s2Size + actualSharedPrefixLen) + "]";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToStringRaw(pseShiftShape).c_str(),
+                                                  reason.c_str());
             return ge::GRAPH_FAILED;
-        }
-        uint32_t pseShiftBatch = pseShiftShape.GetDim(DIM_NUM_0);
-        uint32_t pseShiftN = pseShiftShape.GetDim(DIM_NUM_1);
-        uint32_t pseShiftS1 = pseShiftShape.GetDim(DIM_NUM_2);
-        uint32_t pseShiftS2 = pseShiftShape.GetDim(DIM_NUM_3);
-        uint32_t actualSharedPrefixLen = 0;
-        if (fiaInfo.opParamInfo.actualSharedPrefixLen.tensor != nullptr &&
-            fiaInfo.opParamInfo.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0) {
-            if (fiaInfo.opParamInfo.actualSharedPrefixLen.tensor->GetData<int64_t>() != nullptr) {
-                actualSharedPrefixLen = fiaInfo.opParamInfo.actualSharedPrefixLen.tensor->GetData<int64_t>()[0];
-            }
-        }
-        if (pseShiftS1 > 1) {
-            // P_S1 > 1分支
-            if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
-                (pseShiftS1 < s1Size) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
-                std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
-                    std::to_string(n1Size) + ", >=" + std::to_string(s1Size) + ", >=" +
-                    std::to_string(s2Size + actualSharedPrefixLen) + "]";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToStringRaw(pseShiftShape).c_str(),
-                                                      reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-        } else {
-            // P_S1 = 1分支
-            if ((pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != n1Size) ||
-                (pseShiftS1 != 1) || (pseShiftS2 < s2Size + actualSharedPrefixLen)) {
-                std::string reason = "The shape of pse_shift must be [1 or " + std::to_string(batchSize) + ", " +
-                    std::to_string(n1Size) + ", 1, >=" + std::to_string(s2Size + actualSharedPrefixLen) + "]";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "pse_shift", ToStringRaw(pseShiftShape).c_str(),
-                                                      reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
         }
     }
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
+{
+    auto &pseShiftTensor = fiaInfo.opParamInfo.pseShift.tensor;
+    if (pseShiftTensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.enableAlibiPse) {
+        return CheckPseShiftShapeAlibi(fiaInfo);
+    } else {
+        return CheckPseShiftShapeNonAlibi(fiaInfo);
+    }
 }
 
 // existence

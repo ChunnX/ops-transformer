@@ -213,68 +213,70 @@ ge::graphStatus MaskChecker::CheckQKVDDifferent(const FiaTilingInfo &fiaInfo) co
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MaskChecker::CheckSparseModeTree(const FiaTilingInfo &fiaInfo) const
+{
+    int32_t sparseMode = fiaInfo.sparseMode;
+    OP_CHECK_IF(fiaInfo.ropeMode != RopeMode::ROPE_SPLIT,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
+            std::to_string(sparseMode).c_str(),
+            ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
+                + " scenario, when query_rope/key_rope not exist, sparse_mode(9) is not supported").c_str()),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
+            "query_padding_size and kv_padding_size",
+            ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
+                + " scenario, when sparse_mode is " + std::to_string(sparseMode)
+                + ", query_padding_size and kv_padding_size must be empty").c_str()),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(fiaInfo.pseShiftFlag,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift",
+            ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
+                + " scenario, when sparse_mode is " + std::to_string(sparseMode)
+                + ", pse_shift must be empty").c_str()),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(fiaInfo.sysPrefixFlag,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
+            ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
+                + " scenario, when sparse_mode is " + std::to_string(sparseMode)
+                + ", key_shared_prefix and value_shared_prefix must be empty").c_str()),
+        return ge::GRAPH_FAILED);
+
+    if (fiaInfo.outputType == ge::DT_INT8) {
+        std::string reasonMsg = "In " + QuantModeToSerialString(fiaInfo.quantMode) +" scenario,"
+            " when sparse is " + std::to_string(sparseMode) + ", the datatype of attentionOut cannot be int8";
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
+            ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    if (fiaInfo.isMaxWorkspace) {
+        return ge::GRAPH_SUCCESS;
+    }
+    int32_t actualSeqSize = std::min(fiaInfo.qSize.size(), fiaInfo.kvSize.size());
+    for (int32_t i = 0; i < actualSeqSize; i++) {
+        if (fiaInfo.kvSize[i] == 0) {
+            continue;
+        }
+        OP_CHECK_IF(fiaInfo.qSize[i] > fiaInfo.kvSize[i],
+            OP_LOGE(fiaInfo.opName,
+                    "In %s situation, when sparse is %d, qSize[%d] should less than or equal to kvSize[%d],"
+                    "but got qSize %d and kvSize %d.",
+                    QuantModeToSerialString(fiaInfo.quantMode).c_str(), sparseMode, i, i,
+                    fiaInfo.qSize[i], fiaInfo.kvSize[i]),
+        return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo) const
 {
     int32_t sparseMode = fiaInfo.sparseMode;
-    // sparse9 仅在rope分离场景下存在，不支持左padding、PSE、公共前缀、后量化等特性 拦截s2 >= s1
     if (sparseMode == SPARSE_MODE_TREE) {
-        // 特性校验
-        OP_CHECK_IF(fiaInfo.ropeMode != RopeMode::ROPE_SPLIT,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
-                std::to_string(sparseMode).c_str(),
-                ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
-                    + " scenario, when query_rope/key_rope not exist, sparse_mode(9) is not supported").c_str()),
-            return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName,
-                "query_padding_size and kv_padding_size",
-                ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
-                    + " scenario, when sparse_mode is " + std::to_string(sparseMode)
-                    + ", query_padding_size and kv_padding_size must be empty").c_str()),
-            return ge::GRAPH_FAILED);
-        // 不支持PSE
-        OP_CHECK_IF(fiaInfo.pseShiftFlag,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "pse_shift",
-                ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
-                    + " scenario, when sparse_mode is " + std::to_string(sparseMode)
-                    + ", pse_shift must be empty").c_str()),
-            return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(fiaInfo.sysPrefixFlag,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_shared_prefix and value_shared_prefix",
-                ("In " + std::string(QuantModeToSerialString(fiaInfo.quantMode))
-                    + " scenario, when sparse_mode is " + std::to_string(sparseMode)
-                    + ", key_shared_prefix and value_shared_prefix must be empty").c_str()),
-            return ge::GRAPH_FAILED);
-
-        if (fiaInfo.outputType == ge::DT_INT8) {
-            std::string reasonMsg = "In " + QuantModeToSerialString(fiaInfo.quantMode) +" scenario,"
-                " when sparse is " + std::to_string(sparseMode) + ", the datatype of attentionOut cannot be int8";
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
-                ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
-
-        // s2 >= s1拦截
-        // tiling下沉场景 由于actualSeqlen得不到，所以不进行校验
-        if (fiaInfo.isMaxWorkspace) {
-            return ge::GRAPH_SUCCESS;
-        }
-        // s2=0 的 batch（入图padding或空tensor场景）不校验 s1<=s2
-        int32_t actualSeqSize = std::min(fiaInfo.qSize.size(), fiaInfo.kvSize.size());
-        for (int32_t i = 0; i < actualSeqSize; i++) {
-            if (fiaInfo.kvSize[i] == 0) {
-                continue;
-            }
-            OP_CHECK_IF(fiaInfo.qSize[i] > fiaInfo.kvSize[i],
-                OP_LOGE(fiaInfo.opName,
-                        "In %s situation, when sparse is %d, qSize[%d] should less than or equal to kvSize[%d],"
-                        "but got qSize %d and kvSize %d.",
-                        QuantModeToSerialString(fiaInfo.quantMode).c_str(), sparseMode, i, i,
-                        fiaInfo.qSize[i], fiaInfo.kvSize[i]),
-            return ge::GRAPH_FAILED);
-        }
+        return CheckSparseModeTree(fiaInfo);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -304,68 +306,85 @@ ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FiaTilingInfo &fiaI
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MaskChecker::CheckIFADim2D(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
+    uint32_t minAttenMaskSize, const std::string &layoutStr) const
+{
+    if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
+        if (fiaInfo.ropeMode == RopeMode::NO_ROPE ) {
+            const std::vector<std::string> layoutSupportList = {
+                "BSH", "BSND", "BNSD", "BNSD_BSND",
+            };
+            if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr)
+                == layoutSupportList.end()) {
+                OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "attention_mask", layoutStr.c_str(),
+                    "In gqa noquant situation, when rope is not enabled, qkHeadDim = vHeadDim and "
+                    "sparseMode is 0 or 1, the layout of two dim mask only supports BSH, BSND, BNSD or BNSD_BSND");
+                return ge::GRAPH_FAILED;
+            }
+        } else {
+            OP_LOGE(fiaInfo.opName,
+                    "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        OP_LOGE(fiaInfo.opName,
+            "The current dimension of the mask is 2. "
+            "Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskChecker::CheckIFADim3D(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
+    uint32_t minAttenMaskSize) const
+{
+    if (((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+                maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
+                maskShape->GetStorageShape().GetDim(DIM_NUM_1) < fiaInfo.s1Size ||
+                maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize)) {
+        std::string shapeStr = ToStringRaw(maskShape->GetStorageShape());
+        std::string reasonMsg = "The shape of atten_mask must be [B or 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskChecker::CheckIFADim4D(const FiaTilingInfo &fiaInfo, const gert::Tensor *maskShape,
+    uint32_t minAttenMaskSize) const
+{
+    if (((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+                maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
+                maskShape->GetStorageShape().GetDim(DIM_NUM_1) != 1 ||
+                maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s1Size ||
+                maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize)) {
+        std::string shapeStr = ToStringRaw(maskShape->GetStorageShape());
+        std::string reasonMsg = "The shape of atten_mask must be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo) const
 {
     uint32_t minAttenMaskSize = 0;
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
     size_t attenMaskDim = maskShape->GetStorageShape().GetDimNum();
-    uint32_t attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
-    uint32_t attenMaskSize = maskShape->GetStorageShape().GetDim(maskShape->GetStorageShape().GetDimNum() - 1);
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         minAttenMaskSize = fiaInfo.s2Size + fiaInfo.systemPrefixLen;
     } else {
         minAttenMaskSize = fiaInfo.maxActualseq + fiaInfo.systemPrefixLen;
     }
     if (attenMaskDim == MASK_DIM_SS) {
-        if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-            if (fiaInfo.ropeMode == RopeMode::NO_ROPE ) {
-                const std::vector<std::string> layoutSupportList = {
-                    "BSH", "BSND", "BNSD", "BNSD_BSND",
-                };
-                if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr)
-                    == layoutSupportList.end()) {
-                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(fiaInfo.opName, "attention_mask", layoutStr.c_str(),
-                        "In gqa noquant situation, when rope is not enabled, qkHeadDim = vHeadDim and "
-                        "sparseMode is 0 or 1, the layout of two dim mask only supports BSH, BSND, BNSD or BNSD_BSND");
-                    return ge::GRAPH_FAILED;
-                }
-            } else {
-                OP_LOGE(fiaInfo.opName,
-                        "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
-                return ge::GRAPH_FAILED;
-            }
-        } else {
-            OP_LOGE(fiaInfo.opName,
-                "The current dimension of the mask is 2. "
-                "Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].");
-            return ge::GRAPH_FAILED;
-        }
+        return CheckIFADim2D(fiaInfo, maskShape, minAttenMaskSize, layoutStr);
     } else if (attenMaskDim == MASK_DIM_BSS &&
                 (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-        // attenMask的shape应为(B, >=Q_S, >=KV_S + systemPrefixLen)或(1, >=Q_S, >=KV_S + systemPrefixLen)
-        if (((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_1) < fiaInfo.s1Size ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize)) {
-            std::string shapeStr = ToStringRaw(maskShape->GetStorageShape());
-            std::string reasonMsg = "The shape of atten_mask must be [B or 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
+        return CheckIFADim3D(fiaInfo, maskShape, minAttenMaskSize);
     } else if (attenMaskDim == MASK_DIM_B1SS &&
                 (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-        // attenMask的shape应为(B, 1, >=Q_S, >=KV_S + systemPrefixLen)或(1, 1, >=Q_S, >=KV_S + systemPrefixLen)
-        if (((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_1) != 1 ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s1Size ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize)) {
-            std::string shapeStr = ToStringRaw(maskShape->GetStorageShape());
-            std::string reasonMsg = "The shape of atten_mask must be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
+        return CheckIFADim4D(fiaInfo, maskShape, minAttenMaskSize);
     } else {
         std::string dimStr = std::to_string(attenMaskDim) + "D";
         OP_LOGE_FOR_INVALID_SHAPEDIM(fiaInfo.opName, "atten_mask", dimStr.c_str(), "2D, 3D or 4D");
@@ -467,33 +486,8 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckMaskShapeValidation(const FiaTilingInfo &fiaInfo, const MaskInfo &maskInfo) const
 {
-    // In PFA mode, the attenmask dimensions must be 2/3/4.
-    // The allowed shape specifications for attenmask vary depending on the sparse mode.
-    if ((!fiaInfo.attenMaskFlag) && (fiaInfo.sparseMode != SPARSE_MODE_NO_MASK)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "atten_mask", "empty",
-            ("when sparse_mode is " + std::to_string(fiaInfo.sparseMode)
-                + " (not 0), atten_mask cannot be empty").c_str());
-        return ge::GRAPH_FAILED;
-    }
-    if ((fiaInfo.isMaxWorkspace && fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) || !fiaInfo.attenMaskFlag) {
-        return ge::GRAPH_SUCCESS;
-    }
-    if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-        if (fiaInfo.isMaxWorkspace) {
-            return ge::GRAPH_SUCCESS;
-        }
-    }
-    isIFAFlag = (fiaInfo.antiQuantFlag) && (fiaInfo.s1Size == 1);
-    if (isIFAFlag) {
-        return CheckIFADimAndShape(fiaInfo);
-    }
-
-    MaskInfo maskInfo;
-    if (GetMaskInfo(fiaInfo, maskInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     bool checkMask = false;
     uint32_t minAttenMaskSize = 0;
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
@@ -537,6 +531,34 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
+{
+    if ((!fiaInfo.attenMaskFlag) && (fiaInfo.sparseMode != SPARSE_MODE_NO_MASK)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "atten_mask", "empty",
+            ("when sparse_mode is " + std::to_string(fiaInfo.sparseMode)
+                + " (not 0), atten_mask cannot be empty").c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((fiaInfo.isMaxWorkspace && fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) || !fiaInfo.attenMaskFlag) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
+        if (fiaInfo.isMaxWorkspace) {
+            return ge::GRAPH_SUCCESS;
+        }
+    }
+    isIFAFlag = (fiaInfo.antiQuantFlag) && (fiaInfo.s1Size == 1);
+    if (isIFAFlag) {
+        return CheckIFADimAndShape(fiaInfo);
+    }
+
+    MaskInfo maskInfo;
+    if (GetMaskInfo(fiaInfo, maskInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return CheckMaskShapeValidation(fiaInfo, maskInfo);
 }
 
 ge::graphStatus MaskChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)

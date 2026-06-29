@@ -39,6 +39,8 @@ private:
     ge::graphStatus CheckPseType(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckPseShiftDataType(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckPseShiftShape(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckPseShiftShapeAlibi(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckPseShiftShapeNonAlibi(const FiaTilingInfo &fiaInfo);
     // existence
     ge::graphStatus CheckPseShiftExistence(const FiaTilingInfo &fiaInfo);
     // feature

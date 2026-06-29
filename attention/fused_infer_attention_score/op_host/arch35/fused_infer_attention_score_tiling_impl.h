@@ -113,6 +113,9 @@ protected:
     int64_t GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const;
     void ComputeSplitNBSeq(const FiaTilingInfo &fiaInfo, const size_t maxCoreNums, uint32_t sOuterSize,
                            uint32_t sInnerSize, double coreWeightTarget, uint32_t &curCore);
+    uint32_t ComputeSingleBatchSplitParams(const FiaTilingInfo &fiaInfo, uint32_t bIdx, uint32_t sOuterSize,
+                                           uint32_t sInnerSize, int64_t &totalBlockNumsOneHead,
+                                           uint32_t &multiSmaxsInnerLoopTimes);
     void SplitNBSeq(const FiaTilingInfo &fiaInfo);
     void InitImplParam(const FiaTilingInfo &fiaInfo);
     void InitTilingFlags(const FiaTilingInfo &fiaInfo, const gert::Tensor *actSeqLenQ, uint32_t qDims,
@@ -149,6 +152,11 @@ protected:
     int64_t GetActualInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums) const;
     void SplitDequant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetDequantMMTilingData(const gert::TilingContext *context, const FiaTilingInfo &fiaInfo);
+    ge::graphStatus SetBmm1TilingData(const FiaTilingInfo &fiaInfo, matmul_tiling::MatmulApiTiling &bmm1,
+                                       uint32_t singleM, uint32_t baseN,
+                                       matmul_tiling::DataType qType, matmul_tiling::DataType kvType);
+    ge::graphStatus SetBmm2TilingData(const FiaTilingInfo &fiaInfo, matmul_tiling::MatmulApiTiling &bmm2,
+                                       uint32_t singleM, matmul_tiling::DataType qType);
     bool CheckTransposeLayout(const FiaTilingInfo &fiaInfo) const;
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
 

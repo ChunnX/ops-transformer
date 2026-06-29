@@ -231,22 +231,11 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTilingInfo &fiaInfo)
+ge::graphStatus SystemPrefixChecker::GetPrefixLenByLayout(const FiaTilingInfo &fiaInfo, uint32_t &keySharedPrefixS,
+    uint32_t &valueSharedPrefixS)
 {
-    // 校验actualSharedPrefixLen的数值，其值不能大于keySharedPrefix和valueSharedPrefix的S
     auto &keySharedPrefixTensor = fiaInfo.opParamInfo.keySharedPrefix.tensor;
     auto &valueSharedPrefixTensor = fiaInfo.opParamInfo.valueSharedPrefix.tensor;
-    auto &actualSharedPrefixLenTensor = fiaInfo.opParamInfo.actualSharedPrefixLen.tensor;
-    if (keySharedPrefixTensor == nullptr || valueSharedPrefixTensor == nullptr) {
-        // 若keySharedPrefix、valueSharedPrefix不存在，则放弃后续校验
-        return ge::GRAPH_SUCCESS;
-    }
-    if (actualSharedPrefixLenTensor == nullptr || actualSharedPrefixLenTensor->GetData<int64_t>() == nullptr) {
-        // 若没有传入actualSharedPrefixLen的shape或者data，则放弃后续校验
-        return ge::GRAPH_SUCCESS;
-    }
-    uint32_t keySharedPrefixS = 0;
-    uint32_t valueSharedPrefixS = 0;
     const std::vector<std::string> layoutSupportList = {
         "BSND", "BNSD", "BSH", "BNSD_BSND"
     };
@@ -268,6 +257,25 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     } else if (layout == "BSH") {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTilingInfo &fiaInfo)
+{
+    auto &keySharedPrefixTensor = fiaInfo.opParamInfo.keySharedPrefix.tensor;
+    auto &valueSharedPrefixTensor = fiaInfo.opParamInfo.valueSharedPrefix.tensor;
+    auto &actualSharedPrefixLenTensor = fiaInfo.opParamInfo.actualSharedPrefixLen.tensor;
+    if (keySharedPrefixTensor == nullptr || valueSharedPrefixTensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (actualSharedPrefixLenTensor == nullptr || actualSharedPrefixLenTensor->GetData<int64_t>() == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint32_t keySharedPrefixS = 0;
+    uint32_t valueSharedPrefixS = 0;
+    if (ge::GRAPH_SUCCESS != GetPrefixLenByLayout(fiaInfo, keySharedPrefixS, valueSharedPrefixS)) {
+        return ge::GRAPH_FAILED;
     }
     int64_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
     if (actualSharedPrefixLenData > keySharedPrefixS) {
@@ -313,60 +321,8 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixExistence(const FiaTilingI
 }
 
 // feature
-ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &fiaInfo)
+ge::graphStatus SystemPrefixChecker::CheckUnSupportFeatureDtype(const FiaTilingInfo &fiaInfo)
 {
-    if (!fiaInfo.sysPrefixFlag) {
-        // 若不使能systemPrefix，则放弃后续校验
-        return ge::GRAPH_SUCCESS;
-    }
-    std::string layoutStr(fiaInfo.opParamInfo.layOut);
-    // 校验不支持带prefix的feautre
-    bool enableIFAMLA = fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512;
-    bool enablePFARope = fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128;
-    bool enablePFAMLA = fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128;
-    // 不支持page attention场景
-    OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when page attention is enabled"),
-        return ge::GRAPH_FAILED);
-    // 不支持tensorlist
-    if ((fiaInfo.s1Size > 1U && fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) ||
-        fiaInfo.npuArch == NpuArch::DAV_3510) {
-        OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST),
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-                "prefix must be empty when tensorlist is enabled"),
-            return ge::GRAPH_FAILED);
-    }
-    // 不支持左padding场景
-    OP_CHECK_IF((fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when left padding is enabled"),
-        return ge::GRAPH_FAILED);
-    // 不支持alibi场景
-    OP_CHECK_IF((fiaInfo.enableAlibiPse),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when pseType is 2 or 3"),
-        return ge::GRAPH_FAILED);
-     OP_CHECK_IF(layoutStr == "BSH_BNSD" ||
-                    layoutStr == "BSND_BNSD" ||
-                    layoutStr == "TND" ||
-                    layoutStr == "NTD" ||
-                    layoutStr == "NTD_TND" ||
-                    layoutStr == "TND_NTD",
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/TND_NTD/NTD_TND"),
-        return ge::GRAPH_FAILED);
-    // 不支持PFA MLA场景
-    OP_CHECK_IF((enablePFAMLA || enablePFARope),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty in PFA MLA scenario"),
-        return ge::GRAPH_FAILED);
-    // 不支持IFA MLA场景
-    OP_CHECK_IF((enableIFAMLA),
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty in IFA MLA scenario"),
-        return ge::GRAPH_FAILED);
-    // 不支持qkv全部为INT8/FP8/HiF8(per-block/per-tensor全量化)的情况
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_INT8 && fiaInfo.inputKvType == ge::DT_INT8),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
             "prefix must be empty when the dtype of query and key/value is INT8"),
@@ -379,13 +335,72 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
             "prefix must be empty when the dtype of query and key/value is HiF8"),
         return ge::GRAPH_FAILED);
-    // 后量化仅支持INT8
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SystemPrefixChecker::CheckUnSupportFeaturePostQuant(const FiaTilingInfo &fiaInfo)
+{
     if (fiaInfo.isOutQuantEnable) {
         if (fiaInfo.outputType != ge::DT_INT8) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "output", ToString(fiaInfo.outputType).c_str(),
                 "The dtype of output must be INT8 when prefix is enabled");
             return ge::GRAPH_FAILED;
         }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SystemPrefixChecker::CheckUnSupportFeatureLayout(const FiaTilingInfo &fiaInfo)
+{
+    std::string layoutStr(fiaInfo.opParamInfo.layOut);
+    OP_CHECK_IF(layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD" ||
+                    layoutStr == "TND" || layoutStr == "NTD" ||
+                    layoutStr == "NTD_TND" || layoutStr == "TND_NTD",
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
+            "prefix must be empty when the inputLayout is BSH_BNSD/BSND_BNSD/TND/NTD/TND_NTD/NTD_TND"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &fiaInfo)
+{
+    if (!fiaInfo.sysPrefixFlag) {
+        return ge::GRAPH_SUCCESS;
+    }
+    bool enableIFAMLA = fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512;
+    bool enablePFARope = fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128;
+    bool enablePFAMLA = fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128;
+    OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
+            "prefix must be empty when page attention is enabled"),
+        return ge::GRAPH_FAILED);
+    if ((fiaInfo.s1Size > 1U && fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) ||
+        fiaInfo.npuArch == NpuArch::DAV_3510) {
+        OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
+                "prefix must be empty when tensorlist is enabled"),
+            return ge::GRAPH_FAILED);
+    }
+    OP_CHECK_IF((fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
+            "prefix must be empty when left padding is enabled"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.enableAlibiPse),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
+            "prefix must be empty when pseType is 2 or 3"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF((enablePFAMLA || enablePFARope),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
+            "prefix must be empty in PFA MLA scenario"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF((enableIFAMLA),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
+            "prefix must be empty in IFA MLA scenario"),
+        return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != CheckUnSupportFeatureLayout(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckUnSupportFeatureDtype(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckUnSupportFeaturePostQuant(fiaInfo)) {
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }

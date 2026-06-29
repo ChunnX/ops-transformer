@@ -186,6 +186,52 @@ ge::graphStatus PostQuantChecker::CheckFeaturePrefix(const FiaTilingInfo &fiaInf
     return ge::GRAPH_SUCCESS;
 }
 
+void PostQuantChecker::BuildActualSeqLengths(const FiaTilingInfo &fiaInfo, const gert::Tensor *tempData,
+    const gert::Tensor *tempDataKV, std::vector<int64_t> &actualSeqLengths,
+    std::vector<int64_t> &actualSeqLengthsKV) const
+{
+    uint32_t actualLenDims = (tempData != nullptr) ? tempData->GetShapeSize() : 0;
+    uint32_t actualLenDimsKV = (tempDataKV != nullptr) ? tempDataKV->GetShapeSize() : 0;
+    for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
+        if ((actualLenDims == 0) || (tempData == nullptr) || (tempData->GetData<int64_t>() == nullptr)) {
+            actualSeqLengths[i] = fiaInfo.s1Size;
+        } else {
+            actualSeqLengths[i] = (actualLenDims > 1) ? static_cast<uint32_t>(tempData->GetData<int64_t>()[i]) :
+                                                        static_cast<uint32_t>(tempData->GetData<int64_t>()[0]);
+        }
+        if ((actualLenDimsKV == 0) || (tempDataKV == nullptr) ||
+            (tempDataKV->GetData<int64_t>() == nullptr)) {
+            if (fiaInfo.kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) {
+                actualSeqLengthsKV[i] = fiaInfo.s2Size;
+            } else {
+                actualSeqLengthsKV[i] = fiaInfo.kvListSeqLens[i];
+            }
+        } else {
+            actualSeqLengthsKV[i] = (actualLenDimsKV > 1) ?
+                                        static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[i]) :
+                                        static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[0]);
+        }
+    }
+}
+
+void PostQuantChecker::ComputeSparsePreNextTokens(const FiaTilingInfo &fiaInfo, int64_t actualSeqLen,
+    int64_t actualSeqLenKV, int64_t &preTokensPerbatch, int64_t &nextTokensPerbatch) const
+{
+    if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
+        preTokensPerbatch = static_cast<int64_t>(SPARSE_MODE_INT_MAX);
+        nextTokensPerbatch =
+            actualSeqLenKV + static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLen;
+    } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
+        preTokensPerbatch = fiaInfo.preToken - actualSeqLenKV -
+                            static_cast<int64_t>(fiaInfo.systemPrefixLen) + actualSeqLen;
+        nextTokensPerbatch = fiaInfo.nextToken + actualSeqLenKV +
+                             static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLen;
+    } else {
+        preTokensPerbatch = fiaInfo.preToken;
+        nextTokensPerbatch = fiaInfo.nextToken;
+    }
+}
+
 ge::graphStatus PostQuantChecker::CheckFeatureRowValid(const FiaTilingInfo &fiaInfo) const
 {
     if (!fiaInfo.isOutQuantEnable) {
@@ -206,42 +252,13 @@ ge::graphStatus PostQuantChecker::CheckFeatureRowValid(const FiaTilingInfo &fiaI
             const gert::Tensor *tempDataKV = fiaInfo.opParamInfo.actualSeqLengths.tensor;
             const int64_t preTokens = fiaInfo.opParamInfo.preToken == nullptr ? 0 : *fiaInfo.opParamInfo.preToken;
             const int64_t nextTokens = fiaInfo.opParamInfo.nextToken == nullptr ? 0 : *fiaInfo.opParamInfo.nextToken;
-            uint32_t actualLenDims = (tempData != nullptr) ? tempData->GetShapeSize() : 0;
-            uint32_t actualLenDimsKV = (tempDataKV != nullptr) ? tempDataKV->GetShapeSize() : 0;
+
+            BuildActualSeqLengths(fiaInfo, tempData, tempDataKV, actualSeqLengths, actualSeqLengthsKV);
             for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
-                if ((actualLenDims == 0) || (tempData == nullptr) || (tempData->GetData<int64_t>() == nullptr)) {
-                    actualSeqLengths[i] = fiaInfo.s1Size;
-                } else {
-                    actualSeqLengths[i] = (actualLenDims > 1) ? static_cast<uint32_t>(tempData->GetData<int64_t>()[i]) :
-                                                                static_cast<uint32_t>(tempData->GetData<int64_t>()[0]);
-                }
-                if ((actualLenDimsKV == 0) || (tempDataKV == nullptr) ||
-                    (tempDataKV->GetData<int64_t>() == nullptr)) { // The user did not input act_seq_kv
-                    if (fiaInfo.kvStorageMode == KvStorageMode::BATCH_CONTINUOUS) {
-                        actualSeqLengthsKV[i] = fiaInfo.s2Size;
-                    } else {
-                        actualSeqLengthsKV[i] = fiaInfo.kvListSeqLens[i];
-                    }
-                } else {
-                    actualSeqLengthsKV[i] = (actualLenDimsKV > 1) ?
-                                                static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[i]) :
-                                                static_cast<uint32_t>(tempDataKV->GetData<int64_t>()[0]);
-                }
                 int64_t preTokensPerbatch = 0;
                 int64_t nextTokensPerbatch = 0;
-                if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
-                    preTokensPerbatch = static_cast<int64_t>(SPARSE_MODE_INT_MAX);
-                    nextTokensPerbatch =
-                        actualSeqLengthsKV[i] + static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i];
-                } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
-                    preTokensPerbatch = fiaInfo.preToken - actualSeqLengthsKV[i] -
-                                        static_cast<int64_t>(fiaInfo.systemPrefixLen) + actualSeqLengths[i];
-                    nextTokensPerbatch = fiaInfo.nextToken + actualSeqLengthsKV[i] +
-                                         static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i];
-                } else {
-                    preTokensPerbatch = fiaInfo.preToken;
-                    nextTokensPerbatch = fiaInfo.nextToken;
-                }
+                ComputeSparsePreNextTokens(fiaInfo, actualSeqLengths[i], actualSeqLengthsKV[i],
+                    preTokensPerbatch, nextTokensPerbatch);
                 OP_CHECK_IF((checkPostQuantOffset &&
                              ((preTokensPerbatch + actualSeqLengthsKV[i] +
                                    static_cast<int64_t>(fiaInfo.systemPrefixLen) - actualSeqLengths[i] <
