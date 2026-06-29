@@ -275,6 +275,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
             keyL1BufIdx_++;
         }
+        PipeBarrier<PIPE_FIX>();
     } else if (s2BasicBlock_ == 256) {
         // 第一个s2循环 keycache置为false
         if (runInfo.isFirstS2InnerLoop) {
@@ -362,6 +363,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                 isKeyCacheValid_ =false;
             }
         }
+        PipeBarrier<PIPE_FIX>();
     }
 
     CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(QLIV2Common::ConstInfo::CROSS_CV_EVENT
