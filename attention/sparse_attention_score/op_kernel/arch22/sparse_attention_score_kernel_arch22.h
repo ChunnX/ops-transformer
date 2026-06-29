@@ -299,14 +299,13 @@ public:
                     LayoutOTmp ubOTmpLayout(rowNumRound, embedRound);
                     GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
 
-                    blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp],
-                        gBlockTable[blockTOffset], gIdentityIdx,
-                        ubPLayout, gmVLayout, ubOTmpLayout,
-                        actualBlockShapePV,
-                        0, 0, blockSize_,
-                        kvSTileSizeAct, strideKVRow, 1,
-                        softmaxReady_, blockSize_, 1, 1);
-                    AscendC::PipeBarrier<PIPE_FIX>();
+                    // blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp],
+                    //     gBlockTable[blockTOffset], gIdentityIdx,
+                    //     ubPLayout, gmVLayout, ubOTmpLayout,
+                    //     actualBlockShapePV,
+                    //     0, 0, blockSize_,
+                    //     kvSTileSizeAct, strideKVRow, 1,
+                    //     softmaxReady_, blockSize_, 1, 1);
                     NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady_);
 #endif
 
