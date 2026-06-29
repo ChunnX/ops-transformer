@@ -219,7 +219,7 @@ __aicore__ inline void CombineTokenGroup(
         // MTE3: send to GM
         LocalTensor<Fp8Type> ubQuantDataFp8 = ubQuantData.template ReinterpretCast<Fp8Type>();
         if constexpr (IsLayered) {
-            CombineQuantizedTokensByUrma<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
+            MegaMoeCombineImpl::CombineQuantizedTokensByUrma<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
                 ubQuantDataFp8, params);
         } else {
             CombineQuantizedTokens<Fp8Type>(i, 1, n, nScale, groupIdx, rankId, tripleTensor,
