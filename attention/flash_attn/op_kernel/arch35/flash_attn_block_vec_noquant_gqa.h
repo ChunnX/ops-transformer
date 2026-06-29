@@ -1037,8 +1037,9 @@ public:
                     DataCopy(bmm2Ub, mm2Res[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
                 } else {
                     DataCopy(bmm2Ub,
-                             mm2Res[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * constInfo.dSizeV +
-                                   mm2ResInnerOffset],
+                             mm2Res[constInfo.subBlockIdx *
+                                    (runInfo.actMSize - runInfo.actVecMSize) *
+                                    constInfo.dSizeV + mm2ResInnerOffset],
                              vec2CalcSize);
                 }
             } else {
