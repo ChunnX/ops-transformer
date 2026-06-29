@@ -42,15 +42,6 @@ static constexpr WqmmConfig S8S4_NZKN_G = {false, false, QuantType::PER_GROUP, f
 static constexpr WqmmConfig A16MXF4_NZKN = {false, false, QuantType::MX, false, QuantType::NONE, CubeFormat::NZ};
 static constexpr WqmmConfig MXA8W4_NZNK = {false, true, QuantType::MX, false, QuantType::NONE, CubeFormat::NZ};
 
-static constexpr WqmmConfig A16W4_NDKN_PG = {
-    false, false, QuantType::PER_GROUP, false, QuantType::NONE, CubeFormat::ND};
-static constexpr WqmmConfig A16W4_NDKN_PG_OFF = {
-    false, false, QuantType::PER_GROUP, true, QuantType::NONE, CubeFormat::ND};
-static constexpr WqmmConfig A16W4_NDNK_PG = {
-    false, true, QuantType::PER_GROUP, false, QuantType::NONE, CubeFormat::ND};
-static constexpr WqmmConfig A16W4_NDNK_PG_OFF = {
-    false, true, QuantType::PER_GROUP, true, QuantType::NONE, CubeFormat::ND};
-
 struct BasicBlockControlParam {
     uint64_t processId;
     uint64_t mSize;

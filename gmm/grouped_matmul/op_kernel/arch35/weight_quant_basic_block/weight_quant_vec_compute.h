@@ -1078,7 +1078,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQuant
                     addressParam.weightLowBitPhyAddr0, addressParam.weightF16PhyAddr0, 
                     static_cast<uint16_t>(vfExternalRealLen), static_cast<uint16_t>(CeilAlign(vfInnerRealLen, BLOCK_CUBE)));
             } else if (antiQuantGroupSize_ == PERGROUP_SIZE_64) {
-                AscendC::VF_CALL<AntiQuantInt4PerGroupNdNkGs32<xType, wType, wqmmConfig, vecConfig>>(
+                AscendC::VF_CALL<AntiQuantInt4PerGroupNdNkGs64<xType, wType, wqmmConfig, vecConfig>>(
                     addressParam.antiQuantScaleBasePhyAddr, addressParam.antiQuantOffsetBasePhyAddr,
                     addressParam.weightLowBitPhyAddr0, addressParam.weightF16PhyAddr0, 
                     static_cast<uint16_t>(vfExternalRealLen), static_cast<uint16_t>(CeilAlign(vfInnerRealLen, BLOCK_CUBE)));

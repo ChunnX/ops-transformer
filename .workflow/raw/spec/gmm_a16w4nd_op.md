@@ -35,16 +35,16 @@
 | ------ | --------- | --------- | ----- | ------ | ----- | ---- |
 | x | DYNAMIC | 必选 | FLOAT16/BFLOAT16 | ND | 多多多(groupType=-1): 2维, $(m_i, k_i)$</br>单单单(groupType=0): 2维, $(M, K)$ | 左矩阵（激活），固定不转置 |
 | weight | DYNAMIC | 必选 | INT4 | ND | 多多多(groupType=-1): 2维, $(n_i, k_i)$ （转置）或 $(k_i, n_i)$（非转置）</br>单单单(groupType=0): 3维, $(E, N, K)$（转置） 或 $(E, K, N)$（非转置） | 右矩阵（权重），支持转置和非转置 |
-| biasOptional | DYNAMIC | 可选 | FLOAT16/BFLOAT16/null | ND | 多多多(groupType=-1): 1维, $(n_i)$</br>单单单(groupType=0): 2维, $(E, N)$ | 偏置。bias 类型与 x 保持一致  |
+| biasOptional | DYNAMIC | 可选 | x=FLOAT16时: FLOAT16</br>x=BFLOAT16时: FLOAT</br>或 null | ND | 多多多(groupType=-1): 1维, $(n_i)$</br>单单单(groupType=0): 2维, $(E, N)$ | 偏置。bias dtype 由 x dtype 严格确定：x=FLOAT16→bias=FLOAT16，x=BFLOAT16→bias=FLOAT（不支持 BFLOAT16）。|
 | antiquantScaleOptional | DYNAMIC | 必选 | FLOAT16/BFLOAT16 | ND | 多多多（groupType=-1），shape为$[G_i, N_i]$，其中 $G_i = k_i / gs$<br>单单单（groupType=0），shape为$[E, G, N]$，其中 $G = K / gs$ [^1] | 伪量化缩放因子（pergroup），dtype 与 x 一致 |
 | antiquantOffsetOptional | DYNAMIC | 可选 | FLOAT16/BFLOAT16/null | ND | 多多多（groupType=-1），shape为$[G_i, N_i]$，其中 $G_i = k_i / gs$<br>单单单（groupType=0），shape为$[E, G, N]$，其中 $G = K / gs$ [^1] | 伪量化偏移量（pergroup），dtype 与 x 一致。对称量化时为 null |
 | groupListOptional | OPTIONAL | 条件必选 | INT64 | ND | 1维, $(E,)$ | 分组列表。groupType=0 时必选，groupType=-1 时必须传空 |
-| scaleOptional | DYNAMIC | 不使用 | - | - | - | 本场景为 null |
-| offsetOptional | DYNAMIC | 不使用 | - | - | - | 本场景为 null |
-| perTokenScaleOptional | OPTIONAL | 不使用 | - | - | - | 本场景为 null |
-| activationInputOptional | - | 不使用 | - | - | - | 本场景为 null |
-| activationQuantScaleOptional | - | 不使用 | - | - | - | 本场景为 null |
-| activationQuantOffsetOptional | - | 不使用 | - | - | - | 本场景为 null |
+| scaleOptional | DYNAMIC | 不使用 | UINT64 | ND | - | 本场景为 null。 |
+| offsetOptional | DYNAMIC | 不使用 | FLOAT | ND | - | 本场景为 null。 |
+| perTokenScaleOptional | OPTIONAL | 不使用 | FLOAT | ND | - | 本场景为 null。 |
+| activationInputOptional | DYNAMIC | 不使用 | FLOAT | ND | - | 本场景为 null。 |
+| activationQuantScaleOptional | DYNAMIC | 不使用 | FLOAT | ND | - | 本场景为 null。 |
+| activationQuantOffsetOptional | DYNAMIC | 不使用 | FLOAT | ND | - | 本场景为 null。 |
 
 [^1]: **antiquantScaleOptional / antiquantOffsetOptional shape 约束**（pergroup 场景，其中 $E$ 为 matmul 组数即分组数，$G$ 为 pergroup 数，$G_i$ 为第 $i$ 个 tensor 的 pergroup 数，$gs$ 为 group_size）：
 
@@ -89,5 +89,6 @@
 | 参数名 | ParamType | dtype | format | shape | 说明 |
 | ------ | --------- | ----- | ------ | ----- | ---- |
 | out | DYNAMIC | FLOAT16/BFLOAT16 | ND | 多多多(groupType=-1): 2维, $(m_i, n_i)$</br>单单单(groupType=0): 2维, $(M, N)$ | 矩阵乘计算结果，dtype 与 x 一致 |
-| activationFeatureOutOptional | - | - | - | - | 本场景为 null |
-| dynQuantScaleOutOptional | - | - | - | - | 本场景为 null |
+| activationFeatureOutOptional | DYNAMIC | FLOAT | ND | - | 本场景为 null。 |
+| dynQuantScaleOutOptional | DYNAMIC | FLOAT | ND | - | 本场景为 null。 |
+

@@ -851,3 +851,62 @@
 - 影响 A16W4 pergroup ND `bTrans=false` 的 INT4 pergroup 反量化，覆盖 groupSize 32/64/128/256 统一路径
 - A16W4 pergroup ND `bTrans=true` 的 gs 专用 NK 路径、perchannel、MX、NZ 路径不受影响
 - 静态检查：`git diff --check` 通过；未编译
+
+---
+
+### 2026-06-29 | Review 整改：移除 out shape 校验并修复 UT
+
+**类型**: 🐛 修复
+**范围**: arch35 GMM A16W4 INT4 ND pergroup tiling 与 op_host UT
+
+#### 变更内容
+- 删除 `GroupedWeightQuantBatchMatmulTiling::CheckOutputShape` 声明、实现和调用，tiling 不再校验 y shape
+- 删除 pergroup CSV UT 中 `yShapeMode` 字段和依赖 y shape 校验的 `bad_rank/bad_n` 负例
+- 保留并修复 antiquantOffset shape/rank 负例，新增/保留 INT32 packed weight 使用逻辑 N 推导的回归测试
+
+#### 关键决策
+- out shape 由 infershape/框架代码推导，不应在 tiling 中重复作为用户输入进行校验
+- UT 继续覆盖真实需要 tiling 校验的输入/scale/offset 关系，以及 INT32 packed weight 的逻辑 N 推导
+
+#### 影响范围
+- 影响 A16W4 ND pergroup tiling 的校验边界和相关 UT 预期
+- `git diff --check` 通过；`bash build.sh -u --ophost --soc=ascend950 --ops=grouped_matmul -j8 --noexec` 通过
+- `transformer_op_host_ut` 386/386 通过；按 review 记录要求未编译 kernel
+
+---
+
+### 2026-06-29 | 追加 Review 整改复核报告
+
+**类型**: 📝 文档
+**范围**: `.workflow/raw/review/revision_report.md`
+
+#### 变更内容
+- 新增 review 整改复核报告，逐条核对 `.workflow/raw/review/review.json` 中 18 条意见的当前处理状态
+- 标记 14 条已整改/无需追加处理、3 条部分整改、1 条未整改
+- 记录复核中新发现的 `groupSize=64` NK pergroup 调度疑似错误
+
+#### 关键决策
+- 本次仅做复核与文档记录，不修改 tiling/kernel/UT 代码
+- 对 reviewer 已 resolved 的 VF 写法意见，仅确认新增 pergroup 代码保持 `__simd_vf__` / `__simd_callee__` 风格
+
+#### 影响范围
+- 不影响代码行为
+- 后续需要针对报告中的残留风险决定是否继续整改
+
+---
+
+### 2026-06-29 | 更新 Review 复核工作流状态
+
+**类型**: 📝 文档
+**范围**: `.workflow/NEXT_STEPS.md`, `.workflow/PLAN.md`
+
+#### 变更内容
+- 在 NEXT_STEPS 中新增 Review 整改复核任务索引，指向 revision report
+- 在 PLAN 当前进度中记录 Review 整改复核已完成
+- 在 PLAN 风险表中补充 `groupSize=64` NK pergroup 调度疑似错误
+
+#### 关键决策
+- 将复核结论和残留风险写入工作流索引，保证后续会话可直接接续
+
+#### 影响范围
+- 不影响代码行为

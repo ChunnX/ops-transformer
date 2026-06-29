@@ -43,6 +43,10 @@ constexpr size_t ANTIQUANT_SCALE_DIM_NUM = 4; // MX格式antiquantScale维度数
 constexpr size_t PENULTIMATE_DIM = 2;         // 倒数第2维
 constexpr size_t ANTEPENULTIMATE_DIM = 3;     // 倒数第3维
 constexpr int64_t MX_GROUP_FACTOR = 2;        // MX格式groupNum计算因子
+constexpr int64_t A16W4_SINGLE_PER_CHANNEL_DIM = 2; // 单单单: scale/offset [E, N]
+constexpr int64_t A16W4_SINGLE_PER_GROUP_DIM = 3;   // 单单单: scale/offset [E, G, N]
+constexpr int64_t A16W4_MULTI_PER_CHANNEL_DIM = 1;  // 多多多: scale/offset [N_i]
+constexpr int64_t A16W4_MULTI_PER_GROUP_DIM = 2;    // 多多多: scale/offset [G_i, N_i]
 
 constexpr uint32_t BASIC_BLOCK_BASE_M = 256;
 constexpr uint32_t BASIC_BLOCK_BASE_M_WITH_BIAS = 240;
@@ -274,6 +278,11 @@ protected:
     bool SetAntiquantGroupSize(const gert::TilingContext *context);
     bool DeriveGroupSizeSingle(const gert::TilingContext *context);
     bool DeriveGroupSizeMulti(const gert::TilingContext *context);
+    bool GetA16W4MultiScaleShape(const gert::TilingContext *context, uint16_t idx, gert::Shape &scaleShape) const;
+    bool DeriveA16W4MultiPergroupSizeFromScale(const gert::Shape &scaleShape, int64_t kSize, uint16_t idx,
+                                               uint32_t &groupSize) const;
+    bool CheckA16W4MultiPergroupScaleShape(const gert::TilingContext *context, uint16_t idx,
+                                           int64_t expectedDimNum, uint32_t expectedGroupSize) const;
     bool CheckMultiA16W4PerChannelShape(const gert::TilingContext *context) const;
     bool CheckAntiquantOffsetMatchScale(const gert::TilingContext *context, uint16_t idx,
                                         const gert::Shape &scaleShape) const;

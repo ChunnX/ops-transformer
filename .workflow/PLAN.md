@@ -77,6 +77,10 @@
 **验证命令**:
 - 编译: `bash build.sh -u --ophost --soc=ascend950 --ops=grouped_matmul -j8 --noexec`
 - UT: `ASCEND_SLOG_PRINT_TO_STDOUT=0 ASCEND_GLOBAL_LOG_LEVEL=0 BUILD_PATH=$(pwd)/build ./build/tests/ut/framework_normal/op_host/transformer_op_host_ut`
+**2026-06-29 Review 整改**:
+- 确认 out shape 由 infershape/框架推导，tiling 不做 y shape 校验；删除 `CheckOutputShape` 及依赖它的 `bad_y` UT 负例
+- 修复 pergroup CSV UT：保留 antiquantOffset shape/rank 负例，删除 `yShapeMode` 字段；新增/保留 INT32 packed weight 逻辑 N 推导覆盖
+- 验证：`git diff --check` 通过，ophost 编译通过，`transformer_op_host_ut` 386/386 通过；未编译 kernel
 
 ### 任务 8：Kernel 适配
 **目标**: 在 `weight_quant_basic_block` 体系中适配 A16W4 pergroup ND 计算逻辑
@@ -153,9 +157,9 @@
   - [x] 任务 6：总结归纳设计文档（脑图更新 + STC 文档 + SRS 实现方案） ✅
 - [ ] 阶段二：编码实现（当前阶段）
   - [x] 任务 7：Tiling 实现 + UT 验证 ✅
-    - [x] 7.1 UT 测试框架搭建 + 用例编写（37 个 CSV 用例） ✅
+    - [x] 7.1 UT 测试框架搭建 + 用例编写（39 个 CSV 用例） ✅
     - [x] 7.2 Tiling 代码实现（9 个修改点 + 8 个 tiling key） ✅
-    - [x] 7.3 UT 验证 + 迭代（37/37 pergroup 通过，13/13 回归通过） ✅
+    - [x] 7.3 UT 验证 + 迭代（review 整改后 host UT 386/386 通过） ✅
   - [x] 任务 8：Kernel 适配 ✅
     - [x] 8.1 基础配置层（4 WqmmConfig + 8 apt 分支 + config950 4 条目） ✅
     - [x] 8.2 Controller 层适配（pergroup 偏移 + biasBaseOffset_） ✅
@@ -163,6 +167,10 @@
     - [x] 8.4 VF — KN 路径反量化（AntiQuantInt4PerGroupNdKn 参考 wqbmmv2 重写，无运行时 if） ✅
     - [x] 8.5 VF — NK 路径反量化（AntiQuantInt4PerGroupNdNk + Gs32/Gs64/Gs128/Gs256） ✅
     - [x] 8.6 静态/编译验证（本轮 gs128/gs64/gs32 修改未编译，仅静态检查） ✅
+  - [x] 任务 9：Review 整改复核 ✅
+    - [x] 读取 `.workflow/raw/review/review.json` 并逐条核对当前代码整改状态 ✅
+    - [x] 产出 `.workflow/raw/review/revision_report.md` ✅
+    - [x] 记录残留项：3 条部分整改、1 条未整改、1 个新增 kernel 调度风险 ✅
 - [ ] 阶段三：验证
 
 ## 风险与应对
@@ -173,3 +181,4 @@
 | `basic_block_vf_nd.h` 中 pergroup 反量化逻辑缺失 | 需要新增 pergroup ND 向量计算 | 走读 wqbmmv2 的 `AntiquantComputeW4NKPerGroup`/`AntiquantComputeKNPerGroup`，设计迁移方案 |
 | WqmmConfig 缺少 A16W4 pergroup ND 配置 | 需要新增配置项 | 参照 `S8S4_NZKN_G` 新增 ND 版本 |
 | int4 字节偏移计算容易出错 | 地址偏移需要减半处理 | 设计阶段明确 int4 偏移计算公式，编码阶段重点验证 |
+| `groupSize=64` 的 NK pergroup 调度疑似调用 `Gs32` VF | A16W4 ND pergroup、`bTrans=true`、`groupSize=64` kernel 结果可能错误 | 后续优先确认并修正 `weight_quant_vec_compute.h` 中 `PERGROUP_SIZE_64` 分支，随后执行 kernel 编译和精度验证 |

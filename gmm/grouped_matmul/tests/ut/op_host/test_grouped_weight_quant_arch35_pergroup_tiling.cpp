@@ -38,6 +38,8 @@ using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
+constexpr uint32_t DEFAULT_AIC_NUM = 32;
+
 DataType ParseDtype(const string &dtype)
 {
     const auto parsed = ops::ut::ParseGeDtype(dtype);
@@ -85,8 +87,8 @@ vector<gert::TilingContextPara::OpAttr> GetGroupedWeightQuantPergroupAttrs(bool 
 optiling::GMMCompileInfo MakeAscend950CompileInfo()
 {
     return {
-        32,                                                   // aicNum
-        64,                                                   // aivNum
+        DEFAULT_AIC_NUM,                                      // aicNum
+        DEFAULT_AIC_NUM * optiling::AIC_AIV_CORE_RATIO,       // aivNum
         262144,                                               // ubSize
         524288,                                               // l1Size
         134217728,                                            // l2Size
@@ -109,8 +111,8 @@ public:
     void Prepare(optiling::GMMCompileInfo &compileInfo) const
     {
         compileInfo = {
-            static_cast<uint32_t>(coreNum > 0 ? coreNum : 32),     // aicNum
-            static_cast<uint32_t>(coreNum > 0 ? coreNum * 2 : 64), // aivNum
+            static_cast<uint32_t>(coreNum > 0 ? coreNum : DEFAULT_AIC_NUM), // aicNum
+            static_cast<uint32_t>((coreNum > 0 ? coreNum : DEFAULT_AIC_NUM) * optiling::AIC_AIV_CORE_RATIO), // aivNum
             262144,                                                // ubSize
             524288,                                                // l1Size
             134217728,                                             // l2Size
@@ -168,7 +170,19 @@ public:
         // antiquantOffset shape
         gert::StorageShape antiquantOffsetShape;
         if (hasAntiquantOffset) {
-            antiquantOffsetShape = antiquantScaleShape;
+            if (antiquantOffsetShapeMode == "bad_group") {
+                if (groupType == -1) {
+                    antiquantOffsetShape = ops::ut::MakeGertStorageShape({G + 1, n}, {G + 1, n});
+                } else {
+                    antiquantOffsetShape = ops::ut::MakeGertStorageShape({groupNum, G + 1, n},
+                                                                          {groupNum, G + 1, n});
+                }
+            } else if (antiquantOffsetShapeMode == "bad_rank") {
+                antiquantOffsetShape = groupType == -1 ? ops::ut::MakeGertStorageShape({n}, {n})
+                                                       : ops::ut::MakeGertStorageShape({groupNum, n}, {groupNum, n});
+            } else {
+                antiquantOffsetShape = antiquantScaleShape;
+            }
         } else {
             antiquantOffsetShape = MakeEmptyShape();
         }
@@ -180,6 +194,8 @@ public:
         } else {
             groupListShape = ops::ut::MakeGertStorageShape({groupNum}, {groupNum});
         }
+
+        gert::StorageShape yShape = ops::ut::MakeGertStorageShape({m, n}, {m, n});
 
         gert::TilingContextPara tilingContextPara(
             "GroupedMatmul",
@@ -194,7 +210,7 @@ public:
                 {groupListShape, ge::DT_INT64, ge::FORMAT_ND},                     // groupList
                 {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},                   // perTokenScale
             },
-            {{ops::ut::MakeGertStorageShape({m}, {n}), yDtype, ge::FORMAT_ND}},
+            {{yShape, yDtype, ge::FORMAT_ND}},
             GetGroupedWeightQuantPergroupAttrs(transposeX, transposeWeight, groupType),
             &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
 
@@ -204,15 +220,34 @@ public:
         if (!result) {
             return;
         }
-        if (expectTilingData.empty()) {
-            // For placeholder cases we only care about success/failure path, not exact tiling binary.
-            return;
-        }
-
         ASSERT_EQ(tilingInfo.blockNum, expectBlockDim) << "prefix=" << prefix;
         ASSERT_EQ(tilingInfo.tilingKey, expectTilingKey) << "prefix=" << prefix;
         ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMWeightQuantTilingData))
             << "prefix=" << prefix;
+        const auto *tilingData =
+            reinterpret_cast<const GroupedMatmulTilingData::GMMWeightQuantTilingData *>(tilingInfo.tilingData.get());
+        const uint32_t expectedSingleFlag = groupType == -1 ? 0U : 1U;
+        const uint32_t expectedGroupNum = groupType == -1 ? 1U : static_cast<uint32_t>(groupNum);
+        EXPECT_EQ(tilingData->gmmWeightQuantParam.groupNum, expectedGroupNum) << "prefix=" << prefix;
+        EXPECT_EQ(tilingData->gmmWeightQuantParam.groupSize, static_cast<uint32_t>(groupSize))
+            << "prefix=" << prefix;
+        EXPECT_EQ(static_cast<uint32_t>(tilingData->gmmWeightQuantParam.hasBias), static_cast<uint32_t>(hasBias))
+            << "prefix=" << prefix;
+        EXPECT_EQ(static_cast<uint32_t>(tilingData->gmmWeightQuantParam.singleX), expectedSingleFlag)
+            << "prefix=" << prefix;
+        EXPECT_EQ(static_cast<uint32_t>(tilingData->gmmWeightQuantParam.singleWeight), expectedSingleFlag)
+            << "prefix=" << prefix;
+        EXPECT_EQ(static_cast<uint32_t>(tilingData->gmmWeightQuantParam.singleY), expectedSingleFlag)
+            << "prefix=" << prefix;
+        EXPECT_EQ(static_cast<int32_t>(tilingData->gmmWeightQuantParam.groupType), static_cast<int32_t>(groupType))
+            << "prefix=" << prefix;
+        EXPECT_EQ(static_cast<uint32_t>(tilingData->gmmWeightQuantParam.groupListType), 0U) << "prefix=" << prefix;
+        EXPECT_EQ(tilingData->gmmWeightQuantParam.kSize, static_cast<uint64_t>(k)) << "prefix=" << prefix;
+        EXPECT_EQ(tilingData->gmmWeightQuantParam.nSize, static_cast<uint64_t>(n)) << "prefix=" << prefix;
+
+        if (expectTilingData.empty()) {
+            return;
+        }
 
         string actualTilingData = TilingData2Str(tilingInfo.tilingData.get(), tilingInfo.tilingDataSize);
         ASSERT_EQ(actualTilingData, expectTilingData) << "prefix=" << prefix;
@@ -251,6 +286,7 @@ public:
     uint64_t expectBlockDim = 0;
     uint64_t expectTilingKey = 0;
     string expectTilingData;
+    string antiquantOffsetShapeMode = "match";
 };
 
 vector<GroupedWeightQuantPergroupArch35TilingTestParam> GetParams(const string &socVersion)
@@ -316,6 +352,9 @@ vector<GroupedWeightQuantPergroupArch35TilingTestParam> GetParams(const string &
             param.expectBlockDim = static_cast<uint64_t>(stoull(items[idx++]));
             param.expectTilingKey = static_cast<uint64_t>(stoull(items[idx++]));
             param.expectTilingData = items[idx++];
+            if (idx < items.size()) {
+                param.antiquantOffsetShapeMode = Trim(items[idx++]);
+            }
             params.push_back(param);
         } catch (const std::exception &error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
@@ -355,6 +394,7 @@ TEST_P(TestGroupedWeightQuantPergroupArch35Tiling, generalTest)
     GetParam().Test();
 }
 
+// These regression cases use multi-instance inputs or cross-case comparisons that the scalar CSV rows cannot express.
 TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiDifferentNkWritesEachMknToTilingData)
 {
     auto compileInfo = MakeAscend950CompileInfo();
@@ -514,7 +554,7 @@ TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiRejectsPerGrou
 
 TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiPerChannelSucceedsWithGroupSizeZero)
 {
-    // 1D antiquantScale [N_i] -> perchannel mode in multi-multi-multi A16W4ND.
+    // 1D antiquantScale [N_i] -> perchannel mode in multi-multi-multi bf16/fp16-int4/int32 ND.
     // Verifies the new CheckMultiA16W4PerChannelShape path succeeds and groupSize stays 0.
     auto compileInfo = MakeAscend950CompileInfo();
     vector<gert::TilingContextPara::TensorDescription> inputDescs = {
@@ -626,6 +666,46 @@ TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, multiMultiMultiKEqualsGroupSi
 
     // The core assertion: pergroup tilingKey must differ from perchannel tilingKey.
     EXPECT_NE(pergroupInfo.tilingKey, perchannelInfo.tilingKey);
+}
+
+TEST_F(TestGroupedWeightQuantPergroupArch35Tiling, singleSingleSingleInt32PackedWeightOutputUsesLogicalN)
+{
+    constexpr int64_t m = 256;
+    constexpr int64_t k = 1024;
+    constexpr int64_t logicalN = 512;
+    constexpr int64_t packedN = logicalN / optiling::FP4_PER_FP32;
+    constexpr int64_t groupNum = 2;
+    constexpr int64_t groupSize = 128;
+    constexpr int64_t scaleGroupNum = k / groupSize;
+
+    auto compileInfo = MakeAscend950CompileInfo();
+    vector<gert::TilingContextPara::TensorDescription> inputDescs = {
+        MakeTensorDesc({m, k}, ge::DT_FLOAT16), // x
+        {ops::ut::MakeGertStorageShape({groupNum, k, logicalN}, {groupNum, k, packedN}), ge::DT_INT32,
+         ge::FORMAT_ND},                                                            // packed int4 weight
+        MakeTensorDesc({groupNum, logicalN}, ge::DT_FLOAT16),                       // bias
+        {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},                            // scale
+        {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},                            // offset
+        MakeTensorDesc({groupNum, scaleGroupNum, logicalN}, ge::DT_FLOAT16),         // antiquantScale
+        {MakeEmptyShape(), ge::DT_FLOAT16, ge::FORMAT_ND},                          // antiquantOffset
+        MakeTensorDesc({groupNum}, ge::DT_INT64),                                   // groupList
+        {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},                            // perTokenScale
+    };
+    vector<gert::TilingContextPara::TensorDescription> outputDescs = {
+        MakeTensorDesc({m, logicalN}, ge::DT_FLOAT16),
+    };
+    gert::TilingContextPara tilingContextPara(
+        "GroupedMatmul", inputDescs, outputDescs,
+        GetGroupedWeightQuantPergroupAttrs(false, false, 0),
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMWeightQuantTilingData));
+    const auto *tilingData =
+        reinterpret_cast<const GroupedMatmulTilingData::GMMWeightQuantTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.nSize, static_cast<uint64_t>(logicalN));
+    EXPECT_EQ(tilingData->gmmWeightQuantParam.groupSize, static_cast<uint32_t>(groupSize));
 }
 
 INSTANTIATE_TEST_SUITE_P(GROUPED_WQ_PERGROUP_950, TestGroupedWeightQuantPergroupArch35Tiling,

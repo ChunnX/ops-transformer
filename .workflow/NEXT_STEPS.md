@@ -86,17 +86,18 @@
 - 新增 `IsA16W4NDPergroup()` 辅助函数
 - `CheckGroupSize()` 支持 32/64/128/256
 - `SetAntiquantGroupSize()` 支持单单单 3D 和多多多 2D scale 推导 groupSize
-- `SetTilingKey()` 生成 `PER_GROUP` antiquant type，编码 offset+bias 组合
+- `SetTilingKey()` 生成 `PER_GROUP` antiquant type，offset 参与 key，bias 不参与 A16W4 ND pergroup key
 - 维度校验扩展（单单单 2/3D，多多多 1/2D）
-- `weight_quant_tiling_key.h` 新增 8 个 `ASCENDC_TPL_ARGS_SEL` 组合
-- CSV 驱动 UT 37 个用例全部通过，原有 13 个 WeightQuant 用例无回归
+- Review 整改确认 out shape 由代码推导，tiling 不校验 y shape；已删除 `CheckOutputShape` 和依赖该校验的 y shape 负例
+- CSV 驱动 UT 39 个用例，保留 antiquantOffset shape/rank 负例；新增/保留 INT32 packed weight 逻辑 N 推导覆盖
+- `git diff --check` 通过，ophost 编译通过，`transformer_op_host_ut` 386/386 通过；未编译 kernel
 
 **修改文件**：
 - `grouped_weight_quant_batch_matmul_tiling.h` — 新增声明
 - `grouped_weight_quant_batch_matmul_tiling.cpp` — 9 个修改点
 - `weight_quant_tiling_key.h` — 8 个新 tiling key
 - `test_grouped_weight_quant_arch35_pergroup_tiling.cpp` — 新增 CSV 驱动测试
-- `test_grouped_weight_quant_arch35_pergroup_tiling.csv` — 37 个用例
+- `test_grouped_weight_quant_arch35_pergroup_tiling.csv` — 39 个用例
 
 **任务详情**：[详细任务说明](reference/next_steps/7_tiling_impl.md)
 
@@ -133,3 +134,19 @@
 **编译命令**：`bash build.sh --opkernel --soc=ascend950 --ops=grouped_matmul -j8`
 
 **任务详情**：[详细任务说明](reference/next_steps/8_kernel_impl.md)
+
+## 任务 9：Review 整改复核
+
+**任务状态**：✅ 已完成
+
+**简要说明**：读取 `.workflow/raw/review/review.json`，对照当前 tiling、kernel 和 UT 代码逐条复核 review 意见整改状态，并将 revision report 落盘。
+
+**复核结论**：
+- Review 意见共 18 条
+- 已整改 / 无需追加处理：14 条
+- 部分整改：3 条
+- 未整改：1 条
+- 额外发现 `groupSize=64` 的 NK pergroup 调度疑似调用了 `Gs32` VF，需后续修正或确认
+
+**产出文件**：
+- `.workflow/raw/review/revision_report.md` — Review 整改复核报告

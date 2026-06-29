@@ -1,0 +1,164 @@
+[
+  {
+    "id": 177623968,
+    "body": "魔鬼数字用注释解释一下",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp",
+    "line_no": 249,
+    "reply": []
+  },
+  {
+    "id": 177628833,
+    "body": "hasbias 直接用tilingdata 不要用tiling Key",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h",
+    "line_no": 194,
+    "reply": []
+  },
+  {
+    "id": 177629060,
+    "body": "按照xtype-weighttype的写 全文排查",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp",
+    "line_no": 1145,
+    "reply": []
+  },
+  {
+    "id": 177629513,
+    "body": "建议：__VEC_SCOPE__ 替换为 __simd_vf__ 会比较符合现在的编程方式？",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/basic_block_vf_nd.h",
+    "line_no": 745,
+    "reply": []
+  },
+  {
+    "id": 177630470,
+    "body": "A16W4 写成x_dtype-weight_dtype 这种样式",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp",
+    "line_no": 295,
+    "reply": []
+  },
+  {
+    "id": 177632338,
+    "body": "增加注释说明应用场景",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp",
+    "line_no": 57,
+    "reply": []
+  },
+  {
+    "id": 177632946,
+    "body": "简化实现",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h",
+    "line_no": 195,
+    "reply": []
+  },
+  {
+    "id": 177633115,
+    "body": "去掉不必要的constexpr表达，减少代码量",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp",
+    "line_no": 420,
+    "reply": []
+  },
+  {
+    "id": 177634275,
+    "body": "用simd_vf的新标准写",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/basic_block_vf_nd.h",
+    "line_no": 605,
+    "reply": []
+  },
+  {
+    "id": 177637651,
+    "body": "增 CSV 驱动 UT 中，输出 y 被构造成 MakeGertStorageShape({m}, {n})，不是实际的 {m,n}。这会让正例没有按真实 GroupedMatmul 输出 rank/shape 走接口，也会掩盖 tiling 对输出维度校验缺失的问题。",
+    "resolved": false,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/tests/ut/op_host/test_grouped_weight_quant_arch35_pergroup_tiling.cpp",
+    "line_no": 197,
+    "reply": []
+  },
+  {
+    "id": 177637964,
+    "body": "CSV 中 26 条成功正例的 blockDim=0、tilingKey=0、tilingData 为空。测试在 expectTilingData.empty() 时直接返回，因此这些正例只覆盖“能 tiling 成功”，不能发现 PER_GROUP/PER_CHANNEL 误判、tilingKey 选错、groupSize 写错、bias/offset option 位错误等问题。本 PR 修改了 tilingKey、groupSize 推导和 kernel 白名单，成功路径的关键字段应有断言。",
+    "resolved": false,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/tests/ut/op_host/test_grouped_weight_quant_arch35_pergroup_tiling.csv",
+    "line_no": 3,
+    "reply": []
+  },
+  {
+    "id": 177637990,
+    "body": "可以和其他的保持一致在外面设",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/grouped_matmul_weight_quant_basic_controller.h",
+    "line_no": 92,
+    "reply": []
+  },
+  {
+    "id": 177638649,
+    "body": "其他数据流实际都没在tilingkey里表示bias，这一位只表示了offset，bias是在kernel里用tilingdata判断的，建议保持一致",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp",
+    "line_no": 772,
+    "reply": []
+  },
+  {
+    "id": 177644673,
+    "body": "超大函数",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp",
+    "line_no": 1217,
+    "reply": []
+  },
+  {
+    "id": 177645601,
+    "body": "这个调度不要写在vf里面，写在vec_compute.h里面",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/basic_block_vf_nd.h",
+    "line_no": 1016,
+    "reply": []
+  },
+  {
+    "id": 177645893,
+    "body": "ut已经有csv的表驱动模式了，为什么这里又引入单独的TEST_F?",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/tests/ut/op_host/test_grouped_weight_quant_arch35_pergroup_tiling.cpp",
+    "line_no": 547,
+    "reply": []
+  },
+  {
+    "id": 177652233,
+    "body": "这里的2可以改成AIC_AIV_CORE_RATIO(在tiling.h中定义)，提升可读性, 并且之后如果修改核数比，这里不会漏掉。",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/tests/ut/op_host/test_grouped_weight_quant_arch35_pergroup_tiling.cpp",
+    "line_no": 113,
+    "reply": []
+  },
+  {
+    "id": 177655959,
+    "body": "groupListType 声明的类型为 int64_t，对应的格式符应该为 %lld，而不是 %u",
+    "resolved": true,
+    "is_outdated": false,
+    "file_path": "gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp",
+    "line_no": 1470,
+    "reply": []
+  }
+]
