@@ -44,10 +44,11 @@ struct MoeDistributeCombineV2Info {
     bool hasElasticInfo;           // has elasticinfo or not
     bool isPerformance;            // whether performance or not
     bool isMc2Context;
-    bool reserved1;
+    bool hasExpertScales;         // has expertScales or not
     bool reserved2;
     uint64_t totalUbSize;
     uint64_t totalWinSizeEp;
+    uint64_t totalWinSizeTp;
     float armAvgFactor;
     float epsilon;
     uint32_t bufferNum;
@@ -55,6 +56,7 @@ struct MoeDistributeCombineV2Info {
 struct MoeDistributeCombineV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
+    Mc2CcTiling mc2CcTiling2;
     MoeDistributeCombineV2Info moeDistributeCombineV2Info;
 };
 
