@@ -34,4 +34,9 @@ enum class QSMLATemplateMode {
     CFA_TEMPLATE_MODE = 1,
     SCFA_TEMPLATE_MODE = 2
 };
+
+enum class SCALE_CONTIGUOUS_MODE {
+    CONTIGUOUS = 1,
+    NONCONTIGUOUS = 2,
+};
 #endif // MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_H
