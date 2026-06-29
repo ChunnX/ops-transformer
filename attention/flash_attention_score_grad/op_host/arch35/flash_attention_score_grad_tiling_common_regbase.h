@@ -84,6 +84,7 @@ constexpr uint32_t SEED_ATTR_IDX = 9;
 constexpr uint32_t OFFSET_ATTR_IDX = 10;
 constexpr uint32_t OUTDTYPE_ATTR_IDX = 11;
 constexpr uint32_t TND_SOFTMAX_IN_ATTR_IDX = 12;
+constexpr uint32_t DSINKOUT_IDX = 6;
 
 constexpr uint32_t GM_ALIGN = 512;
 
@@ -552,8 +553,11 @@ inline std::vector<T> SliceVector(const std::vector<T> &arr, const int64_t step)
 ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant);
 ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, bool isQuant);
 ge::graphStatus CheckAttentionInShape(gert::TilingContext *context);
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context);
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context);
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d);
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
+ge::graphStatus CheckDtypeValid(gert::TilingContext *context);
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase& fBaseParams);
 bool CheckIsLargeInvalidBlk(const FuzzyBaseInfoParamsRegbase& fBaseParams);
