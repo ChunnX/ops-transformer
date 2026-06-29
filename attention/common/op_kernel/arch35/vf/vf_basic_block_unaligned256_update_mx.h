@@ -159,7 +159,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         }
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                          pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) { //alibi
+                          pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) { // alibi
                 Abs(vreg_pse1, vreg_alibi1, preg_all);
                 Abs(vreg_pse2, vreg_alibi2, preg_all);
                 Abs(vreg_pse3, vreg_alibi3, preg_all);
@@ -224,7 +224,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
                 preg_compare3, (__ubuf__ uint32_t *&)maskUb3, nPadding);
             LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
                 preg_compare4, (__ubuf__ uint32_t *&)maskUb4, nPadding);
-            // Select between input and min value based on mask    
+            // Select between input and min value based on mask
             Select(vreg_sel1, vreg_min, vreg_input_x1, preg_compare1);
             Select(vreg_sel2, vreg_min, vreg_input_x2, preg_compare2);
             Select(vreg_sel3, vreg_min, vreg_input_x3, preg_compare3);
