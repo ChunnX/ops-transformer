@@ -521,7 +521,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
                        IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
             TPipe gatherPipe;
-            MoeGatherOutMxfp8Quant<DTYPE_X, DTYPE_EXPANDED_X> gatherMxfp8QuantOp;
+            MoeGatherOutMxfp8Quant<DTYPE_X, DTYPE_EXPANDED_X, false> gatherMxfp8QuantOp;
             gatherMxfp8QuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherMxfp8QuantOp.Process();
             gatherPipe.Destroy();
