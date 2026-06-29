@@ -1597,49 +1597,16 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
             for (int64_t i = 0; i < bSize; i++) {
                 accumS1S2 += (actualSeqLenData[i] * actualSeqLenKvData[i]);
             }
-            int64_t t2 = context_->GetInputShape(1)->GetStorageShape().GetDim(0);
-            OP_LOGI(context_, "ZAD::[%s] PSE TND shape check: pseBSize=%ld, bSize=%ld, accumS2=%ld, t2=%ld, accumS1S2=%ld, n1Size=%ld, s1Size=%ld, s2Size=%ld",
-                    templateName, pseBSize, bSize, accumS2, t2, accumS1S2, n1Size, s1Size, s2Size);
-            if (pseBSize == accumS2 * n1Size || pseBSize == t2 * n1Size) {
-                OP_LOGI(context_, "ZAD::[%s] PSE shape matched BN1S: pseBSize(%ld) == accumS2*n1(%ld) || t2*n1(%ld)",
-                        templateName, pseBSize, accumS2 * n1Size, t2 * n1Size);
+            if (pseBSize == accumS2 * n1Size) {
                 pseShapeType = PSE_B_N2_G_1_S2;
             } else if (pseBSize == accumS1S2 * n1Size) {
-                OP_LOGI(context_, "ZAD::[%s] PSE shape matched BNSS (accumulated): pseBSize(%ld) == accumS1S2*n1(%ld)",
-                        templateName, pseBSize, accumS1S2 * n1Size);
                 pseShapeType = PSE_B_N2_G_S1_S2;
-            } else if (pseDimNum == PSE_DIM_NUM && (pseShapeDims.GetDim(0) == 1 || pseShapeDims.GetDim(0) == bSize)) {
-                // PSE 按 batch 维度构造，检查后三维
-                int64_t pseDim1Size = pseShapeDims.GetDim(1);
-                int64_t pseDim2Size = pseShapeDims.GetDim(2);
-                int64_t pseDim3Size = pseShapeDims.GetDim(3);
-                OP_LOGI(context_, "ZAD::[%s] PSE TND batch-dim check: pseDim=[%ld,%ld,%ld,%ld], expected n1=%ld, s1=%ld, s2=%ld",
-                        templateName, pseBSize, pseDim1Size, pseDim2Size, pseDim3Size, n1Size, s1Size, s2Size);
-                if (pseDim1Size == n1Size && pseDim2Size == s1Size && pseDim3Size == s2Size) {
-                    OP_LOGI(context_, "ZAD::[%s] PSE shape matched BNSS (batch-dim): [%ld,%ld,%ld,%ld]",
-                            templateName, pseBSize, pseDim1Size, pseDim2Size, pseDim3Size);
-                    pseShapeType = PSE_B_N2_G_S1_S2;
-                } else if (pseDim1Size == n1Size && pseDim2Size == 1 && pseDim3Size == s2Size) {
-                    OP_LOGI(context_, "ZAD::[%s] PSE shape matched BN1S (batch-dim): [%ld,%ld,%ld,%ld]",
-                            templateName, pseBSize, pseDim1Size, pseDim2Size, pseDim3Size);
-                    pseShapeType = PSE_B_N2_G_1_S2;
-                } else if (pseDim1Size == n1Size && pseDim2Size == PSE_ALIBI_S_SIZE && pseDim3Size == s2Size) {
-                    if (s1Size < pseDim2Size) {
-                        OP_LOGE(opName, "get unsupported pse shape (ALiBi batch-dim), the shape is [%ld, %ld, %ld, %ld]", pseBSize, pseDim1Size, pseDim2Size, pseDim3Size);
-                        return false;
-                    }
-                    OP_LOGI(context_, "ZAD::[%s] PSE shape matched ALiBi (batch-dim): [%ld,%ld,%ld,%ld]",
-                            templateName, pseBSize, pseDim1Size, pseDim2Size, pseDim3Size);
-                    pseShapeType = PSE_B_N2_G_S1_S2;
-                } else {
-                    OP_LOGE(context_, "[%s] get unsupported pse shape (batch-dim): pseShapeDims=[%ld,%ld,%ld,%ld], expected n1=%ld, s1=%ld, s2=%ld",
-                            templateName, pseBSize, pseDim1Size, pseDim2Size, pseDim3Size, n1Size, s1Size, s2Size);
-                    return false;
-                }
+            } else if (pseDimNum == PSE_DIM_NUM && (pseShapeDims.GetDim(0) == 1 || pseShapeDims.GetDim(0) == bSize) &&
+                       pseShapeDims.GetDim(1) == n1Size && pseShapeDims.GetDim(2) == PSE_ALIBI_S_SIZE &&
+                       pseShapeDims.GetDim(3) == s2Size) {
+                pseShapeType = PSE_B_N2_G_S1_S2;
             } else {
-                OP_LOGE(context_, "[%s] get unsupported pse shape: pseBSize=%ld, expected one of [accumS2*n1=%ld, t2*n1=%ld, accumS1S2*n1=%ld, bSize=%ld], pseDimNum=%zu, pseShapeDims=[%ld,%ld,%ld,%ld]",
-                        templateName, pseBSize, accumS2 * n1Size, t2 * n1Size, accumS1S2 * n1Size, bSize,
-                        pseDimNum, pseShapeDims.GetDim(0), pseShapeDims.GetDim(1), pseShapeDims.GetDim(2), pseShapeDims.GetDim(3));
+                OP_LOGE(context_, "get unsupported pse shape");
                 return false;
             }
         } else {
