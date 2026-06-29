@@ -32,18 +32,18 @@
 调用lightning_indexer接口之前，先调用前置接口lightning_indexer_metadata，完成lightning_indexer负载均衡的计算。
 
 ```python
-cann_ops_transformer.lightning_indexer_metadata(num_heads_q, num_heads_k, head_dim, topk, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, batch_size=0, max_seqlen_q=-1, max_seqlen_k=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1) -> Tensor
+lightning_indexer_metadata(num_heads_q, num_heads_k, head_dim, topk, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, batch_size=0, max_seqlen_q=-1, max_seqlen_k=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1) -> Tensor
 ```
 
 ```python
-cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, block_table=None, output_idx_offset=None, metadata=None, max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1, return_value=0) -> (Tensor, Tensor)
+lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None, seqused_q=None, seqused_k=None, cmp_residual_k=None, block_table=None, output_idx_offset=None, metadata=None, max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1, return_value=0) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
 
 >**说明：**<br>
 >
->- q、k、w参数维度含义：B（Batch Size）表示输入样本批量大小、S1表示q的输入样本序列长度、S2表示k的输入样本序列长度、N1表示q的多头数、N2表示k的多头数、D（Head Dim）表示注意力头的维度、T1表示q的输入样本序列长度的累加和、T2表示k的输入样本序列长度的累加和。参数q中的D和参数k中的D值相等，当前仅支持128。
+>q、k、w参数维度含义：B（Batch Size）表示输入样本批量大小、S1表示q的输入样本序列长度、S2表示k的输入样本序列长度、N1表示q的多头数、N2表示k的多头数、D（Head Dim）表示注意力头的维度、T1表示q的输入样本序列长度的累加和、T2表示k的输入样本序列长度的累加和。参数q中的D和参数k中的D值相等，当前仅支持128。
 
 ### lightning_indexer_metadata
 
@@ -112,7 +112,7 @@ cann_ops_transformer.lightning_indexer(q, k, w, topk, *, cu_seqlens_q=None, cu_s
 ## 约束说明
 
 - 该接口支持训练、推理场景下使用。
-- 该接口支持单算子模式和aclgraph图模式调用。
+- 该接口支持单算子模式和TorchAir图模式（aclgraph）调用。
 - lightning_indexer_metadata接口需与lightning_indexer算子配套使用。
 - B（Batch）表示输入样本批量大小。
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
