@@ -134,8 +134,8 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingAbaAndBa::ComputeUbFacto
 
     // Kernel UB layout:
     //   dy/dx: UB_FACTOR * ubFactorB * ubFactorS * ubFactorN * dSizeDy
-    //   cos/sin (BBoardcast): UB_FACTOR * ubFactorS * dSizeCos
-    //   cos/sin (!BBoardcast): UB_FACTOR * ubFactorB * ubFactorS * dSizeCos
+    //   cos/sin (Broadcast): UB_FACTOR * ubFactorS * dSizeCos
+    //   cos/sin (!Broadcast): UB_FACTOR * ubFactorB * ubFactorS * dSizeCos
     //
     // Use effectiveCosOverhead like BAB/AB to handle mixed precision uniformly:
     //   Overhead = max(1, CeilDiv(dSizeCos, dSizeDy)) "dy-row equivalents" per cos row

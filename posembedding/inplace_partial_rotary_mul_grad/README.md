@@ -232,7 +232,7 @@
 
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
-- 该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）**。其他模式暂不支持。
+- 该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）。其他模式暂不支持。
 - Inplace执行：输入dyRef和输出共享同一个Tensor，计算结果直接写回输入dyRef。
 - 输入dyRef当前只支持BSND排布，输入cos/sin的shape必须与dyRef满足B/S/N维度的广播关系（如BSND、111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
   - 输入张量dyRef和xOptional的最后一维大小D必须相同，且D ≤ 1024。

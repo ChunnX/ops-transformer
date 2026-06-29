@@ -72,7 +72,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::DoOpTiling()
     }
     SplitCore();
     if (blockNumB_ * blockNumS_ > coreNum_) {
-        OP_LOGE(context_->GetNodeName(), "split coreNum [%ld] large than coreNum[%ld]", blockNumB_ * blockNumS_,
+        OP_LOGE(context_->GetNodeName(), "split coreNum [%ld] greater than coreNum[%ld]", blockNumB_ * blockNumS_,
                 coreNum_);
         return ge::GRAPH_FAILED;
     }
@@ -204,7 +204,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTilingBab::PostTiling()
             "ubFactorS=%ld ubFactorB=%ld ubLoopNumN=%ld ubFactorN=%ld ubTailFactorN=%ld "
             "usedCoreNum=%ld rotaryMode=%ld dSplitCoef=%ld "
             "sliceStart=%ld sliceEnd=%ld sliceLength=%ld "
-            " tilingKey=%lu",
+            "tilingKey=%lu",
             b_, s_, d_, n_, blockNumB_, blockFactorB_, blockNumS_, blockFactorS_, ubFactorS_, ubFactorB_, ubLoopNumN_,
             ubFactorN_, ubTailFactorN_, usedCoreNum_, static_cast<int64_t>(rotaryMode_), dSplitCoef_, sliceStart_,
             sliceEnd_, sliceLength_, tilingKey_);

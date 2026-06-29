@@ -6,7 +6,7 @@ Usage: python3 gen_data.py <B> <S> <N> <D> <dy_dtype> <cos_dtype> [cos_shape_des
 
   dy_dtype:   float16 | bfloat16 | float32
   cos_dtype:  float16 | bfloat16 | float32
-  cos_shape_desc: NO_BROADCAST(default) | BSN_BROADCAST(111D) |
+  cos_shape_desc: NO_BROADCAST(default) | BROADCAST_BSN(111D) |
                   BSND(1S1D) | SBND | BNSD_11SD | BNSD_B1SD
 
 Outputs:
@@ -68,7 +68,7 @@ def interleave_grad_ref(dy, cos, sin, dx, layout, slice_start, slice_end, b, s, 
     elif layout == 'SBND':
         for si in range(s):
             for bi in range(b):
-                cos_base = si * cosD if True else bi * s * cosD + si * cosD  # depends on cosb
+                cos_base = si * cosD
                 for ni in range(n):
                     base = ((si * b + bi) * n + ni) * d
                     for di in range(d):
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     if len(sys.argv) < 7:
         print("Usage: python3 gen_data.py <B> <S> <N> <D> <dy_dtype> <cos_dtype> "
               "[layout] [slice_start] [slice_end]", file=sys.stderr)
-        print("  layout: NO_BROADCAST | BSN_BROADCAST | BSND | SBND | "
+        print("  layout: NO_BROADCAST | BROADCAST_BSN | BSND | SBND | "
               "BNSD | BNSD_BA", file=sys.stderr)
         sys.exit(1)
 
