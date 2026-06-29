@@ -691,16 +691,18 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
     isSingleX_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
                   context->GetDynamicInputTensor(X_IDX, 1) == nullptr);
-    isSingleWeight_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
-                       context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr &&
-                       context->GetDynamicInputTensor(WEIGHT_IDX, 0) != nullptr &&
-                       context->GetDynamicInputTensor(WEIGHT_IDX, 0)->GetOriginShape().GetDimNum() ==
-                           3); // 3:单tensor时weight的维度为3
+    
     // 2: when x is multi-tensor, y is single-tensor; 3: when x is single-tensor, y is single-tensor
     isSingleY_ = (splitItem_ == 2 || splitItem_ == 3);
     GetNumOfInputs(context);
     // 获取weight format和各参数类型
     OP_CHECK_IF(!AnalyzeInput(context), OP_LOGE(context->GetNodeName(), "Invalid Input param"), return false);
+    
+    uint32_t singleWeightDim = weightNzFlag_ ? 5 : 3; // 3:单tensor ND时weight的维度为3
+    isSingleWeight_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
+                       context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr &&
+                       context->GetDynamicInputTensor(WEIGHT_IDX, 0) != nullptr &&
+                       context->GetDynamicInputTensor(WEIGHT_IDX, 0)->GetStorageShape().GetDimNum() == singleWeightDim);
     isSingleMultiSingle_ = IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_;
 
     // 参数校验
