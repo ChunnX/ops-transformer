@@ -1011,8 +1011,6 @@ __aicore__ inline void BatchMulWeightAndReduceSum_MxFP8(const LocalTensor<SCORE_
     }
 }
 
-}
-
 // per_tensor: float in uint16 out
 __aicore__ inline void MulWeightAndReduceSumPerTensor(
     const LocalTensor<uint16_t> &out_,
