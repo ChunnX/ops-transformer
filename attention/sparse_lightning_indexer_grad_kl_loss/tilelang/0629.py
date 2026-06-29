@@ -150,8 +150,8 @@ def check_param_valid(
 # V scope 2: cast dQueryIndex FP32->FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-6, -5, -4, -3, -2],  # dQueryIndex(15), dWeight_partial(16), reluGradRes(17), LossOut(18), MatmulPartial(19)
-    workspace_idx=[10, 11, 12, 13, 14, 20],  # bmm1Res, bmm2Res, PReduced, ReduceSumY, SoftmaxI, dQueryIndex_ws
+    out_idx=[-5, -4, -3, -2],  # dQueryIndex(15), dWeight_partial(16), reluGradRes(17), LossOut(18)
+    workspace_idx=[10, 11, 12, 13, 14, 19, 20],  # +MatmulPartial(19), dQueryIndex_ws(20)
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -476,7 +476,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.copy(QueryIndex[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], QI5_L1)
                         # transpose_A=True: (Nidx1, n_block)^T @ (Nidx1, k_block) -> (n_block, k_block)
                         T.gemm_v0(RG_L1, QI5_L1, MP_L0C, transpose_A=True, init=True)
-                        T.tile.atomic_add(MatmulPartial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block], MP_L0C)
+                        T.copy(MP_L0C,
+                               MatmulPartial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block])
 
                 T.set_cross_flag("FIX", 3)
 
@@ -759,7 +760,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_weight_partial = results[1]
         relu_grad = results[2]
         loss_out = results[3]
-        matmul_partial = results[4]  # NEW: Matmul5 output
+        # MatmulPartial is in workspace_idx — modified in-place by T.copy (not returned)
 
         # Accumulate partial dWeight across K blocks
         d_weight = d_weight_partial.sum(dim=2)
@@ -779,7 +780,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_scatter_start.record()
         # SIMPLIFIED: bmm removed (moved to kernel), only scatter_add remains
         d_key_index = _compute_d_key_index(
-            matmul_partial, sparse_indices,
+            matmul_partial_out, sparse_indices,
             B, S1, S2, Nidx1, Nidx2, K, DQueryIndex,
             query.device, input_dtype,
         )
