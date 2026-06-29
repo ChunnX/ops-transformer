@@ -474,9 +474,6 @@ private:
         kGammaGm_.SetGlobalBuffer((__gm__ float *)tensors.kGamma);
         cosSinGm_.SetGlobalBuffer((__gm__ float *)tensors.cosSin);
         slotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.slotMapping);
-        kCacheInGm_.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.kCache);
-        vCacheInGm_.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.vCache);
-        kScaleCacheInGm_.SetGlobalBuffer((__gm__ float *)tensors.kScaleCache);
         cuSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.cuSeqLen);
         actualSeqLensGm_.SetGlobalBuffer((__gm__ int32_t *)tensors.actualSeqLens);
         vScaleGm_.SetGlobalBuffer((__gm__ float *)tensors.vScale);
@@ -507,9 +504,6 @@ private:
     GlobalTensor<float> kGammaGm_;
     GlobalTensor<float> cosSinGm_;
     GlobalTensor<int32_t> slotMappingGm_;
-    GlobalTensor<fp8_e4m3fn_t> kCacheInGm_;
-    GlobalTensor<fp8_e4m3fn_t> vCacheInGm_;
-    GlobalTensor<float> kScaleCacheInGm_;
     GlobalTensor<int32_t> cuSeqLenGm_;
     GlobalTensor<int32_t> actualSeqLensGm_;
     GlobalTensor<float> vScaleGm_;
