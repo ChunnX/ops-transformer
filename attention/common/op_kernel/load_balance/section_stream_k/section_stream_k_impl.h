@@ -197,7 +197,7 @@ private:
     using CostTable = Table<int64_t, BLOCK_MAX_TYPE, BLOCK_MAX_TYPE>;
 private:
     inline static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
-    inline uint32_t GetBnPerBatch(const IBaseInfo &baseInfo) const;
+    inline uint32_t GetHeadNum(const IBaseInfo &baseInfo) const;
     inline uint32_t GetMSize(const IBaseInfo &baseInfo, uint32_t batchIdx) const;
     inline CostTable CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
         uint32_t s2TailSize);
@@ -237,7 +237,7 @@ SectionStreamKImpl::Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseI
     if (computeContext.gridInfo.isEmpty) {
         result.emplace_back(deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum);
         result[0].usedCoreNum = 1U;
-        result[0].bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * GetBnPerBatch(baseInfo));
+        result[0].bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * GetHeadNum(baseInfo));
         result[0].gS1End[0] = 0U;
         result[0].s2End[0] = 0U;
         return result;
@@ -462,11 +462,11 @@ inline void SectionStreamKImpl::CalcCostInfo(ComputeContext &computeContext)
     for (uint32_t sectionIdx = 0; sectionIdx < gridInfo.sectionBn2Idx.size(); ++sectionIdx) {
         uint32_t bn2StartIdx = (sectionIdx == 0U) ? 0U : gridInfo.sectionBn2Idx[sectionIdx - 1U];
         uint32_t bn2EndIdx = gridInfo.sectionBn2Idx[sectionIdx];
-        uint32_t bnPerBatch = GetBnPerBatch(baseInfo);
+        uint32_t headNum = GetHeadNum(baseInfo);
 
         uint32_t bIdx = 0;
         for (uint32_t bn2Idx = bn2StartIdx; bn2Idx < bn2EndIdx; ++bn2Idx) {
-            bIdx = FloorDiv(bn2Idx, bnPerBatch);
+            bIdx = FloorDiv(bn2Idx, headNum);
             costInfo.sectionBlockNum[sectionIdx] += costInfo.bN2BlockOfEachBatch[bIdx];
             costInfo.sectionCost[sectionIdx] += costInfo.bN2CostOfEachBatch[bIdx];
         }
@@ -482,7 +482,7 @@ inline int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
-inline uint32_t SectionStreamKImpl::GetBnPerBatch(const IBaseInfo &baseInfo) const
+inline uint32_t SectionStreamKImpl::GetHeadNum(const IBaseInfo &baseInfo) const
 {
     if (m_param.mode == BalanceMode::BN1_S1) {
         return baseInfo.GetQueryHeadNum();
@@ -644,7 +644,7 @@ inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const Compu
     AssignContext assignContext {};
     assignContext.curSectionIdx = faConfig.sectionIdx;
     assignContext.curBIdx = (faConfig.sectionIdx == 0) ? 0U :
-                            FloorDiv(gridInfo.sectionBn2Idx[faConfig.sectionIdx - 1U], GetBnPerBatch(baseInfo));
+                            FloorDiv(gridInfo.sectionBn2Idx[faConfig.sectionIdx - 1U], GetHeadNum(baseInfo));
     assignContext.curBN2Idx = (faConfig.sectionIdx == 0) ? 0U : gridInfo.sectionBn2Idx[faConfig.sectionIdx - 1U];
     assignContext.curS1GIdx = 0U;
     assignContext.unassignedCost = costInfo.sectionCost[faConfig.sectionIdx];
@@ -767,7 +767,7 @@ inline void SectionStreamKImpl::RecordFDInfo(const ComputeContext &computeContex
     const GridInfo &gridInfo = computeContext.gridInfo;
 
     // 需要规约的行是上一个核的切分点所在位置
-    uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / GetBnPerBatch(baseInfo);
+    uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / GetHeadNum(baseInfo);
     uint32_t splitS1GIdx = result.gS1End[assignContext.curCoreIdx - 1U];
     uint32_t mSize = GetMSize(baseInfo, splitBIdx);
 
@@ -806,7 +806,7 @@ inline void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeConte
     const IBaseInfo &baseInfo = computeContext.baseInfo;
     const GridInfo &gridInfo = computeContext.gridInfo;
     const CostInfo &costInfo = computeContext.costInfo;
-    uint32_t bnPerBatch = GetBnPerBatch(baseInfo);
+    uint32_t headNum = GetHeadNum(baseInfo);
 
     while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
         SafeFloorDiv(costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx], m_param.faToleranceRatio,
@@ -825,8 +825,8 @@ inline void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeConte
         }
 
         // next batch
-        if (assignContext.curBN2Idx / bnPerBatch != assignContext.curBIdx) {
-            assignContext.curBIdx = assignContext.curBN2Idx / bnPerBatch;
+        if (assignContext.curBN2Idx / headNum != assignContext.curBIdx) {
+            assignContext.curBIdx = assignContext.curBN2Idx / headNum;
             CalcBatchCache(assignContext.curBIdx, computeContext, assignContext.batchCache);
         }
 
