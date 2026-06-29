@@ -118,7 +118,8 @@ public:
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         const LocalTensor<float> qkScaleStaging =
             vOutDbPoolUb_[vOutBufferId * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS].template ReinterpretCast<float>();
-        const LocalTensor<float> kScale = qkScaleStaging[KScaleStagingBaseOffset(tile)];
+        const uint64_t qScaleNtdHeadStride = AlignUp(tile.aivTokenSize, QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS);
+        const LocalTensor<float> kScale = qkScaleStaging[qHeadNum_ * qScaleNtdHeadStride];
         QuantQToFp8(tile, qkAfterCubeUb, qkScaleStaging);
         SetAndWaitVToMte3Ready();
         ScatterQOutputs(tile, qkAfterCubeUb, qkScaleStaging);
@@ -375,26 +376,6 @@ private:
         }
     }
 
-    __aicore__ inline uint64_t QScaleNtdHeadStride(const TileParam &tile) const
-    {
-        return AlignUp(tile.aivTokenSize, QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS);
-    }
-
-    __aicore__ inline uint64_t KScaleStagingOffset(uint64_t tokenIdx, uint64_t kHeadIdx) const
-    {
-        return (tokenIdx * kvHeadNum_ + kHeadIdx) * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
-    }
-
-    __aicore__ inline uint64_t KScaleStagingBaseOffset(const TileParam &tile) const
-    {
-        return qHeadNum_ * QScaleNtdHeadStride(tile);
-    }
-
-    __aicore__ inline uint64_t QkLocalKBaseRow(const TileParam &tile) const
-    {
-        return tile.cubeHalfTokenSize * qHeadNum_;
-    }
-
     __aicore__ inline void QuantQToFp8(const TileParam &tile,
                                        LocalTensor<float> qkAfterCube, LocalTensor<float> qScale)
     {
@@ -408,7 +389,7 @@ private:
     __aicore__ inline void QuantKToFp8(const TileParam &tile,
                                        LocalTensor<float> qkAfterCube, LocalTensor<float> kScale)
     {
-        const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
+        const uint64_t kRowOffset = tile.cubeHalfTokenSize * qHeadNum_ * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
         AscendC::VF_CALL<KDynamicQuantD128VfImpl<IS_TND>>(
             (__ubuf__ float *)qkAfterCube[kRowOffset].GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)kFp8.GetPhyAddr(),
@@ -442,7 +423,7 @@ private:
     __aicore__ inline void ScatterKOutputs(const TileParam &tile,
                                            LocalTensor<float> qkAfterCube, LocalTensor<float> kScale)
     {
-        const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
+        const uint64_t kRowOffset = tile.cubeHalfTokenSize * qHeadNum_ * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
         const uint64_t kFp8SparseRowStride = headDim_ * sizeof(float) / sizeof(fp8_e4m3fn_t);
         uint64_t kUbTokenStride;
@@ -460,7 +441,8 @@ private:
             const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
             DataCopyUbToGm2D(kCacheOutGm_[kCacheOffset], kFp8[kUbOffset],
                              {kvHeadNum_, headDim_, kUbHeadStride, kvCacheStrideHead_});
-            DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], kScale[KScaleStagingOffset(tokenIdx, 0U)],
+            const uint64_t kScaleUbOffset = tokenIdx * kvHeadNum_ * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
+            DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], kScale[kScaleUbOffset],
                              {kvHeadNum_, 1U, 1U, kScaleCacheStrideHead_});
         }
     }
@@ -469,11 +451,6 @@ private:
     {
         inputDbPoolUb_ =
             LocalTensor<bfloat16_t>(TPosition::LCM, QKV_RRC_INPUT_DB_POOL_OFFSET, QKV_RRC_INPUT_DB_POOL_ELEMENTS);
-        BindReserveUbTensors();
-    }
-
-    __aicore__ inline void BindReserveUbTensors()
-    {
         gammaUb_ = LocalTensor<float>(TPosition::LCM, QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_GAMMA_UB_OFFSET,
                                       QKV_RRC_GAMMA_UB_ELEMENTS);
         vScaleUb_ = LocalTensor<float>(TPosition::LCM, QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_V_SCALE_UB_OFFSET,
