@@ -577,7 +577,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
             if (curRankId != rankId_) {
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
+                //hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
@@ -585,13 +585,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
     for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
     }
-    for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
-        if (curRankId == rankId_) {
-            continue;
-        }
-        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
-        PRINTF("SendMaskCal Drain\n");
-    }
+    // for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
+    //     if (curRankId == rankId_) {
+    //         continue;
+    //     }
+    //     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
+    //     PRINTF("SendMaskCal Drain\n");
+    // }
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
