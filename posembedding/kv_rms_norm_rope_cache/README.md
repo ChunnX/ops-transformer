@@ -277,7 +277,8 @@
       * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以block_size为例，若cache的数据类型为int8，则需block_size%32=0；若cache的数据类型为float16，则需block_size%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，block_size需同时满足block_size%32=0和block_size%16=0。
       * block_num为写入cache的内存块数，大小由用户输入场景决定，无明确限制。
       * 量化参数项(k_rope_scale, k_rope_offset, c_kv_scale, c_kv_offset)需要满足shape约束：
-        * k_rope_scale, k_rope_offset: 合法shape可以为2维[N, Dk]，或者1维
+        * k_rope_scale, k_rope_offset: 合法shape为2维[N, Dk]。
+        * c_kv_scale, c_kv_offset: 合法shape为2维[N, Dv]。
       * 所有输入张量均不支持空Tensor。
   * 参数说明：
     * 输入参数中kv, gamma, cos, sin, vOptional的数据类型必须完全一致。

@@ -472,6 +472,9 @@ aclnnStatus aclnnKvRmsNormRopeCacheV2(
       * 若cacheModeOptional为PA场景（cacheModeOptional为PA、PA_BNSD、PA_NZ、PA_BLK_BNSD、PA_BLK_NZ），block_size需32B对齐。
       * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以block_size为例，若cache的数据类型为int8，则需block_size%32=0；若cache的数据类型为float16，则需block_size%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，block_size需同时满足block_size%32=0和block_size%16=0。
       * block_num为写入cache的内存块数，大小由用户输入场景决定，无明确限制。
+      * 量化参数项(k_rope_scale, k_rope_offset, c_kv_scale, c_kv_offset)需要满足shape约束：
+        * k_rope_scale, k_rope_offset: 合法shape为2维[N, Dk]。
+        * c_kv_scale, c_kv_offset: 合法shape为2维[N, Dv]。
       * 输入张量均不支持空Tensor。
   * cache的数据类型支持:
     * 非量化模式：cache类型必须与kv保持一致。
