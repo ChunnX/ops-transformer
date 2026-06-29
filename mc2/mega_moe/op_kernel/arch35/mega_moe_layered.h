@@ -675,9 +675,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     
                     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
                     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
-                    PRINTF("L1_NOTIFY rank %u peer %u token %d dst %lu notify %lu srcMeta0 %d srcMeta1 %d\n",
-                        rankId_, peerRank, tokenIdx, static_cast<uint64_t>(dstAddr),
-                        static_cast<uint64_t>(dstAddr + recordDataBytes),
+                    PRINTF("L1_NOTIFY rank %u peer %u token %d relayOffset %lu notifyOff %u srcMeta0 %d srcMeta1 %d\n",
+                        rankId_, peerRank, tokenIdx, relayOffset, recordDataBytes,
                         ReadGmByPassDCache(srcMetaPtr), ReadGmByPassDCache(srcMetaPtr + 1));
                     hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, recordDataBytes,
                         dstAddr + recordDataBytes, static_cast<uint64_t>(1));
@@ -935,8 +934,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         while (ReadGmByPassDCache(localMetaPtr + 1) != int32_t(1)) {
             int64_t nowCycle = AscendC::GetSystemCycle();
             if (nowCycle - lastPrintCycle > 200000000) {
-                PRINTF("L2_WAIT_LOCAL rank %u remote %lu meta0 %d meta1 %d flagOffset %lu\n",
-                    rankId_, static_cast<uint64_t>(remoteRecordAddr),
+                PRINTF("L2_WAIT_LOCAL rank %u remoteOffset %lu meta0 %d meta1 %d flagOffset %lu\n",
+                    rankId_, remoteCopyOffset,
                     ReadGmByPassDCache(localMetaPtr), ReadGmByPassDCache(localMetaPtr + 1), flagOffset);
                 lastPrintCycle = nowCycle;
             }
@@ -964,8 +963,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
                 remoteRecordAddr + mxQuantTokenScaleAlignBytes_, sizeof(int64_t));
             __gm__ int32_t* localMetaPtr = reinterpret_cast<__gm__ int32_t*>(
                 scratchAddr + mxQuantTokenScaleAlignBytes_);
-            PRINTF("L2_WAIT rank %u relay %u remote %lu meta0 %d meta1 %d flagRead %d flagOffset %lu\n",
-                rankId_, relayRank, static_cast<uint64_t>(remoteRecordAddr),
+            PRINTF("L2_WAIT rank %u relay %u remoteOffset %lu meta0 %d meta1 %d flagRead %d flagOffset %lu\n",
+                rankId_, relayRank, remoteCopyOffset,
                 ReadGmByPassDCache(localMetaPtr), ReadGmByPassDCache(localMetaPtr + 1),
                 readyValue, flagOffset);
             lastPrintCycle = nowCycle;
