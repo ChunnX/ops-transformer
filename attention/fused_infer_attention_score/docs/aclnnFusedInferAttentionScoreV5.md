@@ -154,7 +154,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>公式中的输入K。</td>
         <td>
         <ul>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ（NZ是数据的逻辑排布，而非数据格式）时支持0轴和1轴非连续。</li>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ（NZ在此特指数据的逻辑排布，而非数据格式）时支持0轴和1轴非连续。</li>
             <li>GQA全量化PagedAttention场景下，kv cache排布为BnNBsD时支持0轴和1轴非连续。</li>
             <li>其他场景均不支持非连续tensor。</li>
         </ul>
