@@ -218,6 +218,8 @@ public:
             m_rankSize = WinContext_->rankSize;
         }
         m_segmentSize = WinContext_->winSize;
+        m_tailReservedSize = IS_A2 ? (2048 * sizeof(int32_t) + sizeof(int32_t))
+                                   : (m_rankSize * STATE_OFFSET);
     }
 #else
     FORCE_INLINE_AICORE
@@ -231,6 +233,8 @@ public:
         symmetricPtr = symmetricPtr_;
         m_rank = rank;
         m_rankSize = rankSize;
+        m_tailReservedSize = IS_A2 ? (2048 * sizeof(int32_t) + sizeof(int32_t))
+                                   : (rankSize * STATE_OFFSET);
     }
 #endif
 
@@ -377,6 +381,12 @@ public:
     }
 
     FORCE_INLINE_AICORE
+    size_t TailReservedSize() const
+    {
+        return m_tailReservedSize;
+    }
+
+    FORCE_INLINE_AICORE
     int32_t Rank() const
     {
         return m_rank;
@@ -396,7 +406,7 @@ public:
     FORCE_INLINE_AICORE
     void CrossRankSync()
     {
-        uint64_t flag_offset = (m_segmentSize - MB_SIZE) / sizeof(int32_t);
+        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) / sizeof(int32_t);
         __gm__ int32_t *sync_counter = (__gm__ int32_t *)(*this)() + flag_offset;
         __gm__ int32_t *sync_base = (__gm__ int32_t *)(*this)() + flag_offset + 2048;
         int count = gm_load(sync_base) + 1;
@@ -427,8 +437,8 @@ public:
     // duration of this call (matches how CrossRankSyncV2Set lays out its scratch).
     FORCE_INLINE_AICORE
     void CrossRankSync(AscendC::LocalTensor<int32_t> ctrBuffer) {
-        uint64_t flag_offset_i32   = (m_segmentSize - MB_SIZE) / sizeof(int32_t);
-        uint64_t flag_offset_bytes = (m_segmentSize - MB_SIZE);
+        uint64_t flag_offset_i32   = ((m_segmentSize - m_tailReservedSize)) / sizeof(int32_t);
+        uint64_t flag_offset_bytes = ((m_segmentSize - m_tailReservedSize));
         __gm__ int32_t* sync_counter = (__gm__ int32_t*)(*this)() + flag_offset_i32;
         __gm__ int32_t* sync_base    = (__gm__ int32_t*)(*this)() + flag_offset_i32 + 2048;
         gm_dcci((__gm__ uint8_t*)sync_base);
@@ -515,7 +525,7 @@ public:
     void InitStatusTargetSum()
     {
         using namespace AscendC;
-        uint64_t flag_offset = (m_segmentSize - MB_SIZE) + SELF_STATE_OFFSET;
+        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) + SELF_STATE_OFFSET;
         uint32_t coreIdx = GetBlockIdx();
         GlobalTensor<int32_t> selfStatusTensor;
         selfStatusTensor.SetGlobalBuffer((__gm__ int32_t *)((*this)() + flag_offset));
@@ -544,7 +554,7 @@ public:
     {
         uint32_t stateOffset_ = STATE_OFFSET;
 
-        uint64_t flag_offset = (m_segmentSize - MB_SIZE) + m_rank * stateOffset_;
+        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) + m_rank * stateOffset_;
         int vec_size = get_block_num();
         int vec_id = get_block_idx();
 
@@ -599,7 +609,7 @@ public:
                              AscendC::LocalTensor<uint32_t> gatherTmpTensor,
                              AscendC::LocalTensor<float> statusSumOutTensor)
     {
-        uint64_t flag_offset = (m_segmentSize - MB_SIZE);
+        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize));
         int vec_size = get_block_num();
         int vec_id = get_block_idx();
         uint32_t stateOffset_ = STATE_OFFSET;
@@ -662,7 +672,7 @@ public:
     FORCE_INLINE_AICORE
     __gm__ int32_t *SyncBaseAddr()
     {
-        uint64_t flag_offset = (m_segmentSize - MB_SIZE) / sizeof(int32_t);
+        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) / sizeof(int32_t);
         return (__gm__ int32_t *)(*this)() + flag_offset + 2048;
     }
 
@@ -671,6 +681,7 @@ private:
     int32_t m_rank;
     int32_t m_rankSize;
     size_t m_segmentSize;
+    size_t m_tailReservedSize{0};  // 尾部 CrossRankSync 保留空间
     float sumTarget_{0.0};
     int32_t epStateValue_;
 };
