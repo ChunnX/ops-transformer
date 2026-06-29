@@ -681,9 +681,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     
                     if (targetServerForSender == serverId_) {
                         GlobalTensor<uint8_t> relayDstGlobal;
-                        LocalTensor<uint64_t> metaTensor = workspaceSrcGlobal[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<uint64_t>();
-                        metaTensor.SetValue(0, uint64_t(1));
-                        SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID2>();
+                        
+                        
                         LocalTensor<uint8_t> copyTmpBytes = copyTmpTensors_[0].template ReinterpretCast<uint8_t>();
                         uint32_t recordPayloadBytes = mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32);
                         DataCopyExtParams recordCopyParams{1U, recordPayloadBytes, 0U, 0U, 0U};
@@ -691,7 +690,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                         workspaceSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(recordAddr));
                         relayDstGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(dstAddr));
                         DataCopyPad(copyTmpBytes, workspaceSrcGlobal, recordCopyParams, recordCopyPad);
-                        SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID2>();
+                        SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+                        LocalTensor<uint64_t> mTensor = copyTmpBytes[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<uint64_t>();
+                        mTensor.SetValue(0, uint64_t(1));
+                        SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
                         DataCopyPad(relayDstGlobal, copyTmpBytes, recordCopyParams);
                         SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID2>();
                         // continue;
