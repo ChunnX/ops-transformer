@@ -454,7 +454,7 @@ __aicore__ inline void WaitAllCore(uint16_t flagId)
 }
 
 template <typename INPUT_T, typename SCALE_T, bool EXCLUDE_MXFP8>
-static constexpr bool IsFullQuantMode()
+__aicore__ constexpr bool IsFullQuantMode()
 {
     constexpr bool IS_FP8_E8M0 = std::is_same<SCALE_T, FP8E8M0>::value;
     if constexpr (EXCLUDE_MXFP8) {

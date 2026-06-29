@@ -836,7 +836,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
         CopyGlobalParams();
     }
     int64_t rmsNormCqResOffset;
-    if (baseParams_->queryNormFlag = 1U) {
+    if (baseParams_->queryNormFlag == 1U) {
         rmsNormCqResOffset = tokenIndex * baseParams_->headSizeCq;
     } else {
         rmsNormCqResOffset = aivOffset.rmsNormCqOffset;
