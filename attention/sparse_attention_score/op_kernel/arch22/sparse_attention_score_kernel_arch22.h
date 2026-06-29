@@ -316,7 +316,7 @@ public:
                     LayoutUpdate ubUpdateLayout(rowNumRound, embedRound);
                     GemmCoord actualBlockShapePV{rowNum, embed_, validTileSize[kvBlockIdxDe]};
 
-                    NpuArch::Arch::CrossCoreWaitFlag(pvReady_);
+                    // NpuArch::Arch::CrossCoreWaitFlag(pvReady_);
 
                     epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate],
                         gLse[static_cast<int64_t>(qToken) * qHeads_ + qHeadStart],
