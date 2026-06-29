@@ -36,6 +36,7 @@ public:
     __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t scaleDstOffset, int64_t curLoopCols);
     __aicore__ inline void CopyScaleIn(int64_t scaleSrcOffset);
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset);
+    __aicore__ inline bool UseCompactOutputRows();
     __aicore__ inline void ProcessCompactOutputRows();
     __aicore__ inline void CopySourceRowsIn(int64_t outputRowOffset, int64_t curLoopRows);
 
@@ -257,6 +258,23 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::CopySourceRowsIn(int64_t output
 }
 
 template <typename T>
+__aicore__ inline bool MoeV3GatherOutDropPad<T>::UseCompactOutputRows()
+{
+    int64_t totalLength = n_ * k_;
+    if (outputRows_ > totalLength) {
+        return false;
+    }
+
+    // compact 少扫 expandedRowIdx，但会按输出行重复读 X；原路径按源 row 只读一次 X。
+    int64_t savedIndexScanBytes = (totalLength - outputRows_) * static_cast<int64_t>(sizeof(int32_t));
+    int64_t extraSourceRows = Max(outputRows_ - n_, static_cast<int64_t>(0));
+    int64_t rowCopyBytes = cols_ * static_cast<int64_t>(sizeof(T)) +
+                           (isInputScale_ == 1 ? static_cast<int64_t>(sizeof(float)) : 0);
+    int64_t extraCompactCopyBytes = extraSourceRows * rowCopyBytes;
+    return savedIndexScanBytes > extraCompactCopyBytes;
+}
+
+template <typename T>
 __aicore__ inline void MoeV3GatherOutDropPad<T>::ProcessCompactOutputRows()
 {
     int64_t perCoreOutputRows = Ceil(outputRows_, needCoreNum_);
@@ -317,7 +335,7 @@ template <typename T>
 __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
-        if (outputRows_ <= n_ * k_) {
+        if (UseCompactOutputRows()) {
             ProcessCompactOutputRows();
             return;
         }

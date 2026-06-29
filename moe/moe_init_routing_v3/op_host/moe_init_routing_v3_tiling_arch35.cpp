@@ -289,6 +289,7 @@ private:
     void SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows);
     void Tiling4SrcToDstDropPadCompute();
     void Tiling4GatherOutDropPadCompute();
+    bool UseCompactGatherOutDropPad(int64_t outputRows) const;
     void SetGatherOutDropPadCoreSplitParams(int64_t &needCoreNum, int64_t &perCoreIndicesElements,
                                             int64_t &lastCoreIndicesElements);
     void SetGatherOutDropPadLoopParams(int64_t perCoreIndicesElements, int64_t lastCoreIndicesElements);
@@ -2134,13 +2135,28 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
 
 // DropPad模式的GatherOut Tiling计算函数
 // 参考非arch35版本：Tiling4GatherOutCompute
+bool MoeInitRoutingV3Arch35TilingClass::UseCompactGatherOutDropPad(int64_t outputRows) const
+{
+    if (outputRows > totalLength_) {
+        return false;
+    }
+
+    // compact 路径少扫 expandedRowIdx，但会按输出行重复读 X；原路径按源 row 只读一次 X。
+    int64_t savedIndexScanBytes = (totalLength_ - outputRows) * static_cast<int64_t>(sizeof(int32_t));
+    int64_t extraSourceRows = std::max(outputRows - n_, static_cast<int64_t>(0));
+    int64_t rowCopyBytes = cols_ * inputXDtypeSize_ +
+                           (isInputScale_ == 1 ? static_cast<int64_t>(sizeof(float)) : 0);
+    int64_t extraCompactCopyBytes = extraSourceRows * rowCopyBytes;
+    return savedIndexScanBytes > extraCompactCopyBytes;
+}
+
 void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadCoreSplitParams(
     int64_t &needCoreNum, int64_t &perCoreIndicesElements, int64_t &lastCoreIndicesElements)
 {
     auto *tilingData = &tilingDataPtr_->gatherOutComputeParamsOp;
     int64_t outputRows = expertNum_ * expertCapacity_;
     // 与 kernel 分支保持一致：compact 路径扫描 outputRows，fallback 原路径扫描 n*k。
-    int64_t splitElements = (outputRows <= totalLength_) ? outputRows : totalLength_;
+    int64_t splitElements = UseCompactGatherOutDropPad(outputRows) ? outputRows : totalLength_;
     perCoreIndicesElements = Ops::Base::CeilDiv(splitElements, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         tilingData->perCorePerLoopIndicesElements = 0;
