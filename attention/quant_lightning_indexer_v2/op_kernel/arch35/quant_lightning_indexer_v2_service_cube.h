@@ -624,13 +624,19 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeL0c(uint64_t s1gL0RealSize, u
         uint64_t alignedN = CeilAlign(s2L0RealSize, (uint64_t)BLOCK_CUBE);
         if (alignedN > s2L0RealSize) {
             mmadParams.n = alignedN;
-            // NZ layout: [k/D_BASIC_BLOCK, n/BLOCK_CUBE, D_BASIC_BLOCK, BLOCK_CUBE]
-            // extra columns 在最后一个 NZ block 内是连续内存，可以一次 Duplicate 清零
-            uint64_t extraColStart = (s2L0RealSize / BLOCK_CUBE) * BLOCK_CUBE * D_BASIC_BLOCK;
-            uint64_t extraColBytes = (alignedN - s2L0RealSize) * D_BASIC_BLOCK;
+            // fp8 NZ block 内部布局: [BLOCK_CUBE, FP8_BLOCK_CUBE] = [16, 32], 512 bytes/block
+            // 每列 (n维度) 在 block 内占 BLOCK_CUBE=16 bytes，列 b 起始偏移 = b * 16
+            // K 方向有 headDim/BLOCK_CUBE 个 NZ block 顺序排列
+            // extra columns 在每个 NZ block 内不连续，需逐 block 清零
             LocalTensor<uint8_t> keyL0Bytes =
                 keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<uint8_t>();
-            Duplicate(keyL0Bytes[extraColStart], (uint8_t)0, extraColBytes);
+            uint64_t nzBlockSize = (uint64_t)BLOCK_CUBE * FP8_BLOCK_CUBE;  // 512 bytes
+            uint64_t numKBlocks = constInfo_.headDim / BLOCK_CUBE;
+            uint64_t extraInBlockOffset = s2L0RealSize * BLOCK_CUBE;  // block 内 extra columns 起始
+            uint64_t extraBytesPerBlock = (FP8_BLOCK_CUBE - s2L0RealSize) * BLOCK_CUBE;
+            for (uint64_t kBlk = 0; kBlk < numKBlocks; kBlk++) {
+                Duplicate(keyL0Bytes[kBlk * nzBlockSize + extraInBlockOffset], (uint8_t)0, extraBytesPerBlock);
+            }
         }
         // MXFP8: 使用 mx_fp8_e4m3_t 类型触发 mmad_mx 硬件指令
         LocalTensor<mx_fp8_e4m3_t> qL0Mx =
