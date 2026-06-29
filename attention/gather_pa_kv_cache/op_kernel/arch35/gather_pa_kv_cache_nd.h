@@ -28,15 +28,11 @@ template <typename T_INDEX, bool IS_CUMSUM, bool HAS_SEQOFFSET>
 __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvNdContigVf(
     int64_t batchCount, int64_t numTokens,
     int32_t blockSize, int32_t numblkTabCol, int32_t tokenSizeK, int32_t tokenSizeV,
-    int32_t numBlocks,
+    int32_t numBlocks, int64_t magicBlk, int64_t shiftBlk,
     __gm__ uint8_t *keyCache, __gm__ uint8_t *valueCache,
     __gm__ T_INDEX *blockTables, __gm__ T_INDEX *seqLens, __gm__ T_INDEX *seqOffset,
     __gm__ uint8_t *keyOut, __gm__ uint8_t *valueOut)
 {
-    uint64_t bid  = static_cast<uint64_t>(blockIdx.x);
-    uint64_t tid  = static_cast<uint64_t>(threadIdx.x);
-    uint64_t bDim = static_cast<uint64_t>(blockDim.x);
-    uint64_t gDim = static_cast<uint64_t>(gridDim.x);
     int64_t kvGmCoreOffset = 0;
 
     for (int64_t i = 0; i < batchCount; i++) {
@@ -67,11 +63,12 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
         int64_t  blkKS  = blockSize * tokenSizeK;
         int64_t  blkVS  = blockSize * tokenSizeV;
 
-        // Key: for idx = bid*bDim + tid; idx < totalK; idx += gDim*bDim
-        for (uint64_t idx = bid * bDim + tid; idx < totalK; idx += gDim * bDim) {
+        // Key: for idx = blockIdx.x*blockDim.x + threadIdx.x; idx < totalK; idx += gridDim.x*blockDim.x
+        for (uint64_t idx = static_cast<uint64_t>(blockIdx.x * blockDim.x + threadIdx.x);
+             idx < totalK; idx += static_cast<uint64_t>(gridDim.x * blockDim.x)) {
             uint64_t j   = idx / static_cast<uint64_t>(tokenSizeK);
             uint64_t sub = idx - j * static_cast<uint64_t>(tokenSizeK);
-            uint64_t blk = j / static_cast<uint64_t>(blockSize);
+            uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), static_cast<uint64_t>(shiftBlk));
             uint64_t off = j - blk * static_cast<uint64_t>(blockSize);
 
             int64_t tableIdx = seqOff + static_cast<int64_t>(blk);
@@ -95,11 +92,12 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
             }
         }
 
-        // Value: for idx = bid*bDim + tid; idx < totalV; idx += gDim*bDim
-        for (uint64_t idx = bid * bDim + tid; idx < totalV; idx += gDim * bDim) {
+        // Value: for idx = blockIdx.x*blockDim.x + threadIdx.x; idx < totalV; idx += gridDim.x*blockDim.x
+        for (uint64_t idx = static_cast<uint64_t>(blockIdx.x * blockDim.x + threadIdx.x);
+             idx < totalV; idx += static_cast<uint64_t>(gridDim.x * blockDim.x)) {
             uint64_t j   = idx / static_cast<uint64_t>(tokenSizeV);
             uint64_t sub = idx - j * static_cast<uint64_t>(tokenSizeV);
-            uint64_t blk = j / static_cast<uint64_t>(blockSize);
+            uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), static_cast<uint64_t>(shiftBlk));
             uint64_t off = j - blk * static_cast<uint64_t>(blockSize);
 
             int64_t tableIdx = seqOff + static_cast<int64_t>(blk);
@@ -173,6 +171,9 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
 template <typename T, typename T_INDEX, bool isC, bool isS>
 __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
 {
+    uint64_t magicBlk = 0, shiftBlk = 0;
+    GetUintDivMagicAndShift(magicBlk, shiftBlk, static_cast<uint64_t>(cacheBlockSize_));
+
     asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREADS<T_INDEX>),
         batchCount_, numTokens_,
         static_cast<int32_t>(cacheBlockSize_),
@@ -180,6 +181,7 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
         static_cast<int32_t>(hiddenSizeK_),
         static_cast<int32_t>(hiddenSizeV_),
         static_cast<int32_t>(numBlocks_),
+        static_cast<int64_t>(magicBlk), static_cast<int64_t>(shiftBlk),
         keyCacheGm_, valueCacheGm_, blockTablesGm_, seqLensGm_, seqOffsetGm_,
         keyOutGm_, valueOutGm_);
 }
