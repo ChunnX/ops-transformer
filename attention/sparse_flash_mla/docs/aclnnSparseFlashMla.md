@@ -171,7 +171,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D)，ori_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D)，ori_block_size为16的倍数且不超过1024。支持0轴非连续</li>
           <li>layoutKv为BSND时：(B, S2, N2, D)</li>
           <li>layoutKv为TND时：(T2, N2, D)</li>
         </ul>
@@ -188,7 +188,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D)，cmp_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D)，cmp_block_size为16的倍数且不超过1024。支持0轴非连续</li>
           <li>layoutKv为BSND时：(B, S3, N2, D)</li>
           <li>layoutKv为TND时：(T3, N2, D)</li>
         </ul>
@@ -366,7 +366,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，CSA场景传4，HCA场景传128。</td>
+      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，CSA场景支持传4，HCA场景支持传128。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>

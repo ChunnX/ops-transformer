@@ -11,7 +11,7 @@
 |<term>Atlas 训练系列产品</term>                                | ×  |
 
 ## 功能说明
-- 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持C1A（Sliding Window Attention，SWA）、C4A（Compressed Sparse Attention，CSA）、C128A（Heavily Compressed Attention，HCA）三类Attention计算场景。
+- 算子功能：`SparseFlashMla`算子旨在完成以下公式描述的Attention计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。
 
 - 计算公式：
 
@@ -257,10 +257,10 @@
 ## 约束说明
 - 该接口支持训练、推理场景下使用。
 - 该接口支持aclgraph模式。
-- 该接口当前支持三种计算场景：C1A（Sliding Window Attention，SWA）场景仅传入`ori_kv`；C4A（Compressed Sparse Attention，CSA）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；C128A（Heavily Compressed Attention，HCA）场景传入`ori_kv`及`cmp_kv`。
+- 该接口当前支持三种计算场景：SWA（Sliding Window Attention）场景仅传入`ori_kv`；CSA（Compressed Sparse Attention）场景传入`ori_kv`、`cmp_kv`及`cmp_sparse_indices`；HCA（Heavily Compressed Attention）场景传入`ori_kv`及`cmp_kv`。
 - 通用规格约束如下：
   - N2仅支持1，D仅支持512。
-  - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时不参与压缩KV计算。C4A场景传4，C128A场景传128。
+  - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时不参与压缩KV计算。CSA场景支持传4，HCA场景支持传128。
   - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
   - `cmp_sparse_indices`的TopK长度支持512或1024。
   - PageAttention的block_size支持16的倍数，且不超过1024。
