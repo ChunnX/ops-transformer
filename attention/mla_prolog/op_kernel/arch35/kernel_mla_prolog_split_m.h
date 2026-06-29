@@ -330,8 +330,7 @@ MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_
     }
     if (baseParams_->queryNormFlag == 1U) {
         rmsNormCqResGm_.SetGlobalBuffer((__gm__ mmQcQrInputType *)queryNormOut);
-        if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value ||
-                      std::is_same<mmQcQrInputType, HIF8>::value) {
+        if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, false>()) {
             dequantScaleQNormGm_.SetGlobalBuffer((__gm__ dequantScaleQNormType *)dequantScaleQNormOut);
         }
     }
@@ -347,8 +346,7 @@ MlaPrologV3SplitM<MLAPT>::ScaleInit(__gm__ uint8_t *dequantScaleX, __gm__ uint8_
                                     __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
                                     __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *kNopeClipAlpha)
 {
-    if constexpr (std::is_same<mmInputType, int8_t>::value || std::is_same<mmInputType, FP8E4M3>::value ||
-                  std::is_same<mmInputType, HIF8>::value) {
+    if constexpr (IsFullQuantMode<mmInputType, dequantScaleType, false>()) {
         dequantScaleXGm_.SetGlobalBuffer((__gm__ dequantScaleType *)dequantScaleX);
         dequantScaleWDqGm_.SetGlobalBuffer((__gm__ dequantScaleType *)dequantScaleWDq);
         dequantScaleWDkvkrGm_.SetGlobalBuffer((__gm__ dequantScaleType *)dequantScaleWDkvkr);
@@ -483,9 +481,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::VectorBufferInit()
         quantScaleCkrLocal_ = quantScaleCkrBuffer_.Get<float>();
     }
 
-    if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value ||
-                  std::is_same<rmsNormCkvOutputType, FP8E4M3>::value ||
-                  std::is_same<rmsNormCkvOutputType, HIF8>::value) {
+    if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>()) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
                       (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
             pipe_->InitBuffer(quantScaleCkvBuffer_, ALIGN_BLOCK_SIZE);
@@ -617,8 +613,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::WorkspaceInit(__gm__ uint8_t *w
                        baseParams_->mm2BlockNum * sizeof(mmCkvKrOutputType);
 
     mmQcQrResGm_.SetGlobalBuffer((__gm__ mmQcQrOutputType *)(workspace + workspaceOffset)); // aicOffset.qcQrResOffset
-    if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value ||
-                  std::is_same<mmQcQrInputType, HIF8>::value) {
+    
+    if constexpr (IsFullQuantMode<mmQcQrInputType, dequantScaleType, false>()) {
         workspaceOffset += static_cast<int64_t>(baseParams_->stepBatchSize) *
                            static_cast<int64_t>(baseParams_->headSizeQc + baseParams_->headSizeQr) *
                            baseParams_->mm3BlockNum * sizeof(mmQcQrOutputType);
@@ -1099,10 +1095,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::CopyGlobalParams()
     DataCopy(rmsnormGammaCkvLocal_, rmsnormGammaCkvGm_, baseParams_->headSizeCkv);
 
     // quantScaleCkv
-    if constexpr ((std::is_same<rmsNormCkvOutputType, int8_t>::value ||
-                   std::is_same<rmsNormCkvOutputType, FP8E4M3>::value ||
-                   std::is_same<rmsNormCkvOutputType, HIF8>::value) &&
-                  !isPertile) {
+    
+    if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>() && !isPertile) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
                       (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
             DataCopyExtParams quantCopyParams{1, sizeof(float), 0, 0, 0};
@@ -1166,9 +1160,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormCq(int64_t tokenIndex, i
                                       baseParams_->qcQrScale,
                                       baseParams_->isQcQrScaleEnable};
 
-        if constexpr (std::is_same<rmsNormCqOutputType, int8_t>::value ||
-                      std::is_same<rmsNormCqOutputType, FP8E4M3>::value ||
-                      std::is_same<rmsNormCqOutputType, HIF8>::value) {
+                                      
+        if constexpr (IsFullQuantMode<rmsNormCqOutputType, dequantScaleType, false>()) {
             RmsNormDynamicQuant<mmCqOutputType, rmsNormGammaType, float, rmsNormComputType, rmsNormCqOutputType,
                                 dequantScaleType>(outputLocal, dequantScaleQcQr[scaleOffset],
                                                   mmCqResGm_[rmsNormCqOffset], rmsnormGammaCqLocal_,
@@ -1294,9 +1287,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndScatterCkv(LocalTenso
         baseParams_->isKcScaleEnable,      // isScaleEnable
     };
 
-    if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value ||
-                  (std::is_same<rmsNormCkvOutputType, FP8E4M3>::value) ||
-                  std::is_same<rmsNormCkvOutputType, HIF8>::value) {
+    if constexpr (IsFullQuantMode<rmsNormCkvOutputType, dequantScaleType, false>()) {
         RmsNormAndQuantizeCkv(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal, rmsNormParams,
                               rmsNormAndScatterCkvParams);
     } else {

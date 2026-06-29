@@ -452,5 +452,21 @@ __aicore__ inline void WaitAllCore(uint16_t flagId)
     CrossCoreSetFlag<modeId, pipe>(flagId);
     CrossCoreWaitFlag(flagId);
 }
+
+template <typename INPUT_T, typename SCALE_T, bool EXCLUDE_MXFP8>
+static constexpr bool IsFullQuantMode()
+{
+    constexpr bool IS_FP8_E8M0 = std::is_same<SCALE_T, FP8E8M0>::value;
+    if constexpr (EXCLUDE_MXFP8) {
+        // Pattern A: INT8 ‖ HIF8 ‖ (FP8E4M3 && !IS_FP8_E8M0)
+        return std::is_same<INPUT_T, int8_t>::value || std::is_same<INPUT_T, HIF8>::value ||
+               (std::is_same<INPUT_T, FP8E4M3>::value && !IS_FP8_E8M0);
+    } else {
+        // Pattern B: INT8 ‖ FP8E4M3 ‖ HIF8
+        return std::is_same<INPUT_T, int8_t>::value || std::is_same<INPUT_T, FP8E4M3>::value ||
+               std::is_same<INPUT_T, HIF8>::value;
+    }
+}
+
 }
 #endif
