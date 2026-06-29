@@ -227,9 +227,16 @@ private:
     __aicore__ inline void CopyInState(uint64_t stateOffest, uint32_t curSingleV)
     {
         LocalTensor<stateType> stateLocal = stateInQueue_.AllocTensor<stateType>();
+        // DataCopyPad rightPadding may only fill within one 32B block; align to the state dtype's
+        // block (8 elems for fp32, 16 for bf16) so padding stays legal on unaligned dk. The gap up
+        // to alignK_ is bridged by dstStride and pre-zeroed via Duplicate (mirrors the gamaK path).
+        constexpr uint32_t blockElems = std::is_same_v<stateType, float> ? FP32_NUM_PER_BLOCK : BF16_NUM_PER_BLOCK;
+        uint32_t alignKState = Ceil(realK_, blockElems) * blockElems;
+        uint32_t dstStride = (alignK_ - alignKState) / blockElems;
         DataCopyExtParams stateInParams{static_cast<uint16_t>(curSingleV),
-                                        static_cast<uint16_t>(realK_ * sizeof(stateType)), 0, 0, 0};
-        DataCopyPadExtParams<stateType> padParams{true, 0, static_cast<uint8_t>(alignK_ - realK_), 0};
+                                        static_cast<uint16_t>(realK_ * sizeof(stateType)), 0,
+                                        static_cast<uint16_t>(dstStride), 0};
+        DataCopyPadExtParams<stateType> padParams{true, 0, static_cast<uint8_t>(alignKState - realK_), 0};
         DataCopyPad(stateLocal, initStateGm_[stateOffest], stateInParams, padParams);
         stateInQueue_.EnQue<stateType>(stateLocal);
         stateLocal = stateInQueue_.DeQue<stateType>();
@@ -312,8 +319,13 @@ private:
     __aicore__ inline void CopyOutState(uint64_t stateOffset, uint32_t curSingleV)
     {
         LocalTensor<stateType> stateOutLocal = stateOutQueue_.DeQue<stateType>();
-        DataCopyParams stateOutParams{static_cast<uint16_t>(curSingleV),
-                                      static_cast<uint16_t>(realK_ * sizeof(stateType)), 0, 0};
+        // UB rows are alignK_-strided while GM is dense realK_-strided. DataCopyExtParams splits the
+        // strides (src/UB in 32B datablocks, dst/GM in bytes), so srcStride bridges the gap per row
+        // for both dtypes in one MTE op (mirrors arch35). blockElems = 32B / sizeof(stateType).
+        constexpr uint32_t blockElems = std::is_same_v<stateType, float> ? FP32_NUM_PER_BLOCK : BF16_NUM_PER_BLOCK;
+        DataCopyExtParams stateOutParams{static_cast<uint16_t>(curSingleV),
+                                         static_cast<uint32_t>(realK_ * sizeof(stateType)),
+                                         static_cast<uint32_t>((alignK_ - realK_) / blockElems), 0, 0};
         DataCopyPad(finalStateGm_[stateOffset], stateOutLocal, stateOutParams);
         stateOutQueue_.FreeTensor(stateOutLocal);
     }
