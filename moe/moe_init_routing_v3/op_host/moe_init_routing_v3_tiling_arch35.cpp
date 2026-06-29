@@ -2194,11 +2194,17 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
     tilingData->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
     tilingData->xCopyInQueueBufferNum = DOUBLE_BUFFER;
 
-    int64_t rowBytes = Ops::Base::CeilAlign(perLoopCols * inputXDtypeSize_, UB_BLOCK_SIZE);
+    constexpr int64_t maxDataCopyBlockCount = 4095LL;
+    int64_t rowBytes = AlignBytes(perLoopCols, inputXDtypeSize_);
     int64_t xQueueSize = DOUBLE_BUFFER * rowBytes;
-    int64_t scaleQueueSize = DOUBLE_BUFFER * Ops::Base::CeilAlign(static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
-    int64_t remainUbForBatch = availUbSize_ - xQueueSize - scaleQueueSize;
+    int64_t scaleQueueSize = isInputScale_ == 1 ?
+        DOUBLE_BUFFER * AlignBytes(1, static_cast<int64_t>(sizeof(float))) : 0;
+    int64_t maxPerLoopIndicesElements = std::max(perCorePerLoopIndicesElements, lastCorePerLoopIndicesElements);
+    int64_t rowIdxQueueSize = DOUBLE_BUFFER *
+        AlignBytes(maxPerLoopIndicesElements, static_cast<int64_t>(sizeof(int32_t)));
+    int64_t remainUbForBatch = availUbSize_ - xQueueSize - scaleQueueSize - rowIdxQueueSize;
     int64_t xBatchSize = (rowBytes > 0) ? (remainUbForBatch / rowBytes) : 1;
+    xBatchSize = std::min(xBatchSize, maxDataCopyBlockCount);
     tilingData->xBatchSize = std::max(xBatchSize, static_cast<int64_t>(1));
 }
 
