@@ -88,7 +88,7 @@ public:
      * @param attnScoreGm 输出注意力分数 GM 张量 [xBlocks, yBlocks] (float)
      */
     __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-                                   GlobalTensor<MM_OUT_T> &attnScoreGm, GlobalTensor<T> &attnScoreFp32OutGm);
+                                   GlobalTensor<MM_OUT_T> &attnScoreGm);
 
     /// @brief 分配硬件同步事件（MTE1↔MTE2, M↔MTE1, FIX↔M）
     __aicore__ inline void AllocEventID();
@@ -215,7 +215,7 @@ private:
      * @param l0PingPongFlag L0C 乒乓旗标
      */
     __aicore__ inline void FixCopyOut(GlobalTensor<MM_OUT_T> &resGm, uint32_t mSize, uint32_t nSize,
-                                       uint32_t dstStride, uint8_t l0PingPongFlag, GlobalTensor<T> &outFp32Gm);
+                                       uint32_t dstStride, uint8_t l0PingPongFlag);
 
     /// L0A Ping-Pong 缓冲区大小: 32KB
     static constexpr uint32_t L0A_PP_SIZE = (32 * 1024);
@@ -239,8 +239,6 @@ private:
     GlobalTensor<IN_T> qCmpGmLocal;        ///< Query 压缩矩阵 [xBlocks, dSize] (float)
     GlobalTensor<IN_T> kCmpGmLocal;        ///< Key 压缩矩阵 [yBlocks, dSize] (float)
     GlobalTensor<MM_OUT_T> scoreGmLocal;///< 输出注意力分数 [xBlocks, yBlocks] (float)
-    GlobalTensor<T> scoreFp32OutGm;
-
     // ---- L1 缓冲区 ----
     TBuf<TPosition::A1> qBuf;           ///< Q L1 单缓冲 [CUBE_BASE_BLOCK * dSize]
     TBuf<TPosition::B1> kBuf[2];        ///< K L1 双缓冲 [2][CUBE_BASE_BLOCK * dSize]
@@ -299,13 +297,11 @@ __aicore__ inline void BSAMatmulService<BSAT>::InitBuffers(TPipe *pipe)
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::InitGM(GlobalTensor<IN_T> &qCmpGm,
                                                         GlobalTensor<IN_T> &kCmpGm,
-                                                        GlobalTensor<MM_OUT_T> &attnScoreGm,
-                                                        GlobalTensor<T> &attnScoreFp32OutGm)
+                                                        GlobalTensor<MM_OUT_T> &attnScoreGm)
 {
     this->qCmpGmLocal = qCmpGm;
     this->kCmpGmLocal = kCmpGm;
     this->scoreGmLocal = attnScoreGm;
-    this->scoreFp32OutGm = attnScoreFp32OutGm;
 }
 
 template <typename BSAT>
@@ -471,8 +467,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::MmadInner(uint32_t mSize, uint32_
 template <typename BSAT>
 __aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T> &resGm,
                                                             uint32_t mSize, uint32_t nSize,
-                                                            uint32_t dstStride, uint8_t l0PingPongFlag,
-                                                            GlobalTensor<T> &outFp32Gm)
+                                                            uint32_t dstStride, uint8_t l0PingPongFlag)
 {
     uint8_t flagVal = l0PingPongFlag & 1;
 
@@ -494,7 +489,6 @@ __aicore__ inline void BSAMatmulService<BSAT>::FixCopyOut(GlobalTensor<MM_OUT_T>
 
     LocalTensor<MM_OUT_T> l0cTensor = cL0TensorPingPong[flagVal];
     Fixpipe<MM_OUT_T, MM_OUT_T>(resGm, l0cTensor, fixpipeParams);
-    Fixpipe<MM_OUT_T, MM_OUT_T>(outFp32Gm, l0cTensor, fixpipeParams);
     // Step 4: 通知 Cube L0C 已释放
     SetFlag<AscendC::HardEvent::FIX_M>(SYNC_MMFIX_FLAG[flagVal]);
 }
@@ -524,8 +518,6 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
 
     uint64_t perHead = static_cast<uint64_t>(xBlocks) * static_cast<uint64_t>(yBlocks);
     uint64_t perBatch = perHead * numHeads;
-
-    uint32_t scoreFP32ELeOffset = batch * perBatch + head * perHead;
 
     uint32_t singleM = qChunkSize;                          // M: Q 行数 (≤128)
     uint32_t singleK = constInfo.dSize;                     // K: Head 维度 (128)
@@ -562,12 +554,10 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
 
         // ---- 2d: Fixpipe 写回 attnScoreGm ----
         // GM 偏移: attnScore[qChunkStart, kBlockStart]
-        uint32_t ScoreOutGmOffset = qChunkStart * dstStride + kBlockStart;
         uint32_t scoreGmOffset = kBlockStart + constInfo.aicIdx * dstStride * Q_CHUNK_SIZE;
         auto dstScoreGm = scoreGmLocal[scoreGmOffset];
-        auto ScoreOutGm = scoreFp32OutGm[ScoreOutGmOffset + scoreFP32ELeOffset];
 
-        FixCopyOut(dstScoreGm, singleM, curN, dstStride, l0PingPongFlag, ScoreOutGm);
+        FixCopyOut(dstScoreGm, singleM, curN, dstStride, l0PingPongFlag);
 
         // ---- 2e: 翻转pingpong ----
         l0PingPongFlag = (l0PingPongFlag + 1) & 1;

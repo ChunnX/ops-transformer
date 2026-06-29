@@ -39,8 +39,7 @@ public:
 
     __aicore__ inline void InitGM(GlobalTensor<OUT_T> &qCmpGm, GlobalTensor<OUT_T> &kCmpGm,
                                   GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-                                  GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                  GlobalTensor<float> &qCmpOutGm, GlobalTensor<float> &kCmpOutGm);
+                                  GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm);
 
     __aicore__ inline void AllocEventID();
 
@@ -48,37 +47,30 @@ public:
 
     __aicore__ inline void PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
                                                GlobalTensor<IN_T> &queryGm, GlobalTensor<int64_t> &actualBlockLenQGm,
-                                               GlobalTensor<OUT_T> &qCmpGm, GlobalTensor<float> &qCmpOutGm);
+                                               GlobalTensor<OUT_T> &qCmpGm);
 
     __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
                                                GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                               GlobalTensor<OUT_T> &kCmpGm, GlobalTensor<float> &kCmpOutGm);
+                                               GlobalTensor<OUT_T> &kCmpGm);
 
 private:
     __aicore__ inline void PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset, uint32_t actualLen,
-                                                  uint32_t blockSize, GlobalTensor<OUT_T> &dstGm, uint64_t dstOffset,
-                                                  GlobalTensor<float> &outDstGm, uint64_t outDstOffset);
+                                                  uint32_t blockSize, GlobalTensor<OUT_T> &dstGm, uint64_t dstOffset);
 
     __aicore__ inline void PoolingLen0Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm,
-                                           GlobalTensor<float> &outDstGm, uint64_t srcOffset, uint64_t dstOffset,
-                                           uint64_t outDstOffset);
+                                           uint64_t srcOffset, uint64_t dstOffset);
 
     __aicore__ inline void PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm,
-                                             GlobalTensor<float> &outDstGm, uint64_t srcOffset, uint64_t dstOffset,
-                                             uint64_t outDstOffset, uint32_t actualLen);
+                                             uint64_t srcOffset, uint64_t dstOffset, uint32_t actualLen);
 
     __aicore__ inline void PoolingLenAllImpl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm,
-                                             GlobalTensor<float> &outDstGm, uint64_t srcOffset, uint64_t dstOffset,
-                                             uint64_t outDstOffset, uint32_t actualLen);
+                                             uint64_t srcOffset, uint64_t dstOffset, uint32_t actualLen);
 
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
     GlobalTensor<OUT_T> qCmpWrkTensor; ///< Query 压缩矩阵 [xBlocks, dSize]
     GlobalTensor<OUT_T> kCmpWrkTensor; ///< Key 压缩矩阵 [yBlocks, dSize]
-
-    GlobalTensor<float> qCmpOutGmTensor; ///< Query 压缩矩阵 [xBlocks, dSize]
-    GlobalTensor<float> kCmpOutGmTensor; ///< Key 压缩矩阵 [yBlocks, dSize]
 
     GlobalTensor<IN_T> queryGmTensor;               ///< 原始 Query [B,N,S,D] or [T,N,D]
     GlobalTensor<IN_T> keyGmTensor;                 ///< 原始 Key [B,N,S,D] or [T,N,D]
@@ -163,13 +155,10 @@ template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::InitGM(
     GlobalTensor<OUT_T> &qCmpGm, GlobalTensor<OUT_T> &kCmpGm,
     GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-    GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-    GlobalTensor<float> &qCmpOutGm, GlobalTensor<float> &kCmpOutGm)
+    GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm)
 {
     this->qCmpWrkTensor = qCmpGm;
     this->kCmpWrkTensor = kCmpGm;
-    this->qCmpOutGmTensor = qCmpOutGm;
-    this->kCmpOutGmTensor = kCmpOutGm;
     this->queryGmTensor = queryGm;
     this->keyGmTensor = keyGm;
     this->actualBlockLenQGmTensor = actualBlockLenQGm;
@@ -196,7 +185,7 @@ template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
                                             GlobalTensor<IN_T> &queryGm, GlobalTensor<int64_t> &actualBlockLenQGm,
-                                            GlobalTensor<OUT_T> &qCmpGm, GlobalTensor<float> &qCmpOutGm)
+                                            GlobalTensor<OUT_T> &qCmpGm)
 {
     uint32_t dSize = constInfo.dSize;
     uint64_t blockShapeX = constInfo.blockShapeX;
@@ -235,21 +224,17 @@ BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx
     actualLen = BSAMin(actualLen, remaining);
 
     // 3. 计算 dstOffset（元素索引）
-    uint64_t qOutDstOffset = (static_cast<uint64_t>(batchIdx) * numHeads * constInfo.xBlocks +
-                              static_cast<uint64_t>(headIdx) * constInfo.xBlocks + qBlockIdx) *
-                             dSize;
     uint64_t wrkDstOffset = qBlockIdx * dSize;
 
     // 4. 调用底层池化实现
-    PoolingSingleBlockImpl(queryGm, srcOffset, actualLen, static_cast<uint32_t>(blockShapeX), qCmpGm, wrkDstOffset,
-                           qCmpOutGm, qOutDstOffset);
+    PoolingSingleBlockImpl(queryGm, srcOffset, actualLen, static_cast<uint32_t>(blockShapeX), qCmpGm, wrkDstOffset);
 }
 
 template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
                                             GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                            GlobalTensor<OUT_T> &kCmpGm, GlobalTensor<float> &kCmpOutGm)
+                                            GlobalTensor<OUT_T> &kCmpGm)
 {
     uint32_t dSize = constInfo.dSize;
     uint64_t blockShapeY = constInfo.blockShapeY;
@@ -290,41 +275,36 @@ BSAVecPoolService<BSAT>::PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx
     actualLen = BSAMin(actualLen, remaining);
 
     // 3. 计算 dstOffset（元素索引）
-    uint64_t kOutDstOffset = (static_cast<uint64_t>(batchIdx) * numHeads * constInfo.yBlocks +
-                              static_cast<uint64_t>(headIdx) * constInfo.yBlocks + kBlockIdx) *
-                             dSize;
     uint64_t wrkDstOffset = kBlockIdx * dSize;
 
     // 4. 调用底层池化实现
-    PoolingSingleBlockImpl(keyGm, srcOffset, actualLen, static_cast<uint32_t>(blockShapeY), kCmpGm, wrkDstOffset,
-                           kCmpOutGm, kOutDstOffset);
+    PoolingSingleBlockImpl(keyGm, srcOffset, actualLen, static_cast<uint32_t>(blockShapeY), kCmpGm, wrkDstOffset);
 }
 
 template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset, uint32_t actualLen,
-                                               uint32_t blockSize, GlobalTensor<OUT_T> &dstGm, uint64_t dstOffset,
-                                               GlobalTensor<float> &outDstGm, uint64_t outDstOffset)
+                                               uint32_t blockSize, GlobalTensor<OUT_T> &dstGm, uint64_t dstOffset)
 {
     uint32_t dSize = constInfo.dSize;
     // 等上个步骤结束，防止内存踩踏
     AscendC::PipeBarrier<PIPE_ALL>();
     if (actualLen == 0) {
-        PoolingLen0Impl(srcGm, dstGm, outDstGm, srcOffset, dstOffset, outDstOffset);
+        PoolingLen0Impl(srcGm, dstGm, srcOffset, dstOffset);
         return;
     } else if (actualLen <= 128) {
-        PoolingLen256Impl(srcGm, dstGm, outDstGm, srcOffset, dstOffset, outDstOffset, actualLen);
+        PoolingLen256Impl(srcGm, dstGm, srcOffset, dstOffset, actualLen);
         return;
     } else {
-        PoolingLenAllImpl(srcGm, dstGm, outDstGm, srcOffset, dstOffset, outDstOffset, actualLen);
+        PoolingLenAllImpl(srcGm, dstGm, srcOffset, dstOffset, actualLen);
         return;
     }
 }
 
 template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen0Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm,
-                                                                 GlobalTensor<float> &outDstGm, uint64_t srcOffset,
-                                                                 uint64_t dstOffset, uint64_t outDstOffset)
+                                                                 uint64_t srcOffset,
+                                                                 uint64_t dstOffset)
 {
     uint32_t dSize = constInfo.dSize;
 
@@ -353,15 +333,12 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen0Impl(GlobalTensor<IN_
     copyOutCastParams.srcStride = 0;
     copyOutCastParams.dstStride = 0;
     DataCopyPad(dstGm[dstOffset], poolOutCast, copyOutCastParams);
-
-    // 调试用
-    DataCopyPad(outDstGm[outDstOffset], poolOut, copyOutParams);
 }
 
 template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm,
-                                                                 GlobalTensor<float> &outDstGm, uint64_t srcOffset,
-                                                                 uint64_t dstOffset, uint64_t outDstOffset,
+                                                                 uint64_t srcOffset,
+                                                                 uint64_t dstOffset,
                                                                  uint32_t actualLen)
 {
     uint32_t dSize = constInfo.dSize;
@@ -414,20 +391,12 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<I
     copyOutCastParams.srcStride = 0;
     copyOutCastParams.dstStride = 0;
     DataCopyPad(dstGm[dstOffset], poolOutCast, copyOutCastParams);
-
-    DataCopyExtParams copyOutParams;
-    copyOutParams.blockLen = dSize * sizeof(float);
-    copyOutParams.blockCount = 1;
-    copyOutParams.srcStride = 0;
-    copyOutParams.dstStride = 0;
-    // 调试用
-    DataCopyPad(outDstGm[outDstOffset], poolOut, copyOutParams);
 }
 
 template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm,
-                                                                 GlobalTensor<float> &outDstGm, uint64_t srcOffset,
-                                                                 uint64_t dstOffset, uint64_t outDstOffset,
+                                                                 uint64_t srcOffset,
+                                                                 uint64_t dstOffset,
                                                                  uint32_t actualLen)
 {
     uint32_t dSize = constInfo.dSize;
@@ -577,12 +546,5 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<I
     copyOutCastParams.srcStride = 0;
     copyOutCastParams.dstStride = 0;
     DataCopyPad(dstGm[dstOffset], poolOutCast, copyOutCastParams);
-
-    DataCopyExtParams copyOutParams;
-    copyOutParams.blockLen = dSize * sizeof(float);
-    copyOutParams.blockCount = 1;
-    copyOutParams.srcStride = 0;
-    copyOutParams.dstStride = 0;
-    DataCopyPad(outDstGm[outDstOffset], poolOut, copyOutParams);
 }
 #endif // BSA_VEC_POOL_SERVICE_H

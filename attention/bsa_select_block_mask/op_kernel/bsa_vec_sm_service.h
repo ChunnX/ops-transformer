@@ -38,7 +38,7 @@ public:
     __aicore__ inline void InitBuffers(TBuf<>* uBuf_);
 
     __aicore__ inline void InitGM(
-        GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm, GlobalTensor<OUT_T> &softmaxOutGm);
+        GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm);
 
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize);
@@ -58,8 +58,6 @@ private:
     // ---- GM 全局张量引用 ----
     GlobalTensor<OUT_T> attnScoreFp16GmTensor;              //< 注意力分数 [xBlocks * yBlocks] (FP32→FP16)
     GlobalTensor<T> scoreFp32GmTensor;                 //< Softmax 临时缓冲 (FP32)
-    GlobalTensor<OUT_T> softmaxOutGmTensor;
-
     TBuf<> uBuf_; //< 统一 UB 缓冲区 (192KB)
 
     LocalTensor<uint8_t> reduceSharedTemp; // reduce相关 高阶接口的临时存储空间，暂定24k
@@ -152,11 +150,10 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<>* uBuf_)
 
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::InitGM(
-    GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm, GlobalTensor<OUT_T> &softmaxOutGm)
+    GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<OUT_T> &attnScoreFp16Gm)
 {
     this->attnScoreFp16GmTensor = attnScoreFp16Gm;
     this->scoreFp32GmTensor = ScoreFp32Gm;
-    this->softmaxOutGmTensor = softmaxOutGm;
 }
 
 __aicore__ inline
@@ -448,17 +445,6 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(
             static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(OUT_T)),
             0});
 
-    uint32_t yBlocks = constInfo.yBlocks;
-    uint32_t xBlocks = constInfo.xBlocks;
-    uint32_t numHeads = constInfo.numHeads;
-
-    uint64_t perHead = static_cast<uint64_t>(xBlocks) * static_cast<uint64_t>(yBlocks);
-    uint64_t perBatch = perHead * numHeads;
-
-    uint32_t sftOutELeOffset = batchIdx * perBatch + headIdx * perHead;
-    DataCopyPad(softmaxOutGmTensor[sftOutQRowOffset * constInfo.yBlocks + kChunkStart + sftOutELeOffset], scoreFp16Ub,
-                {static_cast<uint16_t>(actualQExcuteRow), static_cast<uint32_t>(kChunkSize * sizeof(OUT_T)), 0,
-                 static_cast<uint32_t>((constInfo.yBlocks - kChunkSize) * sizeof(OUT_T)), 0});
 }
 
 #endif // BSA_VEC_SM_SERVICE_H

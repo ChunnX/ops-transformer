@@ -26,7 +26,7 @@ using namespace AscendC;
         op.Init(query, key, blockShape, postBlockShape,                                           \
                 actualSeqLensQ, actualSeqLensKV,                                                  \
                 actualBlockLenQ, actualBlockLenKV,                                                \
-                maskOut, qCompOut, kCompOut, scoreOut, softmaxOut,                           \
+                maskOut,                                                                    \
                 user, tiling_data, &tPipe);                                              \
         op.Process();                                                                             \
     } while (0)
@@ -38,8 +38,6 @@ __global__ __aicore__ void bsa_select_block_mask(
     __gm__ uint8_t *actualSeqLensQ, __gm__ uint8_t *actualSeqLensKV,
     __gm__ uint8_t *actualBlockLenQ, __gm__ uint8_t *actualBlockLenKV,
     __gm__ uint8_t *maskOut,
-    __gm__ uint8_t *qCompOut, __gm__ uint8_t *kCompOut,
-    __gm__ uint8_t *scoreOut, __gm__ uint8_t *softmaxOut,
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

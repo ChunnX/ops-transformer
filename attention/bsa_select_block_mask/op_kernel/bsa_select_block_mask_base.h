@@ -47,8 +47,6 @@ public:
                                 __gm__ uint8_t *actualSeqLensQ, __gm__ uint8_t *actualSeqLensKV,
                                 __gm__ uint8_t *actualBlockLenQ, __gm__ uint8_t *actualBlockLenKV,
                                 __gm__ uint8_t *maskOut,
-                                __gm__ uint8_t *qCompOut, __gm__ uint8_t *kCompOut,
-                                __gm__ uint8_t *scoreOut, __gm__ uint8_t *softmaxOut,
                                 __gm__ uint8_t *workspace,
                                 const optiling::BSASelectBlockMaskTilingData *__restrict tiling,
                                 TPipe *tPipe);
@@ -80,16 +78,6 @@ private:
     GlobalTensor<int64_t> actualSeqLensQGm, actualSeqLensKVGm;
     GlobalTensor<int64_t> actualBlockLenQGm, actualBlockLenKVGm;
     GlobalTensor<uint8_t> maskOutGmU8;
-
-    __gm__ uint8_t *qCompOutPtr = nullptr;
-    __gm__ uint8_t *kCompOutPtr = nullptr;
-    __gm__ uint8_t *scoreOutPtr = nullptr;
-    __gm__ uint8_t *softmaxOutPtr = nullptr;
-
-    // 调试用
-    GlobalTensor<T> qCmpOutGm, kCmpOutGm;
-    GlobalTensor<T> socreFp32OutGm;
-    GlobalTensor<SFTMAX_OUT_T> softmaxOutGm;
 
     GlobalTensor<POOL_OUT_T> qCmpGm, kCmpGm;
     GlobalTensor<SFTMAX_OUT_T> attnScoreFp16Gm;
@@ -215,8 +203,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
     __gm__ uint8_t *actualSeqLensQ, __gm__ uint8_t *actualSeqLensKV,
     __gm__ uint8_t *actualBlockLenQ, __gm__ uint8_t *actualBlockLenKV,
     __gm__ uint8_t *maskOut,
-    __gm__ uint8_t *qCompOut, __gm__ uint8_t *kCompOut,
-    __gm__ uint8_t *scoreOut, __gm__ uint8_t *softmaxOut,
     __gm__ uint8_t *workspace,
     const optiling::BSASelectBlockMaskTilingData *__restrict tiling,
     TPipe *tPipe)
@@ -254,33 +240,20 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
     }
     maskOutGmU8.SetGlobalBuffer((__gm__ uint8_t *)maskOut);
 
-    qCompOutPtr = qCompOut;
-    kCompOutPtr = kCompOut;
-    scoreOutPtr = scoreOut;
-    softmaxOutPtr = softmaxOut;
-
-    // Set up output GlobalTensors from pointers (for pool/softmax to write to)
-    auto &outInfo = tilingData->outputParams;
-    qCmpOutGm.SetGlobalBuffer((__gm__ T *)qCompOut);
-    kCmpOutGm.SetGlobalBuffer((__gm__ T *)kCompOut);
-    softmaxOutGm.SetGlobalBuffer((__gm__ SFTMAX_OUT_T *)softmaxOut);
-    socreFp32OutGm.SetGlobalBuffer((__gm__ T *)scoreOutPtr);
-
     InitWorkspace(workspace);
 
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tilingData);
         vectorService.InitBuffers(pipe);
         vectorService.InitGM(qCmpGm, kCmpGm, attnScoreFp16Gm, scoreFp32Gm,
-                             queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm,
-                             qCmpOutGm, kCmpOutGm, softmaxOutGm);
+                             queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm);
         radixTopKService.InitParams(constInfo, tilingData);
         radixTopKService.InitBuffers(pipe);
         radixTopKService.InitGM(attnScoreFp16Gm, topkWorkspaceGm, maskOutGmU8);
     } else if ASCEND_IS_AIC {
         matmulService.InitParams(constInfo);
         matmulService.InitBuffers(pipe);
-        matmulService.InitGM(qCmpGm, kCmpGm, scoreFp32Gm, socreFp32OutGm);
+        matmulService.InitGM(qCmpGm, kCmpGm, scoreFp32Gm);
     }
 }
 
@@ -299,9 +272,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
     // endRow: q_comp 的end行数
     uint32_t startRow, endRow;
     CalcMultiCoreOffset(startRow, endRow);
-
-    // uint32_t startKBlock, endKBlock;
-    // CalcKPoolingRange(startKBlock, endKBlock);
 
     for (uint32_t batchIdx = 0; batchIdx < constInfo.batchSize; batchIdx++) {
         for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {
@@ -363,7 +333,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingK(uint32_t ba
 
         for (uint32_t kBlockIdx = startKBlock; kBlockIdx < endKBlock; kBlockIdx++) {
             vectorService.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx,
-                                              keyGm, actualBlockLenKVGm, kCmpGm, kCmpOutGm);
+                                              keyGm, actualBlockLenKVGm, kCmpGm);
         }
     }
 }
@@ -399,7 +369,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingQ(
 
         for (uint32_t qBlockIdx = startQBlockIdx; qBlockIdx < endQBlockIdx; qBlockIdx++) {
             vectorService.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx,
-                                                queryGm, actualBlockLenQGm, qCmpGm, qCmpOutGm);
+                                                queryGm, actualBlockLenQGm, qCmpGm);
         }
     }
 }

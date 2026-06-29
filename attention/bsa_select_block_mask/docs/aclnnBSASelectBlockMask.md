@@ -563,7 +563,7 @@ int main() {
     std::vector<op::fp16_t> kData(kSize, 0.1f);
     
     // mask 输出初始化为 0
-    std::vector<uint8_t> maskOutData(GetShapeSize(maskShape), 0);
+    std::vector<int8_t> maskOutData(GetShapeSize(maskShape), 0);
 
     // 创建所有 aclTensor
     void *qAddr = nullptr, *kAddr = nullptr, *maskAddr = nullptr;
@@ -571,7 +571,7 @@ int main() {
 
     CreateAclTensor(qData, qShape, &qAddr, aclDataType::ACL_FLOAT16, &qTensor);
     CreateAclTensor(kData, kShape, &kAddr, aclDataType::ACL_FLOAT16, &kTensor);
-    CreateAclTensor(maskOutData, maskShape, &maskAddr, aclDataType::ACL_UINT8, &maskTensor);
+    CreateAclTensor(maskOutData, maskShape, &maskAddr, aclDataType::ACL_INT8, &maskTensor);
 
     // 5. 创建 aclIntArray 属性参数
     std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
@@ -630,11 +630,11 @@ int main() {
 
     // 10. 同步 Stream，等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret); 
 
     // 11. 将结果拷贝回 Host 侧打印 (blockSparseMaskOut)
     int64_t maskSize = GetShapeSize(maskShape);
-    ret = aclrtMemcpy(maskOutData.data(), maskSize * sizeof(uint8_t), maskAddr, maskSize * sizeof(uint8_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(maskOutData.data(), maskSize * sizeof(int8_t), maskAddr, maskSize * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed.\n"); return ret);
 
     LOG_PRINT("Execution Success! BlockSparseMask output (first 20 elements):\n");
