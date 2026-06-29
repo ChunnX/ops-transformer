@@ -184,6 +184,12 @@ __aicore__ inline void LoadL1BAndScale(const GlobalTensor<T> &tensorBGm, const G
     LocalTensor<T> bL1Tensor;
     bL1Tensor.SetAddr(bufParam.bL1BufAddr);
     uint32_t bL1Offset = L1_B_SIZE / sizeof(T);
+
+    LocalTensor<bfloat16_t> bL1ScaleTensor;
+    bL1ScaleTensor.SetAddr(bufParam.bL1BufAddr);
+    GlobalTensor<bfloat16_t> tensorScaleGmCast;
+    tensorScaleGmCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(tensorBScaleGm.GetPhyAddr())));
+
     WaitFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + (bufIter & 1u));
 
     LocalTensor<T> bL1 = bL1Tensor[(bufIter & 1u) * bL1Offset];
@@ -193,10 +199,6 @@ __aicore__ inline void LoadL1BAndScale(const GlobalTensor<T> &tensorBGm, const G
         CopyNDGmToL1(bL1, tensorBGm, kInput, nL1Size, nL1Size);
     }
 
-    LocalTensor<bfloat16_t> bL1ScaleTensor;
-    bL1ScaleTensor.SetAddr(bufParam.bL1BufAddr);
-    GlobalTensor<bfloat16_t> tensorScaleGmCast;
-    tensorScaleGmCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(tensorBScaleGm.GetPhyAddr())));
     Dn2NzParams dn2Nzparam;
     dn2Nzparam.dnNum = 1;
     dn2Nzparam.nValue = nInput / FP8_TWO;    // 单个DN矩阵的列数N, 单位为元素个数
@@ -609,8 +611,7 @@ MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
     mmLocalTensors<T, O_L0C> localTensors;
     localTensors.Init(bufParam);
 
-    LocalTensor<T> aL1;
-    LocalTensor<T> bL1;
+    LocalTensor<T> aL1, bL1;
 
     if constexpr (hasL1ALoaded) {
         aL1 = localTensors.aL1Tensor[(bufParam.aL1BufIter & 1u) * L1_A_SIZE / sizeof(T)];
@@ -967,9 +968,9 @@ __aicore__ inline void MatmulSplitMKOuter(const GlobalTensor<O> &tensorCGm, cons
             fixParams.dstStride = para.orgKc;
             fixParams.ndNum = 1;
             fixParams.unitFlag = UNIT_FLAG_DISABLE;
-            AscendC::SetAtomicAdd<float>();
+            SetAtomicAdd<float>();
             Fixpipe(tensorCGm[nb * para.baseN], cL0, fixParams);
-            AscendC::SetAtomicNone();
+            SetAtomicNone();
 
             SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
             bufParam.cL0BufIter++;
