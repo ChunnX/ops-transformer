@@ -273,41 +273,6 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void PerTileClipWithAlpha(LocalTensor<float> &dstClipUb, LocalTensor<float> &aMax,
-                                            LocalTensor<float> &aMaxBrcb, const LocalTensor<float> &srcUb,
-                                            const LocalTensor<uint8_t> &shareTmpUb,
-                                            const PerTileQuantParams &perTileQuantParams)
-{
-    constexpr uint32_t brcnNum = 8; // brcn一次性处理8个数据
-    uint32_t srcSize = perTileQuantParams.row * perTileQuantParams.col;
-    uint32_t maxAlphaSize = perTileQuantParams.tileNum * perTileQuantParams.row * FP32_BLOCK_ELEMENT_NUM;
-
-    LocalTensor<float> absSrcUb = shareTmpUb.template ReinterpretCast<float>();
-    LocalTensor<float> maxAlpha = absSrcUb[Align(srcSize, FP32_BLOCK_ELEMENT_NUM)];
-    LocalTensor<float> minAlpha = maxAlpha[Align(maxAlphaSize, FP32_BLOCK_ELEMENT_NUM)];
-
-    Abs(absSrcUb, srcUb, srcSize);
-    PipeBarrier<PIPE_V>();
-
-    Rectangle rectangleParams{
-        static_cast<uint32_t>(perTileQuantParams.tileNum * perTileQuantParams.row),
-        static_cast<uint32_t>(perTileQuantParams.tileSize),
-        static_cast<uint32_t>(perTileQuantParams.tileSize) // columnStride
-    };
-    RowMax(aMax, absSrcUb, rectangleParams);
-    PipeBarrier<PIPE_V>();
-    Brcb(aMaxBrcb, aMax, (CeilDivT((perTileQuantParams.tileNum * perTileQuantParams.row), brcnNum)), {1, brcnNum});
-    PipeBarrier<PIPE_V>();
-
-    Muls(maxAlpha, aMaxBrcb, perTileQuantParams.alpha, maxAlphaSize);
-    Muls(minAlpha, aMaxBrcb, -perTileQuantParams.alpha, maxAlphaSize);
-    PipeBarrier<PIPE_V>();
-
-    RowClips(dstClipUb, srcUb, maxAlpha, minAlpha, perTileQuantParams.tileNum * perTileQuantParams.row,
-             perTileQuantParams.tileSize, perTileQuantParams.tileSize);
-    PipeBarrier<PIPE_V>();
-}
-
 // divs by row, 每行的元素除以相同的元素
 // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
 // src0Ub:[dealRowCount, columnCount], src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
@@ -343,6 +308,41 @@ __aicore__ inline void RowClips(LocalTensor<float> &dstUb, const LocalTensor<flo
     Min(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], maxUb, dRemain, dealRowCount, repeatParams);
     PipeBarrier<PIPE_V>();
     Max(dstUb[dLoop * dtypeMask], dstUb[dLoop * dtypeMask], minUb, dRemain, dealRowCount, repeatParams);
+}
+
+__aicore__ inline void PerTileClipWithAlpha(LocalTensor<float> &dstClipUb, LocalTensor<float> &aMax,
+                                            LocalTensor<float> &aMaxBrcb, const LocalTensor<float> &srcUb,
+                                            const LocalTensor<uint8_t> &shareTmpUb,
+                                            const PerTileQuantParams &perTileQuantParams)
+{
+    constexpr uint32_t brcnNum = 8; // brcn一次性处理8个数据
+    uint32_t srcSize = perTileQuantParams.row * perTileQuantParams.col;
+    uint32_t maxAlphaSize = perTileQuantParams.tileNum * perTileQuantParams.row * FP32_BLOCK_ELEMENT_NUM;
+
+    LocalTensor<float> absSrcUb = shareTmpUb.template ReinterpretCast<float>();
+    LocalTensor<float> maxAlpha = absSrcUb[Align(srcSize, FP32_BLOCK_ELEMENT_NUM)];
+    LocalTensor<float> minAlpha = maxAlpha[Align(maxAlphaSize, FP32_BLOCK_ELEMENT_NUM)];
+
+    Abs(absSrcUb, srcUb, srcSize);
+    PipeBarrier<PIPE_V>();
+
+    Rectangle rectangleParams{
+        static_cast<uint32_t>(perTileQuantParams.tileNum * perTileQuantParams.row),
+        static_cast<uint32_t>(perTileQuantParams.tileSize),
+        static_cast<uint32_t>(perTileQuantParams.tileSize) // columnStride
+    };
+    RowMax(aMax, absSrcUb, rectangleParams);
+    PipeBarrier<PIPE_V>();
+    Brcb(aMaxBrcb, aMax, (CeilDivT((perTileQuantParams.tileNum * perTileQuantParams.row), brcnNum)), {1, brcnNum});
+    PipeBarrier<PIPE_V>();
+
+    Muls(maxAlpha, aMaxBrcb, perTileQuantParams.alpha, maxAlphaSize);
+    Muls(minAlpha, aMaxBrcb, -perTileQuantParams.alpha, maxAlphaSize);
+    PipeBarrier<PIPE_V>();
+
+    RowClips(dstClipUb, srcUb, maxAlpha, minAlpha, perTileQuantParams.tileNum * perTileQuantParams.row,
+             perTileQuantParams.tileSize, perTileQuantParams.tileSize);
+    PipeBarrier<PIPE_V>();
 }
 
 /**
