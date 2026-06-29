@@ -148,7 +148,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
     // weight在该场景下强制绑定StorageFormat 和 ViewFormat 为NZ
     CHECK_RET(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     size_t wLength = weight->Size();
-    if (wLength == 1) {
+    CHECK_RET(wLength > 0 && (*weight)[0] != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    auto firstWeightViewDimNum = (*weight)[0]->GetViewShape().GetDimNum();
+    bool isSingleWeightTensor = wLength == 1 &&
+                                (firstWeightViewDimNum == WEIGHT_ND_DIM_LIMIT ||
+                                 firstWeightViewDimNum == WEIGHT_NZ_DIM_LIMIT);
+    if (isSingleWeightTensor) {
         // 单Tensor场景
         auto w = (*weight)[0];
         auto storgeShape = w->GetStorageShape();

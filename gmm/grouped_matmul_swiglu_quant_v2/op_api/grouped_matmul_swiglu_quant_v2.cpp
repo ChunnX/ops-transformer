@@ -23,7 +23,6 @@ OP_TYPE_REGISTER(GroupedMatmulSwigluQuantV2);
 
 constexpr int64_t SWIGLU_SPLIT_SIZE = 64L;
 constexpr size_t MX_MULTI_WEIGHT_DIM = 2UL;
-constexpr size_t MX_MULTI_WEIGHT_SCALE_TRANS_N_DIM = 0UL;
 constexpr size_t MX_MULTI_WEIGHT_SCALE_N_DIM = 1UL;
 constexpr size_t MX_WEIGHT_SCALE_N_DIM = 2UL;
 
@@ -57,8 +56,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, ge::FORMAT_ND);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         n = IsMxWeightNzMultiTensor(weight) ?
-                (transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_TRANS_N_DIM) :
-                                   (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM)) :
+                (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM) :
                 (transposeWeight ? (*weightScale)[0]->GetViewShape().GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM) :
                                    (*weightScale)[0]->GetViewShape().GetDim(MX_WEIGHT_SCALE_N_DIM));
         nAfterHalve = static_cast<int64_t>(n / 2); // outShape需要为[M, N / 2]

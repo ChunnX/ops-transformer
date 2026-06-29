@@ -445,10 +445,9 @@ protected:
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0); // 从x的第0维获取m
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1); // 从x的第1维获取k
         bool isMxWeightNzMultiTensor = IsMxWeightNzMultiTensorSupported();
-        // Single tensor transpose is converted to a contiguous view; multi tensor keeps the original [N,K] view.
+        // Single tensor transpose is converted to a contiguous [E,N,K] view; multi tensor keeps [K,N] view.
         int64_t n = isMxWeightNzMultiTensor ?
-                        (gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0) :
-                                                         ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1)) :
+                        ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
                         (gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
                                                          ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2));
         int64_t e = isMxWeightNzMultiTensor ?
@@ -483,11 +482,9 @@ protected:
         GMM_SWIGLU_CHECK_SHAPE(outputScale, "outputScale", outputScaleExpectShape, return false);
 
         if (isMxWeightNzMultiTensor) {
-            op::Shape multiWeightExpectShape = gmmDsqParams_.transposeWeight ? op::Shape({n, k}) :
-                                                                             op::Shape({k, n});
-            op::Shape multiWeightScaleExpectShape = gmmDsqParams_.transposeWeight ?
-                op::Shape({n, Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), SWIGLU_SPLIT_FACTOR}) :
-                op::Shape({Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n, SWIGLU_SPLIT_FACTOR});
+            op::Shape multiWeightExpectShape = {k, n};
+            op::Shape multiWeightScaleExpectShape = {Ops::Base::CeilDiv(k, SWIGLU_SPLIT_SIZE), n,
+                                                     SWIGLU_SPLIT_FACTOR};
             for (size_t i = 0; i < gmmDsqParams_.weight->Size(); ++i) {
                 GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weight)[i], "weight", multiWeightExpectShape, return false);
                 GMM_SWIGLU_CHECK_SHAPE((*gmmDsqParams_.weightScale)[i], "weightScale",
@@ -861,15 +858,10 @@ protected:
         }
         // 从x的第1维获取k
         int64_t kInX = gmmDsqParams_.x->GetViewShape().GetDim(1);
-        // 根据是否转置从weight中读取维度k
-        bool transposeWeight = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[0]);
+        // K is read from the logical view shape. A transposed tensor is identified by stride, not by [N,K] shape.
         int64_t kInWeight = IsMxWeightNzMultiTensorSupported() ?
-                                (transposeWeight ?
-                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
-                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0)) :
-                                (transposeWeight ?
-                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2) :
-                                     ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1));
+                                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0) :
+                                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
         if (kInX != kInWeight) {
             std::ostringstream reason;
             reason << "K dim should be equal when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_)
