@@ -420,19 +420,20 @@ private:
                                            LocalTensor<float> qScale)
     {
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
+        const uint64_t qFp8SparseRowStride = headDim_ * sizeof(float) / sizeof(fp8_e4m3fn_t);
         if constexpr (IS_TND) {
             DataCopyUbToGm2D(qOutGm_[tile.aivTokenOffset * qHeadNum_ * headDim_], qFp8,
-                             {1U, tile.aivTokenSize * qHeadNum_ * headDim_,
-                              tile.aivTokenSize * qHeadNum_ * headDim_,
-                              tile.aivTokenSize * qHeadNum_ * headDim_});
+                             {tile.aivTokenSize * qHeadNum_, headDim_, qFp8SparseRowStride, headDim_});
             DataCopyUbToGm2D(qScaleGm_[tile.aivTokenOffset * qHeadNum_], qScale,
                              {1U, tile.aivTokenSize * qHeadNum_,
                               tile.aivTokenSize * qHeadNum_, tile.aivTokenSize * qHeadNum_});
         } else {
-            DataCopyUbToGm2D(qOutGm_[tile.aivTokenOffset * headDim_], qFp8,
-                             {qHeadNum_, tile.aivTokenSize * headDim_,
-                              tile.aivTokenSize * headDim_,
-                              totalTokens_ * headDim_});
+            for (uint64_t qHeadIdx = 0U; qHeadIdx < qHeadNum_; ++qHeadIdx) {
+                const uint64_t qUbOffset = qHeadIdx * tile.cubeHalfTokenSize * qFp8SparseRowStride;
+                const uint64_t qGmOffset = qHeadIdx * totalTokens_ * headDim_ + tile.aivTokenOffset * headDim_;
+                DataCopyUbToGm2D(qOutGm_[qGmOffset], qFp8[qUbOffset],
+                                 {tile.aivTokenSize, headDim_, qFp8SparseRowStride, headDim_});
+            }
             DataCopyUbToGm2D(qScaleGm_[tile.aivTokenOffset], qScale,
                              {qHeadNum_, tile.aivTokenSize, tile.aivTokenSize, totalTokens_});
         }
