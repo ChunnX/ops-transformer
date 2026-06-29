@@ -41,6 +41,22 @@ using BlockOffsetType = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                                   int32_t QuantMode, int32_t CombineQuantMode
 #define TemplateMegaMoeLayeredTypeFunc XType, OutputType, TopkWeightsType, QuantMode, CombineQuantMode
 
+// ProcessCombine 跨阶段共享状态: rank 分配 / 行范围 / UB 布局
+struct CombineRankCtx {
+    uint32_t startRankId;
+    uint32_t endRankId;
+    uint32_t processRankNum;
+    uint32_t m_expert;
+    uint32_t nTilesPerGroup;
+    uint32_t rowGroupsThisExpert;
+    uint32_t quantRowSizeBytes;
+    uint32_t batchBaseOffset;
+    uint32_t totalTokensToProcess;
+    LocalTensor<int32_t> rankInfoTensor;
+    GlobalTensor<int32_t> rowGroupComplete;
+    __gm__ uint8_t* maskSlotBase;
+};
+
 template <TemplateMegaMoeLayeredTypeClass>
 class MegaMoeLayered {
 public:
@@ -78,6 +94,12 @@ private:
     __aicore__ inline void Unpermute();
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void ProcessCombine(GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx);
+    __aicore__ inline bool PartitionCombineRanks(CombineRankCtx &ctx);
+    __aicore__ inline void InitCombineRankInfo(CombineRankCtx &ctx, ExpertLoopState &gmm2State, uint32_t expertIdx);
+    __aicore__ inline void PollAndProcessCombineGroups(CombineRankCtx &ctx, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
+    __aicore__ inline void ProcessCombineGroupBatch(CombineRankCtx &ctx, GMMAddrInfo &gmmAddrInfo,
+        uint32_t expertIdx, uint32_t currentRow, uint32_t batchCount, uint32_t rankIndex, uint32_t processedCnt);
+    __aicore__ inline void DrainCombineUrmaChannels(CombineRankCtx &ctx);
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx,
@@ -1238,156 +1260,156 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitCombi
 
 
 // =============================================
-// ProcessCombineByUrma：量化路径的 Combine 处理（URMA 通信），按 rank 分核
-// =============================================
-// 与 ProcessCombine 的区别：
-//   - 量化模式下所有 AIV 核参与（AIV 不参与计算），按 rank 分核而非按 row group 分核
-//   - 需等待该专家所有 row group 完成（因为按 rank 分核后需扫描所有 token）
-//   - 通过 ComputeGroupRange 定位每个 row group 的计数器进行轮询
-//   - 量化+发送逻辑复用 CombineRowGroup
-// =============================================
 // ProcessCombine：量化路径的 Combine 处理，等待 GMM2 完成，读取结果，量化后发送到目标 rank
+//   Phase 1: 按 rank 分核, 从 URMA mask slot 读取每 rank 的 token count, 计算行范围
+//   Phase 2: 按 rank 轮询 row group 计数器, group 完成时批量量化+发送该 rank 在此 group 内的 token
+//   Phase 3: drain 本核负责的远程 rank 的 URMA channel
 // =============================================
 template <TemplateMegaMoeLayeredTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCombine(
-    GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx)
+__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PartitionCombineRanks(CombineRankCtx &ctx)
 {
-    // 量化模式下所有 AIV 核参与，按 rank 分核
+    // 量化模式下所有 AIV 核参与，按 rank 分核: 每个核负责一段连续的目标 rank
     uint32_t aivIdx = aivCoreIdx_;
     uint32_t aivNum = blockAivNum_;
-
-    // 按 rank 分核: 每个核负责一段连续的目标 rank
     uint32_t rankPerCore = worldSize_ / aivNum;
     uint32_t remainder = worldSize_ % aivNum;
-    uint32_t startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
-    uint32_t processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
-    uint32_t endRankId = startRankId + processRankNum;
+    ctx.startRankId = rankPerCore * aivIdx + (aivIdx < remainder ? aivIdx : remainder);
+    ctx.processRankNum = rankPerCore + (aivIdx < remainder ? 1 : 0);
+    ctx.endRankId = ctx.startRankId + ctx.processRankNum;
+    return ctx.processRankNum != 0;
+}
 
-    if (processRankNum == 0) {
-        return;
-    }
-
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitCombineRankInfo(
+    CombineRankCtx &ctx, ExpertLoopState &gmm2State, uint32_t expertIdx)
+{
     int64_t offset = ALIGN_512;
-    uint32_t m_expert = Get<M_VALUE>(gmm2State.problemShape);
-    uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
-    uint32_t rowGroupsThisExpert = Ops::Base::CeilDiv(m_expert, L1_TILE_M_256);
+    ctx.m_expert = Get<M_VALUE>(gmm2State.problemShape);
+    ctx.nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
+    ctx.rowGroupsThisExpert = Ops::Base::CeilDiv(ctx.m_expert, L1_TILE_M_256);
     uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-    uint32_t quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
-
-    GlobalTensor<int32_t> rowGroupComplete;
-    rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
-
-    // Phase 1: 从本地 URMA mask slot 读取每个源 rank 的 token count, 计算每 rank 的行范围
+    ctx.quantRowSizeBytes = Ops::Base::CeilAlign(k_ + nScale, static_cast<uint32_t>(ALIGN_32));
+    ctx.rowGroupComplete.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
     // token 按源 rank 紧密排布, 利用 mask slot 中的 count 可精确计算每 rank 的起止行
-    __gm__ uint8_t* maskSlotBase = (__gm__ uint8_t*)(params_.peermemInfo.maskRecvPtr + static_cast<uint64_t>(expertIdx) * worldSize_ * maskSlotSize_);
-
-    // 计算 rank 0..startRankId-1 的 cumsum (作为本核处理范围之前的行偏移)
+    ctx.maskSlotBase = (__gm__ uint8_t*)(params_.peermemInfo.maskRecvPtr +
+        static_cast<uint64_t>(expertIdx) * worldSize_ * maskSlotSize_);
+    // rank 0..startRankId-1 的 cumsum (本核处理范围之前的行偏移)
     uint32_t cumsumBeforeRange = 0;
-    for (uint32_t r = 0; r < startRankId; r++) {
-        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
+    for (uint32_t r = 0; r < ctx.startRankId; r++) {
+        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(ctx.maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
         cumsumBeforeRange += AscendC::ReadGmByPassDCache(cntAddr);
     }
-
-    // UB 布局 (VECCALC/VECIN 共享物理内存):
-    //   0 ~ ALIGN_512:                      hcomm_ (VECCALC)
-    //   ALIGN_512 ~ ALIGN_512+rankInfoSize:  rankInfoTensor (VECCALC, 跨 Phase 1/2 持续读写)
-    //   ALIGN_512+rankInfoSize ~:            tripleTensor + combineUbTensor (VECIN, 每次 batch 短暂使用)
-    // Layout: [startRow_0..N-1 | tokenCnt_0..N-1 | processedCnt_0..N-1]
+    // UB 布局: [startRow | tokenCnt | processedCnt], 跨 Phase 1/2 持续读写
     uint32_t rankInfoSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(processRankNum * 3 * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    LocalTensor<int32_t> rankInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, offset,
-        rankInfoSize / sizeof(int32_t));
-    offset  += rankInfoSize;
-
+        static_cast<int64_t>(ctx.processRankNum * 3 * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    ctx.rankInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC, offset, rankInfoSize / sizeof(int32_t));
+    offset += rankInfoSize;
+    ctx.batchBaseOffset = static_cast<uint32_t>(offset);
     uint32_t cumsumInRange = 0;
-    uint32_t totalTokensToProcess = 0;
-    for (uint32_t i = 0; i < processRankNum; i++) {
-        uint32_t r = startRankId + i;
-        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
+    ctx.totalTokensToProcess = 0;
+    for (uint32_t i = 0; i < ctx.processRankNum; i++) {
+        uint32_t r = ctx.startRankId + i;
+        __gm__ int32_t* cntAddr = reinterpret_cast<__gm__ int32_t*>(ctx.maskSlotBase + r * maskSlotSize_ + maskAlignSize_);
         int32_t cnt = AscendC::ReadGmByPassDCache(cntAddr);
-        rankInfoTensor.SetValue(i, cumsumBeforeRange + cumsumInRange);  // startRow
-        rankInfoTensor.SetValue(processRankNum + i, cnt);               // tokenCnt
-        rankInfoTensor.SetValue(2 * processRankNum + i, 0);             // processedCnt
+        ctx.rankInfoTensor.SetValue(i, cumsumBeforeRange + cumsumInRange);               // startRow
+        ctx.rankInfoTensor.SetValue(ctx.processRankNum + i, cnt);                       // tokenCnt
+        ctx.rankInfoTensor.SetValue(2 * ctx.processRankNum + i, 0);                     // processedCnt
         cumsumInRange += cnt;
-        totalTokensToProcess += cnt;
+        ctx.totalTokensToProcess += cnt;
     }
+}
 
-    if (totalTokensToProcess == 0) {
-        return;
-    }
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCombineGroupBatch(
+    CombineRankCtx &ctx, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx, uint32_t currentRow,
+    uint32_t batchCount, uint32_t rankIndex, uint32_t processedCnt)
+{
+    int64_t offset = ctx.batchBaseOffset;
+    // 加载该 batch 的 triple info 到 VECIN (从 rankInfoTensor 末尾之后开始, 避免覆盖)
+    LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * TRIPLE_SIZE);
+    offset += batchCount * TRIPLE_SIZE * sizeof(int32_t);
+    AscendC::GlobalTensor<int32_t> tripleGm;
+    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.tripleInfoPtr
+        + (expertBeforeCnt_ + currentRow) * TRIPLE_SIZE * sizeof(int32_t)));
+    AscendC::DataCopy(tripleTensor, tripleGm, batchCount * TRIPLE_SIZE);
+    PipeBarrier<PIPE_MTE2>();
+    // 批量处理该 rank 在此 group 内的所有 token: 量化 + URMA 发送
+    MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true>(
+        currentRow, batchCount, k_, expertIdx, rankId_,
+        gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor, combineUbTensorSize_,
+        offset, ctx.quantRowSizeBytes);
+    ctx.rankInfoTensor.SetValue(2 * ctx.processRankNum + rankIndex, processedCnt + batchCount);
+}
 
-    // Phase 2: 按 rank 轮询, 只检查每 rank 需要的 row group, 不阻塞等待
-    // 当 group 完成时, 批量处理该 rank 在该 group 内的所有 token
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PollAndProcessCombineGroups(
+    CombineRankCtx &ctx, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx)
+{
     uint32_t rankIndex = 0;
     uint32_t totalProcessed = 0;
-    uint32_t batchBaseOffset = static_cast<uint32_t>(offset);
-    while (totalProcessed < totalTokensToProcess) {
+    while (totalProcessed < ctx.totalTokensToProcess) {
         // 跳过已处理完毕 (processedCnt >= tokenCnt) 的 rank
-        while (rankInfoTensor.GetValue(2 * processRankNum + rankIndex) >=
-               rankInfoTensor.GetValue(processRankNum + rankIndex)) {
-            rankIndex = (rankIndex + 1) % processRankNum;
+        while (ctx.rankInfoTensor.GetValue(2 * ctx.processRankNum + rankIndex) >=
+               ctx.rankInfoTensor.GetValue(ctx.processRankNum + rankIndex)) {
+            rankIndex = (rankIndex + 1) % ctx.processRankNum;
         }
-
-        uint32_t startRow = rankInfoTensor.GetValue(rankIndex);
-        uint32_t tokenCnt = rankInfoTensor.GetValue(processRankNum + rankIndex);
-        uint32_t processedCnt = rankInfoTensor.GetValue(2 * processRankNum + rankIndex);
+        uint32_t startRow = ctx.rankInfoTensor.GetValue(rankIndex);
+        uint32_t tokenCnt = ctx.rankInfoTensor.GetValue(ctx.processRankNum + rankIndex);
+        uint32_t processedCnt = ctx.rankInfoTensor.GetValue(2 * ctx.processRankNum + rankIndex);
         uint32_t currentRow = startRow + processedCnt;
         uint32_t targetGroup = currentRow / L1_TILE_M_256;
-
         // 检查该 row group 是否完成 (非阻塞, 未完成则跳到下一个 rank)
         uint32_t groupCoreStart, groupCoreSize;
-        MegaMoeImpl::ComputeGroupRange(targetGroup, rowGroupsThisExpert, blockAivNum_, groupCoreStart, groupCoreSize);
-        __gm__ int32_t* counterAddr = (__gm__ int32_t*)rowGroupComplete.GetPhyAddr()
+        MegaMoeImpl::ComputeGroupRange(targetGroup, ctx.rowGroupsThisExpert, blockAivNum_, groupCoreStart, groupCoreSize);
+        __gm__ int32_t* counterAddr = (__gm__ int32_t*)ctx.rowGroupComplete.GetPhyAddr()
             + expertIdx * maxRowGroupsStride_ + targetGroup * blockAivNum_ * INT_CACHELINE
             + groupCoreStart * INT_CACHELINE;
         int32_t counterVal = AscendC::ReadGmByPassDCache(counterAddr);
-
-        if (counterVal == static_cast<int32_t>(nTilesPerGroup)) {
-            // Group 已完成, 计算该 rank 在此 group 内的 batch token 数
+        if (counterVal == static_cast<int32_t>(ctx.nTilesPerGroup)) {
             uint32_t groupEndRow = (targetGroup + 1) * L1_TILE_M_256;
-            if (groupEndRow > m_expert) {
-                groupEndRow = m_expert;
+            if (groupEndRow > ctx.m_expert) {
+                groupEndRow = ctx.m_expert;
             }
-            uint32_t remainingTokens = tokenCnt - processedCnt;
             uint32_t batchCount = groupEndRow - currentRow;
+            uint32_t remainingTokens = tokenCnt - processedCnt;
             if (batchCount > remainingTokens) {
                 batchCount = remainingTokens;
             }
-            offset = batchBaseOffset;
-            // 加载该 batch 的 triple info 到 VECIN (从 rankInfoTensor 末尾之后开始, 避免覆盖)
-            LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, batchCount * TRIPLE_SIZE);
-            offset += batchCount * TRIPLE_SIZE * sizeof(int32_t);
-            AscendC::GlobalTensor<int32_t> tripleGm;
-            tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.tripleInfoPtr
-                + (expertBeforeCnt_ + currentRow) * TRIPLE_SIZE * sizeof(int32_t)));
-            AscendC::DataCopy(tripleTensor, tripleGm, batchCount * TRIPLE_SIZE);
-            PipeBarrier<PIPE_MTE2>();
-
-            // 调用 CombineRowGroup 批量处理该 rank 在此 group 内的所有 token
-            MegaMoeCombineImpl::CombineTokenGroup<CombineQuantMode, bfloat16_t, true>(
-                currentRow, batchCount, k_, expertIdx, rankId_,
-                gmmAddrInfo.gmm2OutGlobal, params_, tripleTensor, combineUbTensorSize_,
-                offset, quantRowSizeBytes);
-
-            rankInfoTensor.SetValue(2 * processRankNum + rankIndex, processedCnt + batchCount);
+            ProcessCombineGroupBatch(ctx, gmmAddrInfo, expertIdx, currentRow, batchCount, rankIndex, processedCnt);
             totalProcessed += batchCount;
         } else {
-            // Group 未完成, 短暂等待后轮询下一个 rank
             AscendC::Nop<200>();
         }
-
-        // 轮询: 移到下一个 rank
-        rankIndex = (rankIndex + 1) % processRankNum;
+        rankIndex = (rankIndex + 1) % ctx.processRankNum;
     }
+}
 
-    // drain 本核负责的远程 rank 的 URMA channel
-    for (uint32_t dr = startRankId; dr < endRankId; ++dr) {
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DrainCombineUrmaChannels(CombineRankCtx &ctx)
+{
+    for (uint32_t dr = ctx.startRankId; dr < ctx.endRankId; ++dr) {
         if (dr == rankId_) {
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
         PipeBarrier<PIPE_ALL>();
     }
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCombine(
+    GMMAddrInfo &gmmAddrInfo, ExpertLoopState &gmm2State, uint32_t expertIdx)
+{
+    CombineRankCtx ctx;
+    if (!PartitionCombineRanks(ctx)) {
+        return;
+    }
+    InitCombineRankInfo(ctx, gmm2State, expertIdx);
+    if (ctx.totalTokensToProcess == 0) {
+        return;
+    }
+    PollAndProcessCombineGroups(ctx, gmmAddrInfo, expertIdx);
+    DrainCombineUrmaChannels(ctx);
 }
 
 
