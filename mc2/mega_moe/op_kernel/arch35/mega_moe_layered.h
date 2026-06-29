@@ -573,7 +573,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
             DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
             PipeBarrier<PIPE_ALL>();
             if (curRankId != rankId_) {
-                GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, 0);
+                GM_ADDR remoteDataAddr = mc2Context_->epHcclBuffer[curRankId];
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
             }
