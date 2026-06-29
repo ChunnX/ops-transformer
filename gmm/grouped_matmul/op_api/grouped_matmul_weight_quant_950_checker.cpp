@@ -87,7 +87,7 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsMultiTensorWeight() const
     return (*gmmParams_.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
-bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4Pergroup() const
+bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4Pergroup(cosnt size_t xIdx) const
 {
     if (!IsA16W4()) {
         return false;
@@ -327,7 +327,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
     size_t yDimNum = (*gmmParams_.y)[yIdx]->GetViewShape().GetDimNum();
 
     if (gmmParams_.groupType == NO_SPLIT) {
-        if (IsA16W4Pergroup()) {
+        if (IsA16W4Pergroup(wIdx)) {
             if (unlikely(xDimNum != MAX_FM_DIM)) {
                 std::string reason = "The shape dim of x[" + std::to_string(xIdx) + "] must be 2" +
                     ", when weight separated";
@@ -652,7 +652,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose(size_t idx) const
 {
-    if (IsA16W4Pergroup()) {
+    if (IsA16W4Pergroup(idx)) {
         CHECK_RET(CheckDimValueAllOne(gmmParams_.antiquantScaleOptional, idx, "antiquantScale") == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);
 
@@ -821,7 +821,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t idx) const
 {
-    if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ() || IsA16W4Pergroup())) {
+    if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ() || IsA16W4Pergroup(idx))) {
         return ACLNN_SUCCESS;
     }
 
@@ -862,7 +862,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
                 "The value of groupSize must be 128/192/256/512");
             return ACLNN_ERR_PARAM_INVALID;
         }
-    } else if (IsA16W4Pergroup()) {
+    } else if (IsA16W4Pergroup(idx)) {
         // 伪量化A16W4 pergroup场景支持groupsize为32/64/128/256
         if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
