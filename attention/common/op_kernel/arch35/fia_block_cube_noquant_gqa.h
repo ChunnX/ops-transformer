@@ -610,13 +610,13 @@ public:
                     param);
             } else {
                 MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
-                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                    param);
+                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
+                    mm1ResL0C.GetTensor<T>(), param);
             }
         } else {
             MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                param);
+                mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
+                mm1ResL0C.GetTensor<T>(), param);
         }
 
         if (unlikely(runInfo.isLastS2Loop)) {
@@ -643,7 +643,7 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
-        uint32_t dstNzC0Stride = ((runInfo.actMSize + 15) >> 4 << 4);
+        uint32_t dstNzC0Stride = (runInfo.actMSize + 15) >> 4 << 4;
         uint64_t l1BaseKOffset = baseK * dstNzC0Stride;
 
         Buffer<BufferType::L1> mm1A = l1QBuffers.Get();
@@ -653,10 +653,10 @@ public:
 
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
-            Buffer<BufferType::L1> mm1B; // 左矩阵复用, 但是每次只加载realK列
             if (k == kLoops - 1) {
                 realK = constInfo.dSize - k * baseK;
             }
+            Buffer<BufferType::L1> mm1B; // 左矩阵复用, 但是每次只加载realK列
             if (unlikely(runInfo.isFirstS2Loop)) { // sOuter循环第一个基本快：搬运0
                 LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
                 CopyQuerySlice(mm1ATensor[k * l1BaseKOffset], k * baseK, realK, runInfo);
@@ -708,8 +708,8 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
-            CopyQueryTile(mm1BTensor, runInfo);
+            LocalTensor<Q_T> mm1BL1Tensor = mm1B.GetTensor<Q_T>();
+            CopyQueryTile(mm1BL1Tensor, runInfo);
             mm1B.Set<HardEvent::MTE2_MTE1>();
         } else {
             mm1B = l1QBuffers.GetPre();
@@ -718,9 +718,9 @@ public:
 
         Buffer<BufferType::L1> mm1A = l1KBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
+        LocalTensor<KV_T> mm1AL1Tensor = mm1A.GetTensor<KV_T>();
 
-        CopyKeyTile(mm1ATensor, runInfo);
+        CopyKeyTile(mm1AL1Tensor, runInfo);
 
         mm1A.Set<HardEvent::MTE2_MTE1>();
 
@@ -771,8 +771,8 @@ public:
         if (unlikely(runInfo.isFirstS2Loop)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
-            CopyQueryTile(mm1BTensor, runInfo);
+            LocalTensor<Q_T> mm1BL1 = mm1B.GetTensor<Q_T>();
+            CopyQueryTile(mm1BL1, runInfo);
             mm1B.Set<HardEvent::MTE2_MTE1>();
         } else {
             mm1B = l1QBuffers.GetPre();
@@ -781,8 +781,8 @@ public:
 
         Buffer<BufferType::L1> mm1A = l1KBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
-        CopyKeyTile(mm1ATensor, runInfo);
+        LocalTensor<KV_T> mm1AL1 = mm1A.GetTensor<KV_T>();
+        CopyKeyTile(mm1AL1, runInfo);
 
         mm1A.Set<HardEvent::MTE2_MTE1>();
         mm1A.Wait<HardEvent::MTE2_MTE1>();
