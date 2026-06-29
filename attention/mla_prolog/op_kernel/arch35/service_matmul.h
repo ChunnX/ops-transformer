@@ -969,9 +969,9 @@ __aicore__ inline void MatmulSplitMKOuter(const GlobalTensor<O> &tensorCGm, cons
             fixParams.dstStride = para.orgKc;
             fixParams.ndNum = 1;
             fixParams.unitFlag = UNIT_FLAG_DISABLE;
-            AscendC::SetAtomicAdd<float>();
+            SetAtomicAdd<float>();
             Fixpipe(tensorCGm[nb * para.baseN], cL0, fixParams);
-            AscendC::SetAtomicNone();
+            SetAtomicNone();
 
             SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
             bufParam.cL0BufIter++;

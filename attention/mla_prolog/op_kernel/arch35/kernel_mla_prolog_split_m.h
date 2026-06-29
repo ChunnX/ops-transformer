@@ -1332,7 +1332,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
         inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
         dequantScaleXLocal, sharedBuf, rmsNormParams);
 
-    AscendC::DataSyncBarrier<MemDsbT::UB>();
+    DataSyncBarrier<MemDsbT::UB>();
 
     if constexpr (isPertile) {
         float kNopeClipAlpha = isFp8E8m0 ? 1.0f : kNopeClipAlphaGm_.GetValue(0);
@@ -1348,7 +1348,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
         } else {
             QuantPerTile8Bit(outputLocal, inputLocal, perTileQuantParams);
         }
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
                          std::is_same<mmCkvKrOutputType, float>::value) {
         Rectangle rectangleParams{
@@ -1357,7 +1357,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
             static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
         };
         QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     } else {
         Rectangle rectangleParams{
             static_cast<uint32_t>(vectorRow_),               // row
@@ -1370,7 +1370,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
         } else {
             QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
         }
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
 }
 

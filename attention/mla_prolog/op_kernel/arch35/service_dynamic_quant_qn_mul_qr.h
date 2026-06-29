@@ -60,9 +60,9 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O> &outputGm, con
 
         LocalTensor<O> output = outputLocal.template ReinterpretCast<O>();
         WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
         DynamicQuantPerTokenVf(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
         SetFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY);
         WaitFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY); // 计算是否已经完成可以搬运
@@ -113,10 +113,10 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
         WaitFlag<HardEvent::MTE2_V>(MUL_QR);
 
         Cast(qrFp32Local, qrInputLocal[inputLocalRopeOffset], RoundMode::CAST_NONE, computeSizeRope);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
         MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal, quantScaleCkvRope, computeSizeRope, computeBlockAlign);
         Cast(outputLocalRope, qrFp32Local, RoundMode::CAST_RINT, computeSizeRope);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
 
         SetFlag<HardEvent::V_MTE3>(MUL_QR);
         WaitFlag<HardEvent::V_MTE3>(MUL_QR);
@@ -206,14 +206,14 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
 
     // Dynamic Quant
     Duplicate(maxInt8Tensor, static_cast<C>(maxInt8), brcbCnt);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     DynamicQuantMultiRow(outputGm, scaleOutputLocal, inputGm, outputLocal, inputHalf, inputLocal, maxInt8Tensor,
                          dynamicQuantUb.template ReinterpretCast<uint8_t>(), row, col, subRow, queryOutStride,
                          DYNAMIC_QUANT_INPUT_READY, DYNAMIC_QUANT_OUTPUT_READY);
 
     Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(row, computeBlockAlign), {1, computeBlockAlign});
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     // DataCopyParams  : count len srcStrideIn dstStrideIn
     DataCopyParams scaleOutCopyParams{(uint16_t)row, (uint16_t)sizeof(C), 0,
