@@ -177,10 +177,7 @@ private:
     // 6-buffer 软流水：占满 EVENT_ID0..EVENT_ID5。
     //   - TripleInfoCalAndDispatch 用 copyTmpTensors_[6] 让 winmem token+scale 读
     //     在引擎里同时排队 5+ 个(配合 prime/steady/drain 软流水)。
-    // 注: topkTensors_[6] 原供旧版 SendInfoCal 跨卡读 topk 用; mask 计算前移到源卡后已不再使用,
-    //     仍保留 FirstBuffInit 中的分配以维持其后续 UB 地址链不变(UB 有余量)。
     static constexpr int32_t DISPATCH_BUFFER_NUM = 6;
-    LocalTensor<int32_t> topkTensors_[DISPATCH_BUFFER_NUM];
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
     LocalTensor<uint32_t> gatherMaskInt32Tensor_;
@@ -295,24 +292,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit()
         gatherMaskTensorSize / sizeof(uint8_t));
     gatherMaskInt32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr,
         gatherMaskTensorSize / sizeof(uint32_t));
-    // 6 个 topkTensor buffer 给 SendInfoCal 用,跨卡 MTE2 同时排队多个读。
-    uint32_t topkTensorBaseAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
-    uint32_t topkTensorPerBufSize = Ops::Base::CeilAlign(
-        (int64_t)(sendTotalNum_ * sizeof(int32_t)), (int64_t)(ALIGN_256));
-    for (int32_t b = 0; b < DISPATCH_BUFFER_NUM; ++b) {
-        topkTensors_[b] = LocalTensor<int32_t>(TPosition::VECCALC,
-            topkTensorBaseAddr + static_cast<uint32_t>(b) * topkTensorPerBufSize,
-            topkTensorPerBufSize / sizeof(int32_t));
-    }
-    uint32_t validTopkIndexTensorAddr = topkTensorBaseAddr +
-        static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * topkTensorPerBufSize;
+    // topkTensors_[6] from the old cross-rank topk read path was removed here.
+    // Current dispatch uses the source-rank precomputed mask in gatherMaskTensor_ and
+    // materializes selected indices directly into validTopkIndexTensor_.
+    uint32_t validTopkIndexTensorAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
         (int64_t)(sendTotalNum_ * sizeof(int32_t)), (int64_t)(ALIGN_32));
     validTopkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr,
         validTopkIndexTensorSize / sizeof(int32_t));
     // 6 个 dispatch buffer，配合 EVENT_ID0..EVENT_ID5 做软流水。
     // 每槽 8KB，足以容纳一个 token+scale (mxFp8TokenAlignBytes_ + mxFp8ScaleAlignBytes_ 通常 < 7.5KB)。
-    // 6 × 8KB = 48KB；FirstBuffInit 总用量从 ~48KB 提到 ~96KB，仍远低于 256KB UB 上限。
+    // 6 × 8KB = 48KB；tripleTensor_ follows these buffers at ubBufferUsedAddr_.
+    // GMM2 AIV1 uses fixed ping-pong buffers [64K,128K) and [128K,192K);
+    // the current dispatch/GMM2 ordering is still protected by the dispatch->GMM2 flag.
     constexpr uint32_t COPY_TMP_BUFFER_SIZE = 8 * 1024;
     uint32_t copyTmpBaseAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
     for (int32_t b = 0; b < DISPATCH_BUFFER_NUM; ++b) {
@@ -324,9 +316,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit()
         static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * COPY_TMP_BUFFER_SIZE;
     CreateVecIndex(topkIndexTensor_, 0, (topkIndexTensorSize / sizeof(int32_t)));
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
-    for (int32_t b = 0; b < DISPATCH_BUFFER_NUM; ++b) {
-        Duplicate<int32_t>(topkTensors_[b], 0, (topkTensorPerBufSize / sizeof(int32_t)));
-    }
     PipeBarrier<PIPE_ALL>();
 }
 
