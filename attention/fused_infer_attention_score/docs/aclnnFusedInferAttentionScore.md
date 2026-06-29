@@ -875,7 +875,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
   - pseShift功能使用限制如下：
     - pseShift数据类型需与query数据类型保持一致。
 
-- key、value首轴非连续场景约束：仅支持PagedAttention场景，而且满足TND排布，sparseMode为0/3/4，Q_D=K_D=V_D且≤256，非MLA场景，innerPrecise=0的GQA/MQA，或MHA（MHA场景不支持BF16且innerPrecise=1，不支持sparseMode=0且attenMask非空）。key、value为BnBsH格式要求blockSize满足16对齐且≤512；NZ排布要求blockSize=128且D≠64/128。key、value仅第一个维度支持非连续，其他维度必须连续。
+- key、value首轴非连续场景约束：仅支持PagedAttention场景，而且满足TND排布，sparseMode为0/3/4，Q_D=K_D=V_D且≤256，非MLA场景，innerPrecise=0的GQA/MQA，或MHA（MHA场景不支持BF16且innerPrecise=1，不支持sparseMode=0且attenMask非空）。key、value为BnBsH格式要求blockSize满足16对齐且≤512；NZ（NZ是数据的逻辑排布，而非数据格式）排布要求blockSize=128且D≠64/128。key、value仅第一个维度支持非连续，其他维度必须连续。
 
 ## 调用示例
 
