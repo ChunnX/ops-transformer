@@ -1583,17 +1583,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendMaskBuffInit();
-    SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
-    ResetFlagList();             // 清理workSpace空间上的flag位
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        ResetRowGroupCompleteFlags();
-    }
-    ResetUrmaDispatchState(); // 重置urma dispatch状态
-    if constexpr(g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
-    }
-    CrossRankSyncInWorldSize();  // 全卡同步
+    // SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    // ResetFlagList();             // 清理workSpace空间上的flag位
+    // if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+    //     ResetRowGroupCompleteFlags();
+    // }
+    // ResetUrmaDispatchState(); // 重置urma dispatch状态
+    // if constexpr(g_coreType == AIV) {
+    //     PipeBarrier<PIPE_ALL>();
+    //     SyncAll<true>();
+    // }
+    // CrossRankSyncInWorldSize();  // 全卡同步
 
     // // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     // DispatchBuffInit();
