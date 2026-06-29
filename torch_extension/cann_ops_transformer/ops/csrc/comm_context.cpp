@@ -246,15 +246,20 @@ public:
         ASCEND_LOGI("CheckProtocolSupport success!");
     }
 
-    void CheckIsCrossSuperNode(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum, CommProtocol &protocol)
+    void CheckIsCrossSuperNode(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum, CommProtocol &protocol, uint32_t srcRankId)
     {
+        uint32_t netLinkNum = 0;
+        uint32_t rankNumInLayer = 0;
+        uint32_t *rankIdLists = nullptr;
+        CommLink *linksList = nullptr;
+
         protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP; // 检查是否跨超节点
         layerMap_ = {}; // 清空layerMap，准备重新检查
         for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
             ASCEND_LOGI("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
             
             // 在循环内调用HcclRankGraphGetRanksByLayer获取当前层的所有卡ID
-            hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
+            auto hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
 
             bool allSupportUrma = true;
@@ -336,7 +341,7 @@ public:
         TORCH_CHECK(rankNumPerUbDomain_ < rankSize && rankSize % rankNumPerUbDomain_ == 0,
                     "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
                     rankNumPerUbDomain_, ", rankSize: ", rankSize);
-        CheckIsCrossSuperNode(commHandle, layerList, layerNum, protocol);
+        CheckIsCrossSuperNode(commHandle, layerList, layerNum, protocol, srcRankId);
     }
 
     static bool CheckLinks(uint32_t &netLinkNum, CommLink *linksList, CommProtocol &protocol)
