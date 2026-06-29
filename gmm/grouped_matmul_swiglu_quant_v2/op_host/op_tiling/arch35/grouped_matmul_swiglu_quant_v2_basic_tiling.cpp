@@ -170,7 +170,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                                                       "wDesc cannot be nullptr"),
                 return false);
     inputParams_.bDtype = wDesc->GetDataType();
-    auto scaleDesc = context_->GetInputDesc(SCALE_INDEX);
+    auto scaleDesc = context_->GetDynamicInputDesc(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleDesc == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale", "nullptr",
                                                       "scaleDesc cannot be nullptr"),

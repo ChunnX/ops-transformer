@@ -804,7 +804,7 @@ protected:
         GMM_SWIGLU_CHECK_DIM(outputScaleDimNumber, MX_OUTPUT_SCALE_DIM, "outputScale", return false);
         if (IsMxWeightNzMultiTensorSupported()) {
             if (gmmDsqParams_.weight->Size() != gmmDsqParams_.weightScale->Size()) {
-                OP_LOGE_FOR_INVALID_LISTSIZE(GMM_SWIGLU_ACLNN_OP_NAME, "weightScale",
+                OP_LOGE_FOR_INVALID_LISTSIZE(apiName_.c_str(), "weightScale",
                                              std::to_string(gmmDsqParams_.weightScale->Size()),
                                              std::to_string(gmmDsqParams_.weight->Size()));
                 return false;
