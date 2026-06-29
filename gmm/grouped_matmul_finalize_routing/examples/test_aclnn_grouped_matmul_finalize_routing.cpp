@@ -120,7 +120,7 @@ int CreateAclTensorWeight(const std::vector<T> &hostData, const std::vector<int6
     // 2. 构造输入与输出，需要根据API的接口自定义构造
     int64_t m = 8;
     int64_t k = 2048;
-    int64_t n = 7168;
+    int64_t n = 1024;
     int64_t e = 1;
     int64_t batch = 8;
     int64_t bsdp = 1;
