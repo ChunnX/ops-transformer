@@ -108,8 +108,7 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::InitBaseData(GM_ADDR workspace,
     actualExpertNum_ = tilingData->actualExpertNum;
     outputRows_ = tilingData->expertNum * tilingData->expertCapacity;
 
-    // DropPad模式下，从gatherOutComputeParamsOp读取完整Tiling参数
-    // 数据分割基于totalLength (n*k)，与expert_tokens_count、row_idx_gather一致
+    // compact DropPad gather_out uses source-row map and splits by output rows.
     needCoreNum_ = tilingData->gatherOutComputeParamsOp.needCoreNum;
     perCoreIndicesElements_ = tilingData->gatherOutComputeParamsOp.perCoreIndicesElements;
     lastCoreIndicesElements_ = tilingData->gatherOutComputeParamsOp.lastCoreIndicesElements;
@@ -314,67 +313,7 @@ template <typename T>
 __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
-        if (outputRows_ <= n_ * k_) {
-            ProcessCompactOutputRows();
-            return;
-        }
-
-        int64_t curLoopElements = curCorePerLoopIndicesElements_;
-        int64_t globalOffsetBase = blockIdx_ * perCoreIndicesElements_;
-        for (int64_t indicesLoop = 0; indicesLoop < indicesLoops_; indicesLoop++) {
-            if (indicesLoop == indicesLoops_ - 1) {
-                curLoopElements = curCoreLastLoopIndicesElements_;
-            }
-            int64_t curExpertLoopOffset = indicesLoop * curCorePerLoopIndicesElements_;
-            int64_t globalReadOffset = globalOffsetBase + curExpertLoopOffset;
-            SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-            CopyExpertIn(globalReadOffset, curLoopElements);
-
-            LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
-            SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-
-            for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
-                int64_t curLoopCols = (colsLoop == colsLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
-                int64_t colsLoopOffset = colsLoop * perLoopCols_;
-                int64_t curIndex = 0;
-                int64_t globalSortIdx = globalReadOffset;
-                int64_t startRow = globalSortIdx / k_;
-                int64_t endRow = (globalSortIdx + curLoopElements - 1) / k_;
-
-                for (int64_t row = startRow; row <= endRow; row++) {
-                    SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-                    CopyXIn(row * cols_ + colsLoopOffset, row, curLoopCols);
-                    LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
-
-                    LocalTensor<float> scaleLocal;
-                    if (isInputScale_ == 1 && colsLoop == 0) {
-                        CopyScaleIn(row);
-                        scaleLocal = scaleCopyInQueue_.DeQue<float>();
-                    }
-
-                    DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-                    DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-                    while (curIndex < curLoopElements && globalSortIdx / k_ == row) {
-                        int64_t outPosition = subRowIdxLocal.GetValue(curIndex);
-                        curIndex++;
-                        globalSortIdx++;
-                        if (outPosition < 0 || outPosition >= outputRows_) {
-                            continue;
-                        }
-                        DataCopyPad(expandedXGm_[outPosition * cols_ + colsLoopOffset], xLocal, copyXParams);
-                        if (isInputScale_ == 1 && colsLoop == 0) {
-                            DataCopyPad(expandedScaleGm_[outPosition], scaleLocal, copyScaleParams);
-                        }
-                    }
-
-                    if (isInputScale_ == 1 && colsLoop == 0) {
-                        scaleCopyInQueue_.FreeTensor(scaleLocal);
-                    }
-                    xCopyInQueue_.FreeTensor(xLocal);
-                }
-            }
-            expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
-        }
+        ProcessCompactOutputRows();
     }
 }
 } // namespace MoeInitRoutingV3
