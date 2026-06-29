@@ -36,6 +36,7 @@ public:
     __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t scaleDstOffset, int64_t curLoopCols);
     __aicore__ inline void CopyScaleIn(int64_t scaleSrcOffset);
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset);
+    __aicore__ inline void ProcessBatchRows(int64_t coreStartIdx, int64_t coreEndIdx);
 
 private:
     TPipe *pipe_;
@@ -161,8 +162,10 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Init(GM_ADDR x, GM_ADDR scale, 
 
     batchSize_ = tilingData->gatherOutComputeParamsOp.xBatchSize;
     if (batchSize_ > 1) {
+        // 批量路径一次搬多行 X 到 TBuf，后续按 rowIdx 多次写出；此时不再申请单行 xCopyInQueue_。
         pipe_->InitBuffer(multiRowXBuf_, batchSize_ * AlignBytes(perLoopCols_, sizeof(T)));
     } else {
+        // 单行路径保持原有 queue double buffer，作为 UB 不足以批量搬运时的兜底。
         int64_t xCopyInQueueBufferNum = max(tilingData->gatherOutComputeParamsOp.xCopyInQueueBufferNum,
                                             GATHER_OUT_BUFFER_NUM);
         pipe_->InitBuffer(xCopyInQueue_, xCopyInQueueBufferNum, AlignBytes(perLoopCols_, sizeof(T)));
@@ -247,11 +250,104 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::CopyScaleOut(int64_t scaleDstOf
 }
 
 template <typename T>
+__aicore__ inline void MoeV3GatherOutDropPad<T>::ProcessBatchRows(int64_t coreStartIdx, int64_t coreEndIdx)
+{
+    int64_t coreStartRow = coreStartIdx / k_;
+    int64_t coreEndRow = (coreEndIdx - 1) / k_;
+    for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
+        int64_t curLoopCols = (colsLoop == colsLoops_ - 1) ? lastLoopCols_ : perLoopCols_;
+        int64_t colsLoopOffset = colsLoop * perLoopCols_;
+        int64_t localRowStride = Align(curLoopCols, sizeof(T));
+        DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+        DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+
+        for (int64_t batchStart = coreStartRow; batchStart <= coreEndRow; batchStart += batchSize_) {
+            int64_t batchRows = Min(batchSize_, coreEndRow - batchStart + 1);
+            int64_t batchEnd = batchStart + batchRows - 1;
+            int64_t batchStartIdx = Max(coreStartIdx, batchStart * k_);
+            int64_t batchEndIdx = Min(coreEndIdx, (batchEnd + 1) * k_);
+            int64_t batchElements = batchEndIdx - batchStartIdx;
+            if (batchElements <= 0) {
+                continue;
+            }
+
+            // GM 按原始 cols_ 跨行，UB 按 32B 对齐后的 localRowStride 存放多行。
+            DataCopyExtParams batchCopyParams{static_cast<uint16_t>(batchRows),
+                static_cast<uint32_t>(curLoopCols * sizeof(T)),
+                static_cast<uint32_t>((cols_ - curLoopCols) * sizeof(T)),
+                static_cast<uint32_t>((localRowStride - curLoopCols) * sizeof(T) / BLOCK_BYTES), 0};
+            LocalTensor<T> multiRowXLocal = multiRowXBuf_.Get<T>();
+            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+            SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+            if constexpr (IsSameType<T, hifloat8_t>::value) {
+                DataCopyPadExtParams<uint8_t> batchPadParams{false, 0, 0, 0};
+                DataCopyPad(multiRowXLocal.template ReinterpretCast<uint8_t>(),
+                            xUint8tGm_[batchStart * cols_ + colsLoopOffset],
+                            batchCopyParams, batchPadParams);
+            } else {
+                DataCopyPadExtParams<T> batchPadParams{false, 0, 0, 0};
+                DataCopyPad(multiRowXLocal, xGm_[batchStart * cols_ + colsLoopOffset],
+                            batchCopyParams, batchPadParams);
+            }
+            SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+
+            for (int64_t tileOffset = 0; tileOffset < batchElements; tileOffset += curCorePerLoopIndicesElements_) {
+                int64_t curTileElements = Min(curCorePerLoopIndicesElements_, batchElements - tileOffset);
+                int64_t globalReadOffset = batchStartIdx + tileOffset;
+                SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+                CopyExpertIn(globalReadOffset, curTileElements);
+                LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
+                SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+
+                int64_t curIndex = 0;
+                int64_t globalSortIdx = globalReadOffset;
+                while (curIndex < curTileElements) {
+                    int64_t row = globalSortIdx / k_;
+                    int64_t localRow = row - batchStart;
+                    LocalTensor<T> xLocal = multiRowXLocal[localRow * localRowStride];
+
+                    LocalTensor<float> scaleLocal;
+                    if (isInputScale_ == 1 && colsLoop == 0) {
+                        CopyScaleIn(row);
+                        scaleLocal = scaleCopyInQueue_.DeQue<float>();
+                    }
+
+                    while (curIndex < curTileElements && globalSortIdx / k_ == row) {
+                        int64_t outPosition = subRowIdxLocal.GetValue(curIndex);
+                        curIndex++;
+                        globalSortIdx++;
+                        if (outPosition < 0 || outPosition >= outputRows_) {
+                            continue;
+                        }
+                        DataCopyPad(expandedXGm_[outPosition * cols_ + colsLoopOffset], xLocal, copyXParams);
+                        if (isInputScale_ == 1 && colsLoop == 0) {
+                            DataCopyPad(expandedScaleGm_[outPosition], scaleLocal, copyScaleParams);
+                        }
+                    }
+
+                    if (isInputScale_ == 1 && colsLoop == 0) {
+                        scaleCopyInQueue_.FreeTensor(scaleLocal);
+                    }
+                }
+                expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
+            }
+        }
+    }
+}
+
+template <typename T>
 __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
+        int64_t coreStartIdx = blockIdx_ * perCoreIndicesElements_;
+        int64_t coreEndIdx = coreStartIdx + curCoreIndicesElements_;
+        if (batchSize_ > 1) {
+            ProcessBatchRows(coreStartIdx, coreEndIdx);
+            return;
+        }
+
         int64_t curLoopElements = curCorePerLoopIndicesElements_;
-        int64_t globalOffsetBase = blockIdx_ * perCoreIndicesElements_;
+        int64_t globalOffsetBase = coreStartIdx;
         for (int64_t indicesLoop = 0; indicesLoop < indicesLoops_; indicesLoop++) {
             if (indicesLoop == indicesLoops_ - 1) {
                 curLoopElements = curCoreLastLoopIndicesElements_;
@@ -272,91 +368,36 @@ __aicore__ inline void MoeV3GatherOutDropPad<T>::Process()
                 int64_t startRow = globalSortIdx / k_;
                 int64_t endRow = (globalSortIdx + curLoopElements - 1) / k_;
 
-                if (batchSize_ > 1) {
-                    for (int64_t batchStart = startRow; batchStart <= endRow; batchStart += batchSize_) {
-                        int64_t batchRows = Min(batchSize_, endRow - batchStart + 1);
-                        int64_t localRowStride = Align(curLoopCols, sizeof(T));
-                        DataCopyExtParams batchCopyParams{static_cast<uint16_t>(batchRows),
-                            static_cast<uint32_t>(curLoopCols * sizeof(T)),
-                            static_cast<uint32_t>((cols_ - curLoopCols) * sizeof(T)),
-                            static_cast<uint32_t>((localRowStride - curLoopCols) * sizeof(T) / BLOCK_BYTES), 0};
-                        LocalTensor<T> multiRowXLocal = multiRowXBuf_.Get<T>();
-                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                        SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-                        if constexpr (IsSameType<T, hifloat8_t>::value) {
-                            DataCopyPadExtParams<uint8_t> batchPadParams{false, 0, 0, 0};
-                            DataCopyPad(multiRowXLocal.template ReinterpretCast<uint8_t>(),
-                                        xUint8tGm_[batchStart * cols_ + colsLoopOffset],
-                                        batchCopyParams, batchPadParams);
-                        } else {
-                            DataCopyPadExtParams<T> batchPadParams{false, 0, 0, 0};
-                            DataCopyPad(multiRowXLocal, xGm_[batchStart * cols_ + colsLoopOffset],
-                                        batchCopyParams, batchPadParams);
+                for (int64_t row = startRow; row <= endRow; row++) {
+                    SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+                    CopyXIn(row * cols_ + colsLoopOffset, row, curLoopCols);
+                    LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
+
+                    LocalTensor<float> scaleLocal;
+                    if (isInputScale_ == 1 && colsLoop == 0) {
+                        CopyScaleIn(row);
+                        scaleLocal = scaleCopyInQueue_.DeQue<float>();
+                    }
+
+                    DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+                    DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+                    while (curIndex < curLoopElements && globalSortIdx / k_ == row) {
+                        int64_t outPosition = subRowIdxLocal.GetValue(curIndex);
+                        curIndex++;
+                        globalSortIdx++;
+                        if (outPosition < 0 || outPosition >= outputRows_) {
+                            continue;
                         }
-                        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-
-                        for (int64_t b = 0; b < batchRows; b++) {
-                            int64_t row = batchStart + b;
-                            LocalTensor<T> xLocal = multiRowXLocal[b * localRowStride];
-
-                            LocalTensor<float> scaleLocal;
-                            if (isInputScale_ == 1 && colsLoop == 0) {
-                                CopyScaleIn(row);
-                                scaleLocal = scaleCopyInQueue_.DeQue<float>();
-                            }
-
-                            DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-                            DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-                            while (curIndex < curLoopElements && globalSortIdx / k_ == row) {
-                                int64_t outPosition = subRowIdxLocal.GetValue(curIndex);
-                                curIndex++;
-                                globalSortIdx++;
-                                if (outPosition < 0 || outPosition >= outputRows_) {
-                                    continue;
-                                }
-                                DataCopyPad(expandedXGm_[outPosition * cols_ + colsLoopOffset], xLocal, copyXParams);
-                                if (isInputScale_ == 1 && colsLoop == 0) {
-                                    DataCopyPad(expandedScaleGm_[outPosition], scaleLocal, copyScaleParams);
-                                }
-                            }
-
-                            if (isInputScale_ == 1 && colsLoop == 0) {
-                                scaleCopyInQueue_.FreeTensor(scaleLocal);
-                            }
+                        DataCopyPad(expandedXGm_[outPosition * cols_ + colsLoopOffset], xLocal, copyXParams);
+                        if (isInputScale_ == 1 && colsLoop == 0) {
+                            DataCopyPad(expandedScaleGm_[outPosition], scaleLocal, copyScaleParams);
                         }
                     }
-                } else {
-                    for (int64_t row = startRow; row <= endRow; row++) {
-                        SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-                        CopyXIn(row * cols_ + colsLoopOffset, row, curLoopCols);
-                        LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
 
-                        LocalTensor<float> scaleLocal;
-                        if (isInputScale_ == 1 && colsLoop == 0) {
-                            CopyScaleIn(row);
-                            scaleLocal = scaleCopyInQueue_.DeQue<float>();
-                        }
-
-                        DataCopyExtParams copyXParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-                        DataCopyExtParams copyScaleParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-                        while (curIndex < curLoopElements && globalSortIdx / k_ == row) {
-                            int64_t outPosition = subRowIdxLocal.GetValue(curIndex);
-                            curIndex++;
-                            globalSortIdx++;
-                            if (outPosition < 0 || outPosition >= outputRows_) {
-                                continue;
-                            }
-                            DataCopyPad(expandedXGm_[outPosition * cols_ + colsLoopOffset], xLocal, copyXParams);
-                            if (isInputScale_ == 1 && colsLoop == 0) {
-                                DataCopyPad(expandedScaleGm_[outPosition], scaleLocal, copyScaleParams);
-                            }
-                        }
-
-                        if (isInputScale_ == 1 && colsLoop == 0) {
-                            scaleCopyInQueue_.FreeTensor(scaleLocal);
-                        }
-                        xCopyInQueue_.FreeTensor(xLocal);
+                    if (isInputScale_ == 1 && colsLoop == 0) {
+                        scaleCopyInQueue_.FreeTensor(scaleLocal);
                     }
+                    xCopyInQueue_.FreeTensor(xLocal);
                 }
             }
             expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);

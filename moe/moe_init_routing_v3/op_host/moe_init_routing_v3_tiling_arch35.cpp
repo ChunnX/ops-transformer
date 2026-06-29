@@ -2151,11 +2151,14 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
 {
     auto *tilingData = &tilingDataPtr_->gatherOutComputeParamsOp;
     int64_t perLoopCols = cols_;
+    // DataCopyPad 的 blockCount 为 uint16_t，实际使用上限按 4095 控制，避免批量搬运行数越界。
     constexpr int64_t maxDataCopyBlockCount = 4095LL;
+    // scale 在每个 row 只搬 1 个 float，保留 double buffer 空间后再规划 rowIdx 和批量 X buffer。
     int64_t scaleCopyInQueueSize = isInputScale_ == 1 ?
         DOUBLE_BUFFER * AlignBytes(1, static_cast<int64_t>(sizeof(float))) : 0;
     int64_t int32ElementsPerBlock = UB_BLOCK_SIZE / static_cast<int64_t>(sizeof(int32_t));
     int64_t maxCoreIndicesElements = std::max(perCoreIndicesElements, lastCoreIndicesElements);
+    // 每个输入 row 对应 k 个展开位置；当前 core 最多只会跨这些 row，批量行数超过该值没有收益。
     int64_t maxUsefulBatchRows = Ops::Base::CeilDiv(maxCoreIndicesElements,
         std::max(k_, static_cast<int64_t>(1))) + 1;
     int64_t xBatchSize = 1;
@@ -2169,24 +2172,22 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
         maxBatchRows = std::min(maxBatchRows, maxUsefulBatchRows);
 
         xBatchSize = 1;
+        // 批量 X 与 rowIdx 解耦：从最大 X batch 向下搜索，只要求剩余 UB 能放下一个 rowIdx tile。
+        // rowIdx tile 不再需要覆盖 batchRows * k，因此大 k 场景不会把 X batch 压到很小。
         for (int64_t candidateBatchRows = maxBatchRows; candidateBatchRows > 1; --candidateBatchRows) {
-            int64_t requiredIndices = std::min(candidateBatchRows * std::max(k_, static_cast<int64_t>(1)),
-                                               maxCoreIndicesElements);
-            int64_t rowIdxQueueSize = DOUBLE_BUFFER *
-                AlignBytes(requiredIndices, static_cast<int64_t>(sizeof(int32_t)));
             int64_t batchBufferSize = candidateBatchRows * rowBytes;
-            if (scaleCopyInQueueSize + rowIdxQueueSize + batchBufferSize > availUbSize_) {
-                continue;
-            }
             int64_t remainUbForIndices = availUbSize_ - scaleCopyInQueueSize - batchBufferSize;
             int64_t maxAlignedBytes = remainUbForIndices / DOUBLE_BUFFER;
             perLoopMaxIndicesElements = maxAlignedBytes / static_cast<int64_t>(sizeof(int32_t));
             perLoopMaxIndicesElements = perLoopMaxIndicesElements / int32ElementsPerBlock * int32ElementsPerBlock;
-            xBatchSize = candidateBatchRows;
-            break;
+            if (perLoopMaxIndicesElements > 0) {
+                xBatchSize = candidateBatchRows;
+                break;
+            }
         }
 
         if (perLoopMaxIndicesElements <= 0) {
+            // 批量路径放不下 rowIdx tile 时退回单行队列路径，保留原有 double buffer 搬运方式。
             int64_t xCopyInQueueSize = DOUBLE_BUFFER * rowBytes;
             int64_t remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
             int64_t maxAlignedBytes = remainUbForIndices / DOUBLE_BUFFER;
@@ -2228,9 +2229,7 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
     tilingData->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
     tilingData->xCopyInQueueBufferNum = DOUBLE_BUFFER;
 
-    int64_t maxPerLoopIndicesElements = std::max(perCorePerLoopIndicesElements, lastCorePerLoopIndicesElements);
-    int64_t maxUsefulBatchSize = Ops::Base::CeilDiv(maxPerLoopIndicesElements, std::max(k_, static_cast<int64_t>(1))) + 1;
-    tilingData->xBatchSize = std::max(std::min(xBatchSize, maxUsefulBatchSize), static_cast<int64_t>(1));
+    tilingData->xBatchSize = std::max(std::min(xBatchSize, maxUsefulBatchRows), static_cast<int64_t>(1));
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
@@ -2255,10 +2254,10 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
 
     OP_LOGD(context_, "DropPad GatherOut Tiling: needCoreNum=%ld, perCoreIndicesElements=%ld, "
             "lastCoreIndicesElements=%ld, colsLoops=%ld, perLoopCols=%ld, perCoreIndicesLoops=%ld, "
-            "perCorePerLoopIndicesElements=%ld",
+            "perCorePerLoopIndicesElements=%ld, xBatchSize=%ld",
             needCoreNum, perCoreIndicesElements, lastCoreIndicesElements,
             tilingData->colsLoops, tilingData->perLoopCols, tilingData->perCoreIndicesLoops,
-            tilingData->perCorePerLoopIndicesElements);
+            tilingData->perCorePerLoopIndicesElements, tilingData->xBatchSize);
 }
 
 REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV3, MoeInitRoutingV3Arch35TilingClass,
