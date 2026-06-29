@@ -212,7 +212,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
+    <td>✗</td>
     <td>AI Core</td>
     <td>基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。</td>
   </tr>
