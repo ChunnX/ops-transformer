@@ -37,7 +37,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_send_counts, *, num_experts = 0, comm_alg: str = "", comm_quant_mode=0, x_active_mask=None, expand_scales=None, shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None, const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, num_max_dispatch_tokens_per_rank=0) -> Tensor
+npu_low_latency_combine(x, topk_idx, assist_info_for_combine, ep_send_counts, *, topk_weights=None, num_experts = 0, comm_alg: str = "", comm_quant_mode=0, x_active_mask=None, expand_scales=None, shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None, const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, num_max_dispatch_tokens_per_rank=0) -> Tensor
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
@@ -46,11 +46,11 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
 
 -   **topk\_idx** (`Tensor`)：必选参数，每个token的topK个专家索引，要求为2维张量，shape为\(BS, K\)。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。对应[npu\_low\_latency\_dispatch](npu_low_latency_dispatch.md)的`topk_idx`输入，张量里value取值范围为\[0, num\_experts\)，且同一行中的K个value不能重复。
 
--   **topk\_weights** (`Tensor`)：必选参数，表示每个token的topK个专家的权重，要求为2维张量，shape为\(BS, K\)，其中共享专家不需要乘权重系数，直接相加即可。数据类型支持`float`，数据格式为$ND$，支持非连续的Tensor。
-
 -   **assist\_info\_for\_combine** (`Tensor`)：必选参数，表示给同一专家发送的token个数，要求为1维张量，shape为\(A \* 128, \)。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。对应[npu\_low\_latency\_dispatch](npu_low_latency_dispatch.md)的`assist_info_for_combine`输出。
 
 -   **ep\_send\_counts** (`Tensor`)：必选参数，表示本卡每个专家发给EP（Expert Parallelism）域每个卡的token数（token数以前缀和的形式表示），要求为1维张量。数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。对应[npu\_low\_latency\_dispatch](npu_low_latency_dispatch.md)的`ep_recv_counts`输出。要求shape为\(ep\_world\_size\*local\_expert\_num, \)。
+
+-   **topk\_weights** (`Tensor`)：可选参数，表示每个token的topK个专家的权重，要求为2维张量，shape为\(BS, K\)，其中共享专家不需要乘权重系数，直接相加即可。数据类型支持`float`，数据格式为$ND$，支持非连续的Tensor。默认值为`None`，传`None`时接口内部转为空Tensor。
 
 -   **num\_experts** (`int`)：必选参数，MoE专家数量，取值范围\[1, 1024\]，并且满足以下条件：num\_experts\%\(ep\_world\_size - shared\_expert\_rank\_num\)\=0。
 
@@ -393,9 +393,9 @@ npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_s
             output_combine_npu = self.distribute_buffer.npu_low_latency_combine(
                 x=expand_x_npu,
                 topk_idx=topk_idx,
-                topk_weights=expert_scales,
                 assist_info_for_combine=assist_info_for_combine_npu,
                 ep_send_counts=ep_recv_counts_npu,
+                topk_weights=expert_scales,
                 shared_expert_num=0,
                 shared_expert_rank_num=shared_expert_rank_num,
                 num_experts=num_experts,

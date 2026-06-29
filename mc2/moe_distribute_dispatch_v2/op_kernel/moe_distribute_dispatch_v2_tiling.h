@@ -38,7 +38,7 @@ struct MoeDistributeDispatchV2Info {
     bool isPerformance;                  // whether performance or not
     bool isQuant;                        // whether quant or not
     bool isMc2Context;
-    bool reserved1;
+    bool hasExpertScales;               // has expertScales or not
     bool reserved2;
     uint64_t totalUbSize;                // epWorldSize
     uint64_t totalWinSizeEp;

@@ -410,9 +410,9 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
             output_combine_npu = self.distribute_buffer.npu_low_latency_combine(
                 x=expand_x_npu,
                 topk_idx=topk_idx,
-                topk_weights=topk_weights,
                 assist_info_for_combine=assist_info_for_combine_npu,
                 ep_send_counts=ep_recv_counts_npu,
+                topk_weights=topk_weights,
                 shared_expert_num=0,
                 shared_expert_rank_num=shared_expert_rank_num,
                 num_experts=num_experts,
