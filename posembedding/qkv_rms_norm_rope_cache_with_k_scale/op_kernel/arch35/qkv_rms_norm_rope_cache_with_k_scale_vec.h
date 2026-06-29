@@ -16,7 +16,7 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-template <uint32_t INPUT_LAYOUT>
+template <uint32_t QKV_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleVec {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch,
@@ -149,7 +149,7 @@ private:
     static constexpr uint32_t QK_PREPROCESS_BF16_NZ_ELEMENTS = QK_PREPROCESS_BF16_NZ_BYTES / sizeof(bfloat16_t);
     static constexpr uint32_t QK_PREPROCESS_UB_NZ_ROW_STRIDE = QKV_RRC_HEAD_DIM_D128;
     static constexpr uint32_t QK_NZ_SCATTER_INDEX_LOAD_ELEMENTS = QKV_RRC_HEAD_DIM_D128 + QKV_RRC_HEAD_DIM_D128 / 2U;
-    static constexpr bool IS_TND = INPUT_LAYOUT == QKV_RRC_LAYOUT_TND;
+    static constexpr bool IS_TND = QKV_LAYOUT == QKV_RRC_LAYOUT_TND;
 
     static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_READY = 0U;
     static constexpr uint32_t EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE = 0U;
@@ -167,8 +167,8 @@ private:
                   "QkvRmsNormRopeCacheWithKScale Q/K NZ scatter index load buffer is too small.");
     static_assert(QKV_RRC_V_OUT_ONE_BUFFER_BYTES / sizeof(float) >= 2U * QKV_RRC_QK_SCALE_UB_ELEMENTS,
                   "QkvRmsNormRopeCacheWithKScale V output buffer is too small for Q/K scale staging.");
-    static_assert(INPUT_LAYOUT == QKV_RRC_LAYOUT_NTD || INPUT_LAYOUT == QKV_RRC_LAYOUT_TND,
-                  "QkvRmsNormRopeCacheWithKScale AIV only supports NTD/TND inputLayout.");
+    static_assert(QKV_LAYOUT == QKV_RRC_LAYOUT_NTD || QKV_LAYOUT == QKV_RRC_LAYOUT_TND,
+                  "QkvRmsNormRopeCacheWithKScale AIV only supports NTD/TND qkv_layout.");
     static_assert(EVT_MTE2_TO_PIPE_V_INPUT_READY <= INTRA_EVENT_ID_MAX,
                   "QkvRmsNormRopeCacheWithKScale AIV MTE2->V input ready event exceeds event id range.");
     static_assert(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,

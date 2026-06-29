@@ -15,7 +15,7 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-template <uint32_t INPUT_LAYOUT>
+template <uint32_t QKV_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleController {
 private:
     struct TokenRange {
@@ -34,7 +34,7 @@ public:
         TokenRange tokenRange = {0U, 0U};
         MakeCoreTokenRange(tokenRange, tilingData, cubeIndex);
 
-        QkvRmsNormRopeCacheWithKScaleBasicBlock<INPUT_LAYOUT> basicBlock;
+        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT> basicBlock;
         TileParam tileParam[QKV_RRC_DOUBLE_BUFFER_NUM];
         InitTileParamBuffer(tileParam);
         basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
@@ -105,7 +105,7 @@ private:
             aivLocalId == 0U ? tile.cubeHalfTokenSize : tile.tokenSize - tile.cubeHalfTokenSize;
     }
 
-    __aicore__ inline uint64_t ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<INPUT_LAYOUT> &basicBlock,
+    __aicore__ inline uint64_t ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT> &basicBlock,
                                            const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
                                            const TokenRange &range,
                                            TileParam tileParam[QKV_RRC_DOUBLE_BUFFER_NUM]) const

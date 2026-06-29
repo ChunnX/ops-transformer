@@ -45,7 +45,7 @@ constexpr uint64_t TEST_OP_WORKSPACE_SIZE = 4096U;
 constexpr uint64_t RESERVED_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
 constexpr uint64_t TEST_LAYOUT_NTD = 0U;
 constexpr uint64_t TEST_LAYOUT_TND = 1U;
-constexpr uint64_t INPUT_LAYOUT_TILING_KEY_SHIFT = 8U;
+constexpr uint64_t QKV_LAYOUT_TILING_KEY_SHIFT = 8U;
 
 struct TilingRunOptions {
     uint64_t aicNum = 32U;
@@ -117,7 +117,7 @@ void SetStride(TensorContractInfo &tensor, const std::vector<int64_t> &strides)
 void RefreshShapes(ContractInput &input)
 {
     const uint64_t qkvN = input.numQHeads + input.numKHeads + input.numVHeads;
-    if (input.inputLayout == TEST_LAYOUT_TND) {
+    if (input.qkvLayout == TEST_LAYOUT_TND) {
         SetShape(input.qkv, input.totalTokens, qkvN, input.headDim);
     } else {
         SetShape(input.qkv, qkvN, input.totalTokens, input.headDim);
@@ -139,8 +139,7 @@ void RefreshShapes(ContractInput &input)
     input.kScaleCache.stridePresent = true;
     SetShape(input.cuSeqLen, static_cast<uint64_t>(input.batch) + 1);
     SetShape(input.actualSeqLens, static_cast<uint64_t>(input.batch));
-    SetShape(input.qRotation, input.headDim, input.headDim);
-    SetShape(input.kRotation, input.headDim, input.headDim);
+    SetShape(input.rotation, input.headDim, input.headDim);
     SetShape(input.vScale, input.numVHeads);
 }
 
@@ -168,8 +167,7 @@ ContractInput BuildInput(uint64_t totalTokens = 128, uint64_t numQHeads = 16, ui
     input.kScaleCache.dtype = ge::DT_FLOAT;
     input.cuSeqLen.dtype = ge::DT_INT32;
     input.actualSeqLens.dtype = ge::DT_INT32;
-    input.qRotation.dtype = ge::DT_BF16;
-    input.kRotation.dtype = ge::DT_BF16;
+    input.rotation.dtype = ge::DT_BF16;
     input.vScale.dtype = ge::DT_FLOAT;
     RefreshShapes(input);
     return input;
@@ -186,7 +184,7 @@ struct ConcurrentTilingCase {
     uint64_t tokenTile;
     uint64_t coreTokenTile;
     uint64_t coreGroupNum;
-    uint64_t inputLayout = TEST_LAYOUT_NTD;
+    uint64_t qkvLayout = TEST_LAYOUT_NTD;
 };
 
 struct ConcurrentTilingResult {
@@ -236,7 +234,7 @@ TensorSpec MakeEmptyTensorSpec(ge::DataType dtype)
 std::vector<TensorSpec> BuildTilingInputSpecs(const ContractInput &input)
 {
     std::vector<TensorSpec> inputs;
-    inputs.reserve(13U);
+    inputs.reserve(12U);
     inputs.push_back(MakeTensorSpec(input.qkv));
     inputs.push_back(MakeTensorSpec(input.qGamma));
     inputs.push_back(MakeTensorSpec(input.kGamma));
@@ -247,15 +245,14 @@ std::vector<TensorSpec> BuildTilingInputSpecs(const ContractInput &input)
     inputs.push_back(MakeTensorSpec(input.kScaleCache));
     inputs.push_back(MakeTensorSpec(input.cuSeqLen));
     inputs.push_back(MakeTensorSpec(input.actualSeqLens));
-    inputs.push_back(input.qRotation.shapePresent ? MakeTensorSpec(input.qRotation) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
-    inputs.push_back(input.kRotation.shapePresent ? MakeTensorSpec(input.kRotation) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
+    inputs.push_back(input.rotation.shapePresent ? MakeTensorSpec(input.rotation) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
     inputs.push_back(input.vScale.shapePresent ? MakeTensorSpec(input.vScale) : MakeEmptyTensorSpec(ge::DT_UNDEFINED));
     return inputs;
 }
 
 std::vector<TensorSpec> BuildTilingOutputSpecs(const ContractInput &input)
 {
-    const bool isTnd = input.inputLayout == TEST_LAYOUT_TND;
+    const bool isTnd = input.qkvLayout == TEST_LAYOUT_TND;
     std::vector<TensorSpec> outputs;
     outputs.reserve(5U);
     gert::Shape qOutShape;
@@ -290,8 +287,8 @@ std::vector<gert::TilingContextPara::OpAttr> BuildTilingAttrs(
     attrs.reserve(3U);
     attrs.push_back(gert::TilingContextPara::OpAttr(
         "head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)));
-    attrs.push_back(gert::TilingContextPara::OpAttr("inputLayout",
-        Ops::Transformer::AnyValue::CreateFrom<std::string>(input.inputLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
+    attrs.push_back(gert::TilingContextPara::OpAttr("qkv_layout",
+        Ops::Transformer::AnyValue::CreateFrom<std::string>(input.qkvLayout == TEST_LAYOUT_TND ? "TND" : "NTD")));
     attrs.push_back(
         gert::TilingContextPara::OpAttr("epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)));
     return attrs;
@@ -504,7 +501,7 @@ struct CsvTilingCase {
     uint64_t numVHeads = 2;
     uint64_t headDim = 128;
     uint64_t aicNum = 32;
-    uint64_t inputLayout = TEST_LAYOUT_NTD;
+    uint64_t qkvLayout = TEST_LAYOUT_NTD;
     ge::graphStatus expectedStatus = ge::GRAPH_SUCCESS;
     uint64_t tokenTile = 0;
     uint64_t tokenTilePerAiv = 0;
@@ -581,11 +578,8 @@ TensorContractInfo *FindTensor(ContractInput &input, const std::string &name)
     if (name == "actualSeqLens") {
         return &input.actualSeqLens;
     }
-    if (name == "qRotation") {
-        return &input.qRotation;
-    }
-    if (name == "kRotation") {
-        return &input.kRotation;
+    if (name == "rotation") {
+        return &input.rotation;
     }
     if (name == "vScale") {
         return &input.vScale;
@@ -703,7 +697,7 @@ CsvTilingCase ParseCsvCase(const std::vector<std::string> &cols)
     item.numVHeads = ParseU64(CsvColumn(cols, 5), 2U);
     item.headDim = ParseU64(CsvColumn(cols, 6), 128U);
     item.aicNum = ParseU64(CsvColumn(cols, 7), 32U);
-    item.inputLayout = ParseLayout(CsvColumn(cols, 8));
+    item.qkvLayout = ParseLayout(CsvColumn(cols, 8));
     item.expectedStatus = ParseGraphStatus(CsvColumn(cols, 9));
     item.tokenTile = ParseU64(CsvColumn(cols, 10));
     item.tokenTilePerAiv = ParseU64(CsvColumn(cols, 11));
@@ -788,8 +782,8 @@ uint64_t ExpectTileFromSpec(const CsvTilingCase &item, const ContractInput &inpu
 
 void ExpectTilingKey(const CsvTilingCase &item, const ContractInput &input, const TilingInfo &tilingInfo)
 {
-    const uint64_t expectedLayout = input.inputLayout == TEST_LAYOUT_TND ? QKV_RRC_LAYOUT_TND : QKV_RRC_LAYOUT_NTD;
-    EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey), expectedLayout << INPUT_LAYOUT_TILING_KEY_SHIFT)
+    const uint64_t expectedLayout = input.qkvLayout == TEST_LAYOUT_TND ? QKV_RRC_LAYOUT_TND : QKV_RRC_LAYOUT_NTD;
+    EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey), expectedLayout << QKV_LAYOUT_TILING_KEY_SHIFT)
         << "caseName=" << item.caseName;
 }
 
@@ -864,7 +858,7 @@ TEST_P(QkvRmsNormRopeCacheWithKScaleCsvTiling, RunsCase)
 {
     const auto &item = GetParam();
     auto input = BuildInput(item.totalTokens, item.numQHeads, item.numKHeads, item.numVHeads, item.headDim);
-    input.inputLayout = item.inputLayout;
+    input.qkvLayout = item.qkvLayout;
     RefreshShapes(input);
     TilingRunOptions options;
     options.aicNum = item.aicNum;
@@ -939,7 +933,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
                 const uint64_t caseIdx = (static_cast<uint64_t>(threadIdx) + iter) % cases.size();
                 const auto &item = cases[caseIdx];
                 auto input = BuildInput(item.totalTokens, item.numQHeads, item.numKHeads, item.numVHeads, item.headDim);
-                input.inputLayout = item.inputLayout;
+                input.qkvLayout = item.qkvLayout;
                 RefreshShapes(input);
                 TilingInfo tilingInfo;
                 const bool success = ExecuteTilingForInput(input, tilingInfo, item.aicNum);

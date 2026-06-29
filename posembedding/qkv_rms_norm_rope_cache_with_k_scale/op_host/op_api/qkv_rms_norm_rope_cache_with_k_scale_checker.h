@@ -50,12 +50,11 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     const aclTensor *cuSeqLen{nullptr};
     const aclTensor *actualSeqLens{nullptr};
     // Optional inputs (required in first phase, but declared as optional in def)
-    const aclTensor *optionalQRotation{nullptr};
-    const aclTensor *optionalKRotation{nullptr};
+    const aclTensor *optionalRotation{nullptr};
     const aclTensor *optionalVScale{nullptr};
     // Attributes
     const aclIntArray *headNums{nullptr};
-    const char *inputLayout{nullptr};
+    const char *qkvLayout{nullptr};
     float epsilon{DEFAULT_EPSILON};
     // Outputs
     aclTensor *qOut{nullptr};
@@ -94,8 +93,8 @@ public:
     static constexpr int64_t MIN_CU_SEQ_LEN_SIZE = 2;
     static constexpr int64_t ACTUAL_SEQ_LENS_BATCH_DIFF = 1;
     static constexpr int64_t K_SCALE_CACHE_SCALE_DIM = 1;
-    static constexpr const char *INPUT_LAYOUT_NTD = "NTD";
-    static constexpr const char *INPUT_LAYOUT_TND = "TND";
+    static constexpr const char *QKV_LAYOUT_NTD = "NTD";
+    static constexpr const char *QKV_LAYOUT_TND = "TND";
 
     // Dtype support lists
     inline static const std::vector<op::DataType> QKV_TYPE_LIST = {op::DataType::DT_BF16};
@@ -258,11 +257,10 @@ private:
             {"kScaleCache", params_.kScaleCache, "kScaleCache can not be nullptr"},
             {"cuSeqLen", params_.cuSeqLen, "cuSeqLen can not be nullptr"},
             {"actualSeqLens", params_.actualSeqLens, "actualSeqLens can not be nullptr"},
-            {"optionalQRotation", params_.optionalQRotation, "optionalQRotation can not be nullptr"},
-            {"optionalKRotation", params_.optionalKRotation, "optionalKRotation can not be nullptr"},
+            {"optionalRotation", params_.optionalRotation, "optionalRotation can not be nullptr"},
             {"optionalVScale", params_.optionalVScale, "optionalVScale can not be nullptr"},
             {"headNums", params_.headNums, "headNums can not be nullptr"},
-            {"inputLayout", params_.inputLayout, "inputLayout can not be nullptr"},
+            {"qkv_layout", params_.qkvLayout, "qkv_layout can not be nullptr"},
             {"qOut", params_.qOut, "qOut can not be nullptr"},
             {"qScale", params_.qScale, "qScale can not be nullptr"},
             {"workspaceSize", params_.workspaceSize, "workspaceSize can not be nullptr"},
@@ -291,8 +289,7 @@ private:
             {"kScaleCache", params_.kScaleCache, &K_SCALE_CACHE_TYPE_LIST},
             {"cuSeqLen", params_.cuSeqLen, &CU_SEQ_LEN_TYPE_LIST},
             {"actualSeqLens", params_.actualSeqLens, &ACTUAL_SEQ_LENS_TYPE_LIST},
-            {"optionalQRotation", params_.optionalQRotation, &ROTATION_TYPE_LIST},
-            {"optionalKRotation", params_.optionalKRotation, &ROTATION_TYPE_LIST},
+            {"optionalRotation", params_.optionalRotation, &ROTATION_TYPE_LIST},
             {"optionalVScale", params_.optionalVScale, &V_SCALE_TYPE_LIST},
             {"qOut", params_.qOut, &Q_OUT_TYPE_LIST},
             {"qScale", params_.qScale, &Q_SCALE_TYPE_LIST},
@@ -341,13 +338,13 @@ private:
         return ACLNN_SUCCESS;
     }
 
-    aclnnStatus CheckInputLayout(bool &isTnd) const
+    aclnnStatus CheckQkvLayout(bool &isTnd) const
     {
-        const bool isNtd = std::strcmp(params_.inputLayout, INPUT_LAYOUT_NTD) == 0;
-        isTnd = std::strcmp(params_.inputLayout, INPUT_LAYOUT_TND) == 0;
+        const bool isNtd = std::strcmp(params_.qkvLayout, QKV_LAYOUT_NTD) == 0;
+        isTnd = std::strcmp(params_.qkvLayout, QKV_LAYOUT_TND) == 0;
         if (!isNtd && !isTnd) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "inputLayout", params_.inputLayout,
-                                                  "inputLayout must be NTD or TND");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qkv_layout", params_.qkvLayout,
+                                                  "qkv_layout must be NTD or TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -420,12 +417,10 @@ private:
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        if (!IsShape(params_.optionalQRotation, {d, d}) || !IsShape(params_.optionalKRotation, {d, d})) {
-            const std::string incorrectShapes =
-                ShapeToString(params_.optionalQRotation) + ", " + ShapeToString(params_.optionalKRotation);
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "optionalQRotation, optionalKRotation",
-                                                   incorrectShapes.c_str(),
-                                                   "optionalQRotation and optionalKRotation must have shape [D, D]");
+        if (!IsShape(params_.optionalRotation, {d, d})) {
+            const std::string incorrectShape = ShapeToString(params_.optionalRotation);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "optionalRotation", incorrectShape.c_str(),
+                                                  "optionalRotation must have shape [D, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -493,7 +488,7 @@ private:
         if (!IsShape(params_.qOut, expectedQOutShape) || !IsShape(params_.qScale, expectedQScaleShape)) {
             const std::string incorrectShapes = ShapeToString(params_.qOut) + ", " + ShapeToString(params_.qScale);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "qOut, qScale", incorrectShapes.c_str(),
-                                                   "qOut/qScale must keep the same N/T layout as qkv inputLayout");
+                                                   "qOut/qScale must keep the same N/T layout as qkv qkv_layout");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -510,7 +505,7 @@ private:
         }
 
         bool isTnd = false;
-        ret = CheckInputLayout(isTnd);
+        ret = CheckQkvLayout(isTnd);
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
@@ -549,8 +544,7 @@ private:
             {"kScaleCache", params_.kScaleCache},
             {"cuSeqLen", params_.cuSeqLen},
             {"actualSeqLens", params_.actualSeqLens},
-            {"optionalQRotation", params_.optionalQRotation},
-            {"optionalKRotation", params_.optionalKRotation},
+            {"optionalRotation", params_.optionalRotation},
             {"optionalVScale", params_.optionalVScale},
             {"qOut", params_.qOut},
             {"qScale", params_.qScale},
@@ -578,8 +572,7 @@ private:
             {"kScaleCache", params_.kScaleCache},
             {"cuSeqLen", params_.cuSeqLen},
             {"actualSeqLens", params_.actualSeqLens},
-            {"optionalQRotation", params_.optionalQRotation},
-            {"optionalKRotation", params_.optionalKRotation},
+            {"optionalRotation", params_.optionalRotation},
             {"optionalVScale", params_.optionalVScale},
             {"qOut", params_.qOut},
             {"qScale", params_.qScale},

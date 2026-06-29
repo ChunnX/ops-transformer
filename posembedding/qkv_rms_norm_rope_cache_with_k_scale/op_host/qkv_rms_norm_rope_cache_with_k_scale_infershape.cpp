@@ -21,7 +21,7 @@ static constexpr uint64_t K_CACHE_INDEX = 5;
 static constexpr uint64_t V_CACHE_INDEX = 6;
 static constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
 static constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
-static constexpr uint64_t INPUT_LAYOUT_ATTR_INDEX = 1;
+static constexpr uint64_t QKV_LAYOUT_ATTR_INDEX = 1;
 
 static constexpr uint64_t Q_OUT_INDEX = 0;
 static constexpr uint64_t Q_SCALE_INDEX = 1;
@@ -30,8 +30,8 @@ static constexpr uint64_t V_CACHE_OUT_INDEX = 3;
 static constexpr uint64_t K_SCALE_CACHE_OUT_INDEX = 4;
 
 static constexpr uint64_t QKV_DIM_NUM = 3;
-static constexpr const char *INPUT_LAYOUT_NTD = "NTD";
-static constexpr const char *INPUT_LAYOUT_TND = "TND";
+static constexpr const char *QKV_LAYOUT_NTD = "NTD";
+static constexpr const char *QKV_LAYOUT_TND = "TND";
 static constexpr const char *DEFAULT_OP_NAME = "QkvRmsNormRopeCacheWithKScale";
 
 struct InferAttrs {
@@ -98,24 +98,24 @@ static ge::graphStatus ValidateMinDimNum(gert::InferShapeContext *context, const
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ParseInputLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, bool &isNtd)
+static ge::graphStatus ParseQkvLayout(gert::InferShapeContext *context, const gert::RuntimeAttrs *attrs, bool &isNtd)
 {
-    if (static_cast<uint64_t>(attrs->GetAttrNum()) <= INPUT_LAYOUT_ATTR_INDEX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "inputLayout", "missing",
-                                              "inputLayout must exist");
+    if (static_cast<uint64_t>(attrs->GetAttrNum()) <= QKV_LAYOUT_ATTR_INDEX) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "qkv_layout", "missing",
+                                              "qkv_layout must exist");
         return ge::GRAPH_FAILED;
     }
-    const char *inputLayout = attrs->GetStr(INPUT_LAYOUT_ATTR_INDEX);
-    if (inputLayout == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "inputLayout", "nullptr",
-                                              "inputLayout must exist");
+    const char *qkvLayout = attrs->GetStr(QKV_LAYOUT_ATTR_INDEX);
+    if (qkvLayout == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetLogOpName(context), "qkv_layout", "nullptr",
+                                              "qkv_layout must exist");
         return ge::GRAPH_FAILED;
     }
-    if (std::strcmp(inputLayout, INPUT_LAYOUT_NTD) == 0 || std::strcmp(inputLayout, INPUT_LAYOUT_TND) == 0) {
-        isNtd = std::strcmp(inputLayout, INPUT_LAYOUT_NTD) == 0;
+    if (std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0 || std::strcmp(qkvLayout, QKV_LAYOUT_TND) == 0) {
+        isNtd = std::strcmp(qkvLayout, QKV_LAYOUT_NTD) == 0;
         return ge::GRAPH_SUCCESS;
     }
-    OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "inputLayout", inputLayout, "NTD or TND");
+    OP_LOGE_FOR_INVALID_VALUE(GetLogOpName(context), "qkv_layout", qkvLayout, "NTD or TND");
     return ge::GRAPH_FAILED;
 }
 
@@ -178,7 +178,7 @@ static ge::graphStatus ParseInferAttrs(gert::InferShapeContext *context, const g
     if (ParseQHeadNum(context, attrs, inferAttrs.qHeads) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ParseInputLayout(context, attrs, inferAttrs.isNtd) != ge::GRAPH_SUCCESS) {
+    if (ParseQkvLayout(context, attrs, inferAttrs.isNtd) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -45,12 +45,10 @@ public:
 
     __aicore__ inline void PrepareRotationBeforeLoop()
     {
-        CopyRotationGmToL1Nz(qRotationL1Nz_, qRotationGm_);
-        CopyRotationGmToL1Nz(kRotationL1Nz_, kRotationGm_);
+        CopyRotationGmToL1Nz(rotationL1Nz_, rotationGm_);
         SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
         WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
-        LoadRotationToL0(l0b_, qRotationL1Nz_);
-        LoadRotationToL0(l0b_[AIC_L0B_ONE_BUFFER_ELEMENTS], kRotationL1Nz_);
+        LoadRotationToL0(l0b_, rotationL1Nz_);
         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
         WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
     }
@@ -146,7 +144,7 @@ private:
         const LocalTensor<bfloat16_t> kSegmentL1Nz = aRotL1Nz[NzMatrixElements(qRows)];
         uint32_t l0aDbIter = 0U;
         ComputeSegmentToL0C(qRows, aRotL1Nz, l0b_, bufferId, qL0cOffset, l0aDbIter);
-        ComputeSegmentToL0C(kRows, kSegmentL1Nz, l0b_[AIC_L0B_ONE_BUFFER_ELEMENTS], bufferId, kL0cOffset, l0aDbIter);
+        ComputeSegmentToL0C(kRows, kSegmentL1Nz, l0b_, bufferId, kL0cOffset, l0aDbIter);
     }
 
     __aicore__ inline void ComputeSegmentToL0C(uint64_t segmentRows, const LocalTensor<bfloat16_t> &segmentL1Nz,
@@ -262,10 +260,8 @@ private:
 
     __aicore__ inline void BindLocalTensors()
     {
-        qRotationL1Nz_ =
-            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_Q_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_ONE_L1_ELEMENTS);
-        kRotationL1Nz_ =
-            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_K_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_ONE_L1_ELEMENTS);
+        rotationL1Nz_ =
+            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_ONE_L1_ELEMENTS);
         l0a_ = LocalTensor<bfloat16_t>(TPosition::A2, 0, AIC_L0A_BUFFER_ELEMENTS);
         l0b_ = LocalTensor<bfloat16_t>(TPosition::B2, 0, AIC_L0B_BUFFER_ELEMENTS);
         l0c_ = LocalTensor<float>(TPosition::CO1, 0, AIC_L0C_BUFFER_ELEMENTS);
@@ -273,17 +269,14 @@ private:
 
     __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
     {
-        qRotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qRotation);
-        kRotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.kRotation);
+        rotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
     }
 
     uint64_t l0cBufferUseId_;
     uint64_t qHeadNum_;
     uint64_t kvHeadNum_;
-    GlobalTensor<bfloat16_t> qRotationGm_;
-    GlobalTensor<bfloat16_t> kRotationGm_;
-    LocalTensor<bfloat16_t> qRotationL1Nz_;
-    LocalTensor<bfloat16_t> kRotationL1Nz_;
+    GlobalTensor<bfloat16_t> rotationGm_;
+    LocalTensor<bfloat16_t> rotationL1Nz_;
     LocalTensor<bfloat16_t> l0a_;
     LocalTensor<bfloat16_t> l0b_;
     LocalTensor<float> l0c_;

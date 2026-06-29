@@ -19,8 +19,8 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 
 OP_NAME = "qkv_rms_norm_rope_cache_with_k_scale"
 FUNCTIONAL_OP_NAME = "qkv_rms_norm_rope_cache_with_k_scale_functional"
-INPUT_LAYOUT_TND = "TND"
-INPUT_LAYOUT_NTD = "NTD"
+QKV_LAYOUT_TND = "TND"
+QKV_LAYOUT_NTD = "NTD"
 HEAD_NUMS_SIZE = 3
 
 
@@ -38,14 +38,14 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             "qkv_rms_norm_rope_cache_with_k_scale("
             "Tensor qkv, Tensor q_gamma, Tensor k_gamma, Tensor cos_sin, Tensor slot_mapping, "
             "Tensor(a!) k_cache, Tensor(b!) v_cache, Tensor(c!) k_scale_cache, "
-            "Tensor cu_seq_len, Tensor actual_seq_lens, int[] head_nums, str input_layout, *, "
-            "Tensor? q_rotation=None, Tensor? k_rotation=None, Tensor? v_scale=None, "
+            "Tensor cu_seq_len, Tensor actual_seq_lens, int[] head_nums, str qkv_layout, *, "
+            "Tensor? rotation=None, Tensor? v_scale=None, "
             "float epsilon=0.000001) -> (Tensor, Tensor)",
             "qkv_rms_norm_rope_cache_with_k_scale_functional("
             "Tensor qkv, Tensor q_gamma, Tensor k_gamma, Tensor cos_sin, Tensor slot_mapping, "
             "Tensor k_cache, Tensor v_cache, Tensor k_scale_cache, "
-            "Tensor cu_seq_len, Tensor actual_seq_lens, int[] head_nums, str input_layout, *, "
-            "Tensor? q_rotation=None, Tensor? k_rotation=None, Tensor? v_scale=None, "
+            "Tensor cu_seq_len, Tensor actual_seq_lens, int[] head_nums, str qkv_layout, *, "
+            "Tensor? rotation=None, Tensor? v_scale=None, "
             "float epsilon=0.000001) -> (Tensor, Tensor, Tensor, Tensor, Tensor)",
         ]
 
@@ -67,15 +67,14 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             cu_seq_len,
             actual_seq_lens,
             head_nums,
-            input_layout,
+            qkv_layout,
             *,
-            q_rotation=None,
-            k_rotation=None,
+            rotation=None,
             v_scale=None,
             epsilon=1e-6,
         ):
             return _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(
-                qkv, cu_seq_len, actual_seq_lens, head_nums, input_layout, q_rotation, k_rotation, v_scale)
+                qkv, cu_seq_len, actual_seq_lens, head_nums, qkv_layout, rotation, v_scale)
 
         @impl(AS_LIBRARY, FUNCTIONAL_OP_NAME, "Meta")
         def qkv_rms_norm_rope_cache_with_k_scale_functional_meta(
@@ -90,15 +89,14 @@ class QkvRmsNormRopeCacheWithKScaleOpBuilder(OpBuilder):
             cu_seq_len,
             actual_seq_lens,
             head_nums,
-            input_layout,
+            qkv_layout,
             *,
-            q_rotation=None,
-            k_rotation=None,
+            rotation=None,
             v_scale=None,
             epsilon=1e-6,
         ):
             q_out, q_scale = _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(
-                qkv, cu_seq_len, actual_seq_lens, head_nums, input_layout, q_rotation, k_rotation, v_scale)
+                qkv, cu_seq_len, actual_seq_lens, head_nums, qkv_layout, rotation, v_scale)
             return q_out, q_scale, torch.empty_like(k_cache), torch.empty_like(v_cache), torch.empty_like(k_scale_cache)
 
 
@@ -107,9 +105,8 @@ def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(
     cu_seq_len,
     actual_seq_lens,
     head_nums,
-    input_layout,
-    q_rotation,
-    k_rotation,
+    qkv_layout,
+    rotation,
     v_scale,
 ):
     if head_nums is None:
@@ -124,11 +121,11 @@ def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(
         raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: Nv must equal Nk")
     if qkv.dim() != 3:
         raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: qkv must be 3D")
-    if input_layout not in (INPUT_LAYOUT_TND, INPUT_LAYOUT_NTD):
-        raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: input_layout must be TND or NTD")
+    if qkv_layout not in (QKV_LAYOUT_TND, QKV_LAYOUT_NTD):
+        raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: qkv_layout must be TND or NTD")
 
-    head_dim = 1 if input_layout == INPUT_LAYOUT_TND else 0
-    token_dim = 0 if input_layout == INPUT_LAYOUT_TND else 1
+    head_dim = 1 if qkv_layout == QKV_LAYOUT_TND else 0
+    token_dim = 0 if qkv_layout == QKV_LAYOUT_TND else 1
     if qkv.size(head_dim) != n_q + n_k + n_v:
         raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: qkv head dimension must equal Nq+Nk+Nv")
     if cu_seq_len.dim() != 1 or cu_seq_len.size(0) < 2:
@@ -136,16 +133,14 @@ def _qkv_rms_norm_rope_cache_with_k_scale_meta_outputs(
     if actual_seq_lens.dim() != 1 or actual_seq_lens.size(0) != cu_seq_len.size(0) - 1:
         raise RuntimeError(
             "qkv_rms_norm_rope_cache_with_k_scale: actual_seq_lens must be 1D with length cu_seq_len.size(0)-1")
-    if q_rotation is None:
-        raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: q_rotation is required")
-    if k_rotation is None:
-        raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: k_rotation is required")
+    if rotation is None:
+        raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: rotation is required")
     if v_scale is None:
         raise RuntimeError("qkv_rms_norm_rope_cache_with_k_scale: v_scale is required")
 
     token_num = qkv.size(token_dim)
     head_size = qkv.size(2)
-    if input_layout == INPUT_LAYOUT_TND:
+    if qkv_layout == QKV_LAYOUT_TND:
         q_out_shape = (token_num, n_q, head_size)
         q_scale_shape = (token_num, n_q)
     else:
@@ -175,10 +170,9 @@ def qkv_rms_norm_rope_cache_with_k_scale(
     cu_seq_len: torch.Tensor,
     actual_seq_lens: torch.Tensor,
     head_nums: List[int],
-    input_layout: str,
+    qkv_layout: str,
     *,
-    q_rotation: Optional[torch.Tensor] = None,
-    k_rotation: Optional[torch.Tensor] = None,
+    rotation: Optional[torch.Tensor] = None,
     v_scale: Optional[torch.Tensor] = None,
     epsilon: float = 1e-6,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -187,7 +181,7 @@ def qkv_rms_norm_rope_cache_with_k_scale(
     """
     return op_module.qkv_rms_norm_rope_cache_with_k_scale(
         qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache,
-        cu_seq_len, actual_seq_lens, head_nums, input_layout, q_rotation, k_rotation, v_scale, epsilon)
+        cu_seq_len, actual_seq_lens, head_nums, qkv_layout, rotation, v_scale, epsilon)
 
 
 @impl(AS_LIBRARY, FUNCTIONAL_OP_NAME, "PrivateUse1")
@@ -203,10 +197,9 @@ def qkv_rms_norm_rope_cache_with_k_scale_functional(
     cu_seq_len: torch.Tensor,
     actual_seq_lens: torch.Tensor,
     head_nums: List[int],
-    input_layout: str,
+    qkv_layout: str,
     *,
-    q_rotation: Optional[torch.Tensor] = None,
-    k_rotation: Optional[torch.Tensor] = None,
+    rotation: Optional[torch.Tensor] = None,
     v_scale: Optional[torch.Tensor] = None,
     epsilon: float = 1e-6,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -215,4 +208,4 @@ def qkv_rms_norm_rope_cache_with_k_scale_functional(
     """
     return op_module.qkv_rms_norm_rope_cache_with_k_scale_functional(
         qkv, q_gamma, k_gamma, cos_sin, slot_mapping, k_cache, v_cache, k_scale_cache,
-        cu_seq_len, actual_seq_lens, head_nums, input_layout, q_rotation, k_rotation, v_scale, epsilon)
+        cu_seq_len, actual_seq_lens, head_nums, qkv_layout, rotation, v_scale, epsilon)

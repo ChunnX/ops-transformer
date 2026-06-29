@@ -31,7 +31,6 @@ std::vector<gert::InfershapeContextPara::TensorDescription> BuildInputs()
         {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{128, 128}, {128, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-        {{{128, 128}, {128, 128}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
     };
 }
@@ -47,12 +46,12 @@ std::vector<gert::InfershapeContextPara::TensorDescription> BuildOutputs()
     };
 }
 
-std::vector<OpAttr> BuildAttrs(const std::vector<int64_t> &headNums, const std::string &inputLayout = "NTD",
+std::vector<OpAttr> BuildAttrs(const std::vector<int64_t> &headNums, const std::string &qkvLayout = "NTD",
                                float epsilon = 1e-6f)
 {
     return {
         {"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
-        {"inputLayout", Ops::Transformer::AnyValue::CreateFrom<std::string>(inputLayout)},
+        {"qkv_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(qkvLayout)},
         {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(epsilon)},
     };
 }
@@ -93,7 +92,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersTndOutputAndCacheShapes)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidInputLayout)
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidQkvLayout)
 {
     std::vector<int64_t> headNums = {16, 2, 2};
     gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),
@@ -103,7 +102,7 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsInvalidInputLayout)
     ExecuteTestCase(para, ge::GRAPH_FAILED, expected);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsMissingInputLayout)
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, RejectsMissingQkvLayout)
 {
     std::vector<int64_t> headNums = {16, 2, 2};
     gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), BuildOutputs(),

@@ -1,4 +1,4 @@
-caseName,updates,totalTokens,numQHeads,numKHeads,numVHeads,headDim,aicNum,inputLayout,expectedStatus,tokenTile,tokenTilePerAiv,rowTile,rowTileAligned,coreTokenTile,coreGroupNum,kvStrideBlock,kvStrideHead,kvStrideToken,kScaleStrideBlock,kScaleStrideHead,kScaleStrideToken,checkSpec
+caseName,updates,totalTokens,numQHeads,numKHeads,numVHeads,headDim,aicNum,qkvLayout,expectedStatus,tokenTile,tokenTilePerAiv,rowTile,rowTileAligned,coreTokenTile,coreGroupNum,kvStrideBlock,kvStrideHead,kvStrideToken,kScaleStrideBlock,kScaleStrideHead,kScaleStrideToken,checkSpec
 q8_k1_v1_basic,NONE,128,8,1,1,128,32,NTD,SUCCESS,16,8,144,144,4,32,16384,16384,128,128,128,1,none
 q16_k2_v2_basic,NONE,128,16,2,2,128,32,NTD,SUCCESS,14,7,252,256,4,32,32768,16384,128,256,128,1,none
 q16_k2_v2_tnd,NONE,128,16,2,2,128,32,TND,SUCCESS,14,7,252,256,4,32,32768,16384,128,256,128,1,none
@@ -37,8 +37,7 @@ negative_k_head_attr,headNums=16|-1|2,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0
 less_aiv_than_two_to_one,aivNum=63,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 more_aiv_than_two_to_one,aivNum=65,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 non_ascend950_soc,socVersion=Ascend910B,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
-missing_q_rotation,qRotation.present=false,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
-missing_k_rotation,kRotation.present=false,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
+missing_rotation,rotation.present=false,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 missing_v_scale,vScale.present=false,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 invalid_qkv_n,qkv.shape=21|128|128,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 invalid_k_cache_head,kCache.shape=8|3|128|128,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
@@ -54,11 +53,9 @@ zero_actual_seq_lens,actualSeqLens.shape=0,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,
 mismatched_actual_seq_lens,actualSeqLens.shape=2,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 negative_k_cache_block_size,kCache.shape=8|2|-1|128,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 negative_k_scale_cache_block_num,kScaleCache.shape=-1|2|128|1,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
-invalid_q_rotation_shape,qRotation.shape=128|129,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
-invalid_k_rotation_shape,kRotation.shape=129|128,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
+invalid_rotation_shape,rotation.shape=128|129,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 invalid_qkv_dtype,qkv.dtype=FLOAT,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
-invalid_q_rotation_dtype,qRotation.dtype=FLOAT,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
-invalid_k_rotation_dtype,kRotation.dtype=FLOAT,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
+invalid_rotation_dtype,rotation.dtype=FLOAT,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 invalid_actual_seq_lens_dtype,actualSeqLens.dtype=FLOAT,128,16,2,2,128,32,NTD,FAILED,0,0,0,0,0,0,0,0,0,0,0,0,none
 contiguous_cache_stride,NONE,128,16,2,2,128,32,NTD,SUCCESS,14,7,252,256,4,32,32768,16384,128,256,128,1,none
 padded_cache_stride,kCache.stride=45000|21000|160|1;vCache.stride=45000|21000|160|1;kScaleCache.stride=1024|256|2|1,128,16,2,2,128,32,NTD,SUCCESS,14,7,252,256,4,32,45000,21000,160,1024,256,2,none

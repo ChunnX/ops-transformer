@@ -49,12 +49,7 @@ public:
             .DataType(int32Types)
             .Format(ndFormats)
             .UnknownShapeFormat(ndFormats);
-        this->Input("q_rotation")
-            .ParamType(OPTIONAL)
-            .DataType(bf16Types)
-            .Format(ndFormats)
-            .UnknownShapeFormat(ndFormats);
-        this->Input("k_rotation")
+        this->Input("rotation")
             .ParamType(OPTIONAL)
             .DataType(bf16Types)
             .Format(ndFormats)
@@ -72,7 +67,7 @@ public:
             .UnknownShapeFormat(ndFormats);
 
         this->Attr("head_nums").AttrType(REQUIRED).ListInt();
-        this->Attr("inputLayout").AttrType(REQUIRED).String();
+        this->Attr("qkv_layout").AttrType(REQUIRED).String();
         this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
         this->AICore().AddConfig("ascend950");

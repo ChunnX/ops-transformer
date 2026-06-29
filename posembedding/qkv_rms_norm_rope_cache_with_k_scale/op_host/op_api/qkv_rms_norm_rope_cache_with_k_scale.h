@@ -19,10 +19,9 @@ std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTen
 QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
                               const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
                               aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *cuSeqLen,
-                              const aclTensor *actualSeqLens, const aclTensor *optionalQRotation,
-                              const aclTensor *optionalKRotation, const aclTensor *optionalVScale,
-                              const aclIntArray *headNums, const char *inputLayout, float epsilon, aclTensor *qOut,
-                              aclTensor *qScale, aclOpExecutor *executor);
+                              const aclTensor *actualSeqLens, const aclTensor *optionalRotation,
+                              const aclTensor *optionalVScale, const aclIntArray *headNums, const char *qkvLayout,
+                              float epsilon, aclTensor *qOut, aclTensor *qScale, aclOpExecutor *executor);
 }
 
 #endif

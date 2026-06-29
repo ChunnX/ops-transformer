@@ -46,7 +46,7 @@ int main() {
     const int64_t BlockSize = 16;
     const int64_t Batch = 1;
     const int64_t MaxSeqLen = 128;
-    const char *inputLayout = "TND";
+    const char *qkvLayout = "TND";
     const float epsilon = 1e-6f;
 
     std::vector<int64_t> qkvShape = {T, Nq + Nk + Nv, D};
@@ -75,8 +75,7 @@ int main() {
     aclTensor *kScaleCache = aclCreateTensor(kScaleCacheShape.data(), kScaleCacheShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, kScaleCacheShape.data(), kScaleCacheShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
     aclTensor *cuSeqLen = aclCreateTensor(cuSeqLenShape.data(), cuSeqLenShape.size(), ACL_INT32, nullptr, 0, ACL_FORMAT_ND, cuSeqLenShape.data(), cuSeqLenShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
     aclTensor *actualSeqLens = aclCreateTensor(actualSeqLensShape.data(), actualSeqLensShape.size(), ACL_INT32, nullptr, 0, ACL_FORMAT_ND, actualSeqLensShape.data(), actualSeqLensShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *qRotation = aclCreateTensor(rotationShape.data(), rotationShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND, rotationShape.data(), rotationShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *kRotation = aclCreateTensor(rotationShape.data(), rotationShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND, rotationShape.data(), rotationShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
+    aclTensor *rotation = aclCreateTensor(rotationShape.data(), rotationShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND, rotationShape.data(), rotationShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
     aclTensor *vScale = aclCreateTensor(vScaleShape.data(), vScaleShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, vScaleShape.data(), vScaleShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
 
     std::vector<int64_t> headNumsVec = {Nq, Nk, Nv};
@@ -90,7 +89,7 @@ int main() {
     aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
         qkv, qGamma, kGamma, cosSin, slotMapping,
         kCache, vCache, kScaleCache, cuSeqLen, actualSeqLens,
-        qRotation, kRotation, vScale, headNums, inputLayout, epsilon,
+        rotation, vScale, headNums, qkvLayout, epsilon,
         qOut, qScale,
         &workspaceSize, &executor);
 
@@ -134,8 +133,7 @@ cleanup:
     aclDestroyTensor(kScaleCache);
     aclDestroyTensor(cuSeqLen);
     aclDestroyTensor(actualSeqLens);
-    aclDestroyTensor(qRotation);
-    aclDestroyTensor(kRotation);
+    aclDestroyTensor(rotation);
     aclDestroyTensor(vScale);
     aclDestroyIntArray(headNums);
     aclDestroyTensor(qOut);

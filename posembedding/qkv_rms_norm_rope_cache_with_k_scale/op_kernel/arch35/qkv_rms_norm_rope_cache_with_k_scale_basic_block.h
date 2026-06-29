@@ -23,7 +23,7 @@ constexpr uint64_t SYNC_C_READY = 1U;
 constexpr uint64_t SYNC_C_CONSUMED = 2U;
 constexpr uint64_t SYNC_A_CONSUMED = 3U;
 
-template <uint32_t INPUT_LAYOUT>
+template <uint32_t QKV_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors, uint64_t totalTokens, uint64_t batch,
@@ -238,7 +238,7 @@ private:
     LocalTensor<bfloat16_t> aRotL1Pool_;
     LocalTensor<float> outputDbPoolUb_;
     QkvRmsNormRopeCacheWithKScaleCube cube_;
-    QkvRmsNormRopeCacheWithKScaleVec<INPUT_LAYOUT> vec_;
+    QkvRmsNormRopeCacheWithKScaleVec<QKV_LAYOUT> vec_;
 
     static_assert(QKV_RRC_RESERVE_USED_BYTES <= QKV_RRC_RESERVE_UB_BYTES,
                   "QkvRmsNormRopeCacheWithKScale reserve UB layout exceeds 40 KiB.");

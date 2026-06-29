@@ -20,9 +20,9 @@ Current state:
    The controller creates the contiguous core token range, expands it into
    token-size tiles, and derives per-tile tail parameters before calling the
    D=128 fast-path basic block.
-4. T03 adds static GM/L1/UB tensor binding. `qRotationL1Nz_` and
-   `kRotationL1Nz_` are AIC-only resident rotation slots, and `a_rot_l1_nz` is
-   the Cube AL1 data slot shared by the AIV->AIC protocol. `BasicBlock`
+4. T03 adds static GM/L1/UB tensor binding. `rotationL1Nz_` is the AIC-only
+   resident rotation slot, and `a_rot_l1_nz` is the Cube AL1 data slot shared by
+   the AIV->AIC protocol. `BasicBlock`
    coordinates the shared `a_rot_l1_nz` pingpong use id so AIV writes and AIC
    reads stay on the same slot; local-only UB/L0C buffer pools maintain their
    own counters rather than carrying a tile-level `bufferId`. The raw
@@ -30,9 +30,9 @@ Current state:
    staging buffer and slot 1 is the AIC FIXPIPE Q/K output buffer. The raw
    `GlobalTensors` bundle is only an entry argument; Cube and Vec bind their own
    typed GM tensors and neither controller nor basic block retains a shared
-   bound-GM bundle. The host/API and kernel entry expose `q_rotation` and
-   `k_rotation`; Cube binds both tensors, keeps separate resident L1/L0B views,
-   and selects `q_rotation` for Q rows and `k_rotation` for K rows.
+   bound-GM bundle. The host/API and kernel entry expose one `rotation`; Cube
+   copies it once into resident L1, loads one L0B view, and reuses it for both Q
+   and K rows.
 5. T04/T11 add fixed CrossCore flag ids and wrappers for `A_READY`,
    `A_CONSUMED`, `C_READY`, and `C_CONSUMED`. `A_CONSUMED` is the A-side
    double-buffer reuse credit; T13 completed the final static protocol audit.
@@ -53,18 +53,17 @@ Current state:
 10. After each task is coded and verified, update `TASKS.md` and commit the
    code plus the task status change together.
 
-## Q/K rotation split status
+## Rotation and layout contract
 
 The public host/API contract adds `actual_seq_lens` for per-batch history
-lengths and splits the former single `rotation` input into two optional BF16 ND
-tensors that are required by the D=128 fast-path host contract:
+lengths and keeps a single optional BF16 ND `rotation` tensor that is required
+by the D=128 fast-path host contract:
 
 | Index | Input | Shape |
 |---:|---|---|
 | 9 | `actual_seq_lens` | `[batch]` |
-| 10 | `q_rotation` | `[headDim, headDim]` |
-| 11 | `k_rotation` | `[headDim, headDim]` |
-| 12 | `v_scale` | `[numVHeads]` |
+| 10 | `rotation` | `[headDim, headDim]` |
+| 11 | `v_scale` | `[numVHeads]` |
 
 `cu_seq_len` is the prefix sum for the tokens in the current invocation.
 `actual_seq_lens` stores each batch sequence length after the current tokens are
@@ -75,19 +74,12 @@ table. For example, `cu_seq_len=[0,17,18]` and
 `actual_seq_lens=[8209,1]` means batch0 uses RoPE positions `8192..8208`,
 while batch1 starts from position `0`.
 
-The required `inputLayout` attribute is case-sensitive and only accepts `NTD`
+The required `qkv_layout` attribute is case-sensitive and only accepts `NTD`
 or `TND`. `qkv`, `q_out`, and `q_scale` keep the same N/T layout: `NTD` uses
 `qkv=[Nq+Nk+Nv,T,D]`, `q_out=[Nq,T,D]`, `q_scale=[Nq,T]`; `TND` uses
 `qkv=[T,Nq+Nk+Nv,D]`, `q_out=[T,Nq,D]`, `q_scale=[T,Nq]`.
 
-Both rotation tensors must be present and BF16; missing inputs report
-`missing_q_rotation` or `missing_k_rotation`. Existing callers that used one
-rotation matrix must pass it to both `q_rotation` and `k_rotation` if the Q/K
-matrices are identical.
-
-The kernel entry ABI and Cube internals now both carry the split. `GlobalTensors`
-contains separate `qRotation` and `kRotation` entries, Cube binds them as
-separate GM tensors, copies them into `qRotationL1Nz_` and `kRotationL1Nz_`,
-loads separate L0B resident views, and uses the Q matrix for Q rows and the K
-matrix for K rows. Follow-up verification should include a `q_rotation !=
-k_rotation` golden/ST case before closing T14.
+`rotation` must be present and BF16; missing input reports
+`missing_rotation`. The kernel entry ABI and Cube internals carry one
+`rotation` GM tensor. Cube copies it into `rotationL1Nz_`, loads one resident
+L0B view, and uses the same matrix for Q rows and K rows.
