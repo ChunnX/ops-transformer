@@ -109,6 +109,15 @@ struct WorkspaceInfo {
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
+    
+    // urma 通信临时地址
+    GM_ADDR maskSlotPtr; // urma发送mask临时GM
+    GM_ADDR dispatchL1CommPtr; // dispatch L1 communication workspace
+    GM_ADDR dispatchCursorPtr; // dispatch cnt for each expert
+    GM_ADDR dispatchDonePtr; // dispatch done
+    GM_ADDR dispatchL2CommPtr; // dispatch l2 communication workspace
+    GM_ADDR combineCommPtr; // combine communication workspace
+    GM_ADDR combineSendNotifyPtr; // combine send notify    
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -183,6 +192,120 @@ struct WorkspaceInfo {
                 static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
             workspaceSize += stridePerExpert * tilingData->expertPerRank;
         }
+    }
+
+    HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t serverNum)
+    {
+        workspaceSize = 0;
+        dispatchRevDataPtr = base;
+
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
+        dispatchRevScalePtr = base + workspaceSize;
+
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
+            MXFP_SCALE_GROUP_NUM, ALIGN_512);
+
+        swigluQuantDataPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
+            tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
+
+        swigluQuantScalePtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
+            SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
+
+        expertRevTokenNumsPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(tilingData->expertPerRank * ALIGN_32 * tilingData->aicNum, ALIGN_512);
+
+        tripleInfoPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
+
+        flagSwiGluToGmm2Ptr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+
+        flagDispatchToGmm1Ptr = base + workspaceSize;
+        // wave-grain dispatch flag: per expert allocate one slot per wave (L1_TILE_M=256 rows),
+        // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
+        int64_t maxWavesPerExpert = Ops::Base::CeilDiv(
+            static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
+        int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
+            static_cast<int64_t>(INT_CACHELINE));
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
+
+        // Conditional allocation for A8W4 / combine-quant paths.
+        // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / CombineQuantMode) 一致，
+        // 由 TilingKey 保证同步。
+        // A8W4-only: cumsum GM backup and GMM1 intermediate result.
+        cumsumInfoPtr = nullptr;
+        gmm1MmadResPtr = nullptr;
+        gmm2MmadResPtr = nullptr;
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4) {
+            // cumsumInfo: per-core backup of cumsum state (expertPerRank × epWorldSize int32 per core).
+            cumsumInfoPtr = base + workspaceSize;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(SIZE_INT_32 * tilingData->expertPerRank * tilingData->epWorldSize),
+                ALIGN_32) * tilingData->aicNum;
+            // gmm1MmadRes: GMM1 matmul output (maxOutputSize × hiddenDim bf16).
+            gmm1MmadResPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
+        }
+        // gmm2MmadRes: GMM2 matmul output (maxOutputSize × h bf16), needed by A8W4 and combine-quant.
+        if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+            tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+            gmm2MmadResPtr = base + workspaceSize;
+            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+        }
+
+        // Combine-quant-only workspace buffers
+        gmm2CombineSyncCounterPtr = nullptr;
+        if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+            // Token group completion counters
+            gmm2CombineSyncCounterPtr = base + workspaceSize;
+            // 紧密排布：每个 expert 分配 blockAivNum 个 slot
+            int64_t stridePerExpert = Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
+            workspaceSize += stridePerExpert * tilingData->expertPerRank;
+        }
+        maskSlotPtr = base + workspaceSize;
+        int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+        int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
+            (int64_t)sizeof(int32_t);
+        int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
+        int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;  // mask + 32B count
+        
+        workspaceSize += Ops::Base::CeilAlign(
+            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+        
+        dispatchL1CommPtr = base + workspaceSize;
+        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * SIZE_INT_8;
+        uint32_t scaleBytes = mxScaleNum * SIZE_INT_8;
+        uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+        uint32_t recordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
+            static_cast<uint32_t>(ALIGN_512));
+        uint32_t serverWorkspaceBytes = ALIGN_32 + tilingData->bs * recordBytes;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(serverNum * serverWorkspaceBytes), static_cast<int64_t>(ALIGN_512));
+        
+        dispatchCursorPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+ 	             static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+        
+        dispatchDonePtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+ 	             static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+        
+        dispatchL2CommPtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(
+ 	             static_cast<int64_t>(tilingData->aicNum * 6 * recordBytes),
+ 	             static_cast<int64_t>(ALIGN_512)); //TODO:
+        
+        combineCommPtr = base + workspaceSize;
+        // 每个 rank 的 workspace 大小: bs * expertPerRank 个 token, 每个 token 含数据+三元组(32B)
+        int64_t maxDataLength = Ops::Base::CeilAlign(ALIGN_256 * SIZE_BF_16, ALIGN_32);
+        int64_t maxDataSize = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)ALIGN_256) * (ALIGN_32 + maxDataLength) * 
+                                                tilingData->bs * tilingData->expertPerRank * tilingData->epWorldSize;
+        workspaceSize += maxDataSize;
+        combineSendNotifyPtr = base + workspaceSize;
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
