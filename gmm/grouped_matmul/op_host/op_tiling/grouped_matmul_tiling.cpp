@@ -2210,7 +2210,9 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           }
 
           // --------------nz前处理优化------------
-          if ((a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_API_DEQUANT || a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_VECTOR_DEQUANT) && withOffset == 0){
+          if ((a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_API_DEQUANT ||
+               a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_VECTOR_DEQUANT) &&
+              withOffset == 0) {
             uint64_t preProcessWorkspaceSize = (uint64_t)AlignUp(m, WS_ALIGN_8) * k * sizeof(int8_t) ;
 
             tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
