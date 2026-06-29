@@ -1189,14 +1189,9 @@ __aicore__ inline void
 MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset, int64_t weightUkOffset,
                                                              int64_t qnResOffset, int64_t subLoopTimes)
 {
-    if constexpr (!MLAPT::enableGroupComputeOpt) {
-        if (blockIdx_ >= baseParams_->mm4BlockNum) {
-            return;
-        }
-    } else {
-        if (blockIdx_ >= QC_CORE_NUM) {
-            return;
-        }
+    uint32_t maxBlockIdx = MLAPT::enableGroupComputeOpt ? QC_CORE_NUM : baseParams_->mm4BlockNum;
+    if (blockIdx_ >= maxBlockIdx) {
+        return;
     }
     // MatmulQcQr ──> MatmulQn ──> query_out
     // [32, 128] * [128, 512] = [32, 512]
@@ -1731,8 +1726,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
     }
     uint64_t stride = static_cast<uint64_t>(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope);
 
-
-    LocalTensor<uint8_t> ropeShareTmpUb;
+    
     LocalTensor<ropeOutputType> outputLocal;
     LocalTensor<float> channelDeqScaleLocal = shareBuffer_.Get<float>();
 
@@ -1748,17 +1742,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeQr(int64_t ropeQrOffset, 
         AscendC::WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
         outputLocal = channelDeqScaleLocal[col * row].template ReinterpretCast<ropeOutputType>();
-        ropeShareTmpUb = outputLocal[baseParams_->headSizeQr].template ReinterpretCast<uint8_t>();
     } else {
         outputLocal = shareBuffer_.Get<ropeOutputType>();
-        ropeShareTmpUb = outputLocal[baseParams_->headSizeQr].template ReinterpretCast<uint8_t>();
     }
+    LocalTensor<uint8_t> ropeShareTmpUb = outputLocal[baseParams_->headSizeQr].template ReinterpretCast<uint8_t>();
 
-    Rectangle ropeParams{
-        (uint32_t)baseParams_->numHeadSize, // row
-        (uint32_t)baseParams_->dimHeadRope, // col
-        (uint32_t)stride                    // stride
-    };
+    // row, col, stride
+    Rectangle ropeParams{(uint32_t)baseParams_->numHeadSize, (uint32_t)baseParams_->dimHeadRope, (uint32_t)stride};
 
     for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVecToken; curVecTokenIdx++) {
         // MatmulQcQr ──> Rope(Qr) ──> query_rope_out
