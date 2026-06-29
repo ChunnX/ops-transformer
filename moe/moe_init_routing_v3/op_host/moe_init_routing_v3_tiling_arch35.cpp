@@ -1541,6 +1541,7 @@ void MoeInitRoutingV3Arch35TilingClass::LogGatherOutTilingData()
     ss << "perLoopCols = " << gatherOutTiling->perLoopCols << "\n";
     ss << "lastLoopCols = " << gatherOutTiling->lastLoopCols << "\n";
     ss << "activeNum = " << gatherOutTiling->activeNum << "\n";
+    ss << "useCompactGatherOutDropPad = " << gatherOutTiling->useCompactGatherOutDropPad << "\n";
     OP_LOGI(context_, "%s", ss.str().c_str());
 }
 
@@ -2156,7 +2157,9 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadCoreSplitParams(
     auto *tilingData = &tilingDataPtr_->gatherOutComputeParamsOp;
     int64_t outputRows = expertNum_ * expertCapacity_;
     // 与 kernel 分支保持一致：compact 路径扫描 outputRows，fallback 原路径扫描 n*k。
-    int64_t splitElements = UseCompactGatherOutDropPad(outputRows) ? outputRows : totalLength_;
+    bool useCompactGatherOutDropPad = UseCompactGatherOutDropPad(outputRows);
+    tilingData->useCompactGatherOutDropPad = static_cast<int64_t>(useCompactGatherOutDropPad);
+    int64_t splitElements = useCompactGatherOutDropPad ? outputRows : totalLength_;
     perCoreIndicesElements = Ops::Base::CeilDiv(splitElements, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         tilingData->perCorePerLoopIndicesElements = 0;
@@ -2218,7 +2221,6 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
     tilingData->lastCorePerLoopIndicesElements = lastCorePerLoopIndicesElements;
     tilingData->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
     tilingData->xCopyInQueueBufferNum = DOUBLE_BUFFER;
-    tilingData->xBatchSize = 1; // 保留 tiling 结构布局兼容，kernel compact 路径不读取。
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
@@ -2243,10 +2245,10 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
 
     OP_LOGD(context_, "DropPad GatherOut Tiling: needCoreNum=%ld, perCoreIndicesElements=%ld, "
             "lastCoreIndicesElements=%ld, colsLoops=%ld, perLoopCols=%ld, perCoreIndicesLoops=%ld, "
-            "perCorePerLoopIndicesElements=%ld",
+            "perCorePerLoopIndicesElements=%ld, useCompactGatherOutDropPad=%ld",
             needCoreNum, perCoreIndicesElements, lastCoreIndicesElements,
             tilingData->colsLoops, tilingData->perLoopCols, tilingData->perCoreIndicesLoops,
-            tilingData->perCorePerLoopIndicesElements);
+            tilingData->perCorePerLoopIndicesElements, tilingData->useCompactGatherOutDropPad);
 }
 
 REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV3, MoeInitRoutingV3Arch35TilingClass,
