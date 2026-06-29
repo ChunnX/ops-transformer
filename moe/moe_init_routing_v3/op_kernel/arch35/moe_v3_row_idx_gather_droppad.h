@@ -45,6 +45,7 @@ private:
 
     GlobalTensor<int32_t> expandDstToSrcRowGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
+    GlobalTensor<int32_t> outputToSrcRowGm_;
     GlobalTensor<int32_t> expertIdxValueGm_;
     GlobalTensor<int32_t> expandedExpertIdxGm_;
     GlobalTensor<T> expandedXGm_;
@@ -62,7 +63,9 @@ private:
     int64_t rowLoops_;
     int64_t expertCapacity_;
     int64_t expertNum_;
+    int64_t outputRows_;
     int64_t cols_;
+    int64_t k_;
     int64_t perLoopCols_;
     int64_t lastLoopCols_;
     int64_t colLoops_;
@@ -115,6 +118,10 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::ZeroOutRange(int64_t startIn
         scaleZeroGm.SetGlobalBuffer((__gm__ float *)expandedScaleGm_.GetPhyAddr() + startIndex, rowCount);
         InitGlobalMemory(scaleZeroGm, rowCount, static_cast<float>(0));
     }
+
+    GlobalTensor<int32_t> sourceRowGm;
+    sourceRowGm.SetGlobalBuffer((__gm__ int32_t *)outputToSrcRowGm_.GetPhyAddr() + startIndex, rowCount);
+    InitGlobalMemory(sourceRowGm, rowCount, static_cast<int32_t>(-1));
 }
 
 template <typename T>
@@ -165,8 +172,10 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
             int32_t outOffset = inLocal.GetValue(idx);
             index = expertIdx * this->expertCapacity_ + this->tokenCount_;
             outLocal.SetValue(0, index);
+            outLocal.SetValue(1, outOffset / this->k_);
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyPad(expandedRowIdxGm_[outOffset], outLocal, copyParams);
+            DataCopyPad(outputToSrcRowGm_[index], outLocal[1], copyParams);
             this->tokenCount_++;
         }
     }
@@ -215,7 +224,9 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::InitBasicParams(const MoeIni
     this->srcToDstTilingData_ = &(tilingData->srcToDstDropPadParamsOp);
     this->expertNum_ = tilingData->expertNum;
     this->expertCapacity_ = tilingData->expertCapacity;
+    this->outputRows_ = this->expertNum_ * this->expertCapacity_;
     this->cols_ = tilingData->cols;
+    this->k_ = tilingData->k;
     this->quantMode_ = tilingData->quantMode;
     this->isInputScale_ = tilingData->isInputScale;
 
@@ -271,6 +282,9 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx,
     expertIdxValueGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset,
         this->coreNum_ * 2);
+    outputToSrcRowGm_.SetGlobalBuffer(
+        (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset + this->coreNum_ * 2,
+        this->outputRows_);
 
     pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)) * 2);
     pipe_->InitBuffer(copyOutQueue_, 1, AlignBytes(INT32_ONE_BLOCK_NUM, sizeof(int32_t)));
