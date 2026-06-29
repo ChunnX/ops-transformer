@@ -47,31 +47,30 @@ private:
 
     __aicore__ inline void ComputeRotary(
         const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
-        LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb,
-        const ApplyRotaryPosEmbTilingData* tilingData);
+        LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData);
     __aicore__ inline void ComputeRotaryNoCast(
         const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
-        LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb,
-        const ApplyRotaryPosEmbTilingData* tilingData);
+        LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData);
     __aicore__ inline void ComputeRotaryBF16(
         const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T2>& cosC1,
-        LocalTensor<T2>& sinC1, LocalTensor<T1>& outUb,
-        const ApplyRotaryPosEmbTilingData* tilingData);
+        LocalTensor<T2>& sinC1, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData);
 
     // 【新增】Small/Large QC 分支函数，适配 xl 分离式 Q/K 处理
     __aicore__ inline void SmallQC(
         const int64_t preCBatchB, const int64_t cNum, LocalTensor<T2>& mul1Ub, LocalTensor<T2>& sinC1,
-        LocalTensor<T2>& mul2Ub, LocalTensor<T2>& cosC1, const ApplyRotaryPosEmbTilingData* tilingData);
+        LocalTensor<T2>& mul2Ub, LocalTensor<T2>& cosC1,
+        const ApplyRotaryPosEmbTilingData* tilingData);
     __aicore__ inline void LargeQC(
         const int64_t preCBatchB, const int64_t cNum, LocalTensor<T2>& mul1Ub, LocalTensor<T2>& sinC1,
-        LocalTensor<T2>& mul2Ub, LocalTensor<T2>& cosC1, const ApplyRotaryPosEmbTilingData* tilingData);
-    __aicore__ inline void SmallQCFP16(
-        const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& mul1Ub, LocalTensor<T1>& outUb,
-        LocalTensor<T1>& sinSize, LocalTensor<T1>& mul2Ub, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
+        LocalTensor<T2>& mul2Ub, LocalTensor<T2>& cosC1,
         const ApplyRotaryPosEmbTilingData* tilingData);
-    __aicore__ inline void LargeQCFP16(
-        const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& mul1Ub, LocalTensor<T1>& outUb,
-        LocalTensor<T1>& sinSize, LocalTensor<T1>& mul2Ub, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
+    __aicore__ inline void SmallQCFP32(
+        const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& mul1Ub, LocalTensor<T1>& sinSize,
+        LocalTensor<T1>& mul2Ub, LocalTensor<T1>& cosSize,
+        const ApplyRotaryPosEmbTilingData* tilingData);
+    __aicore__ inline void LargeQCFP32(
+        const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& mul1Ub, LocalTensor<T1>& sinSize,
+        LocalTensor<T1>& mul2Ub, LocalTensor<T1>& cosSize,
         const ApplyRotaryPosEmbTilingData* tilingData);
 
     constexpr static int32_t bufferNum = 1;
@@ -179,77 +178,95 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::LargeQC(
     }
 }
 
-// 【新增】SmallQCFP16：head（cNum）外层循环，preCBatchB 作为 Mul 的 repeat 数
-// 注意：NoCast 路径保持原样，不做 chunk 循环（tiling 保证 lastDim <= mask）
+// 【新增】SmallQCFP32：head（cNum）外层循环，preCBatchB 作为 Mul 的 repeat 数
+// 与 SmallQC 对称：mul1Ub/mul2Ub 均 in-place（mul1Ub 已存 rotate_half(q)=[q2,q1]，mul2Ub 已存 q=[q1,q2]）
+// 按 mask 做 chunk 循环以处理 lastDim > mask（REPEAT_FP32=64）的情况
 template <typename T1, typename T2>
-__aicore__ inline void ARPEComputeABCast<T1, T2>::SmallQCFP16(
-    const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& mul1Ub, LocalTensor<T1>& outUb,
-    LocalTensor<T1>& sinSize, LocalTensor<T1>& mul2Ub, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
+__aicore__ inline void ARPEComputeABCast<T1, T2>::SmallQCFP32(
+    const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& mul1Ub, LocalTensor<T1>& sinSize,
+    LocalTensor<T1>& mul2Ub, LocalTensor<T1>& cosSize,
     const ApplyRotaryPosEmbTilingData* tilingData)
 {
+    // 恢复 chunk 循环处理 lastDim > mask（REPEAT_FP32=64）的情况，与 SmallQC 保持一致
+    int64_t fullMask = tilingData->mask;
+    int64_t fullChunks = (tilingData->lastDim + fullMask - 1) / fullMask;
     for (int64_t ii = 0; ii < cNum; ii++) {
-        int64_t off = ii * tilingData->lastDim;
-        Mul<T1>(mul1Ub[off], outUb[off], sinSize, tilingData->mask, preCBatchB, repeatParams);
-        Mul<T1>(mul2Ub[off], qSize[off], cosSize, tilingData->mask, preCBatchB, repeatParams);
+        for (int32_t j = 0; j < fullChunks; j++) {
+            int64_t offset = j * fullMask;
+            int64_t curMask = (offset + fullMask > tilingData->lastDim) ? (tilingData->lastDim - offset) : fullMask;
+            int64_t off = ii * tilingData->lastDim + offset;
+            Mul<T1>(mul1Ub[off], mul1Ub[off], sinSize[offset], curMask, preCBatchB, repeatParams);
+            Mul<T1>(mul2Ub[off], mul2Ub[off], cosSize[offset], curMask, preCBatchB, repeatParams);
+        }
     }
 }
 
-// 【新增】LargeQCFP16：batch 外层循环，cNum 作为 Mul 的 repeat 数
+// 【新增】LargeQCFP32：batch 外层循环，cNum 作为 Mul 的 repeat 数
+// 与 LargeQC 对称：mul1Ub/mul2Ub 均 in-place（mul1Ub 已存 rotate_half(q)=[q2,q1]，mul2Ub 已存 q=[q1,q2]）
 template <typename T1, typename T2>
-__aicore__ inline void ARPEComputeABCast<T1, T2>::LargeQCFP16(
-    const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& mul1Ub, LocalTensor<T1>& outUb,
-    LocalTensor<T1>& sinSize, LocalTensor<T1>& mul2Ub, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
+__aicore__ inline void ARPEComputeABCast<T1, T2>::LargeQCFP32(
+    const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& mul1Ub, LocalTensor<T1>& sinSize,
+    LocalTensor<T1>& mul2Ub, LocalTensor<T1>& cosSize,
     const ApplyRotaryPosEmbTilingData* tilingData)
 {
+    // 恢复 chunk 循环处理 lastDim > mask（REPEAT_FP32=64）的情况，与 LargeQC 保持一致
+    int64_t fullMask = tilingData->mask;
+    int64_t fullChunks = (tilingData->lastDim + fullMask - 1) / fullMask;
     int64_t batchStride = cNum * tilingData->lastDim;
     for (int64_t i = 0; i < preCBatchB; i++) {
-        int64_t off = i * batchStride;
-        int64_t sOff = i * tilingData->lastDim;
-        Mul<T1>(mul1Ub[off], outUb[off], sinSize[sOff], tilingData->mask, cNum, repeatParams);
-        Mul<T1>(mul2Ub[off], qSize[off], cosSize[sOff], tilingData->mask, cNum, repeatParams);
+        for (int32_t j = 0; j < fullChunks; j++) {
+            int64_t offset = j * fullMask;
+            int64_t curMask = (offset + fullMask > tilingData->lastDim) ? (tilingData->lastDim - offset) : fullMask;
+            int64_t off = i * batchStride + offset;
+            int64_t sOff = i * tilingData->lastDim + offset;
+            Mul<T1>(mul1Ub[off], mul1Ub[off], sinSize[sOff], curMask, cNum, repeatParams);
+            Mul<T1>(mul2Ub[off], mul2Ub[off], cosSize[sOff], curMask, cNum, repeatParams);
+        }
     }
 }
 
 template <typename T1, typename T2>
 __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryNoCast(
     const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
-    LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb,
-    const ApplyRotaryPosEmbTilingData* tilingData)
+    LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData)
 {
     LocalTensor<T1> mul2Ub = mul2.Get<T1>();
     LocalTensor<T1> mul1Ub = mul1.Get<T1>();
-    // sin取反，与旋转后的q相乘即得到 rotate(q)*sin
-    Muls(sinSize, sinSize, T1(-1.0), tilingData->halfNum, preCBatchB, mulRepeatP);
+    // 注意：sin 前半取反已由调用方 ProcessOneBatch 在 Q/K 计算前统一执行一次（Q/K 复用同一 sinSize），
+    // 此处传入的 sinSize 已为 [-sin[:half], sin[half:]]，避免 in-place Muls 在 Q/K 复用时被二次取反。
 
-    // 【泛化需求】使用DataCopy旋转单张量，stride按lastDim
+    // 先把 q 整体拷到工作区 mul2Ub（保持原序 [q1,q2]），随后即可提前释放 qSize（与 BF16 路径对齐）
+    DataCopy(mul2Ub, qSize, preCBatchB * cNum * tilingData->lastDim);
+    qInQueue.FreeTensor(qSize);
+
+    // 使用DataCopy做前后半旋转，mul2Ub 交换得 [q2,q1] 写入 mul1Ub，stride按lastDim
+    // blockLen=halfNum/8(block)，相邻块需跨过剩余的半个head，故 stride 必须用 blockLenq2q1；
+    // dstRepSBr=lastDim/8 是整head跨度，会使每块跨1.5个head导致读取错位（float32精度失败根因）
     DataCopyParams rotCopy;
     rotCopy.blockCount = preCBatchB * cNum;
     rotCopy.blockLen = tilingData->blockLenq2q1;
-    rotCopy.srcStride = tilingData->dstRepSBr;
-    rotCopy.dstStride = tilingData->dstRepSBr;
-    DataCopy(outUb, qSize[tilingData->halfNum], rotCopy);
-    DataCopy(outUb[tilingData->halfNum], qSize, rotCopy);
+    rotCopy.srcStride = tilingData->blockLenq2q1;
+    rotCopy.dstStride = tilingData->blockLenq2q1;
+    DataCopy(mul1Ub, mul2Ub[tilingData->halfNum], rotCopy);
+    DataCopy(mul1Ub[tilingData->halfNum], mul2Ub, rotCopy);
 
-    // 【修改】按 cNum >= preCBatchB 选择 Large/Small 路径
+    // 【修改】按 cNum >= preCBatchB 选择 Large/Small 路径（mul1Ub/mul2Ub 均 in-place）
     if (cNum >= preCBatchB) {
         // Large 路径：batch 外层循环，cNum 作为 Mul 的 repeat 数，cos/sin batch 方向 stride
         repeatParams.dstRepStride = tilingData->dstRepSBr;
         repeatParams.src0RepStride = tilingData->dstRepSBr;
         repeatParams.src1RepStride = 0;
-        LargeQCFP16(preCBatchB, cNum, mul1Ub, outUb, sinSize, mul2Ub, qSize, cosSize, tilingData);
+        LargeQCFP32(preCBatchB, cNum, mul1Ub, sinSize, mul2Ub, cosSize, tilingData);
     } else {
         // Small 路径：head（cNum）外层循环，preCBatchB 作为 Mul 的 repeat 数，cos/sin head 方向 broadcast
         // repeat 方向是 batch，stride 应为 cNum * lastDim / oneBlockFp32 = cNum * dstRepSBr
-        // （mulNum = singleN * lastDim / oneBlockFp32，其中 singleN = max(qcNum, kcNum)，不适合单独 Q/K 的 Small 路径）
         repeatParams.dstRepStride = cNum * tilingData->dstRepSBr;
         repeatParams.src0RepStride = cNum * tilingData->dstRepSBr;
         repeatParams.src1RepStride = tilingData->dstRepSBr;
-        SmallQCFP16(preCBatchB, cNum, mul1Ub, outUb, sinSize, mul2Ub, qSize, cosSize, tilingData);
+        SmallQCFP32(preCBatchB, cNum, mul1Ub, sinSize, mul2Ub, cosSize, tilingData);
     }
 
-    // 两个 Mul 都完成后释放 qSize
-    qInQueue.FreeTensor(qSize);
-
+    // outUb = rotate_half(q)*sin + q*cos（mul1Ub 存前者，mul2Ub 存后者）
     Add(outUb, mul1Ub, mul2Ub, preCBatchB * cNum * tilingData->lastDim);
 }
 
@@ -266,7 +283,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryBF16(
     // 展开为:
     //   out[:half] = q1 * cos[:half] - q2 * sin[:half]
     //   out[half:] = q2 * cos[half:] + q1 * sin[:half]
-    // 实现技巧: sinC1 已由外部 Cast 并对前半取负 ⇒ sinC1=[-sin[:half], sin[half:]];
+    // 实现技巧: sinC1 已由外部 Cast 并对前半取负 => sinC1=[-sin[:half], sin[half:]];
     //   先用 DataCopy 把 q 前后半交换得 [q2,q1] 到 mul1Ub, 再 *sinC1 即得 rotate_half(q)*sin=[-q2*sin,q1*sin]
     //   mul2Ub 先存 q (FP32), 再 in-place *cosC1 得 q*cos
     //   最后 Add(mul2Ub, mul1Ub, mul2Ub) 得最终结果, Cast 回 outUb
@@ -310,15 +327,18 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotaryBF16(
     // q_embed = rotate_half(q)*sin + q*cos ; Add 批量化一次性合并所有 batch
     // mul2Ub 存 q*cos (in-place), mul1Ub 存 rotate_half(q)*sin (in-place), 结果写入 mul2Ub (in-place)
     Add(mul2Ub, mul1Ub, mul2Ub, preCBatchB * cNum * tilingData->lastDim);  // mul2Ub = mul1Ub(rot*sin) + mul2Ub(q*cos)
-    Cast(outUb, mul2Ub, RoundMode::CAST_ROUND, preCBatchB * cNum * tilingData->lastDim);  // FP32 -> BF16 回写 outUb
+    if constexpr (std::is_same<T1, bfloat16_t>::value) {
+        Cast(outUb, mul2Ub, RoundMode::CAST_RINT, preCBatchB * cNum * tilingData->lastDim);
+    } else if constexpr (std::is_same<T1, half>::value) {
+        Cast(outUb, mul2Ub, RoundMode::CAST_NONE, preCBatchB * cNum * tilingData->lastDim);
+    }
 #endif
 }
 
 template <typename T1, typename T2>
 __aicore__ inline void ARPEComputeABCast<T1, T2>::ComputeRotary(
     const int64_t preCBatchB, const int64_t cNum, LocalTensor<T1>& qSize, LocalTensor<T1>& cosSize,
-    LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb,
-    const ApplyRotaryPosEmbTilingData* tilingData)
+    LocalTensor<T1>& sinSize, LocalTensor<T1>& outUb, const ApplyRotaryPosEmbTilingData* tilingData)
 {
 #if ORIG_DTYPE_QUERY != DT_FLOAT
     ComputeRotaryBF16(preCBatchB, cNum, qSize, cosSize, sinSize, outUb, tilingData);
@@ -435,6 +455,9 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ProcessOneBatch(
     Cast(cosC1, cosSize, RoundMode::CAST_NONE, batchB * tilingData->lastDim);
     Cast(sinC1, sinSize, RoundMode::CAST_NONE, batchB * tilingData->lastDim);
     Muls(sinC1, sinC1, T2(-1.0), tilingData->halfNum, batchB, mulRepeatP);
+#else
+    // FP32: sin 前半统一取反一次，Q/K 复用同一 sinSize
+    Muls(sinSize, sinSize, T1(-1.0), tilingData->halfNum, batchB, mulRepeatP);
 #endif
 
     // Compute Q
@@ -445,7 +468,7 @@ __aicore__ inline void ARPEComputeABCast<T1, T2>::ProcessOneBatch(
     ComputeRotaryNoCast(batchB, tilingData->qcNum, qSize, cosSize, sinSize, qOutUb, tilingData);
 #endif
 
-    // CopyIn K
+    // CopyIn K（提前，与 Q CopyOut 重叠）
     LocalTensor<T1> kUb = qInQueue.AllocTensor<T1>();
     CopyInTensor(coreBatchIndex, batchB, kGm, tilingData->kCoreOffset, tilingData->kcNum, tilingData->kcdNum,
                     tilingData->kDim3, kUb, tilingData);
