@@ -1,4 +1,4 @@
-# MoEElasticBuffer.get\_moe\_ep\_ccl\_buffer\_size<a name="ZH-CN_TOPIC_0000002343094194"></a>
+# ElasticBuffer.get\_moe\_ep\_ccl\_buffer\_size<a name="ZH-CN_TOPIC_0000002343094194"></a>
 
 ## 产品支持情况
 
@@ -10,7 +10,7 @@
 
 -   API功能：
 
-    需与[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)和[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)配套使用，用于计算dispatch和combine算子所需的HCCL通信buffer\_size大小（单位：MB）。该接口为静态方法，可在初始化`MoEElasticBuffer`前调用。
+    需与[ElasticBuffer.dispatch](ElasticBuffer_dispatch.md)和[ElasticBuffer.combine](ElasticBuffer_combine.md)配套使用，用于计算dispatch和combine算子所需的HCCL通信buffer\_size大小（单位：MB）。该接口为静态方法，可在初始化`ElasticBuffer`前调用。
 -   计算公式：
 
     -   计算每个token所需空间：
@@ -30,7 +30,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002203575834_section45077510412"></a>
 
 ```
-MoEElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hidden, num_experts, topk) -> int
+ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hidden, num_experts, topk) -> int
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002203575834_section112637109430"></a>
@@ -49,7 +49,7 @@ MoEElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank,
 
 ## 约束说明<a name="zh-cn_topic_0000002203575834_section12345537164215"></a>
 
--   `MoEElasticBuffer.get_moe_ep_ccl_buffer_size`、[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)和[MoEElasticBuffer.combine](MoEElasticBuffer_combine.md)必须配套使用。
+-   `ElasticBuffer.get_moe_ep_ccl_buffer_size`、[ElasticBuffer.dispatch](ElasticBuffer_dispatch.md)和[ElasticBuffer.combine](ElasticBuffer_combine.md)必须配套使用。
 -   计算得到的ccl\_buffer\_size需通过环境变量HCCL\_BUFFSIZE设置，每个通信域独占一组"2 \* HCCL\_BUFFSIZE"大小的内存。
 -   本文公式中的"/"表示整除。
 
@@ -60,7 +60,7 @@ import os
 import torch
 import torch_npu
 import torch.distributed as dist
-from npu_ops_transformer.ops.moe_elastic_buffer import MoEElasticBuffer
+from npu_ops_transformer.ops.elastic_buffer import ElasticBuffer
 
 world_size = 2
 num_experts = 8
@@ -68,7 +68,7 @@ num_max_tokens_per_rank = 128
 hidden = 4096
 topk = 4
 
-buffer_size = MoEElasticBuffer.get_moe_ep_ccl_buffer_size(
+buffer_size = ElasticBuffer.get_moe_ep_ccl_buffer_size(
     world_size, num_max_tokens_per_rank, hidden, num_experts, topk)
 os.environ['HCCL_BUFFSIZE'] = str(buffer_size)
 print(f"buffer_size is {buffer_size} MB")

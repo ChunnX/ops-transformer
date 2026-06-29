@@ -180,7 +180,7 @@ private:
 class HcclChannelContextBuilder {
 public:
     void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
-        const std::string &commAlg)
+        const std::string &commAlg, const std::string &opName)
     {
         ASCEND_LOGI("Start to get CommContext Tensor, group: %s", group.c_str());
         InitHcclEngineCtxFunctions();
@@ -197,7 +197,7 @@ public:
         GetCommProtocol(hcclHandle, protocol);
 
         CommContext commContextStruct;
-        BuildContext(hcclHandle, group, protocol, commContextStruct, cclBufferSize);
+        BuildContext(hcclHandle, group, opName, protocol, commContextStruct, cclBufferSize);
 
         CopyContextToTensor(commContextStruct, contextTensor);
         ASCEND_LOGI("Get CommContext Tensor Success, group: %s, ccl_buffer_size: %d",
@@ -212,11 +212,11 @@ public:
         ASCEND_LOGI("Get HCCL communication handle success hcclHandle is: %p", hcclHandle);
     }
 
-    void BuildContext(const HcclComm &hcclHandle, const std::string &group,
+    void BuildContext(const HcclComm &hcclHandle, const std::string &group, const std::string &opName,
                       const CommProtocol &protocol, CommContext &commContextStruct,
                       int64_t &cclBufferSize)
     {
-        std::string mc2ContextTag = std::string(group) + "moe_dispatch_ffn_combine";
+        std::string mc2ContextTag = std::string(group) + opName;
         TORCH_CHECK(mc2ContextTag.size() <= 255, "Mc2ContextTag is too long, max size is 255, got ",
                     mc2ContextTag.size());
 
@@ -484,8 +484,9 @@ public:
 class CommContextManager {
 public:
     CommContextManager(const std::string &group, int64_t worldSize,
-                       const py::object &backend = py::str("kfc"), const std::string &commAlg = "ub-mem")
-        : group_(group), worldSize_(worldSize), commAlg_(commAlg),
+                       const py::object &backend = py::str("kfc"), const std::string &commAlg = "ub-mem",
+                       const std::string &opName = "moe_dispatch_ffn_combine")
+        : group_(group), worldSize_(worldSize), commAlg_(commAlg), opName_(opName),
           backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
 
     at::Tensor create_context()
@@ -530,7 +531,7 @@ private:
             }
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
-                builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_);
+                builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_);
                 return;
             }
             default:
@@ -540,6 +541,7 @@ private:
 
     std::string group_;
     std::string commAlg_;
+    std::string opName_;
     int64_t worldSize_;
     py::object backend_;
     BackendMode mode_;
@@ -550,9 +552,10 @@ private:
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<CommContextManager>(m, "CommContextManager")
-        .def(py::init<const std::string &, int64_t, const py::object &, const std::string &>(),
+        .def(py::init<const std::string &, int64_t, const py::object &, const std::string &, const std::string &>(),
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
-            py::arg("commAlg") = std::string("ub-mem"))
+             py::arg("commAlg") = std::string("ub-mem"),
+             py::arg("opName") = std::string("moe_dispatch_ffn_combine"))
         .def("create_context", &CommContextManager::create_context)
         .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
         .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);

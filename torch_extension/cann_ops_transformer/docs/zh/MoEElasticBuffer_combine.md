@@ -1,4 +1,4 @@
-# MoEElasticBuffer.combine<a name="ZH-CN_TOPIC_0000002309174912"></a>
+# ElasticBuffer.combine<a name="ZH-CN_TOPIC_0000002309174912"></a>
 
 ## 产品支持情况
 
@@ -10,7 +10,7 @@
 
 -   API功能：
 
-    需与[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)配套使用，相当于按dispatch算子收集数据的路径原路返回。该接口将专家处理后的token数据根据dispatch阶段记录的元数据信息，通过逆向路由和加权聚合，将token数据组合还原为原始序列顺序。
+    需与[ElasticBuffer.dispatch](ElasticBuffer_dispatch.md)配套使用，相当于按dispatch算子收集数据的路径原路返回。该接口将专家处理后的token数据根据dispatch阶段记录的元数据信息，通过逆向路由和加权聚合，将token数据组合还原为原始序列顺序。
      - 支持带`topk_weights`加权聚合和纯累加两种模式；
      - 当前版本不支持bias参数。
 -   计算公式：
@@ -27,18 +27,18 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-MoEElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Tensor?)
+ElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor, Tensor?)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
 
--   **x** (`Tensor`)：必选参数，表示经过专家计算后的token数据，即[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)输出的`recv_x`经过专家网络处理后的结果。要求为2维张量，shape为(A, H)，数据类型仅支持`bfloat16`，数据格式为$ND$。
+-   **x** (`Tensor`)：必选参数，表示经过专家计算后的token数据，即[ElasticBuffer.dispatch](ElasticBuffer_dispatch.md)输出的`recv_x`经过专家网络处理后的结果。要求为2维张量，shape为(A, H)，数据类型仅支持`bfloat16`，数据格式为$ND$。
 
--   **handle** (`EPHandle`)：必选参数，表示[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)返回的handle对象，包含slot索引、接收元数据等信息。handle的属性参见[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)输出说明。
+-   **handle** (`EPHandle`)：必选参数，表示[ElasticBuffer.dispatch](ElasticBuffer_dispatch.md)返回的handle对象，包含slot索引、接收元数据等信息。handle的属性参见[ElasticBuffer.dispatch](ElasticBuffer_dispatch.md)输出说明。
 
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
 
--   **topk\_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重，用于加权聚合。要求为1维张量，shape为(A,)，数据类型支持`float32`，数据格式为$ND$，对应[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)的`recv_topk_weights`输出。若不提供，则进行纯累加combine，输出`combined_topk_weights`为None。
+-   **topk\_weights** (`Tensor`)：可选参数，表示每个token对应的topK专家权重，用于加权聚合。要求为1维张量，shape为(A,)，数据类型支持`float32`，数据格式为$ND$，对应[ElasticBuffer.dispatch](ElasticBuffer_dispatch.md)的`recv_topk_weights`输出。若不提供，则进行纯累加combine，输出`combined_topk_weights`为None。
 
 -   **bias** (`Tensor`或`Tuple[Tensor, Tensor]`)：可选参数，当前版本不支持bias，传入None即可。预留支持单个bias张量或bias\_0/bias\_1双张量模式。
 
@@ -51,9 +51,9 @@ MoEElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor,
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
 -   该接口支持推理和训练场景。
--   `MoEElasticBuffer.dispatch`和`MoEElasticBuffer.combine`必须配套使用。
+-   `ElasticBuffer.dispatch`和`ElasticBuffer.combine`必须配套使用。
 -   当前版本不支持bias参数，`bias`必须传入None。
--   调用接口过程中使用的`ep_world_size`、`num_experts`、`num_max_tokens_per_rank`参数需通过handle传递，与[MoEElasticBuffer.dispatch](MoEElasticBuffer_dispatch.md)保持一致。
+-   调用接口过程中使用的`ep_world_size`、`num_experts`、`num_max_tokens_per_rank`参数需通过handle传递，与[ElasticBuffer.dispatch](ElasticBuffer_dispatch.md)保持一致。
 -   参数里Shape使用的变量如下：
     -   A：表示本卡接收的最大token数量，A = ep\_world\_size \* num\_max\_tokens\_per\_rank \* MIN(K, num\_local\_experts)。
     -   H：表示hidden size隐藏层大小。取值范围为(0, 8192]。
@@ -62,11 +62,11 @@ MoEElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor,
     -   num\_local\_experts：表示本卡专家数量，num\_local\_experts = num\_experts / ep\_world\_size。
 -   HCCL通信域缓存区大小：
     调用本接口前需检查通信域缓存区大小取值是否合理，单位MB，不配置时默认为200MB。
-    -   通信域缓存区大小可通过调用[MoEElasticBuffer.get\_moe\_ep\_ccl\_buffer\_size](MoEElasticBuffer_get_moe_ep_ccl_buffer_size.md)接口计算。
+    -   通信域缓存区大小可通过调用[ElasticBuffer.get\_moe\_ep\_ccl\_buffer\_size](ElasticBuffer_get_moe_ep_ccl_buffer_size.md)接口计算。
     -   设置大小要求 >= 2 \* (ep\_world\_size \* num\_max\_tokens\_per\_rank \* Align512(Align32(2 \* H)))。
     -   其中 Align512(x) = ((x+512-1)/512)\*512, Align32(x) = ((x+32-1)/32)\*32。
 -   通信域使用约束：
-    -   一个模型中的`MoEElasticBuffer.dispatch`和`MoEElasticBuffer.combine`算子仅支持相同EP通信域，且该通信域中不允许有其他算子。
+    -   一个模型中的`ElasticBuffer.dispatch`和`ElasticBuffer.combine`算子仅支持相同EP通信域，且该通信域中不允许有其他算子。
 
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
@@ -78,7 +78,7 @@ MoEElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor,
     import torch_npu
     import torch.distributed as dist
     from torch.multiprocessing import Process
-    from npu_ops_transformer.ops.moe_elastic_buffer import MoEElasticBuffer
+    from npu_ops_transformer.ops.elastic_buffer import ElasticBuffer
 
     master_ip = '127.0.0.1'
     world_size = 2
@@ -94,7 +94,7 @@ MoEElasticBuffer.combine(x, handle, *, topk_weights=None, bias=None) -> (Tensor,
         top_k = 4
 
         group = dist.new_group(backend="hccl")
-        buf = MoEElasticBuffer(
+        buf = ElasticBuffer(
             group,
             num_max_tokens_per_rank=num_max_tokens_per_rank,
             hidden=hidden,
