@@ -57,59 +57,59 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
         int64_t seqOff = 0;
         if (HAS_SEQOFFSET) seqOff = static_cast<int64_t>(seqOffset[i]) / blockSize;
 
-        uint64_t totalK = static_cast<uint64_t>(seqLen) * static_cast<uint64_t>(tokenSizeK);
-        uint64_t totalV = static_cast<uint64_t>(seqLen) * static_cast<uint64_t>(tokenSizeV);
+        uint64_t tk   = static_cast<uint64_t>(tokenSizeK);
+        uint64_t tv   = static_cast<uint64_t>(tokenSizeV);
+        uint64_t bSz  = static_cast<uint64_t>(blockSize);
+        uint64_t totalK = static_cast<uint64_t>(seqLen) * tk;
+        uint64_t totalV = static_cast<uint64_t>(seqLen) * tv;
         uint64_t totalMax = (totalK > totalV) ? totalK : totalV;
-        int64_t outK = batchOffset * tokenSizeK;
-        int64_t outV = batchOffset * tokenSizeV;
-        int64_t blkKS = blockSize * tokenSizeK;
-        int64_t blkVS = blockSize * tokenSizeV;
+        int64_t outK = batchOffset * static_cast<int64_t>(tk);
+        int64_t outV = batchOffset * static_cast<int64_t>(tv);
+        int64_t blkKS = static_cast<int32_t>(blockSize) * tokenSizeK;
+        int64_t blkVS = static_cast<int32_t>(blockSize) * tokenSizeV;
+        int64_t btBase = i * static_cast<int64_t>(numblkTabCol);
 
-        uint64_t stride = static_cast<uint64_t>(gridDim.x) * static_cast<uint64_t>(blockDim.x);
-        for (uint64_t idx = static_cast<uint64_t>(blockIdx.x) * static_cast<uint64_t>(blockDim.x) +
-                            static_cast<uint64_t>(threadIdx.x);
+        uint64_t stride = static_cast<uint64_t>(gridDim.x * blockDim.x);
+        for (uint64_t idx = static_cast<uint64_t>(blockIdx.x * blockDim.x + threadIdx.x);
              idx < totalMax; idx += stride) {
-            // Key: byte-level grid-stride
             if (idx < totalK) {
-                uint64_t j   = idx / static_cast<uint64_t>(tokenSizeK);
-                uint64_t sub = idx - j * static_cast<uint64_t>(tokenSizeK);
+                uint64_t j   = idx / tk;
+                uint64_t sub = idx - j * tk;
                 uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), static_cast<uint64_t>(shiftBlk));
-                uint64_t off = j - blk * static_cast<uint64_t>(blockSize);
+                uint64_t off = j - blk * bSz;
 
-                int64_t tableIdx = seqOff + static_cast<int64_t>(blk);
-                bool zeroFill = (tableIdx < 0 || tableIdx >= numblkTabCol);
-                int64_t blockIdVal = 0;
-                if (!zeroFill) {
-                    blockIdVal = static_cast<int64_t>(blockTables[i * static_cast<int64_t>(numblkTabCol) + tableIdx]);
-                    zeroFill = (blockIdVal < 0 || blockIdVal >= numBlocks);
+                int64_t tidx = seqOff + static_cast<int64_t>(blk);
+                int64_t bid = 0;
+                bool zf = (tidx < 0 || tidx >= numblkTabCol);
+                if (!zf) {
+                    bid = static_cast<int64_t>(blockTables[btBase + tidx]);
+                    zf = (bid < 0 || bid >= numBlocks);
                 }
-                if (zeroFill) {
+                if (zf) {
                     keyOut[outK + static_cast<int64_t>(idx)] = 0;
                 } else {
                     keyOut[outK + static_cast<int64_t>(idx)] =
-                        keyCache[blockIdVal * blkKS + static_cast<int64_t>(off) * tokenSizeK + static_cast<int64_t>(sub)];
+                        keyCache[bid * blkKS + static_cast<int64_t>(off) * tokenSizeK + static_cast<int64_t>(sub)];
                 }
             }
-
-            // Value: byte-level grid-stride
             if (idx < totalV) {
-                uint64_t j   = idx / static_cast<uint64_t>(tokenSizeV);
-                uint64_t sub = idx - j * static_cast<uint64_t>(tokenSizeV);
+                uint64_t j   = idx / tv;
+                uint64_t sub = idx - j * tv;
                 uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), static_cast<uint64_t>(shiftBlk));
-                uint64_t off = j - blk * static_cast<uint64_t>(blockSize);
+                uint64_t off = j - blk * bSz;
 
-                int64_t tableIdx = seqOff + static_cast<int64_t>(blk);
-                bool zeroFill = (tableIdx < 0 || tableIdx >= numblkTabCol);
-                int64_t blockIdVal = 0;
-                if (!zeroFill) {
-                    blockIdVal = static_cast<int64_t>(blockTables[i * static_cast<int64_t>(numblkTabCol) + tableIdx]);
-                    zeroFill = (blockIdVal < 0 || blockIdVal >= numBlocks);
+                int64_t tidx = seqOff + static_cast<int64_t>(blk);
+                int64_t bid = 0;
+                bool zf = (tidx < 0 || tidx >= numblkTabCol);
+                if (!zf) {
+                    bid = static_cast<int64_t>(blockTables[btBase + tidx]);
+                    zf = (bid < 0 || bid >= numBlocks);
                 }
-                if (zeroFill) {
+                if (zf) {
                     valueOut[outV + static_cast<int64_t>(idx)] = 0;
                 } else {
                     valueOut[outV + static_cast<int64_t>(idx)] =
-                        valueCache[blockIdVal * blkVS + static_cast<int64_t>(off) * tokenSizeV + static_cast<int64_t>(sub)];
+                        valueCache[bid * blkVS + static_cast<int64_t>(off) * tokenSizeV + static_cast<int64_t>(sub)];
                 }
             }
         }
