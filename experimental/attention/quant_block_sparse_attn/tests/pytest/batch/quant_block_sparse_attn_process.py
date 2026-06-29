@@ -125,7 +125,7 @@ def _call_npu_quant_block_sparse_attention_metadata(test_data):
         seqused_kv=_to_npu(inputs["seqused_kv"]),
         batch_size=metadata_input.get("batch_size", int(inputs["sparse_seq_len"].shape[0])),
         sparse_block_size_q=inputs["sparse_q_block_size"],
-        sparse_block_size_kv=inputs["sparse_kv_block_size"],
+        sparse_block_size_k=inputs["sparse_kv_block_size"],
         quant_mode=inputs["quant_mode"],
         mask_mode=inputs["mask_mode"],
         max_seqlen_q=metadata_input.get("max_seqlen_q", inputs["max_seqlen_q"]),

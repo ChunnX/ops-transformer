@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
-#define L0_QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
+#ifndef L0_QUANT_BLOCK_SPARSE_ATTN_METADATA_H
+#define L0_QUANT_BLOCK_SPARSE_ATTN_METADATA_H
 
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* QuantBlockSparseAttentionMetadata(
+const aclTensor* QuantBlockSparseAttnMetadata(
     const aclTensor* sparseSeqLen,
     const aclTensor* cuSeqlensQOptional,
     const aclTensor* cuSeqlensKvOptional,
@@ -25,7 +25,7 @@ const aclTensor* QuantBlockSparseAttentionMetadata(
     int64_t numHeadsKv,
     int64_t headDim,
     int64_t sparseBlockSizeQ,
-    int64_t sparseBlockSizeKv,
+    int64_t sparseBlockSizeK,
     int64_t quantMode,
     int64_t maskMode,
     int64_t maxSeqlenQ,

@@ -25,11 +25,11 @@ c10::optional<at::Tensor> get_qbsa_valid_tensor(
     return c10::optional<at::Tensor>(torch::empty({0}, torch::dtype(torch::kInt32).device(device)));
 }
 
-at::Tensor npu_quant_block_sparse_attention_metadata_npu(
+at::Tensor npu_quant_block_sparse_attn_metadata_npu(
     const at::Tensor &sparseSeqLen, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
     const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
-    int64_t batchSize, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeKv, int64_t quantMode, int64_t maskMode,
+    int64_t batchSize, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode,
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, c10::string_view layoutQ, c10::string_view layoutKv,
     c10::string_view layoutSparseIndices)
 {
@@ -48,18 +48,18 @@ at::Tensor npu_quant_block_sparse_attention_metadata_npu(
     char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
     char *layoutSparseIndicesPtr = const_cast<char *>(layoutSparseIndicesStr.c_str());
 
-    EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttentionMetadata,
+    EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttnMetadata,
         sparseSeqLen, cuSeqlensQValue, cuSeqlensKvValue, sequsedQValue, sequsedKvValue,
-        batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeKv, quantMode, maskMode,
+        batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode, maskMode,
         maxSeqlenQ, maxSeqlenKv, layoutQPtr, layoutKvPtr, layoutSparseIndicesPtr, output);
     return output;
 }
 
-at::Tensor npu_quant_block_sparse_attention_metadata_meta(
+at::Tensor npu_quant_block_sparse_attn_metadata_meta(
     const at::Tensor &sparseSeqLen, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
     const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
-    int64_t batchSize, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeKv, int64_t quantMode, int64_t maskMode,
+    int64_t batchSize, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode,
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, c10::string_view layoutQ, c10::string_view layoutKv,
     c10::string_view layoutSparseIndices)
 {
@@ -68,9 +68,9 @@ at::Tensor npu_quant_block_sparse_attention_metadata_meta(
 } // namespace custom
 
 TORCH_LIBRARY_IMPL(custom, PrivateUse1, m) {
-    m.impl("npu_quant_block_sparse_attention_metadata", &custom::npu_quant_block_sparse_attention_metadata_npu);
+    m.impl("npu_quant_block_sparse_attn_metadata", &custom::npu_quant_block_sparse_attn_metadata_npu);
 }
 
 TORCH_LIBRARY_IMPL(custom, Meta, m) {
-    m.impl("npu_quant_block_sparse_attention_metadata", &custom::npu_quant_block_sparse_attention_metadata_meta);
+    m.impl("npu_quant_block_sparse_attn_metadata", &custom::npu_quant_block_sparse_attn_metadata_meta);
 }

@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_block_sparse_attention_metadata_aicpu.h
+ * \file quant_block_sparse_attn_metadata_aicpu.h
  * \brief
  */
 
-#ifndef QUANT_BLOCK_SPARSE_ATTENTION_METADATA_AICPU_H
-#define QUANT_BLOCK_SPARSE_ATTENTION_METADATA_AICPU_H
+#ifndef QUANT_BLOCK_SPARSE_ATTN_METADATA_AICPU_H
+#define QUANT_BLOCK_SPARSE_ATTN_METADATA_AICPU_H
 
 #include <array>
 #include <string>
@@ -23,7 +23,7 @@
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
-#include "quant_block_sparse_attention_metadata.h"
+#include "quant_block_sparse_attn_metadata.h"
 #include "../../../../attention/common/op_kernel/aicpu_common.h"
 
 namespace aicpu {
@@ -62,10 +62,10 @@ struct SplitResult {
           firstFdDataWorkspaceIdx(aicNum) {}
 };
 
-class QuantBlockSparseAttentionMetadataCpuKernel : public CpuKernel {
+class QuantBlockSparseAttnMetadataCpuKernel : public CpuKernel {
 public:
-    QuantBlockSparseAttentionMetadataCpuKernel() = default;
-    ~QuantBlockSparseAttentionMetadataCpuKernel() = default;
+    QuantBlockSparseAttnMetadataCpuKernel() = default;
+    ~QuantBlockSparseAttnMetadataCpuKernel() = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:
@@ -100,7 +100,7 @@ private:
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
     int32_t sparseBlockSizeQ_ = 128;
-    int32_t sparseBlockSizeKv_ = 128;
+    int32_t sparseBlockSizeK_ = 128;
     int32_t quantMode_ = 1; 
     int32_t maskMode_ = 3;
     std::string layoutQ_ = "TND"; 

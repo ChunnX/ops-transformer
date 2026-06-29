@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file aclnn_quant_block_sparse_attention_metadata.cpp
+ * \file aclnn_quant_block_sparse_attn_metadata.cpp
  * \brief
  */
 
-#include "aclnn_quant_block_sparse_attention_metadata.h"
-#include "l0_quant_block_sparse_attention_metadata.h"
+#include "aclnn_quant_block_sparse_attn_metadata.h"
+#include "l0_quant_block_sparse_attn_metadata.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn/aclnn_base.h"
@@ -28,23 +28,23 @@
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
 
-#include "../quant_block_sparse_attention_metadata_check.h"
+#include "../quant_block_sparse_attn_metadata_check.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
+aclnnStatus aclnnQuantBlockSparseAttnMetadataGetWorkspaceSize(
     const aclTensor *sparseSeqLen, const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t numHeadsQ,
-    int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeKv, int64_t quantMode,
+    int64_t numHeadsKv, int64_t headDim, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode,
     int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQOptional,
     const char *layoutKvOptional, const char *layoutSparseIndicesOptional, const aclTensor *metadata,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnQuantBlockSparseAttentionMetadata,
+    L2_DFX_PHASE_1(aclnnQuantBlockSparseAttnMetadata,
                     DFX_IN(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
-                           batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeKv, quantMode,
+                           batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode,
                            maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
                            layoutSparseIndicesOptional),
                     DFX_OUT(metadata));
@@ -58,7 +58,7 @@ aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
     auto ret = ParamsCheck(sparseSeqLen, cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
-                           batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeKv, quantMode,
+                           batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode,
                            maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional, layoutKvOptional,
                            layoutSparseIndicesOptional, aicCoreNum, aivCoreNum, socVersion, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -102,10 +102,10 @@ aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
         }
     }
 
-    auto output = l0op::QuantBlockSparseAttentionMetadata(
+    auto output = l0op::QuantBlockSparseAttnMetadata(
         sparseSeqLenContiguous, cuSeqlensQOptionalContiguous, cuSeqlensKvOptionalContiguous,
         sequsedQOptionalContiguous, sequsedKvOptionalContiguous, batchSize, numHeadsQ, numHeadsKv, headDim,
-        sparseBlockSizeQ, sparseBlockSizeKv, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional,
+        sparseBlockSizeQ, sparseBlockSizeK, quantMode, maskMode, maxSeqlenQ, maxSeqlenKv, layoutQOptional,
         layoutKvOptional, layoutSparseIndicesOptional, socVersion, aicCoreNum, aivCoreNum, metadata,
         uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -115,10 +115,10 @@ aclnnStatus aclnnQuantBlockSparseAttentionMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttentionMetadata(
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnMetadata(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
-    L2_DFX_PHASE_2(aclnnQuantBlockSparseAttentionMetadata);
+    L2_DFX_PHASE_2(aclnnQuantBlockSparseAttnMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
