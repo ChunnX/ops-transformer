@@ -139,16 +139,10 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
     LocalTensor<float> inLocal = inputXInQueue_.DeQue<float>();
     LocalTensor<int8_t> outLocal = inputXOutQueue_.AllocTensor<int8_t>();
     LocalTensor<float> scaleLocal = scaleOutQueue_.AllocTensor<float>();
-    LocalTensor<float> quantTempLocal;
 
     __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
     __local_mem__ float *scaleUbAddr = (__local_mem__ float *)scaleLocal.GetPhyAddr();
     __local_mem__ int8_t *outUbAddr = (__local_mem__ int8_t *)outLocal.GetPhyAddr();
-    __local_mem__ float *quantTempUbAddr;
-    if constexpr (IsSameType<QuantT, int4b_t>::value) {
-        quantTempLocal = calcQueue_.AllocTensor<float>();
-        quantTempUbAddr = (__local_mem__ float *)quantTempLocal.GetPhyAddr();
-    }
     __local_mem__ T *inUbAddrCastT;
     if constexpr (!IsSameType<T, float>::value) {
         inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
@@ -165,10 +159,14 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
         MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg;
         MicroAPI::Duplicate(scaleValueReg, 0.0f);
         MicroAPI::RegTensor<half> outRegF16;
+        MicroAPI::RegTensor<int16_t> outRegI16;
         MicroAPI::RegTensor<int8_t> outRegI8;
+        MicroAPI::RegTensor<uint8_t> outRegI4;
+        MicroAPI::RegTensor<uint16_t> outRegPackedHalf;
 
         MicroAPI::MaskReg maskRegInLoop;
         MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::MaskReg maskRegHalf = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::H>();
         MicroAPI::MaskReg maskRegVL1 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
         MicroAPI::MaskReg maskRegVL8 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL8>();
 
@@ -207,7 +205,14 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
             MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
             if constexpr (IsSameType<QuantT, int4b_t>::value) {
-                MicroAPI::DataCopy(quantTempUbAddr + i * FLOAT_REG_TENSOR_LENGTH, inReg, maskRegInLoop);
+                MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(outRegI16, inReg, maskRegInLoop);
+                MicroAPI::Cast<half, int16_t, castTraitI16ToF16>(outRegF16, outRegI16, maskRegInLoop);
+                MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
+                MicroAPI::Cast<int4x2_t, half, castTraitF16ToI8>(
+                    (MicroAPI::RegTensor<int4x2_t> &)outRegI4, (MicroAPI::RegTensor<half> &)outRegPackedHalf,
+                    maskRegInLoop);
+                MicroAPI::DataCopy<uint8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    (__local_mem__ uint8_t *)outUbAddr + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI4, maskRegHalf);
             } else {
                 MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
                 MicroAPI::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
@@ -215,22 +220,6 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Compute(LocalTensor<
                                                                                 outRegI8, maskRegInLoop);
             }
         }
-    }
-
-    if constexpr (IsSameType<QuantT, int4b_t>::value) {
-        auto outLocalInt4 = outLocal.template ReinterpretCast<int4b_t>();
-        LocalTensor<int32_t> tempInt32 = quantTempLocal.template ReinterpretCast<int32_t>();
-        LocalTensor<half> tempHalf = quantTempLocal.template ReinterpretCast<half>();
-
-        PipeBarrier<PIPE_V>();
-        Cast(tempInt32, quantTempLocal, RoundMode::CAST_RINT, cols_);
-        PipeBarrier<PIPE_V>();
-        SetDeqScale(static_cast<half>(1.0));
-        PipeBarrier<PIPE_V>();
-        Cast(tempHalf, tempInt32, RoundMode::CAST_ROUND, cols_);
-        PipeBarrier<PIPE_V>();
-        Cast(outLocalInt4, tempHalf, RoundMode::CAST_TRUNC, cols_);
-        calcQueue_.FreeTensor(quantTempLocal);
     }
 
     inputXOutQueue_.EnQue(outLocal);
