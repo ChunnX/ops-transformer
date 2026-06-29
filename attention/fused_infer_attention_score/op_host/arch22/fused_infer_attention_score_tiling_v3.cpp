@@ -922,12 +922,12 @@ int32_t GetLayoutGroup(const std::string &inputLayoutStr)
 {
     if (inputLayoutStr == "BNSD_BSND" || inputLayoutStr == "BSND_BNSD" || inputLayoutStr == "BNSD_NBSD" ||
         inputLayoutStr == "BSND_NBSD" || inputLayoutStr == "BNSD" || inputLayoutStr == "BSND") {
-        return 0;
+        return 0; // 0: layout is "BNSD_BSND" || "BSND_BNSD" || "BNSD_NBSD" || "BSND_NBSD" || "BNSD" || "BSND"
     } else if (inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD" || inputLayoutStr == "BSH_BNSD") {
-        return 1;
+        return 1; // 1: layout is "BSH"  || "BSH_NBSD" || "BSH_BNSD"
     } else if (inputLayoutStr == "TND" || inputLayoutStr == "NTD" || inputLayoutStr == "TND_NTD" ||
                inputLayoutStr == "NTD_TND") {
-        return 2;
+        return 2; // 2: layout is "TND" || "NTD" || "TND_NTD" || "NTD_TND"
     }
     return -1;
 }
@@ -935,7 +935,7 @@ int32_t GetLayoutGroup(const std::string &inputLayoutStr)
 bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::Shape &qStorageShape,
     const gert::StorageShape *qRopeShape, int64_t numHeads, int64_t &queryD, int64_t &queryRopeD)
 {
-    if (layoutGroup == 0) {
+    if (layoutGroup == 0) { // 0: layout is "BNSD_BSND" || "BSND_BNSD" || "BNSD_NBSD" || "BSND_NBSD" || "BNSD" || "BSND"
         if (qStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
             return false;
         }
@@ -943,7 +943,7 @@ bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::Shape &qStorageShap
         if (qRopeShape != nullptr) {
             queryRopeD = qRopeShape->GetStorageShape().GetDim(BNSD_D_IDX);
         }
-    } else if (layoutGroup == 1) {
+    } else if (layoutGroup == 1) { // 1: layout is "BSH"  || "BSH_NBSD" || "BSH_BNSD"
         if (qStorageShape.GetDimNum() != DIM_BSH) {
             return false;
         }
@@ -951,7 +951,7 @@ bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::Shape &qStorageShap
         if (qRopeShape != nullptr) {
             queryRopeD = qRopeShape->GetStorageShape().GetDim(BSH_H_IDX) / numHeads;
         }
-    } else if (layoutGroup == 2) {
+    } else if (layoutGroup == 2) { // 2: layout is "TND" || "NTD" || "TND_NTD" || "NTD_TND"
         if (qStorageShape.GetDimNum() != DIM_TND) {
             return false;
         }
@@ -968,17 +968,17 @@ bool GetQueryDByLayoutGroup(int32_t layoutGroup, const gert::Shape &qStorageShap
 bool GetValueDByLayoutGroup(int32_t layoutGroup, const gert::Shape &vStorageShape,
     int64_t numKvHeads, int64_t &valueD)
 {
-    if (layoutGroup == 0) {
+    if (layoutGroup == 0) { // 0: layout is "BNSD_BSND" || "BSND_BNSD" || "BNSD_NBSD" || "BSND_NBSD" || "BNSD" || "BSND"
         if (vStorageShape.GetDimNum() != DIM_BNSD_OR_BSND) {
             return false;
         }
         valueD = vStorageShape.GetDim(BNSD_D_IDX);
-    } else if (layoutGroup == 1) {
+    } else if (layoutGroup == 1) { // 1: layout is "BSH"  || "BSH_NBSD" || "BSH_BNSD"
         if (vStorageShape.GetDimNum() != DIM_BSH) {
             return false;
         }
         valueD = vStorageShape.GetDim(BSH_H_IDX) / numKvHeads;
-    } else if (layoutGroup == 2) {
+    } else if (layoutGroup == 2) { // 2: layout is "TND" || "NTD" || "TND_NTD" || "NTD_TND"
         if (vStorageShape.GetDimNum() != DIM_TND) {
             return false;
         }
