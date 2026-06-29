@@ -102,12 +102,6 @@ bool CheckDynamicInputShapeNotEmpty(
     return true;
 }
 
-// 默认检查TensorList第0个成员。
-bool CheckDynamicInputShapeNotEmpty(const gert::TilingContext& context, uint32_t inputIndex, const char* inputName)
-{
-    return CheckDynamicInputShapeNotEmpty(context, inputIndex, 0, inputName);
-}
-
 bool IsDynamicInputEmpty(const gert::TilingContext& context, uint32_t index)
 {
     const auto *shapePtr = context.GetDynamicInputShape(index, 0);
@@ -390,9 +384,9 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
     params.wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
 
     const auto *xShapePtr = context.GetInputShape(X_INDEX);
-    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, "weight"),
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, 0, "weight"),
         OP_LOGE(OP_NAME, "Check dynamic input shape of weight failed."), return false);
-    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, "weightScale"),
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, 0, "weightScale"),
         OP_LOGE(OP_NAME, "Check dynamic input shape of weightScale failed."), return false);
     const auto *wShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(xShapePtr == nullptr || wShapePtr == nullptr,
@@ -557,9 +551,9 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
 
     auto* xScaleShapePtr = context.GetInputShape(X_SCALE_INDEX);
     auto* groupListShapePtr = context.GetInputShape(GROUPLIST_INDEX);
-    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, "weight"),
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, 0, "weight"),
         OP_LOGE(OP_NAME, "Check dynamic input shape of weight failed."), return false);
-    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, "weightScale"),
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, 0, "weightScale"),
         OP_LOGE(OP_NAME, "Check dynamic input shape of weightScale failed."), return false);
     auto* weightShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, 0);
     auto* weightScaleShapePtr = context.GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
