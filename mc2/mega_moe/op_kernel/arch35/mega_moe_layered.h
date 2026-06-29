@@ -666,12 +666,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(1)) {
                         continue;
                     }
+                    PRINTF("Cross Server\n");
                     int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
                     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
                     GM_ADDR dstAddr = GetUrmaAddrByRankId(mc2Context_,
                         targetServerForSender * rankPerServer_ + rankInServer_) +
                         params_.peermemInfo.relayTokenDataPtr + relayOffset;
-
+                    
                     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
                     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
                     hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, recordDataBytes,
@@ -945,7 +946,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     } while (true);
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
     hcomm_.Drain(channel);
-    AscendC::Nop<300000>();
+    PRINTF("SB DRAIN\n");
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
