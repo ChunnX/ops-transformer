@@ -625,7 +625,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
                     uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
                         static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
-                    GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
+                    recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
                 }
                 QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
             }
