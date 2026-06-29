@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Case 0 测试 - 基于0622.py NPU多核并行版本
+Case 0 测试 - 基于0629.py NPU多核并行版本
 """
 
 import torch
@@ -13,7 +13,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from importlib import import_module
-mod = import_module("0622")
+mod = import_module("0629")
 sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_loss
 
 # Clear all caches to avoid stale compiled kernels
@@ -146,13 +146,13 @@ def bench(fn, warmup=WARMUP_ITERS, iters=BENCH_ITERS):
 
 def main():
     print("=" * 60)
-    print("Case 0 - 0622.py NPU多核并行版本测试")
+    print("Case 0 - 0629.py NPU多核并行版本测试")
     print("=" * 60)
 
     inputs = gen_inputs()
 
     # TileLang
-    print("\n[1] TileLang (0622 多核版)...")
+    print("\n[1] TileLang (0629 多核版)...")
     torch.npu.synchronize()
     try:
         d_qi_tl, d_ki_tl, dw_tl, loss_tl = call_tl(inputs)
