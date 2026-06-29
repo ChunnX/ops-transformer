@@ -487,14 +487,6 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     bool isNzOut = false;
 };
 
-inline int64_t CeilCommon(int64_t num1, int64_t num2)
-{
-    if (num2 == 0) {
-        return 0;
-    }
-    return (num1 + num2 - 1) / num2;
-}
-
 template <class T>
 inline auto AlignTo(const T n, const T alignSize) -> T
 {
