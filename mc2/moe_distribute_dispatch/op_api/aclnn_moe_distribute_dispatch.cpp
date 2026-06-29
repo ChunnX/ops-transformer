@@ -26,6 +26,7 @@ extern "C" {
 #endif
 
 static constexpr int32_t DISPATCH_DYNAMIC_QUANT_MODE = 2;
+static constexpr size_t DISPATCH_EXPERT_SCALES_DIM_NUM = 2;
 enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
     NNOPBASE_HCCL_SERVER_TYPE_MTE,
@@ -56,15 +57,33 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
     return true;
 }
 
+static aclnnStatus CheckExpertScales(const aclTensor* expertIds, const aclTensor* expertScales)
+{
+    if (expertScales == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    OP_CHECK_DTYPE_NOT_MATCH(expertScales, op::DataType::DT_FLOAT, return ACLNN_ERR_PARAM_INVALID);
+    if (expertScales->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Tensor expertScales expected format is ND but found %s.",
+            op::ToString(expertScales->GetStorageFormat()).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    OP_CHECK_WRONG_DIMENSION(expertScales, DISPATCH_EXPERT_SCALES_DIM_NUM, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_SHAPE_NOT_EQUAL(expertScales, expertIds, return ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
 // 入参教验
 static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
-                               const char* groupTp, int64_t quantMode, aclTensor* expandX, aclTensor* dynamicScales,
-                               aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-                               aclTensor* tpRecvCounts)
+                               const char* groupTp, int64_t quantMode, const aclTensor* expertScales,
+                               aclTensor* expandX, aclTensor* dynamicScales, aclTensor* expandIdx,
+                               aclTensor* expertTokensNums, aclTensor* epRecvCounts, aclTensor* tpRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckParams start");
     CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts),
         ACLNN_ERR_PARAM_NULLPTR);
+    auto expertScalesRet = CheckExpertScales(expertIds, expertScales);
+    CHECK_RET(expertScalesRet == ACLNN_SUCCESS, expertScalesRet);
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     if (is910B) {
         OP_LOGD("A2 platform, groupTp should be empty");
@@ -101,7 +120,7 @@ aclnnStatus MoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclT
                                                                         uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnMoeDistributeDispatchGetWorkspaceSize start");
-    auto ret_param = CheckParams(x, expertIds, groupEp, groupTp, quantMode, expandX, dynamicScales, expandIdx,
+    auto ret_param = CheckParams(x, expertIds, groupEp, groupTp, quantMode, expertScales, expandX, dynamicScales, expandIdx,
                                  expertTokensNums, epRecvCounts, tpRecvCounts);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
