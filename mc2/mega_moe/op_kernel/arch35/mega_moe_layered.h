@@ -28,6 +28,7 @@
 #include "adv_api/hcomm/hcomm.h"
 
 using namespace AscendC;
+using namespace MegaMoeImpl;
 
 namespace MegaMoeLayeredImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
