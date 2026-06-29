@@ -231,7 +231,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_); // CV_Ratio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 128U * 1024U * 1024U;     // 128: 128MB, 1024: Mb2Kb, 1024:Kb2Mb
+    param.l2Byte = 128U * 1024U * 1024U;     
     param.fdTolerance = 300;                 // 300: least block
     param.fdOn = (maskMode_ != 4);           // TODO: turn off fd for flash attn
     return true;
