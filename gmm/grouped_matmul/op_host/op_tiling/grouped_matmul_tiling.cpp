@@ -2210,9 +2210,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           }
 
           // --------------nz前处理优化------------
-          if ((a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_API_DEQUANT ||
-               a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_VECTOR_DEQUANT) &&
-              withOffset == 0) {
+          if (a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_API_DEQUANT || a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_VECTOR_DEQUANT){
             uint64_t preProcessWorkspaceSize = (uint64_t)AlignUp(m, WS_ALIGN_8) * k * sizeof(int8_t) ;
 
             tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
@@ -2225,7 +2223,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
             uint32_t isA8W4MSDPreNZ = 0;
 
             // workspace 合法, k64位对齐 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
-            if (isWorkspaceValid && k % kNZInt4Alignment  == 0) {
+            if (isWorkspaceValid && k % kNZInt4Alignment  == 0 && withOffset == 0) {
                 isA8W4MSDPreNZ = 1;
                 workspaces[0] += preProcessWorkspaceSize ;                
             }
