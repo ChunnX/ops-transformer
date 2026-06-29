@@ -42,7 +42,7 @@ x_{l+1} = H_res · x_l + H_post^T · F(H_pre · x_l, W_l)
 
 - 形状: `[num_streams]`[num_streams, num_streams]`
 - 在batch与序列维度上共享
-- 与 [tokenbender/mHC](https://github.com/tokenbender/mHC-manifold-constrained-hyper-connections源实现保持一致
+- 与 [tokenbender/mHC](https://github.com/tokenbender/mHC-manifold-constrained-hyper-connections)源实现保持一致
 
 逐样本或逐token的动态权重需要扩展接口。
 
