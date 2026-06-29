@@ -93,6 +93,7 @@ public:
             // Throw exception state for INVALID method modes
             return -1;
         }
+        this->sKv = this->tilingData_->seqLength;
 
         this->RMS_NORM_LENGTH = KERNEL_RMS_NORM_LENGTH[methodMode];
         this->ROPE_LENGTH = KERNEL_ROPE_LENGTH[methodMode];
@@ -140,6 +141,7 @@ protected:
     TQue<QuePosition::VECIN, 1> inQueueGamma;   // Quant Scale
     TQue<QuePosition::VECIN, 1> inQueueOffset;  // Quant Offset
 
+    uint64_t sKv{0};    // Sequence length of KV
     // Runtime hidden dim sizes marked by tensor component type
     uint64_t hDimK{0};
     uint64_t hDimV{0};

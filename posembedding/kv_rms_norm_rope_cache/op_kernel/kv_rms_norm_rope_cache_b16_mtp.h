@@ -36,7 +36,7 @@ public:
         // 获取常用tiling参数
         const auto& tiling = *this->tilingData_;
         this->rowsPerBlock = tiling.rowsPerBlock;
-        const uint64_t seqLen = tiling.seqLength;
+
         // V1 does not support multi-head (N>1)
         const uint64_t numHead = (methodMode == METHOD_V2) ? tiling.numHead : NUM_ONE;
         const uint64_t cacheLen = tiling.cacheLength;
@@ -45,10 +45,10 @@ public:
         const uint64_t vLen = this->V_LENGTH;
         const uint64_t blockIdx = GetBlockIdx();
 
-        const uint64_t kvRowOffset = blockIdx * this->rowsPerBlock;       // Local B
-        const uint64_t kvRowHeadOffset = kvRowOffset * numHead;     // B * N
-        const uint64_t kvTkOffset = kvRowOffset * seqLen;           // B * S
-        const uint64_t bnsOffset = kvRowHeadOffset * seqLen;        // B * N * S
+        const uint64_t kvRowOffset = blockIdx * this->rowsPerBlock;    // Local B
+        const uint64_t kvRowHeadOffset = kvRowOffset * numHead;        // B * N
+        const uint64_t kvTkOffset = kvRowOffset * this->sKv;           // B * S
+        const uint64_t bnsOffset = kvRowHeadOffset * this->sKv;        // B * N * S
 
         const uint64_t cacheElemOffset = kvRowOffset * cacheLen;
         const uint64_t cacheElemHeadOffset = kvRowOffset * cacheLen * numHead;
@@ -94,6 +94,7 @@ public:
 
         // Init pipes
         this->rmsNormElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * rmsNormLen);
+        this->halfRopeElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->ROPE_LENGTH_HALF);
         this->ropeElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * ropeLen);
         this->vElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->hDimV);
         this->kElemPerSlice = static_cast<uint32_t>(this->rowsPerBlock * this->hDimK);
@@ -128,8 +129,8 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (methodMode == 0) {
-            for (int64_t i = 0; i < this->tilingData_->seqLength; i++) {
+        if (methodMode == METHOD_V1) {
+            for (int64_t i = 0; i < this->sKv; i++) {
                 RopeK(i);
                 PipeBarrier<PIPE_V>();
                 ScatterUpdateK(i);
@@ -138,19 +139,27 @@ public:
                 PipeBarrier<PIPE_V>();
                 ScatterUpdateV(i);
             }
-        } else if (methodMode == 1) {
-            for (int64_t n = 0; n < this->tilingData_->numHead; n++) {
-                for (int64_t i = 0; i < this->tilingData_->seqLength; i++) {
+        } else if (methodMode == METHOD_V2) {
+            uint64_t interBatchEleNum = (this->tilingData_->numHead * this->sKv);
+            DataCopyExtParams copyXParams{
+                static_cast<uint16_t>(this->rowsPerBlock),
+                static_cast<uint32_t>(this->RMS_NORM_LENGTH * sizeof(KV_DTYPE)),
+                static_cast<uint32_t>(
+                    ((interBatchEleNum - 1) * this->RMS_NORM_LENGTH) * sizeof(KV_DTYPE)), 0, 0};
+            DataCopyExtParams copyYParams{
+                static_cast<uint16_t>(this->rowsPerBlock),
+                static_cast<uint32_t>(this->V_LENGTH * sizeof(KV_DTYPE)),
+                static_cast<uint32_t>(
+                    ((interBatchEleNum - 1) * this->V_LENGTH) * sizeof(KV_DTYPE)), 0, 0};
+
+            for (uint64_t n = 0; n < this->tilingData_->numHead; n++) {
+                uint64_t headOffset = n * this->sKv;
+                for (uint64_t i = 0; i < this->sKv; i++) {
                     // Process K
                     LocalTensor<KV_DTYPE> xB16Local = this->inQueueX.template AllocTensor<KV_DTYPE>();
-                    DataCopyExtParams copyXParams{
-                    static_cast<uint16_t>(this->rowsPerBlock), static_cast<uint32_t>(this->RMS_NORM_LENGTH * sizeof(KV_DTYPE)),
-                    static_cast<uint32_t>(
-                        ((this->tilingData_->seqLength - 1) * this->RMS_NORM_LENGTH +
-                        (this->tilingData_->numHead - 1) * this->tilingData_->seqLength * this->RMS_NORM_LENGTH) * sizeof(KV_DTYPE)),
-                    0, 0};
+
                     DataCopyPadExtParams<KV_DTYPE> padXParams{false, 0, 0, 0};
-                    int64_t nXOffset = n * this->tilingData_->seqLength * this->RMS_NORM_LENGTH + i * this->RMS_NORM_LENGTH;
+                    int64_t nXOffset = (headOffset + i) * this->RMS_NORM_LENGTH;
                     DataCopyPad(xB16Local, this->kvGm[nXOffset], copyXParams, padXParams);
                     this->inQueueX.EnQue(xB16Local);
                     xB16Local = this->inQueueX.template DeQue<KV_DTYPE>();
@@ -170,9 +179,9 @@ public:
                     PipeBarrier<PIPE_V>();
 
                     LocalTensor<KV_DTYPE> cosLocal = this->CosSin.template AllocTensor<KV_DTYPE>();
-                    LocalTensor<KV_DTYPE> sinLocal = cosLocal[this->rowsPerBlock * this->ROPE_LENGTH * NUM_TWO];
-                    LocalTensor<KV_DTYPE> cosLocalB16 = cosLocal[this->rowsPerBlock * this->ROPE_LENGTH];
-                    LocalTensor<KV_DTYPE> sinLocalB16 = sinLocal[this->rowsPerBlock * this->ROPE_LENGTH];
+                    LocalTensor<KV_DTYPE> sinLocal = cosLocal[this->ropeElemPerSlice * NUM_TWO];
+                    LocalTensor<KV_DTYPE> cosLocalB16 = cosLocal[this->ropeElemPerSlice];
+                    LocalTensor<KV_DTYPE> sinLocalB16 = sinLocal[this->ropeElemPerSlice];
 
                     // load cosLocal, sinLocal [this->rowsPerBlock, this->ROPE_LENGTH]
                     LocalTensor<KV_DTYPE> xLocal = this->inQueueX.template DeQue<KV_DTYPE>();
@@ -184,9 +193,9 @@ public:
                     DataCopyPad(sinLocalB16, this->sinGm[n * this->ROPE_LENGTH], copyCosSinParams, {false, 0, 0, 0});
                     this->CosSin.EnQue(cosLocal);
                     cosLocal = this->CosSin.template DeQue<KV_DTYPE>();
-                    sinLocal = cosLocal[this->rowsPerBlock * this->ROPE_LENGTH * NUM_TWO];
-                    cosLocalB16 = cosLocal[this->rowsPerBlock * this->ROPE_LENGTH];
-                    sinLocalB16 = sinLocal[this->rowsPerBlock * this->ROPE_LENGTH];
+                    sinLocal = cosLocal[this->ropeElemPerSlice * NUM_TWO];
+                    cosLocalB16 = cosLocal[this->ropeElemPerSlice];
+                    sinLocalB16 = sinLocal[this->ropeElemPerSlice];
 
                     RopeKV2<KV_DTYPE>(xLocal, xFp32Local, cosLocal, sinLocal, cosLocalB16, sinLocalB16);
                     this->CosSin.FreeTensor(cosLocal);
@@ -202,14 +211,9 @@ public:
 
                     // Process V
                     LocalTensor<KV_DTYPE> yLocal = this->inQueueV.template AllocTensor<KV_DTYPE>();
-                    DataCopyExtParams copyYParams{
-                    static_cast<uint16_t>(this->rowsPerBlock), static_cast<uint32_t>(this->V_LENGTH * sizeof(KV_DTYPE)),
-                    static_cast<uint32_t>(
-                        ((this->tilingData_->seqLength - 1) * this->V_LENGTH +
-                        (this->tilingData_->numHead - 1) * this->tilingData_->seqLength * this->V_LENGTH) * sizeof(KV_DTYPE)),
-                    0, 0};
+
                     DataCopyPadExtParams<KV_DTYPE> padYParams{false, 0, 0, 0};
-                    int64_t nYOffset = n * this->tilingData_->seqLength * this->V_LENGTH + i * this->V_LENGTH;
+                    int64_t nYOffset = (headOffset + i) * this->V_LENGTH;
                     DataCopyPad(yLocal, vGm[nYOffset], copyYParams, padYParams);
                     this->inQueueV.EnQue(yLocal);
                     yLocal = this->inQueueV.template DeQue<KV_DTYPE>();
@@ -230,44 +234,44 @@ public:
     __aicore__ inline void RopeK(int64_t seqId)
     {
         LocalTensor<KV_DTYPE> kLocal = this->inQueueX.template AllocTensor<KV_DTYPE>();
-        LocalTensor<KV_DTYPE> cosLocal = kLocal[this->rowsPerBlock * this->ROPE_LENGTH];
-        LocalTensor<KV_DTYPE> sinLocal = cosLocal[this->rowsPerBlock * this->ROPE_LENGTH * NUM_TWO];
-        LocalTensor<KV_DTYPE> cosLocalB16 = cosLocal[this->rowsPerBlock * this->ROPE_LENGTH];
-        LocalTensor<KV_DTYPE> sinLocalB16 = sinLocal[this->rowsPerBlock * this->ROPE_LENGTH];
+        LocalTensor<KV_DTYPE> cosLocal = kLocal[this->ropeElemPerSlice];
+        LocalTensor<KV_DTYPE> sinLocal = cosLocal[this->ropeElemPerSlice * NUM_TWO];
+        LocalTensor<KV_DTYPE> cosLocalB16 = cosLocal[this->ropeElemPerSlice];
+        LocalTensor<KV_DTYPE> sinLocalB16 = sinLocal[this->ropeElemPerSlice];
 
         // load kLocal [this->rowsPerBlock, this->ROPE_LENGTH]
         DataCopyExtParams copyParams{
             static_cast<uint16_t>(this->rowsPerBlock), static_cast<uint32_t>(this->ROPE_LENGTH * sizeof(KV_DTYPE)),
             static_cast<uint32_t>(
                 this->RMS_NORM_LENGTH * sizeof(KV_DTYPE) +
-                (this->tilingData_->seqLength - 1) * (this->RMS_NORM_LENGTH + this->ROPE_LENGTH) * sizeof(KV_DTYPE)),
+                (this->sKv - 1) * (this->RMS_NORM_LENGTH + this->ROPE_LENGTH) * sizeof(KV_DTYPE)),
             0, 0};
         DataCopyPadExtParams<KV_DTYPE> padParams{false, 0, 0, 0};
         DataCopyPad(kLocal, this->kvGm[seqId * (this->RMS_NORM_LENGTH + this->ROPE_LENGTH) + this->RMS_NORM_LENGTH], copyParams, padParams);
 
         // load cosLocal, sinLocal [this->rowsPerBlock, this->ROPE_LENGTH]
-        DataCopy(cosLocalB16, this->cosGm, this->rowsPerBlock * this->ROPE_LENGTH);
-        DataCopy(sinLocalB16, this->sinGm, this->rowsPerBlock * this->ROPE_LENGTH);
+        DataCopy(cosLocalB16, this->cosGm, this->ropeElemPerSlice);
+        DataCopy(sinLocalB16, this->sinGm, this->ropeElemPerSlice);
         this->inQueueX.EnQue(kLocal);
         kLocal = this->inQueueX.template DeQue<KV_DTYPE>();
-        cosLocal = kLocal[this->rowsPerBlock * this->ROPE_LENGTH];
-        sinLocal = cosLocal[this->rowsPerBlock * this->ROPE_LENGTH * NUM_TWO];
-        cosLocalB16 = cosLocal[this->rowsPerBlock * this->ROPE_LENGTH];
-        sinLocalB16 = sinLocal[this->rowsPerBlock * this->ROPE_LENGTH];
+        cosLocal = kLocal[this->ropeElemPerSlice];
+        sinLocal = cosLocal[this->ropeElemPerSlice * NUM_TWO];
+        cosLocalB16 = cosLocal[this->ropeElemPerSlice];
+        sinLocalB16 = sinLocal[this->ropeElemPerSlice];
 
         // realLocal, imagLocal comes from odd/even elements in kLocal
         LocalTensor<KV_DTYPE> k = this->bufferXFp32.template Get<KV_DTYPE>();
         LocalTensor<KV_DTYPE> realLocal = k[0];
-        LocalTensor<KV_DTYPE> imagLocal = realLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF * NUM_TWO];
-        LocalTensor<KV_DTYPE> buf_ = imagLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF * NUM_TWO];
-        LocalTensor<KV_DTYPE> realLocalB16 = realLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF];
-        LocalTensor<KV_DTYPE> imagLocalB16 = imagLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF];
+        LocalTensor<KV_DTYPE> imagLocal = realLocal[this->halfRopeElemPerSlice * NUM_TWO];
+        LocalTensor<KV_DTYPE> buf_ = imagLocal[this->halfRopeElemPerSlice * NUM_TWO];
+        LocalTensor<KV_DTYPE> realLocalB16 = realLocal[this->halfRopeElemPerSlice];
+        LocalTensor<KV_DTYPE> imagLocalB16 = imagLocal[this->halfRopeElemPerSlice];
 
         uint64_t rsvdCnt = 0;
         GatherMask(
-            realLocalB16, kLocal, 1, true, this->rowsPerBlock * this->ROPE_LENGTH, {1, 1, NUM_EIGHT, 0}, rsvdCnt);
+            realLocalB16, kLocal, 1, true, this->ropeElemPerSlice, {1, 1, NUM_EIGHT, 0}, rsvdCnt);
         GatherMask(
-            imagLocalB16, kLocal, NUM_TWO, true, this->rowsPerBlock * this->ROPE_LENGTH, {1, 1, NUM_EIGHT, 0},
+            imagLocalB16, kLocal, NUM_TWO, true, this->ropeElemPerSlice, {1, 1, NUM_EIGHT, 0},
             rsvdCnt);
         PipeBarrier<PIPE_V>();
 
@@ -276,10 +280,10 @@ public:
         LocalTensor<float> cosLocalFp32 = cosLocal.template ReinterpretCast<float>();
         LocalTensor<float> sinLocalFp32 = sinLocal.template ReinterpretCast<float>();
 
-        Cast(realLocalFp32, realLocalB16, RoundMode::CAST_NONE, this->rowsPerBlock * this->ROPE_LENGTH_HALF);
-        Cast(imagLocalFp32, imagLocalB16, RoundMode::CAST_NONE, this->rowsPerBlock * this->ROPE_LENGTH_HALF);
-        Cast(cosLocalFp32, cosLocalB16, RoundMode::CAST_NONE, this->rowsPerBlock * this->ROPE_LENGTH);
-        Cast(sinLocalFp32, sinLocalB16, RoundMode::CAST_NONE, this->rowsPerBlock * this->ROPE_LENGTH);
+        Cast(realLocalFp32, realLocalB16, RoundMode::CAST_NONE, this->halfRopeElemPerSlice);
+        Cast(imagLocalFp32, imagLocalB16, RoundMode::CAST_NONE, this->halfRopeElemPerSlice);
+        Cast(cosLocalFp32, cosLocalB16, RoundMode::CAST_NONE, this->ropeElemPerSlice);
+        Cast(sinLocalFp32, sinLocalB16, RoundMode::CAST_NONE, this->ropeElemPerSlice);
         PipeBarrier<PIPE_V>();
 
         uint64_t mask[NUM_TWO] = {MASK_CONFIG, 0}; // mask this->ROPE_LENGTH_HALF Elements
@@ -291,7 +295,7 @@ public:
             this->rowsPerBlock, {1, 1, 1, NUM_EIGHT, NUM_FOUR, NUM_EIGHT});
         PipeBarrier<PIPE_V>();
 
-        Muls<float>(imagLocalFp32, imagLocalFp32, -1.0f, this->rowsPerBlock * this->ROPE_LENGTH_HALF);
+        Muls<float>(imagLocalFp32, imagLocalFp32, -1.0f, this->halfRopeElemPerSlice);
         PipeBarrier<PIPE_V>();
         LocalTensor<float> bufFp32 = buf_.template ReinterpretCast<float>();
 
@@ -303,13 +307,13 @@ public:
         PipeBarrier<PIPE_V>();
         this->inQueueX.FreeTensor(kLocal);
 
-        Add(outLocalFp32, outLocalFp32, bufFp32, this->rowsPerBlock * this->ROPE_LENGTH);
+        Add(outLocalFp32, outLocalFp32, bufFp32, this->ropeElemPerSlice);
         PipeBarrier<PIPE_V>();
 
         if constexpr (std::is_same<KV_DTYPE, bfloat16_t>::value) {
-            Cast(outLocal, outLocalFp32, RoundMode::CAST_RINT, this->rowsPerBlock * this->ROPE_LENGTH);
+            Cast(outLocal, outLocalFp32, RoundMode::CAST_RINT, this->ropeElemPerSlice);
         } else if constexpr (std::is_same<KV_DTYPE, half>::value) {
-            Cast(outLocal, outLocalFp32, RoundMode::CAST_NONE, this->rowsPerBlock * this->ROPE_LENGTH);
+            Cast(outLocal, outLocalFp32, RoundMode::CAST_NONE, this->ropeElemPerSlice);
         }
 
         this->outQueueK.EnQue(outLocal);
@@ -323,11 +327,11 @@ public:
         // realLocal, imagLocal comes from odd/even elements in kLocal
         LocalTensor<KV_DTYPE> k = this->bufferXSquare.template Get<KV_DTYPE>();
         LocalTensor<KV_DTYPE> realLocal = k[0];
-        LocalTensor<KV_DTYPE> imagLocal = realLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF * NUM_TWO];
-        LocalTensor<KV_DTYPE> buf_ = imagLocal[this->rowsPerBlock * this->ROPE_LENGTH_HALF * NUM_TWO];
+        LocalTensor<KV_DTYPE> imagLocal = realLocal[this->halfRopeElemPerSlice * NUM_TWO];
+        LocalTensor<KV_DTYPE> buf_ = imagLocal[this->halfRopeElemPerSlice * NUM_TWO];
         // Split the tail block of bufferXSquare[b*192] as rope result buffer in [b*64]
         // this ONLY works under V2 scenario.
-        LocalTensor<KV_DTYPE> outLocal = buf_[this->rowsPerBlock * this->ROPE_LENGTH * NUM_TWO];
+        LocalTensor<KV_DTYPE> outLocal = buf_[this->ropeElemPerSlice * NUM_TWO];
 
         LocalTensor<float> realLocalFp32 = realLocal.template ReinterpretCast<float>();
         LocalTensor<float> imagLocalFp32 = imagLocal.template ReinterpretCast<float>();
@@ -347,8 +351,8 @@ public:
             rsvdCnt); // Pick Odd (x2)
         PipeBarrier<PIPE_V>();
 
-        Cast(cosLocalFp32, cosLocalB16, RoundMode::CAST_NONE, this->rowsPerBlock * this->ROPE_LENGTH);
-        Cast(sinLocalFp32, sinLocalB16, RoundMode::CAST_NONE, this->rowsPerBlock * this->ROPE_LENGTH);
+        Cast(cosLocalFp32, cosLocalB16, RoundMode::CAST_NONE, this->ropeElemPerSlice);
+        Cast(sinLocalFp32, sinLocalB16, RoundMode::CAST_NONE, this->ropeElemPerSlice);
         PipeBarrier<PIPE_V>();
 
         uint64_t mask[NUM_TWO] = {MASK_CONFIG, 0}; // mask this->ROPE_LENGTH_HALF Elements
@@ -359,17 +363,18 @@ public:
             this->rowsPerBlock, {1, 1, 1, NUM_EIGHT, NUM_FOUR, NUM_EIGHT});
         PipeBarrier<PIPE_V>();
 
-        Muls<float>(imagLocalFp32, imagLocalFp32, -1.0f, this->rowsPerBlock * this->ROPE_LENGTH_HALF);
+        Muls<float>(imagLocalFp32, imagLocalFp32, -1.0f, this->halfRopeElemPerSlice);
         PipeBarrier<PIPE_V>();
         LocalTensor<float> bufFp32 = buf_.template ReinterpretCast<float>();
 
         Mul(bufFp32, imagLocalFp32, sinLocalFp32, mask, this->rowsPerBlock,
             {1, 1, 1, NUM_EIGHT, NUM_FOUR, NUM_EIGHT});
-        Mul(bufFp32[this->ROPE_LENGTH_HALF], realLocalFp32, sinLocalFp32[this->ROPE_LENGTH_HALF], mask, this->rowsPerBlock,
+        Mul(bufFp32[this->ROPE_LENGTH_HALF], realLocalFp32, sinLocalFp32[this->ROPE_LENGTH_HALF],
+            mask, this->rowsPerBlock,
             {1, 1, 1, NUM_EIGHT, NUM_FOUR, NUM_EIGHT});
         PipeBarrier<PIPE_V>();
 
-        Add(outLocalFp32, outLocalFp32, bufFp32, this->rowsPerBlock * this->ROPE_LENGTH);
+        Add(outLocalFp32, outLocalFp32, bufFp32, this->ropeElemPerSlice);
         PipeBarrier<PIPE_V>();
 
         // Overwrite the head 64 elements in each batch with rope result
@@ -392,7 +397,7 @@ public:
             static_cast<uint16_t>(this->rowsPerBlock), static_cast<uint32_t>(this->RMS_NORM_LENGTH * sizeof(KV_DTYPE)),
             static_cast<uint32_t>(
                 this->ROPE_LENGTH * sizeof(KV_DTYPE) +
-                (this->tilingData_->seqLength - 1) * (this->RMS_NORM_LENGTH + this->ROPE_LENGTH) * sizeof(KV_DTYPE)),
+                (this->sKv - 1) * (this->RMS_NORM_LENGTH + this->ROPE_LENGTH) * sizeof(KV_DTYPE)),
             0, 0};
         DataCopyPadExtParams<KV_DTYPE> padParams{false, 0, 0, 0};
         DataCopyPad(xB16Local, this->kvGm[seqId * (this->RMS_NORM_LENGTH + this->ROPE_LENGTH)], copyParams, padParams);
@@ -559,8 +564,8 @@ public:
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(this->ROPE_LENGTH * sizeof(KV_DTYPE)), 0, 0, 0};
         for (int64_t i = 0; i < this->rowsPerBlock; ++i) {
             if constexpr (isPagedAttention) {
-                int64_t tokenId = GetBlockIdx() * this->rowsPerBlock * this->tilingData_->seqLength +
-                                  i * this->tilingData_->seqLength + seqId;
+                int64_t tokenId = GetBlockIdx() * this->rowsPerBlock * this->sKv +
+                                  i * this->sKv + seqId;
                 int64_t offset = this->indexGm(tokenId);
                 PipeBarrier<PIPE_ALL>();
                 if (offset < 0) {
@@ -568,7 +573,7 @@ public:
                 }
                 DataCopyPad(this->kCacheGm[offset * this->ROPE_LENGTH], outLocal[i * this->ROPE_LENGTH], copyParams);
             } else {
-                int64_t offset = this->indexGm(i * this->tilingData_->seqLength + seqId);
+                int64_t offset = this->indexGm(i * this->sKv + seqId);
                 PipeBarrier<PIPE_ALL>();
                 if (offset < 0) {
                     continue;
@@ -587,8 +592,8 @@ public:
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(this->RMS_NORM_LENGTH * sizeof(KV_DTYPE)), 0, 0, 0};
         for (int64_t i = 0; i < this->rowsPerBlock; ++i) {
             if constexpr (isPagedAttention) {
-                int64_t tokenId = GetBlockIdx() * this->rowsPerBlock * this->tilingData_->seqLength +
-                                  i * this->tilingData_->seqLength + seqId;
+                int64_t tokenId = GetBlockIdx() * this->rowsPerBlock * this->sKv +
+                                  i * this->sKv + seqId;
                 int64_t offset = this->indexGm(tokenId);
                 PipeBarrier<PIPE_ALL>();
                 if (offset < 0) {
@@ -596,7 +601,7 @@ public:
                 }
                 DataCopyPad(this->vCacheGm[offset * this->RMS_NORM_LENGTH], outLocal[i * this->RMS_NORM_LENGTH], copyParams);
             } else {
-                int64_t offset = this->indexGm(i * this->tilingData_->seqLength + seqId);
+                int64_t offset = this->indexGm(i * this->sKv + seqId);
                 PipeBarrier<PIPE_ALL>();
                 if (offset < 0) {
                     continue;
@@ -616,8 +621,8 @@ public:
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(kvLength * sizeof(KV_DTYPE)), 0, 0, 0};
         for (int64_t i = 0; i < this->rowsPerBlock; ++i) {
             if constexpr (isPagedAttention) {
-                int64_t tokenId = GetBlockIdx() * this->rowsPerBlock * this->tilingData_->seqLength +
-                                    i * this->tilingData_->seqLength + seqId;
+                int64_t tokenId = GetBlockIdx() * this->rowsPerBlock * this->sKv +
+                                    i * this->sKv + seqId;
                 int64_t offset = this->indexGm(tokenId);
                 PipeBarrier<PIPE_ALL>();
                 if (offset < 0) {
@@ -626,7 +631,7 @@ public:
                 int64_t dstOffset = offset * this->tilingData_->numHead * kvLength + nIdx * kvLength;
                 DataCopyPad(dst[dstOffset], outLocal[i * kvLength], copyParams);
             } else {
-                int64_t offset = this->indexGm(i * this->tilingData_->seqLength + seqId);
+                int64_t offset = this->indexGm(i * this->sKv + seqId);
                 PipeBarrier<PIPE_ALL>();
                 if (offset < 0) {
                     continue;
@@ -642,7 +647,7 @@ public:
 
 private:
     #if _KV_RNRC_UNLEASH_D_SIZE
-        int64_t ROPE_LENGTH_HALF{32};
+        uint64_t ROPE_LENGTH_HALF{32};
     #else
         constexpr static int64_t ROPE_LENGTH_HALF = 32;
     #endif
@@ -656,6 +661,7 @@ private:
 
     uint32_t rowsPerBlock{0};
     uint32_t rmsNormElemPerSlice{0};    // rmsNorm elements operated in a single process flow
+    uint32_t halfRopeElemPerSlice{0};
     uint32_t ropeElemPerSlice{0};       // rope elements operated in a single process flow
     uint32_t kElemPerSlice{0};          // k cache elements written out per MTE call
     uint32_t vElemPerSlice{0};          // v cache elements written out per MTE call
