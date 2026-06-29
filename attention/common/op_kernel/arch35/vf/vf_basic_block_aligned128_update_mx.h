@@ -47,15 +47,18 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
     RegTensor<float> vreg_subloop_update;
     RegTensor<float> vreg_pre_loop_max;
     RegTensor<float> vreg_zero;
+    // SUM
     RegTensor<float> vreg_exp_sum;
     RegTensor<float> vreg_in_max;
     RegTensor<float> vreg_max;
     RegTensor<float> vreg_max_new;
+    // EXP相关
     RegTensor<float> vreg_in_exp_sum;
     RegTensor<float> vreg_exp_sum_brc;
     RegTensor<float> vreg_pre_sum;
     RegTensor<float> vreg_exp_even;
     RegTensor<float> vreg_exp_odd;
+    // 位置编码 PSE
     RegTensor<float> vreg_pse;
     RegTensor<float> vreg_pse_unroll;
     RegTensor<float> vreg_alibi;
@@ -65,13 +68,6 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
     RegTensor<float> vreg_rowmax_p;
     RegTensor<float> vreg_scale_qk;
     RegTensor<float> vreg_sink_input;
-    // bfloat16_t
-    RegTensor<bfloat16_t> vreg_exp_even_bf16;
-    RegTensor<bfloat16_t> vreg_exp_odd_bf16;
-    RegTensor<bfloat16_t> vreg_exp_bf16;
-    RegTensor<bfloat16_t> vreg_pse_bf16_src;
-    RegTensor<bfloat16_t> vreg_pse_bf16;
-    RegTensor<bfloat16_t> vreg_pse_bf16_unroll;
     // half
     RegTensor<half> vreg_exp_even_f16;
     RegTensor<half> vreg_exp_odd_f16;
@@ -79,6 +75,13 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
     RegTensor<half> vreg_pse_f16_src;
     RegTensor<half> vreg_pse_f16;
     RegTensor<half> vreg_pse_f16_unroll;
+    // bfloat16_t
+    RegTensor<bfloat16_t> vreg_exp_even_bf16;
+    RegTensor<bfloat16_t> vreg_exp_odd_bf16;
+    RegTensor<bfloat16_t> vreg_exp_bf16;
+    RegTensor<bfloat16_t> vreg_pse_bf16_src;
+    RegTensor<bfloat16_t> vreg_pse_bf16;
+    RegTensor<bfloat16_t> vreg_pse_bf16_unroll;
     // mxfp8
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
 
@@ -96,7 +99,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
     MaskReg preg4;
     MaskReg preg5;
     MaskReg preg6;
-    // pScale
+    // pScale计算
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
@@ -104,6 +107,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }
+    // MASK 相关
     if constexpr (hasAtten == 1) {
         Duplicate(vreg_min, minValue);
         if constexpr (isMlaSgd) {
@@ -117,12 +121,10 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
         Arange(vreg_alibi, posShift);
         Arange(vreg_alibi_unroll, posShift + 64);
     }
-    // x_max = max(src, axis=-1, keepdims=True); x_max = Max(x_max, inMax)
-
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
         LoadAlign(vreg_input_x_unroll, srcUb + floatRepSize + i * s2BaseSize);
-
+        // PSE模式
         if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
             Muls(vreg_input_x, vreg_input_x, dScale, preg_all); // Muls(scale)
             Muls(vreg_input_x_unroll, vreg_input_x_unroll, dScale, preg_all);
@@ -135,7 +137,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
         }
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                          pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+                          pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {  // inner
                 Abs(vreg_pse, vreg_alibi, preg_all);
                 Abs(vreg_pse_unroll, vreg_alibi_unroll, preg_all);
                 if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
@@ -146,7 +148,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
                 Muls(vreg_pse_unroll, vreg_pse_unroll, slopes, preg_all);
                 Adds(vreg_alibi, vreg_alibi, -1.0f, preg_all);
                 Adds(vreg_alibi_unroll, vreg_alibi_unroll, -1.0f, preg_all);
-            } else {
+            } else {    // outer
                 if constexpr (IsSameType<pseShiftType, float>::value) {
                     LoadAlign(vreg_pse, pseUb + i * pseStride);
                     LoadAlign(vreg_pse_unroll, pseUb + i * pseStride + (s2BaseSize >> 1));
@@ -188,8 +190,8 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop0(
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max,
                                                                                               vreg_max_tmp, preg_all);
         } else {
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x,
-                                                              preg_all);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize,
+                                                              vreg_input_x, preg_all);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize,
                                                               vreg_input_x_unroll, preg_all);
             Max(vreg_max_tmp, vreg_input_x, vreg_input_x_unroll, preg_all);
@@ -386,6 +388,12 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
     RegTensor<float> vreg_sel_unroll;
     RegTensor<float> vreg_input_x;
     RegTensor<float> vreg_input_x_unroll;
+    // 位置编码
+    RegTensor<float> vreg_pse;
+    RegTensor<float> vreg_pse_unroll;
+    RegTensor<float> vreg_alibi;
+    RegTensor<float> vreg_alibi_unroll;
+    // MAX SUM
     RegTensor<float> vreg_max_tmp;
     RegTensor<float> vreg_input_max;
     RegTensor<float> vreg_exp_max;
@@ -401,10 +409,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
     RegTensor<float> vreg_pre_sum;
     RegTensor<float> vreg_exp_even;
     RegTensor<float> vreg_exp_odd;
-    RegTensor<float> vreg_pse;
-    RegTensor<float> vreg_pse_unroll;
-    RegTensor<float> vreg_alibi;
-    RegTensor<float> vreg_alibi_unroll;
+
     RegTensor<float> vreg_sel_drop;
     RegTensor<float> vreg_sel_drop2;
     RegTensor<float> vreg_rowmax_p;
@@ -417,13 +422,6 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
     RegTensor<bfloat16_t> vreg_pse_bf16_src;
     RegTensor<bfloat16_t> vreg_pse_bf16;
     RegTensor<bfloat16_t> vreg_pse_bf16_unroll;
-    // half
-    RegTensor<half> vreg_exp_even_f16;
-    RegTensor<half> vreg_exp_odd_f16;
-    RegTensor<half> vreg_exp_f16;
-    RegTensor<half> vreg_pse_f16_src;
-    RegTensor<half> vreg_pse_f16;
-    RegTensor<half> vreg_pse_f16_unroll;
     // mxfp8
     RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
     RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
@@ -431,6 +429,13 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_pad;
+    // half
+    RegTensor<half> vreg_exp_even_f16;
+    RegTensor<half> vreg_exp_odd_f16;
+    RegTensor<half> vreg_exp_f16;
+    RegTensor<half> vreg_pse_f16_src;
+    RegTensor<half> vreg_pse_f16;
+    RegTensor<half> vreg_pse_f16_unroll;
 
     UnalignRegForStore ureg_max;
     UnalignRegForStore ureg_exp_sum;
@@ -449,7 +454,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
     MaskReg preg4;
     MaskReg preg5;
     MaskReg preg6;
-    // pScale
+    // PScale相关
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
@@ -457,6 +462,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }
+    // mask 相关
     if constexpr (hasAtten == 1) {
         Duplicate(vreg_min, minValue);
         if constexpr (isMlaSgd) {
@@ -465,30 +471,29 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
                                                                        ((__ubuf__ uint32_t *)(maskUbUnroll)));
         }
     }
+    // PSE
     if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
                   pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
         Arange(vreg_alibi, posShift);
         Arange(vreg_alibi_unroll, posShift + 64);
     }
-    // x_max = max(src, axis=-1, keepdims=True); x_max = Max(x_max, inMax)
-
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
         LoadAlign(vreg_input_x_unroll, srcUb + floatRepSize + i * s2BaseSize);
-
+        // pse模式
         if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
             Muls(vreg_input_x, vreg_input_x, dScale, preg_all); // Muls(scale)
             Muls(vreg_input_x_unroll, vreg_input_x_unroll, dScale, preg_all);
         } else {
             if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                           IsSameType<T2, hifloat8_t>::value) {
-                Muls(vreg_input_x, vreg_input_x, dScaleQK, preg_all); // Muls(dScaleQK)
+                Muls(vreg_input_x, vreg_input_x, dScaleQK, preg_all);
                 Muls(vreg_input_x_unroll, vreg_input_x_unroll, dScaleQK, preg_all);
             }
         }
         if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
             if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                          pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
+                          pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {  // INNER
                 Abs(vreg_pse, vreg_alibi, preg_all);
                 Abs(vreg_pse_unroll, vreg_alibi_unroll, preg_all);
                 if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
@@ -499,7 +504,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
                 Muls(vreg_pse_unroll, vreg_pse_unroll, slopes, preg_all);
                 Adds(vreg_alibi, vreg_alibi, -1.0f, preg_all);
                 Adds(vreg_alibi_unroll, vreg_alibi_unroll, -1.0f, preg_all);
-            } else {
+            } else {    // OUTER
                 if constexpr (IsSameType<pseShiftType, float>::value) {
                     LoadAlign(vreg_pse, pseUb + i * pseStride);
                     LoadAlign(vreg_pse_unroll, pseUb + i * pseStride + (s2BaseSize >> 1));
@@ -522,9 +527,8 @@ __simd_vf__ void ProcessVec1UpdateImpl128Mxfp8FullquantVFSubloop1(
             Muls(vreg_input_x, vreg_input_x, scale, preg_all); // Muls(scale)
             Muls(vreg_input_x_unroll, vreg_input_x_unroll, scale, preg_all);
         }
-
+        // atten mask
         if constexpr (hasAtten == 1) {
-            // atten mask
             if constexpr (!isMlaSgd) {
                 LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_DS>(
                     preg_compare, (__ubuf__ uint32_t *&)maskUb, s2BaseSize);
