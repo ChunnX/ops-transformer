@@ -277,7 +277,7 @@ public:
                       GM_FORMAT == GmFormat::TND) {
             ProcessContinuousOrTensorlist(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::PA_BnBsND || GM_FORMAT == GmFormat::PA_BnNBsD ||
-                             GM_FORMAT == GmFormat::PA_NZ) {
+                             GM_FORMAT == GmFormat::PA_NZ || GM_FORMAT == GmFormat::PA_BnNBsD_KS) {
             ProcessPageAttention(dstTensor, srcTensor, gmCoord);
         }
     }

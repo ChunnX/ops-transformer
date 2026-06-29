@@ -66,11 +66,11 @@ int64_t GetQueryBatchSizeLiV2(int64_t batchSize, const aclTensor *cuSeqlensQOpti
     }
     // 2. 如果sequsedQOptional 没传，使用cuSeqlensQOptional获取BatchSize
     if (strcmp(layoutQOptional, "TND") == 0) {
-        if (IsTensorExistLiV2(cuSeqlensQOptional)) {
+        if (IsTensorExistLiV2(cuSeqlensQOptional)) { // 前序校验已保证layout_q = TND时，cu_seqlens_q必须传入，此通路必达
             return cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 如果不是 TND，或者 cuSeqlensQOptional 为空，使用batchSize
+    // 3. 使用batchSize
     return batchSize;
 }
 
@@ -83,11 +83,11 @@ int64_t GetKeyBatchSizeLiV2(int64_t batchSize, const aclTensor *cuSeqlensKOption
     }
     // 如果是 TND，必须使用 cuSeqlensKOptional获取BatchSize
     if (strcmp(layoutKOptional, "TND") == 0) {
-        if (IsTensorExistLiV2(cuSeqlensKOptional)) {
+        if (IsTensorExistLiV2(cuSeqlensKOptional)) { // 前序校验已保证layout_k = TND时，cu_seqlens_k必须传入，此通路必达
             return cuSeqlensKOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 如果不是 TND，或者 cuSeqlensKOptional 为空，使用batchSize
+    // 3. 使用batchSize
     return batchSize;
 }
 
@@ -104,7 +104,7 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
         "num_heads_kv should only be 1, but got %lld", numHeadsK);
     // topk 校验
     CHECK_COND(topk >= LI_V2_TOPK_LOWER_BOUND && topk <= LI_V2_TOPK_UPPER_BOUND, ACLNN_ERR_PARAM_INVALID,
-        "topk should not be [%lld, %lld], but got %lld", LI_V2_TOPK_LOWER_BOUND, LI_V2_TOPK_UPPER_BOUND, topk);
+        "topk should be [%lld, %lld], but got %lld", LI_V2_TOPK_LOWER_BOUND, LI_V2_TOPK_UPPER_BOUND, topk);
     // batch_size 非负校验
     CHECK_COND(batchSize >= 0, ACLNN_ERR_PARAM_INVALID,
         "batch_size should not be negative, but got %lld", batchSize);
@@ -139,10 +139,10 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
     // 核心数校验
     CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
     CHECK_COND(aicCoreNum <= optiling::AIC_CORE_MAX_NUM, ACLNN_ERR_PARAM_INVALID,
-        "The maximum supported AIC num is %u., but got %u", optiling::AIC_CORE_MAX_NUM, aicCoreNum);
+        "The maximum supported AIC num is %u, but got %u", optiling::AIC_CORE_MAX_NUM, aicCoreNum);
     CHECK_COND(aivCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIV num should be larger than 0, but got %u", aivCoreNum);
     CHECK_COND(aivCoreNum <= optiling::AIV_CORE_MAX_NUM, ACLNN_ERR_PARAM_INVALID,
-        "The maximum supported AIV num is %u., but got %u", optiling::AIV_CORE_MAX_NUM, aivCoreNum);
+        "The maximum supported AIV num is %u, but got %u", optiling::AIV_CORE_MAX_NUM, aivCoreNum);
     return ACLNN_SUCCESS;
 }
 

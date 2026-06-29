@@ -320,19 +320,19 @@ void QSFAMlaTiling::CalcInnerSize(uint32_t qsfaS2Size)
     if (sInnerSize_ > qsfaS2Size) {
         sInnerSize_ = qsfaS2Size;
     }
-    sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
-
+    sInnerSizeAlign_ =
+        Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
     CheckUbSpace();
 }
 
 void QSFAMlaTiling::SplitBalanced()
 {
     CalcInnerSize(qsfaInfo_->s2Size);
-
     InnerSplitParams qsfaInnerSplitParams;
     qsfaInnerSplitParams.s1GBaseSize = qsfaInfo_->gSize;
-    qsfaInnerSplitParams.s2BaseSize = sInnerSize_;
     tilingData_.innerSplitParams.set_mBaseSize(qsfaInnerSplitParams.s1GBaseSize);
+
+    qsfaInnerSplitParams.s2BaseSize = sInnerSize_;
     tilingData_.innerSplitParams.set_s2BaseSize(qsfaInnerSplitParams.s2BaseSize);
 
     usedCoreNum_ = aicNum_;
@@ -725,8 +725,10 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseMode() const
 
 ge::graphStatus QSFATilingCheck::CheckSingleParaSparseBlockSize() const
 {
-    OP_CHECK_IF(((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
-        (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) & static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_2201) &&
+        ((*opParamInfo_.sparseBlockSize <= 0 || *opParamInfo_.sparseBlockSize > 16) ||
+        (static_cast<uint64_t>(*opParamInfo_.sparseBlockSize) &
+         static_cast<uint64_t>(*opParamInfo_.sparseBlockSize - 1L)) != 0UL),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
             std::to_string(*opParamInfo_.sparseBlockSize).c_str(),
             "sparseBlockSize must be in range [1, 16] and be a power of 2."),
@@ -760,7 +762,8 @@ ge::graphStatus QSFATilingCheck::CheckSinglePara() const
 ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
 {
     if (quantScaleRepoMode_ == 1) {
-        OP_CHECK_IF((opParamInfo_.keyDequantScale.tensor == nullptr || opParamInfo_.valueDequantScale.tensor == nullptr),
+        OP_CHECK_IF((opParamInfo_.keyDequantScale.tensor == nullptr ||
+                     opParamInfo_.valueDequantScale.tensor == nullptr),
             OP_LOGE_WITH_INVALID_INPUT(opName_, "key_dequant_scale and value_dequant_scale"),
             return ge::GRAPH_FAILED);
     }
@@ -828,7 +831,7 @@ ge::graphStatus QSFATilingCheck::CheckParaExistence()
 }
 
 static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-    const QSFALayout &layout, const std::string &name, const char *opName)
+    const std::string &name, const char *opName)
 {
     if (tensor == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName, name.c_str());
@@ -988,6 +991,9 @@ ge::graphStatus QSFATilingCheck::CheckKV()
 
 ge::graphStatus QSFATilingCheck::CheckActualSeqLensQ()
 {
+    if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (ge::GRAPH_SUCCESS != CheckActualSeqLensQDType() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQShape()) {
         return ge::GRAPH_FAILED;
@@ -997,10 +1003,6 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQ()
 
 ge::graphStatus QSFATilingCheck::CheckActualSeqLensQDType()
 {
-    if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-
     if (opParamInfo_.actualSeqLengthsQ.desc == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengthsQ's dtype");
         return ge::GRAPH_FAILED;
@@ -1018,12 +1020,9 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQDType()
 
 ge::graphStatus QSFATilingCheck::CheckActualSeqLensQShape()
 {
-    if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
     uint32_t qsfaShapeSize = 0;
     if (GetActualSeqLenSize(qsfaShapeSize, opParamInfo_.actualSeqLengthsQ.tensor,
-        qLayout_, "actualSeqLengthsQ", opName_) != ge::GRAPH_SUCCESS) {
+        "actualSeqLengthsQ", opName_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (qsfaShapeSize != bSize_) {
@@ -1068,7 +1067,7 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensShape()
     }
     uint32_t qsfaShapeSizeKv = 0;
     if (GetActualSeqLenSize(qsfaShapeSizeKv, opParamInfo_.actualSeqLengths.tensor,
-        kvLayout_, "actualSeqLengths", opName_) != ge::GRAPH_SUCCESS) {
+        "actualSeqLengths", opName_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (qsfaShapeSizeKv != bSize_) {
@@ -1439,9 +1438,11 @@ ge::graphStatus QSFAInfoParser::CheckRequiredInOutExistence() const
     OP_CHECK_IF(opParamInfo_.sparseIndices.desc == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor sparseIndices"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1474,7 +1475,7 @@ ge::graphStatus QSFAInfoParser::CheckRequiredParaExistence() const
 
 ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
-    return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, qLayout_, "actualSeqLengthsQ", opName_);
+    return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, "actualSeqLengthsQ", opName_);
 }
 
 ge::graphStatus QSFAInfoParser::GetOpName()
@@ -1668,7 +1669,7 @@ ge::graphStatus QSFAInfoParser::GetKvLayout()
         kvLayout_ = it->second;
     } else {
         OP_LOGE_FOR_INVALID_FORMAT(opName_, "KV",
-            QSFALayoutToSerialString(kvLayout_).c_str(), "BSND or PA_BSND or TND");
+            layout.c_str(), "BSND or PA_BSND or TND");
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ != QSFALayout::PA_BSND && qLayout_ != kvLayout_) {
@@ -1720,16 +1721,16 @@ ge::graphStatus QSFAInfoParser::GetMaxBlockNumPerBatch()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAInfoParser::GetBlockSize()
-{
-    blockSize_ = GetAxisNum(keyShape_, QSFAAxis::Bs, kvLayout_);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus QSFAInfoParser::GetSparseBlockCount()
 {
     sparseBlockCount_ = GetAxisNum(sparseIndicesShape_, QSFAAxis::K, qLayout_);
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFAInfoParser::GetBlockSize()
+{
+    blockSize_ = GetAxisNum(keyShape_, QSFAAxis::Bs, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1835,6 +1836,27 @@ ge::graphStatus QSFAInfoParser::GetActualseqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QSFAInfoParser::GetShapeAndSizeInfo()
+{
+    SetQSFAShape();
+    if (ge::GRAPH_SUCCESS != GetN1Size() ||
+        ge::GRAPH_SUCCESS != GetN2Size() ||
+        ge::GRAPH_SUCCESS != GetGSize() ||
+        ge::GRAPH_SUCCESS != GetBatchSize() ||
+        ge::GRAPH_SUCCESS != GetQTSize() ||
+        ge::GRAPH_SUCCESS != GetKVTSize() ||
+        ge::GRAPH_SUCCESS != GetS1Size() ||
+        ge::GRAPH_SUCCESS != GetQHeadDim() ||
+        ge::GRAPH_SUCCESS != GetKHeadDim() ||
+        ge::GRAPH_SUCCESS != GetS2Size() ||
+        ge::GRAPH_SUCCESS != GetValueHeadDim() ||
+        ge::GRAPH_SUCCESS != GetDSizeKV() ||
+        ge::GRAPH_SUCCESS != GetSparseBlockCount()) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
 {
     qsfaInfo.opName = opName_;
@@ -1924,21 +1946,7 @@ ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &qsfaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    SetQSFAShape();
-    if (
-        ge::GRAPH_SUCCESS != GetN1Size() ||
-        ge::GRAPH_SUCCESS != GetN2Size() ||
-        ge::GRAPH_SUCCESS != GetGSize() ||
-        ge::GRAPH_SUCCESS != GetBatchSize() ||
-        ge::GRAPH_SUCCESS != GetQTSize() ||
-        ge::GRAPH_SUCCESS != GetKVTSize() ||
-        ge::GRAPH_SUCCESS != GetS1Size() ||
-        ge::GRAPH_SUCCESS != GetQHeadDim() ||
-        ge::GRAPH_SUCCESS != GetKHeadDim() ||
-        ge::GRAPH_SUCCESS != GetS2Size() ||
-        ge::GRAPH_SUCCESS != GetValueHeadDim() ||
-        ge::GRAPH_SUCCESS != GetDSizeKV() ||
-        ge::GRAPH_SUCCESS != GetSparseBlockCount()) {
+    if (ge::GRAPH_SUCCESS != GetShapeAndSizeInfo()) {
         return ge::GRAPH_FAILED;
     }
 

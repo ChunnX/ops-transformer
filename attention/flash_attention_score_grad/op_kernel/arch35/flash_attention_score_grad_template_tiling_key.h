@@ -1544,32 +1544,6 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
      #endif
-
-     #if (ORIG_DTYPE_QUERY == -1) || (ORIG_DTYPE_QUERY == DT_HIFLOAT8)
-         // HIFLOAT8
-         ASCENDC_TPL_ARGS_SEL(
-             ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
-             ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 0),
-             ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 6),
-             ASCENDC_TPL_BOOL_SEL(IsTnd, 0),
-             ASCENDC_TPL_BOOL_SEL(IsDrop, 0),
-             ASCENDC_TPL_BOOL_SEL(IsPse, 0),
-             ASCENDC_TPL_BOOL_SEL(IsAttenMask, 0),
-             ASCENDC_TPL_UINT_SEL(S1TemplateNum, ASCENDC_TPL_UI_LIST, 512),
-             ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 512),
-             ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 128),
-             ASCENDC_TPL_UINT_SEL(DeterType, ASCENDC_TPL_UI_LIST, 0, 2),
-             ASCENDC_TPL_BOOL_SEL(IsNEqual, 0, 1),
-             ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0),
-             ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0),
-             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
-             ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2, 3),
-             ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
-             ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
-             ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
-             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
-         ),
-     #endif
   
      // 空tensor
      ASCENDC_TPL_ARGS_SEL(

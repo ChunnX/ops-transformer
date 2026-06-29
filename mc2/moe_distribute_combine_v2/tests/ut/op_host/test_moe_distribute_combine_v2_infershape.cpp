@@ -25,7 +25,7 @@ TEST_F(MoeDistributeCombineV2Infershape, InferShape0)
     gert::StorageShape expertIdsShape = {{32, 8}, {}};
     gert::StorageShape expandIdxShape = {{16384}, {}};
     gert::StorageShape epSendCountsShape = {{288}, {}};
-    gert::StorageShape tpSendCountsShape = {{2}, {}};
+    gert::StorageShape tpSendCountsShape = {{1}, {}};
     gert::StorageShape expertScalesShape = {{32, 8}, {}};
 
     gert::InfershapeContextPara infershapeContextPara("MoeDistributeCombineV2",
@@ -46,7 +46,7 @@ TEST_F(MoeDistributeCombineV2Infershape, InferShape0)
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
             {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},

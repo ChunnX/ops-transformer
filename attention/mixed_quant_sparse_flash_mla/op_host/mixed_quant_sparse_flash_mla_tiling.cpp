@@ -39,6 +39,9 @@ ge::graphStatus QSMLAInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus QSMLAInfoParser::CheckRequiredAttrExistence() const
 {
+    OP_CHECK_IF(opParamInfo_.quantMode == nullptr,
+        OP_LOGE(opName_, "quantMode attr is nullptr."),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -135,12 +138,10 @@ ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
                return ge::GRAPH_FAILED);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo start");
-    opParamInfo_.kvQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_SCALE_INDEX);
+    opParamInfo_.quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_SCALE_INDEX);
     opParamInfo_.tileSize = nullptr;
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ATTR_ROPE_HEAD_DIM_INDEX);
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
-    opParamInfo_.oriKvStride = nullptr;
-    opParamInfo_.cmpKvStride = nullptr;
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
@@ -203,6 +204,7 @@ ge::graphStatus QSMLAInfoParser::GetKvLayout()
     const map<string, QSMLALayout> layoutKVMap = {
         {"PA_BBND",     QSMLALayout::PA_BBND},
         {"TND",       QSMLALayout::TND},
+        {"BSND",       QSMLALayout::BSND},
     };
 
     std::string layout(opParamInfo_.layoutKv);
@@ -348,7 +350,7 @@ ge::graphStatus QSMLAInfoParser::GetS1Size()
 
 ge::graphStatus QSMLAInfoParser::GetMaxBlockNumPerBatch()
 {
-    if (kvLayout_ == QSMLALayout::TND) {
+    if (kvLayout_ == QSMLALayout::TND || kvLayout_ == QSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.oriBlockTable.tensor == nullptr) {
@@ -401,6 +403,7 @@ ge::graphStatus QSMLAInfoParser::GetS2SizeForPageAttention()
         return ge::GRAPH_FAILED;
     }
     s2Size_ = oriMaxBlockNumPerBatch_ * oriBlockSize_;
+    cmpS2Size_ = cmpMaxBlockNumPerBatch_ * cmpBlockSize_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -408,9 +411,16 @@ ge::graphStatus QSMLAInfoParser::GetS2Size()
 {
     if (kvLayout_ == QSMLALayout::TND) {
         s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::T, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::T, kvLayout_);
         return ge::GRAPH_SUCCESS;
+    } else if (kvLayout_ == QSMLALayout::BSND) {
+        s2Size_ = GetAxisNum(oriKvShape_, QSMLAAxis::S, kvLayout_);
+        cmpS2Size_ = GetAxisNum(cmpKvShape_, QSMLAAxis::S, kvLayout_);
+        return ge::GRAPH_SUCCESS;
+    } else if (kvLayout_ == QSMLALayout::PA_BBND) {
+        return GetS2SizeForPageAttention();
     }
-    return GetS2SizeForPageAttention();
+    return ge::GRAPH_FAILED;
 }
 
 ge::graphStatus QSMLAInfoParser::GetQkHeadDim()
@@ -450,13 +460,23 @@ ge::graphStatus QSMLAInfoParser::GetDSizeKV()
 
 ge::graphStatus QSMLAInfoParser::GetKvstride()
 {
-    if (opParamInfo_.oriKv.tensor != nullptr) {
-        oriKvStride_ = opParamInfo_.oriKv.tensor->GetShapeSize() /
-                    opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0);
+    auto oriKvStrides = context_->GetDynamicInputStride(ORI_KV_INDEX, 0);
+    auto cmpKvStrides = context_->GetDynamicInputStride(CMP_KV_INDEX, 0);
+    if (oriKvStrides != nullptr && oriKvStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < oriKvStrides->GetDimNum(); i++) {
+            oriKvStridesVec_.push_back(oriKvStrides->GetStride(i));
+        }
+        if (kvLayout_ == QSMLALayout::PA_BBND) {
+            oriKvStride_ = oriKvStrides->GetStride(0);
+        }
     }
-    if (opParamInfo_.cmpKv.tensor != nullptr) {
-        cmpKvStride_ = opParamInfo_.cmpKv.tensor->GetShapeSize() /
-                    opParamInfo_.cmpKv.tensor->GetStorageShape().GetDim(0);
+    if (cmpKvStrides != nullptr && cmpKvStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < cmpKvStrides->GetDimNum(); i++) {
+            cmpKvStridesVec_.push_back(cmpKvStrides->GetStride(i));
+        }
+        if (kvLayout_ == QSMLALayout::PA_BBND) {
+            cmpKvStride_ = cmpKvStrides->GetStride(0);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -473,6 +493,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.n2Size = n2Size_;
     qsmlaInfo.s1Size = s1Size_;
     qsmlaInfo.s2Size = s2Size_;
+    qsmlaInfo.cmpS2Size = cmpS2Size_;
     qsmlaInfo.gSize = gSize_;
     qsmlaInfo.qkHeadDim = qkHeadDim_;
     qsmlaInfo.qTSize = qTSize_;
@@ -497,12 +518,16 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
 
     qsmlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
 
-    qsmlaInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
+    qsmlaInfo.quantMode = *opParamInfo_.quantMode;
     qsmlaInfo.tileSize = 64;
     qsmlaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
     qsmlaInfo.oriKvStride = oriKvStride_;
     qsmlaInfo.cmpKvStride = cmpKvStride_;
+    qsmlaInfo.oriKvStrides = oriKvStridesVec_;
+    qsmlaInfo.cmpKvStrides = cmpKvStridesVec_;
+    qsmlaInfo.oriKvStorageShape = oriKvShape_;
+    qsmlaInfo.cmpKvStorageShape = cmpKvShape_;
     qsmlaInfo.cmpRatio = *opParamInfo_.cmpRatio;
     qsmlaInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     qsmlaInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
@@ -588,21 +613,32 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
 
     // -------------set workspacesize-----------------
     constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
-    constexpr uint32_t M_BASE_SIZE = 64;             // m轴基本块大小
+    constexpr uint32_t M_BASE_SIZE_SPLIT_G = 128;    // N1=128时FD staging按配对cube的128行逻辑M布局
     constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
     constexpr uint32_t D_SIZE = 512;
-    constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
+    constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16字节数
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
+    constexpr uint32_t MAX_S2_SPLIT_NUM = 2;           // 每核最多S2切分次数
+    constexpr uint32_t FLOAT_ELEM_SIZE = 4;            // sizeof(float)
+    constexpr uint32_t FD_BLOCK_ELEM = 8;             // FD广播份数
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    if (tilingInfo->gSize > 64) {
+    bool isSplitG = tilingInfo->gSize > 64; // gSize超过64时采用Split-G
+    if (isSplitG) {
         workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
     }
+    uint32_t fdStagingMSize = isSplitG ? M_BASE_SIZE_SPLIT_G : tilingInfo->gSize;
+    uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1) : aicNum;
+    // 末尾的2对应每个split分别暂存max和sum。
+    uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM
+        + fdStagingMSize * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;
+    workspaceSize += s2SplitStagingPerSlot * fdStagingSlotNum;
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
     tilingData_.baseParams.set_batchSize(tilingInfo->bSize);
     tilingData_.baseParams.set_kvSeqSize(tilingInfo->s2Size);
+    tilingData_.baseParams.set_cmpKvSeqSize(tilingInfo->cmpS2Size);
     tilingData_.baseParams.set_qSeqSize(tilingInfo->s1Size);
     tilingData_.baseParams.set_sparseBlockCount(tilingInfo->sparseBlockCount);
     tilingData_.baseParams.set_nNumOfQInOneGroup(tilingInfo->gSize);
@@ -637,7 +673,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
     uint32_t tilingKey =
         GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
-            static_cast<uint32_t>(tilingInfo->gSize > 64),
+            static_cast<uint32_t>(isSplitG), static_cast<uint32_t>(tilingInfo->quantMode),
             ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);

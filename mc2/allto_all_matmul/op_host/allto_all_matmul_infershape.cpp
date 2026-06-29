@@ -225,7 +225,7 @@ static ge::graphStatus InferAllToAllOutShapeAlltoAllMatmul(gert::InferShapeConte
  */
 static ge::graphStatus InferShapeAlltoAllMatmul(gert::InferShapeContext *context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(INNER_DEBUG, "context"), return ge::GRAPH_FAILED);
     const auto x1Shape = context->GetInputShape(INDEX_IN_X1);
     OPS_CHECK_NULL_WITH_CONTEXT(context, x1Shape);
     const auto x2Shape = context->GetInputShape(INDEX_IN_X2);
@@ -271,7 +271,7 @@ static ge::graphStatus InferShapeAlltoAllMatmul(gert::InferShapeContext *context
  */
 static ge::graphStatus InferDataTypeAlltoAllMatmul(gert::InferDataTypeContext *context)
 {
-    OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
+    OPS_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT(INNER_DEBUG, "context"), return ge::GRAPH_FAILED);
     OP_LOGD(INNER_DEBUG, "Start to infer datatype of allto all matmul.");
 
     const auto attrs = context->GetAttrs();

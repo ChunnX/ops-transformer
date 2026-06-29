@@ -362,13 +362,12 @@ def fill_none_params(params_dict):
         'cmp_mask_mode': cmp_mask_mode,
         'ori_win_left': params_dict['ori_win_left'],
         'ori_win_right': params_dict['ori_win_right'],
-        'kv_quant_mode': params_dict['kv_quant_mode'],
+        'quant_mode': params_dict['quant_mode'],
         'tile_size': params_dict['tile_size'],
         'rope_head_dim': params_dict['rope_head_dim'],
         'template_run_mode': template_run_mode,
         'actlen_mode': actlen_mode,
         'S1EQS2': S1EQS2,
-        'tc_preifx': params_dict.get('tc_preifx', ' '),
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
     }
@@ -402,12 +401,12 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         required_columns = [
             "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1",
             "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
-            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size",
+            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size",
             "rope_head_dim", "template_run_mode", "actlen_mode", "S1EQS2",
             "topk_value_mode", "return_softmax_lse",
         ]
         optional_columns = [
-            "tc_preifx","seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
+            "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
             "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv",
         ]
         # 检查是否缺少必要列
@@ -447,6 +446,7 @@ def save_result(params, result, fulfill_percent, result_path):
         "cmp_kv_type": params.get('cmp_kv_type'),
         "B": params.get('B'),
         "S1": params.get('S1'),
+        "S2": params.get('S2'),
         "T1": params.get('T1'),
         "N1": params.get('N1'),
         "N2": params.get('N2'),
@@ -471,9 +471,9 @@ def save_result(params, result, fulfill_percent, result_path):
         'template_run_mode': params.get('template_run_mode'),
         'actlen_mode': params.get('actlen_mode'),
         'S1EQS2': params.get('S1EQS2'),
-        'tc_preifx': params_dict.get('tc_preifx', ' '),
+        'tc_prefix': params.get('tc_prefix', ' '),
         "ori_win_right": params.get('ori_win_right'),
-        "kv_quant_mode": params.get('kv_quant_mode'),
+        "quant_mode": params.get('quant_mode'),
         "tile_size": params.get('tile_size'),
         "rope_head_dim": params.get('rope_head_dim'),
         "topk_value_mode": params.get('topk_value_mode'),

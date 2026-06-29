@@ -15,20 +15,11 @@
 
 ## 功能说明
 
-- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
+- 接口功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。不支持TP域通信。
 - 计算公式：
-    - 不存在TP域通信时：
 
     $$
     ataOut = AllToAllV(expandX)\\
-    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-    $$
-
-    - 存在TP域通信时：
-
-    $$
-    rsOut = ReduceScatterV(expandX)\\
-    ataOut = AllToAllV(rsOut)\\
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
 
@@ -138,7 +129,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <td>要求2D Tensor。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td><code>(max(tpWorldSize, 1) * A , H)</code></td>
+    <td><code>(A , H)</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -548,16 +539,16 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <summary><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：</summary>
 
     - commAlg当前版本不支持，传空指针即可。
-    - epSendCounts的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
-    - 有TP域通信时tpSendCountsOptional为1D shape Tensor，shape为(tpWorldSize, )。
+    - epSendCounts的shape为(epWorldSize * localExpertNum, )。
+    - tpSendCountsOptional为预留参数，TP域通信不再支持，传空指针即可。
     - xActiveMaskOptional要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
     - expandScalesOptional预留参数，当前版本不支持，传空指针即可。
     - sharedExpertXOptional要求为2D或3D Tensor（2D时shape为(BS, H)；3D时前两位乘积等于BS、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
     - epWorldSize取值支持[2, 768]。
     - moeExpertNum取值范围(0, 1024]。
-    - groupTp字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-    - tpWorldSize取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-    - tpRankId取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+    - groupTp预留参数，TP域通信不再支持，仅在无TP域通信时支持传空。
+    - tpWorldSize预留参数，TP域通信不再支持，仅允许0或1。
+    - tpRankId预留参数，TP域通信不再支持，传0即可。
     - expertShardType当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
     - sharedExpertNum当前取值范围[0, 4]。
     - sharedExpertRankNum取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
@@ -576,8 +567,8 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <summary><term>Ascend 950DT</term>：</summary>
 
     - commAlg当前版本不支持，传空指针即可。
-    - epSendCounts的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
-    - 不支持TP通信域。
+    - epSendCounts的shape为(epWorldSize * localExpertNum, )。
+    - 当前不支持TP域通信。
     - xActiveMaskOptional要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
     - expandScalesOptional预留参数，当前版本不支持，传空指针即可。
     - sharedExpertXOptional要求为2D或3D Tensor（2D时shape为(BS, H)；3D时前两位乘积等于BS、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。

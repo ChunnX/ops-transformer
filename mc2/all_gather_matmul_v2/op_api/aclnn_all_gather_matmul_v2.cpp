@@ -47,10 +47,8 @@ static constexpr int64_t SCALAR = 1;
 static constexpr int64_t TWO_DIMS = 2;
 static constexpr int64_t KVALUE_MIN = 256;
 static constexpr int64_t KVALUE_MAX = 65535;
-static constexpr int64_t CCU_LEN = 3;
-static constexpr int64_t AI_CPU_LEN = 5;
-static constexpr int64_t EMPTY_LEN = 1;
 static constexpr int64_t COMM_MODE_RANKSIZE = 8;
+static constexpr int64_t CMP_MAX_LEN = 7;
 
 typedef struct {
     uint32_t id;
@@ -454,11 +452,11 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
 {
     uint32_t rankSize = 0;
     // 获取通信引擎参数
-    if (std::strncmp(commMode, "ai_cpu", AI_CPU_LEN) == 0) {
+    if (std::strncmp(commMode, "ai_cpu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-    } else if (std::strncmp(commMode, "ccu", CCU_LEN) == 0) {
+    } else if (std::strncmp(commMode, "ccu", CMP_MAX_LEN) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strncmp(commMode, "", EMPTY_LEN) == 0) {
+    } else if (std::strncmp(commMode, "", CMP_MAX_LEN) == 0) {
         // 获取卡数
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);

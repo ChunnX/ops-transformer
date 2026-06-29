@@ -76,22 +76,22 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  //l1
                                   const PAShape &shape,       // blockSize, headNum, headDim                           
                                   const Position &startPos)   // bacthIdx nIdx curSeqIdx
 {
-    uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Idx;
+    uint32_t copyFinishRowCnt = 0;
     uint32_t blockElementCnt = 32 / sizeof(T);
     while (copyFinishRowCnt < shape.copyRowNum) {
-        uint64_t blockIdOffset = curS2Idx / shape.blockSize;   // 获取block table上的索引
         uint64_t reaminRowCnt = curS2Idx % shape.blockSize;    // 获取在单个块上超出的行数
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize;   // 获取block table上的索引
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上的获取编号
         // 计算可以拷贝行数
         uint32_t copyRowCnt = shape.blockSize - reaminRowCnt;  //一次只能处理一个Block
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt;  //一个block未拷满
         }
+        uint64_t dStride = shape.headDim;
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim ;   //PA的偏移
 
-        uint64_t dStride = shape.headDim;
         if constexpr (SRC_LAYOUT == SFA_LAYOUT::BSND || SRC_LAYOUT == SFA_LAYOUT::TND) {
             offset += (uint64_t)(startPos.n2Idx * shape.headDim) +
                       reaminRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
@@ -184,10 +184,10 @@ private:
     ConstInfo constInfo{};
 
     // L1分成3块buf, 用于记录
-    uint32_t qpL1BufIter = 0;
-    uint32_t kvL1BufIter = -1;
     uint32_t abL0BufIter = 0;
     uint32_t cL0BufIter = 0;
+    uint32_t qpL1BufIter = 0;
+    uint32_t kvL1BufIter = -1;
 
     // mm1
     GlobalTensor<Q_T> queryGm;
@@ -401,10 +401,10 @@ SFAMatmulService<SFAT>::CopyInMm1BToL1(LocalTensor<KV_T> &bL1Tensor, const uint6
     uint32_t blockElementCnt = 32 / sizeof(KV_T);
 
     Nd2NzParams mm1Nd2NzParamsForB;
-    mm1Nd2NzParamsForB.ndNum = 1;
     mm1Nd2NzParamsForB.nValue = nActCopyRowCount;
     mm1Nd2NzParamsForB.dValue = headSize;
     mm1Nd2NzParamsForB.srcDValue = dStride;
+    mm1Nd2NzParamsForB.ndNum = 1;
     mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.dstNzNStride = 1;
     mm1Nd2NzParamsForB.srcNdMatrixStride = 0;
@@ -426,9 +426,9 @@ SFAMatmulService<SFAT>::CopyInMm1BRopeToL1(LocalTensor<KV_T> &bL1Tensor, const u
     uint32_t blockElementCnt = 32 / sizeof(KV_T);
 
     Nd2NzParams mm1Nd2NzParamsForB;
-    mm1Nd2NzParamsForB.ndNum = 1;
     mm1Nd2NzParamsForB.nValue = nActCopyRowCount;
     mm1Nd2NzParamsForB.dValue = headSize;
+    mm1Nd2NzParamsForB.ndNum = 1;
     mm1Nd2NzParamsForB.srcDValue = dStride;
     mm1Nd2NzParamsForB.dstNzC0Stride = copyTotalRowCntAlign;
     mm1Nd2NzParamsForB.dstNzNStride = 1;
@@ -445,24 +445,24 @@ __aicore__ inline void SFAMatmulService<SFAT>::LoadDataMm1A(LocalTensor<KV_T> &a
     LocalTensor<KV_T> srcTensor = aL1Tensor[mSize * kSplitSize * idx];
     LoadData3DParamsV2<KV_T> loadData3DParams;
     // SetFmatrixParams
-    loadData3DParams.l1H = mSize / 16; // Hin=M1=8
-    loadData3DParams.l1W = 16;         // Win=M0
     loadData3DParams.padList[0] = 0;
     loadData3DParams.padList[1] = 0;
     loadData3DParams.padList[2] = 0;
     loadData3DParams.padList[3] = 255; // 尾部数据不影响滑窗的结果
+    loadData3DParams.l1H = mSize / 16; // Hin=M1=8
+    loadData3DParams.l1W = 16;         // Win=M0
 
     // SetLoadToA0Params
     loadData3DParams.mExtension = mSize; // M
     loadData3DParams.kExtension = kSize; // K
-    loadData3DParams.mStartPt = 0;
-    loadData3DParams.kStartPt = 0;
     loadData3DParams.strideW = 1;
     loadData3DParams.strideH = 1;
     loadData3DParams.filterW = 1;
     loadData3DParams.filterSizeW = (1 >> 8) & 255;
     loadData3DParams.filterH = 1;
     loadData3DParams.filterSizeH = (1 >> 8) & 255;
+    loadData3DParams.mStartPt = 0;
+    loadData3DParams.kStartPt = 0;
     loadData3DParams.dilationFilterW = 1;
     loadData3DParams.dilationFilterH = 1;
     loadData3DParams.enTranspose = 0;
@@ -820,9 +820,9 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
 
                 if (kL1 == 1) { // 最后一轮kL1循环
                     FixpipeParamsV220 fixParams;
+                    fixParams.srcStride = mL1SizeAlign;
                     fixParams.nSize = nL1SizeAlign;
                     fixParams.mSize = mL1SizeAlign;
-                    fixParams.srcStride = mL1SizeAlign;
                     // 改成nSizeAlign
                     fixParams.dstStride = info.actualSingleProcessSInnerSizeAlign; // mm1ResGm两行之间的间隔
                     fixParams.unitFlag = 0b11;
@@ -1017,10 +1017,10 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
                     loadData3DParamsForB.padList[2] = 0;
                     loadData3DParamsForB.padList[3] = 255;           // 尾部数据不影响滑窗的结果
 
-                    loadData3DParamsForB.mExtension = kL0SizeAlign;  // 在目的操作数height维度的传输长度
-                    loadData3DParamsForB.kExtension = nL1SizeAlign;  // 在目的操作数width维度的传输长度
                     loadData3DParamsForB.mStartPt = 0;               // 卷积核在目的操作数width维度的起点
                     loadData3DParamsForB.kStartPt = 0;               // 卷积核在目的操作数height维度的起点
+                    loadData3DParamsForB.mExtension = kL0SizeAlign;  // 在目的操作数height维度的传输长度
+                    loadData3DParamsForB.kExtension = nL1SizeAlign;  // 在目的操作数width维度的传输长度
                     loadData3DParamsForB.strideW = 1;
                     loadData3DParamsForB.strideH = 1;
                     loadData3DParamsForB.filterW = 1;
@@ -1036,27 +1036,27 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
 
                     LocalTensor<KV_T> aL0Tensor = aL0TensorPingPong[(abL0BufIter % 2) * (L0A_PP_SIZE / sizeof(KV_T))];
                     LoadData3DParamsV2<KV_T> loadData3DParamsForA;
-                    loadData3DParamsForA.l1H = mL1SizeAlign / 16;    // 源操作数height
-                    loadData3DParamsForA.l1W = 16;                   // 源操作数weight
                     loadData3DParamsForA.padList[0] = 0;
                     loadData3DParamsForA.padList[1] = 0;
                     loadData3DParamsForA.padList[2] = 0;
                     loadData3DParamsForA.padList[3] = 255;           // 尾部数据不影响滑窗的结果
+                    loadData3DParamsForA.l1H = mL1SizeAlign / 16;    // 源操作数height
+                    loadData3DParamsForA.l1W = 16;                   // 源操作数weight
 
                     loadData3DParamsForA.mExtension = mL1SizeAlign;  // 在目的操作数height维度的传输长度
                     loadData3DParamsForA.kExtension = kL0SizeAlign;  // 在目的操作数width维度的传输长度
-                    loadData3DParamsForA.mStartPt = 0;               // 卷积核在目的操作数width维度的起点
-                    loadData3DParamsForA.kStartPt = 0;               // 卷积核在目的操作数height维度的起点
                     loadData3DParamsForA.strideW = 1;                // 卷积核在源操作数width维度滑动的步长
                     loadData3DParamsForA.strideH = 1;                // 卷积核在源操作数height维度滑动的步长
+                    loadData3DParamsForA.mStartPt = 0;               // 卷积核在目的操作数width维度的起点
+                    loadData3DParamsForA.kStartPt = 0;               // 卷积核在目的操作数height维度的起点
                     loadData3DParamsForA.filterW = 1;                // 卷积核width
                     loadData3DParamsForA.filterSizeW = false;        // 是否在filterW的基础上将卷积核width增加256个元素
                     loadData3DParamsForA.filterH = 1;                // 卷积核height
                     loadData3DParamsForA.filterSizeH = false;        // 是否在filterH的基础上将卷积核height增加256个元素
-                    loadData3DParamsForA.dilationFilterW = 1;        // 卷积核width膨胀系数
-                    loadData3DParamsForA.dilationFilterH = 1;        // 卷积核height膨胀系数
                     loadData3DParamsForA.enTranspose = 0;            // 是否启用转置功能，对整个目标矩阵进行转置
                     loadData3DParamsForA.fMatrixCtrl = 0;
+                    loadData3DParamsForA.dilationFilterW = 1;        // 卷积核width膨胀系数
+                    loadData3DParamsForA.dilationFilterH = 1;        // 卷积核height膨胀系数
                     loadData3DParamsForA.channelSize = kL0SizeAlign; // 源操作数的通道数。膨胀系数为1时，目的weight为filterW*filterH*channelSize
                     LoadData<KV_T, LOAD3DV2_CONFIG>(aL0Tensor, aL1Tensor[kL0 * baseK * mL1SizeAlign],
                                                     loadData3DParamsForA);
@@ -1072,7 +1072,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm2(const RunInfo &info, c
                     mmadParams.unitFlag = ((k1 == (kL1Loops - 1)) && (kL0 == (kL0Loops - 1))) ? 0b11 : 0b10;
 
                     Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
-                    if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
+                    if (((mmadParams.m / 16) * (mmadParams.n / 16)) < 10) {
                         PipeBarrier<PIPE_M>();
                     }
                     SetFlag<HardEvent::M_MTE1>(Mte1MmABEventId(abL0BufIter % 2));

@@ -2413,6 +2413,22 @@ TEST_PARAMS = {
         'enable_lse': [True],
         'enable_rope': [False],
     },
+    "PA_BnNBsD_B2_QS2_KVS1_Nq1_Nkv1_D128_SP3": {
+        'B': [2],
+        'N_q': [1],
+        'N_kv': [1],
+        'D': [128],
+        'actual_seq_q': [[1, 1]],
+        'actual_seq_kv': [[1, 0]],
+        'enable_pa': [True],
+        'kv_cache_layout': ['BnNBsD'],
+        'block_size': [512],
+        'sparse_mode': [3],
+        'q_scale_layout': ['N2TGD'],
+        'p_scale': [15.0],
+        'enable_lse': [True],
+        'enable_rope': [False],
+    },
 }
 
 SKIP_CASES = {

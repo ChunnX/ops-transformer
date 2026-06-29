@@ -645,7 +645,9 @@ static ge::graphStatus QliGetHeadDim(const TilingRequiredParaInfo &qliQuery, Dat
     }
     qliHeadDim = qliQuery.shape->GetStorageShape().GetDim(qliDIndex);
     OP_CHECK_IF(qliHeadDim != HEAD_DIM_LIMIT,
-        OP_LOGE(qliOpName, "input query's last dim head_dim only support 128, but now is %u.", qliHeadDim),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qliOpName, "query",
+            Ops::Base::ToString(qliQuery.shape->GetStorageShape()).c_str(),
+            "input query's last dim head_dim only support 128"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

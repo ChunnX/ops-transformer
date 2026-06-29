@@ -83,7 +83,7 @@ static ge::graphStatus SetGradExpandedXOutputShape(gert::Shape* gradExpandedXSha
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetGradScalesOutputShape(gert::InferShapeContext* context, gert::Shape* gradScalesShape,
+static ge::graphStatus SetGradScalesOutputShape(const gert::InferShapeContext* context, gert::Shape* gradScalesShape,
                                                 const gert::Shape* gradYShape)
 {
     gradScalesShape->SetDimNum(DIM_NUM_2);
