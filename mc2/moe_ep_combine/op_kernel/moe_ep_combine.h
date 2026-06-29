@@ -128,7 +128,7 @@ private:
     uint64_t localWsSizeDataPerRank_{0};
     uint64_t localWsSizeStatusPerRank_{0};
     uint64_t winStateOffset_{0};
-    uint64_t winDataOffset_{0}; 
+    uint64_t winDataOffset_{0};
 
     uint32_t tStart_{0};
     uint32_t tEnd_{0};
@@ -211,7 +211,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     localWsSizeDataPerRank_ = tilingData->localWsSizeDataPerRank;
     localWsSizeStatusPerRank_ = tilingData->localWsSizeStatusPerRank;
     winStateOffset_ = tilingData->winStateOffset;
-    winDataOffset_ = tilingData->winDataOffset; 
+    winDataOffset_ = tilingData->winDataOffset;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
     hWeightAlignSize_ = hAlignSize_ + UB_ALIGN; // UB 32字节对齐
     stateOffset_ = STATE_OFFSET;
@@ -506,7 +506,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
     DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         // 读取expert_id
-        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, CombineDataAddr_) + (tokenIndex * topK_ + topkId) * perSlotBytes_;
+        GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, CombineDataAddr_) + 
+                (tokenIndex * topK_ + topkId) * perSlotBytes_;
         GlobalTensor<XType> srcTokenTensor;
         srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(wAddr));
         DataCopyPad(ubX_, srcTokenTensor, xCopyParams, padParams);
