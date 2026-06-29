@@ -45,6 +45,7 @@ namespace {
     constexpr uint32_t OUTPUT_EXPERT_TOKEN_NUMS_INDEX = 3U;
     constexpr uint32_t OUTPUT_EP_RECV_COUNTS_INDEX = 4U;
     constexpr uint32_t OUTPUT_TP_RECV_COUNTS_INDEX = 5U;
+    constexpr uint32_t OUTPUT_EXPAND_SCALES_INDEX = 6U;
 
     constexpr uint32_t LAYERED_METAINFO_LIST_NUM = 2;
     constexpr uint32_t TWO_DIMS = 2;
@@ -1581,12 +1582,43 @@ ge::graphStatus CheckAndGetOptionalInput(gert::TilingContext *context, const cha
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckExpertScales(const gert::TilingContext *context, const char *nodeName,
+    uint32_t bs, uint32_t k)
+{
+    const gert::StorageShape *expertScalesStorageShape = context->GetOptionalInputShape(EXPERT_SCALES_INDEX);
+    auto expertScalesDesc = context->GetOptionalInputDesc(EXPERT_SCALES_INDEX);
+    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName, "expertScalesDesc is null."),
+        return ge::GRAPH_FAILED);
+    // Dim num
+    OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+                OP_LOGE(nodeName, "expertScales dim must be 2, but current dim num is %lu.",
+            expertScalesStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    // DType
+    OP_TILING_CHECK(expertScalesDesc->GetDataType() != ge::DT_FLOAT,
+        OP_LOGE(nodeName, "expertScales dataType is invalid, dataType should be float, but is %d.",
+        static_cast<ge::DataType>(expertScalesDesc->GetDataType())), return ge::GRAPH_FAILED);
+    // Format
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "expertScalesDesc format is invalid."), return ge::GRAPH_FAILED);
+    // Shape
+    const int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
+    const int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(expertScalesDim0 != bs, 
+        OP_LOGE(nodeName, "The input of expertScales dim0 = %ld is not equal to x dim0 = %ld.", 
+            expertScalesDim0, bs), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertScalesDim1 != k, 
+        OP_LOGE(nodeName, "The input of expertScales dim1 = %ld is not equal to expertId dim1 = %ld.",
+        expertScalesDim1, k), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS; 
+}
+
 ge::graphStatus CheckInputParam(gert::TilingContext *context, const char *nodeName,
     const bool isActiveMask, const bool isScales, const bool hasElasticInfo,
     const bool isPerformance, const uint32_t quantMode, uint32_t &localMoeExpertNum,
     const bool isLayered, const bool isSetFullMeshV2,
     MoeDistributeDispatchV2TilingData *tilingData, DispatchV2Config &config)
 {
+    bool hasExpertScales = false;
     // 检查属性的取值是否合法
     OP_TILING_CHECK(CheckAttrs(context, nodeName, *tilingData, localMoeExpertNum, isActiveMask, isSetFullMeshV2,
                                isLayered, config) != ge::GRAPH_SUCCESS,
@@ -1601,7 +1633,21 @@ ge::graphStatus CheckInputParam(gert::TilingContext *context, const char *nodeNa
         isSharedExpert, hasElasticInfo, isPerformance, static_cast<int64_t>(localMoeExpertNum),
         isLayered, config) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check tensor shape failed."), return ge::GRAPH_FAILED);
-    
+
+    // Get expertScales
+    const gert::StorageShape *expertScalesStorageShape = context->GetOptionalInputShape(EXPERT_SCALES_INDEX);
+    hasExpertScales = (expertScalesStorageShape != nullptr);
+    tilingData->moeDistributeDispatchV2Info.hasExpertScales = hasExpertScales;
+    if (hasExpertScales) {
+        uint32_t aVal = tilingData->moeDistributeDispatchV2Info.a;
+        uint32_t bsVal = tilingData->moeDistributeDispatchV2Info.bs;
+        uint32_t kVal = tilingData->moeDistributeDispatchV2Info.k;
+        OP_TILING_CHECK(CheckExpertScales(context, nodeName, bsVal, kVal) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "CheckExpertScales failed."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(CheckExpandScales(context, nodeName, aVal) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "CheckExpertScales failed."), return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
