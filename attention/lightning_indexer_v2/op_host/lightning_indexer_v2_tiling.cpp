@@ -290,7 +290,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
             opParamInfo_.sequsedK.tensor == nullptr,
             OP_LOGE(opName_, "when layout_key is PA_BBND, input seqused_k must not be null"),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.cuSeqLensK.tensor != nullptr,
+        OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor != nullptr,
             OP_LOGE(opName_, "key layout is PA_BBND, input cu_seqlens_k must not be provided"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
@@ -330,7 +330,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
     // =============== cmpResidualK 校验 ===============
     // cmpRatio 不等于 1 且 sparseMode 不等于 0 时 cmpResidualK 必传
     if (opParamInfo_.cmpRatio != nullptr && *opParamInfo_.cmpRatio != 1 &&
-        opParamInfo_.sparseMode != nullptr && *opParamInfo_.sparseMode != 0) {
+        opParamInfo_.maskMode != nullptr && *opParamInfo_.maskMode != 0) {
         OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor == nullptr,
             OP_LOGE(opName_, "cmp_ratio is not 1 and sparse_mode is not 0, "
                 "input cmp_residual_k must not be null"),
@@ -385,7 +385,7 @@ ge::graphStatus LIV2InfoParser::CheckShapeDim()
                    (opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum() != DIM_NUM_TWO),
                OP_LOGE(opName_, "the dim num of block_table's shape should be 2"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        ((kLayout_ == DataLayout::PA_BBND)||(kLayout_ == DataLayout::BSND)) &&
+        ((kLayout_ == DataLayout::BnBsND)||(kLayout_ == DataLayout::BSND)) &&
         (opParamInfo_.key.shape->GetStorageShape().GetDimNum() != DIM_NUM_FOUR),
         OP_LOGE(opName_, "the dim num of key's shape should be 4, but now is %u",
                 opParamInfo_.key.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
