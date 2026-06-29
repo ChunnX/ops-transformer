@@ -38,6 +38,7 @@ __global__ __aicore__ void mega_moe(
     GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1, GM_ADDR bias2, GM_ADDR xActiveMask,
     GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    printf("mega_moe kernel start\n");
     InitSocState();
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
@@ -52,6 +53,7 @@ __global__ __aicore__ void mega_moe(
             op.Process();
         }
     } else if constexpr (CommModeType == TILINGKEY_TPL_URMA) {
+        printf("mega_moe layered kernel start\n");
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
             MegaMoeLayered<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,

@@ -190,6 +190,7 @@ public:
         CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;;
         GetCommProtocol(hcclHandle, protocol);
 
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP; // TODO:强行走
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, protocol, commContextStruct, cclBufferSize);
         if (isCrossServer_) {
