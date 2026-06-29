@@ -57,7 +57,7 @@ public:
     __aicore__ inline void PrepareBeforeLoop()
     {
         CopyPersistentInputs();
-        BuildRopeNzScatterIndex(qkNzScatterIndexUb_);
+        BuildRopeNzScatterIndex();
     }
 
     __aicore__ inline void EndIntraCoreEvents()
@@ -136,7 +136,7 @@ private:
     static constexpr float QKV_RRC_HEAD_DIM_D128_RECIP = 1.0F / static_cast<float>(QKV_RRC_HEAD_DIM_D128);
     static constexpr bool IS_TND = INPUT_LAYOUT == QKV_RRC_LAYOUT_TND;
 
-    static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE = 0U;
+    static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_READY = 0U;
     static constexpr uint32_t EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE = 0U;
     static constexpr uint32_t EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE = 0U;
     static constexpr uint32_t EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE = 2U;
@@ -154,8 +154,8 @@ private:
                   "QkvRmsNormRopeCacheWithKScale V output buffer is too small for Q/K scale staging.");
     static_assert(INPUT_LAYOUT == QKV_RRC_LAYOUT_NTD || INPUT_LAYOUT == QKV_RRC_LAYOUT_TND,
                   "QkvRmsNormRopeCacheWithKScale AIV only supports NTD/TND inputLayout.");
-    static_assert(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
-                  "QkvRmsNormRopeCacheWithKScale AIV MTE2->V input UB events exceed event id range.");
+    static_assert(EVT_MTE2_TO_PIPE_V_INPUT_READY <= INTRA_EVENT_ID_MAX,
+                  "QkvRmsNormRopeCacheWithKScale AIV MTE2->V input ready event exceeds event id range.");
     static_assert(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
                   "QkvRmsNormRopeCacheWithKScale AIV V->MTE2 input UB events exceed event id range.");
     static_assert(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
@@ -179,10 +179,10 @@ private:
         return slice;
     }
 
-    __aicore__ inline void SetAndWaitMte2ToVInputReady(uint32_t bufferId)
+    __aicore__ inline void SetAndWaitMte2ToVInputReady()
     {
-        SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
-        WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
+        SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_READY));
+        WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_READY));
     }
 
     __aicore__ inline void SetAndWaitMte2ToSSlotMappingReady()
@@ -199,15 +199,10 @@ private:
 
     __aicore__ inline void CopyPersistentInputs()
     {
-        const LocalTensor<float> gamma = gammaUb_;
-        const LocalTensor<float> vScale = vScaleUb_;
-        DataCopyGmToUb2D(gamma, qGammaGm_, {1U, headDim_, headDim_});
-        DataCopyGmToUb2D(gamma[QKV_RRC_GAMMA_UB_ELEMENTS / 2U], kGammaGm_,
-                         {1U, headDim_, headDim_});
-        if (kvHeadNum_ > 0U) {
-            DataCopyGmToUb2D(vScale, vScaleGm_, {1U, kvHeadNum_, kvHeadNum_});
-        }
-        SetAndWaitMte2ToVInputReady(0U);
+        DataCopyGmToUb2D(gammaUb_, qGammaGm_, {1U, headDim_, headDim_});
+        DataCopyGmToUb2D(gammaUb_[QKV_RRC_GAMMA_UB_ELEMENTS / 2U], kGammaGm_, {1U, headDim_, headDim_});
+        DataCopyGmToUb2D(vScaleUb_, vScaleGm_, {1U, kvHeadNum_, kvHeadNum_});
+        SetAndWaitMte2ToVInputReady();
     }
 
     __aicore__ inline void PreprocessQkv(TileParam &tile, const AivSlice &slice, uint32_t inputBufferId,
@@ -221,7 +216,7 @@ private:
         CopyPreprocessInputs(slice, inputBufferId);
         SetAndWaitMte2ToSSlotMappingReady();
         BuildCacheOffsetsFromSlotMapping(tile, slice, inputBufferId);
-        SetAndWaitMte2ToVInputReady(inputBufferId);
+        SetAndWaitMte2ToVInputReady();
         BuildRopeBf16NzUb(tile, slice, inputBufferId, qkPreprocessUb);
         SetAndWaitVToMte3Al1StageReady();
         CopyRopeBf16NzUbToL1Nz(tile, slice, aRotL1Nz, qkPreprocessUb);
@@ -339,12 +334,12 @@ private:
         }
     }
 
-    __aicore__ inline void BuildRopeNzScatterIndex(const LocalTensor<uint16_t> &nzScatterIndex)
+    __aicore__ inline void BuildRopeNzScatterIndex()
     {
         for (uint32_t dim = 0U; dim < QKV_RRC_HEAD_DIM_D128; ++dim) {
             const uint32_t dBlock = dim / QKV_RRC_NZ_C0;
             const uint32_t dInner = dim % QKV_RRC_NZ_C0;
-            nzScatterIndex.SetValue(
+            qkNzScatterIndexUb_.SetValue(
                 dim, static_cast<uint16_t>(dBlock * QK_PREPROCESS_UB_NZ_ROW_STRIDE * QKV_RRC_NZ_C0 + dInner));
         }
     }
