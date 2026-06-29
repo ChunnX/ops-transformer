@@ -118,7 +118,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     char *activation_ptr = const_cast<char *>(activation_str.c_str());
 
     float activation_clamp_value = activation_clamp.value_or(std::numeric_limits<float>::max());
-    int64_t topo_type_value = 0;
+    int64_t topo_type_value = topo_type.value_or(0);
 
     int64_t dispatch_quant_result_type = dispatch_quant_out_dtype.has_value()
          ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype.value()))
