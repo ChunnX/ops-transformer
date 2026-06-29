@@ -388,6 +388,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     if (curAivS1ProcNum == 0) {
         CrossCoreWaitFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_V>(QLIV2Common::ConstInfo::CROSS_CV_EVENT
             + pingpong + aivOffset);  // V核等C核计算完mm1，mm1Res已搬运到UB
+        SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
+        WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
+        SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
         CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_V>(QLIV2Common::ConstInfo::CROSS_VC_EVENT
             + pingpong + aivOffset);   // V核处理完，通知C核可以把mm1Res搬运到UB
         return;
