@@ -457,7 +457,7 @@ def planB_kernel2(
 #   dKeyIndex:   reluGrad^T(K_block, Nidx1) @ QI(Nidx1, DQI_block) → dKeyIndexWS
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[4, 5],
+    out_idx=[4],
     pass_configs=pass_configs,
 )
 def planB_kernel3(
@@ -794,42 +794,25 @@ def sparse_lightning_indexer_grad_kl_loss(
     gather_key_index_t = gather_key_index.transpose(-1, -2).contiguous()
     relu_grad_t = relu_grad.transpose(-1, -2).contiguous()
     d_query_index_ws.zero_()
-    d_key_index_ws.zero_()
     ret = func3(relu_grad, gather_key_index_t, query_index, relu_grad_t,
                 d_query_index_ws, d_key_index_ws)
     if isinstance(ret, tuple):
-        dq_ret = ret[0]
-        dk_ret = ret[1] if len(ret) >= 2 else d_key_index_ws
-    else:
-        dq_ret = ret
-        dk_ret = d_key_index_ws
-    if dq_ret is not None and dq_ret is not d_query_index_ws:
-        # out_idx allocated new tensors; warmup: zero and re-run
-        d_query_index_ws = dq_ret
-        d_key_index_ws = dk_ret
+        ret = ret[0]
+    if ret is not None and ret is not d_query_index_ws:
+        # out_idx allocated a new tensor; zero and re-run for correct init
+        d_query_index_ws = ret
         d_query_index_ws.zero_()
-        d_key_index_ws.zero_()
         ret = func3(relu_grad, gather_key_index_t, query_index, relu_grad_t,
                     d_query_index_ws, d_key_index_ws)
         if isinstance(ret, tuple):
-            dq_ret = ret[0]
-            if len(ret) >= 2:
-                dk_ret = ret[1]
-        else:
-            dq_ret = ret
-        if dq_ret is not None:
-            d_query_index_ws = dq_ret
-        if dk_ret is not None:
-            d_key_index_ws = dk_ret
+            ret = ret[0]
+        if ret is not None:
+            d_query_index_ws = ret
         ws = list(ws)
         ws[7] = d_query_index_ws
-        ws[8] = d_key_index_ws
         _workspace_cache[ws_key] = tuple(ws)
-    else:
-        if dq_ret is not None:
-            d_query_index_ws = dq_ret
-        if dk_ret is not None:
-            d_key_index_ws = dk_ret
+    elif ret is not None:
+        d_query_index_ws = ret
 
     if profile:
         torch.npu.synchronize()
