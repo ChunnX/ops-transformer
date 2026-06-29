@@ -73,7 +73,17 @@ public:
     {
         const uint32_t inputBufferId =
             static_cast<uint32_t>((inputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        PreprocessQkv(tile, inputBufferId, aRotL1Nz, qkPreprocessUb);
+        if (tile.aivTokenSize == 0U) {
+            return;
+        }
+
+        CopyPreprocessInputs(tile, inputBufferId);
+        SetAndWaitMte2ToSSlotMappingReady();
+        BuildCacheOffsetsFromSlotMapping(tile, inputBufferId);
+        SetAndWaitMte2ToVInputReady();
+        BuildRopeBf16NzUb(tile, inputBufferId, qkPreprocessUb);
+        SetAndWaitVToMte3Al1StageReady();
+        CopyRopeBf16NzUbToL1Nz(tile, aRotL1Nz, qkPreprocessUb);
     }
 
     __aicore__ inline void ComputeTileWithQkOutputBuffer(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
@@ -182,23 +192,6 @@ private:
         DataCopyGmToUb2D(gammaUb_[QKV_RRC_GAMMA_UB_ELEMENTS / 2U], kGammaGm_, {1U, headDim_, headDim_});
         DataCopyGmToUb2D(vScaleUb_, vScaleGm_, {1U, kvHeadNum_, kvHeadNum_});
         SetAndWaitMte2ToVInputReady();
-    }
-
-    __aicore__ inline void PreprocessQkv(TileParam &tile, uint32_t inputBufferId,
-                                         const LocalTensor<bfloat16_t> &aRotL1Nz,
-                                         LocalTensor<float> qkPreprocessUb)
-    {
-        if (tile.aivTokenSize == 0U) {
-            return;
-        }
-
-        CopyPreprocessInputs(tile, inputBufferId);
-        SetAndWaitMte2ToSSlotMappingReady();
-        BuildCacheOffsetsFromSlotMapping(tile, inputBufferId);
-        SetAndWaitMte2ToVInputReady();
-        BuildRopeBf16NzUb(tile, inputBufferId, qkPreprocessUb);
-        SetAndWaitVToMte3Al1StageReady();
-        CopyRopeBf16NzUbToL1Nz(tile, aRotL1Nz, qkPreprocessUb);
     }
 
     __aicore__ inline void CopyPreprocessInputs(const TileParam &tile, uint32_t inputBufferId)
@@ -525,18 +518,43 @@ private:
     __aicore__ inline void ScatterKOutputs(const TileParam &tile,
                                            LocalTensor<float> qkAfterCube, uint32_t vOutBufferId)
     {
+        if constexpr (IS_TND) {
+            ScatterKOutputsTnd(tile, qkAfterCube, vOutBufferId);
+        } else {
+            ScatterKOutputsNtd(tile, qkAfterCube, vOutBufferId);
+        }
+    }
+
+    __aicore__ inline void ScatterKOutputsTnd(const TileParam &tile,
+                                              LocalTensor<float> qkAfterCube, uint32_t vOutBufferId)
+    {
         const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
         const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
         const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId)[KScaleStagingBaseOffset(tile)];
         for (uint64_t tokenIdx = 0U; tokenIdx < tile.aivTokenSize; ++tokenIdx) {
-            const uint64_t kUbOffset =
-                (IS_TND ? tokenIdx * kvHeadNum_ : tokenIdx) * headDim_;
+            const uint64_t kUbOffset = tokenIdx * kvHeadNum_ * headDim_;
             const uint64_t kCacheOffset = tile.cacheBaseOffset[tokenIdx];
             const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
             DataCopyUbToGm2D(kCacheOutGm_[kCacheOffset], kFp8[kUbOffset],
-                             {kvHeadNum_, headDim_,
-                              (IS_TND ? headDim_ : tile.aivTokenSize * headDim_),
-                              kvCacheStrideHead_});
+                             {kvHeadNum_, headDim_, headDim_, kvCacheStrideHead_});
+            DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], qkScale[KScaleStagingOffset(tokenIdx, 0U)],
+                             {kvHeadNum_, 1U, 1U, kScaleCacheStrideHead_});
+        }
+    }
+
+    __aicore__ inline void ScatterKOutputsNtd(const TileParam &tile,
+                                              LocalTensor<float> qkAfterCube, uint32_t vOutBufferId)
+    {
+        const uint64_t kRowOffset = QkLocalKBaseRow(tile) * headDim_;
+        const LocalTensor<fp8_e4m3fn_t> kFp8 = qkAfterCube[kRowOffset].template ReinterpretCast<fp8_e4m3fn_t>();
+        const LocalTensor<float> qkScale = QkScaleStagingDbUb(vOutBufferId)[KScaleStagingBaseOffset(tile)];
+        const uint64_t kUbHeadStride = tile.aivTokenSize * headDim_;
+        for (uint64_t tokenIdx = 0U; tokenIdx < tile.aivTokenSize; ++tokenIdx) {
+            const uint64_t kUbOffset = tokenIdx * headDim_;
+            const uint64_t kCacheOffset = tile.cacheBaseOffset[tokenIdx];
+            const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
+            DataCopyUbToGm2D(kCacheOutGm_[kCacheOffset], kFp8[kUbOffset],
+                             {kvHeadNum_, headDim_, kUbHeadStride, kvCacheStrideHead_});
             DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], qkScale[KScaleStagingOffset(tokenIdx, 0U)],
                              {kvHeadNum_, 1U, 1U, kScaleCacheStrideHead_});
         }
