@@ -243,7 +243,7 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else {
-            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, \"ccu\" or \"ai_cpu\"");
+            OP_LOGE_FOR_INVALID_VALUE("matmul_allto_all", "commMode", commModeStr, "\"ccu\" or \"ai_cpu\"");
             return ACLNN_ERR_PARAM_INVALID;
         }
         OP_LOGD("The commMode is [%s].", commModeStr);
