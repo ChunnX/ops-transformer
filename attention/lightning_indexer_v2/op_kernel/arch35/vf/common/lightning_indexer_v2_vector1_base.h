@@ -18,6 +18,9 @@
 #include "basic_api/kernel_basic_intf.h"
 
 namespace liV2Vector1 {
+template <typename T>
+struct UIntSortTraits;
+
 template <>
 struct UIntSortTraits<float> {
     using UInt = uint32_t;
