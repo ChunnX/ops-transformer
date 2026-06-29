@@ -184,10 +184,52 @@ aclnnStatus Mc2Context::GetRankSizePerServer(const HcclComm &hcclHandle, uint32_
     return ACLNN_SUCCESS;
 }
 
+// aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+//                                         const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
+// {
+//     uint32_t channelNum = channelDesc.size();
+//     auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
+//     if (hcclRet != HCCL_SUCCESS) {
+//         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "HCCL channel init failed");
+//         return ACLNN_ERR_INNER;
+//     }
+//     OP_LOGD("HCCL channel init success");
+
+//     uint32_t netLayerNum = 0;
+//     uint32_t layerId = 0;
+//     uint32_t *netLayerList = nullptr;
+//     auto ret = GetNetLayers(hcclHandle, netLayerList, netLayerNum);
+//     if (ret != ACLNN_SUCCESS || netLayerNum == 0) {
+//         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get HCCL net layers failed netLayerNum is: %u", netLayerNum);
+//         return ret;
+//     }
+
+//     for (uint32_t i = 0; i < rankDim; ++i) {
+//         if (i == srcRankId) {
+//             continue;
+//         }
+//         uint32_t dstRank = i;
+//         uint32_t channelId = (i > srcRankId) ? (i - 1) : i;
+//         CommLink *links = nullptr;
+//         layerId = netLayerNum == 1 ?
+//                       netLayerList[HCCL_COMM_LAYERS_UB_MEM] :
+//                       layerMap[dstRank]; // 如果只有一层通信，直接使用该层；如果有多层通信，使用之前记录的通信层
+//         ret = GetHcclCommLink(hcclHandle, layerId, srcRankId, dstRank, protocol, links);
+//         if (ret != ACLNN_SUCCESS) {
+//             return ret;
+//         }
+//         channelDesc[channelId].channelProtocol = protocol;
+//         channelDesc[channelId].remoteRank = dstRank;
+//         channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
+//         channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+//     }
+//     return ACLNN_SUCCESS;
+// }
+
 aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
                                         const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
 {
-    uint32_t channelNum = channelDesc.size();
+    uint32_t channelNum = channelDesc.size(); // 获取信道数
     auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "HCCL channel init failed");
@@ -195,33 +237,47 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
     }
     OP_LOGD("HCCL channel init success");
 
-    uint32_t netLayerNum = 0;
-    uint32_t layerId = 0;
-    uint32_t *netLayerList = nullptr;
-    auto ret = GetNetLayers(hcclHandle, netLayerList, netLayerNum);
-    if (ret != ACLNN_SUCCESS || netLayerNum == 0) {
-        OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get HCCL net layers failed netLayerNum is: %u", netLayerNum);
-        return ret;
-    }
-
     for (uint32_t i = 0; i < rankDim; ++i) {
         if (i == srcRankId) {
             continue;
         }
         uint32_t dstRank = i;
         uint32_t channelId = (i > srcRankId) ? (i - 1) : i;
-        CommLink *links = nullptr;
-        layerId = netLayerNum == 1 ?
-                      netLayerList[HCCL_COMM_LAYERS_UB_MEM] :
-                      layerMap[dstRank]; // 如果只有一层通信，直接使用该层；如果有多层通信，使用之前记录的通信层
-        ret = GetHcclCommLink(hcclHandle, layerId, srcRankId, dstRank, protocol, links);
-        if (ret != ACLNN_SUCCESS) {
-            return ret;
-        }
-        channelDesc[channelId].channelProtocol = protocol;
+        
         channelDesc[channelId].remoteRank = dstRank;
-        channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
-        channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+        channelDesc[channelId].notifyNum = 3;
+        channelDesc[channelId].channelProtocol = CommProtocol::COMM_PROTOCOL_ROCE;
+        
+        // 设置本地端点
+        channelDesc[channelId].localEndpoint.protocol = CommProtocol::COMM_PROTOCOL_ROCE;
+        channelDesc[channelId].localEndpoint.commAddr.type = COMM_ADDR_TYPE_IP_V4;
+        channelDesc[channelId].localEndpoint.loc.locType = ENDPOINT_LOC_TYPE_HOST;
+        
+        // 设置远程端点
+        channelDesc[channelId].remoteEndpoint.protocol = CommProtocol::COMM_PROTOCOL_ROCE;
+        channelDesc[channelId].remoteEndpoint.commAddr.type = COMM_ADDR_TYPE_IP_V4;
+        channelDesc[channelId].remoteEndpoint.loc.locType = ENDPOINT_LOC_TYPE_HOST;
+        
+        // 两张卡跨server配置，srcRankId为0或1，dstRank为对应的另一张卡
+        if (srcRankId % 2 == 0) {
+            // srcRank为偶数的情况（卡0）
+            void *localAddr = &channelDesc[channelId].localEndpoint.commAddr.addr;
+            inet_pton(AF_INET, "30.30.30.101", localAddr);
+            void *remoteAddr = &channelDesc[channelId].remoteEndpoint.commAddr.addr;
+            inet_pton(AF_INET, "30.30.30.103", remoteAddr);
+            
+            channelDesc[channelId].localEndpoint.loc.device.devPhyId = 0;
+            channelDesc[channelId].remoteEndpoint.loc.device.devPhyId = 3;
+        } else {
+            // srcRank为奇数的情况（卡1）
+            void *localAddr = &channelDesc[channelId].localEndpoint.commAddr.addr;
+            inet_pton(AF_INET, "30.30.30.103", localAddr);
+            void *remoteAddr = &channelDesc[channelId].remoteEndpoint.commAddr.addr;
+            inet_pton(AF_INET, "30.30.30.101", remoteAddr);
+            
+            channelDesc[channelId].localEndpoint.loc.device.devPhyId = 3;
+            channelDesc[channelId].remoteEndpoint.loc.device.devPhyId = 0;
+        }
     }
     return ACLNN_SUCCESS;
 }
