@@ -152,7 +152,7 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
     repeatParamsMax.dstRepStride = rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM;
     if (blockCount > 0 && remain > 0) {
         Max(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, rectangleParams.row, repeatParamsMax);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
 
     for (uint32_t columnLoopCount = blockCount >> 1; columnLoopCount > 0;
@@ -162,7 +162,7 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
             Max(srcUb[j * dtypeMask], srcUb[j * dtypeMask], srcUb[(j + blockCount) * dtypeMask], dtypeMask,
                 rectangleParams.row, repeatParamsMax);
         }
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
 
     WholeReduceMax(dstUb, srcUb, (rectangleParams.col < dtypeMask) ? rectangleParams.col : dtypeMask,
@@ -206,11 +206,11 @@ __aicore__ inline void CastFP32ToINT8(const LocalTensor<O> outLocal, const Local
     LocalTensor<int32_t> int32 = shareTmpUb.ReinterpretCast<int32_t>();
     LocalTensor<half> tmpHalf = shareTmpUb.ReinterpretCast<half>();
     Cast(int32, inputLocal, RoundMode::CAST_RINT, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     SetDeqScale(static_cast<half>(1.0));
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     Cast(tmpHalf, int32, RoundMode::CAST_ROUND, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     Cast(outLocal, tmpHalf, RoundMode::CAST_TRUNC, cnt);
 }
 
@@ -431,25 +431,25 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     LocalTensor<float> rowMaxBrcb = inputCopy[Align(computeSize, static_cast<uint64_t>(ALIGN_BLOCK_SIZE))];
     // abs(x)
     Abs(inputCopy, inputLocal, computeSize);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     Rectangle rectangleParams{
         static_cast<uint32_t>(row), static_cast<uint32_t>(col),
         static_cast<uint32_t>(col) // columnStride
     };
     // rowMax(abs(x))
     RowMax(inputCopy, inputCopy, rectangleParams);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     // scaleOut = rowMax(abs(x)) / 127
     Div(scale, inputCopy, maxInt8Tensor, row);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     // 1 / scaleOut = 127 / rowMax(abs(x))
     Div(inputCopy, maxInt8Tensor, inputCopy, row);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     Brcb(rowMaxBrcb, inputCopy, static_cast<uint8_t>(CeilDivT(row, brcnNum)), {1, brcnNum});
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 
     // x * 1 / scaleOut
     RowMuls(outputLocal, inputLocal, rowMaxBrcb, rectangleParams);

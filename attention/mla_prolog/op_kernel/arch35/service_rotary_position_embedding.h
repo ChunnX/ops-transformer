@@ -25,8 +25,7 @@ namespace MlaProlog {
 template <typename T, typename C>
 __aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, LocalTensor<uint8_t> &shareTmpUb,
                                            const Rectangle &ropeParams, LocalTensor<C> &kFp32Local,
-                                           LocalTensor<T> &kLocal,
-                                           LocalTensor<C> &kFp32OutputLocal, int64_t cnt)
+                                           LocalTensor<T> &kLocal, LocalTensor<C> &kFp32OutputLocal, int64_t cnt)
 {
     int64_t baseOffset;
     kLocal = shareTmpUb.ReinterpretCast<T>();
@@ -94,14 +93,14 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
         } else {
             Dequant(kFp32Local, kLocal, channelDeqScaleLocal, scale, rectangleParams);
         }
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::DataSyncBarrier<MemDsbT::UB>();
+        PipeBarrier<PIPE_V>();
+        DataSyncBarrier<MemDsbT::UB>();
     } else if constexpr (std::is_same<T, bfloat16_t>::value) {
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
     RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, 0);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 }
 
 /**
@@ -162,9 +161,9 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
     } else if constexpr (std::is_same<T, bfloat16_t>::value) {
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
     }
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, ropeParams.col);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 }
 
 template <typename T, typename O>
@@ -178,12 +177,12 @@ __aicore__ inline void RopePostQuantPerChannel(LocalTensor<O> &outputLocal, Loca
     } else {
         inFp32 = shareTmpUb.ReinterpretCast<float>()[cnt];
         Cast(inFp32, inputLocal, RoundMode::CAST_NONE, cnt);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     }
     Mul(inFp32, inFp32, quantScaleLocal, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
     CastFP32ToINT8(outputLocal, inFp32, shareTmpUb, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 }
 } // namespace MlaProlog
 #endif
