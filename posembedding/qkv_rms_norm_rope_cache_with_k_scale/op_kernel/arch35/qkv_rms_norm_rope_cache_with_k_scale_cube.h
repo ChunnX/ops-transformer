@@ -32,14 +32,14 @@ public:
     __aicore__ inline void InitIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < AIC_L0_BUFFER_NUM; ++bufferId) {
-            SetMmadToMte1L0Reusable(bufferId);
+            SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
         }
     }
 
     __aicore__ inline void EndIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < AIC_L0_BUFFER_NUM; ++bufferId) {
-            WaitMmadToMte1L0Reusable(bufferId);
+            WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
         }
     }
 
@@ -47,12 +47,12 @@ public:
     {
         CopyRotationGmToL1Nz(qRotationL1Nz_, qRotationGm_);
         CopyRotationGmToL1Nz(kRotationL1Nz_, kRotationGm_);
-        SetMte2ToMte1RotationReady();
-        WaitMte2ToMte1RotationReady();
+        SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
+        WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
         LoadRotationToL0(l0b_, qRotationL1Nz_);
         LoadRotationToL0(l0b_[AIC_L0B_ONE_BUFFER_ELEMENTS], kRotationL1Nz_);
-        SetMte1ToMmadRotationReady();
-        WaitMte1ToMmadRotationReady();
+        SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
+        WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
     }
 
     __aicore__ inline void ComputeTile(const TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
@@ -73,7 +73,6 @@ public:
 private:
     static constexpr uint32_t INTRA_EVENT_ID_MAX = 5U;
     static constexpr uint32_t AIC_L0_BUFFER_NUM = QKV_RRC_DOUBLE_BUFFER_NUM;
-    static constexpr uint32_t AIC_L0C_BUFFER_NUM = QKV_RRC_DOUBLE_BUFFER_NUM;
     static constexpr uint32_t AIC_M_L0_TILE = 128U;
     static constexpr uint32_t AIC_L0A_BUFFER_ELEMENTS = 64U * QKV_RRC_KIB / sizeof(bfloat16_t);
     static constexpr uint32_t AIC_L0B_BUFFER_ELEMENTS = 64U * QKV_RRC_KIB / sizeof(bfloat16_t);
@@ -82,7 +81,7 @@ private:
     static constexpr uint32_t AIC_L0A_ONE_BUFFER_ROWS = AIC_L0A_ONE_BUFFER_ELEMENTS / QKV_RRC_HEAD_DIM_D128;
     static constexpr uint32_t AIC_L0A_SPLIT_D_TILE = 64U;
     static constexpr uint32_t AIC_L0B_ONE_BUFFER_ELEMENTS = AIC_L0B_BUFFER_ELEMENTS / AIC_L0_BUFFER_NUM;
-    static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / AIC_L0C_BUFFER_NUM;
+    static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / QKV_RRC_DOUBLE_BUFFER_NUM;
     static constexpr uint8_t AIC_UNIT_FLAG_CHECK_ONLY = 0b10;
     static constexpr uint8_t AIC_UNIT_FLAG_UPDATE = 0b11;
     static constexpr uint32_t EVT_MTE2_TO_MTE1_ROTATION_READY = 5U;
@@ -106,46 +105,6 @@ private:
                   "QkvRmsNormRopeCacheWithKScale AIC MTE1->MMAD L0 events exceed event id range.");
     static_assert(EVT_MMAD_TO_MTE1_L0_BASE + AIC_L0_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
                   "QkvRmsNormRopeCacheWithKScale AIC MMAD->MTE1 L0 events exceed event id range.");
-
-    __aicore__ inline void SetMte2ToMte1RotationReady()
-    {
-        SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
-    }
-
-    __aicore__ inline void WaitMte2ToMte1RotationReady()
-    {
-        WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
-    }
-
-    __aicore__ inline void SetMte1ToMmadRotationReady()
-    {
-        SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
-    }
-
-    __aicore__ inline void WaitMte1ToMmadRotationReady()
-    {
-        WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
-    }
-
-    __aicore__ inline void WaitMmadToMte1L0Reusable(uint32_t bufferId)
-    {
-        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-    }
-
-    __aicore__ inline void SetMmadToMte1L0Reusable(uint32_t bufferId)
-    {
-        SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-    }
-
-    __aicore__ inline void SetMte1ToMmadL0Ready(uint32_t bufferId)
-    {
-        SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + bufferId));
-    }
-
-    __aicore__ inline void WaitMte1ToMmadL0Ready(uint32_t bufferId)
-    {
-        WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + bufferId));
-    }
 
     __aicore__ inline void CopyRotationGmToL1Nz(const LocalTensor<bfloat16_t> &rotationL1Nz,
                                                 const GlobalTensor<bfloat16_t> &rotationGm)
@@ -206,13 +165,13 @@ private:
             const bool isLastD = (dStart + dSize >= QKV_RRC_HEAD_DIM_D128);
             const uint32_t l0aBufferId = l0aDbIter & (AIC_L0_BUFFER_NUM - 1U);
 
-            WaitMmadToMte1L0Reusable(l0aBufferId);
-            LoadAToL0(segmentRows, segmentRows, dStart, dSize, l0aBufferId, 0U, segmentL1Nz);
-            SetMte1ToMmadL0Ready(l0aBufferId);
-            WaitMte1ToMmadL0Ready(l0aBufferId);
+            WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + l0aBufferId));
+            LoadAToL0(segmentRows, segmentRows, dStart, dSize, l0aBufferId, segmentL1Nz);
+            SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + l0aBufferId));
+            WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + l0aBufferId));
             ComputeMmad(segmentRows, dSize, isFirstD, isLastD, l0aBufferId, l0cBufferId,
-                        RotationKChunk(rotationL0b, dStart), l0cOffset, 0U);
-            SetMmadToMte1L0Reusable(l0aBufferId);
+                        RotationKChunk(rotationL0b, dStart), l0cOffset);
+            SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + l0aBufferId));
             ++l0aDbIter;
         }
     }
@@ -237,8 +196,7 @@ private:
     }
 
     __aicore__ inline void LoadAToL0(uint64_t segmentRows, uint64_t mSize, uint64_t dStart, uint64_t dSize,
-                                     uint32_t bufferId, uint64_t l0aOffset,
-                                     const LocalTensor<bfloat16_t> &segmentL1Nz)
+                                     uint32_t bufferId, const LocalTensor<bfloat16_t> &segmentL1Nz)
     {
         if (mSize == 0U) {
             return;
@@ -255,13 +213,12 @@ private:
         loadDataParams.srcStride = static_cast<int32_t>(CeilDiv(rowSizeAligned, QKV_RRC_NZ_C0));
         loadDataParams.dstStride = static_cast<uint16_t>(CeilDiv(mSizeAligned, QKV_RRC_NZ_C0));
         loadDataParams.ifTranspose = false;
-        LoadData(l0a_[bufferId * AIC_L0A_ONE_BUFFER_ELEMENTS + l0aOffset], segmentL1Nz, loadDataParams);
+        LoadData(l0a_[bufferId * AIC_L0A_ONE_BUFFER_ELEMENTS], segmentL1Nz, loadDataParams);
     }
 
     __aicore__ inline void ComputeMmad(uint64_t mSize, uint64_t dSize, bool initC, bool updateUnitFlag,
                                        uint32_t l0aBufferId, uint32_t l0cBufferId,
-                                       const LocalTensor<bfloat16_t> &rotationL0b, uint64_t l0cOffset,
-                                       uint64_t l0aOffset)
+                                       const LocalTensor<bfloat16_t> &rotationL0b, uint64_t l0cOffset)
     {
         if (mSize == 0U) {
             return;
@@ -275,7 +232,7 @@ private:
         params.cmatrixInitVal = initC;
         params.cmatrixSource = false;
         Mmad(l0c_[l0cBufferId * AIC_L0C_ONE_BUFFER_ELEMENTS + l0cOffset],
-             l0a_[l0aBufferId * AIC_L0A_ONE_BUFFER_ELEMENTS + l0aOffset], rotationL0b, params);
+             l0a_[l0aBufferId * AIC_L0A_ONE_BUFFER_ELEMENTS], rotationL0b, params);
     }
 
     __aicore__ inline LocalTensor<bfloat16_t> RotationKChunk(const LocalTensor<bfloat16_t> &rotationL0b,
