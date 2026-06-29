@@ -200,6 +200,8 @@ private:
     DataCopyParams metaCopyOutParams_;
     DataCopyParams slotCopyParams_;
     DataCopyParams scalesCopyParams_;
+    DataCopyParams statusCopyParams_;
+    DataCopyParams clearStatusCopyParams_;
     DataCopyPadParams padParams_;
 };
 
@@ -231,7 +233,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     numAivStage2_ = info.numAivStage2;
     aivNum_ = info.aivNum;
     cntWinStateOffset_ = info.cntWinStateOffset;
-    slotWinStateOffset_ = info.cntWinStateOffset;
+    slotWinStateOffset_ = info.slotWinStateOffset;
     winDataOffset_ = info.winDataOffset;
     hostPinnedCounterAddrGM_ = reinterpret_cast<GM_ADDR>(info.hostPinnedCounterAddr);
     moeExpertNum_ = moeExpertNumPerRank_ * epWorldSize_;
@@ -280,6 +282,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     scalesCopyParams_ = {1U, static_cast<uint16_t>(scalesBytes_), 0U, 0U};
     countCopyParams_ = {1U, static_cast<uint16_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U};
     slotCopyParams_ = {1U, static_cast<uint16_t>(perSlotBytes_), 0U, 0U};
+    statusCopyParams_ = {static_cast<uint16_t>(epWorldSize_), 1U,
+                                       static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
+    clearStatusCopyParams_ = {static_cast<uint16_t>(epWorldSize_), 1U, 0U,
+                              static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
     padParams_ = {true, 0, 0, 0};
 
     scaleupCounterAddr_ = workspaceGM;
@@ -539,15 +545,13 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     uint32_t mask = 1;
     int32_t sumOfFlag = -1;
     int32_t commpareFlag = static_cast<int32_t>(epWorldSize_);
-    DataCopyParams recvCntCopyParams = {static_cast<uint16_t>(epWorldSize_), static_cast<uint16_t>(UB_ALIGN),
-                                        WIN_ADDR_ALIGN - UB_ALIGN, 0U};
     LocalTensor<int32_t> recvCounterTensor = topkIdsBuf_.GetWithOffset<int32_t>(epWorldSize_ * UB_STRIDE, 0);
     LocalTensor<float> tempFp32 = topkIdsBuf_.GetWithOffset<float>(epWorldSize_ * UB_STRIDE, epWorldSize_ * UB_ALIGN);
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
-    SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待前面尾核计数器清0处理
+    SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待前面尾核计数器清0(buf 复用)
     while (sumOfFlag != commpareFlag) {  // 状态位check
-        DataCopyPad(recvCounterTensor, recvCounterGMTensor_, recvCntCopyParams, padParams_);
+        DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, epWorldSize_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
@@ -555,6 +559,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     }
     SetRecvNumPerExpert();  // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor);   // 计算本端接收来自各卡的token总数
+    // status clear
+    Duplicate<int32_t>(recvCounterTensor, 0, epWorldSize_ * UB_STRIDE);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyPad(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -776,8 +784,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatc
     uint64_t sumOfFlag = 0;
     uint64_t commpareFlag = static_cast<uint64_t>(epWorldSize_);
     const uint32_t shape[] = {epWorldSize_, UB_ALIGN / sizeof(uint64_t)};
-    DataCopyParams statusCopyParams = {static_cast<uint16_t>(epWorldSize_), static_cast<uint16_t>(UB_ALIGN),
-                                       static_cast<uint16_t>(WIN_ADDR_ALIGN - UB_ALIGN), 0U};
     GlobalTensor<uint64_t> statusGMTensor;
     statusGMTensor.SetGlobalBuffer((__gm__ uint64_t*)localSlotStateWinAddr_);
     tpipe_->InitBuffer(recvCntBuf_, epWorldSize_ * UB_ALIGN);
@@ -786,12 +792,16 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatc
     LocalTensor<uint64_t> sumTensor = tempBuf_.Get<uint64_t>();
 
     while (sumOfFlag != commpareFlag) {  // 状态位check
-        DataCopyPad(statusLocalTensor, statusGMTensor, statusCopyParams,padParams_);
+        DataCopy(statusLocalTensor, statusGMTensor, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum<uint64_t, AscendC::Pattern::Reduce::RA, true>(sumTensor, statusLocalTensor, shape, true);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = sumTensor.GetValue(0);
     }
+    // status clear
+    Duplicate<uint64_t>(statusLocalTensor, 0, epWorldSize_ * UB_ALIGN / sizeof(uint64_t));
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopy(statusGMTensor, statusLocalTensor, clearStatusCopyParams_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
