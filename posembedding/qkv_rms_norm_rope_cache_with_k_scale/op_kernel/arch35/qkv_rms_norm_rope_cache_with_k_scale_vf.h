@@ -43,13 +43,13 @@ constexpr MicroAPI::CastTrait QKV_RRC_CAST_F32_TO_FP8_E4M3FN = {
     RoundMode::CAST_RINT,
 };
 
-__simd_callee__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
-                                                            __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz,
-                                                            __ubuf__ uint16_t *nzScatterIndex, uint32_t tokenSize,
-                                                            uint32_t qkHeadBase, uint32_t headSize,
-                                                            uint32_t qkvUbStrideN, uint32_t qkvUbStrideT,
-                                                            uint32_t outputHeadStride, uint32_t outputTokenStride,
-                                                            float reciprocal, float epsilon)
+__simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
+                                                        __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz,
+                                                        __ubuf__ uint16_t *nzScatterIndex, uint32_t tokenSize,
+                                                        uint32_t qkHeadBase, uint32_t headSize,
+                                                        uint32_t qkvUbStrideN, uint32_t qkvUbStrideT,
+                                                        uint32_t outputHeadStride, uint32_t outputTokenStride,
+                                                        float reciprocal, float epsilon)
 {
     MicroAPI::RegTensor<float> gammaLow;
     MicroAPI::RegTensor<float> gammaHigh;
@@ -145,28 +145,6 @@ __simd_callee__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t
             MicroAPI::Scatter<bfloat16_t, uint16_t>(outBf16Nz + rowOutOffset, packedHighBf16, highIndex, bf16MaskHalf);
         }
     }
-}
-
-__simd_vf__ inline void QkRmsNormRopeD128SegmentNtdNzVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
-                                                        __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz,
-                                                        __ubuf__ uint16_t *nzScatterIndex, uint32_t tokenSize,
-                                                        uint32_t qkHeadBase, uint32_t headSize,
-                                                        uint32_t tokenCapacity, float reciprocal, float epsilon)
-{
-    QkRmsNormRopeD128SegmentNzVfImpl(inputBf16, gamma, cosSin, outBf16Nz, nzScatterIndex, tokenSize, qkHeadBase,
-                                     headSize, tokenSize * QKV_RRC_D128_FULL_SIZE, QKV_RRC_D128_FULL_SIZE,
-                                     tokenCapacity, 1U, reciprocal, epsilon);
-}
-
-__simd_vf__ inline void QkRmsNormRopeD128SegmentTndNzVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
-                                                        __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz,
-                                                        __ubuf__ uint16_t *nzScatterIndex, uint32_t tokenSize,
-                                                        uint32_t qkHeadBase, uint32_t headSize, uint32_t qkvHeadNum,
-                                                        float reciprocal, float epsilon)
-{
-    QkRmsNormRopeD128SegmentNzVfImpl(inputBf16, gamma, cosSin, outBf16Nz, nzScatterIndex, tokenSize, qkHeadBase,
-                                     headSize, QKV_RRC_D128_FULL_SIZE, qkvHeadNum * QKV_RRC_D128_FULL_SIZE,
-                                     1U, headSize, reciprocal, epsilon);
 }
 
 __simd_callee__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *vScale,

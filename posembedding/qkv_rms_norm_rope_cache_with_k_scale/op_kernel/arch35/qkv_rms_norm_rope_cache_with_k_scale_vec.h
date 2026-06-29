@@ -83,7 +83,7 @@ public:
         BuildCacheOffsetsFromSlotMapping(tile, inputBufferId);
         SetAndWaitMte2ToVInputReady();
         BuildRopeBf16NzUb(tile, inputBufferId, qkPreprocessUb);
-        SetAndWaitVToMte3Al1StageReady();
+        SetAndWaitVToMte3Ready();
         CopyRopeBf16NzUbToL1Nz(tile, aRotL1Nz, qkPreprocessUb);
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
     }
@@ -100,8 +100,7 @@ public:
             static_cast<uint32_t>((vOutBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         QuantVToFp8(tile, inputBufferId, vOutBufferId);
-        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
-        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
+        SetAndWaitVToMte3Ready();
         ScatterVCache(tile, vOutBufferId);
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
     }
@@ -121,12 +120,10 @@ public:
             vOutDbPoolUb_[vOutBufferId * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS].template ReinterpretCast<float>();
         const LocalTensor<float> kScale = qkScaleStaging[KScaleStagingBaseOffset(tile)];
         QuantQToFp8(tile, qkAfterCubeUb, qkScaleStaging);
-        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
-        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
+        SetAndWaitVToMte3Ready();
         ScatterQOutputs(tile, qkAfterCubeUb, qkScaleStaging);
         QuantKToFp8(tile, qkAfterCubeUb, kScale);
-        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
-        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
+        SetAndWaitVToMte3Ready();
         ScatterKOutputs(tile, qkAfterCubeUb, kScale);
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
@@ -158,7 +155,7 @@ private:
     static constexpr uint32_t EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE = 0U;
     static constexpr uint32_t EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE = 0U;
     static constexpr uint32_t EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE = 2U;
-    static constexpr uint32_t EVT_PIPE_V_TO_MTE3_A_L1_READY = 4U;
+    static constexpr uint32_t EVT_PIPE_V_TO_MTE3_READY = 0U;
     static constexpr uint32_t EVT_MTE2_TO_S_SLOT_MAPPING_READY = 5U;
 
     static_assert(QK_PREPROCESS_BF16_NZ_ELEMENTS >=
@@ -180,8 +177,8 @@ private:
                   "QkvRmsNormRopeCacheWithKScale AIV MTE3->V V output events exceed event id range.");
     static_assert(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
                   "QkvRmsNormRopeCacheWithKScale AIV MTE3->V QK output events exceed event id range.");
-    static_assert(EVT_PIPE_V_TO_MTE3_A_L1_READY <= INTRA_EVENT_ID_MAX,
-                  "QkvRmsNormRopeCacheWithKScale AIV V->MTE3 AL1 ready event exceeds event id range.");
+    static_assert(EVT_PIPE_V_TO_MTE3_READY <= INTRA_EVENT_ID_MAX,
+                  "QkvRmsNormRopeCacheWithKScale AIV V->MTE3 event exceeds event id range.");
     static_assert(EVT_MTE2_TO_S_SLOT_MAPPING_READY <= INTRA_EVENT_ID_MAX,
                   "QkvRmsNormRopeCacheWithKScale AIV MTE2->S slot mapping event exceeds event id range.");
 
@@ -197,10 +194,10 @@ private:
         WaitFlag<HardEvent::MTE2_S>(static_cast<event_t>(EVT_MTE2_TO_S_SLOT_MAPPING_READY));
     }
 
-    __aicore__ inline void SetAndWaitVToMte3Al1StageReady()
+    __aicore__ inline void SetAndWaitVToMte3Ready()
     {
-        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_A_L1_READY));
-        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_A_L1_READY));
+        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_READY));
+        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_READY));
     }
 
     __aicore__ inline void CopyPersistentInputs()
@@ -291,35 +288,37 @@ private:
         const LocalTensor<bfloat16_t> qRopeNz = qkPreprocessUb.template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[QK_PREPROCESS_BF16_NZ_ELEMENTS];
         if constexpr (IS_TND) {
-            const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
-            AscendC::VF_CALL<QkRmsNormRopeD128SegmentTndNzVf>(
+            const uint32_t qkvHeadNum = static_cast<uint32_t>(qHeadNum_ + kvHeadNum_ + kvHeadNum_);
+            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
                 (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
                 (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize), 0U,
-                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(qkvHeadNum),
-                QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
-            AscendC::VF_CALL<QkRmsNormRopeD128SegmentTndNzVf>(
+                static_cast<uint32_t>(qHeadNum_), QKV_RRC_D128_FULL_SIZE, qkvHeadNum * QKV_RRC_D128_FULL_SIZE, 1U,
+                static_cast<uint32_t>(qHeadNum_), QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
+            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
                 (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
                 (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
                 (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
                 static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(kvHeadNum_),
-                static_cast<uint32_t>(qkvHeadNum), QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
+                QKV_RRC_D128_FULL_SIZE, qkvHeadNum * QKV_RRC_D128_FULL_SIZE, 1U, static_cast<uint32_t>(kvHeadNum_),
+                QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
         } else {
-            const uint64_t tokenCapacity = tile.cubeHalfTokenSize;
-            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNtdNzVf>(
+            const uint32_t tokenCapacity = static_cast<uint32_t>(tile.cubeHalfTokenSize);
+            const uint32_t qkvUbStrideN = static_cast<uint32_t>(tile.aivTokenSize) * QKV_RRC_D128_FULL_SIZE;
+            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)gamma.GetPhyAddr(),
                 (__ubuf__ float *)cosSin.GetPhyAddr(), (__ubuf__ bfloat16_t *)qRopeNz.GetPhyAddr(),
                 (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize), 0U,
-                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(tokenCapacity),
+                static_cast<uint32_t>(qHeadNum_), qkvUbStrideN, QKV_RRC_D128_FULL_SIZE, tokenCapacity, 1U,
                 QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
-            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNtdNzVf>(
+            AscendC::VF_CALL<QkRmsNormRopeD128SegmentNzVfImpl>(
                 (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
                 (__ubuf__ float *)(gamma[QKV_RRC_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)cosSin.GetPhyAddr(),
                 (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
                 (__ubuf__ uint16_t *)qkNzScatterIndexUb_.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
                 static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(kvHeadNum_),
-                static_cast<uint32_t>(tokenCapacity), QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
+                qkvUbStrideN, QKV_RRC_D128_FULL_SIZE, tokenCapacity, 1U, QKV_RRC_HEAD_DIM_D128_RECIP, epsilon_);
         }
     }
 
