@@ -1656,7 +1656,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
         MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType,false,true>(
             params_, gmm2State.problemShape, gmmAddrInfo, startBlockIdx_,
-            vecSetSyncCom_, expertBeforeCnt_, gmm2PingPongIdx_, expertIdx, maxRowGroupsStride_);
+            vecSetSyncCom_, expertBeforeCnt_, gmm2PingPongIdx_, expertIdx);
         
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
             ProcessCombine(gmmAddrInfo, gmm2State, expertIdx);
@@ -1667,6 +1667,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+
 
     // 4. 本卡数据Unpermute
     if constexpr(g_coreType == AIV) {
