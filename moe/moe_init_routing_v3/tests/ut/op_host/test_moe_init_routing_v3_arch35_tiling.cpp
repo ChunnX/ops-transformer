@@ -36,6 +36,8 @@ constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12;
 constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 = 16;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17;
 constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14;
 constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15;
 // 可选row_idx_type
@@ -71,11 +73,13 @@ ge::DataType GetExpandedXDtype(int64_t quantMode, ge::DataType xDtype, ge::DataT
             return ge::DT_INT4;
         case QUANT_MODE_MXFP8_E5M2:
         case QUANT_MODE_FP8_GROUP_E5M2:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2:
         case QUANT_MODE_FP8_PERBLOCK_E5M2:
         case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
             return ge::DT_FLOAT8_E5M2;
         case QUANT_MODE_MXFP8_E4M3FN:
         case QUANT_MODE_FP8_GROUP_E4M3FN:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN:
         case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
         case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
             return ge::DT_FLOAT8_E4M3FN;
@@ -164,7 +168,9 @@ ExpandedScaleDesc GetExpandedScaleDesc(int64_t quantMode, int64_t totalLength, i
         case QUANT_MODE_INT4_DYNAMIC:
             return MakePerTokenScaleDesc(totalLength);
         case QUANT_MODE_MXFP8_E5M2:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2:
         case QUANT_MODE_MXFP8_E4M3FN:
+        case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN:
             return MakeMxfp8ScaleDesc(totalLength, cols);
         case QUANT_MODE_MXFP4_E2M1:
             return MakeMxfp4ScaleDesc(totalLength, cols);
@@ -318,6 +324,16 @@ void RunArch35ExtendedTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCa
         aciveExpertRange, rowIdxType, scaleShape, scaleDtype, offsetShape, offsetDtype, expandedXDtypeOverride,
         &compileInfo);
     ExecuteTestCase(tilingContextPara, expectResult, SKIP_TILING_KEY_VALIDATION, "", {});
+}
+
+void RunArch35ExtendedTilingKeyTestcase(int64_t N, int64_t H, int64_t K, int64_t quantMode,
+                                        ge::DataType xDataType, int64_t rowIdxType, uint64_t expectTilingKey)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara = MakeArch35ExtendedTilingContextPara(
+        N, H, K, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, quantMode, xDataType, {0, EXPERT_NUM}, rowIdxType, {},
+        ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto, &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 } // namespace
 
@@ -673,6 +689,18 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_e4m3)
     RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP8_E4M3FN, ge::DT_BF16,
                               {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
                               ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_roundscale_amax_e5m2)
+{
+    RunArch35ExtendedTilingKeyTestcase(1, 83, 27, QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2, ge::DT_FLOAT16,
+                                       ROW_IDX_TYPE_GATHER, 10170000);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_roundscale_amax_e4m3)
+{
+    RunArch35ExtendedTilingKeyTestcase(8, 60, 32, QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN, ge::DT_BF16,
+                                       ROW_IDX_TYPE_SCATTER, 10171000);
 }
 
 // MXFP4 E2M1 fullload
