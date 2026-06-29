@@ -30,7 +30,7 @@
 #include "matmul_all_reduce_dequant_perchannel.h"
 
 namespace MatmulAllReduceImpl {
-constexpr uint32_t MAX_HANDLE_NUM = 16;
+constexpr uint32_t MAX_HANDLE_ID_NUM = 16;
 constexpr uint32_t NUM_TWO_PERTOKEN = 2;
 
 using namespace AscendC;
@@ -71,18 +71,17 @@ private:
     GM_ADDR outGM_;
     GM_ADDR all2allInGM_;
     GM_ADDR all2allOutGM_;
-    bool notifyFlag_{false};
     GM_ADDR allGatherOutGM_;
     typename HcclTypeSelector<commMode>::type hccl_;
     bool notifyFlag_{false};
 
     // 仅在0核上使用
-    AscendC::HcclHandle all2allHandleId_[MAX_HANDLE_NUM] = {0};
-    AscendC::HcclHandle allGatherHandleId_[MAX_HANDLE_NUM] = {0};
-    GM_ADDR all2allSendGM_[MAX_HANDLE_NUM] = {0};
-    GM_ADDR allGatherSendGM_[MAX_HANDLE_NUM] = {0};
-    GM_ADDR all2allRecvGM_[MAX_HANDLE_NUM] = {0};
-    GM_ADDR allGatherRecvGM_[MAX_HANDLE_NUM] = {0};
+    AscendC::HcclHandle all2allHandleId_[MAX_HANDLE_ID_NUM] = {0};
+    AscendC::HcclHandle allGatherHandleId_[MAX_HANDLE_ID_NUM] = {0};
+    GM_ADDR all2allSendGM_[MAX_HANDLE_ID_NUM] = {0};
+    GM_ADDR allGatherSendGM_[MAX_HANDLE_ID_NUM] = {0};
+    GM_ADDR all2allRecvGM_[MAX_HANDLE_ID_NUM] = {0};
+    GM_ADDR allGatherRecvGM_[MAX_HANDLE_ID_NUM] = {0};
     int all2allCommitIdx_ = 0;
     int all2allWaitIdx_ = 0;
     int allGatherCommitIdx_ = 0;
