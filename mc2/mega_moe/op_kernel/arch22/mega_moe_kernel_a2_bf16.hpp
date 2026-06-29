@@ -1508,32 +1508,35 @@ private:
         CATLASS_DEVICE
         PeermemInfo(){}
 
-         CATLASS_DEVICE
+        CATLASS_DEVICE
         PeermemInfo(const Params & params, const HcclShmem<true> & shmem)
         {
             const int64_t segSize = static_cast<int64_t>(shmem.SegmentSize());
             const int64_t EP = params.EP;
             const int64_t E = params.expertPerRank;
-            const int64_t MB = static_cast<int64_t>(MB_SIZE);
+            const int64_t M = params.maxOutputSize;
+            const int64_t h = params.problemShape.k();
 
-            // tokenPerExpert: TPE = EP × CeilAlign(EP × E, 128) × 4B
-            int64_t tpeNeed = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
-            int64_t tokenPerExpertSize = (tpeNeed > 2 * MB) ? tpeNeed : 2 * MB;
-
-            // Dispatch Flag: EP×E×64B，每 slot 占 64B cache line
-            int64_t flagSize = (EP * E * 64 > MB) ? EP * E * 64 : MB;
-
+            // 绝对大小：从尾部向前排
+            // tokenPerExpert = EP × AlignUp(EP×E, 128) × 4B
+            int64_t tokenPerExpertSize = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            // Dispatch Flag: EP×E×64B
+            int64_t flagSize = EP * E * 64;
             // Allgather Flag: EP×64B
-            int64_t allgatherFlagSize = (EP * 64 > MB) ? EP * 64 : MB;
+            int64_t allgatherFlagSize = EP * 64;
+            // CrossRankSync 尾部
+            int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
 
-            // 从尾部向前布局固定段
-            offsetPeerTokenPerExpert = segSize - tokenPerExpertSize;
+            // offsetA: dispatch 数据区（BF16，无 perTokenScale）
+            int64_t offsetASize = M * h * sizeof(int16_t);
+
+            // 从尾部向前布局
+            offsetPeerTokenPerExpert = segSize - tailSyncSize - tokenPerExpertSize;
             offsetFlag = offsetPeerTokenPerExpert - flagSize;
             offsetAllgatherFlag = offsetFlag - allgatherFlagSize;
 
-            // offsetA 与 offsetD 1:1 切分剩余空间
             offsetA = 0;
-            offsetD = AlignUp(offsetAllgatherFlag / 2, 512);
+            offsetD = offsetASize;
         }
     };
 

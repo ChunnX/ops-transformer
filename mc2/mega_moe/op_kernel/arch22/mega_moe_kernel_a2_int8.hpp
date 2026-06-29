@@ -1411,33 +1411,26 @@ private:
             const int64_t E = params.expertPerRank;
             const int64_t M = params.maxOutputSize;
             const int64_t h = params.problemShape.k();
-            const int64_t MB = static_cast<int64_t>(MB_SIZE);
 
-            // tokenPerExpert: TPE = EP × CeilAlign(EP × E, 128) × 4B
-            int64_t tpeNeed = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
-            int64_t tokenPerExpertSize = (tpeNeed > 2 * MB) ? tpeNeed : 2 * MB;
+            // tokenPerExpert = EP × AlignUp(EP×E, 128) × 4B
+            int64_t tokenPerExpertSize = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            // Dispatch Flag: EP×E×64B，每 slot 占 64B cache line（与 BF16/W4A8 统一）
+            int64_t flagSize = EP * E * 64;
+            // CrossRankSync 尾部
+            int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
+            // A: M × (h + ALIGN_512)，行步长 h+512
+            int64_t offsetASize = M * (h + ALIGN_512);
+            // PerTokenScaleSize: M × sizeof(float)
+            int64_t offsetPerTokenScaleSize = M * sizeof(float);
 
-            // perTokenScale: M×4B
-            int64_t perTokenScaleNeed = M * 4;
-            int64_t perTokenScaleSize = (perTokenScaleNeed > MB) ? perTokenScaleNeed : MB;
-
-            // Flag: EP×E×4B，512 字节对齐
-            int64_t flagSize = AlignUp(EP * E * static_cast<int64_t>(sizeof(uint32_t)), 512);
-
-            // 从尾部向前布局固定段
-            offsetPeerTokenPerExpert = segSize - tokenPerExpertSize;
+            // 从尾部向前：TPE → flag
+            offsetPeerTokenPerExpert = segSize - tailSyncSize - tokenPerExpertSize;
             offsetFlag = offsetPeerTokenPerExpert - flagSize;
 
-            // offsetA:offsetD 按 (h+512):2h 比例动态切分剩余空间
-            int64_t remaining = offsetFlag - perTokenScaleSize;
-            int64_t ratioA = h + 512;
-            int64_t ratioD = 2 * h;
-            int64_t ratioSum = ratioA + ratioD;
-            int64_t offsetASize = remaining * ratioA / ratioSum;
-
+            // 从前往后：A → perTokenScale → D（D 占用到 flag 为止的剩余空间）
             offsetA = 0;
-            offsetPeerPerTokenScale = AlignUp(offsetASize, 512);
-            offsetD = offsetPeerPerTokenScale + perTokenScaleSize;
+            offsetPeerPerTokenScale = offsetASize;
+            offsetD = offsetPeerPerTokenScale + offsetPerTokenScaleSize;
         }
     };
 

@@ -1661,43 +1661,41 @@ private:
         CATLASS_DEVICE
         PeermemInfo(const Params &params, const HcclShmem<false> &shmem)
         {
-            // 1. BF16 无 per-token scale，不再预留 1MB perTokenScale 区（原为纯浪费）
-            // 2. BF16 offsetA:offsetD = 1:1（两者均为 M×h×2）
-            // 3. INT8/W4A8 offsetA:offsetD = (h+512):2h 动态切分
+            // 绝对大小布局：A → perTokenScale → D → (剩余) → TPE → CrossRankSync尾
+            // BF16:  A=M×h×2               无perTokenScale  D=bs×topK×h×2
+            // INT8:  A=M×(h+32)            perToken=M×4     D=bs×topK×h×2（取+512）
+            // W4A8:  A=M×(h+512)           perToken=M×4     D=bs×topK×h×2
             const int64_t segSize = static_cast<int64_t>(shmem.SegmentSize());
             const int64_t EP = params.EP;
             const int64_t E = params.expertPerRank;
             const int64_t M = params.maxOutputSize;
             const int64_t h = params.problemShape.k();
-            const int64_t MB = static_cast<int64_t>(MB_SIZE);
-
-            // tokenPerExpert: TPE = EP × CeilAlign(EP × E, 128) × 4B
-            int64_t tpeNeed = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
-            int64_t tokenPerExpertSize = (tpeNeed > 2 * MB) ? tpeNeed : 2 * MB;
-
-            offsetA = 0;
-            offsetPeerTokenPerExpert = segSize - tokenPerExpertSize;
+            const int64_t bs = params.problemShape.m();
+            const int64_t topK = params.topK;
 
             constexpr bool RoutingIsQuant =
                 std::is_same_v<ElementB, AscendC::int4b_t> || std::is_same_v<ElementB, int8_t>;
+
+            // 尾部：CrossRankSync + tokenPerExpert
+            // TPE = EP × AlignUp(EP×E, 128) × 4B，放在 CrossRankSync 之前
+            int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
+            int64_t tokenPerExpertSize = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+
+            // offsetA: dispatch 数据区（量化时含行内 scale）
+            int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));
+
+            // perTokenScale: 量化 scale 区（仅量化路径，临时空间）
+            int64_t perTokenScaleSize = RoutingIsQuant ? (bs * topK * static_cast<int64_t>(sizeof(float))) : 0;
+
+            offsetA = 0;
             if constexpr (RoutingIsQuant) {
-                // INT8/W4A8: perTokenScale = max(M×4, 1MB)，offsetA:offsetD = (h+512):2h
-                int64_t perTokenScaleNeed = M * 4;
-                int64_t perTokenScaleSize = (perTokenScaleNeed > MB) ? perTokenScaleNeed : MB;
-
-                int64_t remaining = offsetPeerTokenPerExpert - perTokenScaleSize;
-                int64_t ratioA = h + 512;
-                int64_t ratioD = 2 * h;
-                int64_t ratioSum = ratioA + ratioD;
-                int64_t offsetASize = remaining * ratioA / ratioSum;
-
-                offsetPeerPerTokenScale = AlignUp(offsetASize, 512);
+                offsetPeerPerTokenScale = offsetASize;
                 offsetD = offsetPeerPerTokenScale + perTokenScaleSize;
             } else {
-                // BF16: 无 perTokenScale，offsetA:offsetD = 1:1
                 offsetPeerPerTokenScale = 0;
-                offsetD = AlignUp(offsetPeerTokenPerExpert / 2, 512);
+                offsetD = offsetASize;
             }
+            offsetPeerTokenPerExpert = segSize - tailSyncSize - tokenPerExpertSize;
         }
     };
 
