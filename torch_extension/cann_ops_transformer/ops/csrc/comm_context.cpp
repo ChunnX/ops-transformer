@@ -192,7 +192,7 @@ public:
 
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, protocol, commContextStruct, cclBufferSize);
-        if (topo_type == 1) {
+        if (topoType_ == 1) {
             commContextStruct.rankSizePerServer = rankNumPerUbDomain_;
         }
 
@@ -284,7 +284,7 @@ public:
             }
         }
         // 确认跨超组网
-        topo_type_ = 1;
+        topoType_ = 1;
         ASCEND_LOGI("Cross-server confirmed, use URMA protocol for cross-server communication");
     }
 
@@ -568,7 +568,7 @@ public:
     }
 
     int64_t ccl_buffer_size() const { return cclBufferSize_; }
-    int64_t topo_type() const {return topo_type_; }
+    int64_t topo_type() const {return topoType_; }
 
 private:
     static int64_t context_tensor_size()
@@ -594,7 +594,7 @@ private:
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
                 builder.Build(group_, worldSize_, cclBufferSize_, tensor);
-                topo_type_ = builder.TopoType();
+                topoType_ = builder.TopoType();
                 return;
             }
             default:
@@ -607,7 +607,7 @@ private:
     py::object backend_;
     BackendMode mode_;
     int64_t cclBufferSize_ = 0;
-    int64_t topo_type_ = 0;
+    int64_t topoType_ = 0;
 };
 
 // Bind the CommContextManager class to Python module
