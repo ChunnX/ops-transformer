@@ -37,7 +37,7 @@ recurrent_gated_delta_rule(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR be
         RGDR<bfloat16_t, bfloat16_t, float> op(&tilingData);
         op.Init(initParams, &pipe);
         op.Process();
-    } else {
+    } else if (TILING_KEY_IS(TILING_KEY_RGDR_BF16_STATE)) {
         RGDR<bfloat16_t, bfloat16_t, bfloat16_t> op(&tilingData);
         op.Init(initParams, &pipe);
         op.Process();
