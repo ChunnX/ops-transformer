@@ -21,17 +21,17 @@ std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTen
 QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
                               const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache,
                               aclTensor *vCache, aclTensor *kScaleCache, const aclTensor *cuSeqLen,
-                              const aclTensor *actualSeqLens, const aclTensor *optionalRotation,
-                              const aclTensor *optionalVScale, const aclIntArray *headNums, const char *qkvLayout,
+                              const aclTensor *actualSeqLens, const aclTensor *rotationOptional,
+                              const aclTensor *vScaleOptional, const aclIntArray *headNums, const char *qkvLayout,
                               float epsilon, aclTensor *qOut, aclTensor *qScale, aclOpExecutor *executor)
 {
     L0_DFX(QkvRmsNormRopeCacheWithKScale, qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
-           cuSeqLen, actualSeqLens, optionalRotation, optionalVScale, headNums, qkvLayout, epsilon);
+           cuSeqLen, actualSeqLens, rotationOptional, vScaleOptional, headNums, qkvLayout, epsilon);
 
     auto ret =
         INFER_SHAPE(QkvRmsNormRopeCacheWithKScale,
                     OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen,
-                             actualSeqLens, optionalRotation, optionalVScale),
+                             actualSeqLens, rotationOptional, vScaleOptional),
                     OP_OUTPUT(qOut, qScale, kCache, vCache, kScaleCache), OP_ATTR(headNums, qkvLayout, epsilon));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
@@ -41,7 +41,7 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
     ret = ADD_TO_LAUNCHER_LIST_AICORE(
         QkvRmsNormRopeCacheWithKScale,
         OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, cuSeqLen, actualSeqLens,
-                 optionalRotation, optionalVScale),
+                 rotationOptional, vScaleOptional),
         OP_OUTPUT(qOut, qScale, kCache, vCache, kScaleCache), OP_ATTR(headNums, qkvLayout, epsilon));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");

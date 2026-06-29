@@ -50,8 +50,8 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     const aclTensor *cuSeqLen{nullptr};
     const aclTensor *actualSeqLens{nullptr};
     // Optional inputs (required in first phase, but declared as optional in def)
-    const aclTensor *optionalRotation{nullptr};
-    const aclTensor *optionalVScale{nullptr};
+    const aclTensor *rotationOptional{nullptr};
+    const aclTensor *vScaleOptional{nullptr};
     // Attributes
     const aclIntArray *headNums{nullptr};
     const char *qkvLayout{nullptr};
@@ -252,13 +252,13 @@ private:
             {"kGamma", params_.kGamma, "kGamma can not be nullptr"},
             {"cosSin", params_.cosSin, "cosSin can not be nullptr"},
             {"slotMapping", params_.slotMapping, "slotMapping can not be nullptr"},
-            {"kCache", params_.kCache, "kCache can not be nullptr"},
-            {"vCache", params_.vCache, "vCache can not be nullptr"},
-            {"kScaleCache", params_.kScaleCache, "kScaleCache can not be nullptr"},
+            {"kCacheRef", params_.kCache, "kCacheRef can not be nullptr"},
+            {"vCacheRef", params_.vCache, "vCacheRef can not be nullptr"},
+            {"kScaleCacheRef", params_.kScaleCache, "kScaleCacheRef can not be nullptr"},
             {"cuSeqLen", params_.cuSeqLen, "cuSeqLen can not be nullptr"},
             {"actualSeqLens", params_.actualSeqLens, "actualSeqLens can not be nullptr"},
-            {"optionalRotation", params_.optionalRotation, "optionalRotation can not be nullptr"},
-            {"optionalVScale", params_.optionalVScale, "optionalVScale can not be nullptr"},
+            {"rotationOptional", params_.rotationOptional, "rotationOptional can not be nullptr"},
+            {"vScaleOptional", params_.vScaleOptional, "vScaleOptional can not be nullptr"},
             {"headNums", params_.headNums, "headNums can not be nullptr"},
             {"qkv_layout", params_.qkvLayout, "qkv_layout can not be nullptr"},
             {"qOut", params_.qOut, "qOut can not be nullptr"},
@@ -284,13 +284,13 @@ private:
             {"kGamma", params_.kGamma, &GAMMA_TYPE_LIST},
             {"cosSin", params_.cosSin, &COS_SIN_TYPE_LIST},
             {"slotMapping", params_.slotMapping, &SLOT_MAPPING_TYPE_LIST},
-            {"kCache", params_.kCache, &CACHE_TYPE_LIST},
-            {"vCache", params_.vCache, &CACHE_TYPE_LIST},
-            {"kScaleCache", params_.kScaleCache, &K_SCALE_CACHE_TYPE_LIST},
+            {"kCacheRef", params_.kCache, &CACHE_TYPE_LIST},
+            {"vCacheRef", params_.vCache, &CACHE_TYPE_LIST},
+            {"kScaleCacheRef", params_.kScaleCache, &K_SCALE_CACHE_TYPE_LIST},
             {"cuSeqLen", params_.cuSeqLen, &CU_SEQ_LEN_TYPE_LIST},
             {"actualSeqLens", params_.actualSeqLens, &ACTUAL_SEQ_LENS_TYPE_LIST},
-            {"optionalRotation", params_.optionalRotation, &ROTATION_TYPE_LIST},
-            {"optionalVScale", params_.optionalVScale, &V_SCALE_TYPE_LIST},
+            {"rotationOptional", params_.rotationOptional, &ROTATION_TYPE_LIST},
+            {"vScaleOptional", params_.vScaleOptional, &V_SCALE_TYPE_LIST},
             {"qOut", params_.qOut, &Q_OUT_TYPE_LIST},
             {"qScale", params_.qScale, &Q_SCALE_TYPE_LIST},
         };
@@ -417,14 +417,14 @@ private:
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        if (!IsShape(params_.optionalRotation, {d, d})) {
-            const std::string incorrectShape = ShapeToString(params_.optionalRotation);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "optionalRotation", incorrectShape.c_str(),
-                                                  "optionalRotation must have shape [D, D]");
+        if (!IsShape(params_.rotationOptional, {d, d})) {
+            const std::string incorrectShape = ShapeToString(params_.rotationOptional);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "rotationOptional", incorrectShape.c_str(),
+                                                  "rotationOptional must have shape [D, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        return CheckExactShape("optionalVScale", params_.optionalVScale, {nv}, "optionalVScale must have shape [Nv]");
+        return CheckExactShape("vScaleOptional", params_.vScaleOptional, {nv}, "vScaleOptional must have shape [Nv]");
     }
 
     aclnnStatus CheckCacheShapes(int64_t nk, int64_t nv, int64_t d) const
@@ -433,8 +433,8 @@ private:
         if (unlikely(kCacheShape.GetDimNum() != RANK_4D || kCacheShape.GetDim(CACHE_HEAD_INDEX) != nk ||
                      kCacheShape.GetDim(CACHE_HEAD_DIM_INDEX) != d)) {
             const std::string incorrectShape = ShapeToString(params_.kCache);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "kCache", incorrectShape.c_str(),
-                                                  "kCache must have shape [BlockNum, Nk, BlockSize, D]");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "kCacheRef", incorrectShape.c_str(),
+                                                  "kCacheRef must have shape [BlockNum, Nk, BlockSize, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -442,8 +442,8 @@ private:
         if (unlikely(vCacheShape.GetDimNum() != RANK_4D || vCacheShape.GetDim(CACHE_HEAD_INDEX) != nv ||
                      vCacheShape.GetDim(CACHE_HEAD_DIM_INDEX) != d)) {
             const std::string incorrectShape = ShapeToString(params_.vCache);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "vCache", incorrectShape.c_str(),
-                                                  "vCache must have shape [BlockNum, Nv, BlockSize, D]");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "vCacheRef", incorrectShape.c_str(),
+                                                  "vCacheRef must have shape [BlockNum, Nv, BlockSize, D]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -452,8 +452,8 @@ private:
                      kScaleCacheShape.GetDim(CACHE_HEAD_INDEX) != nk ||
                      kScaleCacheShape.GetDim(CACHE_HEAD_DIM_INDEX) != K_SCALE_CACHE_SCALE_DIM)) {
             const std::string incorrectShape = ShapeToString(params_.kScaleCache);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "kScaleCache", incorrectShape.c_str(),
-                                                  "kScaleCache must have shape [BlockNum, Nk, BlockSize, 1]");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "kScaleCacheRef", incorrectShape.c_str(),
+                                                  "kScaleCacheRef must have shape [BlockNum, Nk, BlockSize, 1]");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -461,19 +461,19 @@ private:
                          kScaleCacheShape.GetDim(CACHE_BLOCK_NUM_INDEX) ||
                      kCacheShape.GetDim(CACHE_BLOCK_SIZE_INDEX) !=
                          kScaleCacheShape.GetDim(CACHE_BLOCK_SIZE_INDEX))) {
-            const std::string incorrectShapes = "kCache=[" + ShapeToString(params_.kCache) + "], kScaleCache=[" +
+            const std::string incorrectShapes = "kCacheRef=[" + ShapeToString(params_.kCache) + "], kScaleCacheRef=[" +
                                                 ShapeToString(params_.kScaleCache) + "]";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "kCache and kScaleCache", incorrectShapes.c_str(),
-                                                   "kScaleCache BlockNum/BlockSize must match kCache");
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "kCacheRef and kScaleCacheRef", incorrectShapes.c_str(),
+                                                   "kScaleCacheRef BlockNum/BlockSize must match kCacheRef");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
         if (unlikely(vCacheShape.GetDim(CACHE_BLOCK_NUM_INDEX) != kCacheShape.GetDim(CACHE_BLOCK_NUM_INDEX) ||
                      vCacheShape.GetDim(CACHE_BLOCK_SIZE_INDEX) != kCacheShape.GetDim(CACHE_BLOCK_SIZE_INDEX))) {
             const std::string incorrectShapes =
-                "vCache=[" + ShapeToString(params_.vCache) + "], kCache=[" + ShapeToString(params_.kCache) + "]";
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "vCache and kCache", incorrectShapes.c_str(),
-                                                   "vCache BlockNum/BlockSize must match kCache");
+                "vCacheRef=[" + ShapeToString(params_.vCache) + "], kCacheRef=[" + ShapeToString(params_.kCache) + "]";
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "vCacheRef and kCacheRef", incorrectShapes.c_str(),
+                                                   "vCacheRef BlockNum/BlockSize must match kCacheRef");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -539,13 +539,13 @@ private:
             {"kGamma", params_.kGamma},
             {"cosSin", params_.cosSin},
             {"slotMapping", params_.slotMapping},
-            {"kCache", params_.kCache},
-            {"vCache", params_.vCache},
-            {"kScaleCache", params_.kScaleCache},
+            {"kCacheRef", params_.kCache},
+            {"vCacheRef", params_.vCache},
+            {"kScaleCacheRef", params_.kScaleCache},
             {"cuSeqLen", params_.cuSeqLen},
             {"actualSeqLens", params_.actualSeqLens},
-            {"optionalRotation", params_.optionalRotation},
-            {"optionalVScale", params_.optionalVScale},
+            {"rotationOptional", params_.rotationOptional},
+            {"vScaleOptional", params_.vScaleOptional},
             {"qOut", params_.qOut},
             {"qScale", params_.qScale},
         };
@@ -567,13 +567,13 @@ private:
             {"kGamma", params_.kGamma},
             {"cosSin", params_.cosSin},
             {"slotMapping", params_.slotMapping},
-            {"kCache", params_.kCache},
-            {"vCache", params_.vCache},
-            {"kScaleCache", params_.kScaleCache},
+            {"kCacheRef", params_.kCache},
+            {"vCacheRef", params_.vCache},
+            {"kScaleCacheRef", params_.kScaleCache},
             {"cuSeqLen", params_.cuSeqLen},
             {"actualSeqLens", params_.actualSeqLens},
-            {"optionalRotation", params_.optionalRotation},
-            {"optionalVScale", params_.optionalVScale},
+            {"rotationOptional", params_.rotationOptional},
+            {"vScaleOptional", params_.vScaleOptional},
             {"qOut", params_.qOut},
             {"qScale", params_.qScale},
         };

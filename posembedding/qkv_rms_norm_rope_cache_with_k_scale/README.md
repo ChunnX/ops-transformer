@@ -14,7 +14,7 @@
 ## 功能说明
 
 - 算子功能：输入Q/K/V融合张量`qkv`，按`head_nums=[Nq, Nk, Nv]`拆分出Q、K、V；对Q/K执行RMSNorm、Half-and-Half RoPE和共享`rotation`矩阵乘，再动态量化为FP8 E4M3FN；Q分支输出`q_out`和`q_scale`，K分支按`slot_mapping`更新`k_cache`与`k_scale_cache`；V分支按`v_scale`缩放后量化为FP8 E4M3FN，并更新`v_cache`。
-- 本算子主要用于推理场景下PagedAttention KV Cache更新，当前仅提供Ascend 950 `D=128` fast path。
+- 本算子主要用于推理场景下PagedAttention KV Cache更新，当前仅支持Ascend 950上`D=128`的实现。
 
 - 计算公式：
 
@@ -30,7 +30,7 @@
   y = \frac{x}{\sqrt{mean(x^2) + epsilon}} * gamma
   $$
 
-  (3) RoPE，`cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin：
+  (3) Q/K分支RoPE，`cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin；V分支不执行RoPE：
 
   $$
   y_{rope} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
@@ -46,10 +46,10 @@
   k_{rot} = k_{rope} @ rotation
   $$
 
-  (5) Q/K动态量化，FP8 E4M3FN最大有限值按448处理：
+  (5) Q/K动态量化，FP8 E4M3FN最大有限值使用`FP8_E4M3FN_MAX`，该值为448：
 
   $$
-  scale = max(abs(x)) / 448
+  scale = max(abs(x)) / FP8\_E4M3FN\_MAX
   $$
 
   $$
@@ -93,13 +93,13 @@
 | k_gamma | 输入 | K分支RMSNorm权重，shape为`[D]`。 | FLOAT | ND |
 | cos_sin | 输入 | RoPE位置编码表，shape为`[MaxSeqLen, D]`。前`D/2`列为cos，后`D/2`列为sin。 | FLOAT | ND |
 | slot_mapping | 输入 | 每个token写入cache的slot索引，shape为`[T]`。 | INT32 | ND |
-| k_cache | 输入/输出 | K Cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, D]`。 | FLOAT8_E4M3FN | ND |
-| v_cache | 输入/输出 | V Cache，输入输出同地址复用，shape为`[BlockNum, Nv, BlockSize, D]`。 | FLOAT8_E4M3FN | ND |
-| k_scale_cache | 输入/输出 | K动态量化scale cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, 1]`。 | FLOAT | ND |
+| k_cache | 输入/输出 | K Cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, D]`，支持连续和符合约束的非连续Tensor。 | FLOAT8_E4M3FN | ND |
+| v_cache | 输入/输出 | V Cache，输入输出同地址复用，shape为`[BlockNum, Nv, BlockSize, D]`，支持连续和符合约束的非连续Tensor。 | FLOAT8_E4M3FN | ND |
+| k_scale_cache | 输入/输出 | K动态量化scale cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, 1]`，支持连续和符合约束的非连续Tensor。 | FLOAT | ND |
 | cu_seq_len | 输入 | 当前调用内各batch token数的前缀和，shape为`[Batch+1]`。 | INT32 | ND |
 | actual_seq_lens | 输入 | 每个batch追加当前token后的实际序列长度，shape为`[Batch]`。 | INT32 | ND |
-| rotation | 可选输入 | Q/K共享矩阵乘权重，shape为`[D, D]`。接口定义为可选输入，当前Ascend 950 fast path要求必须传入。 | BFLOAT16 | ND |
-| v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。接口定义为可选输入，当前Ascend 950 fast path要求必须传入。 | FLOAT | ND |
+| rotation | 可选输入 | Q/K共享矩阵乘权重，shape为`[D, D]`。接口定义为可选输入，当前仅支持传入非空Tensor。 | BFLOAT16 | ND |
+| v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。接口定义为可选输入，当前仅支持传入非空Tensor。 | FLOAT | ND |
 | head_nums | 属性 | Q/K/V头数，按`[Nq, Nk, Nv]`传入。 | INT64数组 | - |
 | qkv_layout | 属性 | `qkv`、`q_out`和`q_scale`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
 | epsilon | 可选属性 | RMSNorm防除零参数，默认值为`1e-6`。 | FLOAT | - |
@@ -109,18 +109,21 @@
 ## 约束说明
 
 - 仅支持<term>Ascend 950PR/Ascend 950DT</term>。
-- 当前fast path仅支持`D=128`，且`Nv=Nk`。
+- 当前实现仅支持`D=128`，且`Nv=Nk`。
 - `head_nums`必须包含3个正整数，顺序为`[Nq, Nk, Nv]`。
 - `qkv_layout`大小写敏感，仅支持`"TND"`和`"NTD"`。
 - `qkv`、`q_out`、`q_scale`保持相同N/T布局：
   - `qkv_layout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。
   - `qkv_layout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。
 - `cu_seq_len`表示当前调用内token的batch前缀和，`cu_seq_len[0]`应为0，`cu_seq_len[Batch]`应等于`T`。
-- `actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。RoPE位置由`actual_seq_lens[b] - (cu_seq_len[b+1] - cu_seq_len[b]) + localTokenOffset`得到；调用方需保证`cos_sin`覆盖对应位置。
-- `slot_mapping`取值范围应为`[0, BlockNum * BlockSize - 1]`，同一次调用内不应重复写同一slot。
-- `rotation`和`v_scale`在算子IR中为可选输入，但当前实现要求均为非空。
+- `actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。对该batch内第`i`个token，RoPE位置由`actual_seq_lens[b] - (cu_seq_len[b+1] - cu_seq_len[b]) + i`得到；调用方需保证`cos_sin`覆盖对应位置。
+- `slot_mapping`取值范围应为`[0, BlockNum * BlockSize - 1]`。同一次调用内多个token写入同一slot会对同一cache地址产生重复写，最终写入顺序和结果未定义。
+- `rotation`和`v_scale`在算子IR中为可选输入，但当前仅支持传入非空Tensor。
 - 输入和输出均为ND格式，不支持私有格式；不支持空Tensor。
-- Cache Tensor支持连续Tensor，也支持view场景下的非连续Tensor。view场景需满足`k_cache`和`v_cache`最后一维stride为1，前三维stride一致；`k_scale_cache`最后一维stride为1。
+- Cache Tensor支持连续Tensor，也支持非连续Tensor；非连续场景需满足：
+  - `k_cache`和`v_cache`均为4维正stride，最后一维stride为1。
+  - `k_cache`和`v_cache`前三维stride必须一致。
+  - `k_scale_cache`为4维正stride，最后一维stride为1。
 - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 
 ## 调用说明
