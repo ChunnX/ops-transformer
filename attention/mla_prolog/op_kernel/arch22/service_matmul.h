@@ -180,7 +180,7 @@ __aicore__ inline void LoadDataL1ToL0B(const LocalTensor<T> &bL0Tensor, const Lo
     uint32_t kloops = kSize / (LOAD_WIDTH / sizeof(T));
     LocalTensor<T> srcTensor = bL1Tensor;
     for (uint32_t i = 0; i < kloops; i++) {
-        LoadData2dTransposeParams loadData2DParams;;
+        LoadData2dTransposeParams loadData2DParams;
         loadData2DParams.repeatTimes = nSize / (DATA_BYTES_PER_REPEAT / sizeof(T));
         loadData2DParams.startIndex = 0;
         loadData2DParams.srcStride = kL1StepSize / STRIDE_HEIGHT;
