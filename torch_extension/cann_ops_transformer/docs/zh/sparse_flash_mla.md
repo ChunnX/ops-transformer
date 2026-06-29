@@ -2,7 +2,7 @@
 
 ## 产品支持情况
 
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
@@ -15,9 +15,9 @@
 
   `sparse_flash_mla`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`SparseFlashMla`算子完成共享KV（Key和Value使用同一份输入）的稀疏注意力计算。该接口支持以下三类计算模式：
 
-  - **C1A（Sliding Window Attention，SWA）**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
-  - **C4A（Compressed Sparse Attention，CSA）**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
-  - **C128A（Heavily Compressed Attention，HCA）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
+  - **SWA（Sliding Window Attention）**：仅使用`ori_kv`，对原始KV做滑动窗口注意力。
+  - **CSA（Compressed Sparse Attention）**：同时使用`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
+  - **HCA（Heavily Compressed Attention）**：同时使用`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
 
   `sparse_flash_mla_metadata`是`SparseFlashMlaMetadata`的torch扩展接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
 
@@ -208,15 +208,15 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
     - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
     - `ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
     - PageAttention的block_size支持16的倍数，且不超过1024。
-  - C1A：
+  - SWA：
     - 仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1。
     - 不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
     - `cmp_topk`传0，`cmp_mask_mode`传0。
-  - C4A：
+  - CSA：
     - `cmp_ratio`仅支持4，`cmp_mask_mode`仅支持3。
     - `cmp_sparse_indices`必须传入，最后一维支持512或1024；`cmp_topk`对应传512或1024。
     - `cmp_residual_kv`必须传入，长度必须等于batch大小。
-  - C128A：
+  - HCA：
     - `cmp_ratio`仅支持128，`cmp_mask_mode`仅支持3。
     - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
     - `cmp_residual_kv`必须传入，长度必须等于batch大小。
@@ -228,7 +228,7 @@ cann_ops_transformer.ops.sparse_flash_mla_metadata(
 
 ## 调用说明
 
-### C1A，BSND输入
+### SWA，BSND输入
 
 ```python
 import math
@@ -245,7 +245,7 @@ S2 = 64
 N1 = 64
 N2 = 1
 D = 512
-cmp_ratio = 1  # C1A示例仅传ori_kv，cmp_ratio不参与压缩KV计算，保持默认值1。
+cmp_ratio = 1  # SWA示例仅传ori_kv，cmp_ratio不参与压缩KV计算，保持默认值1。
 
 q = torch.randn(B, S1, N1, D, dtype=dtype, device="npu")
 ori_kv = torch.randn(B, S2, N2, D, dtype=dtype, device="npu")
@@ -293,7 +293,7 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### C128A，BSND输入
+### HCA，BSND输入
 
 ```python
 import math
@@ -365,7 +365,7 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### C4A，TND输入并使能cmp_residual_kv
+### CSA，TND输入并使能cmp_residual_kv
 
 ```python
 import math
@@ -450,7 +450,7 @@ assert softmax_lse.shape == torch.Size([])
 assert torch.isfinite(attn_out.float()).all().item()
 ```
 
-### CP切分示例，TND + C4A，rank0切开第二个seq
+### CP切分示例，TND + CSA，rank0切开第二个seq
 
 下面示例用单进程顺序模拟两个CP rank，说明全局TND数据与每个rank入参之间的关系。假设全局有2个序列，`cmp_ratio=4`：
 
