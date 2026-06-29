@@ -30,6 +30,13 @@
 using namespace AscendC;
 
 namespace MegaMoeImpl {
+
+using TupleShapeType = Shape<int64_t, int64_t, int64_t, int64_t>;
+
+using BlockOffsetType = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
+                            int64_t, int64_t, int64_t, int64_t, int64_t,
+                            int64_t, int64_t>;
+
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, \
                                   int32_t QuantMode, int32_t CombineQuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode, CombineQuantMode
@@ -45,8 +52,8 @@ public:
         Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value, uint8_t, QuantOutType>::type;
     using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
     struct ExpertLoopState {
-        TupleShape problemShape;
-        BlockOffset baseOffset;
+        TupleShapeType problemShape;
+        BlockOffsetType baseOffset;
     };
     __aicore__ inline MegaMoeLayered() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
@@ -1590,10 +1597,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();
     GMMAddrInfo gmmAddrInfo;
-    TupleShape initShape;
+    TupleShapeType initShape;
     Get<N_VALUE>(initShape) = hiddenDim_;
     Get<K_VALUE>(initShape) = k_;
-    BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    BlockOffsetType initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     ExpertLoopState gmm1State{initShape, initOffset};
     for (int localExpertId = 0; localExpertId < expertPerRank_; localExpertId++) {
         if constexpr(g_coreType == AIV) {
