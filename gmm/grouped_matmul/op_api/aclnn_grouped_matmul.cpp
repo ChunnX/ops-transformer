@@ -2104,6 +2104,7 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
     DataType weightDtype = (*gmmParams.weight)[0]->GetDataType();
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         IsWeightQuant(gmmParams.xDtype, weightDtype)) {
+        // 伪量化场景DAV_3510除了单单单/单多单的GroupList，其他校验在AclnnGroupedMatmulWeightQuantDAV3510Checker均已完成，下方校验跳过
         if (gmmParams.groupType == gmm::SPLIT_M) {
             size_t batchSizeWeight = (*gmmParams.weight)[0]->GetViewShape().GetDim(0);
             if (IsMultiTensorWeight(gmmParams)) {
@@ -2113,13 +2114,6 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
                        ACLNN_ERR_PARAM_INVALID,
                        "In op [%s], when DAV_3510 weight quant and groupType == 0(split-M), [%s] check failed.", opName,
                        "groupList");
-        }
-        bool isA16W4 = (gmmParams.xDtype == DataType::DT_FLOAT16 || gmmParams.xDtype == DataType::DT_BF16) &&
-                        weightDtype == DataType::DT_INT4;
-        if (isA16W4 && gmmParams.antiquantScaleOptional != nullptr) {
-            CHECK_COND(CheckGroupedMatmulAntiQuant(gmmParams, opName) == ACLNN_SUCCESS,
-                       ACLNN_ERR_PARAM_INVALID,
-                       "In op [%s], when A16W4 pergroup on DAV_3510, antiquant check failed.", opName);
         }
         return ACLNN_SUCCESS;
     }

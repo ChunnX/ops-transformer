@@ -87,6 +87,19 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsMultiTensorWeight() const
     return (*gmmParams_.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
+bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4Pergroup() const
+{
+    if (!IsA16W4()) {
+        return false;
+    }
+
+    auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
+    auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
+    size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
+    // pergroup场景比perchannel维度大
+    return antiquantScaleDimNum > perchannelDim;
+}
+
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorNotNull(size_t xIdx, size_t yIdx, size_t wIdx) const
 {
     CHECK_RET(CheckTensorNotNullPtr(gmmParams_.x, xIdx, "x") == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
@@ -152,7 +165,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
     size_t expectedDimNum = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
 
     if ((IsA16MxFp4NZ() || IsS8S4NZ()) && tensorType.find("antiquant") != std::string::npos) {
-        expectedDimNum = 3;
+        expectedDimNum = 3; // Mx / PerGroup量化，仅支持antiquantSacle/antiquantOffset维度为3
     } else if (IsMxA8W4NZ()) {
         if (tensorType.find("antiquant") != std::string::npos) {
             expectedDimNum = IsMultiTensorWeight() ? MX_MULTI_ANTIQUANT_SCALE_DIM : MX_SINGLE_ANTIQUANT_SCALE_DIM;
@@ -165,9 +178,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
         size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
         size_t pergroupDim = perchannelDim + 1;
         if (tensorDimNum != perchannelDim && tensorDimNum != pergroupDim) {
-            std::string reason = "Dim must be [" + std::to_string(perchannelDim) +
+            std::string reason = "When x_dtype-weight_dtype is A16W4, Dim must be [" + std::to_string(perchannelDim) +
                 "] (perchannel) or [" + std::to_string(pergroupDim) +
-                "] (pergroup) in A16W4 case, but now is [" + std::to_string(tensorDimNum) + "]";
+                "] (pergroup), but now is [" + std::to_string(tensorDimNum) + "]";
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), tensorType,
                 std::to_string(tensorDimNum), reason);
             return ACLNN_ERR_PARAM_INVALID;
@@ -308,17 +321,28 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
         }
     }
 
+    // check dimNum
     size_t xDimNum = (*gmmParams_.x)[xIdx]->GetViewShape().GetDimNum();
     size_t weightDimNum = (*gmmParams_.weight)[wIdx]->GetViewShape().GetDimNum();
     size_t yDimNum = (*gmmParams_.y)[yIdx]->GetViewShape().GetDimNum();
 
     if (gmmParams_.groupType == NO_SPLIT) {
-        if (unlikely(!(xDimNum <= MAX_FM_DIM && xDimNum >= MIN_FM_DIM))) {
-            std::string incorrectDim = "The shape dim of x[" + std::to_string(xIdx) + "] must be within the range ";
-            std::string reason = incorrectDim + std::to_string(MIN_FM_DIM) + "-" + std::to_string(MAX_FM_DIM);
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x",
-                std::to_string(xDimNum), reason);
-            return ACLNN_ERR_PARAM_INVALID;
+        if (IsA16W4Pergroup()) {
+            if (unlikely(xDimNum != MAX_FM_DIM)) {
+                std::string reason = "The shape dim of x[" + std::to_string(xIdx) + "] must be 2" +
+                    ", when weight separated";
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x",
+                    std::to_string(xDimNum), reason);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        } else {        
+            if (unlikely(!(xDimNum <= MAX_FM_DIM && xDimNum >= MIN_FM_DIM))) {
+                std::string incorrectDim = "The shape dim of x[" + std::to_string(xIdx) + "] must be within the range ";
+                std::string reason = incorrectDim + std::to_string(MIN_FM_DIM) + "-" + std::to_string(MAX_FM_DIM);
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnName(), "x",
+                    std::to_string(xDimNum), reason);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
         }
         if (unlikely(weightDimNum != MIN_FM_DIM)) {
             std::string reason = "The shape dim of weight[" + std::to_string(wIdx) + "] must be 2" +
@@ -945,7 +969,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupTypeScenario(
                     ", weight size: " + std::to_string(gmmParams_.weight->Size()) +
                     ", y size: " + std::to_string(gmmParams_.y->Size());
                 std::string reason = errorMessage +
-                    ", MxA8W4 scenario: x and y size must be 1, weight size must be >= 1";
+                    ", When the quant mode is A8W4 MX, x and y size must be 1, weight size must be >= 1";
                 OP_LOGE_FOR_INVALID_LISTSIZE(GetAclnnName(), "x, weight, y",
                     incorrectSizes, reason);
                 return ACLNN_ERR_PARAM_INVALID;
