@@ -2138,16 +2138,15 @@ void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadCoreSplitParams(
     int64_t &needCoreNum, int64_t &perCoreIndicesElements, int64_t &lastCoreIndicesElements)
 {
     auto *tilingData = &tilingDataPtr_->gatherOutComputeParamsOp;
-    // compact DropPad gather_out scans output rows, not the sorted n*k index space.
-    int64_t outputRows = expertNum_ * expertCapacity_;
-    perCoreIndicesElements = Ops::Base::CeilDiv(outputRows, aivCoreNum_);
+    // 保持按 n*k 分核：outputRows > n*k 时会回退到原 expandedRowIdx 扫描路径。
+    perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         tilingData->perCorePerLoopIndicesElements = 0;
         tilingData->lastCorePerLoopIndicesElements = 0;
         return;
     }
-    needCoreNum = Ops::Base::CeilDiv(outputRows, perCoreIndicesElements);
-    lastCoreIndicesElements = outputRows - (needCoreNum - 1) * perCoreIndicesElements;
+    needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
+    lastCoreIndicesElements = totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
 }
 
 void MoeInitRoutingV3Arch35TilingClass::SetGatherOutDropPadLoopParams(
