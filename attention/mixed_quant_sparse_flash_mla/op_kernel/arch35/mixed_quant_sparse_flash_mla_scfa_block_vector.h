@@ -902,8 +902,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
                 intriParams.blockCount = copyElmenCnt; // base s2 size
                 DataCopyPad(kvMergUb[dstOffset * combineDimAlign], keyGm[srcOffset], intriParams, padParams);
             } else {
-                uint64_t keyOffset = idInBlockTable * paBlockStride + remainElmenCnt * constInfo.n2Size * dCombineBytes
-                    + (uint64_t)(runInfo.n2oIdx * dCombineBytes); // BlockNum, BlockSize, N, D
+                uint64_t keyOffset = idInBlockTable * paBlockStride + remainElmenCnt * constInfo.n2Size *
+                    dCombineBytes + (uint64_t)(runInfo.n2oIdx * dCombineBytes); // BlockNum, BlockSize, N, D
                 uint64_t scaleOffset = idInBlockTable * paBlockStride + blockSize * constInfo.n2Size * dCombineBytes +
                     remainElmenCnt * scaleBytes;
                 intriParams.blockCount = copyElmenCnt; // base s2 size
