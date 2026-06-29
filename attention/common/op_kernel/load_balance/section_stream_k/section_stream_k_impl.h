@@ -214,8 +214,7 @@ private:
     static inline bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SectionStreamKImplResult &result);
     inline void RecordFDInfo(const ComputeContext &computeContext, const AssignContext &assignContext,
         SectionStreamKImplResult &result);
-    inline bool CheckChooseWithFd(const SectionStreamKImplResult &noFd, const SectionStreamKImplResult &withFd,
-        const ComputeContext &computeContext, uint32_t sectionIdx);
+    inline bool CheckChooseWithFd(const SectionStreamKImplResult &noFd, const SectionStreamKImplResult &withFd);
 
     // assign
     inline void AssignByBatch(const ComputeContext &computeContext, AssignContext &assignContext);
@@ -591,8 +590,7 @@ SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &c
         }
     }
     ScheduleFd(deviceInfo.aivCoreMaxNum, bestResultWithFd);
-    return (CheckChooseWithFd(bestResultNoFd, bestResultWithFd, computeContext, sectionIdx))
-        ? bestResultWithFd : bestResultNoFd;
+    return (CheckChooseWithFd(bestResultNoFd, bestResultWithFd)) ? bestResultWithFd : bestResultNoFd;
 }
 
 inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const ComputeContext &computeContext,
@@ -753,7 +751,7 @@ inline void SectionStreamKImpl::RecordFDInfo(const ComputeContext &computeContex
 }
 
 inline bool SectionStreamKImpl::CheckChooseWithFd(const SectionStreamKImplResult &noFd,
-    const SectionStreamKImplResult &withFd, const ComputeContext &computeContext, uint32_t sectionIdx)
+    const SectionStreamKImplResult &withFd)
 {
     if (!m_param.fdOn) {
         return false;
@@ -761,22 +759,7 @@ inline bool SectionStreamKImpl::CheckChooseWithFd(const SectionStreamKImplResult
 
     const int64_t full_block_cost = m_param.costFunc(m_param.mBaseSize, m_param.s2BaseSize);
     int64_t fdTolerance = m_param.fdTolerance * full_block_cost;
-
-    const GridInfo &gridInfo = computeContext.gridInfo;
-    const IBaseInfo &baseInfo = computeContext.baseInfo;
-    uint32_t bn2Start = (sectionIdx == 0U) ? 0U : gridInfo.sectionBn2Idx[sectionIdx - 1U];
-    uint32_t bn2End = gridInfo.sectionBn2Idx[sectionIdx];
-    uint32_t totalMRows = 0;
-    for (uint32_t bn2Idx = bn2Start; bn2Idx < bn2End; ++bn2Idx) {
-        uint32_t bIdx = bn2Idx / baseInfo.GetKvHeadNum();
-        totalMRows += gridInfo.mBaseNum[bIdx];
-    }
-    if (totalMRows > 0 && totalMRows < computeContext.deviceInfo.aicCoreMaxNum) {
-        fdTolerance = fdTolerance * static_cast<int64_t>(totalMRows) /
-                      static_cast<int64_t>(computeContext.deviceInfo.aicCoreMaxNum);
-    }
-
-    return noFd.maxCost - fdTolerance > withFd.maxCost;
+    return noFd.maxCost - fdTolerance > withFd.maxCost;        // using minus in case overflow
 }
 
 inline void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeContext, AssignContext &assignContext)
