@@ -246,7 +246,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max,
                                                                                               vreg_max_tmp3, preg_all);
         } else {
-            Select(vreg_input_x3_new, vreg_input_x3, vreg_min, preg_ori_tail_n1);
+            Select(vreg_input_x3_new, vreg_input_x3, vreg_min, preg_ori_tail_n1); // select based on updatemask
             Select(vreg_input_x4_new, vreg_input_x4, vreg_min, preg_ori_tail_n2);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x1,
                                                               preg_all);
