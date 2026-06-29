@@ -50,6 +50,8 @@ __global__ __aicore__ void mega_moe(
                     scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
             op.Process();
         }
+    } else if constexpr (CommModeType == TILINGKEY_TPL_URMA) {
+        printf("CommModeType == TILINGKEY_TPL_URMA\n");
     }
 #endif
 }
