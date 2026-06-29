@@ -15,6 +15,7 @@ import importlib.util
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 # soc (ASCEND_COMPUTE_UNIT, lowercased) -> pypto arch token used by PYPTO_JIT_ARCH.
@@ -29,8 +30,8 @@ def _load_kernels(py_file: Path):
     """Import the kernel module and return all @fe.jit kernel objects defined in it."""
     sys.path.insert(0, str(py_file.parent))
 
-    import pypto_block.frontend as fe
-    from pypto_block.frontend.jit import _TileJitKernel
+    import pypto_pro.runtime as fe
+    from pypto_pro.runtime.jit import _TileJitKernel
 
     spec = importlib.util.spec_from_file_location(py_file.stem, str(py_file))
     module = importlib.util.module_from_spec(spec)
@@ -68,11 +69,24 @@ def main():
 
     copied = []
     for kernel in kernels:
+        _t0 = time.perf_counter()
         binary_dir = Path(fe.compile(kernel)).resolve()
+        _t1 = time.perf_counter()
+        _parse_t = getattr(kernel, "_last_parse_time", 0.0)
+        _codegen_t = getattr(kernel, "_last_codegen_time", 0.0)
         for pattern in (f"{args.op_file}.cpp", "kernel.cpp", "*_tiling.h", "*_tilingkey.h"):
             for src in sorted(binary_dir.glob(pattern)):
                 shutil.copy(src, out_dir / src.name)
                 copied.append(src.name)
+        _t2 = time.perf_counter()
+        shutil.rmtree(binary_dir.parent, ignore_errors=True)
+        for _l in [
+            f"{args.op_file}\tparse\t{_parse_t:.3f}s",
+            f"{args.op_file}\tcodegen\t{_codegen_t:.3f}s",
+            f"{args.op_file}\tcopy\t{_t2 - _t1:.3f}s",
+            f"{args.op_file}\ttotal\t{_t2 - _t0:.3f}s",
+        ]:
+            print(f"[pypto-timing] {_l}", file=sys.stderr)
 
     print(f"[pypto_codegen] {args.op_file}: generated {sorted(set(copied))} into {out_dir}")
 
