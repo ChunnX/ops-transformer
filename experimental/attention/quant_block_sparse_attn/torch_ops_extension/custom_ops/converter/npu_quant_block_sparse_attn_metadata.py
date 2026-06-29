@@ -15,8 +15,8 @@ from torchair.ge._ge_graph import Tensor, TensorSpec
 from torchair.ge import attr
 
 
-@register_fx_node_ge_converter(torch.ops.custom.npu_quant_block_sparse_attention_metadata.default)
-def convert_npu_quant_block_sparse_attention_metadata(
+@register_fx_node_ge_converter(torch.ops.custom.npu_quant_block_sparse_attn_metadata.default)
+def convert_npu_quant_block_sparse_attn_metadata(
     sparse_seq_len: Tensor,
     num_heads_q: int,
     num_heads_kv: int,
@@ -43,7 +43,7 @@ def convert_npu_quant_block_sparse_attention_metadata(
     aiv_core_num = stream_info.get("vector_core_num")
     soc_version = torch.npu.get_device_properties().name
     return torchair.ge.custom_op(
-        "QuantBlockSparseAttentionMetadata",
+        "QuantBlockSparseAttnMetadata",
         inputs={
             "sparse_seq_len": sparse_seq_len,
             "cu_seqlens_q": cu_seqlens_q,

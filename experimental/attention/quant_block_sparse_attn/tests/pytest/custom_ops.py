@@ -86,7 +86,7 @@ def _load_python_package(root):
 def _load_converter(root):
     converter_names = [
         "npu_quant_block_sparse_attn.py",
-        "npu_quant_block_sparse_attention_metadata.py",
+        "npu_quant_block_sparse_attn_metadata.py",
     ]
     for converter_name in converter_names:
         converter_file = root / "custom_ops" / "converter" / converter_name
@@ -130,7 +130,7 @@ def _configure_custom_opp_paths():
 
 def _load_custom_ops():
     _configure_custom_opp_paths()
-    if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attention_metadata_op():
+    if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attn_metadata_op():
         for root in _candidate_roots():
             if root.exists():
                 _load_converter(root)
@@ -140,11 +140,11 @@ def _load_custom_ops():
         if not root.exists():
             continue
         _load_shared_libraries(root)
-        if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attention_metadata_op():
+        if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attn_metadata_op():
             _load_converter(root)
             return
         _load_python_package(root)
-        if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attention_metadata_op():
+        if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attn_metadata_op():
             return
 
 
@@ -156,9 +156,9 @@ def has_quant_block_sparse_attn_op():
     return True
 
 
-def has_quant_block_sparse_attention_metadata_op():
+def has_quant_block_sparse_attn_metadata_op():
     try:
-        getattr(torch.ops.custom, "npu_quant_block_sparse_attention_metadata")
+        getattr(torch.ops.custom, "npu_quant_block_sparse_attn_metadata")
     except AttributeError:
         return False
     return True

@@ -20,7 +20,7 @@ endforeach()
 
 if(DEFINED ASCEND_OP_NAME AND "${ASCEND_OP_NAME}" STREQUAL "quant_block_sparse_attn")
     add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../quant_block_sparse_attention_metadata"
-        "${CMAKE_CURRENT_BINARY_DIR}/quant_block_sparse_attention_metadata"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../quant_block_sparse_attn_metadata"
+        "${CMAKE_CURRENT_BINARY_DIR}/quant_block_sparse_attn_metadata"
     )
 endif()
