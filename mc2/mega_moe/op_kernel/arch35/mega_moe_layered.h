@@ -1583,7 +1583,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendMaskBuffInit();
-    // SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
     // ResetFlagList();             // 清理workSpace空间上的flag位
     // if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
     //     ResetRowGroupCompleteFlags();
