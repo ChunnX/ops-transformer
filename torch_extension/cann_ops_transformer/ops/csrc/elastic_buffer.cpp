@@ -17,8 +17,11 @@
 #include <pybind11/stl.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/functional.h>
+#include <chrono>
 #include <functional>
+#include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <cstring>
 #include <atomic>
@@ -49,6 +52,7 @@ constexpr uint32_t HCCL_MIN_RANK_SIZE = 2;
 constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
+constexpr int DIM_TWO = 2;
 
 // RAII guard for multi-step host buffer allocation
 struct HostBufferGuard {
@@ -95,7 +99,7 @@ struct CommContext {
     uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};
 };
 
-// ElasticBuffer class - unified interface for distributed Engram storage
+// ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
 class ElasticBuffer {
 public:
     ElasticBuffer(const std::string &groupName, int64_t numCpuBytes);
@@ -113,6 +117,30 @@ public:
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
+
+    // Stateless MoE EP kernels used by the Python ElasticBuffer dispatcher.
+    using DispatchTensorList = std::tuple<at::Tensor, at::Tensor, at::Tensor>;
+    using DispatchEpilogueTensorList = std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>,
+                                                 c10::optional<at::Tensor>>;
+    using CombineTensorList = std::tuple<at::Tensor, c10::optional<at::Tensor>>;
+
+    static DispatchTensorList MoeEpDispatch(const at::Tensor &context, const at::Tensor &x,
+        const at::Tensor &topkIdx, const c10::optional<at::Tensor> &topkWeights,
+        const c10::optional<at::Tensor> &scales,
+        const c10::optional<at::Tensor> &cachedHandleDstBufferSlotIdx, int64_t epWorldSize, int64_t epRankId,
+        int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, int64_t expertAlignment,
+        bool doCpuSync, int64_t hostPinnedCounterAddr);
+    static DispatchEpilogueTensorList MoeEpDispatchEpilogue(const at::Tensor &context,
+        const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank,
+        const at::Tensor &numRecvPerExpert, const c10::optional<at::Tensor> &cachedRecvSrcMetadata,
+        int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
+        int64_t cclBufferSize, int64_t expertAlignment, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
+        const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt);
+    static CombineTensorList MoeEpCombine(const at::Tensor &context, const at::Tensor &x,
+        const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata, const at::Tensor &numRecvTokensPerExpert,
+        const c10::optional<at::Tensor> &topkWeights, const c10::optional<at::Tensor> &bias0,
+        const c10::optional<at::Tensor> &bias1, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
+        int64_t numMaxTokensPerRank, int64_t cclBufferSize);
 
 private:
     void BuildCommContext();
@@ -515,9 +543,207 @@ int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hidd
 
 } // namespace Mc2Api
 
+namespace op_api {
+namespace {
+
+#define ACL_CHECK(expr)                                                                                                \
+    do {                                                                                                               \
+        aclError _s = (expr);                                                                                          \
+        if (_s != ACL_SUCCESS) {                                                                                       \
+            throw std::runtime_error("ACL error: " + std::string(__FILE__) + ":" + std::to_string(__LINE__) +          \
+                                     " code=" + std::to_string(_s));                                                   \
+        }                                                                                                              \
+    } while (0)
+
+} // namespace
+
+class HostPinnedCounter {
+public:
+    HostPinnedCounter()
+    {
+        ACL_CHECK(aclrtMallocHost(&hostPtr_, 4 * sizeof(int64_t)));
+        ACL_CHECK(aclrtHostRegisterV2(hostPtr_, 4 * sizeof(int64_t), ACL_HOST_REG_MAPPED));
+        ACL_CHECK(aclrtHostGetDevicePointer(hostPtr_, &devPtr_, 0));
+        Reset();
+    }
+
+    ~HostPinnedCounter()
+    {
+        if (hostPtr_ != nullptr) {
+            aclrtHostUnregister(hostPtr_);
+            aclrtFreeHost(hostPtr_);
+            hostPtr_ = nullptr;
+            devPtr_ = nullptr;
+        }
+    }
+
+    void Reset()
+    {
+        *reinterpret_cast<volatile int64_t *>(hostPtr_) = -1;
+    }
+
+    int64_t SpinWait(int timeoutSecs = 100)
+    {
+        auto start = std::chrono::high_resolution_clock::now();
+        while (true) {
+            int64_t v = *reinterpret_cast<volatile int64_t *>(hostPtr_);
+            if (v >= 0) {
+                return v;
+            }
+            auto elapsed =
+                std::chrono::duration_cast<std::chrono::seconds>(std::chrono::high_resolution_clock::now() - start)
+                    .count();
+            if (elapsed > timeoutSecs) {
+                throw std::runtime_error("MoeEpDispatch CPU recv timeout");
+            }
+        }
+    }
+
+    uintptr_t DevicePtr() const
+    {
+        return reinterpret_cast<uintptr_t>(devPtr_);
+    }
+
+    uintptr_t HostPtr() const
+    {
+        return reinterpret_cast<uintptr_t>(hostPtr_);
+    }
+
+private:
+    void *hostPtr_ = nullptr;
+    void *devPtr_ = nullptr;
+};
+
+} // namespace op_api
+
+Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
+    const at::Tensor &context, const at::Tensor &x, const at::Tensor &topk_idx,
+    const c10::optional<at::Tensor> &topk_weights, const c10::optional<at::Tensor> &scales,
+    const c10::optional<at::Tensor> &cached_handle_dst_buffer_slot_idx, int64_t ep_world_size,
+    int64_t ep_rank_id, int64_t num_experts, int64_t num_max_tokens_per_rank,
+    int64_t ccl_buffer_size, int64_t expert_alignment, bool do_cpu_sync, int64_t host_pinned_counter_addr)
+{
+    TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
+    TORCH_CHECK((ep_world_size > 1), "The ep_world_sizes should be greater than 1, current is: ", ep_world_size);
+    TORCH_CHECK(ep_rank_id >= 0 && ep_rank_id < ep_world_size, "ep_rank_id out of range");
+    TORCH_CHECK(num_experts % ep_world_size == 0, "num_experts must be divisible by ep_world_size");
+
+    bool any_cached = cached_handle_dst_buffer_slot_idx.has_value();
+    TORCH_CHECK(!(any_cached && do_cpu_sync), "cached mode is incompatible with do_cpu_sync=True");
+
+    auto x_size = x.sizes();
+    int64_t num_tokens = x_size[0];
+    int64_t top_k = topk_idx.size(1);
+    int64_t num_local_experts = num_experts / ep_world_size;
+
+    at::Tensor num_recv_per_rank = at::empty({ep_world_size}, x.options().dtype(at::kInt));
+    at::Tensor num_recv_per_expert = at::empty({num_local_experts}, x.options().dtype(at::kLong));
+    at::Tensor dst_slot = at::empty({num_tokens, top_k}, x.options().dtype(at::kInt));
+
+    at::Tensor topk_weights_tensor = topk_weights.has_value() ? *topk_weights : at::Tensor();
+    at::Tensor cached_slot_tensor =
+        cached_handle_dst_buffer_slot_idx.has_value() ? *cached_handle_dst_buffer_slot_idx : at::Tensor();
+
+    aclDataType scales_dtype = aclDataType::ACL_FLOAT;
+    at::Tensor scales_tensor = scales.has_value() ? *scales : at::Tensor();
+    if (scales.has_value() && scales_tensor.scalar_type() == at::kByte) {
+        scales_dtype = aclDataType::ACL_FLOAT8_E8M0;
+    }
+    TensorWrapper scales_wrapper = TensorWrapper{scales_tensor, scales_dtype};
+
+    ACLNN_CMD(aclnnMoeEpDispatch, context, x, topk_idx, topk_weights_tensor, scales_wrapper, cached_slot_tensor,
+        ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank, ccl_buffer_size, expert_alignment,
+        do_cpu_sync, host_pinned_counter_addr, num_recv_per_rank, num_recv_per_expert, dst_slot);
+
+    return std::tie(num_recv_per_rank, num_recv_per_expert, dst_slot);
+}
+
+Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue(
+    const at::Tensor &context,
+    const at::Tensor &dst_buffer_slot_idx, const at::Tensor &num_recv_per_rank,
+    const at::Tensor &num_recv_per_expert, const c10::optional<at::Tensor> &cached_recv_src_metadata,
+    int64_t ep_world_size, int64_t ep_rank_id, int64_t num_experts, int64_t num_max_tokens_per_rank,
+    int64_t ccl_buffer_size, int64_t expert_alignment, at::Tensor &recv_x, at::Tensor &recv_src_metadata,
+    const c10::optional<at::Tensor> &recv_topk_weights_opt, const c10::optional<at::Tensor> &recv_scales_opt)
+{
+    TORCH_CHECK(dst_buffer_slot_idx.dim() == DIM_TWO, "dst_buffer_slot_idx must be 2D");
+
+    at::Tensor cached_recv_src_metadata_tensor =
+        cached_recv_src_metadata.has_value() ? *cached_recv_src_metadata : at::Tensor();
+
+    aclDataType recv_scales_dtype = aclDataType::ACL_FLOAT;
+    at::Tensor recv_scales_tensor = recv_scales_opt.has_value() ? *recv_scales_opt : at::Tensor();
+    if (recv_scales_opt.has_value() && recv_scales_tensor.scalar_type() == at::kByte) {
+        recv_scales_dtype = aclDataType::ACL_FLOAT8_E8M0;
+    }
+    TensorWrapper recv_scales_wrapper = TensorWrapper{recv_scales_tensor, recv_scales_dtype};
+
+    at::Tensor recv_topk_weights_tensor = recv_topk_weights_opt.has_value() ? *recv_topk_weights_opt : at::Tensor();
+
+    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, context, dst_buffer_slot_idx, num_recv_per_rank, num_recv_per_expert,
+        cached_recv_src_metadata_tensor, ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank,
+        ccl_buffer_size, expert_alignment, recv_x, recv_src_metadata, recv_topk_weights_tensor, recv_scales_wrapper);
+
+    c10::optional<at::Tensor> recv_topk_weights_output;
+    if (recv_topk_weights_opt.has_value()) {
+        recv_topk_weights_output = *recv_topk_weights_opt;
+    }
+    c10::optional<at::Tensor> recv_scales_output;
+    if (recv_scales_opt.has_value()) {
+        recv_scales_output = *recv_scales_opt;
+    }
+    return std::make_tuple(recv_x, recv_src_metadata, recv_topk_weights_output, recv_scales_output);
+}
+
+Mc2Api::ElasticBuffer::CombineTensorList Mc2Api::ElasticBuffer::MoeEpCombine(
+    const at::Tensor &context, const at::Tensor &x,
+    const at::Tensor &topk_idx, const at::Tensor &recv_src_metadata,
+    const at::Tensor &num_recv_tokens_per_expert, const c10::optional<at::Tensor> &topk_weights,
+    const c10::optional<at::Tensor> &bias_0, const c10::optional<at::Tensor> &bias_1,
+    int64_t ep_world_size, int64_t ep_rank_id, int64_t num_experts,
+    int64_t num_max_tokens_per_rank, int64_t ccl_buffer_size)
+{
+    TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
+    TORCH_CHECK(!bias_0.has_value(), "bias not supported in first release");
+    TORCH_CHECK(!bias_1.has_value(), "bias not supported in first release");
+
+    int64_t num_tokens = topk_idx.size(0);
+    int64_t hidden = x.size(1);
+    int64_t top_k = topk_idx.size(1);
+
+    at::Tensor combined_x = at::empty({num_tokens, hidden}, x.options());
+    at::Tensor combined_topk_weights;
+    if (topk_weights.has_value()) {
+        combined_topk_weights = at::empty({num_tokens, top_k}, x.options().dtype(at::kFloat));
+    } else {
+        combined_topk_weights = at::Tensor();
+    }
+
+    c10::optional<at::Tensor> topk_weights_opt = topk_weights;
+    c10::optional<at::Tensor> bias_0_opt = c10::optional<at::Tensor>();
+    c10::optional<at::Tensor> bias_1_opt = c10::optional<at::Tensor>();
+
+    ACLNN_CMD(aclnnMoeEpCombine, context, x, topk_idx, recv_src_metadata, num_recv_tokens_per_expert,
+        topk_weights_opt, bias_0_opt, bias_1_opt, ep_world_size, ep_rank_id, num_experts,
+        num_max_tokens_per_rank, ccl_buffer_size, combined_x, combined_topk_weights);
+
+    c10::optional<at::Tensor> combined_topk_weights_opt;
+    if (topk_weights.has_value()) {
+        combined_topk_weights_opt = combined_topk_weights;
+    }
+    return std::make_tuple(combined_x, combined_topk_weights_opt);
+}
+
 // PyBind11 module definition
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
+    pybind11::class_<op_api::HostPinnedCounter>(m, "HostPinnedCounter")
+        .def(pybind11::init<>())
+        .def("spin_wait", &op_api::HostPinnedCounter::SpinWait, pybind11::arg("timeout_secs") = 100)
+        .def("reset", &op_api::HostPinnedCounter::Reset)
+        .def("device_ptr", &op_api::HostPinnedCounter::DevicePtr)
+        .def("host_ptr", &op_api::HostPinnedCounter::HostPtr);
+
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
         .def(pybind11::init<const std::string &, int64_t>(), pybind11::arg("groupName"), pybind11::arg("numCpuBytes"))
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
@@ -525,6 +751,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("withDeviceSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
+        .def_static("npu_moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)
+        .def_static("npu_moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
+        .def_static("npu_moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)
         .def_static("get_engram_storage_size_hint", &Mc2Api::ElasticBuffer::GetEngramStorageSizeHint,
                     pybind11::arg("numEntries"), pybind11::arg("hiddenSize"), pybind11::arg("dtype") = at::kBFloat16);
 }
