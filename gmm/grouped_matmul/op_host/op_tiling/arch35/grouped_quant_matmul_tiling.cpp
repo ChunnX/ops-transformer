@@ -1190,6 +1190,12 @@ void GroupedQmmTiling::SetKernelType()
 
 uint64_t GroupedQmmTiling::GetTilingKey() const
 {
+    OP_LOGI(inputParams_.opType,
+            "qgmm mx key debug: transB=%lu transA=%lu kernelType=%lu bFormat=%d scaleDtype=%d "
+            "isSingleX=%d isSingleW=%d isSingleY=%d hasBias=%d groupType=%d",
+            inputParams_.transB, inputParams_.transA, inputParams_.kernelType, inputParams_.bFormat,
+            inputParams_.scaleDtype, inputParams_.isSingleX, inputParams_.isSingleW, inputParams_.isSingleY,
+            inputParams_.hasBias, inputParams_.groupType);
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
                               static_cast<uint64_t>(inputParams_.kernelType));
 }
