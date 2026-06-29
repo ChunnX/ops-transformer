@@ -79,6 +79,8 @@ private:
     bool IsA16W8(const ge::DataType xDtype, const ge::DataType weightDtype) const;
     bool IsA16F8(const ge::DataType xDtype, const ge::DataType weightDtype) const;
     bool IsA16W4(const ge::DataType xDtype, const ge::DataType weightDtype) const;
+    bool IsA16W4Pergroup(const ge::DataType xDtype, const ge::DataType weightDtype,
+                         const gert::InferShapeContext *context, const size_t tensorIdx) const;
     bool IsMultiTensorWeight(const gert::InferShapeContext *context) const;
 
 private:

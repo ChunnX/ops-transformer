@@ -70,7 +70,9 @@ bool GroupedMatmulWeightQuantChecker::IsA16W4(const ge::DataType xDtype, const g
            (weightDtype == ge::DT_INT4 || weightDtype == ge::DT_INT32);
 }
 
-bool GroupedMatmulWeightQuantChecker::IsA16W4Pergroup(const ge::DataType xDtype, const ge::DataType weightDtype, const gert::InferShapeContext *context, const size_t tensorIdx) const
+bool GroupedMatmulWeightQuantChecker::IsA16W4Pergroup(const ge::DataType xDtype, const ge::DataType weightDtype,
+                                                      const gert::InferShapeContext *context,
+                                                      const size_t tensorIdx) const
 {
     if (!IsA16W4(xDtype, weightDtype)) {
         return false;
