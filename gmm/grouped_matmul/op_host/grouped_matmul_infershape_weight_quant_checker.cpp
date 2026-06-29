@@ -715,6 +715,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckGroupSize(const gert::Infe
                     OP_LOGE(context->GetNodeName(), "GroupNum must be multiple of the k axis of weight."),
                     return ge::GRAPH_FAILED);
         int64_t groupSize = weightKDim_ / groupNum;
+        // 伪量化A16W4 pergroup场景支持groupsize为32/64/128/256
         OP_CHECK_IF(groupSize != 32 && groupSize != 64 && groupSize != 128 && groupSize != 256,
                     OP_LOGE(context->GetNodeName(),
                             "groupSize must be 32/64/128/256 on Ascend 950PR, but current groupSize is (%ld).",

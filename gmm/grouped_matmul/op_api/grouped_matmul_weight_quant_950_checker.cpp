@@ -84,8 +84,7 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4() const
 
 bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsMultiTensorWeight() const
 {
-    auto wDimNum = (*gmmParams_.weight)[0]->GetViewShape().GetDimNum();
-    return wDimNum == MULTI_WEIGHT_DIM;
+    return (*gmmParams_.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorNotNull(size_t xIdx, size_t yIdx, size_t wIdx) const
@@ -156,14 +155,14 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
         expectedDimNum = 3;
     } else if (IsMxA8W4NZ()) {
         if (tensorType.find("antiquant") != std::string::npos) {
-            expectedDimNum = IsMultiTensorWeight() ? 3 : 4;
+            expectedDimNum = IsMultiTensorWeight() ? MX_MULTI_ANTIQUANT_SCALE_DIM : MX_SINGLE_ANTIQUANT_SCALE_DIM;
         } else if (tensorType.find("token") != std::string::npos) {
-            expectedDimNum = 3;
+            expectedDimNum = 3; // MxA8W4场景，perTokenScale维度为3
         } else if (tensorType.find("bias") != std::string::npos) {
-            expectedDimNum = IsMultiTensorWeight() ? 1 : 2;
+            expectedDimNum = IsMultiTensorWeight() ? MX_MULTI_BIAS_DIM : MX_SINGLE_BIAS_DIM;
         }
     } else if (IsA16W4() && tensorType.find("antiquant") != std::string::npos) {
-        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
         size_t pergroupDim = perchannelDim + 1;
         if (tensorDimNum != perchannelDim && tensorDimNum != pergroupDim) {
             std::string reason = "Dim must be [" + std::to_string(perchannelDim) +
@@ -632,7 +631,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose
     if (IsA16W4()) {
         auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
         auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
         if (antiquantScaleDimNum <= perchannelDim) {
             return ACLNN_SUCCESS;
         }
@@ -815,7 +814,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
         }
         auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
         auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;
+        size_t perchannelDim = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
         if (antiquantScaleDimNum <= perchannelDim) {
             return ACLNN_SUCCESS;
         }
@@ -836,10 +835,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
             return ACLNN_ERR_PARAM_INVALID;
         }
         int64_t groupSize = kSize / groupNum;
+        // 伪量化A16W4 pergroup场景支持groupsize为32/64/128/256
         if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize",
                 std::to_string(groupSize),
-                "The value of groupSize must be 32/64/128/256 on arch3510");
+                "When the quant mode is A16W4 pergroup, The value of groupSize must be 32/64/128/256 on arch3510");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
