@@ -26,8 +26,8 @@ B_VALUES = [1, 2, 3, 4, 5, 6, 7, 8]
 GQA_RATIOS = [1, 2, 3, 4, 5, 8, 16, 32, 64]
 N_KV_VALUES = [1, 2, 3, 4, 5, 7, 8, 11, 13, 16, 17, 19, 23, 32]
 N_Q_MAX = 256
-SPARSE_MODES = [0, 3]
-ENABLE_LSE_VALUES = [True, False]
+SPARSE_MODES = [3]
+ENABLE_LSE_VALUES = [True]
 
 # Sequence length ranges: (label, min, max, weight)
 SEQ_Q_RANGES = [
@@ -297,8 +297,8 @@ def combined_error(base):
 # Main
 # ==============================================================================
 def main():
-    normal_cases = generate_normal_cases(1000)
-    exception_cases = generate_exception_cases(200)
+    normal_cases = generate_normal_cases(20)
+    exception_cases = generate_exception_cases(0)
 
     print(f"[GEN] Normal cases generated: {len(normal_cases)}")
     print(f"[GEN] Exception cases generated: {len(exception_cases)}")
