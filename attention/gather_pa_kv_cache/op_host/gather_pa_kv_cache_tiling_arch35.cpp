@@ -702,7 +702,7 @@ ge::graphStatus GatherPaKvCacheTiling::GetWorkspaceSize()
 ge::graphStatus GatherPaKvCacheTiling::PostTiling()
 {
     context_->SetTilingKey(GetTilingKey());
-    context_->SetBlockDim(needCoreNum_);
+    context_->SetBlockDim(coreNum_);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = workspaceSize_;
