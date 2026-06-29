@@ -150,8 +150,8 @@ def check_param_valid(
 # V scope 2: cast dQueryIndex FP32->FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-6, -5, -4, -3],
-    workspace_idx=[10, 11, 12, 13, 14, 19, 20],
+    out_idx=[-6, -5, -4, -3, -2],  # dQueryIndex(15), dWeight_partial(16), reluGradRes(17), LossOut(18), MatmulPartial(19)
+    workspace_idx=[10, 11, 12, 13, 14, 20],  # bmm1Res, bmm2Res, PReduced, ReduceSumY, SoftmaxI, dQueryIndex_ws
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -442,22 +442,41 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.set_cross_flag("V", 12)
 
             # ============================================================
-            # C scope 2: Matmul4 — per-core K-block, atomic_add to accumulate
-            # Each core computes only its own K block, reducing Cube work by n_num×
+            # C scope 2: Matmul4 + Matmul5 — per-core K-block, atomic_add to accumulate
+            # Matmul4: reluGrad @ GatherKeyIndexT^T -> dQueryIndex_ws
+            # Matmul5: reluGrad^T @ QueryIndex -> MatmulPartial (NEW)
+            # Both use same reluGradRes, executed in same C scope for efficiency
             # ============================================================
             with T.Scope("C"):
                 T.wait_cross_flag(12)
 
-                RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
+                # Matmul4 buffers
+                RG4_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
                 GKIT_L1 = T.alloc_L1((k_block, n_block), input_dtype)
                 DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
 
+                # Matmul5 buffers
+                RG5_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
+                QI5_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
+                MP_L0C = T.alloc_L0C((n_block, k_block), calc_dtype)
+
                 for s1_row in T.serial(s1_start, s1_end):
+                    # Load reluGradRes once for both Matmul4 and Matmul5
+                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG4_L1)
+                    T.copy(RG4_L1, RG5_L1)  # Copy to Matmul5 buffer
+
+                    # Matmul4: reluGrad @ GKIT^T -> dQueryIndex_ws
                     for d_idx in T.serial(d_num_query_index):
-                        T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
                         T.copy(GatherKeyIndexT[bz, s1_row, d_idx * k_block:(d_idx + 1) * k_block, n_idx_k * n_block:(n_idx_k + 1) * n_block], GKIT_L1)
-                        T.gemm_v0(RG_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
+                        T.gemm_v0(RG4_L1, GKIT_L1, DQ_L0C, transpose_B=True, init=True)
                         T.tile.atomic_add(dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
+
+                    # Matmul5: reluGrad^T @ QueryIndex -> MatmulPartial
+                    for d_idx in T.serial(d_num_query_index):
+                        T.copy(QueryIndex[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], QI5_L1)
+                        # transpose_A=True: (Nidx1, n_block)^T @ (Nidx1, k_block) -> (n_block, k_block)
+                        T.gemm_v0(RG5_L1, QI5_L1, MP_L0C, transpose_A=True, init=True)
+                        T.tile.atomic_add(MatmulPartial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block], MP_L0C)
 
                 T.set_cross_flag("FIX", 3)
 
@@ -476,35 +495,6 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.copy(dQueryIndex_ws[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_ub)
                             T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", 4 * BLOCK_K)
                             T.copy(dq_fp16_ub, dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
-
-                T.set_cross_flag("FIX", 4)
-
-            # ============================================================
-            # C scope 3: Matmul5 = reluGrad^T @ QueryIndex -> matmul_partial
-            # Each core processes its own K block (n_idx_k)
-            # Uses transpose_A=True: (Nidx1, n_block) @ (Nidx1, k_block) -> (n_block, k_block)
-            # ============================================================
-            with T.Scope("C"):
-                T.wait_cross_flag(4)
-
-                RG5_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)  # reluGradRes slice
-                QI5_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)  # QueryIndex
-                MP_L0C = T.alloc_L0C((n_block, k_block), calc_dtype)  # Matmul5 result
-
-                for s1_row in T.serial(s1_start, s1_end):
-                    # Load reluGradRes for MY K block
-                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG5_L1)
-                    
-                    for d_idx in T.serial(d_num_query_index):
-                        # Load QueryIndex
-                        T.copy(QueryIndex[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], QI5_L1)
-                        
-                        # Matmul5: reluGrad^T @ QueryIndex
-                        # (Nidx1, n_block)^T @ (Nidx1, k_block) -> (n_block, k_block)
-                        T.gemm_v0(RG5_L1, QI5_L1, MP_L0C, transpose_A=True, init=True)
-                        
-                        # Output to GM using atomic_add (static position)
-                        T.tile.atomic_add(MatmulPartial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block], MP_L0C)
 
     return main
 
