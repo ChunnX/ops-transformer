@@ -92,7 +92,11 @@ public:
     ge::graphStatus GetAttenMaskInfo();
     void GetPaddingSizeFlag();
     ge::graphStatus GetActualSeqInfo();
+    void ProcessKVActualSeqLoop(const int64_t *actualLenData, uint32_t loop);
+    void ProcessQActualSeqLoop(const int64_t *actualLenQData, uint32_t loop);
     void GetPreNextToken();
+    void UpdatePreNextTokenBySparseMode();
+    void ClampPreNextToken();
     ge::graphStatus GetSystemPrefix();
     ge::graphStatus GetPseShiftFlag();
     ge::graphStatus GetPostQuantInfo();

@@ -27,6 +27,8 @@ constexpr int64_t QUANT_MODE_STATIC = 0;
 constexpr int64_t QUANT_MODE_DYNAMIC = 1;
 constexpr int64_t QUANT_MODE_MXFP8_E5M2 = 2;
 constexpr int64_t QUANT_MODE_MXFP8_E4M3FN = 3;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E5M2 = 4;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E4M3FN = 5;
 constexpr int64_t QUANT_MODE_HIF8_CAST = 6;
 constexpr int64_t QUANT_MODE_HIF8_PERTENSOR = 7;
 constexpr int64_t QUANT_MODE_HIF8_PERTOKEN = 8;
@@ -34,6 +36,8 @@ constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11;
 constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12;
 constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15;
 // 可选row_idx_type
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0;
 constexpr int64_t ROW_IDX_TYPE_SCATTER = 1;
@@ -66,10 +70,14 @@ ge::DataType GetExpandedXDtype(int64_t quantMode, ge::DataType xDtype, ge::DataT
         case QUANT_MODE_INT4_DYNAMIC:
             return ge::DT_INT4;
         case QUANT_MODE_MXFP8_E5M2:
+        case QUANT_MODE_FP8_GROUP_E5M2:
         case QUANT_MODE_FP8_PERBLOCK_E5M2:
+        case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
             return ge::DT_FLOAT8_E5M2;
         case QUANT_MODE_MXFP8_E4M3FN:
+        case QUANT_MODE_FP8_GROUP_E4M3FN:
         case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
+        case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
             return ge::DT_FLOAT8_E4M3FN;
         case QUANT_MODE_MXFP4_E2M1:
             return ge::DT_FLOAT4_E2M1;
@@ -123,6 +131,14 @@ ExpandedScaleDesc MakeFp8PerBlockScaleDesc(int64_t totalLength, int64_t cols)
     return desc;
 }
 
+ExpandedScaleDesc MakeFp8GroupScaleDesc(int64_t totalLength, int64_t cols)
+{
+    ExpandedScaleDesc desc;
+    desc.dtype = ge::DT_FLOAT;
+    desc.shape = {totalLength, CeilDiv(cols, 128)};
+    return desc;
+}
+
 ExpandedScaleDesc MakeUnquantInputScaleDesc(int64_t totalLength, int64_t cols, ge::DataType xDtype)
 {
     if (IsMxfpXNoQuant(xDtype)) {
@@ -155,6 +171,11 @@ ExpandedScaleDesc GetExpandedScaleDesc(int64_t quantMode, int64_t totalLength, i
         case QUANT_MODE_FP8_PERBLOCK_E5M2:
         case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
             return MakeFp8PerBlockScaleDesc(totalLength, cols);
+        case QUANT_MODE_FP8_GROUP_E5M2:
+        case QUANT_MODE_FP8_GROUP_E4M3FN:
+        case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
+        case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
+            return MakeFp8GroupScaleDesc(totalLength, cols);
         case QUANT_MODE_UNQUANT:
             if (isInputScale) {
                 return MakeUnquantInputScaleDesc(totalLength, cols, xDtype);
@@ -421,6 +442,36 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_full_l
     RunDropPadTilingTestcase(4, 16, 2, 2, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 200000);
 }
 
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_non_full_load_multi_row_loop)
+{
+    RunDropPadTilingTestcase(1000000, 16, 1, 1, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 11000100);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_non_full_load_single_row_loop)
+{
+    RunDropPadTilingTestcase(8192, 16, 1, 1, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 11000100);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_non_full_load_tail_core)
+{
+    RunDropPadTilingTestcase(8201, 16, 1, 1, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 11000100);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_non_full_load_multi_k)
+{
+    RunDropPadTilingTestcase(1024, 16, 8, 1, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 11000100);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_non_full_load_multi_col_loop)
+{
+    RunDropPadTilingTestcase(4096, 32769, 2, 1, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 11000100);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_non_full_load_multi_col_aligned)
+{
+    RunDropPadTilingTestcase(4096, 65536, 2, 1, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, ge::GRAPH_SUCCESS, 11000100);
+}
+
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_droppad_reject_scatter_row_idx)
 {
     RunDropPadTilingTestcase(4, 16, 2, 2, {0, EXPERT_NUM}, ROW_IDX_TYPE_SCATTER, ge::GRAPH_FAILED);
@@ -651,6 +702,42 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_perblock_e
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
 
+// FP8 PerGroup E5M2
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_group_e5m2)
+{
+    int64_t h = 257;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_GROUP_E5M2,
+                              ge::DT_FLOAT16, {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerGroup E4M3FN
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_group_e4m3)
+{
+    int64_t h = 257;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_GROUP_E4M3FN,
+                              ge::DT_BF16, {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerGroup E5M2 with amax clamp
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_group_amax_e5m2)
+{
+    int64_t h = 257;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_GROUP_AMAX_E5M2,
+                              ge::DT_FLOAT16, {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerGroup E4M3FN with amax clamp
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_group_amax_e4m3)
+{
+    int64_t h = 257;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_GROUP_AMAX_E4M3FN,
+                              ge::DT_BF16, {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
 // UNQUANT + FP8 x + E8M0 scale
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_scale)
 {
@@ -752,4 +839,36 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_ba
     RunArch35ExtendedTestcase(1, 83, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
                               ge::DT_FLOAT8_E5M2, {180, 192}, ROW_IDX_TYPE_GATHER, {1, 2, 2}, ge::DT_FLOAT, {},
                               ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_FAILED);
+}
+
+// 空tensor场景：n_==0
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_n_zero)
+{
+    RunArch35ExtendedTestcase(0, 128, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
+                              ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// 空tensor场景：k_==0（expertIdx第1维为0，如[3,0]）
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k_zero)
+{
+    RunArch35ExtendedTestcase(3, 128, 0, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
+                              ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// 空tensor场景：cols_==0（x第1维为0，如[3,0]）
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_cols_zero)
+{
+    RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
+                              ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// 空tensor场景：k_==0 + key_value模式
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k_zero_keyvalue)
+{
+    RunArch35ExtendedTestcase(3, 64, 0, 0, 0, EXPERT_TOKENS_TYPE_KEY_VALUE, true, QUANT_MODE_UNQUANT,
+                              ge::DT_FLOAT16, {0, EXPERT_NUM}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {},
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
