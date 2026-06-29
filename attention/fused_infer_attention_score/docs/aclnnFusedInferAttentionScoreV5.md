@@ -1771,7 +1771,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 全量化
     - Decode MLA全量化场景下，仅支持blockSize取值128
     - MxFP8全量化场景下，仅支持blockSize取值512或1024
-    - GQA全量化场景下，仅支持blockSize取值128
 - 存在性约束
   - 公共
     - PagedAttention开启情况下，必须传入actualSeqLengthsKv

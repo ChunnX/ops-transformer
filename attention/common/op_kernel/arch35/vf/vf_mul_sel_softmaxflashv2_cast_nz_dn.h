@@ -1111,10 +1111,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
             (__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
         // pscale update
         RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
-        MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-        Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_all_b8);
+        Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_134);
         StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
-            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_all_b8);
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_134);
     } else {
         RegTensor<float> first_loop_sum;
         LoadAlign(first_loop_sum, new_global_sum);
@@ -1134,12 +1133,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_x_max_f32_b, preg_135);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_108);
         Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
-                (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
-        Duplicate(vreg_p_scale_f8e8m0_1, 0x7f, preg_all_b8);
+                (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_134);
         DeInterleave(vreg_p_scale_f8e8m0_dst0, vreg_p_scale_f8e8m0_dst1,
-            vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_1);
+            vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0);
         StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
-            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_dst0, preg_all_b8);
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_dst0, preg_134);
     }
 }
 
@@ -1532,10 +1530,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
             (__ubuf__ T *&)first_loop_sum, vreg_x_sum0, preg_134);
         // pscale update
         RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
-        MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-        Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_all_b8);
+        Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_134);
         StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
-            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_all_b8);
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_134);
     } else {
         RegTensor<float> vreg_l1;
         LoadAlign(vreg_l0, first_loop_sum);
@@ -1558,12 +1555,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_subloop_update, preg_135);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_108);
         Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
-                (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
-        Duplicate(vreg_p_scale_f8e8m0_1, 0x7f, preg_all_b8);
+                (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_134);
         DeInterleave(vreg_p_scale_f8e8m0_dst0, vreg_p_scale_f8e8m0_dst1,
-            vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_1);
+            vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0);
         StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(
-            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_dst0, preg_all_b8);
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_dst0, preg_134);
     }
 }
 
