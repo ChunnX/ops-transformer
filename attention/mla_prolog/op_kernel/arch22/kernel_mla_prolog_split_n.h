@@ -1985,7 +1985,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
                                                                                   int64_t ropeQrOffset,
                                                                                   int64_t ropeQrResOffset)
 {
-    if (baseParams_->mm3BlockNum < cubeBlockIdx_) {
+    if (baseParams_->mm3BlockNum <= cubeBlockIdx_) {
         return;
     }
     // mmQcQr一个C核算stepBatchSize * singleN，每两个V核做对应C核输出的Qc部分的dequant
