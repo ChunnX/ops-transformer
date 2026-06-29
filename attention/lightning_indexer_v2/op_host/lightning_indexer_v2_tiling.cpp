@@ -201,7 +201,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
-        (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
+        (std::string(opParamInfo_.layOut)) != (std::string(opParamInfo_.layOutKey))),
         OP_LOGE(opName_,  "outside of PA, input attr layout_query and input attr layout_key must be the same,"
                   "but now layout_key is %s, layout_query is %s.",
         layout_key.c_str(),  layout_query.c_str()), return ge::GRAPH_FAILED);
