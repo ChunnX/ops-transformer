@@ -1205,8 +1205,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
         } else {
             uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
                 coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
-                constInfo.mm1Ka);
+            CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize,
+                                   constInfo.dSize, constInfo.mm1Ka);
         }
         mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非s2的第一次循环直接复用Q
@@ -1220,16 +1220,16 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
     mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用
     LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
     if constexpr (isPa) {
-        Position startPos;
-        startPos.bIdx = runInfo.boIdx;
-        startPos.n2Idx = runInfo.n2oIdx;
+        Position startPosition;
+        startPosition.bIdx = runInfo.boIdx;
+        startPosition.n2Idx = runInfo.n2oIdx;
         if constexpr (isFd) {
-            startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
-                        runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
+            startPosition.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
+                                runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
         } else {
-            startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
+            startPosition.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
         }
-        startPos.dIdx = 0;
+        startPosition.dIdx = 0;
         PAShape shape;
         shape.blockSize = kvCacheBlockSize;
         shape.headNum = constInfo.n2Size;
@@ -1241,7 +1241,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
         shape.pageStride = constInfo.keyBnStride;
         shape.n2Stride = constInfo.keyN2Stride;
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
-        GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shape, startPos);
+        GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, shape, startPosition);
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
             coordInfo[runInfo.taskIdMod3].s2Coord, 0);
