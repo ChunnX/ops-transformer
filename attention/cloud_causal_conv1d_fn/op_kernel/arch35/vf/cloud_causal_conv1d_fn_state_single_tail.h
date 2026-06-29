@@ -102,7 +102,8 @@ __simd_vf__ void Conv1dW4VF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ 
     }
     if constexpr (HAS_TAIL) {
         uint16_t dimRem = dimLen - dimLoopNum * B32_REP_SIZE;
-        MicroAPI::MaskReg maskRem = MicroAPI::UpdateMask<float>(dimRem);
+        uint32_t sreg = dimRem;
+        MicroAPI::MaskReg maskRem = MicroAPI::UpdateMask<float>(sreg);
         MicroAPI::Duplicate(yB32, 0, maskRem);
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
         if constexpr (STATE_ROWS > 0) {
