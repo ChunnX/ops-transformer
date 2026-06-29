@@ -75,7 +75,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSize(const FiaTilingInfo &fiaIn
         OP_LOGE(fiaInfo.opName,
                 "When page attention enable, blockSize should not be null."),
             return ge::GRAPH_FAILED);
-    
+    // blockSize 需要大于0
     OP_CHECK_IF(fiaInfo.blockSize <= 0,
         OP_LOGE(fiaInfo.opName,
                 "When page attention enable, blockSize(%d) should be > 0.",
