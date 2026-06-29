@@ -294,18 +294,18 @@ public:
 
 #ifdef __DAV_C220_CUBE__
                     // Stage 3: PV Matmul
-                    // LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
-                    // LayoutV gmVLayout(blockSize_, strideKVRow);
-                    // LayoutOTmp ubOTmpLayout(rowNumRound, embedRound);
-                    // GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
+                    LayoutP ubPLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
+                    LayoutV gmVLayout(blockSize_, strideKVRow);
+                    LayoutOTmp ubOTmpLayout(rowNumRound, embedRound);
+                    GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
 
-                    // blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp],
-                    //     gBlockTable[blockTOffset], gIdentityIdx,
-                    //     ubPLayout, gmVLayout, ubOTmpLayout,
-                    //     actualBlockShapePV,
-                    //     0, 0, blockSize_,
-                    //     kvSTileSizeAct, strideKVRow, 1,
-                    //     softmaxReady_, blockSize_, 1, 1);
+                    blockMmadPV(gP[gmOffsetP], gV[gmOffsetV], gOTmp[gmOffsetOTmp],
+                        gBlockTable[blockTOffset], gIdentityIdx,
+                        ubPLayout, gmVLayout, ubOTmpLayout,
+                        actualBlockShapePV,
+                        0, 0, blockSize_,
+                        kvSTileSizeAct, strideKVRow, 1,
+                        softmaxReady_, blockSize_, 1, 1);
                     NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady_);
 #endif
 
