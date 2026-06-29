@@ -205,8 +205,8 @@ public:
     template <uint32_t dBaseSize>
     struct QL1BuffSel {
         using Type = std::conditional_t<(dBaseSize > 256), 
-                                         BuffersPolicySingleBuffer<BufferType::L1>,
-                                         BuffersPolicyDB<BufferType::L1>>;
+                                        BuffersPolicySingleBuffer<BufferType::L1>,
+                                        BuffersPolicyDB<BufferType::L1>>;
     };
 
     /* ============确定Key的L1类型============= */
