@@ -27,10 +27,8 @@ namespace aicpu {
 
 #if defined(SLI_AICPU_ARCH22)
 using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch22;
-#elif defined(SLI_AICPU_ARCH35)
-using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch35;
 #else
-#error "No SLI_AICPU_ARCH* defined. Check ARCH_DIRECTORY in CMake configuration."
+using SparseLightningIndexerKLLossGradMetadataCpuKernel = SparseLightningIndexerKLLossGradMetadataCpuKernelArch35;
 #endif
 
 static const char *kernelType = "SparseLightningIndexerKLLossGradMetadata";
