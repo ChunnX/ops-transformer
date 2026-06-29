@@ -22,25 +22,65 @@
 extern "C" {
 #endif
 
-static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
-                               const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize,
-                               int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                               int64_t headDim, int64_t maskMode, int64_t winLeft, int64_t winRight,
-                               const char *layoutQ, const char *layoutKv, const char *layoutOut,
-                               const aclTensor *metaData)
+class FlashAttnMetadataChecker {
+public:
+    static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
+                                          const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
+                                          int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                          int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft,
+                                          int64_t winRight, const char *layoutQ, const char *layoutKv, 
+                                          const char *layoutOut, const aclTensor *metaData);
+
+private:
+    static inline aclnnStatus CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                            const char *layoutQ, const char *layoutKv, const char *layoutOut);
+
+    static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
+
+    static inline aclnnStatus CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                             const char *layoutQ, const char *layoutKv,
+                                             const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
+                                             const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional);
+
+    static inline aclnnStatus CheckConsistency(int64_t batchSize, int64_t numHeadsQ, int64_t numHeadsKv,
+                                               const aclTensor *cuSeqlensQOptional,
+                                               const aclTensor *cuSeqlensKvOptional,
+                                               const aclTensor *sequsedQOptional,
+                                               const aclTensor *sequsedKvOptional);
+
+    static inline aclnnStatus CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens);
+};
+
+inline aclnnStatus
+FlashAttnMetadataChecker::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
+                                      const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
+                                      int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                      int64_t numHeadsKv, int64_t headDim, int64_t maskMode, int64_t winLeft,
+                                      int64_t winRight, const char *layoutQ, const char *layoutKv,
+                                      const char *layoutOut, const aclTensor *metaData)
 {
-    if (maskMode != 0 && maskMode != 3 && maskMode != 4) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maskMode only supports 0, 3, 4, but got %ld", maskMode);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
+    auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, 
+                             layoutQ, layoutKv, layoutOut);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = CheckMask(maskMode, winLeft, winRight);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = CheckExistency(maxSeqlenQ, maxSeqlenKv, layoutQ, layoutKv, cuSeqlensQOptional, cuSeqlensKvOptional,
+                         sequsedQOptional, sequsedKvOptional);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = CheckConsistency(batchSize, numHeadsQ, numHeadsKv, cuSeqlensQOptional, cuSeqlensKvOptional,
+                           sequsedQOptional, sequsedKvOptional);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    return ACLNN_SUCCESS;
+}
 
-    if (winLeft < -1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or >= 0, but got %ld", winLeft);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    if (winRight < -1) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or >= 0, but got %ld", winRight);
+inline aclnnStatus
+FlashAttnMetadataChecker::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                        int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                        const char *layoutQ, const char *layoutKv, const char *layoutOut)
+{
+    if (batchSize < -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "batchSize must be -1 or >= 0, but got %ld", batchSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -76,86 +116,64 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (batchSize != 0) {
-        if (cuSeqlensQOptional != nullptr) {
-            if (cuSeqlensQOptional->GetViewShape().GetDimNum() != 1) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional must be 1D tensor, but got %ld dims",
-                        cuSeqlensQOptional->GetViewShape().GetDimNum());
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            if (cuSeqlensQOptional->GetViewShape().GetDim(0) != batchSize + 1) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional shape must be (batchSize+1,), but got %ld",
-                        cuSeqlensQOptional->GetViewShape().GetDim(0));
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        }
+    return ACLNN_SUCCESS;
+}
 
-        if (cuSeqlensKvOptional != nullptr) {
-            if (cuSeqlensKvOptional->GetViewShape().GetDimNum() != 1) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional must be 1D tensor, but got %ld dims",
-                        cuSeqlensKvOptional->GetViewShape().GetDimNum());
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            if (cuSeqlensKvOptional->GetViewShape().GetDim(0) != batchSize + 1) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional shape must be (batchSize+1,), but got %ld",
-                        cuSeqlensKvOptional->GetViewShape().GetDim(0));
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        }
+inline aclnnStatus
+FlashAttnMetadataChecker::CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight)
+{
+    constexpr int64_t NO_MASK = 0;
+    constexpr int64_t CAUSAL_MASK = 3;
+    constexpr int64_t NO_FD_MASK = 4;       // TODO: delete in the future
 
-        if (sequsedQOptional != nullptr) {
-            if (sequsedQOptional->GetViewShape().GetDimNum() != 1) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional must be 1D tensor, but got %ld dims",
-                        sequsedQOptional->GetViewShape().GetDimNum());
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            if (sequsedQOptional->GetViewShape().GetDim(0) != batchSize) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional shape must be (batchSize,), but got %ld",
-                        sequsedQOptional->GetViewShape().GetDim(0));
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        }
-
-        if (sequsedKvOptional != nullptr) {
-            if (sequsedKvOptional->GetViewShape().GetDimNum() != 1) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional must be 1D tensor, but got %ld dims",
-                        sequsedKvOptional->GetViewShape().GetDimNum());
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            if (sequsedKvOptional->GetViewShape().GetDim(0) != batchSize) {
-                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional shape must be (batchSize,), but got %ld",
-                        sequsedKvOptional->GetViewShape().GetDim(0));
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        }
+    if (maskMode != NO_MASK && maskMode != CAUSAL_MASK && maskMode != NO_FD_MASK) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maskMode only supports %ld, %ld, %ld, but got %ld",
+            NO_MASK, CAUSAL_MASK, NO_FD_MASK, maskMode);
+        return ACLNN_ERR_PARAM_INVALID;
     }
 
-    bool isQ_TND = (strcmp(layoutQ, "TND") == 0);
-    if (isQ_TND) {
+    if (winLeft < -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winLeft must be -1 or >= 0, but got %ld", winLeft);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (winRight < -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winRight must be -1 or >= 0, but got %ld", winRight);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    return ACLNN_SUCCESS;
+}
+
+inline aclnnStatus
+FlashAttnMetadataChecker::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                         const char *layoutQ, const char *layoutKv,
+                                         const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
+                                         const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional)
+{
+    if (strcmp(layoutQ, "TND") == 0) {
         // layoutQ为TND时，必须传入cuSeqlensQOptional
         if (cuSeqlensQOptional == nullptr) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, 
                     "When layoutQ is TND, cuSeqlensQOptional should be provided, but got null");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
-        // layoutQ不为TND时，不应该传入cuSeqlensQOptional
+        // layoutQ不为TND时，可以不传入cuSeqlensQOptional
         if (cuSeqlensQOptional != nullptr) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "When layoutQ is not TND, cuSeqlensQOptional should not be provided, but got non-null");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // maxSeqlenQ和sequsedQOptional必须有一个（-1表示不传）
-        bool hasQParam = (maxSeqlenQ != -1) || (sequsedQOptional != nullptr);
-        if (!hasQParam) {
+        if (maxSeqlenQ < 0 && sequsedQOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "When layoutQ is not TND, at least one of maxSeqlenQ or sequsedQOptional must be provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
 
-    bool isKv_TND = (strcmp(layoutKv, "TND") == 0);
-    if (isKv_TND) {
+    if (strcmp(layoutKv, "TND") == 0) {
         // layoutQ为TND时，必须传入cuSeqlensKvOptional
         if (cuSeqlensKvOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
@@ -163,26 +181,84 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
-        // layoutKv不为TND时，不应该传入cuSeqlensKvOptional
+        // layoutKv不为TND时，可以不传入cuSeqlensKvOptional
         if (cuSeqlensKvOptional != nullptr) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "When layoutKv is not TND, cuSeqlensKvOptional should not be provided, but got non-null");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // maxSeqlenKv和sequsedKvOptional必须有一个（-1表示不传）
-        bool hasKvParam = (maxSeqlenKv != -1) || (sequsedKvOptional != nullptr);
-        if (!hasKvParam) {
+        if (maxSeqlenKv < 0 && sequsedKvOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "When layoutKv is not TND, at least one of maxSeqlenKv or sequsedKvOptional must be provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
+    return ACLNN_SUCCESS;
+}
 
-    if (numHeadsKv != 0) {
-        if (numHeadsQ % numHeadsKv != 0) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                    "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld", numHeadsQ,
-                    numHeadsKv);
+inline aclnnStatus
+FlashAttnMetadataChecker::CheckConsistency(int64_t batchSize, int64_t numHeadsQ, int64_t numHeadsKv,
+                                           const aclTensor *cuSeqlensQOptional,
+                                           const aclTensor *cuSeqlensKvOptional,
+                                           const aclTensor *sequsedQOptional,
+                                           const aclTensor *sequsedKvOptional)
+{
+    if (batchSize == 0) {
+        return ACLNN_SUCCESS;
+    }
+
+    bool isCu = true;
+    if (CheckSeqLens(isCu, batchSize, cuSeqlensQOptional) != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional is not valid!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (CheckSeqLens(isCu, batchSize, cuSeqlensKvOptional) != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional is not valid!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (CheckSeqLens(!isCu, batchSize, sequsedQOptional) != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional is not valid!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (CheckSeqLens(!isCu, batchSize, sequsedKvOptional) != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional is not valid!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (numHeadsKv != 0 && numHeadsQ % numHeadsKv != 0) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld", numHeadsQ, 
+                numHeadsKv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    return ACLNN_SUCCESS;
+}
+
+inline aclnnStatus
+FlashAttnMetadataChecker::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens)
+{
+    if (seqLens == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+
+    if (seqLens->GetViewShape().GetDimNum() != 1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "seqLens must be 1D tensor, but got %ld dims",
+                seqLens->GetViewShape().GetDimNum());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (isCu) {
+        if (seqLens->GetViewShape().GetDim(0) != batchSize + 1) {
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqLens shape must be (batchSize+1,), but got %ld",
+                    seqLens->GetViewShape().GetDim(0));
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else {
+        if (seqLens->GetViewShape().GetDim(0) != batchSize) {
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "seqLens shape must be (batchSize,), but got %ld",
+                    seqLens->GetViewShape().GetDim(0));
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
