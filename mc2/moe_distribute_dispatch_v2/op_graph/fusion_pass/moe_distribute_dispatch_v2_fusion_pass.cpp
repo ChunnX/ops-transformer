@@ -30,6 +30,12 @@ const std::string MOE_EP_NAME = "group_ep";
 const uint32_t IDX_0 = 0;
 constexpr size_t kV2TotalOutputs = 7;
 constexpr size_t kV2TotalInputs = 7;
+constexpr size_t kV2FirstOptionalInput = 2;
+
+bool IsOptionalV2Input(size_t v2Port)
+{
+    return v2Port >= kV2FirstOptionalInput;
+}
 
 const std::vector<std::string> REQUIRED_INT_ATTRS = {
     "ep_world_size", "ep_rank_id", "moe_expert_num"
@@ -87,7 +93,14 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::CreateFusionNode(
     fusionOp.UpdateInputDesc(static_cast<uint32_t>(IDX_0), tensorDesc);
     for (size_t v2Port = 0; v2Port < kV2TotalInputs; v2Port++) {
         auto srcPair = moeDistributeDispatchNode.GetInDataNodesAndPortIndexs(static_cast<int32_t>(v2Port));
-        if (srcPair.first == nullptr) { continue; }
+        if (srcPair.first == nullptr) {
+            if (IsOptionalV2Input(v2Port)) {
+                continue;
+            }
+            OPS_LOG_E(PASS_NAME.c_str(), "node %s: required input port %zu has no source",
+                      nameStr.GetString(), v2Port);
+            return ge::GRAPH_FAILED;
+        }
         ge::TensorDesc srcDesc;
         if (srcPair.first->GetOutputDesc(srcPair.second, srcDesc) != ge::GRAPH_SUCCESS) { continue; }
         fusionOp.UpdateInputDesc(static_cast<uint32_t>(v2Port + 1), srcDesc);
@@ -108,10 +121,19 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::AddEdge(
     ge::Graph &graph, ge::GNode &moeNodePtr, ge::GNode &fusionNode,
     ge::GNode &contextNodePtr) const
 {
+    ge::AscendString nameStr;
+    moeNodePtr.GetName(nameStr);
     ge::graphStatus edgeRet;
     for (size_t v2Port = 0; v2Port < kV2TotalInputs; v2Port++) {
         auto srcPair = moeNodePtr.GetInDataNodesAndPortIndexs(static_cast<int32_t>(v2Port));
-        if (srcPair.first == nullptr) { continue; }
+        if (srcPair.first == nullptr) {
+            if (IsOptionalV2Input(v2Port)) {
+                continue;
+            }
+            OPS_LOG_E(PASS_NAME.c_str(), "node %s: required input port %zu has no source",
+                      nameStr.GetString(), v2Port);
+            return ge::GRAPH_FAILED;
+        }
         edgeRet = graph.AddDataEdge(*srcPair.first, srcPair.second, fusionNode, static_cast<int32_t>(v2Port) + 1);
         if (edgeRet != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
