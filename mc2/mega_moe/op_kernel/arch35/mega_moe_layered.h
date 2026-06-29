@@ -475,7 +475,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatc
             static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
         __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(
             params_.workspaceInfo.sendWorkspacePtr + recordOffset + mxQuantTokenScaleAlignBytes_);
-        WriteGmByPassDCache(metaPtr + 1, int32_t(0));
+        __gm__ uint64_t* readyPtr = reinterpret_cast<__gm__ uint64_t*>(metaPtr);
+        WriteGmByPassDCache(readyPtr, uint64_t(0));
+        WriteGmByPassDCache(metaPtr + 2, int32_t(0));
     }
     __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.sendCursorPtr);
     for (uint32_t serverIdx = aivCoreIdx_; serverIdx < serverNum_; serverIdx += blockAivNum_) {
@@ -493,8 +495,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetUrmaDispatc
         __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(
             GetUrmaAddrByRankId(mc2Context_, rankId_) +
                 params_.peermemInfo.relayTokenDataPtr + recordOffset + mxQuantTokenScaleAlignBytes_);
-        WriteGmByPassDCache(metaPtr, int32_t(0));
-        WriteGmByPassDCache(metaPtr + 1, int32_t(0));
+        __gm__ uint64_t* readyPtr = reinterpret_cast<__gm__ uint64_t*>(metaPtr);
+        WriteGmByPassDCache(readyPtr, uint64_t(0));
+        WriteGmByPassDCache(metaPtr + 2, int32_t(0));
     }
 }
 
@@ -549,9 +552,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::QuantTokenToWork
             AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, k_);
     }
 
-    LocalTensor<int32_t> metaTensor = xOutBytesTensor[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<int32_t>();
-    metaTensor.SetValue(0, static_cast<int32_t>(tokenIdx));
-    metaTensor.SetValue(1, int32_t(1));
+    LocalTensor<uint64_t> metaTensor = xOutBytesTensor[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<uint64_t>();
+    LocalTensor<int32_t> metaTensorI32 = xOutBytesTensor[mxQuantTokenScaleAlignBytes_].template ReinterpretCast<int32_t>();
+    metaTensor.SetValue(0, uint64_t(1));
+    metaTensorI32.SetValue(2, static_cast<int32_t>(tokenIdx));
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID1>();
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopyPad(workspaceDstGlobal, xOutBytesTensor,
@@ -663,11 +667,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
                     __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
                         recordAddr + mxQuantTokenScaleAlignBytes_);
-                    if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(1)) {
+                    __gm__ uint64_t* srcReadyPtr = reinterpret_cast<__gm__ uint64_t*>(srcMetaPtr);
+                    if (ReadGmByPassDCache(srcReadyPtr) != uint64_t(1)) {
                         continue;
                     }
                     PRINTF("Cross Server\n");
-                    int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
+                    int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr + 2);
                     uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
                     GM_ADDR dstAddr = GetUrmaAddrByRankId(mc2Context_,
                         targetServerForSender * rankPerServer_ + rankInServer_) +
@@ -675,12 +680,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     
                     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
                     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
-                    PRINTF("L1_NOTIFY rank %u peer %u token %d relayOffset %lu notifyOff %u srcMeta0 %d srcMeta1 %d\n",
+                    PRINTF("L1_NOTIFY rank %u peer %u token %d relayOffset %lu notifyOff %u srcReady %lu srcToken %d\n",
                         rankId_, peerRank, tokenIdx, relayOffset, recordDataBytes,
-                        ReadGmByPassDCache(srcMetaPtr), ReadGmByPassDCache(srcMetaPtr + 1));
+                        ReadGmByPassDCache(srcReadyPtr), ReadGmByPassDCache(srcMetaPtr + 2));
                     hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, recordDataBytes,
                         dstAddr + recordDataBytes, static_cast<uint64_t>(1));
-                    WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
+                    WriteGmByPassDCache(srcReadyPtr, uint64_t(2));
                 }
                 scanCursor = scanEnd;
                 if (scanCursor >= endCount) {
@@ -693,7 +698,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     GM_ADDR recordAddr = params_.workspaceInfo.sendWorkspacePtr + recordOffset;
                     __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
                         recordAddr + mxQuantTokenScaleAlignBytes_);
-                    if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(2)) {
+                    __gm__ uint64_t* srcReadyPtr = reinterpret_cast<__gm__ uint64_t*>(srcMetaPtr);
+                    if (ReadGmByPassDCache(srcReadyPtr) != uint64_t(2)) {
                         break;
                     }
                     ++cursor;
@@ -926,17 +932,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
 {
     GM_ADDR remoteRecordAddr = GetUrmaAddrByRankId(mc2Context_, relayRank) +
         params_.peermemInfo.relayTokenDataPtr + remoteCopyOffset;
-    uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
+    uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_);
     if (relayRank == rankId_) {
         __gm__ int32_t* localMetaPtr = reinterpret_cast<__gm__ int32_t*>(
             remoteRecordAddr + mxQuantTokenScaleAlignBytes_);
+        __gm__ uint64_t* localReadyPtr = reinterpret_cast<__gm__ uint64_t*>(
+            remoteRecordAddr + flagOffset);
         int64_t lastPrintCycle = AscendC::GetSystemCycle();
-        while (ReadGmByPassDCache(localMetaPtr + 1) != int32_t(1)) {
+        while (ReadGmByPassDCache(localReadyPtr) != uint64_t(1)) {
             int64_t nowCycle = AscendC::GetSystemCycle();
             if (nowCycle - lastPrintCycle > 200000000) {
-                PRINTF("L2_WAIT_LOCAL rank %u remoteOffset %lu meta0 %d meta1 %d flagOffset %lu\n",
+                PRINTF("L2_WAIT_LOCAL rank %u remoteOffset %lu meta0 %d meta1 %d ready64 %lu flagOffset %lu\n",
                     rankId_, remoteCopyOffset,
-                    ReadGmByPassDCache(localMetaPtr), ReadGmByPassDCache(localMetaPtr + 1), flagOffset);
+                    ReadGmByPassDCache(localMetaPtr), ReadGmByPassDCache(localMetaPtr + 1),
+                    ReadGmByPassDCache(localReadyPtr), flagOffset);
                 lastPrintCycle = nowCycle;
             }
         }
@@ -947,14 +956,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     }
     GM_ADDR scratchAddr = params_.workspaceInfo.relayReadScratchPtr +
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
-    __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
+    __gm__ uint64_t* localReadyFlag = reinterpret_cast<__gm__ uint64_t*>(scratchAddr + flagOffset);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
     int64_t lastPrintCycle = AscendC::GetSystemCycle();
     do {
-        hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
-        int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
-        if (readyValue == 1) {
-            WriteGmByPassDCache(localReadyFlag, int32_t(0));
+        hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(uint64_t));
+        uint64_t readyValue = ReadGmByPassDCache(localReadyFlag);
+        if (readyValue == uint64_t(1)) {
+            WriteGmByPassDCache(localReadyFlag, uint64_t(0));
             break;
         }
         int64_t nowCycle = AscendC::GetSystemCycle();
@@ -963,7 +972,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
                 remoteRecordAddr + mxQuantTokenScaleAlignBytes_, sizeof(int64_t));
             __gm__ int32_t* localMetaPtr = reinterpret_cast<__gm__ int32_t*>(
                 scratchAddr + mxQuantTokenScaleAlignBytes_);
-            PRINTF("L2_WAIT rank %u relay %u remoteOffset %lu meta0 %d meta1 %d flagRead %d flagOffset %lu\n",
+            PRINTF("L2_WAIT rank %u relay %u remoteOffset %lu meta0 %d meta1 %d ready64 %lu flagOffset %lu\n",
                 rankId_, relayRank, remoteCopyOffset,
                 ReadGmByPassDCache(localMetaPtr), ReadGmByPassDCache(localMetaPtr + 1),
                 readyValue, flagOffset);
