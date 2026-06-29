@@ -15,11 +15,11 @@
 #ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_H
 #define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_AICPU_H
 
-#include <cstdint>
+#include <array>
 #include <string>
-#include <type_traits>
 #include <vector>
 #include "log.h"
+#include "status.h"
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
