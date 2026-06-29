@@ -1,0 +1,110 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+
+from typing import Optional
+
+import torch
+import torch_npu
+from torch.library import impl
+
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from cann_ops_transformer.op_builder.builder import OpBuilder
+
+
+class LightningIndexerKLLossOpBuilder(OpBuilder):
+    def __init__(self):
+        super(LightningIndexerKLLossOpBuilder, self).__init__("lightning_indexer_kl_loss")
+
+    def sources(self):
+        return ["ops/csrc/lightning_indexer_kl_loss.cpp"]
+
+    def schema(self) -> str:
+        return "lightning_indexer_kl_loss(Tensor target_score, Tensor index_probs, *, float eps=1e-9) -> Tensor"
+
+    def register_meta(self):
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def lightning_indexer_kl_loss_meta(target_score, index_probs, *, eps=1e-9):
+            return torch.empty((), dtype=target_score.dtype, device="meta")
+
+
+lightning_indexer_kl_loss_op_builder = LightningIndexerKLLossOpBuilder()
+op_module = lightning_indexer_kl_loss_op_builder.load()
+
+
+@impl(AS_LIBRARY, lightning_indexer_kl_loss_op_builder.name, "PrivateUse1")
+def lightning_indexer_kl_loss(target_score, index_probs, *, eps=1e-9):
+    """Lightning Indexer KL 散度损失函数。
+
+    计算 teacher 侧原始未归一化主注意力分数（target_score）与 student 侧 indexer softmax
+    后概率分布（index_probs）之间的 KL 散度。
+
+    数值处理：
+    - teacher 侧 y：clamp_min(norm_target, eps) 防止 y=0 处 log(0) 导致 0 * (-inf) = NaN
+    - student 侧 Y：log(Y + eps) 保住 Y→0 处的梯度
+
+    Args:
+        target_score (Tensor): teacher 侧压缩段原始未归一化主注意力分数，sum != 1。
+            支持 float16、bfloat16、float32。
+        index_probs (Tensor): student 侧 indexer softmax 后的概率分布，shape 与 target_score 一致。
+            支持 float16、bfloat16、float32。
+        eps (float): 数值稳定常数，默认 1e-9。
+
+    Returns:
+        Tensor: KL 散度标量损失，dtype 与输入一致。
+
+    计算公式:
+        P = y / sum(y, dim=-1, keepdim=True)
+        log_P = log(clamp_min(P, eps))
+        log_Y = log(Y + eps)
+        loss = sum((log_P - log_Y) * y)
+
+    调用示例:
+        >>> import torch
+        >>> import torch_npu
+        >>> from cann_ops_transformer import lightning_indexer_kl_loss
+        >>>
+        >>> target_score = torch.randn(4, 10, 128, dtype=torch.float32).npu()
+        >>> index_probs = torch.softmax(torch.randn(4, 10, 128), dim=-1).npu()
+        >>> loss = lightning_indexer_kl_loss(target_score, index_probs)
+    """
+    return op_module.lightning_indexer_kl_loss(target_score, index_probs, eps)
+
+
+try:
+    import torchair
+    from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
+    from torchair.ge._ge_graph import Tensor, TensorSpec
+    from torchair.ge import attr
+
+    _TORCHAIR_AVAILABLE = True
+except ImportError:
+    _TORCHAIR_AVAILABLE = False
+
+
+if _TORCHAIR_AVAILABLE:
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.lightning_indexer_kl_loss.default
+    )
+    def convert_lightning_indexer_kl_loss(
+        target_score: Tensor,
+        index_probs: Tensor,
+        eps: float = 1e-9,
+        meta_outputs: TensorSpec = None,
+    ):
+        """Convert lightning_indexer_kl_loss to GE graph."""
+        return torchair.ge.custom_op(
+            "LightningIndexerKLLoss",
+            inputs={
+                "target_score": target_score,
+                "index_probs": index_probs,
+            },
+            attrs={
+                "eps": attr.Float(eps),
+            },
+            outputs=["loss"],
+        )
