@@ -292,14 +292,16 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
             opParamInfo_.sequsedK.tensor == nullptr,
             OP_LOGE(opName_, "when layout_key is PA_BBND, input seqused_k must not be null"),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor != nullptr,
-            OP_LOGE(opName_, "key layout is PA_BBND, input cu_seqlens_k must not be provided"),
-            return ge::GRAPH_FAILED);
+        if (npuArch_ == NpuArch::DAV_3510) {
+            OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor != nullptr,
+                OP_LOGE(opName_, "key layout is PA_BBND, input cu_seqlens_k must not be provided"),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(opParamInfo_.sequsedK.desc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName_, "input seqused_k data type only support int32"),
+                return ge::GRAPH_FAILED);
+        }
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
             OP_LOGE(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.sequsedK.desc->GetDataType() != ge::DT_INT32,
-            OP_LOGE(opName_, "input seqused_k data type only support int32"),
-            return ge::GRAPH_FAILED);
     } else if (kLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.cuSeqlensK.tensor == nullptr,
             OP_LOGE(opName_, "when layout_key is TND, input cu_seqlens_k must not be null"),
