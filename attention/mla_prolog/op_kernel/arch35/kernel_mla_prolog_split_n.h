@@ -909,12 +909,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
                                                               int64_t mmQnLoops)
 {
     int64_t tokenIndex = batchOffset + aivOffset.curBlockTokenOffset;
-    int64_t rmsNormCqResOffset;
-    if (baseParams_->queryNormFlag == 1U) {
-        rmsNormCqResOffset = tokenIndex * baseParams_->headSizeCq;
-    } else {
-        rmsNormCqResOffset = aivOffset.rmsNormCqOffset;
-    }
+    int64_t rmsNormCqResOffset =
+        baseParams_->queryNormFlag == 1U ? tokenIndex * baseParams_->headSizeCq : aivOffset.rmsNormCqOffset;
+
     if (batchOffset == 0) {
         // 只需要搬运一次
         CopyGlobalParams();
@@ -1053,10 +1050,8 @@ MlaPrologVecS1CubS2<MLAPT>::MatmulSplitN(const GlobalTensor<O> &tensorResGm, con
                                          const UsedBlockParams &mmBlockParams, const GlobalTensor<S> &tensorAScaleGm,
                                          const GlobalTensor<S> &tensorBScaleGm)
 {
-    if constexpr (needCheckEmptyTensor) {
-        if constexpr (MLAPT::emptyMode == EMPTY_TENSOR_MODE::EMPTY_CACHE) {
-            return;
-        }
+    if constexpr (needCheckEmptyTensor && MLAPT::emptyMode == EMPTY_TENSOR_MODE::EMPTY_CACHE) {
+        return;
     }
     if (blockIdx_ < mmBlockParams.blockStartIdx || blockIdx_ >= mmBlockParams.blockEndIdx) {
         return;

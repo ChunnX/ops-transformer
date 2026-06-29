@@ -162,7 +162,7 @@ __aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm, const Glo
                                       const LocalTensor<uint8_t> &shareTmpUb, Rectangle castRowColStrideParams,
                                       uint32_t oriRow)
 {
-    int64_t count = castRowColStrideParams.row * castRowColStrideParams.col;
+    int64_t count = castRowColStrideParams.col * castRowColStrideParams.row;
 
     LocalTensor<T> inputLocal = shareTmpUb.ReinterpretCast<T>();                       // count * sizeof(T)
     LocalTensor<O> outputLocal = inputLocal[count + 16].template ReinterpretCast<O>(); // count * sizeof(O)
@@ -173,8 +173,8 @@ __aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm, const Glo
         static_cast<uint16_t>((castRowColStrideParams.stride - castRowColStrideParams.col) * sizeof(T) / 32U), 0};
 
     for (int64_t rowOffset = 0; rowOffset < oriRow; rowOffset += castRowColStrideParams.row) {
-        int64_t inputOffset = rowOffset * castRowColStrideParams.stride;
-        int64_t outputOffset = rowOffset * castRowColStrideParams.col;
+        int64_t inputOffset = castRowColStrideParams.stride * rowOffset;
+        int64_t outputOffset = castRowColStrideParams.col * rowOffset;
         // copy in
         AscendC::SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
