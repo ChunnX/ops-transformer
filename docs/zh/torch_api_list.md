@@ -28,3 +28,4 @@
 |[sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|基于共享KV完成SparseFlashMla稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[sparse_flash_mla_metadata](../../torch_extension/cann_ops_transformer/docs/zh/sparse_flash_mla.md)|生成SparseFlashMla主算子使用的任务切分metadata。|默认支持确定性计算；默认支持batch invariance。|
 |[inplace_partial_rotary_mul](../../torch_extension/cann_ops_transformer/docs/zh/inplace_partial_rotary_mul.md)|执行单路旋转位置编码的Inplace计算，直接修改输入张量，不产生新的输出张量。|默认确定性实现|默认确定性实现|
+|[compressor](../../torch_extension/cann_ops_transformer/docs/zh/compressor.md)|将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。|默认支持确定性计算。|
