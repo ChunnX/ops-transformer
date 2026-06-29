@@ -147,7 +147,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
     const aclTensorList *bias,
     const aclTensor     *xScaleOptional,
     const char          *activationType,
-    bool                 transposeWeight,
     int64_t              groupListType,
     const aclIntArray   *tuningConfig,
     const char          *quantMode,
@@ -260,16 +259,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
         <td>输入</td>
         <td>表示激活函数类型。</td>
         <td>必选属性。当前仅支持"gelu_tanh"。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>transposeWeight</td>
-        <td>可选输入</td>
-        <td>表示weight是否转置。</td>
-        <td>可选属性，默认值为false。weight非转置输入时配置为false，weight转置输入时配置为true。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -390,7 +379,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - <strong>weight强制视为FRACTAL_NZ格式。</strong>
-      - x仅支持非转置输入，weight支持非转置和转置输入。
+      - x仅支持非转置输入，weight支持非转置和转置输入，接口会根据weight和weightScale的形状及转置关系推导weight是否转置。
       - weightScale转置属性需要与weight保持一致。
       - 空Tensor处理规则：
         - weight和weightScale作为必选输入，不支持空tensorlist，tensorlist中的元素不能为nullptr。
@@ -798,7 +787,6 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
         aclIntArray *tuningConfig = nullptr;
         const char *activationType = "gelu_tanh";
-        bool transposeWeight = false;
         int64_t groupListType = 1;
         const char *quantMode = "MX";
         int64_t yDtype = 36;
@@ -812,8 +800,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
         ret = aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
             x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
-            transposeWeight, groupListType, tuningConfig, quantMode, yDtype,
-            roundMode, scaleAlg, dstTypeMax, y, yScale, &workspaceSize, &executor);
+            groupListType, tuningConfig, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax,
+            y, yScale, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                   LOG_PRINT("aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);
                   return ret);

@@ -48,6 +48,7 @@ constexpr size_t WEIGHT_NZ_DIM_NUM = 5UL;
 constexpr int64_t DIM_0 = 0L;
 constexpr int64_t DIM_1 = 1L;
 constexpr int64_t DIM_2 = 2L;
+constexpr int64_t DIM_3 = 3L;
 constexpr int64_t MX_GROUP_SIZE = 64L;
 constexpr int64_t MX_SCALE_PAIR = 2L;
 constexpr int64_t NZ_C0_DIM = 16L;
@@ -232,6 +233,185 @@ int64_t CeilDivInt64(int64_t dividend, int64_t divisor)
     return static_cast<int64_t>(Ops::Base::CeilDiv(dividend, divisor));
 }
 
+bool IsTransposeLastTwoDims(const aclTensor *tensor)
+{
+    auto shape = tensor->GetViewShape();
+    if (shape.GetDimNum() < X_DIM_NUM) {
+        return false;
+    }
+    int64_t lastDim = static_cast<int64_t>(shape.GetDimNum()) - 1;
+    int64_t penultimateDim = static_cast<int64_t>(shape.GetDimNum()) - 2;
+    auto strides = tensor->GetViewStrides();
+    if (strides[penultimateDim] != 1 || strides[lastDim] != shape.GetDim(penultimateDim)) {
+        return false;
+    }
+    int64_t expectedStride = shape.GetDim(lastDim) * shape.GetDim(penultimateDim);
+    for (int64_t batchDim = static_cast<int64_t>(shape.GetDimNum()) - 3; batchDim >= 0; --batchDim) {
+        if (strides[batchDim] != expectedStride) {
+            return false;
+        }
+        expectedStride *= shape.GetDim(batchDim);
+    }
+    return true;
+}
+
+bool IsTransposeForMxShape(const aclTensor *tensor)
+{
+    auto shape = tensor->GetViewShape();
+    if (shape.GetDimNum() < WEIGHT_SCALE_DIM_NUM) {
+        return false;
+    }
+    auto strides = tensor->GetViewStrides();
+    int64_t lastDim = static_cast<int64_t>(shape.GetDimNum()) - 1;
+    int64_t secondLastDim = static_cast<int64_t>(shape.GetDimNum()) - 2;
+    int64_t thirdLastDim = static_cast<int64_t>(shape.GetDimNum()) - 3;
+    return strides[lastDim] == 1 && strides[thirdLastDim] == MX_SCALE_PAIR &&
+           strides[secondLastDim] == shape.GetDim(thirdLastDim) * MX_SCALE_PAIR;
+}
+
+bool TryInferTransposeByShape(const aclTensor *x, const aclTensor *groupList, const aclTensor *weight,
+                              const aclTensor *weightScale, bool inputTransposeWeight, bool &transposeWeight)
+{
+    const auto &weightShape = weight->GetViewShape();
+    const auto &weightScaleShape = weightScale->GetViewShape();
+    if (weightShape.GetDimNum() != WEIGHT_LOGICAL_DIM_NUM ||
+        weightScaleShape.GetDimNum() != WEIGHT_SCALE_DIM_NUM) {
+        return false;
+    }
+    int64_t e = groupList->GetViewShape().GetDim(DIM_0);
+    int64_t k = x->GetViewShape().GetDim(DIM_1);
+
+    int64_t nonTransN = weightScaleShape.GetDim(DIM_2);
+    bool nonTransMatched = weightShape.GetDim(DIM_0) == e &&
+                           weightShape.GetDim(DIM_1) == k &&
+                           weightShape.GetDim(DIM_2) == nonTransN &&
+                           weightScaleShape.GetDim(DIM_0) == e &&
+                           weightScaleShape.GetDim(DIM_1) == CeilDivInt64(k, MX_GROUP_SIZE) &&
+                           weightScaleShape.GetDim(DIM_3) == MX_SCALE_PAIR;
+
+    int64_t transN = weightScaleShape.GetDim(DIM_1);
+    bool transMatched = weightShape.GetDim(DIM_0) == e &&
+                        weightShape.GetDim(DIM_1) == transN &&
+                        weightShape.GetDim(DIM_2) == k &&
+                        weightScaleShape.GetDim(DIM_0) == e &&
+                        weightScaleShape.GetDim(DIM_2) == CeilDivInt64(k, MX_GROUP_SIZE) &&
+                        weightScaleShape.GetDim(DIM_3) == MX_SCALE_PAIR;
+
+    GmmaqPrint("In op [%s], infer transpose by shape. weight=%s, weightScale=%s, nonTransN=%ld matched=%d, "
+               "transN=%ld matched=%d, inputAttr=%d.",
+               OP_NAME, op::ToString(weightShape).GetString(), op::ToString(weightScaleShape).GetString(),
+               nonTransN, static_cast<int>(nonTransMatched), transN, static_cast<int>(transMatched),
+               static_cast<int>(inputTransposeWeight));
+    if (!nonTransMatched && !transMatched) {
+        return false;
+    }
+    if (nonTransMatched && transMatched) {
+        transposeWeight = inputTransposeWeight;
+        return true;
+    }
+    transposeWeight = transMatched;
+    return true;
+}
+
+aclnnStatus CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
+                                                      const aclTensorList *&newTensorList,
+                                                      aclOpExecutor *executor)
+{
+    std::vector<aclTensor *> tensors;
+    tensors.reserve(tensorList->Size());
+    for (size_t idx = 0; idx < tensorList->Size(); ++idx) {
+        const aclTensor *inputTensor = (*tensorList)[idx];
+        CHECK_RET(inputTensor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+        op::Shape viewShape = inputTensor->GetViewShape();
+        op::Shape shape;
+        shape.SetScalar();
+        CHECK_COND(viewShape.GetDimNum() >= WEIGHT_SCALE_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], weightScale view shape dim num must be greater than or equal to 4.", OP_NAME);
+        shape.AppendDim(viewShape.GetDim(DIM_0));
+        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_2));
+        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_3));
+        shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - DIM_1));
+        GmmaqPrint("In op [%s], CreateView for transposed weightScale[%zu], old shape=%s, new shape=%s.",
+                   OP_NAME, idx, op::ToString(viewShape).GetString(), op::ToString(shape).GetString());
+        aclTensor *tensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
+        CHECK_RET(tensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        tensor->SetStorageFormat(inputTensor->GetStorageFormat());
+        tensors.emplace_back(tensor);
+    }
+    newTensorList = executor->AllocTensorList(tensors.data(), tensors.size());
+    CHECK_RET(newTensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CreateContiguousTensorList(const aclTensorList *tensorList, const aclTensorList *&newTensorList,
+                                       aclOpExecutor *executor)
+{
+    std::vector<aclTensor *> tensors;
+    tensors.reserve(tensorList->Size());
+    for (size_t idx = 0; idx < tensorList->Size(); ++idx) {
+        const aclTensor *inputTensor = (*tensorList)[idx];
+        CHECK_RET(inputTensor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+        op::Shape viewShape = inputTensor->GetViewShape();
+        uint32_t viewShapeDimsNum = viewShape.GetDimNum();
+        op::Shape shape;
+        shape.SetScalar();
+        CHECK_COND(viewShapeDimsNum >= X_DIM_NUM, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], weight view shape dim num must be greater than or equal to 2.", OP_NAME);
+        for (uint32_t i = 0; i < viewShapeDimsNum - X_DIM_NUM; ++i) {
+            shape.AppendDim(viewShape.GetDim(i));
+        }
+        shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 1));
+        shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 2));
+        GmmaqPrint("In op [%s], CreateView for transposed weight[%zu], old shape=%s, new shape=%s.",
+                   OP_NAME, idx, op::ToString(viewShape).GetString(), op::ToString(shape).GetString());
+        aclTensor *tensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
+        CHECK_RET(tensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        tensor->SetStorageFormat(inputTensor->GetStorageFormat());
+        tensor->SetStorageShape(inputTensor->GetStorageShape());
+        tensors.emplace_back(tensor);
+    }
+    newTensorList = executor->AllocTensorList(tensors.data(), tensors.size());
+    CHECK_RET(newTensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *groupList, const aclTensor *xScaleOptional,
+                             const aclTensorList *&weight, const aclTensorList *&weightScale, bool &transposeWeight,
+                             aclOpExecutor *executor)
+{
+    const aclTensor *w = (*weight)[FIRST_TENSOR_INDEX];
+    const aclTensor *wScale = (*weightScale)[FIRST_TENSOR_INDEX];
+    bool transposeWeightScale = IsTransposeForMxShape(wScale);
+    bool transposeWeightByStride = IsTransposeLastTwoDims(w);
+    bool transposeX = IsTransposeLastTwoDims(x);
+    bool transposeXScale = IsTransposeForMxShape(xScaleOptional);
+    GmmaqPrint("In op [%s], CheckMXTranspose. weight=%d, weightScale=%d, x=%d, xScale=%d, inputAttr=%d.",
+               OP_NAME, static_cast<int>(transposeWeightByStride), static_cast<int>(transposeWeightScale),
+               static_cast<int>(transposeX), static_cast<int>(transposeXScale), static_cast<int>(transposeWeight));
+
+    CHECK_COND(transposeWeightScale == transposeWeightByStride, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], the transposition of weightScale must be equal to the transposition of weight.",
+               OP_NAME);
+    CHECK_COND(!transposeX && !transposeXScale, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], x and xScaleOptional only support non-transposed input.", OP_NAME);
+
+    if (transposeWeightScale && transposeWeightByStride) {
+        transposeWeight = true;
+        CHECK_RET(CreateContiguousTensorListForMXTypeMScale(weightScale, weightScale, executor) == ACLNN_SUCCESS,
+                  ACLNN_ERR_INNER_NULLPTR);
+        CHECK_RET(CreateContiguousTensorList(weight, weight, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+        PrintTensorListDebugInfo("after CheckMXTranspose CreateView", "weight", weight);
+        PrintTensorListDebugInfo("after CheckMXTranspose CreateView", "weightScale", weightScale);
+        return ACLNN_SUCCESS;
+    }
+
+    bool shapeTransposeWeight = transposeWeight;
+    if (TryInferTransposeByShape(x, groupList, w, wScale, transposeWeight, shapeTransposeWeight)) {
+        transposeWeight = shapeTransposeWeight;
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, const aclTensor *xScaleOptional,
                             const aclTensor *weight, const aclTensor *weightScale, bool transposeWeight,
                             const aclTensor *y, const aclTensor *yScale)
@@ -296,12 +476,12 @@ aclnnStatus CheckShapeValue(const aclTensor *x, const aclTensor *groupList, cons
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const aclTensorList *weight,
-                        const aclTensorList *weightScale, const aclTensorList *bias,
+aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const aclTensorList *&weight,
+                        const aclTensorList *&weightScale, const aclTensorList *bias,
                         const aclTensor *xScaleOptional, const char *activationType,
-                        bool transposeWeight, int64_t groupListType, const char *quantMode, int64_t yDtype,
+                        bool &transposeWeight, int64_t groupListType, const char *quantMode, int64_t yDtype,
                         const char *roundMode, int64_t scaleAlg, float dstTypeMax, const aclTensor *y,
-                        const aclTensor *yScale)
+                        const aclTensor *yScale, aclOpExecutor *executor)
 {
     GmmaqPrint("In op [%s], CheckParams start. activationType=%s, quantMode=%s, roundMode=%s, "
                "transposeWeight=%d, groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
@@ -419,6 +599,11 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
                op::ToString(yScale->GetStorageFormat()).GetString());
     CHECK_COND(IsNzFormat(w), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], weight only supports FRACTAL_NZ format.", OP_NAME);
+    CHECK_RET(CheckMXTranspose(x, groupList, xScaleOptional, weight, weightScale, transposeWeight, executor) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    w = (*weight)[FIRST_TENSOR_INDEX];
+    wScale = (*weightScale)[FIRST_TENSOR_INDEX];
     CHECK_RET(CheckShapeValue(x, groupList, xScaleOptional, w, wScale, transposeWeight, y, yScale) ==
                   ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
@@ -451,7 +636,7 @@ extern "C" {
 aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclTensor *x,
     const aclTensor *groupList, const aclTensorList *weight, const aclTensorList *weightScale,
     const aclTensorList *bias, const aclTensor *xScaleOptional, const char *activationType,
-    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode, int64_t yDtype,
+    int64_t groupListType, const aclIntArray *tuningConfig, const char *quantMode, int64_t yDtype,
     const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclTensor *y, aclTensor *yScale,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -459,21 +644,23 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
                    DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional),
                    DFX_OUT(y, yScale));
+    bool transposeWeight = false;
     GmmaqPrint("In op [%s], GetWorkspaceSize start. activationType=%s, quantMode=%s, roundMode=%s, "
-               "transposeWeight=%d, groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
+               "groupListType=%ld, yDtype=%ld, scaleAlg=%ld, dstTypeMax=%f.",
                OP_NAME, activationType == nullptr ? "nullptr" : activationType,
                quantMode == nullptr ? "nullptr" : quantMode, roundMode == nullptr ? "nullptr" : roundMode,
-               static_cast<int>(transposeWeight), groupListType, yDtype, scaleAlg, dstTypeMax);
+               groupListType, yDtype, scaleAlg, dstTypeMax);
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     const char *effectiveQuantMode = ResolveQuantMode(x == nullptr ? DataType::DT_UNDEFINED : x->GetDataType(),
                                                       quantMode);
     CHECK_RET(CheckParams(x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
-                          transposeWeight, groupListType, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax, y,
-                          yScale) == ACLNN_SUCCESS,
+                          transposeWeight, groupListType, quantMode, yDtype, roundMode, scaleAlg, dstTypeMax,
+                          y, yScale, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    GmmaqPrint("In op [%s], parameter check passed.", OP_NAME);
+    GmmaqPrint("In op [%s], parameter check passed. transposeWeight=%d.",
+               OP_NAME, static_cast<int>(transposeWeight));
 
     if (x->IsEmpty() || y->IsEmpty() || yScale->IsEmpty()) {
         *workspaceSize = 0;
@@ -506,8 +693,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
                              xScaleOptional, y, yScale);
     GmmaqPrint("In op [%s], call l0op::GroupedMatmulActivationQuant.", OP_NAME);
     auto result = l0op::GroupedMatmulActivationQuant(x, groupList, weight, weightScale, bias, xScaleOptional,
-        activationType, transposeWeight, groupListType, tuningConfig, effectiveQuantMode, yDtype, roundMode, scaleAlg,
-        dstTypeMax, uniqueExecutor.get());
+        activationType, transposeWeight, groupListType, tuningConfig, effectiveQuantMode, yDtype, roundMode,
+        scaleAlg, dstTypeMax, uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
     GmmaqPrint("In op [%s], l0op::GroupedMatmulActivationQuant success, do ViewCopy for y.", OP_NAME);
     auto yResult = l0op::ViewCopy(std::get<0>(result), y, uniqueExecutor.get());
