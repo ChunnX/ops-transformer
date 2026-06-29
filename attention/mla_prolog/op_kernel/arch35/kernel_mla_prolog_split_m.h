@@ -1339,16 +1339,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
         } else {
             QuantPerTile8Bit(outputLocal, inputLocal, perTileQuantParams);
         }
-        PipeBarrier<PIPE_V>();
-    } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-                         std::is_same<mmCkvKrOutputType, float>::value) {
-        Rectangle rectangleParams{
-            static_cast<uint32_t>(vectorRow_),               // row
-            static_cast<uint32_t>(baseParams_->headSizeCkv), // col
-            static_cast<uint32_t>(baseParams_->headSizeCkv)  // columnStride
-        };
-        QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
-        PipeBarrier<PIPE_V>();
     } else {
         Rectangle rectangleParams{
             static_cast<uint32_t>(vectorRow_),               // row
@@ -1361,8 +1351,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
         } else {
             QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
         }
-        PipeBarrier<PIPE_V>();
     }
+    PipeBarrier<PIPE_V>();
 }
 
 template <typename MLAPT>

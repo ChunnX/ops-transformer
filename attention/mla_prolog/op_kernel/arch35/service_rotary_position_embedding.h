@@ -25,7 +25,7 @@ namespace MlaProlog {
 template <typename T, typename C>
 __aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, LocalTensor<uint8_t> &shareTmpUb,
                                            const Rectangle &ropeParams, LocalTensor<C> &kFp32Local,
-                                           LocalTensor<T> &kLocal, LocalTensor<C> &kFp32OutputLocal, int64_t cnt)
+                                           LocalTensor<T> &kLocal, int64_t cnt)
 {
     int64_t baseOffset;
     kLocal = shareTmpUb.ReinterpretCast<T>();
@@ -47,8 +47,6 @@ __aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, Local
     } else {
         DataCopyPad(kLocal, inputGm, copyParams, padParams);
     }
-    // RotaryPosEmb内部需要 2*cnt
-    kFp32OutputLocal = shareTmpUb.ReinterpretCast<C>()[baseOffset + cnt * 3];
 }
 
 /**
@@ -77,8 +75,7 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
     int64_t cnt = ropeParams.row * ropeParams.col;
     LocalTensor<C> kFp32Local;
     LocalTensor<T> kLocal;
-    LocalTensor<C> kFp32OutputLocal;
-    PreprocessRopeInput<T, C>(inputGm, shareTmpUb, ropeParams, kFp32Local, kLocal, kFp32OutputLocal, cnt);
+    PreprocessRopeInput<T, C>(inputGm, shareTmpUb, ropeParams, kFp32Local, kLocal, cnt);
     SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
@@ -135,8 +132,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
     int64_t cnt = ropeParams.row * ropeParams.col;
     LocalTensor<C> kFp32Local;
     LocalTensor<T> kLocal;
-    LocalTensor<C> kFp32OutputLocal;
-    PreprocessRopeInput<T, C>(inputGm, shareTmpUb, ropeParams, kFp32Local, kLocal, kFp32OutputLocal, cnt);
+    PreprocessRopeInput<T, C>(inputGm, shareTmpUb, ropeParams, kFp32Local, kLocal, cnt);
     // scale参数可以和rope使用的空间复用
     LocalTensor<C> scaleLocal = kFp32Local[cnt];
     SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
