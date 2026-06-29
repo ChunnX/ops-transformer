@@ -35,6 +35,7 @@ struct CommContext {
     uint32_t rankSizePerServer = 0;
     uint64_t kfcContextAddr = 0; // 通信API所需的地址
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE] = {};
+    ChannelHandle hcommHandle_[HCCL_MAX_RANK_SIZE] = {};   //ROCE或者URMA通信所需句柄
 };
 
 // ======================== Common Types and Utilities ========================
@@ -189,7 +190,7 @@ public:
         CommProtocol protocol;
         GetCommProtocol(hcclHandle, protocol);
 
-        protocol = COMM_PROTOCOL_UBC_CTP;
+        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         CommContext commContextStruct;
         BuildContext(hcclHandle, group, protocol, commContextStruct, cclBufferSize);
 
@@ -325,7 +326,7 @@ public:
 
     void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
                              const CommProtocol &protocol, const CommEngine &engine,
-                             std::vector<ChannelHandle> &channels, uint32_t &rankSizePerServer)
+                             std::vector<ChannelHandle> &channels, uint32_t &rankSizePerServer, CommContext *commContextStruct)
     {
         ASCEND_LOGI("Start to get HCCL communication channel");
         uint32_t channelNum = rankDim - 1;
@@ -342,7 +343,7 @@ public:
 
         InitHcclChannel(commHandle, rankDim, srcRankId, protocol, channelDesc);
 
-        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, channels.data());
+        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, commContextStruct->hcommHandle_);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret: ", hcclRet);
     }
 
@@ -356,7 +357,7 @@ public:
         std::vector<ChannelHandle> channels;
 
         uint32_t rankSizePerServer = 0;
-        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer);
+        GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer, commContextStruct);
         commContextStruct->rankSizePerServer = rankSizePerServer;
         ASCEND_LOGI("Get HCCL communication channel success, channel num is: %zu", channels.size());
 
@@ -369,7 +370,7 @@ public:
                 hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
             } else {
                 uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, channels[idx], &tempBuffer, &bufSize);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, commContextStruct->hcommHandle_[idx], &tempBuffer, &bufSize);
             }
 
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
