@@ -690,7 +690,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
     ReduceSum2Finalize(regSum0, regSum1, regKScale, maskAllB32, bf16Ctx, maskAllB16, out0_, out1_);
 }
 
-// float in uint16 out
+// float in uint32 out
 template <typename QK_T>
 __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t* out0_,
                                                __ubuf__ uint32_t* out1_,
@@ -747,7 +747,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t* out0_,
 }
 
 // 计算S1=2
-// float in uint16 out
+// float in uint32 out
 template <typename QK_T>
 __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t* out0_,
                                                __ubuf__ uint32_t* out1_,
@@ -810,7 +810,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t* out0_,
 }
 
 // 计算S1=2
-// float in uint16 out
+// float in uint32 out
 template <typename QK_T>
 __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint32_t* out0_,
                                                __ubuf__ uint32_t* out1_,
