@@ -8,46 +8,157 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <iostream>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <vector>
 #include "acl/acl.h"
-#include "aclnn_qkv_rms_norm_rope_cache_with_k_scale.h"
+#include "aclnnop/aclnn_qkv_rms_norm_rope_cache_with_k_scale.h"
 
-int main() {
-    aclError ret = aclInit(nullptr);
-    if (ret != ACL_SUCCESS) {
-        std::cerr << "Failed to initialize ACL" << std::endl;
-        return -1;
-    }
+#define CHECK_RET(cond, return_expr) \
+    do {                             \
+        if (!(cond)) {               \
+            return_expr;             \
+        }                            \
+    } while (0)
 
+#define LOG_PRINT(message, ...)         \
+    do {                                \
+        printf(message, ##__VA_ARGS__); \
+    } while (0)
+
+struct TensorResource {
+    aclTensor *tensor = nullptr;
+    void *deviceAddr = nullptr;
+};
+
+struct AclResource {
     int32_t deviceId = 0;
+    aclrtStream stream = nullptr;
+    bool aclInited = false;
+    bool deviceSet = false;
+    std::vector<TensorResource *> tensors;
+    aclIntArray *headNums = nullptr;
+    aclOpExecutor *executor = nullptr;
+    void *workspaceAddr = nullptr;
+};
+
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
+    int64_t shapeSize = 1;
+    for (auto dim : shape) {
+        shapeSize *= dim;
+    }
+    return shapeSize;
+}
+
+std::vector<int64_t> GetContiguousStrides(const std::vector<int64_t> &shape)
+{
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; --i) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
+    return strides;
+}
+
+uint16_t FloatToBf16(float value)
+{
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    return static_cast<uint16_t>(bits >> 16);
+}
+
+int Init(int32_t deviceId, AclResource &resource)
+{
+    auto ret = aclInit(nullptr);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+    resource.aclInited = true;
+
     ret = aclrtSetDevice(deviceId);
-    if (ret != ACL_SUCCESS) {
-        std::cerr << "Failed to set device" << std::endl;
-        aclFinalize();
-        return -1;
-    }
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    resource.deviceId = deviceId;
+    resource.deviceSet = true;
 
-    aclrtStream stream;
-    ret = aclrtCreateStream(&stream);
-    if (ret != ACL_SUCCESS) {
-        std::cerr << "Failed to create stream" << std::endl;
-        aclrtResetDevice(deviceId);
-        aclFinalize();
-        return -1;
-    }
+    ret = aclrtCreateStream(&resource.stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    return ACL_SUCCESS;
+}
 
-    const int64_t T = 128;
-    const int64_t Nq = 16;
-    const int64_t Nk = 2;
-    const int64_t Nv = 2;
-    const int64_t D = 128;
-    const int64_t BlockNum = 32;
-    const int64_t BlockSize = 16;
-    const int64_t Batch = 1;
-    const int64_t MaxSeqLen = 128;
-    const char *qkvLayout = "TND";
-    const float epsilon = 1e-6f;
+void FreeResource(AclResource &resource)
+{
+    for (auto *tensorResource : resource.tensors) {
+        if (tensorResource != nullptr && tensorResource->tensor != nullptr) {
+            aclDestroyTensor(tensorResource->tensor);
+            tensorResource->tensor = nullptr;
+        }
+    }
+    if (resource.headNums != nullptr) {
+        aclDestroyIntArray(resource.headNums);
+        resource.headNums = nullptr;
+    }
+    for (auto *tensorResource : resource.tensors) {
+        if (tensorResource != nullptr && tensorResource->deviceAddr != nullptr) {
+            aclrtFree(tensorResource->deviceAddr);
+            tensorResource->deviceAddr = nullptr;
+        }
+    }
+    if (resource.workspaceAddr != nullptr) {
+        aclrtFree(resource.workspaceAddr);
+        resource.workspaceAddr = nullptr;
+    }
+    if (resource.stream != nullptr) {
+        aclrtDestroyStream(resource.stream);
+        resource.stream = nullptr;
+    }
+    if (resource.deviceSet) {
+        aclrtResetDevice(resource.deviceId);
+        resource.deviceSet = false;
+    }
+    if (resource.aclInited) {
+        aclFinalize();
+        resource.aclInited = false;
+    }
+}
+
+int ReturnAfterCleanup(int ret, AclResource &resource)
+{
+    FreeResource(resource);
+    return ret;
+}
+
+template <typename T>
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, aclDataType dataType,
+                    TensorResource &resource)
+{
+    const size_t size = static_cast<size_t>(GetShapeSize(shape)) * sizeof(T);
+    auto ret = aclrtMalloc(&resource.deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+
+    ret = aclrtMemcpy(resource.deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+
+    std::vector<int64_t> strides = GetContiguousStrides(shape);
+    resource.tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0,
+                                      aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), resource.deviceAddr);
+    CHECK_RET(resource.tensor != nullptr, LOG_PRINT("aclCreateTensor failed.\n"); return ACL_ERROR_INVALID_PARAM);
+    return ACL_SUCCESS;
+}
+
+int main()
+{
+    AclResource resource;
+    auto ret = Init(0, resource);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ReturnAfterCleanup(ret, resource));
+
+    constexpr int64_t T = 4;
+    constexpr int64_t Nq = 16;
+    constexpr int64_t Nk = 2;
+    constexpr int64_t Nv = 2;
+    constexpr int64_t D = 128;
+    constexpr int64_t Batch = 1;
+    constexpr int64_t MaxSeqLen = 16;
+    constexpr int64_t BlockNum = 1;
+    constexpr int64_t BlockSize = 16;
 
     std::vector<int64_t> qkvShape = {T, Nq + Nk + Nv, D};
     std::vector<int64_t> qGammaShape = {D};
@@ -61,88 +172,109 @@ int main() {
     std::vector<int64_t> actualSeqLensShape = {Batch};
     std::vector<int64_t> rotationShape = {D, D};
     std::vector<int64_t> vScaleShape = {Nv};
-
     std::vector<int64_t> qOutShape = {T, Nq, D};
     std::vector<int64_t> qScaleShape = {T, Nq};
 
-    aclTensor *qkv = aclCreateTensor(qkvShape.data(), qkvShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND, qkvShape.data(), qkvShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *qGamma = aclCreateTensor(qGammaShape.data(), qGammaShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, qGammaShape.data(), qGammaShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *kGamma = aclCreateTensor(kGammaShape.data(), kGammaShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, kGammaShape.data(), kGammaShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *cosSin = aclCreateTensor(cosSinShape.data(), cosSinShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, cosSinShape.data(), cosSinShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *slotMapping = aclCreateTensor(slotMappingShape.data(), slotMappingShape.size(), ACL_INT32, nullptr, 0, ACL_FORMAT_ND, slotMappingShape.data(), slotMappingShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *kCache = aclCreateTensor(kCacheShape.data(), kCacheShape.size(), ACL_FLOAT8_E4M3FN, nullptr, 0, ACL_FORMAT_ND, kCacheShape.data(), kCacheShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *vCache = aclCreateTensor(vCacheShape.data(), vCacheShape.size(), ACL_FLOAT8_E4M3FN, nullptr, 0, ACL_FORMAT_ND, vCacheShape.data(), vCacheShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *kScaleCache = aclCreateTensor(kScaleCacheShape.data(), kScaleCacheShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, kScaleCacheShape.data(), kScaleCacheShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *cuSeqLen = aclCreateTensor(cuSeqLenShape.data(), cuSeqLenShape.size(), ACL_INT32, nullptr, 0, ACL_FORMAT_ND, cuSeqLenShape.data(), cuSeqLenShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *actualSeqLens = aclCreateTensor(actualSeqLensShape.data(), actualSeqLensShape.size(), ACL_INT32, nullptr, 0, ACL_FORMAT_ND, actualSeqLensShape.data(), actualSeqLensShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *rotation = aclCreateTensor(rotationShape.data(), rotationShape.size(), ACL_BF16, nullptr, 0, ACL_FORMAT_ND, rotationShape.data(), rotationShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *vScale = aclCreateTensor(vScaleShape.data(), vScaleShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, vScaleShape.data(), vScaleShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-
-    std::vector<int64_t> headNumsVec = {Nq, Nk, Nv};
-    aclIntArray *headNums = aclCreateIntArray(headNumsVec.data(), headNumsVec.size());
-
-    aclTensor *qOut = aclCreateTensor(qOutShape.data(), qOutShape.size(), ACL_FLOAT8_E4M3FN, nullptr, 0, ACL_FORMAT_ND, qOutShape.data(), qOutShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    aclTensor *qScale = aclCreateTensor(qScaleShape.data(), qScaleShape.size(), ACL_FLOAT, nullptr, 0, ACL_FORMAT_ND, qScaleShape.data(), qScaleShape.size(), ACL_MEMTYPE_HIGH_BANDWIDTH);
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-
-    aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
-        qkv, qGamma, kGamma, cosSin, slotMapping,
-        kCache, vCache, kScaleCache, cuSeqLen, actualSeqLens,
-        rotation, vScale, headNums, qkvLayout, epsilon,
-        qOut, qScale,
-        &workspaceSize, &executor);
-
-    if (status != ACLNN_SUCCESS) {
-        std::cerr << "Failed to get workspace size" << std::endl;
-        goto cleanup;
-    }
-
-    void *workspace = nullptr;
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        if (ret != ACL_SUCCESS) {
-            std::cerr << "Failed to allocate workspace" << std::endl;
-            goto cleanup;
+    std::vector<uint16_t> qkvHostData(GetShapeSize(qkvShape), FloatToBf16(0.125f));
+    std::vector<float> qGammaHostData(GetShapeSize(qGammaShape), 1.0f);
+    std::vector<float> kGammaHostData(GetShapeSize(kGammaShape), 1.0f);
+    std::vector<float> cosSinHostData(GetShapeSize(cosSinShape), 0.0f);
+    for (int64_t row = 0; row < MaxSeqLen; ++row) {
+        for (int64_t col = 0; col < D / 2; ++col) {
+            cosSinHostData[row * D + col] = 1.0f;
         }
     }
+    std::vector<int32_t> slotMappingHostData = {0, 1, 2, 3};
+    std::vector<uint8_t> kCacheHostData(GetShapeSize(kCacheShape), 0);
+    std::vector<uint8_t> vCacheHostData(GetShapeSize(vCacheShape), 0);
+    std::vector<float> kScaleCacheHostData(GetShapeSize(kScaleCacheShape), 0.0f);
+    std::vector<int32_t> cuSeqLenHostData = {0, T};
+    std::vector<int32_t> actualSeqLensHostData = {T};
+    std::vector<uint16_t> rotationHostData(GetShapeSize(rotationShape), FloatToBf16(0.0f));
+    for (int64_t i = 0; i < D; ++i) {
+        rotationHostData[i * D + i] = FloatToBf16(1.0f);
+    }
+    std::vector<float> vScaleHostData(GetShapeSize(vScaleShape), 1.0f);
+    std::vector<uint8_t> qOutHostData(GetShapeSize(qOutShape), 0);
+    std::vector<float> qScaleHostData(GetShapeSize(qScaleShape), 0.0f);
 
-    status = aclnnQkvRmsNormRopeCacheWithKScale(workspace, workspaceSize, executor, stream);
-    if (status != ACLNN_SUCCESS) {
-        std::cerr << "Failed to execute operator" << std::endl;
-        if (workspace) aclrtFree(workspace);
-        goto cleanup;
+    TensorResource qkv;
+    TensorResource qGamma;
+    TensorResource kGamma;
+    TensorResource cosSin;
+    TensorResource slotMapping;
+    TensorResource kCache;
+    TensorResource vCache;
+    TensorResource kScaleCache;
+    TensorResource cuSeqLen;
+    TensorResource actualSeqLens;
+    TensorResource rotation;
+    TensorResource vScale;
+    TensorResource qOut;
+    TensorResource qScale;
+    resource.tensors = {&qkv, &qGamma, &kGamma, &cosSin, &slotMapping, &kCache, &vCache,
+                        &kScaleCache, &cuSeqLen, &actualSeqLens, &rotation, &vScale, &qOut, &qScale};
+
+    ret = CreateAclTensor(qkvHostData, qkvShape, ACL_BF16, qkv);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(qGammaHostData, qGammaShape, ACL_FLOAT, qGamma);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(kGammaHostData, kGammaShape, ACL_FLOAT, kGamma);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(cosSinHostData, cosSinShape, ACL_FLOAT, cosSin);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(slotMappingHostData, slotMappingShape, ACL_INT32, slotMapping);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(kCacheHostData, kCacheShape, ACL_FLOAT8_E4M3FN, kCache);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(vCacheHostData, vCacheShape, ACL_FLOAT8_E4M3FN, vCache);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(kScaleCacheHostData, kScaleCacheShape, ACL_FLOAT, kScaleCache);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(cuSeqLenHostData, cuSeqLenShape, ACL_INT32, cuSeqLen);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(actualSeqLensHostData, actualSeqLensShape, ACL_INT32, actualSeqLens);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(rotationHostData, rotationShape, ACL_BF16, rotation);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(vScaleHostData, vScaleShape, ACL_FLOAT, vScale);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(qOutHostData, qOutShape, ACL_FLOAT8_E4M3FN, qOut);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+    ret = CreateAclTensor(qScaleHostData, qScaleShape, ACL_FLOAT, qScale);
+    CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));
+
+    std::vector<int64_t> headNumsVec = {Nq, Nk, Nv};
+    resource.headNums = aclCreateIntArray(headNumsVec.data(), headNumsVec.size());
+    CHECK_RET(resource.headNums != nullptr,
+              LOG_PRINT("aclCreateIntArray failed.\n"); return ReturnAfterCleanup(ACL_ERROR_INVALID_PARAM, resource));
+
+    const char *qkvLayout = "TND";
+    float epsilon = 1e-6f;
+    uint64_t workspaceSize = 0;
+    aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
+        qkv.tensor, qGamma.tensor, kGamma.tensor, cosSin.tensor, slotMapping.tensor, kCache.tensor, vCache.tensor,
+        kScaleCache.tensor, cuSeqLen.tensor, actualSeqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
+        qkvLayout, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
+    CHECK_RET(status == ACL_SUCCESS,
+              LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", status);
+              return ReturnAfterCleanup(static_cast<int>(status), resource));
+
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&resource.workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS,
+                  LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ReturnAfterCleanup(ret, resource));
     }
 
-    ret = aclrtSynchronizeStream(stream);
-    if (ret != ACL_SUCCESS) {
-        std::cerr << "Failed to synchronize stream" << std::endl;
-    }
+    status = aclnnQkvRmsNormRopeCacheWithKScale(resource.workspaceAddr, workspaceSize, resource.executor,
+                                                resource.stream);
+    CHECK_RET(status == ACL_SUCCESS, LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScale failed. ERROR: %d\n", status);
+              return ReturnAfterCleanup(static_cast<int>(status), resource));
 
-    if (workspace) aclrtFree(workspace);
-    std::cout << "Operator executed successfully" << std::endl;
-
-cleanup:
-    aclDestroyTensor(qkv);
-    aclDestroyTensor(qGamma);
-    aclDestroyTensor(kGamma);
-    aclDestroyTensor(cosSin);
-    aclDestroyTensor(slotMapping);
-    aclDestroyTensor(kCache);
-    aclDestroyTensor(vCache);
-    aclDestroyTensor(kScaleCache);
-    aclDestroyTensor(cuSeqLen);
-    aclDestroyTensor(actualSeqLens);
-    aclDestroyTensor(rotation);
-    aclDestroyTensor(vScale);
-    aclDestroyIntArray(headNums);
-    aclDestroyTensor(qOut);
-    aclDestroyTensor(qScale);
-    if (executor) aclDestroyAclOpExecutor(executor);
-
-    aclrtDestroyStream(stream);
-    aclrtResetDevice(deviceId);
-    aclFinalize();
-
+    ret = aclrtSynchronizeStream(resource.stream);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ReturnAfterCleanup(ret, resource));
+    LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScale execute success.\n");
+    FreeResource(resource);
     return 0;
 }

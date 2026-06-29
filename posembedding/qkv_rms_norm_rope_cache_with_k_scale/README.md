@@ -1,85 +1,130 @@
 # QkvRmsNormRopeCacheWithKScale
 
-This directory is the implementation workspace for the arch35
-`QkvRmsNormRopeCacheWithKScale` task plan.
+## 产品支持情况
 
-Current state:
+| 产品 | 是否支持 |
+|:---|:---:|
+| <term>Ascend 950PR/Ascend 950DT</term> | √ |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | × |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | × |
+| <term>Atlas 200I/500 A2 推理产品</term> | × |
+| <term>Atlas 推理系列产品</term> | × |
+| <term>Atlas 训练系列产品</term> | × |
 
-1. T00 host op definition, infer shape, tiling class, and host UT sources are
-   present. Host-side validation and tiling math are owned by
-   `QkvRmsNormRopeCacheWithKScaleBaseTiling`; it is not device kernel code.
-2. T01 kernel controller and basic block skeleton are present under
-   `op_kernel`. The kernel entry file only selects the tiling key, unpacks
-   tiling, and dispatches the controller directly.
-3. The kernel uses a POD tiling layout under `op_kernel` that host tiling writes
-   directly. Host tiling computes `coreTokenTile` with ceil division and writes
-   `coreGroupNum`; AIC and paired AIV cores consume those values to derive the
-   same contiguous cube-group token range. Host tiling writes cache stride
-   triplets, requiring `k_cache` and `v_cache` to share their non-innermost
-   strides so the kernel can reuse the `slot_mapping`-derived cache offsets.
-   The controller creates the contiguous core token range, expands it into
-   token-size tiles, and derives per-tile tail parameters before calling the
-   D=128 fast-path basic block.
-4. T03 adds static GM/L1/UB tensor binding. `rotationL1Nz_` is the AIC-only
-   resident rotation slot, and `a_rot_l1_nz` is the Cube AL1 data slot shared by
-   the AIV->AIC protocol. `BasicBlock`
-   coordinates the shared `a_rot_l1_nz` pingpong use id so AIV writes and AIC
-   reads stay on the same slot; local-only UB/L0C buffer pools maintain their
-   own counters rather than carrying a tile-level `bufferId`. The raw
-   `outputDbPoolUb_` slots are fixed by purpose: slot 0 is the AIV preprocess
-   staging buffer and slot 1 is the AIC FIXPIPE Q/K output buffer. The raw
-   `GlobalTensors` bundle is only an entry argument; Cube and Vec bind their own
-   typed GM tensors and neither controller nor basic block retains a shared
-   bound-GM bundle. The host/API and kernel entry expose one `rotation`; Cube
-   copies it once into resident L1, loads one L0B view, and reuses it for both Q
-   and K rows.
-5. T04/T11 add fixed CrossCore flag ids and wrappers for `A_READY`,
-   `A_CONSUMED`, `C_READY`, and `C_CONSUMED`. `A_CONSUMED` is the A-side
-   double-buffer reuse credit; T13 completed the final static protocol audit.
-   CrossCore flag ids are semantic constants and are not derived from pingpong
-   buffer ids or loop generation.
-6. T05 adds fixed intra-core event constants and Init/End pairing for reusable
-   AIV/AIC buffers. Active event ids stay within `0..5`; `a_rot_l1_nz` remains
-   CrossCore-protected AL1 and does not consume AIV intra-core event ids.
-7. After T04 the D=128 fast-path code is split into `common`, `controller`,
-   `basic_block`, `cube`, and `vec` headers instead of keeping those larger
-   modules inside one file. Core-type dispatch is centralized in the
-   controller AIC/AIV entry split; lower layers do not inspect `g_coreType`.
-8. Real Q/K/V compute, rotation matmul, Fixpipe distribution, rolling pipeline,
-   tail/empty-slice handling, concrete synchronization call sites, and the
-   synchronization audit are implemented through T13/H03. T14 kernel UT/ST
-   closure remains open.
-9. Implementation work must follow `TASKS.md`.
-10. After each task is coded and verified, update `TASKS.md` and commit the
-   code plus the task status change together.
+## 功能说明
 
-## Rotation and layout contract
+- 算子功能：输入Q/K/V融合张量`qkv`，按`head_nums=[Nq, Nk, Nv]`拆分出Q、K、V；对Q/K执行RMSNorm、Half-and-Half RoPE和共享`rotation`矩阵乘，再动态量化为FP8 E4M3FN；Q分支输出`q_out`和`q_scale`，K分支按`slot_mapping`更新`k_cache`与`k_scale_cache`；V分支按`v_scale`缩放后量化为FP8 E4M3FN，并更新`v_cache`。
+- 本算子主要用于推理场景下PagedAttention KV Cache更新，当前仅提供Ascend 950 `D=128` fast path。
 
-The public host/API contract adds `actual_seq_lens` for per-batch history
-lengths and keeps a single optional BF16 ND `rotation` tensor that is required
-by the D=128 fast-path host contract:
+- 计算公式：
 
-| Index | Input | Shape |
-|---:|---|---|
-| 9 | `actual_seq_lens` | `[batch]` |
-| 10 | `rotation` | `[headDim, headDim]` |
-| 11 | `v_scale` | `[numVHeads]` |
+  (1) Split:
 
-`cu_seq_len` is the prefix sum for the tokens in the current invocation.
-`actual_seq_lens` stores each batch sequence length after the current tokens are
-appended. The kernel derives each batch history offset as
-`max(actual_seq_lens[batch] - (cu_seq_len[batch + 1] - cu_seq_len[batch]), 0)`
-and adds it to the local token position before indexing the full `cos_sin`
-table. For example, `cu_seq_len=[0,17,18]` and
-`actual_seq_lens=[8209,1]` means batch0 uses RoPE positions `8192..8208`,
-while batch1 starts from position `0`.
+  $$
+  q, k, v = split(qkv, [Nq, Nk, Nv])
+  $$
 
-The required `qkv_layout` attribute is case-sensitive and only accepts `NTD`
-or `TND`. `qkv`, `q_out`, and `q_scale` keep the same N/T layout: `NTD` uses
-`qkv=[Nq+Nk+Nv,T,D]`, `q_out=[Nq,T,D]`, `q_scale=[Nq,T]`; `TND` uses
-`qkv=[T,Nq+Nk+Nv,D]`, `q_out=[T,Nq,D]`, `q_scale=[T,Nq]`.
+  (2) RMSNorm，Q/K分支分别使用`q_gamma`和`k_gamma`：
 
-`rotation` must be present and BF16; missing input reports
-`missing_rotation`. The kernel entry ABI and Cube internals carry one
-`rotation` GM tensor. Cube copies it into `rotationL1Nz_`, loads one resident
-L0B view, and uses the same matrix for Q rows and K rows.
+  $$
+  y = \frac{x}{\sqrt{mean(x^2) + epsilon}} * gamma
+  $$
+
+  (3) RoPE，`cos_sin[..., :D/2]`为cos，`cos_sin[..., D/2:]`为sin：
+
+  $$
+  y_{rope} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
+  $$
+
+  (4) Q/K共享矩阵乘：
+
+  $$
+  q_{rot} = q_{rope} @ rotation
+  $$
+
+  $$
+  k_{rot} = k_{rope} @ rotation
+  $$
+
+  (5) Q/K动态量化，FP8 E4M3FN最大有限值按448处理：
+
+  $$
+  scale = max(abs(x)) / 448
+  $$
+
+  $$
+  x_{fp8} = cast(x / scale)
+  $$
+
+  (6) V分支静态缩放量化：
+
+  $$
+  v_{fp8} = cast(v * v\_scale)
+  $$
+
+  (7) Cache写回：
+
+  $$
+  blockId = slot\_mapping[t] / BlockSize
+  $$
+
+  $$
+  blockOffset = slot\_mapping[t]\ \%\ BlockSize
+  $$
+
+  $$
+  k\_cache[blockId, nk, blockOffset, :] = k_{fp8}[t, nk, :]
+  $$
+
+  $$
+  v\_cache[blockId, nv, blockOffset, :] = v_{fp8}[t, nv, :]
+  $$
+
+  $$
+  k\_scale\_cache[blockId, nk, blockOffset, 0] = k\_scale[t, nk]
+  $$
+
+## 参数说明
+
+| 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
+|---|---|---|---|---|
+| qkv | 输入 | Q/K/V融合输入。`qkv_layout="TND"`时shape为`[T, Nq+Nk+Nv, D]`，`qkv_layout="NTD"`时shape为`[Nq+Nk+Nv, T, D]`。 | BFLOAT16 | ND |
+| q_gamma | 输入 | Q分支RMSNorm权重，shape为`[D]`。 | FLOAT | ND |
+| k_gamma | 输入 | K分支RMSNorm权重，shape为`[D]`。 | FLOAT | ND |
+| cos_sin | 输入 | RoPE位置编码表，shape为`[MaxSeqLen, D]`。前`D/2`列为cos，后`D/2`列为sin。 | FLOAT | ND |
+| slot_mapping | 输入 | 每个token写入cache的slot索引，shape为`[T]`。 | INT32 | ND |
+| k_cache | 输入/输出 | K Cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, D]`。 | FLOAT8_E4M3FN | ND |
+| v_cache | 输入/输出 | V Cache，输入输出同地址复用，shape为`[BlockNum, Nv, BlockSize, D]`。 | FLOAT8_E4M3FN | ND |
+| k_scale_cache | 输入/输出 | K动态量化scale cache，输入输出同地址复用，shape为`[BlockNum, Nk, BlockSize, 1]`。 | FLOAT | ND |
+| cu_seq_len | 输入 | 当前调用内各batch token数的前缀和，shape为`[Batch+1]`。 | INT32 | ND |
+| actual_seq_lens | 输入 | 每个batch追加当前token后的实际序列长度，shape为`[Batch]`。 | INT32 | ND |
+| rotation | 可选输入 | Q/K共享矩阵乘权重，shape为`[D, D]`。接口定义为可选输入，当前Ascend 950 fast path要求必须传入。 | BFLOAT16 | ND |
+| v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。接口定义为可选输入，当前Ascend 950 fast path要求必须传入。 | FLOAT | ND |
+| head_nums | 属性 | Q/K/V头数，按`[Nq, Nk, Nv]`传入。 | INT64数组 | - |
+| qkv_layout | 属性 | `qkv`、`q_out`和`q_scale`的N/T轴布局。仅支持大小写敏感的`"TND"`和`"NTD"`。 | STRING | - |
+| epsilon | 可选属性 | RMSNorm防除零参数，默认值为`1e-6`。 | FLOAT | - |
+| q_out | 输出 | Q分支FP8 E4M3FN量化输出。`"TND"`时shape为`[T, Nq, D]`，`"NTD"`时shape为`[Nq, T, D]`。 | FLOAT8_E4M3FN | ND |
+| q_scale | 输出 | Q分支动态量化scale。`"TND"`时shape为`[T, Nq]`，`"NTD"`时shape为`[Nq, T]`。 | FLOAT | ND |
+
+## 约束说明
+
+- 仅支持<term>Ascend 950PR/Ascend 950DT</term>。
+- 当前fast path仅支持`D=128`，且`Nv=Nk`。
+- `head_nums`必须包含3个正整数，顺序为`[Nq, Nk, Nv]`。
+- `qkv_layout`大小写敏感，仅支持`"TND"`和`"NTD"`。
+- `qkv`、`q_out`、`q_scale`保持相同N/T布局：
+  - `qkv_layout="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。
+  - `qkv_layout="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。
+- `cu_seq_len`表示当前调用内token的batch前缀和，`cu_seq_len[0]`应为0，`cu_seq_len[Batch]`应等于`T`。
+- `actual_seq_lens[b]`表示第`b`个batch追加本次token后的实际序列长度。RoPE位置由`actual_seq_lens[b] - (cu_seq_len[b+1] - cu_seq_len[b]) + localTokenOffset`得到；调用方需保证`cos_sin`覆盖对应位置。
+- `slot_mapping`取值范围应为`[0, BlockNum * BlockSize - 1]`，同一次调用内不应重复写同一slot。
+- `rotation`和`v_scale`在算子IR中为可选输入，但当前实现要求均为非空。
+- 输入和输出均为ND格式，不支持私有格式；不支持空Tensor。
+- Cache Tensor支持连续Tensor，也支持view场景下的非连续Tensor。view场景需满足`k_cache`和`v_cache`最后一维stride为1，前三维stride一致；`k_scale_cache`最后一维stride为1。
+- 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
+
+## 调用说明
+
+| 调用方式 | 样例代码 | 说明 |
+|---|---|---|
+| aclnn接口 | [test_aclnn_qkv_rms_norm_rope_cache_with_k_scale](examples/test_aclnn_qkv_rms_norm_rope_cache_with_k_scale.cpp) | 通过[aclnnQkvRmsNormRopeCacheWithKScale](docs/aclnn_qkv_rms_norm_rope_cache_with_k_scale.md)接口方式调用本算子。 |
