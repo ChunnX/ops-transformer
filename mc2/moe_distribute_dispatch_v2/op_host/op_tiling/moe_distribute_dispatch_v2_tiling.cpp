@@ -103,20 +103,6 @@ static const std::set<ge::DataType> NON_QUANT_DTYPE = {
     ge::DT_FLOAT16, ge::DT_BF16, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
 
 namespace optiling {
-static bool IsPresentTensorShape(const gert::StorageShape *storageShape)
-{
-    if (storageShape == nullptr) {
-        return false;
-    }
-    const auto &shape = storageShape->GetStorageShape();
-    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
-        if (shape.GetDim(i) == 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static void PrintTilingDataInfo(const char *nodeName, MoeDistributeDispatchV2TilingData &tilingData)
 {
     OP_LOGD(nodeName, "epWorldSize is %u.", tilingData.moeDistributeDispatchV2Info.epWorldSize);
@@ -1665,7 +1651,7 @@ ge::graphStatus CheckAndGetOptionalInput(gert::TilingContext *context, const cha
     tilingData->moeDistributeDispatchV2Info.isPerformance = isPerformance;
 
     const gert::StorageShape *expertScalesStorageShape = context->GetOptionalInputShape(config.expertScalesIndex);
-    tilingData->moeDistributeDispatchV2Info.hasExpertScales = IsPresentTensorShape(expertScalesStorageShape);
+    tilingData->moeDistributeDispatchV2Info.hasExpertScales = (expertScalesStorageShape != nullptr);
 
     return ge::GRAPH_SUCCESS;
 }

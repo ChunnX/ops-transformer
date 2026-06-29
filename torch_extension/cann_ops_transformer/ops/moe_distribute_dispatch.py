@@ -71,8 +71,8 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
         Registers the Meta implementation (Shape/Dtype inference).
         Essential for Autograd and FakeTensor support.
         """
-        def has_non_empty_tensor(tensor):
-            return tensor is not None and tensor.numel() > 0
+        def has_tensor(tensor):
+            return tensor is not None
 
         def get_dtype_from_enum(dtype):
             return TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP[dtype]
@@ -213,7 +213,7 @@ class MoeDistributeDispatchOpBuilder(OpBuilder):
             ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
             tp_recv_counts = x.new_empty((tp_world_size), dtype=torch.int32)
             expand_scales = x.new_empty((0), dtype=torch.float32)
-            if has_non_empty_tensor(expert_scales):
+            if has_tensor(expert_scales):
                 ep_recv_cnt_num = ep_world_size * local_moe_expert_num + global_bs_real * 2 * k * (ep_world_size // 8)
                 ep_recv_counts = x.new_empty((ep_recv_cnt_num), dtype=torch.int32)
                 expand_scales = x.new_empty((a), dtype=torch.float32)

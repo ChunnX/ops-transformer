@@ -121,7 +121,6 @@ class MoeDistributeBuffer:
                              x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0,
                              const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1,
                              shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank=0):
-        topk_weights = _empty_topk_weights_like(x) if topk_weights is None else topk_weights
         (expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, tp_recv_counts, expand_scales) \
             = torch.ops.cann_ops_transformer.npu_moe_distribute_dispatch(
                                              context=self.context,
@@ -148,27 +147,13 @@ class MoeDistributeBuffer:
                                              const_expert_num=const_expert_num)
         return expand_x, dynamic_scales, expand_idx, expert_token_nums, ep_recv_counts, expand_scales
 
-    def npu_low_latency_combine(self, x, topk_idx, *args, topk_weights=None, assist_info_for_combine=None,
-                            ep_send_counts=None,
+    def npu_low_latency_combine(self, x, topk_idx, assist_info_for_combine, ep_send_counts, *,
+                            topk_weights=None,
                             num_experts=0, comm_alg="", comm_quant_mode=0, x_active_mask=None, expand_scales=None,
                             shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None,
                             const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0,
                             const_expert_num=0, expert_shared_type=0, shared_expert_num=1, shared_expert_rank_num=0,
                             num_max_dispatch_tokens_per_rank=0):
-        if len(args) == 3:
-            torch._check(
-                topk_weights is None and assist_info_for_combine is None and ep_send_counts is None,
-                lambda: "Do not pass topk_weights/assist_info_for_combine/ep_send_counts both positionally and by keyword."
-            )
-            topk_weights, assist_info_for_combine, ep_send_counts = args
-        elif len(args) == 2:
-            torch._check(
-                assist_info_for_combine is None and ep_send_counts is None,
-                lambda: "Do not pass assist_info_for_combine/ep_send_counts both positionally and by keyword."
-            )
-            assist_info_for_combine, ep_send_counts = args
-        else:
-            torch._check(len(args) == 0, lambda: "npu_low_latency_combine expects 0, 2, or 3 positional args after topk_idx.")
         torch._check(assist_info_for_combine is not None, lambda: "assist_info_for_combine must be provided.")
         torch._check(ep_send_counts is not None, lambda: "ep_send_counts must be provided.")
         topk_weights = _empty_topk_weights_like(x) if topk_weights is None else topk_weights

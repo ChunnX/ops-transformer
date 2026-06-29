@@ -30,11 +30,6 @@ bool HasTensor(const c10::optional<at::Tensor> &tensor)
     return tensor.has_value() && tensor.value().defined();
 }
 
-bool HasNonEmptyTensor(const c10::optional<at::Tensor> &tensor)
-{
-    return HasTensor(tensor) && tensor.value().numel() > 0;
-}
-
 aclDataType GetDynamicScalesDtype(const at::Tensor &x, const c10::optional<at::Tensor> &scales,
                                   c10::optional<int64_t> scales_dtype, int64_t quant_mode)
 {
@@ -219,7 +214,7 @@ tensor_list npu_moe_distribute_dispatch(const at::Tensor &context, const at::Ten
         output_acl_dtype = GetAclDataType(y_dtype.value());
     }
     auto output_dtype = GetStorageScalarType(output_acl_dtype);
-    bool has_expert_scales = HasNonEmptyTensor(expert_scales);
+    bool has_expert_scales = HasTensor(expert_scales);
 
     at::Tensor expand_x{nullptr};
     at::Tensor dynamic_scales{nullptr};
