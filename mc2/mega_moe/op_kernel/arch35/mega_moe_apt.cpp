@@ -43,9 +43,8 @@ __global__ __aicore__ void mega_moe(
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 #ifdef ENABLE_TENSOR_API
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-        // 框架为所有 tiling key × dtype 组合自动编译，不合规组合跳过实例化（tiling 已拦截）。
-        //
-        //   合规组合表：
+        // ===============================================================
+        //   合规组合表（供文档参考）：
         //   ┌───────────┬───────────────────┬──────────────────────┐
         //   │ QuantMode │ Weight1 / Weight2 │ 路径                  │
         //   ├───────────┼───────────────────┼──────────────────────┤
@@ -53,14 +52,8 @@ __global__ __aicore__ void mega_moe(
         //   │ E2M1      │ fp4 / fp4         │ a4w4                  │
         //   │ E5M2      │ fp8 / fp8         │ generic               │
         //   └───────────┴───────────────────┴──────────────────────┘
-        constexpr bool w1IsFp4 = Std::IsSame<DTYPE_WEIGHT1, fp4x2_e2m1_t>::value;
-        constexpr bool w1IsFp8 = Std::IsSame<DTYPE_WEIGHT1, fp8_e4m3fn_t>::value ||
-                                 Std::IsSame<DTYPE_WEIGHT1, fp8_e5m2_t>::value;
-        constexpr bool supported = (w1IsFp4 || w1IsFp8) && (
-            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E4M3FN) ||
-            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E2M1 && w1IsFp4) ||
-            (DispatchQuantOutType == DISPATCH_QUANT_OUT_DTYPE_E5M2 && !w1IsFp4));
-        if constexpr (supported) {
+        // ===============================================================
+        {
             MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1,
                 DispatchQuantOutType, CombineQuantOutType> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
