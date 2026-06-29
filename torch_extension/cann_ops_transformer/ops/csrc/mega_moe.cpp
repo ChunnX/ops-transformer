@@ -37,7 +37,6 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     c10::optional<int64_t> weight2_type,
     c10::optional<bool> is_cross_server)
 {
-    printf("npu_mega_moe start\n");
     TORCH_CHECK((ep_world_size > 0), "The ep_world_sizes should be greater than 0, current is: ", ep_world_size);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topk_ids.dim() == DIM_TWO), "The x and topk_ids should be 2D");
     TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) &&
@@ -134,7 +133,6 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     TensorListWrapper bias1_wrapper = {bias1_ref, aclDataType::ACL_FLOAT};
     TensorListWrapper bias2_wrapper = {bias2_ref, aclDataType::ACL_FLOAT};
 
-    printf("npu_mega_moe end\n");
     ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_wrapper,
         weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, bias1_wrapper, bias2_wrapper,
         x_active_mask, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,

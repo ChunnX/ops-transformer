@@ -200,6 +200,7 @@ public:
         .ExtendCfgInfo("prebuildPattern.value", "Opaque")
         .ExtendCfgInfo("jitCompile.flag", "static_false")
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+    this->AICore().AddConfig("ascend950", aicore_config_arch22);
     this->AICore().AddConfig("ascend910_93", aicore_config_arch22);
     this->AICore().AddConfig("ascend910b", aicore_config_arch22);
   }
