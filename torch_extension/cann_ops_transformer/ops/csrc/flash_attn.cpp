@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file npu_flash_attn.cpp
+ * \file flash_attn.cpp
  * \brief
  */
 
@@ -21,14 +21,31 @@ const int64_t DIM_ONE = 1;
 const int64_t DIM_TWO = 2;
 const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
+
+at::Tensor
+flash_attn_metadata(
+    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
+    const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
+    int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim,
+    int64_t batch_size, int64_t max_seqlen_q, int64_t max_seqlen_kv,
+    int64_t mask_mode, int64_t win_left, int64_t win_right,
+    std::string layout_q, std::string layout_kv, std::string layout_out, const at::Tensor &output)
+{
+    ACLNN_CMD(aclnnFlashAttnMetadata, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size, max_seqlen_q,
+              max_seqlen_kv, num_heads_q, num_heads_kv, head_dim, mask_mode, win_left, win_right, layout_q, layout_kv,
+              layout_out, output);
+    return output;
+}
+
 std::tuple<at::Tensor, at::Tensor>
-npu_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
-               const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &cu_seqlens_q,
-               const c10::optional<at::Tensor> &cu_seqlens_kv, const c10::optional<at::Tensor> &seqused_q,
-               const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &sinks,
-               const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &metadata,
-               double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right, int64_t max_seqlen_q,
-               int64_t max_seqlen_kv, string layout_q, string layout_kv, string layout_out, int64_t return_softmax_lse)
+flash_attn(
+    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
+    const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &cu_seqlens_q,
+    const c10::optional<at::Tensor> &cu_seqlens_kv, const c10::optional<at::Tensor> &seqused_q,
+    const c10::optional<at::Tensor> &seqused_kv, const c10::optional<at::Tensor> &sinks,
+    const c10::optional<at::Tensor> &attn_mask, const c10::optional<at::Tensor> &metadata,
+    double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right, int64_t max_seqlen_q,
+    int64_t max_seqlen_kv, string layout_q, string layout_kv, string layout_out, int64_t return_softmax_lse)
 {
     int64_t tSize = 0;
     int64_t nSize = 0;
@@ -76,15 +93,17 @@ npu_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
     char *layout_kv_ptr = const_cast<char *>(layout_kv.c_str());
     char *layout_out_ptr = const_cast<char *>(layout_out.c_str());
 
-    ACLNN_CMD(aclnnFlashAttn, q, k, v, block_table, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask,
-              metadata, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr,
-              layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
+    ACLNN_CMD(aclnnFlashAttn, q, k, v, block_table, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks,
+              attn_mask, metadata, softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv,
+              layout_q_ptr, layout_kv_ptr, layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
 }
+
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_flash_attn", &npu_flash_attn, "flash_attn");
+    m.def("flash_attn", &flash_attn, "flash_attn");
+    m.def("flash_attn_metadata", &flash_attn_metadata, "flash_attn_metadata");
 }
 } // namespace op_api
