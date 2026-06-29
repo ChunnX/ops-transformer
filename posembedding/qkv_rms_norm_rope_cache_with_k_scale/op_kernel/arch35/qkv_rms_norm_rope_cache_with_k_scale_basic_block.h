@@ -126,9 +126,9 @@ private:
             aRotL1Pool_[aRotL1BufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         WaitAicMte1ToAivMte3AConsumed();
         vec_.WaitVToMte2InputBufferReusable();
-        vec_.WaitMte3ToVQkOutBufferReusable(outputBufferId);
-        vec_.ComputeTile(tile, aRotL1Nz, outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS]);
-        vec_.SetMte3ToVQkOutBufferReusable(outputBufferId);
+        vec_.ComputeTileWithQkOutputBuffer(
+            tile, aRotL1Nz, outputDbPoolUb_[outputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
+            outputBufferId);
         if (isLastTile && tileCount_ > 0U) {
             SetAivMte3ToAicFixCConsumed();
         }
@@ -138,12 +138,10 @@ private:
         if (tileCount_ > 0U) {
             const uint32_t lastOutputBufferId =
                 static_cast<uint32_t>((outputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-            vec_.WaitMte3ToVQkOutBufferReusable(lastOutputBufferId);
             WaitAicFixToAivVCReady();
-            vec_.PostprocessQk(lastTile,
-                               outputDbPoolUb_[lastOutputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
-                               lastOutputBufferId);
-            vec_.SetMte3ToVQkOutBufferReusable(lastOutputBufferId);
+            vec_.PostprocessQkWithOutputBuffer(
+                lastTile, outputDbPoolUb_[lastOutputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
+                lastOutputBufferId);
             if (!isLastTile) {
                 SetAivMte3ToAicFixCConsumed();
             }
@@ -165,12 +163,10 @@ private:
         if (tileCount_ > 0U) {
             const uint32_t lastOutputBufferId =
                 static_cast<uint32_t>((outputBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-            vec_.WaitMte3ToVQkOutBufferReusable(lastOutputBufferId);
             WaitAicFixToAivVCReady();
-            vec_.PostprocessQk(lastTile,
-                               outputDbPoolUb_[lastOutputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
-                               lastOutputBufferId);
-            vec_.SetMte3ToVQkOutBufferReusable(lastOutputBufferId);
+            vec_.PostprocessQkWithOutputBuffer(
+                lastTile, outputDbPoolUb_[lastOutputBufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
+                lastOutputBufferId);
             SetAivMte3ToAicFixCConsumed();
             tileCount_ = 0U;
         }

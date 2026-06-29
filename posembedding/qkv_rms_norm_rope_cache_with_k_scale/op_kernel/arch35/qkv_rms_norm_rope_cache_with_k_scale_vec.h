@@ -78,6 +78,14 @@ public:
         PreprocessQkv(tile, slice, inputBufferId, aRotL1Nz, qkPreprocessUb);
     }
 
+    __aicore__ inline void ComputeTileWithQkOutputBuffer(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
+                                                         LocalTensor<float> qkPreprocessUb, uint32_t outputBufferId)
+    {
+        WaitMte3ToVQkOutBufferReusable(outputBufferId);
+        ComputeTile(tile, aRotL1Nz, qkPreprocessUb);
+        SetMte3ToVQkOutBufferReusable(outputBufferId);
+    }
+
     __aicore__ inline void PostprocessV(const TileParam &tile)
     {
         const AivSlice slice = MakeAivSlice(tile);
@@ -114,6 +122,14 @@ public:
     {
         const AivSlice slice = MakeAivSlice(tile);
         QuantAndScatterQk(tile, slice, qkAfterCubeUb, outputBufferId);
+    }
+
+    __aicore__ inline void PostprocessQkWithOutputBuffer(const TileParam &tile, LocalTensor<float> qkAfterCubeUb,
+                                                         uint32_t outputBufferId)
+    {
+        WaitMte3ToVQkOutBufferReusable(outputBufferId);
+        PostprocessQk(tile, qkAfterCubeUb, outputBufferId);
+        SetMte3ToVQkOutBufferReusable(outputBufferId);
     }
 
 private:
