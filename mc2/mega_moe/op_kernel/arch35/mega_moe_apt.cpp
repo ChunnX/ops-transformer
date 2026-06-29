@@ -40,10 +40,10 @@ __global__ __aicore__ void mega_moe(
 {
     return;
     printf("mega_moe kernel start\n");
-//     InitSocState();
-//     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-//     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
-//     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
+    InitSocState();
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    REGISTER_TILING_DEFAULT(MegaMoeTilingData);
+    GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 // #ifdef ENABLE_TENSOR_API
 //     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
 //         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
