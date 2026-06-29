@@ -84,6 +84,16 @@ private:
         int32_t copyStartIdx, int32_t copyNum);
     __aicore__ inline void ResetUrmaDispatchState();
     __aicore__ inline void Level1DispatchUrma(int32_t localExpertId);
+    __aicore__ inline void Level1DispatchUrmaComputeKernel(int32_t localExpertId, uint32_t realComputeCoreNum,
+        int32_t roundTag);
+    __aicore__ inline void Level1DispatchUrmaComputeToken(GlobalTensor<int32_t> &topkIdsGlobal,
+        int32_t localExpertId, uint32_t tokenIdx, uint32_t tokenStart, uint32_t dedupWordsPerServer);
+    __aicore__ inline void Level1DispatchUrmaSendKernel(uint32_t senderCoreStart, uint32_t senderCoreNum,
+        uint32_t realComputeCoreNum, int32_t roundTag);
+    __aicore__ inline void Level1DispatchUrmaSendSlot(uint32_t targetServerForSender, int32_t slot);
+    __aicore__ inline int32_t Level1DispatchUrmaUpdateSendCursor(uint32_t targetServerForSender, int32_t cursor,
+        int32_t endCount);
+    __aicore__ inline bool Level1DispatchUrmaAllComputeDone(uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline void ReadRelayTokenToCopyTmp(uint32_t relayRank, uint64_t remoteCopyOffset,
         int32_t bufferIdx, uint32_t copyInNum);
     __aicore__ inline void QuantTokenToWorkspaceRecord(uint32_t tokenIdx, GM_ADDR recordAddr);
@@ -135,7 +145,6 @@ private:
     int32_t compareCount_ = 0;
     int64_t maxRowGroupsStride_ = 0;  // rowGroupComplete 计数器中每个 expert 的 stride
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
-    //todo:-------------------------------------------
     uint32_t rankPerServer_ = 0;
     uint32_t serverNum_ = 0;
     uint32_t serverId_ = 0;
@@ -149,10 +158,8 @@ private:
     static constexpr uint32_t SEND_DEDUP_MASK_UB_BYTES = 8U * 1024U;
     static constexpr uint32_t SEND_DEDUP_MASK_BITS_PER_WORD = 32U;
     static constexpr uint32_t SEND_SCAN_WINDOW = 32U;
-    //todo:-------------------------------------------
     int64_t dispatchWinOffset_ = 0;
 
-    //todo:-------------------------------------------
 
     static constexpr uint32_t ELEMS_PER_BYTE = (QuantMode == E2M1_QUANT) ? 2 : 1;
     static constexpr int32_t DISPATCH_BUFFER_NUM = 2;
@@ -179,7 +186,6 @@ private:
     LocalTensor<float> topKWeightsTensor_;
     LocalTensor<float> fp32ScaleTensor_;
     LocalTensor<bfloat16_t> bf16ScaleTensor_;
-    //todo:-------------------------------------------
     LocalTensor<uint32_t> sendDedupMaskTensor_;
 
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t,
@@ -214,12 +220,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
 
-    //todo:-------------------------------------------
     params_.hcomm = &hcomm_;
     params_.mc2Context = mc2Context_;
     params_.rankId = rankId_;
 
-    //todo:-------------------------------------------
     rankPerServer_ = mc2Context_->rankSizePerServer;
     if (rankPerServer_ == 0 || rankPerServer_ > worldSize_) {
         rankPerServer_ = worldSize_;
@@ -227,8 +231,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     serverNum_ = worldSize_ / rankPerServer_;
     serverId_ = rankId_ / rankPerServer_;
     rankInServer_ = rankId_ % rankPerServer_;
-
-    //todo:-------------------------------------------
 
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
@@ -271,7 +273,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     mxQuantTokenScaleAlignBytes_ = Ops::Base::CeilAlign(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_,
         static_cast<uint32_t>(ALIGN_32));
     
-    //todo:-------------------------------------------
     relayRecordBytes_ = Ops::Base::CeilAlign(mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32),
         static_cast<uint32_t>(ALIGN_512));
     sendWorkspaceRecordBytes_ = relayRecordBytes_;
@@ -505,8 +506,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
 
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) + 
                                  static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
-            uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
-                            static_cast<uint64_t>(maskSlotSize_);
+            uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex *
+                static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
+                static_cast<uint64_t>(maskSlotSize_);
             dstGlobalTensor.SetGlobalBuffer(
                 (__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr + srcOffset));
             if (curRankId == rankId_) {
@@ -518,7 +520,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
             if (curRankId != rankId_) {
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,localGmAddr, maskSlotSize_);
+                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_),
+                    remoteDataAddr, localGmAddr, maskSlotSize_);
             }
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
@@ -535,7 +538,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
-__aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendWorkspaceServerOffset(uint32_t targetServer)
+__aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendWorkspaceServerOffset(
+    uint32_t targetServer)
 {
     return static_cast<uint64_t>(targetServer) * static_cast<uint64_t>(sendWorkspaceServerBytes_);
 }
@@ -553,7 +557,7 @@ __aicore__ inline uint64_t MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Relay
 // ------------------------------------------------------------------------------------------------
 // count 只在整次 dispatch 开始前清零；localExpertId 轮次之间保留，后一轮继续顺序追加。
 // ===============================================================================================
-template <TemplateMegaMoeLayeredTypeClass>//todo
+template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ResetUrmaDispatchState()
 {
     if constexpr(g_coreType == AIC) {
@@ -670,6 +674,165 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantToke
 // sender 核：按 slot 顺序消费本轮新增记录 -> 写目标 server 内相对位置相同 rank 的 relay 接收区。
 // ===============================================================================================
 template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1DispatchUrmaComputeToken(
+    GlobalTensor<int32_t> &topkIdsGlobal, int32_t localExpertId, uint32_t tokenIdx, uint32_t tokenStart,
+    uint32_t dedupWordsPerServer)
+{
+    for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
+        int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
+        if ((globalExpertId % static_cast<int32_t>(expertPerRank_)) != localExpertId) {
+            continue;
+        }
+        uint32_t targetRank = static_cast<uint32_t>(globalExpertId) / expertPerRank_;
+        uint32_t targetServer = targetRank / rankPerServer_;
+        uint32_t localTokenIdx = tokenIdx - tokenStart;
+        uint32_t dedupWordIdx = targetServer * dedupWordsPerServer +
+            localTokenIdx / SEND_DEDUP_MASK_BITS_PER_WORD;
+        uint32_t dedupBit = 1U << (localTokenIdx & (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
+        uint32_t dedupWord = sendDedupMaskTensor_.GetValue(dedupWordIdx);
+        if ((dedupWord & dedupBit) != 0U) {
+            continue;
+        }
+        sendDedupMaskTensor_.SetValue(dedupWordIdx, dedupWord | dedupBit);
+        uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
+        uint32_t dstRank = targetServer * rankPerServer_ + targetRank;
+        GM_ADDR recordAddr = GetRankWinAddrWithOffset(dstRank, dispatchWinOffset_) + relayOffset;
+        if (targetServer != serverId_) {
+            __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
+                params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(targetServer));
+            int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
+            uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
+                static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
+            recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
+        }
+        QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
+    }
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1DispatchUrmaComputeKernel(
+    int32_t localExpertId, uint32_t realComputeCoreNum, int32_t roundTag)
+{
+    uint32_t computeIdx = blockIdx_;
+    uint32_t baseTokenNum = m_ / realComputeCoreNum;
+    uint32_t tokenRemainder = m_ % realComputeCoreNum;
+    uint32_t tokenNumInCore = baseTokenNum + static_cast<uint32_t>(computeIdx < tokenRemainder);
+    uint32_t tokenStart = computeIdx * baseTokenNum +
+        ((computeIdx < tokenRemainder) ? computeIdx : tokenRemainder);
+    uint32_t tokenEnd = tokenStart + tokenNumInCore;
+    uint32_t maxTokenNumPerComputeCore = Ops::Base::CeilDiv(m_, realComputeCoreNum);
+    uint32_t dedupWordsPerServer = Ops::Base::CeilDiv(maxTokenNumPerComputeCore,
+        SEND_DEDUP_MASK_BITS_PER_WORD);
+
+    GlobalTensor<int32_t> topkIdsGlobal;
+    topkIdsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.expertIdxGmAddr));
+    for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
+        Level1DispatchUrmaComputeToken(topkIdsGlobal, localExpertId, tokenIdx, tokenStart, dedupWordsPerServer);
+    }
+    // PipeBarrier<PIPE_ALL>();
+    __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
+    WriteGmByPassDCache(donePtr + computeIdx, roundTag);
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1DispatchUrmaSendSlot(
+    uint32_t targetServerForSender, int32_t slot)
+{
+    uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
+        static_cast<uint64_t>(slot) * sendWorkspaceRecordBytes_;
+    GM_ADDR recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
+    __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
+        recordAddr + mxQuantTokenScaleAlignBytes_);
+    if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(1)) {
+        return;
+    }
+    int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
+    uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
+    uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
+    GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_) + relayOffset;
+    ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
+    hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, mxQuantTokenScaleAlignBytes_,
+        dstAddr + mxQuantTokenScaleAlignBytes_, static_cast<uint64_t>(1));
+    WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline int32_t MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1DispatchUrmaUpdateSendCursor(
+    uint32_t targetServerForSender, int32_t cursor, int32_t endCount)
+{
+    while (cursor < endCount) {
+        uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
+            static_cast<uint64_t>(cursor) * sendWorkspaceRecordBytes_;
+        GM_ADDR recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
+        __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
+            recordAddr + mxQuantTokenScaleAlignBytes_);
+        if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(2)) {
+            break;
+        }
+        ++cursor;
+    }
+    return cursor;
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1DispatchUrmaAllComputeDone(
+    uint32_t realComputeCoreNum, int32_t roundTag)
+{
+    __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
+    for (uint32_t idx = 0; idx < realComputeCoreNum; ++idx) {
+        if (ReadGmByPassDCache(donePtr + idx) < roundTag) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1DispatchUrmaSendKernel(
+    uint32_t senderCoreStart, uint32_t senderCoreNum, uint32_t realComputeCoreNum, int32_t roundTag)
+{
+    __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchCursorPtr);
+    uint32_t senderIdx = blockIdx_ - senderCoreStart;
+    for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
+        targetServerForSender += senderCoreNum) {
+        if (targetServerForSender == serverId_) {
+            continue;
+        }
+        __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
+            params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(targetServerForSender));
+        int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
+        int32_t scanCursor = cursor;
+
+        while (true) {
+            int32_t endCount = ReadGmByPassDCache(countPtr);
+            if (scanCursor < cursor || scanCursor >= endCount) {
+                scanCursor = cursor;
+            }
+            int32_t scanEnd = scanCursor + static_cast<int32_t>(SEND_SCAN_WINDOW);
+            if (scanEnd > endCount) {
+                scanEnd = endCount;
+            }
+            for (int32_t slot = scanCursor; slot < scanEnd; ++slot) {
+                Level1DispatchUrmaSendSlot(targetServerForSender, slot);
+            }
+            scanCursor = scanEnd;
+            if (scanCursor >= endCount) {
+                scanCursor = cursor;
+            }
+            int32_t oldCursor = cursor;
+            cursor = Level1DispatchUrmaUpdateSendCursor(targetServerForSender, cursor, endCount);
+            if (cursor != oldCursor) {
+                WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
+            }
+            if (Level1DispatchUrmaAllComputeDone(realComputeCoreNum, roundTag) &&
+                cursor == ReadGmByPassDCache(countPtr)) {
+                break;
+            }
+        }
+    }
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1DispatchUrma(int32_t localExpertId)
 {
     uint32_t senderCoreLimit = (serverNum_ < 8U) ? serverNum_ : 8U;
@@ -680,135 +843,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Level1Dis
     int32_t roundTag = localExpertId + 1;
 
     bool isComputeCore = blockIdx_ < senderCoreStart;
-    uint32_t computeIdx = blockIdx_;
     if (isComputeCore) {
-        uint32_t baseTokenNum = m_ / realComputeCoreNum;
-        uint32_t tokenRemainder = m_ % realComputeCoreNum;
-        uint32_t tokenNumInCore = baseTokenNum + static_cast<uint32_t>(computeIdx < tokenRemainder);
-        uint32_t tokenStart = computeIdx * baseTokenNum +
-            ((computeIdx < tokenRemainder) ? computeIdx : tokenRemainder);
-        uint32_t tokenEnd = tokenStart + tokenNumInCore;
-        uint32_t maxTokenNumPerComputeCore = Ops::Base::CeilDiv(m_, realComputeCoreNum);
-        // 注意servernum过大
-        uint32_t dedupWordsPerServer = Ops::Base::CeilDiv(maxTokenNumPerComputeCore,
-            SEND_DEDUP_MASK_BITS_PER_WORD);
-
-        GlobalTensor<int32_t> topkIdsGlobal;
-        topkIdsGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.expertIdxGmAddr));
-        for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd; ++tokenIdx) {
-            for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
-                int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
-                if ((globalExpertId % static_cast<int32_t>(expertPerRank_)) != localExpertId) {
-                    continue;
-                }
-                uint32_t targetRank = static_cast<uint32_t>(globalExpertId) / expertPerRank_;
-                uint32_t targetServer = targetRank / rankPerServer_;
-                uint32_t localTokenIdx = tokenIdx - tokenStart;
-                uint32_t dedupWordIdx = targetServer * dedupWordsPerServer +
-                    localTokenIdx / SEND_DEDUP_MASK_BITS_PER_WORD;
-                uint32_t dedupBit = 1U << (localTokenIdx & (SEND_DEDUP_MASK_BITS_PER_WORD - 1U));
-                uint32_t dedupWord = sendDedupMaskTensor_.GetValue(dedupWordIdx);
-                if ((dedupWord & dedupBit) != 0U) {
-                    continue;
-                }
-                sendDedupMaskTensor_.SetValue(dedupWordIdx, dedupWord | dedupBit);
-                uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-                uint32_t dstRank = targetServer * rankPerServer_ + targetRank;
-                GM_ADDR recordAddr = GetRankWinAddrWithOffset(dstRank, dispatchWinOffset_) + relayOffset;
-                if (targetServer != serverId_) {
-                    __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
-                    params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(targetServer));
-                    int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
-                    uint64_t recordOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
-                        static_cast<uint64_t>(slotIdx) * sendWorkspaceRecordBytes_;
-                    recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
-                }
-                QuantTokenToWorkspaceRecord(tokenIdx, recordAddr);
-            }
-        }
-        // PipeBarrier<PIPE_ALL>();
-        __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
-        WriteGmByPassDCache(donePtr + computeIdx, roundTag);
+        Level1DispatchUrmaComputeKernel(localExpertId, realComputeCoreNum, roundTag);
     }
 
     if (isSenderCore) {
-        __gm__ int32_t* donePtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchDonePtr);
-        __gm__ int32_t* cursorPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.dispatchCursorPtr);
-        uint32_t senderIdx = blockIdx_ - senderCoreStart;
-        for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
-            targetServerForSender += senderCoreNum) {
-            if (targetServerForSender == serverId_) {
-                    continue;
-            }
-            __gm__ int32_t* countPtr = reinterpret_cast<__gm__ int32_t*>(
-                params_.workspaceInfo.dispatchL1CommPtr + SendWorkspaceServerOffset(targetServerForSender));
-            int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
-            GlobalTensor<uint8_t> workspaceSrcGlobal;
-            GlobalTensor<uint8_t> relayDstGlobal;
-            uint32_t recordDataBytes = mxQuantTokenScaleAlignBytes_;
-            int32_t scanCursor = cursor;
-
-            while (true) {
-                int32_t endCount = ReadGmByPassDCache(countPtr);
-                if (scanCursor < cursor || scanCursor >= endCount) {
-                    scanCursor = cursor;
-                }
-                int32_t scanEnd = scanCursor + static_cast<int32_t>(SEND_SCAN_WINDOW);
-                if (scanEnd > endCount) {
-                    scanEnd = endCount;
-                }
-                for (int32_t slot = scanCursor; slot < scanEnd; ++slot) {
-                    uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
-                        static_cast<uint64_t>(slot) * sendWorkspaceRecordBytes_;
-                    GM_ADDR recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
-                    __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
-                        recordAddr + mxQuantTokenScaleAlignBytes_);
-                    if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(1)) {
-                        continue;
-                    }
-                    int32_t tokenIdx = ReadGmByPassDCache(srcMetaPtr);
-                    uint64_t relayOffset = RelayTokenOffset(serverId_, static_cast<uint32_t>(tokenIdx));
-                    uint32_t dstRank = targetServerForSender * rankPerServer_ + rankInServer_;
-                    GM_ADDR dstAddr = GetRankWinAddrWithOffset(dstRank, dispatchWinOffset_) + relayOffset;
-
-                    uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
-                    ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
-                    hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, recordDataBytes,
-                        dstAddr + recordDataBytes, static_cast<uint64_t>(1));
-                    WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
-                }
-                scanCursor = scanEnd;
-                if (scanCursor >= endCount) {
-                    scanCursor = cursor;
-                }
-                int32_t oldCursor = cursor;
-                while (cursor < endCount) {
-                    uint64_t recordOffset = SendWorkspaceServerOffset(targetServerForSender) + ALIGN_32 +
-                        static_cast<uint64_t>(cursor) * sendWorkspaceRecordBytes_;
-                    GM_ADDR recordAddr = params_.workspaceInfo.dispatchL1CommPtr + recordOffset;
-                    __gm__ int32_t* srcMetaPtr = reinterpret_cast<__gm__ int32_t*>(
-                        recordAddr + mxQuantTokenScaleAlignBytes_);
-                    if (ReadGmByPassDCache(srcMetaPtr + 1) != int32_t(2)) {
-                        break;
-                    }
-                    ++cursor;
-                }
-                if (cursor != oldCursor) {
-                    WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
-                }
-                // TODO:优化
-                bool allComputeDone = true;
-                for (uint32_t idx = 0; idx < realComputeCoreNum; ++idx) {
-                    if (ReadGmByPassDCache(donePtr + idx) < roundTag) {
-                        allComputeDone = false;
-                        break;
-                    }
-                }
-                if (allComputeDone && cursor == ReadGmByPassDCache(countPtr)) {
-                    break;
-                }
-            }
-        }
+        Level1DispatchUrmaSendKernel(senderCoreStart, senderCoreNum, realComputeCoreNum, roundTag);
     }
 }
 
@@ -909,7 +949,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
         return;
     }
     constexpr int32_t BufferNum = 2;
-    constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID0, EVENT_ID1};//{EVENT_ID0, EVENT_ID1, EVENT_ID2, EVENT_ID3, EVENT_ID4, EVENT_ID5};
+    constexpr TEventID kBufEvents[BufferNum] = {EVENT_ID0, EVENT_ID1};
     int64_t widthA = k_ / ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;  // 输出 token-scale 长度,紧密排列
@@ -974,7 +1014,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
         }
     }
-    // Phase 2 drain: 6 个 buffer-free flag
+    // Phase 2 drain: 2 个 buffer-free flag
     for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
     }
