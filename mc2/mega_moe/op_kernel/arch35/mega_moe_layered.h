@@ -677,14 +677,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     GM_ADDR dstAddr = GetUrmaAddrByRankId(mc2Context_,
                         targetServerForSender * rankPerServer_ + rankInServer_) +
                         params_.peermemInfo.relayTokenDataPtr + relayOffset;
+                    GM_ADDR notifyAddr = dstAddr + recordDataBytes;
                     
                     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
                     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
                     PRINTF("L1_NOTIFY rank %u peer %u token %d relayOffset %lu notifyOff %u srcReady %lu srcToken %d\n",
                         rankId_, peerRank, tokenIdx, relayOffset, recordDataBytes,
                         ReadGmByPassDCache(srcReadyPtr), ReadGmByPassDCache(srcMetaPtr + 2));
-                    hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, recordDataBytes,
-                        dstAddr + recordDataBytes, static_cast<uint64_t>(1));
+                    hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, static_cast<uint64_t>(recordDataBytes),
+                        notifyAddr, static_cast<uint64_t>(1));
                     WriteGmByPassDCache(srcReadyPtr, uint64_t(2));
                 }
                 scanCursor = scanEnd;
@@ -940,6 +941,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
             remoteRecordAddr + flagOffset);
         int64_t lastPrintCycle = AscendC::GetSystemCycle();
         while (ReadGmByPassDCache(localReadyPtr) != uint64_t(1)) {
+            AscendC::Nop<800>();
             int64_t nowCycle = AscendC::GetSystemCycle();
             if (nowCycle - lastPrintCycle > 200000000) {
                 PRINTF("L2_WAIT_LOCAL rank %u remoteOffset %lu meta0 %d meta1 %d ready64 %lu flagOffset %lu\n",
@@ -962,6 +964,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
     do {
         hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(uint64_t));
         uint64_t readyValue = ReadGmByPassDCache(localReadyFlag);
+        AscendC::Nop<800>();
         if (readyValue == uint64_t(1)) {
             WriteGmByPassDCache(localReadyFlag, uint64_t(0));
             break;
