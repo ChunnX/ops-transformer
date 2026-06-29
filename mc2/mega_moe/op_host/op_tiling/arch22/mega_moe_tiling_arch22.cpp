@@ -73,6 +73,7 @@ namespace MegaMoeA2A3Tiling {
 
     constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
     constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
+    constexpr uint64_t RESERVED_SPACE_SIZE = 10 * 1024 * 1024;
 
     // CCL Buffer 相关常量
     constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;  // （预留）60KB 固定偏移
@@ -105,54 +106,53 @@ namespace MegaMoeA2A3Tiling {
 
 static int64_t CalcLeastCclBufferSize(int64_t maxRecvTokenNum, int64_t h,
     int64_t epWorldSize, int64_t expertPerRank,
-    bool isQuantRouting, bool isW4A8, bool isA3)
+    bool isQuantRouting, bool isW4A8, bool isA3,
+    int64_t bs, int64_t topK)
 {
-    const int64_t M = maxRecvTokenNum;
-    const int64_t EP = epWorldSize;
-    const int64_t E = expertPerRank;
-    const int64_t MB = static_cast<int64_t>(MB_SIZE);
+    // ccl buff的承载的数据块 1（winIn）：
+    // TPE = epWorldSize × CeilAlign(epWorldSize × expertPerRank, 128) × 4B
+    int64_t offsetTokenPerExpert = epWorldSize * 
+                                   ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) *
+                                   static_cast<int64_t>(sizeof(int32_t));
 
-    // tokenPerExpert 实际需要：TPE = EP × CeilAlign(EP × E, 128) × 4B
-    int64_t tpeNeed = EP * ops::CeilAlign(EP * E, ALIGN_128) * sizeof(int32_t);
-    int64_t tokenPerExpertSize = std::max(tpeNeed, 2 * MB);
-
-    if (!isQuantRouting) {
-        // A16W16 (BF16)：dispatch/combine 每行均为 h×2 字节
-        int64_t offsetA = M * h * 2;
-        int64_t offsetD = M * h * 2;
-        if (isA3) {
-            // A3 BF16：修复后不再为 perTokenScale 预留 1MB
-            return offsetA + offsetD + tokenPerExpertSize;
-        }
-        // A2 BF16：dispatch flag + allgather flag + tokenPerExpert
-        int64_t flagNeed = std::max(EP * E * 64, MB);
-        int64_t allgatherFlagNeed = std::max(EP * 64, MB);
-        return offsetA + offsetD + flagNeed + allgatherFlagNeed + tokenPerExpertSize;
+    // ccl buff的承载的数据块 2：
+    // ============================== winIn ==============================
+    // FFN的左矩阵，非量化则token为 h×2 字节 (bf16)，量化则为 h+512 字节 (int8)
+    int64_t offsetAAfterDispatch = 0;
+    if (isA3) {  // A3打包发送，+32与+512中取大值，外带临时计算空间
+        offsetAAfterDispatch = bs * topK * (!isQuantRouting ? h * sizeof(int16_t) : (h + ALIGN_512));
+        offsetAAfterDispatch += isQuantRouting ? ops::CeilAlign(bs * topK * sizeof(float), ALIGN_512) : 0;
+    } else {  // A2分开发送
+        offsetAAfterDispatch = isQuantRouting ? 
+                               maxRecvTokenNum * (h + ALIGN_512) : maxRecvTokenNum * h * sizeof(int16_t);
+        offsetAAfterDispatch += isQuantRouting ? maxRecvTokenNum * sizeof(float) : 0;  // pertokenSize
     }
-
-    // 量化路由（A8W8-INT 或 A8W4）
-    // dispatch 每行 (h+512) 字节（INT8 + 512B inline scale）
-    // combine 每行 h×2 字节（BF16）
-    int64_t offsetA = M * (h + 512);
-    int64_t offsetD = M * h * 2;
-    int64_t perTokenScaleSize = std::max(M * 4, MB);
-
-    if (isW4A8) {
-        if (isA3) {
-            return offsetA + offsetD + perTokenScaleSize + tokenPerExpertSize;
-        }
-        // A2 W4A8：perTokenScale + dispatch flag + tokenPerExpert
-        int64_t flagNeed = std::max(EP * E * 64, MB);
-        return offsetA + offsetD + perTokenScaleSize + flagNeed + tokenPerExpertSize;
+    // FFN的输出在分发后，接收的空间大小
+    int64_t offsetD = bs * topK * h * sizeof(int16_t);
+    int64_t winInTensorSize = offsetAAfterDispatch + offsetD;
+    // ============================== winOut（仅A2） ==============================
+    int64_t winOutTensorSize = 0;
+    if (!isA3) {
+        int64_t offsetA = bs * topK * h * (!isQuantRouting ? sizeof(int16_t) : 1);
+        offsetA += bs * topK * sizeof(float);  // pertokenSize
+        int64_t offsetC = maxRecvTokenNum * h * sizeof(int16_t);
+        winOutTensorSize = offsetA + offsetC;
     }
+    int64_t offsetTensor = max(winInTensorSize, winOutTensorSize);
 
-    // A8W8-INT
+    // ccl buff的承载的数据块 3（winIn）：
+    // 同步flag
+    int64_t offsetFlag = 0;
     if (isA3) {
-        return offsetA + offsetD + perTokenScaleSize + tokenPerExpertSize;
+        offsetFlag = epWorldSize * ALIGN_512;
+    } else {
+        // A2: dispatch flag(EP×E×64B,统一) + allgather flag(EP×64B,仅non-quant) + tailSync
+        int64_t dispatchFlag = epWorldSize * expertPerRank * 64;
+        int64_t allgatherFlag = isQuantRouting ? 0 : epWorldSize * 64;
+        int64_t tailSync = (epWorldSize * 16 + 1) * static_cast<int64_t>(sizeof(int32_t));
+        offsetFlag = dispatchFlag + allgatherFlag + tailSync;
     }
-    // A2 INT8：perTokenScale + AlignUp(EP×E×4, 512) flag + tokenPerExpert
-    int64_t flagNeed = ops::CeilAlign(EP * E * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
-    return offsetA + offsetD + perTokenScaleSize + flagNeed + tokenPerExpertSize;
+    return offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE;
 }
 
 // =========================== Attr 校验分函数 ===========================
@@ -217,7 +217,8 @@ static ge::graphStatus CheckCclBufferSizeAttr(const int64_t *ptr, MegaMoeA2A3Til
     bool isA3 = (socVersion != "Ascend910B");
 
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(maxRecvTokenNum, h,
-        epWorldSize, expertPerRank, isQuantRouting, isW4A8, isA3);
+        epWorldSize, expertPerRank, isQuantRouting, isW4A8, isA3,
+        static_cast<int64_t>(info.M), static_cast<int64_t>(info.topK));
 
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
         OP_LOGE(nodeName, "cclBufferSize(%ld) should be >= leastCclBufferSize(%ld). "
@@ -1096,7 +1097,8 @@ static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *c
     bool isA3 = (socVersion != "Ascend910B");
 
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(maxRecvTokenNum, h,
-        epWorldSize, expertPerRank, isQuantRouting, isW4A8, isA3);
+        epWorldSize, expertPerRank, isQuantRouting, isW4A8, isA3,
+        static_cast<int64_t>(info.M), static_cast<int64_t>(info.topK));
 
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
         OP_LOGE(nodeName, "cclBufferSize(%ld) should be >= leastCclBufferSize(%ld). "
