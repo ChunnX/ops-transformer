@@ -172,7 +172,6 @@ public:
     TBuf<> lseTmpBuff;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
 
-
 protected:
     __aicore__ inline void BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm, GlobalTensor<T> &maxGm,
                                                int64_t gmOffset, int64_t calculateSize);

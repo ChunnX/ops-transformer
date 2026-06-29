@@ -63,7 +63,6 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseQuery(QuantBlockSparseAttnT
 {
     const size_t queryDimNum = queryShape.GetDimNum();
     const std::string layoutQ = BSAGetStringAttr(attrs, BSA_LAYOUT_Q_ATTR_INDEX, "TND");
-
     if (queryDimNum == DIM_NUM_4 && layoutQ == "BSND") {
         tilingInfo.isBSND = true;
         tilingInfo.layoutQValue = BSA_LAYOUT_Q_BSND_VALUE;
