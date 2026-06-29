@@ -215,13 +215,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                                                       "wStorageShape cannot be nullptr"),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
-    auto attrs = context_->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "attrs", "nullptr",
-                                                      "attrs cannot be nullptr"),
-                return false);
-    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
-    inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
@@ -512,6 +505,13 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
                                                       std::to_string(scaleCount),
                                                       "weightScale tensor list size must equal weight tensor list size"),
                 return false);
+    auto attrs = context_->GetAttrs();
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "attrs", "nullptr",
+                                                      "attrs cannot be nullptr"),
+                return false);
+    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
+    inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!CheckDims(xShape, wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
