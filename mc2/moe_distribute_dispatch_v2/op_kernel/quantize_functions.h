@@ -18,7 +18,7 @@
 
 #include "common.h"
 
-namespace quant {
+namespace Quant {
 
 constexpr int DIGIT_TWO = 2;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;

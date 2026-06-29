@@ -230,7 +230,7 @@ public:
             __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
             __ubuf__ float* scaleOutLocalAddr = (__ubuf__ float*)outLocal[Align128<uint32_t>(axisH_)].GetPhyAddr();
 
-            quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(
+            Quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(
                 srcAddr, smoothLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
         }
     }
@@ -249,17 +249,17 @@ public:
                 Align256<uint32_t>(Ceil(axisH_, FP4_ELEMS_PER_BYTE))].GetPhyAddr();
         }
 
-        quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
+        Quant::ComputeMaxExp(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
         // 计算scales并填充
-        quant::ComputeScale<ExpandXOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+        Quant::ComputeScale<ExpandXOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
         if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
             Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
             // 计算量化后的expandx并填充
-            quant::ComputeFp8Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
+            Quant::ComputeFp8Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
                 AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         } else {
             // 计算量化后的expandx并填充
-            quant::ComputeFp4Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
+            Quant::ComputeFp4Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
                 AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         }
     }
@@ -273,14 +273,14 @@ public:
         __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
         __ubuf__ uint16_t* mxScaleLocalAddr = (__ubuf__ uint16_t*)outLocal[Align256<uint32_t>(axisH_)].GetPhyAddr();
 
-        quant::ComputeMaxExpClip(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
+        Quant::ComputeMaxExpClip(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
         // 计算scales并填充
-        quant::ComputeScaleClip<ExpandXOutType, XInType>(maxExpAddr,
+        Quant::ComputeScaleClip<ExpandXOutType, XInType>(maxExpAddr,
             mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
         if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
             Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
             // 计算量化后的expandx并填充
-            quant::ComputeFp8Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
+            Quant::ComputeFp8Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
                 AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         }
     }
