@@ -27,6 +27,7 @@
 namespace QLIKernel {
 using namespace QLICommon;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
+constexpr uint32_t TRUNK_LEN_6K = 6144;
 template <typename QLIT>
 class QLIVector {
 public:
@@ -194,7 +195,11 @@ __aicore__ inline void QLIVector<QLIT>::InitParams(const struct QLICommon::Const
     kCacheBlockSize_ = constInfo.kCacheBlockSize;
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     blockId_ = GetBlockIdx();
-    trunkLen_ = TRUNK_LEN_16K;
+    if constexpr (std::is_same_v<SCORE_T, uint32_t>) {
+        trunkLen_ = TRUNK_LEN_6K;
+    } else {
+        trunkLen_ = TRUNK_LEN_16K;
+    }
     topkCount_ = constInfo.sparseCount;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = QLICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
@@ -612,8 +617,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessUint32TopK(const QLICommon::RunIn
             if (useSingleLoop) {
                 uint32_t validS2LenAlign = LICommon::Align(validS2Len, (int32_t)256);
                 Duplicate(mrgValueLocal_[validS2Len / 256 * 256], zero, validS2LenAlign - validS2Len / 256 * 256);
-                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
-                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
+                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
                 copyInParams.blockLen = validS2Len * sizeof(SCORE_T); // byte
                 AscendC::DataCopyPadExtParams<SCORE_T> padParams{true, 0, 0, 0};
                 AscendC::DataCopyPad(
@@ -703,8 +708,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessUint32TopK(const QLICommon::RunIn
                         Duplicate(mrgValueLocal_[topkCountAlign256_ + validTrunkLen / 256 * 256],
                                         zero, LICommon::Align(validTrunkLen,
                                         (uint32_t)256) - validTrunkLen / 256 * 256);
-                        SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
-                        WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
+                        SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
+                        WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT3);
                     }
                     WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                     AscendC::DataCopyPad(mrgValueLocal_[topkCountAlign256_], scoreGm[offset], copyInParams, padParams);

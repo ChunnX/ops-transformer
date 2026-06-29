@@ -80,7 +80,7 @@ public:
 
     __aicore__ inline void operator()(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
                                       LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen,
-                                      uint32_t loopIdx, uint32_t s2LoopNum, bool returnValueFlag)
+                                      uint32_t loopIdx, uint32_t s2LoopNum)
     {
         if (s2LoopNum == 1) {
             topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal,
