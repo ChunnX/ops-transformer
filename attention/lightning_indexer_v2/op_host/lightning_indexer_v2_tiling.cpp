@@ -328,16 +328,16 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                    return ge::GRAPH_FAILED);
     }
     // =============== cmpResidualK 校验 ===============
-    // cmpRatio 不等于 1 且 sparseMode 不等于 0 时 cmpResidualK 必传
+    // cmpRatio 不等于 1 且 maskMode 不等于 0 时 cmpResidualK 必传
     if (opParamInfo_.cmpRatio != nullptr && *opParamInfo_.cmpRatio != 1 &&
         opParamInfo_.maskMode != nullptr && *opParamInfo_.maskMode != 0) {
         OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor == nullptr,
-            OP_LOGE(opName_, "cmp_ratio is not 1 and sparse_mode is not 0, "
+            OP_LOGE(opName_, "cmp_ratio is not 1 and mask_mode is not 0, "
                 "input cmp_residual_k must not be null"),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor != nullptr,
-            OP_LOGE(opName_, "cmp_ratio is 1 or sparse_mode is 0, "
+            OP_LOGE(opName_, "cmp_ratio is 1 or mask_mode is 0, "
                 "input cmp_residual_k must be null"),
             return ge::GRAPH_FAILED);
     }
