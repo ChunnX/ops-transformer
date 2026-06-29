@@ -353,6 +353,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             int32_t currentHits = ubHitCount_.GetValue(localExpertId);
             ubHitCount_.SetValue(localExpertId, currentHits + curExpertCnt);
         }
+        SyncFunc<AscendC::HardEvent::V_MTE2>();
     }
 
     SyncFunc<AscendC::HardEvent::S_MTE3>();
@@ -535,6 +536,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             SyncFunc<AscendC::HardEvent::MTE2_S>();
             float weight = ubMeta_.ReinterpretCast<float>().GetValue(axisKAlign_ + srcTopkIdx);
             ubStageWeights_.SetValue(i, weight);
+            SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
 
         SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
