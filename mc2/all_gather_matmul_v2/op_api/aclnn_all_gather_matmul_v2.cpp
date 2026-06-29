@@ -490,6 +490,9 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
 
     OP_LOGD("X1 is %s.", x1->ToString().GetString());
     OP_LOGD("X2 is %s.", x2->ToString().GetString());
+    OP_LOGI("[AllGatherMatmulV2][ADDR_TRACE] x1Addr=0x%llx x2Addr=0x%llx outputAddr=0x%llx workspaceSize=%lu",
+            (uint64_t)x1->GetTensor()->GetAddr(), (uint64_t)x2->GetTensor()->GetAddr(),
+            (uint64_t)output->GetTensor()->GetAddr(), workspaceSize ? *workspaceSize : 0);
 
     if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
         auto retScaleChk = CheckScale(x1Scale, x2Scale, quantScale);
