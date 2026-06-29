@@ -49,11 +49,11 @@ namespace GROUPED_MATMUL {
     template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType, \
               typename perTokenScaleType, typename biasType, typename yType,                   \
               GMM_WQ_BASIC_BLOCK_TEMPLATE_CLASS BasicBlock, const WqmmConfig &wqmmConfig,      \
-              const VecAntiQuantConfig &vecConfig>
+              const VecAntiQuantConfig &vecConfig, bool isSingleMultiSingle>
 
 #define GMM_WQ_RESPLIT_CONTROLLER_CLASS                                                                              \
     GMMWeightQuantResplitController<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, \
-                                    BasicBlock, wqmmConfig, vecConfig>
+                                    BasicBlock, wqmmConfig, vecConfig, isSingleMultiSingle>
 
 GMM_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 class GMMWeightQuantResplitController {
@@ -71,7 +71,7 @@ private:
                                              BasicBlockControlParam &ctrlParam, uint64_t basicBlockCount,
                                              uint64_t basicBlockSize);
     __aicore__ inline uint64_t GetSplitValueFromGroupList(uint64_t groupIdx);
-    __aicore__ inline void UpdateGmAddr(uint64_t mSize, uint64_t kSize, uint64_t nSize);
+    __aicore__ inline void UpdateGmAddr(uint64_t groupIdx, uint64_t mSize, uint64_t kSize, uint64_t nSize);
     __aicore__ inline void PrefetchA(uint64_t mSize, uint64_t kSize);
     __aicore__ inline uint64_t GetSwitchedProcessId(const BasicBlockControlParam &ctrlParam);
 
@@ -86,6 +86,9 @@ private:
     __gm__ yType *yGm_;
     __gm__ perTokenScaleType *perTokenScaleGm_;
     __gm__ scaleType *scaleGm_;
+    GM_ADDR weightTensorPtr_;
+    GM_ADDR antiquantScaleTensorPtr_;
+    GM_ADDR biasTensorPtr_;
     GlobalTensor<int64_t> groupListGm_;
     BasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType, wqmmConfig, vecConfig>
         basicBlock_;
@@ -109,10 +112,13 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Init(
     mmTiling_ = mmTiling;
 
     xGm_ = GetTensorAddr<xType>(0, x);
-    weightGm_ = GetTensorAddr<wType>(0, weight);
-    antiquantScaleGm_ = GetTensorAddr<antiQuantScaleType>(0, antiquantScale);
+    weightTensorPtr_ = weight;
+    antiquantScaleTensorPtr_ = antiquantScale;
+    biasTensorPtr_ = bias;
+    weightGm_ = GetTensorAddr<wType>(0, weightTensorPtr_);
+    antiquantScaleGm_ = GetTensorAddr<antiQuantScaleType>(0, antiquantScaleTensorPtr_);
     antiquantOffsetGm_ = GetTensorAddr<xType>(0, antiquantOffset);
-    biasGm_ = GetTensorAddr<biasType>(0, bias);
+    biasGm_ = GetTensorAddr<biasType>(0, biasTensorPtr_);
     scaleGm_ = GetTensorAddr<scaleType>(0, scale);
     perTokenScaleGm_ = reinterpret_cast<__gm__ perTokenScaleType *>(perTokenScale);
     yGm_ = GetTensorAddr<yType>(0, y);
@@ -175,7 +181,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Process()
             }
             startBasicBlockId = ctrlParam.basicBlockLimit % gmmBaseTiling_->coreNum;
         }
-        UpdateGmAddr(ctrlParam.mSize, offsetParam[0].kSize, offsetParam[0].nSize);
+        UpdateGmAddr(groupIdx, ctrlParam.mSize, offsetParam[0].kSize, offsetParam[0].nSize);
     }
 
     basicBlock_.End(offsetParam[GetSwitchedProcessId(ctrlParam)]);
@@ -247,25 +253,38 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
 }
 
 GMM_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t mSize, uint64_t kSize, uint64_t nSize)
+__aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t groupIdx, uint64_t mSize,
+                                                                     uint64_t kSize, uint64_t nSize)
 {
     xGm_ += mSize * kSize;
-    if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
-                  IsSameType<wType, fp4x2_e1m2_t>::value) {
-        weightGm_ += (nSize * kSize) >> 1;
+    if constexpr (isSingleMultiSingle) {
+        uint64_t nextGroupIdx = groupIdx + 1;
+        if (nextGroupIdx < gmmBaseTiling_->groupNum) {
+            weightGm_ = GetTensorAddr<wType>(nextGroupIdx, weightTensorPtr_);
+            antiquantScaleGm_ = GetTensorAddr<antiQuantScaleType>(nextGroupIdx, antiquantScaleTensorPtr_);
+            if (gmmBaseTiling_->hasBias != 0) {
+                biasGm_ = GetTensorAddr<biasType>(nextGroupIdx, biasTensorPtr_);
+            }
+        }
     } else {
-        weightGm_ += nSize * kSize;
-    }
+        if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
+                      IsSameType<wType, fp4x2_e1m2_t>::value) {
+            weightGm_ += (nSize * kSize) >> 1;
+        } else {
+            weightGm_ += nSize * kSize;
+        }
 
-    if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP || wqmmConfig.antiQuantType == QuantType::MX) {
-        antiquantScaleGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
-        antiquantOffsetGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
-    } else {
-        antiquantScaleGm_ += nSize;
-        antiquantOffsetGm_ += nSize;
-    }
+        if constexpr (wqmmConfig.antiQuantType == QuantType::PER_GROUP || wqmmConfig.antiQuantType == QuantType::MX) {
+            antiquantScaleGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
+            antiquantOffsetGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
+        } else {
+            antiquantScaleGm_ += nSize;
+            antiquantOffsetGm_ += nSize;
+        }
 
-    scaleGm_ += nSize;
+        scaleGm_ += nSize;
+        biasGm_ += nSize;
+    }
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
         perTokenScaleGm_ += mSize * CeilDivide(kSize, static_cast<uint64_t>(gmmBaseTiling_->groupSize));
@@ -273,7 +292,6 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t mS
         perTokenScaleGm_ += mSize;
     }
 
-    biasGm_ += nSize;
     yGm_ += mSize * nSize;
 }
 
