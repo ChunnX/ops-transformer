@@ -204,7 +204,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
         (std::string(opParamInfo_.layOut)) != (std::string(opParamInfo_.layOutKey))),
         OP_LOGE(opName_,  "outside of PA, input attr layout_query and input attr layout_key must be the same,"
                   "but now layout_key is %s, layout_query is %s.",
-        layout_key.c_str(),  layout_query.c_str()), return ge::GRAPH_FAILED);
+        kLayout_.c_str(),  qLayout_.c_str()), return ge::GRAPH_FAILED);
     OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= TOPK_MAX))),
  	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192."),
  	                return ge::GRAPH_FAILED);
