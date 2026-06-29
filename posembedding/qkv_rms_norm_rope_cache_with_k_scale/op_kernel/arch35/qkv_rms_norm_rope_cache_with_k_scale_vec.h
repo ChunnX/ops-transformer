@@ -378,10 +378,17 @@ private:
                                        LocalTensor<float> qkAfterCube, LocalTensor<float> qScale)
     {
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
-        AscendC::VF_CALL<QDynamicQuantD128VfImpl<IS_TND>>(
-            (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
-            (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-            static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(tile.cubeHalfTokenSize));
+        if constexpr (IS_TND) {
+            AscendC::VF_CALL<QDynamicQuantD128TndVfImpl>(
+                (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
+                (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
+                static_cast<uint32_t>(qHeadNum_));
+        } else {
+            AscendC::VF_CALL<QDynamicQuantD128NtdVfImpl>(
+                (__ubuf__ float *)qkAfterCube.GetPhyAddr(), (__ubuf__ fp8_e4m3fn_t *)qFp8.GetPhyAddr(),
+                (__ubuf__ float *)qScale.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
+                static_cast<uint32_t>(qHeadNum_), static_cast<uint32_t>(tile.cubeHalfTokenSize));
+        }
     }
 
     __aicore__ inline void QuantKToFp8(const TileParam &tile,
@@ -399,22 +406,19 @@ private:
                                            LocalTensor<float> qScale)
     {
         const LocalTensor<fp8_e4m3fn_t> qFp8 = qkAfterCube.template ReinterpretCast<fp8_e4m3fn_t>();
-        const uint64_t qFp8SparseRowStride = headDim_ * sizeof(float) / sizeof(fp8_e4m3fn_t);
         if constexpr (IS_TND) {
             DataCopyUbToGm2D(qOutGm_[tile.aivTokenOffset * qHeadNum_ * headDim_], qFp8,
-                             tile.aivTokenSize * qHeadNum_, headDim_, qFp8SparseRowStride, headDim_);
+                             tile.aivTokenSize * qHeadNum_, headDim_, headDim_, headDim_);
             DataCopyUbToGm2D(qScaleGm_[tile.aivTokenOffset * qHeadNum_], qScale,
                              1U, tile.aivTokenSize * qHeadNum_, tile.aivTokenSize * qHeadNum_,
                              tile.aivTokenSize * qHeadNum_);
         } else {
-            for (uint64_t qHeadIdx = 0U; qHeadIdx < qHeadNum_; ++qHeadIdx) {
-                const uint64_t qUbOffset = qHeadIdx * tile.cubeHalfTokenSize * qFp8SparseRowStride;
-                const uint64_t qGmOffset = qHeadIdx * totalTokens_ * headDim_ + tile.aivTokenOffset * headDim_;
-                DataCopyUbToGm2D(qOutGm_[qGmOffset], qFp8[qUbOffset],
-                                 tile.aivTokenSize, headDim_, qFp8SparseRowStride, headDim_);
-            }
+            const uint64_t qScaleNtdHeadStride = AlignUp(tile.aivTokenSize, QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS);
+            DataCopyUbToGm2D(qOutGm_[tile.aivTokenOffset * headDim_], qFp8,
+                             qHeadNum_, tile.aivTokenSize * headDim_, tile.aivTokenSize * headDim_,
+                             totalTokens_ * headDim_);
             DataCopyUbToGm2D(qScaleGm_[tile.aivTokenOffset], qScale,
-                             qHeadNum_, tile.aivTokenSize, tile.aivTokenSize, totalTokens_);
+                             qHeadNum_, tile.aivTokenSize, qScaleNtdHeadStride, totalTokens_);
         }
     }
 
