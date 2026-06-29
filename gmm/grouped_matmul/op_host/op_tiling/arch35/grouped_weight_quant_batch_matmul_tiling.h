@@ -40,6 +40,7 @@ constexpr uint32_t ATTR_GROUP_LIST_TYPE_IDX = 5;
 constexpr uint32_t MAX_X_DIM = 6UL;
 constexpr uint32_t MIN_X_DIM = 2UL;
 constexpr size_t ANTIQUANT_SCALE_DIM_NUM = 4; // MX格式antiquantScale维度数
+constexpr size_t MX_SINGLE_MULTI_SINGLE_SCALE_DIM_NUM = ANTIQUANT_SCALE_DIM_NUM - 1; // 单多单: scale [N, K/64, 2]
 constexpr size_t PENULTIMATE_DIM = 2;         // 倒数第2维
 constexpr size_t ANTEPENULTIMATE_DIM = 3;     // 倒数第3维
 constexpr int64_t MX_GROUP_FACTOR = 2;        // MX格式groupNum计算因子
@@ -205,6 +206,9 @@ public:
     // 对应6-9位 模板自定义组合
     uint16_t templateCustom = 0;
 
+    // 模板参数，表示MxA8W4单多单场景
+    bool isSingleMultiSingle = false;
+
     // 对应10-13位 api常量化保留位
     uint16_t apiConstexpr = 0;
 
@@ -221,6 +225,7 @@ public:
            << " optionInputSituation: " << static_cast<uint32_t>(this->optionInputSituation)
            << " weightFormat: " << static_cast<uint32_t>(this->weightFormat)
            << " templateCustom: " << static_cast<uint32_t>(this->templateCustom)
+           << " isSingleMultiSingle: " << static_cast<uint32_t>(this->isSingleMultiSingle)
            << " apiConstexpr: " << static_cast<uint32_t>(this->apiConstexpr);
         OP_LOGI("GMMWeightQuantBatchMatmul", "tilingKeyConfigure: %s", ss.str().c_str());
         return;
@@ -237,9 +242,14 @@ protected:
     bool CheckCoreNum(const gert::TilingContext *context) const;
     bool SetShapeList(const gert::TilingContext *context);
     bool CheckEmptyTensor(const gert::TilingContext *context) const;
+    bool CheckEmptyTensorSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckEmptyTensorDefault(const gert::TilingContext *context) const;
     bool CheckTensorListSize() const;
     bool CheckTensorDtype(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const ge::DataType &tensorDtype, const std::string &tensorType) const;
+    bool CheckTensorDtypeSingleXMultiWeightSingleY(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
+                                                   const ge::DataType &tensorDtype,
+                                                   const std::string &tensorType) const;
     bool IsNzFormat(const gert::TilingContext *context, uint32_t attrIdx, size_t idx) const;
     bool CheckXAndWeightFormat(const gert::TilingContext *context, size_t idx) const;
     bool CheckNotNullPtr(const gert::TilingContext *context, uint32_t attrIdx, size_t idx) const;
@@ -251,9 +261,16 @@ protected:
     bool CheckTensorDim(const gert::TilingContext *context, size_t idx) const;
     bool CheckTensorShape(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const std::string &tensorType) const;
+    bool CheckTensorShapeSingleXMultiWeightSingleY(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
+                                                   const std::string &tensorType) const;
     bool CheckDimValue(const gert::TilingContext *context, size_t idx) const;
     bool CheckWeightInnerAxisEven(const gert::TilingContext *context, size_t idx) const;
+    bool CheckWeightSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckAntiquantScaleSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckAntiquantOffsetSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
+    bool CheckBiasSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
     bool CheckEveryTensor(const gert::TilingContext *context) const;
+    bool CheckEveryTensorSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
     bool CheckGroupList(const gert::TilingContext *context) const;
     bool AnalyzeAttr(const gert::TilingContext *context);
     bool AnalyzeInput(const gert::TilingContext *context);
@@ -272,10 +289,12 @@ protected:
     bool CheckGroupTypeAndSplitItem() const;
     bool CheckTransposeStatus() const;
     bool SetShapeListSplitMSingleXSingleWeightSingleY(const gert::TilingContext *context);
+    bool SetShapeListSplitMSingleXMultiWeightSingleY(const gert::TilingContext *context);
     bool SetShapeListMultiXMultiWeightMultiY(const gert::TilingContext *context);
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;
     void GetNumOfInputs(const gert::TilingContext *context);
     bool SetAntiquantGroupSize(const gert::TilingContext *context);
+    bool DeriveGroupSizeSingleXMultiWeightSingleY(const gert::TilingContext *context);
     bool DeriveGroupSizeSingle(const gert::TilingContext *context);
     bool DeriveGroupSizeMulti(const gert::TilingContext *context);
     bool GetA16W4MultiScaleShape(const gert::TilingContext *context, uint16_t idx, gert::Shape &scaleShape) const;
@@ -305,6 +324,7 @@ private:
     bool isSingleX_ = true;
     bool isSingleWeight_ = true;
     bool isSingleY_ = true;
+    bool isSingleMultiSingle_ = false;
     bool hasBias_ = false;
     bool weightNzFlag_ = false;
     bool hasAntiquantOffset_ = false;
