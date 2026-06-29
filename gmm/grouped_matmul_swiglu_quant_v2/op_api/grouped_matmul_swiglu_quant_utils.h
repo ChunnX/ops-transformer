@@ -349,6 +349,48 @@ protected:
         return ACLNN_SUCCESS;
     }
 
+    bool IsTransposeLastTwoDimsByStride(const aclTensor *tensor) const
+    {
+        auto shape = tensor->GetViewShape();
+        const int64_t dimNum = static_cast<int64_t>(shape.GetDimNum());
+        if (dimNum < 2) {
+            return false;
+        }
+        auto strides = tensor->GetViewStrides();
+        int64_t lastDim = dimNum - 1;
+        int64_t secondLastDim = dimNum - 2;
+        if (strides[secondLastDim] != 1 || strides[lastDim] != shape.GetDim(secondLastDim)) {
+            return false;
+        }
+
+        int64_t expectedStride = shape.GetDim(lastDim) * shape.GetDim(secondLastDim);
+        for (int64_t batchDim = dimNum - 3; batchDim >= 0; --batchDim) {
+            if (strides[batchDim] != expectedStride) {
+                return false;
+            }
+            expectedStride *= shape.GetDim(batchDim);
+        }
+        return true;
+    }
+
+    op::Shape GetOriginalShapeForPrivateFormat(const aclTensor *tensor) const
+    {
+        auto viewShape = tensor->GetViewShape();
+        const uint32_t dimNum = viewShape.GetDimNum();
+        if (dimNum < 2 || !IsTransposeLastTwoDimsByStride(tensor)) {
+            return viewShape;
+        }
+
+        op::Shape originalShape;
+        originalShape.SetScalar();
+        for (uint32_t i = 0; i < dimNum - 2; ++i) {
+            originalShape.AppendDim(viewShape.GetDim(i));
+        }
+        originalShape.AppendDim(viewShape.GetDim(dimNum - 1));
+        originalShape.AppendDim(viewShape.GetDim(dimNum - 2));
+        return originalShape;
+    }
+
 public:
     void Initialize(const char *apiName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
                     aclOpExecutor **executor)
@@ -383,7 +425,11 @@ public:
         for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
             auto *w = (*gmmDsqParams_.weight)[i];
             if (IsPrivateFormat(w->GetStorageFormat())) {
-                w->SetOriginalShape(w->GetViewShape());
+                if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+                    w->SetOriginalShape(GetOriginalShapeForPrivateFormat(w));
+                } else {
+                    w->SetOriginalShape(w->GetViewShape());
+                }
             }
         }
 
