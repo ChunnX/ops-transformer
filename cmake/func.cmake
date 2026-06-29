@@ -492,6 +492,7 @@ function(add_ops_src_copy)
         "quant_all_reduce;"
         "quant_reduce_scatter;"
         "engram_fetch;"
+        "engram_fetch_wait;"
         "allto_all_matmul;"
         "matmul_allto_all;"
         "attention_to_ffn;"
