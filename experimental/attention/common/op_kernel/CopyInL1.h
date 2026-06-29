@@ -260,9 +260,6 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
-        if (shape.pageStride > 0) {
-            offset = idInBlockTable * shape.pageStride;
-        }
         if (kvLayout == KVLAYOUT::NZ) {
             offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
             
