@@ -641,7 +641,7 @@ class GeneralizedQLIV2:
                 actual_seq_lengths_query = seqused_q
                 self.has_seqused_q = True
             else:
-                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(torch.int32)
             actualSeqLengths_q = actual_seq_lengths_query
 
         if layout_key == "TND":
@@ -663,7 +663,7 @@ class GeneralizedQLIV2:
                 actual_seq_lengths_key = seqused_k
                 self.has_seqused_k = True
             else:
-                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size).to(torch.int32))
+                actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(torch.int32)
             actualSeqLengths_k = actual_seq_lengths_key
 
         elif layout_key == "PA_BBND":
