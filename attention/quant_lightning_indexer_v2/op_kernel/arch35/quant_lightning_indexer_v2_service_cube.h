@@ -275,7 +275,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
             keyL1BufIdx_++;
         }
-        PipeBarrier<PIPE_FIX>();
     } else if (s2BasicBlock_ == 256) {
         // 第一个s2循环 keycache置为false
         if (runInfo.isFirstS2InnerLoop) {
@@ -363,7 +362,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                 isKeyCacheValid_ =false;
             }
         }
-        PipeBarrier<PIPE_FIX>();
     }
 
     CrossCoreSetFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_FIX>(QLIV2Common::ConstInfo::CROSS_CV_EVENT
@@ -618,8 +616,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeL0c(uint64_t s1gL0RealSize, u
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
     if constexpr (IS_MXFP8) {
-        // MXFP8: mmad_mx 硬件指令支持任意 n 值（不要求 16 的倍数）
-        // LoadData 已按实际 s2L0RealSize 加载数据到 L0B，无需对齐或清零
         // MXFP8: 使用 mx_fp8_e4m3_t 类型触发 mmad_mx 硬件指令
         LocalTensor<mx_fp8_e4m3_t> qL0Mx =
             queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET].template ReinterpretCast<mx_fp8_e4m3_t>();
