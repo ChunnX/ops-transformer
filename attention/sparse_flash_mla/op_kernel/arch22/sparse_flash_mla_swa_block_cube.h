@@ -416,7 +416,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                     uint64_t batchStride = (constInfo.oriKvStride0 == 0) ?
                         static_cast<uint64_t>(constInfo.kvSeqSize) * seqStride : constInfo.oriKvStride0;
 
-                    uint64_t curS2 = (uint64_t)info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint;
+                    uint64_t curS2 = (uint64_t)info.s2Idx * constInfo.s2BaseSize + info.s2StartPoint + \
+                        nL1 * N_SPLIT_SIZE;
                     uint64_t offset = (uint64_t)info.bIdx * batchStride + (uint64_t)curS2 * seqStride + \
                         (uint64_t)info.n2Idx * headStride + kL1 * D_SPLIT_SIZE;
                     DataCopy(bL1Tensor, oriKvGm[offset], nd2nzPara);
