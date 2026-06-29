@@ -295,11 +295,6 @@ inline const char *GetTransformerOpApiLibName(void)
     return "libopapi_transformer.so";
 }
 
-inline const char *GetTransformerOpApiLibName(void)
-{
-    return "libopapi_transformer.so";
-} 
-
 inline const char *GetCustOpApiLibName(void)
 {
     return "libcust_opapi.so";
