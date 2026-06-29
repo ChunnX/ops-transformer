@@ -54,6 +54,9 @@ private:
                                            const GMMInputParamsInfo &paramsInputInfo) const;
     ge::graphStatus CheckShapeForTensorList(const gert::InferShapeContext *context, size_t gmm_index,
                                             const std::string &tensorType, const GMMAttrs &gmmAttrs) const;
+    ge::graphStatus CheckShapeForTensorListAtIndex(const gert::InferShapeContext *context, size_t gmm_index,
+                                                    const std::string &tensorType, const GMMAttrs &gmmAttrs,
+                                                    size_t tensorIdx) const;
     ge::graphStatus CheckScenarioValid(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs) const;
     ge::graphStatus GetNumOfInputs(const gert::InferShapeContext *context, GMMInputParamsInfo &paramsInputInfo) const;
     ge::graphStatus CheckTensorListSizeMultiScenario(const gert::InferShapeContext *context,
@@ -75,9 +78,10 @@ private:
     bool IsA16W8(const ge::DataType xDtype, const ge::DataType weightDtype) const;
     bool IsA16F8(const ge::DataType xDtype, const ge::DataType weightDtype) const;
     bool IsA16W4(const ge::DataType xDtype, const ge::DataType weightDtype) const;
+    bool IsMultiTensorWeight(const gert::InferShapeContext *context) const;
 
 private:
-    int64_t groupNum_; //当前含义为M分组数g
+    int64_t groupNum_;
     int64_t xKDim_;
     int64_t xMDim_;
     int64_t weightKDim_;
@@ -88,6 +92,8 @@ private:
     ge::DataType weightDtype_ = ge::DT_UNDEFINED;
     bool hasBias_ = false;
     bool hasAntiquantOffset_ = false;
+    bool isMultiTensorWeight_ = false;
+    size_t numWeight_ = 0;
 };
 
 }  // namespace ops
