@@ -23,13 +23,20 @@ constexpr uint32_t THREADS_FOR_64 = 1024;
 template <typename IDX_T>
 static constexpr uint32_t THREADS = (sizeof(IDX_T) == 4) ? THREADS_FOR_32 : THREADS_FOR_64;
 
-// ===== VF kernel: token-level grid-stride, key+value in one loop =====
+// Magic/shift packed in UB to stay under asc_vf_call 112B limit
+struct DivMagicUb {
+    int64_t magicK, shiftK;
+    int64_t magicV, shiftV;
+    int64_t magicBlk, shiftBlk;
+};
+
+// ===== VF kernel =====
 template <typename T_INDEX, bool IS_CUMSUM, bool HAS_SEQOFFSET>
 __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvNdContigVf(
     int64_t batchCount, int64_t numTokens,
     int32_t blockSize, int32_t numblkTabCol, int32_t tokenSizeK, int32_t tokenSizeV,
     int32_t numBlocks,
-    int64_t magicBlk, int64_t shiftBlk,
+    __ubuf__ DivMagicUb *dm,
     __gm__ uint8_t *keyCache, __gm__ uint8_t *valueCache,
     __gm__ T_INDEX *blockTables, __gm__ T_INDEX *seqLens, __gm__ T_INDEX *seqOffset,
     __gm__ uint8_t *keyOut, __gm__ uint8_t *valueOut)
@@ -65,17 +72,24 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
         uint64_t totalMax = (totalK > totalV) ? totalK : totalV;
         int64_t outK = batchOffset * static_cast<int64_t>(tk);
         int64_t outV = batchOffset * static_cast<int64_t>(tv);
-        int64_t blkKS = static_cast<int32_t>(blockSize) * tokenSizeK;
-        int64_t blkVS = static_cast<int32_t>(blockSize) * tokenSizeV;
+        int64_t blkKS = blockSize * tokenSizeK;
+        int64_t blkVS = blockSize * tokenSizeV;
         int64_t btBase = i * static_cast<int64_t>(numblkTabCol);
+
+        uint64_t magicK   = static_cast<uint64_t>(dm->magicK);
+        uint64_t shiftK   = static_cast<uint64_t>(dm->shiftK);
+        uint64_t magicV   = static_cast<uint64_t>(dm->magicV);
+        uint64_t shiftV   = static_cast<uint64_t>(dm->shiftV);
+        uint64_t magicBlk = static_cast<uint64_t>(dm->magicBlk);
+        uint64_t shiftBlk = static_cast<uint64_t>(dm->shiftBlk);
 
         uint64_t stride = static_cast<uint64_t>(gridDim.x * blockDim.x);
         for (uint64_t idx = static_cast<uint64_t>(blockIdx.x * blockDim.x + threadIdx.x);
              idx < totalMax; idx += stride) {
             if (idx < totalK) {
-                uint64_t j   = idx / tk;
+                uint64_t j   = Simt::UintDiv(idx, magicK, shiftK);
                 uint64_t sub = idx - j * tk;
-                uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), static_cast<uint64_t>(shiftBlk));
+                uint64_t blk = Simt::UintDiv(j, magicBlk, shiftBlk);
                 uint64_t off = j - blk * bSz;
 
                 int64_t tidx = seqOff + static_cast<int64_t>(blk);
@@ -85,17 +99,13 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
                     bid = static_cast<int64_t>(blockTables[btBase + tidx]);
                     zf = (bid < 0 || bid >= numBlocks);
                 }
-                if (zf) {
-                    keyOut[outK + static_cast<int64_t>(idx)] = 0;
-                } else {
-                    keyOut[outK + static_cast<int64_t>(idx)] =
-                        keyCache[bid * blkKS + static_cast<int64_t>(off) * tokenSizeK + static_cast<int64_t>(sub)];
-                }
+                keyOut[outK + static_cast<int64_t>(idx)] =
+                    zf ? 0 : keyCache[bid * blkKS + static_cast<int64_t>(off) * tokenSizeK + static_cast<int64_t>(sub)];
             }
             if (idx < totalV) {
-                uint64_t j   = idx / tv;
+                uint64_t j   = Simt::UintDiv(idx, magicV, shiftV);
                 uint64_t sub = idx - j * tv;
-                uint64_t blk = Simt::UintDiv(j, static_cast<uint64_t>(magicBlk), static_cast<uint64_t>(shiftBlk));
+                uint64_t blk = Simt::UintDiv(j, magicBlk, shiftBlk);
                 uint64_t off = j - blk * bSz;
 
                 int64_t tidx = seqOff + static_cast<int64_t>(blk);
@@ -105,12 +115,8 @@ __simt_vf__ __aicore__ __launch_bounds__(THREADS<T_INDEX>) inline void GatherKvN
                     bid = static_cast<int64_t>(blockTables[btBase + tidx]);
                     zf = (bid < 0 || bid >= numBlocks);
                 }
-                if (zf) {
-                    valueOut[outV + static_cast<int64_t>(idx)] = 0;
-                } else {
-                    valueOut[outV + static_cast<int64_t>(idx)] =
-                        valueCache[bid * blkVS + static_cast<int64_t>(off) * tokenSizeV + static_cast<int64_t>(sub)];
-                }
+                valueOut[outV + static_cast<int64_t>(idx)] =
+                    zf ? 0 : valueCache[bid * blkVS + static_cast<int64_t>(off) * tokenSizeV + static_cast<int64_t>(sub)];
             }
         }
 
@@ -164,8 +170,18 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Init(
 template <typename T, typename T_INDEX, bool isC, bool isS>
 __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
 {
-    uint64_t magicBlk = 0, shiftBlk = 0;
-    GetUintDivMagicAndShift(magicBlk, shiftBlk, static_cast<uint64_t>(cacheBlockSize_));
+    LocalMemAllocator<Hardware::UB> ubAlloc;
+    LocalTensor<DivMagicUb> dmLocal = ubAlloc.Alloc<DivMagicUb>(1);
+    __ubuf__ DivMagicUb *dm = (__ubuf__ DivMagicUb *)dmLocal.GetPhyAddr();
+
+    uint64_t m = 0, s = 0;
+    GetUintDivMagicAndShift(m, s, static_cast<uint64_t>(hiddenSizeK_));
+    dm->magicK = static_cast<int64_t>(m); dm->shiftK = static_cast<int64_t>(s);
+    GetUintDivMagicAndShift(m, s, static_cast<uint64_t>(hiddenSizeV_));
+    dm->magicV = static_cast<int64_t>(m); dm->shiftV = static_cast<int64_t>(s);
+    GetUintDivMagicAndShift(m, s, static_cast<uint64_t>(cacheBlockSize_));
+    dm->magicBlk = static_cast<int64_t>(m); dm->shiftBlk = static_cast<int64_t>(s);
+    DataSyncBarrier<MemDsbT::UB>();
 
     asc_vf_call<GatherKvNdContigVf<T_INDEX, isC, isS>>(dim3(THREADS<T_INDEX>),
         batchCount_, numTokens_,
@@ -174,7 +190,7 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isC, isS>::Process()
         static_cast<int32_t>(hiddenSizeK_),
         static_cast<int32_t>(hiddenSizeV_),
         static_cast<int32_t>(numBlocks_),
-        static_cast<int64_t>(magicBlk), static_cast<int64_t>(shiftBlk),
+        dm,
         keyCacheGm_, valueCacheGm_, blockTablesGm_, seqLensGm_, seqOffsetGm_,
         keyOutGm_, valueOutGm_);
 }
