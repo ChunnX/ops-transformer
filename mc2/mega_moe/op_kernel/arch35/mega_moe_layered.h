@@ -226,15 +226,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     serverId_ = rankId_ / rankPerServer_;
     rankInServer_ = rankId_ % rankPerServer_;
 
-    params_.peermemInfo.hcomm = &hcomm_;
-    params_.peermemInfo.mc2Context = mc2Context_;
+    params_.hcomm = &hcomm_;
+    params_.mc2Context = mc2Context_;
     //todo:-------------------------------------------
 
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
-    params_.epGmAddr = (GM_ADDR)mc2Context_->urmacclBuffer[rankId_];
-    params_.rankId = rankId_;
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
     params_.bGmAddr = GetTensorAddr(0, weight1);
