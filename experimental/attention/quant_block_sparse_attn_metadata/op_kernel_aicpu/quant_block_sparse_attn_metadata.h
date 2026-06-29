@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_block_sparse_attention_metadata.h
+ * \file quant_block_sparse_attn_metadata.h
  * \brief
  */
 
-#ifndef QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
-#define QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
+#ifndef QUANT_BLOCK_SPARSE_ATTN_METADATA_H
+#define QUANT_BLOCK_SPARSE_ATTN_METADATA_H
 
 #include <cstdint>
 #ifndef __CCE_AICORE__
@@ -76,4 +76,4 @@ static_assert(QBSA_META_SIZE * sizeof(QBSA_METADATA_T) >=
 
 } // namespace optiling
 
-#endif // QUANT_BLOCK_SPARSE_ATTENTION_METADATA_H
+#endif // QUANT_BLOCK_SPARSE_ATTN_METADATA_H

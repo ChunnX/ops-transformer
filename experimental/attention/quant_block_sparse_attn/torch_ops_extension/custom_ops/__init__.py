@@ -15,7 +15,7 @@ __all__ = list(module for _, module, _ in pkgutil.iter_modules([os.path.dirname(
 # 导入so 和 python
 from . import custom_ops_lib
 from .converter import npu_quant_block_sparse_attn
-from .converter import npu_quant_block_sparse_attention_metadata
+from .converter import npu_quant_block_sparse_attn_metadata
 
 """
 import custom ops as torch_npu ops to support the following usage:

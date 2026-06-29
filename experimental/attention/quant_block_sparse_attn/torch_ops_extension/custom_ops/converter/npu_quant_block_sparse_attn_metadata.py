@@ -15,8 +15,8 @@ from torchair.ge._ge_graph import Tensor, TensorSpec
 from torchair.ge import attr
 
 
-@register_fx_node_ge_converter(torch.ops.custom.npu_quant_block_sparse_attention_metadata.default)
-def convert_npu_quant_block_sparse_attention_metadata(
+@register_fx_node_ge_converter(torch.ops.custom.npu_quant_block_sparse_attn_metadata.default)
+def convert_npu_quant_block_sparse_attn_metadata(
     sparse_seq_len: Tensor,
     num_heads_q: int,
     num_heads_kv: int,
@@ -28,7 +28,7 @@ def convert_npu_quant_block_sparse_attention_metadata(
     seqused_kv: Optional[Tensor] = None,
     batch_size: int = 0,
     sparse_block_size_q: int = 128,
-    sparse_block_size_kv: int = 128,
+    sparse_block_size_k: int = 128,
     quant_mode: int = 1,
     mask_mode: int = 3,
     max_seqlen_q: int = 0,
@@ -43,7 +43,7 @@ def convert_npu_quant_block_sparse_attention_metadata(
     aiv_core_num = stream_info.get("vector_core_num")
     soc_version = torch.npu.get_device_properties().name
     return torchair.ge.custom_op(
-        "QuantBlockSparseAttentionMetadata",
+        "QuantBlockSparseAttnMetadata",
         inputs={
             "sparse_seq_len": sparse_seq_len,
             "cu_seqlens_q": cu_seqlens_q,
@@ -57,7 +57,7 @@ def convert_npu_quant_block_sparse_attention_metadata(
             "num_heads_kv": attr.Int(num_heads_kv),
             "head_dim": attr.Int(head_dim),
             "sparse_block_size_q": attr.Int(sparse_block_size_q),
-            "sparse_block_size_kv": attr.Int(sparse_block_size_kv),
+            "sparse_block_size_k": attr.Int(sparse_block_size_k),
             "quant_mode": attr.Int(quant_mode),
             "mask_mode": attr.Int(mask_mode),
             "max_seqlen_q": attr.Int(max_seqlen_q),

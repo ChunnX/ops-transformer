@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_block_sparse_attention_metadata_aicpu.cpp
+ * \file quant_block_sparse_attn_metadata_aicpu.cpp
  * \brief
  */
 
@@ -18,13 +18,13 @@
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
-#include "quant_block_sparse_attention_metadata_aicpu.h"
+#include "quant_block_sparse_attn_metadata_aicpu.h"
 
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
 
 namespace aicpu {
-uint32_t QuantBlockSparseAttentionMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t QuantBlockSparseAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
@@ -35,7 +35,7 @@ uint32_t QuantBlockSparseAttentionMetadataCpuKernel::Compute(CpuKernelContext &c
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
     context_ = &ctx;
     // input
@@ -60,7 +60,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "num_heads_kv", numHeadsKv_);
     GetAttrValueOpt(ctx, "head_dim", headDim_);
     GetAttrValueOpt(ctx, "sparse_block_size_q", sparseBlockSizeQ_);
-    GetAttrValueOpt(ctx, "sparse_block_size_kv", sparseBlockSizeKv_);
+    GetAttrValueOpt(ctx, "sparse_block_size_k", sparseBlockSizeK_);
     GetAttrValueOpt(ctx, "quant_mode", quantMode_);
     GetAttrValueOpt(ctx, "mask_mode", maskMode_);
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
@@ -69,12 +69,12 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     return (ParamsCheck() && ParamsInit());
 }
 
-bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsCheck()
+bool QuantBlockSparseAttnMetadataCpuKernel::ParamsCheck()
 {
     return CheckTensorData();
 }
 
-bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
+bool QuantBlockSparseAttnMetadataCpuKernel::CheckTensorData()
 {
     // REQUIRED_INPUT tensor check
     if (sparseSeqLen_ == nullptr) {
@@ -98,7 +98,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::CheckTensorData()
     return true;
 }
 
-bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
+bool QuantBlockSparseAttnMetadataCpuKernel::ParamsInit()
 {
     if (sparseSeqLen_ == nullptr || sparseSeqLen_->GetTensorShape() == nullptr || sparseSeqLen_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("sparseSeqLen must be a valid tensor");
@@ -117,7 +117,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
         return false;
     }
     mBaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeQ_, 1));
-    s2BaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeKv_, 1));
+    s2BaseSize_ = static_cast<uint32_t>(std::max(sparseBlockSizeK_, 1));
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;
     }
@@ -149,7 +149,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const
+uint32_t QuantBlockSparseAttnMetadataCpuKernel::GetRowBlockNum(uint32_t bIdx, uint32_t s1Idx) const
 {
     if (bIdx >= static_cast<uint32_t>(batchSize_) || s1Idx >= Qbmax_ || sparseSeqLen_ == nullptr ||
         sparseSeqLen_->GetData() == nullptr) {
@@ -160,7 +160,7 @@ uint32_t QuantBlockSparseAttentionMetadataCpuKernel::GetRowBlockNum(uint32_t bId
     return sparseSeqLenData[idx] > 0 ? static_cast<uint32_t>(sparseSeqLenData[idx]) : 0U;
 }
 
-uint64_t QuantBlockSparseAttentionMetadataCpuKernel::GetBatchBlockNum(uint32_t bIdx) const
+uint64_t QuantBlockSparseAttnMetadataCpuKernel::GetBatchBlockNum(uint32_t bIdx) const
 {
     uint64_t batchBlockNum = 0U;
     for (uint32_t s1Idx = 0U; s1Idx < Qbmax_; ++s1Idx) {
@@ -169,7 +169,7 @@ uint64_t QuantBlockSparseAttentionMetadataCpuKernel::GetBatchBlockNum(uint32_t b
     return batchBlockNum;
 }
 
-uint64_t QuantBlockSparseAttentionMetadataCpuKernel::CalcBlockNum() const
+uint64_t QuantBlockSparseAttnMetadataCpuKernel::CalcBlockNum() const
 {
     uint64_t blockNumPerHead = 0U;
     for (uint32_t bIdx = 0U; bIdx < static_cast<uint32_t>(batchSize_); ++bIdx) {
@@ -178,7 +178,7 @@ uint64_t QuantBlockSparseAttentionMetadataCpuKernel::CalcBlockNum() const
     return blockNumPerHead * static_cast<uint32_t>(numHeadsQ_);
 }
 
-bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext &assignContext) const
+bool QuantBlockSparseAttnMetadataCpuKernel::AdvanceToValidRow(AssignContext &assignContext) const
 {
     if (assignContext.isFinished) {
         return false;
@@ -206,7 +206,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::AdvanceToValidRow(AssignContext
     return false;
 }
 
-void QuantBlockSparseAttentionMetadataCpuKernel::AssignByBatch(AssignContext &assignContext) const
+void QuantBlockSparseAttnMetadataCpuKernel::AssignByBatch(AssignContext &assignContext) const
 {
     if (assignContext.isFinished) {
         return;
@@ -237,7 +237,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::AssignByBatch(AssignContext &as
     assignContext.isFinished = true;
 }
 
-void QuantBlockSparseAttentionMetadataCpuKernel::AssignByRow(AssignContext &assignContext) const
+void QuantBlockSparseAttnMetadataCpuKernel::AssignByRow(AssignContext &assignContext) const
 {
     while (!assignContext.isFinished) {
         if (!AdvanceToValidRow(assignContext)) {
@@ -254,7 +254,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::AssignByRow(AssignContext &assi
     }
 }
 
-void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitResult &result)
+void QuantBlockSparseAttnMetadataCpuKernel::ScheduleFa(uint64_t blockNum, SplitResult &result)
 {
     AssignContext assignContext {};
     assignContext.unassignedBlock = blockNum;
@@ -299,7 +299,7 @@ void QuantBlockSparseAttentionMetadataCpuKernel::ScheduleFa(uint64_t blockNum, S
     result.usedCoreNum = std::max(result.usedCoreNum, 1U);
 }
 
-bool QuantBlockSparseAttentionMetadataCpuKernel::ScheduleSection(SplitResult &splitRes)
+bool QuantBlockSparseAttnMetadataCpuKernel::ScheduleSection(SplitResult &splitRes)
 {
     uint64_t blockNum = CalcBlockNum();
     if (blockNum == 0U) {
@@ -314,7 +314,7 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::ScheduleSection(SplitResult &sp
     return true;
 }
 
-bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
+bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const SplitResult &splitRes)
 {
     if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
@@ -355,8 +355,8 @@ bool QuantBlockSparseAttentionMetadataCpuKernel::GenMetadata(const SplitResult &
 }
 
 namespace {
-static const char *kernelType = "QuantBlockSparseAttentionMetadata";
-REGISTER_CPU_KERNEL(kernelType, QuantBlockSparseAttentionMetadataCpuKernel);
+static const char *kernelType = "QuantBlockSparseAttnMetadata";
+REGISTER_CPU_KERNEL(kernelType, QuantBlockSparseAttnMetadataCpuKernel);
 } // namespace
 
 } // namespace aicpu
