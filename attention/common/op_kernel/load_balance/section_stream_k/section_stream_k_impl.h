@@ -214,7 +214,8 @@ private:
     static inline bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SectionStreamKImplResult &result);
     inline void RecordFDInfo(const ComputeContext &computeContext, const AssignContext &assignContext,
         SectionStreamKImplResult &result);
-    inline bool CheckChooseWithFd(const SectionStreamKImplResult &noFd, const SectionStreamKImplResult &withFd);
+    inline bool CheckChooseWithFd(const SectionStreamKImplResult &noFd, const SectionStreamKImplResult &withFd,
+        uint32_t sectionNum);
 
     // assign
     inline void AssignByBatch(const ComputeContext &computeContext, AssignContext &assignContext);
@@ -292,13 +293,30 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
         }
     }
 
-    // 计算所有head的最大数据量，用于判断是否需要开启section切分
+    uint32_t maxGS1Size = 0U;
+    for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        uint32_t gS1Size = baseInfo.GetGroupSize() * baseInfo.GetQuerySeqSize(bIdx);
+        if (gS1Size > maxGS1Size) {
+            maxGS1Size = gS1Size;
+        }
+    }
+    if (maxGS1Size <= m_param.mBaseSize) {
+        gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
+        gridInfo.sectionNum = 1;
+        return;
+    }
+
+    // 计算所有head的最大数据量（K+V+Q+O），用于判断是否需要开启section切分
     int64_t maxHeadTokenCost = 0U;
     int64_t headDim = static_cast<int64_t>(baseInfo.GetHeadDim());
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        int64_t s1Size = static_cast<int64_t>(baseInfo.GetQuerySeqSize(bIdx));
         int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
-        int64_t tokenCost = s2Size * headDim *
-            static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
+        int64_t kvCost = s2Size * headDim *
+            static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;     // 2: K和V两份数据
+        int64_t qoCost = s1Size * headDim *
+            static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetQueryDataType())) * 2L;   // 2: Q和O两份数据
+        int64_t tokenCost = kvCost + qoCost;
         if (tokenCost > maxHeadTokenCost) {
             maxHeadTokenCost = tokenCost;
         }
@@ -315,10 +333,13 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     int64_t tokenSize = 0L;
     uint32_t bn2Idx = 0U;
     for (uint32_t bIdx = 0; bIdx < baseInfo.GetBatchSize(); bIdx++) {
+        int64_t s1Size = static_cast<int64_t>(baseInfo.GetQuerySeqSize(bIdx));
         int64_t s2Size = static_cast<int64_t>(baseInfo.GetKvSeqSize(bIdx));
         for (uint32_t n2Idx = 0; n2Idx < baseInfo.GetKvHeadNum(); ++n2Idx) {
             int64_t tokenCost = s2Size * headDim *
-                static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L;  // 2: K和V两份数据
+                static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetKvDataType())) * 2L +    // 2: K和V两份数据
+                s1Size * headDim *
+                static_cast<int64_t>(GetDataTypeByteSize(baseInfo.GetQueryDataType())) * 2L;   // 2: Q和O两份数据
             if (!IsWithinTolerance(static_cast<int64_t>(m_param.l2Byte), 0L, tokenSize + tokenCost) && tokenSize != 0) {
                 gridInfo.sectionBn2Idx.emplace_back(bn2Idx);
                 gridInfo.sectionNum++;
@@ -579,7 +600,7 @@ SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &c
         }
         tmpResult.Clear();
 
-        if (m_param.fdOn) {
+        if (m_param.fdOn || computeContext.gridInfo.sectionNum > 1U) {
             ScheduleFa(faWithFdConfig, computeContext, tmpResult);
             if (tmpResult.maxCost < bestResultWithFd.maxCost) {
                 bestResultWithFd = tmpResult;
@@ -590,7 +611,8 @@ SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &c
         }
     }
     ScheduleFd(deviceInfo.aivCoreMaxNum, bestResultWithFd);
-    return (CheckChooseWithFd(bestResultNoFd, bestResultWithFd)) ? bestResultWithFd : bestResultNoFd;
+    return (CheckChooseWithFd(bestResultNoFd, bestResultWithFd, computeContext.gridInfo.sectionNum)) ?
+        bestResultWithFd : bestResultNoFd;
 }
 
 inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const ComputeContext &computeContext,
@@ -751,13 +773,20 @@ inline void SectionStreamKImpl::RecordFDInfo(const ComputeContext &computeContex
 }
 
 inline bool SectionStreamKImpl::CheckChooseWithFd(const SectionStreamKImplResult &noFd,
-    const SectionStreamKImplResult &withFd)
+    const SectionStreamKImplResult &withFd, uint32_t sectionNum)
 {
     if (!m_param.fdOn) {
         return false;
     }
 
+    if (sectionNum > 1U) {
+        return true;
+    }
+
     const int64_t full_block_cost = m_param.costFunc(m_param.mBaseSize, m_param.s2BaseSize);
+    if (noFd.maxCost <= m_param.fdLeastBlock * full_block_cost) {
+        return false;
+    }
     int64_t fdTolerance = m_param.fdTolerance * full_block_cost;
     return noFd.maxCost - fdTolerance > withFd.maxCost;        // using minus in case overflow
 }
