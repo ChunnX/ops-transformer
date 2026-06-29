@@ -1505,13 +1505,29 @@ private:
          CATLASS_DEVICE
         PeermemInfo(const Params & params, const HcclShmem<true> & shmem)
         {
+            const int64_t segSize = static_cast<int64_t>(shmem.SegmentSize());
+            const int64_t EP = params.EP;
+            const int64_t E = params.expertPerRank;
+            const int64_t MB = static_cast<int64_t>(MB_SIZE);
+
+            // tokenPerExpert: TPE = EP × CeilAlign(EP × E, 128) × 4B
+            int64_t tpeNeed = EP * AlignUp(EP * E, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize = (tpeNeed > 2 * MB) ? tpeNeed : 2 * MB;
+
+            // Dispatch Flag: EP×E×64B，每 slot 占 64B cache line
+            int64_t flagSize = (EP * E * 64 > MB) ? EP * E * 64 : MB;
+
+            // Allgather Flag: EP×64B
+            int64_t allgatherFlagSize = (EP * 64 > MB) ? EP * 64 : MB;
+
+            // 从尾部向前布局固定段
+            offsetPeerTokenPerExpert = segSize - tokenPerExpertSize;
+            offsetFlag = offsetPeerTokenPerExpert - flagSize;
+            offsetAllgatherFlag = offsetFlag - allgatherFlagSize;
+
+            // offsetA 与 offsetD 1:1 切分剩余空间
             offsetA = 0;
-            offsetD = offsetA + AlignUp(shmem.SegmentSize() / 3, 512);
-            offsetPeerTokenPerExpert = shmem.SegmentSize() - 2 * MB_SIZE;
-            // Dispatch Flag 区：固定 1 MB，位于 offsetPeerTokenPerExpert 之前
-            offsetFlag = offsetPeerTokenPerExpert - MB_SIZE;
-            // Allgather Flag 区：固定 1 MB，位于 offsetFlag 之前
-            offsetAllgatherFlag = offsetFlag - MB_SIZE;
+            offsetD = AlignUp(offsetAllgatherFlag / 2, 512);
         }
     };
 
