@@ -16,6 +16,8 @@
 
 #include <torch/extension.h>
 #include <acl/acl_rt.h>
+#include <cstring>
+#include <unordered_map>
 #include "hccl_common.h"
 
 namespace op_api {
@@ -28,6 +30,9 @@ constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
+constexpr uint32_t EP_RANK_OFFSET_STEP = 8192;
+constexpr uint64_t DEFAULT_CONTEXT_COPY_OFFSET = 0;
+constexpr uint32_t MAX_CONTEXT_TAG_SIZE = 255;
 
 // ======================== 通信上下文 ==========================
 struct CommContext {
@@ -95,6 +100,11 @@ class KfcContextBuilder {
 public:
     void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor)
     {
+        if (IsAscend950()) {
+            BuildA5ContextTensor(group, worldSize, cclBufferSize, contextTensor);
+            return;
+        }
+
         CommContext mc2ContextHost;
         GetMc2Context(mc2ContextHost, worldSize, cclBufferSize, group.c_str());
 
@@ -102,6 +112,30 @@ public:
     }
 
 private:
+    static bool IsAscend950()
+    {
+        const char *socName = GetSocName();
+        return socName != nullptr && std::strstr(socName, "Ascend950") != nullptr;
+    }
+
+    static int64_t context_tensor_size()
+    {
+        return (sizeof(CommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
+    }
+
+    static at::Tensor CreateTensorFromContext(void *ctx)
+    {
+        TORCH_CHECK(ctx != nullptr, "Create A5 Mc2Context tensor failed: context pointer is nullptr.");
+        auto options = at::TensorOptions().dtype(at::kInt).device(c10::DeviceType::PrivateUse1);
+        return at::from_blob(ctx, {context_tensor_size()}, [](void *) {}, options);
+    }
+
+    static void ResetTensorToContext(at::Tensor &contextTensor, void *ctx)
+    {
+        at::Tensor contextFromEngine = CreateTensorFromContext(ctx);
+        contextTensor.set_(contextFromEngine);
+    }
+
     void CollectRankBuffers(HcclComm &comm, int64_t worldSize, int64_t &cclBufferSize, CommContext &mc2Context)
     {
         uint32_t ctxIndex = 0;
@@ -172,6 +206,248 @@ private:
         TORCH_CHECK(ret == 0, "getHcclKfcFreeOpArgs failed, ret:", ret);
         CollectRankBuffers(commHandle, worldSize, cclBufferSize, mc2ContextHost);
     }
+
+    void BuildA5ContextTensor(const std::string &group, int64_t worldSize, int64_t &cclBufferSize,
+                              at::Tensor &contextTensor)
+    {
+        ASCEND_LOGI("Start to get A5 Mc2Context Tensor, group: %s", group.c_str());
+        InitHcclEngineCtxFunctions();
+
+        HcclComm hcclHandle;
+        GetA5CommHandle(group, hcclHandle);
+
+        std::string mc2ContextTag = group + "moe_distribute_v2";
+        TORCH_CHECK(mc2ContextTag.size() <= MAX_CONTEXT_TAG_SIZE,
+                    "Mc2ContextTag is too long, max size is ", MAX_CONTEXT_TAG_SIZE,
+                    ", got ", mc2ContextTag.size());
+
+        CommEngine engine = CommEngine::COMM_ENGINE_AIV;
+        void *ctx = nullptr;
+        uint64_t hcclBuffSize = 0;
+        uint64_t ctxSize = 0;
+        auto hcclRet = HcclEngineCtxGetFunc(hcclHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize);
+        if (hcclRet != HCCL_SUCCESS) {
+            CommProtocol protocol;
+            GetA5CommProtocol(hcclHandle, protocol);
+
+            CommContext commContextStruct;
+            CreateA5Context(hcclHandle, mc2ContextTag, engine, protocol, worldSize, ctx,
+                            hcclBuffSize, commContextStruct);
+        } else {
+            GetA5HcclBufferSize(hcclHandle, hcclBuffSize);
+        }
+
+        cclBufferSize = static_cast<int64_t>(hcclBuffSize);
+        ResetTensorToContext(contextTensor, ctx);
+        ASCEND_LOGI("Get A5 Mc2Context Tensor Success, group: %s, ccl_buffer_size: %d",
+                    group.c_str(), cclBufferSize);
+    }
+
+    void GetA5CommHandle(const std::string &group, HcclComm &hcclHandle)
+    {
+        auto hcclRet = HcomGetCommHandleByGroupFunc(group.c_str(), &hcclHandle);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL handle failed, group: ", group.c_str(),
+                    ", ret: ", hcclRet);
+        ASCEND_LOGI("Get HCCL communication handle success hcclHandle is: %p", hcclHandle);
+    }
+
+    void CreateA5Context(const HcclComm &commHandle, const std::string &mc2ContextTag,
+                         const CommEngine &engine, const CommProtocol &protocol, int64_t expectedWorldSize,
+                         void *&ctx, uint64_t &hcclBuffSize, CommContext &commContextStruct)
+    {
+        uint64_t commContextSize = sizeof(CommContext);
+        auto hcclRet = HcclEngineCtxCreateFunc(commHandle, mc2ContextTag.c_str(), engine, commContextSize, &ctx);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Create HCCL context memory failed, ret: ", hcclRet);
+
+        hcclRet = HcclGetRankIdFunc(commHandle, &commContextStruct.epRankId);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank ID failed, ret: ", hcclRet);
+
+        uint32_t rankSize = 0;
+        hcclRet = HcclGetRankSizeFunc(commHandle, &rankSize);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
+        TORCH_CHECK(expectedWorldSize == static_cast<int64_t>(rankSize),
+                    "worldSize: ", expectedWorldSize, " != HCCL rank size: ", rankSize);
+
+        GetA5HcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
+
+        hcclRet = HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), &commContextStruct,
+                                        commContextSize, DEFAULT_CONTEXT_COPY_OFFSET);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy context from host to device failed, ret: ", hcclRet);
+    }
+
+    void GetA5HcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
+                               CommContext &commContextStruct, uint32_t rankSize, uint64_t &hcclBuffSize)
+    {
+        uint32_t rankId = commContextStruct.epRankId;
+        std::vector<ChannelHandle> channels;
+
+        uint32_t rankSizePerServer = 0;
+        GetA5HcclCommChannel(commHandle, rankSize, rankId, protocol, engine, channels, rankSizePerServer);
+        commContextStruct.rankSizePerServer = rankSizePerServer;
+
+        for (uint32_t i = 0; i < rankSize; ++i) {
+            void *tempBuffer = nullptr;
+            uint64_t bufSize = 0;
+            HcclResult hcclRet;
+
+            if (i == rankId) {
+                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
+            } else {
+                uint32_t idx = (i < rankId) ? i : (i - 1);
+                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, channels[idx], &tempBuffer, &bufSize);
+            }
+
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS && tempBuffer != nullptr,
+                        "Get HCCL buffer failed, src: ", rankId, ", dst: ", i, ", ret: ", hcclRet);
+            commContextStruct.epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        }
+    }
+
+    void GetA5HcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
+                              const CommProtocol &protocol, const CommEngine &engine,
+                              std::vector<ChannelHandle> &channels, uint32_t &rankSizePerServer)
+    {
+        uint32_t channelNum = rankDim - 1;
+        std::vector<HcclChannelDesc> channelDesc(channelNum);
+        channels.resize(channelNum);
+
+        uint32_t *netLayerList = nullptr;
+        uint32_t netLayerNum = 0;
+        GetA5NetLayers(commHandle, netLayerList, netLayerNum);
+        TORCH_CHECK(netLayerNum > 0, "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
+
+        uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER];
+        GetA5RankSizePerServer(commHandle, netLayers, rankSizePerServer);
+
+        InitA5HcclChannel(commHandle, rankDim, srcRankId, protocol, netLayerList, netLayerNum, channelDesc);
+
+        auto hcclRet = HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, channels.data());
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret: ", hcclRet);
+    }
+
+    void InitA5HcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
+                           const CommProtocol &protocol, uint32_t *netLayerList, uint32_t netLayerNum,
+                           std::vector<HcclChannelDesc> &channelDesc)
+    {
+        uint32_t channelNum = channelDesc.size();
+        auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HCCL channel init failed, ret: ", hcclRet);
+
+        for (uint32_t i = 0; i < rankDim; ++i) {
+            if (i == srcRankId) {
+                continue;
+            }
+            uint32_t channelId = (i > srcRankId) ? (i - 1) : i;
+            uint32_t layerId = netLayerNum == 1 ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_[i];
+            CommLink *links = nullptr;
+            GetA5HcclCommLink(commHandle, layerId, srcRankId, i, protocol, links);
+            channelDesc[channelId].channelProtocol = protocol;
+            channelDesc[channelId].remoteRank = i;
+            channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
+            channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+        }
+    }
+
+    void GetA5CommProtocol(const HcclComm &commHandle, CommProtocol &protocol)
+    {
+        ASCEND_LOGI("Start to get HCCL communication protocol");
+        uint32_t layerNum = 0;
+        uint32_t *layerList = nullptr;
+        auto hcclRet = HcclRankGraphGetLayersFunc(commHandle, &layerList, &layerNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL layers failed, ret: ", hcclRet);
+
+        if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
+            protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+            return;
+        }
+
+        CheckA5ProtocolSupport(commHandle, layerList, layerNum);
+        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+    }
+
+    void CheckA5ProtocolSupport(const HcclComm &commHandle, uint32_t *&layerList, uint32_t &layerNum)
+    {
+        uint32_t srcRankId = 0;
+        uint32_t netLinkNum = 0;
+        uint32_t rankNumInLayer = 0;
+        uint32_t *rankIdLists = nullptr;
+        CommLink *linksList = nullptr;
+
+        auto hcclRet = HcclGetRankIdFunc(commHandle, &srcRankId);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "CheckProtocolSupport Get rank ID failed, ret: ", hcclRet);
+
+        for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
+            hcclRet =
+                HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
+            for (uint32_t rankId = 0; rankId < rankNumInLayer; ++rankId) {
+                uint32_t dstRank = rankIdLists[rankId];
+                if (dstRank == srcRankId || layerMap_.find(dstRank) != layerMap_.end()) {
+                    continue;
+                }
+                hcclRet = HcclRankGraphGetLinksFunc(commHandle, layerList[layerIndex], srcRankId, dstRank,
+                                                    &linksList, &netLinkNum);
+                TORCH_CHECK(hcclRet == HCCL_SUCCESS,
+                            "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
+                TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
+                TORCH_CHECK(CheckA5Links(netLinkNum, linksList), "No HCCL links support UB_MEM srcRankID ",
+                            srcRankId, ", dstRankID ", dstRank, ", layer ", layerList[layerIndex]);
+                layerMap_[dstRank] = layerList[layerIndex];
+            }
+        }
+    }
+
+    static bool CheckA5Links(uint32_t &netLinkNum, CommLink *linksList)
+    {
+        for (uint32_t j = 0; j < netLinkNum; ++j) {
+            if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static void GetA5HcclBufferSize(const HcclComm &commHandle, uint64_t &hcclBuffSize)
+    {
+        void *tempBuffer = nullptr;
+        auto hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Buffer Size failed, ret: ", hcclRet);
+    }
+
+    static void GetA5NetLayers(const HcclComm &commHandle, uint32_t *&netLayerList, uint32_t &netLayerNum)
+    {
+        auto hcclRet = HcclRankGraphGetLayersFunc(commHandle, &netLayerList, &netLayerNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL layers failed, ret: ", hcclRet);
+    }
+
+    static void GetA5RankSizePerServer(const HcclComm &commHandle, uint32_t netLayers, uint32_t &rankSizePerServer)
+    {
+        auto hcclRet = HcclRankGraphGetRankSizeByLayerFunc(commHandle, netLayers, &rankSizePerServer);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL rank size per server failed, ret: ", hcclRet);
+    }
+
+    static void GetA5HcclCommLink(const HcclComm &commHandle, uint32_t netLayerId, uint32_t srcRankId,
+                                  uint32_t dstRankId, const CommProtocol &protocol, CommLink *&links)
+    {
+        CommLink *linksList = nullptr;
+        uint32_t netLinkNum = 0;
+        auto hcclRet = HcclRankGraphGetLinksFunc(commHandle, netLayerId, srcRankId, dstRankId, &linksList, &netLinkNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Communication link failed, ret: ", hcclRet);
+        TORCH_CHECK(netLinkNum > 0, "The Net Link Is nullptr. srcRankId is ", srcRankId,
+                    ", dstRankId is ", dstRankId, ", layerId is ", netLayerId);
+
+        uint32_t index = 0;
+        for (; index < netLinkNum; ++index) {
+            if (linksList[index].linkAttr.linkProtocol == protocol) {
+                links = &linksList[index];
+                break;
+            }
+        }
+        TORCH_CHECK(index < netLinkNum, "No matching communication protocol found in HCCL links, protocol is ",
+                    static_cast<int>(protocol));
+    }
+
+    std::unordered_map<uint32_t, uint32_t> layerMap_;
 };
 
 // ======================== HCCL Channel Mode ========================
@@ -543,7 +819,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def(py::init<const std::string &, int64_t, const py::object &>(),
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"))
         .def("create_context", &CommContextManager::create_context)
-        .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
+        .def("update_group", &CommContextManager::update_group, py::arg("group"),
+             py::arg("contextTensor").noconvert())
         .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);
 }
 } // op_api
