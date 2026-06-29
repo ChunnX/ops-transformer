@@ -27,8 +27,8 @@ TEST_PARAMS = {
         "block_size": [512], # 取16的整数倍，最多支持到1024
         "block_num":[8],
         "qk_dtype": [torch.float16],
-        "cu_seqlens_q": [[1]],
-        "cu_seqlens_k": [[256]],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_k": [None],
         "seqused_q": [[1]],
         "seqused_k": [[256]],
         "cmp_residual_k": [[0]],
