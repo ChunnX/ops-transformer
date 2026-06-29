@@ -33,7 +33,7 @@ using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
-namespace optiling {
+namespace Mc2Tiling {
 
 constexpr uint32_t CONTEXT_INDEX = 0U;
 constexpr uint32_t X_INDEX = 1U;
@@ -172,16 +172,16 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
                                    MoeEpDispatchInfo &info, const bool isXFp8)
 {
     const gert::StorageShape *scalesShape = context->GetOptionalInputShape(SCALES_INDEX);
-    OP_TILING_CHECK(isXFp8 && scalesShape == nullptr, OP_LOGE(nodeName,
+    OP_TILING_CHECK(isXFp8 && (scalesShape == nullptr), OP_LOGE(nodeName,
         "scales is required when x is fp8, but not provided."), return false);
-    OP_TILING_CHECK(!isXFp8 && scalesShape != nullptr, OP_LOGE(nodeName, "scales is only valid when x is fp8."),
+    OP_TILING_CHECK(!isXFp8 && (scalesShape != nullptr), OP_LOGE(nodeName, "scales is only valid when x is fp8."),
         return false);
 
     if (scalesShape != nullptr) {
         auto scalesDesc = context->GetOptionalInputDesc(SCALES_INDEX);
         // check dtype
         ge::DataType scalesDtype = scalesDesc->GetDataType();
-        OP_TILING_CHECK(scalesDtype != ge::DT_FLOAT && scalesDtype != ge::DT_FLOAT8_E8M0,
+        OP_TILING_CHECK((scalesDtype != ge::DT_FLOAT) && (scalesDtype != ge::DT_FLOAT8_E8M0),
             OP_LOGE(nodeName, "scales dtype must be DT_FLOAT or DT_FLOAT8_E8M0, but got %d.",
                 static_cast<int32_t>(scalesDtype)), return false);
         // check format
@@ -254,8 +254,8 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
         OP_LOGE(nodeName, "context dtype must be DT_INT32, but got %d.",
             static_cast<int32_t>(contextDesc->GetDataType())), return false);
     ge::DataType xDtype = xDesc->GetDataType();
-    OP_TILING_CHECK(xDtype != ge::DT_BF16 && xDtype != ge::DT_FLOAT16 &&
-                    xDtype != ge::DT_FLOAT8_E5M2 && xDtype != ge::DT_FLOAT8_E4M3FN,
+    OP_TILING_CHECK((xDtype != ge::DT_BF16) && (xDtype != ge::DT_FLOAT16) &&
+                    (xDtype != ge::DT_FLOAT8_E5M2) && (xDtype != ge::DT_FLOAT8_E4M3FN),
         OP_LOGE(nodeName, "x dtype must be BF16/FP16/F8_E5M2/F8_E4M3FN, but got %d.",
             static_cast<int32_t>(xDtype)), return false);
 
@@ -429,6 +429,7 @@ static ge::graphStatus CheckComputeAttr(const gert::TilingContext *context, cons
                                         MoeEpDispatchInfo &info)
 {
     auto attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
     auto numExpertsPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_EXPERTS_INDEX);
     auto nmtPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TPR_INDEX);
     auto expertAlignmentPtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_ALIGNMENT_INDEX);
@@ -505,6 +506,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
 {
     auto attrs = context->GetAttrs();
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
+    OP_TILING_CHECK(cclBufferSizePtr == nullptr,
+        OP_LOGE(nodeName, "cclBufferSizePtr is null."), return ge::GRAPH_FAILED);
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
     uint64_t epWorldSize = static_cast<uint64_t>(info.cfg.epWorldSize);
     uint64_t nmt = static_cast<uint64_t>(info.cfg.numMaxTokensPerRank);
@@ -512,9 +515,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
 
-    uint64_t CntWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 
+    uint64_t cntWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) +
                                epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t dispatchWinStateSize = CntWinStateSize + epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t dispatchWinStateSize = cntWinStateSize + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t dispatchWinDataSize = epWorldSize * nmt * perSlotBytes;
     uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
@@ -528,7 +531,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
         return ge::GRAPH_FAILED);
     info.totalWinSizeEp = maxWindowSize;
     info.cntWinStateOffset = 0UL;
-    info.slotWinStateOffset = CntWinStateSize;
+    info.slotWinStateOffset = cntWinStateSize;
     info.winDataOffset = totalStateWinSizeEp;
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSize);
     return ge::GRAPH_SUCCESS;
@@ -623,14 +626,6 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-struct MoeEpDispatchCompileInfo {};
-ge::graphStatus TilingParseForMoeEpDispatch(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
 IMPL_OP_OPTILING(MoeEpDispatch)
-    .Tiling(MoeEpDispatchTilingFunc)
-    .TilingParse<MoeEpDispatchCompileInfo>(TilingParseForMoeEpDispatch);
+    .Tiling(MoeEpDispatchTilingFunc);
 }  // namespace optiling

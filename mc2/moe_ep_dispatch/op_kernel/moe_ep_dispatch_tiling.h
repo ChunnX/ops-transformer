@@ -16,7 +16,6 @@
 #ifndef MOE_EP_DISPATCH_TILING_H
 #define MOE_EP_DISPATCH_TILING_H
 
-// #include "../../common/op_kernel/mc2_common_def.h"
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
