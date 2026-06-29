@@ -332,25 +332,28 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
     }
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
     LocalTensor<float> null;
+    constexpr uint32_t halfOneRep = 128;
+    uint32_t tailN1 = runInfo.s2RealSize;
+    uint32_t tailN2 = (runInfo.s2RealSize > halfOneRep) ? (runInfo.s2RealSize - halfOneRep) : 0;
     if (runInfo.s2LoopCount == 0) {
         if (runInfo.s2RealSize == 128) {
             SoftmaxFlashV510_VF<T, INPUT_T, false, 1, s1BaseSize, s2BaseSize>(
             stage1CastTensor, sumUb, maxUb, expUb, mmRes, sumUb, maxUb, attenMaskUb, pseUb,
-            apiTmpBuffer, runInfo.s1RealSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
+            apiTmpBuffer, runInfo.s1RealSize, runInfo.s2RealSize, tailN1, tailN2, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
         } else {
             SoftmaxFlashV510_VF<T, INPUT_T, false, 2, s1BaseSize, s2BaseSize>(
             stage1CastTensor, sumUb, maxUb, expUb, mmRes, sumUb, maxUb, attenMaskUb, pseUb,
-            apiTmpBuffer, runInfo.s1RealSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
+            apiTmpBuffer, runInfo.s1RealSize, runInfo.s2RealSize, tailN1, tailN2, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
         }
     } else {
         if (runInfo.s2RealSize == 128) {
             SoftmaxFlashV510_VF<T, INPUT_T, true, 1, s1BaseSize, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, expUb, mmRes, sumUb, maxUb, attenMaskUb, pseUb,
-                apiTmpBuffer, runInfo.s1RealSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
+                apiTmpBuffer, runInfo.s1RealSize, runInfo.s2RealSize, tailN1, tailN2, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
         } else {
             SoftmaxFlashV510_VF<T, INPUT_T, true, 2, s1BaseSize, s2BaseSize>(
             stage1CastTensor, sumUb, maxUb, expUb, mmRes, sumUb, maxUb, attenMaskUb, pseUb,
-            apiTmpBuffer, runInfo.s1RealSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
+            apiTmpBuffer, runInfo.s1RealSize, runInfo.s2RealSize, tailN1, tailN2, static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
         }
     }
     SetFlag<HardEvent::V_MTE3>(MM1_RES_INTRA_EVENT[runInfo.taskIdMod2]);
