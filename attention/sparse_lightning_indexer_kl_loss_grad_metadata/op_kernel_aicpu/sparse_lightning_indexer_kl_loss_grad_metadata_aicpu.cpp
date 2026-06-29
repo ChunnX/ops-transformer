@@ -17,9 +17,7 @@
 
 #if defined(SLI_AICPU_ARCH22)
 #include "arch22/sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch22.h"
-#endif
-
-#if defined(SLI_AICPU_ARCH35)
+#else
 #include "arch35/sparse_lightning_indexer_kl_loss_grad_metadata_aicpu_arch35.h"
 #endif
 

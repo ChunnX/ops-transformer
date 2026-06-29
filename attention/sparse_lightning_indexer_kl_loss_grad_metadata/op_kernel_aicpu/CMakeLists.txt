@@ -27,8 +27,6 @@ if (BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
 
   if ("arch22" IN_LIST ARCH_DIRECTORY)
     target_compile_definitions(${OBJ_NAME} PRIVATE SLI_AICPU_ARCH22)
-  else()
-    target_compile_definitions(${OBJ_NAME} PRIVATE SLI_AICPU_ARCH35)
   endif()
 endif()
 
