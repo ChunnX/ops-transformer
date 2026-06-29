@@ -46,3 +46,6 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+# agent task tracking
+tasks.json
+PROGRESS.txt
