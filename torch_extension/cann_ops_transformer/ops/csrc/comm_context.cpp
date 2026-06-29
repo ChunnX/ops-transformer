@@ -324,7 +324,7 @@ public:
                             "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
                 TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
                 if (!CheckLinks(netLinkNum, linksList, protocol)) {
-                    ASCEND_LOGI("Layer %d does not support UB_MEM with rank %d, break loop", layerList[layerIndex], rankIdLists[rankIdx]);
+                    ASCEND_LOGI("Layer %d does not support UB_MEM with rank %d, break loop", layerList[layerIndex], rankIdLists[layerIndex]);
                     // 若不支持，则跳出循环
                     allSupportUbMem = false;
                     break;
