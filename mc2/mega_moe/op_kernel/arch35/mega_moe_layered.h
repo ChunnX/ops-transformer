@@ -675,6 +675,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Level1DispatchUr
                     
                     uint32_t peerRank = targetServerForSender * rankPerServer_ + rankInServer_;
                     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
+                    PRINTF("L1_NOTIFY rank %u peer %u token %d dst %lu notify %lu srcMeta0 %d srcMeta1 %d\n",
+                        rankId_, peerRank, tokenIdx, static_cast<uint64_t>(dstAddr),
+                        static_cast<uint64_t>(dstAddr + recordDataBytes),
+                        ReadGmByPassDCache(srcMetaPtr), ReadGmByPassDCache(srcMetaPtr + 1));
                     hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, recordDataBytes,
                         dstAddr + recordDataBytes, static_cast<uint64_t>(1));
                     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
@@ -936,12 +940,25 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         (static_cast<uint64_t>(blockIdx_) * DISPATCH_BUFFER_NUM + bufferIdx) * relayRecordBytes_;
     __gm__ int32_t* localReadyFlag = reinterpret_cast<__gm__ int32_t*>(scratchAddr + flagOffset);
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, relayRank, rankId_);
+    int64_t lastPrintCycle = AscendC::GetSystemCycle();
     do {
         hcomm_.ReadNbi<true>(channel, scratchAddr + flagOffset, remoteRecordAddr + flagOffset, sizeof(int32_t));
         int32_t readyValue = ReadGmByPassDCache(localReadyFlag);
         if (readyValue == 1) {
             WriteGmByPassDCache(localReadyFlag, int32_t(0));
             break;
+        }
+        int64_t nowCycle = AscendC::GetSystemCycle();
+        if (nowCycle - lastPrintCycle > 200000000) {
+            hcomm_.ReadNbi<true>(channel, scratchAddr + mxQuantTokenScaleAlignBytes_,
+                remoteRecordAddr + mxQuantTokenScaleAlignBytes_, sizeof(int64_t));
+            __gm__ int32_t* localMetaPtr = reinterpret_cast<__gm__ int32_t*>(
+                scratchAddr + mxQuantTokenScaleAlignBytes_);
+            PRINTF("L2_WAIT rank %u relay %u remote %lu meta0 %d meta1 %d flagRead %d flagOffset %lu\n",
+                rankId_, relayRank, static_cast<uint64_t>(remoteRecordAddr),
+                ReadGmByPassDCache(localMetaPtr), ReadGmByPassDCache(localMetaPtr + 1),
+                readyValue, flagOffset);
+            lastPrintCycle = nowCycle;
         }
     } while (true);
     hcomm_.ReadNbi<true>(channel, scratchAddr, remoteRecordAddr, copyInNum);
