@@ -630,7 +630,7 @@ ge::graphStatus QSFATilingCheck::CheckDimNumInLayoutSupport(const QSFALayout &la
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name.c_str(),
             std::to_string(shape->GetStorageShape().GetDimNum()).c_str(),
             "When layout is " + QSFALayoutToSerialString(layout) +
-            ", the shape dim of " + name + "should be " + std::to_string(qsfaDimIt->second)),
+            ", the shape dim of " + name + "should be " + std::to_string(qsfaDimIt->second) + "."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -762,8 +762,7 @@ ge::graphStatus QSFATilingCheck::CheckSinglePara() const
 ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
 {
     if (quantScaleRepoMode_ == 1) {
-        OP_CHECK_IF((opParamInfo_.keyDequantScale.tensor == nullptr ||
-                     opParamInfo_.valueDequantScale.tensor == nullptr),
+        OP_CHECK_IF((opParamInfo_.keyDequantScale.tensor == nullptr || opParamInfo_.valueDequantScale.tensor == nullptr),
             OP_LOGE_WITH_INVALID_INPUT(opName_, "key_dequant_scale and value_dequant_scale"),
             return ge::GRAPH_FAILED);
     }
@@ -1003,6 +1002,10 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQ()
 
 ge::graphStatus QSFATilingCheck::CheckActualSeqLensQDType()
 {
+    if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+
     if (opParamInfo_.actualSeqLengthsQ.desc == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengthsQ's dtype");
         return ge::GRAPH_FAILED;
@@ -1296,7 +1299,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantPa() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_size", std::to_string(blockSize_).c_str(),
             "when page attention is enabled, "
             "block_size must be divided by sparse_block_size, but now the remainder is " +
-            std::to_string(blockSize_ % sparseBlockSize_)),
+            std::to_string(blockSize_ % sparseBlockSize_) + "."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

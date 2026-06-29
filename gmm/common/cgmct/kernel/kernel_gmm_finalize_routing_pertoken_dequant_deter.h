@@ -160,6 +160,10 @@ public:
         if (totalM == 0) {
             return;
         }
+        if (totalM > deterSync_.windowSize) {
+            totalM = deterSync_.windowSize;
+            deterSync_.curGroupM = deterSync_.windowStartM + deterSync_.windowSize;
+        }
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
         uint64_t n = params.gmmParams.matmulTiling->N;
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {

@@ -516,7 +516,7 @@ ge::graphStatus LIInfoParser::GetGSize()
     if (n1Size_ % n2Size_ != 0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
             Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
-            "input query's head_num can not be a multiple of key's head_num");
+            "input query's head_num can not be a multiple of key's head_num.");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -583,7 +583,7 @@ ge::graphStatus LIInfoParser::GetAndCheckBlockSize()
     OP_CHECK_IF(((blockSize_ % 16 != 0) || (blockSize_ == 0) || (blockSize_ > 1024)),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
             Ops::Base::ToString(opParamInfo_.key.shape->GetShape()).c_str(),
-            "input key's block_size must be a multiple of 16 and be within the range (0, 1024]"),
+            "input key's block_size must be a multiple of 16 and be within the range (0, 1024]."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -595,7 +595,7 @@ ge::graphStatus LIInfoParser::CheckBlockCount()
     OP_CHECK_IF((blockCount_ == 0),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
             Ops::Base::ToString(opParamInfo_.key.shape->GetShape()).c_str(),
-            "input key's block_count cannot be 0"), return ge::GRAPH_FAILED);
+            "input key's block_count cannot be 0."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -658,9 +658,9 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQtnd()
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize),
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, weights, sparse_indices",
                     std::to_string(qTsize) + " , " +
-                    std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + " , " +
-                    std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
-                    "TND case input query, weights, sparse_indices dim 0 must be same"),
+                    std::to_string(opParamInfo_.actualSeqLengths.tensor->GetShapeSize()) + " , " +
+                    std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
+                    "TND case input query, weights, sparse_indices dim 0 must be same."),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0) != qTsize &&
@@ -668,7 +668,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQtnd()
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, sparse_values",
                     std::to_string(qTsize) + " , " +
                     std::to_string(opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(0)),
-                    "TND case input query and sparse_values dim 0 must be same"),
+                    "TND case input query and sparse_values dim 0 must be same."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

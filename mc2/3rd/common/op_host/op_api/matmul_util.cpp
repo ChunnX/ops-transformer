@@ -27,7 +27,7 @@
 #include "opdev/format_utils.h"
 #include "opdev/platform.h"
 #include "opdev/op_log.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/shape_utils.h"
 #include "op_api/op_api_def.h"

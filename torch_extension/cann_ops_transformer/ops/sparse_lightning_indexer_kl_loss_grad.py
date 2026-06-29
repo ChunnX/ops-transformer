@@ -154,8 +154,10 @@ def sparse_lightning_indexer_kl_loss_grad_metadata(
     )
 
 
-@torch.library.register_kernel("cann_ops_transformer::" + SLI_KL_LOSS_GRAD_METADATA_OP_NAME, None)
-def sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
+@torch.library.register_kernel(
+    "cann_ops_transformer::npu_sparse_lightning_indexer_kl_loss_grad_metadata", None
+)
+def npu_sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
     num_heads_q,
     num_heads_k,
     head_dim,
@@ -248,7 +250,7 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
     @register_fx_node_ge_converter(
-        torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad.default
+        torch.ops.cann_ops_transformer.npu_sparse_lightning_indexer_kl_loss_grad_metadata.default
     )
     def convert_sparse_lightning_indexer_kl_loss_grad(
         q: Tensor,

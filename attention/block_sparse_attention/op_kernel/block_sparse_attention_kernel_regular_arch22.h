@@ -19,7 +19,7 @@
 #include "block_sparse_attention_kernel_common.hpp"
 
 using namespace NpuArch;
-using namespace RfaKenelCommon;
+using namespace BsaKernelCommon;
 
 namespace BlockSparse {
     /**

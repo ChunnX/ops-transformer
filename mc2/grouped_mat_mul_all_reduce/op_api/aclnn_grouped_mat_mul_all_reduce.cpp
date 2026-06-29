@@ -28,7 +28,7 @@
 #include "opdev/platform.h"
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "common/utils/hccl_util.h"
 #include "aclnnInner_grouped_mat_mul_all_reduce.h"
 

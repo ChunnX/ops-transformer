@@ -58,8 +58,8 @@ TEST_PARAMS = {
         "ori_win_left": [127],
         "ori_win_right": [0]
     },
-    "cfa_tnd": {
-        "testcase_name": ["cfa_tnd"],
+    "cfa_prefill_tnd": {
+        "testcase_name": ["cfa_prefill_tnd"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],

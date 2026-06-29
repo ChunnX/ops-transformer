@@ -151,6 +151,13 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+        - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
+        - `epWorldSize`取值支持[2, 384]。
+
+    - <term>Ascend 950DT</term>：
+        - `epWorldSize`取值支持[2, 1024]。
+
 ## aclnnDistributeBarrier
 
 - **参数说明**

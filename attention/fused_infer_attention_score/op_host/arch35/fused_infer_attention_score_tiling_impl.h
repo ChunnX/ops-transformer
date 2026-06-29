@@ -122,9 +122,6 @@ protected:
     void ParseActualSeqLengths(const FiaTilingInfo &fiaInfo);
     void SetIsIFA(const FiaTilingInfo &fiaInfo);
     void SetGSMerge(const FiaTilingInfo &fiaInfo);
-    bool CheckPFAMergeSupport(const FiaTilingInfo &fiaInfo) const;
-    bool CheckActualSeqLenAligned(const FiaTilingInfo &fiaInfo) const;
-    bool CheckAntiQuantGSMerge(const FiaTilingInfo &fiaInfo, bool actualSeqLenUnequal) const;
     bool CheckEnableDN(const FiaTilingInfo &fiaInfo) const;
     bool CheckQKVActualSeqLengthsRight(const FiaTilingInfo &fiaInfo);
     bool CheckFlashDecode(const FiaTilingInfo &fiaInfo);

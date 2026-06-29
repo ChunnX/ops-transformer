@@ -220,9 +220,11 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
     // 加载当前轮的右矩阵到L1
     if constexpr (IS_SPLIT_G) {
         WaitFlag<HardEvent::MTE1_MTE2>(l1KMte1ToMte2FlagId + l1KLoadBufId);
-
         LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
         v0ResGm.WaitCrossCore();
+        CrossCoreSetFlag<0, PIPE_MTE2>(10);
+        CrossCoreWaitFlag<0, PIPE_MTE2>(10);
+
         GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
         DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
         SetFlag<HardEvent::MTE2_MTE1>(l1KMte2ToMte1FlagId + l1KLoadBufId);

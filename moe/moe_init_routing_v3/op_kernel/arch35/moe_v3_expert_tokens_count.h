@@ -232,6 +232,8 @@ __aicore__ inline void ExpertTokensCount::CopyOut()
     DataCopyPad(expertCountTempGm_, expertCountOutLocal, copyParams);
     SetAtomicNone();
     SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    expertCountOutToTempQueue_.FreeTensor(expertCountOutLocal);
+}
 
     if (dropPadMode_ == DROP_PAD_MODE) {
         expertCountOutLocal.SetValue(0, finalExpertId_);

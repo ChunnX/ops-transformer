@@ -23,12 +23,14 @@
 
 - 计算公式（以Query（视频）和EncoderQuery（文本）为例）：
 
-	  $$
-    hiddenState_q = \text{Norm}(query, normQueryWeight, normQueryBias, eps) \\
-    hiddenState_{eq} = \text{Norm}(encoderQuery, normEncoderQueryWeight, normEncoderQueryBias, eps) \\
-    concatedHiddenState = \text{Concat}(hiddenState_q, hiddenState_{eq}) \\
-    transposedHiddenState = \text{Transpose}(concatedHiddenState, (0, 2, 1, 3)) \\
-    hiddenState = \text{RoPE}(concatedHiddenState, ropeSin, ropeCos)
+    $$
+    \begin{aligned}
+    hiddenState_q &= \text{Norm}(query, normQueryWeight, normQueryBias, eps) \\
+    hiddenState_{eq} &= \text{Norm}(encoderQuery, normEncoderQueryWeight, normEncoderQueryBias, eps) \\
+    concatedHiddenState &= \text{Concat}(hiddenState_q, hiddenState_{eq}) \\
+    transposedHiddenState &= \text{Transpose}(concatedHiddenState, (0, 2, 1, 3)) \\
+    hiddenState &= \text{RoPE}(concatedHiddenState, ropeSin, ropeCos)
+    \end{aligned}
     $$
 
 - 说明：
@@ -36,7 +38,6 @@
     B为batch，S为sequenceLen，N为headNum，D为headDim。
     2. Norm有五种模式(`normType`)：`NONE(0), LAYER_NORM(1), LAYER_NORM_AFFINE(2), RMS_NORM(3), RMS_NORM_AFFINE(4)`，其中：
         当`normType = NONE`时:
-        
         $$
         hiddenState_q = query
         $$
@@ -44,10 +45,12 @@
         当`normType = LAYER_NORM`时
         
         $$
-        queryMean_{b,s,n} = \frac{1}{D}\sum_{i=0}^{D}query_{b,s,n} \\
-        queryVar_{b,s,n} = \frac{1}{D}\sum_{i=0}^{D}(query-queryMean_{b,s,n})^2 \\
-        queryRstd_{b,s,n}=  \frac{1}{\sqrt{queryVar_{b,s,n}+\epsilon}} \\
-        hiddenState_q = (query-queryMean)*queryRstd
+        \begin{aligned}
+        queryMean_{b,s,n} &= \frac{1}{D}\sum_{i=0}^{D}query_{b,s,n} \\
+        queryVar_{b,s,n} &= \frac{1}{D}\sum_{i=0}^{D}(query-queryMean_{b,s,n})^2 \\
+        queryRstd_{b,s,n} &= \frac{1}{\sqrt{queryVar_{b,s,n}+\epsilon}} \\
+        hiddenState_q &= (query-queryMean)*queryRstd
+        \end{aligned}
         $$
 
         当`normType = LAYER_NORM_AFFINE`时，在上面的基础上
@@ -59,9 +62,11 @@
         当`normType = RMS_NORM`时：
 
         $$
-        queryMs = \frac{1}{D}\sum_{i=0}^{D}(query_{b,s,n})^2 \\
-        queryRms = \frac{1}{\sqrt{queryMs+\epsilon}} \\
-        hiddenState_q = query * queryRms
+        \begin{aligned}
+        queryMs &= \frac{1}{D}\sum_{i=0}^{D}(query_{b,s,n})^2 \\
+        queryRms &= \frac{1}{\sqrt{queryMs+\epsilon}} \\
+        hiddenState_q &= query * queryRms
+        \end{aligned}
         $$
 
         当`normType = RMS_NORM_AFFINE`时，在上面的基础上
@@ -90,9 +95,8 @@
         ```
 
     5. RoPE的输入`ropeSin`的shape为`(seqRope, D)`，其中
-    
     $$
-    seqRope <= min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)
+    seqRope \leq \min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)
     $$
 
     6. 当场景为训练时，会输出`queryMean, queryRstd，encoderQueryMean, encoderQueryRstd`供后续反向使用。
@@ -533,6 +537,22 @@ aclnnStatus aclnnNormRopeConcat(
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
       <td>计算输入和输出的数据类型不在支持范围内。</td>
+    </tr>
+    <tr>
+      <td>输入的shape不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td rowspan="2">561002</td>
+      <td>入参的NormType、NormAddedType不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>入参的tensor的shape相互不符合约束。</td>
+    </tr>
+     <tr>
+      <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td>361001</td>
+      <td>入参的ropeType和concatOrder取约束以外的值。</td>
     </tr>
   </tbody>
   </table>

@@ -842,7 +842,7 @@ __aicore__ inline void MOEW4A16Single<bfloat16_t>::ProcessReRoute()
         }
 
         PipeBarrier<PIPE_V>();
-        Cast<bfloat16_t, float, false>(ubReRouteRes[pingpong2], ubReRouteResFloat[pingpong2], RoundMode::CAST_RINT,
+        Cast<bfloat16_t, float, false>(ubReRouteRes[pingpong1], ubReRouteResFloat[pingpong1], RoundMode::CAST_RINT,
                                        MASK_PLACEHOLDER, 1, unaryParams32To16);
         SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
         WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);

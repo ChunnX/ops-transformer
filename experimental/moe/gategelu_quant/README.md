@@ -134,15 +134,15 @@
   - FOR i = 0 TO bkLoop_（行方向循环）：
     - 判断当前行是否在有效范围内
     - **CopyIn**：
-      - 从GM搬入拼接的Gate和Value数据到同一块本地内存`in_local[0]`in_local[tlW_]`。
-      - 从GM搬入当前Tile对应的`scale据。
+      - 从GM搬入拼接的Gate和Value数据到同一块本地内存`in_local[0]`和`in_local[tlW_]`。
+      - 从GM搬入当前Tile对应的`scale`数据。
     - **Compute**（高度融合的量化计算流程）：
       1. `Gelu(in_one, in_one)`：对Gate部分计算GELU激活。
       2. `Mul(in_two, in_one, in_two)`：Gate和Value逐元素相乘，得到GeGLU结果。
       3. `Cast(infloat_local, in_two, CAST_NONE)`：将FP16结果转为FP32，以便进行高精度量化计算。
-      4. **[可选约束]** 若 `constrait_` 为 true，则使用 `Mins` 和 `Maxs` 将 FP32 结果截断在 `[-clampValue_, clampValue_]` 范围内。
+      4. **[可选约束]** 若`constrait_`为true，则使用`Mins`和`Maxs`将FP32结果截断在`[-clampValue_, clampValue_]`范围内。
       5. `Mul(infloat_local, infloat_local, scale_local)`：乘以Per-Channel量化缩放因子。
       6. `Cast(infloat_local, infloat_local, CAST_RINT)`：FP32四舍五入到整数（仍以FP32格式存储）。
-      7. `Mins` 和 `Maxs`：将值截断到 `[-128.0, 127.0]` 的 INT8 表示范围。
-      8. `Cast(in_one_local, infloat_local, CAST_NONE)` 和 `Cast(out_local, in_one_local, CAST_RINT)`：将结果从FP32经FP16转换为最终INT8输出。
+      7. `Mins`和`Maxs`：将值截断到`[-128.0, 127.0]`的INT8表示范围。
+      8. `Cast(in_one_local, infloat_local, CAST_NONE)`和`Cast(out_local, in_one_local, CAST_RINT)`：将结果从FP32经FP16转换为最终INT8输出。
     - **CopyOut**：将INT8计算结果从UB搬回GM，输出偏移量：`offset = (i * blockNum_ + blockIdx_) * bkW_ + j * tlW_`。

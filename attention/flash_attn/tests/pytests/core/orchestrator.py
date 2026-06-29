@@ -228,9 +228,7 @@ def run_case(params: dict,
                     dump_dir=viz_dir,
                 )
             except Exception as e:
-                import traceback
                 print(f"  [warn] fail_analysis 异常: {e}")
-                traceback.print_exc()
         if visualize:
             try:
                 from utils.precision_visual import visualize_from_tensors
@@ -241,9 +239,7 @@ def run_case(params: dict,
                     out_dir=viz_dir,
                 )
             except Exception as e:
-                import traceback
                 print(f"  [warn] visualize 异常: {e}")
-                traceback.print_exc()
 
     del cpu_inputs, primary_out, golden_out
     del dev_raw, cpu_out, dev_out
@@ -300,9 +296,7 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                     dump_dir=viz_dir,
                 )
             except Exception as e:
-                import traceback
                 print(f"  [warn] fail_analysis 异常: {e}")
-                traceback.print_exc()
         if visualize:
             try:
                 from utils.precision_visual import visualize_from_tensors
@@ -313,9 +307,7 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                     out_dir=viz_dir,
                 )
             except Exception as e:
-                import traceback
                 print(f"  [warn] visualize 异常: {e}")
-                traceback.print_exc()
 
     del inputs, golden_data, npu_out
     del cpu_raw, dev_raw, cpu_out

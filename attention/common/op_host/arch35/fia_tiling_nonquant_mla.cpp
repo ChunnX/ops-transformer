@@ -444,8 +444,6 @@ void FiaTilingNonQuantMlaArch35::SetStartIdxTilingData()
     tilingData_.baseTiling.fiaPseParams.kvStartIdx = kvStartIdx;
 }
 
-void FiaTilingNonQuantMlaArch35::SetPageAttentionLayoutTilingData()
-{
     if (fiaInfo_->kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         uint32_t keyCacheDimNum = fiaInfo_->opParamInfo.key.shape->GetStorageShape().GetDimNum();
         if (keyCacheDimNum == 3) { // 3: BBH

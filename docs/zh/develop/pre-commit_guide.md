@@ -117,7 +117,7 @@ OAT (Open Source Audit Tool)检查开源合规性：
 OAT检查脚本，首次运行时会自动：
 1. 检测/安装Java 17
 2. 检测/安装Maven
-3. 克隆并编译tools_oat工具（约1-2分钟）
+3. 克隆并编译tools_oat工具（约1-2 分钟）
 
 ## 常见问题
 

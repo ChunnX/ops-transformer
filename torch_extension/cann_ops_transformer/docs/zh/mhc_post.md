@@ -195,10 +195,10 @@ cann_ops_transformer.mhc_post(x, h_res, h_out, h_post) -> Tensor
 
 - 单算子模式调用：
 
-  ```python
-  import torch
-  import torch_npu
-  from cann_ops_transformer.ops import mhc_post
+    ```python
+    import torch
+    import torch_npu
+    from cann_ops_transformer.ops import mhc_post
 
   B = 2
   S = 8

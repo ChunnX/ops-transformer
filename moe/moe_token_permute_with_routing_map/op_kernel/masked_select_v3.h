@@ -313,7 +313,6 @@ public:
             for (int32_t i = 0; i < tileNum; ++i) {
                 CopyInExternalIndex(i);
                 CopyIn(i);
-                MTE2ToVSync();
                 ComputeExternalIndex(i);
                 CopyIndex2WorkSpace();
                 if (hasProb) {
@@ -377,7 +376,6 @@ private:
         }
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(length * sizeof(int32_t)), 0, 0, 0};
         DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
-        VToMTE2Sync();
         DataCopyPad(indexLocal, externalIndexGlobal[regionOffset], copyParams, padParams);
     }
 

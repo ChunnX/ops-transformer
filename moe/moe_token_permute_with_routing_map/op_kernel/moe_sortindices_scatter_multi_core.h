@@ -189,7 +189,6 @@ __aicore__ inline void MoeSortIndicesScatterMultiCore::CopyOut()
 
 __aicore__ inline void MoeSortIndicesScatterMultiCore::Process()
 {
-    AscendC::SyncAll();
     if (blockIdx < initNeedCoreNum) {
         InitMinusOne();
     }

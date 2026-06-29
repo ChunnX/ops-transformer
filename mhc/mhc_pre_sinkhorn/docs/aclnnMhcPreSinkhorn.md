@@ -463,9 +463,15 @@ void PrintTensorDataFloat(const std::vector<int64_t> &shape, void *device_addr)
   int64_t size = GetShapeSize(shape);
   std::vector<float> host_data(size, 0.0f);
 
-  aclError ret = aclrtMemcpy(host_data.data(), size * sizeof(float), device_addr, size * sizeof(float),
-                              ACL_MEMCPY_DEVICE_TO_HOST);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Memcpy device to host failed, error: %d\n", ret); return);
+  // Device -> Host数据拷贝
+  aclError ret = aclrtMemcpy(
+      host_data.data(), size * sizeof(float),
+      device_addr, size * sizeof(float),
+      ACL_MEMCPY_DEVICE_TO_HOST
+  );
+  CHECK_RET(ret(ret == ACL_SUCCESS, 
+            LOG_PRINT("Memcpy device to host failed, error: %d\n", ret); 
+            return);
 
   LOG_PRINT("Tensor data (first 10 elements): ");
   for (int64_t i = 0; i < std::min((int64_t)10, size); ++i) {
@@ -518,8 +524,15 @@ int CreateAclTensorFloat32(const std::vector<float> &host_data, const std::vecto
   aclError ret = aclrtMalloc(&device_addr, size, ACL_MEM_MALLOC_HUGE_FIRST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed, error: %d\n", ret); return -1);
 
-  ret = aclrtMemcpy(device_addr, size, host_data.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed, error: %d\n", ret); return -1);
+  // 3. Host -> Device数据拷贝
+  ret = aclrtMemcpy(
+      device_addr, size,
+      host_data.data(), size,
+      ACL_MEMCPY_HOST_TO_DEVICE
+  );
+  CHECK_RET(ret == ACL_SUCCESS, 
+            LOG_PRINT("aclrtMemcpy failed, error: %d\n", ret); 
+            return -1);
 
   std::vector<int64_t> strides(shape.size(), 1);
   for (int64_t i = shape.size() - 2; i >= 0; --i) {

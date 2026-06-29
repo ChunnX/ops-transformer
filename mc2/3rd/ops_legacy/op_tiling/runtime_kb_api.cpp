@@ -11,7 +11,7 @@
 #include "runtime_kb_api.h"
 #ifdef BUILD_OPEN_PROJECT
 #include "legacy_common_manager.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #endif
 
 namespace RuntimeKb {

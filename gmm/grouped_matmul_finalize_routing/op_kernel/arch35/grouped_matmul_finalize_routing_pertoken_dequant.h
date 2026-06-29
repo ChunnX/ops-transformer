@@ -60,7 +60,6 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
                                 Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
 
     if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
-        SetSysWorkspace(workspaceGM);
         GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
 
         using BlockEpilogueDequant =

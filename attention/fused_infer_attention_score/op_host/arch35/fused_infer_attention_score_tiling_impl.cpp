@@ -111,12 +111,31 @@ void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo
         gsMergeFlag_ = false;
         return;
     }
-
-    pfaMergeFlag_ = CheckPFAMergeSupport(fiaInfo);
-
-    bool actualSeqLenUnequal = !CheckActualSeqLenAligned(fiaInfo);
-    if (actualSeqLenUnequal) {
-        pfaMergeFlag_ = false;
+    
+    if (fiaInfo.s1Size * fiaInfo.gSize < NUM_64) {
+        bool isTransposeLayout = CheckTransposeLayout(fiaInfo);
+        pfaMergeFlag_ = !(fiaInfo.pseShiftFlag || fiaInfo.enableAlibiPse ||
+            fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 || fiaInfo.isOutQuantEnable ||
+            fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag ||
+            fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST ||
+            fiaInfo.quantMode == FiaQuantMode::FULL_QUANT || isTransposeLayout);
+    }
+    bool actualSeqLenUnequal = false;
+    if (actualSeqLenQFlag_ && !fiaInfo.antiQuantFlag) {
+        const gert::Tensor *actSeqLenQ = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
+        uint32_t actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
+        uint32_t actSeqLengthSize = std::min(actSeqLenQDims, fiaInfo.bSize);
+        for (uint32_t i = 0; i < actSeqLengthSize; ++i) {
+            int64_t actSeqTmp = actSeqLenQ->GetData<int64_t>()[i];
+            if ((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && i >= 1) {
+                actSeqTmp -= actSeqLenQ->GetData<int64_t>()[i - 1];
+            }
+            // query act seq len padding情况下不支持合轴
+            if (actSeqTmp < fiaInfo.s1Size) {
+                actualSeqLenUnequal = true;
+                pfaMergeFlag_ = false;
+            }
+        }
     }
 
     if (fiaInfo.antiQuantFlag) {
@@ -392,23 +411,40 @@ void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingI
 
     if (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) {
         preTokensLeftUp = SPARSE_MODE_INT_MAX;
-        if (isRopeSplit512) {
-            nextTokensLeftUp = actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
+            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
+                fiaInfo.qLayout == FiaLayout::TND) {
+                nextTokensLeftUp = actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
+            } else {  // BNSD场景下分核不做优化
+                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+            }
         } else {
             nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
         }
     } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
-        if (isRopeSplit512) {
-            preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize - actualSeqLengthKV * fiaInfo.gSize + actualSeqLength;
-            nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize + actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
+            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
+                fiaInfo.qLayout == FiaLayout::TND) {
+                preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize - actualSeqLengthKV * fiaInfo.gSize + actualSeqLength;
+                nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize + actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
+            } else {  // BNSD场景下分核不做优化
+                preTokensLeftUp = SPARSE_MODE_INT_MAX;
+                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+            }
         } else {
             preTokensLeftUp = fiaInfo.preToken - actualSeqLengthKV + actualSeqLength;
             nextTokensLeftUp = fiaInfo.nextToken + actualSeqLengthKV - actualSeqLength;
         }
     } else {
-        if (isRopeSplit512) {
-            preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize;
-            nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize;
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == DSIZE_512) {
+            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
+                fiaInfo.qLayout == FiaLayout::TND) {
+                preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize;
+                nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize;
+            } else {  // BNSD场景下分核不做优化
+                preTokensLeftUp = SPARSE_MODE_INT_MAX;
+                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+            }
         } else {
             preTokensLeftUp = fiaInfo.preToken;
             nextTokensLeftUp = fiaInfo.nextToken;
@@ -1209,7 +1245,41 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
 {
     if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
         SplitDequant(fiaInfo);
-        return ge::GRAPH_SUCCESS;
+    } else {
+        OP_CHECK_IF(AdjustSinnerAndSouter(context, fiaInfo) != ge::GRAPH_SUCCESS,  // 确认souter/sinner
+                    OP_LOGE(fiaInfo.opName, "Get sinner and souter fail!"), return ge::GRAPH_FAILED);
+
+        dnFlag_ = CheckEnableDN(fiaInfo);
+        isQKVActualSeqLengthsRightFlag_ = CheckQKVActualSeqLengthsRight(fiaInfo);
+
+        if (dnFlag_ && isQKVActualSeqLengthsRightFlag_ && fiaInfo.qkHeadDim == fiaInfo.vHeadDim &&
+            fiaInfo.qkHeadDim == DSIZE_64) {
+            sInnerFactor_ = SINNER_256;
+        }
+        if (dnFlag_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_PER_BLOCK_FULL_QUANT &&
+            fiaInfo.qkHeadDim == fiaInfo.vHeadDim && fiaInfo.qkHeadDim <= DSIZE_128) {
+            sInnerFactor_ = SINNER_256;
+        }
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
+            sOuterFactor_ = SOUTER_64;
+            sInnerFactor_ = SINNER_512;
+        }
+
+        enableS1OutSplit = CheckS1OutSplit(fiaInfo);
+        if (enableS1OutSplit) {
+            SplitOutSeq(fiaInfo);
+        } else {
+            SplitNBSeq(fiaInfo);
+            if (isIFAFlag_ && !pfaMergeFlag_ && CheckFlashDecode(fiaInfo)) {
+                flashDecodeFlag_ = true;
+                OP_LOGI(fiaInfo.opName, "FlashDecode is enable.");
+                SplitS2(fiaInfo);
+            }
+        }
+        if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag &&
+            (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag)) {
+            isRowInvalid_ = true;
+        }
     }
 
     OP_CHECK_IF(AdjustSinnerAndSouter(context, fiaInfo) != ge::GRAPH_SUCCESS,
@@ -1299,49 +1369,77 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
     if (isAntiQuant) {
         sInner = sInnerFactorSize_;
         sOuter = sOuterFactor_;
-    }
-
-    static const std::vector<TilingConfigRule> configRules = {
-        {true, 16, 1024, DSIZE_64, DSIZE_64, Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64},
-        {true, 16, 512, DSIZE_64, DSIZE_64, Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64},
-        {true, 16, 512, DSIZE_128, DSIZE_128, Config_S1Aligned16_S2Aligned512_DAligned128_DVAligned128},
-        {true, 16, 256, DSIZE_256, DSIZE_256, Config_S1Aligned16_S2Aligned256_DAligned256_DVAligned256},
-        {true, 16, 128, DSIZE_512, DSIZE_512, Config_S1Aligned16_S2Aligned128_DAligned512_DVAligned512},
-        {true, 32, 512, DSIZE_64, DSIZE_64, Config_S1Aligned32_S2Aligned512_DAligned64_DVAligned64},
-        {true, 32, 512, DSIZE_128, DSIZE_128, Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128},
-        {true, 32, 256, DSIZE_256, DSIZE_256, Config_S1Aligned32_S2Aligned256_DAligned256_DVAligned256},
-        {true, 32, 128, DSIZE_512, DSIZE_512, Config_S1Aligned32_S2Aligned128_DAligned512_DVAligned512},
-
-        {false, SOUTER_64, SINNER_64, DSIZE_256, DSIZE_256, Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256},
-        {false, SOUTER_64, SINNER_64, DSIZE_512, DSIZE_512, Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512},
-        {false, SOUTER_64, SINNER_256, DSIZE_64, DSIZE_64, Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64},
-        {false, SOUTER_64, SINNER_256, DSIZE_128, DSIZE_128, Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128},
-        {false, SOUTER_128, SINNER_128, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64},
-        {false, SOUTER_128, SINNER_128, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128, true},
-        {false, SOUTER_128, SINNER_128, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128},
-        {false, SOUTER_128, SINNER_128, DSIZE_192, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
-        {false, SOUTER_128, SINNER_128, DSIZE_256, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128},
-        {false, SOUTER_128, SINNER_128, DSIZE_256, DSIZE_256, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256},
-        {false, SOUTER_128, SINNER_128, DSIZE_512, DSIZE_512, Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512},
-        {false, SOUTER_128, SINNER_256, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64},
-        {false, SOUTER_64, SINNER_128, DSIZE_576, DSIZE_512, Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512},
-        {false, SOUTER_64, SINNER_256, DSIZE_256, DSIZE_256, Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256},
-        {false, SOUTER_128, SINNER_256, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128},
-        {false, SOUTER_128, SINNER_128, DSIZE_128, DSIZE_64, Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64},
-        {false, SOUTER_128, SINNER_128, DSIZE_64, DSIZE_128, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128},
-        {false, SOUTER_64, SINNER_256, DSIZE_128, DSIZE_64, Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64},
-        {false, SOUTER_64, SINNER_256, DSIZE_64, DSIZE_128, Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128},
-        {false, SOUTER_128, SINNER_512, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64},
-        {false, SOUTER_128, SINNER_512, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128},
-    };
-
-    for (const auto &rule : configRules) {
-        if (rule.isAntiQuant != isAntiQuant) continue;
-        if (rule.sOuter != sOuter || rule.sInner != sInner) continue;
-        if (rule.dSize != dSize || rule.dVsize != dVsize) continue;
-        if (rule.requireRopeSplit && fiaInfo.ropeMode != RopeMode::ROPE_SPLIT) continue;
-        tilingKeyInfo_.config = rule.config;
-        return;
+        if (sInner == 1024 && sOuter == 16 && dSize <= DSIZE_64 && dVsize <= DSIZE_64) { // 16:s1base 1024:s2base
+            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned1024_DAligned64_DVAligned64;
+        } else if (sInner == 512 && sOuter == 16 && dSize <= DSIZE_64 && dVsize <= DSIZE_64) { // 16:s1base 512:s2base
+            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned512_DAligned64_DVAligned64;
+        } else if (sInner == 512 && sOuter == 16 && dSize <= DSIZE_128 && dVsize <= DSIZE_128) { // 16:s1base 512:s2base
+            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned512_DAligned128_DVAligned128;
+        } else if (sInner == 256 && sOuter == 16 && dSize <= DSIZE_256 && dVsize <= DSIZE_256) { // 16:s1base 256:s2base
+            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned256_DAligned256_DVAligned256;
+        } else if (sInner == 128 && sOuter == 16 && dSize <= DSIZE_512 && dVsize <= DSIZE_512) { // 16:s1base 128:s2base
+            tilingKeyInfo_.config = Config_S1Aligned16_S2Aligned128_DAligned512_DVAligned512;
+        } else if (sInner == 512 && sOuter == 32 && dSize <= 64 &&
+                   dVsize <= 64) {  // 以下为PFA伪量化合轴场景 32:s1base 512:s2base 64:dbase
+            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned64_DVAligned64;
+        } else if (sInner == 512 && sOuter == 32 && dSize <= DSIZE_128 &&
+                   dVsize <= DSIZE_128) {  // 32:s1base 512:s2base 128:dbase
+            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned512_DAligned128_DVAligned128;
+        } else if (sInner == 256 && sOuter == 32 && dSize <= DSIZE_256 &&
+                   dVsize <= DSIZE_256) {  // 32:s1base 256:s2base 256:dbase
+            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned256_DAligned256_DVAligned256;
+        } else if (sInner == 128 && sOuter == 32 && dSize <= DSIZE_512 &&
+                   dVsize <= DSIZE_512) {  // 32:s1base 128:s2base 512:dbase
+            tilingKeyInfo_.config = Config_S1Aligned32_S2Aligned128_DAligned512_DVAligned512;
+        } else {
+        }
+    } else {  // 非量化+全量化 场景
+        if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
+        } else if (sOuter == SOUTER_64 && sInner == SINNER_64 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
+            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
+        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
+        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+            if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
+                tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128;
+            } else {
+                tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
+            }
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_192 && dVsize == DSIZE_128) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_128) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_512 && dVsize == DSIZE_512) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
+        } else if (sOuter == SOUTER_64 && sInner == SINNER_128 && dSize == DSIZE_576 && dVsize == DSIZE_512) {
+            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
+        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64;  // qkvd不等长
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_128 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128;  // qkvd不等长
+        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_64) {
+            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64;  // qkvd不等长
+        } else if (sOuter == SOUTER_64 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_128) {
+            tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128;  // qkvd不等长
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
+        } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+            tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
+        } else {
+        }
     }
 }
 
@@ -1777,7 +1875,12 @@ uint8_t FusedInferAttentionScoreTilingImpl::ComputeSparseType(const FiaTilingInf
     switch (fiaInfo.sparseMode) {
         case SPARSE_MODE_NO_MASK:
             if (fiaInfo.preToken >= fiaInfo.s1Size && fiaInfo.nextToken == 0) {
-                return 3;
+                sparseType = 3; // casual mask
+            } else if (fiaInfo.preToken >= fiaInfo.s1Size && fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION &&
+                       fiaInfo.nextToken >= fiaInfo.s2Size) {
+                sparseType = 0;
+            } else {
+                sparseType = 4; // window mask
             }
             if (fiaInfo.preToken >= fiaInfo.s1Size &&
                 fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION &&

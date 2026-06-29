@@ -78,7 +78,7 @@ npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="
     - "fullmesh_v1"：开启fullmesh_v1模板；
     - "fullmesh_v2"：开启fullmesh_v2模板；
 -   **x\_smooth\_scales** (`Tensor`)：可选参数，表示每个专家的权重，非量化场景不传，动态量化场景可传可不传。若传值要求为2维张量，如果有共享专家，shape为(shared\_expert\_num+num\_experts, H)，如果没有共享专家，shape为(num\_experts, H)，数据类型支持`float`，数据格式为$ND$，不支持非连续的Tensor。
--   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信，要求是一个1维或者2维张量。当输入为1维时，shape为(BS, )；当输入为2维时，shape为(BS, K)。数据类型支持`bool`，数据格式要求为$ND$，支持非连续的Tensor。当输入为1维时，参数为true表示对应的token参与通信，true必须排到false之前，例：{true, false, true} 为非法输入；当输入为2D时，参数为true表示当前token对应的`topk_idx`参与通信，若当前token对应的K个`bool`值全为false，表示当前token不会参与通信。默认所有token都会参与通信。当每张卡的BS数量不一致时，所有token必须全部有效。
+-   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信，要求是一个1维或者2维张量。当输入为1维时，shape为(BS, );当输入为2维时，shape为(BS, K)。数据类型支持`bool`，数据格式要求为$ND$，支持非连续的Tensor。当输入为1维时，参数为true表示对应的token参与通信，true必须排到false之前，例：{true, false, true} 为非法输入；当输入为2D时，参数为true表示当前token对应的`topk_idx`参与通信，若当前token对应的K个`bool`值全为false，表示当前token不会参与通信。默认所有token都会参与通信。当每张卡的BS数量不一致时，所有token必须全部有效。
 -   **topk\_weights** (`Tensor`)：暂不支持该参数，使用默认值即可。
 -   **zero\_expert\_num** (`int`)：可选参数，表示零专家的数量，取值范围[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，合法的零专家的ID值是[num\_experts, num\_experts+zero\_expert\_num)。
 
