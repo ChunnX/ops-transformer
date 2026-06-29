@@ -318,13 +318,13 @@ public:
 
                     NpuArch::Arch::CrossCoreWaitFlag(pvReady_);
 
-                    // epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate],
-                    //     gLse[static_cast<int64_t>(qToken) * qHeads_ + qHeadStart],
-                    //     gmOLayout, ubOTmpLayout, ubUpdateLayout, gmLseLayout,
-                    //     actualBlockShapePV,
-                    //     1, groupSize,
-                    //     (kvBlockIdxDe == 0), (kvBlockIdxDe == kvSLoopNum - 1),
-                    //     stageId);
+                    epilogueRescaleO(gO[gmOffsetO], gOTmp[gmOffsetOTmp], gOUpdate[gmOffsetUpdate],
+                        gLse[static_cast<int64_t>(qToken) * qHeads_ + qHeadStart],
+                        gmOLayout, ubOTmpLayout, ubUpdateLayout, gmLseLayout,
+                        actualBlockShapePV,
+                        1, groupSize,
+                        (kvBlockIdxDe == 0), (kvBlockIdxDe == kvSLoopNum - 1),
+                        stageId);
 #endif
                 }
             }
