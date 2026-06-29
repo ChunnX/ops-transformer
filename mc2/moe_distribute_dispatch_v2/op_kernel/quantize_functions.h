@@ -146,7 +146,7 @@ __aicore__ inline void ComputeMaxExp(__ubuf__ T* srcAddr, __ubuf__ uint16_t* max
 }
 
 template<typename T>
-__aicore__ inline void ComputeMaxExpcuBLAS(__ubuf__ T* srcAddr, __ubuf__ uint16_t* maxExpAddr, uint32_t totalCountInUB)
+__aicore__ inline void ComputeMaxExpClip(__ubuf__ T* srcAddr, __ubuf__ uint16_t* maxExpAddr, uint32_t totalCountInUB)
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(T); // 每个向量寄存器可以存储的元素个数
     uint16_t elementAfterReduce = GetVRegSizeDispatch() / GetUbBlockSizeDispatch(); // Reduce操作后搬出的元素个数
@@ -257,7 +257,7 @@ __aicore__ inline void ComputeScale(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint
 }
 
 template<typename T, typename U>
-__aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint16_t* mxScaleLocalAddr,
+__aicore__ inline void ComputeScaleClip(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint16_t* mxScaleLocalAddr,
     __ubuf__ uint16_t* halfScaleLocalAddr, uint32_t totalScaleInUB)
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(uint32_t);

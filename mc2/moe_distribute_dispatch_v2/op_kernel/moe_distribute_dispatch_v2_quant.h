@@ -74,7 +74,7 @@ public:
             scaleOutBytes = sizeof(float); // PERTOKEN量化一个token生成一个scale
         }
         #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        else if constexpr (QuantMode == MX_QUANT || QuantMode == MX_QUANT_CUBLAS) {
+        else if constexpr (QuantMode == MX_QUANT || QuantMode == MX_QUANT_CLIP) {
             if constexpr (Std::IsSame<ExpandXOutType, fp4x2_e2m1_t>::value ||
                 Std::IsSame<ExpandXOutType, fp4x2_e1m2_t>::value) {
                 hOutSizeAlign_ = Align256(Ceil(axisH_, FP4_ELEMS_PER_BYTE));
@@ -114,7 +114,7 @@ public:
         #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         else if constexpr (QuantMode == MX_QUANT) {
             QuantDynamicMx(outLocal, inLocal);
-        } else if constexpr (QuantMode == MX_QUANT_CUBLAS) {
+        } else if constexpr (QuantMode == MX_QUANT_CLIP) {
             QuantDynamicMxClip(outLocal, inLocal);
         } else if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
             QuantDynamicPerGroup(outLocal, inLocal, expertIndex, scalesGMTensor_);
@@ -273,9 +273,9 @@ public:
         __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
         __ubuf__ uint16_t* mxScaleLocalAddr = (__ubuf__ uint16_t*)outLocal[Align256<uint32_t>(axisH_)].GetPhyAddr();
 
-        quant::ComputeMaxExpcuBLAS(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
+        quant::ComputeMaxExpClip(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
         // 计算scales并填充
-        quant::ComputeScalecuBLAS<ExpandXOutType, XInType>(maxExpAddr,
+        quant::ComputeScaleClip<ExpandXOutType, XInType>(maxExpAddr,
             mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
         if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
             Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
@@ -297,7 +297,7 @@ public:
                 Std::IsSame<ExpandXOutType, fp4x2_e1m2_t>::value)) {
                 scaleLT = quantTok[
                     Align256<uint32_t>(Ceil(axisH_, FP4_ELEMS_PER_BYTE))].template ReinterpretCast<uint8_t>();
-            } else if constexpr (((QuantMode == MX_QUANT) || (QuantMode == MX_QUANT_CUBLAS)) &&
+            } else if constexpr (((QuantMode == MX_QUANT) || (QuantMode == MX_QUANT_CLIP)) &&
                 (Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value ||
                 Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value)) {
                 scaleLT = quantTok[Align256<uint32_t>(axisH_)].template ReinterpretCast<uint8_t>();
