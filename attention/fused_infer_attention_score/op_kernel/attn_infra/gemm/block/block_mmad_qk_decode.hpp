@@ -53,10 +53,10 @@ public:
     using L1TileShape = L1TileShape_;
     using L0TileShape = L0TileShape_;
     using ElementA = typename AType_::Element;
-    using LayoutA = typename AType_::Layout;
     using ElementB = typename BType_::Element;
-    using LayoutB = typename BType_::Layout;
     using ElementC = typename CType_::Element;
+    using LayoutA = typename AType_::Layout;
+    using LayoutB = typename BType_::Layout;
     using LayoutC = typename CType_::Layout;
     using TileMmad = TileMmad_;
     using CopyGmToL1A = typename TileCopy_::CopyGmToL1A;
@@ -77,8 +77,8 @@ public:
 
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
     static constexpr uint32_t L1A_SIZE = L1TileShape::M * L1TileShape::K * sizeof(ElementA);
-    static constexpr uint32_t L1B_SIZE = L1TileShape::N * L1TileShape::K * sizeof(ElementB);
     static constexpr uint32_t L0A_SIZE = ArchTag::L0A_SIZE;
+    static constexpr uint32_t L1B_SIZE = L1TileShape::N * L1TileShape::K * sizeof(ElementB);
     static constexpr uint32_t L0B_SIZE = ArchTag::L0B_SIZE;
     static constexpr uint32_t L0C_SIZE = ArchTag::L0C_SIZE;
     static constexpr uint32_t L0A_PINGPONG_BUF_SIZE = L0A_SIZE / STAGES;
@@ -99,19 +99,19 @@ public:
     BlockMmad() {}
 
     __aicore__ inline
-    void init(Arch::Resource<ArchTag> &resource, uint32_t nDyn, uint32_t kDyn, uint32_t l1BufAddrStartQK = 0)
+    void init(Arch::Resource<ArchTag> &resource, uint32_t nDynamic, uint32_t kDynamic, uint32_t l1BufAddrStartQK = 0)
     {
         // Allocate L1 memory space
         l1ATensor = resource.l1Buf.template GetBufferByByte<ElementA>(l1BufAddrStartQK);
         for (uint32_t i = 0; i < STAGES; i++) {
             l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStartQK +
-                L1TileShape::M * kDyn * sizeof(ElementA) + nDyn * kDyn * sizeof(ElementB) * i);
+                L1TileShape::M * kDynamic * sizeof(ElementA) + nDynamic * kDynamic * sizeof(ElementB) * i);
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_PINGPONG_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_PINGPONG_BUF_SIZE * i);
         }
-        l1NDynamic = nDyn;
-        l1KDynamic = kDyn;
+        l1NDynamic = nDynamic;
+        l1KDynamic = kDynamic;
     }
 
     __aicore__ inline
@@ -143,22 +143,26 @@ public:
     }
     
     __aicore__ inline
-    void getBlockShape(GemmCoord &actualShape, uint32_t nL1Index, uint32_t nL1Loop, uint32_t stackSeqTile)
+    void getBlockShape(GemmCoord &actShape, uint32_t nL1Index, uint32_t nL1Loop, uint32_t stackSeqTile)
     {
         uint32_t nSplitSize = l1NDynamic;
         if (nL1Index == nL1Loop - 1U) {
             nSplitSize = stackSeqTile - nL1Index * l1NDynamic;
         }
-        actualShape[COORD_DIM1] = nSplitSize;
+        actShape[COORD_DIM1] = nSplitSize;
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
-        uint32_t strideKV, uint32_t blockSize)
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
+        uint32_t strideKV, uint32_t blockSize, uint64_t keyBnStride)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+            if (keyBnStride != 0) {
+                kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * strideKV;
+            } else {
+                kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
+            }
         } else {
             kOffset = nowNIdx * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
         }
@@ -171,14 +175,14 @@ public:
                     AscendC::GlobalTensor<int32_t> gBlockTable,
                     LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
                     uint32_t nIdx, uint32_t nLoop, uint32_t blockSize, uint32_t strideKV,
-                    uint32_t kvNIncreIdx)
+                    uint32_t kvNIncreIdx, uint64_t keyBnStride)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t stackSeqTile = actualOriShape[COORD_DIM1];
         uint32_t embed = actualOriShape[COORD_DIM2];
 
         GemmCoord actualShape{rowNum, 0, embed};
-        uint32_t gBOffset = 0;
+        uint64_t gBOffset = 0;
 
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(l1ATotalRowNum, l1AEmbedDim);
 
@@ -189,7 +193,8 @@ public:
         for (uint32_t nL1Idx = 0; nL1Idx < nL1Loop; ++nL1Idx) {
             uint32_t nowNIdx = nIdx + nL1Idx / tileNNumPerBaseBlock;
             getBlockShape(actualShape, nL1Idx, nL1Loop, stackSeqTile);
-            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock, strideKV, blockSize);
+            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock,
+                        strideKV, blockSize, keyBnStride);
             uint32_t mActual = actualShape.m();
             uint32_t kActual = actualShape.k();
             uint32_t nActual = actualShape.n();
@@ -256,10 +261,10 @@ public:
     }
 protected:
     /// Data members
-    AscendC::LocalTensor<ElementA> l1ATensor;
-    AscendC::LocalTensor<ElementB> l1BTensor[STAGES];
     AscendC::LocalTensor<ElementA> l0ATensor[STAGES];
+    AscendC::LocalTensor<ElementA> l1ATensor;
     AscendC::LocalTensor<ElementB> l0BTensor[STAGES];
+    AscendC::LocalTensor<ElementB> l1BTensor[STAGES];
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[STAGES];
 
     TileMmad tileMmad;

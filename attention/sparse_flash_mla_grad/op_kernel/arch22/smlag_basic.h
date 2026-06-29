@@ -222,7 +222,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         AllocEventID();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
-            int32_t t1Index = (cubeBlockIdx + usedCoreNum * i) * s1BasicSize;
+            int64_t t1Index = (static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i) * s1BasicSize;
             GetTndSeqLen(t1Index, bIndex, s1Loop);
             int32_t s1BasicAccum = 0;
             for (int32_t j = 0; j < s1Loop; j++) {
@@ -261,7 +261,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         SyncAll();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
-            int32_t t1Index = (cubeBlockIdx + usedCoreNum * i) * s1BasicSize;
+            int64_t t1Index = (static_cast<int64_t>(cubeBlockIdx) + usedCoreNum * i) * s1BasicSize;
             GetTndSeqLen(t1Index, bIndex, s1Loop);
             int32_t s1BasicAccum = 0;
             for (int32_t j = 0; j < s1Loop; j++) {
@@ -317,9 +317,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::VecCompute(VecOp<SMLAGT> &vec
 {
     int64_t taskMod = runInfo[mmPingPongIdx].task & 1;
     CrossCoreWaitFlag(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
-    if (subBlockIdx == 0) {
-        vecOp.Process(runInfo[mmPingPongIdx]);
-    }
+    vecOp.Process(runInfo[mmPingPongIdx]);
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
     mmPingPongIdx = 1 - mmPingPongIdx;
 }

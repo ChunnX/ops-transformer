@@ -16,7 +16,6 @@
 #define BUFFERS_POLICY_H
 
 #include "buffer_manager.h"
-#include "buffer.h"
 #define NUM_2 2
 #define NUM_3 3
 #define NUM_4 4

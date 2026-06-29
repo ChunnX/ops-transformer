@@ -4,11 +4,11 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
+| <term>Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 推理系列产品</term>                               |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
@@ -17,7 +17,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnDistributeBarrierGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnDistributeBarrier”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDistributeBarrierGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnDistributeBarrier”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnDistributeBarrierGetWorkspaceSize(
@@ -86,7 +86,7 @@ aclnnStatus aclnnDistributeBarrier(
     <td>worldSize（int64_t）</td>
     <td>输入</td>
     <td>通信域大小。</td>
-    <td>取值范围：[2,384]</td>
+    <td>-</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -144,6 +144,13 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
+        - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
+        - `epWorldSize`取值支持[2, 384]。
+
+    - <term>Ascend 950DT</term>：
+        - `epWorldSize`取值支持[2, 1024]。
+
 ## aclnnDistributeBarrier
 
 - **参数说明**
@@ -181,8 +188,6 @@ aclnnStatus aclnnDistributeBarrier(
     <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
     
 - **返回值**
 
@@ -192,6 +197,9 @@ aclnnStatus aclnnDistributeBarrier(
 
 - 确定性计算：
   - aclnnDistributeBarrier默认确定性实现。
+
+- 通信方式约束：
+    - <term>Ascend 950DT</term>：仅支持UB Memory通信。
 
 - 通信域使用约束：
     - 一个模型中的aclnnDistributeBarrier需要使用单独通信域，该通信域中不允许有其他算子。
@@ -204,7 +212,7 @@ aclnnStatus aclnnDistributeBarrier(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>
@@ -479,7 +487,7 @@ aclnnStatus aclnnDistributeBarrier(
         ret = aclnnMoeDistributeCombineV2(combineWorkspaceAddr, combineWorkspaceSize, combineExecutor, args.combineStream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2 failed. ret = %d \n", ret);
             return ret);
-        // （固定写法）同步等待任务执行结束
+        //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.combineStream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);

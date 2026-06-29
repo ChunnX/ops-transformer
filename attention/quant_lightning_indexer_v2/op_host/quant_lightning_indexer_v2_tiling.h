@@ -23,6 +23,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
 // ------------------公共定义--------------------------
@@ -99,10 +100,11 @@ TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(uint32_t, cmpRatio)
-TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
+TILING_DATA_FIELD_DEF(int32_t, maxSeqlenQ)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
+TILING_DATA_FIELD_DEF(uint32_t, quantMode)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLIV2TilingData)
 
@@ -116,8 +118,6 @@ struct QLIV2ParaInfo {
     TilingRequiredParaInfo weights = {nullptr, nullptr};
     TilingRequiredParaInfo query_dequant_scale = {nullptr, nullptr};
     TilingRequiredParaInfo key_dequant_scale = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
     TilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
     TilingOptionalParaInfo cuSeqLensK = {nullptr, nullptr};
     TilingOptionalParaInfo sequsedQ = {nullptr, nullptr};
@@ -129,6 +129,7 @@ struct QLIV2ParaInfo {
     TilingRequiredParaInfo sparseValues = {nullptr, nullptr};
 
     const int32_t *quantMode = nullptr;
+    const int32_t *maxSeqlenQ = nullptr;
     const char *layOutQuery = nullptr;
     const char *layOutKey = nullptr;
     const int32_t *blockSize = nullptr;
@@ -165,10 +166,10 @@ public:
     // Others Flag
     uint32_t sparseCount = 0;
     uint32_t cmpRatio = 1;
-    bool batchSupperFlag = false;
     bool returnValue = false;
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
+    int32_t maxSeqlenQ = -1;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKType = ge::DT_FLOAT16;
@@ -232,7 +233,6 @@ public:
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
-    bool batchSupperFlag_ = false;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::PA_BBND;

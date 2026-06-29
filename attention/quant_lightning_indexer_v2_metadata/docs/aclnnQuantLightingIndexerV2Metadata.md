@@ -5,11 +5,11 @@
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | Ascend 950PR/Ascend 950DT |      √     |
-| Atlas A3 训练系列产品/Atlas A3 推理系列产品     |    x     |
-| Atlas A2 训练系列产品/Atlas A2 推理系列产品 |    x     |
-| Atlas 200I/500 A2 推理产品                      |    x     |
-| Atlas 推理系列产品                              |    x     |
-| Atlas 训练系列产品                              |    x     |
+| Atlas A3训练系列产品/Atlas A3推理系列产品     |    x     |
+| Atlas A2训练系列产品/Atlas A2推理系列产品 |    x     |
+| Atlas 200I/500 A2推理产品                      |    x     |
+| Atlas推理系列产品                              |    x     |
+| Atlas训练系列产品                              |    x     |
 
 ## 功能说明
 
@@ -225,7 +225,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>layoutQOptional</td>
       <td>输入</td>
       <td>表示Query的排列格式。</td>
-      <td>支持 BSND、TND</br>建议值为BSND</td>
+      <td>支持BSND、TND</br>建议值为BSND</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>layoutKOptional</td>
       <td>输入</td>
       <td>表示Key的排列格式。</td>
-      <td>支持 BSND、TND、PA_BBND</br>建议值为BSND</td>
+      <td>支持BSND、TND、PA_BBND</br>建议值为BSND</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -386,7 +386,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
         }                                           \
     } while (0)
 
-// 参考 quant_lightning_indexer_v2_metadata.h
+// 参考quant_lightning_indexer_v2_metadata.h
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
 constexpr uint32_t QLI_V2_METADATA_SIZE = 8;
@@ -609,7 +609,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
 }
 
 int main() {
-    // 1. （固定写法）device/stream初始化，参考对外接口列表
+    // 1.（固定写法）device/stream初始化，参考对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -656,7 +656,7 @@ int main() {
     ret = aclnnQuantLightningIndexerV2Metadata(workspaceAddr, workspaceSize, executor, stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnQuantLightningIndexerV2Metadata failed. ERROR: %d\n", ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d\n", ret);
 

@@ -198,7 +198,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>dy</td>
       <td>输入</td>
-      <td>旋转位置编码正向输出 y 的导数。</td>
+      <td>旋转位置编码正向输出y的导数。</td>
       <td>-</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
@@ -208,8 +208,8 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>cos</td>
       <td>输入</td>
-      <td>正向计算输入 cos。</td>
-      <td>与 dy 数据类型一致。</td>
+      <td>正向计算输入cos。</td>
+      <td>与dy数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>3或4</td>
@@ -218,8 +218,8 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>sin</td>
       <td>输入</td>
-      <td>正向计算输入 sin。</td>
-      <td>与 dy 数据类型一致。</td>
+      <td>正向计算输入sin。</td>
+      <td>与dy数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>3或4</td>
@@ -228,8 +228,8 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>xOptional</td>
       <td>可选输入</td>
-      <td>正向计算输入 x，空指针时不计算 dcosOut 和 dsinOut。</td>
-      <td>与 dy 数据类型一致。</td>
+      <td>正向计算输入x，空指针时不计算dcosOut和dsinOut。</td>
+      <td>与dy数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>3或4</td>
@@ -248,8 +248,8 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>dxOut</td>
       <td>输出</td>
-      <td>正向计算输入 x 的导数。</td>
-      <td>与 dy 数据类型一致。</td>
+      <td>正向计算输入x的导数。</td>
+      <td>与dy数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>3或4</td>
@@ -258,8 +258,8 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>dcosOut</td>
       <td>输出</td>
-      <td>正向计算输入 cos 的导数，xOptional 非空时有效。</td>
-      <td>与 dy 数据类型一致。</td>
+      <td>正向计算输入cos的导数，xOptional非空时有效。</td>
+      <td>与dy数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>3或4</td>
@@ -268,8 +268,8 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>dsinOut</td>
       <td>输出</td>
-      <td>正向计算输入 sin 的导数，xOptional 非空时有效。</td>
-      <td>与 dy 数据类型一致。</td>
+      <td>正向计算输入sin的导数，xOptional非空时有效。</td>
+      <td>与dy数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>3或4</td>
@@ -484,7 +484,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 
 int main()
 {
-    // 1. 固定写法，device/stream初始化, 参考acl API手册
+    // 1. 固定写法，device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -591,7 +591,7 @@ int main()
     aclDestroyTensor(sin);
     aclDestroyTensor(dxOut);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(dyDeviceAddr);
     aclrtFree(cosDeviceAddr);
     aclrtFree(sinDeviceAddr);

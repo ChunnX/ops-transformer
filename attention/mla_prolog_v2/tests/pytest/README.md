@@ -15,13 +15,13 @@ pytest/
 基于pytest测试框架，实现MlaPrologV2算子的功能验证：
 
 - **CPU侧**：复现算子功能用以生成golden数据
-- **NPU侧**：通过torch_npu进行算子直调获取实际数据， 通过torchair入图暂不支持
+- **NPU侧**：通过torch_npu进行算子直调获取实际数据，通过torchair入图暂不支持
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 
 ### 当前实现范围
 
 ✅**已实现**：基础MlaPrologV2非量化PA场景
-❌**未实现**：MlaPrologV2 部分量化、全量化场景
+❌**未实现**：MlaPrologV2部分量化、全量化场景
 
 ### 参数限制
 

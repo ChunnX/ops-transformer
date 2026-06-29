@@ -452,7 +452,7 @@ __aicore__ inline void VecOp<NSAGT>::CalSoftmax(const int32_t loopIdx, const int
                                                 const int64_t mm345Addr, const uint64_t indicesGmOffset,
                                                 const int64_t s1Index, const int32_t blkCntOffset)
 {
-    int64_t dataSize = processM * params.sftBaseN;
+    int64_t dataSize = static_cast<int64_t>(processM) * static_cast<int64_t>(params.sftBaseN);
     int64_t maxOffset = loopIdx * params.sftBaseM * BLOCK_FP32;
     auto tmpMaxTensor = maxTensor[maxOffset];
     auto tmpSumTensor = sumTensor[maxOffset];

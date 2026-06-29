@@ -107,6 +107,11 @@ protected:
     uint64_t outputIdxCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
     bool isOutputIdxOffsetValid = false;
+    bool hasCuSeqlensQ = false;
+    bool hasCuSeqlensK = false;
+    bool hasSequsedQ = false;
+    bool hasSequsedK = false;
+    bool hasCmpResidualK = false;
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
@@ -114,12 +119,15 @@ protected:
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<K_T> valueOutGm;
+    GlobalTensor<float> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> outputIdxOffsetGm;
 
-    GlobalTensor<uint32_t> actualSeqLengthsGmQ;
-    GlobalTensor<uint32_t> actualSeqLengthsGm;
+    GlobalTensor<uint32_t> cuSeqlensQGm;
+    GlobalTensor<uint32_t> cuSeqlensKGm;
+    GlobalTensor<uint32_t> sequsedQGm;
+    GlobalTensor<uint32_t> sequsedKGm;
+    GlobalTensor<uint32_t> cmpResidualKGm;
 
     // ================================类成员变量====================================
     // aic、aiv核信息
@@ -135,7 +143,8 @@ protected:
     __aicore__ inline void InitTilingData(const LIV2TilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
-                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK);
+                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
+                                            __gm__ uint8_t *cmpResidualK);
     // ================================Split Core================================
     __aicore__ inline void SplitCore(uint32_t curCoreIdx, uint32_t &coreNum, LIV2Common::SplitCoreInfo &info);
     __aicore__ inline void SplitCoreByAICPU(uint32_t curCoreIdx,  GlobalTensor<uint32_t> &metadataGm);
@@ -150,10 +159,14 @@ protected:
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                               GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
+                                               GlobalTensor<uint32_t> &cuSeqlensQGm,
+                                               GlobalTensor<uint32_t> &sequsedQGm,
+                                               uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                                  GlobalTensor<uint32_t> &actualSeqLengthsGm,
-                                                  uint32_t defaultSeqLen, uint32_t cmpRatio, uint32_t cmpResidualK);
+                                                  GlobalTensor<uint32_t> &cuSeqlensKGm,
+                                                  GlobalTensor<uint32_t> &sequsedKGm,
+                                                  uint32_t defaultSeqLen, uint32_t cmpRatio,
+                                                  GlobalTensor<uint32_t> &cmpResidualKGm);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
                                                uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
@@ -211,60 +224,62 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ,
                                                           __gm__ uint8_t *cuSeqlensK,
                                                           __gm__ uint8_t *sequsedQ,
-                                                          __gm__ uint8_t *sequsedK)
+                                                          __gm__ uint8_t *sequsedK,
+                                                          __gm__ uint8_t *cmpResidualK)
 {
-    constInfo.actualLenDims = constInfo.batchSize;
-    if constexpr (LAYOUT_T == LI_V2_LAYOUT::TND) {
-        constInfo.actualLenQDims = (constInfo.batchSupperFlag) ? constInfo.batchSize + 1 : constInfo.batchSize;
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ, constInfo.actualLenQDims);
-    } else {
-        if (sequsedQ == nullptr) {
-            constInfo.actualLenQDims = 0;
-        } else {
-            constInfo.actualLenQDims = constInfo.batchSize;
-            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)sequsedQ, constInfo.actualLenQDims);
-        }
+    if (cuSeqlensQ != nullptr) {
+        cuSeqlensQGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ);
+        hasCuSeqlensQ = true;
     }
-    if constexpr (K_LAYOUT_T == LI_V2_LAYOUT::TND) {
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensK, constInfo.actualLenDims);
-    } else {
-        if (sequsedK == nullptr) {
-            constInfo.actualLenDims = 0;
-        } else {
-            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedK, constInfo.actualLenDims);
-        }
+    if (cuSeqlensK != nullptr) {
+        cuSeqlensKGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensK);
+        hasCuSeqlensK = true;
+    }
+    if (sequsedQ != nullptr) {
+        sequsedQGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedQ);
+        hasSequsedQ = true;
+    }
+    if (sequsedK != nullptr) {
+        sequsedKGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedK);
+        hasSequsedK = true;
+    }
+    if (cmpResidualK != nullptr) {
+        cmpResidualKGm.SetGlobalBuffer((__gm__ uint32_t *)cmpResidualK);
+        hasCmpResidualK = true;
     }
 }
 
 template <typename LIT>
 __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims,
                                                              bool isAccumSeq,
-                                                             GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                                             GlobalTensor<uint32_t> &cuSeqlensQGm,
+                                                             GlobalTensor<uint32_t> &sequsedQGm,
                                                              uint32_t defaultSeqLen)
 {
-    bIdx = (constInfo.batchSupperFlag)? bIdx + 1 : bIdx; // 如果为B+1情况，则向后移动一位
-    if (actualLenDims == 0) {
-        return defaultSeqLen;
-    } else if (isAccumSeq && bIdx > 0) {
-        return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
+    if (hasSequsedQ) {
+        return sequsedQGm.GetValue(bIdx);
+    } else if (hasCuSeqlensQ) {
+        return cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
     } else {
-        return actualSeqLengthsGm.GetValue(bIdx);
+        return defaultSeqLen;
     }
 }
 
 template <typename LIT>
 __aicore__ inline uint32_t LightningIndexerV2Kernel<LIT>::GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims,
                                                              bool isAccumSeq,
-                                                             GlobalTensor<uint32_t> &actualSeqLengthsGm,
+                                                             GlobalTensor<uint32_t> &cuSeqlensKGm,
+                                                             GlobalTensor<uint32_t> &sequsedKGm,
                                                              uint32_t defaultSeqLen, uint32_t cmpRatio,
-                                                             uint32_t cmpResidualK)
+                                                             GlobalTensor<uint32_t> &cmpResidualKGm)
 {
-    if (actualLenDims == 0) {
-        return defaultSeqLen * cmpRatio + cmpResidualK;
-    } else if (isAccumSeq && bIdx > 0) {
-        return actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1);
+    uint32_t residual = hasCmpResidualK ? cmpResidualKGm.GetValue(bIdx) : 0;
+    if (hasSequsedK) {
+        return sequsedKGm.GetValue(bIdx) * cmpRatio + residual;
+    } else if (hasCuSeqlensK) {
+        return (cuSeqlensKGm.GetValue(bIdx + 1) - cuSeqlensKGm.GetValue(bIdx)) * cmpRatio + residual;
     } else {
-        return actualSeqLengthsGm.GetValue(bIdx);
+        return defaultSeqLen * cmpRatio + residual;
     }
 }
 
@@ -274,12 +289,12 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::GetS1S2ActualSeqLen(uint32
                                                              uint32_t &actS2Size,
                                                              uint32_t &actS2SizeOrig)
 {
-    actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
+    actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, cuSeqlensQGm, sequsedQGm,
                                 constInfo.qSeqSize);
     // 压缩前的actS2Size
     actS2SizeOrig =
         GetActualSeqLenKey(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2,
-                           actualSeqLengthsGm, constInfo.kSeqSize, constInfo.cmpRatio, constInfo.cmpResidualK);
+                           cuSeqlensKGm, sequsedKGm, constInfo.kSeqSize, constInfo.cmpRatio, cmpResidualKGm);
     // 真实使用的压缩后S2长度
     actS2Size = actS2SizeOrig / constInfo.cmpRatio;
 }
@@ -496,11 +511,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::DealActSeqLenIsZero(uint32
 {
     if ASCEND_IS_AIV {
         if (constInfo.outputLayout == LI_V2_LAYOUT::TND) {
-            uint32_t tSizeIdx = (constInfo.batchSupperFlag) ? constInfo.batchSize : constInfo.batchSize - 1;
-            uint32_t tBaseIdx = (constInfo.batchSupperFlag) ? bIdx : bIdx - 1;
-            uint32_t tSize = actualSeqLengthsGmQ.GetValue(tSizeIdx);
-            uint32_t tBase = bIdx == 0 ? 0 : actualSeqLengthsGmQ.GetValue(tBaseIdx);
-            uint32_t s1Count = tempLoopInfo.actS1Size;
+            uint32_t tBase = cuSeqlensQGm.GetValue(bIdx);
+            uint32_t s1Count = cuSeqlensQGm.GetValue(bIdx + 1) - tBase;
 
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
                 uint64_t indiceOutOffset =
@@ -540,7 +552,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
     }
 
     InitTilingData(tiling);
-    InitActualSeqLen(cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK);
+    InitActualSeqLen(cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK);
 
     // 获取分核信息
     if (metadata != nullptr) {
@@ -564,13 +576,13 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::Init(__gm__ uint8_t *query
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        valueOutGm.SetGlobalBuffer((__gm__ K_T *)sparseValues);
+        valueOutGm.SetGlobalBuffer((__gm__ float *)sparseValues);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         if (outputIdxOffset != nullptr) {
             isOutputIdxOffsetValid = true;
+            outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
         }
-        outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
         vectorService.InitVecInputTensor(weightsGm, indiceOutGm, valueOutGm, blockTableGm, outputIdxOffsetGm);
         vectorService.InitVecWorkspaceTensor(scoreGm);
     } else {
@@ -676,8 +688,17 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop,
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
         if constexpr (LAYOUT_T == LI_V2_LAYOUT::TND) {
-            uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? runInfo.bIdx : runInfo.bIdx - 1;
-            actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
+            actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.bIdx);
+            if (hasSequsedQ) {
+                uint32_t curSequsedQ = sequsedQGm.GetValue(runInfo.bIdx);
+                uint32_t nextPrefixSum = cuSeqlensQGm.GetValue(runInfo.bIdx + 1);
+                uint32_t curCuLensQ = nextPrefixSum - actualSeqQPrefixSum;
+                if (curSequsedQ < curCuLensQ) {
+                    runInfo.needTndPadding = true;
+                    runInfo.curCuSeqlensQ = curCuLensQ;
+                    runInfo.curSequsedQ = curSequsedQ;
+                }
+            }
         } else {  // BSND
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
         }
@@ -697,8 +718,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop,
     }
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_V2_LAYOUT::TND) { // T N2 D
-        actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx - 1);
-        actualSeqKPrefixSum = actualSeqKPrefixSum / constInfo.cmpRatio;
+        actualSeqKPrefixSum = cuSeqlensKGm.GetValue(runInfo.bIdx);
     } else {
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
     }
@@ -710,6 +730,9 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop,
     runInfo.indiceOutOffset = indiceOutCoreOffset;
     runInfo.valueOutOffset = valueOutCoreOffset;
     runInfo.outputIdxCoreOffset = outputIdxCoreOffset;
+    if (runInfo.needTndPadding) {
+        vectorService.DoTndPadding(runInfo);
+    }
 }
 
 template <typename LIT>
@@ -744,17 +767,11 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::ProcessInvalid()
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 
-                GlobalTensor<uint16_t> valueOutGmTmp;
-                valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
-                GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
+                GlobalTensor<uint32_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
 
-                uint16_t negInf = 0;
-                if constexpr (std::is_same_v<K_T, float16_t>) {
-                    negInf = 0xFC00;
-                }else {
-                    negInf = 0xFF80;
-                }
-                AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
+                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
             }
         }
     }

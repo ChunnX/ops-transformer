@@ -75,15 +75,12 @@ public:
     uint64_t qPreBlockFactor;
     uint64_t qPreBlockTotal;
     uint64_t qPreBlockTail;
-    uint64_t qPostBlockTotal;
     uint64_t kPreBlockFactor;
     uint64_t kPreBlockTotal;
     uint64_t kPreBlockTail;
-    uint64_t kPostBlockTotal;
     uint64_t vPreBlockFactor;
     uint64_t vPreBlockTotal;
     uint64_t vPreBlockTail;
-    uint64_t vPostBlockTotal;
 
     uint64_t initdqSize;
     uint64_t dqOffset;
@@ -143,15 +140,12 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         qPreBlockFactor = tilingData->preTilingData.qPreBlockFactor;
         qPreBlockTotal = tilingData->preTilingData.qPreBlockTotal;
         qPreBlockTail = tilingData->preTilingData.qPreBlockTail;
-        qPostBlockTotal = tilingData->postTilingData.qPostBlockTotal;
         kPreBlockFactor = tilingData->preTilingData.kPreBlockFactor;
         kPreBlockTotal = tilingData->preTilingData.kPreBlockTotal;
         kPreBlockTail = tilingData->preTilingData.kPreBlockTail;
-        kPostBlockTotal = tilingData->postTilingData.kPostBlockTotal;
         vPreBlockFactor = tilingData->preTilingData.vPreBlockFactor;
         vPreBlockTotal = tilingData->preTilingData.vPreBlockTotal;
         vPreBlockTail = tilingData->preTilingData.vPreBlockTail;
-        vPostBlockTotal = tilingData->postTilingData.vPostBlockTotal;
 
         b = tilingData->s1s2BNGS1S2BaseParams.b;
         n1 = tilingData->s1s2BNGS1S2BaseParams.n2 * tilingData->s1s2BNGS1S2BaseParams.g;
@@ -218,8 +212,17 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
             InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
         } else if constexpr (IsSameType<T1, half>::value || IsSameType<T1, bfloat16_t>::value) {
             InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
-            InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
-            InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);
+            if constexpr (SPLIT_AXIS == 0) {
+                InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
+                InitOutput<float>(dvWorkSpaceGm[dvOffset], initdvSize, 0);
+            } else {
+                if (tilingData->preTilingData.sValueZeroUnderTND ||
+                        (IS_DETER_NEW(DETER_SPARSE_TYPE) && tilingData->preTilingData.hasInvalidCol)) {
+                    // BN2S2针对TND中有S为0的场景 或 newDeter与无效列叠加场景，增加gm清零
+                    InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
+                    InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
+                }
+            }
         } else {
             if (tilingData->s1s2BNGS1S2SplitCoreParams.s2Outer > 1) {
                 InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);

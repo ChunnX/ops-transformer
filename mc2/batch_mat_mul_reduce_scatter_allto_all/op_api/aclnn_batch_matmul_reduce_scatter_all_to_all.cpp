@@ -15,7 +15,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 using namespace op;
 
 static const char *BMM_ACLNN_OP_NAME = "aclnnBatchMatMulReduceScatterAlltoAll";
@@ -71,9 +71,24 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
 static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias,
                                   const aclTensor* out)
 {
-    OP_CHECK_WRONG_DIMENSION(x, SUPPORTED_DIMENSIONAL, return false);
-    OP_CHECK_WRONG_DIMENSION(weight, SUPPORTED_DIMENSIONAL, return false);
-    OP_CHECK_WRONG_DIMENSION(out, SUPPORTED_DIMENSIONAL, return false);
+    if (x->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(BMM_ACLNN_OP_NAME, "x",
+            (std::to_string(x->GetViewShape().GetDimNum()) + "D").c_str(),
+            ("The shape of x must be " + std::to_string(SUPPORTED_DIMENSIONAL) + "D.").c_str());
+        return false;
+    }
+    if (weight->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(BMM_ACLNN_OP_NAME, "weight",
+            (std::to_string(weight->GetViewShape().GetDimNum()) + "D").c_str(),
+            ("The shape of weight must be " + std::to_string(SUPPORTED_DIMENSIONAL) + "D.").c_str());
+        return false;
+    }
+    if (out->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(BMM_ACLNN_OP_NAME, "out",
+            (std::to_string(out->GetViewShape().GetDimNum()) + "D").c_str(),
+            ("The shape of out must be " + std::to_string(SUPPORTED_DIMENSIONAL) + "D.").c_str());
+        return false;
+    }
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDimNum() != SUPPORTED_DIMENSIONAL) &&
             (bias->GetViewShape().GetDimNum() != BIAS_SUPPORTED_DIMENSIONAL)) {

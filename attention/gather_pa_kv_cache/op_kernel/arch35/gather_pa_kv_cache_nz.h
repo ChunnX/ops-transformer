@@ -218,6 +218,11 @@ public:
                 } else {
                     isFulledWithZero = false;
                     blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
+                    // blockId数值越界时填零, 与golden对齐(非连续view场景numBlocks_为view dim0)。
+                    if (blockId >= numBlocks_ || blockId < 0) {
+                        isFulledWithZero = true;
+                        blockId = 0;
+                    }
                 }
                 keyCacheOffset = (nonContiguousFlag_ & 1) ?
                     (blockId * kCacheStride0_ * sizeof(DTYPE_KEY)) :
@@ -255,6 +260,11 @@ public:
                 } else {
                     isFulledWithZero = false;
                     blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
+                    // blockId数值越界时填零, 与golden对齐(非连续view场景numBlocks_为view dim0)。
+                    if (blockId >= numBlocks_ || blockId < 0) {
+                        isFulledWithZero = true;
+                        blockId = 0;
+                    }
                 }
                 valueCacheOffset = (nonContiguousFlag_ & 2) ?
                     (blockId * vCacheStride0_ * sizeof(DTYPE_VALUE)) :

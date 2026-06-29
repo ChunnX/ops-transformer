@@ -20,12 +20,8 @@
 #include "../checkers/fia_checker.h"
 
 #include "log/log.h"
-#include "log/error_code.h"
 #include "err/ops_err.h"
 #include "tiling/tiling_api.h"
-#include "platform/platform_info.h"
-#include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
-#include "../../op_kernel/fused_infer_attention_score_template_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -48,7 +44,7 @@ ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
 
     if (FiaTilingRegistry::GetInstance().DoTilingImpl(context, &fiaInfo) == ge::GRAPH_SUCCESS) {
         return ge::GRAPH_SUCCESS;
-    } else {        // TODO，老的模板也注册，把else分支和下面的逻辑删掉
+    } else {        // 假设，老的模板也注册，把else分支和下面的逻辑删掉
         OP_LOGD(context, "reconstruct template do not support, routing to old template.");
     }
 

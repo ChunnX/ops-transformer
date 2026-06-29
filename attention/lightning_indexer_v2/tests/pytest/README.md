@@ -10,7 +10,7 @@
 
 - **数据格式**:
   - **query_layout**：BSND、TND
-  - **key_layout**: PA_BSND
+  - **key_layout**: PA_BBND
 
 ### 环境配置
 

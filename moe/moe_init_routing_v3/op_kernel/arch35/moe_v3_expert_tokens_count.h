@@ -36,7 +36,6 @@ public:
 
 private:
     __aicore__ inline void CopyOut();
-    __aicore__ inline void CopyOutExpertIdxValue();
 
     __aicore__ inline void expertCountCopyIn();
     __aicore__ inline void expertCountCompute();
@@ -214,9 +213,6 @@ __aicore__ inline void ExpertTokensCount::Process()
         }
 
         CopyOut();
-        if (dropPadMode_ == DROP_PAD_MODE) {
-            CopyOutExpertIdxValue();
-        }
     }
 
     SyncAll();
@@ -235,22 +231,21 @@ __aicore__ inline void ExpertTokensCount::CopyOut()
 
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>((actualExpertNum_) * sizeof(int32_t)),
                                  0, 0, 0};
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
     SetAtomicAdd<int32_t>();
     DataCopyPad(expertCountTempGm_, expertCountOutLocal, copyParams);
     SetAtomicNone();
-    expertCountOutToTempQueue_.FreeTensor(expertCountOutLocal);
-}
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 
-__aicore__ inline void ExpertTokensCount::CopyOutExpertIdxValue()
-{
-    LocalTensor<int32_t> expertIdxValueLocal = expertCountOutToTempQueue_.AllocTensor<int32_t>();
-    expertIdxValueLocal.SetValue(0, finalExpertId_);
-    expertIdxValueLocal.SetValue(1, expertTokenValue_);
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1),
-                                 static_cast<uint32_t>(EXPERT_ID_VALUE_NUM * sizeof(int32_t)), 0, 0, 0};
-    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
-    DataCopyPad(expertIdxValueGm_[blockIdx_ * EXPERT_ID_VALUE_NUM], expertIdxValueLocal, copyParams);
-    expertCountOutToTempQueue_.FreeTensor(expertIdxValueLocal);
+    if (dropPadMode_ == DROP_PAD_MODE) {
+        expertCountOutLocal.SetValue(0, finalExpertId_);
+        expertCountOutLocal.SetValue(1, expertTokenValue_);
+        DataCopyExtParams expertIdxCopyParams{static_cast<uint16_t>(1),
+            static_cast<uint32_t>(EXPERT_ID_VALUE_NUM * sizeof(int32_t)), 0, 0, 0};
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+        DataCopyPad(expertIdxValueGm_[blockIdx_ * EXPERT_ID_VALUE_NUM], expertCountOutLocal, expertIdxCopyParams);
+    }
+    expertCountOutToTempQueue_.FreeTensor(expertCountOutLocal);
 }
 
 __aicore__ inline void ExpertTokensCount::expertCountCopyIn()

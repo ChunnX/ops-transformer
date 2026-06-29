@@ -65,8 +65,8 @@ protected:
 
         headNum = inputShape->GetStorageShape().GetDim(One);
         headDim = inputShape->GetStorageShape().GetDim(Two);
-        headNumDim = headNum * headDim;
-        totalKvSize = inputShape->GetStorageShape().GetDim(0) * headNumDim;
+        headNumDim = static_cast<uint64_t>(headNum) * headDim;
+        totalKvSize = static_cast<uint64_t>(inputShape->GetStorageShape().GetDim(0)) * headNumDim;
         return true;
     }
 
@@ -84,7 +84,7 @@ protected:
         compressStride = static_cast<uint32_t>(*compressStridePtr);
         actSeqLenType = *actSeqLenTypePtr;
 
-        weightSize = compressBlockSize * headNum;
+        weightSize = static_cast<uint64_t>(compressBlockSize) * headNum;
         maxOverlap = 2u * (compressBlockSize + compressStride - 1u) / compressStride - 1u;
         return true;
     }
@@ -148,7 +148,7 @@ protected:
             actualOutputSeqLen.push_back(totalOutSeqLen);
             pre_seq_len += cur_seq_len;
         }
-        totalCompressSize = totalOutSeqLen * headNumDim;
+        totalCompressSize = static_cast<uint64_t>(totalOutSeqLen) * headNumDim;
         return true;
     }
 
@@ -406,12 +406,12 @@ protected:
     uint32_t compressStride;
     uint32_t headNum;
     uint32_t headDim;
-    uint32_t headNumDim;
+    uint64_t headNumDim;
 
-    uint32_t totalKvSize;       // 输入的总元素数量
-    uint32_t weightSize;        // weight的总元素数量
-    uint32_t totalOutSeqLen;    // 输出的总seq_len数量
-    uint32_t totalCompressSize; // 输出的总元素数量
+    uint64_t totalKvSize;       // 输入的总元素数量
+    uint64_t weightSize;        // weight的总元素数量
+    uint64_t totalOutSeqLen;    // 输出的总seq_len数量
+    uint64_t totalCompressSize; // 输出的总元素数量
 
     uint32_t maxOverlap;          // 当前compressBlockSize和compressStride下,中间结果overlap的数量
     uint32_t maxCopyKVTokensNums; // 计算搬运至UB块的kv tokens数量
@@ -435,7 +435,7 @@ protected:
     uint32_t ubBlockFloatNum; // 当前计算的Dtype下(fp32),对齐32B所需的元素个数
 
     std::vector<uint32_t> actualSeqLen;                    // 各batch的seq_len长度，前缀和方式
-    std::vector<uint32_t> actualOutputSeqLen;              // 各batch可以输出的token数，前缀和方式
+    std::vector<uint64_t> actualOutputSeqLen;              // 各batch可以输出的token数，前缀和方式
     std::vector<uint32_t> divisorNums;                     // aivNum的因子
     uint32_t PerCoreHeadIdx[MAX_CORE_NUM] = {0};           // 记录每个核处理的head索引
     uint32_t PerCoreHeadNum[MAX_CORE_NUM] = {0};           // 记录每个核处理的head数量

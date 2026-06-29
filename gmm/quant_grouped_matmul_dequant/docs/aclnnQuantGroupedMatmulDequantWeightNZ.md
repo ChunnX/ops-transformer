@@ -36,7 +36,7 @@
   $$
 
   4.分组矩阵乘+反量化
-    - 4.1 若输入的$scale_{weight}$数据类型为FLOAT32, 则：
+    - 4.1 若输入的$scale_{weight}$数据类型为FLOAT32,则：
 
   $$
     \begin{aligned}
@@ -50,7 +50,7 @@
     \end{aligned}
   $$
 
-  - 4.2 若输入的$scale_{weight}$数据类型为INT64, 则：
+  - 4.2 若输入的$scale_{weight}$数据类型为INT64,则：
 
     $$
     x^{*}_{quantized} = x_{quantized}[group[i-1]:group[i]] \\

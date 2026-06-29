@@ -146,6 +146,8 @@ constexpr int64_t HIFP8_ADMIT_N4 = 80;
 constexpr uint32_t CORE_LIST_NUM = 36;
 constexpr uint32_t ARRAY_LENGTH = 3;
 constexpr uint32_t DETER_LENGTH = 4;
+constexpr uint32_t NZ_OUT_MIN_S_SIZE = 2048;
+constexpr uint32_t FP16_C0_SIZE = 16;
 
 enum class InputIndex : uint32_t {
     QUERY = 0,
@@ -486,6 +488,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     uint64_t s2SinkOuter = 0;
     uint32_t tndMaxSumLayout = 0; // 0: BNS8, 1: TND
     bool enablePreSfmg = 0;
+    bool isNzOut = false;
 };
 
 inline int64_t CeilCommon(int64_t num1, int64_t num2)

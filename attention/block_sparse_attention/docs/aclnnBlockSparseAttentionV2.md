@@ -15,7 +15,7 @@
 
 - **接口功能**：BlockSparseAttentionV2稀疏注意力计算，支持灵活的块级稀疏模式，通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。
   
-  相比于BlockSparseAttention, 本接口新增qDequantScaleOptional、kDequantScaleOptional、vDequantScaleOptional参数。
+  相比于BlockSparseAttention,本接口新增qDequantScaleOptional、kDequantScaleOptional、vDequantScaleOptional参数。
 
 - **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
 
@@ -50,12 +50,12 @@
 
   kDequantScale（key量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1) 或 (Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
   - 用途：在QK矩阵乘法时对key进行反量化。
 
   qDequantScale（value量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1) 或 (Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
   - 用途：在PV矩阵乘法时对value进行反量化。
 
 ## 函数原型
@@ -134,10 +134,11 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>公式中的query。</td>
       <td>支持的shape为：
         <ul><li>TND: [totalQTokens, headNum, headDim]。</li>
-        <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul>
-        <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li></ul>
+        <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li>
+        <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li>
+        </ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>3/4</td>
       <td>×</td>
@@ -153,7 +154,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
           <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
         </ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>3/4</td>
       <td>×</td>
@@ -170,7 +171,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
           <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
         </ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>3/4</td>
       <td>×</td>
@@ -520,7 +521,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
     <tr>
       <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="4">161002</td>
-      <td>query，key，value 数据类型不在支持的范围之内。</td>
+      <td>query，key，value数据类型不在支持的范围之内。</td>
     </tr>
     <tr>
       <td>qInputLayout或kvInputLayout不合法。</td>
@@ -608,10 +609,12 @@ aclnnStatus aclnnBlockSparseAttentionV2(
   - qDequantScale的shape必须为(Batch, HeadNum, CeilDiv(maxQSeqLength, 128), 1)。
   - kDequantScale和vDequantScale的shape必须一致，为(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)。
   - 当query、key、value中任意一个数据类型不为FLOAT8_E4M3FN时，qDequantScale、kDequantScale、vDequantScale必须传入nullptr。
+  - blockShapeOptional必须传入。
+  - q和kv的量化块大小必须与blockShapeOptional的两个元素大小分别保持一致。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
 #include <iostream>
@@ -772,7 +775,7 @@ void FreeResource(aclTensor *query, aclTensor *key, aclTensor *value, aclTensor 
 }
 
 int main() {
-    // 1. （固定写法）device/stream初始化
+    // 1.（固定写法）device/stream初始化
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
@@ -923,7 +926,7 @@ int main() {
                            actualSeqLengthsDeviceAddr, actualSeqLengthsKvDeviceAddr, workspaceAddr, deviceId, &stream);
               return ret);
 
-    // aclCreateIntArray 期望的是 host 侧的数据指针，而不是 device 侧的数据
+    // aclCreateIntArray期望的是host侧的数据指针，而不是device侧的数据
     actualSeqLengths = aclCreateIntArray(actualSeqLengthsHost.data(), batch);
     actualSeqLengthsKv = aclCreateIntArray(actualSeqLengthsKvHost.data(), batch);
     CHECK_RET(actualSeqLengths != nullptr && actualSeqLengthsKv != nullptr,

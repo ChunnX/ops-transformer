@@ -137,7 +137,7 @@ aclnnStatus aclnnMhcSinkhorn(
 - 公共约束
 
   1. 输入约束：
-     - 输入Tensor `x` 为空，报错`ACLNN_ERR_PARAM_NULLPTR`；
+     - 输入Tensor `x`为空，报错`ACLNN_ERR_PARAM_NULLPTR`；
      - 所有输入/输出Tensor的数据格式仅支持`ACL_FORMAT_ND`；
      - 仅支持`FLOAT32`数据类型，不支持其他精度（如FLOAT16/DOUBLE）。
      - outFlag支持0和1；outFlag为0时，仅输出output，normOut和sumOut可传空指针；outFlag为1时，同时输出output、normOut和sumOut，normOut和sumOut不能为空。
@@ -190,7 +190,7 @@ void PrintTensorData(const std::vector<int64_t>& shape, void* device_addr) {
   int64_t size = GetShapeSize(shape);
   std::vector<float> host_data(size, 0.0f);
 
-  // Device -> Host 数据拷贝
+  // Device -> Host数据拷贝
   aclError ret = aclrtMemcpy(
       host_data.data(), size * sizeof(float),
       device_addr, size * sizeof(float),
@@ -258,7 +258,7 @@ int CreateAclTensor(
             LOG_PRINT("aclrtMalloc failed, error: %d\n", ret); 
             return -1);
 
-  // 3. Host -> Device 数据拷贝
+  // 3. Host -> Device数据拷贝
   ret = aclrtMemcpy(
       device_addr, size,
       host_data.data(), size,

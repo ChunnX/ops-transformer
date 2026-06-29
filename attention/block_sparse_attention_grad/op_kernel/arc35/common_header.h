@@ -30,6 +30,16 @@ static constexpr uint32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
 static constexpr uint32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
 static constexpr uint32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
 
+struct ConstInfo {
+    int32_t q_head_num{0};
+    int32_t kv_head_num{0};
+    int32_t block_x{0};
+    int32_t block_y{0};
+    int32_t head_dim{0};
+    int32_t q_block_num{0};
+    int32_t kv_block_num{0};
+};
+
 struct RunTimeInfo {
     int32_t taskId{0};
     int32_t bIdx{0};       // 当前计算的batch的idx
@@ -132,16 +142,22 @@ __aicore__ inline uint64_t GetSftgGmOffset(int32_t lastBatchSum, int32_t current
 }
 
 
-__aicore__ inline bool IsValidBlock(const int32_t q_head_num, const int32_t q_block_num, const int32_t kv_block_num,
-                                    const int32_t batch_idx, const int32_t n1_idx, const int32_t q_block_idx,
-                                    const int32_t kv_block_idx, __gm__ uint8_t *sparse_block_list)
+__aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int32_t batch_idx, const int32_t n1_idx,
+                                    const int32_t q_block_idx, const int32_t kv_block_idx,
+                                    __gm__ uint8_t *block_sparse_mask)
 
 {
-    uint64_t offset = batch_idx * (q_head_num * q_block_num * kv_block_num) + n1_idx * (q_block_num * kv_block_num) +
-                      q_block_idx * kv_block_num + kv_block_idx;
-    bool is_valid = sparse_block_list[offset];
+    uint64_t offset = batch_idx * (const_info.q_head_num * const_info.q_block_num * const_info.kv_block_num) +
+                      n1_idx * (const_info.q_block_num * const_info.kv_block_num) +
+                      q_block_idx * const_info.kv_block_num + kv_block_idx;
+    bool is_valid = block_sparse_mask[offset];
     return is_valid;
 }
 
+
+__aicore__ inline int32_t GetBlockLen(int32_t start_idx, int32_t end_idx, int32_t max_len)
+{
+    return start_idx + max_len < end_idx ? max_len : (end_idx - start_idx);
+}
 
 } // namespace BSA_ARC35

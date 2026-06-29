@@ -131,6 +131,9 @@ set_directory_properties(PROPERTIES
 
 include(cmake/third_party/opbase.cmake)
 include(cmake/third_party/ops-tensor.cmake)
+if(DOWNLOAD_OPS_TEST_KIT)
+  include(cmake/third_party/ops_test_kit.cmake)
+endif()
 include(cmake/config.cmake)
 add_cann_third_party(json)
 
@@ -335,6 +338,7 @@ add_subdirectory(ffn)
 list(APPEND OP_LIST "ffn")
 list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/ffn/ffn)
 add_subdirectory(attention)
+add_subdirectory(mhc)
 list(APPEND OP_LIST ${COMPILED_OPS})
 list(REMOVE_DUPLICATES OP_LIST)
 list(APPEND OP_DIR_LIST ${COMPILED_OP_DIRS})

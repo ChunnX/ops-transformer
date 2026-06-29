@@ -23,7 +23,7 @@
 #include "../matmul_v3_compile_info.h"
 
 #include "../../../../../common/utils/mc2_log.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 
 namespace optiling {
 namespace mc2_matmul_v3_advanced {

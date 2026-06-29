@@ -23,7 +23,7 @@ namespace GROUPED_MATMUL {
 template <typename T>
 __aicore__ inline void EmptyTensorCompute(GM_ADDR groupListPtr, GM_ADDR y, const GMMTilingData* __restrict tiling) {
     const GMMBaseParams* __restrict gmmBaseParams = &tiling->gmmBaseParams;
-    // In the V2 interface, grouptype is -1 after host is grouped. Thus, grouptype can be either -1 or 2.
+    // In the V2 interface, groupType is -1 after host is grouped. Thus, groupType can be either -1 or 2.
     if (groupListPtr == nullptr || gmmBaseParams->groupType == 0) {
         return;
     }

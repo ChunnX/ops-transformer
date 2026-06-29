@@ -168,7 +168,7 @@ public:
         uint32_t HalfChunkTileLen = ChunkTileLen / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockK];
+            auto gmTileC = gmC[loopIdx * blockN];
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
             auto &ubCFp32 = ubCFp32List[ubListId];
@@ -298,7 +298,7 @@ public:
         uint32_t ChunkTileLen = blockN / 2;
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
-            auto gmTileC = gmC[loopIdx * blockK];
+            auto gmTileC = gmC[loopIdx * blockN];
 
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];

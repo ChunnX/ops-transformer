@@ -522,13 +522,15 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyInKv(int64_t &mte2Size,
     int64_t keySrcStride = 0;
     int64_t keyRopeSrcStride = 0;
     keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                    (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * gatherParams.dValue * sizeof(KV_T);
+                    (keyOffset2 - keyOffset1)) - static_cast<int64_t>(constInfo.sparseBlockSize)) *
+                    static_cast<int64_t>(gatherParams.dValue) * sizeof(KV_T);
     if constexpr (gatherRope) {
         int64_t keyRopeOffset1 = GetKeyRopeGmOffset(realS2Idx1, runInfo);
         int64_t keyRopeOffset2 = GetKeyRopeGmOffset(realS2Idx2, runInfo);
         keyRopeSrcStride = ((keyRopeOffset1 > keyRopeOffset2 ? (keyRopeOffset1 - keyRopeOffset2) :
-                            (keyRopeOffset2 - keyRopeOffset1)) - constInfo.sparseBlockSize) *
-                                gatherParams.dRopeValue * sizeof(KV_T);
+                            (keyRopeOffset2 - keyRopeOffset1)) -
+                            static_cast<int64_t>(constInfo.sparseBlockSize)) *
+                            static_cast<int64_t>(gatherParams.dRopeValue) * sizeof(KV_T);
     }
 
     bool key1LessThankey2 = (realS2Idx1 > realS2Idx2);
@@ -830,7 +832,8 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::Vector2ScatterAdd(int32_t v
 
             int64_t keySrcStride = 0;
             keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                            (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.dSizeQueryIndex * sizeof(T);
+                            (keyOffset2 - keyOffset1)) - static_cast<int64_t>(constInfo.sparseBlockSize)) *
+                            static_cast<int64_t>(constInfo.dSizeQueryIndex) * sizeof(T);
 
             bool strideInvalid = (keySrcStride >= INT32_MAX) || (keySrcStride < 0);
             bool copyOutOfRange = (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||

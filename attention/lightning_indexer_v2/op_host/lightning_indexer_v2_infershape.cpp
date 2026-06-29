@@ -72,7 +72,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
             OP_LOGE(context, "Layout TND, queryDims (%zu) must be 3!", queryShape->GetDimNum()),
             return ge::GRAPH_FAILED);
         sparseIndicesShape->SetDim(0, queryShape->GetDim(0));                      // 0:Dim T
-        int32_t nDimIndex = (inputLayoutKeyPtrStr == "PA_BSND") ? 2 : 1;           // 2:Key Dim N
+        int32_t nDimIndex = (inputLayoutKeyPtrStr == "PA_BBND") ? 2 : 1;           // 2:Key Dim N
         sparseIndicesShape->SetDim(1, keyShape->GetDim(nDimIndex));                // 1:Dim N
         sparseIndicesShape->SetDim(2, *seleced_count);                             // 2:Dim K
     }
@@ -100,7 +100,7 @@ static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContex
     ge::DataType outputType = ge::DT_INT32;
     // attention_out, outidx:0
     context->SetOutputDataType(0, outputType);
-    context->SetOutputDataType(1, context->GetInputDataType(QUERY_INDEX));
+    context->SetOutputDataType(1, ge::DT_FLOAT);
     OP_LOGI(context->GetNodeName(), "LightningIndexerV2 InferDataType end.");
     return GRAPH_SUCCESS;
 }

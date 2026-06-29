@@ -383,7 +383,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(104000000010300003);
     TILING_KEY_IS(104000000210300003);
 
-
     // Gqa NoQuant Non PA Non Perf 泛化
     TILING_KEY_IS(104000000000000000);
     TILING_KEY_IS(104000000200000000);
@@ -1506,7 +1505,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(103000000020322225);
     TILING_KEY_IS(103000000220322225);
 
-
     // Gqa NoQuant Non PA
     TILING_KEY_IS(103000000000022220);
     TILING_KEY_IS(103000000200022220);
@@ -1595,8 +1593,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(104000000210222223);
     TILING_KEY_IS(104000000010322223);
     TILING_KEY_IS(104000000210322223);
-
-
 
     // Gqa NoQuant Non PA 泛化
     TILING_KEY_IS(104000000000022220);
@@ -2588,8 +2584,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(103000000220603001);
     TILING_KEY_IS(103000000020703001);
     TILING_KEY_IS(103000000220703001);
- 
-
 
     // Gqa NoQuant Non PA Non Perf
     TILING_KEY_IS(103000000000003000);
@@ -2658,8 +2652,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(104000000220603001);
     TILING_KEY_IS(104000000020703001);
     TILING_KEY_IS(104000000220703001);
- 
-
 
     // Gqa NoQuant Non PA Non Perf
     TILING_KEY_IS(104000000000003000);
@@ -3250,9 +3242,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(103000000220623221);
     TILING_KEY_IS(103000000020723221);
     TILING_KEY_IS(103000000220723221);
- 
-
-
 
     // Gqa NoQuant Non PA
     TILING_KEY_IS(103000000000023220);
@@ -3272,7 +3261,8 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(103000000200523220);
     TILING_KEY_IS(103000000010523221);
     TILING_KEY_IS(103000000210523221);
-//104
+
+    // 104
     TILING_KEY_IS(104000000000223220);
     TILING_KEY_IS(104000000200223220);
     TILING_KEY_IS(104000000000323220);
@@ -3322,9 +3312,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(104000000220623221);
     TILING_KEY_IS(104000000020723221);
     TILING_KEY_IS(104000000220723221);
- 
-
-
 
     // Gqa NoQuant Non PA
     TILING_KEY_IS(104000000000023220);
@@ -3537,8 +3524,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::NZ, true, true);
- 
- 
 
 // Gqa NoQuant Non PA
 #elif TILING_KEY_VAR == 103000000000023220 
@@ -3799,8 +3784,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::NZ, true, true);
- 
- 
 
 // Gqa NoQuant Non PA
 #elif TILING_KEY_VAR == 104000000000023220 

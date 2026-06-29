@@ -49,6 +49,8 @@ aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor
         viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
         auto inputTemp = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
         inputTemp->SetDataType(DataType::DT_INT4);
+        inputTemp->SetStorageFormat(Format::FORMAT_FRACTAL_NZ);
+        inputTemp->SetViewFormat(Format::FORMAT_FRACTAL_NZ);
         if (inputTemp == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER, "ConvertTensorListToInt4: CreateView failed at index %d.", i);
             return nullptr;

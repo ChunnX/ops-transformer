@@ -212,9 +212,9 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using ElementQ = InDtype;    // fp8_e4m3fn_t
     using ElementK = InDtype;    // fp8_e4m3fn_t
     using ElementV = InDtype;    // fp8_e4m3fn_t
-    using ElementS = SMDtype;    // half/bloat16_t
+    using ElementS = SMDtype;    // half/bfloat16_t
     using ElementP = InDtype;    // fp8_e4m3fn_t
-    using ElementO = SMDtype;    // half/bloat16_t
+    using ElementO = SMDtype;    // half/bfloat16_t
     using ElementOTmp = REDtype; // float
     // layout tags
     using LayoutQ = layout::RowMajor;
@@ -276,8 +276,8 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
                                           kDequantScale,
                                           vDequantScale,
                                           attentionOut,
-                                          lse,
                                           workspace,
+                                          lse,
                                           tiling};
     using BsaFullQuantKernelArch35 = BsaFullQuantKernelArch35<EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax,
                                                               BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;

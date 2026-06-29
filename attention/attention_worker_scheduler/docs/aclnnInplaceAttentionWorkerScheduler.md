@@ -425,7 +425,7 @@ int aclnnAttentionWorkerSchedulerTest(int32_t deviceId, aclrtStream &stream) {
   // 调用aclnnInplaceAttentionWorkerScheduler第二段接口
   ret = aclnnInplaceAttentionWorkerScheduler(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnInplaceAttentionWorkerScheduler failed. ERROR: %d\n", ret); return ret);
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
@@ -452,7 +452,7 @@ int aclnnAttentionWorkerSchedulerTest(int32_t deviceId, aclrtStream &stream) {
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考对外接口列表
+  // 1.（固定写法）device/stream初始化，参考对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

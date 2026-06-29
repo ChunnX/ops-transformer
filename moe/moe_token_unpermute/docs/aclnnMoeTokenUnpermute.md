@@ -273,7 +273,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
   - probsOptional输入等同于aclnnMoeFinalizeRoutingV2接口的scalesOptional输入。
   - paddedMode输入等同于aclnnMoeFinalizeRoutingV2接口的dropPadMode输入。
   - out输出等同于aclnnMoeFinalizeRoutingV2接口的out输出。
-- <term>Atlas 推理系列产品</term>：
+- |<term>Atlas 推理系列产品</term>：
   - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。 
   - topK_num <= 512。
   - hidden_size是128的倍数且小于10240。
@@ -372,7 +372,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -450,7 +450,7 @@ int main() {
             LOG_PRINT("aclnnMoeTokenUnpermute failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);

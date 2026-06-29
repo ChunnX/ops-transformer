@@ -21,6 +21,7 @@ namespace MoeFinalizeRoutingV2Regbase {
 using namespace AscendC;
 
 constexpr int64_t BATCH_COPY_SIZE = 16;
+constexpr int64_t BATCH_COPY_EXPERT_NUM = 4;
 
 template <typename T, typename S, int32_t dropPadMode>
 class MoeFinalizeRoutingV2KHFullLoad
@@ -50,10 +51,67 @@ public:
         hasScales = scales != nullptr;
         hasX = (x != nullptr);
         hasConstExpert = (constExpertAlpha1 != nullptr) && (constExpertAlpha2 != nullptr) && (v != nullptr);
-        // k == 1时，expandedX/bias大小是row_num, h，其他情况是k*row_num, h
-        // k表示从总的专家E中选出K个专家， E表示expert num,即专家数，E需要大于等于K
         k1 = k == 1;
-        k4 = k <= 4;
+        k4 = k <= BATCH_COPY_EXPERT_NUM;
+
+        SetGlobalBuffers(x1, x2, bias, scales, expertIdx, y, expandedX, x,
+                         constExpertAlpha1, constExpertAlpha2, v, expandedRowIdx);
+        InitQueBuffers();
+    }
+
+    __aicore__ inline void Process()
+    {
+        int64_t tailRowFactor = (GetBlockIdx() == GetBlockNum() - 1) ? tilingData->tailRowFactorOfTailBlock :
+                                                                       tilingData->tailRowFactorOfFormerBlock;
+        int64_t rowOuterLoop =
+            (GetBlockIdx() == GetBlockNum() - 1) ? tilingData->rowLoopOfTailBlock : tilingData->rowLoopOfFormerBlock;
+        for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx += 1) {
+            int64_t rowInnerLoop = (rowOuterIdx == rowOuterLoop - 1) ? tailRowFactor : tilingData->rowFactor;
+            ProcessInputWithX(rowOuterIdx, rowInnerLoop);
+            ProcessWithId(rowOuterIdx, rowInnerLoop);
+
+            yLocal = yQue.AllocTensor<float>();
+            ProcessX1AndX2(yLocal, x1Local, x2Local, rowInnerLoop * h, hasX1, hasX2);
+            if (k1) {
+                ProcessYWithInputK1(rowOuterIdx, rowInnerLoop);
+            } else if (k4 && tilingData->rowFactor >= BATCH_COPY_SIZE) {
+                ProcessYWithInputK4(rowOuterIdx, rowInnerLoop);
+            } else {
+                ProcessYWithInput(rowOuterIdx, rowInnerLoop);
+            }
+
+            yQue.EnQue(yLocal);
+
+            if (hasX1) {
+                x1Que.FreeTensor(x1Local);
+            }
+            if (hasX2) {
+                x2Que.FreeTensor(x2Local);
+            }
+            if (hasScales) {
+                scalesQue.FreeTensor(scalesLocal);
+            }
+
+            if (k1) {
+                expandedRowIdxQue.FreeTensor(expandedRowIdxLocal);
+                if (hasBiasAndExpertIdx) {
+                    expertIdxQue.FreeTensor(expertIdxLocal);
+                }
+            }
+            yLocal = yQue.DeQue<float>();
+            int64_t yGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * h +
+                                rowOuterIdx * tilingData->rowFactor * h;
+            CopyOut(yLocal.template ReinterpretCast<T>(), yGm[yGmOffset], 1, rowInnerLoop * h);
+            yQue.FreeTensor(yLocal);
+        }
+    }
+
+private:
+    __aicore__ inline void SetGlobalBuffers(
+        GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR y,
+        GM_ADDR expandedX, GM_ADDR x, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR v,
+        GM_ADDR expandedRowIdx)
+    {
         x1Gm.SetGlobalBuffer((__gm__ T*)x1);
         x2Gm.SetGlobalBuffer((__gm__ T*)x2);
         biasGm.SetGlobalBuffer((__gm__ T*)bias);
@@ -66,9 +124,10 @@ public:
         constExpertAlpha2Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha2);
         vGm.SetGlobalBuffer((__gm__ T*)v);
         expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+    }
 
-        // yGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-
+    __aicore__ inline void InitQueBuffers()
+    {
         int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * h);
         int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * h);
         int32_t rowFactorKAlignedT = RoundUp<T>(tilingData->rowFactor * k);
@@ -111,55 +170,6 @@ public:
         }
     }
 
-    __aicore__ inline void Process()
-    {
-        int64_t tailRowFactor = (GetBlockIdx() == GetBlockNum() - 1) ? tilingData->tailRowFactorOfTailBlock :
-                                                                       tilingData->tailRowFactorOfFormerBlock;
-        int64_t rowOuterLoop =
-            (GetBlockIdx() == GetBlockNum() - 1) ? tilingData->rowLoopOfTailBlock : tilingData->rowLoopOfFormerBlock;
-        for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx += 1) {
-            int64_t rowInnerLoop = (rowOuterIdx == rowOuterLoop - 1) ? tailRowFactor : tilingData->rowFactor;
-            ProcessInputWithX(rowOuterIdx, rowInnerLoop);
-            ProcessWithId(rowOuterIdx, rowInnerLoop);
-
-            yLocal = yQue.AllocTensor<float>();
-            ProcessX1AndX2(yLocal, x1Local, x2Local, rowInnerLoop * h, hasX1, hasX2);
-            if (k1) {
-                // k == 1
-                ProcessYWithInputK1(rowOuterIdx, rowInnerLoop);
-            } else if (k4 && tilingData->rowFactor >= BATCH_COPY_SIZE) {
-                ProcessYWithInputK4(rowOuterIdx, rowInnerLoop);
-            } else {
-                ProcessYWithInput(rowOuterIdx, rowInnerLoop);
-            }
-
-            yQue.EnQue(yLocal);
-
-            if (hasX1) {
-                x1Que.FreeTensor(x1Local);
-            }
-            if (hasX2) {
-                x2Que.FreeTensor(x2Local);
-            }
-            if (hasScales) {
-                scalesQue.FreeTensor(scalesLocal);
-            }
-
-            if (k1) {
-                expandedRowIdxQue.FreeTensor(expandedRowIdxLocal);
-                if (hasBiasAndExpertIdx) {
-                    expertIdxQue.FreeTensor(expertIdxLocal);
-                }
-            }
-            yLocal = yQue.DeQue<float>();
-            int64_t yGmOffset = GetBlockIdx() * tilingData->rowOfFormerBlock * h +
-                                rowOuterIdx * tilingData->rowFactor * h;
-            CopyOut(yLocal.template ReinterpretCast<T>(), yGm[yGmOffset], 1, rowInnerLoop * h);
-            yQue.FreeTensor(yLocal);
-        }
-    }
-
-private:
     __aicore__ inline void ProcessWithId(int64_t rowOuterIdx, int64_t rowInnerLoop) {
         // k == 1
         if (k1) {
@@ -569,7 +579,6 @@ private:
         }
     }
 
-private:
     TPipe* pipe;
     const MoeFinalizeRoutingV2RegbaseTilingData* tilingData;
 

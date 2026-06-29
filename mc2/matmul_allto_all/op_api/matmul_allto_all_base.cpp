@@ -24,7 +24,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_log.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "opdev/op_executor.h"
 #include "common/utils/hccl_util.h"
 #include "opdev/platform.h"

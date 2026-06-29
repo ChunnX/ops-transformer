@@ -158,6 +158,17 @@ public:
         }
     }
 
+    __aicore__ inline Buffer<bufferType, syncType> &Get(uint32_t id) {
+        uint32_t flag = id % 3;
+        if (flag == 0) {
+            return a_;
+        } else if (flag == 1) {
+            return b_;
+        } else {
+            return c_;
+        }
+    }
+
     __aicore__ inline Buffer<bufferType, syncType> &GetVec() { // mixcore architecture
         if (flag1_vec1_ == 0) {
             flag1_vec1_ = 1;

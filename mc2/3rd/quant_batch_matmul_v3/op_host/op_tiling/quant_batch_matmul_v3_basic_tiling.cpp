@@ -21,7 +21,7 @@
 #include <tuple>
 #include "common/op_host/op_tiling/hash.h"
 #include "graph/utils/type_utils.h"
-#include "log/log.h"
+#include "mc2_log_compat.h"
 #include "quant_batch_matmul_v3_tiling_cache.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
@@ -1381,10 +1381,6 @@ uint64_t Mc2QuantBatchMatmulV3BasicTiling::GetTilingKey() const
 
 void Mc2QuantBatchMatmulV3BasicTiling::PrintBasicTiling() const
 {
-    if (CheckLogLevel(OP, DLOG_DEBUG) != 1) {
-        return;
-    }
-
     const BasicTiling &tiling = basicTiling_;
     std::stringstream ss;
     ss << "m_size_per_npu: " << inputParams_.mSizePerNpu << "m_size: " << inputParams_.mSize

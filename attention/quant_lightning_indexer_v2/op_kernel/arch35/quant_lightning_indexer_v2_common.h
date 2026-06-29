@@ -55,6 +55,9 @@ struct RunInfo {
     uint32_t s2Idx;
     uint32_t s2Start;
     uint32_t s2LoopEnd;
+    uint32_t validS2Len;
+    uint32_t qScaleLoop;
+    uint32_t kScaleLoop;
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
@@ -121,12 +124,14 @@ struct ConstInfo {
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;
-    bool batchSupperFlag = false;      // actual_seq长度是否为B+1
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
-
+    int32_t maxSeqlenQ = -1;
+    uint32_t quantMode = 1;            // quant模式，默认为1
+    
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
+    uint32_t cmpResiduaKLenDims = 0U;   // cmpResidualK的维度
     bool isAccumSeqS1 = false;     // 是否累加模式
     bool isAccumSeqS2 = false;     // 是否累加模式
     bool isLDOpen = false;

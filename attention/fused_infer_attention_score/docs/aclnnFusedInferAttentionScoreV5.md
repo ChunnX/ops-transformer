@@ -152,21 +152,33 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>-</td>
+        <td>
+        <ul>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。</li>
+            <li>GQA全量化PagedAttention场景下，kv cache排布为BnNBsD时支持0轴和1轴非连续。</li>
+            <li>其他场景均不支持非连续tensor。</li>
+        </ul>
+        </td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>-</td>
+        <td>
+        <ul>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。</li>
+            <li>GQA全量化PagedAttention场景下，kv cache排布为BnNBsD时支持0轴和1轴非连续。</li>
+            <li>其他场景均不支持非连续tensor。</li>
+        </ul>
+        </td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>pseShiftOptional</td>
@@ -181,7 +193,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>建议shape输入 (B,Q_N,Q_S,KV_S)、(1,Q_N,Q_S,KV_S)</td>
+        <td>建议shape输入(B,Q_N,Q_S,KV_S)、(1,Q_N,Q_S,KV_S)</td>
         <td>×</td>
     </tr>
     <tr>
@@ -393,6 +405,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。</li>
+            <li>GQA全量化PagedAttention场景下，kv cache排布为BnNBsD时支持0轴和1轴非连续。</li>
+            <li>其他场景均不支持非连续tensor。</li>
             <li>支持per-tensor，per-channel，per-token，per-token-group，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -428,6 +443,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
             <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -537,13 +553,14 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>不支持空Tensor。</li>
+            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>keyRope的shape中d为64，其余维度与key一致</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>keyRopeAntiquantScaleOptional</td>
@@ -789,7 +806,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr>
         <td>keyAntiquantMode</td>
         <td>输入</td>
-        <td>key 的反量化的方式。</td>
+        <td>key的反量化的方式。</td>
         <td>
         <ul>
             <li>不特意指定时建议传入0。</li>
@@ -813,7 +830,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr>
         <td>valueAntiquantMode</td>
         <td>输入</td>
-        <td>value 的反量化的方式。</td>
+        <td>value的反量化的方式。</td>
         <td>
         <ul>
             <li>模式编号与keyAntiquantMode一致。</li>
@@ -870,7 +887,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr>
         <td>softmaxLse</td>
         <td>输出</td>
-        <td>ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。</td>
+        <td>ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max,再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。</td>
         <td>
         <ul>
             <li>用户不特意指定时建议传入nullptr。</li>
@@ -986,20 +1003,20 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
 
 ### 约束类型说明
 
-FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递增分为 单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下：
+FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递增分为单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下：
 
-- 单参数约束：对于单个接口参数的约束，包含FusedInferAttentionScore算子接口中的 Tensor、TensorList、Array 和 Attributes
+- 单参数约束：对于单个接口参数的约束，包含FusedInferAttentionScore算子接口中的Tensor、TensorList、Array和Attributes
   - 对于Tensor、TensorList、Array，单参数约束中包含如下校验
-    - 校验 shape，包括shape维度dim、每一维度 dim value
-    - 校验 dtype
-    - 校验 format
-  - 对于属性 Attribute
+    - 校验shape，包括shape维度dim、每一维度dim value
+    - 校验dtype
+    - 校验format
+  - 对于属性Attribute
     - 校验属性取值
 - 存在性约束：约束特定场景下，特性参数组内，必须传入某参数，或不支持传入某参数
 - 一致性约束：特性参数组内，各个参数间约束。
   - Example 1：属性sparseMode和输入tensor attenMask均属于Attention Mask参数组，sparseMode取值为2/3/4时，attenMask shape必须为（2048，2048），此类约束即为参数组内的一致性约束
 - 特性交叉约束：涉及多个参数组，不同参数组间交叉约束
-  - Example 1：输入tensor blockTable 和 属性 blockSize 属于Paged Attention（同PA）参数组，输入tensor attenMask属于 Mask参数组；在PA场景下，attenMask输入最后一维（attenMaskS2）需要大于等于maxBlockNumPerSeq * blockSize，此类约束即为多参数组间的交叉约束；**且为保证风格统一，此约束会放在入参顺序靠后的 Paged Attention参数组中**
+  - Example 1：输入tensor blockTable和属性blockSize属于Paged Attention（同PA）参数组，输入tensor attenMask属于Mask参数组；在PA场景下，attenMask输入最后一维（attenMaskS2）需要大于等于maxBlockNumPerSeq * blockSize，此类约束即为多参数组间的交叉约束；**且为保证风格统一，此约束会放在入参顺序靠后的Paged Attention参数组中**
 
 ### 特性参数组
 
@@ -1279,7 +1296,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 |     GQA     |           在资料约束中，泛指不传入ROPE的所有场景，包含G=1和G>1的场景           |
 | Prefill MLA | 传入ROPE（包含合并和分离2种模式，headdim为64）：分离模式下，输入Q/K/V headdim为128，ROPE单独传入；合并模式下，输入Q/K headdim为192（与ROPE合并），V headdim为128，ROPE不单独传入 |
 | Decode MLA |             输入Q/K/V headdim为512，且ROPE单独传入             |
-|      B      |                Batch, 表示输入样本批量大小                |
+| GQA全量化 | query/key/value数据类型为FLOAT8_E4M3FN的GQA全量化场景，queryQuantMode为3（per-token叠加per-head模式），keyAntiquantMode为3（per-token叠加per-head模式），valueAntiquantMode为2（per-tensor叠加per-head模式） |
+|      B      |                Batch,表示输入样本批量大小                |
 |     Q_N     |        输入query tensor的头数，对应query shape中的N        |
 |    KV_N    |    输入key/value tensor的头数，对应key/value shape中的N    |
 |     Q_S     |      输入query tensor的序列长度，对应query shape中的S      |
@@ -1291,10 +1309,10 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 
 <!--
 #### 整体规则
-1. 按照 特性参数组 -> 四层约束 -> 量化类型（非量化/伪量化/全量化） -> FA场景（GQA/Prefill MLA/Decode MLA） -> 芯片代际（Atlas A2/Ascend 950PR）层级维护
+1. 按照特性参数组 -> 四层约束 -> 量化类型（非量化/伪量化/全量化）-> FA场景（GQA/Prefill MLA/Decode MLA）-> 芯片代际（Atlas A2/Ascend 950PR）层级维护
 2. 每个特性组，缩进风格一致，表格宽高无固定约束，保持简洁清晰即可
-3. 约束中参数命名，第一次出现必须和接口中参数名一致，后续可通过 “attenMask（同 mask/后称 mask）”方式缩写
-4. 对于输入各轴缩写，缩写需要具有自解释性，如QueryS、KeyNumHead、PseShiftS2等，禁止出现 S1、B、n2 等字眼；最好在基准信息说明中补充各个变量含义
+3. 约束中参数命名，第一次出现必须和接口中参数名一致，后续可通过“attenMask（同mask/后称mask）”方式缩写
+4. 对于输入各轴缩写，缩写需要具有自解释性，如QueryS、KeyNumHead、PseShiftS2等，禁止出现S1、B、n2等字眼；最好在基准信息说明中补充各个变量含义
 -->
 
 #### 公共参数组（CommonChecker）
@@ -1396,11 +1414,11 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                 <td rowspan="3">
                     <ul>
                         <li>支持B轴小于等于65536</li>
-                        <li>非连续场景下 key、value的tensorlist中的batch只能为1,B不能大于256</li>
+                        <li>非连续场景下key、value的tensorlist中的batch只能为1,B不能大于256</li>
                     </ul>
                 </td>
                 <td rowspan="3">
-                    query的layout不为BSH时，query/attentionOut的N轴与numHeads保持一致,key/value的N轴与numKeyValueHeads保持一致
+                    query的layout不为BSH时，query/attentionOut的N轴与numHeads保持一致，key/value的N轴与numKeyValueHeads保持一致
                 </td>
                 <td>
                     <ul>
@@ -1408,9 +1426,10 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                         <li>非量化场景下，当query/key/value三组HeadDim均小于等于128且layout不为NTD/NTD_TND/BSH_BNSD/BSND_BNSD/BNSD_BSND时，支持参数query/key的HeadDim与value的HeadDim不相等
                         </li>
                         <li>MxFP8场景下，HeadDim仅支持64或128</li>
+                        <li>GQA全量化场景下，HeadDim仅支持128</li>
                         <li>layout为NTD/NTD_TND/BSH_BNSD/BSND_BNSD时，HeadDim仅支持64或128</li>
                         <li>layout为BNSD_BSND时，HeadDim需要16对齐</li>
-                        <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时,HeadDim需要32对齐</li>
+                        <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时，HeadDim需要32对齐</li>
                     </ul>
                 </td>
                 <td rowspan="2">
@@ -1460,7 +1479,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             </tr>
             <tr>
                 <td>GQA</td>
-                <td>query/key的HeadDim与value的HeadDim不相等时,除attenMask参数组外，其余均不支持</td>
+                <td>query/key的HeadDim与value的HeadDim不相等时，除attenMask参数组外，其余均不支持</td>
             </tr>
             <tr>
                 <td>Prefill MLA</td>
@@ -1474,59 +1493,60 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     </table>
 
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - Prefill MLA 场景下，不支持 tensorlist、左 padding
-        - MLA 场景下，不支持后量化
+        - Prefill MLA场景下，不支持tensorlist、左padding
+        - MLA场景下，不支持后量化
 
 #### PSE参数组
 
 - 单参数约束
   - 公共
-    - 入参 pseType 应满足以下条件：
-      - pseType 必须为0
-      - pseType 为 1 不支持 FA 推理场景，仅支持 FA 训练场景
-    - 入参 pseShift 应满足以下条件：
-      - tensor 的数据类型应满足以下条件：
-        - pseType 为 0 时，且 query 的数据类型为 FLOAT16 或者 INT8 时，tensor 的数据类型必须为 FLOAT16
-        - pseType 为 0 时，且 query 的数据类型为 BFLOAT16 时，tensor 的数据类型必须为 BFLOAT16
-      - tensor shape 应满足以下条件：
-        - pseType 为 0 时:
-          - tensor shape 的维度必须为 4
-          - P_S1(tensor shape 的第 3 维) > 1 时：
-            - tensor shape 的第 1 维应等于 1 或者 B
-            - tensor shape 的第 2 维应等于 Q_N
-            - tensor shape 的第 3 为应大于等于 Q_S
-            - 非 prefix 场景时，tensor shape 的第 4 维应大于等于 KV_S
-            - prefix 场景时，tensor shape 的第 4 维应大于等于KV_S + actualSharedPrefixLen
-          - P_S1(tensor shape 的第 3 维) = 1 时：
-            - tensor shape 的第 1 维应等于 1 或者 B
-            - tensor shape 的第 2 维应等于 Q_N
-            - 非 prefix 场景时，tensor shape 的第 4 维应大于等于 KV_S
-            - prefix 场景时，tensor shape 的第 4 维应大于等于 KV_S + actualSharedPrefixLen
+    - 入参pseType应满足以下条件：
+      - pseType必须为0
+      - pseType为1不支持FA推理场景，仅支持FA训练场景
+    - 入参pseShift应满足以下条件：
+      - tensor的数据类型应满足以下条件：
+        - pseType为0时，且query的数据类型为FLOAT16或者INT8时，tensor的数据类型必须为FLOAT16
+        - pseType为0时，且query的数据类型为BFLOAT16时，tensor的数据类型必须为BFLOAT16
+      - tensor shape应满足以下条件：
+        - pseType为0时:
+          - tensor shape的维度必须为4
+          - P_S1(tensor shape的第3维) > 1时：
+            - tensor shape的第1维应等于1或者B
+            - tensor shape的第2维应等于Q_N
+            - tensor shape的第3为应大于等于Q_S
+            - 非prefix场景时，tensor shape的第4维应大于等于KV_S
+            - prefix场景时，tensor shape的第4维应大于等于KV_S + actualSharedPrefixLen
+          - P_S1(tensor shape的第3维) = 1时：
+            - tensor shape的第1维应等于1或者B
+            - tensor shape的第2维应等于Q_N
+            - 非prefix场景时，tensor shape的第4维应大于等于KV_S
+            - prefix场景时，tensor shape的第4维应大于等于KV_S + actualSharedPrefixLen
 - 特性交叉约束
   - 公共
-    - PagedAttention场景下，入参 pseShift 应满足以下条件：
-      - tensor shape 的最后一维应大于等于 maxBlockNumPerBatch * blockSize
-    - alibi 场景下，Q_S 应等于 KV_S
-    - MLA场景下，入参 pseShift 应满足以下条件：
-      - 不支持 pse，不能传入 pseShift
-    - D 不等长场景下，入参 pseShift 应满足以下条件：
-      - 不支持 pse，不能传入 pseShift
-    - 伪量化场景下，当 pseType 为 0 且 Q_S 为 1 时，pseShift 的第三维仅支持 1
+    - PagedAttention场景下，入参pseShift应满足以下条件：
+      - tensor shape的最后一维应大于等于maxBlockNumPerBatch * blockSize
+    - alibi场景下，Q_S应等于KV_S
+    - MLA场景下，入参pseShift应满足以下条件：
+      - 不支持pse，不能传入pseShift
+    - D不等长场景下，入参pseShift应满足以下条件：
+      - 不支持pse，不能传入pseShift
+    - 伪量化场景下，当pseType为0且Q_S为1时，pseShift的第三维仅支持1
+    - GQA全量化场景下，不支持pse，不能传入pseShift
 
 #### <span id="MaskChecker">Attention Mask参数组</span>
 
 - 单参数约束
   - 公共
-    - 入参 attenMask 需要满足以下条件：
+    - 入参attenMask需要满足以下条件：
 
-      - tensor dtype 为 INT8/UINT8/BOOL 类型
-      - tensor format 为 ND/NCHW/NHWC/NCDHW 类型
+      - tensor dtype为INT8/UINT8/BOOL类型
+      - tensor format为ND/NCHW/NHWC/NCDHW类型
       - 如果输入attenMask shape中的Q_S、KV_S非32B对齐，可以向上取到对齐的Q_S、KV_S
-    - 入参 sparseMode 需要满足以下条件：
+    - 入参sparseMode需要满足以下条件：
 
-      - sparseMode 支持输入范围为 0-4，默认值为 0
-      - sparseMode 在不开启 mask 时，仅支持输入为0
-      - sparseMode 含义如下表所示（注：attenMask矩阵示例部分中的1 = masked out，0 = keep）
+      - sparseMode支持输入范围为0-4，默认值为0
+      - sparseMode在不开启mask时，仅支持输入为0
+      - sparseMode含义如下表所示（注：attenMask矩阵示例部分中的1 = masked out，0 = keep）
 
       | sparseMode |                                                                               含义                                                                               |      attenMask矩阵示例      |                                             备注                                             |
       | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------: | :-------------------------------------------------------------------------------------------: |
@@ -1543,369 +1563,395 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 无
 - 一致性约束
   - 公共
-    - 入参 attenMask 的输入维度仅支持 2/3/4
+    - 入参attenMask的输入维度仅支持2/3/4
       - <term>Ascend 950PR/Ascend 950DT</term>：
-        - 维度为 2 时，不支持 sparseMode 为 0/1 模式
+        - 维度为2时，不支持sparseMode为0/1模式
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - sparseMode 为 0/1 模式时，若传入 query_rope 和 key_rope，或者 query 与 key 的 D 不等于 value 的 D，则不支持 attenMask 输入维度为 2
-        - sparseMode 为 0/1 模式时，若 attenMask 输入维度为 2，则 layout 仅支持为 BSH、BSND、BNSD、BNSD_BSND 
-    - 入参 sparseMode 为 0/1 模式时，attenMask矩阵的 shape 应满足 [batchSize/1，>=Q_S，>=KV_S + actualSharedPrefixLen]
-    - 入参 sparseMode 为 2/3/4 模式时，attenMask矩阵的 shape 最后两维应等于2048，即支持传入(2048,2048)或(1,2048,2048)或(1,1,2048,2048)
-    - 非伪量化或 Q_S 大于1时，preTokens 与 nextTokens 应满足 nextTokens * (-1) <= preTokens，以确保具有有效数据
+        - sparseMode为0/1模式时，若传入query_rope和key_rope，或者query与key的D不等于value的D，则不支持attenMask输入维度为2
+        - sparseMode为0/1模式时，若attenMask输入维度为2，则layout仅支持为BSH、BSND、BNSD、BNSD_BSND 
+    - 入参sparseMode为0/1模式时，attenMask矩阵的shape应满足 [batchSize/1，>=Q_S，>=KV_S + actualSharedPrefixLen]
+    - 入参sparseMode为2/3/4模式时，attenMask矩阵的shape最后两维应等于2048，即支持传入(2048,2048)或(1,2048,2048)或(1,1,2048,2048)
+    - 非伪量化或Q_S大于1时，preTokens与nextTokens应满足nextTokens * (-1) <= preTokens，以确保具有有效数据
   - 伪量化
-    - Q_S等于1时，attenMask 输入维度仅支持 3/4，且 attenMask 输入的 shape 应满足，第一维等于 batchSize 或 1，倒数第二维应大于等于 Q_S，最后一维应大于等于 blockTable 的第二维 * blockSize + actualSharedPrefixLen
-    - Q_S大于1时，若 sparseMode 为 4 模式，且 attentionOut 为 int8 类型时，则 preTokens 与 nextTokens 均不能为负数
+    - Q_S等于1时，attenMask输入维度仅支持3/4，且attenMask输入的shape应满足，第一维等于batchSize或1，倒数第二维应大于等于Q_S，最后一维应大于等于blockTable的第二维 * blockSize + actualSharedPrefixLen
+    - Q_S大于1时，若sparseMode为4模式，且attentionOut为int8类型时，则preTokens与nextTokens均不能为负数
 - 特性交叉约束
   - 非量化
-    - Decode MLA场景下，sparseMode 仅支持 0/3/4 模式
-    - GQA 场景下，当 query，key 及 value 的 head dim 不相等时，sparseMode 仅支持 0/2/3 模式
+    - Decode MLA场景下，sparseMode仅支持0/3/4模式
+    - GQA场景下，当query，key及value的head dim不相等时，sparseMode仅支持0/2/3模式
   - 全量化
-    - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 为 TND/TND_NTD 时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
-    - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 不为 TND/TND_NTD 时，Q_S 大于 1 时，sparseMode 仅支持 3 模式，且传入 attenMask 矩阵；Q_S 等于 1 时，sparseMode 仅支持 0 模式，且不支持传入 attenMask 矩阵
-    - Decode MLA场景下，如果query/key/value的类型为 FLOAT8_E4M3FN/HIFLOAT8时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
-    - MxFP8场景下，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
+    - Decode MLA场景下，如果query/key/value的类型为INT8，当layout为TND/TND_NTD时，sparseMode仅支持0/3模式，且0模式下不支持传入attenMask矩阵
+    - Decode MLA场景下，如果query/key/value的类型为INT8，当layout不为TND/TND_NTD时，Q_S大于1时，sparseMode仅支持3模式，且传入attenMask矩阵；Q_S等于1时，sparseMode仅支持0模式，且不支持传入attenMask矩阵
+    - Decode MLA场景下，如果query/key/value的类型为FLOAT8_E4M3FN/HIFLOAT8时，sparseMode仅支持0/3模式，且0模式下不支持传入attenMask矩阵
+    - MxFP8场景下，sparseMode仅支持0/3模式，且0模式下不支持传入attenMask矩阵
+    - GQA全量化场景下，sparseMode仅支持0/3模式，且0模式下不支持传入attenMask矩阵
 
 #### ActualSeqLen参数组
 
 - 单参数约束
   - 公共
-    - 入参 actualSeqLengths(query 的 actualSeqLengths)应满足以下条件：
+    - 入参actualSeqLengths(query的actualSeqLengths)应满足以下条件：
       - 长度应满足以下条件：
-        - 当 query 的 layout 为 TND/NTD 时，长度应等于 batch 数
-        - 当 query 的 layout 为非 TND/NTD 时，长度应等于 1 或者 大于等于 query 的 batch 值
+        - 当query的layout为TND/NTD时，长度应等于batch数
+        - 当query的layout为非TND/NTD时，长度应等于1或者大于等于query的batch值
       - 入参中的数值应满足以下条件：
-        - 当 query 的 layout 为 TND/NTD 时，其值应递增(大于等于前一个值)排列
-        - 当 query 的 layout 为 TND/NTD 是，最后一个元素应等于 T
-        - 当 query 的 layout 为非 TND/NTD 时，其值应不大于 Q_S
+        - 当query的layout为TND/NTD时，其值应递增(大于等于前一个值)排列
+        - 当query的layout为TND/NTD是，最后一个元素应等于T
+        - 当query的layout为非TND/NTD时，其值应不大于Q_S
         - 其值应为非负数
-    - 入参 actualSeqLengthsKv(key/value 的 actualSeqLengths)应满足以下条件：
+    - 入参actualSeqLengthsKv(key/value的actualSeqLengths)应满足以下条件：
       - 长度应满足以下条件：
-        - 当 key/value 的 layout 为 TND/NTD 时，长度应等于 batch 数
-        - 当 key/value 的 layout 为非 TND/NTD 时，长度应等于 key/value 的 batch 值
+        - 当key/value的layout为TND/NTD时，长度应等于batch数
+        - 当key/value的layout为非TND/NTD时，长度应等于key/value的batch值
       - 入参中的数值应满足以下条件：
-        - 当 key/value 的 layout 为 TND/NTD 时，最后一个元素应等于 T
-        - 当 key/value 的 layout 为 TND/NTD 时，其值应递增(大于等于前一个值)排列
-        - 当 key/value 的 layout 为非 TND/NTD 时，其值应不大于 KV_S
+        - 当key/value的layout为TND/NTD时，最后一个元素应等于T
+        - 当key/value的layout为TND/NTD时，其值应递增(大于等于前一个值)排列
+        - 当key/value的layout为非TND/NTD时，其值应不大于KV_S
         - 其值应为非负数
 - 存在性约束
   - 公共
-    - 入参 actualSeqLengths(query 的 actualSeqLengths)应满足以下条件:
-      - 当 query 的 layout 为 TND/NTD 时，必须传入 actualSeqLengths
-    - 入参 actualSeqLengthsKv(key/value 的 actualSeqLengths)应满足以下条件：
-      - 当 key/value 的 layout 为 TND/NTD 时，必须传入 actualSeqLengthsKv
-      - PagedAttention场景下，必须传入 actualSeqLengthsKv
+    - 入参actualSeqLengths(query的actualSeqLengths)应满足以下条件:
+      - 当query的layout为TND/NTD时，必须传入actualSeqLengths
+    - 入参actualSeqLengthsKv(key/value的actualSeqLengths)应满足以下条件：
+      - 当key/value的layout为TND/NTD时，必须传入actualSeqLengthsKv
+      - PagedAttention场景下，必须传入actualSeqLengthsKv
 - 一致性约束
   - 无
 - 特性交叉约束
   - 全量化
-    - Decode MLA 场景下，若传入 actualSeqLengths，query 的 layout 必须为 TND/NTD
+    - Decode MLA场景下，若传入actualSeqLengths，query的layout必须为TND/NTD
 
 #### <span id="DequantChecker">伪量化/全量化参数组（DequantChecker）</span>
 
 - 单参数约束
   - 伪量化场景
-    - 入参 keyAntiquantMode 和 valueAntiquantMode 应满足以下条件：
+    - 入参keyAntiquantMode和valueAntiquantMode应满足以下条件：
       - 入参中的数值应满足以下条件：
-        - 其值应为 0(per-channel/per-tensor)、1(per-token)、2(per-tensor 叠加 per-head)、3(per-token 叠加 per-head)、
-          4(per-token 模式使用 page attention 管理 scale/offset)、
-          5(per-token 叠加 per-head 模式并使用 page attenion 管理 scale/offser)、6(per-token-group)
-        - 除 key 支持 per-channel 叠加 value 支持 per-token，keyAntiquantMode 和 valueAntiquantMode 应相等
-    - 入参 keyAntiquantScale 和 valueAntiquantScale 应满足以下条件：
+        - 其值应为0(per-channel/per-tensor)、1(per-token)、2(per-tensor叠加per-head)、3(per-token叠加per-head)、
+          4(per-token模式使用page attention管理scale/offset)、
+          5(per-token叠加per-head模式并使用page attenion管理scale/offser)、6(per-token-group)
+        - 除key支持per-channel叠加value支持per-token，keyAntiquantMode和valueAntiquantMode应相等
+    - 入参keyAntiquantScale和valueAntiquantScale应满足以下条件：
       - 入参的数据类型应满足以下条件：
-        - per-channel(per-tensor)，数据类型应与 query 相同
-        - per-token，数据类型仅支持 FLOAT32
-        - per-tensor 叠加 per-head，数据类型应与 query 相同
-        - per-token 叠加 per-head，数据类型仅支持 FLOAT32
-        - per-token 模式使用 page attention 管理 scale/offset，数据类型仅支持 FLOAT32
-        - key 支持 per-channel 叠加 value 支持 per-token，数据类型仅支持 FLOAT32
-        - per-token-group，数据类型仅支持 FLOAT8_E8M0
-      - 入参的 shape 应满足以下条件：
-        - per-channel，shape 应为 (1, N, 1, D)、(1, 1, N, D)、(1, N, D)、(1, H)、(N, 1, D)、(N, D)、(H)
-        - per-tensor，shape 应为 (1)
-        - per-token，shape 应为 (1, B, >=KV_S)、(B, >=KV_S)
-        - per-tensor 叠加 per-head，shape 应为 (N)
-        - per-token 叠加 per-head，shape 应为 (B, N, >=KV_S)
-        - per-token 模式使用 page attention 管理 scale/offset，shape 应为 (blockNum, blockSize)
-        - ter-token 叠加 per-head 模式并使用 page attention 管理 scale/offset, shape 应为 (blockNum, N, blockSize)
-        - key 支持 per-channel 叠加 value 支持 per-token，keyAntiquantScale 的 shape 应为 (1, N, 1, D)、(1, N, D)、(1, H)、(N, 1, D)、(N, D)、(H)
-        - key 支持 per-channel 叠加 value 支持 per-token，valueAntiquantScale 的 shape 应为 (1, B, >=KV_S)、(B, >=KV_S)
-        - per-token-group，shape 应为 (1, B, N, >=KV_S, D/32)
-    - 入参 key 和 value 应满足以下条件：
+        - per-channel(per-tensor)，数据类型应与query相同
+        - per-token，数据类型仅支持FLOAT32
+        - per-tensor叠加per-head，数据类型应与query相同
+        - per-token叠加per-head，数据类型仅支持FLOAT32
+        - per-token模式使用page attention管理scale/offset，数据类型仅支持FLOAT32
+        - key支持per-channel叠加value支持per-token，数据类型仅支持FLOAT32
+        - per-token-group，数据类型仅支持FLOAT8_E8M0
+      - 入参的shape应满足以下条件：
+        - per-channel，shape应为(1, N, 1, D)、(1, 1, N, D)、(1, N, D)、(1, H)、(N, 1, D)、(N, D)、(H)
+        - per-tensor，shape应为(1)
+        - per-token，shape应为(1, B, >=KV_S)、(B, >=KV_S)
+        - per-tensor叠加per-head，shape应为(N)
+        - per-token叠加per-head，shape应为(B, N, >=KV_S)
+        - per-token模式使用page attention管理scale/offset，shape应为(blockNum, blockSize)
+        - ter-token叠加per-head模式并使用page attention管理scale/offset, shape应为(blockNum, N, blockSize)
+        - key支持per-channel叠加value支持per-token，keyAntiquantScale的shape应为(1, N, 1, D)、(1, N, D)、(1, H)、(N, 1, D)、(N, D)、(H)
+        - key支持per-channel叠加value支持per-token，valueAntiquantScale的shape应为(1, B, >=KV_S)、(B, >=KV_S)
+        - per-token-group，shape应为(1, B, N, >=KV_S, D/32)
+    - 入参key和value应满足以下条件：
       - 入参的数据类型应满足以下条件：
-        - per-tensor 模式，其支持的数据类型为 INT8
-        - per-channel 模式，其支持的数据类型为 INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN
-        - per-token 模式，其支持的数据类型为 INT8、INT4(INT32)、FLOAT8_E4M3FN
-        - per-tensor 叠加 per-head 模式，其支持的数据类型为 INT8
-        - per-token 叠加 per-head 模式，其支持的数据类型为 INT8、INT4(INT32)
-        - per-token 模式使用 page attenion 管理 scale/offset，其支持的数据类型为 INT8、FLOAT8_E4M3FN
-        - key 支持 per-channel 叠加 value 支持 per-token，其支持的数据类型为 INT8、INT4(INT32)
-        - per-token-group，其支持的数据类型为 FLOAT4_E2M1
+        - per-tensor模式，其支持的数据类型为INT8
+        - per-channel模式，其支持的数据类型为INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN
+        - per-token模式，其支持的数据类型为INT8、INT4(INT32)、FLOAT8_E4M3FN
+        - per-tensor叠加per-head模式，其支持的数据类型为INT8
+        - per-token叠加per-head模式，其支持的数据类型为INT8、INT4(INT32)
+        - per-token模式使用page attenion管理scale/offset，其支持的数据类型为INT8、FLOAT8_E4M3FN
+        - key支持per-channel叠加value支持per-token，其支持的数据类型为INT8、INT4(INT32)
+        - per-token-group，其支持的数据类型为FLOAT4_E2M1
   - 全量化场景
-    - Decode MLA 全量化
-      - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT32类型
-      - 入参 keyAntiquantScale、valueAntiquantScale 的shape为（1）
-      - 入参 keyAntiquantMode、valueAntiquantMode 为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
-    - MxFP8 全量化
-      - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT8_E8M0类型
-      - 当Q_S * G > 80场景，入参 dequantScaleQuery 的shape推荐为（Q_T, Q_N, D/64, 2），当Q_S * G <= 80场景，入参 dequantScaleQuery 的shape推荐为（KV_N, Q_T, G, D/64, 2）；非PagedAttention场景，keyAntiquantScale 的shape为（KV_T, KV_N, D/64, 2），valueAntiquantScale 的shape为（KV_T/64, KV_N, D, 2）；PagedAttention场景下，kv cache排布为BnNBsD时，keyAntiquantScale 的shape为（Bn, KV_N, Bs, D/64, 2），valueAntiquantScale 的shape为（Bn, KV_N, Bs/64, D, 2）；kv cache排布为NZ时，keyAntiquantScale 的shape为（Bn, KV_N, Bs/16, D/64, 16, 2），valueAntiquantScale 的shape为（Bn, KV_N, D/16, Bs/64, 16, 2）
-      - 入参 queryQuantMode、keyAntiquantMode 为6（per-token-group模式），valueAntiquantMode 为8（per-channel-group模式）
-      - 入参 quantScale1 的shape为（1），dtype支持FLOAT32，复用 quantScale1 作为 pScale
+    - Decode MLA全量化
+      - 入参dequantScaleQuery、keyAntiquantScale、valueAntiquantScale的dtype为FLOAT32类型
+      - 入参keyAntiquantScale、valueAntiquantScale的shape为（1）
+      - 入参keyAntiquantMode、valueAntiquantMode为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
+    - MxFP8全量化
+      - 入参dequantScaleQuery、keyAntiquantScale、valueAntiquantScale的dtype为FLOAT8_E8M0类型
+      - 当Q_S * G > 80场景，入参dequantScaleQuery的shape推荐为（Q_T, Q_N, D/64, 2），当Q_S * G <= 80场景，入参dequantScaleQuery的shape推荐为（KV_N, Q_T, G, D/64, 2）；非PagedAttention场景，keyAntiquantScale的shape为（KV_T, KV_N, D/64, 2），valueAntiquantScale的shape为（KV_T/64, KV_N, D, 2）；PagedAttention场景下，kv cache排布为BnNBsD时，keyAntiquantScale的shape为（Bn, KV_N, Bs, D/64, 2），valueAntiquantScale的shape为（Bn, KV_N, Bs/64, D, 2）；kv cache排布为NZ时，keyAntiquantScale的shape为（Bn, KV_N, Bs/16, D/64, 16, 2），valueAntiquantScale的shape为（Bn, KV_N, D/16, Bs/64, 16, 2）
+      - 入参queryQuantMode、keyAntiquantMode为6（per-token-group模式），valueAntiquantMode为8（per-channel-group模式）
+      - 入参quantScale1的shape为（1），dtype支持FLOAT32，复用quantScale1作为pScale
+    - GQA全量化
+      - 入参dequantScaleQuery、keyAntiquantScale、valueAntiquantScale的dtype为FLOAT32类型
+      - 入参dequantScaleQuery的shape为（Q_N, Q_T），排布为NT；入参keyAntiquantScale的shape为（Bn, KV_N, Bs），排布为BnNBs；入参valueAntiquantScale的shape为（KV_N），排布为N
+      - 入参queryQuantMode为3（per-token叠加per-head模式），keyAntiquantMode为3（per-token叠加per-head模式），valueAntiquantMode为2（per-tensor叠加per-head模式）
+      - 入参quantScale1的shape为（1），dtype为FLOAT32，复用quantScale1作为pScale
+      - kv cache排布仅支持BnNBsD（blocknum, KV_N, blocksize, D）
 - 存在性约束
   - 伪量化场景
-    - 入参 keyAntiquantScale 和 valueAntiquantScale 应满足以下条件：
-      - 必须传入 keyAntiquantScale
-      - 必须传入 valueAntiquantScale
-    - 入参 keyAntiquantOffset 和 valueAntiquantOffset 应满足以下条件：
-      - 传入 keyAntiquantOffset 时，必须传入 valueAntiquantOffset
-      - 传入 valueAntiquantOffset 时，必须传入 keyAntiquantOffset
-      - 当 key/value 的数据类型为 FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1时，不支持 offset，不能传入 keyAntiquantOffset
-      - 当 key/value 的数据类型为 FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1时，不支持 offset，不能传入 valueAntiquantOffset
+    - 入参keyAntiquantScale和valueAntiquantScale应满足以下条件：
+      - 必须传入keyAntiquantScale
+      - 必须传入valueAntiquantScale
+    - 入参keyAntiquantOffset和valueAntiquantOffset应满足以下条件：
+      - 传入keyAntiquantOffset时，必须传入valueAntiquantOffset
+      - 传入valueAntiquantOffset时，必须传入keyAntiquantOffset
+      - 当key/value的数据类型为FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1时，不支持offset，不能传入keyAntiquantOffset
+      - 当key/value的数据类型为FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1时，不支持offset，不能传入valueAntiquantOffset
   - 全量化场景
-    - Decode MLA 全量化
-      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
-      - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
-      - 不支持传入 deqScale1、quantScale1、deqScale2
-      - 不支持传入 antiquantScale、antiquantOffset
-      - 不支持传入 keyRopeAntiquantScale
-    - MxFP8 全量化
-      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
-      - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
-      - 不支持传入 deqScale1、deqScale2
-      - 不支持传入 antiquantScale、antiquantOffset
-      - 不支持传入 keyRopeAntiquantScale
+    - Decode MLA全量化
+      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale需同时存在
+      - 不支持传入keyAntiquantOffset、valueAntiquantOffset
+      - 不支持传入deqScale1、quantScale1、deqScale2
+      - 不支持传入antiquantScale、antiquantOffset
+      - 不支持传入keyRopeAntiquantScale
+    - MxFP8全量化
+      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale需同时存在
+      - 不支持传入keyAntiquantOffset、valueAntiquantOffset
+      - 不支持传入deqScale1、deqScale2
+      - 不支持传入antiquantScale、antiquantOffset
+      - 不支持传入keyRopeAntiquantScale
+    - GQA全量化
+      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale需同时存在
+      - quantScale1需存在（复用quantScale1作为pScale）
+      - 不支持传入keyAntiquantOffset、valueAntiquantOffset
+      - 不支持传入deqScale1、deqScale2
+      - 不支持传入antiquantScale、antiquantOffset
+      - 不支持传入keyRopeAntiquantScale
 - 一致性约束
   - 无
 - 特性交叉约束
   - 伪量化场景
-    - inputLayout 仅支持 BSH, BNSD, BSND, BNSD_BSND, TND
-    - key/value 的数据类型为 INT8 时，inputLayout 不支持 TND
-    - Q_S = 1 时：
-      - inputLayout 不支持 BNSD_BSND
-      - 当 key/value 的数据类型为 INT8, keyAntiquantMode = 0 且 valueAntiquantMode = 1 时，query 和 output 的数据类型仅支持FLOAT16
-    - Q_S > 1 时：
-      - key/value 的数据类型为 INT8 时，keyAntiquantMode 不支持 2，3，4，5
-      - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，query 和 output 的数据类型仅支持 BF16
-      - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，Q_S长度不能大于16
-      - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，不支持 tensor list
-      - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，不支持左 padding
-      - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，不支持 page attention
-      - key/value 的数据类型不支持 INT4、INT32
-    - page attention 场景下，入参 keyAntiquantScale 和 valueAntiquantScale 应满足以下条件：
-      - tensor shape 应满足以下条件：
-        - per-token 模式，shape 的最后一维应大于等于 maxBlockNumPerBatch * blockSize
-        - per-token 叠加 per-head 模式，shape 的最后一维应大于等于 maxBlockNumPerBatch * blockSize
-        - per-token-group 模式，shape 的倒数第二维应大于等于 maxBlockNumPerBatch * blockSize
+    - inputLayout仅支持BSH, BNSD, BSND, BNSD_BSND, TND
+    - key/value的数据类型为INT8时，inputLayout不支持TND
+    - Q_S = 1时：
+      - inputLayout不支持BNSD_BSND
+      - 当key/value的数据类型为INT8, keyAntiquantMode = 0且valueAntiquantMode = 1时，query和output的数据类型仅支持FLOAT16
+    - Q_S > 1时：
+      - key/value的数据类型为INT8时，keyAntiquantMode不支持2，3，4，5
+      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，query和output的数据类型仅支持BF16
+      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，Q_S长度不能大于16
+      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持tensor list
+      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持左padding
+      - key/value的数据类型为INT8，且keyAntiquantMode为0或1时，不支持page attention
+      - key/value的数据类型不支持INT4、INT32
+    - page attention场景下，入参keyAntiquantScale和valueAntiquantScale应满足以下条件：
+      - tensor shape应满足以下条件：
+        - per-token模式，shape的最后一维应大于等于maxBlockNumPerBatch * blockSize
+        - per-token叠加per-head模式，shape的最后一维应大于等于maxBlockNumPerBatch * blockSize
+        - per-token-group模式，shape的倒数第二维应大于等于maxBlockNumPerBatch * blockSize
     - 不支持合并rope
   - 全量化场景
-    - Decode MLA 全量化
-      - query、key、value 的dtype为 FLOAT8_E4M3FN/INT8/HIFLOAT8
-      - attenOut 的dtype为 BFLOAT16
-      - queryRope、keyRope 的dtype为BFLOAT16
-      - 当query/key/value是 FLOAT8_E4M3FN/HIFLOAT8 时, inputLayout 仅支持 BSH、BSND、BNSD、TND、BSH_NBSD、BSND_NBSD、BNSD_NBSD、TND_NTD；当 query/key/value 类型为 INT8 时, inputLayout 仅支持BSH、BSND、TND、BSH_NBSD、BSND_NBSD、TND_NTD
-      - Q_N 支持1、2、4、8、16、32、64、128
-      - KV_N必须为1；G 支持 [1, 128]；Q_S 支持[1,16]
-      - 当query的inputLayout为BSH时，dequantScaleQuery的shape应该为（B, Q_S, Q_N）；当query的inputLayout为BSND、BNSD、TND时，dequantScaleQuery 的shape相比query仅少一个维度D，且每一维需要和query的对应维度保持一致
+    - Decode MLA全量化
+      - query、key、value的dtype为FLOAT8_E4M3FN/INT8/HIFLOAT8
+      - attenOut的dtype为BFLOAT16
+      - queryRope、keyRope的dtype为BFLOAT16
+      - 当query/key/value是FLOAT8_E4M3FN/HIFLOAT8时， inputLayout仅支持BSH、BSND、BNSD、TND、BSH_NBSD、BSND_NBSD、BNSD_NBSD、TND_NTD；当query/key/value类型为INT8时, inputLayout仅支持BSH、BSND、TND、BSH_NBSD、BSND_NBSD、TND_NTD
+      - Q_N支持1、2、4、8、16、32、64、128
+      - KV_N必须为1；G支持 [1, 128]；Q_S支持[1,16]
+      - 当query的inputLayout为BSH时，dequantScaleQuery的shape应该为（B, Q_S, Q_N）；当query的inputLayout为BSND、BNSD、TND时，dequantScaleQuery的shape相比query仅少一个维度D，且每一维需要和query的对应维度保持一致
       - 不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持左padding场景
-      - 当 query/key/value 类型为 INT8 时，仅支持 PagedAttention场景，且kv cache排布为NZ格式
-    - MxFP8 全量化
-      - query、key、value 的dtype为FLOAT8_E4M3FN
-      - attentionOut 的dtype支持FLOAT16、BFLOAT16
-      - Q_S、KV_S 仅支持64对齐
-      - inputLayout 仅支持 TND
+      - 当query/key/value类型为INT8时，仅支持PagedAttention场景，且kv cache排布为NZ格式
+    - MxFP8全量化
+      - query、key、value的dtype为FLOAT8_E4M3FN
+      - attentionOut的dtype支持FLOAT16、BFLOAT16
+      - Q_S、KV_S仅支持64对齐
+      - inputLayout仅支持TND
       - 支持PagedAttention场景和非PagedAttention场景，PagedAttention场景仅支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
+      - 支持传入独立Rope，若传入Rope，Rope和attentionOut的dtype仅支持BFLOAT16
       - 不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
+    - GQA全量化
+      - query、key、value的dtype仅支持FLOAT8_E4M3FN
+      - attentionOut的dtype支持FLOAT16、BFLOAT16
+      - inputLayout仅支持NTD_TND
+      - 仅支持PagedAttention场景，kv cache排布仅支持BnNBsD（blocknum, KV_N, blocksize, D）
+      - D仅支持128
+      - Q_S支持[1, 64K]，KV_S支持[0, 256K]
+      - 不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持左padding场景、不支持tensorlist场景、不支持rope场景、不支持后量化场景
 
 #### <span id="PostQuantChecker">后量化参数组（PostQuantChecker）</span>
 
 - 单参数约束
   - 公共
-    - 入参 quantScale2 需要满足以下条件：
-      - tensor dtype 为 BF16/FP32 类型
-    - 入参 quantOffset2 需要满足以下条件：
-      - tensor dtype 为 BF16/FP32 类型
-    - PostQuant 场景下，输出 attenOut 的数据类型仅支持 INT8/FP8_E4M3FN/HIFLOAT8
+    - 入参quantScale2需要满足以下条件：
+      - tensor dtype为BF16/FP32类型
+    - 入参quantOffset2需要满足以下条件：
+      - tensor dtype为BF16/FP32类型
+    - PostQuant场景下，输出attenOut的数据类型仅支持INT8/FP8_E4M3FN/HIFLOAT8
 - 存在性约束
   - 公共
-    - PostQuant 场景下，必须传入 quantScale2
+    - PostQuant场景下，必须传入quantScale2
 - 一致性约束
   - 公共
-    - PostQuant 场景下，当 quantScale2 维度大于1且量化方式为 per-channel 时，若 layout 为 BSH/BSND/BNSD/BNSD_BSND，则 quantScale2 仅支持 shape 为 queryN*valueD，否则仅支持 [numHeads, vHeadDim]
-    - PostQuant 场景下，当 quantScale2 维度等于1且量化方式为 per-tensor 时，quantScale2 仅支持 shape 为 (1)
-    - PostQuant 场景下，当 quantOffset2 存在时，quantOffset2 应与 quantScale2 保持相同 shape 及数据类型
+    - PostQuant场景下，当quantScale2维度大于1且量化方式为per-channel时，若layout为BSH/BSND/BNSD/BNSD_BSND，则quantScale2仅支持shape为queryN*valueD，否则仅支持 [numHeads, vHeadDim]
+    - PostQuant场景下，当quantScale2维度等于1且量化方式为per-tensor时，quantScale2仅支持shape为(1)
+    - PostQuant场景下，当quantOffset2存在时，quantOffset2应与quantScale2保持相同shape及数据类型
 - 特性交叉约束
   - 公共
-    - PostQuant 场景下，当 query 输入类型不为 BF16 时，quantScale2 仅支持 FP32 类型
+    - PostQuant场景下，当query输入类型不为BF16时，quantScale2仅支持FP32类型
   - 非量化
-    - PostQuant 场景下，当存在 prefix 时，仅支持输出 attenOut 的数据类型为 INT8
+    - PostQuant场景下，当存在prefix时，仅支持输出attenOut的数据类型为INT8
   - 伪量化
-    - PostQuant 场景下，输出 attenOut 的数据类型仅支持与输入 Key、Value 数据类型相同
-    - 当 keyAntiquantMode 和 valueAntiquantMode 为 per-token 或 per-token 使用 page attention 管理 scale/offset，query 数据类型为 FP16/BF16 且 key/value 数据类型为FLOAT8_E4M3FN 时，不支持叠加后量化
+    - PostQuant场景下，输出attenOut的数据类型仅支持与输入Key、Value数据类型相同
+    - 当keyAntiquantMode和valueAntiquantMode为per-token或per-token使用page attention管理scale/offset，query数据类型为FP16/BF16且key/value数据类型为FLOAT8_E4M3FN时，不支持叠加后量化
 
 #### Paged Attention参数组
 
 - 单参数约束
   - 公共
-    - 入参 blockTable 需要满足以下条件：
-      - tensor dtype 为int32类型
-      - tensor shape 为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）
-    - 入参 blockSize 需要满足以下条件：
-      - blockSize 需要大于0
+    - 入参blockTable需要满足以下条件：
+      - tensor dtype为int32类型
+      - tensor shape为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）
+    - 入参blockSize需要满足以下条件：
+      - blockSize需要大于0
       - blockSize是用户自定义的参数，该参数的取值会影响PagedAttention的性能，通常情况下，PagedAttention可以提高吞吐量，但会带来性能上的下降，调大blockSize会有一定性能收益
   - 非量化
-    - 入参 blockSize 需要满足以下条件：
+    - 入参blockSize需要满足以下条件：
       - Decode MLA/Prefill MLA场景：blockSize 16对齐，最大支持1024
       - GQA场景：QueryHeadDim/KeyHeadDim/ValueHeadDim均为64或128时，blockSize 16对齐，最大支持1024；其他情况下，若Q_S> 1，blockSize 128对齐，最大支持1024，若Q_S= 1，blockSize 16对齐，最大支持512
   - 伪量化
-    - 入参 blockSize 需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN 时，blockSize 需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1 时，blockSize 需要64对齐
+    - 入参blockSize需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN时，blockSize需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1时，blockSize需要64对齐
   - 全量化
-    - Decode MLA 全量化场景下，仅支持blockSize取值128
-    - MxFP8 全量化场景下，仅支持blockSize取值512
+    - Decode MLA全量化场景下，仅支持blockSize取值128
+    - MxFP8全量化场景下，仅支持blockSize取值512
+    - GQA全量化场景下，仅支持blockSize取值128
 - 存在性约束
   - 公共
-    - PagedAttention 开启情况下，必须传入 actualSeqLengthsKv
-    - PagedAttention 不支持tensorlist场景，不支持左padding场景，不支持公共前缀场景，不支持D不等长场景
+    - PagedAttention开启情况下，必须传入actualSeqLengthsKv
+    - PagedAttention不支持tensorlist场景，不支持左padding场景，不支持公共前缀场景，不支持D不等长场景
 - 一致性约束
   - 无
 - 特性交叉约束
   - 公共
-    - PagedAttention的开启场景下，若同时开启attenMask，传入attenMask的最后一维需要大于等于 maxBlockNumPerSeq * blockSize
+    - PagedAttention的开启场景下，若同时开启attenMask，传入attenMask的最后一维需要大于等于maxBlockNumPerSeq * blockSize
     - PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
-    - PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。
+    - PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且KV_N * D超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。
   - 伪量化
-    - PagedAttention场景下，kv cache 的 layout 为 4 维时，inputLayout 必须为 BNSD、BNSD_BSND 或 TND
+    - PagedAttention场景下，kv cache的layout为4维时，inputLayout必须为BNSD、BNSD_BSND或TND
   - 全量化
     - Decode MLA场景下：
-      - 当query的数据类型为FP8_E4M3FN/HIFLOAT8，且inputLayout为BSH、BSND、BSH_NBSD、BSND_NBSD时，kv cache排布只支持BnBsH（blocknum, blocksize, H）和NZ (blocknum，KV_N，D/D0，blocksize，D0) 两种格式
+      - 当query的数据类型为FP8_E4M3FN/HIFLOAT8，且inputLayout为BSH、BSND、BSH_NBSD、BSND_NBSD时，kv cache排布只支持BnBsH（blocknum, blocksize, H）和NZ (blocknum，KV_N，D/D0，blocksize，D0)两种格式
       - 当query的数据类型为FP8_E4M3FN/HIFLOAT8，且inputLayout为BNSD、TND、BNSD_NBSD、TND_NTD时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N, blocksize, D）和NZ（blocknum，KV_N，D/D0，blocksize，D0）三种格式
-      - 当query的数据类型为INT8时，kv cache排布仅支持NZ，且kv cache排布为 (blocknum，KV_N，D/D0，blocksize，D0)
-      - 当kv cache排布为NZ时，最后一维D0是32, keyRope 最后一维D0是16
-    - GQA全量化场景除开MxFP8均不支持PagedAttention
+      - 当query的数据类型为INT8时，kv cache排布仅支持NZ，且kv cache排布为(blocknum，KV_N，D/D0，blocksize，D0)
+      - 当kv cache排布为NZ时，最后一维D0是32, keyRope最后一维D0是16
+    - GQA全量化场景下，除MxFP8和GQA全量化（queryQuantMode = 3，keyAntiquantMode = 3，valueAntiquantMode = 2）外均不支持PagedAttention
     - MxFP8全量化支持非PagedAttention场景，kv cache排布支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
 
 #### 左padding参数组
 
 - 单参数约束
   - 非量化
-    - Query 左padding 场景下，queryPaddingSize 的 shape 应为 (1)
-    - Key、value 左padding 场景下，kvPaddingSize 的 shape 应为 (1)
+    - Query左padding场景下，queryPaddingSize的shape应为(1)
+    - Key、value左padding场景下，kvPaddingSize的shape应为(1)
 - 存在性约束
   - 公共
-    - Query 左padding 场景下，必须传入 queryPaddingSize
-    - Key、value 左padding 场景下，必须传入 kvPaddingSize
+    - Query左padding场景下，必须传入queryPaddingSize
+    - Key、value左padding场景下，必须传入kvPaddingSize
 - 一致性约束
   - 无
 - 特性交叉约束
   - 公共
-    - 左padding 场景下，不支持 PagedAttention
-    - 左padding 场景下，不支持 BSH_BNSD、BSND_BNSD、TND、NTD、NTD_TND、TND_NTD 场景
-    - 左padding 场景下，必须传入 actualSeqLengths/actualSeqLengthsKv
+    - 左padding场景下，不支持PagedAttention
+    - 左padding场景下，不支持BSH_BNSD、BSND_BNSD、TND、NTD、NTD_TND、TND_NTD场景
+    - 左padding场景下，必须传入actualSeqLengths/actualSeqLengthsKv
 
 #### 公共前缀参数组
 
 - 单参数约束
-  - 入参 keySharedPrefix 和 valueSharedPrefix 应满足以下条件：
-    - tensor shape 应满足以下条件：
-      - shape 应为 (1)
-      - layout 为 BNSD 和 BSND 时，N 轴和 D 轴应与 key/value 的 N 轴和 D 轴相等
-      - layout 为 BSH 时，H 轴应与 key/value 的 H 轴相等
-      - keySharedPrefix 和 valueSharedPrefix 的 S 轴应相等
-    - tensor 数据类型应满足以下条件：
-      - 数据类型应与 key/value 的数据类型相同
-  - 入参 actualSharedPrefixLen 应满足以下条件：
-    - shape 应满足以下条件：
-      shape 应为 1
+  - 入参keySharedPrefix和valueSharedPrefix应满足以下条件：
+    - tensor shape应满足以下条件：
+      - shape应为(1)
+      - layout为BNSD和BSND时，N轴和D轴应与key/value的N轴和D轴相等
+      - layout为BSH时，H轴应与key/value的H轴相等
+      - keySharedPrefix和valueSharedPrefix的S轴应相等
+    - tensor数据类型应满足以下条件：
+      - 数据类型应与key/value的数据类型相同
+  - 入参actualSharedPrefixLen应满足以下条件：
+    - shape应满足以下条件：
+      shape应为1
     - 入参中的数值应满足以下条件：
-      - 其值不能大于 keySharedPrefix 和 valueSharedPrefix 的 shape 的 S 轴
+      - 其值不能大于keySharedPrefix和valueSharedPrefix的shape的S轴
 - 存在性约束
   - 公共
-    - 入参 keySharedPrefix 和 valueSharedPrefix 应满足以下条件：
-      - 传入 keySharedPrefix 时，必须传入 valueSharedPrefix
-      - 传入 valueSharedPrefix 时，必须传入 keySharedPrefix
+    - 入参keySharedPrefix和valueSharedPrefix应满足以下条件：
+      - 传入keySharedPrefix时，必须传入valueSharedPrefix
+      - 传入valueSharedPrefix时，必须传入keySharedPrefix
 - 一致性约束
   - 无
 - 特性交叉约束
   - 公共
-    - 不支持 PagedAttention 场景
-    - 不支持 tensorlist 场景
-    - 不支持左 padding 场景
-    - 不支持 alibi 场景
-    - 不支持 TND 场景
-    - 不支持 Prefill MLA (包括 D 不等长和 ROPE 独立输入)场景
-    - 不支持 Decode MLA 场景
+    - 不支持PagedAttention场景
+    - 不支持tensorlist场景
+    - 不支持左padding场景
+    - 不支持alibi场景
+    - 不支持TND场景
+    - 不支持Prefill MLA (包括D不等长和ROPE独立输入)场景
+    - 不支持Decode MLA场景
   - 全量化
-    - 全量化（包括 MLA 全量化和 GQA 全量化）场景，不支持 prefix
-    - 后量化场景，仅支持数据类型 INT8
+    - 全量化（包括MLA全量化和GQA全量化）场景，不支持prefix
+    - 后量化场景，仅支持数据类型INT8
   - 伪量化
-    - 伪量化 key/value 合成场景所有量化模式 prefix 均支持
-    - 伪量化 key/value 分离场景，prefix 仅支持以下量化模式：
-      - Q_S > 1 时，伪量化方式为 per-channel(per-tensor)、per-token 时，key/value 数据类型仅支持 INT8
-      - Q_S = 1 时，伪量化方式为 per-tensor、per-tensor 叠加 per-head、per-token 叠加使用 page attention 模式管理
-        scale/offset、per-token 叠加 per-head 并使用 page attention 模式管理 scale/offset，key/value 数据类型仅支持INT8
-      - Q_S = 1 时，伪量化方式为 per-channel、per-token、per-token 叠加 per-head、key 支持 per-channel
-        叠加 value 支持 per-token，key/value 数据类型支持 INT8、INT4(INT32)
+    - 伪量化key/value合成场景所有量化模式prefix均支持
+    - 伪量化key/value分离场景，prefix仅支持以下量化模式：
+      - Q_S > 1时，伪量化方式为per-channel(per-tensor)、per-token时，key/value数据类型仅支持INT8
+      - Q_S = 1时，伪量化方式为per-tensor、per-tensor叠加per-head、per-token叠加使用page attention模式管理
+        scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset，key/value数据类型仅支持INT8
+      - Q_S = 1时，伪量化方式为per-channel、per-token、per-token叠加per-head、key支持per-channel
+        叠加value支持per-token，key/value数据类型支持INT8、INT4(INT32)
 
 #### Rope参数组
 
 - 单参数约束
   - 公共
-    - 入参 queryRope 和 keyRope 需要满足以下条件
-      - tensor dtype 为 FLOAT16/BFLOAT16
-      - tensor shape 中D维为 64
+    - 入参queryRope和keyRope需要满足以下条件
+      - tensor dtype为FLOAT16/BFLOAT16
+      - tensor shape中D维为64
 - 存在性约束
   - 公共
-    - 入参 queryRope 和 keyRope 必须同时存在
+    - 入参queryRope和keyRope必须同时存在
 - 一致性约束
   - 无
 - 特性交叉约束
   - 公共
     - query shape的D仅支持128、512
-    - 非tensorlist场景,  queryRope shape 维度需要和 query 保持一致，除了 queryRope shape 的D为64外,  其余维度需要和 query 一致；keyRope shape 维度需要和 key 保持一致，除了 keyRope shape 的D为64外,  其余维度需要和 key 一致
-    - 非量化场景，入参 queryRope 和 keyRope 的 dtype 需要和 query、key 保持一致
+    - 非tensorlist场景，  queryRope shape维度需要和query保持一致，除了queryRope shape的D为64外,其余维度需要和query一致；keyRope shape维度需要和key保持一致，除了keyRope shape的D为64外,其余维度需要和key一致
+    - 非量化场景，入参queryRope和keyRope的dtype需要和query、key保持一致
     - 不支持公共前缀场景、不支持pse场景、不支持alibi场景
     - 不支持伪量化场景
   - Decode MLA
-    - Layout 仅支持 BNSD、BSND、BSH、TND、BNSD_NBSD、BSND_NBSD、BSH_NBSD、TND_NTD
-    - Q_N 支持 1/2/4/8/16/32/64/128；KV_N 仅支持1
-    - 非量化场景，Q_S无限制；全量化场景，Q_S 支持 [1,16]
+    - Layout仅支持BNSD、BSND、BSH、TND、BNSD_NBSD、BSND_NBSD、BSH_NBSD、TND_NTD
+    - Q_N支持1/2/4/8/16/32/64/128；KV_N仅支持1
+    - 非量化场景，Q_S无限制；全量化场景，Q_S支持 [1,16]
     - 不支持左padding场景、不支持tensorlist场景
   - Prefill MLA
-    - Layout 仅支持 BNSD、BSND、BSH、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND、BNSD_BSND
-    - 在tensorlist场景下，传入 keyRope shape 中D为64，B需要和 key 的tensorlist长度保持一致，N、S需要与 key 的tensorlist中每个tensor的N、S相等
+    - Layout仅支持BNSD、BSND、BSH、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND、BNSD_BSND
+    - 在tensorlist场景下，传入keyRope shape中D为64，B需要和key的tensorlist长度保持一致，N、S需要与key的tensorlist中每个tensor的N、S相等
     - 不支持全量化场景
+  - GQA全量化
+    - 不支持rope场景
 
 #### LearnableSink参数组
 
 - 单参数约束
   - 公共
-    - 入参 learnableSink 需要满足以下条件
-      - tensor dtype 为 FLOAT16/BFLOAT16
-      - tensor shape 为 (Q_N)
+    - 入参learnableSink需要满足以下条件
+      - tensor dtype为FLOAT16/BFLOAT16
+      - tensor shape为(Q_N)
 - 存在性约束
   - 无
 - 一致性约束
   - 无
 - 特性交叉约束
   - 公共
-    - LearnableSink 开启场景下，tensor dtype需要和query dtype保持一致
-    - LearnableSink 开启场景下，QueryHeadDim/KeyHeadDim 仅支持 64、128、192，ValueHeadDim 仅支持 64、128
-    - LearnableSink 开启场景下，innerPrecise 必须为高精度模式 (0)
-    - LearnableSink 不支持左padding场景、不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持后量化场景
-    - LearnableSink 不支持全量化场景、不支持伪量化场景、不支持Decode MLA场景
+    - LearnableSink开启场景下，tensor dtype需要和query dtype保持一致
+    - LearnableSink开启场景下，QueryHeadDim/KeyHeadDim仅支持64、128、192，ValueHeadDim仅支持64、128
+    - LearnableSink开启场景下，innerPrecise必须为高精度模式(0)
+    - LearnableSink不支持左padding场景、不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持后量化场景
+    - LearnableSink不支持全量化场景、不支持伪量化场景、不支持Decode MLA场景
 
 #### SoftmaxLSE参数组
 
 - 单参数约束
   - 公共
-    - 输出 lseOut 仅支持数据类型 FP32
+    - 输出lseOut仅支持数据类型FP32
 - 存在性约束
   - 公共
-    - softmaxLSE 场景下，输出 lseOut 不应为空
+    - softmaxLSE场景下，输出lseOut不应为空
 - 一致性约束
   - 无
 - 特性交叉约束
   - 公共
-    - softmaxLSE 且非空tensor场景下，如输出 layout 为 TND 或 NTD，则 lseOut 输入维度应为 3，且 shape 匹配 [Q_T，Q_N，1]
-    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND 或 NTD，则 lseOut 输入维度应为 4，且 shape 匹配 [B，Q_N，Q_S，1]
+    - softmaxLSE且非空tensor场景下，如输出layout为TND或NTD，则lseOut输入维度应为3，且shape匹配 [Q_T，Q_N，1]
+    - softmaxLSE且非空tensor场景下，如输出layout不为TND或NTD，则lseOut输入维度应为4，且shape匹配 [B，Q_N，Q_S，1]
 
 ## 调用示例
 
@@ -1977,7 +2023,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   }
 
   int main() {
-      // 1. （固定写法）device/stream初始化，acl API手册
+      // 1.（固定写法）device/stream初始化，acl API手册
       // 根据自己的实际device填写deviceId
       int32_t deviceId = 0;
       aclrtStream stream;
@@ -2070,7 +2116,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       ret = aclnnFusedInferAttentionScoreV5(workspaceAddr, workspaceSize, executor, stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedInferAttentionScoreV5 failed. ERROR: %d\n", ret); return ret);
 
-      // 4. （固定写法）同步等待任务执行结束
+      // 4.（固定写法）同步等待任务执行结束
       ret = aclrtSynchronizeStream(stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

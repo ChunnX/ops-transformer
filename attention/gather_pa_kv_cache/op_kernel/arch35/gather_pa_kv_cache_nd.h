@@ -42,6 +42,11 @@ public:
         int64_t stride0, int64_t stride1, int64_t stride2,
         bool isSlotNonContig, bool isHeadNonContig,
         bool isFilledWithZero, bool isKey);
+    // 把一段连续字节经UB搬到目标, 按maxUbHiddenSize_自动切块, 保证UB不越界。
+    // 所有偏移/长度均为字节粒度。isFilledWithZero时不读src, 直接填零写出。
+    __aicore__ inline void GatherNcContigRun(GlobalTensor<T> dstGm, GlobalTensor<T> srcGm,
+                                             uint64_t dstByteOff, uint64_t srcByteOff,
+                                             uint64_t totalBytes, bool isFilledWithZero);
     __aicore__ inline T_INDEX CalcKvCoreOffset(int64_t reduceLen);
 
 private:
@@ -217,6 +222,12 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
             } else {
                 isFilledWithZero = false;
                 blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + blockTableOffset);
+                // blockId数值越界时填零, 与golden对齐(非连续view场景numBlocks_为view dim0,
+                // 而block_tables中的blockId按storage范围取值, 可能 >= numBlocks_导致GM访存越界)。
+                if (blockId >= numBlocks_ || blockId < 0) {
+                    isFilledWithZero = true;
+                    blockId = 0;
+                }
             }
 
             uint64_t curBlockSize = cacheBlockSize_;
@@ -256,8 +267,11 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
             } else {
                 // ===== 非连续路径 =====
                 // 统一用stride计算block起始地址（连续时stride已填充连续值）
-                uint64_t keyCacheStart = blockId * kCacheStride0_ * sizeof(T);
-                uint64_t valueCacheStart = blockId * vCacheStride0_ * sizeof(T);
+                // 注意: kernel模板T恒为uint8_t(规避B8编译问题), sizeof(T)==1,
+                // 而stride为元素粒度, GlobalTensor<uint8_t>按字节索引,
+                // 故必须乘以真实元素字节宽(sizeof(DTYPE_KEY)/DTYPE_VALUE)将元素偏移转为字节偏移。
+                uint64_t keyCacheStart = blockId * kCacheStride0_ * sizeof(DTYPE_KEY);
+                uint64_t valueCacheStart = blockId * vCacheStride0_ * sizeof(DTYPE_VALUE);
                 bool isKSlotNC = (nonContiguousFlag_ >> 4) & 1;
                 bool isKHeadNC = (nonContiguousFlag_ >> 5) & 1;
                 bool isVSlotNC = (nonContiguousFlag_ >> 6) & 1;
@@ -392,86 +406,87 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     bool isSlotNonContig, bool isHeadNonContig,
     bool isFilledWithZero, bool isKey)
 {
-    constexpr uint32_t DATA_BLOCK_SIZE = 32;
-    LocalTensor<T> cacheLocal = cacheQueue_.AllocTensor<T>();
-    uint64_t totalLen = curBlockSize * hiddenSize;
+    // T恒为uint8_t, sizeof(T)==1; stride为元素粒度, 须乘真实元素字节宽转字节偏移。
+    // hiddenSize入参已是字节(InitParams已乘sizeof(DTYPE_*))。
+    (void)stride0;          // block起始地址已在调用侧用stride0计算
+    (void)isSlotNonContig;  // 进入本函数即slot非连续, 标志无需再用
+    const uint64_t elemSize = isKey ? sizeof(DTYPE_KEY) : sizeof(DTYPE_VALUE);
+    const uint64_t slotStrideBytes = static_cast<uint64_t>(stride1) * elemSize;  // slot间源步长(字节)
+    const uint64_t headStrideBytes = static_cast<uint64_t>(stride2) * elemSize;  // head间源步长(字节)
 
-    if (isFilledWithZero) {
-        AscendC::TEventID eventIdMTE3ToVec = GetTPipePtr()->FetchEventID(HardEvent::MTE3_V);
-        SetFlag<HardEvent::MTE3_V>(eventIdMTE3ToVec);
-        WaitFlag<HardEvent::MTE3_V>(eventIdMTE3ToVec);
-        Duplicate<T>(cacheLocal, 0, totalLen);
-        AscendC::TEventID eventIdVecToMTE3 = GetTPipePtr()->FetchEventID(HardEvent::V_MTE3);
-        SetFlag<HardEvent::V_MTE3>(eventIdVecToMTE3);
-        WaitFlag<HardEvent::V_MTE3>(eventIdVecToMTE3);
-    } else if (!isHeadNonContig) {
-        // Case B: blockSize轴非连续, slot内连续(N*D元素)
-        // 使用DataCopyPad loop模式: blockCount=curBlockSize, srcStride=间隔
-        uint32_t slotBytes = static_cast<uint32_t>(hiddenSize * sizeof(T));
-        uint32_t srcTotalStride = static_cast<uint32_t>(stride1 * sizeof(T)); // slot间总步长(字节)
-        uint16_t srcStrideBlk = static_cast<uint16_t>((srcTotalStride - slotBytes) / DATA_BLOCK_SIZE);
-
-        DataCopyExtParams params;
-        params.blockCount = static_cast<uint16_t>(curBlockSize);
-        params.blockLen = slotBytes;
-        params.srcStride = srcStrideBlk;  // 源端: 每搬完一个slot跳过的dataBlock数
-        params.dstStride = 0;             // 目标端: UB内紧密排列
-        DataCopyPad<T, PaddingMode::Normal>(cacheLocal, srcGm, params, padExtParams_);
-        cacheQueue_.EnQue<T>(cacheLocal);
-        cacheLocal = cacheQueue_.DeQue<T>();
-    } else {
-        // Case C: N轴也非连续, 逐slot搬运, 每个slot内用loop模式搬多个head
-        uint64_t numHeads = isKey ? numHeadsK_ : numHeadsV_;
-        uint64_t headDim = hiddenSize / numHeads;
-        uint32_t headBytes = static_cast<uint32_t>(headDim * sizeof(T));
-        uint32_t headSrcTotalStride = static_cast<uint32_t>(stride2 * sizeof(T)); // head间总步长
-        uint16_t headSrcStrideBlk = static_cast<uint16_t>((headSrcTotalStride - headBytes) / DATA_BLOCK_SIZE);
-
-        DataCopyExtParams params;
-        params.blockCount = static_cast<uint16_t>(numHeads);
-        params.blockLen = headBytes;
-        params.srcStride = headSrcStrideBlk;  // 源端: head间间隔
-        params.dstStride = 0;                 // 目标端: UB内紧密排列
-
-        for (uint32_t slot = 0; slot < curBlockSize; slot++) {
-            uint64_t srcOffset = slot * stride1 * sizeof(T);
-            uint64_t dstOffset = slot * hiddenSize;
-            DataCopyPad<T, PaddingMode::Normal>(cacheLocal[dstOffset], srcGm[srcOffset], params, padExtParams_);
-        }
-        cacheQueue_.EnQue<T>(cacheLocal);
-        cacheLocal = cacheQueue_.DeQue<T>();
-    }
-
-    // 输出侧: 判断是否非连续写回
+    // 输出侧: 判断是否非连续写回, 计算token(slot)间目标步长(字节)
     bool isOutNonContig = isKey ? ((nonContiguousFlag_ >> 2) & 1) : ((nonContiguousFlag_ >> 3) & 1);
     int64_t outStride1 = isKey ? keyOutStride1_ : valueOutStride1_;
+    const uint64_t dstSlotStrideBytes = isOutNonContig
+                                            ? static_cast<uint64_t>(outStride1) * elemSize  // 输出非连续: token间有间隙
+                                            : hiddenSize;                                    // 输出连续: 紧密排列
 
-    if (isOutNonContig) {
-        // 输出非连续: 使用DataCopyPad loop模式, 逐token写回(token间有间隙)
-        uint32_t tokenBytes = static_cast<uint32_t>(hiddenSize * sizeof(T));
-        uint32_t dstTotalStride = static_cast<uint32_t>(outStride1 * sizeof(T));
-        uint16_t dstStrideBlk = static_cast<uint16_t>((dstTotalStride - tokenBytes) / DATA_BLOCK_SIZE);
+    uint64_t numHeads = isKey ? numHeadsK_ : numHeadsV_;
+    uint64_t headBytes = (numHeads > 0) ? (hiddenSize / numHeads) : hiddenSize;  // 单head字节数
 
-        DataCopyExtParams outParams;
-        outParams.blockCount = static_cast<uint16_t>(curBlockSize);
-        outParams.blockLen = tokenBytes;
-        outParams.srcStride = 0;             // UB内连续
-        outParams.dstStride = dstStrideBlk;  // GM输出端: token间间隔
-        DataCopyPad<T, PaddingMode::Normal>(dstGm, cacheLocal, outParams);
-    } else {
-        // 输出连续, 整块写出
-        DataCopyExtParams outParams;
-        outParams.blockCount = 1;
-        outParams.blockLen = static_cast<uint32_t>(totalLen * sizeof(T));
-        outParams.srcStride = 0;
-        outParams.dstStride = 0;
-        DataCopyPad<T, PaddingMode::Normal>(dstGm, cacheLocal, outParams);
+    for (uint64_t slot = 0; slot < curBlockSize; slot++) {
+        uint64_t dstByteOff = slot * dstSlotStrideBytes;
+
+        if (isFilledWithZero) {
+            // 越界block: 整slot填零写出
+            GatherNcContigRun(dstGm, srcGm, dstByteOff, 0, hiddenSize, true);
+        } else if (!isHeadNonContig) {
+            // Case B: slot内连续(N*D字节连续), 整slot一次性按UB切块搬运
+            uint64_t srcByteOff = slot * slotStrideBytes;
+            GatherNcContigRun(dstGm, srcGm, dstByteOff, srcByteOff, hiddenSize, false);
+        } else {
+            // Case C: head轴也非连续, 逐head搬运(每个head内连续)
+            for (uint64_t h = 0; h < numHeads; h++) {
+                uint64_t srcByteOff = slot * slotStrideBytes + h * headStrideBytes;
+                uint64_t dstHeadOff = dstByteOff + h * headBytes;
+                GatherNcContigRun(dstGm, srcGm, dstHeadOff, srcByteOff, headBytes, false);
+            }
+        }
     }
+}
 
-    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-    SetFlag<HardEvent::MTE3_MTE2>(eventId);
-    WaitFlag<HardEvent::MTE3_MTE2>(eventId);
-    cacheQueue_.FreeTensor(cacheLocal);
+template <typename T, typename T_INDEX, bool isSeqLensCumsum, bool hasSeqOffset>
+__aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffset>::GatherNcContigRun(
+    GlobalTensor<T> dstGm, GlobalTensor<T> srcGm, uint64_t dstByteOff, uint64_t srcByteOff,
+    uint64_t totalBytes, bool isFilledWithZero)
+{
+    // 按UB容量(maxUbHiddenSize_字节)切块, 逐块搬运, 保证UB不越界。
+    uint64_t handled = 0;
+    while (handled < totalBytes) {
+        uint64_t curBytes = totalBytes - handled;
+        if (curBytes > maxUbHiddenSize_) {
+            curBytes = maxUbHiddenSize_;
+        }
+
+        LocalTensor<T> cacheLocal = cacheQueue_.AllocTensor<T>();
+        DataCopyExtParams params;
+        params.blockCount = 1;
+        params.blockLen = static_cast<uint32_t>(curBytes);
+        params.srcStride = 0;
+        params.dstStride = 0;
+
+        if (isFilledWithZero) {
+            AscendC::TEventID eventIdMTE3ToVec = GetTPipePtr()->FetchEventID(HardEvent::MTE3_V);
+            SetFlag<HardEvent::MTE3_V>(eventIdMTE3ToVec);
+            WaitFlag<HardEvent::MTE3_V>(eventIdMTE3ToVec);
+            Duplicate<T>(cacheLocal, 0, curBytes);
+            AscendC::TEventID eventIdVecToMTE3 = GetTPipePtr()->FetchEventID(HardEvent::V_MTE3);
+            SetFlag<HardEvent::V_MTE3>(eventIdVecToMTE3);
+            WaitFlag<HardEvent::V_MTE3>(eventIdVecToMTE3);
+        } else {
+            DataCopyPad<T, PaddingMode::Normal>(cacheLocal, srcGm[srcByteOff + handled], params, padExtParams_);
+            cacheQueue_.EnQue<T>(cacheLocal);
+            cacheLocal = cacheQueue_.DeQue<T>();
+        }
+
+        DataCopyPad<T, PaddingMode::Normal>(dstGm[dstByteOff + handled], cacheLocal, params);
+        event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(eventId);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+        cacheQueue_.FreeTensor(cacheLocal);
+
+        handled += curBytes;
+    }
 }
 
 } // namespace GatherPaKvCacheV35

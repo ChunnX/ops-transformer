@@ -155,12 +155,63 @@ void QSMLATilingCheck::Init()
         perfMode_ = QSMLATemplateMode::CFA_TEMPLATE_MODE;
     }
 }
+static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vector<int64_t> &strides,
+    const gert::Shape &shape, const QSMLALayout &kvLayout, const std::string &tensorName)
+{
+    std::vector<int64_t> expectedStrides;
+    const size_t dimNum = shape.GetDimNum();
+    if (kvLayout == QSMLALayout::BSND) {
+        const int64_t S2 = shape.GetDim(1);
+        const int64_t N2 = shape.GetDim(2);
+        const int64_t D2 = shape.GetDim(3);
+        expectedStrides = {S2 * N2 * D2, N2 * D2, D2, 1};
+    } else if (kvLayout == QSMLALayout::TND) {
+        const int64_t N2 = shape.GetDim(1);
+        const int64_t D2 = shape.GetDim(2);
+        expectedStrides = {N2 * D2, D2, 1};
+    } else if (kvLayout == QSMLALayout::PA_BBND) {
+        const int64_t Bs = shape.GetDim(1);
+        const int64_t N2 = shape.GetDim(2);
+        const int64_t D2 = shape.GetDim(3);
+        expectedStrides = {Bs * N2 * D2, N2 * D2, D2, 1};
+    }
+
+    for (size_t i = 0; i < expectedStrides.size(); ++i) {
+        if (kvLayout == QSMLALayout::PA_BBND && i == 0) {
+            continue;
+        }
+        if (strides[i] != expectedStrides[i]) {
+            OP_LOGE(opName, "%s 's expected stride[%zu]=%ld, but got %ld",
+                tensorName.c_str(), i, expectedStrides[i], strides[i]);
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSMLATilingCheck::CheckKvContiguous() const
+{
+    if (!qsmlaInfo_.oriKvStrides.empty()) {
+        if (ValidateKvContiguous(opName_, qsmlaInfo_.oriKvStrides,
+            qsmlaInfo_.oriKvStorageShape, kvLayout_, ORI_KV_NAME) != ge::GRAPH_SUCCESS) {
+                    return ge::GRAPH_FAILED;
+            }
+    }
+    if (!qsmlaInfo_.cmpKvStrides.empty()) {
+        if (ValidateKvContiguous(opName_, qsmlaInfo_.cmpKvStrides,
+            qsmlaInfo_.cmpKvStorageShape, kvLayout_, CMP_KV_NAME) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus QSMLATilingCheck::Process()
 {
     Init();
     if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
         CheckParaExistence() != ge::GRAPH_SUCCESS ||
+        CheckKvContiguous() != ge::GRAPH_SUCCESS ||
         CheckFeature() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

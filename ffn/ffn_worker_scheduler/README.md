@@ -26,11 +26,11 @@
         %% 输入缓冲区
         A[token_info_buf输入]
 
-        %% Session 层级结构
+        %% Session层级结构
         A --> Session0
         A --> Session1
 
-        %% Session 0 内部结构
+        %% Session 0内部结构
         subgraph Session0[session 0]
             direction TB
             S0_M1[micro batch id 0]:::micro
@@ -39,7 +39,7 @@
             S0_E1[expert ids 0]:::expert
         end
 
-        %% Session 1 内部结构
+        %% Session 1内部结构
         subgraph Session1[session 1]
             direction TB
             S1_M1[micro batch id 0]:::micro
@@ -151,7 +151,7 @@ $$
       <td>executeMode</td>
       <td>输入</td>
       <td>执行模式。</td>
-      <td>只支持模式0， 表示执行完一次退出。</td>
+      <td>只支持模式0，表示执行完一次退出。</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>

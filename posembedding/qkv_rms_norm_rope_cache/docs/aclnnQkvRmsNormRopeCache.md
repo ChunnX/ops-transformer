@@ -18,13 +18,13 @@
 
   |场景类型|情况概要|
   |:---|:---|
-  |<ul><li>cacheMode为PA_NZ</li><li>q无量化</li><li>k和v支持无量化、对称量化和非对称量化</li><li>qBeforeQuant/kBeforeQuant/vBeforeQuant不输出</li></ul>|qkv Shape为[$B_{qkv}$ * $S_{qkv}$, $N_{qkv}$ * $D_{qkv}$]，q、k、v具有完全相同的D维度。主要计算过程与输出对应关系：<br><ul><li>qkv 经过SplitVD->q、k、v</li><li>q经过RmsNorm、RoPE->qOut</li><li>k经过RmsNorm、RoPE、Quant(可选)、Scatter->kCache</li><li>v经过Quant(可选)、Scatter->vCache</li></ul>|
+  |<ul><li>cacheMode为PA_NZ</li><li>q无量化</li><li>k和v支持无量化、对称量化和非对称量化</li><li>qBeforeQuant/kBeforeQuant/vBeforeQuant不输出</li></ul>|qkv Shape为[$B_{qkv}$ * $S_{qkv}$, $N_{qkv}$ * $D_{qkv}$]，q、k、v具有完全相同的D维度。主要计算过程与输出对应关系：<br><ul><li>qkv经过SplitVD->q、k、v</li><li>q经过RmsNorm、RoPE->qOut</li><li>k经过RmsNorm、RoPE、Quant(可选)、Scatter->kCache</li><li>v经过Quant(可选)、Scatter->vCache</li></ul>|
 
 - 计算公式：
 
   (1) SplitVD:
 
-  下式中，$N_q$、$N_k$、$N_v$分别表示 q、k、v 分量的注意力头数量，必须满足：
+  下式中，$N_q$、$N_k$、$N_v$分别表示q、k、v分量的注意力头数量，必须满足：
 
   $$
   \begin{cases}
@@ -569,7 +569,7 @@ int CreateAclTensor(
 
 int main()
 {
-    // 1. 固定写法，device/stream初始化, 参考acl API
+    // 1. 固定写法，device/stream初始化，参考acl API
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -699,7 +699,7 @@ int main()
     aclDestroyTensor(kScale);
     aclDestroyTensor(vScale);
 
-    // 7. 释放device 资源
+    // 7. 释放device资源
     aclrtFree(qkvDeviceAddr);
     aclrtFree(qGammaDeviceAddr);
     aclrtFree(kGammaDeviceAddr);

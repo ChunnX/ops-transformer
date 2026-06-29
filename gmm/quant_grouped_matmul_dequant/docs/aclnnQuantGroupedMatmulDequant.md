@@ -34,7 +34,7 @@
   $$
 
   4.分组矩阵乘+反量化
-    - 4.1 若输入的$scale_{weight}$数据类型为FLOAT32, 则：
+    - 4.1 若输入的$scale_{weight}$数据类型为FLOAT32,则：
 
   $$
     \begin{aligned}
@@ -48,7 +48,7 @@
     \end{aligned}
   $$
 
-  - 4.2 若输入的$scale_{weight}$数据类型为INT64, 则：
+  - 4.2 若输入的$scale_{weight}$数据类型为INT64,则：
 
     $$
     x^{*}_{quantized} = x_{quantized}[group[i-1]:group[i]] \\
@@ -423,7 +423,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1.（固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -514,7 +514,7 @@ int main() {
   ret = aclnnQuantGroupedMatmulDequant(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantGroupedMatmulDequant failed. ERROR: %d\n", ret); return ret);
 
-  // 4. （固定写法）同步等待任务执行结束
+  // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

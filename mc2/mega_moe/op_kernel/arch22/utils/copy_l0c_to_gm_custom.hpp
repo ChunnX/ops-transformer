@@ -17,7 +17,7 @@
 #define COPY_L0C_TO_GM_CUSTOM_HPP
 
 namespace Catlass::Gemm::Tile {
-template <class ElementAccumulator_, class ElementDst_>
+template <class ElementAccumulator_, class ElementDst_, bool ReluEnable_ = false>
 struct CopyL0CToGmPerChannel {
     using ArchTag = Catlass::Arch::AtlasA2;
     using ElementDst = ElementDst_;
@@ -26,12 +26,21 @@ struct CopyL0CToGmPerChannel {
     using LayoutDst = Catlass::layout::RowMajor;
     static constexpr auto quantPre =
         CopyL0CToGmQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_CHANNEL>::VALUE;
-    static constexpr auto reluEn = false;
+    static constexpr auto reluEn = ReluEnable_;
+
+    struct Params {};
+    Params params;
+
+    CATLASS_DEVICE
+    CopyL0CToGmPerChannel() = default;
+
+    CATLASS_DEVICE
+    CopyL0CToGmPerChannel(Params const &params_) : params(params_) {};
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementDst> const &dst, AscendC::LocalTensor<ElementSrc> const &src,
-                    AscendC::LocalTensor<uint64_t> cbufWorkspace, LayoutDst const &dstLayout,
-                    LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
+                    AscendC::LocalTensor<uint64_t> cbufWorkspace,
+                    LayoutDst const &dstLayout, LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
     {
         AscendC::FixpipeParamsV220 intriParams;
 

@@ -163,7 +163,7 @@ def qliv2_output_single(data_case):
         actual_seq_lengths_query = torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
     if layout_key == "BSND":
         actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq*cmp_ratio, k_seq*cmp_ratio, batch_size)).to(actual_seq_dtype).npu()
-    elif layout_key == "TND" or layout_key == "PA_BSND":
+    elif layout_key == "TND" or layout_key == "PA_BBND":
         actual_seq_lengths_key = torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
 
     if layout_query == "BSND":
@@ -188,7 +188,7 @@ def qliv2_output_single(data_case):
         block_table = None
         cpu_result, topk_value = test_qliv2.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
 
-    elif layout_key == "PA_BSND":
+    elif layout_key == "PA_BBND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
         k_max_s2 = math.floor(max(act_seq_k)/cmp_ratio)
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num

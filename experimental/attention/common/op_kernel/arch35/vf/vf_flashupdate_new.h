@@ -217,6 +217,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
     constexpr uint16_t dLoops = srcD / floatRepSize;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
+    constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
@@ -245,8 +246,10 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float * dstUb, __ubuf__ 
             if constexpr (isMlaFullQuant) {
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
                     Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else {
+                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
                     Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+                } else {
+                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
                 }
             }
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
@@ -404,6 +407,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
     const uint16_t dLoops = d >> 6;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
+    constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
     for (uint16_t i = 0; i < m; ++i) {
         uint32_t sreg_init = d;
@@ -422,8 +426,10 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float * dstUb, __ubuf__ float * cu
             if constexpr (isMlaFullQuant) {
                 if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
                     Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else {
+                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
                     Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+                } else {
+                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
                 }
             }
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
@@ -485,7 +491,8 @@ __aicore__ inline void InvalidLineUpdate(const LocalTensor<T>& dstTensor, const 
 }
 
 template <typename T>
-__simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ T *dstUb, const uint32_t dealCount)
+__simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ T *dstUb,
+    const uint32_t dealCount, const uint32_t min = 0xFF7FFFFF)
 {
     MicroAPI::RegTensor<T> vregSum;
     MicroAPI::RegTensor<T> vregMax;
@@ -497,8 +504,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     constexpr uint32_t dealRows = 8;
     constexpr uint32_t  floatRepSize = 64; // 64: 一个寄存器存64个float
     constexpr float infValue = 3e+99; // 3e+99 for float inf
-    constexpr uint32_t tmpMin = 0xFF7FFFFF;
-    float minValue = *((float*)&tmpMin);
+    const float minValue = *((float*)&min);
     uint16_t updateLoops = dealCount / dealRows;
     uint16_t tailLSize = dealCount % dealRows * 8;
     uint32_t pltTail = static_cast<uint32_t>(tailLSize);
@@ -537,13 +543,13 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
 
 template <typename T>
 __aicore__ inline void ComputeLseOutputVF(const LocalTensor<T>& dstTensor, const LocalTensor<T>& softmaxSumTensor,
-    const LocalTensor<T>& softmaxMaxTensor, uint32_t dealCount)
+    const LocalTensor<T>& softmaxMaxTensor, uint32_t dealCount, const uint32_t min = 0xFF7FFFFF)
 {
     __ubuf__ T * srcSumUb = (__ubuf__ T *)softmaxSumTensor.GetPhyAddr();
     __ubuf__ T * srcMaxUb = (__ubuf__ T *)softmaxMaxTensor.GetPhyAddr();
     __ubuf__ T * dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
 
-    ComputeLseOutputVF<T>(srcSumUb, srcMaxUb, dstUb, dealCount);
+    ComputeLseOutputVF<T>(srcSumUb, srcMaxUb, dstUb, dealCount, min);
 }
 
 template <typename T>
@@ -658,7 +664,7 @@ __aicore__ inline void SinkSubExpAddGSFusedVF(const LocalTensor<SINK_T>& dstTens
 
 template <typename T>
 __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *maxUb, const uint16_t m,
-    const uint16_t d, int64_t dSize, const uint32_t pltTailD, const uint16_t hasTail)
+    const uint16_t d, int64_t dSize, const uint32_t pltTailD, const uint16_t hasTail, const uint32_t min = 0xFF7FFFFF)
 {
     constexpr uint16_t floatRepSize = 64; // 64: 一个寄存器可以存储64个float类型数据
     const uint16_t dLoops = d / floatRepSize;
@@ -666,8 +672,7 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
 
     constexpr uint32_t tmpZero = 0x00000000; // zero value of fp16 and fp32
     const T zeroValue = *((T*)&tmpZero);
-    constexpr uint32_t tmpMin = 0xFF7FFFFF; // min value of float
-    const float minValue = *((float*)&tmpMin);
+    const float minValue = *((float*)&min);
     MicroAPI::RegTensor<float> vregMinValue;
     MicroAPI::RegTensor<T> vregZeroValue;
     MicroAPI::RegTensor<float> vregMax;
@@ -701,7 +706,7 @@ __simd_vf__ inline void RowInvalidUpdateVF(__ubuf__ T *finalUb, __ubuf__ float *
 
 template <typename T>
 __aicore__ inline void RowInvalidUpdateVF(const LocalTensor<T>& finalTensor, const LocalTensor<float>& maxTensor,
-    const uint16_t m, const uint16_t d, int64_t dSize)
+    const uint16_t m, const uint16_t d, int64_t dSize, const uint32_t min = 0xFF7FFFFF)
 {
     __ubuf__ T * finalUb = (__ubuf__ T*)finalTensor.GetPhyAddr();
     __ubuf__ float * maxUb = (__ubuf__ float*)maxTensor.GetPhyAddr();
@@ -714,7 +719,7 @@ __aicore__ inline void RowInvalidUpdateVF(const LocalTensor<T>& finalTensor, con
         hasTail = 1;
     }
 
-    RowInvalidUpdateVF<T>(finalUb, maxUb, m, d, dSize, pltTailD, hasTail);
+    RowInvalidUpdateVF<T>(finalUb, maxUb, m, d, dSize, pltTailD, hasTail, min);
 }
 } // namespace
 

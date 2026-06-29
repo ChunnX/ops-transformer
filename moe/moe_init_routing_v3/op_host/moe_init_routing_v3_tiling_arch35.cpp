@@ -697,6 +697,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::ValidateExpertTokensNumType()
                                            std::to_string(EXPERT_TOKENS_TYPE_COUNT) + " or " +
                                            std::to_string(EXPERT_TOKENS_TYPE_KEY_VALUE))),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dropPadMode_ == DROP_PAD_MODE_DROPPAD && expertTokensNumType_ != EXPERT_TOKENS_TYPE_COUNT,
+                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_tokens_num_type",
+                                          std::to_string(expertTokensNumType_),
+                                          std::to_string(EXPERT_TOKENS_TYPE_COUNT) +
+                                              " when drop_pad_mode is " + std::to_string(DROP_PAD_MODE_DROPPAD)),
+                return ge::GRAPH_FAILED);
     tilingDataPtr_->expertTokensNumType = expertTokensNumType_;
     return ge::GRAPH_SUCCESS;
 }
@@ -2004,53 +2010,23 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
 void MoeInitRoutingV3Arch35TilingClass::SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows)
 {
     auto *tilingData = &tilingDataPtr_->srcToDstDropPadParamsOp;
-    int64_t effectiveDtypeSize = (inputXDtypeSize_ == sizeof(int8_t)) ? sizeof(int16_t) : inputXDtypeSize_;
-    int64_t colSize = AlignBytes(cols_ * effectiveDtypeSize, UB_BLOCK_SIZE);
-    int64_t theoreticalMaxPerLoopRows = (availUbSize_ - colSize - UB_BLOCK_SIZE) / sizeof(int32_t) / NUM_TWO;
-    theoreticalMaxPerLoopRows = Align(theoreticalMaxPerLoopRows, sizeof(int32_t));
+    int64_t rowAlign = UB_BLOCK_SIZE / static_cast<int64_t>(sizeof(int32_t));
+    int64_t maxPerLoopRows = (availUbSize_ - UB_BLOCK_SIZE) / static_cast<int64_t>(sizeof(int32_t)) / NUM_TWO;
+    maxPerLoopRows = maxPerLoopRows / rowAlign * rowAlign;
+    maxPerLoopRows = std::max(maxPerLoopRows, rowAlign);
 
-    int64_t perLoopRowsEstimate = std::min(perCoreRows, theoreticalMaxPerLoopRows);
-    int64_t rowSize = AlignBytes(perLoopRowsEstimate * sizeof(int32_t), UB_BLOCK_SIZE) * NUM_TWO;
-    int64_t fixedOverhead = UB_BLOCK_SIZE * NUM_TWO + UB_BLOCK_SIZE;
+    tilingData->perCorePerLoopRows = std::min(perCoreRows, maxPerLoopRows);
+    tilingData->perCoreLoops = Ops::Base::CeilDiv(perCoreRows, tilingData->perCorePerLoopRows);
+    tilingData->perCoreLastLoopRows = perCoreRows - (tilingData->perCoreLoops - 1) *
+                                      tilingData->perCorePerLoopRows;
 
-    if (rowSize + colSize + fixedOverhead < availUbSize_) {
-        tilingData->perCorePerLoopRows = perCoreRows;
-        tilingData->perCoreLastLoopRows = perCoreRows;
-        tilingData->perCoreLoops = 1;
-        tilingData->lastCorePerLoopRows = lastCoreRows;
-        tilingData->lastCoreLastLoopRows = lastCoreRows;
-        tilingData->lastCoreLoops = 1;
-        tilingData->perLoopCols = cols_;
-        tilingData->lastLoopCols = cols_;
-        tilingData->colLoops = 1;
-    } else {
-        int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
-        int64_t baseMaxColsSize = AlignBytes(baseMaxCols, effectiveDtypeSize);
-        int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - fixedOverhead) / sizeof(int32_t) / NUM_TWO;
-        basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
-
-        if (cols_ < MAX_COLS_ONE_LOOP) {
-            basePerLoopMaxRows = (availUbSize_ - colSize - fixedOverhead) / sizeof(int32_t) / NUM_TWO;
-            basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
-        } else if (perCoreRows < basePerLoopMaxRows) {
-            baseMaxCols = (availUbSize_ - rowSize - fixedOverhead) / effectiveDtypeSize;
-            baseMaxCols = Align(baseMaxCols, effectiveDtypeSize);
-        }
-
-        tilingData->perLoopCols = std::min(baseMaxCols, cols_);
-        tilingData->lastLoopCols = cols_ - ((cols_ + baseMaxCols - 1) / baseMaxCols - 1) * baseMaxCols;
-        tilingData->colLoops = Ops::Base::CeilDiv(cols_, baseMaxCols);
-
-        tilingData->perCorePerLoopRows = std::min(perCoreRows, basePerLoopMaxRows);
-        tilingData->perCoreLastLoopRows = perCoreRows - ((perCoreRows + basePerLoopMaxRows - 1) /
-                                          basePerLoopMaxRows - 1) * basePerLoopMaxRows;
-        tilingData->perCoreLoops = Ops::Base::CeilDiv(perCoreRows, basePerLoopMaxRows);
-
-        tilingData->lastCorePerLoopRows = std::min(lastCoreRows, basePerLoopMaxRows);
-        tilingData->lastCoreLastLoopRows = lastCoreRows - ((lastCoreRows + basePerLoopMaxRows - 1) /
-                                           basePerLoopMaxRows - 1) * basePerLoopMaxRows;
-        tilingData->lastCoreLoops = Ops::Base::CeilDiv(lastCoreRows, basePerLoopMaxRows);
-    }
+    tilingData->lastCorePerLoopRows = std::min(lastCoreRows, maxPerLoopRows);
+    tilingData->lastCoreLoops = Ops::Base::CeilDiv(lastCoreRows, tilingData->lastCorePerLoopRows);
+    tilingData->lastCoreLastLoopRows = lastCoreRows - (tilingData->lastCoreLoops - 1) *
+                                       tilingData->lastCorePerLoopRows;
+    tilingData->perLoopCols = cols_;
+    tilingData->lastLoopCols = cols_;
+    tilingData->colLoops = 1;
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()

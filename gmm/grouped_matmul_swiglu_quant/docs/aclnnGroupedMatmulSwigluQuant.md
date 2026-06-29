@@ -35,7 +35,7 @@
       * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
       * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
       * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
-      * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数。
+      * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
       * $groupList∈\mathbb{N}^{E}$：cumsum的分组索引列表。
     - **输出**：
 
@@ -44,7 +44,7 @@
 
     - **计算过程**
 
-      - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList))$。
+      - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList))$。
 
         >例子：假设groupList=[3,4,4,6]。
         >
@@ -116,7 +116,7 @@
 
       - 3.根据分组确定的入参进行如下计算：
 
-        - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位 两部分的$\mathbb{Z_4}$
+        - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位两部分的$\mathbb{Z_4}$
           $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor$
           $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
         - 3.2.做矩阵乘时，开启per-channel或per-group量化
@@ -138,7 +138,7 @@
 
           $C_{i,act}, gate_{i} = split(C_{i})$
 
-          $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp; 其中$Swish(x)=\frac{x}{1+e^{-x}}$
+          $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp;其中$Swish(x)=\frac{x}{1+e^{-x}}$
 
       - 3.量化输出结果
 
@@ -500,7 +500,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-    // 1. （固定写法）device/stream初始化，参考acl API手册
+    // 1.（固定写法）device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -588,7 +588,7 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, 
     LOG_PRINT("aclnnGroupedMatmulSwigluQuant failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
