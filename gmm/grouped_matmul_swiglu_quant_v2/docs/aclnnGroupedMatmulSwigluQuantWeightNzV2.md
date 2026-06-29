@@ -883,9 +883,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
           - N >= 128。
           - weight仅支持转置。用户需构造转置的NZ格式weight数据，调用前需transpose成非转置状态。
           - 多tensor场景下（tensorlist长度大于等于1），weight和weightScale的tensor数量需一致。
-          - 多tensor场景下，所有weight tensor的K和N需相等。
-          - 多tensor场景下，weight的view shape为2D，weightScale的view shape为3D；单tensor场景下，weight的view shape为3D，weightScale的view shape为4D。
-
+          - 多tensor场景下，所有weight的tensor的K和N需相等。
+          - 多tensor场景下，weight中的tensor的view shape为2D，weightScale中的tensor的view shape为3D；单tensor场景下，weight中的tensor的view shape为3D，weightScale中的tensor的view shape为4D。
+          - 多tensor场景下，所有weightScale tensor的shape需与对应weight tensor匹配。
+          - 多tensor场景下，groupList的长度需等于weight/weightScale的tensor数量。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
