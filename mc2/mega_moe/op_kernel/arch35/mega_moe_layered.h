@@ -929,8 +929,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReadRelayTokenTo
         params_.peermemInfo.relayTokenDataPtr + remoteCopyOffset;
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + sizeof(int32_t);
     if (relayRank == rankId_) {
-        __gm__ int32_t* readyFlag = reinterpret_cast<__gm__ int32_t*>(remoteRecordAddr + flagOffset);
-        GmSignalWaitBarrier(readyFlag, int32_t(1));
+        __gm__ int32_t* localMetaPtr = reinterpret_cast<__gm__ int32_t*>(
+            remoteRecordAddr + mxQuantTokenScaleAlignBytes_);
+        int64_t lastPrintCycle = AscendC::GetSystemCycle();
+        while (ReadGmByPassDCache(localMetaPtr + 1) != int32_t(1)) {
+            int64_t nowCycle = AscendC::GetSystemCycle();
+            if (nowCycle - lastPrintCycle > 200000000) {
+                PRINTF("L2_WAIT_LOCAL rank %u remote %lu meta0 %d meta1 %d flagOffset %lu\n",
+                    rankId_, static_cast<uint64_t>(remoteRecordAddr),
+                    ReadGmByPassDCache(localMetaPtr), ReadGmByPassDCache(localMetaPtr + 1), flagOffset);
+                lastPrintCycle = nowCycle;
+            }
+        }
         GlobalTensor<ActivationType> relayGlobalTensor;
         relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(remoteRecordAddr));
         DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
