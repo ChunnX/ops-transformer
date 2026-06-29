@@ -37,39 +37,32 @@ constexpr MicroAPI::CastTrait castTraitB322B16 = {
 constexpr uint32_t REGSIZE = 256;
 constexpr uint32_t B32_REP_SIZE = REGSIZE / sizeof(float);
 
-template <typename T>
-__simd_vf__ inline void ApplyBiasActivationVF(MicroAPI::RegTensor<float> &yB32, __ubuf__ T *biasAddr,
-                                              int32_t offset, uint8_t hasBias, uint8_t activationMode,
-                                              MicroAPI::MaskReg mask)
-{
-    MicroAPI::RegTensor<T> biasB16;
-    MicroAPI::RegTensor<float> biasB32, negB32, expB32, denomB32;
-    if (hasBias != 0) {
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(biasB16, biasAddr + offset);
-        MicroAPI::Cast<float, T, castTraitB162B32>(biasB32, biasB16, mask);
-        MicroAPI::Add(yB32, yB32, biasB32, mask);
-    }
-    if (activationMode == 1 || activationMode == 2) {
-        MicroAPI::Muls(negB32, yB32, -1.0f, mask);
-        MicroAPI::Exp(expB32, negB32, mask);
-        MicroAPI::Adds(denomB32, expB32, 1.0f, mask);
-        MicroAPI::Div(yB32, yB32, denomB32, mask);
-    }
-}
+#define CLOUD_CC1D_APPLY_BIAS_ACT(Y_B32, BIAS_ADDR, OFFSET, HAS_BIAS, ACTIVATION_MODE, MASK)                         \
+    do {                                                                                                            \
+        MicroAPI::RegTensor<T> biasB16Macro;                                                                        \
+        MicroAPI::RegTensor<float> biasB32Macro, negB32Macro, expB32Macro, denomB32Macro;                           \
+        if ((HAS_BIAS) != 0) {                                                                                      \
+            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(biasB16Macro, (BIAS_ADDR) + (OFFSET));      \
+            MicroAPI::Cast<float, T, castTraitB162B32>(biasB32Macro, biasB16Macro, (MASK));                         \
+            MicroAPI::Add((Y_B32), (Y_B32), biasB32Macro, (MASK));                                                   \
+        }                                                                                                           \
+        if ((ACTIVATION_MODE) == 1 || (ACTIVATION_MODE) == 2) {                                                     \
+            MicroAPI::Muls(negB32Macro, (Y_B32), -1.0f, (MASK));                                                     \
+            MicroAPI::Exp(expB32Macro, negB32Macro, (MASK));                                                        \
+            MicroAPI::Adds(denomB32Macro, expB32Macro, 1.0f, (MASK));                                               \
+            MicroAPI::Div((Y_B32), (Y_B32), denomB32Macro, (MASK));                                                  \
+        }                                                                                                           \
+    } while (0)
 
-template <typename T>
-__simd_vf__ inline void Conv1dW4MacVF(MicroAPI::RegTensor<float> &yB32, MicroAPI::RegTensor<float> &xB32,
-                                      MicroAPI::RegTensor<float> &weightB32, MicroAPI::RegTensor<float> &mulB32,
-                                      MicroAPI::RegTensor<T> &xB16, MicroAPI::RegTensor<T> &weightB16,
-                                      __ubuf__ T *xAddr, __ubuf__ T *weightAddr, MicroAPI::MaskReg mask)
-{
-    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weightB16, weightAddr);
-    MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xB16, xAddr);
-    MicroAPI::Cast<float, T, castTraitB162B32>(weightB32, weightB16, mask);
-    MicroAPI::Cast<float, T, castTraitB162B32>(xB32, xB16, mask);
-    MicroAPI::Mul(mulB32, xB32, weightB32, mask);
-    MicroAPI::Add(yB32, yB32, mulB32, mask);
-}
+#define CLOUD_CC1D_W4_MAC(X_ADDR, WEIGHT_ADDR, MASK)                                                                \
+    do {                                                                                                            \
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(weightB16, (WEIGHT_ADDR));                      \
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xB16, (X_ADDR));                                \
+        MicroAPI::Cast<float, T, castTraitB162B32>(weightB32, weightB16, (MASK));                                   \
+        MicroAPI::Cast<float, T, castTraitB162B32>(xB32, xB16, (MASK));                                             \
+        MicroAPI::Mul(mulB32, xB32, weightB32, (MASK));                                                             \
+        MicroAPI::Add(yB32, yB32, mulB32, (MASK));                                                                  \
+    } while (0)
 
 template <typename T, uint8_t STATE_ROWS, bool WITH_RESIDUAL, bool HAS_TAIL>
 __simd_vf__ void Conv1dW4VF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr, __ubuf__ T *yAddr,
@@ -84,32 +77,25 @@ __simd_vf__ void Conv1dW4VF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ 
         MicroAPI::Duplicate(yB32, 0, maskB32);
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
         if constexpr (STATE_ROWS > 0) {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16, stateAddr + offset, weightAddr + offset,
-                          maskB32);
+            CLOUD_CC1D_W4_MAC(stateAddr + offset, weightAddr + offset, maskB32);
         } else {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16, xAddr + offset, weightAddr + offset,
-                          maskB32);
+            CLOUD_CC1D_W4_MAC(xAddr + offset, weightAddr + offset, maskB32);
         }
         if constexpr (STATE_ROWS > 1) {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16, stateAddr + offset + dimLen,
-                          weightAddr + offset + dimLen, maskB32);
+            CLOUD_CC1D_W4_MAC(stateAddr + offset + dimLen, weightAddr + offset + dimLen, maskB32);
         } else {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16,
-                          xAddr + offset + (1 - STATE_ROWS) * dimLen, weightAddr + offset + dimLen, maskB32);
+            CLOUD_CC1D_W4_MAC(xAddr + offset + (1 - STATE_ROWS) * dimLen, weightAddr + offset + dimLen, maskB32);
         }
         if constexpr (STATE_ROWS > 2) {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16, stateAddr + offset + 2 * dimLen,
-                          weightAddr + offset + 2 * dimLen, maskB32);
+            CLOUD_CC1D_W4_MAC(stateAddr + offset + 2 * dimLen, weightAddr + offset + 2 * dimLen, maskB32);
         } else {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16,
-                          xAddr + offset + (2 - STATE_ROWS) * dimLen, weightAddr + offset + 2 * dimLen, maskB32);
+            CLOUD_CC1D_W4_MAC(xAddr + offset + (2 - STATE_ROWS) * dimLen, weightAddr + offset + 2 * dimLen, maskB32);
         }
-        Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16,
-                      xAddr + offset + (3 - STATE_ROWS) * dimLen, weightAddr + offset + 3 * dimLen, maskB32);
+        CLOUD_CC1D_W4_MAC(xAddr + offset + (3 - STATE_ROWS) * dimLen, weightAddr + offset + 3 * dimLen, maskB32);
         if constexpr (WITH_RESIDUAL) {
             MicroAPI::Add(yB32, yB32, xB32, maskB32);
         }
-        ApplyBiasActivationVF(yB32, biasAddr, offset, hasBias, activationMode, maskB32);
+        CLOUD_CC1D_APPLY_BIAS_ACT(yB32, biasAddr, offset, hasBias, activationMode, maskB32);
         MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, maskB32);
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + offset, yB16, maskB32);
         offset += B32_REP_SIZE;
@@ -120,32 +106,25 @@ __simd_vf__ void Conv1dW4VF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ 
         MicroAPI::Duplicate(yB32, 0, maskRem);
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
         if constexpr (STATE_ROWS > 0) {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16, stateAddr + offset, weightAddr + offset,
-                          maskRem);
+            CLOUD_CC1D_W4_MAC(stateAddr + offset, weightAddr + offset, maskRem);
         } else {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16, xAddr + offset, weightAddr + offset,
-                          maskRem);
+            CLOUD_CC1D_W4_MAC(xAddr + offset, weightAddr + offset, maskRem);
         }
         if constexpr (STATE_ROWS > 1) {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16, stateAddr + offset + dimLen,
-                          weightAddr + offset + dimLen, maskRem);
+            CLOUD_CC1D_W4_MAC(stateAddr + offset + dimLen, weightAddr + offset + dimLen, maskRem);
         } else {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16,
-                          xAddr + offset + (1 - STATE_ROWS) * dimLen, weightAddr + offset + dimLen, maskRem);
+            CLOUD_CC1D_W4_MAC(xAddr + offset + (1 - STATE_ROWS) * dimLen, weightAddr + offset + dimLen, maskRem);
         }
         if constexpr (STATE_ROWS > 2) {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16, stateAddr + offset + 2 * dimLen,
-                          weightAddr + offset + 2 * dimLen, maskRem);
+            CLOUD_CC1D_W4_MAC(stateAddr + offset + 2 * dimLen, weightAddr + offset + 2 * dimLen, maskRem);
         } else {
-            Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16,
-                          xAddr + offset + (2 - STATE_ROWS) * dimLen, weightAddr + offset + 2 * dimLen, maskRem);
+            CLOUD_CC1D_W4_MAC(xAddr + offset + (2 - STATE_ROWS) * dimLen, weightAddr + offset + 2 * dimLen, maskRem);
         }
-        Conv1dW4MacVF(yB32, xB32, weightB32, mulB32, xB16, weightB16,
-                      xAddr + offset + (3 - STATE_ROWS) * dimLen, weightAddr + offset + 3 * dimLen, maskRem);
+        CLOUD_CC1D_W4_MAC(xAddr + offset + (3 - STATE_ROWS) * dimLen, weightAddr + offset + 3 * dimLen, maskRem);
         if constexpr (WITH_RESIDUAL) {
             MicroAPI::Add(yB32, yB32, xB32, maskRem);
         }
-        ApplyBiasActivationVF(yB32, biasAddr, offset, hasBias, activationMode, maskRem);
+        CLOUD_CC1D_APPLY_BIAS_ACT(yB32, biasAddr, offset, hasBias, activationMode, maskRem);
         MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, maskRem);
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + dimLoopNum * B32_REP_SIZE, yB16, maskRem);
     }
@@ -187,7 +166,7 @@ __simd_vf__ void Conv1dNeedStateSingleTailConVF(__ubuf__ T *xAddr, __ubuf__ T *w
             MicroAPI::Add(yB32, yB32, mulB32, maskB32);
         }
         MicroAPI::Add(yB32, yB32, xB32, maskB32);
-        ApplyBiasActivationVF(yB32, biasAddr, offset, hasBias, activationMode, maskB32);
+        CLOUD_CC1D_APPLY_BIAS_ACT(yB32, biasAddr, offset, hasBias, activationMode, maskB32);
         MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, maskB32);
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + offset, yB16, maskB32);
         offset += B32_REP_SIZE;
@@ -216,7 +195,7 @@ __simd_vf__ void Conv1dNeedStateSingleTailConVF(__ubuf__ T *xAddr, __ubuf__ T *w
         MicroAPI::Add(yB32, yB32, mulB32, maskRem);
     }
     MicroAPI::Add(yB32, yB32, xB32, maskRem);
-    ApplyBiasActivationVF(yB32, biasAddr, offset, hasBias, activationMode, maskRem);
+    CLOUD_CC1D_APPLY_BIAS_ACT(yB32, biasAddr, offset, hasBias, activationMode, maskRem);
     MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, maskRem);
     MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + dimLoopNum * B32_REP_SIZE, yB16, maskRem);
 }
@@ -255,7 +234,7 @@ __simd_vf__ void Conv1dNeedStateSingleTailNoConVF(__ubuf__ T *xAddr, __ubuf__ T 
             MicroAPI::Mul(mulB32, xB32, weightB32, maskB32);
             MicroAPI::Add(yB32, yB32, mulB32, maskB32);
         }
-        ApplyBiasActivationVF(yB32, biasAddr, offset, hasBias, activationMode, maskB32);
+        CLOUD_CC1D_APPLY_BIAS_ACT(yB32, biasAddr, offset, hasBias, activationMode, maskB32);
         MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, maskB32);
         MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + offset, yB16, maskB32);
         offset += B32_REP_SIZE;
@@ -283,7 +262,7 @@ __simd_vf__ void Conv1dNeedStateSingleTailNoConVF(__ubuf__ T *xAddr, __ubuf__ T 
         MicroAPI::Mul(mulB32, xB32, weightB32, maskRem);
         MicroAPI::Add(yB32, yB32, mulB32, maskRem);
     }
-    ApplyBiasActivationVF(yB32, biasAddr, offset, hasBias, activationMode, maskRem);
+    CLOUD_CC1D_APPLY_BIAS_ACT(yB32, biasAddr, offset, hasBias, activationMode, maskRem);
     MicroAPI::Cast<T, float, castTraitB322B16>(yB16, yB32, maskRem);
     MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_PACK_B32>(yAddr + dimLoopNum * B32_REP_SIZE, yB16, maskRem);
 }
