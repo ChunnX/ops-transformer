@@ -1307,19 +1307,216 @@ def cvt_float32_to_hifuint8(x, round_mode = "round", over_mode = True):
         hif8_int_value = sign_int_value + dot_int_value + sig_exp + exponent_int_value + hif8_frac_value
     return hif8_int_value
 
-def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = True):
-    tensor_shape = in_tensor.shape
-    tensor_shape_size = in_tensor.numel()
-    if tensor_shape_size == 1.0:
-        tensor_shape_size = int(tensor_shape_size)
+def trans_float_tensor_to_hifuint8(in_tensor, round_mode="round", over_mode=True):
+    """
+    通过向量操作，将 float32 Tensor 批量转换为 HiF8 编码的 uint8 Tensor
+    """
+
+    shape = in_tensor.shape
+    x = in_tensor.reshape(-1).to(torch.float32)
     
-    out_tensor = torch.zeros(tensor_shape_size).to(torch.uint8)
-    in_tensor = in_tensor.reshape(tensor_shape_size)
-    for i in range(tensor_shape_size):
-        out_tensor[i] = cvt_float32_to_hifuint8(in_tensor[i], round_mode, over_mode)
-    out_tensor = out_tensor.view(torch.uint8)
-    out_tensor = out_tensor.reshape(tensor_shape)
-    return out_tensor
+    # 先用int32作为输出类型，避免出现赋值错误
+    out = torch.zeros_like(x, dtype=torch.int32)
+    
+    # 1. 符号位与绝对值提取
+    sign_mask = (x < 0.0)
+    sign_int_value = torch.where(sign_mask, HIF8_SIGN_MASK, 0)
+    x_abs = torch.abs(x)
+    
+    # 2. 溢出与边界条件判断 (Masks)
+    over_value = HIF8_OVERFLOW_SCALE * (2.0 ** HIF8_EXP_D4_MAX)
+    mask_inf_or_over = torch.isinf(x) | (x_abs >= over_value)
+    mask_nan = torch.isnan(x)
+    mask_zero = (x_abs == 0.0)
+    
+    # 处理特殊边界填值
+    if over_mode:
+        out = torch.where(mask_inf_or_over, torch.where(sign_mask, HIF8_NEG_INF, HIF8_POS_INF), out)
+        out = torch.where(mask_nan, HIF8_NAN, out)
+    else:
+        out = torch.where(mask_inf_or_over, torch.where(sign_mask, HIF8_NEG_MAX, HIF8_POS_MAX), out)
+        out = torch.where(mask_nan, 0, out)
+    out = torch.where(mask_zero, 0, out)
+    
+    # 提取正常数字的 Mask
+    mask_normal = ~(mask_inf_or_over | mask_nan | mask_zero)
+    if not mask_normal.any():
+        return out.reshape(shape).to(torch.uint8)
+        
+    x_norm = x_abs[mask_normal]
+    sign_norm = sign_int_value[mask_normal]
+    
+    # 计算基本指数
+    exponent = torch.floor(torch.log2(x_norm)).to(torch.int32)
+    
+    # 确定截断模式 (TA / SSR)
+    if round_mode == "hybrid":
+        cut_bit_is_ta = (torch.abs(exponent) < HYBRID_ROUND_EXP_THRESHOLD)
+    elif round_mode == "round":
+        cut_bit_is_ta = torch.ones_like(exponent, dtype=torch.bool)
+    elif round_mode == "storound":
+        cut_bit_is_ta = torch.zeros_like(exponent, dtype=torch.bool)
+    else:
+        cut_bit_is_ta = torch.ones_like(exponent, dtype=torch.bool)
+        
+    # 计算 fraction_int
+    fraction_int = (x_norm * (2.0 ** FP32_FRACTION_BITS) * torch.pow(2.0, -exponent.float()) - (2.0 ** FP32_FRACTION_BITS)).to(torch.int32)
+    
+    # 批量获取档位属性 (根据 exponent 映射)
+    abs_exp = torch.abs(exponent)
+    
+    dot = torch.full_like(exponent, HIF8_DOT_INVALID)
+    exp_bits = torch.zeros_like(exponent)
+    frac_bits = torch.zeros_like(exponent)
+    
+    # 条件区间映射
+    m1 = (exponent < HIF8_EXP_DML_MIN)
+    dot = torch.where(m1, HIF8_DOT_INVALID, dot)
+    exp_bits = torch.where(m1, HIF8_EXP_BITS_DML, exp_bits)
+    frac_bits = torch.where(m1, HIF8_FRAC_BITS_DML, frac_bits)
+    
+    m2 = (~m1) & (exponent >= HIF8_EXP_DML_MIN) & (exponent < HIF8_EXP_DML_MAX)
+    dot = torch.where(m2, HIF8_DOT_DML, dot)
+    exp_bits = torch.where(m2, HIF8_EXP_BITS_DML, exp_bits)
+    frac_bits = torch.where(m2, HIF8_FRAC_BITS_DML, frac_bits)
+    
+    m3 = (exponent == HIF8_EXP_D0)
+    dot = torch.where(m3, HIF8_DOT_D0, dot)
+    exp_bits = torch.where(m3, HIF8_EXP_BITS_D0, exp_bits)
+    frac_bits = torch.where(m3, HIF8_FRAC_BITS_D0, frac_bits)
+    
+    m4 = (abs_exp == HIF8_EXP_D1_BOUNDARY)
+    dot = torch.where(m4, HIF8_DOT_D1, dot)
+    exp_bits = torch.where(m4, HIF8_EXP_BITS_D1, exp_bits)
+    frac_bits = torch.where(m4, HIF8_FRAC_BITS_D1, frac_bits)
+    
+    m5 = (abs_exp >= HIF8_EXP_D2_MIN) & (abs_exp <= HIF8_EXP_D2_MAX)
+    dot = torch.where(m5, HIF8_DOT_D2, dot)
+    exp_bits = torch.where(m5, HIF8_EXP_BITS_D2, exp_bits)
+    frac_bits = torch.where(m5, HIF8_FRAC_BITS_D2, frac_bits)
+    
+    m6 = (abs_exp >= HIF8_EXP_D3_MIN) & (abs_exp <= HIF8_EXP_D3_MAX)
+    dot = torch.where(m6, HIF8_DOT_D3, dot)
+    exp_bits = torch.where(m6, HIF8_EXP_BITS_D3, exp_bits)
+    frac_bits = torch.where(m6, HIF8_FRAC_BITS_D3, frac_bits)
+    
+    m7 = (abs_exp >= HIF8_EXP_D4_MIN) & (abs_exp <= HIF8_EXP_D4_MAX)
+    dot = torch.where(m7, HIF8_DOT_D4, dot)
+    exp_bits = torch.where(m7, HIF8_EXP_BITS_D4, exp_bits)
+    frac_bits = torch.where(m7, HIF8_FRAC_BITS_D4, frac_bits)
+    
+    m8 = (exponent > HIF8_EXP_D4_MAX)
+    dot = torch.where(m8, HIF8_DOT_D4, dot)
+    exp_bits = torch.where(m8, HIF8_EXP_BITS_D4, exp_bits)
+    frac_bits = torch.where(m8, HIF8_DOT_INVALID, frac_bits)
+
+    # ------------------ TA 舍入分支 ------------------
+    carry_ta = torch.zeros_like(exponent, dtype=torch.bool)
+    frac_val_ta = torch.zeros_like(exponent)
+    
+    m_zero_thresh = (exponent == HIF8_EXP_ZERO_THRESHOLD)
+    carry_ta = torch.where(m_zero_thresh, True, carry_ta)
+    
+    m_ta_norm = ~m_zero_thresh
+    shift_bits = torch.clamp(FP32_FRACTION_BITS - (frac_bits + 1), min=0)
+    hif8_val_tmp = fraction_int >> shift_bits
+    
+    pow_frac = torch.pow(2, frac_bits + 1) - 1
+    m_carry = m_ta_norm & (hif8_val_tmp == pow_frac)
+    carry_ta = torch.where(m_carry, True, carry_ta)
+    
+    m_odd = m_ta_norm & (~m_carry) & (hif8_val_tmp != 0) & (hif8_val_tmp % 2 == 1)
+    frac_val_ta = torch.where(m_odd, (hif8_val_tmp + 1) >> 1, frac_val_ta)
+    
+    m_even = m_ta_norm & (~m_carry) & (hif8_val_tmp != 0) & (hif8_val_tmp % 2 == 0)
+    frac_val_ta = torch.where(m_even, hif8_val_tmp >> 1, frac_val_ta)
+
+    # ------------------ SSR 舍入分支 ------------------
+    carry_ssr = torch.zeros_like(exponent, dtype=torch.bool)
+    frac_val_ssr = torch.zeros_like(exponent)
+    
+    f14_v1 = (fraction_int >> SSR_DML_SHIFT) + SSR_F14_OFFSET
+    t14_v1 = fraction_int & SSR_T14_MASK
+    hif8_v1 = torch.zeros_like(fraction_int)
+    
+    s_bits = torch.clamp(FP32_FRACTION_BITS - frac_bits, min=0)
+    hif8_v2 = fraction_int >> s_bits
+    f14_t14 = fraction_int - (hif8_v2 << s_bits)
+    s_bits_f14 = torch.clamp(FP32_FRACTION_BITS - frac_bits - SSR_RESERVED_BITS, min=0)
+    f14_v2 = f14_t14 >> s_bits_f14
+    t14_v2 = f14_t14 & SSR_T14_MASK
+    
+    f14_values = torch.where(m_zero_thresh, f14_v1, f14_v2)
+    t14_values = torch.where(m_zero_thresh, t14_v1, t14_v2)
+    hif8_value = torch.where(m_zero_thresh, hif8_v1, hif8_v2)
+    
+    m_ge = (f14_values >= t14_values)
+    pow_frac_ssr = torch.pow(2, frac_bits) - 1
+    m_ssr_carry = m_ge & (hif8_value == pow_frac_ssr)
+    carry_ssr = torch.where(m_ssr_carry, True, carry_ssr)
+    frac_val_ssr = torch.where(m_ge & (~m_ssr_carry), hif8_value + 1, frac_val_ssr)
+    frac_val_ssr = torch.where(~m_ge, hif8_value, frac_val_ssr)
+
+    # ------------------ 合并舍入结果 ------------------
+    carry_exp_status = torch.where(cut_bit_is_ta, carry_ta, carry_ssr)
+    hif8_frac_value = torch.where(cut_bit_is_ta, frac_val_ta, frac_val_ssr)
+    
+    exponent = torch.where(carry_exp_status, exponent + 1, exponent)
+    abs_exp = torch.abs(exponent)
+    
+    dot = torch.where(carry_exp_status, torch.where(exponent < HIF8_EXP_DML_MIN, HIF8_DOT_INVALID, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where((exponent >= HIF8_EXP_DML_MIN) & (exponent < HIF8_EXP_DML_MAX), HIF8_DOT_DML, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where(exponent == HIF8_EXP_D0, HIF8_DOT_D0, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where(abs_exp == HIF8_EXP_D1_BOUNDARY, HIF8_DOT_D1, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D2_MIN) & (abs_exp <= HIF8_EXP_D2_MAX), HIF8_DOT_D2, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D3_MIN) & (abs_exp <= HIF8_EXP_D3_MAX), HIF8_DOT_D3, dot), dot)
+    dot = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D4_MIN) & (abs_exp <= HIF8_EXP_D4_MAX), HIF8_DOT_D4, dot), dot)
+    
+    frac_bits = torch.where(carry_exp_status, torch.where(exponent < HIF8_EXP_DML_MIN, HIF8_FRAC_BITS_DML, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where((exponent >= HIF8_EXP_DML_MIN) & (exponent < HIF8_EXP_DML_MAX), HIF8_FRAC_BITS_DML, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where(exponent == HIF8_EXP_D0, HIF8_FRAC_BITS_D0, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where(abs_exp == HIF8_EXP_D1_BOUNDARY, HIF8_FRAC_BITS_D1, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D2_MIN) & (abs_exp <= HIF8_EXP_D2_MAX), HIF8_FRAC_BITS_D2, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D3_MIN) & (abs_exp <= HIF8_EXP_D3_MAX), HIF8_FRAC_BITS_D3, frac_bits), frac_bits)
+    frac_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D4_MIN) & (abs_exp <= HIF8_EXP_D4_MAX), HIF8_FRAC_BITS_D4, frac_bits), frac_bits)
+    
+    exp_bits = torch.where(carry_exp_status, torch.where(exponent < HIF8_EXP_DML_MIN, HIF8_EXP_BITS_DML, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where((exponent >= HIF8_EXP_DML_MIN) & (exponent < HIF8_EXP_DML_MAX), HIF8_EXP_BITS_DML, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where(exponent == HIF8_EXP_D0, HIF8_EXP_BITS_D0, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where(abs_exp == HIF8_EXP_D1_BOUNDARY, HIF8_EXP_BITS_D1, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D2_MIN) & (abs_exp <= HIF8_EXP_D2_MAX), HIF8_EXP_BITS_D2, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D3_MIN) & (abs_exp <= HIF8_EXP_D3_MAX), HIF8_EXP_BITS_D3, exp_bits), exp_bits)
+    exp_bits = torch.where(carry_exp_status, torch.where((abs_exp >= HIF8_EXP_D4_MIN) & (abs_exp <= HIF8_EXP_D4_MAX), HIF8_EXP_BITS_D4, exp_bits), exp_bits)
+
+    # ------------------ 组合输出编码 ------------------
+    hif8_int_value = torch.zeros_like(exponent)
+    sig_exp = torch.where(exponent < 0, 1, 0)
+    
+    # 分支 A: dot <= 0
+    m_a = (dot <= 0)
+    val_a = torch.where(exponent <= HIF8_EXP_ZERO_THRESHOLD, 0, sign_norm + exponent + HIF8_DML_EXP_OFFSET)
+    hif8_int_value = torch.where(m_a, val_a, hif8_int_value)
+    
+    # 分支 B: dot == 1
+    m_b = (dot == 1)
+    val_b = sign_norm + (dot << HIF8_DOT_BIT_SHIFT) + hif8_frac_value
+    hif8_int_value = torch.where(m_b, val_b, hif8_int_value)
+    
+    # 分支 C: dot > 1
+    m_c = (dot > 1)
+    abs_exponent = torch.abs(exponent)
+    abs_exponent = abs_exponent - torch.pow(2, exp_bits - 1)
+    exponent_int_value = abs_exponent << frac_bits
+    sig_exp_shifted = sig_exp << (exp_bits - 1 + frac_bits)
+    dot_int_value = dot << HIF8_DOT_BIT_SHIFT
+    val_c = sign_norm + dot_int_value + sig_exp_shifted + exponent_int_value + hif8_frac_value
+    hif8_int_value = torch.where(m_c, val_c, hif8_int_value)
+    
+    hif8_int_value = torch.where(exponent < HIF8_EXP_ZERO_THRESHOLD, 0, hif8_int_value)
+    
+    out[mask_normal] = hif8_int_value
+    
+    return out.reshape(shape).to(torch.uint8)
 
 def cvt_hifuint8_to_float32(x, over_mode = True):
     x = int(x)
@@ -1400,13 +1597,89 @@ def cvt_hifuint8_to_float32(x, over_mode = True):
             exponent_value = 0
         return sign * pow(2.0, exponent_value) * m_value
 
-def trans_hifuint8_tensor_to_float(in_tensor):
-    tensor_shape = in_tensor.shape
-    tensor_shape_size = in_tensor.numel()
+def trans_hifuint8_tensor_to_float(in_tensor, over_mode=True):
+    """
+    将 HiF8 编码的 uint8 Tensor 批量转换为 float32 Tensor (支持 CPU/GPU 矢量化)
+    """
+    shape = in_tensor.shape
+    x = in_tensor.reshape(-1).to(torch.int32)
+    out = torch.zeros_like(x, dtype=torch.float32)
+
+    # 1. 特殊值处理 (Masks)
+    mask_zero = (x == HIF8_ZERO)
+    mask_nan  = (x == HIF8_NAN)
+    mask_ninf = (x == HIF8_NEG_INF)
+    mask_pinf = (x == HIF8_POS_INF)
     
-    out_tensor = torch.zeros(tensor_shape_size).to(torch.float)
-    in_tensor = in_tensor.reshape(tensor_shape_size)
-    for i in range(tensor_shape_size):
-        out_tensor[i] = cvt_hifuint8_to_float32(in_tensor[i])
-    out_tensor = out_tensor.reshape(tensor_shape).to(torch.float)
-    return out_tensor
+    if over_mode:
+        out = torch.where(mask_nan, torch.tensor(float('nan'), device=x.device), out)
+        out = torch.where(mask_ninf, torch.tensor(-torch.inf, device=x.device), out)
+        out = torch.where(mask_pinf, torch.tensor(torch.inf, device=x.device), out)
+    else:
+        out = torch.where(mask_nan, 0.0, out)
+        out = torch.where(mask_ninf, float(-HIF8_MAX_FINITE_VALUE), out)
+        out = torch.where(mask_pinf, float(HIF8_MAX_FINITE_VALUE), out)
+        
+    # 正常数值的 Mask (排除特殊值)
+    mask_normal = ~(mask_zero | mask_nan | mask_ninf | mask_pinf)
+    if not mask_normal.any():
+        return out.reshape(shape)
+
+    # 提取正常数值子集进行计算
+    x_norm = x[mask_normal]
+    
+    # 符号位计算
+    sign = torch.where(x_norm >= HIF8_NAN, -1.0, 1.0)
+    
+    # 提取 dot 档位
+    dot_4_value = (x_norm & HIF8_DOT_MASK) >> 3
+    
+    # 初始化指数和尾数乘子
+    exponent_value = torch.zeros_like(x_norm, dtype=torch.float32)
+    m_value = torch.zeros_like(x_norm, dtype=torch.float32)
+    
+    # --- 档位 D4 ---
+    m_d4 = (dot_4_value >= HIF8_DOT_D4)
+    if m_d4.any():
+        exp_int = (x_norm & HIF8_EXP_MASK_D4) >> 1
+        exponent_value = torch.where(m_d4, torch.where(exp_int >= 8, -exp_int, exp_int + 8).float(), exponent_value)
+        m_value = torch.where(m_d4, 1.0 + (x_norm & HIF8_FRAC_MASK_1BIT) * 0.5, m_value)
+        
+    # --- 档位 D3 ---
+    m_d3 = (~m_d4) & (dot_4_value >= HIF8_DOT_D3)
+    if m_d3.any():
+        exp_int = (x_norm & HIF8_EXP_MASK_D3) >> 2
+        exponent_value = torch.where(m_d3, torch.where(exp_int >= 4, -exp_int, exp_int + 4).float(), exponent_value)
+        m_value = torch.where(m_d3, 1.0 + (x_norm & HIF8_FRAC_MASK_2BIT) * 0.25, m_value)
+        
+    # --- 档位 D2 ---
+    m_d2 = (~(m_d4 | m_d3)) & (dot_4_value >= HIF8_DOT_D2)
+    if m_d2.any():
+        exp_int = (x_norm & HIF8_EXP_MASK_D2) >> 3
+        exponent_value = torch.where(m_d2, torch.where(exp_int >= 2, -exp_int, exp_int + 2).float(), exponent_value)
+        m_value = torch.where(m_d2, 1.0 + (x_norm & HIF8_FRAC_MASK_3BIT) * 0.125, m_value)
+        
+    # --- 档位 D1 ---
+    m_d1 = (~(m_d4 | m_d3 | m_d2)) & (dot_4_value >= HIF8_DOT_D1)
+    if m_d1.any():
+        exp_sign = (x_norm & HIF8_EXP_SIGN_MASK_D1) >> 3
+        exponent_value = torch.where(m_d1, torch.where(exp_sign >= 1, -1.0, 1.0), exponent_value)
+        m_value = torch.where(m_d1, 1.0 + (x_norm & HIF8_FRAC_MASK_3BIT) * 0.125, m_value)
+        
+    # --- 档位 D0 ---
+    m_d0 = (dot_4_value == HIF8_DOT_D0)
+    if m_d0.any():
+        exponent_value = torch.where(m_d0, 0.0, exponent_value)
+        m_value = torch.where(m_d0, 1.0 + (x_norm & HIF8_FRAC_MASK_3BIT) * 0.125, m_value)
+        
+    # --- 档位 DML ---
+    m_dml = (dot_4_value == HIF8_DOT_DML)
+    if m_dml.any():
+        exponent_value = torch.where(m_dml, ((x_norm & HIF8_EXP_MASK_DML) - HIF8_DML_EXP_OFFSET).float(), exponent_value)
+        m_value = torch.where(m_dml, 1.0, m_value)
+        
+    # 计算正常值结果并写回
+    norm_res = sign * torch.pow(2.0, exponent_value) * m_value
+    out[mask_normal] = norm_res
+    
+    return out.reshape(shape)
