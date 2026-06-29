@@ -127,7 +127,7 @@ bool InplacePartialRotaryMulGradRegbaseTiling::IsInplacePartialRotaryMulGradMode
             return true;
         case static_cast<int32_t>(InplacePartialRotaryMulGradMode::QUARTER):
             return false;
-        case static_cast<int32_t>(InplacePartialRotaryMulGradMode::DEEPSEEK_INTERLEAVE):
+        case static_cast<int32_t>(InplacePartialRotaryMulGradMode::INTERLEAVE_HALF):
             return false;
         default:
             return false;
@@ -430,11 +430,11 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckRotaryModeShapeRe
     if (sliceLen != 0) {
         if (rotaryMode_ == InplacePartialRotaryMulGradMode::HALF ||
             rotaryMode_ == InplacePartialRotaryMulGradMode::INTERLEAVE ||
-            rotaryMode_ == InplacePartialRotaryMulGradMode::DEEPSEEK_INTERLEAVE) {
+            rotaryMode_ == InplacePartialRotaryMulGradMode::INTERLEAVE_HALF) {
             if (sliceLen % HALF_INTERLEAVE_MODE_COEF != 0) {
                 std::string reasonMsg = "The slice length (partial_slice's end - start) should be divisible by " +
                                         std::to_string(HALF_INTERLEAVE_MODE_COEF) +
-                                        " when the attr mode is half, interleave or DeepSeek interleave";
+                                        " when the attr mode is half, interleave or interleave-half";
                 OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "partial_slice", std::to_string(sliceLen).c_str(),
                                           reasonMsg.c_str());
                 return ge::GRAPH_FAILED;
@@ -451,7 +451,7 @@ ge::graphStatus InplacePartialRotaryMulGradRegbaseTiling::CheckRotaryModeShapeRe
     }
 
     if (rotaryMode_ == InplacePartialRotaryMulGradMode::HALF ||
-        rotaryMode_ == InplacePartialRotaryMulGradMode::DEEPSEEK_INTERLEAVE) {
+        rotaryMode_ == InplacePartialRotaryMulGradMode::INTERLEAVE_HALF) {
         dSplitCoef_ = HALF_INTERLEAVE_MODE_COEF;
     } else if (rotaryMode_ == InplacePartialRotaryMulGradMode::QUARTER) {
         dSplitCoef_ = QUARTER_MODE_COEF;

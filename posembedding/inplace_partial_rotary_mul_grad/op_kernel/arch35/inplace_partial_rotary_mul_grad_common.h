@@ -39,7 +39,7 @@ constexpr uint32_t VL_FLOAT32_SIZE = VREG_SIZE_BITS / sizeof(float); // 256/4 = 
 constexpr int64_t ROTARY_MODE_HALF = 0;
 constexpr int64_t ROTARY_MODE_INTERLEAVE = 1;
 constexpr int64_t ROTARY_MODE_QUARTER = 2;
-constexpr int64_t ROTARY_MODE_DEEPSEEK_INTERLEAVE = 3;
+constexpr int64_t ROTARY_MODE_INTERLEAVE_HALF = 3;
 
 // ---- InterleaveModeGradVF ----
 // interleave mode (rotary_mode=1):

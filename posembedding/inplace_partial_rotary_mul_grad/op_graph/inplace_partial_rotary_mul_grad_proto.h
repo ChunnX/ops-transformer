@@ -48,13 +48,13 @@ namespace ge {
  * meaningless. The x input must be set to nullptr.
  * @par Attributes:
  * @li rotary_mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be
- * 0-"half", 1-"interleave", 2-"quarter" or 3-"DeepSeek interleave". Defaults to 0.
+ * 0-"half", 1-"interleave", 2-"quarter" or 3-"interleave-half". Defaults to 0.
  * @li partial_slice: An optional attribute of type list int, specifying the slice range of the partial rotary position
  * embedding. The value is a list of two integers. Defaults to {0, 0}.
  * @attention Constraints:
  * @li This operator is only supported on Ascend 950 AI Processor.
  * @li Currently only interleave mode (rotary_mode=1) is supported. Other modes (half=0, quarter=2,
- * DeepSeek interleave=3) are not implemented yet.
+ * interleave-half=3) are not implemented yet.
  * Let (B, S, N, D) represents the shape of the input "dy". Under this
  * representation, the shape constraints of each parameter can be described as follows:
  * @li The D of "dy" and "x" must be equal and less or equal to 1024. The D of "cos", "sin", "dcos" and "dsin"
@@ -68,7 +68,7 @@ namespace ge {
  *  - Two of B, S and N are 1, the remaining one dimension is the same as that of "dy", means the shape is (1, 1, N,
  * end-start), (1, S, 1, end-start) or (B, 1, 1, end-start).
  * @li Let the value of "partial_slice" be [start, end]. "start" must be in range [0, D], "end" must be in range
- * ["start", D]. In half, interleave and DeepSeek interleave mode, ("end" - "start") must be a multiple of 2. In quarter
+ * ["start", D]. In half, interleave and interleave-half mode, ("end" - "start") must be a multiple of 2. In quarter
  * mode, ("end" - "start") must be a multiple of 4. If "start" equals "end", the operator performs no
  * effective computation and returns directly.
  */
