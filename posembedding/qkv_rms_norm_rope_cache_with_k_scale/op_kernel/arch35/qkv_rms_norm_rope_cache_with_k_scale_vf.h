@@ -168,33 +168,43 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVfImpl(__ubuf__ bfloat16_t *in
     }
 }
 
+template <bool IS_TND>
 __simd_vf__ inline void VScaleFp8D128ToNtdVfImpl(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *vScale,
                                                 __ubuf__ fp8_e4m3fn_t *vOutFp8Ntd, uint32_t tokenSize,
-                                                uint32_t vHeadOffset, uint32_t vHeadSize, uint32_t qkvUbStrideN,
-                                                uint32_t qkvUbStrideT, uint32_t vInputHeadBase)
+                                                uint32_t vHeadOffset, uint32_t vHeadSize, uint32_t qkvHeadNum,
+                                                uint32_t vInputHeadBase)
 {
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     const uint32_t outputHeadStride = tokenSize * QKV_RRC_D128_FULL_SIZE;
     const uint32_t outputTokenStride = QKV_RRC_D128_FULL_SIZE;
     for (uint16_t headIdx = 0U; headIdx < vHeadSize; ++headIdx) {
         const uint32_t vHead = vHeadOffset + static_cast<uint32_t>(headIdx);
-        const uint32_t inputHeadOffset = (vInputHeadBase + vHead) * qkvUbStrideN;
         MicroAPI::RegTensor<float> scale;
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(scale, vScale + vHead);
 
         for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
-            const uint32_t tokenInputOffset = static_cast<uint32_t>(tokenIdx) * qkvUbStrideT;
             MicroAPI::RegTensor<bfloat16_t> vLowBf16;
             MicroAPI::RegTensor<bfloat16_t> vHighBf16;
             MicroAPI::RegTensor<float> vLow;
             MicroAPI::RegTensor<float> vHigh;
             MicroAPI::RegTensor<fp8_e4m3fn_t> vLowFp8;
             MicroAPI::RegTensor<fp8_e4m3fn_t> vHighFp8;
-            const uint32_t srcOffset = inputHeadOffset + tokenInputOffset;
 
-            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(vLowBf16, inputBf16 + srcOffset);
-            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-                vHighBf16, inputBf16 + srcOffset + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
+            if constexpr (IS_TND) {
+                const uint32_t srcOffset = static_cast<uint32_t>(tokenIdx) * qkvHeadNum * QKV_RRC_D128_FULL_SIZE +
+                                           (vInputHeadBase + vHead) * QKV_RRC_D128_FULL_SIZE;
+                MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(vLowBf16,
+                                                                                     inputBf16 + srcOffset);
+                MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    vHighBf16, inputBf16 + srcOffset + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
+            } else {
+                const uint32_t srcOffset = (vInputHeadBase + vHead) * tokenSize * QKV_RRC_D128_FULL_SIZE +
+                                           static_cast<uint32_t>(tokenIdx) * QKV_RRC_D128_FULL_SIZE;
+                MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(vLowBf16,
+                                                                                     inputBf16 + srcOffset);
+                MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    vHighBf16, inputBf16 + srcOffset + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
+            }
             MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(vLow, vLowBf16, mask64);
             MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(vHigh, vHighBf16, mask64);
             MicroAPI::Mul(vLow, vLow, scale, mask64);

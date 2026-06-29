@@ -355,22 +355,12 @@ private:
         const LocalTensor<float> vScale = vScaleUb_;
         const LocalTensor<fp8_e4m3fn_t> vOut = vOutDbPoolUb_[vOutBufferId * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS];
         const uint64_t vHeadOffset = qHeadNum_ + kvHeadNum_;
-        if constexpr (IS_TND) {
-            const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
-            AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
-                (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
-                (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-                static_cast<uint32_t>(tile.vHeadOffset), static_cast<uint32_t>(tile.vHeadSize),
-                QKV_RRC_D128_FULL_SIZE, static_cast<uint32_t>(qkvHeadNum) * QKV_RRC_D128_FULL_SIZE,
-                static_cast<uint32_t>(vHeadOffset));
-        } else {
-            AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
-                (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
-                (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
-                static_cast<uint32_t>(tile.vHeadOffset), static_cast<uint32_t>(tile.vHeadSize),
-                static_cast<uint32_t>(tile.aivTokenSize) * QKV_RRC_D128_FULL_SIZE, QKV_RRC_D128_FULL_SIZE,
-                static_cast<uint32_t>(vHeadOffset));
-        }
+        const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
+        AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl<IS_TND>>(
+            (__ubuf__ bfloat16_t *)input.GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
+            (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint32_t>(tile.aivTokenSize),
+            static_cast<uint32_t>(tile.vHeadOffset), static_cast<uint32_t>(tile.vHeadSize),
+            static_cast<uint32_t>(qkvHeadNum), static_cast<uint32_t>(vHeadOffset));
     }
 
     __aicore__ inline void ScatterVCache(const TileParam &tile, uint32_t vOutBufferId)
