@@ -48,9 +48,9 @@ public:
     __aicore__ inline void InitIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < QKV_RRC_DOUBLE_BUFFER_NUM; ++bufferId) {
-            SetVToMte2InputBufferReusable(bufferId);
-            SetMte3ToVVOutBufferReusable(bufferId);
-            SetMte3ToVQkOutBufferReusableByBufferId(bufferId);
+            SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
+            SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
+            SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
         }
     }
 
@@ -63,9 +63,9 @@ public:
     __aicore__ inline void EndIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < QKV_RRC_DOUBLE_BUFFER_NUM; ++bufferId) {
-            WaitVToMte2InputBufferReusable(bufferId);
-            WaitMte3ToVVOutBufferReusable(bufferId);
-            WaitMte3ToVQkOutBufferReusableByBufferId(bufferId);
+            WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
+            WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
+            WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
         }
     }
 
@@ -81,9 +81,9 @@ public:
     __aicore__ inline void ComputeTileWithQkOutputBuffer(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
                                                          LocalTensor<float> qkPreprocessUb, uint32_t outputBufferId)
     {
-        WaitMte3ToVQkOutBufferReusable(outputBufferId);
+        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
         ComputeTile(tile, aRotL1Nz, qkPreprocessUb);
-        SetMte3ToVQkOutBufferReusable(outputBufferId);
+        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
     }
 
     __aicore__ inline void PostprocessV(const TileParam &tile)
@@ -97,24 +97,14 @@ public:
     __aicore__ inline void WaitVToMte2InputBufferReusable()
     {
         const uint32_t inputBufferId = static_cast<uint32_t>(inputBufferUseId_ & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        WaitVToMte2InputBufferReusable(inputBufferId);
+        WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + inputBufferId));
     }
 
     __aicore__ inline void SetVToMte2InputBufferReusable()
     {
         const uint32_t inputBufferId =
             static_cast<uint32_t>((inputBufferUseId_ - 1U) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        SetVToMte2InputBufferReusable(inputBufferId);
-    }
-
-    __aicore__ inline void WaitMte3ToVQkOutBufferReusable(uint32_t bufferId)
-    {
-        WaitMte3ToVQkOutBufferReusableByBufferId(bufferId);
-    }
-
-    __aicore__ inline void SetMte3ToVQkOutBufferReusable(uint32_t bufferId)
-    {
-        SetMte3ToVQkOutBufferReusableByBufferId(bufferId);
+        SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + inputBufferId));
     }
 
     __aicore__ inline void PostprocessQk(const TileParam &tile, LocalTensor<float> qkAfterCubeUb,
@@ -127,9 +117,9 @@ public:
     __aicore__ inline void PostprocessQkWithOutputBuffer(const TileParam &tile, LocalTensor<float> qkAfterCubeUb,
                                                          uint32_t outputBufferId)
     {
-        WaitMte3ToVQkOutBufferReusable(outputBufferId);
+        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
         PostprocessQk(tile, qkAfterCubeUb, outputBufferId);
-        SetMte3ToVQkOutBufferReusable(outputBufferId);
+        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
     }
 
 private:
@@ -189,16 +179,6 @@ private:
         return slice;
     }
 
-    __aicore__ inline void WaitVToMte2InputBufferReusable(uint32_t bufferId)
-    {
-        WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
-    }
-
-    __aicore__ inline void SetVToMte2InputBufferReusable(uint32_t bufferId)
-    {
-        SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
-    }
-
     __aicore__ inline void SetAndWaitMte2ToVInputReady(uint32_t bufferId)
     {
         SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
@@ -209,46 +189,6 @@ private:
     {
         SetFlag<HardEvent::MTE2_S>(static_cast<event_t>(EVT_MTE2_TO_S_SLOT_MAPPING_READY));
         WaitFlag<HardEvent::MTE2_S>(static_cast<event_t>(EVT_MTE2_TO_S_SLOT_MAPPING_READY));
-    }
-
-    __aicore__ inline void WaitMte3ToVVOutBufferReusable(uint32_t bufferId)
-    {
-        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-    }
-
-    __aicore__ inline void SetMte3ToVVOutBufferReusable(uint32_t bufferId)
-    {
-        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-    }
-
-    __aicore__ inline void SetVToMte3VOutReady(uint32_t bufferId)
-    {
-        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-    }
-
-    __aicore__ inline void WaitVToMte3VOutReady(uint32_t bufferId)
-    {
-        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
-    }
-
-    __aicore__ inline void WaitMte3ToVQkOutBufferReusableByBufferId(uint32_t bufferId)
-    {
-        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-    }
-
-    __aicore__ inline void SetMte3ToVQkOutBufferReusableByBufferId(uint32_t bufferId)
-    {
-        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-    }
-
-    __aicore__ inline void SetVToMte3QkOutReady(uint32_t bufferId)
-    {
-        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
-    }
-
-    __aicore__ inline void WaitVToMte3QkOutReady(uint32_t bufferId)
-    {
-        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
     }
 
     __aicore__ inline void SetAndWaitVToMte3Al1StageReady()
@@ -457,12 +397,12 @@ private:
 
         const uint32_t vOutBufferId =
             static_cast<uint32_t>((vOutBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        WaitMte3ToVVOutBufferReusable(vOutBufferId);
+        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         QuantVToFp8(tile, slice, inputBufferId, vOutBufferId);
-        SetVToMte3VOutReady(vOutBufferId);
-        WaitVToMte3VOutReady(vOutBufferId);
+        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
+        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         ScatterVCache(tile, slice, vOutBufferId);
-        SetMte3ToVVOutBufferReusable(vOutBufferId);
+        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
     }
 
     __aicore__ inline void QuantVToFp8(const TileParam &tile, const AivSlice &slice, uint32_t inputBufferId,
@@ -509,16 +449,16 @@ private:
 
         const uint32_t vOutBufferId =
             static_cast<uint32_t>((vOutBufferUseId_++) & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U));
-        WaitMte3ToVVOutBufferReusable(vOutBufferId);
+        WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
         QuantQToFp8(tile, slice, qkAfterCube, vOutBufferId);
-        SetVToMte3QkOutReady(outputBufferId);
-        WaitVToMte3QkOutReady(outputBufferId);
+        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
+        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
         ScatterQOutputs(slice, qkAfterCube, vOutBufferId);
         QuantKToFp8(tile, slice, qkAfterCube, vOutBufferId);
-        SetVToMte3QkOutReady(outputBufferId);
-        WaitVToMte3QkOutReady(outputBufferId);
+        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
+        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + outputBufferId));
         ScatterKOutputs(tile, slice, qkAfterCube, vOutBufferId);
-        SetMte3ToVVOutBufferReusable(vOutBufferId);
+        SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + vOutBufferId));
     }
 
     __aicore__ inline uint64_t QScaleNtdHeadStride(const AivSlice &slice) const
