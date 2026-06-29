@@ -125,7 +125,7 @@ Range<uint32_t> CalcS2Range(uint32_t mIdx, const BaseInfo &baseInfo, const Split
     // 1. calc index of s2FirstToken, s2LastToken by index of mFirstToken, mLastToken
     int64_t mFirstToken = static_cast<int64_t>(mIdx) * static_cast<int64_t>(splitParam.mBaseSize);
     int64_t mLastToken = std::min(mFirstToken + static_cast<int64_t>(splitParam.mBaseSize),
-                                    static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.gSize)) - 1;
+                                  static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.gSize)) - 1;
 
     int64_t s1FirstToken = 0;
     int64_t s1LastToken = 0;
