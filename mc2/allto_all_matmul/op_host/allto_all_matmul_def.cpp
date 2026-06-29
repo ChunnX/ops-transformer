@@ -124,7 +124,7 @@ public:
         this->Attr("transpose_x1").AttrType(OPTIONAL).Bool(false);
         this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
-        this->Attr("comm_mode").AttrType(OPTIONAL).String("");
+        this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
         this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(true);
 
         // ascend950 AI处理器定义OpAICoreConfig变量，定制化配置参数
