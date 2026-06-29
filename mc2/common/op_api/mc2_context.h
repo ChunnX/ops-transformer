@@ -28,9 +28,8 @@
 #include <vector>
 #include <unordered_map>
 #include "hccl/hccl_rank_graph.h"
-#include "hcomm/hcomm_res.h"
 #include "aclnn/aclnn_base.h"
-#include "mc2_log_compat.h"
+#include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "mc2_moe_context.h"
 
@@ -39,11 +38,10 @@ namespace Mc2Aclnn {
 class Mc2Context {
 public:
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                           aclTensor *&mc2Context, CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM);
+                                           aclTensor *&mc2Context,CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM);
     static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
 
 private:
-     static Mc2Context &GetInstance();
     explicit Mc2Context();
     ~Mc2Context();
 
@@ -55,12 +53,9 @@ private:
     aclnnStatus GetRankSizePerServer(const HcclComm &hcclHandle, uint32_t netLayers);
     aclnnStatus InitHcclChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
                                 const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc);
-    aclnnStatus GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
-                                   Mc2MoeContext *mc2ContextStruct, const CommProtocol &protocol,
-                                   const CommEngine &engine, std::vector<ChannelHandle> &channels);
-    aclnnStatus GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
-                                    const CommProtocol &protocol, const CommEngine &engine,
-                                    std::vector<ChannelHandle> &channels);
+    aclnnStatus GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId, Mc2MoeContext *mc2ContextStruct,
+                                   const CommProtocol &protocol, const CommEngine &engine,
+                                   std::vector<ChannelHandle> &channels);
     aclnnStatus GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine, const CommProtocol &protocol,
                                     Mc2MoeContext *mc2ContextStruct);
     aclnnStatus CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag, const CommEngine &engine,
@@ -69,9 +64,9 @@ private:
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
     aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum, const CommProtocol &protocol);
-    aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, const CommProtocol &protocol);
+    aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
-    aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList, const CommProtocol &protocol);
+    aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList, CommProtocol protocol);
     aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                   const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize);
     const std::string GetLibPath();
