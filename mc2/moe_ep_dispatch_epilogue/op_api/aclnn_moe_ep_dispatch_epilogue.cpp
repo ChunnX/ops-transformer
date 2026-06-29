@@ -18,7 +18,6 @@
 
 using namespace op;
 
-extern "C" {
 static aclnnStatus CheckNotNull(const aclTensor* context, const aclTensor* dstBufferSlotIdx,
                                 const aclTensor* numRecvTokensPerRank,
                                 const aclTensor* numRecvTokensPerExpert, aclTensor* recvX,
@@ -45,7 +44,9 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t nu
     CHECK_RET(expertAlignment == 1, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 aclnnStatus MoeEpDispatchEpilogueGetWorkspaceSize(
     const aclTensor* context,
     const aclTensor* dstBufferSlotIdx,
@@ -102,4 +103,6 @@ aclnnStatus aclnnMoeEpDispatchEpilogue(
     return aclnnInnerMoeEpDispatchEpilogue(workspace, workspaceSize, executor, stream);
 }
 
-}  // extern "C"
+#ifdef __cplusplus
+}
+#endif
