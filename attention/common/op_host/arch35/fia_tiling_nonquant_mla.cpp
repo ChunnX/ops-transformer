@@ -493,8 +493,8 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     }
     tilingData_.baseTiling.fiaPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
 
-    tilingData_.baseTiling.fiaPostQuantParams.isPostQuantPerChnl = fiaInfo_->isOutQuantPerChnOut;
     tilingData_.baseTiling.fiaPostQuantParams.isPostQuantBF16 = fiaInfo_->isOutQuantTypeBf16;
+    tilingData_.baseTiling.fiaPostQuantParams.isPostQuantPerChnl = fiaInfo_->isOutQuantPerChnOut;
 
     tilingData_.baseTiling.fiaSystemPrefixParams.prefixSeqInnerSize = fiaInfo_->systemPrefixMaxLen;
     tilingData_.baseTiling.fiaSystemPrefixParams.isActualSharedPrefixLenNull = !actualSharedPrefixLenFlag_;
@@ -617,25 +617,13 @@ void FiaTilingNonQuantMlaArch35::CalcWorkspaceSize()
 
     uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
     uint32_t dSize = fiaInfo_->vHeadDim;
-    uint32_t dVBasicBlock = 0;
-    if (dSize <= DSIZE_64) {
-        dVBasicBlock = DSIZE_64;
-    } else if (dSize <= DSIZE_128) {
-        dVBasicBlock = DSIZE_128;
-    } else if (dSize <= DSIZE_256) {
-        dVBasicBlock = DSIZE_256;
-    } else if (dSize <= DSIZE_512) {
-        dVBasicBlock = DSIZE_512;
-    }
+    uint32_t dVBasicBlock = DSIZE_512;
 
     workspaceSize_ = sysWorkspaceSize;
 
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
-    if (dVBasicBlock > DSIZE_256) {
-        bmm2ResBlockSize = DSIZE_512;
-    }
     if ((!dnFlag_ && dSize > DSIZE_128) || (dnFlag_ && dSize > DSIZE_192)) {
         bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
         if (dVBasicBlock > DSIZE_256) {
