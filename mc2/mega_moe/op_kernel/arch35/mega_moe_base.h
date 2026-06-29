@@ -23,9 +23,9 @@
 
 struct Mc2MoeContext {
     uint32_t epRankId;
-    uint32_t rankSizePerServer;
-    uint64_t kfcContextAddr;
-    uint64_t epHcclBuffer[1024]
+    uint32_t epRankSize;
+    uint64_t winSize;
+    uint64_t epHcclBuffer[1024];
 };
 
 struct GMMAddrInfo {
