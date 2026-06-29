@@ -87,7 +87,7 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsMultiTensorWeight() const
     return (*gmmParams_.weight)[0]->GetViewShape().GetDimNum() == MULTI_WEIGHT_DIM;
 }
 
-bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4Pergroup(const size_t xIdx) const
+bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16W4Pergroup(const size_t idx) const
 {
     if (!IsA16W4()) {
         return false;
