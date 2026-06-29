@@ -20,6 +20,7 @@
 #include "mega_moe_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
+#include "mega_moe_impl.h"
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
@@ -235,9 +236,9 @@ __aicore__ inline void CombineTokensWithUrma(
 {
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     uint32_t actualDataLength = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
-    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
+    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
     //每个 token 含数据+三元组(32B)
-    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
     LocalTensor<int32_t> tripleTempTensor = LocalTensor<int32_t>(TPosition::VECCALC, 130 * 1024, ALIGN_32 / sizeof(int32_t));
     AscendC::GlobalTensor<ElementMMadOut2> gmLocalD;
     AscendC::GlobalTensor<int32_t> gmLocalDTriple;
@@ -298,8 +299,8 @@ __aicore__ inline void CombineTokensWithUrma(
 template <typename ElementMMadOut2>
 __aicore__ inline void CombineTokensWithUrmaSend(const Params& params)
 {
-    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
-    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),  (int64_t)L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
+    uint32_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
+    uint32_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h),  (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
     LocalTensor<int32_t> sendTensor = LocalTensor<int32_t>(TPosition::VECCALC, ALIGN_512, ALIGN_32 / sizeof(int32_t));
 
     // 分核: 仅 subBlockIdx_==1 的核参与, 核数 = GetBlockNum() (每个 block 的核1)
@@ -360,9 +361,8 @@ __aicore__ inline void CombineTokensWithUrmaSend(const Params& params)
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
             cnt += slotReadTensor.GetValue(countWordIdx);
         }
-        // 修正: CeilAlign 返回类型与 L1_TILE_N 一致, 用 uint32_t
         uint32_t totalDataBlockCnt = cnt * static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(params.tilingData->h), 
-                                    static_cast<int64_t>(L1_TILE_N)));
+                                    static_cast<int64_t>(MegaMoeImpl::L1_TILE_N)));
         //printf("rankId=%d, processRankId=%d, cnt=%d, totalDataBlockCnt=%d\n", rankId, index, cnt, totalDataBlockCnt);
         totalTokenCnt.SetValue(index - startRankId, totalDataBlockCnt);
         if(totalDataBlockCnt == 0) {
