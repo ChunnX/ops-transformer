@@ -310,7 +310,7 @@ public:
 #endif
 
 #ifdef __DAV_C220_VEC__
-                    Stage 4: RescaleO
+                    // Stage 4: RescaleO
                     uint64_t gmOffsetUpdate = static_cast<uint64_t>(coreIdx) * WORKSPACE_BLOCK_SIZE_DB;
                     LayoutOTmp ubOTmpLayout(rowNumRound, embedRound);
                     LayoutUpdate ubUpdateLayout(rowNumRound, embedRound);
