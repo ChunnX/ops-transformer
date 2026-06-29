@@ -193,7 +193,7 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
     repeatParamsMax.src0RepStride = rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM;
     repeatParamsMax.src1RepStride = rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM;
     if (blockCount > 0 && remain > 0) {
-        Max(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, rectangleParams.row, repeatParamsMax);
+        Max(srcUb, srcUb, srcUb[dtypeMask * blockCount], remain, rectangleParams.row, repeatParamsMax);
         PipeBarrier<PIPE_V>();
     }
 
@@ -201,7 +201,7 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
          columnLoopCount = blockCount >> 1) { // 2: 每次处理2个block
         blockCount = (blockCount + 1) >> 1;   // 2: 每次处理2个block
         for (uint32_t j = 0; j < columnLoopCount; j++) {
-            Max(srcUb[j * dtypeMask], srcUb[j * dtypeMask], srcUb[(j + blockCount) * dtypeMask], dtypeMask,
+            Max(srcUb[dtypeMask * j], srcUb[dtypeMask * j], srcUb[dtypeMask * (j + blockCount)], dtypeMask,
                 rectangleParams.row, repeatParamsMax);
         }
         PipeBarrier<PIPE_V>();
@@ -418,12 +418,12 @@ __aicore__ inline void QuantPerTile(const LocalTensor<int8_t> &outLocal, const L
                                     const PerTileQuantParams &perTileQuantParams)
 {
     LocalTensor<float> scale =
-        outLocal[perTileQuantParams.row * perTileQuantParams.col].template ReinterpretCast<float>();
+        outLocal[perTileQuantParams.col * perTileQuantParams.row].template ReinterpretCast<float>();
 
     LocalTensor<float> clipOut = inputLocal;
     uint32_t aMaxSizeAlign =
-        Align(static_cast<uint32_t>(perTileQuantParams.row * perTileQuantParams.tileNum), FP32_BLOCK_ELEMENT_NUM);
-    uint32_t aMaxBrcbSize = perTileQuantParams.row * perTileQuantParams.tileNum * FP32_BLOCK_ELEMENT_NUM;
+        Align(static_cast<uint32_t>(perTileQuantParams.tileNum * perTileQuantParams.row), FP32_BLOCK_ELEMENT_NUM);
+    uint32_t aMaxBrcbSize = perTileQuantParams.tileNum * perTileQuantParams.row * FP32_BLOCK_ELEMENT_NUM;
     LocalTensor<float> aMax = shareTmpUb.template ReinterpretCast<float>();
     LocalTensor<float> aMaxBrcb = aMax[aMaxSizeAlign];
     LocalTensor<uint8_t> sharedBuf = aMaxBrcb[aMaxBrcbSize].template ReinterpretCast<uint8_t>();
@@ -432,9 +432,9 @@ __aicore__ inline void QuantPerTile(const LocalTensor<int8_t> &outLocal, const L
 
     LocalTensor<float> quantOut = clipOut;
     DynamicQuant(quantOut, scale, clipOut, aMax, aMaxBrcb, sharedBuf, perTileQuantParams.alpha,
-                 perTileQuantParams.row * perTileQuantParams.tileNum, perTileQuantParams.tileSize);
+                 perTileQuantParams.tileNum * perTileQuantParams.row, perTileQuantParams.tileSize);
     PipeBarrier<PIPE_V>();
-    CastFP32ToINT8(outLocal, quantOut, sharedBuf, perTileQuantParams.row * perTileQuantParams.col);
+    CastFP32ToINT8(outLocal, quantOut, sharedBuf, perTileQuantParams.col * perTileQuantParams.row);
 }
 
 /**
@@ -453,7 +453,7 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
                                     const LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col)
 {
     constexpr uint64_t brcnNum = 8; // brcb一次处理8个数据
-    uint64_t computeSize = row * col;
+    uint64_t computeSize = col * row;
     LocalTensor<float> inputCopy = shareTmpUb.ReinterpretCast<float>();
     LocalTensor<float> rowMaxBrcb = inputCopy[Align(computeSize, (uint64_t)ALIGN_BLOCK_SIZE)];
     // abs(x)

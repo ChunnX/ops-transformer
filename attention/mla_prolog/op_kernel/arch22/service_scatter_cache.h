@@ -61,7 +61,7 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
     if (cacheOffset < 0) {
         return;
     }
-    int64_t copyCnt = scatterCacheParams.col * rowsInCurBatch;
+    int64_t copyCnt = rowsInCurBatch * scatterCacheParams.col;
 
     if constexpr (IS_NZ) {
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);

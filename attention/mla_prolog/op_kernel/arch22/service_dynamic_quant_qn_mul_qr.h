@@ -27,8 +27,8 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
       const LocalTensor<C> &dequantScaleBrcbLocal, uint64_t row, uint64_t colRope, uint64_t subRowRope,
       uint64_t qrOutputStrideRope, float quantScaleCkvRope, uint32_t MUL_QR_INPUT_COPY_READY, uint32_t MUL_QR)
 {
-    constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
+    constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
 
     uint64_t loopCntRope = CeilDivT(row, subRowRope);
     uint64_t lastSubRowRope = row - (loopCntRope - 1) * subRowRope;
@@ -93,15 +93,15 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O> &outputGm, con
                                             uint64_t row, uint64_t col, uint64_t subRow, uint64_t queryOutStride,
                                             uint32_t DYNAMIC_QUANT_INPUT_READY, uint32_t DYNAMIC_QUANT_OUTPUT_READY)
 {
-    constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     constexpr uint64_t outputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(O));
+    constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     // DataCopyParams  : count len srcStrideIn dstStrideIn
     DataCopyParams outParams{(uint16_t)subRow, (uint16_t)(col / outputBlockAlign), 0,
                              (uint16_t)((queryOutStride - col) / outputBlockAlign)};
     DataCopyParams inputParams{(uint16_t)subRow, (uint16_t)(col / inputBlockAlign),
                                (uint16_t)((queryOutStride - col) / inputBlockAlign), 0};
 
-    uint32_t computeSize = subRow * col;
+    uint32_t computeSize = col * subRow;
     uint64_t loopCnt = CeilDivT(row, subRow);
     uint64_t lastSubRow = row - (loopCnt - 1) * subRow;
     uint64_t inputGmOffset = 0;
@@ -110,7 +110,7 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O> &outputGm, con
     for (uint64_t loopIdx = 0; loopIdx < loopCnt; loopIdx++) {
         if ((loopIdx == loopCnt - 1) && (lastSubRow != subRow)) {
             subRow = lastSubRow;
-            computeSize = subRow * col;
+            computeSize = col * subRow;
             outParams.blockCount = subRow;
             inputParams.blockCount = subRow;
         }

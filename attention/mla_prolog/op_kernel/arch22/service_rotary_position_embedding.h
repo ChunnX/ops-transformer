@@ -76,11 +76,11 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
                                              LocalTensor<float> channelDeqScaleLocal = LocalTensor<float>(),
                                              LocalTensor<float> scale = LocalTensor<float>())
 {
-    int64_t cnt = ropeParams.row * ropeParams.col;
-    LocalTensor<C> kFp32Local;
     LocalTensor<T> kLocal;
+    LocalTensor<C> kFp32Local;
     LocalTensor<C> ropeShareUB;
     LocalTensor<C> kFp32OutputLocal;
+    int64_t cnt = ropeParams.row * ropeParams.col;
     PreprocessRopeInput<T, C>(inputGm, shareTmpUb, ropeParams, kFp32Local, kLocal, ropeShareUB, kFp32OutputLocal, cnt);
     AscendC::SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
     AscendC::WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -139,7 +139,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
         return;
     }
 
-    int64_t cnt = ropeParams.row * ropeParams.col;
+    int64_t cnt = ropeParams.col * ropeParams.row;
     LocalTensor<C> kFp32Local;
     LocalTensor<T> kLocal;
     LocalTensor<C> ropeShareUB;
@@ -187,12 +187,12 @@ __aicore__ inline void RopePostQuantPerChannel(LocalTensor<O> &outputLocal, Loca
                                                int64_t cnt)
 {
     LocalTensor<float> inFp32;
-    if constexpr (std::is_same<T, float>::value) {
-        inFp32 = inputLocal;
-    } else {
+    if constexpr (!std::is_same<T, float>::value) {
         inFp32 = shareTmpUb.ReinterpretCast<float>()[cnt];
         Cast(inFp32, inputLocal, RoundMode::CAST_NONE, cnt);
         AscendC::PipeBarrier<PIPE_V>();
+    } else {
+        inFp32 = inputLocal;
     }
     Mul(inFp32, inFp32, quantScaleLocal, cnt);
     AscendC::PipeBarrier<PIPE_V>();

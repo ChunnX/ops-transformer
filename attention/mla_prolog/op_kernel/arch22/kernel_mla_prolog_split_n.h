@@ -384,13 +384,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit()
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit()
 {
-    mmCkvKrParam_.m = baseParams_->stepBatchSize; // 32
     if (cubeBlockIdx_ == baseParams_->mm2BlockNum - 1) {
         mmCkvKrParam_.n =
             baseParams_->headSizeCkv + baseParams_->headSizeKr - baseParams_->mm2SingleCoreN * cubeBlockIdx_;
     } else {
         mmCkvKrParam_.n = baseParams_->mm2SingleCoreN;
     }
+    mmCkvKrParam_.m = baseParams_->stepBatchSize; // 32
     mmCkvKrParam_.k = baseParams_->headSizeX; // 7168
     mmCkvKrParam_.needSetOrgShape = 1;
     mmCkvKrParam_.orgKb = mmCkvKrParam_.k;
@@ -831,15 +831,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
                                                               int64_t mmQnLoops)
 {
     int64_t tokenIndex = aivOffset.curBlockTokenOffset + batchOffset;
-    int64_t rmsNormCqResOffset;
-    if (baseParams_->queryNormFlag == 1U) {
-        rmsNormCqResOffset = tokenIndex * baseParams_->headSizeCq;
-    } else {
-        rmsNormCqResOffset = aivOffset.rmsNormCqOffset;
-    }
     if (batchOffset == 0) {
         // 只需要搬运一次
         CopyGlobalParams();
+    }
+    int64_t rmsNormCqResOffset;
+    if (baseParams_->queryNormFlag = 1U) {
+        rmsNormCqResOffset = tokenIndex * baseParams_->headSizeCq;
+    } else {
+        rmsNormCqResOffset = aivOffset.rmsNormCqOffset;
     }
     CopyInSinCos(tokenIndex, aivOffset.curVecToken, batchOffset, curStepBatchSize);
     CrossCoreWaitFlag(FINISH_MM_CQ);
@@ -952,9 +952,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAicOffset(AicOffset &a
 template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAivOffset(AivOffset &aivOffset, int64_t batchOffset)
 {
-    curStepVecBackToken_ = curVectorBlockNum_ / static_cast<uint32_t>(vectorCoreNum_);
     curStepVecFrontListNum_ = curVectorBlockNum_ % static_cast<uint32_t>(vectorCoreNum_);
-    curStepVecFrontToken_ = curStepVecFrontListNum_ == 0 ? curStepVecBackToken_ : curStepVecBackToken_ + 1;
+    curStepVecBackToken_ = curVectorBlockNum_ / static_cast<uint32_t>(vectorCoreNum_);
+    curStepVecFrontToken_ = curStepVecFrontListNum_ != 0 ? curStepVecBackToken_ + 1 : curStepVecBackToken_;
 
     aivOffset.curVecToken = blockIdx_ < curStepVecFrontListNum_ ? curStepVecFrontToken_ : curStepVecBackToken_;
     aivOffset.curBlockTokenOffset = blockIdx_ < curStepVecFrontListNum_ ?
@@ -1645,13 +1645,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(LocalTensor<
                                    static_cast<int64_t>(sizeof(krCacheType) * baseParams_->dimHeadRope),
                                    baseParams_->dtileSize});
         } else {
-            ScatterCache<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_NZ)>(
+            ScatterCache<krCacheType, MLAPT::cacheMode == CACHE_MODE::PA_NZ>(
                 krCacheGm_, outputKrLocal,
                 ScatterCacheParams{baseParams_->blockSize, paTokenIndex, vectorRow_, baseParams_->dimHeadRope,
                                    baseParams_->dimHeadRope});
         }
     } else {
-        ScatterCacheMultiRows<krCacheType, (MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ)>(
+        ScatterCacheMultiRows<krCacheType, MLAPT::cacheMode == CACHE_MODE::PA_BLK_NZ>(
             krCacheGm_, outputKrLocal,
             ScatterCacheParams{baseParams_->blockSize, ropeAndScatterKrParams.cacheOffset, vectorRow_,
                                baseParams_->dimHeadRope, baseParams_->dimHeadRope, baseParams_->seq1Size,
@@ -2083,11 +2083,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQcSplitNGroupCase(int6
                                                                             int64_t mmQnPreDequantResOffset,
                                                                             int64_t qcQrScaleOffset)
 {
-    if (blockIdx_ >= QC_CORE_NUM * cvRatio_) {
+    if (blockIdx_ >= cvRatio_ * QC_CORE_NUM) {
         return;
     }
     uint32_t subBlockIdx_ = blockIdx_ % cvRatio_;
-    uint32_t curCol = (baseParams_->headSizeQc) / (QC_CORE_NUM * cvRatio_);
+    uint32_t curCol = (baseParams_->headSizeQc) / (cvRatio_ * QC_CORE_NUM);
     uint32_t oriCol = (baseParams_->headSizeQc) / QC_CORE_NUM;
     uint32_t dstStride = baseParams_->headSizeQc - curCol;
     uint32_t srcStride = baseParams_->headSizeQc - curCol;
@@ -2107,7 +2107,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQc(int64_t mmQnPreDequ
                                                              int64_t mmQnPreDequantResOffset, int64_t curVecToken,
                                                              int64_t curBlockTokenOffset)
 {
-    if (blockIdx_ >= curVectorBlockNum_) {
+    if (curVectorBlockNum_ <= blockIdx_) {
         return;
     }
 
@@ -2118,11 +2118,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantQc(int64_t mmQnPreDequ
     };
 
     for (int64_t curVecTokenIdx = 0; curVecTokenIdx < curVecToken; curVecTokenIdx++) {
-        LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
         DequantPerTokenQc(
             mmQcQrResDequantGm_[mmQnPreDequantResOffset], mmQcQrResGm_[mmQnPreDequantOffset], deqScaleQcQrW_,
             dequantTool_.dequantScaleCqLocal_[(curBlockTokenOffset + curVecTokenIdx) * FP32_BLOCK_ELEMENT_NUM],
-            shareTmpUb, rectangleParams, baseParams_->numHeadSize);
+            shareBuffer_.Get<uint8_t>(), rectangleParams, baseParams_->numHeadSize);
         mmQnPreDequantOffset += baseParams_->headSizeQr + baseParams_->headSizeQc;
         mmQnPreDequantResOffset += baseParams_->headSizeQc;
     }
@@ -2132,7 +2131,7 @@ template <typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CastQc(int64_t mmQnPreCastOffset, int64_t mmQnPreCastResOffset,
                                                           int64_t curVecToken)
 {
-    if (blockIdx_ >= curVectorBlockNum_) {
+    if (curVectorBlockNum_ <= blockIdx_) {
         return;
     }
 
