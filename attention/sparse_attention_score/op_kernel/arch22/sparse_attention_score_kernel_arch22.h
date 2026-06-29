@@ -251,12 +251,12 @@ public:
                     LayoutS ubSLayout(rowNumRound, RoundUp(kvSTileSizeAct, 16));
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
 
-                    blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS],
-                        gBlockTable[blockTOffset], gIdentityIdx,
-                        gmQLayout, gmKLayout, ubSLayout,
-                        actualBlockShapeQK,
-                        0, 0, blockSize_, strideKVRow,
-                        blockSize_, 1, 1, kvSTileSizeAct);
+                    // blockMmadQK(gQ[gmOffsetQ], gK[gmOffsetK], gS[gmOffsetS],
+                    //     gBlockTable[blockTOffset], gIdentityIdx,
+                    //     gmQLayout, gmKLayout, ubSLayout,
+                    //     actualBlockShapeQK,
+                    //     0, 0, blockSize_, strideKVRow,
+                    //     blockSize_, 1, 1, kvSTileSizeAct);
 
                     NpuArch::Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady_);
 #endif
@@ -270,11 +270,11 @@ public:
 
                     NpuArch::Arch::CrossCoreWaitFlag(qkReady_);
 
-                    epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS],
-                        ubPLayout, ubSLayout,
-                        actualBlockShapeQK,
-                        (kvBlockIdx == 0), 0, 1, groupSize,
-                        stageId, softmaxReady_);
+                    // epilogueOnlineSoftmax(gP[gmOffsetP], gS[gmOffsetS],
+                    //     ubPLayout, ubSLayout,
+                    //     actualBlockShapeQK,
+                    //     (kvBlockIdx == 0), 0, 1, groupSize,
+                    //     stageId, softmaxReady_);
 #endif
                 }
 
