@@ -844,7 +844,7 @@ void ExpectCsvSpecChecks(const CsvTilingCase &item, const ContractInput &input, 
         EXPECT_TRUE(IsKnownSpecKey(spec.first)) << "caseName=" << item.caseName << ", specKey=" << spec.first;
     }
     if (item.HasSpec("tileTokenOffset")) {
-        (void)ExpectTileFromSpec(item, input, tiling, "tile");
+        ExpectTileFromSpec(item, input, tiling, "tile");
     }
     if (item.HasSpec("lastCoreIndex")) {
         ExpectCoreCoverFromSpec(item, input, tiling);

@@ -201,7 +201,7 @@ private:
             return;
         }
 
-        const uint64_t rowSizeAligned = NzRowAligned(segmentRows);
+        const uint64_t rowSizeAligned = AlignUp(segmentRows, QKV_RRC_NZ_C0);
         const uint64_t mSizeAligned = AlignUp(mSize, QKV_RRC_NZ_C0);
         LoadData2DParamsV2 loadDataParams;
         loadDataParams.mStartPosition = 0U;

@@ -232,7 +232,6 @@ __simd_vf__ inline void QDynamicQuantD128VfImpl(__ubuf__ float *qFp32, __ubuf__ 
     MicroAPI::RegTensor<float> fp8Max;
     MicroAPI::Duplicate(fp8Max, QKV_RRC_FP8_E4M3FN_MAX);
     constexpr uint32_t fp32RowBytes = QKV_RRC_D128_FULL_SIZE * sizeof(float);
-    (void)qkUbTokenCapacity;
 
     const uint32_t scaleHeadStride =
         ((tokenSize + QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS - 1U) / QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS) *
@@ -313,7 +312,6 @@ __simd_vf__ inline void KDynamicQuantD128VfImpl(__ubuf__ float *kFp32, __ubuf__ 
     MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
     MicroAPI::RegTensor<float> fp8Max;
     MicroAPI::Duplicate(fp8Max, QKV_RRC_FP8_E4M3FN_MAX);
-    (void)qkUbTokenCapacity;
     constexpr uint32_t fp32RowBytes = QKV_RRC_D128_FULL_SIZE * sizeof(float);
     const uint32_t scaleTokenStride = kHeadSize * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
 

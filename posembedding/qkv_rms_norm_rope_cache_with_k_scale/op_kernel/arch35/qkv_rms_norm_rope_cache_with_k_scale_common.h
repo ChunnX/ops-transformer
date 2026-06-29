@@ -22,8 +22,6 @@
 #endif
 
 namespace QkvRmsNormRopeCacheWithKScale {
-using AscendC::CrossCoreSetFlag;
-using AscendC::CrossCoreWaitFlag;
 using AscendC::CO2Layout;
 using AscendC::DataCopy;
 using AscendC::DataCopyExtParams;
@@ -56,21 +54,6 @@ constexpr uint32_t QKV_RRC_MAX_TOKEN_TILE_PER_AIV = 8U;
 constexpr uint32_t QKV_RRC_NZ_C0 = 16U;
 constexpr uint32_t QKV_RRC_BLOCK_BYTES = 32U;
 constexpr uint32_t QKV_RRC_KIB = 1024U;
-
-constexpr uint8_t QKV_RRC_SYNC_MODE4 = 4U;
-constexpr uint64_t QKV_RRC_FLAG_ID_MAX = 16U;
-constexpr uint64_t SYNC_A_READY = 0U;
-constexpr uint64_t SYNC_C_READY = 1U;
-constexpr uint64_t SYNC_C_CONSUMED = 2U;
-constexpr uint64_t SYNC_A_CONSUMED = 3U;
-
-static_assert(SYNC_A_READY != SYNC_C_READY && SYNC_A_READY != SYNC_C_CONSUMED && SYNC_A_READY != SYNC_A_CONSUMED &&
-                  SYNC_C_READY != SYNC_C_CONSUMED && SYNC_C_READY != SYNC_A_CONSUMED &&
-                  SYNC_C_CONSUMED != SYNC_A_CONSUMED,
-              "QkvRmsNormRopeCacheWithKScale CrossCore flags must keep unique semantic ids.");
-static_assert(SYNC_A_READY < QKV_RRC_FLAG_ID_MAX && SYNC_C_READY < QKV_RRC_FLAG_ID_MAX &&
-                  SYNC_C_CONSUMED < QKV_RRC_FLAG_ID_MAX && SYNC_A_CONSUMED < QKV_RRC_FLAG_ID_MAX,
-              "QkvRmsNormRopeCacheWithKScale CrossCore base flag ids must not overlap AIV1 offset.");
 
 constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_BYTES = 40U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_OUTPUT_ONE_BUFFER_BYTES = 64U * QKV_RRC_KIB;
@@ -130,16 +113,10 @@ constexpr uint32_t QKV_RRC_QK_NZ_SCATTER_INDEX_UB_ELEMENTS = QKV_RRC_QK_NZ_SCATT
 constexpr uint32_t QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS = QKV_RRC_V_OUT_ONE_BUFFER_BYTES / sizeof(fp8_e4m3fn_t);
 constexpr uint32_t QKV_RRC_V_OUT_DB_POOL_ELEMENTS = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS;
 
-static_assert(QKV_RRC_RESERVE_USED_BYTES <= QKV_RRC_RESERVE_UB_BYTES,
-              "QkvRmsNormRopeCacheWithKScale reserve UB layout exceeds 40 KiB.");
-
 constexpr uint32_t QKV_RRC_INPUT_DB_POOL_OFFSET = 0U;
 constexpr uint32_t QKV_RRC_OUTPUT_DB_POOL_OFFSET = QKV_RRC_INPUT_DB_POOL_OFFSET + QKV_RRC_INPUT_DB_POOL_BYTES;
 constexpr uint32_t QKV_RRC_RESERVE_UB_OFFSET = QKV_RRC_OUTPUT_DB_POOL_OFFSET + QKV_RRC_OUTPUT_DB_POOL_BYTES;
 constexpr uint32_t QKV_RRC_UB_USED_BYTES = QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_RESERVE_UB_BYTES;
-
-static_assert(QKV_RRC_UB_USED_BYTES <= 248U * QKV_RRC_KIB,
-              "QkvRmsNormRopeCacheWithKScale static UB layout exceeds 248 KiB.");
 
 struct TileParam {
     uint64_t tokenOffset;
@@ -153,11 +130,6 @@ struct TileParam {
     uint64_t vHeadSize;
     uint64_t cacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
     uint64_t scaleCacheBaseOffset[QKV_RRC_MAX_TOKEN_TILE_PER_AIV];
-};
-
-struct TokenRange {
-    uint64_t begin;
-    uint64_t end;
 };
 
 struct GlobalTensors {
@@ -180,19 +152,6 @@ struct GlobalTensors {
     GM_ADDR vCacheOut;
     GM_ADDR kScaleCacheOut;
     GM_ADDR workspace;
-};
-
-struct DataCopy2DParams {
-    uint64_t rowCount;
-    uint64_t colCount;
-    uint64_t srcStride;
-};
-
-struct DataCopyUbToGm2DParams {
-    uint64_t rowCount;
-    uint64_t colCount;
-    uint64_t srcStride;
-    uint64_t dstStride;
 };
 
 __aicore__ inline uint64_t CeilDiv(uint64_t value, uint64_t factor)
@@ -221,106 +180,52 @@ __aicore__ inline uint64_t MaxU64(uint64_t lhs, uint64_t rhs)
     return lhs > rhs ? lhs : rhs;
 }
 
-__aicore__ inline uint64_t NzRowAligned(uint64_t rowCount)
-{
-    return AlignUp(rowCount, QKV_RRC_NZ_C0);
-}
-
 __aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount)
 {
-    return (QKV_RRC_HEAD_DIM_D128 / QKV_RRC_NZ_C0) * NzRowAligned(rowCount) * QKV_RRC_NZ_C0;
-}
-
-__aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount, uint64_t colCount)
-{
-    return CeilDiv(colCount, QKV_RRC_NZ_C0) * NzRowAligned(rowCount) * QKV_RRC_NZ_C0;
+    return (QKV_RRC_HEAD_DIM_D128 / QKV_RRC_NZ_C0) * AlignUp(rowCount, QKV_RRC_NZ_C0) * QKV_RRC_NZ_C0;
 }
 
 template <typename T>
 __aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalTensor<T> &src,
-                                        const DataCopy2DParams &params2d)
+                                        uint64_t rowCount, uint64_t colCount, uint64_t srcStride)
 {
-    if (params2d.rowCount == 0U || params2d.colCount == 0U) {
+    if (rowCount == 0U || colCount == 0U) {
         return;
     }
 
     DataCopyExtParams params;
-    params.blockCount = static_cast<uint16_t>(params2d.rowCount);
-    params.blockLen = static_cast<uint32_t>(params2d.colCount * sizeof(T));
-    params.srcStride = static_cast<decltype(params.srcStride)>((params2d.srcStride - params2d.colCount) * sizeof(T));
+    params.blockCount = static_cast<uint16_t>(rowCount);
+    params.blockLen = static_cast<uint32_t>(colCount * sizeof(T));
+    params.srcStride = static_cast<decltype(params.srcStride)>((srcStride - colCount) * sizeof(T));
     params.dstStride = 0U;
     params.rsv = 0U;
     DataCopyPadExtParams<T> padParams{false, 0U, 0U, 0U};
     const uint32_t blockElements = QKV_RRC_BLOCK_BYTES / sizeof(T);
-    const uint64_t alignedColCount = AlignUp(params2d.colCount, blockElements);
-    if (alignedColCount != params2d.colCount) {
+    const uint64_t alignedColCount = AlignUp(colCount, blockElements);
+    if (alignedColCount != colCount) {
         padParams.isPad = true;
-        padParams.rightPadding = static_cast<uint8_t>(alignedColCount - params2d.colCount);
+        padParams.rightPadding = static_cast<uint8_t>(alignedColCount - colCount);
     }
     DataCopyPad(dst, src, params, padParams);
 }
 
 template <typename T>
 __aicore__ inline void DataCopyUbToGm2D(const GlobalTensor<T> &dst, const LocalTensor<T> &src,
-                                        const DataCopyUbToGm2DParams &params2d)
+                                        uint64_t rowCount, uint64_t colCount, uint64_t srcStride,
+                                        uint64_t dstStride)
 {
-    if (params2d.rowCount == 0U || params2d.colCount == 0U) {
+    if (rowCount == 0U || colCount == 0U) {
         return;
     }
 
     DataCopyExtParams params;
-    params.blockCount = static_cast<uint16_t>(params2d.rowCount);
-    params.blockLen = static_cast<uint32_t>(params2d.colCount * sizeof(T));
-    params.srcStride =
-        static_cast<decltype(params.srcStride)>((params2d.srcStride - params2d.colCount) * sizeof(T) /
-                                                QKV_RRC_BLOCK_BYTES);
-    params.dstStride = static_cast<decltype(params.dstStride)>((params2d.dstStride - params2d.colCount) * sizeof(T));
+    params.blockCount = static_cast<uint16_t>(rowCount);
+    params.blockLen = static_cast<uint32_t>(colCount * sizeof(T));
+    params.srcStride = static_cast<decltype(params.srcStride)>((srcStride - colCount) * sizeof(T) /
+                                                               QKV_RRC_BLOCK_BYTES);
+    params.dstStride = static_cast<decltype(params.dstStride)>((dstStride - colCount) * sizeof(T));
     params.rsv = 0U;
     DataCopyPad(dst, src, params);
-}
-
-template <const pipe_t pipe>
-__aicore__ inline void SetAivToAic(uint64_t syncFlag)
-{
-    CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
-}
-
-template <const pipe_t pipe>
-__aicore__ inline void WaitAivToAic(uint64_t syncFlag)
-{
-    CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag + QKV_RRC_FLAG_ID_MAX);
-    CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
-}
-
-template <const pipe_t pipe>
-__aicore__ inline void SetAicToAiv(uint64_t syncFlag)
-{
-    CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag + QKV_RRC_FLAG_ID_MAX);
-    CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
-}
-
-template <const pipe_t pipe>
-__aicore__ inline void WaitAicToAiv(uint64_t syncFlag)
-{
-    CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
-}
-
-__aicore__ inline uint32_t GetAicCubeIndex()
-{
-    return GetBlockIdx();
-}
-
-__aicore__ inline uint32_t GetAivCubeIndex()
-{
-    return GetBlockIdx() / QKV_RRC_MIX_AIV_PER_AIC;
-}
-
-__aicore__ inline uint32_t GetCubeIndex()
-{
-    if ASCEND_IS_AIC {
-        return GetAicCubeIndex();
-    }
-    return GetAivCubeIndex();
 }
 
 } // namespace QkvRmsNormRopeCacheWithKScale

@@ -16,6 +16,13 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
+constexpr uint8_t QKV_RRC_CROSS_CORE_SYNC_MODE = 4U;
+constexpr uint64_t QKV_RRC_AIV1_FLAG_OFFSET = 16U;
+constexpr uint64_t SYNC_A_READY = 0U;
+constexpr uint64_t SYNC_C_READY = 1U;
+constexpr uint64_t SYNC_C_CONSUMED = 2U;
+constexpr uint64_t SYNC_A_CONSUMED = 3U;
+
 template <uint32_t INPUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleBasicBlock {
 public:
@@ -177,42 +184,50 @@ private:
 
     __aicore__ inline void SetAivMte3ToAicMte1AReady()
     {
-        SetAivToAic<PIPE_MTE3>(SYNC_A_READY);
+        AscendC::CrossCoreSetFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(SYNC_A_READY);
     }
 
     __aicore__ inline void WaitAivMte3ToAicMte1AReady()
     {
-        WaitAivToAic<PIPE_MTE1>(SYNC_A_READY);
+        AscendC::CrossCoreWaitFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+            SYNC_A_READY + QKV_RRC_AIV1_FLAG_OFFSET);
+        AscendC::CrossCoreWaitFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(SYNC_A_READY);
     }
 
     __aicore__ inline void SetAicMte1ToAivMte3AConsumed()
     {
-        SetAicToAiv<PIPE_MTE1>(SYNC_A_CONSUMED);
+        AscendC::CrossCoreSetFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+            SYNC_A_CONSUMED + QKV_RRC_AIV1_FLAG_OFFSET);
+        AscendC::CrossCoreSetFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(SYNC_A_CONSUMED);
     }
 
     __aicore__ inline void WaitAicMte1ToAivMte3AConsumed()
     {
-        WaitAicToAiv<PIPE_MTE3>(SYNC_A_CONSUMED);
+        AscendC::CrossCoreWaitFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(SYNC_A_CONSUMED);
     }
 
     __aicore__ inline void SetAicFixToAivVCReady()
     {
-        SetAicToAiv<PIPE_FIX>(SYNC_C_READY);
+        AscendC::CrossCoreSetFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+            SYNC_C_READY + QKV_RRC_AIV1_FLAG_OFFSET);
+        AscendC::CrossCoreSetFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_C_READY);
     }
 
     __aicore__ inline void WaitAicFixToAivVCReady()
     {
-        WaitAicToAiv<PIPE_V>(SYNC_C_READY);
+        AscendC::CrossCoreWaitFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_V>(SYNC_C_READY);
     }
 
     __aicore__ inline void SetAivMte3ToAicFixCConsumed()
     {
-        SetAivToAic<PIPE_MTE3>(SYNC_C_CONSUMED);
+        AscendC::CrossCoreSetFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(SYNC_C_CONSUMED);
     }
 
     __aicore__ inline void WaitAivMte3ToAicFixCConsumed()
     {
-        WaitAivToAic<PIPE_FIX>(SYNC_C_CONSUMED);
+        AscendC::CrossCoreWaitFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+            SYNC_C_CONSUMED + QKV_RRC_AIV1_FLAG_OFFSET);
+        AscendC::CrossCoreWaitFlag<QKV_RRC_CROSS_CORE_SYNC_MODE, PIPE_FIX>(SYNC_C_CONSUMED);
     }
 
     static constexpr uint32_t QKV_RRC_AIV_OUTPUT_BUFFER_USES_PER_TILE = 2U;
@@ -224,6 +239,11 @@ private:
     LocalTensor<float> outputDbPoolUb_;
     QkvRmsNormRopeCacheWithKScaleCube cube_;
     QkvRmsNormRopeCacheWithKScaleVec<INPUT_LAYOUT> vec_;
+
+    static_assert(QKV_RRC_RESERVE_USED_BYTES <= QKV_RRC_RESERVE_UB_BYTES,
+                  "QkvRmsNormRopeCacheWithKScale reserve UB layout exceeds 40 KiB.");
+    static_assert(QKV_RRC_UB_USED_BYTES <= 248U * QKV_RRC_KIB,
+                  "QkvRmsNormRopeCacheWithKScale static UB layout exceeds 248 KiB.");
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

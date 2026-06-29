@@ -202,9 +202,9 @@ private:
 
     __aicore__ inline void CopyPersistentInputs()
     {
-        DataCopyGmToUb2D(gammaUb_, qGammaGm_, {1U, headDim_, headDim_});
-        DataCopyGmToUb2D(gammaUb_[QKV_RRC_GAMMA_UB_ELEMENTS / 2U], kGammaGm_, {1U, headDim_, headDim_});
-        DataCopyGmToUb2D(vScaleUb_, vScaleGm_, {1U, kvHeadNum_, kvHeadNum_});
+        DataCopyGmToUb2D(gammaUb_, qGammaGm_, 1U, headDim_, headDim_);
+        DataCopyGmToUb2D(gammaUb_[QKV_RRC_GAMMA_UB_ELEMENTS / 2U], kGammaGm_, 1U, headDim_, headDim_);
+        DataCopyGmToUb2D(vScaleUb_, vScaleGm_, 1U, kvHeadNum_, kvHeadNum_);
         SetAndWaitMte2ToVInputReady();
     }
 
@@ -216,14 +216,13 @@ private:
         const uint64_t qkvHeadNum = qHeadNum_ + kvHeadNum_ + kvHeadNum_;
         if constexpr (IS_TND) {
             DataCopyGmToUb2D(input, qkvGm_[tile.aivTokenOffset * qkvHeadNum * headDim_],
-                             {1U, tile.aivTokenSize * qkvHeadNum * headDim_,
-                              tile.aivTokenSize * qkvHeadNum * headDim_});
+                             1U, tile.aivTokenSize * qkvHeadNum * headDim_,
+                             tile.aivTokenSize * qkvHeadNum * headDim_);
         } else {
             DataCopyGmToUb2D(input, qkvGm_[tile.aivTokenOffset * headDim_],
-                             {qkvHeadNum, tile.aivTokenSize * headDim_,
-                              totalTokens_ * headDim_});
+                             qkvHeadNum, tile.aivTokenSize * headDim_, totalTokens_ * headDim_);
         }
-        DataCopyGmToUb2D(slotMapping, slotMappingGm_[tile.aivTokenOffset], {1U, tile.aivTokenSize, tile.aivTokenSize});
+        DataCopyGmToUb2D(slotMapping, slotMappingGm_[tile.aivTokenOffset], 1U, tile.aivTokenSize, tile.aivTokenSize);
         CopyCosSinTile(tile, inputBufferId);
     }
 
@@ -274,7 +273,7 @@ private:
                 ++runSize;
             }
             DataCopyGmToUb2D(cosSin[runStart * headDim_], cosSinGm_[runPosition * headDim_],
-                             {runSize, headDim_, headDim_});
+                             runSize, headDim_, headDim_);
             runStart += runSize;
         }
     }
@@ -344,7 +343,7 @@ private:
         copyParams.blockCount = static_cast<uint16_t>(QKV_RRC_HEAD_DIM_D128 / QKV_RRC_NZ_C0);
         copyParams.blockLen = static_cast<uint16_t>(copyRows);
         copyParams.srcStride = static_cast<uint16_t>(QK_PREPROCESS_UB_NZ_ROW_STRIDE - copyRows);
-        copyParams.dstStride = static_cast<uint16_t>(NzRowAligned(tileSegmentRows) - copyRows);
+        copyParams.dstStride = static_cast<uint16_t>(AlignUp(tileSegmentRows, QKV_RRC_NZ_C0) - copyRows);
         const uint64_t dstRowOffset = aivBlockTokenOffset * headSize;
         DataCopy(dstSegment[dstRowOffset * QKV_RRC_NZ_C0], srcSegment, copyParams);
     }
@@ -371,8 +370,7 @@ private:
             const uint64_t ubOffset = tokenIdx * headDim_;
             const uint64_t gmOffset = tile.cacheBaseOffset[tokenIdx] + tile.vHeadOffset * kvCacheStrideHead_;
             DataCopyUbToGm2D(vCacheOutGm_[gmOffset], vOut[ubOffset],
-                             {tile.vHeadSize, headDim_, tile.aivTokenSize * headDim_,
-                              kvCacheStrideHead_});
+                             tile.vHeadSize, headDim_, tile.aivTokenSize * headDim_, kvCacheStrideHead_);
         }
     }
 
@@ -404,19 +402,19 @@ private:
         const uint64_t qFp8SparseRowStride = headDim_ * sizeof(float) / sizeof(fp8_e4m3fn_t);
         if constexpr (IS_TND) {
             DataCopyUbToGm2D(qOutGm_[tile.aivTokenOffset * qHeadNum_ * headDim_], qFp8,
-                             {tile.aivTokenSize * qHeadNum_, headDim_, qFp8SparseRowStride, headDim_});
+                             tile.aivTokenSize * qHeadNum_, headDim_, qFp8SparseRowStride, headDim_);
             DataCopyUbToGm2D(qScaleGm_[tile.aivTokenOffset * qHeadNum_], qScale,
-                             {1U, tile.aivTokenSize * qHeadNum_,
-                              tile.aivTokenSize * qHeadNum_, tile.aivTokenSize * qHeadNum_});
+                             1U, tile.aivTokenSize * qHeadNum_, tile.aivTokenSize * qHeadNum_,
+                             tile.aivTokenSize * qHeadNum_);
         } else {
             for (uint64_t qHeadIdx = 0U; qHeadIdx < qHeadNum_; ++qHeadIdx) {
                 const uint64_t qUbOffset = qHeadIdx * tile.cubeHalfTokenSize * qFp8SparseRowStride;
                 const uint64_t qGmOffset = qHeadIdx * totalTokens_ * headDim_ + tile.aivTokenOffset * headDim_;
                 DataCopyUbToGm2D(qOutGm_[qGmOffset], qFp8[qUbOffset],
-                                 {tile.aivTokenSize, headDim_, qFp8SparseRowStride, headDim_});
+                                 tile.aivTokenSize, headDim_, qFp8SparseRowStride, headDim_);
             }
             DataCopyUbToGm2D(qScaleGm_[tile.aivTokenOffset], qScale,
-                             {qHeadNum_, tile.aivTokenSize, tile.aivTokenSize, totalTokens_});
+                             qHeadNum_, tile.aivTokenSize, tile.aivTokenSize, totalTokens_);
         }
     }
 
@@ -440,10 +438,10 @@ private:
             const uint64_t kCacheOffset = tile.cacheBaseOffset[tokenIdx];
             const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
             DataCopyUbToGm2D(kCacheOutGm_[kCacheOffset], kFp8[kUbOffset],
-                             {kvHeadNum_, headDim_, kUbHeadStride, kvCacheStrideHead_});
+                             kvHeadNum_, headDim_, kUbHeadStride, kvCacheStrideHead_);
             const uint64_t kScaleUbOffset = tokenIdx * kvHeadNum_ * QKV_RRC_QK_SCALE_MTE3_ALIGN_ELEMENTS;
             DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], kScale[kScaleUbOffset],
-                             {kvHeadNum_, 1U, 1U, kScaleCacheStrideHead_});
+                             kvHeadNum_, 1U, 1U, kScaleCacheStrideHead_);
         }
     }
 

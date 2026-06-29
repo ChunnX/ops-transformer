@@ -17,11 +17,20 @@ namespace QkvRmsNormRopeCacheWithKScale {
 
 template <uint32_t INPUT_LAYOUT>
 class QkvRmsNormRopeCacheWithKScaleController {
+private:
+    struct TokenRange {
+        uint64_t begin;
+        uint64_t end;
+    };
+
 public:
     __aicore__ inline void Process(const GlobalTensors &tensors,
                                    const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
-        const uint32_t cubeIndex = GetCubeIndex();
+        uint32_t cubeIndex = GetBlockIdx();
+        if ASCEND_IS_AIV {
+            cubeIndex /= QKV_RRC_MIX_AIV_PER_AIC;
+        }
         TokenRange tokenRange = {0U, 0U};
         MakeCoreTokenRange(tokenRange, tilingData, cubeIndex);
 
